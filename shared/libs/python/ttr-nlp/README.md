@@ -221,7 +221,7 @@ gazetteers with the four matching modes, the fail-all pack loader,
 trained on a corpus (post-v1 by ruling), and rule-pack or list **content** —
 that is never part of the suite (NL-17). Each world maintains its own packs.
 
-Full detail in the repo's [`CHANGELOG.md`](https://github.com/Collite/tatrman-server/blob/master/CHANGELOG.md).
+Full detail in the repo's [`CHANGELOG.md`](https://github.com/Collite/ttr-server/blob/master/CHANGELOG.md).
 
 ## Publishing
 

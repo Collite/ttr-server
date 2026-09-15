@@ -34,7 +34,7 @@ name: Release Image (GHCR)
 #   GITHUB_TOKEN           - provided automatically; the FALLBACK for the GHCR push, and enough
 #                            only for packages this workflow created itself (see the ⚑ on the
 #                            GHCR login step — per-package Actions access is the whole story).
-#   TATRMAN_PKG_USER/TOKEN - the GHCR push credentials when set, and the Collite/tatrman
+#   TATRMAN_PKG_USER/TOKEN - the GHCR push credentials when set, and the Collite/ttr-core
 #                            GitHub Packages reader (org.tatrman:ttr-*, needed by Veles +
 #                            Translate). Scopes: `read:packages` + `write:packages`.
 #                            Still optional — unset, both uses fall back to GITHUB_TOKEN.
@@ -220,13 +220,13 @@ jobs:
           username: ${{ secrets.TATRMAN_PKG_USER != '' && secrets.TATRMAN_PKG_USER || github.actor }}
           password: ${{ secrets.TATRMAN_PKG_TOKEN != '' && secrets.TATRMAN_PKG_TOKEN || secrets.GITHUB_TOKEN }}
 
-      # Both lanes need auth to the Collite/tatrman GitHub Packages repo (the TTR
+      # Both lanes need auth to the Collite/ttr-core GitHub Packages repo (the TTR
       # toolchain org.tatrman:ttr-*; the Kotlin jib compile and the Python proto
       # prep both resolve it). GITHUB_TOKEN is not auto-exported to env.
       - uses: actions/setup-java@v5
         with: { distribution: temurin, java-version: '21' }
       - uses: gradle/actions/setup-gradle@v5
-      - name: Gradle auth for Collite/tatrman (TTR toolchain)
+      - name: Gradle auth for Collite/ttr-core (TTR toolchain)
         env:
           GPR_USER: ${{ secrets.TATRMAN_PKG_USER != '' && secrets.TATRMAN_PKG_USER || github.actor }}
           GPR_TOKEN: ${{ secrets.TATRMAN_PKG_TOKEN != '' && secrets.TATRMAN_PKG_TOKEN || secrets.GITHUB_TOKEN }}

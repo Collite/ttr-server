@@ -1,7 +1,7 @@
 name: Publish server libraries (GH Packages)
 
 # Publishes the moved shared libs + proto stubs (org.tatrman:*) that kantheon
-# consumes, to GitHub Packages `Collite/tatrman-server` (RO-17: GH Packages =
+# consumes, to GitHub Packages `Collite/ttr-server` (RO-17: GH Packages =
 # staging registry). Tag-driven, mirroring tatrman's publish.yml.
 #
 # Tag → set:
@@ -107,8 +107,8 @@ jobs:
         # separate `publishToMavenCentral` aggregate with the credentials.
         run: ./gradlew --no-configuration-cache -Ptatrman-server.version=${{ steps.ver.outputs.version }} publishAllPublicationsToGitHubPackagesRepository
         env:
-          # Read the org.tatrman:ttr-* toolchain (Collite/tatrman) to compile the
-          # libs, AND write the org.tatrman:* libs to Collite/tatrman-server.
+          # Read the org.tatrman:ttr-* toolchain (Collite/ttr-core) to compile the
+          # libs, AND write the org.tatrman:* libs to Collite/ttr-server.
           GITHUB_ACTOR: ${{ github.actor }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

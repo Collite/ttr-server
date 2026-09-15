@@ -36,7 +36,7 @@ val spineVersion = (findProperty("spineVersion") as String?) ?: "0.9.4"
 val metadataVersion = (findProperty("metadataVersion") as String?) ?: spineVersion
 
 dependencies {
-    // tatrman toolchain (Collite/tatrman)
+    // tatrman toolchain (Collite/ttr-core)
     implementation("org.tatrman:ttr-parser:$spineVersion")
     implementation("org.tatrman:ttr-writer:$spineVersion")
     implementation("org.tatrman:ttr-semantics:$spineVersion")
@@ -44,7 +44,7 @@ dependencies {
     implementation("org.tatrman:ttr-metadata-git:$metadataVersion")
     implementation("org.tatrman:ttr-plan-proto:$spineVersion")
     implementation("org.tatrman:ttr-translator:$spineVersion")
-    // tatrman-server libs (Collite/tatrman-server)
+    // tatrman-server libs (Collite/ttr-server)
     implementation("org.tatrman:server-proto:$spineVersion")
     implementation("org.tatrman:otel-config:$spineVersion")
     implementation("org.tatrman:logging-config:$spineVersion")

@@ -47,7 +47,7 @@ must keep matching** or the OIDC handshake fails with an opaque 403 at upload:
 
 | Registration field | Value |
 |---|---|
-| Repository | `Collite/tatrman-server` |
+| Repository | `Collite/ttr-server` |
 | Workflow filename | `publish-python.yml` |
 | Environment | `pypi` |
 

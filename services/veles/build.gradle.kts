@@ -52,7 +52,7 @@ tasks.named<Test>("componentTest") {
 // recipe no longer applies; the legacy YAML dir stays in tree as a one-time reference.)
 
 dependencies {
-    // TTR metadata library (third-party, Collite/tatrman) — Veles runs on this
+    // TTR metadata library (third-party, Collite/ttr-core) — Veles runs on this
     // after the M4.1 swap (MD2): typed model, sources, reconcile, resolve, graph,
     // search, registry, refresher mechanism, world resolution. It re-exports
     // ttr-parser/writer/semantics as `api`, so those three are NOT declared here

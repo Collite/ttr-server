@@ -37,8 +37,8 @@ http = ["httpx>=0.27"]
 ttr-nlp = "ttrnlp.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/Collite/tatrman-server"
-Source = "https://github.com/Collite/tatrman-server/tree/master/shared/libs/python/ttr-nlp"
+Homepage = "https://github.com/Collite/ttr-server"
+Source = "https://github.com/Collite/ttr-server/tree/master/shared/libs/python/ttr-nlp"
 
 [build-system]
 # `grpcio-tools` is a BUILD dependency, not a runtime one: `hatch_build.py`

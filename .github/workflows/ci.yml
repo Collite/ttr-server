@@ -23,7 +23,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      # Authenticates to the `Collite/tatrman` GitHub Packages repo for the TTR
+      # Authenticates to the `Collite/ttr-core` GitHub Packages repo for the TTR
       # toolchain (org.tatrman:ttr-*). A standing third-party dep (settings.gradle.kts).
       packages: read
     steps:

@@ -31,8 +31,8 @@ dependencies = [
 ttr-morph = "ttrmorph.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/Collite/tatrman-server"
-Source = "https://github.com/Collite/tatrman-server/tree/master/shared/libs/python/ttr-morph"
+Homepage = "https://github.com/Collite/ttr-server"
+Source = "https://github.com/Collite/ttr-server/tree/master/shared/libs/python/ttr-morph"
 
 [build-system]
 requires = ["hatchling"]
