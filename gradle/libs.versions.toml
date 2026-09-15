@@ -3,65 +3,13 @@
 # https://docs.gradle.org/current/userguide/version_catalogs.html
 
 [versions]
-# RV-P3.0 (RV-44): the cut that adds `match:` profiles to `ttr-lexicon/v1` and the resolved
-# `matchProfile` to every DECLARED artifact row.
-#
-# ⚑ **0.12.2, NOT 0.12.1 — read this before "correcting" it back.** `grammar/v0.12.1` exists
-# and is a VOID tag: it points at `cc82646`, the tatrman master tip BEFORE PR #116 merged the
-# `p3-0` tatrman half, so the published 0.12.1 carries no `MatchProfile`, no `Norm` and no
-# `CompiledEntry.matchProfile`. It was cut pre-merge and re-cut as `grammar/v0.12.2` at
-# `0b32ebf` (the #116 merge), which is the first published artifact that actually has RV-44 —
-# `git merge-base --is-ancestor 2396e59 grammar/v0.12.2` is the check. 0.12.1 is deliberately
-# left in place rather than deleted, so the ONLY thing keeping it out of a build is this pin.
-#
-# The failure mode this note exists to prevent: a Maven Local publish at 0.12.1 makes the
-# branch build green on the machine that did the publishing and nowhere else — CI resolves
-# GitHub Packages and does not compile. (Found at the RV-P3 phase-exit review; the void tag
-# itself was recorded by the v2.1 S0 groundwork.)
-#
-# A PATCH on the 0.12 line, not 0.13.0: the bundle's <major.minor> IS the TTR grammar
-# version, and tatrman's publish.yml enforces it ("minor must equal the grammar version" —
-# `@grammar-version: 0.12` in TTR.g4). RV-44 changes the `ttr-lexicon/v1` YAML schema and
-# the compiled artifact, not the .g4, so the grammar minor does not move and a 0.13.0 tag
-# would fail that gate outright.
-# NLS-P10 (2026-08-13): 0.13.0 — the grammar minor MOVES this time. `description:`
-# gained the localised map form in TTR.g4, and tatrman's publish.yml enforces
-# "tag minor == @grammar-version", so the localised-description bundle can only be
-# cut as 0.13.0. Veles reads `descriptionLocalized` off `ModelObject` (the D7
-# locale chain in MetadataServiceImpl) and does not compile against 0.12.x.
-# MS-P2 (2026-09-01): 0.13.2 — the mention-semantics cut (`grammar/v0.13.2` at
-# tatrman `b5451c9`, the MS-P1 merge). PATCH again: MS changed no `.g4`, so
-# `@grammar-version: 0.13` holds and the minor-sync gate wants the 0.13 line.
-# What arrives with it: `Entity`/`DbTable.mentionSemantics` (the resolved
-# `name:`/`code:`/`measures:` block), `MeasureRef`, `MentionKinds`, and the
-# compiled lexicon archive at schema `ttr-lexicon-compiled/v2` with its `targets`
-# map. ⚠ The v1→v2 archive crossing is READERS BEFORE PRODUCERS (MS contracts §6):
-# nothing can make an already-built v1 reader accept a v2 archive — it throws on
-# the unknown `targets` key, and both readers here turn an undecodable archive
-# into an EMPTY declared vocabulary on a WARN. No estate takes a v2-producing
-# lexicon build before its resolver AND lex-matcher are on this pin.
-# MH-P0 (2026-09-02): 0.13.3 — the mention-homonymy cut. PATCH again: MH changed no
-# `.g4`, so `@grammar-version: 0.13` holds. What arrives with it: `ttr-lexicon`
-# `Reach` + `TargetFacts.reachedFrom` (the E-R reachability the Binder's T3 rule reads)
-# at archive schema `ttr-lexicon-compiled/v3`, the compiler's `RG-LEXC-004` collision
-# warning, and `TermNormalizer.fold`. The v2→v3 crossing needs NO reader gate, unlike
-# v1→v2: `reachedFrom` is a defaulted field inside `targets`, so a v2 archive decodes
-# in a v3 reader and a v3 archive is read by an MS-era reader as a v2 one
-# (`ignoreUnknownKeys`) with the reachability rules simply inert.
-# ⚠ The gate-free crossing is v2 → v3. An estate whose COMMITTED archive is still v1
-# (check its `schemaVersion`, not this pin) rebuilds v1 → v3, which adds the `targets`
-# map — the v1 → v2 step — and therefore carries the MS reader gate with it.
-# ⚠ ALSO in this cut, and worth knowing before an estate takes it: `ttr-metadata`'s
-# file loader used to HARDCODE `Cardinality(0, -1, 0, -1)` and now parses the authored
-# `cardinality:`. Any reader of a loaded `Relation.cardinality` gets real numbers where
-# it used to get zeros.
 tatrman-grammar           = "0.13.3"
 # Moves WITH the grammar ref, always: they are one `api` closure (ttr-snapshot api's
 # ttr-metadata, ttr-lexicon-compile's POM names it exactly), and the `bundle grammar` lane
 # publishes them at one version. Two versions here is the 0.10.3/0.10.4 failure.
 tatrman-ttr-metadata      = "0.13.3"
-tatrman-ttr-translator    = "0.10.1"
-tatrman-ttr-plan-proto    = "0.10.1"
+tatrman-ttr-translator    = "0.10.3"
+tatrman-ttr-plan-proto    = "0.10.3"
 # SV-P1 S4 — Maven Central publishing via the Central Portal.
 vanniktech-publish        = "0.36.0"
 
