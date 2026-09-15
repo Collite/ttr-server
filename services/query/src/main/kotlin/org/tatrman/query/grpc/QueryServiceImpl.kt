@@ -566,7 +566,7 @@ class QueryServiceImpl(
                         .setContext(dbValidated.context)
                         .addAllRequiredParameters(requiredParameters)
                         .setPredictedSchemaFingerprint(predictedSchemaFingerprint)
-                        .addAllMessages(cached.detectionMessages + dbValidated.messagesList)
+                        .addAllMessages(cached.detectionMessages + dbValidated.compileMessages())
                         .build()
                 }
                 SchemaCode.ER,
@@ -653,7 +653,7 @@ class QueryServiceImpl(
                         .setContext(dbValidated.context)
                         .addAllRequiredParameters(requiredParameters)
                         .setPredictedSchemaFingerprint(predictedSchemaFingerprint)
-                        .addAllMessages(resolution.detectionMessages + dbValidated.messagesList)
+                        .addAllMessages(resolution.detectionMessages + dbValidated.compileMessages())
                         .build()
                 }
                 SchemaCode.ER,
@@ -741,7 +741,7 @@ class QueryServiceImpl(
                         .setContext(dbValidated.context)
                         .addAllRequiredParameters(requiredParameters)
                         .setPredictedSchemaFingerprint(predictedSchemaFingerprint)
-                        .addAllMessages(resolution.detectionMessages + dbValidated.messagesList)
+                        .addAllMessages(resolution.detectionMessages + dbValidated.compileMessages())
                         .build()
                 }
                 else -> {
@@ -942,8 +942,36 @@ class QueryServiceImpl(
         when {
             window.limit < 0 -> "row_window.limit must be >= 0, got ${window.limit}"
             window.offset < 0 -> "row_window.offset must be >= 0, got ${window.offset}"
+            // The plan node carries int64, but every reader below narrows to int32: ttr-translator's
+            // `PlanNodeDecoder.pushLimitOffset` calls `.toInt()`, so an offset of 2^31 reaches Calcite
+            // as a NEGATIVE one — a wrong answer, where this refusal exists to name bad input.
+            window.limit > Int.MAX_VALUE -> "row_window.limit must be <= ${Int.MAX_VALUE}, got ${window.limit}"
+            window.offset > Int.MAX_VALUE -> "row_window.offset must be <= ${Int.MAX_VALUE}, got ${window.offset}"
             else -> null
         }
+
+    /**
+     * `compile` returns a PLAN and no rows, so validate's `top_n_applied` — which says an ANSWER was
+     * cut — is a claim this surface cannot make: the enforcer raises it for every plan it bounds, i.e.
+     * every plan without a caller-stated limit, so every compile answered *"Answer limited to N rows"*
+     * having returned none. `run` states it only on a last batch that actually reached the cap; compile
+     * states the same fact about the future RUN instead. It matters because this surface is LLM-facing
+     * through query-mcp's `CompileTool`, and a warning on every call is one a model learns to ignore.
+     */
+    private fun ValidateResponse.compileMessages(): List<ResponseMessage> {
+        val cap = rootLimit(plan)
+        return messagesList.map { message ->
+            if (message.code != TOP_N_APPLIED || cap == null) {
+                message
+            } else {
+                message
+                    .toBuilder()
+                    .setHumanMessage(
+                        "A row cap of $cap rows will apply when this plan runs; `compile` itself returns no rows.",
+                    ).build()
+            }
+        }
+    }
 
     /** The row bound a validated plan executes under, when its root states one. */
     private fun rootLimit(plan: PlanNode): Long? =

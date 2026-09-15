@@ -956,6 +956,24 @@ class QueryServiceImplSpec :
             }
         }
 
+        // The node carries int64; ttr-translator's `PlanNodeDecoder.pushLimitOffset` narrows with
+        // `.toInt()`, so 2^31 would arrive at Calcite as a NEGATIVE offset — a wrong answer from the
+        // one input this refusal exists to name (review-093 ⑹).
+        "a row window above Int.MAX_VALUE is refused, not narrowed into a negative offset" {
+            runBlocking {
+                val seen = CopyOnWriteArrayList<ValidateRequest>()
+                val svc = service(validator = capturing(seen))
+                val tooBig = Int.MAX_VALUE.toLong() + 1
+                val byOffset = svc.run(windowRequest(200, tooBig)).toList()
+                byOffset.size shouldBe 1
+                byOffset[0].messagesList.single().code shouldBe "invalid_row_window"
+                val byLimit = svc.run(windowRequest(tooBig, 0)).toList()
+                byLimit.size shouldBe 1
+                byLimit[0].messagesList.single().code shouldBe "invalid_row_window"
+                seen.size shouldBe 0
+            }
+        }
+
         // ── top_n_applied: the validator's statement about the PLAN, passed on only when the
         //    answer actually reached the cap ──
 
@@ -1004,6 +1022,20 @@ class QueryServiceImplSpec :
                             .build()
                 flowOf(*batches.toTypedArray())
             }
+
+        // ⛔ `compile` returns a plan and NO rows, so "Answer limited to N rows" is a claim it cannot
+        // make — and the enforcer raises the notice for every plan it bounds, so every compile made it.
+        // The fact worth keeping is about the future run, and it is worded that way (review-093 ⑸).
+        "compile states the cap as a fact about the RUN — it never claims an answer was cut" {
+            runBlocking {
+                val resp =
+                    service(translatorDetect = dbDetect, validator = cappingAt2(notice = true))
+                        .compile(windowRequest(5, 0))
+                val notice = resp.messagesList.single { it.code == "top_n_applied" }
+                notice.humanMessage shouldBe
+                    "A row cap of 2 rows will apply when this plan runs; `compile` itself returns no rows."
+            }
+        }
 
         "an answer that REACHED the row cap carries top_n_applied on its last batch" {
             runBlocking {
