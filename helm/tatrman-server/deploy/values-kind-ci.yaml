@@ -23,7 +23,7 @@ whois:     { enabled: true, resources: { requests: { cpu: 25m, memory: 256Mi } }
 health:    { enabled: true, resources: { requests: { cpu: 25m, memory: 256Mi } } }
 
 dispatch: { enabled: false }
-# charon is DISABLED in kind-CI pending Collite/tatrman-server#25. It rejoined at CH-P2·T5a on the
+# charon is DISABLED in kind-CI pending Collite/ttr-server#25. It rejoined at CH-P2·T5a on the
 # assumption it boots blob-only without Redis — but charon:0.10.0's Redis connect is eager + fatal at
 # boot (review-076·F1), and the kind smoke subset has no data-redis, so the pod never reaches /ready
 # (Available: 0/1) and the nightly `helm install --wait` times out. This only ever ran on the nightly

@@ -38,7 +38,7 @@ scoring input, never a source.
 | `project/kantheon/features/resolving/contracts.md` | `ResolutionState` / `Mention` / `Binding` / `GapRecord` shapes, the door contract, budgets (§3) |
 | `tatrman-server` **`.proto` files** | the wire contract. Generating stubs from a shared proto is contract conformance, not code reuse — the proto IS the interface both sides implement |
 | Public **Pydantic AI / pydantic-graph** documentation (via context7) | framework API |
-| `Collite/hartland` `model/` + `model/lexicon/` | the fixture estate (`hartland_cz`) |
+| `Collite/ttr-demo` `model/` + `model/lexicon/` | the fixture estate (`hartland_cz`) |
 
 ## Off-limits — the complete list
 

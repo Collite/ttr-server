@@ -6,7 +6,7 @@
 #
 # Sources (per the task list): the heroes H1/H1'/H2/H5 (design.md §heroes), the two
 # live-Resolver failures in issues.md (2026-07-28), and fresh variants over the
-# hartland_cz model (Collite/hartland `model/md/*.ttrm` + `model/lexicon/cs/*.ttrm`
+# hartland_cz model (Collite/ttr-demo `model/md/*.ttrm` + `model/lexicon/cs/*.ttrm`
 # — refs below are real model refs, and several question texts are lifted verbatim
 # from `model/lexicon/cs/examples.ttrm`).
 #

@@ -170,7 +170,7 @@ subprojects {
             name.set(pomName)
             description.set(pomDescription)
             inceptionYear.set("2025")
-            url.set("https://github.com/Collite/tatrman-server")
+            url.set("https://github.com/Collite/ttr-server")
             licenses {
                 license {
                     name.set("The Apache License, Version 2.0")
@@ -186,9 +186,9 @@ subprojects {
                 }
             }
             scm {
-                connection.set("scm:git:https://github.com/Collite/tatrman-server.git")
-                developerConnection.set("scm:git:git@github.com:Collite/tatrman-server.git")
-                url.set("https://github.com/Collite/tatrman-server")
+                connection.set("scm:git:https://github.com/Collite/ttr-server.git")
+                developerConnection.set("scm:git:git@github.com:Collite/ttr-server.git")
+                url.set("https://github.com/Collite/ttr-server")
             }
         }
     }
@@ -196,7 +196,7 @@ subprojects {
         repositories {
             maven {
                 name = "GitHubPackages"
-                url = uri("https://maven.pkg.github.com/Collite/tatrman-server")
+                url = uri("https://maven.pkg.github.com/Collite/ttr-server")
                 credentials {
                     username = providers.gradleProperty("gpr.user").orNull ?: System.getenv("GITHUB_ACTOR")
                     password = providers.gradleProperty("gpr.token").orNull ?: System.getenv("GITHUB_TOKEN")

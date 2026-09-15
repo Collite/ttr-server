@@ -30,7 +30,7 @@ without a sign-off are flagged by CI and cannot be merged.
   plan wire format, and the governed query path. Changes here go through the
   **public RFC process** — see
   [GOVERNANCE.md](./GOVERNANCE.md) (which points at the standard's governance in
-  the [`tatrman`](https://github.com/Collite/tatrman) repo). Open a design
+  the [`tatrman`](https://github.com/Collite/ttr-core) repo). Open a design
   discussion before a large PR.
 
 The MCP surface is the ecosystem's most public wire; treat changes to it as core.

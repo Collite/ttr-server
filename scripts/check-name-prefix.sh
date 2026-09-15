@@ -9,7 +9,7 @@
 #
 # Two — and only two — classes of `ttr-` are legitimate here:
 #
-#   1. Coordinates of the UPSTREAM toolchain published by the `Collite/tatrman`
+#   1. Coordinates of the UPSTREAM toolchain published by the `Collite/ttr-core`
 #      repo (`org.tatrman:ttr-parser`, `ttr-metadata`, `ttr-translator`,
 #      `ttr-snapshot`, `ttr-lexicon`, …). Those are a third-party dependency;
 #      this repo does not get to rename them.

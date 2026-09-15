@@ -1,13 +1,13 @@
 # Governance
 
 Tatrman Server is part of the Tatrman ecosystem and is governed under the single
-project governance defined in the **[`tatrman`](https://github.com/Collite/tatrman)**
+project governance defined in the **[`tatrman`](https://github.com/Collite/ttr-core)**
 repository:
 
-- **[GOVERNANCE.md](https://github.com/Collite/tatrman/blob/master/GOVERNANCE.md)** —
+- **[GOVERNANCE.md](https://github.com/Collite/ttr-core/blob/master/GOVERNANCE.md)** —
   the steward model (Collite as steward/BDFL) and the control-room RFC process for
   core changes.
-- **[TRADEMARKS.md](https://github.com/Collite/tatrman/blob/master/TRADEMARKS.md)** —
+- **[TRADEMARKS.md](https://github.com/Collite/ttr-core/blob/master/TRADEMARKS.md)** —
   what may and may not be called "Tatrman" / "Tatrman Server"; conformance as the
   earning mechanism.
 

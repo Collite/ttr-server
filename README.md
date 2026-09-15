@@ -60,14 +60,14 @@ land with **1.0**. Until then, build from source:
 ```
 
 For architecture and contracts docs, see the companion
-[`tatrman`](https://github.com/Collite/tatrman) repo's `docs/features/` tree
+[`tatrman`](https://github.com/Collite/ttr-core) repo's `docs/features/` tree
 (e.g. `docs/features/resolution/`, `docs/features/ttr-translator/`).
 
 ## License, governance & contributing
 
 Tatrman Server is open source under the **[Apache License 2.0](LICENSE)** (see also
 [NOTICE](NOTICE)). "Tatrman" and "Tatrman Server" are trademarks of Collite — see
-the **[Trademark Policy](https://github.com/Collite/tatrman/blob/master/TRADEMARKS.md)**.
+the **[Trademark Policy](https://github.com/Collite/ttr-core/blob/master/TRADEMARKS.md)**.
 
 - **[CONTRIBUTING.md](CONTRIBUTING.md)** — how to contribute (DCO sign-off, edges vs. core).
 - **[GOVERNANCE.md](GOVERNANCE.md)** — governance (defined in the `tatrman` repo).

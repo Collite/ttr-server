@@ -10,7 +10,7 @@ name: Publish Python (PyPI)
 #
 # ⚑ NAME COUPLING — the trusted-publisher registration on PyPI names three
 # things that MUST keep matching this file (P-BP T1/T2, Bora):
-#   repository  Collite/tatrman-server
+#   repository  Collite/ttr-server
 #   workflow    publish-python.yml      <- this file's NAME, not its job's
 #   environment pypi                    <- the `environment:` below
 # Renaming this file or that environment silently breaks the OIDC handshake and

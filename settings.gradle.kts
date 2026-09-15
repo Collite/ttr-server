@@ -18,13 +18,13 @@ dependencyResolutionManagement {
         // gates land the 0.9.x line on the public registry (plan §SV-P1).
         mavenLocal()
         // TTR toolchain (org.tatrman:ttr-{parser,writer,semantics,metadata,…}),
-        // published by the `tatrman` repo to GitHub Packages under `Collite/tatrman`.
+        // published by the `tatrman` repo to GitHub Packages under `Collite/ttr-core`.
         // These are NOT on Maven Central yet; the same per-user `gpr.*` PAT that
         // kantheon uses authenticates here. `includeGroup("org.tatrman")` keeps the
         // repo scoped to that group only.
         maven {
             name = "Tatrman"
-            url = uri("https://maven.pkg.github.com/Collite/tatrman")
+            url = uri("https://maven.pkg.github.com/Collite/ttr-core")
             credentials {
                 username = providers.gradleProperty("gpr.user").orNull
                     ?: System.getenv("GITHUB_ACTOR")

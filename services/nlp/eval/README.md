@@ -21,13 +21,13 @@ assumption that "lemmas are case-normalised by the engine". They are not: no eng
 configuration turns `ZÁKAZNÍKA` into `zákazník` — Stanza case-folds but stops at
 `zákazníka`, MorphoDiTa leaves the token alone. The case was removed rather than
 left failing, because a permanently red case trains readers to ignore the report.
-It comes back with [#48](https://github.com/Collite/tatrman-server/issues/48).
+It comes back with [#48](https://github.com/Collite/ttr-server/issues/48).
 
 `para-cs-invoices-declined` still fails under MorphoDiTa (it lemmatizes `fakturám`
 to `fakturá`) and passes under Stanza. That one is left **in** and failing: unlike
 the case above it is a genuine lemma disagreement rather than an unsupported input
 shape, and it is the live evidence for
-[#47](https://github.com/Collite/tatrman-server/issues/47).
+[#47](https://github.com/Collite/ttr-server/issues/47).
 
 ### Adding New Fixtures
 
