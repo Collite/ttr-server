@@ -71,12 +71,17 @@ cd "$(dirname "$0")/.."
 # on this branch since P8.1 created the package and nobody added the entry; the
 # wave's PR opens at P9.3, which is where that stopped being tolerable.
 #
+# GitHub repository names are a FOURTH class: `Collite/ttr-core`, `Collite/ttr-server`,
+# `Collite/ttr-demo`. The repos were renamed into the Collite organization on 2026-09-15
+# after GitHub retired their old `Collite/<name>` paths; a repository name is an external
+# address, not a module name, so it is matched only with its `Collite/` owner in front.
+#
 # The slash is written `\/` because ALLOW is interpolated into `s/…//` below; an
 # unescaped one would end the substitution and perl would refuse the pattern.
 #
 # Order matters: `nlp-routing` must precede bare `nlp` so the longer schema id
 # matches first.
-ALLOW='(?<!services\/)ttr-(metadata-git|metadata-adoption|metadata|translator-extraction|translator|plan-proto|parser|writer|semantics|server-proto|snapshot|lexicon|skill|operator-library|nlp-routing|nlp|morph|server|umbrella-ci|umbrella|\*|\{)'
+ALLOW='(?<!services\/)ttr-(metadata-git|metadata-adoption|metadata|translator-extraction|translator|plan-proto|parser|writer|semantics|server-proto|snapshot|lexicon|skill|operator-library|nlp-routing|nlp|morph|server|umbrella-ci|umbrella|\*|\{)|Collite\/ttr-(core|server|demo)'
 
 hits="$(
   git grep -nI -P '(?<![A-Za-z0-9_])ttr-' -- . ':(exclude)scripts/check-name-prefix.sh' \
