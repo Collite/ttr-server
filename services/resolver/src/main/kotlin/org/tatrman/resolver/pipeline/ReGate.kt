@@ -460,19 +460,23 @@ object ReGate {
     private fun Mention.plus(added: List<Binding>?): Mention =
         if (added.isNullOrEmpty()) this else toBuilder().addAllBindings(added).build()
 
-    private fun ValueFinding.plus(added: List<Binding>?): ValueFinding =
-        if (added.isNullOrEmpty()) {
-            this
-        } else {
-            toBuilder()
-                .addAllAttributions(
-                    added.map {
-                        Attribution
-                            .newBuilder()
-                            .setAttributeRef(it.ref.substringBefore('#'))
-                            .setBinding(it)
-                            .build()
-                    },
-                ).build()
-        }
+    private fun ValueFinding.plus(added: List<Binding>?): ValueFinding {
+        // An attribution names a model ATTRIBUTE, so a binding that cannot be one is dropped here
+        // rather than written as an `attribute_ref` (see `Bindings.attributable`). The hypothesis
+        // OUTCOME still reports such a row as accepted — it did match the span; it simply is not
+        // an attribution — and `Mention.plus` above deliberately has no equivalent filter, because
+        // a trigger on a mention is exactly where a trigger belongs.
+        val attributions = added?.filter(Bindings::attributable)
+        if (attributions.isNullOrEmpty()) return this
+        return toBuilder()
+            .addAllAttributions(
+                attributions.map {
+                    Attribution
+                        .newBuilder()
+                        .setAttributeRef(it.ref.substringBefore('#'))
+                        .setBinding(it)
+                        .build()
+                },
+            ).build()
+    }
 }

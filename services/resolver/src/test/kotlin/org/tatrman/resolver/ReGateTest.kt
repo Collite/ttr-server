@@ -26,6 +26,7 @@ import org.tatrman.fuzzy.v1.FuzzyStatusResponse
 import org.tatrman.fuzzy.v1.LookupRequest
 import org.tatrman.fuzzy.v1.LookupResponse
 import org.tatrman.fuzzy.v1.SourceTag
+import org.tatrman.fuzzy.v1.TargetClass
 import org.tatrman.nlp.v1.AnalyzeRequest
 import org.tatrman.nlp.v1.AnalyzeResponse
 import org.tatrman.nlp.v1.Capability
@@ -303,6 +304,28 @@ class ReGateTest :
             response.updatedGapsList.map { it.kind } shouldContainExactly listOf(GapKind.GAP_KIND_G5_NLP_DARK)
         }
 
+        "⛑ a GROUNDING_TRIGGER answer may bind, but it does NOT attribute — the value's gap stays open" {
+            // hartland, 2026-09-16. The rung log for the failing turn reads
+            // `round: 1 rung: "lookup" action: "lookup" value_ids: "v1" bindings_added: 1` — this
+            // path, on the value *roce* — and what it added was `attribute_ref: "ground:chrono"`.
+            // golem's query door then refused the entire turn on a ref it cannot address, while the
+            // chrono kernel had grounded the year beside it onto a real column.
+            //
+            // `GateResponse` carries no updated values, so the observable here is the GAP: an
+            // attributed value closes its own gap, and this one must not — a trigger names which
+            // KERNEL owns a span, never an attribute the literal could be a value of.
+            val response =
+                gate(
+                    GateFuzzy(mapOf("5010O1" to listOf(trigger("ground:chrono")))),
+                    h1primeLattice(),
+                    hypothesis("5010O1", 20, 26, ref = "", rung = "local"),
+                )
+
+            // The G4 the correction in the test above CLOSED is still open here, because nothing
+            // attributed the value — which is the whole difference the filter makes.
+            response.updatedGapsList.map { it.kind } shouldContainExactly listOf(GapKind.GAP_KIND_G4_METHOD_MISS)
+        }
+
         "(review) a hypothesis naming a MEMBER is not confirmed by binding the column it lives in" {
             // `bound ⊂ proposed` confirms (a member arrives as `<ref>#<id>`); the REVERSE does not.
             // This hypothesis asked about a value and was answered about a column — and accepting it
@@ -461,6 +484,24 @@ class ReGateTest :
             ref: String,
             rung: String,
         ): Hypothesis = hypothesis(text, start, end, ref, rung).toBuilder().setCorrection(to).build()
+
+        /**
+         * A DECLARED row that POSITIVELY declares the grounding-trigger class — what the `ground:`
+         * slice of the compiled lexicon returns, quoted off hartland's live wire
+         * (`candidate_id: "lex:ground:chrono:cs:roce" … target_class: TARGET_CLASS_GROUNDING_TRIGGER`).
+         */
+        private fun trigger(targetRef: String): FuzzyMatch =
+            FuzzyMatch
+                .newBuilder()
+                .setCandidateId("lex:$targetRef")
+                .setCandidate(targetRef)
+                .setScore(1.0)
+                .setCategory(targetRef)
+                .setSource(SourceTag.DECLARED)
+                .setTargetRef(targetRef)
+                .setTargetClass(TargetClass.TARGET_CLASS_GROUNDING_TRIGGER)
+                .setMatchMethod("EXACT")
+                .build()
 
         private fun member(
             id: String,
