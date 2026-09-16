@@ -247,6 +247,78 @@ class LatticeAssemblerTest :
             state.valuesList.single().anchorMentionId shouldBe ""
         }
 
+        "⛑ a GROUNDING_TRIGGER row on a VALUE span is NOT an attribution" {
+            // hartland, 2026-09-16. The live lattice for "Jak se vyvíjela tržba z tržiště v roce
+            // 2025?" carried `attributions { attribute_ref: "ground:chrono" }` on the LITERAL value
+            // *roce*, and golem's query door refused the whole turn — `'ground:chrono' is not an
+            // addressable object or attribute` — while the kernel had meanwhile grounded *2025*
+            // onto a real column. An attribution says "this literal could be a value of THAT
+            // attribute"; a trigger names which KERNEL owns the span, so it can never be one.
+            val state =
+                LatticeAssembler.assemble(
+                    parse = AnalyzeResponse.getDefaultInstance(),
+                    gate =
+                        Bound(
+                            emptyList(),
+                            0.0,
+                            listOf(
+                                gatedSpan(
+                                    literal("roce", 34, 38, anchorHead = -1),
+                                    listOf(
+                                        declared(
+                                            "ground:chrono",
+                                            "ground:chrono",
+                                            TargetClass.TARGET_CLASS_GROUNDING_TRIGGER,
+                                        ),
+                                    ),
+                                    ambiguous = false,
+                                ),
+                            ),
+                        ),
+                    ungatedMentions = emptyList(),
+                    universals = emptyList(),
+                    entityTypes = emptyList(),
+                    snapshotHash = "snap-1",
+                    lang = "cs",
+                    preps = FrameRolePreps.shipped(),
+                    batch = BatchMatchResponse.getDefaultInstance(),
+                )
+            state.valuesList.single().attributionsList shouldBe emptyList()
+        }
+
+        "a MODEL_OBJECT row on the same span IS an attribution — the control for the rule above" {
+            // Without this, the assertion above would pass equally well if the span never reached
+            // the value layer at all, and a probe that cannot tell those two apart proves nothing.
+            val state =
+                LatticeAssembler.assemble(
+                    parse = AnalyzeResponse.getDefaultInstance(),
+                    gate =
+                        Bound(
+                            emptyList(),
+                            0.0,
+                            listOf(
+                                gatedSpan(
+                                    literal("roce", 34, 38, anchorHead = -1),
+                                    listOf(declared("er.entity.date_dim.year", "er.entity.date_dim.year")),
+                                    ambiguous = false,
+                                ),
+                            ),
+                        ),
+                    ungatedMentions = emptyList(),
+                    universals = emptyList(),
+                    entityTypes = emptyList(),
+                    snapshotHash = "snap-1",
+                    lang = "cs",
+                    preps = FrameRolePreps.shipped(),
+                    batch = BatchMatchResponse.getDefaultInstance(),
+                )
+            state.valuesList
+                .single()
+                .attributionsList
+                .single()
+                .attributeRef shouldBe "er.entity.date_dim.year"
+        }
+
         "an ambiguous span keeps ALL its candidates — the lattice does not pick one" {
             val state =
                 LatticeAssembler.assemble(

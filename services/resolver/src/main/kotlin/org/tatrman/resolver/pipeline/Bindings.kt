@@ -91,6 +91,34 @@ object Bindings {
         return builder.build()
     }
 
+    /**
+     * Whether a binding may become a value ATTRIBUTION.
+     *
+     * An attribution says *this literal could be a value of THAT attribute*, so what it names has
+     * to be an attribute. Two classes can never satisfy that and both reach a value span by
+     * ordinary means: an OPERATOR is an action, and a GROUNDING_TRIGGER is evidence about which
+     * KERNEL owns the span (RV-42). Golem's `entityTypeRefs` excludes the same two, for the same
+     * reason — "an operator is an action and a grounding trigger is evidence".
+     *
+     * ⛑ **hartland, 2026-09-16.** *"Jak se vyvíjela tržba z tržiště v roce 2025?"* — one of the
+     * estate's own advertised questions — died at the query door with `'ground:chrono' is not an
+     * addressable object or attribute`. The G3 BROAD round asked the matcher about *roce* with no
+     * class scoping, the `ground:chrono` trigger row came back, and its ref was written straight
+     * into `attribute_ref`. The kernel had meanwhile grounded *2025* perfectly, onto
+     * `er.entity.date_dim.cal_date` — so the refusal named chrono while chrono was the one part
+     * working, and the trigger that ANCHORED that grounding is what killed the turn.
+     *
+     * ⚠ The fix belongs HERE, on accept, and not on the request. Scoping the round's
+     * `target_classes` is a ruled-out design: a member row carries no class at all, so an
+     * allow-list would exclude the very rows that tier exists to reach (contracts §1 addendum,
+     * rule 4 — pinned by `RoundPlannerTest`). Hence the asymmetry: a row that POSITIVELY declares
+     * a non-attributable class is rejected, and UNSPECIFIED is kept, which leaves members
+     * untouched and needs no cooperation from the matcher.
+     */
+    fun attributable(binding: Binding): Boolean =
+        binding.targetClass != TargetClass.TARGET_CLASS_OPERATOR &&
+            binding.targetClass != TargetClass.TARGET_CLASS_GROUNDING_TRIGGER
+
     /** The attribute a value is attributed to: its category — the member index is keyed by it. */
     fun attributeRefOf(match: FuzzyMatch): String =
         if (match.source == FuzzySourceTag.MEMBER) match.category else match.targetRef.ifBlank { match.category }

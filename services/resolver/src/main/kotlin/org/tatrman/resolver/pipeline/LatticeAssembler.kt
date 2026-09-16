@@ -100,11 +100,17 @@ object LatticeAssembler {
                         .setKind(ValueKind.VALUE_KIND_LITERAL)
                 mentionIdByHead[span.candidate.anchorHeadToken]?.let { builder.anchorMentionId = it }
                 for (match in span.contenders) {
+                    val binding = Bindings.of(match, snapshotHash)
+                    // The same rule the re-gate applies: an attribution names an attribute, so an
+                    // operator or a grounding-trigger row is not one (`Bindings.attributable`).
+                    // Both producers are filtered because either can be the one that runs first —
+                    // the core pass here, or a later lookup round.
+                    if (!Bindings.attributable(binding)) continue
                     builder.addAttributions(
                         Attribution
                             .newBuilder()
                             .setAttributeRef(Bindings.attributeRefOf(match.match))
-                            .setBinding(Bindings.of(match, snapshotHash)),
+                            .setBinding(binding),
                     )
                 }
                 builder
