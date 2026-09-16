@@ -409,6 +409,72 @@ class SpanProposalTest :
 
             cands.none { it.origin == DomainSpanCandidate.Origin.GOVERNED_VALUE } shouldBe true
         }
+
+        // ⛑ hartland, 2026-09-16 — "Which portfolios does client `conseq:8801234` hold?" reached the
+        // matcher as ONE phrase, "Which portfolios", was looked up against a METADATA row whose
+        // term is `portfolios` with method EXACT, bound nothing, and ended the turn as
+        // `I don't recognise "Which portfolios"` — with no option to offer, because nothing matched
+        // the phrase and so there was nothing to sign.
+        //
+        // ⚑ The anchor is the FOLDED LEMMA (`fold(lemma.ifBlank { text })`), and both the lemma and
+        // the anchor are `portfolios` here because that is what the live English parse produced —
+        // the fixture mirrors production rather than a shape the estate does not have.
+        val portfolio =
+            ResolverEntityType(
+                ref = "er.entity.portfolio",
+                categories = listOf("er.entity.portfolio"),
+                anchors = listOf("portfolios"),
+            )
+
+        // dep_head is 1-BASED (0 = root), which is what `children[headIdx + 1]` relies on.
+        // 0 Which(det→portfolios) 1 portfolios(obj→hold) 2 does 3 client 4 hold(root)
+        fun interrogativeParse(detFeats: Map<String, String>): AnalyzeResponse =
+            AnalyzeResponse
+                .newBuilder()
+                .addAllTokens(
+                    listOf(
+                        tok("Which", 0, 5, "which", "DET", 2, "det", detFeats),
+                        tok("portfolios", 6, 16, "portfolios", "NOUN", 5, "obj"),
+                        tok("does", 17, 21, "do", "AUX", 5, "aux"),
+                        tok("client", 22, 28, "client", "NOUN", 5, "nsubj"),
+                        tok("hold", 29, 33, "hold", "VERB", 0, "root"),
+                    ),
+                ).build()
+
+        // `single { … }` rather than `map { }.shouldContain`, deliberately: it THROWS when the
+        // candidate is absent. The first cut of these tests asserted `none { contains("Which") }`
+        // over a list that was empty because the fixture never matched an anchor at all — a
+        // vacuous pass, and exactly the shape a guard test must not be able to take.
+        "⛑ an INTERROGATIVE determiner is NOT part of the anchor phrase" {
+            val cands =
+                SpanProposal.proposeDomainSpans(interrogativeParse(mapOf("PronType" to "Int")), listOf(portfolio))
+            val anchor = cands.single { it.origin == DomainSpanCandidate.Origin.ANCHOR_PHRASE }
+
+            anchor.text shouldBe "portfolios"
+            anchor.start shouldBe 6
+            anchor.end shouldBe 16
+            anchor.gatedEntityRefs shouldBe listOf("er.entity.portfolio")
+        }
+
+        "a NON-interrogative determiner still joins the phrase — the guard is narrow" {
+            // The mutation this catches: excluding `det` wholesale. "the account" / "toho účtu"
+            // must stay ONE mention, which is what the relation set exists for.
+            val cands =
+                SpanProposal.proposeDomainSpans(interrogativeParse(mapOf("PronType" to "Art")), listOf(portfolio))
+            val anchor = cands.single { it.origin == DomainSpanCandidate.Origin.ANCHOR_PHRASE }
+
+            anchor.text shouldBe "Which portfolios"
+            anchor.start shouldBe 0
+            anchor.end shouldBe 16
+        }
+
+        "Czech reports PronType=Int,Rel — the guard reads the LIST, not the whole string" {
+            val cands =
+                SpanProposal.proposeDomainSpans(interrogativeParse(mapOf("PronType" to "Int,Rel")), listOf(portfolio))
+            val anchor = cands.single { it.origin == DomainSpanCandidate.Origin.ANCHOR_PHRASE }
+
+            anchor.text shouldBe "portfolios"
+        }
     }) {
     companion object {
         private fun tok(
@@ -419,6 +485,8 @@ class SpanProposalTest :
             upos: String,
             depHead: Int,
             depRelation: String,
+            /** UD morphological features. Defaulted and LAST, so every call above is unchanged. */
+            feats: Map<String, String> = emptyMap(),
         ): Token =
             Token
                 .newBuilder()
@@ -429,6 +497,7 @@ class SpanProposalTest :
                 .setUpos(upos)
                 .setDepHead(depHead)
                 .setDepRelation(depRelation)
+                .putAllFeats(feats)
                 .build()
 
         private fun ner(

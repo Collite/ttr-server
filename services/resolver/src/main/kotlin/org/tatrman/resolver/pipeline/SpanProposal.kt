@@ -453,6 +453,33 @@ object SpanProposal {
 
     // --- helpers ------------------------------------------------------------
 
+    /**
+     * A UD **interrogative** determiner — `PronType=Int` (Czech often reports `Int,Rel`).
+     *
+     * ⛑ **hartland, 2026-09-16.** `det` sits in [ANCHOR_PHRASE_RELATIONS] so that *"the account"*
+     * and *"toho účtu"* stay ONE mention, and for an article or a demonstrative that is right: it
+     * says WHICH one, and the estate's own word is still inside the phrase. An interrogative is
+     * the opposite — it ASKS which one — and folding it in changes the text handed to the matcher.
+     *
+     * The estate's own advertised question *"Which portfolios does client `conseq:8801234` hold?"*
+     * was therefore looked up as **"Which portfolios"** against a METADATA row whose term is
+     * `portfolios` and whose method is **EXACT**: the mention bound nothing, `Gaps` raised
+     * `G1_UNBOUND` on it (`bindingsCount == 0`), `chooseAsk` found it load-bearing, and the turn
+     * ended as *"I don't recognise \"Which portfolios\""* — offering no option, because nothing
+     * matched the phrase and so there was nothing to sign. The bare noun binds on the first try,
+     * and `coveredTokens` had already suppressed that one-word span, so no rung downstream could
+     * recover it. `client` in the same question bound only because its hull is the bare word.
+     *
+     * ⚑ Narrow on purpose — `PronType=Int` and nothing else. Excluding `det` wholesale would undo
+     * the phrase behaviour the relation set exists for, and the four hero lattice goldens carry no
+     * `det` relation at all, so this guard moves none of them.
+     */
+    private fun isInterrogativeDeterminer(token: Token): Boolean =
+        token.depRelation == "det" &&
+            token.featsMap["PronType"]
+                ?.split(',')
+                ?.any { it.trim().equals("Int", ignoreCase = true) } == true
+
     private fun anchorPhraseIndices(
         headIdx: Int,
         children: Map<Int, List<Int>>,
@@ -468,6 +495,8 @@ object SpanProposal {
             // relations for numeral words, and without this `účtu 5010O` becomes one mention and
             // the code is never looked up at all.
             if (isCode(tokens[c])) continue
+            // An interrogative determiner asks WHICH one; it is not part of the thing's name.
+            if (isInterrogativeDeterminer(tokens[c])) continue
             if (tokens[c].depRelation in ANCHOR_PHRASE_RELATIONS && !isUniversal(tokens[c], universal)) {
                 included += c
             }
