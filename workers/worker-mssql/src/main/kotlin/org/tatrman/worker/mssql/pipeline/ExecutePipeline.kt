@@ -32,7 +32,37 @@ import java.sql.ResultSet
 import java.sql.Timestamp
 import java.sql.Types
 import java.time.Instant
+import java.time.LocalDate
+import java.time.LocalDateTime
 import java.util.concurrent.atomic.AtomicInteger
+
+/**
+ * A `datetime` parameter as the wire format actually carries it.
+ *
+ * ⛔ The plan wire format has **no `date_value`** — `datetime_value` is the only temporal carrier —
+ * so a slot a model declares `date` arrives here as a date-ONLY ISO string. That is the producer
+ * behaving to contract, not a caller mistake: query-mcp maps `date | datetime | timestamp` onto the
+ * single `datetime` tag, and its own spec pins the date-only form in `datetime_value`.
+ * `Instant.parse` demands a full instant and accepts none of it, so a correct date parameter was
+ * refused at run time with *"Text '2026-09-18' could not be parsed at index 10"* — index 10 being
+ * one past the end of the string. The Python worker takes the same value happily through
+ * `fromisoformat`, so the two Kotlin workers were the outliers, not the sender.
+ *
+ * ⚑ A date-only value becomes **local** midnight, deliberately: it is compared against a `date`
+ * column, and routing it through UTC would move the day for any negative offset.
+ */
+internal fun parseTimestampParam(iso: String): Timestamp {
+    val text = iso.trim()
+    // `Instant.parse` covers a trailing `Z` and — since JDK 12 — an explicit offset, so those two
+    // forms were never the problem. The two below are what it refuses outright.
+    runCatching { Instant.parse(text) }.getOrNull()?.let { return Timestamp.from(it) }
+    runCatching { LocalDateTime.parse(text) }.getOrNull()?.let { return Timestamp.valueOf(it) }
+    runCatching { LocalDate.parse(text) }.getOrNull()?.let { return Timestamp.valueOf(it.atStartOfDay()) }
+    throw IllegalArgumentException(
+        "cannot read '$iso' as a timestamp parameter — expected an ISO instant, " +
+            "offset date-time, local date-time, or date",
+    )
+}
 
 /**
  * Orchestrates the seven-step Worker pipeline from Round 6.B:
@@ -276,7 +306,7 @@ class ExecutePipeline(
                 Value.VCase.INT_VALUE -> stmt.setLong(pos, v.intValue)
                 Value.VCase.FLOAT_VALUE -> stmt.setDouble(pos, v.floatValue)
                 Value.VCase.BOOL_VALUE -> stmt.setBoolean(pos, v.boolValue)
-                Value.VCase.DATETIME_VALUE -> stmt.setTimestamp(pos, parseTimestamp(v.datetimeValue))
+                Value.VCase.DATETIME_VALUE -> stmt.setTimestamp(pos, parseTimestampParam(v.datetimeValue))
                 Value.VCase.V_NOT_SET -> stmt.setNull(pos, jdbcTypeFor(binding.type))
             }
         }
@@ -290,8 +320,6 @@ class ExecutePipeline(
             "datetime" -> Types.TIMESTAMP
             else -> Types.NVARCHAR
         }
-
-    private fun parseTimestamp(iso: String): Timestamp = Timestamp.from(Instant.parse(iso))
 
     private fun errorBatch(
         code: String,
