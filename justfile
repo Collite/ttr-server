@@ -602,6 +602,46 @@ charts-publish:
     helm push "/tmp/tatrman-server-${ver}.tgz" oci://ghcr.io/collite/charts
     echo "✓ pushed. Verify: helm pull oci://ghcr.io/collite/charts/tatrman-server --version ${ver}"
 
+# ── release guard ────────────────────────────────────────────────────────────────
+# A tag names a COMMIT, and `git tag` reads it from the checkout you are standing in. A `main`
+# that has not pulled the merge you just made tags the PREVIOUS commit under a NEW version —
+# the image builds, deploys, and reproduces the bug verbatim (ai-platform 2026-09-20:
+# glossary/v0.11.7 == v0.11.6, one golden-set run wasted). Ancestry is not enough — a stale
+# HEAD *is* an ancestor of origin/main — so this fetches and demands equality with the
+# branch's origin counterpart, and says which way the two differ and what to run.
+# Every recipe that cuts a tag or pushes a versioned artifact calls this first.
+_release-guard:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    BRANCH=$(git rev-parse --abbrev-ref HEAD)
+    if [ "$BRANCH" = "HEAD" ]; then
+        echo "❌ detached HEAD — check out the branch you mean to release from." >&2; exit 1
+    fi
+    if [ -n "$(git status --porcelain --untracked-files=no)" ]; then
+        echo "❌ tracked files are modified — a tag publishes the COMMIT, not your tree:" >&2
+        git status --short --untracked-files=no >&2; exit 1
+    fi
+    if ! git fetch -q origin "$BRANCH"; then
+        echo "❌ git fetch origin $BRANCH failed — cannot prove HEAD is current, refusing to tag." >&2; exit 1
+    fi
+    LOCAL=$(git rev-parse HEAD); REMOTE=$(git rev-parse "origin/$BRANCH")
+    if [ "$LOCAL" != "$REMOTE" ]; then
+        echo "❌ HEAD ${LOCAL:0:8} ≠ origin/$BRANCH ${REMOTE:0:8} — a tag cut here names the wrong commit." >&2
+        if git merge-base --is-ancestor HEAD "origin/$BRANCH"; then
+            echo "   Your checkout is BEHIND origin. The release would be MISSING:" >&2
+            git log --oneline "HEAD..origin/$BRANCH" | sed 's/^/     /' >&2
+            echo "   Run: git pull --ff-only origin $BRANCH" >&2
+        elif git merge-base --is-ancestor "origin/$BRANCH" HEAD; then
+            echo "   Your checkout is AHEAD of origin. The workflow checks the tag out from the remote and would not find:" >&2
+            git log --oneline "origin/$BRANCH..HEAD" | sed 's/^/     /' >&2
+            echo "   Run: git push origin $BRANCH" >&2
+        else
+            echo "   The two have DIVERGED — reconcile (pull --rebase, then push) before tagging." >&2
+        fi
+        exit 1
+    fi
+    echo "✅ HEAD ${LOCAL:0:8} == origin/$BRANCH — tagging what origin has."
+
 # ── publish — unified release entry point ───────────────────────────────────────
 #
 # Tags the repo; the matching GitHub Actions workflow does the actual
@@ -730,6 +770,10 @@ publish *args:
         read -p "⚠️  On branch '$BRANCH', not master. Tag this commit anyway? [y/N] " -n 1 -r; echo ""
         [[ ${REPLY:-} =~ ^[Yy]$ ]] || { echo "❌ Aborting."; exit 1; }
     fi
+
+    # HEAD == origin/<branch>, after a fetch — a checkout that has not pulled tags the previous
+    # commit under this version.
+    just _release-guard
 
     # Single version line per prefix — internal and RELEASE tags share it (a
     # RELEASE tag always mints a brand-new number, never reuses one already spent
