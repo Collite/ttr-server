@@ -58,7 +58,7 @@ object SpanProposal {
     private const val MAX_NGRAM = 3
 
     /** How far from a literal a mention may sit and still scope it (in tokens). */
-    private const val MAX_ANCHOR_DISTANCE = 3
+    internal const val MAX_ANCHOR_DISTANCE = 3
 
     /** UPOS tags whose tokens are literals: codes, numbers, symbols. */
     private val LITERAL_UPOS = setOf("NUM", "SYM")
@@ -151,6 +151,12 @@ object SpanProposal {
     fun proposeDomainSpans(
         parse: AnalyzeResponse,
         entityTypes: List<ResolverEntityType>,
+        // LP contracts §2 — the quoted literals of this question. A literal is the user saying
+        // "these characters, verbatim", which is the opposite of a span to look up: nothing
+        // inside one is proposed, and a literal token is nobody's anchor-phrase modifier and
+        // nobody's governed value — the "an anchor word is nobody else's" rule, applied to a
+        // stronger claim. Empty for a question with no quotes, which is nearly all of them.
+        literals: Literals = Literals.NONE,
     ): List<DomainSpanCandidate> {
         val tokens = parse.tokensList
         if (tokens.isEmpty()) return emptyList()
@@ -161,7 +167,7 @@ object SpanProposal {
 
         val hasParse = tokens.any { it.depHead > 0 }
         if (!hasParse) {
-            return ngramFloor(tokens, universal, allRefs, allCategories)
+            return ngramFloor(tokens, universal, allRefs, allCategories, literals)
         }
 
         // children[headIndex1Based] = token list indices whose dep_head points here.
@@ -219,9 +225,19 @@ object SpanProposal {
             tokens.indices
                 .flatMap { i -> matchesAt(i).flatMap { p -> (i until i + p.words.size).toList() } }
                 .toHashSet()
+        // LP: and so do the literal tokens, for a stronger reason. An anchor is excluded because
+        // it is a mention of its own; a literal is excluded because it is not a mention at all —
+        // it is a string the user wants passed through, and a hull that swallowed it would gate
+        // `dodací místa "Pelex"` as one phrase against the store vocabulary.
+        anchorTokens += literals.tokens
 
         // (a) anchored subtrees
         tokens.forEachIndexed { idx, t ->
+            // LP: `zákazník "dodací místo"` asks for the STRING, not for the entity the estate
+            // declared under that name. Quoting is the escape hatch, so it escapes the anchor
+            // index too — otherwise the one construct that means "do not look this up" would be
+            // the one construct guaranteed to.
+            if (idx in literals.tokens) return@forEachIndexed
             val hits = matchesAt(idx)
             if (hits.isEmpty()) return@forEachIndexed
             // A MULTI-word anchor names its own extent: the estate said which words, so the span
@@ -337,7 +353,7 @@ object SpanProposal {
 
         // (b) proper-noun arguments not already anchored
         tokens.forEachIndexed { idx, t ->
-            if (idx in coveredTokens) return@forEachIndexed
+            if (idx in coveredTokens || idx in literals.tokens) return@forEachIndexed
             if (t.upos.uppercase() != "PROPN") return@forEachIndexed
             if (isUniversal(t, universal)) return@forEachIndexed
             val runIdx = propnRun(idx, children, tokens, universal, coveredTokens)
@@ -364,6 +380,9 @@ object SpanProposal {
         for (e in parse.entitiesList) {
             if (UniversalClassifier.isUniversal(e.label, e.normalizedValue)) continue
             if (out.any { it.start <= e.charStart && it.end >= e.charEnd }) continue
+            // LP: NER is the path that finds a domain value the POS tagger missed — and a quoted
+            // name is exactly the shape NameTag flags. `Pelex` in quotes is a string, not an org.
+            if (literals.overlaps(e.charStart, e.charEnd)) continue
             out +=
                 DomainSpanCandidate(
                     e.text,
@@ -379,7 +398,11 @@ object SpanProposal {
 
         // (e) literal runs, scoped by the mention beside them (RV-P2.1 / RV-33).
         val gated = dedupe(out)
-        return dedupe(gated + literalRuns(tokens, universal, gated, coveredTokens))
+        val proposed = dedupe(gated + literalRuns(tokens, universal, gated, coveredTokens + literals.tokens))
+        // LP: the invariant, stated once at the end rather than trusted to six exclusions above.
+        // Each of those keeps a literal out of the source it guards; this one is the promise the
+        // lattice depends on — NOTHING proposed overlaps a literal, however it was proposed.
+        return if (literals.isEmpty) proposed else proposed.filterNot { literals.overlaps(it.start, it.end) }
     }
 
     /**
@@ -639,10 +662,16 @@ object SpanProposal {
         universal: List<IntRange>,
         allRefs: List<String>,
         allCategories: List<String>,
+        literals: Literals,
     ): List<DomainSpanCandidate> {
         val content =
             tokens.indices.filter { i ->
                 !isUniversal(tokens[i], universal) &&
+                    // LP: the floor is the loosest source there is — every content n-gram, gated
+                    // against every declared type. A literal has to be excluded HERE above all,
+                    // because this is the path a degraded language takes and a quoted string is
+                    // the one thing on it whose meaning does not depend on analysis.
+                    i !in literals.tokens &&
                     fold(tokens[i].text) !in STOPWORDS &&
                     tokens[i].text.any { it.isLetter() }
             }

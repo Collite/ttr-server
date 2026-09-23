@@ -145,14 +145,27 @@ class ResolverPipeline(
                 registry.current()
             }
 
-        val universals = if (assessment.csNer) UniversalExtraction.extractUniversal(parse) else emptyList()
+        // LP contracts §2 — scanned once, here, because this is the last place the raw text
+        // exists: everything below works from the parse, which carries tokens and not the string.
+        val literals = Literals.of(fresh.text, parse)
+        // LP §2.4 — a literal is never NER-typed and never grounded. The universal layer is where
+        // that has to be said: `"12.5.2024"` in quotes is a string the user wants matched, and a
+        // chrono value is precisely what it must NOT become — a date range filter is a different
+        // question from a name containing those characters. Dropping the universals here also
+        // keeps them out of `GroundingRung`, which grounds what this list holds.
+        val universals =
+            if (assessment.csNer) {
+                UniversalExtraction.extractUniversal(parse).filterNot { literals.overlaps(it.start, it.end) }
+            } else {
+                emptyList()
+            }
         // MH — the slot is stamped HERE, right after proposal, because this is where the parse is
         // in scope: `GateSpans.gate` receives candidates only (architecture A3). Same list, same
         // order; only `DomainSpanCandidate.slot` is filled.
         val candidates =
             SlotHints.stamp(
                 parse,
-                SpanProposal.proposeDomainSpans(parse, resolverRegistry.entityTypes),
+                SpanProposal.proposeDomainSpans(parse, resolverRegistry.entityTypes, literals),
                 resolverRegistry.entityTypes.kindsByRef(),
                 resolverRegistry.entityTypes.ownersByRef(),
                 assessment.language,
@@ -233,6 +246,7 @@ class ResolverPipeline(
                 degraded = assessment.degradedFloor,
                 triggers = triggers,
                 grounded = groundedSpans,
+                literals = literals,
             )
         }
 
@@ -564,6 +578,13 @@ class ResolverPipeline(
                         // that can state a kind must be able to state the reach that qualifies
                         // it, or a fixture could only ever exercise half of the Binder's rules.
                         it.reachedFromList.map { r -> Reach(r.factRef, r.mandatory) },
+                        // LP: the same argument again — the override channel states the mention
+                        // facet because the snapshot channel cannot yet (⚑LPQ-5), and a fixture
+                        // that could not say which column is the name could not exercise the
+                        // verbatim arm at all.
+                        it.nameAttributeRef,
+                        it.codeAttributeRef,
+                        it.codeFormat,
                     )
                 }
             val thresholds =

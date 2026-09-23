@@ -158,6 +158,21 @@ message EntityType {
   // the fact a channel term is pinned to — select the SAME rows. Empty ⇒ that rule
   // stays inert, which is the correct reading for a model that declared no relations.
   repeated Reach reached_from = 6;
+  // LP contracts §2.1 — the model's MENTION facet: which attribute carries this entity
+  // under the aspect a quoted literal is about. `semantics { name: · code: }` on the
+  // entity, resolved to full attribute refs (`er.entity.store.name`), and `code_format`
+  // copied from the code attribute so §2.1's code-shape test uses the model's own pattern
+  // instead of a regex this service invented.
+  //
+  // ⚑ Supplied by THIS channel only, for now. The snapshot channel (the compiled lexicon
+  // archive's `targets` map) carries `object_kind`, `owner_ref` and `reached_from` but no
+  // name/code refs — `TargetFacts` has no field for them (ttr-lexicon 0.13.3), so an estate
+  // resolving off its archive gets "" here and a quoted literal lands headless (G3), which
+  // is the documented no-head behaviour rather than a wrong guess. Lighting up the snapshot
+  // channel is a tatrman change riding the LP-P2a bundle cut — LP control room ⚑LPQ-5.
+  string name_attribute_ref = 7;
+  string code_attribute_ref = 8;
+  string code_format = 9;
 }
 
 // MH — an object with a declared relation TO this entity (archive `targets[ref].reachedFrom`),
@@ -395,9 +410,30 @@ message ValueFinding {
   // that emptiness is exactly what separates G3 (nothing to miss) from G4 (a known scope
   // that missed). An unbound neighbour is not an anchor: it has no categories to lend.
   string anchor_mention_id = 6;
+  // LP contracts §2, both additive and both meaningful only on a VERBATIM value.
+  //
+  // `predicate_ref` is a `pred:` ref (LP §3) when the question named the operator —
+  // *začínající na*, *obsahující* — and ABSENT when it did not, which is not the same
+  // as "equals": absent means §2.2's default applies (contains for a name, equals for a
+  // code), and a consumer that read a blank as an operator would silently narrow every
+  // unqualified literal to an exact match. The `pred:` layer itself arrives in LP-P2;
+  // until then this field is always absent and the default is the whole story.
+  //
+  // `verbatim_text` is the §1.4 text: delimiters removed, outer whitespace trimmed,
+  // everything else — case, diacritics, inner spaces, punctuation — exactly as typed.
+  // It is a bound PARAMETER wherever it lands (contracts §5), never interpolated.
+  optional string predicate_ref = 7;
+  optional string verbatim_text = 8;
 }
 
 // "This literal could be a value of THAT attribute."
+//
+// LP contracts §2: on a VERBATIM value `binding` is ABSENT and `attribute_ref` is the
+// whole answer — the same shape a grounded value's anchor attribution already has. There
+// is no member to bind to and no layer that produced it: the user typed the characters,
+// so the evidence is the quoting itself (§2.3 — EXACT by construction, score 1.0, no
+// source tag, no margin). An empty `binding` on a VERBATIM value is that statement, not
+// a missing lookup.
 message Attribution {
   string attribute_ref = 1;           // the attribute the literal is attributed to
   Binding binding = 2;                // the member binding itself (ref = `<attribute_ref>#<id>`)
@@ -545,6 +581,12 @@ enum ValueKind {
   VALUE_KIND_UNSPECIFIED = 0;
   VALUE_KIND_LITERAL = 1;             // a code/number/name to be attributed to an attribute
   VALUE_KIND_GROUNDED = 2;            // a kernel or the universal NER layer typed it
+  // LP contracts §2 — the user QUOTED it. Never looked up, never grounded, never
+  // re-read by a rung: the one thing in the lattice whose meaning is "these
+  // characters, as typed". The text travels in `verbatim_text` rather than being
+  // read back off `span`, because §1.4 trims the delimiters and the whitespace
+  // inside them and a consumer must not re-derive that.
+  VALUE_KIND_VERBATIM = 3;
 }
 
 // RS-7 matrix echo — what backed this resolve. `degraded_reasons` carries the

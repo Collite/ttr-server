@@ -11,6 +11,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.int
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 
@@ -32,6 +33,7 @@ class CallsSeedConformanceTest :
                 "clarification-roundtrip.json",
                 "geo-dark-degrade.json",
                 "gate-h1prime-correction.json",
+                "verbatim-literal.json",
             )
         val validOutcomes = setOf("clarification", "resolution", "empty", "error")
         val validTools = setOf("resolve.bind:v1", "resolve.gate:v1")
@@ -73,6 +75,55 @@ class CallsSeedConformanceTest :
                     expect["no_binding_below_threshold"]!!.jsonPrimitive.content shouldBe "true"
                 }
             }
+        }
+
+        "verbatim-literal: the door takes a quoted string as typed and proposes nothing for it" {
+            // LP contracts §2, driven at the door seam over the REAL pipeline — the assertion that
+            // could not be made anywhere else is that the whole chain agrees: span proposal does
+            // not reach into the quotes, the lattice carries the literal as its own kind of value,
+            // and the door surfaces it without a binding.
+            val turn = load("verbatim-literal.json")["turns"]!!.jsonArray.single().jsonObject
+            val expect = turn["expect"]!!.jsonObject
+            val handler = ConformancePipeline.doorHandler(turn["scenario"]!!.jsonPrimitive.content)
+
+            val result = runBlocking { handler.handle(turn["args"]!!.jsonObject, null, null) }
+            val structured = result.structuredContent.shouldNotBeNull()
+            val state = structured["resolutionState"]!!.jsonObject
+
+            // Nothing bound — and nothing was guessed for the span the user explained.
+            structured["resolution"]!!.jsonObject["bindings"] shouldBe null
+
+            val expectedVerbatim = expect["verbatim"]!!.jsonArray.single().jsonObject
+            val values = state["values"]!!.jsonArray.map { it.jsonObject }
+            val verbatim = values.single { it["kind"]?.jsonPrimitive?.content == "VALUE_KIND_VERBATIM" }
+            verbatim["verbatimText"]!!.jsonPrimitive.content shouldBe
+                expectedVerbatim["text"]!!.jsonPrimitive.content
+            val span = verbatim["span"]!!.jsonObject
+            val expectedSpan = expectedVerbatim["span"]!!.jsonObject
+            span["start"]!!.jsonPrimitive.int shouldBe expectedSpan["start"]!!.jsonPrimitive.int
+            span["end"]!!.jsonPrimitive.int shouldBe expectedSpan["end"]!!.jsonPrimitive.int
+            // Unattributed on this estate: the model never said which column carries a store's
+            // name (LP ⚑LPQ-5), so the lattice says G3 rather than picking one.
+            (verbatim["attributions"]?.jsonArray?.size ?: 0) shouldBe
+                expectedVerbatim["attributions"]!!.jsonPrimitive.int
+            state["gaps"]!!
+                .jsonArray
+                .map { it.jsonObject }
+                .single { it["valueId"]?.jsonPrimitive?.content == verbatim["id"]!!.jsonPrimitive.content }["kind"]!!
+                .jsonPrimitive.content shouldBe expectedVerbatim["gap_kind"]!!.jsonPrimitive.content
+
+            // `no_span_inside_literal`: the n-gram floor is the loosest source in the pipeline and
+            // it would happily have proposed `Valmy`, `Oil` and `Valmy Oil`. None of them exists.
+            expect["no_span_inside_literal"]!!.jsonPrimitive.content shouldBe "true"
+            val literalStart = expectedSpan["start"]!!.jsonPrimitive.int
+            val literalEnd = expectedSpan["end"]!!.jsonPrimitive.int
+            val others =
+                (state["mentions"]?.jsonArray.orEmpty() + values.filter { it !== verbatim })
+                    .map { it.jsonObject["span"]!!.jsonObject }
+            others.none {
+                (it["start"]?.jsonPrimitive?.int ?: 0) < literalEnd &&
+                    (it["end"]?.jsonPrimitive?.int ?: 0) > literalStart
+            } shouldBe true
         }
 
         "clarification round-trip: the real signed token carries forward and resumes to a pin binding" {

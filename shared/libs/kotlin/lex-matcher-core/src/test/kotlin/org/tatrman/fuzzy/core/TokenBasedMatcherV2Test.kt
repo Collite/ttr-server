@@ -144,7 +144,11 @@ class TokenBasedMatcherV2Test :
         "review — an exact hit takes the earliest position, through the edge trim" {
             val c = Candidate.fromValues("c-x", "Oil, Oil")
             val m = TokenBasedMatcherV2(TokenIndex(listOf(c)))
-            m.scoreCandidate(q("oil"), q("oil"), c).tokenHits.single().candidatePos shouldBe 0
+            m
+                .scoreCandidate(q("oil"), q("oil"), c)
+                .tokenHits
+                .single()
+                .candidatePos shouldBe 0
         }
 
         "T1 — v1 through the TokenScorer seam is exactly rescore(), with no provenance" {

@@ -5,6 +5,7 @@ import org.tatrman.resolver.model.ResolverEntityType
 import org.tatrman.resolver.v1.GapKind
 import org.tatrman.resolver.v1.ResolutionState
 import org.tatrman.resolver.v1.Span
+import org.tatrman.resolver.v1.ValueKind
 import org.tatrman.fuzzy.v1.TargetClass as FuzzyTargetClass
 
 /**
@@ -129,6 +130,15 @@ object RoundPlanner {
                         // rather than force a binding (P-3).
                         Tier.BROAD -> {
                             if (gap.kind != GapKind.GAP_KIND_G3_UNATTRIBUTED) return@mapNotNull null
+                            // LP contracts §2.4 — except a VERBATIM one. A headless literal is a
+                            // G3 like any other and is the ONE G3 that must not widen: the user
+                            // quoted it, which says "do not look this up" in the plainest way the
+                            // language has. The gap stays open and is answered by asking the user
+                            // which column, not by searching the estate for a string they already
+                            // told us is a string.
+                            if (valuesById[gap.valueId]?.kind == ValueKind.VALUE_KIND_VERBATIM) {
+                                return@mapNotNull null
+                            }
                             query(gap.span, emptyList(), emptyList(), config.broadMaxCandidates, tier)
                         }
                     }
