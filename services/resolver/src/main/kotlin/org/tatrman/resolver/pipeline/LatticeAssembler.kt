@@ -54,6 +54,11 @@ object LatticeAssembler {
         // Computed upstream (ResolverPipeline) because it costs an RPC and this object is pure;
         // empty whenever the rung is off, which leaves the lattice exactly as P2.1 emitted it.
         grounded: Map<Pair<Int, Int>, GroundingRung.Grounded> = emptyMap(),
+        // LP contracts §2 — the quoted literals, scanned once upstream (the raw text lives there;
+        // a parse carries tokens, not the string they came from) and handed to BOTH consumers, so
+        // the span proposal that refuses to look inside a literal and the lattice that emits it
+        // are looking at the same literal. Empty for a question with no quotes.
+        literals: Literals = Literals.NONE,
     ): ResolutionState {
         val gatedByLayer =
             gate.gated.groupBy { layerOf(it, hasTrigger = (it.candidate.start to it.candidate.end) in triggers) }
@@ -176,8 +181,51 @@ object LatticeAssembler {
                 }
                 builder.setGrounding(grounding)
             }
+        // LP contracts §2 — the verbatim arm.
+        //
+        // Placed here, after the mentions have ids and bindings and before the values are
+        // numbered, for the same reason the grounded arm is: attribution needs to know which
+        // mention a head token belongs to, and that is only true once. The heads it may attribute
+        // to are the MODEL_OBJECT mentions — an operator, a member or a grounding trigger is not
+        // a thing a string restricts — carrying the entity type whose DECLARED mention facet says
+        // which column is the name.
+        val heads =
+            mentionSpans
+                .zip(mentionBuilders)
+                .mapNotNull { (span, mention) ->
+                    if (span.candidate.headToken < 0) return@mapNotNull null
+                    val ref =
+                        mention.bindingsList
+                            .firstOrNull { it.targetClass == TargetClass.TARGET_CLASS_MODEL_OBJECT }
+                            ?.ref ?: return@mapNotNull null
+                    val entityType = entityTypes.firstOrNull { it.ref == ref } ?: return@mapNotNull null
+                    VerbatimAttribution.Head(span.candidate.headToken, mention.id, entityType)
+                }
+        val verbatimValues =
+            literals.spans.map { literal ->
+                val builder =
+                    ValueFinding
+                        .newBuilder()
+                        // The span is what the user TYPED, delimiters included — it is the span a
+                        // re-gate refuses hypotheses on and the span an echo underlines. The text
+                        // that travels as a parameter is `verbatim_text`, and §1.4 trims, so the
+                        // two are deliberately different strings.
+                        .setSpan(span(literal.literal.start, literal.literal.end, literal.surface))
+                        .setKind(ValueKind.VALUE_KIND_VERBATIM)
+                        .setVerbatimText(literal.literal.text)
+                // No binding rides with it, by the same argument as the grounded arm's anchor
+                // attribution: the literal is not a member of the attribute, it is a restriction
+                // on it — and there is no layer that produced it, because the user quoted it
+                // (contracts §2.3). Zero attributions is not a failure to look: it is the honest
+                // "nothing here says which column", and `Gaps` reads it as G3.
+                VerbatimAttribution.attribute(literal, parse, heads)?.let { attributed ->
+                    builder.addAttributions(Attribution.newBuilder().setAttributeRef(attributed.attributeRef))
+                    builder.anchorMentionId = attributed.mentionId
+                }
+                builder
+            }
         val valueBuilders =
-            (gatedValues + groundedValues)
+            (gatedValues + groundedValues + verbatimValues)
                 .sortedWith(compareBy({ it.span.start }, { it.span.end }))
                 .mapIndexed { i, builder -> builder.setId("v${i + 1}") }
         val values = valueBuilders.map { it.build() }

@@ -27,6 +27,15 @@ data class LiteralTokenSpan(
     val literal: QuotedLiteral,
     val tokens: List<Int>,
     val delimiterTokens: List<Int>,
+    /**
+     * The literal AS TYPED, delimiters and all — `"Pelex"`, not `Pelex`.
+     *
+     * Carried rather than derived because the two are both needed and neither yields the other:
+     * the lattice's `span.text` is what the user wrote (and what the re-gate refuses hypotheses
+     * on), while `literal.text` is §1.4's trimmed content (and what goes on the wire as a bound
+     * parameter). A consumer holding only the span cannot recover the second — §1.4 trims.
+     */
+    val surface: String,
 )
 
 /**
@@ -179,6 +188,7 @@ object QuoteScanner {
      */
     fun toTokenSpans(
         literals: List<QuotedLiteral>,
+        text: String,
         tokens: List<Token>,
     ): List<LiteralTokenSpan> =
         literals.map { literal ->
@@ -192,7 +202,7 @@ object QuoteScanner {
                     token.charStart < literal.end && token.charEnd > literal.start -> delimiters += index
                 }
             }
-            LiteralTokenSpan(literal, content, delimiters)
+            LiteralTokenSpan(literal, content, delimiters, text.substring(literal.start, literal.end))
         }
 
     /** [toTokenSpans] over the effective tokenisation of [text] — see [tokens]. */
@@ -200,5 +210,5 @@ object QuoteScanner {
         literals: List<QuotedLiteral>,
         text: String,
         parse: AnalyzeResponse,
-    ): List<LiteralTokenSpan> = toTokenSpans(literals, tokens(text, parse))
+    ): List<LiteralTokenSpan> = toTokenSpans(literals, text, tokens(text, parse))
 }

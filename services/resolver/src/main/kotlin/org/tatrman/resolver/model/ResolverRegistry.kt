@@ -59,6 +59,25 @@ data class ResolverEntityType(
      * out of the ref string.
      */
     val reachedFrom: List<Reach> = emptyList(),
+    /**
+     * LP contracts §2.1 — the model's MENTION facet: which attribute carries this entity under
+     * the aspect a quoted literal is about. `semantics { name: · code: }`, as full attribute refs
+     * (`er.entity.store.name`), with [codeFormat] copied from the code attribute so the
+     * code-shape test uses the MODEL's pattern rather than one this service invented.
+     *
+     * ⚑ Empty on the snapshot channel today, and that is a channel gap, not an estate's silence:
+     * the archive's `targets` map (`TargetFacts`, ttr-lexicon 0.13.3) carries `objectKind`,
+     * `ownerRef` and `reachedFrom` and has no field for name/code. The per-request `Registry`
+     * override supplies them now; lighting up the archive is a tatrman change riding the LP-P2a
+     * bundle cut (LP control room ⚑LPQ-5). Until then a quoted literal on an archive-fed estate
+     * lands HEADLESS — G3, the documented no-head outcome — rather than attributed by guess.
+     *
+     * ⛔ Never derived here. "The entity's name column" is a DECLARED fact, and the one rule that
+     * decides it lives in the model, exactly as [objectKind]'s does.
+     */
+    val nameRef: String = "",
+    val codeRef: String = "",
+    val codeFormat: String = "",
 )
 
 /**
