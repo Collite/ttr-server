@@ -128,7 +128,7 @@ class QueryServiceImpl(
                     // every validate pass this run makes (ER, then DB), de-duplicated: a rule both
                     // passes report is one rule, and this set IS the document's Security section
                     // (the one A-1 called structurally unreachable from kantheon). It is derived
-                    // fresh on every run — including a cache hit, because ttr-query re-validates
+                    // fresh on every run — including a cache hit, because the query service re-validates
                     // every call (security depends on `user_id`), so the cache never holds it.
                     val securityApplied = linkedSetOf<SecurityRuleApplied>()
                     var effectiveSchemaLabel = ""
@@ -306,7 +306,7 @@ class QueryServiceImpl(
                     var rowsStreamed = 0L
                     var firstSeen = false
                     // Dispatch stamps the worker endpoint on the first batch it forwards
-                    // (contracts §1.3 (b)); ttr-query remembers it so the LAST batch — the one a
+                    // (contracts §1.3 (b)); the query service remembers it so the LAST batch — the one a
                     // consumer may read alone — names the worker too.
                     var dispatchTarget = ""
                     dispatcher.dispatch(dispatchReq).collect { batch ->

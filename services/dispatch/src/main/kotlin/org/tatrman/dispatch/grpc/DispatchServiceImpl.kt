@@ -362,7 +362,7 @@ class DispatchServiceImpl(
      * ES-P0·S0.4 — names the routed worker on the receipt (contracts §1.3 (b)).
      *
      * Which endpoint served the query is the dispatcher's fact and nobody else's: the plan half
-     * ttr-query fills cannot know it, and the statement half the worker fills has no reason to
+     * the query service fills cannot know it, and the statement half the worker fills has no reason to
      * repeat its own address. The receipt is created when the worker sent none — an older worker
      * still yields a receipt that names where its rows came from — and every field a worker DID
      * send is left exactly as it was.

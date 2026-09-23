@@ -32,10 +32,10 @@ import org.tatrman.worker.v1.StatementKind
 /**
  * **ES-P0·S0.4 — `dispatch_target`, contracts §1.3 option (b).**
  *
- * Which worker actually ran the query is a fact only the dispatcher holds: ttr-query asks for a
+ * Which worker actually ran the query is a fact only the dispatcher holds: the query service asks for a
  * connection, the registry picks an endpoint, and today that choice survives only as a
  * `routing_decision` warning string nobody parses. The routed worker's endpoint goes on the
- * receipt, on the first batch — the batch ttr-query already reads for the plan half.
+ * receipt, on the first batch — the batch the query service already reads for the plan half.
  *
  * Option (b) and not (a): `ExecutionReceipt` is on dispatch's classpath (`:shared:proto`), so
  * there is no module-layering reason to settle for an INFO warning that is the wrong vehicle for

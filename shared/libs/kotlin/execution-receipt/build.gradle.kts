@@ -14,7 +14,7 @@ tasks.test {
 }
 
 // ES-P0·S0.2 — the ONE `worker.v1.ExecutionReceipt` builder, shared by every hop that fills a
-// half of it: the two JVM workers (statement half) and ttr-query (plan half). worker-polars is
+// half of it: the two JVM workers (statement half) and the query service (plan half). worker-polars is
 // Python and carries its own twin (ES plan §ES-P0·S0.2).
 //
 // A module of its own rather than a fold into component-testkit or db-common: the testkit is

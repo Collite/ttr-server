@@ -88,7 +88,7 @@ dependencies {
     implementation(project(":shared:proto"))
 
     // ES-P0·S0.5 — merging the two halves of the execution receipt into one `execution` object
-    // uses the same merge rule ttr-query and the workers use.
+    // uses the same merge rule the query service and the workers use.
     implementation(project(":shared:libs:kotlin:execution-receipt"))
     implementation(project(":shared:libs:kotlin:data-formatter"))
     implementation(project(":shared:libs:kotlin:otel-config"))

@@ -14,7 +14,7 @@ import org.tatrman.worker.v1.StatementKind
  * The one place a `worker.v1.ExecutionReceipt` is built (ES-P0·S0.2).
  *
  * Three hops fill a receipt and none of them may get these rules subtly different, so they all
- * come through here: the two JVM workers fill the **statement half** ([statementHalf]), ttr-query
+ * come through here: the two JVM workers fill the **statement half** ([statementHalf]), the query service
  * fills the **plan half** (ES-P0·S0.3), and worker-polars — being Python — carries a twin of this
  * file rather than this file.
  *
@@ -117,14 +117,14 @@ object ExecutionReceiptBuilder {
         }
 
     /**
-     * ttr-query's half: what was dispatched, and what the validator did to it before it went.
+     * the query service's half: what was dispatched, and what the validator did to it before it went.
      *
      * The plan is the one handed to `DispatchRequest.plan` — post-validate, and physical when the
      * effective schema is DB, i.e. the very tree the worker unparsed (⚑ES-3). Over
      * [MAX_PLAN_BYTES] it is dropped rather than cut: a truncated proto does not parse, and a
      * plan that does not parse is worse than a `plan_omitted_reason` that says why it is missing.
      *
-     * @param dispatchTarget the worker endpoint, when the caller already knows it — ttr-query
+     * @param dispatchTarget the worker endpoint, when the caller already knows it — the query service
      *   learns it from the first batch dispatch stamped (contracts §1.3) and re-attaches it to
      *   the last batch, so the last batch carries the whole receipt on its own (⚑ES-1).
      * @return the half, or null when building it threw.
@@ -165,16 +165,16 @@ object ExecutionReceiptBuilder {
     /**
      * Folds a [half] into whatever is already held — the one place the two halves of ⚑ES-1 meet.
      *
-     * The halves occupy disjoint field numbers (1–11 worker, 20–26 ttr-query), so for the scalars
+     * The halves occupy disjoint field numbers (1–11 worker, 20–26 the query service), so for the scalars
      * proto's own merge is exactly the right rule: each hop's fields survive and no hop overwrites
      * a fact it does not hold.
      *
      * The two **repeated** fields need a rule of their own, because proto merge CONCATENATES them.
-     * ⚑ES-1 has ttr-query re-attach its half to the last batch so that batch stands alone, which
+     * ⚑ES-1 has the query service re-attach its half to the last batch so that batch stands alone, which
      * means a consumer merging first + last meets the same `security_applied` set twice — and a
      * concatenating merge would report every rule twice, and every bound parameter twice. Each
      * repeated field belongs to exactly one half (`parameters` to the worker, `security_applied`
-     * to ttr-query), so the honest rule is to take it whole from whichever side has it, never to
+     * to the query service), so the honest rule is to take it whole from whichever side has it, never to
      * append. That also makes merging idempotent, which is what a re-attached half requires.
      *
      * Returns [existing] unchanged when there is nothing to add, and null only when there is

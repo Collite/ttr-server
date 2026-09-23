@@ -253,7 +253,7 @@ class RunQueryFullChainComponentSpec :
         // the last batch, the real QueryServiceImpl adds the plan half on the first and re-attaches
         // it to the last, and query-mcp merges the two into ONE `execution` object. This is the
         // seam tatrman-server#55 is about, end to end in one process.
-        "the execution receipt survives worker → ttr-query → query-mcp as one execution object" {
+        "the execution receipt survives worker → query → query-mcp as one execution object" {
             runBlocking {
                 val rule =
                     SecurityRuleApplied
@@ -354,14 +354,14 @@ class RunQueryFullChainComponentSpec :
                 (execution["rls"] as JsonPrimitive).content shouldBe "RLS_APPLIED"
                 (execution["engineLabel"] as JsonPrimitive).content shouldBe "worker-postgres@pg-hartland"
 
-                // ttr-query's half — the dispatched plan and the set A-1 could not reach.
+                // the query service's half — the dispatched plan and the set A-1 could not reach.
                 (execution["dispatchedPlanText"] as JsonPrimitive).content shouldContainText "customers"
                 (execution["effectiveSchema"] as JsonPrimitive).content shouldBe "DB"
                 val rules = execution["securityApplied"] as JsonArray
                 rules.size shouldBe 1
                 ((rules[0] as JsonObject)["ruleId"] as JsonPrimitive).content shouldBe "rls.tenant"
 
-                // dispatch's fact, carried through to the tail by ttr-query.
+                // dispatch's fact, carried through to the tail by the query service.
                 (execution["dispatchTarget"] as JsonPrimitive).content shouldBe "worker-postgres:7401"
             }
         }

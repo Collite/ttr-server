@@ -83,7 +83,7 @@ dependencies {
     implementation(project(":shared:libs:kotlin:logging-config"))
     implementation(project(":shared:proto"))
     // ES-P0 — the one ExecutionReceipt builder (caps, masking, the never-fail-a-run guard),
-    // shared with worker-mssql and ttr-query.
+    // shared with worker-mssql and the query service.
     implementation(project(":shared:libs:kotlin:execution-receipt"))
 
     implementation(libs.grpc.kotlin.stub)

@@ -38,9 +38,9 @@ import java.time.Duration
 import java.util.concurrent.CopyOnWriteArrayList
 
 /**
- * **ES-P0·S0.3 — ttr-query fills the plan half (⚑ES-1).**
+ * **ES-P0·S0.3 — the query service fills the plan half (⚑ES-1).**
  *
- * ttr-query is the only hop that holds four of the facts the protocol document has been missing:
+ * the query service is the only hop that holds four of the facts the protocol document has been missing:
  * the plan that was actually **dispatched** (post-validate, physical on the DB path — not the ER
  * plan iris reconstructs today), the validator's `security_applied` set (the one A-1 called
  * *structurally unreachable from kantheon*), whether the compile was a cache hit, and how long it
@@ -93,7 +93,7 @@ class ExecutionReceiptQuerySpec :
             last.isLast shouldBe true
             val receipt = last.receipt
 
-            // ttr-query's half…
+            // the query service's half…
             receipt.hasDispatchedPlan() shouldBe true
             receipt.effectiveSchema shouldBe "ER"
             // …and the worker's, exactly as the worker sent it.
@@ -176,7 +176,7 @@ class ExecutionReceiptQuerySpec :
                 cold.cacheHit shouldBe false
                 warm.cacheHit shouldBe true
 
-                // The set is not cached — it is re-derived, because ttr-query re-validates on
+                // The set is not cached — it is re-derived, because the query service re-validates on
                 // every run (security depends on user_id). Equality here is the proof that the
                 // receipt on a cache hit does not say "no rules" and lie.
                 warm.securityAppliedList shouldContainExactly cold.securityAppliedList

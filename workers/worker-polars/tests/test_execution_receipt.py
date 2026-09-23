@@ -49,7 +49,7 @@ async def test_last_batch_carries_a_plan_executed_receipt():
     assert receipt.statement == ""
     assert receipt.statement_ref == ""
     assert list(receipt.parameters) == []
-    # The plan half belongs to ttr-query (⚑ES-1); the worker leaves it unset.
+    # The plan half belongs to the query service (⚑ES-1); the worker leaves it unset.
     assert receipt.HasField("dispatched_plan") is False
 
 

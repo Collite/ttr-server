@@ -178,8 +178,8 @@ message ResultBatch {
   //   - audit / forensics ("what columns did this query return?")
   string schema_fingerprint = 7;
 
-  // ES — the execution receipt. Carried on the FIRST batch (plan half, by ttr-query) and on the
-  // LAST batch (statement half, by the worker; ttr-query re-attaches its half so the last batch
+  // ES — the execution receipt. Carried on the FIRST batch (plan half, by the query service) and on the
+  // LAST batch (statement half, by the worker; the query service re-attaches its half so the last batch
   // is complete on its own). Absent on batches in between. A consumer merges first+last, or
   // reads the last alone. (⚑ES-1)
   ExecutionReceipt receipt = 8;
@@ -193,7 +193,7 @@ message ResultBatch {
 // =============================================================================
 
 // Filled in TWO halves by two hops; a hop fills only the fields it holds first-hand and leaves
-// the rest unset (ES architecture §2). The worker owns 1–11, ttr-query owns 20–26; 12–19 and
+// the rest unset (ES architecture §2). The worker owns 1–11, the query service owns 20–26; 12–19 and
 // 27–39 are reserved so neither half grows into the other's numbering.
 //
 // Best-effort by construction: a receipt must NEVER fail a run. Every producer builds it inside
@@ -211,7 +211,7 @@ message ExecutionReceipt {
   int64 rows_total = 9;                  // rows streamed (after the validator's cap)
   uint64 duration_ms = 10;               // prepare→last row, worker wall clock
   RlsOutcome rls = 11;                   // RLS_NOT_REQUIRED | RLS_APPLIED | RLS_FAILED
-  // ── plan half — ttr-query ──
+  // ── plan half — the query service ──
   org.tatrman.plan.v1.PlanNode dispatched_plan = 20;   // what dispatch received (post-validate; physical when DB) — ⚑ES-3
   string plan_omitted_reason = 21;       // "over_cap" | "" — a proto is never truncated, only omitted
   repeated org.tatrman.validate.v1.SecurityRuleApplied security_applied = 22;   // the F7 set, verbatim

@@ -70,7 +70,7 @@ class PostgresReceiptComponentSpec :
                 receipt.rowsTotal shouldBe batches.sumOf { it.batchRowCount }
                 receipt.durationMs shouldBeGreaterThan 0L
                 receipt.rls shouldBe RlsOutcome.RLS_APPLIED
-                // The plan half belongs to ttr-query (⚑ES-1) — the worker leaves it unset.
+                // The plan half belongs to the query service (⚑ES-1) — the worker leaves it unset.
                 receipt.hasDispatchedPlan() shouldBe false
                 receipt.securityAppliedCount shouldBe 0
             }

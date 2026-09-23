@@ -857,7 +857,7 @@ class QueryToolSpec :
             (p0["value"] as JsonPrimitive).content shouldBe "<masked>"
             (p0["masked"] as JsonPrimitive).content shouldBe "true"
 
-            // plan half — ttr-query's
+            // plan half — the query service's
             (execution["planOmittedReason"] as JsonPrimitive).content shouldBe ""
             (execution["dispatchTarget"] as JsonPrimitive).content shouldBe "worker-postgres:7401"
             (execution["effectiveSchema"] as JsonPrimitive).content shouldBe "DB"

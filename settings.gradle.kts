@@ -77,7 +77,7 @@ include(":shared:libs:kotlin:transfer-core")
 // Grafted from kantheon per Bora's decision (S4) — capability-registration client
 // (4 MCP tools) + the component/integration test-tier harness libs.
 // ES-P0 — the one worker.v1.ExecutionReceipt builder, shared by the two JVM workers
-// (statement half) and ttr-query (plan half).
+// (statement half) and the query service (plan half).
 include(":shared:libs:kotlin:execution-receipt")
 include(":shared:libs:kotlin:capabilities-client")
 include(":shared:libs:kotlin:component-testkit")

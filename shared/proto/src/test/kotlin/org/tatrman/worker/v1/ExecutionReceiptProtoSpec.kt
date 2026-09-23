@@ -13,7 +13,7 @@ import org.tatrman.validate.v1.SecurityRuleApplied
  * **ES-P0·S0.1 — the receipt on the wire.**
  *
  * `ExecutionReceipt` is filled in two halves by two hops that never meet (ES architecture §2):
- * the worker owns fields 1–11 (what it handed the engine, and what came back), ttr-query owns
+ * the worker owns fields 1–11 (what it handed the engine, and what came back), the query service owns
  * 20–26 (what it dispatched, and what the validator applied). The gap 12–19 and the tail 27–39
  * are `reserved` so neither half can grow into the other's numbering by accident.
  *
@@ -47,7 +47,7 @@ class ExecutionReceiptProtoSpec :
                     .setRowsTotal(12L)
                     .setDurationMs(184L)
                     .setRls(RlsOutcome.RLS_APPLIED)
-                    // ── plan half — ttr-query ──
+                    // ── plan half — the query service ──
                     .setDispatchedPlan(tableScan("store_sales"))
                     .setPlanOmittedReason("")
                     .addSecurityApplied(

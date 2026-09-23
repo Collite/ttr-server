@@ -72,7 +72,7 @@ dependencies {
     implementation(project(":shared:libs:kotlin:logging-config"))
     implementation(project(":shared:proto"))
 
-    // ES-P0·S0.3 — the shared `worker.v1.ExecutionReceipt` builder: ttr-query fills the plan half
+    // ES-P0·S0.3 — the shared `worker.v1.ExecutionReceipt` builder: the query service fills the plan half
     // (dispatched plan · security_applied · compile facts) with the same rules the workers use
     // for the statement half.
     implementation(project(":shared:libs:kotlin:execution-receipt"))

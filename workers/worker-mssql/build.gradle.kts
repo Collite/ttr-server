@@ -99,7 +99,7 @@ dependencies {
     implementation(project(":shared:libs:kotlin:otel-config"))
     implementation(project(":shared:libs:kotlin:logging-config"))
     implementation(project(":shared:proto"))
-    // ES-P0 — the one ExecutionReceipt builder, shared with worker-postgres and ttr-query.
+    // ES-P0 — the one ExecutionReceipt builder, shared with worker-postgres and the query service.
     implementation(project(":shared:libs:kotlin:execution-receipt"))
 
     implementation(libs.grpc.kotlin.stub)

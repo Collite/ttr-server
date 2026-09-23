@@ -141,7 +141,7 @@ class ExecutionReceiptWholeChainComponentSpec :
                     val execution = result.structuredContent!!["execution"] as JsonObject
                     val statement = (execution["statement"] as JsonPrimitive).content
 
-                    // 1. the statement crossed worker → ttr-query → query-mcp intact…
+                    // 1. the statement crossed worker → query → query-mcp intact…
                     statement shouldBe SQL
                     // 2. …and it is what the database was actually asked to run. JDBC prepares,
                     //    so Postgres logs it as `execute <unnamed>: …` rather than `statement: …`.
