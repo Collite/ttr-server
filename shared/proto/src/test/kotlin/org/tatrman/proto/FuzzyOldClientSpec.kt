@@ -27,8 +27,8 @@ class FuzzyOldClientSpec :
             val v2Row =
                 FuzzyMatch
                     .newBuilder()
-                    .setCandidateId("c-marvy")
-                    .setCandidate("Marvy Oil, s.r.o.")
+                    .setCandidateId("c-valmy")
+                    .setCandidate("Valmy Oil, s.r.o.")
                     .setScore(1.0071)
                     .setCategory("customer")
                     .setProvenance(
@@ -40,8 +40,8 @@ class FuzzyOldClientSpec :
                             .addTokenHits(
                                 TokenHit
                                     .newBuilder()
-                                    .setQueryToken("marvy")
-                                    .setCandidateToken("marvy")
+                                    .setQueryToken("valmy")
+                                    .setCandidateToken("valmy")
                                     .setKind("exact")
                                     .setQueryPos(0)
                                     .setCandidatePos(0),
@@ -54,7 +54,7 @@ class FuzzyOldClientSpec :
             oldProvenance.findFieldByName("token_hits") shouldBe null
 
             val asOld = DynamicMessage.parseFrom(oldMatch, v2Row.toByteArray())
-            asOld.getField(oldMatch.findFieldByName("candidate_id")) shouldBe "c-marvy"
+            asOld.getField(oldMatch.findFieldByName("candidate_id")) shouldBe "c-valmy"
             val prov = asOld.getField(oldMatch.findFieldByName("provenance")) as DynamicMessage
             prov.getField(oldProvenance.findFieldByName("method")) shouldBe "TATRMAN_V2"
             prov.getField(oldProvenance.findFieldByName("raw_score")) shouldBe 1.0071

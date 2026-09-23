@@ -1,0 +1,57 @@
+{"id": "LP-01", "family": "partial", "query": "valmy", "top3": ["c01", "c02"], "kinds": ["exact"], "v1Top1": "c01", "note": "design §8 row 2: equal P, coverage orders Valmy Oil first"}
+{"id": "LP-02", "family": "partial", "query": "valmy oil", "pending": "LPQ-1 token-edge punctuation (`oil,` `brno,` `k-ta,` `agrofert,`) — candidate tokens keep commas, so a bare query token misses or only typo-matches the intended row", "v1Top1": "c02", "observed": {"top3": ["c02", "c01", "c03"], "kinds": ["exact", "exact"]}}
+{"id": "LP-03", "family": "partial", "query": "valmy slovakia", "top3": ["c02", "c01"], "kinds": ["exact", "prefix"], "v1Top1": "c02", "note": "`slovakia` is a PREFIX of `slovakia,` (punctuation) — top-1 right regardless"}
+{"id": "LP-04", "family": "partial", "query": "kovostav", "top3": ["c11", "c10"], "kinds": ["exact"], "v1Top1": "c10", "note": "two Kovostav rows at equal P: coverage orders the ask, margin < ε ⇒ never auto-binds"}
+{"id": "LP-05", "family": "partial", "query": "kovostav brno", "pending": "LPQ-1 token-edge punctuation (`oil,` `brno,` `k-ta,` `agrofert,`) — candidate tokens keep commas, so a bare query token misses or only typo-matches the intended row", "v1Top1": "c10", "observed": {"top3": ["c10", "c11"], "kinds": ["exact", "typo"]}}
+{"id": "LP-06", "family": "partial", "query": "kovostav praha", "top3": ["c11", "c10"], "kinds": ["exact", "exact"], "v1Top1": "c11"}
+{"id": "LP-07", "family": "partial", "query": "novák", "top3": ["c18", "c37", "c19"], "kinds": ["exact"], "v1Top1": "c18"}
+{"id": "LP-08", "family": "partial", "query": "stavby novák", "top3": ["c18", "c37", "c19"], "kinds": ["exact", "exact"], "v1Top1": "c18"}
+{"id": "LP-09", "family": "partial", "query": "vysočina", "top3": ["c21", "c20"], "kinds": ["exact"], "v1Top1": "c20", "note": "coverage prefers the 3-token row over Zemědělské družstvo Vysočina (v1 said c20)"}
+{"id": "LP-10", "family": "partial", "query": "vysočina agro", "top3": ["c21", "c20"], "kinds": ["exact", "exact"], "v1Top1": "c21"}
+{"id": "LP-11", "family": "partial", "query": "hodonín", "top3": ["c16"], "kinds": ["exact"], "v1Top1": "c16"}
+{"id": "LP-12", "family": "partial", "query": "lukoil", "top3": ["c28"], "kinds": ["exact"], "v1Top1": "c28"}
+{"id": "LP-13", "family": "partial", "query": "moravia", "top3": ["c24"], "kinds": ["exact"], "v1Top1": "c24"}
+{"id": "LP-14", "family": "partial", "query": "dopravní podnik", "top3": ["c12"], "kinds": ["exact", "exact"], "v1Top1": "c12"}
+{"id": "LP-15", "family": "prefix", "query": "shel", "pending": "LPQ-2 a 1-edit typo to a DIFFERENT, shorter word (q 0.85) beats a prefix of the intended word (floor 0.80) — `agrof`→Agro, `petrot`→Petrol (shel→shell TYPO today; the task list expected PREFIX)", "v1Top1": "c06", "observed": {"top3": ["c06", "c07"], "kinds": ["typo"]}}
+{"id": "LP-16", "family": "prefix", "query": "agro", "pending": "LPQ-3 an exact vocabulary hit short-circuits prefix retrieval — `agro` never retrieves Agrofert, so it is absent even from the ask", "v1Top1": "c21", "observed": {"top3": ["c21"], "kinds": ["exact"]}}
+{"id": "LP-17", "family": "prefix", "query": "agrof", "pending": "LPQ-2 a 1-edit typo to a DIFFERENT, shorter word (q 0.85) beats a prefix of the intended word (floor 0.80) — `agrof`→Agro, `petrot`→Petrol", "v1Top1": "c21", "observed": {"top3": ["c21", "c04", "c05"], "kinds": ["typo"]}}
+{"id": "LP-18", "family": "prefix", "query": "petrot", "pending": "LPQ-2 a 1-edit typo to a DIFFERENT, shorter word (q 0.85) beats a prefix of the intended word (floor 0.80) — `agrof`→Agro, `petrot`→Petrol", "v1Top1": "c27", "observed": {"top3": ["c27", "c13"], "kinds": ["typo"]}}
+{"id": "LP-19", "family": "prefix", "query": "petro", "pending": "LPQ-2 a 1-edit typo to a DIFFERENT, shorter word (q 0.85) beats a prefix of the intended word (floor 0.80) — `agrof`→Agro, `petrot`→Petrol", "v1Top1": "c27", "observed": {"top3": ["c27", "c14", "c13"], "kinds": ["typo"]}}
+{"id": "LP-20", "family": "prefix", "query": "unip", "top3": ["c29"], "kinds": ["prefix"], "v1Top1": null, "note": "v1 found nothing (ED 5 to unipetrol) — prefix is new recall"}
+{"id": "LP-21", "family": "prefix", "query": "unis", "top3": ["c30"], "kinds": ["prefix"], "v1Top1": null, "note": "v1 found nothing"}
+{"id": "LP-22", "family": "prefix", "query": "kovo", "top3": ["c11", "c10"], "kinds": ["prefix"], "v1Top1": "c15", "note": "v1 top-1 was Tank ONO (kovo→ono ED 2) — v2 budget 1 for 4 chars forbids it"}
+{"id": "LP-23", "family": "prefix", "query": "hruš", "v1Top1": "c35", "pending": "LPQ-1 (legal-form dilution): both rows are PREFIX at the 0.80 floor (4/6, 4/8), so coverage decides — and `spol. s r.o.` is THREE tokens in Hruška's denominator, so the pekárna wins the ask order", "observed": {"top3": ["c36", "c35"], "kinds": ["prefix"]}}
+{"id": "LP-24", "family": "prefix", "query": "kauf", "top3": ["c31"], "kinds": ["prefix"], "v1Top1": null, "note": "v1 found nothing"}
+{"id": "LP-25", "family": "one-token", "query": "oil", "pending": "LPQ-1 token-edge punctuation (`oil,` `brno,` `k-ta,` `agrofert,`) — candidate tokens keep commas, so a bare query token misses or only typo-matches the intended row; also LPQ-3 an exact vocabulary hit short-circuits prefix retrieval — `agro` never retrieves Agrofert, so it is absent even from the ask", "v1Top1": "c02", "observed": {"top3": ["c03", "c02"], "kinds": ["exact"]}}
+{"id": "LP-26", "family": "one-token", "query": "benzina", "top3": ["c08", "c09"], "kinds": ["exact"], "v1Top1": "c08"}
+{"id": "LP-27", "family": "one-token", "query": "euro", "top3": ["c27"], "kinds": ["exact"], "v1Top1": "c27"}
+{"id": "LP-28", "family": "one-token", "query": "tesco", "top3": ["c34"], "kinds": ["exact"], "v1Top1": "c34"}
+{"id": "LP-29", "family": "one-token", "query": "globus", "top3": ["c32"], "kinds": ["exact"], "v1Top1": "c32"}
+{"id": "LP-30", "family": "legal-form", "query": "agrofert a.s.", "pending": "LPQ-1 token-edge punctuation (`oil,` `brno,` `k-ta,` `agrofert,`) — candidate tokens keep commas, so a bare query token misses or only typo-matches the intended row", "v1Top1": "c05", "observed": {"top3": ["c05", "c04", "c26"], "kinds": ["exact", "exact"]}}
+{"id": "LP-31", "family": "legal-form", "query": "benzina s.r.o.", "top3": ["c08", "c09", "c18"], "kinds": ["exact", "exact"], "v1Top1": "c08"}
+{"id": "LP-32", "family": "legal-form", "query": "novák spol. s r.o.", "top3": ["c19", "c22", "c35"], "kinds": ["exact", "exact", "exact", "exact"], "v1Top1": "c19"}
+{"id": "LP-33", "family": "legal-form", "query": "valmy s.r.o.", "top3": ["c01", "c02", "c08"], "kinds": ["exact", "exact"], "v1Top1": "c01"}
+{"id": "LP-34", "family": "legal-form", "query": "k-ta", "pending": "LPQ-1 token-edge punctuation (`oil,` `brno,` `k-ta,` `agrofert,`) — candidate tokens keep commas, so a bare query token misses or only typo-matches the intended row", "v1Top1": "c22", "observed": {"top3": ["c23", "c22"], "kinds": ["typo"]}}
+{"id": "LP-35", "family": "typo", "query": "valmi", "top3": ["c01", "c02"], "kinds": ["typo"], "v1Top1": "c01"}
+{"id": "LP-36", "family": "typo", "query": "shelll", "top3": ["c06", "c07"], "kinds": ["typo"], "v1Top1": "c06"}
+{"id": "LP-37", "family": "typo", "query": "benzyna", "top3": ["c08", "c09"], "kinds": ["typo"], "v1Top1": "c08"}
+{"id": "LP-38", "family": "typo", "query": "kovostaw", "top3": ["c11", "c10"], "kinds": ["typo"], "v1Top1": "c10"}
+{"id": "LP-39", "family": "typo", "query": "agrofret", "top3": ["c05"], "kinds": ["typo"], "v1Top1": "c05"}
+{"id": "LP-40", "family": "typo", "query": "petrotrnas", "top3": ["c13"], "kinds": ["typo"], "v1Top1": "c13"}
+{"id": "LP-41", "family": "typo", "query": "lukol", "top3": ["c28"], "kinds": ["typo"], "v1Top1": "c28"}
+{"id": "LP-42", "family": "typo", "query": "tesko", "top3": ["c34"], "kinds": ["typo"], "v1Top1": "c34"}
+{"id": "LP-43", "family": "typo", "query": "ab", "top3": [], "kinds": [], "v1Top1": "c19", "note": "v1 matched `ab`→`a` (Novák a syn) at ED 1; v2 budget 0 for 2 chars ⇒ nothing"}
+{"id": "LP-44", "family": "order", "query": "oil valmy", "pending": "LPQ-1 token-edge punctuation (`oil,` `brno,` `k-ta,` `agrofert,`) — candidate tokens keep commas, so a bare query token misses or only typo-matches the intended row", "v1Top1": "c02", "observed": {"top3": ["c02", "c01", "c03"], "kinds": ["exact", "exact"]}}
+{"id": "LP-45", "family": "order", "query": "brno kovostav", "pending": "LPQ-1 token-edge punctuation (`oil,` `brno,` `k-ta,` `agrofert,`) — candidate tokens keep commas, so a bare query token misses or only typo-matches the intended row", "v1Top1": "c10", "observed": {"top3": ["c10", "c11"], "kinds": ["typo", "exact"]}}
+{"id": "LP-46", "family": "order", "query": "agro petro", "top3": ["c05", "c21", "c27"], "kinds": ["prefix", "prefix"], "v1Top1": "c21"}
+{"id": "LP-47", "family": "order", "query": "petro agro", "top3": ["c05", "c21", "c27"], "kinds": ["prefix", "prefix"], "v1Top1": "c21"}
+{"id": "LP-48", "family": "all-typo", "query": "valmi oyl", "pending": "LPQ-1 token-edge punctuation (`oil,` `brno,` `k-ta,` `agrofert,`) — candidate tokens keep commas, so a bare query token misses or only typo-matches the intended row", "v1Top1": "c02", "observed": {"top3": ["c02", "c01", "c03"], "kinds": ["typo", "typo"]}}
+{"id": "LP-49", "family": "all-typo", "query": "kovostaw brmo", "pending": "LPQ-1 token-edge punctuation (`oil,` `brno,` `k-ta,` `agrofert,`) — candidate tokens keep commas, so a bare query token misses or only typo-matches the intended row", "v1Top1": "c10", "observed": {"top3": ["c11", "c10"], "kinds": ["typo"]}}
+{"id": "LP-50", "family": "order", "query": "novák stavby", "top3": ["c37", "c18", "c19"], "kinds": ["exact", "exact"], "v1Top1": "c37", "note": "exact order pair"}
+{"id": "LP-51", "family": "order", "query": "stav nov", "top3": ["c18", "c37", "c14"], "kinds": ["prefix", "prefix"], "v1Top1": "c18", "note": "order bonus on PREFIX hits (v1 gives none and answers c18 for both orders)"}
+{"id": "LP-52", "family": "order", "query": "nov stav", "top3": ["c37", "c18", "c14"], "kinds": ["prefix", "prefix"], "v1Top1": "c18", "note": "mirror of LP-51 — v2 follows the query order, v1 does not"}
+{"id": "LP-53", "family": "partial", "query": "lukoil czech", "top3": ["c28", "c06"], "kinds": ["exact", "exact"], "v1Top1": "c28"}
+{"id": "LP-54", "family": "partial", "query": "shell republic", "top3": ["c06"], "kinds": ["exact", "exact"], "v1Top1": "c06"}
+{"id": "LP-55", "family": "typo", "query": "globsu", "top3": ["c32"], "kinds": ["typo"], "v1Top1": "c32", "note": "6 chars ⇒ budget 2: the transposition is ED 2, q 0.70"}
+{"id": "LP-56", "family": "typo", "query": "ono", "top3": ["c15"], "kinds": ["exact"], "v1Top1": "c15", "note": "a 3-char token (budget 1) that is exact — no neighbour steals it"}
+{"id": "LP-57", "family": "typo", "query": "moravi", "top3": ["c24", "c13"], "kinds": ["prefix"], "v1Top1": "c24", "note": "6/7 ≈ 0.857 PREFIX of `moravia` just beats the 0.85 TYPO to `morava` (Petrotrans Morava) — the kind table's crossover"}

@@ -36,6 +36,23 @@ class TokenIndex(
      */
     fun idf(token: String): Double = idfByToken[token] ?: idfForAbsent
 
+    // LP-P0 — Σ idf over a candidate's tokens, per axis: the denominator of v2's coverage C.
+    // Memoised lazily per candidate id (the index is rebuilt on refresh, so the memo goes with it);
+    // v1 never calls it. Without it v2 paid one idf lookup per candidate token per request.
+    private val surfaceIdfTotals = java.util.concurrent.ConcurrentHashMap<String, Double>()
+    private val lemmaIdfTotals = java.util.concurrent.ConcurrentHashMap<String, Double>()
+
+    /** Σ [idf] over [candidate]'s surface tokens ([lemma] = false) or lemma tokens ([lemma] = true). */
+    fun idfTotal(
+        candidate: Candidate,
+        lemma: Boolean,
+    ): Double {
+        val memo = if (lemma) lemmaIdfTotals else surfaceIdfTotals
+        return memo.getOrPut(candidate.id) {
+            (if (lemma) candidate.lemmaTokens else candidate.tokens).sumOf { idf(it) }
+        }
+    }
+
     private fun buildExactIndex(): Map<String, List<String>> {
         val index = mutableMapOf<String, MutableList<String>>()
         for (candidate in candidates) {

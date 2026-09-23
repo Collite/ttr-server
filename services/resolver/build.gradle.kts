@@ -122,6 +122,11 @@ dependencies {
     testImplementation(libs.bundles.kotest)
     testImplementation(libs.mockk)
     testImplementation(libs.grpc.inprocess)
+    // LP-P0·S3 T4 — the hero verdict diff serves each hero estate from a REAL lex-matcher
+    // (GrpcService + FuzzyMatcher, in-process) under fuzzy.match v1 and v2. Test scope only: the
+    // resolver's runtimeClasspath (and its zero-LLM guard) never sees it.
+    testImplementation(project(":services:lex-matcher"))
+    testImplementation(project(":shared:libs:kotlin:lex-matcher-core"))
     // RV-P2.1.T5 — the Q-15 frame-role fixture corpus is authored YAML and is re-run
     // in-process against the ported rules (FrameRolesFixtureTest). Test-only.
     testImplementation(libs.jackson.dataformat.yaml)

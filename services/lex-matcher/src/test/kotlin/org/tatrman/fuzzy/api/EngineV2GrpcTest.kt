@@ -51,8 +51,8 @@ class EngineV2GrpcTest :
                     mapOf(
                         "customer" to
                             listOf(
-                                Candidate.fromValues("c-marvy", "Marvy Oil, s.r.o."),
-                                Candidate.fromValues("c-marvy-sk", "Marvy Oil Slovakia, s.r.o."),
+                                Candidate.fromValues("c-valmy", "Valmy Oil, s.r.o."),
+                                Candidate.fromValues("c-valmy-sk", "Valmy Oil Slovakia, s.r.o."),
                                 Candidate.fromValues("c-benzina", "Benzina s.r.o."),
                             ),
                     )
@@ -83,13 +83,13 @@ class EngineV2GrpcTest :
             }
         }
 
-        fun marvy() =
+        fun valmy() =
             BatchMatchRequest
                 .newBuilder()
                 .addSpans(
                     SpanQuery
                         .newBuilder()
-                        .setQuery("Marvy")
+                        .setQuery("Valmy")
                         .addCategories("customer")
                         .setLimit(5),
                 ).build()
@@ -99,14 +99,14 @@ class EngineV2GrpcTest :
                 withStub({
                     FuzzyMatcher(it, retrievalMode = RetrievalMode.INDEX_FIRST, matchVersion = MatchVersion.V2)
                 }) { stub ->
-                    val matches = stub.batchMatch(marvy()).getResults(0).matchesList
-                    matches.map { it.candidateId } shouldBe listOf("c-marvy", "c-marvy-sk")
+                    val matches = stub.batchMatch(valmy()).getResults(0).matchesList
+                    matches.map { it.candidateId } shouldBe listOf("c-valmy", "c-valmy-sk")
                     val top = matches.first().provenance
                     top.method shouldBe "TATRMAN_V2"
                     top.hasCoverage() shouldBe true
                     top.tokenHitsList.single().let { h ->
-                        h.queryToken shouldBe "marvy"
-                        h.candidateToken shouldBe "marvy"
+                        h.queryToken shouldBe "valmy"
+                        h.candidateToken shouldBe "valmy"
                         h.kind shouldBe "exact"
                         h.queryPos shouldBe 0
                         h.candidatePos shouldBe 0
@@ -123,7 +123,7 @@ class EngineV2GrpcTest :
                 withStub({ FuzzyMatcher(it, retrievalMode = RetrievalMode.INDEX_FIRST) }) { stub ->
                     val top =
                         stub
-                            .batchMatch(marvy())
+                            .batchMatch(valmy())
                             .getResults(0)
                             .getMatches(0)
                             .provenance

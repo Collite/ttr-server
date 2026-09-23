@@ -14,7 +14,7 @@ class VocabularyResolverV2Spec :
             listOf(
                 Candidate.fromValues("A", "Shell Czech Republic"),
                 Candidate.fromValues("B", "Agrofert"),
-                Candidate.fromValues("C", "Marvy Oil"),
+                Candidate.fromValues("C", "Valmy Oil"),
                 Candidate.fromValues("D", "abc"),
                 Candidate.fromValues("E", "Agra Invest"),
                 Candidate.fromValues("F", "shelter"),
@@ -70,8 +70,8 @@ class VocabularyResolverV2Spec :
             hit.quality shouldBe (0.85 plusOrMinus 1e-12)
         }
 
-        "marvi → marvy is a TYPO at 0.85" {
-            val hit = resolver().resolveV2("marvi").hit("marvy")!!
+        "valmi → valmy is a TYPO at 0.85" {
+            val hit = resolver().resolveV2("valmi").hit("valmy")!!
             hit.kind shouldBe MatchKind.TYPO
             hit.distance shouldBe 1
             hit.quality shouldBe (0.85 plusOrMinus 1e-12)
@@ -86,8 +86,8 @@ class VocabularyResolverV2Spec :
             resolver().resolveV2("ab").shouldBeEmpty()
         }
 
-        "marvyoil → marvy resolves to NOTHING (ED 3, and a query token longer than c is no prefix)" {
-            resolver().resolveV2("marvyoil").hit("marvy") shouldBe null
+        "valmyoil → valmy resolves to NOTHING (ED 3, and a query token longer than c is no prefix)" {
+            resolver().resolveV2("valmyoil").hit("valmy") shouldBe null
         }
 
         "one query token, two vocabulary tokens — a typo of one, a prefix of another ⇒ two entries, correct kinds" {

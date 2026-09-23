@@ -15,8 +15,8 @@ class TokenBasedMatcherV2Test :
     StringSpec({
         val corpus =
             listOf(
-                Candidate.fromValues("c-marvy", "Marvy Oil, s.r.o."),
-                Candidate.fromValues("c-marvy-sk", "Marvy Oil Slovakia, s.r.o."),
+                Candidate.fromValues("c-valmy", "Valmy Oil, s.r.o."),
+                Candidate.fromValues("c-valmy-sk", "Valmy Oil Slovakia, s.r.o."),
                 Candidate.fromValues("c-oil", "Oil s.r.o."),
                 Candidate.fromValues("c-agro", "Agrofert, a.s."),
                 Candidate.fromValues("c-agro-petr", "Agrofert Petrochemie"),
@@ -35,21 +35,21 @@ class TokenBasedMatcherV2Test :
             id: String,
         ): Scored = v2.scoreCandidate(q(query), q(query), corpus.first { it.id == id })
 
-        "T2 — marvy: two candidates at equal P; coverage orders them, by less than ε" {
-            val a = scoreOf("marvy", "c-marvy")
-            val b = scoreOf("marvy", "c-marvy-sk")
+        "T2 — valmy: two candidates at equal P; coverage orders them, by less than ε" {
+            val a = scoreOf("valmy", "c-valmy")
+            val b = scoreOf("valmy", "c-valmy-sk")
             // P = 1.0 for both (one exact query token), so S − ε·C is the same number.
             (a.score - TokenBasedMatcherV2.EPSILON * a.coverage!!) shouldBe (1.0 plusOrMinus 1e-12)
             (b.score - TokenBasedMatcherV2.EPSILON * b.coverage!!) shouldBe (1.0 plusOrMinus 1e-12)
             a.score shouldBeGreaterThan b.score
             (a.score - b.score) shouldBeLessThan TokenBasedMatcherV2.EPSILON
 
-            v2.score(q("marvy"), q("marvy"), corpus, 2).map { it.candidate.id } shouldBe
-                listOf("c-marvy", "c-marvy-sk")
+            v2.score(q("valmy"), q("valmy"), corpus, 2).map { it.candidate.id } shouldBe
+                listOf("c-valmy", "c-valmy-sk")
         }
 
-        "T2 — oil: the short `Oil s.r.o.` outranks `Marvy Oil Slovakia` (candidate coverage)" {
-            scoreOf("oil", "c-oil").score shouldBeGreaterThan scoreOf("oil", "c-marvy-sk").score
+        "T2 — oil: the short `Oil s.r.o.` outranks `Valmy Oil Slovakia` (candidate coverage)" {
+            scoreOf("oil", "c-oil").score shouldBeGreaterThan scoreOf("oil", "c-valmy-sk").score
             v2
                 .score(q("oil"), q("oil"), corpus, 1)
                 .single()
@@ -80,24 +80,24 @@ class TokenBasedMatcherV2Test :
         }
 
         "T2 — an unmatched query token weighs idf(t) (idfAbsent outside the corpus) and scores 0" {
-            val s = scoreOf("marvy zzzz", "c-marvy")
-            val wMarvy = index.idf("marvy")
+            val s = scoreOf("valmy zzzz", "c-valmy")
+            val wValmy = index.idf("valmy")
             val wAbsent = index.idf("zzzz")
-            val p = wMarvy / (wMarvy + wAbsent)
+            val p = wValmy / (wValmy + wAbsent)
             s.score shouldBe (p + TokenBasedMatcherV2.EPSILON * s.coverage!! plusOrMinus 1e-12)
-            s.tokenHits.map { it.queryToken } shouldBe listOf("marvy")
+            s.tokenHits.map { it.queryToken } shouldBe listOf("valmy")
         }
 
         "T3 — provenance: one hit per matched query token, with kinds and both positions" {
-            val s = scoreOf("marvy oil", "c-marvy-sk")
+            val s = scoreOf("valmy oil", "c-valmy-sk")
             s.tokenHits shouldBe
                 listOf(
-                    TokenHit("marvy", "marvy", "exact", 0, queryPos = 0, candidatePos = 0),
+                    TokenHit("valmy", "valmy", "exact", 0, queryPos = 0, candidatePos = 0),
                     TokenHit("oil", "oil", "exact", 0, queryPos = 1, candidatePos = 1),
                 )
-            val tokens = Candidate.tokenize("Marvy Oil Slovakia, s.r.o.")
+            val tokens = Candidate.tokenize("Valmy Oil Slovakia, s.r.o.")
             val expectedC =
-                (index.idf("marvy") + index.idf("oil")) / tokens.sumOf { index.idf(it) }
+                (index.idf("valmy") + index.idf("oil")) / tokens.sumOf { index.idf(it) }
             s.coverage!! shouldBe (expectedC plusOrMinus 1e-12)
         }
 
@@ -110,7 +110,7 @@ class TokenBasedMatcherV2Test :
 
         "T1 — v1 through the TokenScorer seam is exactly rescore(), with no provenance" {
             val v1 = TokenBasedMatcher(corpus, index)
-            val tokens = q("marvy oil")
+            val tokens = q("valmy oil")
             val seam = v1.score(tokens, tokens, corpus, 5)
             seam.map { it.candidate to it.score } shouldBe v1.rescore(tokens, tokens, corpus, 5)
             seam.all { it.tokenHits.isEmpty() && it.coverage == null } shouldBe true
@@ -122,6 +122,19 @@ class TokenBasedMatcherV2Test :
             IndexFirstRetriever(MatchVersion.V1) { vocab }.retrieve(tokens, tokens, null, 200).shouldBeEmpty()
             val v2Hits = IndexFirstRetriever(MatchVersion.V2) { vocab }.retrieve(tokens, tokens, null, 200)
             v2Hits.first().id shouldBe "c-agro-petr"
+        }
+
+        "score() = stable sort-then-take over the full scoring, for every limit (top-k selection)" {
+            for (query in listOf("valmy", "oil", "s.r.o.", "shel", "agro petr", "a.s.")) {
+                val tokens = q(query)
+                val full =
+                    corpus
+                        .map { v2.scoreCandidate(tokens, tokens, it) }
+                        .sortedByDescending { it.score }
+                for (limit in listOf(1, 2, 3, 5, corpus.size, corpus.size + 3)) {
+                    v2.score(tokens, tokens, corpus, limit) shouldBe full.take(limit)
+                }
+            }
         }
 
         "T5 — MatchVersion parses v1/v2, defaults blank to v1, and refuses anything else" {
