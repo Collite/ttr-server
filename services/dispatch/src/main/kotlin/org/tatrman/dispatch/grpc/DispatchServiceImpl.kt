@@ -15,6 +15,7 @@ import org.tatrman.common.v1.ResponseMessage
 import org.tatrman.common.v1.Severity
 import org.tatrman.plan.v1.PipelineContext
 import org.tatrman.plan.v1.Warning
+import org.tatrman.worker.receipt.ExecutionReceiptBuilder
 import org.tatrman.worker.v1.ExecuteRequest
 import org.tatrman.worker.v1.ResultBatch
 import kotlinx.coroutines.flow.Flow
@@ -107,7 +108,7 @@ class DispatchServiceImpl(
                     .collect { batch ->
                         if (!firstSeen && batch.isFirst) {
                             firstSeen = true
-                            emit(annotateFirst(batch, warnings))
+                            emit(stampTarget(annotateFirst(batch, warnings), worker.endpoint))
                         } else {
                             emit(batch)
                         }
@@ -355,6 +356,32 @@ class DispatchServiceImpl(
         if (candidates.size == 1) return candidates.first()
         val ring = ConsistentHashRing(candidates.map { it.endpoint to it })
         return ring.nodeFor(key)
+    }
+
+    /**
+     * ES-P0·S0.4 — names the routed worker on the receipt (contracts §1.3 (b)).
+     *
+     * Which endpoint served the query is the dispatcher's fact and nobody else's: the plan half
+     * ttr-query fills cannot know it, and the statement half the worker fills has no reason to
+     * repeat its own address. The receipt is created when the worker sent none — an older worker
+     * still yields a receipt that names where its rows came from — and every field a worker DID
+     * send is left exactly as it was.
+     *
+     * Best-effort like every other receipt write: a failure here returns the batch untouched
+     * rather than failing a stream that is carrying real rows.
+     */
+    private fun stampTarget(
+        batch: ResultBatch,
+        endpoint: String,
+    ): ResultBatch {
+        val stamped =
+            ExecutionReceiptBuilder.guarded {
+                batch.receipt
+                    .toBuilder()
+                    .setDispatchTarget(endpoint)
+                    .build()
+            } ?: return batch
+        return batch.toBuilder().setReceipt(stamped).build()
     }
 
     private fun annotateFirst(

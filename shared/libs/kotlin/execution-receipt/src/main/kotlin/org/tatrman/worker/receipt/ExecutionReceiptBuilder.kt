@@ -3,6 +3,8 @@ package org.tatrman.worker.receipt
 
 import org.slf4j.LoggerFactory
 import org.tatrman.plan.v1.ParameterBinding
+import org.tatrman.plan.v1.PlanNode
+import org.tatrman.validate.v1.SecurityRuleApplied
 import org.tatrman.worker.v1.BoundParameter
 import org.tatrman.worker.v1.ExecutionReceipt
 import org.tatrman.worker.v1.RlsOutcome
@@ -40,6 +42,9 @@ object ExecutionReceiptBuilder {
 
     /** What stands in for every bound value on the wire (⚑ES-2). */
     const val MASKED: String = "<masked>"
+
+    /** `plan_omitted_reason` when the dispatched plan is over [MAX_PLAN_BYTES] (contracts §1.1). */
+    const val PLAN_OVER_CAP: String = "over_cap"
 
     private val log = LoggerFactory.getLogger(ExecutionReceiptBuilder::class.java)
 
@@ -109,6 +114,99 @@ object ExecutionReceiptBuilder {
             }
 
             builder.build()
+        }
+
+    /**
+     * ttr-query's half: what was dispatched, and what the validator did to it before it went.
+     *
+     * The plan is the one handed to `DispatchRequest.plan` — post-validate, and physical when the
+     * effective schema is DB, i.e. the very tree the worker unparsed (⚑ES-3). Over
+     * [MAX_PLAN_BYTES] it is dropped rather than cut: a truncated proto does not parse, and a
+     * plan that does not parse is worse than a `plan_omitted_reason` that says why it is missing.
+     *
+     * @param dispatchTarget the worker endpoint, when the caller already knows it — ttr-query
+     *   learns it from the first batch dispatch stamped (contracts §1.3) and re-attaches it to
+     *   the last batch, so the last batch carries the whole receipt on its own (⚑ES-1).
+     * @return the half, or null when building it threw.
+     */
+    fun planHalf(
+        dispatchedPlan: PlanNode,
+        securityApplied: List<SecurityRuleApplied>,
+        effectiveSchema: String,
+        cacheHit: Boolean,
+        compileMs: Long,
+        dispatchTarget: String = "",
+    ): ExecutionReceipt? =
+        guarded {
+            val builder =
+                ExecutionReceipt
+                    .newBuilder()
+                    .setEffectiveSchema(effectiveSchema)
+                    .setCacheHit(cacheHit)
+                    .setCompileMs(compileMs)
+                    .setDispatchTarget(dispatchTarget)
+                    .addAllSecurityApplied(securityApplied)
+
+            val planBytes = dispatchedPlan.serializedSize
+            if (planBytes > MAX_PLAN_BYTES) {
+                builder.setPlanOmittedReason(PLAN_OVER_CAP)
+                log.debug(
+                    "Execution receipt: dispatched plan of {} bytes exceeds the {} cap — omitted.",
+                    planBytes,
+                    MAX_PLAN_BYTES,
+                )
+            } else {
+                builder.setDispatchedPlan(dispatchedPlan)
+            }
+
+            builder.build()
+        }
+
+    /**
+     * Folds a [half] into whatever is already held — the one place the two halves of ⚑ES-1 meet.
+     *
+     * The halves occupy disjoint field numbers (1–11 worker, 20–26 ttr-query), so for the scalars
+     * proto's own merge is exactly the right rule: each hop's fields survive and no hop overwrites
+     * a fact it does not hold.
+     *
+     * The two **repeated** fields need a rule of their own, because proto merge CONCATENATES them.
+     * ⚑ES-1 has ttr-query re-attach its half to the last batch so that batch stands alone, which
+     * means a consumer merging first + last meets the same `security_applied` set twice — and a
+     * concatenating merge would report every rule twice, and every bound parameter twice. Each
+     * repeated field belongs to exactly one half (`parameters` to the worker, `security_applied`
+     * to ttr-query), so the honest rule is to take it whole from whichever side has it, never to
+     * append. That also makes merging idempotent, which is what a re-attached half requires.
+     *
+     * Returns [existing] unchanged when there is nothing to add, and null only when there is
+     * nothing at all.
+     */
+    fun merged(
+        existing: ExecutionReceipt?,
+        half: ExecutionReceipt?,
+    ): ExecutionReceipt? =
+        guarded {
+            when {
+                half == null -> existing
+                existing == null -> half
+                else -> {
+                    val parameters =
+                        if (existing.parametersCount > 0) existing.parametersList else half.parametersList
+                    val security =
+                        if (existing.securityAppliedCount > 0) {
+                            existing.securityAppliedList
+                        } else {
+                            half.securityAppliedList
+                        }
+                    existing
+                        .toBuilder()
+                        .mergeFrom(half)
+                        .clearParameters()
+                        .addAllParameters(parameters)
+                        .clearSecurityApplied()
+                        .addAllSecurityApplied(security)
+                        .build()
+                }
+            }
         }
 
     /**

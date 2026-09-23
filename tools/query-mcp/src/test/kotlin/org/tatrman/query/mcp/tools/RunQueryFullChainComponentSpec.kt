@@ -5,11 +5,14 @@ import com.google.protobuf.kotlin.toByteString
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.string.shouldContain as shouldContainText
 import io.modelcontextprotocol.kotlin.sdk.types.CallToolRequest
 import io.modelcontextprotocol.kotlin.sdk.types.CallToolRequestParams
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import org.apache.arrow.memory.RootAllocator
@@ -40,7 +43,11 @@ import org.tatrman.plan.v1.SchemaCode
 import org.tatrman.plan.v1.TableScanNode
 import org.tatrman.query.v1.CompileResponse
 import org.tatrman.query.v1.RunRequest
+import org.tatrman.validate.v1.SecurityRuleApplied
+import org.tatrman.worker.receipt.ExecutionReceiptBuilder
 import org.tatrman.worker.v1.ResultBatch
+import org.tatrman.worker.v1.RlsOutcome
+import org.tatrman.worker.v1.StatementKind
 import shared.formatter.core.ColumnDecoration
 import java.io.ByteArrayOutputStream
 import java.nio.channels.Channels
@@ -238,6 +245,124 @@ class RunQueryFullChainComponentSpec :
 
                 res.isError shouldBe false
                 (res.structuredContent!!["rowCount"] as JsonPrimitive).content shouldBe "2"
+            }
+        }
+        // ── ES-P0·S0.3–S0.6 — the receipt crosses the whole in-process chain ──────────────────
+        //
+        // The real chain, minus the database: a worker-shaped dispatch puts its statement half on
+        // the last batch, the real QueryServiceImpl adds the plan half on the first and re-attaches
+        // it to the last, and query-mcp merges the two into ONE `execution` object. This is the
+        // seam tatrman-server#55 is about, end to end in one process.
+        "the execution receipt survives worker → ttr-query → query-mcp as one execution object" {
+            runBlocking {
+                val rule =
+                    SecurityRuleApplied
+                        .newBuilder()
+                        .setRuleId("rls.tenant")
+                        .setPredicateSummary("WHERE tenant_id = (your tenant)")
+                        .build()
+                val workerHalf =
+                    ExecutionReceiptBuilder.statementHalf(
+                        kind = StatementKind.SQL_EXECUTED,
+                        dialect = "POSTGRESQL",
+                        sql = "SELECT id FROM dbo.customers",
+                        parameters = emptyList(),
+                        connectionId = "pg-hartland",
+                        engineLabel = "worker-postgres@pg-hartland",
+                        rowsTotal = 2,
+                        durationMs = 17,
+                        rls = RlsOutcome.RLS_APPLIED,
+                        correlationId = "corr-fullchain",
+                    )!!
+                val validateApplying =
+                    ValidatorClient { req ->
+                        org.tatrman.validate.v1.ValidateResponse
+                            .newBuilder()
+                            .setPlan(req.plan)
+                            .setContext(req.context)
+                            .addSecurityApplied(rule)
+                            .build()
+                    }
+                // Two batches, as the wire really looks: rows first, tail marker with the
+                // worker's half last — and dispatch has stamped its endpoint on the first.
+                val dispatchWithReceipt =
+                    DispatcherClient { _ ->
+                        flowOf(
+                            ResultBatch
+                                .newBuilder()
+                                .setBatchIndex(0)
+                                .setIsFirst(true)
+                                .setBatchRowCount(2)
+                                .setArrowIpc(arrowIdColumn(longArrayOf(1, 2)).toByteString())
+                                .setContext(PipelineContext.getDefaultInstance())
+                                .setReceipt(
+                                    org.tatrman.worker.v1.ExecutionReceipt
+                                        .newBuilder()
+                                        .setDispatchTarget("worker-postgres:7401"),
+                                ).build(),
+                            ResultBatch
+                                .newBuilder()
+                                .setBatchIndex(1)
+                                .setIsLast(true)
+                                .setArrowIpc(com.google.protobuf.ByteString.EMPTY)
+                                .setContext(PipelineContext.getDefaultInstance())
+                                .setReceipt(workerHalf)
+                                .build(),
+                        )
+                    }
+                val query =
+                    QueryServiceImpl(
+                        TranslatorClient { req ->
+                            org.tatrman.translate.v1.ParseResponse
+                                .newBuilder()
+                                .setPlan(dbPlan())
+                                .setContext(req.context)
+                                .build()
+                        },
+                        TranslatorDetectClient {
+                            org.tatrman.translate.v1.DetectSchemaResponse
+                                .newBuilder()
+                                .setDecision(org.tatrman.translate.v1.SchemaDecision.CONFIRMED)
+                                .setEffectiveSchema(SchemaCode.DB)
+                                .build()
+                        },
+                        TranslatorTranslateClient { req ->
+                            org.tatrman.translate.v1.TranslateResponse
+                                .newBuilder()
+                                .setOutput("SELECT id FROM customers")
+                                .setContext(req.context)
+                                .build()
+                        },
+                        validateApplying,
+                        dispatchWithReceipt,
+                        CompiledPlanCache(100, java.time.Duration.ofMinutes(60)),
+                        RetryPolicy(maxAttempts = 2, initialBackoffMillis = 1, multiplier = 1.0, jitterPercent = 0),
+                    )
+
+                val res =
+                    QueryTool(cfg, runnerOver(query), fakeMetadata).execute(
+                        callToolRequest(mapOf("source" to "SELECT id FROM customers", "source_language" to "sql")),
+                        identity = UserIdentity(id = "alice", roles = setOf("analyst"), source = IdentitySource.TOKEN),
+                    )
+
+                res.isError shouldBe false
+                val execution = res.structuredContent!!["execution"] as JsonObject
+
+                // The worker's half — the statement that ran, which #55 was about.
+                (execution["statement"] as JsonPrimitive).content shouldBe "SELECT id FROM dbo.customers"
+                (execution["rowsTotal"] as JsonPrimitive).content shouldBe "2"
+                (execution["rls"] as JsonPrimitive).content shouldBe "RLS_APPLIED"
+                (execution["engineLabel"] as JsonPrimitive).content shouldBe "worker-postgres@pg-hartland"
+
+                // ttr-query's half — the dispatched plan and the set A-1 could not reach.
+                (execution["dispatchedPlanText"] as JsonPrimitive).content shouldContainText "customers"
+                (execution["effectiveSchema"] as JsonPrimitive).content shouldBe "DB"
+                val rules = execution["securityApplied"] as JsonArray
+                rules.size shouldBe 1
+                ((rules[0] as JsonObject)["ruleId"] as JsonPrimitive).content shouldBe "rls.tenant"
+
+                // dispatch's fact, carried through to the tail by ttr-query.
+                (execution["dispatchTarget"] as JsonPrimitive).content shouldBe "worker-postgres:7401"
             }
         }
     })

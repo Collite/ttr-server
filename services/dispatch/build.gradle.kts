@@ -72,6 +72,10 @@ dependencies {
     implementation(project(":shared:libs:kotlin:logging-config"))
     implementation(project(":shared:proto"))
 
+    // ES-P0·S0.4 — `receipt.dispatch_target`: the routed worker's endpoint, stamped on the first
+    // batch. Shares the workers' best-effort guard so a receipt can never fail a live stream.
+    implementation(project(":shared:libs:kotlin:execution-receipt"))
+
     implementation(libs.grpc.kotlin.stub)
     implementation(libs.grpc.netty.shaded)
     implementation(libs.grpc.services)
