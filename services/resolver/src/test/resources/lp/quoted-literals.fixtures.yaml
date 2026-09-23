@@ -1,0 +1,98 @@
+# LP contracts §1 — shared scanner fixtures. Copied verbatim into
+#   tatrman-server/services/resolver/src/test/resources/lp/quoted-literals.fixtures.yaml
+#   ai-platform/agents/golem/tests/fixtures/quoted-literals.fixtures.yaml
+# `literals` = [{text, start, end}] with start/end = char offsets of the delimiters (end exclusive).
+#
+# Every company name here is INVENTED (2026-09-23, Bora). `tatrman-server` is a PUBLIC repo and
+# this file is copied into it verbatim, so a name out of the client's golden set must never be
+# pinned here. The substitutes keep the original character counts, so the offsets below are the
+# offsets the real questions produce.
+cases:
+  - id: 1
+    text: 'Ukaž dodací místa začínající na "Pelex"'
+    literals: [{text: Pelex, start: 32, end: 39}]
+  - id: 2
+    text: 'zákazník „Valmy“'
+    literals: [{text: Valmy, start: 9, end: 16}]
+  - id: 3
+    text: 'zákazník “Valmy”'
+    literals: [{text: Valmy, start: 9, end: 16}]
+  - id: 4
+    text: 'zákazník «Valmy»'
+    literals: [{text: Valmy, start: 9, end: 16}]
+  - id: 5
+    text: 'zákazník „Valmy"'
+    literals: [{text: Valmy, start: 9, end: 16}]
+  - id: 6
+    text: 'zákazník "Valmy Oil"'
+    literals: [{text: Valmy Oil, start: 9, end: 20}]
+  - id: 7
+    text: 'faktury pro Agroflex za "Q2'
+    literals: []
+  - id: 8
+    text: 'zákazník ""'
+    literals: []
+  - id: 9
+    text: 'zákazník " "'
+    literals: []
+  - id: 10
+    text: 'trubka 12" a 5"x4"'
+    literals: []
+  - id: 11
+    text: "zákazník O'Neil"
+    literals: []
+  - id: 12
+    text: "zákazník ‚Valmy‘"
+    literals: []
+  - id: 13
+    text: 'místa "Pelex" nebo "Vex"'
+    literals: [{text: Pelex, start: 6, end: 13}, {text: Vex, start: 19, end: 24}]
+  - id: 14
+    text: '"Pelex" dodací místa'
+    literals: [{text: Pelex, start: 0, end: 7}]
+  - id: 15
+    text: 'dodací místa "Pelex"'
+    literals: [{text: Pelex, start: 13, end: 20}]
+  - id: 16
+    text: 'dodací místa "Pelex".'
+    literals: [{text: Pelex, start: 13, end: 20}]
+  - id: 17
+    text: '„a "b" c“'
+    literals: [{text: 'a "b', start: 0, end: 6}]
+  - id: 18
+    text: 'zákazník " Valmy Oil "'
+    literals: [{text: Valmy Oil, start: 9, end: 22}]
+  - id: 19
+    text: 'zákazník "Valmy  Oil"'
+    literals: [{text: 'Valmy  Oil', start: 9, end: 21}]
+  - id: 20
+    text: 'zákazník "VALMY oil, s.r.o."'
+    literals: [{text: 'VALMY oil, s.r.o.', start: 9, end: 28}]
+  - id: 21
+    text: 'kód "10234"'
+    literals: [{text: '10234', start: 4, end: 11}]
+  - id: 22
+    text: 'napiš"Pelex"'
+    literals: []
+  - id: 23
+    text: '("Pelex")'
+    literals: [{text: Pelex, start: 1, end: 8}]
+  - id: 24
+    text: 'zákazník "Valmy", faktury'
+    literals: [{text: Valmy, start: 9, end: 16}]
+  - id: 25
+    text: 'zákazník"Valmy" '
+    literals: []
+  - id: 26
+    text: 'zákazník "Valmy"x'
+    literals: []
+  - id: 27
+    text: 'customers starting with "Sh"'
+    literals: [{text: Sh, start: 24, end: 28}]
+  # 28 — a non-breaking space opens a literal exactly as a space does. Czech typography and every
+  # paste out of Word or a phone keyboard put one here; Java's `Character.isWhitespace` says it is
+  # not whitespace and Python's `str.isspace()` says it is, so the rule is pinned rather than left
+  # to each language's idea of §1.2.
+  - id: 28
+    text: "z\xE1kazn\xEDk\xA0\"Valmy\""
+    literals: [{text: Valmy, start: 9, end: 16}]
