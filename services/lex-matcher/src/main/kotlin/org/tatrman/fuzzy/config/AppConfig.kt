@@ -120,6 +120,9 @@ data class TokenBasedConfig(
     // FZ-P2 — retrieval path selector (`fuzzy.token-based.retrieval`). Defaults LEGACY; flipped to
     // INDEX_FIRST in application.conf at the FZ-P2 DoD.
     val retrieval: org.tatrman.fuzzy.core.RetrievalMode = org.tatrman.fuzzy.core.RetrievalMode.LEGACY,
+    // LP-P0 — the TATRMAN scorer (`fuzzy.match.version`, env FUZZY_MATCH_VERSION). Default V1 until
+    // the LP-P3 golden verdict; V2 with LEGACY retrieval is a startup error (contracts §4.1).
+    val matchVersion: org.tatrman.fuzzy.core.MatchVersion = org.tatrman.fuzzy.core.MatchVersion.V1,
 )
 
 /**
@@ -147,7 +150,7 @@ object ConfigLoader {
                 fuzzyConfig.hasPath("grpc.reflection-enabled") &&
                     fuzzyConfig.getBoolean("grpc.reflection-enabled"),
             refreshIntervalSeconds = fuzzyConfig.getLong("refreshIntervalSeconds"),
-            tokenBasedConfig = loadTokenBasedConfig(fuzzyConfig),
+            tokenBasedConfig = withMatchVersion(loadTokenBasedConfig(fuzzyConfig), fuzzyConfig),
             nlp = loadNlpConfig(fuzzyConfig),
             loaderSource = loadLoaderSourceConfig(fuzzyConfig),
             metadata = loadMetadataConfig(fuzzyConfig),
@@ -205,6 +208,23 @@ object ConfigLoader {
         } catch (e: com.typesafe.config.ConfigException) {
             NlpConfig()
         }
+
+    /**
+     * LP-P0 — `fuzzy.match.version` layered onto the token-based block, then validated against the
+     * retrieval mode. OUTSIDE [loadTokenBasedConfig]'s catch-all on purpose: a bad version or an
+     * incompatible pair must stop the service, not fall back to defaults.
+     */
+    internal fun withMatchVersion(
+        tokenBased: TokenBasedConfig,
+        fuzzyConfig: com.typesafe.config.Config,
+    ): TokenBasedConfig {
+        val version =
+            org.tatrman.fuzzy.core.MatchVersion.fromString(
+                if (fuzzyConfig.hasPath("match.version")) fuzzyConfig.getString("match.version") else null,
+            )
+        version.requireCompatible(tokenBased.retrieval)
+        return tokenBased.copy(matchVersion = version)
+    }
 
     private fun loadTokenBasedConfig(fuzzyConfig: com.typesafe.config.Config): TokenBasedConfig =
         try {

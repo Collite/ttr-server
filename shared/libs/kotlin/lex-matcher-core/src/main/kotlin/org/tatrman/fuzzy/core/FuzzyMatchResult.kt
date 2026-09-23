@@ -59,6 +59,13 @@ data class Provenance(
     val algorithm: String? = null,
     /** The winning edit distance. Null unless the winning algorithm was `typos`. */
     val distance: Int? = null,
+    /**
+     * LP-P0 (`fuzzy.match:v2`, contracts §4.6) — how each matched query token matched. Empty for
+     * v1 rows: v1 never computed it, and an empty list must not be read as "nothing matched".
+     */
+    val tokenHits: List<TokenHit> = emptyList(),
+    /** LP-P0 — v2's candidate coverage `C` (contracts §4.3). Null for v1 rows. */
+    val coverage: Double? = null,
 )
 
 /**

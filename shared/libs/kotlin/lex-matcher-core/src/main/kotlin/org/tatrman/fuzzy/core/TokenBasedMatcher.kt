@@ -16,7 +16,7 @@ class TokenBasedMatcher(
     // similarity(s1,s2) path always uses the legacy char-overlap score. Flag
     // off ⇒ exact legacy behaviour, for rollback / A-B.
     private val idfEnabled: Boolean = true,
-) {
+) : TokenScorer {
     private val logger = LoggerFactory.getLogger(TokenBasedMatcher::class.java)
     private val levenshtein = Levenshtein()
 
@@ -203,6 +203,14 @@ class TokenBasedMatcher(
         candidates: List<Candidate>,
         limit: Int,
     ): List<Pair<Candidate, Double>> = scoreAndSort(querySurfaceTokens, queryLemmaTokens, candidates).take(limit)
+
+    /** LP-P0·S2 T1 — the [TokenScorer] seam as `fuzzy.match:v1`: [rescore], unchanged, no provenance. */
+    override fun score(
+        querySurfaceTokens: List<String>,
+        queryLemmaTokens: List<String>,
+        candidates: List<Candidate>,
+        limit: Int,
+    ): List<Scored> = rescore(querySurfaceTokens, queryLemmaTokens, candidates, limit).map { (c, s) -> Scored(c, s) }
 
     private fun scoreAndSort(
         querySurfaceTokens: List<String>,

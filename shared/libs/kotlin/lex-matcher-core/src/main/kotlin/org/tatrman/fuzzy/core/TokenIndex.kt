@@ -36,6 +36,51 @@ class TokenIndex(
      */
     fun idf(token: String): Double = idfByToken[token] ?: idfForAbsent
 
+    // ✅LP-7 — IDF as `fuzzy.match:v2` sees tokens: document frequency POOLED over the edge-trimmed
+    // form, because v2 treats `oil` and `oil,` as one word — counted apart, a comma alone would make a
+    // row look rarer (and cover more). Built lazily on the first v2 call; v1 never reads it.
+    // df counts ROWS, like v1's exactIndex: ids are not unique here (alias rows share their value's
+    // pk, the global index mixes categories), so counting distinct ids would under-count df.
+    private val v2IdfByTrimmed: Map<String, Double> by lazy {
+        val df = HashMap<String, Int>()
+        for (candidate in candidates) {
+            val trimmed = candidate.allTokenSet.mapTo(HashSet()) { EdgeTrim.of(it) }
+            for (token in trimmed) df.merge(token, 1, Int::plus)
+        }
+        df.mapValues { (_, n) -> ln((documentCount + 1.0) / (n + 1.0)) + 1.0 }
+    }
+
+    /** v2's IDF for [token] (folded): pooled over its [EdgeTrim] form; absent ⇒ maximally rare. */
+    fun idfV2(token: String): Double = v2IdfByTrimmed[EdgeTrim.of(token)] ?: idfForAbsent
+
+    // LP-P0 — Σ idfV2 over a candidate's tokens, per axis: the denominator of v2's coverage C.
+    // Precomputed lazily per axis for every ROW of this index, keyed by identity — not by id, which
+    // alias rows and the global index share across rows with different tokens (the index is rebuilt
+    // on refresh, so the memo goes with it); v1 never calls it. Without it v2 paid one idf lookup per
+    // candidate token per request.
+    private val surfaceIdfTotals: Map<Candidate, Double> by lazy { idfTotalsFor(lemma = false) }
+    private val lemmaIdfTotals: Map<Candidate, Double> by lazy { idfTotalsFor(lemma = true) }
+
+    private fun idfTotalsFor(lemma: Boolean): Map<Candidate, Double> =
+        java.util.IdentityHashMap<Candidate, Double>(candidates.size).apply {
+            for (candidate in candidates) put(candidate, sumIdfV2(candidate, lemma))
+        }
+
+    private fun sumIdfV2(
+        candidate: Candidate,
+        lemma: Boolean,
+    ): Double = (if (lemma) candidate.lemmaTokens else candidate.tokens).sumOf { idfV2(it) }
+
+    /** Σ [idfV2] over [candidate]'s surface tokens ([lemma] = false) or lemma tokens ([lemma] = true). */
+    fun idfTotal(
+        candidate: Candidate,
+        lemma: Boolean,
+    ): Double {
+        val memo = if (lemma) lemmaIdfTotals else surfaceIdfTotals
+        // A candidate that is not one of this index's own rows is summed directly.
+        return memo[candidate] ?: sumIdfV2(candidate, lemma)
+    }
+
     private fun buildExactIndex(): Map<String, List<String>> {
         val index = mutableMapOf<String, MutableList<String>>()
         for (candidate in candidates) {

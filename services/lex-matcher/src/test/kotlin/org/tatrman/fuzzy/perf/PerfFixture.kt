@@ -6,6 +6,7 @@ import org.tatrman.fuzzy.core.AlgorithmType
 import org.tatrman.fuzzy.core.Candidate
 import org.tatrman.fuzzy.core.FuzzyMatchResult
 import org.tatrman.fuzzy.core.FuzzyMatcher
+import org.tatrman.fuzzy.core.MatchVersion
 import org.tatrman.fuzzy.core.RetrievalMode
 import org.tatrman.fuzzy.core.StringRepository
 import org.tatrman.fuzzy.loader.StaticLoaderSource
@@ -95,6 +96,7 @@ class PerfFixture private constructor(
         suspend fun of(
             corpus: Map<String, List<Candidate>>,
             retrievalMode: RetrievalMode = RetrievalMode.LEGACY,
+            matchVersion: MatchVersion = MatchVersion.V1,
         ): PerfFixture {
             val cfg =
                 AppConfig(
@@ -106,11 +108,13 @@ class PerfFixture private constructor(
                 )
             val repo = StringRepository(cfg, StaticLoaderSource(corpus), telemetry = null)
             repo.forceRefresh()
-            return PerfFixture(repo, FuzzyMatcher(repo, retrievalMode = retrievalMode))
+            return PerfFixture(repo, FuzzyMatcher(repo, retrievalMode = retrievalMode, matchVersion = matchVersion))
         }
 
         /** Convenience: a fixture over the parity corpus (LEGACY by default; pass INDEX_FIRST for the gate). */
-        suspend fun parity(retrievalMode: RetrievalMode = RetrievalMode.LEGACY): PerfFixture =
-            of(parityCorpus(), retrievalMode)
+        suspend fun parity(
+            retrievalMode: RetrievalMode = RetrievalMode.LEGACY,
+            matchVersion: MatchVersion = MatchVersion.V1,
+        ): PerfFixture = of(parityCorpus(), retrievalMode, matchVersion)
     }
 }

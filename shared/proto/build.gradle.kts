@@ -109,6 +109,9 @@ tasks.named<Test>("test") {
     // change is deliberately accepted, and a proof about a specific historical shape must not
     // quietly become a proof about the current one.
     systemProperty("tatrman.proto.preLattice", file("compat/resolver-v1-pre-lattice.desc").path)
+    // LP-P0 — a FROZEN copy of the protos as they were before `fuzzy.match:v2` (the wire baseline at
+    // 2d90ab2), for the fuzzy old-client proof. Same reason as the pre-lattice file.
+    systemProperty("tatrman.proto.preLp", file("compat/fuzzy-v1-pre-lp.desc").path)
 }
 
 // RV-P2.1.T7 — refresh the wire baseline. Deliberately NOT wired into any build: the

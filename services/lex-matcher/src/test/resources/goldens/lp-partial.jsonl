@@ -1,0 +1,57 @@
+{"id": "LP-01", "family": "partial", "query": "valmy", "top3": ["c01", "c02"], "kinds": ["exact"], "v1Top1": "c01", "note": "design §8 row 2: equal P, coverage orders Valmy Oil first"}
+{"id": "LP-02", "family": "partial", "query": "valmy oil", "v1Top1": "c02", "top3": ["c01", "c02", "c03"], "kinds": ["exact", "exact"], "note": "✅LP-7: `oil` is EXACT to `oil,` — the row that IS `Valmy Oil, s.r.o.` now wins (was Slovakia)"}
+{"id": "LP-03", "family": "partial", "query": "valmy slovakia", "top3": ["c02", "c01"], "kinds": ["exact", "exact"], "v1Top1": "c02", "note": "`slovakia` is EXACT to `slovakia,` (✅LP-7)"}
+{"id": "LP-04", "family": "partial", "query": "kovostav", "top3": ["c11", "c10"], "kinds": ["exact"], "v1Top1": "c10", "note": "two Kovostav rows at equal P: coverage orders the ask, margin < ε ⇒ never auto-binds"}
+{"id": "LP-05", "family": "partial", "query": "kovostav brno", "v1Top1": "c10", "top3": ["c10", "c11"], "kinds": ["exact", "exact"], "note": "`brno` EXACT to `brno,` (✅LP-7; was a typo hit)"}
+{"id": "LP-06", "family": "partial", "query": "kovostav praha", "top3": ["c11", "c10"], "kinds": ["exact", "exact"], "v1Top1": "c11"}
+{"id": "LP-07", "family": "partial", "query": "novák", "top3": ["c18", "c37", "c19"], "kinds": ["exact"], "v1Top1": "c18"}
+{"id": "LP-08", "family": "partial", "query": "stavby novák", "top3": ["c18", "c37", "c19"], "kinds": ["exact", "exact"], "v1Top1": "c18"}
+{"id": "LP-09", "family": "partial", "query": "vysočina", "top3": ["c21", "c20"], "kinds": ["exact"], "v1Top1": "c20", "note": "coverage prefers the 3-token row over Zemědělské družstvo Vysočina (v1 said c20)"}
+{"id": "LP-10", "family": "partial", "query": "vysočina agro", "top3": ["c21", "c20", "c04"], "kinds": ["exact", "exact"], "v1Top1": "c21", "note": "✅LP-9: Agrofert is offered as a prefix option past the exact `agro`"}
+{"id": "LP-11", "family": "partial", "query": "hodonín", "top3": ["c16", "c17"], "kinds": ["exact"], "v1Top1": "c16", "note": "Hodonínská offered as a prefix option (0.86 floor)"}
+{"id": "LP-12", "family": "partial", "query": "lukoil", "top3": ["c28"], "kinds": ["exact"], "v1Top1": "c28"}
+{"id": "LP-13", "family": "partial", "query": "moravia", "top3": ["c24"], "kinds": ["exact"], "v1Top1": "c24"}
+{"id": "LP-14", "family": "partial", "query": "dopravní podnik", "top3": ["c12"], "kinds": ["exact", "exact"], "v1Top1": "c12"}
+{"id": "LP-15", "family": "prefix", "query": "shel", "v1Top1": "c06", "top3": ["c07", "c06"], "kinds": ["prefix"], "note": "✅LP-8: both PREFIX at 0.86 ⇒ equal P, an ASK; coverage orders Shelby Logistics first (design §8: 'ask if several, coverage-ordered')"}
+{"id": "LP-16", "family": "prefix", "query": "agro", "v1Top1": "c21", "top3": ["c21", "c04", "c05"], "kinds": ["exact"], "note": "✅LP-9: exact `agro` keeps top-1, Agrofert rows now reach the ask"}
+{"id": "LP-17", "family": "prefix", "query": "agrof", "v1Top1": "c21", "top3": ["c04", "c05", "c21"], "kinds": ["prefix"], "note": "✅LP-8: prefix of Agrofert (0.86) beats the 1-typo `agro` (0.85)"}
+{"id": "LP-18", "family": "prefix", "query": "petrot", "v1Top1": "c27", "top3": ["c13", "c27"], "kinds": ["prefix"], "note": "✅LP-8: Petrotrans (prefix) beats Euro Petrol (1-typo)"}
+{"id": "LP-19", "family": "prefix", "query": "petro", "v1Top1": "c27", "top3": ["c14", "c05", "c13"], "kinds": ["prefix"], "note": "all PREFIX at the floor ⇒ an ask; coverage orders it"}
+{"id": "LP-20", "family": "prefix", "query": "unip", "top3": ["c29"], "kinds": ["prefix"], "v1Top1": null, "note": "v1 found nothing (ED 5 to unipetrol) — prefix is new recall"}
+{"id": "LP-21", "family": "prefix", "query": "unis", "top3": ["c30"], "kinds": ["prefix"], "v1Top1": null, "note": "v1 found nothing"}
+{"id": "LP-22", "family": "prefix", "query": "kovo", "top3": ["c11", "c10"], "kinds": ["prefix"], "v1Top1": "c15", "note": "v1 top-1 was Tank ONO (kovo→ono ED 2) — v2 budget 1 for 4 chars forbids it"}
+{"id": "LP-23", "family": "prefix", "query": "hruš", "v1Top1": "c35", "top3": ["c36", "c35"], "kinds": ["prefix"], "note": "⚠ known limitation, ask ORDER only: both PREFIX at the floor ⇒ an ask, and `spol. s r.o.` is three tokens in Hruška's coverage denominator, so the pekárna is listed first. Candidate follow-up: legal-form tokens out of C"}
+{"id": "LP-24", "family": "prefix", "query": "kauf", "top3": ["c31"], "kinds": ["prefix"], "v1Top1": null, "note": "v1 found nothing"}
+{"id": "LP-25", "family": "one-token", "query": "oil", "v1Top1": "c02", "top3": ["c01", "c03", "c02"], "kinds": ["exact"], "note": "✅LP-7: `Valmy Oil, s.r.o.` is reachable at all now (was absent); three equal-P rows, coverage orders"}
+{"id": "LP-26", "family": "one-token", "query": "benzina", "top3": ["c08", "c09"], "kinds": ["exact"], "v1Top1": "c08"}
+{"id": "LP-27", "family": "one-token", "query": "euro", "top3": ["c27", "c26"], "kinds": ["exact"], "v1Top1": "c27", "note": "Eurooil offered as a prefix option"}
+{"id": "LP-28", "family": "one-token", "query": "tesco", "top3": ["c34"], "kinds": ["exact"], "v1Top1": "c34"}
+{"id": "LP-29", "family": "one-token", "query": "globus", "top3": ["c32"], "kinds": ["exact"], "v1Top1": "c32"}
+{"id": "LP-30", "family": "legal-form", "query": "agrofert a.s.", "v1Top1": "c05", "top3": ["c04", "c05", "c26"], "kinds": ["exact", "exact"], "note": "✅LP-7: the row that IS `Agrofert, a.s.` wins (was Agrofert Petrochemie)"}
+{"id": "LP-31", "family": "legal-form", "query": "benzina s.r.o.", "top3": ["c08", "c09", "c01"], "kinds": ["exact", "exact"], "v1Top1": "c08"}
+{"id": "LP-32", "family": "legal-form", "query": "novák spol. s r.o.", "top3": ["c19", "c22", "c35"], "kinds": ["exact", "exact", "exact", "exact"], "v1Top1": "c19"}
+{"id": "LP-33", "family": "legal-form", "query": "valmy s.r.o.", "top3": ["c01", "c02", "c08"], "kinds": ["exact", "exact"], "v1Top1": "c01"}
+{"id": "LP-34", "family": "legal-form", "query": "k-ta", "v1Top1": "c22", "top3": ["c22"], "kinds": ["exact"], "note": "✅LP-7: EXACT to `k-ta,`; ✅LP-9: an exact hit skips the typo scan, so Kota Transport is not offered"}
+{"id": "LP-35", "family": "typo", "query": "valmi", "top3": ["c01", "c02"], "kinds": ["typo"], "v1Top1": "c01"}
+{"id": "LP-36", "family": "typo", "query": "shelll", "top3": ["c06", "c07"], "kinds": ["typo"], "v1Top1": "c06"}
+{"id": "LP-37", "family": "typo", "query": "benzyna", "top3": ["c08", "c09"], "kinds": ["typo"], "v1Top1": "c08"}
+{"id": "LP-38", "family": "typo", "query": "kovostaw", "top3": ["c11", "c10"], "kinds": ["typo"], "v1Top1": "c10"}
+{"id": "LP-39", "family": "typo", "query": "agrofret", "top3": ["c04", "c05"], "kinds": ["typo"], "v1Top1": "c05", "note": "✅LP-7: `agrofret` is ED 2 from `agrofert` on both rows now; coverage prefers `Agrofert, a.s.`"}
+{"id": "LP-40", "family": "typo", "query": "petrotrnas", "top3": ["c13"], "kinds": ["typo"], "v1Top1": "c13"}
+{"id": "LP-41", "family": "typo", "query": "lukol", "top3": ["c28"], "kinds": ["typo"], "v1Top1": "c28"}
+{"id": "LP-42", "family": "typo", "query": "tesko", "top3": ["c34"], "kinds": ["typo"], "v1Top1": "c34"}
+{"id": "LP-43", "family": "typo", "query": "ab", "top3": [], "kinds": [], "v1Top1": "c19", "note": "v1 matched `ab`→`a` (Novák a syn) at ED 1; v2 budget 0 for 2 chars ⇒ nothing"}
+{"id": "LP-44", "family": "order", "query": "oil valmy", "v1Top1": "c02", "top3": ["c01", "c02", "c03"], "kinds": ["exact", "exact"], "note": "✅LP-7 (mirror of LP-02)"}
+{"id": "LP-45", "family": "order", "query": "brno kovostav", "v1Top1": "c10", "top3": ["c10", "c11"], "kinds": ["exact", "exact"], "note": "✅LP-7 (mirror of LP-05)"}
+{"id": "LP-46", "family": "order", "query": "agro petro", "top3": ["c05", "c21", "c14"], "kinds": ["prefix", "prefix"], "v1Top1": "c21"}
+{"id": "LP-47", "family": "order", "query": "petro agro", "top3": ["c05", "c21", "c14"], "kinds": ["prefix", "prefix"], "v1Top1": "c21"}
+{"id": "LP-48", "family": "all-typo", "query": "valmi oyl", "v1Top1": "c02", "top3": ["c01", "c02", "c03"], "kinds": ["typo", "typo"], "note": "✅LP-7: `oyl` is a 1-typo of `oil,` once trimmed"}
+{"id": "LP-49", "family": "all-typo", "query": "kovostaw brmo", "v1Top1": "c10", "top3": ["c10", "c11"], "kinds": ["typo", "typo"], "note": "✅LP-7: `brmo` is a 1-typo of `brno,` once trimmed — Brno wins (was Praha)"}
+{"id": "LP-50", "family": "order", "query": "novák stavby", "top3": ["c37", "c18", "c19"], "kinds": ["exact", "exact"], "v1Top1": "c37", "note": "exact order pair"}
+{"id": "LP-51", "family": "order", "query": "stav nov", "top3": ["c18", "c37", "c14"], "kinds": ["prefix", "prefix"], "v1Top1": "c18", "note": "order bonus on PREFIX hits (v1 gives none and answers c18 for both orders)"}
+{"id": "LP-52", "family": "order", "query": "nov stav", "top3": ["c37", "c18", "c14"], "kinds": ["prefix", "prefix"], "v1Top1": "c18", "note": "mirror of LP-51 — v2 follows the query order, v1 does not"}
+{"id": "LP-53", "family": "partial", "query": "lukoil czech", "top3": ["c28", "c06"], "kinds": ["exact", "exact"], "v1Top1": "c28"}
+{"id": "LP-54", "family": "partial", "query": "shell republic", "top3": ["c06"], "kinds": ["exact", "exact"], "v1Top1": "c06"}
+{"id": "LP-55", "family": "typo", "query": "globsu", "top3": ["c32"], "kinds": ["typo"], "v1Top1": "c32", "note": "6 chars ⇒ budget 2: the transposition is ED 2, q 0.70"}
+{"id": "LP-56", "family": "typo", "query": "ono", "top3": ["c15"], "kinds": ["exact"], "v1Top1": "c15", "note": "a 3-char token (budget 1) that is exact — no neighbour steals it"}
+{"id": "LP-57", "family": "typo", "query": "moravi", "top3": ["c24", "c13"], "kinds": ["prefix"], "v1Top1": "c24", "note": "6/7 ≈ 0.857 is under the 0.86 floor ⇒ PREFIX at 0.86, still above the 0.85 TYPO to `morava` (Petrotrans Morava)"}
