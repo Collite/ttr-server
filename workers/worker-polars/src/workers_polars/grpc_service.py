@@ -32,6 +32,7 @@ from workers_polars.converter import (
 )
 from workers_polars.fingerprint import schema_fingerprint
 from workers_polars.probes import execute_duration_seconds, executes_total
+from workers_polars.receipt import nothing_ran, plan_executed
 from workers_polars.workspace import WorkspaceCapExceeded, WorkspaceStore
 
 logger = logging.getLogger("workers_polars.grpc_service")
@@ -73,7 +74,11 @@ class WorkerService:
             if not session_id:
                 executes_total.labels(result="error").inc()
                 root_span.set_attribute("error.code", "workspace_requires_session")
-                yield _error_batch("workspace_requires_session", "Polars Worker requires a non-empty session_id.")
+                yield _error_batch(
+                    "workspace_requires_session",
+                    "Polars Worker requires a non-empty session_id.",
+                    receipt=nothing_ran(connection_id=request.connection_id),
+                )
                 return
 
             parameters = _bindings_to_python(request.context.parameters)
@@ -88,13 +93,17 @@ class WorkerService:
                 executes_total.labels(result="error").inc()
                 code = getattr(e, "code", "polars_execution_failed")
                 root_span.set_attribute("error.code", code)
-                yield _error_batch(code, str(e))
+                yield _error_batch(code, str(e), receipt=nothing_ran(connection_id=request.connection_id))
                 return
             except Exception as e:  # noqa: BLE001 — Polars-side failures funnel here.
                 logger.warning("Polars execution failed: %s", e)
                 executes_total.labels(result="error").inc()
                 root_span.set_attribute("error.code", "polars_execution_failed")
-                yield _error_batch("polars_execution_failed", str(e))
+                yield _error_batch(
+                    "polars_execution_failed",
+                    str(e),
+                    receipt=nothing_ran(connection_id=request.connection_id),
+                )
                 return
 
             # Optional: assign result to workspace.
@@ -107,13 +116,21 @@ class WorkerService:
                     logger.info("Workspace cap exceeded: %s", e)
                     executes_total.labels(result="error").inc()
                     root_span.set_attribute("error.code", "workspace_cap_exceeded")
-                    yield _error_batch("workspace_cap_exceeded", str(e))
+                    yield _error_batch(
+                        "workspace_cap_exceeded",
+                        str(e),
+                        receipt=nothing_ran(connection_id=request.connection_id),
+                    )
                     return
                 except Exception as e:  # noqa: BLE001
                     logger.warning("Workspace put failed: %s", e)
                     executes_total.labels(result="error").inc()
                     root_span.set_attribute("error.code", "workspace_put_failed")
-                    yield _error_batch("workspace_put_failed", str(e))
+                    yield _error_batch(
+                        "workspace_put_failed",
+                        str(e),
+                        receipt=nothing_ran(connection_id=request.connection_id),
+                    )
                     return
 
             # Stream Arrow IPC. v1 emits one batch per record-batch the Arrow
@@ -145,6 +162,12 @@ class WorkerService:
                     is_last=True,
                     context=request.context,
                     schema_fingerprint=schema_fp,
+                    # ES — an empty result still ran: the receipt says so, with zero rows.
+                    receipt=plan_executed(
+                        connection_id=request.connection_id,
+                        rows_total=0,
+                        duration_ms=int((time.monotonic() - started) * 1000),
+                    ),
                 )
                 executes_total.labels(result="ok").inc()
                 execute_duration_seconds.observe(time.monotonic() - started)
@@ -162,6 +185,17 @@ class WorkerService:
                     is_last=is_last,
                     context=request.context if is_last else worker_pb2.ResultBatch().context,
                     schema_fingerprint=schema_fp if is_first else "",
+                    # ES (⚑ES-1) — the statement half rides the LAST batch: rows and time are
+                    # only known there. Polars ran a plan, not a statement.
+                    receipt=(
+                        plan_executed(
+                            connection_id=request.connection_id,
+                            rows_total=table.num_rows,
+                            duration_ms=int((time.monotonic() - started) * 1000),
+                        )
+                        if is_last
+                        else None
+                    ),
                 )
             executes_total.labels(result="ok").inc()
             execute_duration_seconds.observe(time.monotonic() - started)
@@ -330,11 +364,17 @@ def build_worker_service_handlers(service: WorkerService) -> grpc.GenericRpcHand
 # ----- Internal helpers -----
 
 
-def _error_batch(code: str, message: str) -> worker_pb2.ResultBatch:
+def _error_batch(
+    code: str,
+    message: str,
+    receipt: worker_pb2.ExecutionReceipt | None = None,
+) -> worker_pb2.ResultBatch:
     return worker_pb2.ResultBatch(
         is_first=True,
         is_last=True,
         arrow_ipc=b"",
+        # ES — the error stream carries a tail marker too, so it carries a receipt too.
+        receipt=receipt,
         messages=[
             response_message_pb2.ResponseMessage(
                 severity=response_message_pb2.ERROR,

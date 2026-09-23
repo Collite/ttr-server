@@ -99,6 +99,8 @@ dependencies {
     implementation(project(":shared:libs:kotlin:otel-config"))
     implementation(project(":shared:libs:kotlin:logging-config"))
     implementation(project(":shared:proto"))
+    // ES-P0 — the one ExecutionReceipt builder, shared with worker-postgres and ttr-query.
+    implementation(project(":shared:libs:kotlin:execution-receipt"))
 
     implementation(libs.grpc.kotlin.stub)
     implementation(libs.grpc.netty.shaded)
@@ -136,6 +138,7 @@ dependencies {
     // Arrow reader for result deserialization, and coroutines for the flow.
     "componentTestImplementation"(project(":shared:libs:kotlin:component-testkit"))
     "componentTestImplementation"(project(":shared:proto"))
+    "componentTestImplementation"(project(":shared:libs:kotlin:execution-receipt"))
     "componentTestImplementation"(libs.kotlinx.coroutines.core)
     "componentTestImplementation"(libs.arrow.vector)
     "componentTestImplementation"(libs.arrow.memory.netty)

@@ -10,8 +10,12 @@ import org.tatrman.plan.v1.Value
 import org.tatrman.translate.v1.Language
 import org.tatrman.translate.v1.SqlDialect
 import org.tatrman.translate.v1.UnparseRequest
+import org.tatrman.worker.receipt.ExecutionReceiptBuilder
 import org.tatrman.worker.v1.ExecuteRequest
+import org.tatrman.worker.v1.ExecutionReceipt
 import org.tatrman.worker.v1.ResultBatch
+import org.tatrman.worker.v1.RlsOutcome
+import org.tatrman.worker.v1.StatementKind
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.Flow
@@ -105,6 +109,9 @@ class ExecutePipeline(
                     message =
                         "Worker does not advertise connection_id='${request.connectionId}'. " +
                             "Known: ${pool.supportedConnections.joinToString()}.",
+                    // ES — a receipt on the error stream too: nothing ran, and the receipt says so
+                    // (statement_kind = NONE) while still naming the connection that was asked for.
+                    receipt = receipt(request, sql = null),
                 ),
             )
         }
@@ -121,6 +128,12 @@ class ExecutePipeline(
             // actually attempted. Stays null/0 when the failure is upstream of unparse.
             var sql: String? = null
             var bindCount = 0
+            // ES — the receipt's statement half. `parameters` is the roster the receipt masks
+            // (⚑ES-2: names + types only); `startedNanos` is set at prepare so `duration_ms` is
+            // prepare→last row, the worker's own wall clock and no one else's.
+            var parameters: List<ParameterBinding> = emptyList()
+            var startedNanos: Long? = null
+            var rowsStreamed = 0L
             try {
                 // Step 3 — translator unparse.
                 val unparse =
@@ -135,16 +148,26 @@ class ExecutePipeline(
                             .build(),
                     )
                 if (unparse.messagesList.any { it.severity == Severity.ERROR }) {
-                    emit(errorBatch("translator_failed", unparse.messagesList.first().humanMessage, context))
+                    emit(
+                        errorBatch(
+                            "translator_failed",
+                            unparse.messagesList.first().humanMessage,
+                            context,
+                            // Failed BEFORE unparse produced anything: statement_kind = NONE.
+                            receipt(request, sql = null),
+                        ),
+                    )
                     return@flow
                 }
                 sql = unparse.output
-                bindCount = unparse.context.parametersList.size
+                parameters = unparse.context.parametersList
+                bindCount = parameters.size
 
                 // Step 4 — acquire connection.
                 connection = pool.acquire(request.connectionId)
 
                 // Step 5 — prepareStatement, bind, configure.
+                startedNanos = System.nanoTime()
                 statement = connection.prepareStatement(sql)
                 bindParameters(statement, unparse.context.parametersList)
                 runCatching { statement.fetchSize = opt.batchSizeRows }
@@ -217,7 +240,14 @@ class ExecutePipeline(
                                 ),
                         )
                     }
-                    if (opt.rowLimit in 1..rowsTotal) builder.setIsLast(true)
+                    if (opt.rowLimit in 1..rowsTotal) {
+                        // ES — the row-cap exit is a tail marker like any other, and carries the
+                        // receipt. (The tail marker below is emitted after the break as well, so
+                        // both `is_last` batches on this path are complete on their own.)
+                        builder.setIsLast(true)
+                        rowsStreamed = rowsTotal
+                        builder.setReceiptIfPresent(receipt(request, sql, parameters, rowsTotal, startedNanos))
+                    }
                     emit(builder.build())
                     root?.close()
                     index++
@@ -227,6 +257,7 @@ class ExecutePipeline(
                 // Always emit a tail marker so callers can rely on `is_last`. If no batch was
                 // emitted yet (empty result set), the tail IS the first batch — attach the
                 // unsupported-type warnings here so they still reach the caller.
+                rowsStreamed = rowsTotal
                 emit(
                     ResultBatch
                         .newBuilder()
@@ -236,6 +267,9 @@ class ExecutePipeline(
                         .setContext(if (!firstEmitted) firstBatchContext else unparse.context)
                         .let { b -> if (!firstEmitted) b.setSchemaFingerprint(fingerprint) else b }
                         .setArrowIpc(ByteArray(0).toByteString())
+                        // ES — the statement half rides the tail marker (⚑ES-1): rows and time
+                        // are only known here.
+                        .setReceiptIfPresent(receipt(request, sql, parameters, rowsTotal, startedNanos))
                         .build(),
                 )
             } catch (t: Throwable) {
@@ -244,7 +278,14 @@ class ExecutePipeline(
                     throw t
                 }
                 if (t is ConnectionPoolManager.UnknownConnectionException) {
-                    emit(errorBatch("connection_not_supported", t.message ?: "unknown connection_id", context))
+                    emit(
+                        errorBatch(
+                            "connection_not_supported",
+                            t.message ?: "unknown connection_id",
+                            context,
+                            receipt(request, sql, parameters, rowsStreamed, startedNanos),
+                        ),
+                    )
                     return@flow
                 }
                 // Always log the SQL the worker was about to run (when unparse succeeded)
@@ -267,7 +308,16 @@ class ExecutePipeline(
                         t,
                     )
                 }
-                emit(errorBatch("worker_execution_failed", t.message ?: "Unhandled worker error.", context))
+                emit(
+                    errorBatch(
+                        "worker_execution_failed",
+                        t.message ?: "Unhandled worker error.",
+                        context,
+                        // Failed AT execution: the statement exists, and it is precisely the one
+                        // the reader wants (ES task list 1, the two error cases).
+                        receipt(request, sql, parameters, rowsStreamed, startedNanos),
+                    ),
+                )
             } finally {
                 runCatching { resultSet?.close() }
                 runCatching { statement?.close() }
@@ -321,12 +371,44 @@ class ExecutePipeline(
             else -> Types.NVARCHAR
         }
 
+    /**
+     * ES — the worker's half of the execution receipt, for whichever batch is about to carry it.
+     *
+     * `statement_kind` is derived, not passed: a [sql] the worker holds means `SQL_EXECUTED` (even
+     * on the error stream — a run that failed AT execution has a statement, and that is exactly
+     * the one the reader wants), and no statement means `NONE` (it failed before unparse).
+     *
+     * `rls` is always `RLS_NOT_REQUIRED`: the MSSQL worker has no tenant envelope. That is the
+     * receipt saying what it knows, not a placeholder — the Postgres worker is the only one with
+     * a `SET LOCAL app.tenant_id` to report on.
+     */
+    private fun receipt(
+        request: ExecuteRequest,
+        sql: String?,
+        parameters: List<ParameterBinding> = emptyList(),
+        rowsTotal: Long = 0L,
+        startedNanos: Long? = null,
+    ): ExecutionReceipt? =
+        ExecutionReceiptBuilder.statementHalf(
+            kind = if (sql != null) StatementKind.SQL_EXECUTED else StatementKind.NONE,
+            dialect = SqlDialect.MSSQL.name,
+            sql = sql,
+            parameters = parameters,
+            connectionId = request.connectionId,
+            engineLabel = "$ENGINE_ID@${request.connectionId}",
+            rowsTotal = rowsTotal,
+            durationMs = startedNanos?.let { (System.nanoTime() - it) / 1_000_000 } ?: 0L,
+            rls = RlsOutcome.RLS_NOT_REQUIRED,
+            correlationId = request.context.correlationId,
+        )
+
     private fun errorBatch(
         code: String,
         message: String,
         context: org.tatrman.plan.v1.PipelineContext =
             org.tatrman.plan.v1.PipelineContext
                 .getDefaultInstance(),
+        receipt: ExecutionReceipt? = null,
     ): ResultBatch =
         ResultBatch
             .newBuilder()
@@ -334,6 +416,7 @@ class ExecutePipeline(
             .setIsLast(true)
             .setArrowIpc(ByteArray(0).toByteString())
             .setContext(context)
+            .setReceiptIfPresent(receipt)
             .addMessages(
                 ResponseMessage
                     .newBuilder()
@@ -359,5 +442,15 @@ class ExecutePipeline(
 
     companion object {
         private val log = LoggerFactory.getLogger(ExecutePipeline::class.java)
+
+        /** How this worker names itself in `ExecutionReceipt.engine_label` (`<id>@<connection>`). */
+        const val ENGINE_ID = "worker-mssql"
     }
 }
+
+/**
+ * Attach a receipt when there is one. A null receipt is the best-effort path (ES architecture §7):
+ * the batch goes out unchanged, because a run must never fail over its own bookkeeping.
+ */
+private fun ResultBatch.Builder.setReceiptIfPresent(receipt: ExecutionReceipt?): ResultBatch.Builder =
+    also { if (receipt != null) it.setReceipt(receipt) }

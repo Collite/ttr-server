@@ -4,6 +4,7 @@ package org.tatrman.worker.mssql.pipeline
 import io.kotest.core.annotation.EnabledIf
 import io.kotest.core.annotation.Tags
 import io.kotest.core.spec.style.StringSpec
+import io.kotest.matchers.longs.shouldBeGreaterThan
 import io.kotest.matchers.shouldBe
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.runBlocking
@@ -25,6 +26,8 @@ import org.tatrman.translate.v1.UnparseRequest
 import org.tatrman.translate.v1.UnparseResponse
 import org.tatrman.worker.v1.ExecuteRequest
 import org.tatrman.worker.v1.ExecutionOptions
+import org.tatrman.worker.v1.RlsOutcome
+import org.tatrman.worker.v1.StatementKind
 import java.io.ByteArrayInputStream
 import java.sql.DriverManager
 
@@ -140,6 +143,23 @@ class MssqlMssqlComponentSpec :
                 // The first data batch announces the schema fingerprint + carries Arrow IPC.
                 val dataBatch = batches.first { !it.arrowIpc.isEmpty }
                 (dataBatch.schemaFingerprint.isNotBlank()) shouldBe true
+
+                // ES-P0·S0.2 — the tail marker carries the statement half: the statement the
+                // engine was handed, verbatim, with a real duration and the rows it returned.
+                // (RLS is `RLS_NOT_REQUIRED` always here — the MSSQL worker has no tenant
+                // envelope to report on, and the receipt says only what it knows.)
+                val tail = batches.last()
+                tail.isLast shouldBe true
+                tail.hasReceipt() shouldBe true
+                tail.receipt.statementKind shouldBe StatementKind.SQL_EXECUTED
+                tail.receipt.dialect shouldBe "MSSQL"
+                tail.receipt.statement shouldBe query
+                tail.receipt.statementTruncated shouldBe false
+                tail.receipt.connectionId shouldBe "df-test"
+                tail.receipt.engineLabel shouldBe "worker-mssql@df-test"
+                tail.receipt.rowsTotal shouldBe 2L
+                tail.receipt.durationMs shouldBeGreaterThan 0L
+                tail.receipt.rls shouldBe RlsOutcome.RLS_NOT_REQUIRED
 
                 // Deserialize the Arrow and assert the real-MSSQL-derived schema + a sampled value.
                 RootAllocator(Long.MAX_VALUE).use { allocator ->

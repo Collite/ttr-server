@@ -34,6 +34,10 @@ import "org/tatrman/plan/v1/plan.proto";
 import "org/tatrman/plan/v1/context.proto";
 import "org/tatrman/meta/v1/meta.proto";
 import "org/tatrman/common/v1/response_message.proto";
+// ES — the execution receipt's plan half carries the validator's F7 set verbatim rather than a
+// re-typed view of it. validate.v1 imports plan.v1 and common.v1 only, so it cannot import
+// worker.v1 back: no cycle. (dispatch.v1 and query.v1 already import this file.)
+import "org/tatrman/validate/v1/validate.proto";
 
 option java_package = "org.tatrman.worker.v1";
 option java_multiple_files = true;
@@ -174,8 +178,72 @@ message ResultBatch {
   //   - audit / forensics ("what columns did this query return?")
   string schema_fingerprint = 7;
 
+  // ES — the execution receipt. Carried on the FIRST batch (plan half, by ttr-query) and on the
+  // LAST batch (statement half, by the worker; ttr-query re-attaches its half so the last batch
+  // is complete on its own). Absent on batches in between. A consumer merges first+last, or
+  // reads the last alone. (⚑ES-1)
+  ExecutionReceipt receipt = 8;
+
   repeated org.tatrman.common.v1.ResponseMessage messages = 99;
   reserved 100 to 104;
+}
+
+// =============================================================================
+// ExecutionReceipt — what ran, from the hop that ran it (ES)
+// =============================================================================
+
+// Filled in TWO halves by two hops; a hop fills only the fields it holds first-hand and leaves
+// the rest unset (ES architecture §2). The worker owns 1–11, ttr-query owns 20–26; 12–19 and
+// 27–39 are reserved so neither half grows into the other's numbering.
+//
+// Best-effort by construction: a receipt must NEVER fail a run. Every producer builds it inside
+// try/catch-to-absent and emits its tail marker with or without one.
+message ExecutionReceipt {
+  // ── statement half — the worker ──
+  StatementKind statement_kind = 1;      // SQL_EXECUTED | PLAN_EXECUTED (polars) | NONE (failed before unparse)
+  string dialect = 2;                    // translate.v1 dialect name the worker unparsed to ("POSTGRESQL")
+  string statement = 3;                  // the text handed to the engine; "" when kind != SQL_EXECUTED or over cap
+  string statement_ref = 4;              // set INSTEAD of statement when over the cap (A-10 shape); "" otherwise
+  bool statement_truncated = 5;
+  repeated BoundParameter parameters = 6;
+  string connection_id = 7;              // the ExecuteRequest.connection_id actually used
+  string engine_label = 8;               // "<worker-id>@<connection_id>" — the worker names itself
+  int64 rows_total = 9;                  // rows streamed (after the validator's cap)
+  uint64 duration_ms = 10;               // prepare→last row, worker wall clock
+  RlsOutcome rls = 11;                   // RLS_NOT_REQUIRED | RLS_APPLIED | RLS_FAILED
+  // ── plan half — ttr-query ──
+  org.tatrman.plan.v1.PlanNode dispatched_plan = 20;   // what dispatch received (post-validate; physical when DB) — ⚑ES-3
+  string plan_omitted_reason = 21;       // "over_cap" | "" — a proto is never truncated, only omitted
+  repeated org.tatrman.validate.v1.SecurityRuleApplied security_applied = 22;   // the F7 set, verbatim
+  string dispatch_target = 23;           // worker endpoint dispatch chose
+  string effective_schema = 24;          // "ER" | "DB"
+  bool cache_hit = 25;
+  uint64 compile_ms = 26;
+  reserved 12 to 19, 27 to 39;
+}
+
+// One parameter as it was bound. ⚑ES-2: the worker NEVER emits a value — names, types and the
+// bound count always; the value only under the protocol profile's `execution.parameters = full`,
+// decided at the BFF, never here.
+message BoundParameter {
+  string name = 1;
+  string type = 2;                       // plan.v1 ParameterBinding logical type ("int", "datetime", …)
+  string value_masked = 3;               // "<masked>" by default; the value only under ⚑ES-2's rule
+  bool masked = 4;
+}
+
+enum StatementKind {
+  STATEMENT_KIND_UNSPECIFIED = 0;
+  SQL_EXECUTED = 1;                      // the worker unparsed and executed a statement
+  PLAN_EXECUTED = 2;                     // the worker executed the plan itself (polars) — no statement exists
+  NONE = 3;                              // the run failed before unparse — there is no statement to name
+}
+
+enum RlsOutcome {
+  RLS_OUTCOME_UNSPECIFIED = 0;
+  RLS_NOT_REQUIRED = 1;                  // the connection is not marked `requires-tenant-id`
+  RLS_APPLIED = 2;                       // SET LOCAL app.tenant_id succeeded; policies scoped the rows
+  RLS_FAILED = 3;                        // SET LOCAL failed and the run was rolled back
 }
 
 // =============================================================================

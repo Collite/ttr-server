@@ -47,12 +47,14 @@ object PostgresComponentSupport {
             maxBlobBytesPerCell = 8 * 1024 * 1024,
         )
 
-    private const val QUERY = "SELECT account_id, amount, label FROM positions ORDER BY account_id"
+    /** The SQL the faked translator returns — and therefore the exact text the receipt must carry. */
+    const val QUERY = "SELECT account_id, amount, label FROM positions ORDER BY account_id"
 
     /** A read-only, tenant-enforcing pool that connects as the non-owner [PostgresPgFixture.READONLY_ROLE]. */
     fun pool(
         jdbcUrl: String,
         database: String,
+        requiresTenantId: Boolean = true,
     ): ConnectionPoolManager =
         ConnectionPoolManager(
             mapOf(
@@ -64,7 +66,7 @@ object PostgresComponentSupport {
                         password = PostgresPgFixture.READONLY_PW,
                         database = database,
                         defaultSchema = "public",
-                        requiresTenantId = true,
+                        requiresTenantId = requiresTenantId,
                         readOnly = true,
                     ),
             ),
