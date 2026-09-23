@@ -44,6 +44,7 @@ message FuzzyStatusResponse {
   repeated CategoryStatus categories = 3;
   repeated LoaderWarning warnings = 4; // B-T4: PK-skipped declared columns (RG-FUZ-001)
   LayerVersions layer_versions = 5;    // RV-39 (RV-P1.4)
+  string engine_version = 6;           // LP-P0: effective fuzzy.match.version — "v1" | "v2"
 }
 
 message CategoryStatus {
@@ -123,6 +124,20 @@ message Provenance {
   optional string norm = 4;       // canonical | folded | lemma
   optional string algorithm = 5;  // exact | typos | tokens
   optional int32 distance = 6;    // set iff algorithm == "typos"
+  // LP-P0 (fuzzy.match:v2, additive): how each matched query token matched, and the candidate
+  // coverage C. Both ABSENT on a v1 row (method "TATRMAN"); a v2 row has method "TATRMAN_V2".
+  repeated TokenHit token_hits = 7;
+  optional double coverage = 8;
+}
+
+// LP-P0 — one matched query token. Positions are 0-based token indices on the winning axis.
+message TokenHit {
+  string query_token = 1;
+  string candidate_token = 2;
+  string kind = 3;          // exact | typo | prefix
+  int32 distance = 4;
+  int32 query_pos = 5;
+  int32 candidate_pos = 6;
 }
 
 message FuzzyMatch {

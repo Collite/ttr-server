@@ -112,11 +112,22 @@ class FuzzyMatcher(
     // byte-identical; Application wires it from `fuzzy.token-based.retrieval`. The retriever is the
     // seam FZO plugs OpenSearch into; the in-memory default resolves against the interned vocabulary.
     private val retrievalMode: RetrievalMode = RetrievalMode.LEGACY,
-    private val retriever: CandidateRetriever = IndexFirstRetriever(repository::getVocabulary),
+    // LP-P0 — the TATRMAN scorer (`fuzzy.match.version`). Defaulted V1 (byte-pinned) so existing call
+    // sites / tests / goldens are unaffected; V2 needs INDEX_FIRST (checked in init). The default
+    // retriever follows it, so a v2 prefix hit is retrievable, not only rescorable.
+    private val matchVersion: MatchVersion = MatchVersion.V1,
+    private val retriever: CandidateRetriever = IndexFirstRetriever(matchVersion, repository::getVocabulary),
     // RV-P1.4 T4 — honours the authored match method (RV-32) on whatever the cascade produced.
     // A no-op for candidates with no authored method, so the pre-RV service is unaffected.
     private val methodDispatcher: MethodDispatcher = MethodDispatcher(),
 ) {
+    init {
+        matchVersion.requireCompatible(retrievalMode)
+    }
+
+    /** LP-P0 — the effective engine version, echoed in `FuzzyStatusResponse.engine_version`. */
+    val engineVersion: String get() = matchVersion.wire
+
     suspend fun match(
         query: String,
         category: String?,
@@ -474,11 +485,14 @@ class FuzzyMatcher(
                                 distanceCache = repository.getDistanceCache(category),
                                 idfEnabled = idfEnabled,
                             )
-                        matcher.match(querySurfaceTokens, queryLemmaTokens, limit)
+                        matcher.match(querySurfaceTokens, queryLemmaTokens, limit).map { (c, score) ->
+                            Scored(c, score)
+                        }
                     }
                     RetrievalMode.INDEX_FIRST -> {
                         // Retrieve the topN candidates worth scoring against the interned vocabulary,
-                        // then exact-rescore them with the unchanged scorer. The retriever resolves
+                        // then exact-rescore them with the selected scorer (v1 unchanged, or v2 — LP-P0).
+                        // The retriever resolves
                         // each query token once against the vocabulary and returns the best-first
                         // candidates from a single snapshot (no ordinal escapes the retriever, so a
                         // concurrent refresh cannot mis-map one). The rescore uses a throwaway
@@ -491,20 +505,25 @@ class FuzzyMatcher(
                         // while giving the parity-or-better gate ample margin.
                         val topN = maxOf(500, limit * 4)
                         val retrieved = retriever.retrieve(querySurfaceTokens, queryLemmaTokens, category, topN)
-                        val matcher =
-                            TokenBasedMatcher(
-                                candidates = retrieved,
-                                tokenIndex = tokenIndex,
-                                distanceCache = DistanceCache(),
-                                idfEnabled = idfEnabled,
-                            )
-                        matcher.rescore(querySurfaceTokens, queryLemmaTokens, retrieved, limit)
+                        val scorer: TokenScorer =
+                            when (matchVersion) {
+                                MatchVersion.V1 ->
+                                    TokenBasedMatcher(
+                                        candidates = retrieved,
+                                        tokenIndex = tokenIndex,
+                                        distanceCache = DistanceCache(),
+                                        idfEnabled = idfEnabled,
+                                    )
+                                MatchVersion.V2 -> TokenBasedMatcherV2(tokenIndex)
+                            }
+                        scorer.score(querySurfaceTokens, queryLemmaTokens, retrieved, limit)
                     }
                 }
             }
 
-        return results.map { (candidate, score) ->
-            candidate.toResult(score, category, method = "TATRMAN")
+        val method = if (matchVersion == MatchVersion.V2) TokenBasedMatcherV2.METHOD else "TATRMAN"
+        return results.map { scored ->
+            scored.candidate.toResult(scored.score, category, method, scored.tokenHits, scored.coverage)
         }
     }
 
@@ -544,6 +563,8 @@ private fun Candidate.toResult(
     score: Double,
     category: String?,
     method: String,
+    tokenHits: List<TokenHit> = emptyList(),
+    coverage: Double? = null,
 ): FuzzyMatchResult =
     FuzzyMatchResult(
         candidateId = id,
@@ -552,7 +573,14 @@ private fun Candidate.toResult(
         category = category ?: "unknown",
         source = source,
         targetRef = targetRef,
-        provenance = Provenance(producer = "fuzzy", method = method, rawScore = score),
+        provenance =
+            Provenance(
+                producer = "fuzzy",
+                method = method,
+                rawScore = score,
+                tokenHits = tokenHits,
+                coverage = coverage,
+            ),
         matchMethod = matchMethod,
         targetClass = targetClass,
         // Both precomputed at load on the candidate, so the dispatcher parses and NFC-normalises

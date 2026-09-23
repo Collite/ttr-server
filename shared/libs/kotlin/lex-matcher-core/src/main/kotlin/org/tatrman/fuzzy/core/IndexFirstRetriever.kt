@@ -18,10 +18,17 @@ package org.tatrman.fuzzy.core
  *
  * @param vocabularyFor supplies the [TokenVocabulary] for a category (an empty vocabulary — the
  *   explicit-unknown case — yields no candidates). Wired to `StringRepository::getVocabulary`.
+ * @param matchVersion LP-P0 — [MatchVersion.V2] resolves query tokens by kind
+ *   ([VocabularyResolver.resolveV2]: prefix hits retrieve, qualities follow the kind table) so
+ *   retrieval ranks by the same qualities the v2 scorer uses; [MatchVersion.V1] is untouched.
  */
 class IndexFirstRetriever(
+    private val matchVersion: MatchVersion,
     private val vocabularyFor: (String?) -> TokenVocabulary,
 ) : CandidateRetriever {
+    /** The v1 retriever — `vocabularyFor` stays last so `IndexFirstRetriever { … }` keeps compiling. */
+    constructor(vocabularyFor: (String?) -> TokenVocabulary) : this(MatchVersion.V1, vocabularyFor)
+
     override fun retrieve(
         querySurfaceTokens: List<String>,
         queryLemmaTokens: List<String>,
@@ -62,7 +69,11 @@ class IndexFirstRetriever(
         val n = queryTokens.size
         if (n == 0) return HashMap()
 
-        val resolvedPerSlot = Array(n) { resolver.resolve(queryTokens[it]) }
+        val resolvedPerSlot =
+            when (matchVersion) {
+                MatchVersion.V1 -> Array(n) { resolver.resolve(queryTokens[it]) }
+                MatchVersion.V2 -> Array(n) { resolver.resolveV2(queryTokens[it]) }
+            }
 
         // Penalty weight for an UNMATCHED query slot: the query token's own IDF (idfAbsent if it is
         // not even in the vocabulary). This is the review's fix that makes the approx track the exact.

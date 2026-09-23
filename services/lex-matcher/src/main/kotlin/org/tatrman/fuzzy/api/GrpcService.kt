@@ -29,6 +29,7 @@ import org.tatrman.fuzzy.v1.LookupRequest
 import org.tatrman.fuzzy.v1.LookupResponse
 import org.tatrman.fuzzy.v1.MatchRequest
 import org.tatrman.fuzzy.v1.Provenance as ProtoProvenance
+import org.tatrman.fuzzy.v1.TokenHit as ProtoTokenHit
 import org.tatrman.fuzzy.v1.LayerVersions as ProtoLayerVersions
 import org.tatrman.fuzzy.v1.SourceTag as ProtoSourceTag
 import org.tatrman.fuzzy.v1.TargetClass as ProtoTargetClass
@@ -89,6 +90,7 @@ class GrpcService(
                 .setReady(repository.isCatalogReady())
                 .setVocabularyVersion(repository.vocabularyVersion())
                 .setLayerVersions(repository.layerVersions().toProto())
+                .setEngineVersion(fuzzyMatcher.engineVersion)
         repository.categoryStatuses().forEach { s ->
             builder.addCategories(
                 CategoryStatus
@@ -253,6 +255,20 @@ class GrpcService(
                             provenance.norm?.let { pb.setNorm(it) }
                             provenance.algorithm?.let { pb.setAlgorithm(it) }
                             provenance.distance?.let { pb.setDistance(it) }
+                            // LP-P0 — v2 provenance; nothing is written for a v1 row.
+                            provenance.tokenHits.forEach { h ->
+                                pb.addTokenHits(
+                                    ProtoTokenHit
+                                        .newBuilder()
+                                        .setQueryToken(h.queryToken)
+                                        .setCandidateToken(h.candidateToken)
+                                        .setKind(h.kind)
+                                        .setDistance(h.distance)
+                                        .setQueryPos(h.queryPos)
+                                        .setCandidatePos(h.candidatePos),
+                                )
+                            }
+                            provenance.coverage?.let { pb.setCoverage(it) }
                         }.build(),
                 )
         targetRef?.let { b.setTargetRef(it) }

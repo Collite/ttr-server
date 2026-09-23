@@ -188,6 +188,7 @@ fun Application.module(serverConfig: KtorServerConfig) {
             lemmatizer,
             idfEnabled = config.tokenBasedConfig.idfEnabled,
             retrievalMode = config.tokenBasedConfig.retrieval,
+            matchVersion = config.tokenBasedConfig.matchVersion,
             methodDispatcher =
                 MethodDispatcher(
                     config.lexicon.uniquenessMarginFloor,
@@ -195,6 +196,7 @@ fun Application.module(serverConfig: KtorServerConfig) {
                 ),
         )
     log.info("Fuzzy retrieval mode: ${config.tokenBasedConfig.retrieval}")
+    log.info("Fuzzy match engine: fuzzy.match.version=${config.tokenBasedConfig.matchVersion.wire}")
     // RV-44 ⚑M-5 — the EFFECTIVE value, logged at startup. A floor that silently drops candidates
     // is exactly the setting an operator needs to see confirmed rather than assume.
     log.info(
