@@ -185,7 +185,12 @@ class TokenBasedMatcherV2(
         candidateTokens: List<String>,
     ): Best? {
         val exact = candidateTokens.indexOf(t)
-        if (exact >= 0) return Best(exact, MatchKind.EXACT, 0, 1.0)
+        if (exact >= 0) {
+            // An earlier token may be exact too after the edge trim (`oil,` before `oil`): earliest wins.
+            val trimmed = EdgeTrim.of(t)
+            val first = (0 until exact).firstOrNull { EdgeTrim.of(candidateTokens[it]) == trimmed } ?: exact
+            return Best(first, MatchKind.EXACT, 0, 1.0)
+        }
 
         val memo = pairMemo.getOrPut(t) { HashMap() }
         var best: Best? = null

@@ -120,6 +120,33 @@ class TokenBasedMatcherV2Test :
                 .candidate.id shouldBe "c-agro"
         }
 
+        "review — rows sharing an id (alias rows) each get their own coverage denominator" {
+            val canonical = Candidate.fromValues("pk-1", "Agrofert Petrochemie Holding")
+            val alias = Candidate.fromValues("pk-1", "AGF")
+            val aliased = TokenIndex(listOf(canonical, alias, Candidate.fromValues("pk-2", "Benzina")))
+            val m = TokenBasedMatcherV2(aliased)
+            // Score the long row first: before the fix its denominator was memoised for the alias too.
+            m.scoreCandidate(q("agrofert"), q("agrofert"), canonical).coverage!! shouldBeLessThan 1.0
+            m.scoreCandidate(q("agf"), q("agf"), alias).coverage!! shouldBe (1.0 plusOrMinus 1e-12)
+        }
+
+        "review — v2 df counts rows like v1, not distinct ids" {
+            val rows =
+                listOf(
+                    Candidate.fromValues("pk-1", "Oil One"),
+                    Candidate.fromValues("pk-1", "Oil Two"),
+                    Candidate.fromValues("pk-2", "Benzina"),
+                )
+            val idx = TokenIndex(rows)
+            idx.idfV2("oil") shouldBe (idx.idf("oil") plusOrMinus 1e-12)
+        }
+
+        "review — an exact hit takes the earliest position, through the edge trim" {
+            val c = Candidate.fromValues("c-x", "Oil, Oil")
+            val m = TokenBasedMatcherV2(TokenIndex(listOf(c)))
+            m.scoreCandidate(q("oil"), q("oil"), c).tokenHits.single().candidatePos shouldBe 0
+        }
+
         "T1 — v1 through the TokenScorer seam is exactly rescore(), with no provenance" {
             val v1 = TokenBasedMatcher(corpus, index)
             val tokens = q("valmy oil")
