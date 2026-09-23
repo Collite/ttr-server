@@ -27,6 +27,8 @@ import org.tatrman.resolver.v1.HypothesisOutcome
 import org.tatrman.resolver.v1.Mention
 import org.tatrman.resolver.v1.ResolutionState
 import org.tatrman.resolver.v1.RungLogEntry
+import org.tatrman.resolver.v1.Span
+import org.tatrman.resolver.v1.ValueKind
 import org.tatrman.resolver.v1.ValueFinding
 
 /**
@@ -88,6 +90,16 @@ object ReGate {
          * infrastructure failure must never be reported as a semantic verdict.
          */
         const val LOOKUP_FAILED = "LOOKUP_FAILED"
+
+        /**
+         * LP contracts §2.4 — the span is a quoted literal, and a literal is closed to rungs.
+         *
+         * Not a verdict about the vocabulary and deliberately not [NO_CANDIDATE]: the matcher was
+         * never asked, because the user already said what this span means. An LLM rung that reads
+         * `"Pelex"` and proposes the store *Pelex Slovakia* is doing its job — it just may not be
+         * allowed to win, and telling it "no such term" would be a lie about the estate.
+         */
+        const val VERBATIM_SPAN = "E_VERBATIM_SPAN"
     }
 
     /**
@@ -105,6 +117,11 @@ object ReGate {
 
         /** The matcher could not be asked. NOT an empty vocabulary. */
         object Failed : Answer
+
+        /** The span is (or touches) a VERBATIM value, so nothing was asked and nothing may bind. */
+        data class Verbatim(
+            val valueId: String,
+        ) : Answer
     }
 
     suspend fun run(
@@ -122,6 +139,14 @@ object ReGate {
         // here rather than implied twice.
         val mentions = lattice.mentionsList.associateBy { it.span.start to it.span.end }
         val values = lattice.valuesList.associateBy { it.span.start to it.span.end }
+        // LP §2.4 — keyed by OVERLAP, not by exact offsets, which is the difference between a rule
+        // and a formality. A rung reading the lattice proposes `Pelex` (33–38), the content; the
+        // VERBATIM value is `"Pelex"` (32–39), the delimiters included. On exact keys that
+        // hypothesis finds no span and is refused as NO_SPAN — right outcome, wrong reason, and a
+        // reason a rung is entitled to act on.
+        val verbatimValues = lattice.valuesList.filter { it.kind == ValueKind.VALUE_KIND_VERBATIM }
+
+        fun verbatimAt(span: Span) = verbatimValues.firstOrNull { span.start < it.span.end && span.end > it.span.start }
         val categoriesByRef = entityTypes.associate { it.ref to it.categories }
         // MS-P3·S2 — see GateSpans: every producer gates through the same containment map.
         val owners = entityTypes.ownersByRef()
@@ -145,14 +170,19 @@ object ReGate {
                         val key = hypothesis.span.start to hypothesis.span.end
                         val latticeText = mentions[key]?.span?.text ?: values[key]?.span?.text
                         val categories = scopeFor(hypothesis, values[key], lattice, categoriesByRef)
+                        val verbatim = verbatimAt(hypothesis.span)
                         hypothesis to
                             async {
-                                if (latticeText == null) {
-                                    Answer.NoSpan
-                                } else {
-                                    inFlight.withPermit {
-                                        lookup(fuzzy, hypothesis, latticeText, categories, maxCandidates)
-                                    }
+                                when {
+                                    // FIRST, and before the matcher is reached: a literal costs no
+                                    // RPC to refuse, and refusing it after asking would make the
+                                    // rung's proposal look like a near miss.
+                                    verbatim != null -> Answer.Verbatim(verbatim.id)
+                                    latticeText == null -> Answer.NoSpan
+                                    else ->
+                                        inFlight.withPermit {
+                                            lookup(fuzzy, hypothesis, latticeText, categories, maxCandidates)
+                                        }
                                 }
                             }
                     }.map { (hypothesis, deferred) -> hypothesis to deferred.await() }
@@ -186,6 +216,13 @@ object ReGate {
                     }
                     is Answer.Failed -> {
                         outcomes += outcome(hypothesis, Reason.LOOKUP_FAILED)
+                        continue
+                    }
+                    is Answer.Verbatim -> {
+                        // Recorded as touched: the round DID consider this value, and a rung log
+                        // that omitted it would read as though the hypothesis had never arrived.
+                        touchedValues += answer.valueId
+                        outcomes += outcome(hypothesis, Reason.VERBATIM_SPAN)
                         continue
                     }
                     is Answer.Answered -> answer.candidates

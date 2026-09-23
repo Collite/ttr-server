@@ -289,6 +289,23 @@ object LatticeAssembler {
                 .setBindingsAdded(mentions.sumOf { it.bindingsCount } + values.sumOf { it.attributionsCount })
                 .setGapsOpen(gaps.size),
         )
+        // LP contracts §2.4 — one round-0 entry naming the literals, when there are any.
+        //
+        // The rung log is what a later rung READS to know what the core did, and "the core found
+        // literals here" is the one fact that changes what a rung may do: these value ids are
+        // closed to it, and the re-gate will say `E_VERBATIM_SPAN` if it tries. A silent lattice
+        // would make that refusal arrive as a surprise. Omitted entirely when the question has no
+        // quotes, so the common lattice is byte-identical to what P2.1 emitted.
+        val verbatimIds = values.filter { it.kind == ValueKind.VALUE_KIND_VERBATIM }.map { it.id }
+        if (verbatimIds.isNotEmpty()) {
+            builder.addRungLog(
+                RungLogEntry
+                    .newBuilder()
+                    .setRung(CORE_RUNG)
+                    .setAction(VERBATIM_ACTION)
+                    .addAllValueIds(verbatimIds),
+            )
+        }
         // The narrowing itself (RV-42, GI-14 extended to grounding): one entry per trigger-carrying
         // mention, naming the values its kernel now owns. This is the audit trail for a decision
         // the core makes and someone else acts on — a caller reads "chrono, on m4, for v2" instead
@@ -317,6 +334,9 @@ object LatticeAssembler {
 
     /** The action a grounding narrowing is logged under (RV-42) — see the emit site above. */
     const val GROUND_NARROW_ACTION: String = "ground-narrow"
+
+    /** LP §2.4 — the action the core's quoted literals are logged under. */
+    const val VERBATIM_ACTION: String = "verbatim"
 
     /** A trigger-carrying mention, as the value layer needs to see it. */
     private data class TriggerAnchor(

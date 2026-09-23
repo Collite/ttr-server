@@ -71,6 +71,33 @@ The invariant a gate turn adds to the suite's refusal-over-guess vocabulary: **a
 evidence.** `gated_refs` may only list bindings that came out of the same evidence-class gate as
 any other candidate; a rung's confidence buys nothing (RV-7).
 
+## Quoted literals (LP contracts §2)
+
+A turn may assert what the lattice made of a **quoted** span. The vocabulary is small on purpose:
+a literal has no binding to describe, and the whole claim is that nothing happened to it.
+
+```jsonc
+"expect": {
+  "outcome": "empty",
+  "no_binding_below_threshold": true,
+  "verbatim": [
+    { "text": "Valmy Oil",                    // §1.4 text — delimiters off, edges trimmed
+      "span": { "start": 20, "end": 31 },     // the span as TYPED — delimiters included
+      "attributions": 0,                      // 0 ⇒ headless; the estate declared no name column
+      "gap_kind": "GAP_KIND_G3_UNATTRIBUTED" } // the gap on that value, "" for none
+  ],
+  "no_span_inside_literal": true              // no mention and no other value overlaps the literal
+}
+```
+
+`no_span_inside_literal` is the one that matters, and it is the refusal-over-guess invariant
+restated for a span the user already explained: the n-gram floor, the proper-noun path and NER
+would all reach for a quoted name, and none of them may. **An ATTRIBUTED literal is not yet
+expressible here** — attribution needs the model's `semantics { name: }`, which reaches the
+resolver only through the per-request `Registry` override and the door has no argument for one
+(LP ⚑LPQ-5). It is covered at the pipeline seam (`VerbatimLatticeTest`) until the compiled lexicon
+archive carries the facet, at which point this fixture family gains the hero turn.
+
 ## Outcomes
 - **`clarification`** — `AwaitingClarification`: options + an opaque `resumeToken`. The door offers a
   choice; it does **not** bind. (Instance ambiguity → refuse over guess.)

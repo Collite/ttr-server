@@ -136,6 +136,10 @@ object ConformancePipeline {
                         List(request.spansCount.coerceAtLeast(1)) {
                             listOf(member("noise", "neznámý", 0.30))
                         }
+                    // LP §2 — the estate has nothing to say about any span in this question. The
+                    // assertion is not about what the matcher answered: it is about what it was
+                    // ASKED, and a quoted span must never be among the questions.
+                    "verbatim_literal" -> List(request.spansCount.coerceAtLeast(1)) { emptyList() }
                     else -> emptyList()
                 }
             val builder = BatchMatchResponse.newBuilder()

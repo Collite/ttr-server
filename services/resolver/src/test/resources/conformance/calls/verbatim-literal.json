@@ -1,0 +1,30 @@
+{
+  "id": "verbatim-literal",
+  "description": "LP contracts §2 — a QUOTED literal. The user's one way of saying 'take this string as typed', and the door's answer must show it was taken that way: the lattice carries one VERBATIM value with the §1.4 text, NOTHING is proposed or bound for the quoted span (not the n-gram floor, not a member that reads alike), and — on an estate whose model has not declared which column carries the name — the value is emitted unattributed with a G3 gap rather than attributed to a column nobody named. Refuse over guess, applied to a span the user already explained.",
+  "turns": [
+    {
+      "tool": "resolve.bind:v1",
+      "args": {
+        "conversation_id": "c-lp-1",
+        "text": "ukaz mista s nazvem \"Valmy Oil\""
+      },
+      "scenario": "verbatim_literal",
+      "expect": {
+        "outcome": "empty",
+        "no_binding_below_threshold": true,
+        "verbatim": [
+          {
+            "text": "Valmy Oil",
+            "span": {
+              "start": 20,
+              "end": 31
+            },
+            "attributions": 0,
+            "gap_kind": "GAP_KIND_G3_UNATTRIBUTED"
+          }
+        ],
+        "no_span_inside_literal": true
+      }
+    }
+  ]
+}

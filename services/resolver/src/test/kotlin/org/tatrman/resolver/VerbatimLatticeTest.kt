@@ -6,39 +6,15 @@ import io.kotest.matchers.booleans.shouldBeFalse
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.shouldBe
-import kotlinx.coroutines.runBlocking
-import org.tatrman.fuzzy.v1.BatchMatchRequest
-import org.tatrman.fuzzy.v1.BatchMatchResponse
-import org.tatrman.fuzzy.v1.FuzzyMatch
-import org.tatrman.fuzzy.v1.FuzzyMatchResponse
-import org.tatrman.fuzzy.v1.FuzzyStatusResponse
-import org.tatrman.fuzzy.v1.Provenance
-import org.tatrman.fuzzy.v1.SourceTag
-import org.tatrman.nlp.v1.AnalyzeRequest
 import org.tatrman.nlp.v1.AnalyzeResponse
-import org.tatrman.nlp.v1.Capability
 import org.tatrman.nlp.v1.NerEntity
-import org.tatrman.nlp.v1.NlpOp
-import org.tatrman.nlp.v1.StatusResponse
-import org.tatrman.nlp.v1.Token
-import org.tatrman.resolver.client.FuzzyClient
-import org.tatrman.resolver.client.NlpClient
-import org.tatrman.resolver.model.ResolverThresholds
 import org.tatrman.resolver.pipeline.Literals
 import org.tatrman.resolver.pipeline.QuoteScanner
-import org.tatrman.resolver.pipeline.ResolverPipeline
 import org.tatrman.resolver.pipeline.SpanProposal
-import org.tatrman.resolver.registry.DeclaredVocabulary
-import org.tatrman.resolver.registry.SnapshotRegistry
-import org.tatrman.resolver.registry.StubRegistrySource
-import org.tatrman.resolver.token.ResumeTokenCodec
 import org.tatrman.resolver.v1.EntityType
-import org.tatrman.resolver.v1.FreshQuestion
 import org.tatrman.resolver.v1.GapKind
 import org.tatrman.resolver.v1.Registry
-import org.tatrman.resolver.v1.ResolveRequest
 import org.tatrman.resolver.v1.ValueKind
-import org.tatrman.fuzzy.v1.TargetClass as FuzzyTargetClass
 
 /**
  * LP-P1·S2 — *"Ukaž dodací místa začínající na "Pelex""*, the question this effort started from.
@@ -56,53 +32,18 @@ import org.tatrman.fuzzy.v1.TargetClass as FuzzyTargetClass
 class VerbatimLatticeTest :
     StringSpec({
 
-        val text = "Ukaž dodací místa začínající na \"Pelex\""
+        val text = VerbatimHero.TEXT
+        val store = VerbatimHero.STORE
 
-        // The estate declares the mention facet: `semantics { name: nazev }` on the store entity,
-        // resolved to a full attribute ref. ⚑ It travels on the per-request Registry override
-        // because the snapshot channel has no field for it yet (⚑LPQ-5) — an archive-fed estate
-        // gets "" and the literal lands headless, which the last case here pins.
-        val store =
-            EntityType
-                .newBuilder()
-                .setRef("er.entity.store")
-                .addCategories("er.entity.store")
-                .addAnchors("dodací místo")
-                .setObjectKind("entity")
-                .setNameAttributeRef("er.entity.store.name")
-                .build()
-
-        fun registryOf(vararg types: EntityType) =
-            Registry
-                .newBuilder()
-                .addAllEntityTypes(types.toList())
-                .addLocales("cs")
-                .setSnapshotHash("snap-lp")
-                .build()
-
-        fun request(
-            registry: Registry,
-            questionText: String,
-        ) = ResolveRequest
-            .newBuilder()
-            .setConversationId("c-lp")
-            .setFresh(FreshQuestion.newBuilder().setText(questionText).setLocale("cs"))
-            .setRegistry(registry)
-            .build()
-
-        val emptyDefault = SnapshotRegistry(StubRegistrySource(DeclaredVocabulary(), ""), ResolverThresholds.LIVE)
-        val codec = ResumeTokenCodec(mapOf("k1" to ByteArray(32) { it.toByte() }), activeKeyId = "k1")
+        fun registryOf(vararg types: EntityType) = VerbatimHero.registryOf(*types)
 
         fun resolve(
             registry: Registry,
-            fuzzy: FakeFuzzy = FakeFuzzy(mapOf("dodací místa" to listOf(declared("er.entity.store")))),
-            parse: AnalyzeResponse = heroParse(),
+            fuzzy: VerbatimHero.FakeFuzzy =
+                VerbatimHero.FakeFuzzy(mapOf("dodací místa" to listOf(VerbatimHero.declared("er.entity.store")))),
+            parse: AnalyzeResponse = VerbatimHero.parse(),
             questionText: String = text,
-        ) = fuzzy to
-            runBlocking {
-                ResolverPipeline(FakeNlp(parse), fuzzy, emptyDefault, emptyMap(), codec)
-                    .resolve(request(registry, questionText))
-            }
+        ) = VerbatimHero.resolve(registry, fuzzy, parse, questionText)
 
         "the hero: ONE verbatim value on the store's name, and nothing was looked up for Pelex" {
             val (fuzzy, response) = resolve(registryOf(store))
@@ -184,10 +125,10 @@ class VerbatimLatticeTest :
                     .newBuilder()
                     .setLanguage("cs")
                     .setDetectedLanguage("cs")
-                    .addTokens(token("zákazník", 0, 8, "zákazník", "NOUN", 0, "root"))
-                    .addTokens(token("\"", 9, 10, "\"", "PUNCT", 1, "punct"))
-                    .addTokens(token("12.5.2024", 10, 19, "12.5.2024", "NUM", 1, "nmod"))
-                    .addTokens(token("\"", 19, 20, "\"", "PUNCT", 1, "punct"))
+                    .addTokens(VerbatimHero.token("zákazník", 0, 8, "zákazník", "NOUN", 0, "root"))
+                    .addTokens(VerbatimHero.token("\"", 9, 10, "\"", "PUNCT", 1, "punct"))
+                    .addTokens(VerbatimHero.token("12.5.2024", 10, 19, "12.5.2024", "NUM", 1, "nmod"))
+                    .addTokens(VerbatimHero.token("\"", 19, 20, "\"", "PUNCT", 1, "punct"))
                     .addEntities(
                         NerEntity
                             .newBuilder()
@@ -211,7 +152,7 @@ class VerbatimLatticeTest :
             val (_, response) =
                 resolve(
                     registryOf(customer),
-                    FakeFuzzy(mapOf("zákazník" to listOf(declared("er.entity.customer")))),
+                    VerbatimHero.FakeFuzzy(mapOf("zákazník" to listOf(VerbatimHero.declared("er.entity.customer")))),
                     parse,
                     quoted,
                 )
@@ -232,12 +173,12 @@ class VerbatimLatticeTest :
                 AnalyzeResponse
                     .newBuilder()
                     .setLanguage("cs")
-                    .addTokens(token("zákazník", 0, 8, "zákazník", "NOUN", 0, "root"))
-                    .addTokens(token("\"", 9, 10, "\"", "PUNCT", 1, "punct"))
-                    .addTokens(token("dodací", 10, 16, "dodací", "ADJ", 4, "amod"))
-                    .addTokens(token("místo", 17, 22, "místo", "NOUN", 1, "nmod"))
-                    .addTokens(token("Pelex", 23, 28, "Pelex", "PROPN", 4, "flat"))
-                    .addTokens(token("\"", 28, 29, "\"", "PUNCT", 1, "punct"))
+                    .addTokens(VerbatimHero.token("zákazník", 0, 8, "zákazník", "NOUN", 0, "root"))
+                    .addTokens(VerbatimHero.token("\"", 9, 10, "\"", "PUNCT", 1, "punct"))
+                    .addTokens(VerbatimHero.token("dodací", 10, 16, "dodací", "ADJ", 4, "amod"))
+                    .addTokens(VerbatimHero.token("místo", 17, 22, "místo", "NOUN", 1, "nmod"))
+                    .addTokens(VerbatimHero.token("Pelex", 23, 28, "Pelex", "PROPN", 4, "flat"))
+                    .addTokens(VerbatimHero.token("\"", 28, 29, "\"", "PUNCT", 1, "punct"))
                     .addEntities(
                         NerEntity
                             .newBuilder()
@@ -302,107 +243,4 @@ class VerbatimLatticeTest :
             // `Pelex` outside the quotes is still a candidate: the floor still runs.
             proposed.any { it.text == "Pelex" } shouldBe true
         }
-    }) {
-    companion object {
-        /**
-         * *Ukaž dodací místa začínající na "Pelex"* — the delimiters tokenised apart, which is
-         * what MorphoDiTa and Stanza both do. `Pelex` hangs off `začínající`, which hangs off
-         * `místa`: two hops, inside §2.1's three.
-         */
-        private fun heroParse(): AnalyzeResponse =
-            AnalyzeResponse
-                .newBuilder()
-                .setLanguage("cs")
-                .setDetectedLanguage("cs")
-                .addTokens(token("Ukaž", 0, 4, "ukázat", "VERB", 0, "root"))
-                .addTokens(token("dodací", 5, 11, "dodací", "ADJ", 3, "amod"))
-                .addTokens(token("místa", 12, 17, "místo", "NOUN", 1, "obj"))
-                .addTokens(token("začínající", 18, 29, "začínající", "ADJ", 3, "amod"))
-                .addTokens(token("na", 30, 32, "na", "ADP", 7, "case"))
-                .addTokens(token("\"", 32, 33, "\"", "PUNCT", 7, "punct"))
-                .addTokens(token("Pelex", 33, 38, "Pelex", "PROPN", 4, "obl"))
-                .addTokens(token("\"", 38, 39, "\"", "PUNCT", 7, "punct"))
-                .build()
-
-        private fun token(
-            text: String,
-            start: Int,
-            end: Int,
-            lemma: String,
-            upos: String,
-            depHead: Int,
-            depRelation: String,
-        ): Token =
-            Token
-                .newBuilder()
-                .setText(text)
-                .setCharStart(start)
-                .setCharEnd(end)
-                .setLemma(lemma)
-                .setUpos(upos)
-                .setDepHead(depHead)
-                .setDepRelation(depRelation)
-                .build()
-
-        private fun declared(targetRef: String): FuzzyMatch =
-            FuzzyMatch
-                .newBuilder()
-                .setCandidateId("lex:$targetRef")
-                .setCandidate(targetRef)
-                .setScore(1.0)
-                .setCategory(targetRef)
-                .setSource(SourceTag.DECLARED)
-                .setTargetRef(targetRef)
-                .setTargetClass(FuzzyTargetClass.TARGET_CLASS_MODEL_OBJECT)
-                .setProvenance(Provenance.newBuilder().setProducer("lex-matcher").setMethod("TATRMAN"))
-                .build()
-    }
-
-    private class FakeNlp(
-        private val parse: AnalyzeResponse,
-    ) : NlpClient {
-        override suspend fun analyze(request: AnalyzeRequest): AnalyzeResponse = parse
-
-        override suspend fun getStatus(): StatusResponse =
-            StatusResponse
-                .newBuilder()
-                .setReady(true)
-                .addCapabilities(
-                    Capability
-                        .newBuilder()
-                        .setOp(NlpOp.NER)
-                        .setLanguage("cs")
-                        .setEngine("nametag3"),
-                ).addCapabilities(
-                    Capability
-                        .newBuilder()
-                        .setOp(NlpOp.DEP_PARSE)
-                        .setLanguage("cs")
-                        .setEngine("stanza"),
-                ).build()
-    }
-
-    private class FakeFuzzy(
-        private val byQuery: Map<String, List<FuzzyMatch>>,
-    ) : FuzzyClient {
-        var lastRequest: BatchMatchRequest? = null
-
-        override suspend fun batchMatch(request: BatchMatchRequest): BatchMatchResponse {
-            lastRequest = request
-            val builder = BatchMatchResponse.newBuilder()
-            for (span in request.spansList) {
-                val scoped = span.categoriesList.toSet()
-                builder.addResults(
-                    FuzzyMatchResponse
-                        .newBuilder()
-                        .addAllMatches(
-                            byQuery[span.query].orEmpty().filter { scoped.isEmpty() || it.category in scoped },
-                        ).setMatchedAlgorithm("TATRMAN"),
-                )
-            }
-            return builder.build()
-        }
-
-        override suspend fun getStatus(): FuzzyStatusResponse = FuzzyStatusResponse.getDefaultInstance()
-    }
-}
+    })
