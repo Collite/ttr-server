@@ -18,9 +18,9 @@ import org.tatrman.fuzzy.core.RetrievalMode
  *
  * Each case pins, UNDER v2: the top-1, the ORDER of the top-3, and the kind of every token hit on
  * the top-1 (`exact` · `typo` · `prefix`, in query order). `v1Top1` is the improvement ledger —
- * what v1 answered for the same query — and is recorded, not asserted. A case with `pending` set
- * names an open question; it is reported, not asserted, so the slice cannot quietly pin a known gap
- * as "expected".
+ * what v1 answered for the same query — and is recorded, and asserted for drift. A case with
+ * `pending` set names an open question; it is reported, not asserted, so the slice cannot quietly
+ * pin a known gap as "expected". (All 57 are pinned since ✅LP-7…9 — 2026-09-23.)
  *
  * The full v1/v2 table is printed on every run (the XML report's system-out).
  */

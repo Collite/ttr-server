@@ -36,20 +36,34 @@ class TokenIndex(
      */
     fun idf(token: String): Double = idfByToken[token] ?: idfForAbsent
 
-    // LP-P0 — Σ idf over a candidate's tokens, per axis: the denominator of v2's coverage C.
+    // ✅LP-7 — IDF as `fuzzy.match:v2` sees tokens: document frequency POOLED over the edge-trimmed
+    // form, because v2 treats `oil` and `oil,` as one word — counted apart, a comma alone would make a
+    // row look rarer (and cover more). Built lazily on the first v2 call; v1 never reads it.
+    private val v2IdfByTrimmed: Map<String, Double> by lazy {
+        val docs = HashMap<String, MutableSet<String>>()
+        for (candidate in candidates) {
+            for (token in candidate.allTokenSet) docs.getOrPut(EdgeTrim.of(token)) { HashSet() }.add(candidate.id)
+        }
+        docs.mapValues { (_, ids) -> ln((documentCount + 1.0) / (ids.size + 1.0)) + 1.0 }
+    }
+
+    /** v2's IDF for [token] (folded): pooled over its [EdgeTrim] form; absent ⇒ maximally rare. */
+    fun idfV2(token: String): Double = v2IdfByTrimmed[EdgeTrim.of(token)] ?: idfForAbsent
+
+    // LP-P0 — Σ idfV2 over a candidate's tokens, per axis: the denominator of v2's coverage C.
     // Memoised lazily per candidate id (the index is rebuilt on refresh, so the memo goes with it);
     // v1 never calls it. Without it v2 paid one idf lookup per candidate token per request.
     private val surfaceIdfTotals = java.util.concurrent.ConcurrentHashMap<String, Double>()
     private val lemmaIdfTotals = java.util.concurrent.ConcurrentHashMap<String, Double>()
 
-    /** Σ [idf] over [candidate]'s surface tokens ([lemma] = false) or lemma tokens ([lemma] = true). */
+    /** Σ [idfV2] over [candidate]'s surface tokens ([lemma] = false) or lemma tokens ([lemma] = true). */
     fun idfTotal(
         candidate: Candidate,
         lemma: Boolean,
     ): Double {
         val memo = if (lemma) lemmaIdfTotals else surfaceIdfTotals
         return memo.getOrPut(candidate.id) {
-            (if (lemma) candidate.lemmaTokens else candidate.tokens).sumOf { idf(it) }
+            (if (lemma) candidate.lemmaTokens else candidate.tokens).sumOf { idfV2(it) }
         }
     }
 

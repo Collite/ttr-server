@@ -89,6 +89,13 @@ class TokenVocabulary(
                 .mapValues { (_, ids) -> ids.toIntArray() }
     }
 
+    /**
+     * ✅LP-7 — the vocabulary as `fuzzy.match:v2` sees it: every token under its [EdgeTrim] form.
+     * Built lazily on the first v2 lookup (a v1-only service never pays for it) and rebuilt with the
+     * vocabulary on refresh, like everything else here.
+     */
+    val v2View: V2View by lazy { V2View(tokens) }
+
     /** Token id for [token] (must be already folded), or -1 if absent from the vocabulary. */
     fun idOf(token: String): Int = idByToken[token] ?: -1
 
@@ -106,4 +113,35 @@ class TokenVocabulary(
 
     /** Candidate ordinals containing token id [id] (ascending). */
     fun postings(id: Int): IntArray = postings[id]
+}
+
+/**
+ * ✅LP-7 — the trimmed-token view of a [TokenVocabulary]: trimmed form per id, ids per trimmed form
+ * (several raw tokens share one: `oil` · `oil,`), length buckets on the trimmed length, and the ids
+ * sorted by trimmed form so a prefix is one contiguous run.
+ */
+class V2View(
+    tokens: Array<String>,
+) {
+    val trimmed: Array<String> = Array(tokens.size) { EdgeTrim.of(tokens[it]) }
+
+    val idsByTrimmed: Map<String, IntArray> =
+        trimmed.indices.groupBy { trimmed[it] }.mapValues { (_, ids) -> ids.toIntArray() }
+
+    val lengthBuckets: Map<Int, IntArray> =
+        trimmed.indices.groupBy { trimmed[it].length }.mapValues { (_, ids) -> ids.toIntArray() }
+
+    /** Token ids ordered by (trimmed form, id). */
+    val sortedIds: IntArray = trimmed.indices.sortedWith(compareBy({ trimmed[it] }, { it })).toIntArray()
+
+    /** Position in [sortedIds] of the first id whose trimmed form is `≥` [key]. */
+    fun lowerBound(key: String): Int {
+        var lo = 0
+        var hi = sortedIds.size
+        while (lo < hi) {
+            val mid = (lo + hi) ushr 1
+            if (trimmed[sortedIds[mid]] < key) lo = mid + 1 else hi = mid
+        }
+        return lo
+    }
 }

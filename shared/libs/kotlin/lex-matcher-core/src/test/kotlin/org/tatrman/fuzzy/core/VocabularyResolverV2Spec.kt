@@ -48,26 +48,30 @@ class VocabularyResolverV2Spec :
             r[0].quality shouldBe 1.0
         }
 
-        "agro → agrofert is a PREFIX at the 0.80 floor (4/8 < 0.80)" {
+        "agro → agrofert is a PREFIX at the 0.86 floor (4/8 < 0.86, ✅LP-8)" {
             val hit = resolver().resolveV2("agro").hit("agrofert")!!
             hit.kind shouldBe MatchKind.PREFIX
-            hit.quality shouldBe (0.80 plusOrMinus 1e-12)
+            hit.quality shouldBe (0.86 plusOrMinus 1e-12)
         }
 
-        "a long prefix earns len t / len c above the floor — shelte → shelter = 6/7" {
-            val hit = resolver().resolveV2("shelte").hit("shelter")!!
-            // Also ED 1 (q 0.85) — the prefix's 6/7 ≈ 0.857 is higher, so PREFIX wins.
+        "a long prefix earns len t / len c above the floor — republi → republic = 7/8" {
+            val hit = resolver().resolveV2("republi").hit("republic")!!
+            // Also ED 1 (q 0.85) — the prefix's 0.875 is higher, so PREFIX wins.
             hit.kind shouldBe MatchKind.PREFIX
-            hit.quality shouldBe (6.0 / 7.0 plusOrMinus 1e-12)
+            hit.quality shouldBe (7.0 / 8.0 plusOrMinus 1e-12)
         }
 
-        "shel → shell: 1-typo (0.85) and prefix (0.80) — contracts §4.2 max q ⇒ TYPO 0.85" {
-            // The task list pinned PREFIX 0.8 here; contracts §4.2 ("a token matching by several
-            // kinds takes the max q") wins, and 0.85 > 0.80.
+        "shelte → shelter: 6/7 is under the floor, so the floor (0.86) — still above the 1-typo 0.85" {
+            val hit = resolver().resolveV2("shelte").hit("shelter")!!
+            hit.kind shouldBe MatchKind.PREFIX
+            hit.quality shouldBe (0.86 plusOrMinus 1e-12)
+        }
+
+        "shel → shell: 1-typo (0.85) and prefix (0.86) ⇒ PREFIX — a prefix beats a single typo (✅LP-8)" {
             val hit = resolver().resolveV2("shel").hit("shell")!!
-            hit.kind shouldBe MatchKind.TYPO
+            hit.kind shouldBe MatchKind.PREFIX
             hit.distance shouldBe 1
-            hit.quality shouldBe (0.85 plusOrMinus 1e-12)
+            hit.quality shouldBe (0.86 plusOrMinus 1e-12)
         }
 
         "valmi → valmy is a TYPO at 0.85" {
@@ -101,7 +105,53 @@ class VocabularyResolverV2Spec :
         "results are sorted by (−q, tokenId)" {
             val r = resolver().resolveV2("agro")
             r shouldBe r.sortedWith(compareBy({ -it.quality }, { it.tokenId }))
-            r.first().quality shouldBe (0.85 plusOrMinus 1e-12)
+            r.first().quality shouldBe (0.86 plusOrMinus 1e-12)
+        }
+
+        "✅LP-7 — edge punctuation: `oil` is EXACT to both `oil` and `oil,`; a comma'd query finds the bare token" {
+            val vocab7 =
+                TokenVocabulary(
+                    listOf(
+                        Candidate.fromValues("A", "Valmy Oil, s.r.o."),
+                        Candidate.fromValues("B", "Oil Trade s.r.o."),
+                        Candidate.fromValues("C", "Tom & Jerry"),
+                    ),
+                )
+            val r = VocabularyResolver(vocab7)
+            r
+                .resolveV2("oil")
+                .filter { it.kind == MatchKind.EXACT }
+                .map { vocab7.tokens[it.tokenId] }
+                .toSet() shouldBe
+                setOf("oil", "oil,")
+            r
+                .resolveV2("oil,")
+                .filter { it.kind == MatchKind.EXACT }
+                .map { vocab7.tokens[it.tokenId] }
+                .toSet() shouldBe
+                setOf("oil", "oil,")
+            // legal-form dots trim at the edges only — `s.r.o` still is not `sro`
+            r.resolveV2("s.r.o").single { it.kind == MatchKind.EXACT }.let { vocab7.tokens[it.tokenId] } shouldBe
+                "s.r.o."
+            // a token that trims to nothing is kept as typed
+            EdgeTrim.of("&") shouldBe "&"
+            r.resolveV2("&").single().let { vocab7.tokens[it.tokenId] } shouldBe "&"
+        }
+
+        "✅LP-9 — an exact hit skips the typo scan but still retrieves its prefixes" {
+            val vocab9 =
+                TokenVocabulary(
+                    listOf(
+                        Candidate.fromValues("A", "Vysočina Agro a.s."),
+                        Candidate.fromValues("B", "Agrofert, a.s."),
+                        Candidate.fromValues("C", "Agra Invest"),
+                    ),
+                )
+            val r = VocabularyResolver(vocab9)
+            val hits = r.resolveV2("agro")
+            r.lastTypoScan shouldBe IntRange.EMPTY // `agra` (1 typo) is NOT offered past an exact hit
+            hits.map { vocab9.tokens[it.tokenId] to it.kind } shouldBe
+                listOf("agro" to MatchKind.EXACT, "agrofert," to MatchKind.PREFIX)
         }
 
         "T4 — idfOrMax: idf for a vocabulary token, idfAbsent otherwise" {

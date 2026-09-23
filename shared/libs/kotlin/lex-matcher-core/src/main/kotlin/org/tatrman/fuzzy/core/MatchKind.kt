@@ -14,7 +14,7 @@ enum class MatchKind {
     /** `1 ≤ d ≤ budget(len t)` — quality `1 − 0.15·d`. */
     TYPO,
 
-    /** `c.startsWith(t)`, `len t ≥ 3`, `len t < len c` — quality `max(0.80, len t / len c)`. */
+    /** `c.startsWith(t)`, `len t ≥ 3`, `len t < len c` — quality `max(0.86, len t / len c)` (✅LP-8). */
     PREFIX,
 }
 
@@ -29,4 +29,17 @@ object EditBudget {
             length <= 5 -> 1
             else -> 2
         }
+}
+
+/**
+ * ✅LP-7 (contracts §4.2 amended) — `fuzzy.match:v2` compares tokens after trimming leading and
+ * trailing non-alphanumerics, because the tokenizer splits on whitespace only and candidate tokens
+ * keep their punctuation (`Oil, s.r.o.` → `oil,` · `s.r.o.`). A token that trims to nothing (`&`,
+ * `-`) is kept as typed rather than matching every other such token. v1 never calls this.
+ */
+object EdgeTrim {
+    fun of(token: String): String {
+        val trimmed = token.trim { !it.isLetterOrDigit() }
+        return trimmed.ifEmpty { token }
+    }
 }

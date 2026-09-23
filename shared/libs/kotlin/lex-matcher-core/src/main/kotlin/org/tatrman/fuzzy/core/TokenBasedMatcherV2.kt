@@ -16,13 +16,15 @@ import info.debatty.java.stringsimilarity.Levenshtein
  * candidate positions in query order (contracts §4.3), so a prefix or typo hit earns order credit,
  * which v1's `indexOf` on the exact surface never gave it.
  *
- * `q` comes from the per-token kind table ([MatchKind]): exact 1.0 · typo `1 − 0.15·d` within the
- * [EditBudget] · prefix `max(0.80, |t|/|c|)`; a token matching several ways takes the max q. `P` is
+ * `q` comes from the per-token kind table ([MatchKind]), on [EdgeTrim]med tokens (✅LP-7): exact 1.0
+ * · typo `1 − 0.15·d` within the [EditBudget] · prefix `max(0.86, |t|/|c|)` (✅LP-8); a token
+ * matching several ways takes the max q. `P` is
  * v1's query coverage with the kind qualities; `C` is only the tie-break — with ε = 0.01 two
  * candidates at equal `P` differ by ≤ ε, which is under the RV-32 margin floor, so coverage orders
  * an ask and never turns an ambiguity into a silent bind (contracts §4.5).
  *
- * Weights come from the same [TokenIndex] v1 uses (identical IDF formula to [TokenVocabulary]).
+ * Weights come from the same [TokenIndex] v1 uses (same IDF formula), with document frequency pooled over
+ * the edge-trimmed form ([TokenIndex.idfV2], ✅LP-7).
  */
 class TokenBasedMatcherV2(
     private val tokenIndex: TokenIndex,
@@ -121,10 +123,10 @@ class TokenBasedMatcherV2(
         for ((qPos, t) in queryTokens.withIndex()) {
             val best = bestMatch(t, candidateTokens)
             if (best == null) {
-                weightTotal += tokenIndex.idf(t) // idf(t), or idfAbsent for a token outside the corpus
+                weightTotal += tokenIndex.idfV2(t) // idf(t), or idfAbsent for a token outside the corpus
                 continue
             }
-            val w = tokenIndex.idf(candidateTokens[best.cPos])
+            val w = tokenIndex.idfV2(candidateTokens[best.cPos])
             weightedSum += w * best.quality
             weightTotal += w
             // Each candidate position counts once in C, however many query tokens hit it.
@@ -196,11 +198,17 @@ class TokenBasedMatcherV2(
         return best
     }
 
-    /** The contracts §4.2 kind table for one non-identical pair: typo within budget, prefix, max q. */
+    /**
+     * The contracts §4.2 kind table for one pair, on [EdgeTrim]med forms (✅LP-7): exact on equality
+     * after the trim, else typo within budget / prefix, max q.
+     */
     private fun pairMatch(
-        t: String,
-        c: String,
+        rawT: String,
+        rawC: String,
     ): PairMatch {
+        val t = EdgeTrim.of(rawT)
+        val c = EdgeTrim.of(rawC)
+        if (t == c) return EXACT_MATCH
         val budget = EditBudget.of(t.length)
         var q = 0.0
         var kind = MatchKind.TYPO
@@ -228,6 +236,7 @@ class TokenBasedMatcherV2(
         const val EPSILON = 0.01
 
         private val NO_MATCH = PairMatch(MatchKind.TYPO, 0, 0.0)
+        private val EXACT_MATCH = PairMatch(MatchKind.EXACT, 0, 1.0)
 
         /** [Provenance.method] for a v2-scored row (contracts §4.6). */
         const val METHOD = "TATRMAN_V2"
