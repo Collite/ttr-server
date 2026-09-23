@@ -2,13 +2,23 @@
 package org.tatrman.query.mcp.tools
 
 import org.tatrman.plan.v1.PipelineContext
+import org.tatrman.plan.v1.PlanNode
+import org.tatrman.plan.v1.QualifiedName
 import org.tatrman.plan.v1.SchemaCode
+import org.tatrman.plan.v1.TableScanNode
 import org.tatrman.query.v1.CompileResponse
 import org.tatrman.query.v1.RunRequest
+import org.tatrman.validate.v1.SecurityRuleApplied
+import org.tatrman.worker.v1.BoundParameter
+import org.tatrman.worker.v1.ExecutionReceipt
 import org.tatrman.worker.v1.ResultBatch
+import org.tatrman.worker.v1.RlsOutcome
+import org.tatrman.worker.v1.StatementKind
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldContain
+import io.kotest.matchers.collections.shouldNotContain
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.string.shouldContain as shouldContainText
 import io.modelcontextprotocol.kotlin.sdk.types.CallToolRequest
 import io.modelcontextprotocol.kotlin.sdk.types.CallToolRequestParams
 import io.modelcontextprotocol.kotlin.sdk.types.TextContent
@@ -812,4 +822,207 @@ class QueryToolSpec :
             res.isError shouldBe false
             (res.structuredContent!!["ok"] as JsonPrimitive).content shouldBe "true"
         }
+        // ── ES-P0·S0.5 — the `execution` object (contracts §2, ⚑ES-5) ────────────────────────
+        //
+        // The receipt arrives in two halves on two batches (⚑ES-1). query-mcp is where they
+        // become ONE object, so that golem — and every other MCP client — never has to know
+        // there were two. Exposure is unconditional: a caller that gets `rowCount` gets
+        // `execution` too, because "what ran" is not a debug flag.
+
+        "both halves of the receipt become ONE execution object" {
+            val tool = QueryTool(cfg, fakeRunner(receiptBatches()), fakeMetadata)
+            val res = runBlocking { tool.execute(queryCall(), identity = null) }
+
+            res.isError shouldBe false
+            val execution = res.structuredContent!!["execution"] as JsonObject
+
+            // statement half — the worker's
+            (execution["statementKind"] as JsonPrimitive).content shouldBe "SQL_EXECUTED"
+            (execution["dialect"] as JsonPrimitive).content shouldBe "POSTGRESQL"
+            (execution["statement"] as JsonPrimitive).content shouldBe "SELECT account_id FROM public.positions"
+            (execution["statementRef"] as JsonPrimitive).content shouldBe ""
+            (execution["statementTruncated"] as JsonPrimitive).content shouldBe "false"
+            (execution["connectionId"] as JsonPrimitive).content shouldBe "pg-hartland"
+            (execution["engineLabel"] as JsonPrimitive).content shouldBe "worker-postgres@pg-hartland"
+            (execution["rowsTotal"] as JsonPrimitive).content shouldBe "12"
+            (execution["durationMs"] as JsonPrimitive).content shouldBe "184"
+            (execution["rls"] as JsonPrimitive).content shouldBe "RLS_APPLIED"
+
+            // ⚑ES-2 — the roster crosses the JSON boundary; the value does not.
+            val parameters = execution["parameters"] as JsonArray
+            parameters.size shouldBe 1
+            val p0 = parameters[0] as JsonObject
+            (p0["name"] as JsonPrimitive).content shouldBe "year_from"
+            (p0["type"] as JsonPrimitive).content shouldBe "int"
+            (p0["value"] as JsonPrimitive).content shouldBe "<masked>"
+            (p0["masked"] as JsonPrimitive).content shouldBe "true"
+
+            // plan half — the query service's
+            (execution["planOmittedReason"] as JsonPrimitive).content shouldBe ""
+            (execution["dispatchTarget"] as JsonPrimitive).content shouldBe "worker-postgres:7401"
+            (execution["effectiveSchema"] as JsonPrimitive).content shouldBe "DB"
+            (execution["cacheHit"] as JsonPrimitive).content shouldBe "false"
+            (execution["compileMs"] as JsonPrimitive).content shouldBe "31"
+
+            // ⚑ES-3 — the plan crosses as TEXT, through the one formatter `compile` already uses.
+            val planText = (execution["dispatchedPlanText"] as JsonPrimitive).content
+            planText shouldContainText "table_scan"
+            planText shouldContainText "positions"
+
+            // A-1's set, finally readable from outside the server.
+            val rules = execution["securityApplied"] as JsonArray
+            rules.size shouldBe 1
+            ((rules[0] as JsonObject)["ruleId"] as JsonPrimitive).content shouldBe "rls.tenant"
+            ((rules[0] as JsonObject)["predicateSummary"] as JsonPrimitive).content shouldBe
+                "WHERE tenant_id = (your tenant)"
+        }
+
+        "a statement half alone yields an execution object with empty plan fields, no error" {
+            val batches =
+                listOf(
+                    emptyBatchWith(index = 0, isFirst = true, isLast = false, receipt = null),
+                    emptyBatchWith(index = 1, isLast = true, receipt = statementHalfReceipt()),
+                )
+            val tool = QueryTool(cfg, fakeRunner(batches), fakeMetadata)
+            val res = runBlocking { tool.execute(queryCall(), identity = null) }
+
+            res.isError shouldBe false
+            val execution = res.structuredContent!!["execution"] as JsonObject
+            (execution["statement"] as JsonPrimitive).content shouldBe "SELECT account_id FROM public.positions"
+            (execution["dispatchedPlanText"] as JsonPrimitive).content shouldBe ""
+            (execution["effectiveSchema"] as JsonPrimitive).content shouldBe ""
+            (execution["securityApplied"] as JsonArray).size shouldBe 0
+        }
+
+        "a plan half alone yields an execution object with empty statement fields" {
+            val batches =
+                listOf(
+                    emptyBatchWith(index = 0, isFirst = true, isLast = true, receipt = planHalfReceipt()),
+                )
+            val tool = QueryTool(cfg, fakeRunner(batches), fakeMetadata)
+            val res = runBlocking { tool.execute(queryCall(), identity = null) }
+
+            val execution = res.structuredContent!!["execution"] as JsonObject
+            (execution["statementKind"] as JsonPrimitive).content shouldBe "STATEMENT_KIND_UNSPECIFIED"
+            (execution["statement"] as JsonPrimitive).content shouldBe ""
+            (execution["effectiveSchema"] as JsonPrimitive).content shouldBe "DB"
+        }
+
+        "an over-cap plan says so instead of shipping a truncated one" {
+            val half =
+                planHalfReceipt()
+                    .toBuilder()
+                    .clearDispatchedPlan()
+                    .setPlanOmittedReason("over_cap")
+                    .build()
+            val tool =
+                QueryTool(
+                    cfg,
+                    fakeRunner(listOf(emptyBatchWith(index = 0, isFirst = true, isLast = true, receipt = half))),
+                    fakeMetadata,
+                )
+            val res = runBlocking { tool.execute(queryCall(), identity = null) }
+
+            val execution = res.structuredContent!!["execution"] as JsonObject
+            (execution["dispatchedPlanText"] as JsonPrimitive).content shouldBe ""
+            (execution["planOmittedReason"] as JsonPrimitive).content shouldBe "over_cap"
+        }
+
+        "no receipt at all — an older server — emits NO execution key" {
+            val tool =
+                QueryTool(
+                    cfg,
+                    fakeRunner(listOf(emptyBatchWith(index = 0, isFirst = true, isLast = true, receipt = null))),
+                    fakeMetadata,
+                )
+            val res = runBlocking { tool.execute(queryCall(), identity = null) }
+
+            res.isError shouldBe false
+            res.structuredContent!!.keys shouldNotContain "execution"
+        }
     })
+
+private fun queryCall(): CallToolRequest =
+    CallToolRequest(
+        params =
+            CallToolRequestParams(
+                name = "query",
+                arguments =
+                    buildJsonObject {
+                        put("source", JsonPrimitive("SELECT account_id FROM positions"))
+                        put("source_language", JsonPrimitive("sql"))
+                    },
+            ),
+    )
+
+private fun emptyBatchWith(
+    index: Int,
+    isFirst: Boolean = false,
+    isLast: Boolean = false,
+    receipt: ExecutionReceipt?,
+): ResultBatch =
+    ResultBatch
+        .newBuilder()
+        .setBatchIndex(index)
+        .setIsFirst(isFirst)
+        .setIsLast(isLast)
+        .setArrowIpc(ByteString.EMPTY)
+        .setContext(PipelineContext.getDefaultInstance())
+        .apply { if (receipt != null) setReceipt(receipt) }
+        .build()
+
+private fun statementHalfReceipt(): ExecutionReceipt =
+    ExecutionReceipt
+        .newBuilder()
+        .setStatementKind(StatementKind.SQL_EXECUTED)
+        .setDialect("POSTGRESQL")
+        .setStatement("SELECT account_id FROM public.positions")
+        .setConnectionId("pg-hartland")
+        .setEngineLabel("worker-postgres@pg-hartland")
+        .setRowsTotal(12)
+        .setDurationMs(184)
+        .setRls(RlsOutcome.RLS_APPLIED)
+        .addParameters(
+            BoundParameter
+                .newBuilder()
+                .setName("year_from")
+                .setType("int")
+                .setValueMasked("<masked>")
+                .setMasked(true),
+        ).build()
+
+private fun planHalfReceipt(): ExecutionReceipt =
+    ExecutionReceipt
+        .newBuilder()
+        .setDispatchedPlan(
+            PlanNode.newBuilder().setTableScan(
+                TableScanNode.newBuilder().setTable(
+                    QualifiedName
+                        .newBuilder()
+                        .setSchemaCode(SchemaCode.DB)
+                        .setNamespace("public")
+                        .setName("positions"),
+                ),
+            ),
+        ).addSecurityApplied(
+            SecurityRuleApplied
+                .newBuilder()
+                .setRuleId("rls.tenant")
+                .setPredicateSummary("WHERE tenant_id = (your tenant)"),
+        ).setDispatchTarget("worker-postgres:7401")
+        .setEffectiveSchema("DB")
+        .setCompileMs(31)
+        .build()
+
+/** The wire as ⚑ES-1 shapes it: plan half on the first batch, both halves on the last. */
+private fun receiptBatches(): List<ResultBatch> {
+    val merged =
+        statementHalfReceipt()
+            .toBuilder()
+            .mergeFrom(planHalfReceipt())
+            .build()
+    return listOf(
+        emptyBatchWith(index = 0, isFirst = true, receipt = planHalfReceipt()),
+        emptyBatchWith(index = 1, isLast = true, receipt = merged),
+    )
+}

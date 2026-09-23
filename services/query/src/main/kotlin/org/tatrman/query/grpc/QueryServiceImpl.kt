@@ -26,9 +26,12 @@ import org.tatrman.plan.v1.SchemaCode
 import org.tatrman.translate.v1.SchemaDecision
 import org.tatrman.translate.v1.TranslateRequest
 import org.tatrman.translate.v1.TranslateResponse
+import org.tatrman.validate.v1.SecurityRuleApplied
 import org.tatrman.validate.v1.ValidateRequest
 import org.tatrman.validate.v1.ValidateResponse
 import org.tatrman.validate.v1.ValidationOptions
+import org.tatrman.worker.receipt.ExecutionReceiptBuilder
+import org.tatrman.worker.v1.ExecutionReceipt
 import org.tatrman.worker.v1.ResultBatch
 import io.opentelemetry.api.GlobalOpenTelemetry
 import io.opentelemetry.api.OpenTelemetry
@@ -121,6 +124,14 @@ class QueryServiceImpl(
                     }
                     // The validator's `top_n_applied` warnings, from whichever pass raised one.
                     val capNotices = mutableListOf<ResponseMessage>()
+                    // ES-P0·S0.3 — the receipt's plan half. `security_applied` accumulates across
+                    // every validate pass this run makes (ER, then DB), de-duplicated: a rule both
+                    // passes report is one rule, and this set IS the document's Security section
+                    // (the one A-1 called structurally unreachable from kantheon). It is derived
+                    // fresh on every run — including a cache hit, because the query service re-validates
+                    // every call (security depends on `user_id`), so the cache never holds it.
+                    val securityApplied = linkedSetOf<SecurityRuleApplied>()
+                    var effectiveSchemaLabel = ""
                     val compileStart = System.currentTimeMillis()
                     val cachedHit = if (request.bypassCache) null else cache.lookup(key)
                     val (erPlan, dbPlan, detectionMessages) =
@@ -142,6 +153,8 @@ class QueryServiceImpl(
                                         validateDbPlanCompile(windowed(physicalPlan, window), context, window)
                                             ?: run { return@flow }
                                     capNotices += dbValidated.capNotices()
+                                    securityApplied += dbValidated.securityAppliedList
+                                    effectiveSchemaLabel = SCHEMA_DB
                                     Triple(PlanNode.getDefaultInstance(), dbValidated.plan, cachedHit.detectionMessages)
                                 }
                                 else -> {
@@ -153,6 +166,9 @@ class QueryServiceImpl(
                                     val dbValidated =
                                         validateDbPlanCompile(dbParsed.plan, context, window) ?: run { return@flow }
                                     capNotices += erValidated.capNotices() + dbValidated.capNotices()
+                                    securityApplied += erValidated.securityAppliedList
+                                    securityApplied += dbValidated.securityAppliedList
+                                    effectiveSchemaLabel = SCHEMA_ER
                                     Triple(erValidated.plan, dbValidated.plan, cachedHit.detectionMessages)
                                 }
                             }
@@ -210,6 +226,8 @@ class QueryServiceImpl(
                                             return@flow
                                         }
                                     capNotices += dbValidated.capNotices()
+                                    securityApplied += dbValidated.securityAppliedList
+                                    effectiveSchemaLabel = SCHEMA_DB
                                     val requiredParams = dbParsed.context.parametersList.toList()
                                     val fp = PredictedFingerprintComputer.compute(dbParsed.plan)
                                     cache.record(
@@ -241,6 +259,9 @@ class QueryServiceImpl(
                                     val dbValidated =
                                         validateDbPlanCompile(dbParsed.plan, context, window) ?: run { return@flow }
                                     capNotices += erValidated.capNotices() + dbValidated.capNotices()
+                                    securityApplied += erValidated.securityAppliedList
+                                    securityApplied += dbValidated.securityAppliedList
+                                    effectiveSchemaLabel = SCHEMA_ER
                                     Triple(erValidated.plan, dbValidated.plan, resolution.detectionMessages)
                                 }
                             }
@@ -255,6 +276,18 @@ class QueryServiceImpl(
                                 add(warning(msg.code, msg.humanMessage))
                             }
                         }
+
+                    // ⚑ES-1 — the plan half, built once and carried on the first batch and on
+                    // the last. `dispatch_target` is dispatch's fact, learned from the first
+                    // batch below and folded in when the last batch is stamped.
+                    val planHalf =
+                        ExecutionReceiptBuilder.planHalf(
+                            dispatchedPlan = dbPlan,
+                            securityApplied = securityApplied.toList(),
+                            effectiveSchema = effectiveSchemaLabel,
+                            cacheHit = cachedHit != null,
+                            compileMs = compileMs,
+                        )
 
                     val dispatchReq =
                         DispatchRequest
@@ -272,8 +305,15 @@ class QueryServiceImpl(
                     val capNotice = capNotices.firstOrNull()
                     var rowsStreamed = 0L
                     var firstSeen = false
+                    // Dispatch stamps the worker endpoint on the first batch it forwards
+                    // (contracts §1.3 (b)); the query service remembers it so the LAST batch — the one a
+                    // consumer may read alone — names the worker too.
+                    var dispatchTarget = ""
                     dispatcher.dispatch(dispatchReq).collect { batch ->
                         rowsStreamed += batch.batchRowCount
+                        if (batch.receipt.dispatchTarget.isNotEmpty()) {
+                            dispatchTarget = batch.receipt.dispatchTarget
+                        }
                         var out = batch
                         if (!firstSeen && batch.isFirst) {
                             firstSeen = true
@@ -281,6 +321,12 @@ class QueryServiceImpl(
                         }
                         if (batch.isLast && capNotice != null && rowCap != null && rowsStreamed >= rowCap) {
                             out = out.toBuilder().addMessages(capNotice).build()
+                        }
+                        // ⚑ES-1 — one merge, on the first batch and on the last (they may be the
+                        // same batch). The worker's statement half is on the last one and is
+                        // merged INTO, never over: the halves occupy disjoint field numbers.
+                        if (batch.batchIndex == 0 || batch.isLast) {
+                            out = withPlanHalf(out, planHalf, dispatchTarget)
                         }
                         emit(out)
                     }
@@ -995,6 +1041,32 @@ class QueryServiceImpl(
             context
         }
 
+    /**
+     * Folds [planHalf] into whatever receipt [batch] already carries (⚑ES-1).
+     *
+     * A batch that arrives with the worker's statement half keeps every one of its fields — the
+     * two halves are disjoint, so proto's own merge is the rule. A null half (the builder
+     * refused, best-effort) leaves the batch exactly as it was: a receipt never fails a run.
+     */
+    private fun withPlanHalf(
+        batch: ResultBatch,
+        planHalf: ExecutionReceipt?,
+        dispatchTarget: String,
+    ): ResultBatch {
+        val half =
+            when {
+                planHalf == null -> return batch
+                dispatchTarget.isEmpty() -> planHalf
+                else -> planHalf.toBuilder().setDispatchTarget(dispatchTarget).build()
+            }
+        val merged =
+            ExecutionReceiptBuilder.merged(
+                existing = if (batch.hasReceipt()) batch.receipt else null,
+                half = half,
+            ) ?: return batch
+        return batch.toBuilder().setReceipt(merged).build()
+    }
+
     private fun annotate(
         batch: ResultBatch,
         warnings: List<Warning>,
@@ -1108,5 +1180,9 @@ class QueryServiceImpl(
 
         /** validate's `RuleEnforcer.TOP_N_APPLIED` — spelled here because query does not depend on validate. */
         private const val TOP_N_APPLIED = "top_n_applied"
+
+        /** `ExecutionReceipt.effective_schema` values (contracts §1.1) — "ER" | "DB". */
+        private const val SCHEMA_ER = "ER"
+        private const val SCHEMA_DB = "DB"
     }
 }

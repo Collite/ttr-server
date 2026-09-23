@@ -82,6 +82,9 @@ dependencies {
     implementation(project(":shared:libs:kotlin:otel-config"))
     implementation(project(":shared:libs:kotlin:logging-config"))
     implementation(project(":shared:proto"))
+    // ES-P0 — the one ExecutionReceipt builder (caps, masking, the never-fail-a-run guard),
+    // shared with worker-mssql and the query service.
+    implementation(project(":shared:libs:kotlin:execution-receipt"))
 
     implementation(libs.grpc.kotlin.stub)
     implementation(libs.grpc.netty.shaded)
@@ -116,6 +119,7 @@ dependencies {
     // result deserialization, coroutines for the flow, and the pg driver for the seed connection.
     "componentTestImplementation"(project(":shared:libs:kotlin:component-testkit"))
     "componentTestImplementation"(project(":shared:proto"))
+    "componentTestImplementation"(project(":shared:libs:kotlin:execution-receipt"))
     "componentTestImplementation"(libs.kotlinx.coroutines.core)
     "componentTestImplementation"(libs.arrow.vector)
     "componentTestImplementation"(libs.arrow.memory.netty)

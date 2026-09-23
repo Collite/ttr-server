@@ -333,6 +333,9 @@ class QueryTool(
         // the full set — switched from "first batch only" with D5's multi-batch collection.
         val pipelineWarnings = PipelineWarnings.toJsonArray(lastBatch?.context?.warningsList ?: emptyList())
 
+        // ES-P0·S0.5 — the two halves of the execution receipt, merged once, here.
+        val executionReceipt = ExecutionJson.mergeReceipts(collected.batches)
+
         val structured =
             buildJsonObject {
                 put("ok", JsonPrimitive(true))
@@ -358,6 +361,12 @@ class QueryTool(
                 )
                 put("messages", messagesArray(pipelineMessages))
                 put("pipelineWarnings", pipelineWarnings)
+                // ES ⚑ES-5 — `execution` rides beside `rowCount`, unconditionally, whenever at
+                // least one half of the receipt arrived. Not behind a flag and not only on
+                // failure: "what actually ran" is an answer's provenance, not a debug aid.
+                // Absent entirely when no half arrived — an older server states nothing rather
+                // than stating emptiness.
+                executionReceipt?.let { put("execution", ExecutionJson.toJson(it)) }
             }
 
         // Phase 08 D2 — binary formats (XLSX, future Parquet) travel as EmbeddedResource carrying

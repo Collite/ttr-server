@@ -86,6 +86,10 @@ jib {
 
 dependencies {
     implementation(project(":shared:proto"))
+
+    // ES-P0·S0.5 — merging the two halves of the execution receipt into one `execution` object
+    // uses the same merge rule the query service and the workers use.
+    implementation(project(":shared:libs:kotlin:execution-receipt"))
     implementation(project(":shared:libs:kotlin:data-formatter"))
     implementation(project(":shared:libs:kotlin:otel-config"))
     implementation(project(":shared:libs:kotlin:logging-config"))
@@ -132,6 +136,14 @@ dependencies {
     testImplementation(project(":services:query"))
     // Stage 4.1 T3 — in-memory span exporter for the run_query trace-nesting test.
     testImplementation(libs.opentelemetry.sdk.testing)
+
+    // ES-P0 DoD — the whole-chain proof (`ExecutionReceiptWholeChainComponentSpec`): the real
+    // dispatcher and the real worker-postgres pipeline against a real Postgres, so the statement
+    // in the `execution` object can be checked against what the DATABASE logged. Test-only; this
+    // repo has no compose harness for the DoD's original shape.
+    testImplementation(project(":services:dispatch"))
+    testImplementation(project(":workers:worker-postgres"))
+    testImplementation(project(":shared:libs:kotlin:component-testkit"))
 
     // Integration tier (testing arc Stage 2.2) — drives the `query` tool over real
     // HTTP/MCP (StreamableHTTP) against the live `query-runquery` context. The
