@@ -29,6 +29,26 @@ reaches any registry, so `python-nlp/v0.1.0-RELEASE` publishes as plain `0.1.0`.
 Cutting a bare tag is a genuinely useful thing to do — it runs the whole build
 and all its content checks without spending a public version number.
 
+### Which lane a consumer reads (2026-09-24)
+
+Maven Central is an **output** of this ecosystem, never an input. Every internal
+consumer — this repo, `kantheon`, `tatrman-platform`, `ai-platform` — resolves
+`org.tatrman:*` from **GitHub Packages alone**: each one's `settings.gradle.kts`
+carries `mavenCentral { content { excludeGroup("org.tatrman") } }` beside the
+`Collite/ttr-{core,server}` package repos, so the two lanes cannot race and no
+internal build can quietly come to depend on a public release.
+
+That exclusion is what makes the bare-tag cadence work. A `-RELEASE` is for
+people outside the ecosystem; nothing inside it waits on one, and a `server-libs`
+cut is consumable by kantheon minutes after `publish.yml` finishes rather than
+after a Central sync and a quota decision.
+
+The one deliberate exception is
+[`scripts/verify-public-resolution`](./scripts/verify-public-resolution/) — a
+standalone build whose only repository is `mavenCentral()`. Its entire job is to
+prove the *public* lane really is anonymously resolvable, so it must not be
+"fixed" to use GitHub Packages.
+
 ## `python-nlp/v*` — the `ttr-nlp` wheel
 
 Package `shared/libs/python/ttr-nlp` → PyPI project [`ttr-nlp`], via **PyPI
