@@ -11,17 +11,29 @@ pluginManagement {
 dependencyResolutionManagement {
     repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
     repositories {
-        mavenCentral()
-        // TEMPORARY (SV-P0/P1 interim): consume the tatrman `org.tatrman:*`
-        // artifacts (ttr-metadata, ttr-plan-proto, …) at `0.0.1-LOCAL` from
-        // Maven Local while the fork settles. Removed once the SV-P1 publish
-        // gates land the 0.9.x line on the public registry (plan §SV-P1).
-        mavenLocal()
-        // TTR toolchain (org.tatrman:ttr-{parser,writer,semantics,metadata,…}),
-        // published by the `tatrman` repo to GitHub Packages under `Collite/ttr-core`.
-        // These are NOT on Maven Central yet; the same per-user `gpr.*` PAT that
-        // kantheon uses authenticates here. `includeGroup("org.tatrman")` keeps the
-        // repo scoped to that group only.
+        // ⚠ `org.tatrman:*` is EXCLUDED from Central, deliberately (2026-09-24). Maven Central is
+        // an OUTPUT of this ecosystem, never an input: a `-RELEASE`-marked tag publishes there for
+        // EXTERNAL consumers, and Central's free tier (~7 releases per namespace per month on a
+        // 3-month rolling average) cannot absorb an internal cadence of several cuts per week —
+        // see tatrman's PUBLISHING.md § Release lanes. EVERY tag, bare or RELEASE, reaches GitHub
+        // Packages, so the internal chain reads that lane and only that lane.
+        //
+        // Without the exclusion the two lanes race: whichever registry happens to hold the pinned
+        // version wins, and an internal build silently starts depending on a public release nobody
+        // meant to make. That is not hypothetical — kantheon drifted onto Central, and by
+        // 2026-09-24 was pinned three server-libs versions back waiting for a Central cut that the
+        // internal lane had already published.
+        mavenCentral {
+            content { excludeGroup("org.tatrman") }
+        }
+        // The TTR toolchain (org.tatrman:ttr-{parser,writer,semantics,metadata,snapshot,lexicon,
+        // lexicon-compile,plan-proto,translator,…}), published by the `tatrman` repo under
+        // Collite/ttr-core on EVERY `grammar/v*` / `translator/v*` tag.
+        //
+        // GitHub Packages requires authentication even for a PUBLIC repository's packages, so the
+        // credentials are not optional: `gpr.user`/`gpr.token` in ~/.gradle/gradle.properties
+        // locally (a classic PAT with `read:packages`), the auto-provisioned GITHUB_TOKEN in
+        // Actions (the workflow needs `permissions: packages: read`).
         maven {
             name = "Tatrman"
             url = uri("https://maven.pkg.github.com/Collite/ttr-core")
@@ -35,6 +47,12 @@ dependencyResolutionManagement {
                 includeGroup("org.tatrman")
             }
         }
+        // LAST on purpose. A `publishToMavenLocal` copy is for iterating on an UNPUBLISHED version
+        // (the SV-P0 `0.0.1-LOCAL` habit); it must never shadow a version that a registry already
+        // serves, because a stale ~/.m2 jar carrying the same coordinate as a real cut is one of
+        // the hardest skews in this ecosystem to see. Ordered here, a local copy is reached only
+        // when neither lane above has that version at all.
+        mavenLocal()
     }
 }
 

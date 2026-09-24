@@ -48,8 +48,25 @@ bash scripts/check-spdx.sh      # SPDX header gate (add-spdx.sh to add headers)
 bash scripts/check-dependency-rules.sh   # module dependency rules (contracts §7)
 ```
 
-The Kotlin spine consumes the published `org.tatrman:*` toolchain artifacts from
-Maven Central; you do not need a local checkout of `tatrman` to build.
+The Kotlin spine consumes the published `org.tatrman:*` toolchain artifacts; you
+do not need a local checkout of [`tatrman`](https://github.com/Collite/ttr-core)
+to build. Those artifacts resolve from **GitHub Packages**
+(`maven.pkg.github.com/Collite/ttr-core`), not from Maven Central — every
+toolchain tag reaches GitHub Packages, while Central receives only the explicitly
+marked `-RELEASE` cuts, and this repo's pinned toolchain routinely runs ahead of
+the last public release. GitHub Packages requires authentication even for a
+public repository's packages, so a build needs a GitHub token:
+
+```properties
+# ~/.gradle/gradle.properties — never committed
+gpr.user=<your-github-username>
+gpr.token=<a classic PAT with read:packages>
+```
+
+`GITHUB_ACTOR` / `GITHUB_TOKEN` work in their place (that is what CI uses, with
+`permissions: packages: read`). A token with nothing but `read:packages` is
+enough — the packages themselves are public, GitHub simply will not serve them
+anonymously.
 
 ## Commit and PR hygiene
 
