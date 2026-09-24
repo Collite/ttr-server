@@ -197,6 +197,21 @@ object ExecutionReceiptBuilder {
                         } else {
                             half.securityAppliedList
                         }
+                    // ⛑ The dispatched plan is a nested MESSAGE, and `mergeFrom` merges those
+                    // RECURSIVELY — so a plan met twice does not last-wins, it merges into itself
+                    // and every repeated field INSIDE it concatenates. Found live on hartland
+                    // 2026-09-24 (turn f9dcc34b): the physical plan in the protocol listed all 19
+                    // `output_columns` twice, two identical `group_keys`, two identical
+                    // `aggregates` and four `expressions` for two projections.
+                    //
+                    // The fix is the rule the two fields above already follow, applied to the
+                    // third: `dispatched_plan` belongs to exactly ONE half (the query service's),
+                    // so a merge takes it WHOLE from whichever side has it and never merges it.
+                    // ⚑ES-1 re-attaches that half to the last batch precisely so the batch stands
+                    // alone, which means a consumer folding first+last meets it twice by design —
+                    // idempotence is not a nicety here, it is the contract.
+                    val plan = if (existing.hasDispatchedPlan()) existing.dispatchedPlan else half.dispatchedPlan
+                    val hasPlan = existing.hasDispatchedPlan() || half.hasDispatchedPlan()
                     existing
                         .toBuilder()
                         .mergeFrom(half)
@@ -204,6 +219,7 @@ object ExecutionReceiptBuilder {
                         .addAllParameters(parameters)
                         .clearSecurityApplied()
                         .addAllSecurityApplied(security)
+                        .apply { if (hasPlan) dispatchedPlan = plan else clearDispatchedPlan() }
                         .build()
                 }
             }

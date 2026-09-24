@@ -7,6 +7,7 @@ import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.ints.shouldBeGreaterThan
 import io.kotest.matchers.shouldBe
+import org.tatrman.plan.v1.ColumnRef
 import org.tatrman.plan.v1.ParameterBinding
 import org.tatrman.plan.v1.PlanNode
 import org.tatrman.plan.v1.QualifiedName
@@ -249,6 +250,36 @@ class ExecutionReceiptBuilderSpec :
             both.securityAppliedList shouldBe listOf(rule)
             both.parametersCount shouldBe 1
             both.parametersList.single().name shouldBe "year_from"
+
+            // ⛑ The plan, which this case did NOT check and which was doubling in production.
+            // `dispatched_plan` is a nested MESSAGE: proto merges those RECURSIVELY, so meeting
+            // one twice does not last-wins — every repeated field inside it concatenates. Asserted
+            // as byte-equality against the half that carried it, because "the right number of
+            // columns" is a weaker claim than "the plan we dispatched, unchanged".
+            both.dispatchedPlan shouldBe scan("positions")
+            both.dispatchedPlan.tableScan.outputColumnsCount shouldBe 2
+        }
+
+        "merging is idempotent under REPETITION — fold the same halves twice, get the same receipt" {
+            // The property, rather than one more example of it. query-mcp folds every batch that
+            // carried a receipt, and ⚑ES-1 guarantees at least two of them carry the plan half, so
+            // the fold must be stable no matter how many times it meets one. A future field that
+            // merges instead of replacing fails here without anybody having to think of it.
+            val plan =
+                ExecutionReceiptBuilder.planHalf(
+                    dispatchedPlan = scan("positions"),
+                    securityApplied = listOf(rule("rls.tenant")),
+                    effectiveSchema = "DB",
+                    cacheHit = false,
+                    compileMs = 9,
+                )
+            val worker =
+                statementHalf(sql = "SELECT 1", parameters = listOf(binding("year_from", "int", intValue(2025))))
+
+            val once = ExecutionReceiptBuilder.merged(ExecutionReceiptBuilder.merged(plan, worker), plan)
+            val twice = ExecutionReceiptBuilder.merged(ExecutionReceiptBuilder.merged(once, plan), worker)
+
+            twice shouldBe once
         }
 
         "merging tolerates an absent half on either side, and two absences" {
@@ -296,11 +327,32 @@ private fun statementHalf(
     correlationId = correlationId,
 )
 
+/**
+ * ⛑ **This scan carries `output_columns`, and that is the point.**
+ *
+ * It used to be a bare `TableScanNode` with a name and nothing else — a plan with NO repeated
+ * field anywhere inside it, which is a plan that cannot exhibit the very defect the idempotence
+ * case below exists to catch. The case passed for a year and the bug shipped: hartland's first ES
+ * protocol rendered all 19 `output_columns` twice.
+ *
+ * A fixture too simple to express the failure is a fixture that certifies its absence.
+ */
 private fun scan(table: String): PlanNode =
     PlanNode
         .newBuilder()
         .setTableScan(
-            TableScanNode.newBuilder().setTable(
-                QualifiedName.newBuilder().setNamespace("tpcds").setName(table),
-            ),
+            TableScanNode
+                .newBuilder()
+                .setTable(QualifiedName.newBuilder().setNamespace("tpcds").setName(table))
+                .addOutputColumns(ColumnRef.newBuilder().setName("id").setType("int"))
+                .addOutputColumns(ColumnRef.newBuilder().setName("amount").setType("float")),
         ).build()
+
+private fun rule(id: String): SecurityRuleApplied =
+    SecurityRuleApplied
+        .newBuilder()
+        .setRuleId(id)
+        .setPredicateSummary("WHERE tenant_id = (your tenant)")
+        .build()
+
+private fun intValue(v: Long): Value = Value.newBuilder().setIntValue(v).build()
