@@ -19,7 +19,7 @@ import java.util.concurrent.TimeUnit
 interface MetadataClient {
     suspend fun getSnapshot(ifNoneMatch: String = ""): GetSnapshotResponse
 
-    /** Convenience: fetch only the current ETag (= ModelVersion.value). */
+    /** The current `ModelVersion.value` — the version a plan's `PipelineContext.model_version` names. */
     suspend fun currentVersion(): String
 
     /**
@@ -54,7 +54,15 @@ class GrpcMetadataClient(
             .withDeadlineAfter(deadlineSeconds, TimeUnit.SECONDS)
             .getSnapshot(GetSnapshotRequest.newBuilder().setIfNoneMatch(ifNoneMatch).build())
 
-    override suspend fun currentVersion(): String = getSnapshot(ifNoneMatch = "").etag
+    // GH #112 — read from GetStatus, not from the snapshot ETag. The ETag is an opaque cache
+    // validator that also moves while queries parse (`<version>.q<n>`), so it is not the model
+    // version; and an unconditional GetSnapshot shipped the whole model per Validate to read one
+    // string. `PolicyMetadataClient` already reads the version this way.
+    override suspend fun currentVersion(): String =
+        stub
+            .withDeadlineAfter(deadlineSeconds, TimeUnit.SECONDS)
+            .getStatus(GetStatusRequest.getDefaultInstance())
+            .modelVersion
 
     override suspend fun probeReady(): Boolean =
         stub

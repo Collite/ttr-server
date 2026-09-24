@@ -444,7 +444,13 @@ class MetadataServiceImpl(
             registry.read()
                 ?: return GetSnapshotResponse.newBuilder().addMessages(notReadyMessage()).build()
 
-        val etag = snap.model.version.value
+        // GH #112 — the snapshot carries each query's canonical form from the LIVE parse state,
+        // which fills in after the swap; the ETag has to move with it or a consumer that fetched
+        // during the parse window never sees the plans. Read BEFORE the objects are walked, so a
+        // parse landing mid-walk makes the snapshot newer than its ETag (one extra fetch), never
+        // older. Without a live parse state the content is a function of the model alone and the
+        // ETag stays the bare version.
+        val etag = parseState?.let { "${snap.model.version.value}.q${it.generation()}" } ?: snap.model.version.value
         if (request.ifNoneMatch.isNotEmpty() && request.ifNoneMatch == etag) {
             return GetSnapshotResponse
                 .newBuilder()
@@ -1574,9 +1580,20 @@ private fun Query.toQueryDetail(parseStatus: DomainParseStatus): QueryDetail =
         ).setParseStatus(parseStatus.toProtoParseStatus())
         .also { if (parseStatus is DomainParseStatus.ParseFailure) it.parseErrorMessage = parseStatus.message }
         .also { if (!search.isEmpty) it.search = search.toProto() }
-        // `canonical_form` / `uses` left unset — canonical form is available via GetQuery
-        // (include_canonical_form); `uses` (referenced objects) isn't tracked on the model yet (DF-T03).
-        .build()
+        // GH #112 — the canonical form of every parsed query. The snapshot is the model the
+        // translator runs on (`SnapshotModelHandle`): MAP_TO_PHYSICAL expands a query-backed entity
+        // into this plan, so without it every ER query over such an entity failed with
+        // `PlanNode case 'NODE_NOT_SET'`. GetSnapshot has no per-query include flag (GetQuery does),
+        // so it always carries it; a stored plan that does not decode is left unset, as GetQuery
+        // reports it (`canonical_form_unreadable`). `uses` isn't tracked on the model yet (DF-T03).
+        .also {
+            if (parseStatus is DomainParseStatus.ParseSuccess) {
+                runCatching {
+                    org.tatrman.plan.v1.PlanNode
+                        .parseFrom(parseStatus.canonicalFormProtoBytes)
+                }.onSuccess { plan -> it.canonicalForm = plan }
+            }
+        }.build()
 
 private fun org.tatrman.ttr.metadata.registry.RegistrySnapshot.toProtoDescriptor(): ProtoModelDescriptor =
     ProtoModelDescriptor

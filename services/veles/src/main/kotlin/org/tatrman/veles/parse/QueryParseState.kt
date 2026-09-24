@@ -4,6 +4,7 @@ package org.tatrman.veles.parse
 import org.tatrman.ttr.metadata.model.ParseStatus
 import org.tatrman.ttr.metadata.model.QualifiedName
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
 
 /**
@@ -19,10 +20,18 @@ import java.util.concurrent.atomic.AtomicReference
 class QueryParseState {
     private val byQname = ConcurrentHashMap<QualifiedName, AtomicReference<ParseStatus>>()
 
+    // GH #112 — bumped on every reset and every recorded outcome, and folded into the GetSnapshot
+    // ETag. Canonical forms land here *after* the model swap, while the model version is fixed at
+    // swap time: an ETag of the bare version would let a consumer that polled during the parse
+    // window (the translate service's handle) keep a snapshot without them for as long as the
+    // model lives.
+    private val generation = AtomicLong(0)
+
     /** Reset to one PENDING entry per qname. Call on model swap, before enqueueing parse jobs. */
     fun reset(qnames: Collection<QualifiedName>) {
         byQname.clear()
         for (qn in qnames) byQname[qn] = AtomicReference(ParseStatus.ParsePending)
+        generation.incrementAndGet()
     }
 
     /** Record a parse outcome. No-op if [qname] isn't tracked (stale job after a swap). */
@@ -30,8 +39,16 @@ class QueryParseState {
         qname: QualifiedName,
         status: ParseStatus,
     ) {
-        byQname[qname]?.set(status)
+        val ref = byQname[qname] ?: return
+        ref.set(status)
+        generation.incrementAndGet()
     }
+
+    /**
+     * A token that advances whenever this state changes (a reset or a parse outcome). It settles
+     * once the [QueryParseWorker] has finished, so an ETag built from it settles too.
+     */
+    fun generation(): Long = generation.get()
 
     /** Live status for [qname], or null if not tracked (caller falls back to the model's stored status). */
     fun get(qname: QualifiedName): ParseStatus? = byQname[qname]?.get()
