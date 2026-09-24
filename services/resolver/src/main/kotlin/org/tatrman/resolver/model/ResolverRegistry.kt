@@ -65,12 +65,15 @@ data class ResolverEntityType(
      * (`er.entity.store.name`), with [codeFormat] copied from the code attribute so the
      * code-shape test uses the MODEL's pattern rather than one this service invented.
      *
-     * ⚑ Empty on the snapshot channel today, and that is a channel gap, not an estate's silence:
-     * the archive's `targets` map (`TargetFacts`, ttr-lexicon 0.13.3) carries `objectKind`,
-     * `ownerRef` and `reachedFrom` and has no field for name/code. The per-request `Registry`
-     * override supplies them now; lighting up the archive is a tatrman change riding the LP-P2a
-     * bundle cut (LP control room ⚑LPQ-5). Until then a quoted literal on an archive-fed estate
-     * lands HEADLESS — G3, the documented no-head outcome — rather than attributed by guess.
+     * ✅ **Both channels supply it since LP-P2b.** The per-request `Registry` override always
+     * could; the snapshot channel does now, from the archive's `targets[ref]`
+     * (`TargetFacts.nameRef/codeRef/codeFormat`, `ttr-lexicon-compiled/v4`). Before that the
+     * archive had no field for name/code at all, so an archive-fed estate — every real one — left
+     * a quoted literal HEADLESS (G3). That was ⚑LPQ-5, and it is closed.
+     *
+     * `""` is still the honest answer in two cases that are NOT gaps: an estate whose archive
+     * predates v4, and a model that declares no `semantics { name: · code: }`. Both leave the
+     * literal headless, which is the documented no-head outcome rather than a guess.
      *
      * ⛔ Never derived here. "The entity's name column" is a DECLARED fact, and the one rule that
      * decides it lives in the model, exactly as [objectKind]'s does.

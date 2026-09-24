@@ -41,6 +41,20 @@ data class DeclaredVocabularyEntry(
      * entities nothing relates to, and for every pre-v3 archive.
      */
     val reachedFrom: List<Reach> = emptyList(),
+    /**
+     * LP (contracts §2.1) — the MENTION facet: which attribute carries [targetRef] under the
+     * aspect a quoted literal is about, as FULL attribute refs, plus the code attribute's declared
+     * `code_format:`. From the archive's `targets[ref]` (schema `ttr-lexicon-compiled/v4`); `""`
+     * for a member, for an object whose model declares no `semantics { name: · code: }`, and for
+     * every pre-v4 archive.
+     *
+     * ⛔ Same rule as [objectKind]: never derived from the ref string, and never from a column
+     * NAMED "name". "The entity's name column" is a declared fact, and the one rule that decides
+     * it lives in the model.
+     */
+    val nameRef: String = "",
+    val codeRef: String = "",
+    val codeFormat: String = "",
 )
 
 data class DeclaredVocabulary(

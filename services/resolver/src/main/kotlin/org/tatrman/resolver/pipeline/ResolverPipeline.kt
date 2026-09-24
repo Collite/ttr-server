@@ -177,6 +177,11 @@ class ResolverPipeline(
         // reads the trailing ones — one round trip, two questions, kept apart.
         val ungatedMentions = MentionLayer.propose(parse, candidates)
         val triggerSpans = GroundingTriggers.spansOf(candidates, ungatedMentions)
+        // LP §3 — and the third question on the same pass: which words say HOW a quoted literal
+        // restricts its attribute. Anchored on the LITERAL rather than on the mentions, because
+        // span proposal does not reach a participle (see `PredicateTriggers`); empty, and
+        // therefore free, for every question with no literal in it.
+        val predicateWindows = PredicateTriggers.windowsOf(literals, parse)
         val batchReq =
             GateSpans
                 .buildBatchRequest(
@@ -185,6 +190,7 @@ class ResolverPipeline(
                     resolverRegistry.thresholds.maxOptions,
                 ).toBuilder()
                 .addAllSpans(GroundingTriggers.queries(triggerSpans, resolverRegistry.thresholds.maxOptions))
+                .addAllSpans(PredicateTriggers.queries(predicateWindows, resolverRegistry.thresholds.maxOptions))
                 .build()
         val batchResp = fuzzy.batchMatch(batchReq)
         val broadPass =
@@ -203,6 +209,16 @@ class ResolverPipeline(
                 offset = candidates.size,
                 thresholds = resolverRegistry.thresholds,
                 snapshotHash = resolverRegistry.snapshotHash,
+            )
+        // The predicate slots sit AFTER the grounding ones, so the offset is both of the earlier
+        // blocks. Stated as a sum rather than a constant because that is the invariant: each
+        // question appends its own slots and reads back from where the previous one ended.
+        val predicates =
+            PredicateTriggers.collect(
+                predicateWindows,
+                batchResp,
+                offset = candidates.size + triggerSpans.size,
+                thresholds = resolverRegistry.thresholds,
             )
         // ✅ R1 — ground the time-typed universals ONCE, before the lattice is assembled, and
         // reuse the result across every re-assembly the lookup loop performs below. Doing it here
@@ -247,6 +263,7 @@ class ResolverPipeline(
                 triggers = triggers,
                 grounded = groundedSpans,
                 literals = literals,
+                predicates = predicates,
             )
         }
 
@@ -578,10 +595,10 @@ class ResolverPipeline(
                         // that can state a kind must be able to state the reach that qualifies
                         // it, or a fixture could only ever exercise half of the Binder's rules.
                         it.reachedFromList.map { r -> Reach(r.factRef, r.mandatory) },
-                        // LP: the same argument again — the override channel states the mention
-                        // facet because the snapshot channel cannot yet (⚑LPQ-5), and a fixture
-                        // that could not say which column is the name could not exercise the
-                        // verbatim arm at all.
+                        // LP: the same argument again. Both channels carry the mention facet
+                        // since P2b, and this one still has to: a caller that could not say which
+                        // column is the name could not exercise the verbatim arm without building
+                        // an archive first.
                         it.nameAttributeRef,
                         it.codeAttributeRef,
                         it.codeFormat,

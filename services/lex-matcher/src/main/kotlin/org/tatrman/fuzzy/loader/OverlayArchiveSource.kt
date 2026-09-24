@@ -298,6 +298,7 @@ class OverlayArchiveSource(
             "MEMBER" -> TargetClass.MEMBER
             "OPERATOR" -> TargetClass.OPERATOR
             "GROUNDING_TRIGGER" -> TargetClass.GROUNDING_TRIGGER
+            "STRING_PREDICATE" -> TargetClass.STRING_PREDICATE
             else -> {
                 if (unknownClasses.add(targetClass)) {
                     logger.warn(

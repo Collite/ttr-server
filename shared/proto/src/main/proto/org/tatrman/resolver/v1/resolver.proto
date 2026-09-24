@@ -164,12 +164,12 @@ message EntityType {
   // copied from the code attribute so §2.1's code-shape test uses the model's own pattern
   // instead of a regex this service invented.
   //
-  // ⚑ Supplied by THIS channel only, for now. The snapshot channel (the compiled lexicon
-  // archive's `targets` map) carries `object_kind`, `owner_ref` and `reached_from` but no
-  // name/code refs — `TargetFacts` has no field for them (ttr-lexicon 0.13.3), so an estate
-  // resolving off its archive gets "" here and a quoted literal lands headless (G3), which
-  // is the documented no-head behaviour rather than a wrong guess. Lighting up the snapshot
-  // channel is a tatrman change riding the LP-P2a bundle cut — LP control room ⚑LPQ-5.
+  // ✅ Supplied by BOTH channels since LP-P2b. This one always could; the snapshot channel
+  // (the compiled lexicon archive's `targets` map) now carries the three refs beside
+  // `object_kind`, `owner_ref` and `reached_from` — `TargetFacts.nameRef/codeRef/codeFormat`,
+  // schema `ttr-lexicon-compiled/v4`. An estate on an OLDER archive, or a model that declares
+  // no `semantics { name: · code: }`, still gets "" here and its quoted literal lands headless
+  // (G3) — the documented no-head behaviour rather than a wrong guess.
   string name_attribute_ref = 7;
   string code_attribute_ref = 8;
   string code_format = 9;
@@ -510,6 +510,7 @@ enum TargetClass {
   TARGET_CLASS_MEMBER = 2;            // a member of a model object — a value, not a structure
   TARGET_CLASS_OPERATOR = 3;          // an `op:` skill trigger (RV-35)
   TARGET_CLASS_GROUNDING_TRIGGER = 4; // a `ground:` slice — chrono | money | geo (RV-42)
+  TARGET_CLASS_STRING_PREDICATE = 5;  // a `pred:` slice — LP contracts §3.2
 }
 
 // RV-14 — the ordered evidence classes. Confidence is the CLASS; the numeric score

@@ -176,6 +176,11 @@ enum TargetClass {
   TARGET_CLASS_MEMBER = 2;            // a member of a model object — a value, not a structure
   TARGET_CLASS_OPERATOR = 3;          // an `op:` skill trigger (RV-35 — bodies never enter the matcher)
   TARGET_CLASS_GROUNDING_TRIGGER = 4; // a `ground:` slice — chrono | money | geo (RV-42)
+  // LP contracts §3.2 — a `pred:` slice: starts_with | ends_with | contains | equals |
+  // not_contains. The words that say HOW a quoted literal restricts its attribute, never WHICH
+  // rows it selects. Like a grounding trigger it names a behaviour, so it is not a model object
+  // and never gates a span's values (§3.4).
+  TARGET_CLASS_STRING_PREDICATE = 5;
 }
 
 // RV-P1.4 T5 — the category-scoped lookup request. FROZEN as the P2.3 lookup-round contract.

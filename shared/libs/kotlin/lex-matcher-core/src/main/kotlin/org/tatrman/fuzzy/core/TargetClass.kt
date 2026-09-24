@@ -26,4 +26,15 @@ enum class TargetClass {
 
     /** A `ground:` trigger slice — chrono · money · geo (RV-42). */
     GROUNDING_TRIGGER,
+
+    /**
+     * A `pred:` string-predicate slice — starts_with · ends_with · contains · equals ·
+     * not_contains (LP contracts §3.2).
+     *
+     * The words that say *how* a quoted literal restricts its attribute, never which rows it
+     * selects. Like [GROUNDING_TRIGGER] it names a behaviour rather than a model object, so it is
+     * excluded from attribution and from entity-type refs (§3.4) — a `pred:` binding may be the
+     * strongest thing on a span and still gate nothing.
+     */
+    STRING_PREDICATE,
 }

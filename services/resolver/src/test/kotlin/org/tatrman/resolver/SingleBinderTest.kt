@@ -62,11 +62,17 @@ class SingleBinderTest :
                 .toList() shouldContainExactlyInAnyOrder listOf("verdict.winner")
         }
 
-        "an evidence class is derived in one place, and asked for in two" {
-            // `Binder` classifies what it is about to decide on; `GroundingTriggers` classifies
-            // what it will never decide on. Nothing else may form an opinion about trust.
+        "an evidence class is derived in one place, and asked for in three" {
+            // `Binder` classifies what it is about to decide on; `GroundingTriggers` and
+            // `PredicateTriggers` classify what they will never decide on — a kernel claim and a
+            // comparison word, neither of which binds anything. Nothing else may form an opinion
+            // about trust, and a FOURTH entry here should be argued, not added.
+            //
+            // LP-P2b admitted the third, deliberately: a predicate form that falls below the bind
+            // floor must not become a filter, and the only honest way to ask "is this trustworthy
+            // enough?" is the one function that answers it for everyone else.
             filesMatching(Regex("""EvidenceClasses\.of\(""")) shouldContainExactlyInAnyOrder
-                listOf("Binder.kt", "GroundingTriggers.kt")
+                listOf("Binder.kt", "GroundingTriggers.kt", "PredicateTriggers.kt")
         }
 
         "the class ORDER is consulted only by the binder — ranking candidates IS deciding" {

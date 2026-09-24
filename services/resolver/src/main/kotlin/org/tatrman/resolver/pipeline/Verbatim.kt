@@ -51,15 +51,58 @@ object VerbatimAttribution {
         val entityType: ResolverEntityType,
     )
 
+    /**
+     * A STRING_PREDICATE mention, as this rule needs it: the token it heads and the `pred:` ref
+     * its strongest predicate binding names.
+     *
+     * Deliberately NOT a [Head]. A head is a thing a string restricts and carries an entity type;
+     * a trigger is the comparison and carries no model object at all — giving them one type would
+     * invite a caller to ask a predicate for its `nameRef`.
+     */
+    data class Trigger(
+        val headToken: Int,
+        val ref: String,
+    )
+
     fun attribute(
         literal: LiteralTokenSpan,
         parse: AnalyzeResponse,
         heads: List<Head>,
     ): Attributed? {
         if (heads.isEmpty()) return null
-        val head = byParse(literal, parse, heads) ?: byDistance(literal, heads) ?: return null
+        val head = nearest(literal, parse, heads, Head::headToken) ?: return null
         val ref = attributeRefOf(literal.literal.text, head.entityType) ?: return null
         return Attributed(ref, head.mentionId)
+    }
+
+    /**
+     * LP contracts §2/§3 — the `pred:` ref that says HOW this literal restricts its attribute, or
+     * `""` when the question names none.
+     *
+     * The same bounded search as [attribute], over a different class, and for a reason that is
+     * structural rather than tidy: in *dodací místa začínající na "Pelex"* the literal's dep chain
+     * runs `Pelex → na → začínající → místa`, so the predicate is ON the path to the head and is
+     * reached by the same walk that finds the head — one rule, one window, two questions.
+     *
+     * `""` is not a failure. §2.2 gives the default from the attribute the literal was attributed
+     * to (a `name` ⇒ `contains`, a `code` ⇒ `equals`), which is the reading a user who wrote no
+     * trigger meant. The empty string says "the question did not say", and the consumer's default
+     * is where that is answered — never here, because this object does not know which of the two
+     * attributes won.
+     *
+     * ⚠ This depends on the predicate words reaching the lattice as a mention at all, which is
+     * span proposal's business, not this rule's. Where no span is proposed over the trigger the
+     * ref is `""` and §2.2's default applies — *starting with "Shell"* degrades to *contains
+     * "Shell"*, which is wider than asked but never wrong about WHICH column. LP-P3's live check
+     * is where that coverage gets measured.
+     */
+    fun predicate(
+        literal: LiteralTokenSpan,
+        parse: AnalyzeResponse,
+        triggers: List<Trigger>,
+    ): String {
+        if (triggers.isEmpty()) return ""
+        return nearest(literal, parse, triggers, Trigger::headToken)?.ref.orEmpty()
     }
 
     /**
@@ -84,15 +127,31 @@ object VerbatimAttribution {
         return entityType.nameRef.ifBlank { null }
     }
 
-    /** (1) — the dep_head chain, bounded to [MAX_HOPS]. */
-    private fun byParse(
+    /**
+     * The §2.1 search, over whatever class the caller is asking about: the parse first, proximity
+     * second, both bounded.
+     *
+     * Generic because the two questions — *what does this literal restrict* and *how* — are one
+     * search asked twice. Two copies of a bounded graph walk is how the two windows drift apart,
+     * and the window is the contract here: 3 hops, 3 tokens, left preferred.
+     */
+    private fun <T> nearest(
         literal: LiteralTokenSpan,
         parse: AnalyzeResponse,
-        heads: List<Head>,
-    ): Head? {
+        items: List<T>,
+        tokenOf: (T) -> Int,
+    ): T? = byParse(literal, parse, items, tokenOf) ?: byDistance(literal, items, tokenOf)
+
+    /** (1) — the dep_head chain, bounded to [MAX_HOPS]. */
+    private fun <T> byParse(
+        literal: LiteralTokenSpan,
+        parse: AnalyzeResponse,
+        items: List<T>,
+        tokenOf: (T) -> Int,
+    ): T? {
         val tokens = parse.tokensList
         if (tokens.isEmpty()) return null
-        val byToken = heads.associateBy { it.headToken }
+        val byToken = items.associateBy(tokenOf)
         var current = literal.tokens.firstOrNull() ?: return null
         repeat(MAX_HOPS) {
             val token = tokens.getOrNull(current) ?: return null
@@ -106,22 +165,24 @@ object VerbatimAttribution {
     }
 
     /**
-     * (2) — the nearest head within [SpanProposal.MAX_ANCHOR_DISTANCE] tokens, left preferred.
+     * (2) — the nearest item within [SpanProposal.MAX_ANCHOR_DISTANCE] tokens, left preferred.
      *
      * Left preference is not a coin toss: Czech and English both put the thing before the string
      * that restricts it (*dodací místa "Pelex"*, *stores named "Pelex"*), so on an equal distance
-     * the word to the left is the one the question was about.
+     * the word to the left is the one the question was about. The same holds for the trigger —
+     * *začínající na "Shell"* puts it left too.
      */
-    private fun byDistance(
+    private fun <T> byDistance(
         literal: LiteralTokenSpan,
-        heads: List<Head>,
-    ): Head? {
+        items: List<T>,
+        tokenOf: (T) -> Int,
+    ): T? {
         val first = literal.tokens.firstOrNull() ?: return null
         val last = literal.tokens.last()
-        return heads
-            .map { it to distanceTo(it.headToken, first, last) }
+        return items
+            .map { it to distanceTo(tokenOf(it), first, last) }
             .filter { (_, d) -> d in 1..SpanProposal.MAX_ANCHOR_DISTANCE }
-            .minWithOrNull(compareBy({ (_, d) -> d }, { (head, _) -> if (head.headToken < first) 0 else 1 }))
+            .minWithOrNull(compareBy({ (_, d) -> d }, { (item, _) -> if (tokenOf(item) < first) 0 else 1 }))
             ?.first
     }
 

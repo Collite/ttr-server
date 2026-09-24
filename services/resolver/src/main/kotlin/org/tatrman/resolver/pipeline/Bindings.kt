@@ -95,10 +95,19 @@ object Bindings {
      * Whether a binding may become a value ATTRIBUTION.
      *
      * An attribution says *this literal could be a value of THAT attribute*, so what it names has
-     * to be an attribute. Two classes can never satisfy that and both reach a value span by
-     * ordinary means: an OPERATOR is an action, and a GROUNDING_TRIGGER is evidence about which
-     * KERNEL owns the span (RV-42). Golem's `entityTypeRefs` excludes the same two, for the same
+     * to be an attribute. Three classes can never satisfy that and all three reach a value span by
+     * ordinary means: an OPERATOR is an action, a GROUNDING_TRIGGER is evidence about which
+     * KERNEL owns the span (RV-42), and a STRING_PREDICATE is the *comparison* rather than either
+     * side of it (LP contracts §3.4). Golem's `entityTypeRefs` excludes the same set, for the same
      * reason — "an operator is an action and a grounding trigger is evidence".
+     *
+     * STRING_PREDICATE is the one of the three that is **most** likely to be the strongest match on
+     * its span, which is why excluding it matters rather than merely tidying: *obsahující* is a
+     * whole word an author declared EXACT, so on *dodací místa obsahující "Pelex"* it wins its
+     * anchor outright. Admitted, it would write `attribute_ref = "pred:contains"` and the query
+     * door would refuse the turn with `'pred:contains' is not an addressable object or attribute`
+     * — the hartland `ground:chrono` failure below, verbatim, with a different prefix. The lesson
+     * was paid for once; this is it applied before the second time.
      *
      * ⛑ **hartland, 2026-09-16.** *"Jak se vyvíjela tržba z tržiště v roce 2025?"* — one of the
      * estate's own advertised questions — died at the query door with `'ground:chrono' is not an
@@ -115,9 +124,22 @@ object Bindings {
      * a non-attributable class is rejected, and UNSPECIFIED is kept, which leaves members
      * untouched and needs no cooperation from the matcher.
      */
-    fun attributable(binding: Binding): Boolean =
-        binding.targetClass != TargetClass.TARGET_CLASS_OPERATOR &&
-            binding.targetClass != TargetClass.TARGET_CLASS_GROUNDING_TRIGGER
+    fun attributable(binding: Binding): Boolean = binding.targetClass !in NEVER_ATTRIBUTABLE
+
+    /**
+     * The classes that positively declare themselves non-attributable (§3.4).
+     *
+     * A set rather than a chain of `!=`, so the list is one thing to read and one thing to extend.
+     * UNSPECIFIED is deliberately ABSENT: a member row carries no class at all, and excluding
+     * "no class" would exclude the rows the value tier exists to reach — see the asymmetry in the
+     * KDoc above.
+     */
+    private val NEVER_ATTRIBUTABLE =
+        setOf(
+            TargetClass.TARGET_CLASS_OPERATOR,
+            TargetClass.TARGET_CLASS_GROUNDING_TRIGGER,
+            TargetClass.TARGET_CLASS_STRING_PREDICATE,
+        )
 
     /** The attribute a value is attributed to: its category — the member index is keyed by it. */
     fun attributeRefOf(match: FuzzyMatch): String =

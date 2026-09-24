@@ -102,8 +102,10 @@ class CallsSeedConformanceTest :
             val expectedSpan = expectedVerbatim["span"]!!.jsonObject
             span["start"]!!.jsonPrimitive.int shouldBe expectedSpan["start"]!!.jsonPrimitive.int
             span["end"]!!.jsonPrimitive.int shouldBe expectedSpan["end"]!!.jsonPrimitive.int
-            // Unattributed on this estate: the model never said which column carries a store's
-            // name (LP ⚑LPQ-5), so the lattice says G3 rather than picking one.
+            // Unattributed on this estate, and no longer for want of a channel: these fixtures
+            // drive the door with a STUB registry and no archive on disk, so nothing here states
+            // which column carries a store's name. The lattice says G3 rather than picking one —
+            // which is the assertion worth having either way (see `conformance/calls/SCHEMA.md`).
             (verbatim["attributions"]?.jsonArray?.size ?: 0) shouldBe
                 expectedVerbatim["attributions"]!!.jsonPrimitive.int
             state["gaps"]!!

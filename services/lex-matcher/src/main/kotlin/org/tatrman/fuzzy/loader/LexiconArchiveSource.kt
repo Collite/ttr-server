@@ -166,6 +166,7 @@ class LexiconArchiveSource(
                     ArtifactTargetClass.MEMBER -> TargetClass.MEMBER
                     ArtifactTargetClass.OPERATOR -> TargetClass.OPERATOR
                     ArtifactTargetClass.GROUNDING_TRIGGER -> TargetClass.GROUNDING_TRIGGER
+                    ArtifactTargetClass.STRING_PREDICATE -> TargetClass.STRING_PREDICATE
                 },
             // RV-44 — carried, never re-derived. The compiler already expanded `method:` sugar into
             // this profile; expanding it again here would be a second implementation of M-T6, and

@@ -9,9 +9,12 @@ import com.google.protobuf.DynamicMessage
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.booleans.shouldBeFalse
 import io.kotest.matchers.booleans.shouldBeTrue
+import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.shouldBe
+import org.tatrman.fuzzy.v1.TargetClass as FuzzyTargetClass
 import org.tatrman.resolver.v1.Attribution
 import org.tatrman.resolver.v1.Span
+import org.tatrman.resolver.v1.TargetClass as ResolverTargetClass
 import org.tatrman.resolver.v1.ValueFinding
 import org.tatrman.resolver.v1.ValueKind
 
@@ -97,6 +100,36 @@ class ResolverCompatTest :
                 .setAnchorMentionId("m1")
                 .setVerbatimText("Pelex")
                 .build()
+
+        // ---- LP-P2b·T1 (§3.2): the new class, in both protos ----------------------------------
+
+        "STRING_PREDICATE is number 5 in BOTH protos, and that is load-bearing" {
+            // `Bindings.targetClassOf` maps the matcher's class to the resolver's **by NUMBER**
+            // (`TargetClass.forNumber(match.targetClass.number)`). Nothing in either file says the
+            // two enums must agree — so the day they disagree, a `pred:` row from the matcher
+            // would arrive at the resolver as a GROUNDING_TRIGGER, and the only symptom would be a
+            // literal silently attributed to nothing. Contracts §3.2 pinned the number for this
+            // reason; this is the pin.
+            FuzzyTargetClass.TARGET_CLASS_STRING_PREDICATE.number shouldBe 5
+            ResolverTargetClass.TARGET_CLASS_STRING_PREDICATE.number shouldBe 5
+
+            // …and the whole vocabulary agrees, not just the new member — a reordering elsewhere
+            // would break the same mapping just as quietly.
+            ResolverTargetClass.entries
+                .filter { it != ResolverTargetClass.UNRECOGNIZED }
+                .associate { it.name to it.number } shouldBe
+                FuzzyTargetClass.entries
+                    .filter { it != FuzzyTargetClass.UNRECOGNIZED }
+                    .associate { it.name to it.number }
+        }
+
+        "an old reader meeting target_class = 5 sees an unknown number, not another class" {
+            // The additive promise, on the enum rather than the field: proto3 keeps an unknown
+            // enum value as its number, so a peer built before LP reads 5 and reports UNRECOGNIZED
+            // — it does not round down to GROUNDING_TRIGGER and act on it.
+            ResolverTargetClass.forNumber(5) shouldBe ResolverTargetClass.TARGET_CLASS_STRING_PREDICATE
+            ResolverTargetClass.forNumber(6).shouldBeNull()
+        }
 
         "an old client parses a VERBATIM value, and sees a kind it has no name for" {
             val old = DynamicMessage.parseFrom(oldValueFinding, verbatim.toByteArray())
