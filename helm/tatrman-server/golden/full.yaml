@@ -1396,6 +1396,8 @@ spec:
               value: "5432"
             - name: OTEL_SERVICE_NAME
               value: "llm-gateway"
+            - name: OTEL_ENABLED_LLM_GATEWAY
+              value: "false"
             - name: AZURE_OPENAI_API_KEY
               valueFrom:
                 secretKeyRef:

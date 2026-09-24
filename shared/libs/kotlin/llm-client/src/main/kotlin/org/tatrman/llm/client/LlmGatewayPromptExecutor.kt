@@ -10,8 +10,10 @@ import ai.koog.prompt.message.ContentPart
 import ai.koog.prompt.message.Message
 import ai.koog.prompt.message.ResponseMetaInfo
 import ai.koog.prompt.streaming.StreamFrame
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
+import org.slf4j.LoggerFactory
 import kotlin.time.Clock
 import kotlin.time.Instant
 
@@ -27,11 +29,21 @@ import kotlin.time.Instant
  *    [UnsupportedOperationException].
  *  - `tools` ignored — agents call MCP tools directly, not via Koog tool-routing.
  *  - `close()` is a no-op — the gateway is owned by the caller.
+ *  - [onCompletion] — the side channel for what Koog's return type cannot carry (LC contracts §1):
+ *    every SUCCESSFUL completion's [LlmCompletion] (the prompt-log row id above all) is handed to it
+ *    before `execute` returns. It is a constructor callback rather than a "last completion" slot so
+ *    that concurrent turns sharing one executor never read each other's; and it is `suspend` so the
+ *    collector can find the CALLING turn on its coroutine context. A failed call never reaches it
+ *    (a gateway error is a failure, not an empty completion — review-100 F2), and a callback that
+ *    throws is logged, never allowed to fail a call the gateway already served.
  */
 class LlmGatewayPromptExecutor(
     private val gateway: LlmGatewayClient,
     private val now: () -> Instant = { Clock.System.now() },
+    private val onCompletion: suspend (LlmCompletion) -> Unit = {},
 ) : PromptExecutor() {
+    private val logger = LoggerFactory.getLogger(LlmGatewayPromptExecutor::class.java)
+
     override suspend fun execute(
         prompt: Prompt,
         model: LLModel,
@@ -41,18 +53,31 @@ class LlmGatewayPromptExecutor(
         val userContent = prompt.textOf<Message.User>()
         val temperature = prompt.params.temperature ?: 0.0
 
-        val content =
+        val completion =
             gateway
-                .complete(
+                .completeWithMeta(
                     prompt = userContent,
                     systemPrompt = systemContent,
                     model = mapModelToGatewayKey(model),
                     temperature = temperature,
                 ).getOrThrow()
+        // The call is served, billed and logged by now: a collector that throws must not turn it into a
+        // failure Koog might retry (and pay for twice) — review-100 F18.
+        try {
+            onCompletion(completion)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            logger.warn(
+                "onCompletion failed for call {} — the completion is returned regardless",
+                completion.callRef,
+                e,
+            )
+        }
 
         return listOf(
             Message.Assistant(
-                content = content,
+                content = completion.content,
                 metaInfo = ResponseMetaInfo(timestamp = now()),
             ),
         )

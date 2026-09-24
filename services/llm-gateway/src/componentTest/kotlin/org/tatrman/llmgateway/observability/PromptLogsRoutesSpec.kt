@@ -15,6 +15,7 @@ import io.ktor.http.HttpStatusCode
 import io.ktor.server.config.MapApplicationConfig
 import io.ktor.server.testing.testApplication
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
@@ -51,10 +52,13 @@ class PromptLogsRoutesSpec :
         val iss = "https://kc/realms/tatrman"
         val aud = "llm-gateway"
 
-        fun token(roles: List<String>): String =
+        fun token(
+            roles: List<String>,
+            subject: String = "inspector",
+        ): String =
             JWT
                 .create()
-                .withSubject("inspector")
+                .withSubject(subject)
                 .withIssuer(iss)
                 .withAudience(aud)
                 .withExpiresAt(Date(System.currentTimeMillis() + 3_600_000))
@@ -68,6 +72,9 @@ class PromptLogsRoutesSpec :
             turnRef: String?,
             traceId: String?,
             prompt: String,
+            subject: String? = null,
+            purpose: String? = null,
+            agentId: String? = null,
         ) {
             DriverManager
                 .getConnection(pgc.jdbcUrl, pgc.username, pgc.password)
@@ -78,8 +85,9 @@ class PromptLogsRoutesSpec :
                             INSERT INTO prompt_logs
                               (user_id, model_name, provider, prompt_text, response_text,
                                tokens_prompt, tokens_completion, duration_ms, status,
-                               turn_ref, trace_id, requested_model, served_model, served_provider, cached)
-                            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                               turn_ref, trace_id, requested_model, served_model, served_provider, cached,
+                               end_user_subject, purpose, agent_id)
+                            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                             """.trimIndent(),
                         ).use { st ->
                             st.setString(1, "vk_test")
@@ -97,6 +105,9 @@ class PromptLogsRoutesSpec :
                             st.setString(13, "claude-opus-5")
                             st.setString(14, "azure")
                             st.setBoolean(15, false)
+                            st.setString(16, subject)
+                            st.setString(17, purpose)
+                            st.setString(18, agentId)
                             st.executeUpdate()
                         }
                 }
@@ -124,6 +135,12 @@ class PromptLogsRoutesSpec :
 
         fun items(body: String) = Json.parseToJsonElement(body).jsonObject["items"]!!.jsonArray
 
+        fun access(body: String) =
+            Json
+                .parseToJsonElement(body)
+                .jsonObject["access"]!!
+                .jsonPrimitive.content
+
         "inspect surface: auth gates, filters by turn_ref and trace_id, enforces limit" {
             testApplication {
                 environment { config = MapApplicationConfig() }
@@ -141,10 +158,14 @@ class PromptLogsRoutesSpec :
 
                 // ── auth ──
                 client.get("/v1/prompt-logs?turn_ref=turn-A").status shouldBe HttpStatusCode.Unauthorized
-                client
-                    .get("/v1/prompt-logs?turn_ref=turn-A") {
+                // LC-1 replaced the 403 a role-less realm JWT used to get: it now reads its OWN rows, and
+                // these seeds belong to nobody — so 200 and an empty list (never an existence oracle).
+                val roleless =
+                    client.get("/v1/prompt-logs?turn_ref=turn-A") {
                         header(HttpHeaders.Authorization, "Bearer ${token(listOf("plain-user"))}")
-                    }.status shouldBe HttpStatusCode.Forbidden
+                    }
+                roleless.status shouldBe HttpStatusCode.OK
+                items(roleless.bodyAsText()).size shouldBe 0
 
                 // ── neither key → 400, never an unfiltered dump of the whole table ──
                 client
@@ -234,6 +255,108 @@ class PromptLogsRoutesSpec :
                             header(HttpHeaders.Authorization, "Bearer $adminJwt")
                         }.bodyAsText(),
                 ).size shouldBe 2
+            }
+        }
+
+        // ── LC-1 (LC contracts §2.3): the auth matrix, row by row ──────────────────────────────────
+        "per-row authz: admin and inspect read every row; a subject reads its own; a key or nothing is 401" {
+            testApplication {
+                environment { config = MapApplicationConfig() }
+                application { module(cfg) }
+                startApplication() // boot before seeding — see the note above
+
+                seed(
+                    "turn-M",
+                    "trace-M",
+                    "dan's call",
+                    subject = "sub-dan",
+                    purpose = "compose-plan",
+                    agentId = "golem-hartland",
+                )
+                seed(
+                    "turn-M",
+                    "trace-M",
+                    "marketa's call",
+                    subject = "sub-marketa",
+                    purpose = "answer-format",
+                    agentId = "golem-investment",
+                )
+                seed("turn-M", "trace-M", "pre-LC call") // NULL subject: role-only
+
+                suspend fun read(bearer: String?) =
+                    client.get("/v1/prompt-logs?turn_ref=turn-M") {
+                        if (bearer != null) header(HttpHeaders.Authorization, "Bearer $bearer")
+                    }
+
+                // 1. admin → all rows, bodies included, and a role-holder is told whose they are
+                val adminBody = read(adminJwt).bodyAsText()
+                access(adminBody) shouldBe "all"
+                val asAdmin = items(adminBody)
+                asAdmin.map { it.jsonObject["promptText"]!!.jsonPrimitive.content } shouldBe
+                    listOf("dan's call", "marketa's call", "pre-LC call")
+                asAdmin.map { it.jsonObject["endUserSubject"]!!.jsonPrimitive.contentOrNull } shouldBe
+                    listOf("sub-dan", "sub-marketa", null)
+
+                // 2. inspect (the new, narrow role) → all rows, bodies included
+                val asInspect = read(token(listOf("llm-gateway-inspect"), subject = "sub-ops"))
+                asInspect.status shouldBe HttpStatusCode.OK
+                val inspectBody = asInspect.bodyAsText()
+                access(inspectBody) shouldBe "all"
+                items(inspectBody).map { it.jsonObject["responseText"]!!.jsonPrimitive.contentOrNull } shouldBe
+                    listOf("a completion", "a completion", "a completion")
+
+                // 3. neither role, sub = dan → dan's row ONLY; marketa's and the NULL-subject row omitted; 200.
+                //    A reader-scoped answer says so ("own"), and carries NO bodies (review-100 F4, ruled
+                //    2026-09-24): the raw prompt holds golem's whole system prompt, and the only path to it
+                //    is the role-gated, floor-redacted `full` profile in the assembler.
+                val asDan = read(token(listOf("default-roles-kantheon"), subject = "sub-dan"))
+                asDan.status shouldBe HttpStatusCode.OK
+                val danBody = asDan.bodyAsText()
+                access(danBody) shouldBe "own"
+                val dan = items(danBody).single().jsonObject
+                dan["promptText"] shouldBe JsonNull
+                dan["responseText"] shouldBe JsonNull
+                dan["purpose"]!!.jsonPrimitive.content shouldBe "compose-plan"
+                dan["agentId"]!!.jsonPrimitive.content shouldBe "golem-hartland"
+                dan.containsKey("endUserSubject") shouldBe false // a subject is not told who they are
+
+                // ... and the same by trace_id: the subject filter is not a turn_ref-only path
+                val danByTrace =
+                    client.get("/v1/prompt-logs?trace_id=trace-M") {
+                        header(HttpHeaders.Authorization, "Bearer ${token(emptyList(), subject = "sub-dan")}")
+                    }
+                items(danByTrace.bodyAsText())
+                    .single()
+                    .jsonObject["purpose"]!!
+                    .jsonPrimitive.content shouldBe
+                    "compose-plan"
+
+                // 4. a gateway API key is not a realm JWT → 401;  5. no bearer → 401
+                read("ttrk-0123456789abcdef0123456789abcdef").status shouldBe HttpStatusCode.Unauthorized
+                read(null).status shouldBe HttpStatusCode.Unauthorized
+            }
+        }
+
+        // The page limit is spent AFTER the subject filter (it is in SQL): a subject whose one row sits
+        // behind 5 of someone else's still gets it at limit=1 — an in-memory filter would return nothing.
+        "the subject filter runs in SQL, before the limit" {
+            testApplication {
+                environment { config = MapApplicationConfig() }
+                application { module(cfg) }
+                startApplication()
+
+                repeat(5) { seed("turn-L", null, "other $it", subject = "sub-other", purpose = "other") }
+                seed("turn-L", null, "mine", subject = "sub-me", purpose = "mine")
+
+                val res =
+                    client.get("/v1/prompt-logs?turn_ref=turn-L&limit=1") {
+                        header(HttpHeaders.Authorization, "Bearer ${token(emptyList(), subject = "sub-me")}")
+                    }
+                // (a subject's read carries no bodies — the row is told apart by its purpose)
+                items(res.bodyAsText())
+                    .single()
+                    .jsonObject["purpose"]!!
+                    .jsonPrimitive.content shouldBe "mine"
             }
         }
 

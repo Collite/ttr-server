@@ -60,12 +60,15 @@ import org.tatrman.llmgateway.engine.CircuitBreaker
 import org.tatrman.llmgateway.engine.InferenceEngine
 import org.tatrman.llmgateway.governance.BudgetService
 import org.tatrman.llmgateway.governance.BudgetUsageRepo
+import org.tatrman.llmgateway.governance.CallAttribution
 import org.tatrman.llmgateway.governance.GovernanceLoad
 import org.tatrman.llmgateway.governance.RateLimiter
 import org.tatrman.llmgateway.governance.Settle
 import org.tatrman.llmgateway.governance.TokenEstimator
 import org.tatrman.llmgateway.governance.Usage
+import org.tatrman.llmgateway.observability.DEFAULT_INSPECT_ROLE
 import org.tatrman.llmgateway.observability.GatewayMetrics
+import org.tatrman.llmgateway.observability.PromptLogAccess
 import org.tatrman.llmgateway.observability.clampPromptLogLimit
 import org.tatrman.llmgateway.observability.PromptLogRecord
 import org.tatrman.llmgateway.observability.PromptLogRepo
@@ -233,9 +236,13 @@ fun Application.module(
             null
         }
     val keyService = governance?.keyService
+    // LC-1: the realm role that reads EVERY prompt-log row without being admin (the operator's narrow
+    // capability; ⚑LC-3 makes it the operator-profile unlock on hartland too). Beside `admin.role`.
+    val inspectRole = config.optStr("admin.inspectRole") ?: DEFAULT_INSPECT_ROLE
 
     // Attribution (D-2, contracts §1.2): X-Cost-Center refines within the key's team and is prefix-validated
-    // (a key can never charge a foreign bucket → 400); absent ⇒ the team default. X-Turn-Ref is trace-only.
+    // (a key can never charge a foreign bucket → 400); absent ⇒ the team default. The LC attribution headers
+    // (X-Turn-Ref · X-Call-Purpose · X-End-User-Subject · X-Agent-Id — CallAttribution) are trace-only.
     fun costCenterFor(
         team: String,
         header: String?,
@@ -274,17 +281,28 @@ fun Application.module(
             val startMs = System.currentTimeMillis()
             // Attribution (D-2): prefix-validate X-Cost-Center against the key's team (foreign bucket → 400).
             val costCenter = costCenterFor(principal.team, call.request.headers["X-Cost-Center"])
+            // LC §2.1 — the caller's attribution, read ONCE for every settle this request makes.
+            val attribution = CallAttribution.from(call.request.headers)
 
             val promptText = messagesText(req.messages)
+
+            // LC §2.2 — the prompt-log row id, allocated BEFORE the response starts (a header cannot follow
+            // the body) and before the row is enqueued (so it is true even if the writer drops the row).
+            // Null on a storeless boot or an empty id pool: then no header, and the row takes the default.
+            // NOT suspend (review-100 F3/F10): it reads a pre-reserved id from memory, so it neither waits on
+            // PG nor opens a cancellation window between a served call and its settle.
+            fun announceLogId(): Long? =
+                promptLog?.allocateId()?.also { call.response.header(PROMPT_LOG_ID_HEADER, it.toString()) }
 
             // One Settle record, three sinks (§5.5): budget, prompt-log (async), metrics (tokens+cost).
             fun dispatch(
                 s: Settle,
                 responseText: String,
                 status: String,
+                logId: Long?,
             ) {
                 budgetService?.settle(s)
-                promptLog?.enqueue(PromptLogRecord(s, promptText, responseText, status))
+                promptLog?.enqueue(PromptLogRecord(s, promptText, responseText, status, id = logId))
                 // Token/cost counters track REAL upstream spend only. A cache hit settles cached=true (no
                 // upstream call), so — like the budget, which skips it in settle() — it must not inflate
                 // cost_usd_total / tokens_total. The cached flag lives on the prompt-log row for accounting.
@@ -305,13 +323,14 @@ fun Application.module(
                 estimated: Boolean,
                 ttfbMs: Long?,
                 responseText: String,
+                logId: Long?,
                 status: String = "SUCCESS",
             ) = dispatch(
                 Settle(
                     keyId = principal.keyId,
                     teamId = principal.team,
                     costCenter = costCenter,
-                    turnRef = call.request.headers["X-Turn-Ref"],
+                    attribution = attribution,
                     requestedModel = req.model ?: "",
                     servedProvider = serving.target.providerName,
                     servedModel = serving.target.upstream,
@@ -332,6 +351,7 @@ fun Application.module(
                 ),
                 responseText,
                 status,
+                logId,
             )
 
             // Full three-tier resolution (LG-P3·S1): alias → literal → model_tags soft-match. Unknown name →
@@ -381,6 +401,7 @@ fun Application.module(
                     gwMetrics.cacheHit()
                     // A hit is still a request: the rate-limit token was spent in admit(); settle-as-cached
                     // records the SAVED cost (echoed) but adds nothing to budget_usage (Settle.cached=true).
+                    val logId = announceLogId() // a hit is a call too — it gets a row, so it gets a ref
                     call.response.header("X-Gateway-Provider", hit.servedProvider) // original serving provider (P-2)
                     call.response.header("X-Gateway-Model", hit.servedModel)
                     call.response.header("X-Gateway-Cache", "hit")
@@ -389,7 +410,7 @@ fun Application.module(
                             keyId = principal.keyId,
                             teamId = principal.team,
                             costCenter = costCenter,
-                            turnRef = call.request.headers["X-Turn-Ref"],
+                            attribution = attribution,
                             requestedModel = req.model ?: "",
                             servedProvider = hit.servedProvider,
                             servedModel = hit.servedModel,
@@ -405,6 +426,7 @@ fun Application.module(
                         ),
                         assistantText(hit.body),
                         "SUCCESS",
+                        logId,
                     )
                     if (req.stream) {
                         call.respondBytesWriter(contentType = ContentType.Text.EventStream) {
@@ -429,6 +451,9 @@ fun Application.module(
                             val serving = open.serving
                             call.response.header("X-Gateway-Provider", serving.target.providerName)
                             call.response.header("X-Gateway-Model", serving.target.upstream)
+                            // On the response HEADERS, which precede the first SSE frame — the stream's
+                            // frames stay byte-stable (the passthrough invariant); no frame is rewritten.
+                            val logId = announceLogId()
                             val tap = TapParser(serving.target.providerName, serving.target.upstream)
                             val settleTap = StreamSettleTap()
                             // Reassemble the completion off the same frames so a stream MISS populates the cache
@@ -483,6 +508,7 @@ fun Application.module(
                                     estimated,
                                     settleTap.ttfbMs,
                                     assembler.content(),
+                                    logId,
                                     // The upstream served if it delivered a clean end (finish_reason) OR any
                                     // content — a provider that ends without finish_reason, and a client that
                                     // abandons mid-stream, are NOT upstream errors. ERROR only on a dry attempt.
@@ -546,6 +572,7 @@ fun Application.module(
                     val serving = outcome.serving
                     call.response.header("X-Gateway-Provider", serving.target.providerName)
                     call.response.header("X-Gateway-Model", serving.target.upstream)
+                    val logId = announceLogId()
                     // Usage precedence (D-4): the upstream `usage` field, else a flagged tokenizer estimate.
                     val u = outcome.result.usage
                     val (tokens, estimated) =
@@ -562,6 +589,7 @@ fun Application.module(
                         estimated,
                         null,
                         assistantText(outcome.result.body),
+                        logId,
                     )
                     val enriched = ResponseEnrichment.chat(outcome.result, serving.model)
                     // Store on a successful miss (also runs for bypass/refresh — they skip the read, not the store).
@@ -649,7 +677,7 @@ fun Application.module(
                         keyId = principal.keyId,
                         teamId = principal.team,
                         costCenter = costCenter,
-                        turnRef = call.request.headers["X-Turn-Ref"],
+                        attribution = CallAttribution.from(call.request.headers),
                         requestedModel = modelName ?: "",
                         servedProvider = entry.target.providerName,
                         servedModel = entry.target.upstream,
@@ -694,7 +722,7 @@ fun Application.module(
             )
         }
 
-        // ── Inspect plane: prompt-log read surface (PT arc S2.2 T1, PT contracts §5) ────────────
+        // ── Inspect plane: prompt-log read surface (PT arc S2.2 T1, PT contracts §5; per-row authz LC-1) ──
         //
         // A generally useful operator/debug capability, not a PT-private hook: the gateway is the
         // only component that knows what was actually sent to a model and what came back, and
@@ -705,12 +733,22 @@ fun Application.module(
         // no "list recent" or date-range form: an unfiltered listing of this table is a bulk export
         // of every prompt and completion the estate has ever produced.
         //
-        // Gated on the SAME admin role as /admin/keys. See the PT STATUS note — whether iris-bff
-        // reaches this with a service identity or the user's OBO bearer is an open identity
-        // question, and gating narrowly now is the reversible choice.
+        // Authorization is PER ROW since LC (⚑LC-1, closes tatrman-server#28), on the same realm-JWT
+        // verifier as the admin plane: the admin role and the new inspect role read every row; any
+        // other realm JWT reads the rows whose `end_user_subject` is its own `sub` — the /protocol
+        // case, where iris-bff forwards the USER's bearer. A reader is never told a row exists that
+        // they may not see: 200 with the filtered list, never 403 (PromptLogAccess). A gateway API
+        // key is not a realm JWT and stays 401.
         if (adminAuth != null && promptLogRepo != null) {
             get("/v1/prompt-logs") {
-                if (!call.adminOk(adminAuth)) return@get
+                val access =
+                    PromptLogAccess.of(adminAuth.identify(call.bearerToken()), adminAuth.requiredRole, inspectRole)
+                if (access == PromptLogAccess.Unauthenticated) {
+                    return@get call.respond(
+                        HttpStatusCode.Unauthorized,
+                        buildJsonObject { put("error", "unauthorized") },
+                    )
+                }
                 val turnRef = call.request.queryParameters["turn_ref"]
                 val traceId = call.request.queryParameters["trace_id"]
                 if (turnRef.isNullOrBlank() && traceId.isNullOrBlank()) {
@@ -722,10 +760,24 @@ fun Application.module(
                 // Cap the cap: a caller asking for 10_000 rows gets PROMPT_LOGS_MAX_LIMIT.
                 val limit = clampPromptLogLimit(call.request.queryParameters["limit"]?.toIntOrNull())
 
-                val rows = promptLogRepo.find(turnRef = turnRef, traceId = traceId, limit = limit)
+                val rows =
+                    when (access) {
+                        PromptLogAccess.AllRows ->
+                            promptLogRepo.find(turnRef, traceId, limit, PromptLogRepo.RowScope.All)
+                        is PromptLogAccess.OwnRows ->
+                            promptLogRepo.find(turnRef, traceId, limit, PromptLogRepo.RowScope.OwnedBy(access.subject))
+                        else -> emptyList() // NoRows: a verified token naming no subject owns nothing
+                    }
+                val roleHolder = access == PromptLogAccess.AllRows
                 call.respond(
                     buildJsonObject {
-                        putJsonArray("items") { rows.forEach { add(it.toJson()) } }
+                        // Which answer this is (review-100 F6): "own" is a reader-scoped list, so a ref the
+                        // reader holds with no row here may be a row they may not see — not one the writer
+                        // dropped. Only an "all" answer lets a reader call a missing row dropped.
+                        put("access", if (roleHolder) "all" else "own")
+                        putJsonArray("items") {
+                            rows.forEach { add(it.toJson(includeSubject = roleHolder, includeBodies = roleHolder)) }
+                        }
                     },
                 )
             }
@@ -874,6 +926,9 @@ fun Application.module(
 }
 
 private fun Config.optStr(path: String): String? = if (hasPath(path)) getString(path) else null
+
+/** LC §2.2 — the response header naming the prompt-log row this call will be recorded as. */
+private const val PROMPT_LOG_ID_HEADER = "X-Prompt-Log-Id"
 
 /** The current OTel trace id (32-hex) for the prompt-log row, or null when there is no active/valid span. */
 private fun currentTraceId(): String? {

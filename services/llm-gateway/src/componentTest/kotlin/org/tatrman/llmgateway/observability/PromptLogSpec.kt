@@ -4,11 +4,15 @@ package org.tatrman.llmgateway.observability
 import com.typesafe.config.ConfigFactory
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.nulls.shouldNotBeNull
+import io.kotest.matchers.shouldNotBe
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
+import org.tatrman.llmgateway.governance.CallAttribution
 import org.tatrman.llmgateway.governance.Settle
 import org.tatrman.llmgateway.governance.Usage
 import org.tatrman.llmgateway.store.Pg
@@ -60,6 +64,23 @@ class PromptLogSpec :
                 c.createStatement().use { st -> st.executeQuery(sql).use { rs -> read(rs) } }
             }
 
+        /** True once a backend is waiting on a lock inside an INSERT into prompt_logs (the parked drain). */
+        suspend fun awaitBlockedInsert(): Boolean {
+            repeat(100) {
+                val n =
+                    query(
+                        "SELECT count(*) FROM pg_stat_activity WHERE wait_event_type = 'Lock' " +
+                            "AND query LIKE 'INSERT INTO prompt_logs%'",
+                    ) {
+                        it.next()
+                        it.getInt(1)
+                    }
+                if (n > 0) return true
+                delay(50)
+            }
+            return false
+        }
+
         suspend fun awaitRow(where: String): Boolean {
             repeat(60) {
                 val n =
@@ -79,11 +100,12 @@ class PromptLogSpec :
             stripped: List<String> = emptyList(),
             cached: Boolean = false,
             estimated: Boolean = false,
+            attribution: CallAttribution = CallAttribution(turnRef = "turn-99"),
         ) = Settle(
             keyId = keyId,
             teamId = "golem",
             costCenter = "golem/analytics",
-            turnRef = "turn-99",
+            attribution = attribution,
             requestedModel = "gpt-4o",
             servedProvider = "anthropic",
             servedModel = "claude-sonnet-4-6",
@@ -181,5 +203,137 @@ class PromptLogSpec :
                 rs.getBoolean("estimated") shouldBe false
                 rs.getString("team_id") shouldBe null // new nullable column
             }
+        }
+
+        // ── LC-P0·S0.2 (LC contracts §2.1/§2.2) ─────────────────────────────────────────────────────
+
+        "the V5 attribution columns land on the row; a settle without them writes NULLs" {
+            writer.enqueue(
+                PromptLogRecord(
+                    settle(
+                        "vk_lc_attr",
+                        attribution = CallAttribution("turn-lc", "compose-plan", "sub-dan", "golem-hartland"),
+                    ),
+                    "p",
+                    "r",
+                    "SUCCESS",
+                ),
+            )
+            writer.enqueue(PromptLogRecord(settle("vk_lc_none", attribution = CallAttribution()), "p", "r", "SUCCESS"))
+            awaitRow("key_id = 'vk_lc_attr'") shouldBe true
+            awaitRow("key_id = 'vk_lc_none'") shouldBe true
+
+            fun attributionOf(keyId: String): List<String?> =
+                query(
+                    "SELECT turn_ref, purpose, end_user_subject, agent_id FROM prompt_logs WHERE key_id = '$keyId'",
+                ) { rs ->
+                    rs.next()
+                    listOf(rs.getString(1), rs.getString(2), rs.getString(3), rs.getString(4))
+                }
+            attributionOf("vk_lc_attr") shouldBe listOf("turn-lc", "compose-plan", "sub-dan", "golem-hartland")
+            attributionOf("vk_lc_none") shouldBe listOf(null, null, null, null)
+        }
+
+        "allocateId hands out the id the row is then written under; a record without one takes the default" {
+            val a = writer.allocateId().shouldNotBeNull()
+            val b = writer.allocateId().shouldNotBeNull()
+            b shouldNotBe a
+            writer.enqueue(PromptLogRecord(settle("vk_lc_id"), "p", "r", "SUCCESS", id = b))
+            writer.enqueue(PromptLogRecord(settle("vk_lc_default"), "p", "r", "SUCCESS")) // id = null
+            awaitRow("key_id = 'vk_lc_id'") shouldBe true
+            awaitRow("key_id = 'vk_lc_default'") shouldBe true
+            query("SELECT id FROM prompt_logs WHERE key_id = 'vk_lc_id'") {
+                it.next()
+                it.getLong(1)
+            } shouldBe b
+            // the default comes off the SAME sequence, so it never collides with a handed-out id
+            val default =
+                query("SELECT id FROM prompt_logs WHERE key_id = 'vk_lc_default'") {
+                    it.next()
+                    it.getLong(1)
+                }
+            (default > b) shouldBe true
+        }
+
+        // The whole reason the id is allocated BEFORE the enqueue: a dropped row still had a real, unique
+        // id, so the reader holding it can say "the gateway holds no row for this call" (LC §4, A-LC-2).
+        // Made deterministic with a REAL stall (review-100 F21 — the first cut cancelled the writer's scope,
+        // so even the kept row was never written and "the dropped id has no row" held vacuously): a table
+        // lock parks the drain inside its first INSERT, the one-slot queue then holds the second row, the
+        // third is dropped; releasing the lock proves the kept rows land under their ids and the dropped
+        // id never does.
+        "a row the writer DROPS (queue full) still had its id; the rows it kept land under theirs" {
+            val registry = SimpleMeterRegistry()
+            val own = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+            val full = PromptLogWriter(pg.db, own, registry, capacity = 1)
+            val ids = List(3) { full.allocateId().shouldNotBeNull() }
+            ids.toSet().size shouldBe 3
+
+            val lock = pg.db.getDataSource().connection
+            try {
+                lock.autoCommit = false
+                lock.createStatement().use { it.execute("LOCK TABLE prompt_logs IN ACCESS EXCLUSIVE MODE") }
+
+                full.enqueue(PromptLogRecord(settle("vk_lc_first"), "p", "r", "SUCCESS", id = ids[0]))
+                awaitBlockedInsert() shouldBe true // the drain has taken row 1 and waits on the lock
+                full.enqueue(PromptLogRecord(settle("vk_lc_queued"), "p", "r", "SUCCESS", id = ids[1])) // the slot
+                full.enqueue(PromptLogRecord(settle("vk_lc_dropped"), "p", "r", "SUCCESS", id = ids[2])) // dropped
+                registry.counter("llm_gateway_promptlog_dropped_total").count() shouldBe 1.0
+            } finally {
+                lock.rollback()
+                lock.close()
+            }
+
+            awaitRow("key_id = 'vk_lc_queued'") shouldBe true
+
+            fun idOf(key: String): Long =
+                query("SELECT id FROM prompt_logs WHERE key_id = '$key'") {
+                    it.next()
+                    it.getLong(1)
+                }
+            idOf("vk_lc_first") shouldBe ids[0]
+            idOf("vk_lc_queued") shouldBe ids[1]
+            query("SELECT count(*) FROM prompt_logs WHERE id = ${ids[2]} OR key_id = 'vk_lc_dropped'") {
+                it.next()
+                it.getInt(1)
+            } shouldBe 0
+            own.cancel()
+        }
+
+        // review-100 F3 — the id is handed out from memory, never read from PG on the call path. With the
+        // sequence locked (every nextval blocks), allocateId still answers at once: the remaining reserved
+        // ids, then null (no header) — never a wait. Once PG answers again, the pool refills.
+        "allocateId never waits on PG: a stalled sequence costs the header, not the call" {
+            val registry = SimpleMeterRegistry()
+            val own = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+            val w = PromptLogWriter(pg.db, own, registry) // warmed synchronously at construction
+
+            val lock = pg.db.getDataSource().connection
+            try {
+                lock.autoCommit = false
+                // ALTER SEQUENCE holds the sequence's ACCESS EXCLUSIVE lock until the transaction ends.
+                lock.createStatement().use { it.execute("ALTER SEQUENCE prompt_logs_id_seq INCREMENT BY 1") }
+                // Drain the pool. Its low-water refill now parks on the lock, so the pool cannot grow back.
+                while (w.reservedIds() > 0) w.allocateId().shouldNotBeNull()
+
+                val started = System.nanoTime()
+                repeat(20) { w.allocateId() shouldBe null }
+                val tookMs = (System.nanoTime() - started) / 1_000_000
+                (tookMs < 100) shouldBe true
+                registry.counter("llm_gateway_promptlog_id_unavailable_total").count() shouldBe 20.0
+            } finally {
+                lock.rollback()
+                lock.close()
+            }
+
+            var refilled: Long? = null
+            repeat(100) {
+                if (refilled == null) {
+                    refilled = w.allocateId()
+                    if (refilled == null) delay(50)
+                }
+            }
+            refilled.shouldNotBeNull()
+            own.cancel()
         }
     })

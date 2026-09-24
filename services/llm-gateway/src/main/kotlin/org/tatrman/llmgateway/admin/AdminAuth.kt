@@ -25,7 +25,7 @@ class AdminAuth(
     issuer: String?,
     audience: String?,
     realmPublicKeyBase64: String,
-    private val requiredRole: String = "llm-gateway-admin",
+    val requiredRole: String = "llm-gateway-admin",
 ) {
     sealed interface Result {
         data class Ok(
@@ -39,6 +39,23 @@ class AdminAuth(
         data object Forbidden : Result // 403 — valid token, missing the admin role
     }
 
+    /**
+     * A verified realm JWT, read but NOT judged: who it names and which realm roles it carries (LC-1).
+     * The admin plane judges it with [authenticate] (one role, unchanged); the prompt-log inspect surface
+     * judges it per row (`PromptLogAccess`). Same verifier, same issuer/audience — one more acceptance
+     * rule on the tokens the gateway already parses, no new issuer.
+     */
+    sealed interface Identity {
+        data object NoToken : Identity // 401
+
+        data object Invalid : Identity // 401 — bad signature / issuer / audience / expiry / not a JWT
+
+        data class Verified(
+            val subject: String?,
+            val roles: Set<String>,
+        ) : Identity
+    }
+
     private val verifier: JWTVerifier =
         run {
             val keyBytes = Base64.getDecoder().decode(realmPublicKeyBase64.trim())
@@ -49,15 +66,25 @@ class AdminAuth(
             v.acceptLeeway(30).build()
         }
 
-    fun authenticate(bearerToken: String?): Result {
-        val token = bearerToken ?: return Result.NoToken
+    fun authenticate(bearerToken: String?): Result =
+        when (val id = identify(bearerToken)) {
+            Identity.NoToken -> Result.NoToken
+            Identity.Invalid -> Result.Invalid
+            is Identity.Verified -> if (requiredRole in id.roles) Result.Ok(id.subject ?: "?") else Result.Forbidden
+        }
+
+    fun identify(bearerToken: String?): Identity {
+        val token = bearerToken ?: return Identity.NoToken
         val decoded =
             try {
                 verifier.verify(token)
             } catch (e: JWTVerificationException) {
-                return Result.Invalid
+                return Identity.Invalid
             }
-        return if (requiredRole in realmRoles(decoded)) Result.Ok(decoded.subject ?: "?") else Result.Forbidden
+        return Identity.Verified(
+            subject = decoded.subject?.takeIf { it.isNotBlank() },
+            roles = realmRoles(decoded).toSet(),
+        )
     }
 
     private fun realmRoles(jwt: DecodedJWT): List<String> {

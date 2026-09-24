@@ -151,6 +151,8 @@ dependencies {
     "componentTestImplementation"(libs.kotlinx.serialization.json) // SSE tool-call reassembly (S2 conformance)
     // sign test admin JWTs for the admin-API component specs (LG-P4·S3)
     "componentTestImplementation"(libs.auth0.java.jwt)
+    // LC-P0·S0.2 — PromptLogSpec reads the writer's drop counter off a SimpleMeterRegistry.
+    "componentTestImplementation"(libs.micrometer.registry.prometheus)
     // OTel span assertions via an in-memory exporter (LG-P5·S2 TraceSpec)
     "componentTestImplementation"(libs.opentelemetry.sdk)
     "componentTestImplementation"(libs.opentelemetry.sdk.testing)
