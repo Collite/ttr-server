@@ -115,6 +115,12 @@ class FuzzyMatcher(
     // LP-P0 — the TATRMAN scorer (`fuzzy.match.version`). Defaulted V1 (byte-pinned) so existing call
     // sites / tests / goldens are unaffected; V2 needs INDEX_FIRST (checked in init). The default
     // retriever follows it, so a v2 prefix hit is retrievable, not only rescorable.
+    //
+    // ⚑ This default did NOT move at LP-P3. The `lex-matcher` service ships v2 from its own
+    // application.conf; this is the LIBRARY, and its other embedder (ai-platform's fuzzy-matcher,
+    // via `org.tatrman:lex-matcher-core`) chooses its engine in its own deployment. An embedder
+    // that never passes this argument keeps the engine it was built against — which is the whole
+    // meaning of "v1 is byte-pinned" in contracts §4.1.
     private val matchVersion: MatchVersion = MatchVersion.V1,
     private val retriever: CandidateRetriever = IndexFirstRetriever(matchVersion, repository::getVocabulary),
     // RV-P1.4 T4 — honours the authored match method (RV-32) on whatever the cascade produced.

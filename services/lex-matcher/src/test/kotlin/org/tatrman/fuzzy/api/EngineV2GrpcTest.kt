@@ -2,6 +2,7 @@
 package org.tatrman.fuzzy.api
 
 import com.typesafe.config.ConfigFactory
+import com.typesafe.config.ConfigValueFactory
 import io.grpc.inprocess.InProcessChannelBuilder
 import io.grpc.inprocess.InProcessServerBuilder
 import io.kotest.assertions.throwables.shouldThrow
@@ -162,8 +163,34 @@ class EngineV2GrpcTest :
             }
         }
 
-        "application.conf ships v1 with the FUZZY_MATCH_VERSION override" {
+        // LP-P3 T3 (ruling LPA-2). The SHIPPED value moved v1 -> v2; the library default that
+        // `withMatchVersion` falls back to when the key is absent did NOT (the case above). Both
+        // assertions stay, because they are the two halves of the rollback story: deleting the key
+        // returns the service to v1, and so does FUZZY_MATCH_VERSION=v1, with no image involved.
+        "application.conf ships v2 with the FUZZY_MATCH_VERSION override" {
             val conf = ConfigFactory.parseResources("application.conf").resolve()
-            conf.getString("fuzzy.match.version") shouldBe "v1"
+            conf.getString("fuzzy.match.version") shouldBe "v2"
+            // The pair has to be checkable together: v2 + legacy is a startup error, so the
+            // shipped conf is only startable because retrieval ships index-first beside it.
+            conf.getString("fuzzy.token-based.retrieval") shouldBe "index-first"
+            ConfigLoader
+                .withMatchVersion(
+                    TokenBasedConfig(retrieval = RetrievalMode.INDEX_FIRST),
+                    conf.getConfig("fuzzy"),
+                ).matchVersion shouldBe MatchVersion.V2
+        }
+
+        // LP-P3 T3 — the consequence of the flip that is easiest to miss: reaching for the FZ-P2
+        // retrieval escape hatch ALONE now stops the service, where before it silently downgraded
+        // the scorer too. Pinned so the README's warning cannot drift away from the behaviour.
+        "the retrieval escape hatch alone is now a startup error, and v1 beside it is the way out" {
+            val conf = ConfigFactory.parseResources("application.conf").resolve().getConfig("fuzzy")
+            val legacy = TokenBasedConfig(retrieval = RetrievalMode.LEGACY)
+            shouldThrow<IllegalArgumentException> {
+                ConfigLoader.withMatchVersion(legacy, conf)
+            }.message!! shouldContain "v2 requires index-first"
+            ConfigLoader
+                .withMatchVersion(legacy, conf.withValue("match.version", ConfigValueFactory.fromAnyRef("v1")))
+                .matchVersion shouldBe MatchVersion.V1
         }
     })

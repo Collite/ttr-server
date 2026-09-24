@@ -48,11 +48,38 @@ contract are untouched:
   seam an OpenSearch backend can plug into.
 - **`legacy`** — the escape hatch: score every candidate that shares an exact token with
   the query. Byte-identical to the pre-FZ engine. Select with
-  `FUZZY_TOKEN_BASED_RETRIEVAL=legacy`.
+  `FUZZY_TOKEN_BASED_RETRIEVAL=legacy`, **and** `FUZZY_MATCH_VERSION=v1` — see below.
+
+## Scorer version (`fuzzy.match`)
+
+`fuzzy.match.version` picks the TATRMAN scorer. **The service ships `v2`** (flipped at LP-P3,
+ruling LPA-2, on the §4.7 parity gate); `v1` is the byte-pinned pre-LP engine and is one
+environment variable away, with no image involved.
+
+- **`v2`** — per-token kinds (`exact` · `typo` · `prefix`) on the ES-AUTO edit ladder, a
+  candidate-coverage tie-break at ε = 0.01, the order bonus computed over *matched* candidate
+  positions, and per-token provenance (`Provenance.token_hits` + `coverage`, `method`
+  `TATRMAN_V2`). What it buys is partial names: a query that is a prefix or a subset of a
+  multi-token candidate now scores, and a candidate only fractionally covered is ranked below one
+  fully covered at the same precision.
+- **`v1`** — the pre-LP scorer, unchanged to the byte, `method` `TATRMAN`.
+
+⚠ **v2 requires `index-first` retrieval and refuses to start on `legacy`.** Before the default
+flipped, `FUZZY_TOKEN_BASED_RETRIEVAL=legacy` on its own quietly gave you v1 + legacy; now it is a
+startup error unless `FUZZY_MATCH_VERSION=v1` goes with it.
+
+⚑ The **library** default (`FuzzyMatcher(matchVersion = …)` in `lex-matcher-core`) is still `V1`.
+Only this service's shipped configuration moved. An embedder that never passes the argument keeps
+the pinned engine — that is what "v1 is byte-pinned" means.
 
 | Config key | Env | Values | Default |
 |---|---|---|---|
 | `fuzzy.token-based.retrieval` | `FUZZY_TOKEN_BASED_RETRIEVAL` | `index-first` \| `legacy` | `index-first` |
+| `fuzzy.match.version` | `FUZZY_MATCH_VERSION` | `v1` \| `v2` | **`v2`** |
+
+The effective value is logged at startup (`Fuzzy match engine: fuzzy.match.version=…`) and echoed
+in `FuzzyStatusResponse.engine_version`, so the question "which engine is this pod serving?" is
+answerable from outside the pod. Ask the pod, not the manifest.
 
 ## Run
 
