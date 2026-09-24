@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-package org.tatrman.translate.model
+package org.tatrman.translate.snapshot
 
 import org.tatrman.meta.v1.DbColumnSummary
 import org.tatrman.meta.v1.ModelSnapshot

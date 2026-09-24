@@ -66,6 +66,9 @@ service VelesService {
   // -------- Phase 2.2 — conceptual roles --------
   rpc ListRoles(ListRolesRequest) returns (ListRolesResponse);
   rpc GetRolesForEntity(GetRolesForEntityRequest) returns (GetRolesForEntityResponse);
+
+  // -------- MV — member vocabularies (the values an indexed attribute takes over its entity) --------
+  rpc ListMemberVocabularies(ListMemberVocabulariesRequest) returns (ListMemberVocabulariesResponse);
 }
 
 // =============================================================================
@@ -108,8 +111,14 @@ message SearchHints {
   LocalizedStringList descriptions = 3;                     // per-language multi-paragraph alt descriptions
   repeated string examples = 4;                             // representative user phrasings
   repeated string aliases = 5;                              // synonyms / alternative names
-  bool fuzzy = 6;                                           // true → column/value is indexed for fuzzy matching
-  bool searchable = 7;                                      // true → column/value participates in full-text / keyword search
+  // DEPRECATED meaning "indexed" (MV, member-vocabulary contracts §2.2). Now: the match method is
+  // PARTIAL (TYPOS/TOKENS). A reader asking "does this carrier have a member vocabulary?" reads
+  // `indexed`; for every carrier that does not author both a method and the old boolean, the two
+  // readings of this field agree.
+  bool fuzzy = 6;
+  bool searchable = 7;                                      // legacy inclusion hint; decides nothing about indexing
+  bool indexed = 8;                                         // MV — the carrier has a member vocabulary (its values are indexed for matching)
+  string match_method = 9;                                  // MV — "EXACT" | "TYPOS(n)" | "TOKENS"; "" when not indexed
 }
 
 // Search feature — surfaced via GetStatusResponse so operators can see which
@@ -371,14 +380,16 @@ message ListObjectsRequest {
   BindingFilter binding = 5;                                // 0 = any
   string source_file_prefix = 6;                            // empty = no filter
   reserved 7 to 11;
-  // When true, only return objects whose SearchHints.fuzzy == true.
-  // Cross-kind: applies to whichever kinds carry SearchHints (column, entity,
-  // attribute, role, query). v1 callers query only `kind="column"`.
+  // DEPRECATED alias of `indexed_only` (MV): the bit it filtered on always meant "indexed".
+  // Honoured for one release, with one WARN per process.
   bool fuzzy_only = 12;
   // Filter by package name (e.g. "ucetnictvi"). Empty = no filter.
   // AND-ed with other filters. Matches when descriptor.source_file contains
   // "/<package>/" as a path segment.
   string package = 13;
+  // MV — only objects with a member vocabulary: SearchHints.indexed carriers (any kind that carries
+  // SearchHints), plus the DB columns that back an indexed ER attribute.
+  bool indexed_only = 14;
 }
 
 enum BindingFilter {
@@ -1096,3 +1107,43 @@ message ValidateModelResponse {
   reserved 100 to 104;
 }
 
+// =============================================================================
+// ListMemberVocabularies (MV — member-vocabulary contracts §3)
+//
+// One item per carrier with a member vocabulary (every SearchHints.indexed ER attribute, and every
+// indexed DB column that does not back an indexed attribute), ordered by `category`. The loader
+// executes `read_sql` and registers the rows under `category` — it never composes SQL and never
+// learns which table, view or query the entity reads.
+// =============================================================================
+
+message ListMemberVocabulariesRequest {
+  PageRequest page = 1;
+  // The dialect `read_sql` is rendered for — the loader's own warehouse — as a
+  // `org.tatrman.translate.v1.SqlDialect` value name ("MSSQL", "POSTGRESQL", …). A string, so the
+  // metadata contract does not import the translator's; "" = the translator's default.
+  string dialect = 2;
+}
+
+message MemberVocabulary {
+  string category = 1;                                      // the carrier's qname dotted (er.<ns>.<entity>.<attr>) — the ONLY key the loader uses
+  org.tatrman.plan.v1.QualifiedName attribute = 2;          // the carrier (an ER attribute, or a DB column)
+  org.tatrman.plan.v1.QualifiedName entity = 3;             // its owner (entity, or table)
+  string key_attribute = 4;                                 // the owner's single key, dotted; "" when absent/composite (then read_sql is "" too)
+  // SELECT DISTINCT <key>, <attr> FROM <entity> ORDER BY <key>, rendered by the translator from the
+  // ER projection — the same rendering a query over that entity gets. Column 1 = key, column 2 =
+  // value. "" when a diagnostic blocks it.
+  string read_sql = 5;
+  string dialect = 6;                                       // the SqlDialect value name read_sql was rendered for
+  string match_method = 7;                                  // "EXACT" | "TYPOS(n)" | "TOKENS"
+  string version = 8;                                       // SHA-256 over (model version, read_sql, key_attribute, match_method)
+  // RG-FUZ-001 (no/composite key), RG-FUZ-002 (render failed / not renderable). An item WITH a
+  // blocking diagnostic is still listed, with read_sql "".
+  repeated org.tatrman.common.v1.ResponseMessage diagnostics = 9;
+}
+
+message ListMemberVocabulariesResponse {
+  repeated MemberVocabulary items = 1;
+  PageInfo page_info = 2;
+  repeated org.tatrman.common.v1.ResponseMessage messages = 99;
+  reserved 100 to 104;
+}

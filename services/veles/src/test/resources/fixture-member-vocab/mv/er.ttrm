@@ -1,0 +1,53 @@
+package mv
+model er
+
+def entity store {
+    attributes: [
+        def attribute store_id { type: int, isKey: true },
+        def attribute store_name { type: text, search { searchable method: TYPOS(1) } },
+        // EXACT is a member vocabulary (it was not before MV)
+        def attribute state { type: text, search { searchable method: EXACT } },
+        // a bare `searchable` is a hint, not a vocabulary
+        def attribute label { type: text, search { searchable } }
+    ]
+}
+
+// A second entity over `stores`, with an expression-mapped attribute. Kept apart from `store`
+// because the translator's ER catalog does not represent expression mappings, so ANY query over an
+// entity that has one fails (`field [display] not found`) — at query time and at index time alike.
+def entity store_card {
+    attributes: [
+        def attribute id { type: int, isKey: true },
+        // indexed but expression-mapped: listed, not renderable (RG-FUZ-003)
+        def attribute display { type: text, search { searchable method: TOKENS } }
+    ]
+}
+
+def entity supplier_rival {
+    attributes: [
+        def attribute id { type: int, isKey: true },
+        def attribute rival_name { type: text, search { searchable method: TOKENS } }
+    ]
+}
+
+def entity brand_rival {
+    attributes: [
+        def attribute id { type: int, isKey: true },
+        def attribute rival_name { type: text, search { searchable method: TOKENS } }
+    ]
+}
+
+def entity order_line {
+    attributes: [
+        def attribute order_id { type: int, isKey: true },
+        def attribute line_no { type: int, isKey: true },
+        def attribute sku_label { type: text, search { searchable method: EXACT } }
+    ]
+}
+
+def entity open_store {
+    attributes: [
+        def attribute id { type: int, isKey: true },
+        def attribute name { type: text, search { searchable method: TYPOS(1) } }
+    ]
+}

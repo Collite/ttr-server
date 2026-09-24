@@ -64,6 +64,8 @@ jib {
 
 dependencies {
     implementation(libs.tatrman.ttr.translator)
+    // MV-T1 — SnapshotModelHandle moved here so Veles renders member vocabularies through it too.
+    implementation(project(":shared:libs:kotlin:translate-snapshot"))
     // InMemoryModelHandle (the ModelHandle SPI test double) ships in the
     // ttr-translator test-fixtures jar — used by TpcdsUnparseSpec (WS-T2 T4).
     testImplementation(testFixtures(libs.tatrman.ttr.translator))

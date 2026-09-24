@@ -26,6 +26,8 @@ class RgDiagnosticsSpec :
                 "RG-NLP-010" to Severity.INFO,
                 "RG-FUZ-001" to Severity.WARNING,
                 "RG-FUZ-002" to Severity.ERROR,
+                // MV-T1 (member-vocabulary contracts §8, renumbered: 002 was already the leak guard).
+                "RG-FUZ-003" to Severity.WARNING,
                 "RG-GND-001" to Severity.WARNING,
                 "RG-GND-002" to Severity.ERROR,
                 "RG-RES-001" to Severity.INFO,

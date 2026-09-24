@@ -49,6 +49,11 @@ import org.tatrman.meta.v1.ListQueriesRequest
 import org.tatrman.meta.v1.ListQueriesResponse
 import org.tatrman.meta.v1.ListRolesRequest
 import org.tatrman.meta.v1.ListRolesResponse
+import org.tatrman.meta.v1.ListMemberVocabulariesRequest
+import org.tatrman.meta.v1.ListMemberVocabulariesResponse
+import org.tatrman.meta.v1.MemberVocabulary
+import org.tatrman.translate.snapshot.SnapshotModelHandle
+import org.tatrman.translate.v1.SqlDialect
 import org.tatrman.meta.v1.ModelBundle
 import org.tatrman.meta.v1.ModelBundleTable
 import org.tatrman.meta.v1.ModelBundleView
@@ -106,6 +111,7 @@ import org.tatrman.ttr.metadata.model.Query
 import org.tatrman.ttr.metadata.model.Relation
 import org.tatrman.ttr.metadata.model.Role
 import org.tatrman.ttr.metadata.model.SearchHints
+import org.tatrman.ttr.metadata.model.MatchMethods
 import java.nio.file.Files
 import java.nio.file.Path
 import java.security.MessageDigest
@@ -159,31 +165,33 @@ class MetadataServiceImpl(
     }
 
     /**
-     * Columns that are fuzzy-searchable *by virtue of backing a fuzzy ER attribute*.
+     * Columns that are indexed *by virtue of backing an indexed ER attribute* — what
+     * `ListObjects(indexed_only)` lists beside the carriers that are indexed themselves (MV renamed
+     * this from `attributeBackedFuzzyColumns`; the bit it read always meant "indexed").
      *
-     * `fuzzy: true` may sit on a DB column directly (handled by [searchHintsOrNull])
-     * OR on an ER attribute. When on an attribute, the physical column to index is
-     * the attribute's `er2db` mapping target. Attributes mapped to an Expression
-     * (no physical column) or with no mapping at all are skipped with a warning —
-     * the fuzzy index can only hold real columns.
+     * An indexed carrier may be a DB column directly (handled by [searchHintsOrNull]) OR an ER
+     * attribute; for an attribute, the listed column is its `er2db` mapping target. Attributes
+     * mapped to an Expression (no physical column) or with no mapping at all are skipped with a
+     * warning. This is a LISTING — the member vocabularies themselves come from
+     * [listMemberVocabularies], which never walks columns.
      *
      * Memoised by model version so the traversal + warnings run once per snapshot
      * swap, not once per `listObjects` call.
      */
     @Volatile
-    private var effectiveFuzzyCache: Pair<String, Set<org.tatrman.ttr.metadata.model.QualifiedName>>? = null
+    private var indexedColumnsCache: Pair<String, Set<org.tatrman.ttr.metadata.model.QualifiedName>>? = null
 
-    private fun attributeBackedFuzzyColumns(model: Model): Set<org.tatrman.ttr.metadata.model.QualifiedName> {
+    private fun indexedColumns(model: Model): Set<org.tatrman.ttr.metadata.model.QualifiedName> {
         val version = model.version.value
-        effectiveFuzzyCache?.let { (v, set) -> if (v == version) return set }
+        indexedColumnsCache?.let { (v, set) -> if (v == version) return set }
 
-        val fuzzyAttrs =
+        val indexedAttrs =
             model
                 .objectByQname()
                 .values
                 .asSequence()
                 .filterIsInstance<Attribute>()
-                .filter { it.search.fuzzy }
+                .filter { it.search.indexed }
                 .map { it.qname }
                 .toSet()
         val mappingByAttr =
@@ -193,23 +201,23 @@ class MetadataServiceImpl(
                 .associateBy { it.attribute }
 
         val columns = mutableSetOf<org.tatrman.ttr.metadata.model.QualifiedName>()
-        for (attr in fuzzyAttrs) {
+        for (attr in indexedAttrs) {
             when (val target = mappingByAttr[attr]?.target) {
                 is AttributeMappingTarget.Column -> columns.add(target.qname)
                 is AttributeMappingTarget.Expression ->
                     logger.warn(
-                        "Fuzzy attribute {} maps to an expression (no physical column); skipping for fuzzy indexing",
+                        "Indexed attribute {} maps to an expression (no physical column); not listed by indexed_only",
                         attr.dotted(),
                     )
                 null ->
                     logger.warn(
-                        "Fuzzy attribute {} has no er2db column mapping; skipping for fuzzy indexing",
+                        "Indexed attribute {} has no er2db column mapping; not listed by indexed_only",
                         attr.dotted(),
                     )
             }
         }
         val result = columns.toSet()
-        effectiveFuzzyCache = version to result
+        indexedColumnsCache = version to result
         return result
     }
 
@@ -352,10 +360,15 @@ class MetadataServiceImpl(
         val snap =
             registry.read()
                 ?: return ListObjectsResponse.newBuilder().addMessages(notReadyMessage()).build()
-        // A column is fuzzy if its own SearchHints.fuzzy is true OR it backs a fuzzy
-        // ER attribute (the flag moved onto attributes). Computed once per snapshot.
-        val attrBackedFuzzyColumns =
-            if (request.fuzzyOnly) attributeBackedFuzzyColumns(snap.model) else emptySet()
+        // MV: a column is listed if it is indexed itself OR it backs an indexed ER attribute.
+        // `fuzzy_only` is the deprecated spelling of `indexed_only` — honoured, warned once.
+        if (request.fuzzyOnly && fuzzyOnlyWarned.compareAndSet(false, true)) {
+            logger.warn(
+                "ListObjects: fuzzy_only is deprecated; use indexed_only (MV — it filters on SearchHints.indexed)",
+            )
+        }
+        val indexedOnly = request.indexedOnly || request.fuzzyOnly
+        val backingIndexed = if (indexedOnly) indexedColumns(snap.model) else emptySet()
         val all =
             snap.model
                 .objectByQname()
@@ -370,9 +383,9 @@ class MetadataServiceImpl(
                     request.sourceFilePrefix.isEmpty() ||
                         it.sourceFile.startsWith(request.sourceFilePrefix)
                 }.filter { obj ->
-                    !request.fuzzyOnly ||
-                        obj.searchHintsOrNull()?.fuzzy == true ||
-                        (obj is DbColumn && obj.qname in attrBackedFuzzyColumns)
+                    !indexedOnly ||
+                        obj.searchHintsOrNull()?.indexed == true ||
+                        (obj is DbColumn && obj.qname in backingIndexed)
                 }.filter { obj ->
                     request.`package`.isEmpty() || obj.sourceFile.contains("/${request.`package`}/")
                 }.sortedBy { "${it.qname.schemaCode}.${it.qname.namespace}.${it.qname.name}" }
@@ -452,6 +465,22 @@ class MetadataServiceImpl(
                 .setEtag(etag)
                 .build()
         }
+        return GetSnapshotResponse
+            .newBuilder()
+            .setNotModified(false)
+            .setEtag(etag)
+            .setSnapshot(buildModelSnapshot(snap))
+            .build()
+    }
+
+    /**
+     * The whole-model snapshot GetSnapshot serves — and the one [listMemberVocabularies] renders
+     * through (`SnapshotModelHandle.from(...)`, the adapter the translate service builds from this
+     * very response), so an index reads an entity exactly as a query over it does.
+     */
+    private fun buildModelSnapshot(
+        snap: org.tatrman.ttr.metadata.registry.RegistrySnapshot,
+    ): org.tatrman.meta.v1.ModelSnapshot {
         val descriptor = snap.toProtoDescriptor()
         val snapshotBuilder =
             org.tatrman.meta.v1.ModelSnapshot
@@ -481,12 +510,80 @@ class MetadataServiceImpl(
             }
             snapshotBuilder.addObjects(entryBuilder.build())
         }
-        return GetSnapshotResponse
+        return snapshotBuilder.build()
+    }
+
+    // ----- MV-T1 — ListMemberVocabularies (member-vocabulary contracts §3) -----
+
+    /** Rendered vocabularies for one (model version, dialect) — rendering runs Calcite, so once per swap. */
+    @Volatile
+    private var memberVocabularyCache: Triple<String, SqlDialect, List<MemberVocabulary>>? = null
+
+    override suspend fun listMemberVocabularies(
+        request: ListMemberVocabulariesRequest,
+    ): ListMemberVocabulariesResponse {
+        val snap =
+            registry.read()
+                ?: return ListMemberVocabulariesResponse.newBuilder().addMessages(notReadyMessage()).build()
+        val dialect =
+            MemberVocabularyRenderer.dialectOf(request.dialect)
+                ?: return ListMemberVocabulariesResponse
+                    .newBuilder()
+                    .addMessages(
+                        ResponseMessage
+                            .newBuilder()
+                            .setSeverity(Severity.ERROR)
+                            .setCode("unknown_dialect")
+                            .setHumanMessage(
+                                "Unknown dialect '${request.dialect}' — expected a SqlDialect value name " +
+                                    "(${MemberVocabularyRenderer.DIALECTS.joinToString { it.name }}) or \"\"",
+                            ).build(),
+                    ).build()
+        val all = memberVocabularies(snap, dialect)
+        val pageSize = (request.page.pageSize.takeIf { it > 0 } ?: 100).coerceAtMost(1000)
+        val (slice, nextToken) = PageTokenCodec.paginate(all, request.page.pageToken, pageSize) { it.category }
+        return ListMemberVocabulariesResponse
             .newBuilder()
-            .setNotModified(false)
-            .setEtag(etag)
-            .setSnapshot(snapshotBuilder.build())
-            .build()
+            .addAllItems(slice)
+            .setPageInfo(
+                PageInfo
+                    .newBuilder()
+                    .setNextPageToken(nextToken)
+                    .setTotalCount(all.size)
+                    .build(),
+            ).build()
+    }
+
+    private fun memberVocabularies(
+        snap: org.tatrman.ttr.metadata.registry.RegistrySnapshot,
+        dialect: SqlDialect,
+    ): List<MemberVocabulary> {
+        val version = snap.model.version.value
+        memberVocabularyCache?.let { (v, d, cached) -> if (v == version && d == dialect) return cached }
+        val drafts = MemberVocabularies.enumerate(snap.model)
+        val rendered =
+            if (drafts.isEmpty()) {
+                emptyList()
+            } else {
+                val renderer = MemberVocabularyRenderer(SnapshotModelHandle.from(buildModelSnapshot(snap)), version)
+                drafts.map { renderer.render(it, dialect) }
+            }
+        for (v in rendered.filter { it.diagnosticsCount > 0 }) {
+            logger.warn(
+                "Member vocabulary {} has no read plan: {}",
+                v.category,
+                v.diagnosticsList.joinToString { it.humanMessage },
+            )
+        }
+        logger.info(
+            "Member vocabularies for model {} ({}): {} listed, {} with a read plan",
+            version,
+            dialect.name,
+            rendered.size,
+            rendered.count { it.readSql.isNotEmpty() },
+        )
+        memberVocabularyCache = Triple(version, dialect, rendered)
+        return rendered
     }
 
     override suspend fun listQueries(request: ListQueriesRequest): ListQueriesResponse {
@@ -1213,8 +1310,12 @@ private fun SearchHints.toProto(): ProtoSearchHints =
         .also { if (!descriptions.isEmpty) it.descriptions = descriptions.toProto() }
         .addAllExamples(examples)
         .addAllAliases(aliases)
-        .setFuzzy(fuzzy)
+        // MV (contracts §2.2): `fuzzy` now says "the method is partial"; `indexed` is the bit that
+        // used to hide under its name. `match_method` is "" for a carrier with no vocabulary.
+        .setFuzzy(MatchMethods.isPartial(matchMethod))
         .setSearchable(searchable)
+        .setIndexed(indexed)
+        .setMatchMethod(if (indexed) matchMethod ?: MatchMethods.DEFAULT else "")
         .build()
 
 private fun Entity.toEntityDetail(): EntityDetail =
@@ -1594,3 +1695,8 @@ private fun org.tatrman.ttr.metadata.registry.RegistrySnapshot.toProtoDescriptor
                 .groupingBy { "${it.qname.schemaCode}.${it.kind}" }
                 .eachCount(),
         ).build()
+
+/** `fuzzy_only`'s deprecation WARN — once per PROCESS (MV contracts §2.2), not once per instance. */
+private val fuzzyOnlyWarned =
+    java.util.concurrent.atomic
+        .AtomicBoolean(false)

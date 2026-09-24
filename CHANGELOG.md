@@ -16,6 +16,44 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+### `meta.v1` — member vocabularies (MV-T1): `ListMemberVocabularies`, and `SearchHints.indexed`
+
+A member vocabulary is the set of values one attribute takes over its entity's population, indexed for
+matching. Until now the lex-matcher built these itself: it listed "fuzzy columns" and composed its own
+SQL per physical column. So two entities over one table shared one index, and a view- or query-backed
+entity was indexed over its whole base table. Veles now publishes one vocabulary per indexed
+**attribute**, together with the read plan the translator renders from the entity.
+
+**Wire (additive)**
+
+- `VelesService.ListMemberVocabularies` returns `MemberVocabulary` items, one per carrier with a member
+  vocabulary, ordered by `category` and paged by it. Each item carries:
+  - `category`: the attribute's dotted qname, byte-equal to its compiled-lexicon target ref;
+  - `attribute` and `entity` (its owner), plus `key_attribute`;
+  - `read_sql`: `SELECT <key>, <value> … GROUP BY … ORDER BY <key>` rendered for the request's `dialect`
+    (a `translate.v1.SqlDialect` value name);
+  - `match_method`, `version` (SHA-256 over model version, `read_sql`, key and method), and `diagnostics`.
+- `SearchHints.indexed = 8` and `match_method = 9`. `fuzzy = 6` now means "the match method is partial"
+  (TYPOS/TOKENS). For every carrier that does not author both a method and the deprecated boolean, it
+  reads the same as before.
+- `ListObjectsRequest.indexed_only = 14`. `fuzzy_only = 12` is its deprecated alias for one release,
+  and one WARN per process is logged when it is used. ⚠ `method: EXACT` carriers are now indexed and are
+  therefore listed.
+- Diagnostics: `RG-FUZ-001` is reworded from "fuzzy column" to "member vocabulary". New `RG-FUZ-003`
+  (WARNING) means a vocabulary has no read plan, with the reason: an expression-mapped attribute, or a
+  translator failure.
+
+**How `read_sql` is rendered.** Veles renders it through `SnapshotModelHandle` over its own
+`GetSnapshot`. That is the exact adapter the translate service builds for every ER query, so an index
+reads an entity the way a query over it does. The adapter moved from `services/translate` into the new
+`shared/libs/kotlin/translate-snapshot` for this reason. Two known gaps, where a query fails in the same
+way, show up as `RG-FUZ-003` rather than being worked around:
+- a query-backed entity: `GetSnapshot` carries no `canonical_form`;
+- any entity with an expression-mapped attribute: the ER catalog does not represent expressions.
+
+**Consumers:** built on `org.tatrman:*:0.13.6`, where `SearchHints.indexed` + `matchMethod` split the old
+`fuzzy` bit.
+
 ### `query.v1` / `validate.v1` — a caller-stated row window, a ceiling, and a warning when the cap binds
 
 `validate` caps every answer at `default-top-n` rows by injecting a `LIMIT`, and the cap was a

@@ -68,6 +68,9 @@ dependencies {
     implementation(project(":shared:libs:kotlin:logging-config"))
     // Section F query-parse worker parses stored queries in-process against the model (SQL → PlanNode).
     implementation(libs.tatrman.ttr.translator)
+    // MV-T1 — member vocabularies render through the query path's own adapter + the RG-* registry.
+    implementation(project(":shared:libs:kotlin:translate-snapshot"))
+    implementation(project(":shared:libs:kotlin:diagnostics"))
     implementation(project(":shared:proto"))
 
     implementation(libs.kotlinx.coroutines.core)

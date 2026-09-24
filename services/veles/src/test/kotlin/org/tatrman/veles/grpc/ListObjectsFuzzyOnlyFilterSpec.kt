@@ -47,9 +47,9 @@ class ListObjectsFuzzyOnlyFilterSpec :
                     qname = qn("db", "dbo", "customers"),
                     columns =
                         listOf(
-                            column(qn("db", "dbo", "customers.id"), "int", fuzzy = false, searchable = false),
-                            column(qn("db", "dbo", "customers.name"), "text", fuzzy = true, searchable = true),
-                            column(qn("db", "dbo", "customers.email"), "varchar", fuzzy = false, searchable = false),
+                            column(qn("db", "dbo", "customers.id"), "int", indexed = false, searchable = false),
+                            column(qn("db", "dbo", "customers.name"), "text", indexed = true, searchable = true),
+                            column(qn("db", "dbo", "customers.email"), "varchar", indexed = false, searchable = false),
                         ),
                     primaryKey = listOf("id"),
                 )
@@ -57,7 +57,7 @@ class ListObjectsFuzzyOnlyFilterSpec :
                 Entity(
                     internalId = "e1",
                     qname = qn("er", "entity", "Customer"),
-                    search = SearchHints(fuzzy = true, searchable = true),
+                    search = SearchHints(searchable = true, indexed = true, matchMethod = "TYPOS(1)"),
                 )
             val model =
                 Model(
@@ -101,9 +101,9 @@ class ListObjectsFuzzyOnlyFilterSpec :
                     qname = qn("db", "dbo", "customers"),
                     columns =
                         listOf(
-                            column(qn("db", "dbo", "customers.id"), "int", fuzzy = false, searchable = false),
-                            column(qn("db", "dbo", "customers.name"), "text", fuzzy = true, searchable = true),
-                            column(qn("db", "dbo", "customers.email"), "varchar", fuzzy = true, searchable = true),
+                            column(qn("db", "dbo", "customers.id"), "int", indexed = false, searchable = false),
+                            column(qn("db", "dbo", "customers.name"), "text", indexed = true, searchable = true),
+                            column(qn("db", "dbo", "customers.email"), "varchar", indexed = true, searchable = true),
                         ),
                     primaryKey = listOf("id"),
                 )
@@ -111,7 +111,7 @@ class ListObjectsFuzzyOnlyFilterSpec :
                 Entity(
                     internalId = "e1",
                     qname = qn("er", "entity", "Customer"),
-                    search = SearchHints(fuzzy = true, searchable = true),
+                    search = SearchHints(searchable = true, indexed = true, matchMethod = "TYPOS(1)"),
                 )
             val model =
                 Model(
@@ -153,7 +153,7 @@ class ListObjectsFuzzyOnlyFilterSpec :
                 Entity(
                     internalId = "e1",
                     qname = qn("er", "entity", "Customer"),
-                    search = SearchHints(fuzzy = true, searchable = true),
+                    search = SearchHints(searchable = true, indexed = true, matchMethod = "TYPOS(1)"),
                 )
             val nonFuzzyEntity =
                 Entity(
@@ -200,9 +200,9 @@ class ListObjectsFuzzyOnlyFilterSpec :
                     qname = qn("db", "dbo", "QSTRED_DF"),
                     columns =
                         listOf(
-                            column(qn("db", "dbo", "QSTRED_DF.IDSTRED"), "int", fuzzy = false, searchable = false),
-                            column(qn("db", "dbo", "QSTRED_DF.KOD_STR"), "text", fuzzy = false, searchable = false),
-                            column(qn("db", "dbo", "QSTRED_DF.NAZEV_STR"), "text", fuzzy = false, searchable = false),
+                            column(qn("db", "dbo", "QSTRED_DF.IDSTRED"), "int", indexed = false, searchable = false),
+                            column(qn("db", "dbo", "QSTRED_DF.KOD_STR"), "text", indexed = false, searchable = false),
+                            column(qn("db", "dbo", "QSTRED_DF.NAZEV_STR"), "text", indexed = false, searchable = false),
                         ),
                     primaryKey = listOf("IDSTRED"),
                 )
@@ -212,7 +212,7 @@ class ListObjectsFuzzyOnlyFilterSpec :
                     qname = qn("er", "entity", "účetní_středisko.kód_střediska"),
                     entity = qn("er", "entity", "účetní_středisko"),
                     type = "text",
-                    search = SearchHints(fuzzy = true, searchable = true),
+                    search = SearchHints(searchable = true, indexed = true, matchMethod = "TYPOS(1)"),
                 )
             val nazevAttr =
                 org.tatrman.ttr.metadata.model.Attribute(
@@ -220,7 +220,7 @@ class ListObjectsFuzzyOnlyFilterSpec :
                     qname = qn("er", "entity", "účetní_středisko.název_střediska"),
                     entity = qn("er", "entity", "účetní_středisko"),
                     type = "text",
-                    search = SearchHints(fuzzy = true, searchable = true),
+                    search = SearchHints(searchable = true, indexed = true, matchMethod = "TYPOS(1)"),
                 )
             val entity =
                 Entity(
@@ -287,8 +287,8 @@ class ListObjectsFuzzyOnlyFilterSpec :
                     qname = qn("db", "dbo", "products"),
                     columns =
                         listOf(
-                            column(qn("db", "dbo", "products.id"), "int", fuzzy = false, searchable = false),
-                            column(qn("db", "dbo", "products.name"), "text", fuzzy = false, searchable = false),
+                            column(qn("db", "dbo", "products.id"), "int", indexed = false, searchable = false),
+                            column(qn("db", "dbo", "products.name"), "text", indexed = false, searchable = false),
                         ),
                     primaryKey = listOf("id"),
                 )
@@ -306,12 +306,81 @@ class ListObjectsFuzzyOnlyFilterSpec :
 
             resp.itemsCount shouldBe 0
         }
+
+        // MV-T1 T3 (contracts §2.2) — `indexed_only`, and `fuzzy_only` as its alias.
+        "ListObjects(indexed_only) lists an EXACT-method column — it was not indexed before MV" {
+            val table =
+                DbTable(
+                    internalId = "t1",
+                    qname = qn("db", "dbo", "stores"),
+                    columns =
+                        listOf(
+                            column(qn("db", "dbo", "stores.id"), "int"),
+                            DbColumn(
+                                internalId = "c-state",
+                                qname = qn("db", "dbo", "stores.state"),
+                                table = qn("db", "dbo", "stores"),
+                                dataType = "char",
+                                search = SearchHints(searchable = true, indexed = true, matchMethod = "EXACT"),
+                            ),
+                            DbColumn(
+                                internalId = "c-label",
+                                qname = qn("db", "dbo", "stores.label"),
+                                table = qn("db", "dbo", "stores"),
+                                dataType = "text",
+                                // a bare `searchable` is a hint, not a vocabulary
+                                search = SearchHints(searchable = true),
+                            ),
+                        ),
+                    primaryKey = listOf("id"),
+                )
+            val (service, _) = wire(modelOf(table))
+            val resp =
+                service.listObjects(
+                    ListObjectsRequest
+                        .newBuilder()
+                        .setKind("column")
+                        .setIndexedOnly(true)
+                        .build(),
+                )
+            resp.itemsList.map { it.qualifiedName.name } shouldBe listOf("stores.state")
+        }
+
+        "fuzzy_only is an alias of indexed_only — the same page" {
+            val table =
+                DbTable(
+                    internalId = "t1",
+                    qname = qn("db", "dbo", "customers"),
+                    columns =
+                        listOf(
+                            column(qn("db", "dbo", "customers.id"), "int"),
+                            column(qn("db", "dbo", "customers.name"), "text", indexed = true, searchable = true),
+                            column(qn("db", "dbo", "customers.email"), "varchar", indexed = true, searchable = true),
+                        ),
+                    primaryKey = listOf("id"),
+                )
+            val (service, _) = wire(modelOf(table))
+
+            suspend fun page(build: ListObjectsRequest.Builder.() -> Unit) =
+                service
+                    .listObjects(
+                        ListObjectsRequest
+                            .newBuilder()
+                            .setKind("column")
+                            .apply(build)
+                            .build(),
+                    ).itemsList
+                    .map { it.qualifiedName.name }
+            val viaAlias = page { fuzzyOnly = true }
+            viaAlias shouldBe page { indexedOnly = true }
+            viaAlias shouldBe listOf("customers.email", "customers.name")
+        }
     })
 
 private fun column(
     qname: QualifiedName,
     dataType: String,
-    fuzzy: Boolean = false,
+    indexed: Boolean = false,
     searchable: Boolean = false,
 ): DbColumn =
     DbColumn(
@@ -319,7 +388,12 @@ private fun column(
         qname = qname,
         table = qname,
         dataType = dataType,
-        search = SearchHints(fuzzy = fuzzy, searchable = searchable),
+        search =
+            SearchHints(
+                searchable = searchable,
+                indexed = indexed,
+                matchMethod = if (indexed) "TYPOS(1)" else null,
+            ),
     )
 
 private fun modelOf(vararg tables: DbTable): Model =
