@@ -19,6 +19,7 @@ import org.tatrman.resolver.model.Reach
 import org.tatrman.resolver.model.ResolverThresholds
 import org.tatrman.resolver.model.kindsByRef
 import org.tatrman.resolver.model.reachByRef
+import org.tatrman.resolver.pipeline.VerbatimAttribution
 import org.tatrman.ttr.lexicon.CompiledLexiconHeader
 import org.tatrman.ttr.lexicon.LexiconArea
 import org.tatrman.ttr.lexicon.LexiconDataFile
@@ -46,6 +47,7 @@ import org.tatrman.ttr.metadata.model.QualifiedName
 import org.tatrman.ttr.metadata.model.Relation
 import org.tatrman.ttr.metadata.model.SchemaCode
 import org.tatrman.ttr.semantics.semanticsblock.MeasureRef
+import org.tatrman.ttr.semantics.semanticsblock.ResolvedAttributeSemantics
 import org.tatrman.ttr.semantics.semanticsblock.ResolvedEntitySemantics
 import org.tatrman.ttr.semantics.semanticsblock.SymbolRef
 import java.nio.file.Files
@@ -146,7 +148,38 @@ class LexiconArchiveRegistrySourceTest :
                                             Entity(
                                                 internalId = "2",
                                                 qname = regionDim,
-                                                attributes = listOf(attr(regionDim, "name", "text")),
+                                                attributes =
+                                                    listOf(
+                                                        attr(regionDim, "name", "text"),
+                                                        // LP: the CODE attribute declares a format,
+                                                        // so the facet has all three fields to
+                                                        // carry rather than two and a blank.
+                                                        Attribute(
+                                                            internalId = "a.region_code",
+                                                            qname =
+                                                                QualifiedName(
+                                                                    SchemaCode.ER,
+                                                                    "entity",
+                                                                    "region_dim.region_code",
+                                                                ),
+                                                            entity = regionDim,
+                                                            type = "text",
+                                                            semantics =
+                                                                ResolvedAttributeSemantics(
+                                                                    role = "code",
+                                                                    codeFormat = "^R[0-9]{3}$",
+                                                                ),
+                                                        ),
+                                                    ),
+                                                // LP (⚑LPQ-5): the DECLARED mention facet — which
+                                                // member carries this entity's name and its code.
+                                                // `sales` deliberately declares none, so one
+                                                // fixture covers both halves of the contract.
+                                                mentionSemantics =
+                                                    ResolvedEntitySemantics(
+                                                        name = SymbolRef("name"),
+                                                        code = SymbolRef("region_code"),
+                                                    ),
                                             ),
                                     ),
                                 // MH — the fact points AT the dimension, mandatorily: every sales
@@ -347,6 +380,82 @@ class LexiconArchiveRegistrySourceTest :
             // `er.entity.absent` is in the registry but has no targets entry — no kind, no reach.
             types.kindsByRef().keys shouldNotContain "er.entity.absent"
             types.reachByRef().keys shouldNotContain "er.entity.absent"
+        }
+
+        // ---- LP ✅LP-10 (⚑LPQ-5, contracts §2.1): the mention facet -----------------------------
+        //
+        // The gap this closes, stated once: LP-P1 attributes a quoted literal to the head's
+        // DECLARED `semantics { name: · code: }`, and until `ttr-lexicon-compiled/v4` the archive
+        // had no field for it. The facet reached the resolver only through a per-request
+        // `Registry` override, so an estate fed from the snapshot channel — every real one — left
+        // every literal HEADLESS. These are the cases that say it now arrives.
+
+        "LP — nameRef, codeRef and codeFormat arrive from the archive's targets, verbatim" {
+            val dir = Files.createTempDirectory("resolver-lex")
+            val types = runBlocking { mentionRegistry(dir).current().entityTypes }.associateBy { it.ref }
+
+            // FULL attribute refs, because the resolver compares them to `Attribution.attribute_ref`
+            // and a local name would make every consumer re-join.
+            types.getValue(regionDimRef).nameRef shouldBe "er.entity.region_dim.name"
+            types.getValue(regionDimRef).codeRef shouldBe "er.entity.region_dim.region_code"
+            // Copied off the CODE attribute, so `VerbatimAttribution`'s shape test uses the
+            // model's pattern instead of the fallback regex it would otherwise invent.
+            types.getValue(regionDimRef).codeFormat shouldBe "^R[0-9]{3}$"
+        }
+
+        "LP — an object whose model declares no facet gets blanks, not a column picked by name" {
+            val dir = Files.createTempDirectory("resolver-lex")
+            val types = runBlocking { mentionRegistry(dir).current().entityTypes }.associateBy { it.ref }
+
+            // `sales` has attributes and no `semantics { name: }`. A name-sniffing implementation
+            // would answer `amount_czk` or `region` here; a declaration-reading one answers
+            // nothing, and `Verbatim` then leaves the literal headless (G3) rather than
+            // attributing it to a column nobody declared.
+            types.getValue(salesRef).nameRef shouldBe ""
+            types.getValue(salesRef).codeRef shouldBe ""
+            types.getValue(salesRef).codeFormat shouldBe ""
+            // A MEMBER carries none either — it has no name column, it IS one.
+            types.getValue("er.entity.region_dim.name").nameRef shouldBe ""
+        }
+
+        "LP — the facet makes a quoted literal attributable with NO Registry override" {
+            // The assertion the effort exists for, phrased as the door sees it: given only the
+            // archive, `VerbatimAttribution` can name the column a literal restricts. Before v4
+            // this returned null for every archive-fed estate.
+            val dir = Files.createTempDirectory("resolver-lex")
+            val types = runBlocking { mentionRegistry(dir).current().entityTypes }.associateBy { it.ref }
+            val regionDim = types.getValue(regionDimRef)
+
+            // A plain string takes `name` (§2.2's `contains` default applies downstream)…
+            VerbatimAttribution.attributeRefOf("Pelex", regionDim) shouldBe "er.entity.region_dim.name"
+            // …and one matching the MODEL's declared `code_format` takes `code`.
+            VerbatimAttribution.attributeRefOf("R042", regionDim) shouldBe "er.entity.region_dim.region_code"
+            // A code-SHAPED string that the model's own pattern rejects is not a code here. The
+            // fallback regex would have accepted `XY-7`; the declared format is what decides.
+            VerbatimAttribution.attributeRefOf("XY-7", regionDim) shouldBe "er.entity.region_dim.name"
+            // And the entity that declares nothing stays headless — null, not a guess.
+            VerbatimAttribution.attributeRefOf("Pelex", types.getValue(salesRef)) shouldBe null
+        }
+
+        "LP — a v3 archive (no facet) still resolves: blanks, and the literal stays headless" {
+            // The compatibility half, and the one a reader will doubt. Same shape as the v2/MH
+            // case above: the three fields are defaulted in `TargetFacts`, so an archive built
+            // before LP decodes here with all three blank and nothing downstream changes.
+            val dir = Files.createTempDirectory("resolver-lex")
+            val registry =
+                SnapshotRegistry(
+                    LexiconArchiveRegistrySource(writeArchive(dir, aliases, objectsOnly)),
+                    ResolverThresholds.LIVE,
+                )
+
+            runBlocking {
+                registry.current().entityTypes.forEach {
+                    it.nameRef shouldBe ""
+                    it.codeRef shouldBe ""
+                    it.codeFormat shouldBe ""
+                    VerbatimAttribution.attributeRefOf("Pelex", it) shouldBe null
+                }
+            }
         }
 
         "MH — a v2 archive (no reachedFrom) projects empty lists, and T3 stays inert" {

@@ -59,6 +59,12 @@ object LatticeAssembler {
         // the span proposal that refuses to look inside a literal and the lattice that emits it
         // are looking at the same literal. Empty for a question with no quotes.
         literals: Literals = Literals.NONE,
+        // LP contracts §3 — the `pred:` forms retrieved for those literals, one per token they
+        // cover. Computed upstream for the same reason `grounded` is: it costs slots on the batch,
+        // and this object is pure. Empty for a question with no literal, and for an estate whose
+        // archive predates the `pred:` slice — in both cases §2.2's default predicate applies
+        // downstream, which is what a question that names no comparison meant.
+        predicates: List<VerbatimAttribution.Trigger> = emptyList(),
     ): ResolutionState {
         val gatedByLayer =
             gate.gated.groupBy { layerOf(it, hasTrigger = (it.candidate.start to it.candidate.end) in triggers) }
@@ -107,9 +113,9 @@ object LatticeAssembler {
                 for (match in span.contenders) {
                     val binding = Bindings.of(match, snapshotHash)
                     // The same rule the re-gate applies: an attribution names an attribute, so an
-                    // operator or a grounding-trigger row is not one (`Bindings.attributable`).
-                    // Both producers are filtered because either can be the one that runs first —
-                    // the core pass here, or a later lookup round.
+                    // operator, a grounding-trigger or a `pred:` row is not one
+                    // (`Bindings.attributable`). Both producers are filtered because either can be
+                    // the one that runs first — the core pass here, or a later lookup round.
                     if (!Bindings.attributable(binding)) continue
                     builder.addAttributions(
                         Attribution
@@ -201,6 +207,35 @@ object LatticeAssembler {
                     val entityType = entityTypes.firstOrNull { it.ref == ref } ?: return@mapNotNull null
                     VerbatimAttribution.Head(span.candidate.headToken, mention.id, entityType)
                 }
+        // LP §3 — and the other half of the same question: which mention says HOW.
+        //
+        // A `pred:` binding is excluded from attribution (`Bindings.attributable`) and from the
+        // registry's entity types, so it can never be a head — but it still rides the mention that
+        // carried its words, and that mention's head token is where the walk finds it. The
+        // strongest binding of the class speaks for the mention, by the same argument the grounding
+        // arm makes: several forms of one predicate firing on one span (*začíná* and *začínající*
+        // are both within a typo of each other) are one assertion made twice.
+        // (Named for the class, not `triggers`: this function already has a `triggers` parameter
+        // carrying the GROUNDING ones, and two different trigger tables in one scope is exactly
+        // the kind of shadowing a reader should never have to resolve.)
+        //
+        // TWO sources, unioned, and neither is redundant. A predicate word that the estate also
+        // proposes as a mention — an estate is free to author *obsahující* as an alias too —
+        // arrives on the mention's bindings for free. Everything else arrives through
+        // `PredicateTriggers`, which is the only path that reaches a participle. The retrieved
+        // ones are appended LAST so they win a shared token: they were asked class-scoped, about
+        // exactly this window, which is the more specific statement.
+        val predicateTriggers =
+            mentionSpans
+                .zip(mentionBuilders)
+                .mapNotNull { (span, mention) ->
+                    if (span.candidate.headToken < 0) return@mapNotNull null
+                    val ref =
+                        mention.bindingsList
+                            .firstOrNull { it.targetClass == TargetClass.TARGET_CLASS_STRING_PREDICATE }
+                            ?.ref ?: return@mapNotNull null
+                    VerbatimAttribution.Trigger(span.candidate.headToken, ref)
+                } + predicates
         val verbatimValues =
             literals.spans.map { literal ->
                 val builder =
@@ -222,6 +257,14 @@ object LatticeAssembler {
                     builder.addAttributions(Attribution.newBuilder().setAttributeRef(attributed.attributeRef))
                     builder.anchorMentionId = attributed.mentionId
                 }
+                // Set independently of the attribution, and that is deliberate: a literal with a
+                // trigger and no head is still a question about *starting with* something, and the
+                // G3 that reports the missing head should not also lose what the user did say.
+                // "" when the question names no predicate — §2.2's default is the consumer's.
+                VerbatimAttribution
+                    .predicate(literal, parse, predicateTriggers)
+                    .takeIf { it.isNotEmpty() }
+                    ?.let { builder.predicateRef = it }
                 builder
             }
         val valueBuilders =

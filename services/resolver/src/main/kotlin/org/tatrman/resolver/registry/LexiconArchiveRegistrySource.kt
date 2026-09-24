@@ -94,7 +94,7 @@ class LexiconArchiveRegistrySource(
      * ⚑ **`MODEL_OBJECT` rows only, and this is a decision rather than a filter.**
      * [org.tatrman.resolver.model.ResolverEntityType.anchors] are *"the declared anchor words …
      * that Q-20's anchored span proposal ties content subtrees to"* — words naming a model
-     * OBJECT. The other three classes are not that and must not become anchors:
+     * OBJECT. The other four classes are not that and must not become anchors:
      *
      *  - **`MEMBER`** is the value layer (RV-2). Every member literal becoming an anchor token
      *    would change phrase building for every question mentioning one — `anchorTokens` blocks a
@@ -104,6 +104,10 @@ class LexiconArchiveRegistrySource(
      *    cut over-generation from 33 spurious binds to 0; widening proposal as a side effect of a
      *    plumbing change is exactly how that result gets lost.
      *  - **`GROUNDING_TRIGGER`** already has its own annotation path (`GroundingTriggers`).
+     *  - **`STRING_PREDICATE`** (LP §3.4) is the comparison, not either side of it. It is also the
+     *    class most likely to WIN its span — *obsahující* is a whole authored word — so letting it
+     *    anchor would tie a content subtree to a preposition-shaped verb. It reaches the lattice
+     *    through the same round as any other row and is refused at accept, in `Bindings`.
      *
      * The terms keep their diacritics as authored: `SpanProposal` folds when it builds its anchor
      * index, and folding twice would lose the authored form for no gain.
@@ -130,6 +134,14 @@ class LexiconArchiveRegistrySource(
                         // at all and a v3 one may legitimately have none for this ref; both
                         // read as the empty list, which leaves the Binder's rule inert.
                         reachedFrom = facts?.reachedFrom.orEmpty().map { Reach(it.factRef, it.mandatory) },
+                        // LP (⚑LPQ-5, now closed): the third lookup-and-copy. Until v4 the archive
+                        // had no field for this at all, so a quoted literal on an archive-fed
+                        // estate landed HEADLESS — attributable only when a caller supplied a
+                        // per-request `Registry` override. A pre-v4 archive still reads as "",
+                        // which is the same headless behaviour, unchanged.
+                        nameRef = facts?.nameRef ?: "",
+                        codeRef = facts?.codeRef ?: "",
+                        codeFormat = facts?.codeFormat ?: "",
                     )
                 }.sortedBy { it.category }
 

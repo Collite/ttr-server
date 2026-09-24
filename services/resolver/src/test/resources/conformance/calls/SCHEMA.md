@@ -92,11 +92,17 @@ a literal has no binding to describe, and the whole claim is that nothing happen
 
 `no_span_inside_literal` is the one that matters, and it is the refusal-over-guess invariant
 restated for a span the user already explained: the n-gram floor, the proper-noun path and NER
-would all reach for a quoted name, and none of them may. **An ATTRIBUTED literal is not yet
-expressible here** — attribution needs the model's `semantics { name: }`, which reaches the
-resolver only through the per-request `Registry` override and the door has no argument for one
-(LP ⚑LPQ-5). It is covered at the pipeline seam (`VerbatimLatticeTest`) until the compiled lexicon
-archive carries the facet, at which point this fixture family gains the hero turn.
+would all reach for a quoted name, and none of them may. **An ATTRIBUTED literal still is not
+expressible here, and the reason has changed.** It used to be ⚑LPQ-5 — the model's
+`semantics { name: }` reached the resolver only through the per-request `Registry` override, and
+the door has no argument for one. LP-P2b closed that: the compiled lexicon archive carries the
+facet (`TargetFacts.nameRef/codeRef/codeFormat`, `ttr-lexicon-compiled/v4`) and the snapshot
+channel projects it. What is left is that these fixtures drive the door with a STUB registry and no
+archive on disk, so there is no `targets` map to read — a fixture-harness limit, not a missing
+capability. Attribution and `predicate_ref` are covered at the pipeline seam
+(`VerbatimLatticeTest`, which now asserts the hero's `pred:starts_with` end to end) and at the
+snapshot channel (`LexiconArchiveRegistrySourceTest`, through the real packer). The hero door turn
+lands with LP-P3, which builds an estate archive for this harness.
 
 ## Outcomes
 - **`clarification`** — `AwaitingClarification`: options + an opaque `resumeToken`. The door offers a

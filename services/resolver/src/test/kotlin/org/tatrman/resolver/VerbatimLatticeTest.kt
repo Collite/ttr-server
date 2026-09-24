@@ -4,7 +4,9 @@ package org.tatrman.resolver
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.booleans.shouldBeFalse
 import io.kotest.matchers.collections.shouldBeEmpty
+import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.collections.shouldContainExactly
+import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
 import io.kotest.matchers.shouldBe
 import org.tatrman.nlp.v1.AnalyzeResponse
 import org.tatrman.nlp.v1.NerEntity
@@ -70,11 +72,81 @@ class VerbatimLatticeTest :
 
             // The other half, and the reason this runs through the pipeline: the matcher was never
             // asked about Pelex. Not "asked and refused" — never asked.
-            // One BatchMatch, two slots for the same phrase — the gate's and the grounding
-            // trigger annotation's (RV-P1.6.T6). What matters here is what is NOT in it.
+            //
+            // One BatchMatch, several slots: the gate's, the grounding trigger annotation's
+            // (RV-P1.6.T6) and — since LP-P2b — the `pred:` windows before the literal. What
+            // matters here is what is NOT in it, and that the literal's own text is in no slot.
             val queries = fuzzy.lastRequest!!.spansList.map { it.query }
             queries.none { it.contains("Pelex") } shouldBe true
-            queries.distinct() shouldContainExactly listOf("dodací místa")
+            // Every slot is either the proposed mention or a window of the three tokens before the
+            // literal — nothing enumerates the question at large.
+            queries.distinct() shouldContainExactlyInAnyOrder
+                listOf("dodací místa", "místa", "začínající", "na", "místa začínající", "začínající na")
+        }
+
+        "LP-P2b — the hero now carries `pred:starts_with`, retrieved off the literal" {
+            // The half P1 could not deliver: *začínající na* is a participle and a preposition, so
+            // `SpanProposal` proposes no span over it (the hero case above asserts the only
+            // proposed span is `dodací místa`). `PredicateTriggers` asks about the three tokens
+            // before the literal instead, class-scoped, on the SAME BatchMatch.
+            val fuzzy =
+                VerbatimHero.FakeFuzzy(
+                    mapOf(
+                        "dodací místa" to listOf(VerbatimHero.declared("er.entity.store")),
+                        "začínající na" to listOf(VerbatimHero.predicate("pred:starts_with")),
+                    ),
+                )
+            val (asked, response) = resolve(registryOf(store), fuzzy)
+
+            val verbatim = response.resolutionState.valuesList.single()
+            verbatim.predicateRef shouldBe "pred:starts_with"
+            // The attribution is unchanged — the two questions are answered independently.
+            verbatim.attributionsList.map { it.attributeRef } shouldContainExactly listOf("er.entity.store.name")
+            // Still ONE BatchMatch. The predicate windows are trailing slots on the pass the core
+            // already makes, never a second round trip (B-T1).
+            asked.lookups.shouldBeEmpty()
+            val queries = asked.lastRequest!!.spansList.map { it.query }
+            queries shouldContain "začínající na"
+            // …and still nothing was asked about the literal itself.
+            queries.none { it.contains("Pelex") } shouldBe true
+        }
+
+        "LP-P2b — a question with no trigger leaves predicate_ref ABSENT, not blank" {
+            // §2.2: the default (contains, for a name) is the consumer's to apply, and absent is
+            // how this lattice says "the question did not name one". The hero fixture answers no
+            // `pred:` row, so the windows come back empty — which is also every estate whose
+            // archive predates the slice.
+            val (_, response) = resolve(registryOf(store))
+
+            response.resolutionState.valuesList
+                .single()
+                .hasPredicateRef()
+                .shouldBeFalse()
+        }
+
+        "LP-P2b — a predicate BELOW the bind floor is not evidence of anything" {
+            // The same floor the gate applies to a model candidate. A weak hit on a participle is
+            // how a filter nobody asked for would get into a plan.
+            val weak =
+                VerbatimHero.FakeFuzzy(
+                    mapOf(
+                        "dodací místa" to listOf(VerbatimHero.declared("er.entity.store")),
+                        "začínající na" to
+                            listOf(
+                                VerbatimHero
+                                    .predicate("pred:starts_with")
+                                    .toBuilder()
+                                    .setScore(0.1)
+                                    .build(),
+                            ),
+                    ),
+                )
+            val (_, response) = resolve(registryOf(store), weak)
+
+            response.resolutionState.valuesList
+                .single()
+                .hasPredicateRef()
+                .shouldBeFalse()
         }
 
         "no gap is opened for a literal the question said which column belongs to" {
@@ -97,8 +169,9 @@ class VerbatimLatticeTest :
         }
 
         "an estate that declares no name attribute gets G3, not a guess" {
-            // The archive-fed case today (⚑LPQ-5): the head is found, but the model has not said
-            // which of its columns carries the name. Emitting the value with zero attributions is
+            // Not a channel gap any more (⚑LPQ-5 closed at P2b) — this is the estate that really
+            // declares nothing: the head is found, but the model has not said which of its columns
+            // carries the name. Emitting the value with zero attributions is
             // the honest answer — and `Gaps` types it G3, "nothing scoped it", which is the record
             // the ladder acts on. The alternative, picking a column, is the failure mode this
             // whole effort exists to retire.

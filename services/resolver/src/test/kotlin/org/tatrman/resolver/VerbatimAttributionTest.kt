@@ -146,6 +146,95 @@ class VerbatimAttributionTest :
                 .shouldBeNull()
         }
 
+        // ---- LP-P2b·T5 (§2/§3): the `pred:` ref beside the attribution -------------------------
+
+        "the predicate is found up the same dep chain as the head" {
+            // *dodací místa začínající na "Pelex"* — the shape the whole effort exists for. The
+            // chain runs `Pelex → na → začínající → místa`, so the TRIGGER sits on the path to the
+            // head: one walk, one window, two answers.
+            val text = "místa začínající na \"Pelex\""
+            val parse =
+                parseOf(
+                    token("místa", 0, 5, 0), // 0 root — the head mention
+                    token("začínající", 6, 16, 1), // → místa
+                    token("na", 17, 19, 2), // → začínající
+                    token("\"", 20, 21, 3),
+                    token("Pelex", 21, 26, 3), // → na → začínající = 2 hops to the trigger
+                    token("\"", 26, 27, 3),
+                )
+            val literal = Literals.of(text, parse).spans.single()
+
+            VerbatimAttribution.predicate(literal, parse, listOf(trigger(1, "pred:starts_with"))) shouldBe
+                "pred:starts_with"
+            // And the head is still found, through the same chain, one hop further up.
+            VerbatimAttribution
+                .attribute(literal, parse, listOf(head(0, "m1", store)))
+                ?.attributeRef shouldBe "er.entity.store.name"
+        }
+
+        "no trigger in the question ⇒ \"\", and §2.2's default is the consumer's business" {
+            // *zákazník "Marvy"* names no predicate. "" is not a failure: the reading a user who
+            // wrote no trigger meant is `contains` for a name and `equals` for a code, and this
+            // object does not know which attribute won — so it must not answer.
+            val text = "zákazník \"Marvy\""
+            val parse =
+                parseOf(
+                    token("zákazník", 0, 8, 0),
+                    token("\"", 9, 10, 1),
+                    token("Marvy", 10, 15, 1),
+                    token("\"", 15, 16, 1),
+                )
+            val literal = Literals.of(text, parse).spans.single()
+
+            VerbatimAttribution.predicate(literal, parse, emptyList()) shouldBe ""
+            VerbatimAttribution.predicate(literal, parse, listOf(trigger(9, "pred:contains"))) shouldBe ""
+        }
+
+        "with no parse, the nearest trigger within three tokens wins — left preferred" {
+            // The degraded floor again, and the same left preference: both languages put the
+            // predicate before the string it applies to.
+            val text = "začínající \"Pelex\" obsahující"
+            val parse = AnalyzeResponse.getDefaultInstance()
+            val literal = Literals.of(text, parse).spans.single()
+
+            VerbatimAttribution.predicate(
+                literal,
+                parse,
+                listOf(trigger(2, "pred:contains"), trigger(0, "pred:starts_with")),
+            ) shouldBe "pred:starts_with"
+        }
+
+        "a trigger further than three tokens scopes nothing" {
+            val text = "začínající a a a \"Pelex\""
+            val literal = Literals.of(text, AnalyzeResponse.getDefaultInstance()).spans.single()
+
+            VerbatimAttribution.predicate(
+                literal,
+                AnalyzeResponse.getDefaultInstance(),
+                listOf(trigger(0, "pred:starts_with")),
+            ) shouldBe ""
+        }
+
+        "a trigger with no head still speaks — the G3 loses the column, not the comparison" {
+            // Attribution and predicate are looked up independently on purpose. A literal that
+            // found no head is reported as a G3 gap; throwing away what the user DID say about
+            // the comparison would make that gap harder to answer, not easier.
+            val text = "začínající na \"Pelex\""
+            val parse =
+                parseOf(
+                    token("začínající", 0, 10, 0),
+                    token("na", 11, 13, 1),
+                    token("\"", 14, 15, 2),
+                    token("Pelex", 15, 20, 2),
+                    token("\"", 20, 21, 2),
+                )
+            val literal = Literals.of(text, parse).spans.single()
+
+            VerbatimAttribution.attribute(literal, parse, emptyList()).shouldBeNull()
+            VerbatimAttribution.predicate(literal, parse, listOf(trigger(0, "pred:starts_with"))) shouldBe
+                "pred:starts_with"
+        }
+
         "no mentions at all ⇒ headless, never a default column" {
             val text = "\"Valmy\""
             val literal = Literals.of(text, AnalyzeResponse.getDefaultInstance()).spans.single()
@@ -159,6 +248,11 @@ class VerbatimAttributionTest :
             mentionId: String,
             entityType: ResolverEntityType,
         ) = VerbatimAttribution.Head(headToken, mentionId, entityType)
+
+        private fun trigger(
+            headToken: Int,
+            ref: String,
+        ) = VerbatimAttribution.Trigger(headToken, ref)
 
         private fun parseOf(vararg tokens: Token): AnalyzeResponse =
             AnalyzeResponse

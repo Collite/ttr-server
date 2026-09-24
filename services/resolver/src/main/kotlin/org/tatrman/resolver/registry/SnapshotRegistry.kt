@@ -62,6 +62,10 @@ class SnapshotRegistry(
                     // MH: same "first is not a tie-break" argument — the facts are per ref and
                     // the grouping is by ref, so every entry in the group carries the same list.
                     reachedFrom = entries.first().reachedFrom,
+                    // LP: and again — per-ref facts, grouped by ref.
+                    nameRef = entries.first().nameRef,
+                    codeRef = entries.first().codeRef,
+                    codeFormat = entries.first().codeFormat,
                 )
             }
         val locales = (vocab.locales + configLocales).distinct()

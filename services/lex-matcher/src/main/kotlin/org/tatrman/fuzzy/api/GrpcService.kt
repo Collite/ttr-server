@@ -187,6 +187,7 @@ class GrpcService(
             ProtoTargetClass.TARGET_CLASS_MEMBER -> CoreTargetClass.MEMBER
             ProtoTargetClass.TARGET_CLASS_OPERATOR -> CoreTargetClass.OPERATOR
             ProtoTargetClass.TARGET_CLASS_GROUNDING_TRIGGER -> CoreTargetClass.GROUNDING_TRIGGER
+            ProtoTargetClass.TARGET_CLASS_STRING_PREDICATE -> CoreTargetClass.STRING_PREDICATE
             ProtoTargetClass.TARGET_CLASS_UNSPECIFIED, ProtoTargetClass.UNRECOGNIZED -> null
         }
 
@@ -196,6 +197,7 @@ class GrpcService(
             CoreTargetClass.MEMBER -> ProtoTargetClass.TARGET_CLASS_MEMBER
             CoreTargetClass.OPERATOR -> ProtoTargetClass.TARGET_CLASS_OPERATOR
             CoreTargetClass.GROUNDING_TRIGGER -> ProtoTargetClass.TARGET_CLASS_GROUNDING_TRIGGER
+            CoreTargetClass.STRING_PREDICATE -> ProtoTargetClass.TARGET_CLASS_STRING_PREDICATE
         }
 
     private fun buildResponse(

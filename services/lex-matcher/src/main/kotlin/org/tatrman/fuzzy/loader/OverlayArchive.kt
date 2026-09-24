@@ -93,7 +93,7 @@ data class OverlayDocEntry(
     val polarity: String,
     /** `PROPOSED` | `ACTIVE` | `PROMOTION_CANDIDATE` | `INVALIDATED`. */
     val status: String,
-    /** `MODEL_OBJECT` | `MEMBER` | `OPERATOR` | `GROUNDING_TRIGGER`. */
+    /** `MODEL_OBJECT` | `MEMBER` | `OPERATOR` | `GROUNDING_TRIGGER` | `STRING_PREDICATE`. */
     @SerialName("target_class") val targetClass: String,
     /** How many distinct users have confirmed it. Informative here; the promotion queue reads it. */
     @SerialName("distinct_users") val distinctUsers: Int = 0,

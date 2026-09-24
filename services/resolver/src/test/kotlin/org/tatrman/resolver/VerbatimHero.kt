@@ -47,8 +47,9 @@ internal object VerbatimHero {
     /**
      * The store entity, with the model's mention facet declared.
      *
-     * ⚑ On the per-request Registry override, because the snapshot channel has no field for
-     * `semantics { name: }` yet (LP control room ⚑LPQ-5).
+     * On the per-request Registry override, which is the channel a fixture can state facts
+     * through. Since LP-P2b the snapshot channel carries the same facet — that half is asserted
+     * where it belongs, through the real packer, in `LexiconArchiveRegistrySourceTest`.
      */
     val STORE: EntityType =
         EntityType
@@ -148,6 +149,30 @@ internal object VerbatimHero {
             .setSource(SourceTag.DECLARED)
             .setTargetRef(targetRef)
             .setTargetClass(FuzzyTargetClass.TARGET_CLASS_MODEL_OBJECT)
+            .setProvenance(Provenance.newBuilder().setProducer("lex-matcher").setMethod("TATRMAN"))
+            .build()
+
+    /**
+     * LP-P2b — a `pred:` row, as `lex-matcher` serves one off the stdlib slice.
+     *
+     * `EXACT`, because that is what the shipped slice authors for a single word and TOKENS for a
+     * phrase; the fake does not match, it answers, so the method only has to be the truth about
+     * the row a real matcher would have returned.
+     */
+    fun predicate(
+        ref: String,
+        method: String = "TOKENS",
+    ): FuzzyMatch =
+        FuzzyMatch
+            .newBuilder()
+            .setCandidateId("lex:$ref")
+            .setCandidate(ref)
+            .setScore(1.0)
+            .setCategory(ref)
+            .setSource(SourceTag.DECLARED)
+            .setTargetRef(ref)
+            .setMatchMethod(method)
+            .setTargetClass(FuzzyTargetClass.TARGET_CLASS_STRING_PREDICATE)
             .setProvenance(Provenance.newBuilder().setProducer("lex-matcher").setMethod("TATRMAN"))
             .build()
 

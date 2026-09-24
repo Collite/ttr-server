@@ -24,6 +24,7 @@ import org.tatrman.fuzzy.core.Candidate
 import org.tatrman.fuzzy.core.FuzzyMatcher
 import org.tatrman.fuzzy.core.SourceTag
 import org.tatrman.fuzzy.core.StringRepository
+import org.tatrman.fuzzy.core.TargetClass as CoreTargetClass
 import org.tatrman.ttr.lexicon.CompiledLexiconHeader
 import org.tatrman.ttr.lexicon.LexiconArea
 import org.tatrman.ttr.lexicon.LexiconDataFile
@@ -34,6 +35,7 @@ import org.tatrman.ttr.lexicon.compile.CompileResult
 import org.tatrman.ttr.lexicon.compile.LexiconCompiler
 import org.tatrman.ttr.lexicon.compile.LexiconPacker
 import org.tatrman.ttr.lexicon.compile.LexiconSources
+import org.tatrman.ttr.lexicon.compile.LexiconStdlib
 import org.tatrman.ttr.lexicon.compile.ModelRefIndex
 import org.tatrman.ttr.lexicon.LexiconArchive
 import org.tatrman.ttr.snapshot.SnapshotManifest
@@ -120,6 +122,68 @@ class LexiconArchiveSourceTest :
                 logger.detachAppender(appender)
                 appender.stop()
             }
+        }
+
+        // ---- LP-P2b·T2 (§3.2): the `pred:` class, off a REAL stdlib-carrying archive ----------
+
+        "the stdlib predicate slice arrives as STRING_PREDICATE rows, keyed by `pred:` ref" {
+            // Compiled from `LexiconStdlib.predicateSlices()` — the actual shipped file, not a
+            // hand-written stand-in. Every archive the P2a toolchain builds carries these rows, so
+            // this is the shape this reader meets on every estate from the next lexicon build on.
+            val dir = Files.createTempDirectory("fuzzy-lex")
+            val result =
+                LexiconCompiler.compile(
+                    LexiconSources(
+                        area = LexiconArea(LexiconStdlib.predicateSlices(), emptyList()),
+                    ),
+                    ModelRefIndex { null },
+                    modelHash,
+                    "2026-09-24T00:00:00Z",
+                )
+            val path =
+                dir.resolve("lexicon.tar.zst").also {
+                    it.writeBytes(LexiconPacker.pack(result, modelHash, "test").bytes)
+                }
+
+            val vocabulary = runBlocking { LexiconArchiveSource(path).fetch() }
+
+            // A `pred:` target ref IS the category key here, as `ground:` is.
+            vocabulary.entries.map { it.category }.toSet() shouldBe
+                LexiconValidator.PREDICATE_KINDS.map { "pred:$it" }.toSet()
+            vocabulary.entries
+                .flatMap { it.values }
+                .map { it.targetClass }
+                // The CORE enum, not the artifact's — this reader's whole job on this field is to
+                // cross that boundary, and two same-named enums make the assertion worth spelling.
+                .toSet() shouldBe setOf(CoreTargetClass.STRING_PREDICATE)
+            // The authored method rides too: a multi-word form is TOKENS, a single word EXACT.
+            val byValue = vocabulary.entries.flatMap { it.values }.associateBy { it.value }
+            byValue.getValue("začínající na").matchMethod shouldBe "TOKENS"
+            byValue.getValue("obsahuje").matchMethod shouldBe "EXACT"
+        }
+
+        "a v4 archive needs no reader gate — this one maps the new class rather than degrading" {
+            // The §8.1 posture from the READER's side. A reader that had not been rebuilt would
+            // fail to decode the whole document here (kotlinx refuses an enum value it does not
+            // know) and log "undecodable", leaving the vocabulary EMPTY. This build maps it, so
+            // the version WARN is the only thing that fires — and only if the versions differ.
+            val dir = Files.createTempDirectory("fuzzy-lex")
+            val result =
+                LexiconCompiler.compile(
+                    LexiconSources(area = LexiconArea(LexiconStdlib.predicateSlices(), emptyList())),
+                    ModelRefIndex { null },
+                    modelHash,
+                    "2026-09-24T00:00:00Z",
+                )
+            val path =
+                dir.resolve("lexicon.tar.zst").also {
+                    it.writeBytes(LexiconPacker.pack(result, modelHash, "test").bytes)
+                }
+
+            val warnings = warnsFrom { runBlocking { LexiconArchiveSource(path).fetch() } }
+
+            warnings.none { it.contains("undecodable") } shouldBe true
+            result.lexicon.header.schemaVersion shouldBe CompiledLexiconHeader.SCHEMA_VERSION
         }
 
         "a v2 archive reads here unchanged — the targets map is simply ignored" {

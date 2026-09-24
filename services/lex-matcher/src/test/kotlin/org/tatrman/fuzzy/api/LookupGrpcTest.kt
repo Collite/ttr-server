@@ -102,6 +102,22 @@ class LookupGrpcTest :
                                     TargetClass.GROUNDING_TRIGGER,
                                 ),
                             ),
+                        // LP-P2b·T3 (§3.2) — a `pred:` row, so the lookup round the resolver runs
+                        // can ask "which string predicate is this?" the same way it asks about an
+                        // operator or a grounding kernel. `obsahuje` is a single-word EXACT form:
+                        // these compete with entity names for the same span, and a typo budget
+                        // around a word this ordinary would reach real ones.
+                        "pred:contains" to
+                            listOf(
+                                Candidate.vocabulary(
+                                    "t5",
+                                    "obsahuje",
+                                    "pred:contains",
+                                    SourceTag.DECLARED,
+                                    "EXACT",
+                                    TargetClass.STRING_PREDICATE,
+                                ),
+                            ),
                         "db.t.col" to listOf(Candidate.fromValues("pk-1", "Praha")),
                     )
             }
@@ -153,6 +169,48 @@ class LookupGrpcTest :
             }
         }
 
+        "LP — a `pred:` hit is an ordinary class-scoped lookup result, with the class on the wire" {
+            withStub { stub ->
+                val resp =
+                    stub.lookup(
+                        LookupRequest
+                            .newBuilder()
+                            .setTerm("obsahuje")
+                            .addTargetClasses(ProtoTargetClass.TARGET_CLASS_STRING_PREDICATE)
+                            .build(),
+                    )
+
+                resp.candidatesCount shouldBe 1
+                val hit = resp.getCandidates(0)
+                hit.targetRef shouldBe "pred:contains"
+                // Number 5 on both sides of the wire — `Bindings.targetClassOf` maps by number,
+                // so this is the assertion that the resolver will read the same class back.
+                hit.targetClass shouldBe ProtoTargetClass.TARGET_CLASS_STRING_PREDICATE
+                hit.targetClass.number shouldBe 5
+                hit.matchMethod shouldBe "EXACT"
+            }
+        }
+
+        "LP — class scoping keeps predicates out of an operator round, and the reverse" {
+            withStub { stub ->
+                // The scoping is what makes a round deterministic rather than a scan: a predicate
+                // must not answer "which operator is this?", exactly as a grounding trigger must
+                // not. Asked unscoped the same term still comes back — the filter is the caller's.
+                val asOperator =
+                    stub.lookup(
+                        LookupRequest
+                            .newBuilder()
+                            .setTerm("obsahuje")
+                            .addTargetClasses(ProtoTargetClass.TARGET_CLASS_OPERATOR)
+                            .build(),
+                    )
+                asOperator.candidatesCount shouldBe 0
+
+                val unscoped = stub.lookup(LookupRequest.newBuilder().setTerm("obsahuje").build())
+                unscoped.candidatesList.any { it.targetRef == "pred:contains" } shouldBe true
+            }
+        }
+
         "class scoping keeps operators and grounding triggers apart" {
             withStub { stub ->
                 // Same round, the other class: a grounding trigger must not answer "which
@@ -188,9 +246,10 @@ class LookupGrpcTest :
                 // Not a TOKENS row, so no uniqueness decision applies — and absent must stay absent.
                 hit.hasUniquenessMargin() shouldBe false
                 hit.hasAutoBindable() shouldBe false
-                // Five categories in the fixture loader (the ground:chrono slice row joined at
-                // RV-P1.6 T6) — every one gets a member-index version in the RV-39 tuple.
-                resp.layerVersions.memberIndexVersionsCount shouldBe 5
+                // Six categories in the fixture loader (the ground:chrono slice joined at
+                // RV-P1.6 T6, the pred:contains slice at LP-P2b T3) — every one gets a
+                // member-index version in the RV-39 tuple.
+                resp.layerVersions.memberIndexVersionsCount shouldBe 6
                 resp.vocabularyVersion.shouldNotBeBlank()
             }
         }
