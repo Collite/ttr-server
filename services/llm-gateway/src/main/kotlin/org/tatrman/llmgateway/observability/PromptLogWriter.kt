@@ -7,7 +7,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonPrimitive
@@ -21,6 +20,7 @@ import org.slf4j.LoggerFactory
 import org.tatrman.llmgateway.governance.Settle
 import shared.libs.db.common.DatabaseConnection
 import java.math.BigDecimal
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * One prompt-log row: the [Settle] facts (§3 attribution columns) plus the prompt/response text (V1 columns).
@@ -62,29 +62,75 @@ class PromptLogWriter(
             }
         }
 
+    // Row ids reserved ahead of the calls that will carry them (review-100 F3). Guarded by `ids`.
+    private val ids = ArrayDeque<Long>()
+    private val refilling = AtomicBoolean(false)
+    private val refillScope = scope
+
+    init {
+        // Warm the pool once, synchronously, at boot — PG is already required here (Flyway just migrated),
+        // and a cold pool would leave the first calls after every start without a ref. A failure only
+        // logs: the on-demand refill below retries.
+        runCatching { synchronized(ids) { ids.addAll(reserveBlock()) } }
+            .onFailure { reserveFailed(it) }
+    }
+
     /**
      * The id the row for this call WILL carry — taken from the column's own sequence BEFORE the row is
      * enqueued, so the caller can be told it (`X-Prompt-Log-Id`, LC §2.2) even when [enqueue] later drops
      * the row. That is the point: a reader holding a ref with no row knows the writer dropped it (*"golem
      * reported 3 calls; the gateway holds 2"*), instead of silently reporting 2.
      *
-     * One sequence read on the request path, bounded by [ALLOCATE_TIMEOUT_MS]: on a slow or absent PG the
-     * call goes on WITHOUT an id (no header; the row, if written, takes the default) — attribution loss is
-     * survivable, stalling the data plane is not (F-1).
+     * **Never touches PG, never suspends** (review-100 F3). Ids are reserved from the sequence in blocks of
+     * [ID_BLOCK] by a background refill and handed out here from memory. The first cut bounded a per-call
+     * `nextval` with `withTimeoutOrNull(250 ms)`, which cannot interrupt blocking JDBC — so a stalled PG sat
+     * in front of every SSE first byte and cache hit, and a client cancel during the wait skipped the settle
+     * (F10). An empty pool answers `null`: the call goes on WITHOUT an id (no header; the row, if written,
+     * takes the sequence default) — attribution loss is survivable, stalling the data plane is not (F-1).
+     *
+     * Ids are unique but, across replicas, not in call order (each holds its own block) — the inspect read
+     * orders by `created_at`, not by id.
      */
-    suspend fun allocateId(): Long? =
-        withTimeoutOrNull(ALLOCATE_TIMEOUT_MS) {
-            withContext(Dispatchers.IO) {
-                runCatching {
-                    transaction {
-                        exec(NEXT_ID_SQL) { rs -> if (rs.next()) rs.getLong(1) else null }
-                    }
-                }.onFailure {
-                    log.warn("prompt-log id allocation failed — the call goes on without X-Prompt-Log-Id", it)
-                    metrics?.counter("llm_gateway_promptlog_id_error_total")?.increment()
-                }.getOrNull()
+    fun allocateId(): Long? {
+        val id: Long?
+        val low: Boolean
+        synchronized(ids) {
+            id = ids.removeFirstOrNull()
+            low = ids.size <= ID_LOW_WATER
+        }
+        if (low) refill()
+        if (id == null) metrics?.counter("llm_gateway_promptlog_id_unavailable_total")?.increment()
+        return id
+    }
+
+    /** One background reservation at a time; a failure leaves the pool as it was and is retried on demand. */
+    private fun refill() {
+        if (!refilling.compareAndSet(false, true)) return
+        refillScope.launch(Dispatchers.IO) {
+            try {
+                val block = reserveBlock()
+                synchronized(ids) { ids.addAll(block) }
+            } catch (e: Exception) {
+                reserveFailed(e)
+            } finally {
+                refilling.set(false)
             }
         }
+    }
+
+    /** [ID_BLOCK] ids off the column's own sequence — the one blocking PG read behind [allocateId]. */
+    private fun reserveBlock(): List<Long> =
+        transaction {
+            exec(RESERVE_IDS_SQL) { rs -> buildList { while (rs.next()) add(rs.getLong(1)) } }
+        }.orEmpty()
+
+    private fun reserveFailed(e: Throwable) {
+        log.warn("prompt-log id reservation failed — calls go on without X-Prompt-Log-Id until it succeeds", e)
+        metrics?.counter("llm_gateway_promptlog_id_error_total")?.increment()
+    }
+
+    /** Row ids reserved and not yet handed out (diagnostics; the component specs drain it). */
+    fun reservedIds(): Int = synchronized(ids) { ids.size }
 
     /** Non-blocking offer. A full queue drops the row (never blocks the caller). */
     fun enqueue(rec: PromptLogRecord) {
@@ -147,8 +193,9 @@ class PromptLogWriter(
 
     private companion object {
         const val DRAIN_TIMEOUT_MS = 5_000L
-        const val ALLOCATE_TIMEOUT_MS = 250L
-        const val NEXT_ID_SQL = "SELECT nextval('prompt_logs_id_seq')"
+        const val ID_BLOCK = 64
+        const val ID_LOW_WATER = 16
+        const val RESERVE_IDS_SQL = "SELECT nextval('prompt_logs_id_seq') FROM generate_series(1, $ID_BLOCK)"
         val log = LoggerFactory.getLogger(PromptLogWriter::class.java)
         val INSERT_SQL =
             """

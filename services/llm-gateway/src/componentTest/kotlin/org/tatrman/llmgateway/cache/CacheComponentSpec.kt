@@ -11,7 +11,9 @@ import com.github.tomakehurst.wiremock.core.WireMockConfiguration
 import com.typesafe.config.Config
 import com.typesafe.config.ConfigFactory
 import io.kotest.core.spec.style.StringSpec
+import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.shouldNotBe
 import io.kotest.matchers.string.shouldContain
 import io.ktor.client.request.header
 import io.ktor.client.request.post
@@ -21,6 +23,7 @@ import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.config.MapApplicationConfig
 import io.ktor.server.testing.testApplication
+import kotlinx.coroutines.delay
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -35,9 +38,10 @@ import org.tatrman.llmgateway.module
 import org.tatrman.llmgateway.store.Pg
 import org.testcontainers.containers.GenericContainer
 import org.testcontainers.containers.PostgreSQLContainer
+import java.net.URI
+import java.sql.DriverManager
 import java.time.LocalDate
 import java.time.ZoneOffset
-import java.net.URI
 
 /**
  * LG-P5·S1·T2/T5/T6 — the exact-match cache through the wire (E-1). Real PG + Redis + a WireMock upstream.
@@ -151,6 +155,22 @@ class CacheComponentSpec :
             wm.stop()
         }
 
+        /** `prompt_logs.cached` of row [id], polled — the writer is async. */
+        suspend fun cachedFlagOf(id: Long): Boolean? {
+            repeat(80) {
+                val found =
+                    DriverManager.getConnection(pgc.jdbcUrl, pgc.username, pgc.password).use { c ->
+                        c.prepareStatement("SELECT cached FROM prompt_logs WHERE id = ?").use { st ->
+                            st.setLong(1, id)
+                            st.executeQuery().use { rs -> if (rs.next()) rs.getBoolean(1) else null }
+                        }
+                    }
+                if (found != null) return found
+                delay(50)
+            }
+            return null
+        }
+
         fun chat(
             content: String,
             stream: Boolean = false,
@@ -193,6 +213,13 @@ class CacheComponentSpec :
                 // the cache hit did not add to budget_usage (settle-as-cached), while the first call did charge
                 (usedAfterFirst > 0.0) shouldBe true
                 budgets.usedUsd("golem", month) shouldBe usedAfterFirst
+
+                // review-100 F21 (LC §2.2) — a hit is a call too: it names ITS OWN row (not the miss that
+                // stored the body), and that row is written, marked cached.
+                val missRef = first.headers["X-Prompt-Log-Id"].shouldNotBeNull().toLong()
+                val hitRef = second.headers["X-Prompt-Log-Id"].shouldNotBeNull().toLong()
+                hitRef shouldNotBe missRef
+                cachedFlagOf(hitRef) shouldBe true
             }
             // upstream hit exactly once across the two calls
             wm.verify(exactly(1), postRequestedFor(urlPathEqualTo("/openai/v1/chat/completions")))

@@ -31,15 +31,35 @@ data class LlmCallContext(
         const val PURPOSE_HEADER: String = "X-Call-Purpose"
         const val END_USER_SUBJECT_HEADER: String = "X-End-User-Subject"
         const val AGENT_ID_HEADER: String = "X-Agent-Id"
+
+        /** The gateway's `CallAttribution` cap — a longer value would be cut there anyway. */
+        const val MAX_HEADER_VALUE_LENGTH: Int = 512
     }
 
-    /** The request headers this context maps to — non-blank fields only, in a stable order. */
-    fun headers(): Map<String, String> =
+    /**
+     * The request headers this context maps to, in a stable order. Attribution must never fail the
+     * call it attributes (review-100 F9): a field is trimmed and capped at [MAX_HEADER_VALUE_LENGTH];
+     * a blank one sends no header; one carrying anything but printable ASCII (a CR/LF from a
+     * caller-supplied turn id, a non-ASCII name) sends no header either — the HTTP client would refuse
+     * it and fail the call — and is reported to [onRejected] by header name.
+     */
+    fun headers(onRejected: (header: String) -> Unit = {}): Map<String, String> =
         buildMap {
-            turnRef?.takeIf { it.isNotBlank() }?.let { put(TURN_REF_HEADER, it) }
-            purpose?.takeIf { it.isNotBlank() }?.let { put(PURPOSE_HEADER, it) }
-            endUserSubject?.takeIf { it.isNotBlank() }?.let { put(END_USER_SUBJECT_HEADER, it) }
-            agentId?.takeIf { it.isNotBlank() }?.let { put(AGENT_ID_HEADER, it) }
+            fun add(
+                header: String,
+                raw: String?,
+            ) {
+                val value = raw?.trim()?.take(MAX_HEADER_VALUE_LENGTH)
+                when {
+                    value.isNullOrEmpty() -> Unit
+                    value.all { it in ' '..'~' } -> put(header, value)
+                    else -> onRejected(header)
+                }
+            }
+            add(TURN_REF_HEADER, turnRef)
+            add(PURPOSE_HEADER, purpose)
+            add(END_USER_SUBJECT_HEADER, endUserSubject)
+            add(AGENT_ID_HEADER, agentId)
         }
 }
 
@@ -58,6 +78,13 @@ data class LlmCallContext(
  *    until the gateway echoes it; the protocol reads it from `GET /v1/prompt-logs`.
  *  - [durationMs] — measured by this client around the HTTP exchange (the gateway's own
  *    `duration_ms` is on the row).
+ *
+ * On a cache hit ([cached]) the gateway replays the stored body, so [tokensPrompt],
+ * [tokensCompletion] and [costUsd] are the ORIGINAL call's — what the hit saved, not what it cost.
+ * A per-turn spend must leave cached completions out.
+ *
+ * Only a 2xx answer is a completion: a gateway error (its OpenAI-shaped envelope on a 4xx/5xx) is a
+ * `Result.failure`, never an empty completion (review-100 F2).
  */
 data class LlmCompletion(
     val content: String,

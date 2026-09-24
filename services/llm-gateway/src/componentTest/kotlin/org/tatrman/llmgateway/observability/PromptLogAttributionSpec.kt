@@ -5,6 +5,8 @@ import com.auth0.jwt.JWT
 import com.auth0.jwt.algorithms.Algorithm
 import com.github.tomakehurst.wiremock.WireMockServer
 import com.github.tomakehurst.wiremock.client.WireMock.aResponse
+import com.github.tomakehurst.wiremock.client.WireMock.any
+import com.github.tomakehurst.wiremock.client.WireMock.anyUrl
 import com.github.tomakehurst.wiremock.client.WireMock.post
 import com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo
 import com.github.tomakehurst.wiremock.core.WireMockConfiguration
@@ -25,6 +27,7 @@ import io.ktor.server.config.MapApplicationConfig
 import io.ktor.server.testing.testApplication
 import kotlinx.coroutines.delay
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -254,6 +257,52 @@ class PromptLogAttributionSpec :
             }
         }
 
+        // review-100 F21 — the header is a promise that a row is coming. A call the gateway could NOT serve
+        // (every provider failed) writes no row, so it must name none.
+        "a failed chain answers an error with no X-Prompt-Log-Id and writes no row" {
+            wm.resetAll()
+            wm.stubFor(any(anyUrl()).willReturn(aResponse().withStatus(503).withBody("upstream down")))
+            testApplication {
+                environment { config = MapApplicationConfig() }
+                application { module(cfg, gateway()) }
+
+                val failed =
+                    client.post("/v1/chat/completions") {
+                        header(HttpHeaders.Authorization, "Bearer $golemKey")
+                        header("X-Turn-Ref", "turn-lc-failed")
+                        setBody(body)
+                    }
+                (failed.status.value >= 500) shouldBe true
+                failed.headers["X-Prompt-Log-Id"] shouldBe null
+
+                // The writer is one FIFO consumer: once a LATER call's row is in, an earlier row would be too.
+                wm.resetAll()
+                wm.stubFor(
+                    post(urlPathEqualTo("/openai/v1/chat/completions")).willReturn(
+                        aResponse().withStatus(200).withHeader("Content-Type", "application/json").withBody(
+                            """{"id":"c2","object":"chat.completion","choices":[{"index":0,"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}""",
+                        ),
+                    ),
+                )
+                val later =
+                    client.post("/v1/chat/completions") {
+                        header(HttpHeaders.Authorization, "Bearer $golemKey")
+                        header("X-Turn-Ref", "turn-lc-after")
+                        setBody(body)
+                    }
+                row(later.headers["X-Prompt-Log-Id"].shouldNotBeNull().toLong()).shouldNotBeNull()
+                val failedRows = "SELECT count(*) FROM prompt_logs WHERE turn_ref = 'turn-lc-failed'"
+                DriverManager.getConnection(pgc.jdbcUrl, pgc.username, pgc.password).use { c ->
+                    c.createStatement().use { st ->
+                        st.executeQuery(failedRows).use { rs ->
+                            rs.next()
+                            rs.getInt(1)
+                        }
+                    }
+                } shouldBe 0
+            }
+        }
+
         // The LC-P0 DoD, end to end: one call made with a context; its own subject reads it back by turn;
         // another subject's JWT gets 200 and an EMPTY list — not a 403, which would say the turn exists.
         "the call is read back by its own subject, and by no other subject" {
@@ -280,11 +329,14 @@ class PromptLogAttributionSpec :
                         header(HttpHeaders.Authorization, "Bearer ${jwt("sub-dan")}")
                     }
                 own.status shouldBe HttpStatusCode.OK
-                val mine = items(own.bodyAsText()).single().jsonObject
+                val ownBody = Json.parseToJsonElement(own.bodyAsText()).jsonObject
+                ownBody["access"]!!.jsonPrimitive.content shouldBe "own" // reader-scoped (review-100 F6)
+                val mine = ownBody["items"]!!.jsonArray.single().jsonObject
                 mine["id"]!!.jsonPrimitive.content shouldBe id
                 mine["purpose"]!!.jsonPrimitive.content shouldBe "compose-plan"
                 mine["agentId"]!!.jsonPrimitive.content shouldBe "golem-hartland"
                 mine.containsKey("endUserSubject") shouldBe false
+                mine["promptText"] shouldBe JsonNull // bodies are role-only (review-100 F4)
 
                 val theirs =
                     client.get("/v1/prompt-logs?turn_ref=turn-lc-dod") {

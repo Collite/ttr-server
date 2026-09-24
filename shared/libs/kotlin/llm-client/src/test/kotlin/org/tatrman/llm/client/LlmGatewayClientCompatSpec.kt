@@ -16,7 +16,8 @@ import io.kotest.matchers.types.shouldBeInstanceOf
 /**
  * LC-P0·S0.1 — `complete()` pinned as it behaved BEFORE LC, so the additive surface (the call
  * context, `completeWithMeta`, `propagateTrace`) is proven not to have moved it. Written and run
- * green against the pre-LC client first; nothing in this file may change to make LC pass.
+ * green against the pre-LC client first; nothing in this file may change to make LC pass — with ONE
+ * ruled exception, the error envelope (review-100 F2), marked where it is.
  *
  * The module had no specs at all before LC (baseline `test NO-SOURCE`), so "the old spec count
  * unchanged" is vacuous — this file is the baseline instead.
@@ -77,11 +78,12 @@ class LlmGatewayClientCompatSpec :
             )
         }
 
-        // ⚑ Characterisation, not endorsement. The client runs Ktor's default `expectSuccess = false`
-        // and decodes the body with `ignoreUnknownKeys`, so the gateway's OpenAI error envelope
-        // decodes into a response with no choices — and `complete()` answers SUCCESS with an empty
-        // string. Pinned because LC must not change it; recorded in the LC notes as a follow-up.
-        "an HTTP error carrying the gateway's JSON error envelope comes back as success(\"\") — the pre-LC behaviour" {
+        // ⚑ The ONE deliberate change to the pre-LC behaviour (review-100 F2, ruled 2026-09-24). Before,
+        // Ktor's default `expectSuccess = false` + `ignoreUnknownKeys` decoded the gateway's OpenAI
+        // error envelope as a response with no choices, and `complete()` answered success(""): a
+        // budget 429 or an exhausted chain read as an empty reply. It is now a failure that names the
+        // status and the gateway's own message.
+        "an HTTP error carrying the gateway's JSON error envelope is a Result.failure naming status and message" {
             wm.stubFor(
                 post(urlPathEqualTo("/v1/chat/completions"))
                     .willReturn(
@@ -91,7 +93,9 @@ class LlmGatewayClientCompatSpec :
                             .withBody(GatewayBodies.ERROR_ENVELOPE),
                     ),
             )
-            client.complete("hi") shouldBe Result.success("")
+            val e = client.complete("hi").exceptionOrNull().shouldBeInstanceOf<LlmGatewayException>()
+            e.httpStatus shouldBe 503
+            e.message shouldBe "LLM gateway answered 503: upstream provider error (status 503)"
         }
 
         "an unreachable gateway is a Result.failure(LlmGatewayException), never a throw" {
@@ -133,6 +137,11 @@ internal object GatewayBodies {
          "system_fingerprint":null,"cached":false}
         """.trimIndent()
 
+    // `openAiErrorBody` of `GatewayError.Provider5xx(503)` — what an exhausted chain answers (502).
     val ERROR_ENVELOPE =
-        """{"error":{"message":"all providers exhausted","type":"server_error","param":null,"code":"upstream_unavailable"}}"""
+        """{"error":{"message":"upstream provider error (status 503)","type":"server_error","code":"upstream_error","param":null}}"""
+
+    // `openAiErrorBody` of `GatewayError.BudgetExceeded` (429, `x-gateway-reason: budget_exceeded`).
+    val QUOTA_ENVELOPE =
+        """{"error":{"message":"budget exceeded","type":"insufficient_quota","code":"insufficient_quota","param":null}}"""
 }

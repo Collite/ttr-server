@@ -15,6 +15,7 @@ import io.ktor.http.HttpStatusCode
 import io.ktor.server.config.MapApplicationConfig
 import io.ktor.server.testing.testApplication
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
@@ -133,6 +134,12 @@ class PromptLogsRoutesSpec :
         afterSpec { pgc.stop() }
 
         fun items(body: String) = Json.parseToJsonElement(body).jsonObject["items"]!!.jsonArray
+
+        fun access(body: String) =
+            Json
+                .parseToJsonElement(body)
+                .jsonObject["access"]!!
+                .jsonPrimitive.content
 
         "inspect surface: auth gates, filters by turn_ref and trace_id, enforces limit" {
             testApplication {
@@ -281,23 +288,34 @@ class PromptLogsRoutesSpec :
                         if (bearer != null) header(HttpHeaders.Authorization, "Bearer $bearer")
                     }
 
-                // 1. admin → all rows, and a role-holder is told whose they are
-                val asAdmin = items(read(adminJwt).bodyAsText())
+                // 1. admin → all rows, bodies included, and a role-holder is told whose they are
+                val adminBody = read(adminJwt).bodyAsText()
+                access(adminBody) shouldBe "all"
+                val asAdmin = items(adminBody)
                 asAdmin.map { it.jsonObject["promptText"]!!.jsonPrimitive.content } shouldBe
                     listOf("dan's call", "marketa's call", "pre-LC call")
                 asAdmin.map { it.jsonObject["endUserSubject"]!!.jsonPrimitive.contentOrNull } shouldBe
                     listOf("sub-dan", "sub-marketa", null)
 
-                // 2. inspect (the new, narrow role) → all rows
+                // 2. inspect (the new, narrow role) → all rows, bodies included
                 val asInspect = read(token(listOf("llm-gateway-inspect"), subject = "sub-ops"))
                 asInspect.status shouldBe HttpStatusCode.OK
-                items(asInspect.bodyAsText()).size shouldBe 3
+                val inspectBody = asInspect.bodyAsText()
+                access(inspectBody) shouldBe "all"
+                items(inspectBody).map { it.jsonObject["responseText"]!!.jsonPrimitive.contentOrNull } shouldBe
+                    listOf("a completion", "a completion", "a completion")
 
-                // 3. neither role, sub = dan → dan's row ONLY; marketa's and the NULL-subject row omitted; 200
+                // 3. neither role, sub = dan → dan's row ONLY; marketa's and the NULL-subject row omitted; 200.
+                //    A reader-scoped answer says so ("own"), and carries NO bodies (review-100 F4, ruled
+                //    2026-09-24): the raw prompt holds golem's whole system prompt, and the only path to it
+                //    is the role-gated, floor-redacted `full` profile in the assembler.
                 val asDan = read(token(listOf("default-roles-kantheon"), subject = "sub-dan"))
                 asDan.status shouldBe HttpStatusCode.OK
-                val dan = items(asDan.bodyAsText()).single().jsonObject
-                dan["promptText"]!!.jsonPrimitive.content shouldBe "dan's call"
+                val danBody = asDan.bodyAsText()
+                access(danBody) shouldBe "own"
+                val dan = items(danBody).single().jsonObject
+                dan["promptText"] shouldBe JsonNull
+                dan["responseText"] shouldBe JsonNull
                 dan["purpose"]!!.jsonPrimitive.content shouldBe "compose-plan"
                 dan["agentId"]!!.jsonPrimitive.content shouldBe "golem-hartland"
                 dan.containsKey("endUserSubject") shouldBe false // a subject is not told who they are
@@ -309,9 +327,9 @@ class PromptLogsRoutesSpec :
                     }
                 items(danByTrace.bodyAsText())
                     .single()
-                    .jsonObject["promptText"]!!
+                    .jsonObject["purpose"]!!
                     .jsonPrimitive.content shouldBe
-                    "dan's call"
+                    "compose-plan"
 
                 // 4. a gateway API key is not a realm JWT → 401;  5. no bearer → 401
                 read("ttrk-0123456789abcdef0123456789abcdef").status shouldBe HttpStatusCode.Unauthorized
@@ -327,16 +345,17 @@ class PromptLogsRoutesSpec :
                 application { module(cfg) }
                 startApplication()
 
-                repeat(5) { seed("turn-L", null, "other $it", subject = "sub-other") }
-                seed("turn-L", null, "mine", subject = "sub-me")
+                repeat(5) { seed("turn-L", null, "other $it", subject = "sub-other", purpose = "other") }
+                seed("turn-L", null, "mine", subject = "sub-me", purpose = "mine")
 
                 val res =
                     client.get("/v1/prompt-logs?turn_ref=turn-L&limit=1") {
                         header(HttpHeaders.Authorization, "Bearer ${token(emptyList(), subject = "sub-me")}")
                     }
+                // (a subject's read carries no bodies — the row is told apart by its purpose)
                 items(res.bodyAsText())
                     .single()
-                    .jsonObject["promptText"]!!
+                    .jsonObject["purpose"]!!
                     .jsonPrimitive.content shouldBe "mine"
             }
         }

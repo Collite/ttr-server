@@ -11,9 +11,11 @@ import io.ktor.client.request.header
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.HttpResponse
+import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.contentType
+import io.ktor.http.isSuccess
 import io.ktor.serialization.kotlinx.json.json
 import io.opentelemetry.api.trace.propagation.W3CTraceContextPropagator
 import io.opentelemetry.context.Context
@@ -41,7 +43,9 @@ data class LlmGatewayEndpoint(
  * Shared across the constellation (Themis nodes, Golem's PlanComposer). `model`
  * is a flat tier key (`"haiku"` CHEAP / `"sonnet"` FAST / `"opus"`), mapped to a
  * LLM gateway tag downstream. Failures return a [Result.failure] — callers decide
- * fallback (never throws out of [complete]).
+ * fallback (never throws out of [complete]). A failure is an unreachable gateway, an undecodable
+ * body, or ANY non-2xx answer: the gateway's error envelope is never read as an empty completion
+ * (review-100 F2, ruled 2026-09-24 — this changed `complete()` too).
  *
  * **Attribution (LC).** A call made inside an [LlmCallContext] carries that context as request
  * headers (`X-Turn-Ref` · `X-Call-Purpose` · `X-End-User-Subject` · `X-Agent-Id`), whichever method
@@ -107,7 +111,13 @@ class LlmGatewayClient(
                     temperature = temperature,
                     maxTokens = maxTokens,
                 )
-            val callContext = currentCoroutineContext()[LlmCallContext]
+            val attribution =
+                currentCoroutineContext()[LlmCallContext]?.headers { rejected ->
+                    logger.warn(
+                        "attribution header {} not sent — its value is not printable ASCII; the call goes on without it",
+                        rejected,
+                    )
+                }
 
             val startedNs = System.nanoTime()
             val httpResponse: HttpResponse =
@@ -117,45 +127,79 @@ class LlmGatewayClient(
                         endpoint.apiKey?.takeIf { it.isNotBlank() }?.let {
                             header(HttpHeaders.Authorization, "Bearer $it")
                         }
-                        callContext?.headers()?.forEach { (name, value) -> header(name, value) }
+                        // Belt and braces behind headers()' own filter: a header the HTTP client still
+                        // refuses is dropped, never allowed to fail the call it only labels.
+                        attribution?.forEach { (name, value) ->
+                            runCatching { header(name, value) }
+                                .onFailure {
+                                    logger.warn(
+                                        "attribution header {} refused by the HTTP client — not sent",
+                                        name,
+                                    )
+                                }
+                        }
                         if (propagateTrace) injectTraceParent(this)
                         setBody(request)
                     }
-            val response: ChatCompletionResponse = httpResponse.body()
             val durationMs = (System.nanoTime() - startedNs) / 1_000_000
 
-            val content =
-                response.choices
-                    ?.firstOrNull()
-                    ?.message
-                    ?.content
-                    ?: ""
-            logger.debug("LLM response: {}", content.take(200))
-            Result.success(
-                LlmCompletion(
-                    content = content,
-                    callRef = httpResponse.headers[LlmCompletion.CALL_REF_HEADER]?.takeIf { it.isNotBlank() },
-                    requestedModel = model,
-                    servedModel = httpResponse.headers[SERVED_MODEL_HEADER],
-                    servedProvider = httpResponse.headers[SERVED_PROVIDER_HEADER],
-                    fallbackFrom = null, // on the prompt-log row only — see LlmCompletion
-                    cached = response.cached ?: false,
-                    tokensPrompt = response.usage?.promptTokens,
-                    tokensCompletion = response.usage?.completionTokens,
-                    costUsd = response.usage?.cost,
-                    durationMs = durationMs,
-                ),
-            )
+            if (!httpResponse.status.isSuccess()) {
+                // A gateway error is NOT a completion (review-100 F2). Before LC this decoded the OpenAI
+                // error envelope as a response with no choices and answered success("") — so a budget
+                // 429 or an exhausted chain read as an empty reply, and (from LC on) as a call made.
+                val detail =
+                    runCatching {
+                        json
+                            .decodeFromString(
+                                GatewayErrorEnvelope.serializer(),
+                                httpResponse.bodyAsText(),
+                            ).error
+                            ?.message
+                    }.getOrNull()
+                val message =
+                    "LLM gateway answered ${httpResponse.status.value}" +
+                        (detail?.takeIf { it.isNotBlank() }?.let { ": $it" } ?: "")
+                logger.warn(message)
+                Result.failure(LlmGatewayException(message, httpStatus = httpResponse.status.value))
+            } else {
+                val response: ChatCompletionResponse = httpResponse.body()
+                val content =
+                    response.choices
+                        ?.firstOrNull()
+                        ?.message
+                        ?.content
+                        ?: ""
+                logger.debug("LLM response: {}", content.take(200))
+                Result.success(
+                    LlmCompletion(
+                        content = content,
+                        callRef = httpResponse.headers[LlmCompletion.CALL_REF_HEADER]?.takeIf { it.isNotBlank() },
+                        requestedModel = model,
+                        servedModel = httpResponse.headers[SERVED_MODEL_HEADER],
+                        servedProvider = httpResponse.headers[SERVED_PROVIDER_HEADER],
+                        fallbackFrom = null, // on the prompt-log row only — see LlmCompletion
+                        cached = response.cached ?: false,
+                        tokensPrompt = response.usage?.promptTokens,
+                        tokensCompletion = response.usage?.completionTokens,
+                        costUsd = response.usage?.cost,
+                        durationMs = durationMs,
+                    ),
+                )
+            }
         } catch (e: Exception) {
             logger.error("Error calling LLM gateway: {}", e.message, e)
             Result.failure(LlmGatewayException("LLM gateway unavailable: ${e.message}"))
         }
 
     /**
-     * ⚑LC-5 — the caller's current span as W3C `traceparent`. Straight from [Context.current] through
-     * the W3C propagator, NOT through an SDK's `getPropagators()`: the shared `otel-config` SDK is
-     * built without propagators, and asking it would inject nothing (golem's `withW3CPropagators`
-     * exists for that reason). Outside a valid span the propagator writes nothing.
+     * ⚑LC-5 — the caller's current span as W3C `traceparent`, straight from [Context.current] through
+     * the W3C propagator, so the client needs no `OpenTelemetry` instance (it has none to ask).
+     * Outside a valid span the propagator writes nothing.
+     *
+     * [Context.current] is a THREAD-LOCAL. Inside a coroutine it is the caller's span only when the
+     * caller carries that span as a coroutine context element (`span.asContextElement()`, or a
+     * `Context` element) — a span made current with `makeCurrent()` does not survive a suspension,
+     * and the header would name whatever the resuming thread holds.
      */
     private fun injectTraceParent(builder: HttpRequestBuilder) {
         W3CTraceContextPropagator.getInstance().inject(Context.current(), builder, HeaderSetter)
@@ -179,9 +223,26 @@ class LlmGatewayClient(
 private const val SERVED_PROVIDER_HEADER = "X-Gateway-Provider"
 private const val SERVED_MODEL_HEADER = "X-Gateway-Model"
 
-class LlmGatewayException(
-    message: String,
-) : Exception(message)
+class LlmGatewayException
+    @JvmOverloads
+    constructor(
+        message: String,
+        /** The gateway's HTTP status when it answered with an error; null when it could not be reached. */
+        val httpStatus: Int? = null,
+    ) : Exception(message)
+
+/** The gateway's OpenAI-shaped error body (`{"error":{"message":…,"type":…,"code":…}}`). */
+@Serializable
+internal data class GatewayErrorEnvelope(
+    val error: GatewayErrorBody? = null,
+)
+
+@Serializable
+internal data class GatewayErrorBody(
+    val message: String? = null,
+    val type: String? = null,
+    val code: String? = null,
+)
 
 @Serializable
 data class ChatCompletionRequest(

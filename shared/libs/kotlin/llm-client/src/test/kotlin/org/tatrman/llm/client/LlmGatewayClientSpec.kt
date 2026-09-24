@@ -150,12 +150,109 @@ class LlmGatewayClientSpec :
             client.completeWithMeta("hi").getOrThrow().cached shouldBe true
         }
 
-        "complete() is completeWithMeta().map { content } — including the failure" {
+        // ── review-100 F2 — a gateway error is a failure, never a completion ─────────────────────
+
+        fun stubError(
+            status: Int,
+            body: String,
+        ) = wm.stubFor(
+            post(urlPathEqualTo("/v1/chat/completions")).willReturn(
+                aResponse()
+                    .withStatus(status)
+                    .withHeader("Content-Type", "application/json")
+                    // What the gateway sends on an exhausted chain: the LAST attempted route, which did
+                    // NOT serve the call — a completion built from these would name the wrong provider.
+                    .withHeader("X-Gateway-Provider", "azure")
+                    .withHeader("X-Gateway-Model", "gpt-5-mini")
+                    .withBody(body),
+            ),
+        )
+
+        "a budget 429 (the gateway's envelope) is a failure carrying the status — not an empty completion" {
+            stubError(429, GatewayBodies.QUOTA_ENVELOPE)
+            val e = client.completeWithMeta("hi").exceptionOrNull().shouldBeInstanceOf<LlmGatewayException>()
+            e.httpStatus shouldBe 429
+            e.message shouldBe "LLM gateway answered 429: budget exceeded"
+        }
+
+        "an exhausted chain (502 envelope) is a failure — no completion names the provider that failed" {
+            stubError(502, GatewayBodies.ERROR_ENVELOPE)
+            client
+                .completeWithMeta(
+                    "hi",
+                ).exceptionOrNull()
+                .shouldBeInstanceOf<LlmGatewayException>()
+                .httpStatus shouldBe
+                502
+        }
+
+        "complete() and completeWithMeta() fail alike on the same gateway error" {
+            stubError(503, GatewayBodies.ERROR_ENVELOPE)
+            val viaComplete = client.complete("hi").exceptionOrNull().shouldBeInstanceOf<LlmGatewayException>()
+            val viaMeta = client.completeWithMeta("hi").exceptionOrNull().shouldBeInstanceOf<LlmGatewayException>()
+            viaComplete.message shouldBe viaMeta.message
+            viaComplete.httpStatus shouldBe viaMeta.httpStatus
+        }
+
+        // ── review-100 F9 — attribution never fails the call it labels ──────────────────────────
+
+        "a CR/LF in a context field sends no header for it, and the call still succeeds" {
             stubCompletion()
-            client.complete("hi") shouldBe client.completeWithMeta("hi").map { it.content }
-            val dead = LlmGatewayClient(LlmGatewayEndpoint("localhost", 1, 2_000))
-            dead.completeWithMeta("hi").exceptionOrNull().shouldBeInstanceOf<LlmGatewayException>()
-            dead.close()
+            val c =
+                withContext(LlmCallContext(turnRef = "t1\r\nX-Evil: 1", purpose = "compose-plan")) {
+                    client.completeWithMeta("hi")
+                }.getOrThrow()
+            c.content shouldBe "It is Q3."
+            wm.verify(
+                postRequestedFor(urlPathEqualTo("/v1/chat/completions"))
+                    .withHeader("X-Turn-Ref", absent())
+                    .withHeader("X-Evil", absent())
+                    .withHeader("X-Call-Purpose", equalTo("compose-plan")),
+            )
+        }
+
+        "a trailing newline is trimmed, not a reason to drop the turn" {
+            stubCompletion()
+            withContext(LlmCallContext(turnRef = "t1\n", agentId = " golem-hartland ")) {
+                client.completeWithMeta("hi")
+            }.getOrThrow()
+            wm.verify(
+                postRequestedFor(urlPathEqualTo("/v1/chat/completions"))
+                    .withHeader("X-Turn-Ref", equalTo("t1"))
+                    .withHeader("X-Agent-Id", equalTo("golem-hartland")),
+            )
+        }
+
+        "a non-ASCII value sends no header — it could never match the JWT it is compared to" {
+            stubCompletion()
+            withContext(
+                LlmCallContext(turnRef = "t1", endUserSubject = "jiří"),
+            ) { client.completeWithMeta("hi") }.getOrThrow()
+            wm.verify(
+                postRequestedFor(urlPathEqualTo("/v1/chat/completions"))
+                    .withHeader("X-Turn-Ref", equalTo("t1"))
+                    .withHeader("X-End-User-Subject", absent()),
+            )
+        }
+
+        "an over-long value is capped at the gateway's 512" {
+            stubCompletion()
+            withContext(LlmCallContext(turnRef = "t".repeat(600))) { client.completeWithMeta("hi") }.getOrThrow()
+            wm.verify(
+                postRequestedFor(urlPathEqualTo("/v1/chat/completions"))
+                    .withHeader("X-Turn-Ref", equalTo("t".repeat(LlmCallContext.MAX_HEADER_VALUE_LENGTH))),
+            )
+        }
+
+        "headers() reports each rejected field by header name" {
+            val rejected = mutableListOf<String>()
+            LlmCallContext(
+                turnRef = "a\u0000b",
+                purpose = "ok",
+                endUserSubject = "ž",
+            ).headers { rejected += it } shouldBe
+                mapOf("X-Call-Purpose" to "ok")
+            rejected.shouldContainExactly("X-Turn-Ref", "X-End-User-Subject")
         }
 
         // ── ⚑LC-5 — traceparent, opt-in ──────────────────────────────────────────────────────
@@ -237,7 +334,35 @@ class LlmGatewayClientSpec :
             )
         }
 
-        "a failed completion never reaches onCompletion and still throws out of execute (unchanged)" {
+        "a gateway error (503 envelope) never reaches onCompletion and throws out of execute" {
+            stubError(503, GatewayBodies.ERROR_ENVELOPE)
+            var calls = 0
+            val executor = LlmGatewayPromptExecutor(client, onCompletion = { calls++ })
+            val r =
+                runCatching {
+                    executor.execute(
+                        prompt("p") { user("hi") },
+                        LLModel(provider = LLMProvider.Anthropic, id = "claude-haiku"),
+                        emptyList(),
+                    )
+                }
+            r.exceptionOrNull().shouldBeInstanceOf<LlmGatewayException>().httpStatus shouldBe 503
+            calls shouldBe 0
+        }
+
+        "an onCompletion that throws does not fail a call the gateway already served (review-100 F18)" {
+            stubCompletion(callRef = "4711")
+            val executor = LlmGatewayPromptExecutor(client, onCompletion = { error("collector bug") })
+            val reply =
+                executor.execute(
+                    prompt("p") { user("hi") },
+                    LLModel(provider = LLMProvider.Anthropic, id = "claude-haiku"),
+                    emptyList(),
+                )
+            reply.single().shouldBeInstanceOf<Message.Assistant>().content shouldBe "It is Q3."
+        }
+
+        "an unreachable gateway never reaches onCompletion and still throws out of execute (unchanged)" {
             var calls = 0
             val dead = LlmGatewayClient(LlmGatewayEndpoint("localhost", 1, 2_000))
             val executor = LlmGatewayPromptExecutor(dead, onCompletion = { calls++ })

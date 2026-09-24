@@ -288,8 +288,10 @@ fun Application.module(
 
             // LC §2.2 — the prompt-log row id, allocated BEFORE the response starts (a header cannot follow
             // the body) and before the row is enqueued (so it is true even if the writer drops the row).
-            // Null on a storeless boot or a failed allocation: then no header, and the row takes the default.
-            suspend fun announceLogId(): Long? =
+            // Null on a storeless boot or an empty id pool: then no header, and the row takes the default.
+            // NOT suspend (review-100 F3/F10): it reads a pre-reserved id from memory, so it neither waits on
+            // PG nor opens a cancellation window between a served call and its settle.
+            fun announceLogId(): Long? =
                 promptLog?.allocateId()?.also { call.response.header(PROMPT_LOG_ID_HEADER, it.toString()) }
 
             // One Settle record, three sinks (§5.5): budget, prompt-log (async), metrics (tokens+cost).
@@ -761,24 +763,21 @@ fun Application.module(
                 val rows =
                     when (access) {
                         PromptLogAccess.AllRows ->
-                            promptLogRepo.find(
-                                turnRef = turnRef,
-                                traceId = traceId,
-                                limit = limit,
-                            )
+                            promptLogRepo.find(turnRef, traceId, limit, PromptLogRepo.RowScope.All)
                         is PromptLogAccess.OwnRows ->
-                            promptLogRepo.find(
-                                turnRef = turnRef,
-                                traceId = traceId,
-                                limit = limit,
-                                endUserSubject = access.subject,
-                            )
+                            promptLogRepo.find(turnRef, traceId, limit, PromptLogRepo.RowScope.OwnedBy(access.subject))
                         else -> emptyList() // NoRows: a verified token naming no subject owns nothing
                     }
                 val roleHolder = access == PromptLogAccess.AllRows
                 call.respond(
                     buildJsonObject {
-                        putJsonArray("items") { rows.forEach { add(it.toJson(includeSubject = roleHolder)) } }
+                        // Which answer this is (review-100 F6): "own" is a reader-scoped list, so a ref the
+                        // reader holds with no row here may be a row they may not see — not one the writer
+                        // dropped. Only an "all" answer lets a reader call a missing row dropped.
+                        put("access", if (roleHolder) "all" else "own")
+                        putJsonArray("items") {
+                            rows.forEach { add(it.toJson(includeSubject = roleHolder, includeBodies = roleHolder)) }
+                        }
                     },
                 )
             }

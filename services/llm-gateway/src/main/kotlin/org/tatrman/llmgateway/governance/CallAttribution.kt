@@ -12,6 +12,14 @@ import io.ktor.http.Headers
  * routing or budget decision. The values are caller-supplied, so each is trimmed, a blank one becomes
  * `null` (no row ever carries an empty string), and each is capped at [MAX_LENGTH] characters to
  * guard the columns.
+ *
+ * **Trust boundary (review-100 F16; LC contracts §2.1).** These are ASSERTIONS by the key holder, not
+ * facts the gateway verified. Any data-plane key can stamp any `X-End-User-Subject` (and, as ever, any
+ * `X-Turn-Ref`) onto its rows, so a subject's read of their own turn can include rows another key holder
+ * wrote in their name. That is an integrity limit, not a confidentiality one: the per-row READ rule
+ * (⚑LC-1) only ever narrows what a reader sees, and a row stamped with someone else's subject is never
+ * shown to anyone who could not already read that subject's rows. Keys are issued to estate services
+ * only; a key that should not attribute on a user's behalf must not be issued.
  */
 data class CallAttribution(
     val turnRef: String? = null,

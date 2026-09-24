@@ -85,18 +85,31 @@ data class PromptLogRow(
  * every prompt and completion the estate has ever seen, which is what an
  * unfiltered listing of this table would be.
  *
- * **Per-row scope (LC-1).** [find]'s `endUserSubject`, when given, narrows the answer IN SQL to rows whose
- * `end_user_subject` equals it — never filtered in memory, so a page limit can never be spent on rows the
- * reader was not allowed to see, and rows with a NULL subject never match (they are role-only).
+ * **Per-row scope (LC-1).** [find] takes an explicit [RowScope]. [RowScope.OwnedBy] narrows the answer IN
+ * SQL to rows whose `end_user_subject` equals it — never filtered in memory, so a page limit can never be
+ * spent on rows the reader was not allowed to see, and rows with a NULL subject never match (they are
+ * role-only). The scope has no default and no nullable form: a caller holding a nullable subject cannot
+ * widen a read to every row by passing it through (review-100).
  */
 class PromptLogRepo(
     private val db: DatabaseConnection,
 ) {
+    /** Whose rows a read may return (⚑LC-1). */
+    sealed interface RowScope {
+        /** A role-holder (`llm-gateway-admin` / `llm-gateway-inspect`): every row for the key. */
+        data object All : RowScope
+
+        /** A subject reading their own rows: `end_user_subject = subject`, in SQL. */
+        data class OwnedBy(
+            val subject: String,
+        ) : RowScope
+    }
+
     fun find(
         turnRef: String?,
         traceId: String?,
         limit: Int,
-        endUserSubject: String? = null,
+        scope: RowScope,
     ): List<PromptLogRow> {
         if (turnRef.isNullOrBlank() && traceId.isNullOrBlank()) return emptyList()
         return db.query {
@@ -118,10 +131,15 @@ class PromptLogRepo(
                             !turnRef.isNullOrBlank() -> PromptLogs.turnRef eq turnRef
                             else -> PromptLogs.traceId eq traceId
                         }
-                    if (endUserSubject == null) byKey else byKey and (PromptLogs.endUserSubject eq endUserSubject)
+                    when (scope) {
+                        RowScope.All -> byKey
+                        is RowScope.OwnedBy -> byKey and (PromptLogs.endUserSubject eq scope.subject)
+                    }
                 }
-                // Oldest first: a turn's calls read in the order they happened.
-                .orderBy(PromptLogs.id to SortOrder.ASC)
+                // Oldest first: a turn's calls read in the order they happened. By `created_at` (the one PG
+                // clock, stamped at insert), NOT by id: ids are reserved per replica in blocks (review-100
+                // F3), so across replicas id order is not call order. The id breaks ties.
+                .orderBy(PromptLogs.createdAt to SortOrder.ASC_NULLS_LAST, PromptLogs.id to SortOrder.ASC)
                 .limit(limit)
                 .map { it.toRow() }
         }
@@ -175,16 +193,22 @@ fun clampPromptLogLimit(raw: Int?): Int = (raw ?: PROMPT_LOGS_DEFAULT_LIMIT).coe
  * Wire shape of one row (PT contracts §5). camelCase, matching the BFF DTO
  * convention on the far side.
  *
- * Bodies (`promptText` / `responseText`) are returned RAW. Redaction is the
- * assembler's job (PT-20/21) because only it knows the reader's profile — and a
+ * Bodies (`promptText` / `responseText`) are returned RAW — to a role-holder only ([includeBodies]).
+ * Redaction is the assembler's job (PT-20/21) because only it knows the reader's profile — and a
  * gateway that pre-digested them would make the consumer's redaction floor
- * unauditable, since it could no longer see what it was supposed to remove.
+ * unauditable, since it could no longer see what it was supposed to remove. A subject reading their
+ * own rows gets them as JSON null (review-100 F4, ruled 2026-09-24): raw bodies carry golem's whole
+ * system prompt, and the only path to them is the role-gated, floor-redacted `full` profile
+ * (architecture §7) — a direct call to this endpoint must not be a second, unredacted one.
  *
  * `purpose` / `agentId` (LC §2.3) are always present (JSON null on a pre-V5 row). `endUserSubject` is
  * written ONLY for a role-holder ([includeSubject]): a subject reading their own rows does not need to be
  * told who they are, and nobody else reads a row by subject.
  */
-fun PromptLogRow.toJson(includeSubject: Boolean = false): kotlinx.serialization.json.JsonObject =
+fun PromptLogRow.toJson(
+    includeSubject: Boolean = false,
+    includeBodies: Boolean = true,
+): kotlinx.serialization.json.JsonObject =
     kotlinx.serialization.json.buildJsonObject {
         put("id", kotlinx.serialization.json.JsonPrimitive(id.toString()))
         put("turnRef", kotlinx.serialization.json.JsonPrimitive(turnRef))
@@ -201,8 +225,8 @@ fun PromptLogRow.toJson(includeSubject: Boolean = false): kotlinx.serialization.
         put("costUsd", kotlinx.serialization.json.JsonPrimitive(costUsd))
         put("status", kotlinx.serialization.json.JsonPrimitive(status))
         put("createdAt", kotlinx.serialization.json.JsonPrimitive(createdAt?.toString()))
-        put("promptText", kotlinx.serialization.json.JsonPrimitive(promptText))
-        put("responseText", kotlinx.serialization.json.JsonPrimitive(responseText))
+        put("promptText", kotlinx.serialization.json.JsonPrimitive(promptText.takeIf { includeBodies }))
+        put("responseText", kotlinx.serialization.json.JsonPrimitive(responseText.takeIf { includeBodies }))
         put("purpose", kotlinx.serialization.json.JsonPrimitive(purpose))
         put("agentId", kotlinx.serialization.json.JsonPrimitive(agentId))
         if (includeSubject) put("endUserSubject", kotlinx.serialization.json.JsonPrimitive(endUserSubject))

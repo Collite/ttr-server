@@ -3,6 +3,7 @@ package org.tatrman.llmgateway.observability
 
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonPrimitive
 import java.time.OffsetDateTime
@@ -123,6 +124,40 @@ class PromptLogInspectSpec :
             val legacy = row.copy(purpose = null, agentId = null).toJson()
             legacy["purpose"]!!.jsonPrimitive.contentOrNull shouldBe null
             legacy["agentId"]!!.jsonPrimitive.contentOrNull shouldBe null
+        }
+
+        "a subject's own-row read carries no bodies — they are role-only (review-100 F4)" {
+            val row =
+                PromptLogRow(
+                    id = 8L,
+                    turnRef = "turn-1",
+                    traceId = null,
+                    requestedModel = "fast",
+                    servedModel = "gpt-5-mini",
+                    servedProvider = "azure",
+                    fallbackFrom = null,
+                    cached = false,
+                    tokensPrompt = 1,
+                    tokensCompletion = 1,
+                    durationMs = 1,
+                    ttfbMs = null,
+                    costUsd = null,
+                    status = "SUCCESS",
+                    createdAt = null,
+                    promptText = "SYSTEM: you are golem … USER: which quarter?",
+                    responseText = "Q3",
+                    purpose = "compose-plan",
+                    endUserSubject = "sub-dan",
+                    agentId = "golem-hartland",
+                )
+            val own = row.toJson(includeSubject = false, includeBodies = false)
+            own["promptText"] shouldBe JsonNull
+            own["responseText"] shouldBe JsonNull
+            own["purpose"]!!.jsonPrimitive.content shouldBe "compose-plan" // the metadata stays
+
+            val roleHolder = row.toJson(includeSubject = true, includeBodies = true)
+            roleHolder["promptText"]!!.jsonPrimitive.content shouldBe "SYSTEM: you are golem … USER: which quarter?"
+            roleHolder["responseText"]!!.jsonPrimitive.content shouldBe "Q3"
         }
 
         "bodies are returned RAW — the gateway must not pre-digest them" {

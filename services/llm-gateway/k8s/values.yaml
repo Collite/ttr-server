@@ -33,8 +33,13 @@ db:
   port: 5432
 
 # OpenTelemetry. OTEL_SERVICE_NAME always; the OTLP endpoint renders only when enabled.
+# `enabled` → OTEL_ENABLED_LLM_GATEWAY; the exporter is `otlpHost` + `otlpGrpcPort` (gRPC, the lib default).
+# `endpoint` is unread by shared otel-config — kept only for old values files. e.g.
+#   telemetry: { enabled: true, otlpHost: mon-alloy.monitoring.svc.cluster.local, otlpGrpcPort: 4317 }
 telemetry:
   enabled: false
+  otlpHost: ""
+  otlpGrpcPort: 4317
   endpoint: ""
   serviceName: llm-gateway
 
