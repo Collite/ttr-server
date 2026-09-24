@@ -120,8 +120,10 @@ data class TokenBasedConfig(
     // FZ-P2 — retrieval path selector (`fuzzy.token-based.retrieval`). Defaults LEGACY; flipped to
     // INDEX_FIRST in application.conf at the FZ-P2 DoD.
     val retrieval: org.tatrman.fuzzy.core.RetrievalMode = org.tatrman.fuzzy.core.RetrievalMode.LEGACY,
-    // LP-P0 — the TATRMAN scorer (`fuzzy.match.version`, env FUZZY_MATCH_VERSION). Default V1 until
-    // the LP-P3 golden verdict; V2 with LEGACY retrieval is a startup error (contracts §4.1).
+    // LP-P0 — the TATRMAN scorer (`fuzzy.match.version`, env FUZZY_MATCH_VERSION). Defaulted V1
+    // here and flipped to v2 in application.conf at LP-P3 (ruling LPA-2), the same shape
+    // `retrieval` above uses: the CODE default stays the pinned engine, the SHIPPED SERVICE moves.
+    // V2 with LEGACY retrieval is a startup error (contracts §4.1).
     val matchVersion: org.tatrman.fuzzy.core.MatchVersion = org.tatrman.fuzzy.core.MatchVersion.V1,
 )
 
