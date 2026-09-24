@@ -75,7 +75,6 @@ class BudgetComponentSpec :
             keyId = "vk_x",
             teamId = team,
             costCenter = null,
-            turnRef = null,
             requestedModel = "m",
             servedProvider = "openai",
             servedModel = "m",

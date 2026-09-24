@@ -77,4 +77,28 @@ class AdminAuthSpec :
         "garbage token → Invalid (never throws)" {
             auth.authenticate("not.a.jwt") shouldBe AdminAuth.Result.Invalid
         }
+
+        // ── LC-1: identify() reads a verified token without judging it ────────────────────────────
+
+        "identify: a valid token WITHOUT the admin role is Verified (subject + roles), not Forbidden" {
+            auth.identify(token(listOf("default-roles"))) shouldBe
+                AdminAuth.Identity.Verified("admin-user", setOf("default-roles"))
+        }
+        "identify: the verifier is the same — wrong issuer, expiry, foreign key and garbage are all Invalid" {
+            auth.identify(token(listOf("x"), issuer = "https://evil/realms/x")) shouldBe AdminAuth.Identity.Invalid
+            auth.identify(token(listOf("x"), expiresAt = Date(0))) shouldBe AdminAuth.Identity.Invalid
+            auth.identify("ttrk-0123456789abcdef") shouldBe AdminAuth.Identity.Invalid // a gateway API key
+            auth.identify(null) shouldBe AdminAuth.Identity.NoToken
+        }
+        "identify: a token without `sub` is Verified with a null subject (never the admin gate's \"?\")" {
+            val noSub =
+                JWT
+                    .create()
+                    .withIssuer(iss)
+                    .withAudience(aud)
+                    .withExpiresAt(Date(System.currentTimeMillis() + 3_600_000))
+                    .withClaim("realm_access", mapOf<String, Any>("roles" to listOf("default-roles")))
+                    .sign(alg)
+            auth.identify(noSub) shouldBe AdminAuth.Identity.Verified(null, setOf("default-roles"))
+        }
     })

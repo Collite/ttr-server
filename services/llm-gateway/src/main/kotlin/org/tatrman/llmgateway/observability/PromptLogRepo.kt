@@ -4,6 +4,7 @@ package org.tatrman.llmgateway.observability
 import org.jetbrains.exposed.v1.core.ResultRow
 import org.jetbrains.exposed.v1.core.SortOrder
 import org.jetbrains.exposed.v1.core.Table
+import org.jetbrains.exposed.v1.core.and
 import org.jetbrains.exposed.v1.core.eq
 import org.jetbrains.exposed.v1.javatime.timestampWithTimeZone
 import org.jetbrains.exposed.v1.jdbc.selectAll
@@ -11,7 +12,7 @@ import shared.libs.db.common.DatabaseConnection
 import java.time.OffsetDateTime
 
 /**
- * Exposed mapping for `prompt_logs` (V1 + V3). Read-only by design: the write
+ * Exposed mapping for `prompt_logs` (V1 + V3 + V5). Read-only by design: the write
  * path is [PromptLogWriter]'s hand-rolled INSERT, which is deliberately a single
  * statement on a background channel, and giving it a second door here would
  * invite a synchronous writer onto the request path.
@@ -43,6 +44,11 @@ internal object PromptLogs : Table("prompt_logs") {
     val promptText = text("prompt_text").nullable()
     val responseText = text("response_text").nullable()
 
+    // V5 (LC §2.1) — the caller's attribution. NULL on every row written before V5.
+    val purpose = text("purpose").nullable()
+    val endUserSubject = text("end_user_subject").nullable()
+    val agentId = text("agent_id").nullable()
+
     override val primaryKey = PrimaryKey(id)
 }
 
@@ -65,6 +71,9 @@ data class PromptLogRow(
     val createdAt: OffsetDateTime?,
     val promptText: String?,
     val responseText: String?,
+    val purpose: String? = null,
+    val endUserSubject: String? = null,
+    val agentId: String? = null,
 )
 
 /**
@@ -75,6 +84,10 @@ data class PromptLogRow(
  * holds. That keeps the endpoint an *inspect* tool rather than a bulk export of
  * every prompt and completion the estate has ever seen, which is what an
  * unfiltered listing of this table would be.
+ *
+ * **Per-row scope (LC-1).** [find]'s `endUserSubject`, when given, narrows the answer IN SQL to rows whose
+ * `end_user_subject` equals it — never filtered in memory, so a page limit can never be spent on rows the
+ * reader was not allowed to see, and rows with a NULL subject never match (they are role-only).
  */
 class PromptLogRepo(
     private val db: DatabaseConnection,
@@ -83,6 +96,7 @@ class PromptLogRepo(
         turnRef: String?,
         traceId: String?,
         limit: Int,
+        endUserSubject: String? = null,
     ): List<PromptLogRow> {
         if (turnRef.isNullOrBlank() && traceId.isNullOrBlank()) return emptyList()
         return db.query {
@@ -99,10 +113,12 @@ class PromptLogRepo(
                     //
                     // The trace id remains a first-class key on its own, for callers
                     // that hold a trace and no turn.
-                    when {
-                        !turnRef.isNullOrBlank() -> PromptLogs.turnRef eq turnRef
-                        else -> PromptLogs.traceId eq traceId
-                    }
+                    val byKey =
+                        when {
+                            !turnRef.isNullOrBlank() -> PromptLogs.turnRef eq turnRef
+                            else -> PromptLogs.traceId eq traceId
+                        }
+                    if (endUserSubject == null) byKey else byKey and (PromptLogs.endUserSubject eq endUserSubject)
                 }
                 // Oldest first: a turn's calls read in the order they happened.
                 .orderBy(PromptLogs.id to SortOrder.ASC)
@@ -130,6 +146,9 @@ class PromptLogRepo(
             createdAt = this[PromptLogs.createdAt],
             promptText = this[PromptLogs.promptText],
             responseText = this[PromptLogs.responseText],
+            purpose = this[PromptLogs.purpose],
+            endUserSubject = this[PromptLogs.endUserSubject],
+            agentId = this[PromptLogs.agentId],
         )
 }
 
@@ -160,8 +179,12 @@ fun clampPromptLogLimit(raw: Int?): Int = (raw ?: PROMPT_LOGS_DEFAULT_LIMIT).coe
  * assembler's job (PT-20/21) because only it knows the reader's profile — and a
  * gateway that pre-digested them would make the consumer's redaction floor
  * unauditable, since it could no longer see what it was supposed to remove.
+ *
+ * `purpose` / `agentId` (LC §2.3) are always present (JSON null on a pre-V5 row). `endUserSubject` is
+ * written ONLY for a role-holder ([includeSubject]): a subject reading their own rows does not need to be
+ * told who they are, and nobody else reads a row by subject.
  */
-fun PromptLogRow.toJson(): kotlinx.serialization.json.JsonObject =
+fun PromptLogRow.toJson(includeSubject: Boolean = false): kotlinx.serialization.json.JsonObject =
     kotlinx.serialization.json.buildJsonObject {
         put("id", kotlinx.serialization.json.JsonPrimitive(id.toString()))
         put("turnRef", kotlinx.serialization.json.JsonPrimitive(turnRef))
@@ -180,4 +203,7 @@ fun PromptLogRow.toJson(): kotlinx.serialization.json.JsonObject =
         put("createdAt", kotlinx.serialization.json.JsonPrimitive(createdAt?.toString()))
         put("promptText", kotlinx.serialization.json.JsonPrimitive(promptText))
         put("responseText", kotlinx.serialization.json.JsonPrimitive(responseText))
+        put("purpose", kotlinx.serialization.json.JsonPrimitive(purpose))
+        put("agentId", kotlinx.serialization.json.JsonPrimitive(agentId))
+        if (includeSubject) put("endUserSubject", kotlinx.serialization.json.JsonPrimitive(endUserSubject))
     }

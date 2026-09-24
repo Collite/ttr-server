@@ -71,6 +71,8 @@ class PromptLogInspectSpec :
                     "createdAt",
                     "promptText",
                     "responseText",
+                    "purpose", // LC §2.3
+                    "agentId", // LC §2.3
                 )
             // id is a BIGSERIAL — rendered as a string so a JS consumer cannot lose
             // precision on it the way it would with a bare number past 2^53.
@@ -82,6 +84,45 @@ class PromptLogInspectSpec :
             // the consumer distinguishes "no fallback happened" from "not reported".
             j["fallbackFrom"]!!.jsonPrimitive.isString shouldBe false
             j["fallbackFrom"]!!.jsonPrimitive.content shouldBe "null"
+        }
+
+        // LC §2.3 — purpose and agentId always (null on a pre-V5 row); endUserSubject ONLY for a role-holder:
+        // a subject reading their own rows does not need to be told who they are.
+        "the LC fields: purpose + agentId always, endUserSubject only when asked for a role-holder" {
+            val row =
+                PromptLogRow(
+                    id = 9,
+                    turnRef = "t",
+                    traceId = null,
+                    requestedModel = "fast",
+                    servedModel = "gpt-5-mini",
+                    servedProvider = "azure",
+                    fallbackFrom = null,
+                    cached = false,
+                    tokensPrompt = 1,
+                    tokensCompletion = 1,
+                    durationMs = 1,
+                    ttfbMs = null,
+                    costUsd = null,
+                    status = "SUCCESS",
+                    createdAt = null,
+                    promptText = null,
+                    responseText = null,
+                    purpose = "compose-plan",
+                    endUserSubject = "sub-dan",
+                    agentId = "golem-hartland",
+                )
+            val own = row.toJson()
+            own["purpose"]!!.jsonPrimitive.content shouldBe "compose-plan"
+            own["agentId"]!!.jsonPrimitive.content shouldBe "golem-hartland"
+            own.containsKey("endUserSubject") shouldBe false
+
+            row.toJson(includeSubject = true)["endUserSubject"]!!.jsonPrimitive.content shouldBe "sub-dan"
+
+            // A pre-V5 row: the keys are there, as JSON null — "not recorded", distinguishable from "".
+            val legacy = row.copy(purpose = null, agentId = null).toJson()
+            legacy["purpose"]!!.jsonPrimitive.contentOrNull shouldBe null
+            legacy["agentId"]!!.jsonPrimitive.contentOrNull shouldBe null
         }
 
         "bodies are returned RAW — the gateway must not pre-digest them" {

@@ -7,6 +7,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonPrimitive
@@ -21,12 +22,17 @@ import org.tatrman.llmgateway.governance.Settle
 import shared.libs.db.common.DatabaseConnection
 import java.math.BigDecimal
 
-/** One prompt-log row: the [Settle] facts (§3 attribution columns) plus the prompt/response text (V1 columns). */
+/**
+ * One prompt-log row: the [Settle] facts (§3 attribution columns) plus the prompt/response text (V1 columns).
+ * [id] is the row id handed out by [PromptLogWriter.allocateId] and already echoed to the caller as
+ * `X-Prompt-Log-Id` (LC §2.2); `null` ⇒ the column's own sequence default, exactly as before LC.
+ */
 data class PromptLogRecord(
     val settle: Settle,
     val promptText: String,
     val responseText: String,
     val status: String, // SUCCESS | ERROR (1.x column)
+    val id: Long? = null,
 )
 
 /**
@@ -53,6 +59,30 @@ class PromptLogWriter(
                     log.warn("prompt-log write failed", it)
                     metrics?.counter("llm_gateway_promptlog_write_error_total")?.increment()
                 }
+            }
+        }
+
+    /**
+     * The id the row for this call WILL carry — taken from the column's own sequence BEFORE the row is
+     * enqueued, so the caller can be told it (`X-Prompt-Log-Id`, LC §2.2) even when [enqueue] later drops
+     * the row. That is the point: a reader holding a ref with no row knows the writer dropped it (*"golem
+     * reported 3 calls; the gateway holds 2"*), instead of silently reporting 2.
+     *
+     * One sequence read on the request path, bounded by [ALLOCATE_TIMEOUT_MS]: on a slow or absent PG the
+     * call goes on WITHOUT an id (no header; the row, if written, takes the default) — attribution loss is
+     * survivable, stalling the data plane is not (F-1).
+     */
+    suspend fun allocateId(): Long? =
+        withTimeoutOrNull(ALLOCATE_TIMEOUT_MS) {
+            withContext(Dispatchers.IO) {
+                runCatching {
+                    transaction {
+                        exec(NEXT_ID_SQL) { rs -> if (rs.next()) rs.getLong(1) else null }
+                    }
+                }.onFailure {
+                    log.warn("prompt-log id allocation failed — the call goes on without X-Prompt-Log-Id", it)
+                    metrics?.counter("llm_gateway_promptlog_id_error_total")?.increment()
+                }.getOrNull()
             }
         }
 
@@ -83,6 +113,7 @@ class PromptLogWriter(
             exec(
                 INSERT_SQL,
                 listOf(
+                    LongColumnType() to r.id, // pre-allocated (LC §2.2) or null → the sequence default
                     TextColumnType() to s.keyId, // user_id (1.x) = the key id
                     TextColumnType() to s.servedModel, // model_name (1.x)
                     TextColumnType() to s.servedProvider, // provider (1.x)
@@ -95,7 +126,7 @@ class PromptLogWriter(
                     TextColumnType() to s.keyId,
                     TextColumnType() to s.teamId,
                     TextColumnType() to s.costCenter,
-                    TextColumnType() to s.turnRef,
+                    TextColumnType() to s.attribution.turnRef,
                     TextColumnType() to s.requestedModel,
                     TextColumnType() to s.servedProvider,
                     TextColumnType() to s.servedModel,
@@ -106,6 +137,9 @@ class PromptLogWriter(
                     DecimalColumnType(12, 6) to BigDecimal.valueOf(s.costUsd),
                     LongColumnType() to s.ttfbMs,
                     TextColumnType() to s.traceId,
+                    TextColumnType() to s.attribution.purpose,
+                    TextColumnType() to s.attribution.endUserSubject,
+                    TextColumnType() to s.attribution.agentId,
                 ),
             )
         }
@@ -113,14 +147,18 @@ class PromptLogWriter(
 
     private companion object {
         const val DRAIN_TIMEOUT_MS = 5_000L
+        const val ALLOCATE_TIMEOUT_MS = 250L
+        const val NEXT_ID_SQL = "SELECT nextval('prompt_logs_id_seq')"
         val log = LoggerFactory.getLogger(PromptLogWriter::class.java)
         val INSERT_SQL =
             """
             INSERT INTO prompt_logs
-              (user_id, model_name, provider, prompt_text, response_text, tokens_prompt, tokens_completion,
+              (id, user_id, model_name, provider, prompt_text, response_text, tokens_prompt, tokens_completion,
                duration_ms, status, key_id, team_id, cost_center, turn_ref, requested_model, served_provider,
-               served_model, fallback_from, stripped_params, estimated, cached, cost_usd, ttfb_ms, trace_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?, ?, ?, ?, ?)
+               served_model, fallback_from, stripped_params, estimated, cached, cost_usd, ttfb_ms, trace_id,
+               purpose, end_user_subject, agent_id)
+            VALUES (COALESCE(?::bigint, nextval('prompt_logs_id_seq')),
+                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?, ?, ?, ?, ?, ?, ?, ?)
             """.trimIndent()
     }
 }

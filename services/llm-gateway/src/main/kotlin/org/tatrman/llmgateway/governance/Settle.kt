@@ -17,7 +17,9 @@ data class Settle(
     val keyId: String,
     val teamId: String,
     val costCenter: String?,
-    val turnRef: String?,
+    // The caller's attribution headers (turn ref · purpose · end-user subject · agent id — LC §2.1).
+    // Trace-only: the prompt-log sink writes them; budget and metrics never read them (D-2).
+    val attribution: CallAttribution = CallAttribution(),
     val requestedModel: String,
     val servedProvider: String,
     val servedModel: String,

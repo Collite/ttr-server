@@ -51,10 +51,13 @@ class PromptLogsRoutesSpec :
         val iss = "https://kc/realms/tatrman"
         val aud = "llm-gateway"
 
-        fun token(roles: List<String>): String =
+        fun token(
+            roles: List<String>,
+            subject: String = "inspector",
+        ): String =
             JWT
                 .create()
-                .withSubject("inspector")
+                .withSubject(subject)
                 .withIssuer(iss)
                 .withAudience(aud)
                 .withExpiresAt(Date(System.currentTimeMillis() + 3_600_000))
@@ -68,6 +71,9 @@ class PromptLogsRoutesSpec :
             turnRef: String?,
             traceId: String?,
             prompt: String,
+            subject: String? = null,
+            purpose: String? = null,
+            agentId: String? = null,
         ) {
             DriverManager
                 .getConnection(pgc.jdbcUrl, pgc.username, pgc.password)
@@ -78,8 +84,9 @@ class PromptLogsRoutesSpec :
                             INSERT INTO prompt_logs
                               (user_id, model_name, provider, prompt_text, response_text,
                                tokens_prompt, tokens_completion, duration_ms, status,
-                               turn_ref, trace_id, requested_model, served_model, served_provider, cached)
-                            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                               turn_ref, trace_id, requested_model, served_model, served_provider, cached,
+                               end_user_subject, purpose, agent_id)
+                            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                             """.trimIndent(),
                         ).use { st ->
                             st.setString(1, "vk_test")
@@ -97,6 +104,9 @@ class PromptLogsRoutesSpec :
                             st.setString(13, "claude-opus-5")
                             st.setString(14, "azure")
                             st.setBoolean(15, false)
+                            st.setString(16, subject)
+                            st.setString(17, purpose)
+                            st.setString(18, agentId)
                             st.executeUpdate()
                         }
                 }
@@ -141,10 +151,14 @@ class PromptLogsRoutesSpec :
 
                 // ── auth ──
                 client.get("/v1/prompt-logs?turn_ref=turn-A").status shouldBe HttpStatusCode.Unauthorized
-                client
-                    .get("/v1/prompt-logs?turn_ref=turn-A") {
+                // LC-1 replaced the 403 a role-less realm JWT used to get: it now reads its OWN rows, and
+                // these seeds belong to nobody — so 200 and an empty list (never an existence oracle).
+                val roleless =
+                    client.get("/v1/prompt-logs?turn_ref=turn-A") {
                         header(HttpHeaders.Authorization, "Bearer ${token(listOf("plain-user"))}")
-                    }.status shouldBe HttpStatusCode.Forbidden
+                    }
+                roleless.status shouldBe HttpStatusCode.OK
+                items(roleless.bodyAsText()).size shouldBe 0
 
                 // ── neither key → 400, never an unfiltered dump of the whole table ──
                 client
@@ -234,6 +248,96 @@ class PromptLogsRoutesSpec :
                             header(HttpHeaders.Authorization, "Bearer $adminJwt")
                         }.bodyAsText(),
                 ).size shouldBe 2
+            }
+        }
+
+        // ── LC-1 (LC contracts §2.3): the auth matrix, row by row ──────────────────────────────────
+        "per-row authz: admin and inspect read every row; a subject reads its own; a key or nothing is 401" {
+            testApplication {
+                environment { config = MapApplicationConfig() }
+                application { module(cfg) }
+                startApplication() // boot before seeding — see the note above
+
+                seed(
+                    "turn-M",
+                    "trace-M",
+                    "dan's call",
+                    subject = "sub-dan",
+                    purpose = "compose-plan",
+                    agentId = "golem-hartland",
+                )
+                seed(
+                    "turn-M",
+                    "trace-M",
+                    "marketa's call",
+                    subject = "sub-marketa",
+                    purpose = "answer-format",
+                    agentId = "golem-investment",
+                )
+                seed("turn-M", "trace-M", "pre-LC call") // NULL subject: role-only
+
+                suspend fun read(bearer: String?) =
+                    client.get("/v1/prompt-logs?turn_ref=turn-M") {
+                        if (bearer != null) header(HttpHeaders.Authorization, "Bearer $bearer")
+                    }
+
+                // 1. admin → all rows, and a role-holder is told whose they are
+                val asAdmin = items(read(adminJwt).bodyAsText())
+                asAdmin.map { it.jsonObject["promptText"]!!.jsonPrimitive.content } shouldBe
+                    listOf("dan's call", "marketa's call", "pre-LC call")
+                asAdmin.map { it.jsonObject["endUserSubject"]!!.jsonPrimitive.contentOrNull } shouldBe
+                    listOf("sub-dan", "sub-marketa", null)
+
+                // 2. inspect (the new, narrow role) → all rows
+                val asInspect = read(token(listOf("llm-gateway-inspect"), subject = "sub-ops"))
+                asInspect.status shouldBe HttpStatusCode.OK
+                items(asInspect.bodyAsText()).size shouldBe 3
+
+                // 3. neither role, sub = dan → dan's row ONLY; marketa's and the NULL-subject row omitted; 200
+                val asDan = read(token(listOf("default-roles-kantheon"), subject = "sub-dan"))
+                asDan.status shouldBe HttpStatusCode.OK
+                val dan = items(asDan.bodyAsText()).single().jsonObject
+                dan["promptText"]!!.jsonPrimitive.content shouldBe "dan's call"
+                dan["purpose"]!!.jsonPrimitive.content shouldBe "compose-plan"
+                dan["agentId"]!!.jsonPrimitive.content shouldBe "golem-hartland"
+                dan.containsKey("endUserSubject") shouldBe false // a subject is not told who they are
+
+                // ... and the same by trace_id: the subject filter is not a turn_ref-only path
+                val danByTrace =
+                    client.get("/v1/prompt-logs?trace_id=trace-M") {
+                        header(HttpHeaders.Authorization, "Bearer ${token(emptyList(), subject = "sub-dan")}")
+                    }
+                items(danByTrace.bodyAsText())
+                    .single()
+                    .jsonObject["promptText"]!!
+                    .jsonPrimitive.content shouldBe
+                    "dan's call"
+
+                // 4. a gateway API key is not a realm JWT → 401;  5. no bearer → 401
+                read("ttrk-0123456789abcdef0123456789abcdef").status shouldBe HttpStatusCode.Unauthorized
+                read(null).status shouldBe HttpStatusCode.Unauthorized
+            }
+        }
+
+        // The page limit is spent AFTER the subject filter (it is in SQL): a subject whose one row sits
+        // behind 5 of someone else's still gets it at limit=1 — an in-memory filter would return nothing.
+        "the subject filter runs in SQL, before the limit" {
+            testApplication {
+                environment { config = MapApplicationConfig() }
+                application { module(cfg) }
+                startApplication()
+
+                repeat(5) { seed("turn-L", null, "other $it", subject = "sub-other") }
+                seed("turn-L", null, "mine", subject = "sub-me")
+
+                val res =
+                    client.get("/v1/prompt-logs?turn_ref=turn-L&limit=1") {
+                        header(HttpHeaders.Authorization, "Bearer ${token(emptyList(), subject = "sub-me")}")
+                    }
+                items(res.bodyAsText())
+                    .single()
+                    .jsonObject["promptText"]!!
+                    .jsonPrimitive.content shouldBe "mine"
             }
         }
 

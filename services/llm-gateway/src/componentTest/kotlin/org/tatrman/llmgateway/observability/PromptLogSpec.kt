@@ -4,11 +4,16 @@ package org.tatrman.llmgateway.observability
 import com.typesafe.config.ConfigFactory
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.nulls.shouldNotBeNull
+import io.kotest.matchers.shouldNotBe
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
+import org.tatrman.llmgateway.governance.CallAttribution
 import org.tatrman.llmgateway.governance.Settle
 import org.tatrman.llmgateway.governance.Usage
 import org.tatrman.llmgateway.store.Pg
@@ -79,11 +84,12 @@ class PromptLogSpec :
             stripped: List<String> = emptyList(),
             cached: Boolean = false,
             estimated: Boolean = false,
+            attribution: CallAttribution = CallAttribution(turnRef = "turn-99"),
         ) = Settle(
             keyId = keyId,
             teamId = "golem",
             costCenter = "golem/analytics",
-            turnRef = "turn-99",
+            attribution = attribution,
             requestedModel = "gpt-4o",
             servedProvider = "anthropic",
             servedModel = "claude-sonnet-4-6",
@@ -181,5 +187,75 @@ class PromptLogSpec :
                 rs.getBoolean("estimated") shouldBe false
                 rs.getString("team_id") shouldBe null // new nullable column
             }
+        }
+
+        // ── LC-P0·S0.2 (LC contracts §2.1/§2.2) ─────────────────────────────────────────────────────
+
+        "the V5 attribution columns land on the row; a settle without them writes NULLs" {
+            writer.enqueue(
+                PromptLogRecord(
+                    settle(
+                        "vk_lc_attr",
+                        attribution = CallAttribution("turn-lc", "compose-plan", "sub-dan", "golem-hartland"),
+                    ),
+                    "p",
+                    "r",
+                    "SUCCESS",
+                ),
+            )
+            writer.enqueue(PromptLogRecord(settle("vk_lc_none", attribution = CallAttribution()), "p", "r", "SUCCESS"))
+            awaitRow("key_id = 'vk_lc_attr'") shouldBe true
+            awaitRow("key_id = 'vk_lc_none'") shouldBe true
+
+            fun attributionOf(keyId: String): List<String?> =
+                query(
+                    "SELECT turn_ref, purpose, end_user_subject, agent_id FROM prompt_logs WHERE key_id = '$keyId'",
+                ) { rs ->
+                    rs.next()
+                    listOf(rs.getString(1), rs.getString(2), rs.getString(3), rs.getString(4))
+                }
+            attributionOf("vk_lc_attr") shouldBe listOf("turn-lc", "compose-plan", "sub-dan", "golem-hartland")
+            attributionOf("vk_lc_none") shouldBe listOf(null, null, null, null)
+        }
+
+        "allocateId hands out the id the row is then written under; a record without one takes the default" {
+            val a = writer.allocateId().shouldNotBeNull()
+            val b = writer.allocateId().shouldNotBeNull()
+            b shouldNotBe a
+            writer.enqueue(PromptLogRecord(settle("vk_lc_id"), "p", "r", "SUCCESS", id = b))
+            writer.enqueue(PromptLogRecord(settle("vk_lc_default"), "p", "r", "SUCCESS")) // id = null
+            awaitRow("key_id = 'vk_lc_id'") shouldBe true
+            awaitRow("key_id = 'vk_lc_default'") shouldBe true
+            query("SELECT id FROM prompt_logs WHERE key_id = 'vk_lc_id'") {
+                it.next()
+                it.getLong(1)
+            } shouldBe b
+            // the default comes off the SAME sequence, so it never collides with a handed-out id
+            val default =
+                query("SELECT id FROM prompt_logs WHERE key_id = 'vk_lc_default'") {
+                    it.next()
+                    it.getLong(1)
+                }
+            (default > b) shouldBe true
+        }
+
+        // The whole reason the id is allocated BEFORE the enqueue: a dropped row still had a real, unique
+        // id, so the reader holding it can say "the gateway holds no row for this call" (LC §4, A-LC-2).
+        "a row the writer DROPS (queue full) still had its id allocated — the header would have been true" {
+            val registry = SimpleMeterRegistry()
+            val stalled = CoroutineScope(Job()).also { it.cancel() } // the drain never runs
+            val full = PromptLogWriter(pg.db, stalled, registry, capacity = 1)
+
+            val kept = full.allocateId().shouldNotBeNull()
+            full.enqueue(PromptLogRecord(settle("vk_lc_kept"), "p", "r", "SUCCESS", id = kept)) // fills the queue
+            val dropped = full.allocateId().shouldNotBeNull()
+            full.enqueue(PromptLogRecord(settle("vk_lc_dropped"), "p", "r", "SUCCESS", id = dropped))
+
+            dropped shouldNotBe kept
+            registry.counter("llm_gateway_promptlog_dropped_total").count() shouldBe 1.0
+            query("SELECT count(*) FROM prompt_logs WHERE id = $dropped") {
+                it.next()
+                it.getInt(1)
+            } shouldBe 0
         }
     })
