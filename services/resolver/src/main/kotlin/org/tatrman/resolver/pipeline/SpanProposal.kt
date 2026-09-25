@@ -273,7 +273,7 @@ object SpanProposal {
             // `entityTypes` in the registry. `tržby` declared for both an entity and its own
             // measure was gated against whichever the archive happened to list first, so the
             // Binder was never shown the choice it exists to make.
-            val phraseIdx = anchorPhraseIndices(idx, children, tokens, universal, anchorTokens)
+            val phraseIdx = anchorPhraseIndices(idx, children, tokens, universal, anchorTokens, literals.tokens)
             if (phraseIdx.isNotEmpty()) {
                 out +=
                     candidate(
@@ -321,7 +321,7 @@ object SpanProposal {
                     if (child.depRelation !in GOVERNED_VALUE_RELATIONS) continue
                     if (child.upos.uppercase() !in NOMINAL_UPOS) continue
                     if (childIdx in anchorTokens) continue
-                    val valueIdx = subtreeIndices(childIdx, children, tokens, universal, anchorTokens)
+                    val valueIdx = subtreeIndices(childIdx, children, tokens, universal, anchorTokens, literals.tokens)
                     if (valueIdx.isEmpty()) continue
                     out +=
                         candidate(
@@ -367,7 +367,7 @@ object SpanProposal {
             if (idx in coveredTokens || idx in literals.tokens) return@forEachIndexed
             if (t.upos.uppercase() != "PROPN") return@forEachIndexed
             if (isUniversal(t, universal)) return@forEachIndexed
-            val runIdx = propnRun(idx, children, tokens, universal, coveredTokens)
+            val runIdx = propnRun(idx, children, tokens, universal, coveredTokens, literals.tokens)
             if (runIdx.isEmpty()) return@forEachIndexed
             out +=
                 candidate(
@@ -520,6 +520,7 @@ object SpanProposal {
         tokens: List<Token>,
         universal: List<IntRange>,
         anchorTokens: Set<Int>,
+        literalTokens: Set<Int> = emptySet(),
     ): List<Int> {
         if (isUniversal(tokens[headIdx], universal)) return emptyList()
         val included = sortedSetOf(headIdx)
@@ -536,7 +537,7 @@ object SpanProposal {
             }
         }
         // contiguous hull, dropping any universal token inside it
-        return contiguousHull(included, tokens, universal, anchorTokens)
+        return contiguousHull(included, tokens, universal, anchorTokens, headIdx, literalTokens)
     }
 
     private fun subtreeIndices(
@@ -545,6 +546,7 @@ object SpanProposal {
         tokens: List<Token>,
         universal: List<IntRange>,
         anchorTokens: Set<Int>,
+        literalTokens: Set<Int> = emptySet(),
     ): List<Int> {
         val acc = sortedSetOf<Int>()
         val stack = ArrayDeque<Int>()
@@ -558,7 +560,7 @@ object SpanProposal {
             acc += i
             for (c in children[i + 1].orEmpty()) stack.addLast(c)
         }
-        return contiguousHull(acc, tokens, universal, anchorTokens)
+        return contiguousHull(acc, tokens, universal, anchorTokens, rootIdx, literalTokens)
     }
 
     private fun propnRun(
@@ -567,6 +569,7 @@ object SpanProposal {
         tokens: List<Token>,
         universal: List<IntRange>,
         covered: Set<Int>,
+        literalTokens: Set<Int> = emptySet(),
     ): List<Int> {
         val included = sortedSetOf(headIdx)
         for (c in children[headIdx + 1].orEmpty()) {
@@ -578,7 +581,7 @@ object SpanProposal {
                 included += c
             }
         }
-        return contiguousHull(included, tokens, universal)
+        return contiguousHull(included, tokens, universal, head = headIdx, literalTokens = literalTokens)
     }
 
     /**
@@ -592,14 +595,43 @@ object SpanProposal {
         tokens: List<Token>,
         universal: List<IntRange>,
         anchorTokens: Set<Int> = emptySet(),
+        head: Int = -1,
+        literalTokens: Set<Int> = emptySet(),
     ): List<Int> {
-        if (indices.isEmpty()) return emptyList()
-        val lo = indices.min()
-        val hi = indices.max()
+        // LP (review-103 F4b) — the hull is CUT at a literal, never stretched across one. A phrase
+        // whose modifiers sit on both sides of a quoted string used to keep its head and tail and
+        // span the literal, and the final "nothing overlaps a literal" filter then dropped the
+        // WHOLE phrase: *prodejny zákazníka "Valmy" začínající na "Pe"* lost its store mention,
+        // and the leftover pass re-proposed it with the literal inside. Only the head's own side
+        // of every literal can belong to it.
+        val kept =
+            if (head < 0 || literalTokens.isEmpty()) {
+                indices
+            } else {
+                val side = literalFreeSide(head, literalTokens)
+                indices.filter { it in side }.toSet()
+            }
+        if (kept.isEmpty()) return emptyList()
+        val lo = kept.min()
+        val hi = kept.max()
         return (lo..hi).filter {
             !isUniversal(tokens[it], universal) &&
-                (it in indices || (it !in anchorTokens && !isCode(tokens[it])))
+                (it in kept || (it !in anchorTokens && !isCode(tokens[it])))
         }
+    }
+
+    /**
+     * The token range around [head] that no literal token interrupts — everything strictly
+     * between the nearest literal token on each side. The whole question when there are none.
+     */
+    internal fun literalFreeSide(
+        head: Int,
+        literalTokens: Set<Int>,
+    ): IntRange {
+        if (literalTokens.isEmpty()) return Int.MIN_VALUE..Int.MAX_VALUE
+        val lo = literalTokens.filter { it < head }.maxOrNull()?.plus(1) ?: Int.MIN_VALUE
+        val hi = literalTokens.filter { it > head }.minOrNull()?.minus(1) ?: Int.MAX_VALUE
+        return lo..hi
     }
 
     private fun candidate(
