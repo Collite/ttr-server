@@ -7,7 +7,7 @@ tatrman-grammar           = "0.13.7"
 # Moves WITH the grammar ref, always: they are one `api` closure (ttr-snapshot api's
 # ttr-metadata, ttr-lexicon-compile's POM names it exactly), and the `bundle grammar` lane
 # publishes them at one version. Two versions here is the 0.10.3/0.10.4 failure.
-tatrman-ttr-metadata      = "0.13.6"
+tatrman-ttr-metadata      = "0.13.7"
 tatrman-ttr-translator    = "0.10.3"
 tatrman-ttr-plan-proto    = "0.10.3"
 # SV-P1 S4 — Maven Central publishing via the Central Portal.

@@ -47,7 +47,6 @@ import org.tatrman.ttr.metadata.model.QualifiedName
 import org.tatrman.ttr.metadata.model.Relation
 import org.tatrman.ttr.metadata.model.SchemaCode
 import org.tatrman.ttr.semantics.semanticsblock.MeasureRef
-import org.tatrman.ttr.semantics.semanticsblock.ResolvedAttributeSemantics
 import org.tatrman.ttr.semantics.semanticsblock.ResolvedEntitySemantics
 import org.tatrman.ttr.semantics.semanticsblock.SymbolRef
 import java.nio.file.Files
@@ -151,34 +150,21 @@ class LexiconArchiveRegistrySourceTest :
                                                 attributes =
                                                     listOf(
                                                         attr(regionDim, "name", "text"),
-                                                        // LP: the CODE attribute declares a format,
-                                                        // so the facet has all three fields to
-                                                        // carry rather than two and a blank.
-                                                        Attribute(
-                                                            internalId = "a.region_code",
-                                                            qname =
-                                                                QualifiedName(
-                                                                    SchemaCode.ER,
-                                                                    "entity",
-                                                                    "region_dim.region_code",
-                                                                ),
-                                                            entity = regionDim,
-                                                            type = "text",
-                                                            semantics =
-                                                                ResolvedAttributeSemantics(
-                                                                    role = "code",
-                                                                    codeFormat = "^R[0-9]{3}$",
-                                                                ),
-                                                        ),
+                                                        attr(regionDim, "region_code", "text"),
                                                     ),
                                                 // LP (⚑LPQ-5): the DECLARED mention facet — which
                                                 // member carries this entity's name and its code.
                                                 // `sales` deliberately declares none, so one
-                                                // fixture covers both halves of the contract.
+                                                // fixture covers both halves of the contract. The
+                                                // facet's `code_pattern` (review-103 D4) gives it
+                                                // all three fields to carry rather than two and a
+                                                // blank; the attribute-level `code_format` is a
+                                                // period mask, never a regex, so it cannot.
                                                 mentionSemantics =
                                                     ResolvedEntitySemantics(
                                                         name = SymbolRef("name"),
                                                         code = SymbolRef("region_code"),
+                                                        codePattern = "^R[0-9]{3}$",
                                                     ),
                                             ),
                                     ),
@@ -398,8 +384,8 @@ class LexiconArchiveRegistrySourceTest :
             // and a local name would make every consumer re-join.
             types.getValue(regionDimRef).nameRef shouldBe "er.entity.region_dim.name"
             types.getValue(regionDimRef).codeRef shouldBe "er.entity.region_dim.region_code"
-            // Copied off the CODE attribute, so `VerbatimAttribution`'s shape test uses the
-            // model's pattern instead of the fallback regex it would otherwise invent.
+            // The facet's `code_pattern`, so `VerbatimAttribution`'s shape test uses the model's
+            // pattern as well as the fallback shape.
             types.getValue(regionDimRef).codeFormat shouldBe "^R[0-9]{3}$"
         }
 
@@ -428,7 +414,7 @@ class LexiconArchiveRegistrySourceTest :
 
             // A plain string takes `name` (§2.2's `contains` default applies downstream)…
             VerbatimAttribution.attributeRefOf("Pelex", regionDim) shouldBe "er.entity.region_dim.name"
-            // …and one matching the MODEL's declared `code_format` takes `code`.
+            // …and one matching the MODEL's declared `code_pattern` takes `code`.
             VerbatimAttribution.attributeRefOf("R042", regionDim) shouldBe "er.entity.region_dim.region_code"
             // A code-SHAPED string the model's own pattern does not match is STILL a code: §2.1 is
             // the declared pattern OR the fallback shape (review-103 F6). The pattern adds codes the
