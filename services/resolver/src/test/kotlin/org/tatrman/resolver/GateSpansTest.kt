@@ -194,12 +194,12 @@ class GateSpansTest :
         }
 
         "instance ambiguity → AwaitingClarification with the distinct contenders (capped at maxOptions)" {
-            val cands = listOf(cand("DF", 0, 2, listOf("er.qstred_df.kod", "er.qstred_df.nazev")))
+            val cands = listOf(cand("QT", 0, 2, listOf("er.qstred_df.kod", "er.qstred_df.nazev")))
             val resp =
                 batch(
                     fmr(
-                        fm("df-adnak", "DF ADNAK", 0.72, "er.qstred_df.nazev", SourceTag.MEMBER),
-                        fm("df-belus", "DF BELUS", 0.70, "er.qstred_df.nazev", SourceTag.MEMBER),
+                        fm("qt-orlak", "QT ORLAK", 0.72, "er.qstred_df.nazev", SourceTag.MEMBER),
+                        fm("qt-belus", "QT BELUS", 0.70, "er.qstred_df.nazev", SourceTag.MEMBER),
                     ),
                 )
             val clarify =
@@ -212,7 +212,7 @@ class GateSpansTest :
                         emptyMap(),
                         "snap-1",
                     ).shouldBeInstanceOf<Clarify>()
-            clarify.options.map { it.resolvedId } shouldContainExactlyInAnyOrder listOf("df-adnak", "df-belus")
+            clarify.options.map { it.resolvedId } shouldContainExactlyInAnyOrder listOf("qt-orlak", "qt-belus")
             clarify.options.size shouldBe 2
         }
 
@@ -502,9 +502,9 @@ class GateSpansTest :
                     fmr(),
                     // the open query: three owners do
                     fmr(
-                        fm("store#7", "TN", 1.0, "er.entity.store.state", SourceTag.MEMBER),
-                        fm("ca#3", "TN", 1.0, "er.entity.customer_address.state", SourceTag.MEMBER),
-                        fm("wh#1", "TN", 1.0, "er.entity.warehouse.state", SourceTag.MEMBER),
+                        fm("TN", "TN", 1.0, "er.entity.store.state", SourceTag.MEMBER),
+                        fm("TN", "TN", 1.0, "er.entity.customer_address.state", SourceTag.MEMBER),
+                        fm("TN", "TN", 1.0, "er.entity.warehouse.state", SourceTag.MEMBER),
                     ),
                 )
 
@@ -524,20 +524,49 @@ class GateSpansTest :
             val resp =
                 batch(
                     // the governed query found its owner's member — this is the answer
-                    fmr(fm("store#7", "TN", 1.0, "er.entity.store.state", SourceTag.MEMBER)),
+                    fmr(fm("TN", "TN", 1.0, "er.entity.store.state", SourceTag.MEMBER)),
                     // the open query found all three, and would otherwise raise a G2 over a
                     // question the governor already answered
                     fmr(
-                        fm("store#7", "TN", 1.0, "er.entity.store.state", SourceTag.MEMBER),
-                        fm("ca#3", "TN", 1.0, "er.entity.customer_address.state", SourceTag.MEMBER),
-                        fm("wh#1", "TN", 1.0, "er.entity.warehouse.state", SourceTag.MEMBER),
+                        fm("TN", "TN", 1.0, "er.entity.store.state", SourceTag.MEMBER),
+                        fm("TN", "TN", 1.0, "er.entity.customer_address.state", SourceTag.MEMBER),
+                        fm("TN", "TN", 1.0, "er.entity.warehouse.state", SourceTag.MEMBER),
                     ),
                 )
 
             val outcome = GateSpans.gate(cands, resp, memberTypes, thresholds, emptyMap(), "snap-m")
             val bound = outcome.shouldBeInstanceOf<Bound>()
-            bound.bindings.single().resolvedId shouldBe "store#7"
+            bound.bindings.single().resolvedId shouldBe "TN"
             bound.bindings.single().entityTypeRef shouldBe "er.entity.store.state"
+        }
+
+        "review-104 F3 — one value bound in two vocabularies on two spans is two bindings" {
+            // `stores in TN, warehouses in TN`: since A-MV-15 both members carry the id `TN`, so a
+            // binding dedupe on the id alone kept one and silently dropped the other restriction.
+            val cands =
+                listOf(
+                    governedCand("TN", 10, 12, listOf("er.entity.store.state")),
+                    governedCand("TN", 28, 30, listOf("er.entity.warehouse.state")),
+                )
+            val resp =
+                batch(
+                    fmr(fm("TN", "TN", 1.0, "er.entity.store.state", SourceTag.MEMBER)),
+                    fmr(fm("TN", "TN", 1.0, "er.entity.warehouse.state", SourceTag.MEMBER)),
+                )
+
+            val bound =
+                GateSpans
+                    .gate(
+                        cands,
+                        resp,
+                        memberTypes,
+                        thresholds,
+                        emptyMap(),
+                        "snap-m",
+                    ).shouldBeInstanceOf<Bound>()
+
+            bound.bindings.map { it.memberOf } shouldContainExactlyInAnyOrder
+                listOf("er.entity.store.state", "er.entity.warehouse.state")
         }
 
         "A-MH-1b — the suppression is per SPAN: another span's open candidate is untouched" {
@@ -549,8 +578,8 @@ class GateSpansTest :
                 )
             val resp =
                 batch(
-                    fmr(fm("store#7", "TN", 1.0, "er.entity.store.state", SourceTag.MEMBER)),
-                    fmr(fm("store#7", "TN", 1.0, "er.entity.store.state", SourceTag.MEMBER)),
+                    fmr(fm("TN", "TN", 1.0, "er.entity.store.state", SourceTag.MEMBER)),
+                    fmr(fm("TN", "TN", 1.0, "er.entity.store.state", SourceTag.MEMBER)),
                     fmr(
                         fm("n#1", "Nashville", 1.0, "er.entity.store.state", SourceTag.MEMBER),
                         fm("n#2", "Nashville", 1.0, "er.entity.warehouse.state", SourceTag.MEMBER),
@@ -567,8 +596,8 @@ class GateSpansTest :
             val resp =
                 batch(
                     fmr(
-                        fm("store#7", "TN", 1.0, "er.entity.store.state", SourceTag.MEMBER),
-                        fm("ca#3", "TN", 1.0, "er.entity.customer_address.state", SourceTag.MEMBER),
+                        fm("TN", "TN", 1.0, "er.entity.store.state", SourceTag.MEMBER),
+                        fm("TN", "TN", 1.0, "er.entity.customer_address.state", SourceTag.MEMBER),
                     ),
                 )
 

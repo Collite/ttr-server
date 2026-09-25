@@ -5,6 +5,7 @@ import org.tatrman.nlp.v1.AnalyzeResponse
 import org.tatrman.nlp.v1.NerEntity
 import org.tatrman.nlp.v1.Token
 import org.tatrman.resolver.model.ResolverEntityType
+import org.tatrman.resolver.model.valueCategoriesByRef
 import org.tatrman.text.Normalization.fold
 
 /**
@@ -17,8 +18,8 @@ import org.tatrman.text.Normalization.fold
  * Deterministic candidate sources:
  *   (a) **anchored subtrees** — for each declared anchor word found in the parse,
  *       the anchor's own nominal phrase (`pražských pobočkách` as ONE candidate)
- *       plus each nominal/proper-noun argument it governs (`středisko DF ADNAK`
- *       → the value `DF ADNAK`), gated against THAT entity only. Precision path.
+ *       plus each nominal/proper-noun argument it governs (`středisko QT ORLAK`
+ *       → the value `QT ORLAK`), gated against THAT entity only. Precision path.
  *   (b) **proper-noun arguments** — PROPN runs not already anchored and not
  *       universal-tagged, gated against ALL declared types. Admits data values
  *       like `Octavie` without re-admitting common-noun junk (the 33 spurious in
@@ -34,7 +35,7 @@ import org.tatrman.text.Normalization.fold
  *
  * Universal-typed NER spans (person/geo/time/number) are removed before domain
  * gating (spike §1). Institutions/objects stay domain-eligible and are actively
- * proposed by (c) — a domain value like `DF ADNAK` is `io`-tagged, so NER is not the
+ * proposed by (c) — a domain value like `QT ORLAK` is `io`-tagged, so NER is not the
  * domain filter; fuzzy is.
  *
  * RV-P2.1 adds one source and one exclusion, both needed by the lattice:
@@ -163,6 +164,9 @@ object SpanProposal {
 
         val allCategories = entityTypes.flatMap { it.categories }.distinct()
         val allRefs = entityTypes.map { it.ref }
+        // MV §5.3 — where a value governed by each object is looked up (its own categories, then
+        // its member vocabularies'). Built once per proposal; read by the governed block below.
+        val valueCategories = entityTypes.valueCategoriesByRef()
         val universal = universalCharRanges(parse.entitiesList)
 
         val hasParse = tokens.any { it.depHead > 0 }
@@ -269,7 +273,7 @@ object SpanProposal {
             // `entityTypes` in the registry. `tržby` declared for both an entity and its own
             // measure was gated against whichever the archive happened to list first, so the
             // Binder was never shown the choice it exists to make.
-            val phraseIdx = anchorPhraseIndices(idx, children, tokens, universal, anchorTokens)
+            val phraseIdx = anchorPhraseIndices(idx, children, tokens, universal, anchorTokens, literals.tokens)
             if (phraseIdx.isNotEmpty()) {
                 out +=
                     candidate(
@@ -283,7 +287,7 @@ object SpanProposal {
                     )
                 coveredTokens += phraseIdx
             }
-            // Governed value arguments (e.g. `středisko` → `DF ADNAK`). Only for an anchor that
+            // Governed value arguments (e.g. `středisko` → `QT ORLAK`). Only for an anchor that
             // HAS values: an operator or a measure has no member vocabulary, so its nominal
             // arguments are not its values. Without this the operator word — which Stanza often
             // makes the root — governs the rest of the question, and every noun under it is
@@ -293,7 +297,7 @@ object SpanProposal {
             if (valueOwners.isNotEmpty()) {
                 // ⚑ A-MH-1a (MH-P3·S1·T2). Governed values used to be emitted PER OWNER — one
                 // candidate per owner on the SAME span — on the argument that merging them would
-                // offer `DF ADNAK` to every owner sharing the anchor. But `dedupe` keys on
+                // offer `QT ORLAK` to every owner sharing the anchor. But `dedupe` keys on
                 // `(start, end)`, so all but one were silently discarded and WHICH one survived
                 // was decided by the order the registry happened to list the owners in. That is
                 // not scoping, it is a coin toss with a stable-looking result.
@@ -303,14 +307,21 @@ object SpanProposal {
                 // whose vocabulary actually holds the value, which is a question about DATA that
                 // `SpanProposal` has no business answering: it proposes spans, it does not decide
                 // whose member a word is.
+                //
+                // ✅ MV (member-vocabulary contracts §5.3) — and the categories are where the
+                // owners' VALUES live: each owner's own categories ∪ its member vocabularies
+                // (`valueCategoriesByRef`). An entity's values are indexed under its attributes'
+                // refs, never its own, so before MV this lookup could not find `TN` under `stores`
+                // at all and every tier-M bind came through the open sibling and M3 (MH §7.5 ⚑).
+                // The GATED refs stay the owners: they are the governor the gate reasons about.
                 val refs = valueOwners.map { it.ref }.distinct()
-                val categories = valueOwners.flatMap { it.categories }.distinct()
+                val categories = valueOwners.flatMap { valueCategories[it.ref] ?: it.categories }.distinct()
                 for (childIdx in children[idx + 1].orEmpty()) {
                     val child = tokens[childIdx]
                     if (child.depRelation !in GOVERNED_VALUE_RELATIONS) continue
                     if (child.upos.uppercase() !in NOMINAL_UPOS) continue
                     if (childIdx in anchorTokens) continue
-                    val valueIdx = subtreeIndices(childIdx, children, tokens, universal, anchorTokens)
+                    val valueIdx = subtreeIndices(childIdx, children, tokens, universal, anchorTokens, literals.tokens)
                     if (valueIdx.isEmpty()) continue
                     out +=
                         candidate(
@@ -356,7 +367,7 @@ object SpanProposal {
             if (idx in coveredTokens || idx in literals.tokens) return@forEachIndexed
             if (t.upos.uppercase() != "PROPN") return@forEachIndexed
             if (isUniversal(t, universal)) return@forEachIndexed
-            val runIdx = propnRun(idx, children, tokens, universal, coveredTokens)
+            val runIdx = propnRun(idx, children, tokens, universal, coveredTokens, literals.tokens)
             if (runIdx.isEmpty()) return@forEachIndexed
             out +=
                 candidate(
@@ -509,6 +520,7 @@ object SpanProposal {
         tokens: List<Token>,
         universal: List<IntRange>,
         anchorTokens: Set<Int>,
+        literalTokens: Set<Int> = emptySet(),
     ): List<Int> {
         if (isUniversal(tokens[headIdx], universal)) return emptyList()
         val included = sortedSetOf(headIdx)
@@ -525,7 +537,7 @@ object SpanProposal {
             }
         }
         // contiguous hull, dropping any universal token inside it
-        return contiguousHull(included, tokens, universal, anchorTokens)
+        return contiguousHull(included, tokens, universal, anchorTokens, headIdx, literalTokens)
     }
 
     private fun subtreeIndices(
@@ -534,6 +546,7 @@ object SpanProposal {
         tokens: List<Token>,
         universal: List<IntRange>,
         anchorTokens: Set<Int>,
+        literalTokens: Set<Int> = emptySet(),
     ): List<Int> {
         val acc = sortedSetOf<Int>()
         val stack = ArrayDeque<Int>()
@@ -547,7 +560,7 @@ object SpanProposal {
             acc += i
             for (c in children[i + 1].orEmpty()) stack.addLast(c)
         }
-        return contiguousHull(acc, tokens, universal, anchorTokens)
+        return contiguousHull(acc, tokens, universal, anchorTokens, rootIdx, literalTokens)
     }
 
     private fun propnRun(
@@ -556,6 +569,7 @@ object SpanProposal {
         tokens: List<Token>,
         universal: List<IntRange>,
         covered: Set<Int>,
+        literalTokens: Set<Int> = emptySet(),
     ): List<Int> {
         val included = sortedSetOf(headIdx)
         for (c in children[headIdx + 1].orEmpty()) {
@@ -567,7 +581,7 @@ object SpanProposal {
                 included += c
             }
         }
-        return contiguousHull(included, tokens, universal)
+        return contiguousHull(included, tokens, universal, head = headIdx, literalTokens = literalTokens)
     }
 
     /**
@@ -581,14 +595,43 @@ object SpanProposal {
         tokens: List<Token>,
         universal: List<IntRange>,
         anchorTokens: Set<Int> = emptySet(),
+        head: Int = -1,
+        literalTokens: Set<Int> = emptySet(),
     ): List<Int> {
-        if (indices.isEmpty()) return emptyList()
-        val lo = indices.min()
-        val hi = indices.max()
+        // LP (review-103 F4b) — the hull is CUT at a literal, never stretched across one. A phrase
+        // whose modifiers sit on both sides of a quoted string used to keep its head and tail and
+        // span the literal, and the final "nothing overlaps a literal" filter then dropped the
+        // WHOLE phrase: *prodejny zákazníka "Valmy" začínající na "Pe"* lost its store mention,
+        // and the leftover pass re-proposed it with the literal inside. Only the head's own side
+        // of every literal can belong to it.
+        val kept =
+            if (head < 0 || literalTokens.isEmpty()) {
+                indices
+            } else {
+                val side = literalFreeSide(head, literalTokens)
+                indices.filter { it in side }.toSet()
+            }
+        if (kept.isEmpty()) return emptyList()
+        val lo = kept.min()
+        val hi = kept.max()
         return (lo..hi).filter {
             !isUniversal(tokens[it], universal) &&
-                (it in indices || (it !in anchorTokens && !isCode(tokens[it])))
+                (it in kept || (it !in anchorTokens && !isCode(tokens[it])))
         }
+    }
+
+    /**
+     * The token range around [head] that no literal token interrupts — everything strictly
+     * between the nearest literal token on each side. The whole question when there are none.
+     */
+    internal fun literalFreeSide(
+        head: Int,
+        literalTokens: Set<Int>,
+    ): IntRange {
+        if (literalTokens.isEmpty()) return Int.MIN_VALUE..Int.MAX_VALUE
+        val lo = literalTokens.filter { it < head }.maxOrNull()?.plus(1) ?: Int.MIN_VALUE
+        val hi = literalTokens.filter { it > head }.minOrNull()?.minus(1) ?: Int.MAX_VALUE
+        return lo..hi
     }
 
     private fun candidate(

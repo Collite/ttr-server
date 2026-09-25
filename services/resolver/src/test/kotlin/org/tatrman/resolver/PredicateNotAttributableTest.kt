@@ -58,7 +58,7 @@ class PredicateNotAttributableTest :
             Bindings.attributable(binding(TargetClass.TARGET_CLASS_UNSPECIFIED)) shouldBe true
         }
 
-        "a class number from a newer producer stays attributable, by the same rule" {
+        "a class number from a newer producer is NOT attributable (review-103 F15)" {
             // A peer one version ahead can send a class this build has no name for. Modelled by
             // NUMBER, because a builder refuses to take `UNRECOGNIZED` by name — which is itself
             // the reminder that this state only ever arrives off the wire.
@@ -70,8 +70,12 @@ class PredicateNotAttributableTest :
                     .build()
 
             future.targetClass shouldBe TargetClass.UNRECOGNIZED
-            // Kept, not rejected: a class we cannot reason about is silence, the same posture as
-            // UNSPECIFIED — never a positive claim of non-attribution made on our behalf.
-            Bindings.attributable(future) shouldBe true
+            // Rejected, and this reverses the earlier posture on purpose. UNSPECIFIED is silence —
+            // a member row carries no class at all. An unknown NUMBER is not silence: the row
+            // declared a class, so it is a declared target of some kind, and a member is the one
+            // thing it is not. This is exactly how `STRING_PREDICATE` looked to every pre-P2b
+            // resolver, and attributing it wrote `attribute_ref = "pred:contains"` — the
+            // `ground:chrono` refusal of 2026-09-16 with a different prefix.
+            Bindings.attributable(future) shouldBe false
         }
     })

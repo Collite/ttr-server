@@ -66,7 +66,8 @@ class AliasTableIngestionTest :
                     pkColumn = "id; DROP TABLE x",
                     aliasColumn = "alias",
                 )
-            val result = composeAliasCandidates(listOf(bad), pg) { error("must not fetch on a rejected identifier") }
+            val result =
+                composeAliasCandidates<Candidate>(listOf(bad), pg) { error("must not fetch on a rejected identifier") }
             result.getValue("cat").shouldBeEmpty()
         }
     })

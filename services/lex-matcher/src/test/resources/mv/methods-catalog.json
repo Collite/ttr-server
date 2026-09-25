@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "methods": {
+    "er.entity.store.state": "EXACT",
+    "er.entity.store.state_typos": "TYPOS(1)",
+    "er.entity.store.state_tokens": "TOKENS"
+  },
+  "categories": {
+    "er.entity.store.state": [
+      { "id": "47", "value": "TN" },
+      { "id": "48", "value": "Texas" }
+    ],
+    "er.entity.store.state_typos": [
+      { "id": "48", "value": "Texas" }
+    ],
+    "er.entity.store.state_tokens": [
+      { "id": "48", "value": "Texas" }
+    ],
+    "er.entity.store.state_unnamed": [
+      { "id": "48", "value": "Texas" }
+    ]
+  }
+}

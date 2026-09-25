@@ -55,12 +55,13 @@ data class LiteralTokenSpan(
  * that nobody "fixes" it twice.
  *
  * ### Offsets
- * [scan] returns **UTF-16 code-unit offsets** — Kotlin string indices, so `substring` works. The
- * nlp service is Python and its `char_start`/`char_end` are code *point* offsets; the two agree
- * for everything in the BMP (every delimiter here, every Czech letter) and drift by one per
- * astral character earlier in the text. Nothing in the domain writes emoji into a question, so
- * this is stated rather than defended against — and [toTokenSpans] compares offsets from the two
- * sources, so it is the place that would feel it.
+ * [scan] returns **UTF-16 code-unit offsets** — Kotlin string indices, so `substring` works, and
+ * the shared corpus pins them. The nlp service is Python and its `char_start`/`char_end` are code
+ * *point* offsets; the two agree for everything in the BMP and drift by one per astral character
+ * (an emoji) earlier in the text. [toTokenSpans] is where the two meet, so it converts: the
+ * [LiteralTokenSpan] it returns carries **code-point** offsets, the same space as every token,
+ * mention and value span in the lattice. (review-103 L8 — two emoji before `zákazník "Valmy" a`
+ * shifted the literal one token right, and the word after it was excluded from proposal.)
  */
 object QuoteScanner {
     /** §1.1 — the closed delimiter set. Any member opens, any member closes. */
@@ -80,9 +81,12 @@ object QuoteScanner {
      * paste out of Word put a NBSP in front of exactly the kind of short word a literal follows,
      * so the narrow reading would have made the Kotlin scanner miss literals the Python one finds:
      * a fork the shared corpus could not have caught, because a YAML fixture reads the same either
-     * way. `isSpaceChar` adds the Zs category; the union is Python's set.
+     * way. `isSpaceChar` adds the Zs category; with NEXT LINE (U+0085, a control character both
+     * Java predicates reject and `str.isspace()` accepts) the union is Python's set — fixture 29.
      */
-    private fun Char.isBoundarySpace(): Boolean = isWhitespace() || Character.isSpaceChar(this)
+    private fun Char.isBoundarySpace(): Boolean = isWhitespace() || Character.isSpaceChar(this) || this == NEXT_LINE
+
+    private const val NEXT_LINE = '\u0085'
 
     /**
      * §1.1–§1.4. Linear in [text]: a successful pairing advances past everything it scanned, and
@@ -161,12 +165,13 @@ object QuoteScanner {
             }
             var end = i
             while (end < text.length && !text[end].isBoundarySpace()) end++
+            // Code-point offsets, like the parse's own tokens — see "Offsets" above.
             out +=
                 Token
                     .newBuilder()
                     .setText(text.substring(i, end))
-                    .setCharStart(i)
-                    .setCharEnd(end)
+                    .setCharStart(text.codePointCount(0, i))
+                    .setCharEnd(text.codePointCount(0, end))
                     .build()
             i = end
         }
@@ -185,13 +190,21 @@ object QuoteScanner {
      * tokens; one that glues the whole thing into a single `"Pelex"` token gives one content token
      * and none — the literal covers that token, and its text stays the §1.4 text (`Pelex`), never
      * the token surface.
+     *
+     * [literals] carry [scan]'s code-unit offsets; [tokens] carry code points. The comparison is
+     * made in code points, and the returned literal carries code-point offsets from here on.
      */
     fun toTokenSpans(
         literals: List<QuotedLiteral>,
         text: String,
         tokens: List<Token>,
     ): List<LiteralTokenSpan> =
-        literals.map { literal ->
+        literals.map { scanned ->
+            val literal =
+                scanned.copy(
+                    start = text.codePointCount(0, scanned.start),
+                    end = text.codePointCount(0, scanned.end),
+                )
             val innerStart = literal.start + 1
             val innerEnd = literal.end - 1
             val content = mutableListOf<Int>()
@@ -202,7 +215,7 @@ object QuoteScanner {
                     token.charStart < literal.end && token.charEnd > literal.start -> delimiters += index
                 }
             }
-            LiteralTokenSpan(literal, content, delimiters, text.substring(literal.start, literal.end))
+            LiteralTokenSpan(literal, content, delimiters, text.substring(scanned.start, scanned.end))
         }
 
     /** [toTokenSpans] over the effective tokenisation of [text] — see [tokens]. */

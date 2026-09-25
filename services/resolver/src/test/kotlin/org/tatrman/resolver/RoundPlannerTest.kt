@@ -49,6 +49,28 @@ class RoundPlannerTest :
             query.targetClasses shouldBe emptyList()
         }
 
+        "MV §5.3 — a G4 under an ENTITY re-asks inside the entity's member vocabularies too" {
+            // The v5-archive shape: the entity is gated by its own ref only, and its values live
+            // in an indexed attribute's vocabulary, registered under the attribute's ref. The
+            // anchor's categories alone cannot hold `501001` — the same scope rule the governed
+            // lookup reads (`valueCategoriesByRef`), so the round re-asks where the value can be.
+            val entity = ResolverEntityType("md.dimension.Account", listOf("md.dimension.Account"), listOf("účet"))
+            val code =
+                ResolverEntityType(
+                    "md.dimension.Account.code",
+                    listOf("md.dimension.Account.code"),
+                    emptyList(),
+                    objectKind = "attribute",
+                    ownerRef = "md.dimension.Account",
+                    memberVocabulary = true,
+                )
+
+            RoundPlanner
+                .plan(g4Lattice(), listOf(entity, code), emptySet(), config)
+                .single()
+                .categories shouldContainExactly listOf("md.dimension.Account", "md.dimension.Account.code")
+        }
+
         "a G4 whose anchor bound NOTHING is not planned — an unbound anchor lends no scope" {
             val lattice =
                 g4Lattice()

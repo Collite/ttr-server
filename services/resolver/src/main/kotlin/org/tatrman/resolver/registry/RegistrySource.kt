@@ -55,6 +55,14 @@ data class DeclaredVocabularyEntry(
     val nameRef: String = "",
     val codeRef: String = "",
     val codeFormat: String = "",
+    /**
+     * MV (member-vocabulary contracts §5.2) — [targetRef] is an INDEXED attribute/column: it has a
+     * member vocabulary, registered under this very ref as its category. From the archive's
+     * `targets[ref].memberVocabulary` (schema `ttr-lexicon-compiled/v5`), which lists every indexed
+     * attribute whether or not anyone wrote a term for it — so an entry may carry this and no
+     * [values] at all. `false` for everything else and for every pre-v5 archive.
+     */
+    val memberVocabulary: Boolean = false,
 )
 
 data class DeclaredVocabulary(

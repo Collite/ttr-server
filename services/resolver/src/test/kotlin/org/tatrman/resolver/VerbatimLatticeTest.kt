@@ -66,9 +66,10 @@ class VerbatimLatticeTest :
                 .single()
                 .hasBinding()
                 .shouldBeFalse()
-            // §2.2: absent, not blank. The default predicate (contains, for a name) applies, and
-            // `pred:` arrives in LP-P2.
-            verbatim.hasPredicateRef().shouldBeFalse()
+            // §2.2: the question names no predicate, so the default for a name — `contains` — is
+            // written out by the producer, which is the one place that knows the literal landed on
+            // the NAME facet (review-103 D5, closing ⚑LPQ-7).
+            verbatim.predicateRef shouldBe "pred:contains"
 
             // The other half, and the reason this runs through the pipeline: the matcher was never
             // asked about Pelex. Not "asked and refused" — never asked.
@@ -81,7 +82,17 @@ class VerbatimLatticeTest :
             // Every slot is either the proposed mention or a window of the three tokens before the
             // literal — nothing enumerates the question at large.
             queries.distinct() shouldContainExactlyInAnyOrder
-                listOf("dodací místa", "místa", "začínající", "na", "místa začínající", "začínající na")
+                listOf(
+                    "dodací místa",
+                    "místa",
+                    "začínající",
+                    "na",
+                    "místa začínající",
+                    "začínající na",
+                    // review-103 F1: the widest form is three words (*s názvem přesně*), so the
+                    // window is too.
+                    "místa začínající na",
+                )
         }
 
         "LP-P2b — the hero now carries `pred:starts_with`, retrieved off the literal" {
@@ -93,7 +104,7 @@ class VerbatimLatticeTest :
                 VerbatimHero.FakeFuzzy(
                     mapOf(
                         "dodací místa" to listOf(VerbatimHero.declared("er.entity.store")),
-                        "začínající na" to listOf(VerbatimHero.predicate("pred:starts_with")),
+                        "začínající na" to listOf(VerbatimHero.predicate("pred:starts_with", "začínající na")),
                     ),
                 )
             val (asked, response) = resolve(registryOf(store), fuzzy)
@@ -111,17 +122,24 @@ class VerbatimLatticeTest :
             queries.none { it.contains("Pelex") } shouldBe true
         }
 
-        "LP-P2b — a question with no trigger leaves predicate_ref ABSENT, not blank" {
-            // §2.2: the default (contains, for a name) is the consumer's to apply, and absent is
-            // how this lattice says "the question did not name one". The hero fixture answers no
-            // `pred:` row, so the windows come back empty — which is also every estate whose
-            // archive predates the slice.
+        "a question with no trigger gets §2.2's default for its facet, written out (review-103 D5)" {
+            // The hero fixture answers no `pred:` row, so the windows come back empty — which is
+            // also every estate whose archive predates the slice. Absent used to mean "default",
+            // and left the consumer to guess the facet from the literal's shape; the producer now
+            // says it, because only the producer knows which facet the literal landed on.
             val (_, response) = resolve(registryOf(store))
 
             response.resolutionState.valuesList
                 .single()
-                .hasPredicateRef()
-                .shouldBeFalse()
+                .predicateRef shouldBe "pred:contains"
+        }
+
+        "a headless literal keeps predicate_ref ABSENT — there is no facet to default from" {
+            val (_, response) = resolve(registryOf(store.toBuilder().clearNameAttributeRef().build()))
+
+            val verbatim = response.resolutionState.valuesList.single()
+            verbatim.attributionsList.shouldBeEmpty()
+            verbatim.hasPredicateRef().shouldBeFalse()
         }
 
         "LP-P2b — a predicate BELOW the bind floor is not evidence of anything" {
@@ -134,7 +152,7 @@ class VerbatimLatticeTest :
                         "začínající na" to
                             listOf(
                                 VerbatimHero
-                                    .predicate("pred:starts_with")
+                                    .predicate("pred:starts_with", "začínající na")
                                     .toBuilder()
                                     .setScore(0.1)
                                     .build(),
@@ -143,10 +161,28 @@ class VerbatimLatticeTest :
                 )
             val (_, response) = resolve(registryOf(store), weak)
 
+            // Not `starts_with`: the weak row was no evidence, so the default for a name stands.
             response.resolutionState.valuesList
                 .single()
-                .hasPredicateRef()
-                .shouldBeFalse()
+                .predicateRef shouldBe "pred:contains"
+        }
+
+        "review-103 F1 — a row that is a WIDER form than the window is a fragment, not a trigger" {
+            // The live F1 shape: the one-word window `na` answered by the TOKENS form
+            // *začínající na*. v2 scores the window's own tokens, so this came back at 1.0 with no
+            // rival, and bound. The resolver now asks for the whole form.
+            val fragment =
+                VerbatimHero.FakeFuzzy(
+                    mapOf(
+                        "dodací místa" to listOf(VerbatimHero.declared("er.entity.store")),
+                        "na" to listOf(VerbatimHero.predicate("pred:starts_with", "začínající na", method = "TOKENS")),
+                    ),
+                )
+            val (_, response) = resolve(registryOf(store), fragment)
+
+            response.resolutionState.valuesList
+                .single()
+                .predicateRef shouldBe "pred:contains"
         }
 
         "no gap is opened for a literal the question said which column belongs to" {

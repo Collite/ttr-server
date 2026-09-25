@@ -4,7 +4,9 @@ package org.tatrman.resolver
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.booleans.shouldBeFalse
 import io.kotest.matchers.collections.shouldContain
+import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
+import io.kotest.matchers.collections.shouldNotContain
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
 import org.tatrman.nlp.v1.AnalyzeResponse
@@ -135,9 +137,9 @@ class SpanProposalTest :
                 false
         }
 
-        "anchored value: `středisko` governing `DF ADNAK` proposes the value gated to QSTRED_DF only" {
-            // "Zobraz středisko DF ADNAK" — 0 Zobraz(root) 1 středisko(obj,lemma) 2 DF(PROPN,flat→4)
-            // 3 ADNAK(PROPN,nmod→2)
+        "anchored value: `středisko` governing `QT ORLAK` proposes the value gated to QSTRED_DF only" {
+            // "Zobraz středisko QT ORLAK" — 0 Zobraz(root) 1 středisko(obj,lemma) 2 QT(PROPN,flat→4)
+            // 3 ORLAK(PROPN,nmod→2)
             val parse =
                 AnalyzeResponse
                     .newBuilder()
@@ -145,14 +147,14 @@ class SpanProposalTest :
                         listOf(
                             tok("Zobraz", 0, 6, "zobrazit", "VERB", 0, "root"),
                             tok("středisko", 7, 16, "středisko", "NOUN", 1, "obj"),
-                            tok("DF", 17, 19, "DF", "PROPN", 4, "flat"),
-                            tok("ADNAK", 20, 25, "ADNAK", "PROPN", 2, "nmod"),
+                            tok("QT", 17, 19, "QT", "PROPN", 4, "flat"),
+                            tok("ORLAK", 20, 25, "ORLAK", "PROPN", 2, "nmod"),
                         ),
                     ).build()
             val cands = SpanProposal.proposeDomainSpans(parse, listOf(qstred, branch))
             val value =
                 cands.single {
-                    it.text == "DF ADNAK" && it.origin == DomainSpanCandidate.Origin.GOVERNED_VALUE
+                    it.text == "QT ORLAK" && it.origin == DomainSpanCandidate.Origin.GOVERNED_VALUE
                 }
             value.anchored shouldBe true
             value.gatedEntityRefs shouldBe listOf("er.qstred_df")
@@ -164,7 +166,7 @@ class SpanProposalTest :
             // the governed lookup answers (`GateSpans.resolveOpenSiblings`).
             val open =
                 cands.single {
-                    it.text == "DF ADNAK" && it.origin == DomainSpanCandidate.Origin.OPEN_VALUE
+                    it.text == "QT ORLAK" && it.origin == DomainSpanCandidate.Origin.OPEN_VALUE
                 }
             open.anchored shouldBe false
             open.gatedEntityRefs shouldContainExactlyInAnyOrder listOf("er.qstred_df", "er.branch")
@@ -408,6 +410,78 @@ class SpanProposalTest :
             val cands = SpanProposal.proposeDomainSpans(mhParse, listOf(mhMeasure))
 
             cands.none { it.origin == DomainSpanCandidate.Origin.GOVERNED_VALUE } shouldBe true
+        }
+
+        // ── MV-T4 (member-vocabulary contracts §5.3) — the governed lookup reaches the members ──
+        //
+        // A governed value is gated to `membersOf(anchor) ∪ the anchor's own categories`. Before
+        // MV the categories were the anchor's own only — `er.entity.store` — and lex-matcher
+        // registers `TN` under `er.entity.store.state`, so the governed lookup could never find it.
+
+        fun governedTn(cands: List<DomainSpanCandidate>) =
+            cands.single { it.origin == DomainSpanCandidate.Origin.GOVERNED_VALUE && it.text == "TN" }
+
+        "MV-T4 — E11 `Stores in TN`: the governed value is gated to the STORE's member vocabularies" {
+            val governed =
+                governedTn(
+                    SpanProposal.proposeDomainSpans(
+                        MhMembers.parse("Stores in TN", MhMembers.e11En()),
+                        MhMembers.entityTypes(),
+                    ),
+                )
+
+            governed.categories shouldContainExactlyInAnyOrder
+                listOf(MhMembers.STORE, MhMembers.STORE_SALES, MhMembers.STORE_STATE, MhMembers.STORE_NAME)
+            // …and to nobody else's: `TN` is also a customer_address and a warehouse member, and
+            // those are the readings the sentence ruled out by saying "stores"
+            governed.categories shouldNotContain MhMembers.CA_STATE
+            governed.categories shouldNotContain MhMembers.WAREHOUSE_STATE
+            // the GATED refs are still the anchor's owners — the governor tier M reasons about
+            governed.gatedEntityRefs shouldContainExactlyInAnyOrder listOf(MhMembers.STORE, MhMembers.STORE_SALES)
+            governed.anchored shouldBe true
+        }
+
+        "MV-T4 — the same on the v5 archive channel, where the members carry no terms" {
+            val governed =
+                governedTn(
+                    SpanProposal.proposeDomainSpans(
+                        MhMembers.parse("Stores in TN", MhMembers.e11En()),
+                        MvEstate.entityTypes(),
+                    ),
+                )
+
+            governed.categories shouldContainExactlyInAnyOrder
+                listOf(MvEstate.STORE, MvEstate.STORE_SALES, MvEstate.STORE_STATE, MvEstate.STORE_NAME)
+        }
+
+        "MV-T4 — an owner with no member vocabulary lends none: `Customers in TN` stays gated to customer" {
+            val governed =
+                governedTn(
+                    SpanProposal.proposeDomainSpans(
+                        MhMembers.parse("Customers in TN", MhMembers.e13En()),
+                        MvEstate.entityTypes(),
+                    ),
+                )
+
+            governed.categories shouldContainExactly listOf(MvEstate.CUSTOMER)
+        }
+
+        "MV-T4 — the OPEN sibling is unchanged: every declared category, members included" {
+            val types = MvEstate.entityTypes()
+            val open =
+                SpanProposal
+                    .proposeDomainSpans(MhMembers.parse("Stores in TN", MhMembers.e11En()), types)
+                    .single { it.origin == DomainSpanCandidate.Origin.OPEN_VALUE && it.text == "TN" }
+
+            open.categories shouldContainExactlyInAnyOrder types.flatMap { it.categories }.distinct()
+        }
+
+        "MV-T4 — compat §6: on a v4 archive the governed value is exactly today's" {
+            val v4 = MvEstate.entityTypes(MvEstate.writeArchive(transform = MvEstate::asV4))
+            val governed =
+                governedTn(SpanProposal.proposeDomainSpans(MhMembers.parse("Stores in TN", MhMembers.e11En()), v4))
+
+            governed.categories shouldContainExactly listOf(MvEstate.STORE, MvEstate.STORE_SALES)
         }
 
         // ⛑ hartland, 2026-09-16 — "Which portfolios does client `conseq:8801234` hold?" reached the

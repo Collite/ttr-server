@@ -4,13 +4,13 @@
   "turns": [
     {
       "tool": "resolve.bind:v1",
-      "args": { "conversation_id": "c-clar", "text": "kolik za DF" },
+      "args": { "conversation_id": "c-clar", "text": "kolik za QT" },
       "scenario": "ambiguous_member",
       "expect": { "outcome": "clarification", "no_binding_below_threshold": true, "min_options": 2 }
     },
     {
       "tool": "resolve.bind:v1",
-      "args": { "conversation_id": "c-clar", "resume_token": "${turn0.resumeToken}", "selected_option_id": "M:df-adnak" },
+      "args": { "conversation_id": "c-clar", "resume_token": "${turn0.resumeToken}", "selected_option_id": "M:qt-orlak" },
       "scenario": "resume_pin",
       "expect": { "outcome": "resolution", "no_binding_below_threshold": true }
     }

@@ -1,5 +1,6 @@
 {
   "version": 1,
+  "methods": { "er.product": "TOKENS" },
   "categories": {
     "er.product": [
       { "id": "p-octavia", "value": "Octavia" },

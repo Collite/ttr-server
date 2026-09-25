@@ -2,7 +2,6 @@
 package org.tatrman.fuzzy.loader
 
 import org.tatrman.fuzzy.config.DatabaseConfig
-import org.tatrman.fuzzy.core.Candidate
 import org.tatrman.plan.v1.QualifiedName
 
 /**
@@ -22,17 +21,19 @@ data class AliasTableDecl(
  * Composes `SELECT pk, alias FROM alias_table` per declaration (reusing the
  * [buildSelect] identifier-validation + dialect-quoting discipline), fetches the
  * rows, and groups them by owner category (lower-cased) — ready to MERGE into
- * the owning member category. [fetch] runs the SQL and returns `Candidate(pk,
- * alias)` rows (MEMBER by default — aliases resolve to the same PK).
+ * the owning member category. [fetch] runs the SQL and returns its `(pk, alias)`
+ * rows in whatever shape the caller builds candidates from — the member loader
+ * takes raw rows, so each candidate is built once, with its owner's method
+ * (review-104 F13).
  *
  * A declaration whose identifiers fail validation is skipped (returns no rows)
  * rather than aborting the whole load.
  */
-fun composeAliasCandidates(
+fun <T> composeAliasCandidates(
     decls: List<AliasTableDecl>,
     dialect: DatabaseConfig,
-    fetch: (String) -> List<Candidate>,
-): Map<String, List<Candidate>> =
+    fetch: (String) -> List<T>,
+): Map<String, List<T>> =
     decls
         .groupBy { it.ownerCategory.lowercase() }
         .mapValues { (_, group) ->
@@ -41,7 +42,7 @@ fun composeAliasCandidates(
                     try {
                         buildSelect(decl.tableQname, decl.pkColumn, decl.aliasColumn, dialect)
                     } catch (e: SqlComposerException) {
-                        return@flatMap emptyList<Candidate>()
+                        return@flatMap emptyList<T>()
                     }
                 fetch(sql)
             }

@@ -1,3 +1,6 @@
 corpus dir commit: afd4cae53aa6866bcfafd82514d66b6e62d424fa
 e931689cd9cb2f977bd574452aad99690b46038f282cbcbc07c87877827eb6c1  seed.jsonl (      50 lines)
-d0e8b17fa6e989ff9e17bd4a035825946e2b551802d1edd38d3bd163676331f5  ucetnictvi_entities_only.jsonl (      12 lines)
+ccda5f2a891a16789b3b6cb752b3baab9b9a8b8fe96e2f01fd41a8d7444352a7  ucetnictvi_entities_only.jsonl (      12 lines)
+2026-09-25: client names in ucetnictvi_entities_only.jsonl (and in q20-spike-results.json, which
+cites the same questions) replaced by invented same-length names (LP review-103 F19/D6); the hash
+above is the renamed file's. No question, span or expectation changed otherwise.

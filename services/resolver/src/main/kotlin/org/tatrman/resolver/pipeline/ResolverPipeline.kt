@@ -175,7 +175,7 @@ class ResolverPipeline(
         // model binds can still be a grounding trigger, and it can only be asked about in the one
         // BatchMatch this pass makes. The gate reads slots [0, candidates), the trigger annotation
         // reads the trailing ones — one round trip, two questions, kept apart.
-        val ungatedMentions = MentionLayer.propose(parse, candidates)
+        val ungatedMentions = MentionLayer.propose(parse, candidates, literals)
         val triggerSpans = GroundingTriggers.spansOf(candidates, ungatedMentions)
         // LP §3 — and the third question on the same pass: which words say HOW a quoted literal
         // restricts its attribute. Anchored on the LITERAL rather than on the mentions, because
@@ -219,6 +219,7 @@ class ResolverPipeline(
                 batchResp,
                 offset = candidates.size + triggerSpans.size,
                 thresholds = resolverRegistry.thresholds,
+                parse = parse,
             )
         // ✅ R1 — ground the time-typed universals ONCE, before the lattice is assembled, and
         // reuse the result across every re-assembly the lookup loop performs below. Doing it here
@@ -362,6 +363,8 @@ class ResolverPipeline(
                 .setRawText(option.label)
                 .setResolvedLabel(option.label)
         if (option.resolvedId != null) domain.resolvedId = option.resolvedId
+        // review-104 F6 — the attribute a member pin is a value of, carried from the signed option.
+        option.memberOf?.takeIf { it.isNotBlank() }?.let { domain.memberOf = it }
         if (option.targetRef !=
             null
         ) {
@@ -490,6 +493,7 @@ class ResolverPipeline(
                 .setRawText(b.rawText)
                 .setResolvedLabel(b.resolvedLabel)
         if (b.resolvedId != null) domain.resolvedId = b.resolvedId
+        if (b.memberOf.isNotBlank()) domain.memberOf = b.memberOf
         // Sibling-column expansion (Q-20): the value also points at its sibling column.
         for (sibling in b.siblingRefs) {
             domain.addCandidates(
@@ -542,12 +546,22 @@ class ResolverPipeline(
             // resume token — it is presentation, and a resume must only be able to pick from the
             // identities that were offered.
             if (o.objectKind.isNotBlank()) opt.objectKind = o.objectKind
-            // MH tier M: the OWNER of a member option, mapped exactly like the kind above and
-            // for the same reason — presentation, not identity, so it is not signed either.
+            // MH tier M: the vocabulary a member option came from — its attribute since MV-T3.
             if (o.memberOf.isNotBlank()) opt.memberOf = o.memberOf
             opt.span = span(o.spanStart, o.spanEnd, o.spanText)
             builder.addOptions(opt)
-            signedOptions += ResumeOption(o.id, o.label, o.targetRef, o.resolvedId, o.entityTypeRef)
+            // ...and SIGNED since review-104 F6: with `entityTypeRef` naming the entity, the
+            // attribute is what tells two members of one entity apart, so it is identity, not
+            // presentation, and a resume must rebuild it rather than trust the caller for it.
+            signedOptions +=
+                ResumeOption(
+                    o.id,
+                    o.label,
+                    o.targetRef,
+                    o.resolvedId,
+                    o.entityTypeRef,
+                    memberOf = o.memberOf.takeIf { it.isNotBlank() },
+                )
         }
         // Sign the EXACT offered set (so a resume can only pick from it, RS-26) AND the
         // OBO subject it was issued to (so a leaked token can't be replayed by another
@@ -602,6 +616,9 @@ class ResolverPipeline(
                         it.nameAttributeRef,
                         it.codeAttributeRef,
                         it.codeFormat,
+                        // MV: and once more — a caller that could not mark a member vocabulary
+                        // could not exercise the governed lookup without building an archive.
+                        it.memberVocabulary,
                     )
                 }
             val thresholds =

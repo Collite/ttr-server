@@ -345,11 +345,12 @@ class FuzzyMatcher(
         // would be truncated before the gate ever saw it, and the query would answer "nothing"
         // where the right answer existed. Same shape as the INDEX_FIRST retriever's topN headroom.
         //
-        // Only when a declared layer is actually loaded, though — see
-        // [MatchRepository.servesDeclaredLayer]. Widening is observable (TokenBasedMatcher sizes its
-        // defensive non-seed sample by the limit), so a member-only estate must not pay it: that is
-        // T7's byte-identical promise, and the parity goldens hold it.
-        val fetchLimit = if (repository.servesDeclaredLayer()) scoringLimit(limit) else limit
+        // Only where some row can actually be narrowed after scoring, though — see
+        // [MatchRepository.narrowsAfterScoring]. Widening is observable (TokenBasedMatcher sizes its
+        // defensive non-seed sample by the limit), so a store with nothing to narrow must not pay
+        // it: that is T7's byte-identical promise, and the parity goldens hold it. Since MV a member
+        // vocabulary held to EXACT or TYPOS(n) is such a row (review-104 F10).
+        val fetchLimit = if (repository.narrowsAfterScoring(category)) scoringLimit(limit) else limit
         val scored =
             if (algorithmType == AlgorithmType.TATRMAN) {
                 matchWithTokenBased(query, category, candidates, fetchLimit)
@@ -369,8 +370,8 @@ class FuzzyMatcher(
         // [matchWithTokenBased] has already made that call for the same tokens on the TATRMAN
         // path. Computing it unconditionally here therefore doubled the NLP round-trips per
         // category per query, added one to the standard-algorithm path that never had it, and
-        // charged both to estates that author no profiles at all — the cost `servesDeclaredLayer`
-        // above exists to keep a member-only estate from paying. `null` ⇒ [QueryForms.of] collapses
+        // charged both to estates that author no profiles at all — the cost `narrowsAfterScoring`
+        // above exists to keep a store with nothing to narrow from paying. `null` ⇒ [QueryForms.of] collapses
         // the lemma axis onto the folded one, which is where it sits anyway with no lemmatiser.
         return methodDispatcher.dispatch(query, scored, methodOverride, lemmaQuery(query, scored))
     }
@@ -586,7 +587,9 @@ private fun Candidate.toResult(
         candidateId = id,
         candidate = value,
         score = score,
-        category = category ?: "unknown",
+        // The category asked, else the row's own (review-104 F12): a cross-category lookup asks
+        // none, and a member row still belongs to exactly one vocabulary.
+        category = category ?: this.category ?: "unknown",
         source = source,
         targetRef = targetRef,
         provenance =

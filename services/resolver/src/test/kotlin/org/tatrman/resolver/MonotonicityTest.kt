@@ -88,7 +88,8 @@ class MonotonicityTest :
                 )
             val round = state.rungLogList.single { it.rung == LookupRounds.RUNG }
             round.bindingsAdded shouldBe 0
-            round.hypothesesList.map { it.ref } shouldContainExactly listOf("M:5AU 5001", "M:7AX 0800")
+            round.hypothesesList.map { it.ref } shouldContainExactly
+                listOf("M:md.dimension.Account.code#5AU 5001", "M:md.dimension.Account.code#7AX 0800")
             round.hypothesesList.all { it.proposingRung == LookupRounds.RUNG }.shouldBeTrue()
             round.hypothesesList.all { it.span.text == "501001" }.shouldBeTrue()
 
@@ -110,7 +111,7 @@ class MonotonicityTest :
             gap.kind shouldBe GapKind.GAP_KIND_G4_METHOD_MISS
             // This is what a ladder reads to decide whether escalating is worth it: the cheapest
             // rung has already been here, and this is what it found.
-            gap.hypothesesTriedList.map { it.ref } shouldContainExactly listOf("M:5AU 5001")
+            gap.hypothesesTriedList.map { it.ref } shouldContainExactly listOf("M:md.dimension.Account.code#5AU 5001")
             gap.hypothesesTriedList.single().proposingRung shouldBe LookupRounds.RUNG
         }
 

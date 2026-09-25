@@ -106,6 +106,7 @@ class GrpcService(
                         },
                     ).setSize(s.size)
                     .setLoadedAtEpochMs(s.loadedAtEpochMs)
+                    .setMatchMethod(s.matchMethod ?: "")
                     .build(),
             )
         }

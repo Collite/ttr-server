@@ -81,6 +81,19 @@ data class ResolverEntityType(
     val nameRef: String = "",
     val codeRef: String = "",
     val codeFormat: String = "",
+    /**
+     * MV (member-vocabulary contracts §5.2) — this ref is an INDEXED attribute (or column): its
+     * values are a member vocabulary, registered and queried under this ref as its category, and
+     * [ownerRef] is the entity whose population they are. [membersOf] turns the flag round into
+     * what a governed lookup needs — "which vocabularies does this entity own?"
+     *
+     * Both channels supply it: the per-request override (`EntityType.member_vocabulary`) and the
+     * snapshot channel, from the v5 archive's `targets[ref].memberVocabulary`, which lists every
+     * indexed attribute whether or not it has a term — such a type carries no [anchors]. `false`
+     * on an older archive, where [membersOf] is empty and a governed value is looked up exactly
+     * as it was before MV.
+     */
+    val memberVocabulary: Boolean = false,
 )
 
 /**
@@ -142,14 +155,69 @@ fun List<ResolverEntityType>.kindsByRef(): Map<String, String> =
 /**
  * MH tier M — fuzzy category → the ref whose vocabulary that category is.
  *
- * This IS `owner(m)` for a member row: the same question `GateSpans.entityRefOf` answers, hoisted
- * here beside the other three so the Binder can ask it without a second scan of the registry and
- * without a second spelling of the rule. Built once per gate call like `owners`/`kinds`/`reach`;
- * a category the registry does not declare is ABSENT, and the caller reads that as "the category
- * names itself", which is exactly `entityRefOf`'s `?: m.category` fallback.
+ * For a member row that is the vocabulary's ATTRIBUTE (MV §1: a category is exactly one attribute
+ * ref), which is what `ClarificationOption.memberOf` names. The ENTITY behind it — `owner(m)` since
+ * MV — is [memberEntityByCategory], built from this. A category the registry does not declare is
+ * ABSENT, and the caller reads that as "the category names itself".
+ *
+ * Injective on a projected registry (MV §5.2, pinned by `MvRegistryTest`): every archive entry is
+ * gated by its own ref, so no two categories share a ref and no category has two.
  */
 fun List<ResolverEntityType>.refByCategory(): Map<String, String> =
     flatMap { et -> et.categories.map { it to et.ref } }.toMap()
+
+/**
+ * MV (member-vocabulary contracts §5.2) — entity ref → the member vocabularies it owns (refs, in
+ * ref order). An entity with none is ABSENT, the shape the other maps here use for "nothing
+ * declared", and every entity on a pre-v5 archive is absent — which is what makes the governed
+ * lookup behave exactly as it did before MV there (§6).
+ *
+ * ⛔ Built from the declared [ResolverEntityType.memberVocabulary] + [ResolverEntityType.ownerRef]
+ * pair, never by matching ref prefixes: `er.entity.store.state` looks like a member of
+ * `er.entity.store`, and a rule that relied on how it looks would be a second rule.
+ */
+fun List<ResolverEntityType>.membersOf(): Map<String, List<String>> =
+    filter { it.memberVocabulary && it.ownerRef.isNotBlank() }
+        .groupBy({ it.ownerRef }, { it.ref })
+        .mapValues { (_, refs) -> refs.distinct().sorted() }
+
+/**
+ * MV (member-vocabulary contracts §5.3) — the ONE scope rule for a value scoped to an object:
+ * ref → the categories a value it governs is looked up in = the object's own categories, then
+ * those of every member vocabulary it owns ([membersOf]).
+ *
+ * A governed value is a value OF the governor, and an entity's values live in its attributes'
+ * vocabularies, never under the entity's own ref — lex-matcher registers each vocabulary under its
+ * attribute ref and matches categories by exact key, with no hierarchy (MH contracts §7.5 ⚑). So
+ * before MV an anchor's own categories could not reach its entity's values at all.
+ *
+ * Three producers ask this question and must not drift into three spellings of it: `SpanProposal`
+ * (the governed block of path (a)), `RoundPlanner` (the anchored tier re-asks a value inside what
+ * its anchor bound) and `ReGate` (a hypothesis scoped by a ref or by the value's anchor). The own
+ * categories come FIRST, so a registry with no member vocabularies yields byte-identical scopes.
+ */
+fun List<ResolverEntityType>.valueCategoriesByRef(): Map<String, List<String>> {
+    val members = membersOf()
+    val categoriesByRef = associate { it.ref to it.categories }
+    return associate { et ->
+        et.ref to (et.categories + members[et.ref].orEmpty().flatMap { categoriesByRef[it].orEmpty() }).distinct()
+    }
+}
+
+/**
+ * MV (member-vocabulary contracts §5.3) — fuzzy category → the ENTITY a member row of that
+ * category belongs to: `owner(m)`. The category's ref ([refByCategory]), then that ref's declared
+ * owner ([ownersByRef]) — `er.entity.store.state` ⇒ `er.entity.store`.
+ *
+ * One map, read by both places that ask: `GateSpans` (a member binding's and option's
+ * `entity_type_ref`) and the Binder's tier-M governance. MH contracts §7.5 had to spell this as
+ * `entityOf(owner(m))` because `owner(m)` came out column-level; with MV it is simply the rule.
+ * Read for MEMBER rows only — a declared row names its object through `target_ref`.
+ */
+fun List<ResolverEntityType>.memberEntityByCategory(): Map<String, String> {
+    val owners = ownersByRef()
+    return refByCategory().mapValues { (_, ref) -> owners[ref]?.takeIf { it.isNotBlank() } ?: ref }
+}
 
 /**
  * Gating thresholds — ported from the live ENTITIES_ONLY config
@@ -187,8 +255,8 @@ data class ResolverThresholds(
      *
      *  - `issues.md` §1, the garbage this list exists to kill — `501001` reaching *středisko*
      *    rows at **0.667** and **0.500**. Both must land in WEAK.
-     *  - `GateSpansTest`'s member-ambiguity fixture — `DF` reaching `DF ADNAK` **0.72** and
-     *    `DF BELUS` **0.70**, a real partial-token pair that must stay a clarification.
+     *  - `GateSpansTest`'s member-ambiguity fixture — `QT` reaching `QT ORLAK` **0.72** and
+     *    `QT BELUS` **0.70**, a real partial-token pair that must stay a clarification.
      *
      * The gap between 0.667 and 0.70 is what the number is fitted to, and fitting a threshold to
      * two fixtures is worth saying out loud rather than dressing up as a ruling. An estate raises

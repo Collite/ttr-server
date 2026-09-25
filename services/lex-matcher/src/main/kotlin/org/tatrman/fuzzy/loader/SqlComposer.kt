@@ -11,11 +11,12 @@ class SqlComposerException(
 ) : RuntimeException(message)
 
 /**
- * Composes `SELECT pk, col FROM table` for a fuzzy column. Identifiers are
- * validated against [VALID_IDENTIFIER_REGEX] and dialect-quoted (Postgres `"x"`,
- * MSSQL `[x]`) — the PK/value names come from metadata, never user input, but
- * the regex + quoting are the defence-in-depth that keeps a malformed model
- * name from becoming injection.
+ * Composes `SELECT pk, col FROM table` for an alias table (RS-12-γ, [composeAliasCandidates]) —
+ * the only SQL the loader still composes. Member vocabularies arrive with a read plan the
+ * translator rendered (MV-T2). Identifiers are validated against [VALID_IDENTIFIER_REGEX] and
+ * dialect-quoted (Postgres `"x"`, MSSQL `[x]`) — the PK/value names come from metadata, never user
+ * input, but the regex + quoting are the defence-in-depth that keeps a malformed model name from
+ * becoming injection.
  */
 fun buildSelect(
     tableQname: QualifiedName,

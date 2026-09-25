@@ -430,9 +430,10 @@ class LexiconArchiveRegistrySourceTest :
             VerbatimAttribution.attributeRefOf("Pelex", regionDim) shouldBe "er.entity.region_dim.name"
             // …and one matching the MODEL's declared `code_format` takes `code`.
             VerbatimAttribution.attributeRefOf("R042", regionDim) shouldBe "er.entity.region_dim.region_code"
-            // A code-SHAPED string that the model's own pattern rejects is not a code here. The
-            // fallback regex would have accepted `XY-7`; the declared format is what decides.
-            VerbatimAttribution.attributeRefOf("XY-7", regionDim) shouldBe "er.entity.region_dim.name"
+            // A code-SHAPED string the model's own pattern does not match is STILL a code: §2.1 is
+            // the declared pattern OR the fallback shape (review-103 F6). The pattern adds codes the
+            // shape cannot see; it does not take away the ones it can.
+            VerbatimAttribution.attributeRefOf("XY-7", regionDim) shouldBe "er.entity.region_dim.region_code"
             // And the entity that declares nothing stays headless — null, not a guess.
             VerbatimAttribution.attributeRefOf("Pelex", types.getValue(salesRef)) shouldBe null
         }

@@ -254,7 +254,7 @@ class MhPipelineTest :
             tn.attributionsList.map { it.attributeRef } shouldContainExactly listOf(MhMembers.STORE_STATE)
             tn.attributionsList
                 .single()
-                .binding.ref shouldBe "${MhMembers.STORE_STATE}#store#7"
+                .binding.ref shouldBe "${MhMembers.STORE_STATE}#TN"
         }
 
         "E11-cs — `Prodejny v TN` does the same on the Czech parse" {
@@ -264,7 +264,7 @@ class MhPipelineTest :
                 .single { it.span.text == "TN" }
                 .attributionsList
                 .single()
-                .binding.ref shouldBe "${MhMembers.STORE_STATE}#store#7"
+                .binding.ref shouldBe "${MhMembers.STORE_STATE}#TN"
         }
 
         "E11 — with the anchor's own homonymy resolved, the whole question resolves clean" {
@@ -286,7 +286,7 @@ class MhPipelineTest :
                 .single { it.span.text == "TN" }
                 .attributionsList
                 .single()
-                .binding.ref shouldBe "${MhMembers.STORE_STATE}#store#7"
+                .binding.ref shouldBe "${MhMembers.STORE_STATE}#TN"
         }
 
         "E12-en — `Sales in TN` asks, and every option names its OWNER" {
@@ -299,7 +299,7 @@ class MhPipelineTest :
                 listOf(MhMembers.STORE_STATE, MhMembers.CA_STATE, MhMembers.WAREHOUSE_STATE)
             // a member is a data row: no species, and the owner is the whole difference
             options.map { it.objectKind }.distinct() shouldContainExactly listOf("")
-            options.map { it.resolvedId } shouldContainExactlyInAnyOrder listOf("store#7", "ca#3", "wh#1")
+            options.map { it.resolvedId } shouldContainExactlyInAnyOrder listOf("TN", "TN", "TN")
         }
 
         "E12-bare — a lone `TN` asks the same question, owners and all" {
@@ -308,6 +308,42 @@ class MhPipelineTest :
             response.hasAwaiting() shouldBe true
             response.awaiting.optionsList.map { it.memberOf } shouldContainExactlyInAnyOrder
                 listOf(MhMembers.STORE_STATE, MhMembers.CA_STATE, MhMembers.WAREHOUSE_STATE)
+        }
+
+        "MV-T5 — E12-bare's options name the owning ENTITY, and `memberOf` the attribute" {
+            // member-vocabulary contracts §5.3: `owner(m)` is the entity. The option's
+            // `entity_type_ref` is what a pin reconstructs its Domain from on resume, so it names
+            // the entity whose row the PK is; `member_of` keeps the finer fact — which attribute's
+            // value — because two attributes of ONE entity can share a value, and then the entity
+            // alone would make two options indistinguishable (MH §7.5, resolver.proto `member_of`).
+            val response = MhMembers.resolve("TN", MhMembers.e12Bare())
+
+            val options = response.awaiting.optionsList
+            options.map { it.entityTypeRef } shouldContainExactlyInAnyOrder
+                listOf(MhMembers.STORE, MhMembers.CUSTOMER_ADDRESS, MhMembers.WAREHOUSE)
+            options.map { it.memberOf } shouldContainExactlyInAnyOrder
+                listOf(MhMembers.STORE_STATE, MhMembers.CA_STATE, MhMembers.WAREHOUSE_STATE)
+            // the entity refs are ENTITIES in the model's own words…
+            val kinds = MhMembers.REGISTRY.entityTypesList.associate { it.ref to it.objectKind }
+            options.map { kinds[it.entityTypeRef] }.distinct() shouldContainExactly listOf("entity")
+            // …while the option itself stays species-less: a member is a data row (review-087 F6)
+            options.map { it.objectKind }.distinct() shouldContainExactly listOf("")
+        }
+
+        "MV-T5 — a bound member's Domain names its entity; the lattice keeps the attribute" {
+            val response = MhMembers.resolve("How many stores in TN", MhMembers.e11Count())
+
+            response.resolution.bindingsList
+                .single { it.domain.rawText == "TN" }
+                .domain.entityTypeRef shouldBe MhMembers.STORE
+            // §5.4 — the lattice's addressable ref and attribution are the ATTRIBUTE's, unchanged
+            val attribution =
+                response.resolutionState.valuesList
+                    .single { it.span.text == "TN" }
+                    .attributionsList
+                    .single()
+            attribution.binding.ref shouldBe "${MhMembers.STORE_STATE}#TN"
+            attribution.attributeRef shouldBe MhMembers.STORE_STATE
         }
 
         "E13-en — `Customers in TN` binds through the DECLARED relation, one hop" {
@@ -319,7 +355,7 @@ class MhPipelineTest :
                 .single { it.span.text == "TN" }
                 .attributionsList
                 .single()
-                .binding.ref shouldBe "${MhMembers.CA_STATE}#ca#3"
+                .binding.ref shouldBe "${MhMembers.CA_STATE}#TN"
         }
 
         "E13-cs — `Zákazníci v TN` likewise" {
@@ -329,7 +365,7 @@ class MhPipelineTest :
                 .single { it.span.text == "TN" }
                 .attributionsList
                 .single()
-                .binding.ref shouldBe "${MhMembers.CA_STATE}#ca#3"
+                .binding.ref shouldBe "${MhMembers.CA_STATE}#TN"
         }
 
         "E13 — the two rejected owners ride the rung log, nothing is silently dropped" {
@@ -349,7 +385,7 @@ class MhPipelineTest :
                 .single { it.span.text == "Nashville" }
                 .attributionsList
                 .single()
-                .binding.ref shouldBe "${MhMembers.STORE_NAME}#store#7"
+                .binding.ref shouldBe "${MhMembers.STORE_NAME}#Nashville"
         }
 
         "tier M is inert on an estate that declared no owners — the same question asks" {
@@ -372,7 +408,7 @@ class MhPipelineTest :
             // no `ownerRef` ⇒ no `entityOf` ⇒ M3 cannot fire, and three tied members still ask
             response.awaiting.optionsList
                 .filter { it.resolvedId.isNotBlank() }
-                .map { it.resolvedId } shouldContainExactlyInAnyOrder listOf("store#7", "ca#3", "wh#1")
+                .map { it.resolvedId } shouldContainExactlyInAnyOrder listOf("TN", "TN", "TN")
         }
 
         // ── what the hartland drill measured (P3·S1·T8, 2026-09-04) ─────────────────────
@@ -388,7 +424,7 @@ class MhPipelineTest :
                 .single { it.span.text == "TN" }
                 .attributionsList
                 .single()
-                .binding.ref shouldBe "${MhMembers.STORE_STATE}#store#7"
+                .binding.ref shouldBe "${MhMembers.STORE_STATE}#TN"
         }
 
         "drill — likewise E13-cs with the real tokens" {
@@ -399,7 +435,7 @@ class MhPipelineTest :
                 .single { it.span.text == "TN" }
                 .attributionsList
                 .single()
-                .binding.ref shouldBe "${MhMembers.CA_STATE}#ca#3"
+                .binding.ref shouldBe "${MhMembers.CA_STATE}#TN"
         }
 
         "⚑ drill — a value the NER calls a PLACE never reaches the domain gate at all" {

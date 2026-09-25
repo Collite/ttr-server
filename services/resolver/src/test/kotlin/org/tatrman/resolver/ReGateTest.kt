@@ -104,6 +104,57 @@ class ReGateTest :
             fuzzy.lookups.single().categoriesList shouldContainExactly listOf(ACCOUNT_CODE)
         }
 
+        "MV §5.3 — a hypothesis naming an ENTITY is looked up in its member vocabularies, and a member confirms it" {
+            // The v5 shape: `md.dimension.Account` is gated by its own ref and holds no values;
+            // `501001` lives in `…Account.code`, a member vocabulary the entity owns. The re-gate
+            // asks the same scope the governed lookup does (`valueCategoriesByRef`), and a member
+            // of the entity's own vocabulary IS a member of the entity — specific ⊂ general.
+            val fuzzy = GateFuzzy(answers = mapOf("501001" to listOf(member("501001", ACCOUNT_CODE))))
+            val response =
+                gate(
+                    fuzzy,
+                    h1primeLattice(),
+                    correction("5010O1", 20, 26, to = "501001", ref = ACCOUNT, rung = "local"),
+                    vocabulary = MV_ACCOUNT_VOCABULARY,
+                )
+
+            fuzzy.lookups.single().categoriesList shouldContainExactly listOf(ACCOUNT, ACCOUNT_CODE)
+            response.outcomesList
+                .single()
+                .accepted
+                .shouldBeTrue()
+            response.gatedBindingsList.single().ref shouldBe "$ACCOUNT_CODE#501001"
+        }
+
+        "MV §5.3 — …and a member of ANOTHER entity's vocabulary still contradicts it" {
+            val other = "md.dimension.Partner.code"
+            val vocabulary =
+                MV_ACCOUNT_VOCABULARY.copy(
+                    entries =
+                        MV_ACCOUNT_VOCABULARY.entries +
+                            DeclaredVocabularyEntry(
+                                category = other,
+                                targetRef = other,
+                                values = emptyList(),
+                                ownerRef = "md.dimension.Partner",
+                                memberVocabulary = true,
+                            ),
+                )
+            val fuzzy = GateFuzzy(answers = mapOf("501001" to listOf(member("501001", other))))
+            val response =
+                gate(
+                    fuzzy,
+                    h1primeLattice(),
+                    correction("5010O1", 20, 26, to = "501001", ref = ACCOUNT, rung = "local"),
+                    vocabulary = vocabulary,
+                )
+
+            response.outcomesList
+                .single()
+                .accepted
+                .shouldBeFalse()
+        }
+
         "(b) a wrong-but-plausible hypothesis binds NOTHING, and the gap it aimed at is untouched" {
             // The ref exists; the term simply is not in it. A rung guessing `501002` gets the same
             // answer as a rung guessing nothing.
@@ -375,6 +426,41 @@ class ReGateTest :
     }) {
     private companion object {
         private const val ACCOUNT_CODE = "md.dimension.Account.code"
+        private const val ACCOUNT = "md.dimension.Account"
+
+        /** The RV-era shape: the ENTITY type is gated by its column's category. */
+        private val ACCOUNT_VOCABULARY =
+            DeclaredVocabulary(
+                entries =
+                    listOf(
+                        DeclaredVocabularyEntry(category = ACCOUNT_CODE, targetRef = ACCOUNT, values = emptyList()),
+                    ),
+            )
+
+        /**
+         * The v5-archive shape (MV-T3): the entity is gated by its own ref, and the code column is
+         * its own member-vocabulary type, owned by the entity.
+         */
+        private val MV_ACCOUNT_VOCABULARY =
+            DeclaredVocabulary(
+                entries =
+                    listOf(
+                        DeclaredVocabularyEntry(
+                            category = ACCOUNT,
+                            targetRef = ACCOUNT,
+                            values = emptyList(),
+                            objectKind = "entity",
+                        ),
+                        DeclaredVocabularyEntry(
+                            category = ACCOUNT_CODE,
+                            targetRef = ACCOUNT_CODE,
+                            values = emptyList(),
+                            objectKind = "attribute",
+                            ownerRef = ACCOUNT,
+                            memberVocabulary = true,
+                        ),
+                    ),
+            )
         private val json = Json { ignoreUnknownKeys = true }
         private val parser: JsonFormat.Parser = JsonFormat.parser().ignoringUnknownFields()
 
@@ -382,9 +468,10 @@ class ReGateTest :
             fuzzy: FuzzyClient,
             lattice: ResolutionState,
             vararg hypotheses: Hypothesis,
+            vocabulary: DeclaredVocabulary = ACCOUNT_VOCABULARY,
         ): GateResponse =
             runBlocking {
-                pipelineFor(fuzzy, "h1-cs").gate(
+                pipelineFor(fuzzy, "h1-cs", vocabulary).gate(
                     GateRequest
                         .newBuilder()
                         .setLattice(lattice)
@@ -425,6 +512,7 @@ class ReGateTest :
         private fun pipelineFor(
             fuzzy: FuzzyClient,
             fixture: String,
+            vocabulary: DeclaredVocabulary = ACCOUNT_VOCABULARY,
         ): ResolverPipeline =
             ResolverPipeline(
                 FakeNlp(
@@ -436,22 +524,7 @@ class ReGateTest :
                     ).build(),
                 ),
                 fuzzy,
-                SnapshotRegistry(
-                    StubRegistrySource(
-                        DeclaredVocabulary(
-                            entries =
-                                listOf(
-                                    DeclaredVocabularyEntry(
-                                        category = ACCOUNT_CODE,
-                                        targetRef = "md.dimension.Account",
-                                        values = emptyList(),
-                                    ),
-                                ),
-                        ),
-                        "snap-gate",
-                    ),
-                    ResolverThresholds.LIVE,
-                ),
+                SnapshotRegistry(StubRegistrySource(vocabulary, "snap-gate"), ResolverThresholds.LIVE),
                 emptyMap(),
                 ResumeTokenCodec(mapOf("k1" to ByteArray(32) { it.toByte() }), activeKeyId = "k1"),
                 lookupRounds = LookupRounds(fuzzy, LookupRoundConfig.DISABLED),
