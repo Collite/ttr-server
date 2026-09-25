@@ -4,10 +4,12 @@ package org.tatrman.veles.grpc
 import org.tatrman.common.v1.ResponseMessage
 import org.tatrman.common.v1.Severity
 import org.tatrman.diagnostics.RgDiagnostics
+import org.tatrman.diagnostics.Severity as RgSeverity
 import org.tatrman.meta.v1.MemberVocabulary
 import org.tatrman.plan.v1.SchemaCode
 import org.tatrman.translate.v1.SqlDialect
 import org.tatrman.translator.framework.ModelHandle
+import org.tatrman.translator.framework.TranslatorFramework
 import org.tatrman.translator.orchestrator.TranslateResult
 import org.tatrman.translator.orchestrator.Translator
 import org.tatrman.ttr.metadata.model.Attribute
@@ -82,7 +84,7 @@ object MemberVocabularies {
                             (attributeTargets[carrier.qname] as? AttributeMappingTarget.Expression)?.let {
                                 "the attribute maps to an expression (`${it.raw}`), which the translator's ER " +
                                     "catalog does not represent — it could not be queried by name either"
-                            },
+                            } ?: outsideDefaultNamespace(carrier.entity, "er", ER_DEFAULT_NAMESPACE),
                     )
                 }
                 is DbColumn -> {
@@ -98,6 +100,12 @@ object MemberVocabularies {
                         key = pk?.let { carrier.table.copy(name = "${carrier.table.name}.$it") },
                         keyLocal = pk,
                         matchMethod = carrier.search.matchMethod ?: MatchMethods.DEFAULT,
+                        unrenderable =
+                            outsideDefaultNamespace(
+                                carrier.table,
+                                "db",
+                                TranslatorFramework.DEFAULT_NAMESPACE,
+                            ),
                     )
                 }
                 else -> null
@@ -107,13 +115,39 @@ object MemberVocabularies {
 
     /**
      * The projection, in the carrier's own schema: `SELECT DISTINCT <key>, <value> FROM <owner>
-     * ORDER BY <key>`. Identifiers are double-quoted (the translator parses `Lex.MYSQL_ANSI`), so an
+     * ORDER BY 1`. Identifiers are double-quoted (the translator parses `Lex.MYSQL_ANSI`), so an
      * attribute called `state` or `name` is never read as a keyword.
+     *
+     * The order is by POSITION, never by the key's name: when the carrier IS the key (a code entity
+     * keyed by its code), both select items carry that name and `ORDER BY "code"` is ambiguous
+     * (review-102 F1). The translator renders the sort from the plan, so the SQL it prints is the same.
      */
     fun projection(draft: MemberVocabularyDraft): String {
         val key = quote(requireNotNull(draft.keyLocal))
-        return "SELECT DISTINCT $key, ${quote(draft.valueLocal)} FROM ${quote(draft.ownerLocal)} ORDER BY $key"
+        return "SELECT DISTINCT $key, ${quote(draft.valueLocal)} FROM ${quote(draft.ownerLocal)} ORDER BY 1"
     }
+
+    /**
+     * The projection names its owner unqualified, and the translator resolves an unqualified name in
+     * ONE namespace per schema (`er.entity`, `db.dbo` — `Translator` / [TranslatorFramework]). An owner
+     * anywhere else would fail to render, or — when an object of the same name sits in the default
+     * namespace — render THAT object's population under this category (review-102 F5). The query door
+     * has the same limit, so the carrier is listed unrenderable rather than read some other way.
+     */
+    private fun outsideDefaultNamespace(
+        owner: QualifiedName,
+        schemaToken: String,
+        defaultNamespace: String,
+    ): String? =
+        if (owner.namespace.equals(defaultNamespace, ignoreCase = true)) {
+            null
+        } else {
+            "its owner lives in `$schemaToken.${owner.namespace}`; the translator resolves an unqualified " +
+                "name only in `$schemaToken.$defaultNamespace`, so it could not be queried by name either"
+        }
+
+    /** The namespace `Translator` resolves an unqualified ER name in (`TranslatorFramework(model, ER, "entity")`). */
+    private const val ER_DEFAULT_NAMESPACE = "entity"
 
     private fun quote(identifier: String): String = "\"" + identifier.replace("\"", "\"\"") + "\""
 
@@ -163,7 +197,10 @@ class MemberVocabularyRenderer(
                                 diagnostic(
                                     "RG-FUZ-003",
                                     "category" to draft.category,
-                                    "reason" to "${result.code}: ${result.message}",
+                                    "reason" to
+                                        "the translator could not render it: ${result.code}: ${conciseReason(
+                                            result.message,
+                                        )}",
                                 ),
                             )
                             ""
@@ -202,12 +239,23 @@ class MemberVocabularyRenderer(
     ): ResponseMessage =
         ResponseMessage
             .newBuilder()
-            .setSeverity(Severity.WARNING)
-            .setCode(id)
+            .setSeverity(
+                when (RgDiagnostics[id].severity) {
+                    RgSeverity.ERROR -> Severity.ERROR
+                    RgSeverity.WARNING -> Severity.WARNING
+                    RgSeverity.INFO -> Severity.INFO
+                },
+            ).setCode(id)
             .setHumanMessage(RgDiagnostics.render(id, *args))
             .build()
 
     companion object {
+        /**
+         * A translator error, each distinct `: `-separated segment once. Calcite nests its cause's
+         * message into every wrapper's, so one validation error otherwise reads three times.
+         */
+        internal fun conciseReason(message: String): String = message.split(": ").distinct().joinToString(": ")
+
         /** SHA-256 over (model version, read_sql, key_attribute, match_method) — contracts §3. */
         fun version(
             modelVersion: String,

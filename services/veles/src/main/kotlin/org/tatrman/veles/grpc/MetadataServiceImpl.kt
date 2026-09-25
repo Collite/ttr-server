@@ -469,7 +469,7 @@ class MetadataServiceImpl(
         // parse landing mid-walk makes the snapshot newer than its ETag (one extra fetch), never
         // older. Without a live parse state the content is a function of the model alone and the
         // ETag stays the bare version.
-        val etag = parseState?.let { "${snap.model.version.value}.q${it.generation()}" } ?: snap.model.version.value
+        val etag = snapshotEtag(snap)
         if (request.ifNoneMatch.isNotEmpty() && request.ifNoneMatch == etag) {
             return GetSnapshotResponse
                 .newBuilder()
@@ -484,6 +484,13 @@ class MetadataServiceImpl(
             .setSnapshot(buildModelSnapshot(snap))
             .build()
     }
+
+    /**
+     * GetSnapshot's ETag for [snap] — and the key [listMemberVocabularies] caches its rendering under,
+     * since both are functions of the same content (the model + the live parse state, #112).
+     */
+    private fun snapshotEtag(snap: org.tatrman.ttr.metadata.registry.RegistrySnapshot): String =
+        parseState?.let { "${snap.model.version.value}.q${it.generation()}" } ?: snap.model.version.value
 
     /**
      * The whole-model snapshot GetSnapshot serves — and the one [listMemberVocabularies] renders
@@ -527,7 +534,10 @@ class MetadataServiceImpl(
 
     // ----- MV-T1 — ListMemberVocabularies (member-vocabulary contracts §3) -----
 
-    /** Rendered vocabularies for one (model version, dialect) — rendering runs Calcite, so once per swap. */
+    /**
+     * Rendered vocabularies for one (snapshot ETag, dialect) — rendering runs Calcite, so once per swap,
+     * plus once per call that finds more saved queries parsed since the last render.
+     */
     @Volatile
     private var memberVocabularyCache: Triple<String, SqlDialect, List<MemberVocabulary>>? = null
 
@@ -571,7 +581,11 @@ class MetadataServiceImpl(
         dialect: SqlDialect,
     ): List<MemberVocabulary> {
         val version = snap.model.version.value
-        memberVocabularyCache?.let { (v, d, cached) -> if (v == version && d == dialect) return cached }
+        // Keyed by the snapshot ETag, not the bare version: a query-backed entity renders only once its
+        // saved query has parsed, which happens AFTER the swap (review-102 F3). Read before the build,
+        // so a parse landing mid-build leaves the entry stale (one extra render), never fresh-but-wrong.
+        val etag = snapshotEtag(snap)
+        memberVocabularyCache?.let { (e, d, cached) -> if (e == etag && d == dialect) return cached }
         val drafts = MemberVocabularies.enumerate(snap.model)
         val rendered =
             if (drafts.isEmpty()) {
@@ -594,7 +608,7 @@ class MetadataServiceImpl(
             rendered.size,
             rendered.count { it.readSql.isNotEmpty() },
         )
-        memberVocabularyCache = Triple(version, dialect, rendered)
+        memberVocabularyCache = Triple(etag, dialect, rendered)
         return rendered
     }
 

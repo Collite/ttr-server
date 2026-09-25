@@ -1123,24 +1123,27 @@ message ListMemberVocabulariesRequest {
   PageRequest page = 1;
   // The dialect `read_sql` is rendered for — the loader's own warehouse — as a
   // `org.tatrman.translate.v1.SqlDialect` value name ("MSSQL", "POSTGRESQL", …). A string, so the
-  // metadata contract does not import the translator's; "" = the translator's default.
+  // metadata contract does not import the translator's. "" = "MSSQL", the translator's default (a
+  // model carries no dialect of its own); an unknown name is refused (`unknown_dialect`).
   string dialect = 2;
 }
 
 message MemberVocabulary {
-  string category = 1;                                      // the carrier's qname dotted (er.<ns>.<entity>.<attr>) — the ONLY key the loader uses
+  // The carrier's qname dotted — `er.<ns>.<entity>.<attr>`, or `db.<ns>.<table>.<column>` for an
+  // indexed column no attribute backs. The ONLY key the loader uses.
+  string category = 1;
   org.tatrman.plan.v1.QualifiedName attribute = 2;          // the carrier (an ER attribute, or a DB column)
   org.tatrman.plan.v1.QualifiedName entity = 3;             // its owner (entity, or table)
   string key_attribute = 4;                                 // the owner's single key, dotted; "" when absent/composite (then read_sql is "" too)
-  // SELECT DISTINCT <key>, <attr> FROM <entity> ORDER BY <key>, rendered by the translator from the
+  // SELECT DISTINCT <key>, <attr> FROM <entity> ORDER BY 1, rendered by the translator from the
   // ER projection — the same rendering a query over that entity gets. Column 1 = key, column 2 =
   // value. "" when a diagnostic blocks it.
   string read_sql = 5;
   string dialect = 6;                                       // the SqlDialect value name read_sql was rendered for
   string match_method = 7;                                  // "EXACT" | "TYPOS(n)" | "TOKENS"
   string version = 8;                                       // SHA-256 over (model version, read_sql, key_attribute, match_method)
-  // RG-FUZ-001 (no/composite key), RG-FUZ-002 (render failed / not renderable). An item WITH a
-  // blocking diagnostic is still listed, with read_sql "".
+  // RG-FUZ-001 (no single key), RG-FUZ-003 (no read plan: not renderable, or the translator failed —
+  // the message names which). An item WITH a blocking diagnostic is still listed, with read_sql "".
   repeated org.tatrman.common.v1.ResponseMessage diagnostics = 9;
 }
 

@@ -8,18 +8,19 @@ def entity store {
         // EXACT is a member vocabulary (it was not before MV)
         def attribute state { type: text, search { searchable method: EXACT } },
         // a bare `searchable` is a hint, not a vocabulary
-        def attribute label { type: text, search { searchable } }
+        def attribute label { type: text, search { searchable } },
+        // indexed but expression-mapped: listed, not renderable (RG-FUZ-003). Its entity's other
+        // vocabularies still render — Veles sends the mapping with its target unset, and the
+        // translator's catalog leaves such an attribute out (#113)
+        def attribute display { type: text, search { searchable method: TOKENS } }
     ]
 }
 
-// A second entity over `stores`, with an expression-mapped attribute. Kept apart from `store`
-// because the translator's ER catalog does not represent expression mappings, so ANY query over an
-// entity that has one fails (`field [display] not found`) — at query time and at index time alike.
-def entity store_card {
+// A code entity keyed by the indexed code itself: key and value are one attribute (review-102 F1)
+def entity currency {
     attributes: [
-        def attribute id { type: int, isKey: true },
-        // indexed but expression-mapped: listed, not renderable (RG-FUZ-003)
-        def attribute display { type: text, search { searchable method: TOKENS } }
+        def attribute code { type: text, isKey: true, search { searchable method: EXACT } },
+        def attribute label { type: text }
     ]
 }
 

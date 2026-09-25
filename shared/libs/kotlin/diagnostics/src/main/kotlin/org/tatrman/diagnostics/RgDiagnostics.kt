@@ -51,8 +51,8 @@ object RgDiagnostics {
             RgDiagnostic(
                 "RG-FUZ-001",
                 Severity.WARNING,
-                "Member vocabulary '{category}' skipped — its owner has no single key (composite key / no single PK).",
-                "Give the owning entity a single key attribute (or the table a single-column primary key / surrogate id); see the loader report.",
+                "Member vocabulary '{category}' skipped — its owner has no single key (none declared, or a composite one).",
+                "Give the owning entity a single key attribute, or the table a single-column primary key. A view declares none: index its column through an entity over the view.",
             ),
             RgDiagnostic(
                 "RG-FUZ-002",
@@ -65,8 +65,8 @@ object RgDiagnostics {
             RgDiagnostic(
                 "RG-FUZ-003",
                 Severity.WARNING,
-                "Member vocabulary '{category}' has no read plan — the translator could not render it: {reason}",
-                "Check the owning entity's er2db mapping (an expression-mapped attribute is not renderable yet); the vocabulary stays unloaded until it renders.",
+                "Member vocabulary '{category}' has no read plan — {reason}",
+                "The reason names the cause: an expression-mapped attribute, or an owner outside the translator's default namespace, is not renderable yet; anything else is the translator's own error. The vocabulary stays unloaded until it renders.",
             ),
             RgDiagnostic(
                 "RG-GND-001",

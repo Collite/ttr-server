@@ -12,6 +12,14 @@ def table stores {
     ]
 }
 
+def table currencies {
+    primaryKey: ["code"]
+    columns: [
+        def column code { type: char, isKey: true },
+        def column label { type: varchar }
+    ]
+}
+
 // §9.1 — one table, two entities split by a disjoint filter (here: two views over it)
 def table rivals {
     primaryKey: ["id"]

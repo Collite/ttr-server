@@ -9,16 +9,20 @@ import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.string.shouldStartWith
 import org.tatrman.meta.v1.ListMemberVocabulariesRequest
 import org.tatrman.meta.v1.MemberVocabulary
+import org.tatrman.common.v1.Severity
 import org.tatrman.meta.v1.PageRequest
 import org.tatrman.ttr.metadata.LoadIssue
 import org.tatrman.ttr.metadata.MetadataLoader
 import org.tatrman.ttr.metadata.graph.ModelGraph
+import org.tatrman.ttr.metadata.model.Model
 import org.tatrman.ttr.metadata.model.ModelDescriptor
 import org.tatrman.ttr.metadata.reconcile.ModelReconciler
 import org.tatrman.ttr.metadata.registry.MetadataRegistry
 import org.tatrman.ttr.metadata.source.BuiltinStockSource
 import org.tatrman.ttr.metadata.source.FileBasedSource
 import org.tatrman.ttr.metadata.source.LocalFsStorage
+import org.tatrman.veles.parse.QueryParseState
+import org.tatrman.veles.parse.QueryParseWorker
 import java.nio.file.Files
 import java.nio.file.Path
 
@@ -35,7 +39,11 @@ class ListMemberVocabulariesSpec :
         val fixtureRoot: Path =
             Path.of(checkNotNull(this::class.java.classLoader.getResource("fixture-member-vocab/mv")).toURI()).parent
 
-        fun service(): MetadataServiceImpl {
+        /**
+         * The fixture served as production serves it: a live parse state, reset on the swap and — when
+         * [parsed] — filled by the parse worker, so a query-backed entity has its saved query's plan.
+         */
+        suspend fun served(parsed: Boolean = true): Triple<Model, QueryParseState, MetadataServiceImpl> {
             val source =
                 FileBasedSource(
                     sourceId = "mv",
@@ -46,8 +54,12 @@ class ListMemberVocabulariesSpec :
             check(result.errors.isEmpty()) { "fixture failed to load: ${result.errors}" }
             val registry = MetadataRegistry()
             registry.swap(result.model, ModelGraph.build(result.model), result.warnings)
-            return MetadataServiceImpl(registry)
+            val state = QueryParseState().also { it.reset(result.model.version.value, result.model.queries.keys) }
+            if (parsed) QueryParseWorker().also { it.parseAll(result.model, state).join() }.close()
+            return Triple(result.model, state, MetadataServiceImpl(registry = registry, parseState = state))
         }
+
+        suspend fun service(): MetadataServiceImpl = served().third
 
         /**
          * An estate's `model/` tree, loaded the way `ttr-lexicon build` loads it (stock roles + the
@@ -97,12 +109,14 @@ class ListMemberVocabulariesSpec :
             service().all().map { it.category } shouldContainExactly
                 listOf(
                     "db.dbo.ledger.account",
+                    "db.sales.ledger.account",
                     "er.entity.brand_rival.rival_name",
+                    "er.entity.currency.code",
                     "er.entity.open_store.name",
                     "er.entity.order_line.sku_label",
+                    "er.entity.store.display",
                     "er.entity.store.state",
                     "er.entity.store.store_name",
-                    "er.entity.store_card.display",
                     "er.entity.supplier_rival.rival_name",
                 )
         }
@@ -134,6 +148,16 @@ class ListMemberVocabulariesSpec :
                 "GROUP BY \"id\", \"name\"\nORDER BY \"id\""
         }
 
+        "F1 — a carrier that IS its entity's key renders: two columns, one of them aliased (review-102)" {
+            // `SELECT DISTINCT "code", "code" … ORDER BY "code"` was ambiguous (RG-FUZ-003); the
+            // projection orders by position, and the translator prints the sort by name again.
+            val code = service().all().single { it.category == "er.entity.currency.code" }
+            code.keyAttribute shouldBe "er.entity.currency.code"
+            code.diagnosticsList shouldBe emptyList()
+            code.readSql shouldBe
+                "SELECT \"code\", \"code\" AS \"code0\"\nFROM \"currencies\"\nGROUP BY \"code\"\nORDER BY \"code\""
+        }
+
         "T5 — the dialect is the caller's: MSSQL brackets, POSTGRESQL double quotes" {
             val svc = service()
             svc.all("MSSQL").single { it.category == "er.entity.store.state" }.readSql shouldContain "[stores]"
@@ -145,24 +169,53 @@ class ListMemberVocabulariesSpec :
             line.keyAttribute shouldBe ""
             line.readSql shouldBe ""
             line.diagnosticsList.map { it.code } shouldBe listOf("RG-FUZ-001")
+            // the severity is the registry's (RgDiagnostics), not a constant of this service
+            line.diagnosticsList.single().severity shouldBe Severity.WARNING
         }
 
-        "RG-FUZ-003 — an expression-mapped attribute: listed, no read plan, the reason named" {
-            val display = service().all().single { it.category == "er.entity.store_card.display" }
+        "RG-FUZ-003 — an expression-mapped attribute: listed, no read plan, reason named; its entity renders" {
+            // `store.display` maps to an expression, which Veles sends with the mapping's target unset.
+            // The translator's catalog leaves it out (#113), so every other `store` vocabulary renders —
+            // the pins above and below are the same with and without it.
+            val items = service().all().associateBy { it.category }
+            val display = items.getValue("er.entity.store.display")
             display.readSql shouldBe ""
             display.diagnosticsList.map { it.code } shouldBe listOf("RG-FUZ-003")
             display.diagnosticsList.single().humanMessage shouldContain "expression"
+            items.getValue("er.entity.store.state").diagnosticsList shouldBe emptyList()
+            items.getValue("er.entity.store.store_name").readSql shouldContain "\"stores\""
         }
 
-        "§9.2 — a query-backed entity: listed, RG-FUZ-003 — the query path cannot render it either (FINDING)" {
-            // GetSnapshot leaves `QueryDetail.canonical_form` unset, so the translator's adapter holds an
-            // EMPTY plan for every saved query and any ER query over a query-backed entity fails the
-            // same way at query time. Rendering it here by another route would be exactly the drift
-            // this RPC exists to prevent; the diagnostic names the translator's own error instead.
-            val open = service().all().single { it.category == "er.entity.open_store.name" }
-            open.readSql shouldBe ""
-            open.diagnosticsList.map { it.code } shouldBe listOf("RG-FUZ-003")
-            open.diagnosticsList.single().humanMessage shouldContain "NODE_NOT_SET"
+        "F5 — an owner outside the translator's default namespace: listed, RG-FUZ-003, never another table's rows" {
+            // `db.sales.ledger` beside `db.dbo.ledger`: the unqualified projection would read db.dbo's.
+            val sales = service().all().single { it.category == "db.sales.ledger.account" }
+            sales.readSql shouldBe ""
+            sales.diagnosticsList.map { it.code } shouldBe listOf("RG-FUZ-003")
+            sales.diagnosticsList.single().humanMessage shouldContain "`db.sales`"
+        }
+
+        "§9.2 — a query-backed entity renders over its saved query" {
+            // Needs #112: GetSnapshot carries the saved query's canonical form once the parse worker has
+            // parsed it, and the entity expands into it — the population is the query's, not the table's.
+            service().all().single { it.category == "er.entity.open_store.name" }.readSql shouldBe
+                "SELECT \"id\", \"name\"\nFROM \"stores\"\nWHERE \"state\" <> 'XX'\n" +
+                "GROUP BY \"id\", \"name\"\nORDER BY \"id\""
+        }
+
+        "§9.2 — the listing follows the parse: before it RG-FUZ-003, after it rendered, on ONE instance" {
+            // The plans land after the swap. The listing is cached per snapshot ETag, which moves with
+            // them — cached per model version, the parse-window answer stuck for the model's life
+            // (review-102 F3).
+            val (model, state, svc) = served(parsed = false)
+            val before = svc.all().single { it.category == "er.entity.open_store.name" }
+            before.readSql shouldBe ""
+            before.diagnosticsList.single().humanMessage shouldContain "NODE_NOT_SET"
+
+            QueryParseWorker().also { it.parseAll(model, state).join() }.close()
+            val after = svc.all().single { it.category == "er.entity.open_store.name" }
+            after.diagnosticsList shouldBe emptyList()
+            after.readSql shouldContain "WHERE \"state\" <> 'XX'"
+            after.version shouldNotBe before.version
         }
 
         "the db-only estate: an indexed column no attribute backs reads its table, keyed by its PK" {
@@ -201,7 +254,7 @@ class ListMemberVocabulariesSpec :
                 token = resp.pageInfo.nextPageToken
                 pages++
             } while (token.isNotEmpty())
-            pages shouldBe 3
+            pages shouldBe 4
             seen shouldBe expected
         }
 
@@ -223,5 +276,15 @@ class ListMemberVocabulariesSpec :
             refused.itemsCount shouldBe 0
             refused.messagesList.map { it.code } shouldBe listOf("unknown_dialect")
             svc.all("").first().dialect shouldBe "MSSQL"
+        }
+
+        "a translator error reads once: each distinct segment of a nested Calcite message kept once" {
+            MemberVocabularyRenderer.conciseReason(
+                "org.apache.calcite.runtime.CalciteContextException: From line 1, column 57 to line 1, column 62: " +
+                    "Column 'code' is ambiguous: From line 1, column 57 to line 1, column 62: " +
+                    "Column 'code' is ambiguous: Column 'code' is ambiguous",
+            ) shouldBe
+                "org.apache.calcite.runtime.CalciteContextException: From line 1, column 57 to line 1, column 62: " +
+                "Column 'code' is ambiguous"
         }
     })

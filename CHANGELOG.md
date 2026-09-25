@@ -40,16 +40,21 @@ entity was indexed over its whole base table. Veles now publishes one vocabulary
   and one WARN per process is logged when it is used. ⚠ `method: EXACT` carriers are now indexed and are
   therefore listed.
 - Diagnostics: `RG-FUZ-001` is reworded from "fuzzy column" to "member vocabulary". New `RG-FUZ-003`
-  (WARNING) means a vocabulary has no read plan, with the reason: an expression-mapped attribute, or a
-  translator failure.
+  (WARNING) means a vocabulary has no read plan, and names why: an expression-mapped attribute, an owner
+  outside the translator's default namespace, or the translator's own error.
 
 **How `read_sql` is rendered.** Veles renders it through `SnapshotModelHandle` over its own
 `GetSnapshot`. That is the exact adapter the translate service builds for every ER query, so an index
 reads an entity the way a query over it does. The adapter moved from `services/translate` into the new
-`shared/libs/kotlin/translate-snapshot` for this reason. Two known gaps, where a query fails in the same
-way, show up as `RG-FUZ-003` rather than being worked around:
-- a query-backed entity: `GetSnapshot` carries no `canonical_form`;
-- any entity with an expression-mapped attribute: the ER catalog does not represent expressions.
+`shared/libs/kotlin/translate-snapshot` for this reason.
+- A query-backed entity renders over its saved query once that query has parsed (#112). The listing is
+  cached per `GetSnapshot` ETag, so it follows the parse instead of freezing the first answer.
+- Two carriers are listed with `RG-FUZ-003` rather than read some other way, because a query could not
+  read them by name either: an expression-mapped attribute (the translator's ER catalog has no
+  expressions; the rest of its entity renders, #113), and a carrier whose owner lives outside
+  `er.entity` / `db.dbo`, the one namespace per schema the translator resolves an unqualified name in.
+- A carrier that is its entity's own key (a code entity keyed by its code) renders as two columns, the
+  second aliased.
 
 **Consumers:** built on `org.tatrman:*:0.13.6`, where `SearchHints.indexed` + `matchMethod` split the old
 `fuzzy` bit.
