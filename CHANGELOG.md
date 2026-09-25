@@ -80,6 +80,24 @@ failed with `sql_unparse_failed: PlanNode case 'NODE_NOT_SET'`.
   `GetStatus.model_version`. `validate` did read it as the version; it now reads `GetStatus`
   (which also stops it shipping the whole model per `Validate`).
 
+### translate — an expression-mapped attribute no longer makes its entity unqueryable (#113)
+
+An ER attribute may be mapped to an expression instead of a column
+(`target: { expression: "…" }`). The translate service kept such an attribute in its entity's
+ER catalog, although nothing can compute it — the translator's `ModelHandle` has no way to carry
+an expression. So it rode along in every scan of the entity, the physical table was asked for a
+column that does not exist, and **every** ER query over the entity failed with
+`sql_unparse_failed: field [<attr>] not found`, including queries that never named it.
+
+**Behaviour**
+
+- The snapshot adapter (`SnapshotModelHandle`) leaves out of the ER catalog every attribute whose
+  `er2db_attribute` mapping names no column. The rest of the entity is queryable again.
+- A query that names the expression attribute itself fails as an unknown column, at
+  validation. Querying expression attributes needs translator support and is not part of this
+  change.
+- An attribute with no mapping at all is unchanged: it still reads the column of the same name.
+
 ### `query.v1` / `validate.v1` — a caller-stated row window, a ceiling, and a warning when the cap binds
 
 `validate` caps every answer at `default-top-n` rows by injecting a `LIMIT`, and the cap was a
