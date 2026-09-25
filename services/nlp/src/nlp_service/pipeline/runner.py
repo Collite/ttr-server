@@ -71,6 +71,7 @@ from nlp_service.engines.base import EngineVersion, NlpOp
 from nlp_service.morph_queue import NullSink, QueueSink
 from nlp_service.morph_state import MORPH_ENGINE, MorphSnapshot
 from nlp_service.pipeline.orchestrator import Orchestrator
+from nlp_service.routing import normalize_language
 
 logger = logging.getLogger(__name__)
 
@@ -273,7 +274,11 @@ class PipelineRunner:
         still detecting the language it is about to decide on.
         """
         if language:
-            return language, 1.0, []
+            # Folded like every other caller-supplied tag. `resolved` does not
+            # only pick routes (`route()` folds for itself) — it becomes the
+            # Document's `language` and the morph PROFILE key, and a profile
+            # named `cs-CZ` exists nowhere.
+            return normalize_language(language), 1.0, []
 
         detection = self._orchestrator.analyze(
             text=text, language="", ops={NlpOp.DETECT_LANGUAGE}

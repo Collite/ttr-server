@@ -96,6 +96,17 @@ class TestTheRejectionCatalogue:
         assert "spacy" in str(exc.value)
         assert "NER" in str(exc.value) and "cs" in str(exc.value)
 
+    def test_a_region_qualified_key_is_refused_and_names_the_fix(self):
+        """`LEMMATIZE.en-US` is dead on arrival: requests fold to the primary
+        subtag before they reach the table, so the key can never be hit. Without
+        this case it still fails, but as "stanza does not serve LEMMATIZE for
+        'en-US'" — which blames the engine for a mistake in the key."""
+        with pytest.raises(RoutingConfigError) as exc:
+            EngineRegistry(a_config(routing={"LEMMATIZE.en-US": "stanza"}))
+        message = str(exc.value)
+        assert "en-US" in message
+        assert "LEMMATIZE.en" in message  # the correction, spelled out
+
     def test_a_disabled_engine_says_disabled_not_unknown(self):
         """Three mistakes, three fixes: a typo, an engine switched off, and an
         engine this lane does not carry. An operator who reads "not registered"

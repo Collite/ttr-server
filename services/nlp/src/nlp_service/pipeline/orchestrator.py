@@ -24,6 +24,7 @@ from nlp_service.diagnostics import RG_NLP_003, RG_NLP_010, message, split_code
 from nlp_service.engines import EngineRegistry
 from nlp_service.engines.base import EngineResult, EngineVersion, NerEntity, NlpOp, Token
 from nlp_service.floor import FloorEngine
+from nlp_service.routing import normalize_language
 
 logger = logging.getLogger(__name__)
 
@@ -98,6 +99,13 @@ class Orchestrator:
         messages: List[dict] = []
         used: List[EngineVersion] = []
 
+        # A caller's tag may name a region (hartland's Shem sends `en-US` / `cs-CZ`);
+        # the routing table and every engine's `supported_languages()` are keyed on
+        # the bare subtag. Fold it HERE, once, so the routes, the engines'
+        # `analyze(text, language, ops)` and the echoed `language` all agree — and
+        # so an empty tag stays empty for the DETECT_LANGUAGE branch below.
+        language = normalize_language(language)
+
         detected_lang = language
         detected_confidence = 1.0
 
@@ -115,7 +123,12 @@ class Orchestrator:
                     detected_lang = "cs"
             else:
                 if not detected_lang:
-                    detected_lang = lang_result.detected_language or self._config.default_language
+                    # Folded too: a detector is just another source of a tag, and
+                    # the value goes straight to the engines below.
+                    detected_lang = (
+                        normalize_language(lang_result.detected_language)
+                        or self._config.default_language
+                    )
                 detected_confidence = lang_result.language_confidence or 1.0
             # S-1: stamp the langid engine that produced the detection.
             langid = self._registry.route(detected_lang or self._config.default_language, NlpOp.DETECT_LANGUAGE)
@@ -365,7 +378,7 @@ class Orchestrator:
         both-hops requirement, Q-10 §4). Falls back to per-text analyze only when
         the routed engine has no batch path (floor / non-batching).
         """
-        language = language or self._config.default_language
+        language = normalize_language(language) or self._config.default_language
         if not texts:
             return BatchLemmatizeResult(results=[], used=[])
 

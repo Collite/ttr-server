@@ -182,3 +182,67 @@ class TestDegradeFloorMarker:
         result = orch.analyze("Hallo Welt", "de", {NlpOp.LEMMATIZE})
         codes = [m["code"] for m in result.messages]
         assert RG_NLP_010 in codes
+
+
+class TestRegionQualifiedLanguageTags:
+    """A caller that names a region gets the same parse as one that does not.
+
+    hartland's Shem declares `locale_defaults: [en-US, cs-CZ]` and that locale
+    reached `/v1/analyze` verbatim. Against a routing table keyed on bare subtags
+    it matched nothing at all, so the request degraded to the floor with
+    RG-NLP-010 and returned ZERO tokens in 0 ms — never reaching a backend — while
+    the identical text under `cs` parsed normally. Both languages on the estate
+    looked "dark" for what was only an unfolded tag.
+    """
+
+    def test_cs_CZ_parses_exactly_like_cs(self, monkeypatch):
+        registry = EngineRegistry(_config())
+        _stub(monkeypatch, registry, "morphodita", EngineResult(tokens=_HERO_TOKENS, sentences=[(0, 30)]))
+        orch = Orchestrator(_config(), registry)
+
+        result = orch.analyze("Kolik jsme utržili za Octavie", "cs-CZ", {NlpOp.LEMMATIZE})
+
+        assert result.tokens[0].lemma == "Octavia"
+        assert result.engine_used == "morphodita"
+        assert is_s1_clean(result.used)
+        # The symptom, stated directly: no floor marker, and tokens came back.
+        assert not any(m["code"].startswith(RG_NLP_010) for m in result.messages)
+
+    def test_the_echoed_language_is_the_one_that_served(self, monkeypatch):
+        """`en` is what served a request that said `en-US`, so that is what is echoed."""
+        registry = EngineRegistry(_config())
+        _stub(monkeypatch, registry, "stanza", EngineResult(tokens=_HERO_TOKENS))
+        orch = Orchestrator(_config(), registry)
+
+        result = orch.analyze("stores in Nashville", "en-US", {NlpOp.TOKENIZE})
+
+        assert result.language == "en"
+        assert result.engine_used == "stanza"
+
+    def test_an_unknown_language_still_floors(self, monkeypatch):
+        """Folding must not make every tag route somewhere."""
+        registry = EngineRegistry(_config())
+        orch = Orchestrator(_config(), registry)
+
+        result = orch.analyze("Guten Tag", "de-DE", {NlpOp.LEMMATIZE})
+
+        assert result.tokens == []
+        assert any(m["code"].startswith(RG_NLP_010) for m in result.messages)
+
+    def test_batch_lemmatize_folds_its_tag_too(self, monkeypatch):
+        """fuzzy's lemma axis (RS-6) enters through here, not through analyze()."""
+        registry = EngineRegistry(_config())
+        engine = registry.get_engine("morphodita")
+        seen: list[str] = []
+
+        def _batch(texts, lang):
+            seen.append(lang)
+            return [["lemma"] for _ in texts]
+
+        monkeypatch.setattr(engine, "batch_lemmatize", _batch)
+        orch = Orchestrator(_config(), registry)
+
+        outcome = orch.batch_lemmatize(["prodejny"], "cs-CZ")
+
+        assert seen == ["cs"]
+        assert outcome.results == [["lemma"]]
