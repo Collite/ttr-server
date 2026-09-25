@@ -77,7 +77,7 @@ These are verified on every gate run by `just conformance-verify-hashes` (readin
 `conformance/corpus-hashes.sha256`); a silent edit — even whitespace/reordering a
 semantic test would miss — fails the gate (RG-P6 review I). Keep the two lists in sync.
 ```
-ucetnictvi_entities_only.jsonl  d0e8b17fa6e989ff9e17bd4a035825946e2b551802d1edd38d3bd163676331f5
+ucetnictvi_entities_only.jsonl  ccda5f2a891a16789b3b6cb752b3baab9b9a8b8fe96e2f01fd41a8d7444352a7
 match-quality-corpus.jsonl      e2d8a6cf33debfb4117bc130fb1cdc9126f11627b88a91aede661e0892f1d73d
 grounding-cases.json            a54491aa20ee4eac37b68c9b12a74658ed9b88e03051533289ce506e63590100
 e2e-cases.json                  0034ed387f31c1dca8ba1a56b22b72f968193ee5f1aacb0f20aa7336facf77f7

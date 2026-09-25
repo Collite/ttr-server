@@ -64,7 +64,7 @@ class ExecutionReceiptBuilderSpec :
             val bindings =
                 listOf(
                     binding("year_from", "int", Value.newBuilder().setIntValue(2025).build()),
-                    binding("customer", "text", Value.newBuilder().setStringValue("Marvy Oil, s.r.o.").build()),
+                    binding("customer", "text", Value.newBuilder().setStringValue("Valmy Oil, s.r.o.").build()),
                 )
 
             val receipt = statementHalf(parameters = bindings).shouldNotBeNull()
@@ -80,7 +80,7 @@ class ExecutionReceiptBuilderSpec :
 
             // The proof that matters: no bound value reaches the wire in any field.
             val onTheWire = receipt.toByteArray().toString(Charsets.ISO_8859_1)
-            onTheWire.contains("Marvy Oil") shouldBe false
+            onTheWire.contains("Valmy Oil") shouldBe false
             onTheWire.contains("2025") shouldBe false
         }
 
