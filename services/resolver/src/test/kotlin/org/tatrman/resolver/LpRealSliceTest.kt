@@ -121,7 +121,7 @@ class LpRealSliceTest :
             val value = verbatimOf(resolve("Show stores starting with «abl»"))
 
             value.attributionsList.single().attributeRef shouldBe STORE_NAME
-            // `starting with` reaches the slice with the ttr-core fix (F17); on a slice that does
+            // `starting with` reaches the slice with the tatrman lexicon fix (F17); on a slice that does
             // not list it yet the default applies. Either way never `equals`, and never headless.
             (value.predicateRef in setOf("pred:starts_with", "pred:contains")) shouldBe true
         }

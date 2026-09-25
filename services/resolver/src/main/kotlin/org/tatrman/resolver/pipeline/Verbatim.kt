@@ -197,7 +197,7 @@ object VerbatimAttribution {
      * §2.1, as amended by review-103 (rulings 3, F6): the head's own pattern **or** the fallback
      * shape — not one instead of the other.
      *
-     * [ResolverEntityType.codeFormat] is always a regex since the ttr-core fix (an authored
+     * [ResolverEntityType.codeFormat] is always a regex since the tatrman lexicon fix (an authored
      * `code_pattern`, or a period mask the compiler translated); a malformed one is a model defect
      * and falls back to the shape rule rather than failing a question that has nothing to do with
      * codes. The shape needs at least one digit — the rule that keeps a shouted `PELEX` out of the
