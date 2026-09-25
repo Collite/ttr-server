@@ -173,6 +173,14 @@ message EntityType {
   string name_attribute_ref = 7;
   string code_attribute_ref = 8;
   string code_format = 9;
+  // MV (member-vocabulary contracts §5.2) — this ref is an INDEXED attribute (or column): it
+  // has a member vocabulary, registered and queried under this very ref as its category, and
+  // its entity is `owner_ref`. That pair is how a value governed by the entity reaches the
+  // vocabulary (§5.3). Both channels supply it: this override, and the snapshot channel from
+  // the compiled lexicon archive's `targets[ref].memberVocabulary` (`ttr-lexicon-compiled/v5`),
+  // which lists every indexed attribute whether or not anyone wrote a term for it. False on
+  // an older archive, where a governed value reaches no member vocabulary (the pre-MV path).
+  bool member_vocabulary = 10;
 }
 
 // MH — an object with a declared relation TO this entity (archive `targets[ref].reachedFrom`),

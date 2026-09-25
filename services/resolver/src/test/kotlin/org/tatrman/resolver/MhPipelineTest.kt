@@ -310,6 +310,42 @@ class MhPipelineTest :
                 listOf(MhMembers.STORE_STATE, MhMembers.CA_STATE, MhMembers.WAREHOUSE_STATE)
         }
 
+        "MV-T5 — E12-bare's options name the owning ENTITY, and `memberOf` the attribute" {
+            // member-vocabulary contracts §5.3: `owner(m)` is the entity. The option's
+            // `entity_type_ref` is what a pin reconstructs its Domain from on resume, so it names
+            // the entity whose row the PK is; `member_of` keeps the finer fact — which attribute's
+            // value — because two attributes of ONE entity can share a value, and then the entity
+            // alone would make two options indistinguishable (MH §7.5, resolver.proto `member_of`).
+            val response = MhMembers.resolve("TN", MhMembers.e12Bare())
+
+            val options = response.awaiting.optionsList
+            options.map { it.entityTypeRef } shouldContainExactlyInAnyOrder
+                listOf(MhMembers.STORE, MhMembers.CUSTOMER_ADDRESS, MhMembers.WAREHOUSE)
+            options.map { it.memberOf } shouldContainExactlyInAnyOrder
+                listOf(MhMembers.STORE_STATE, MhMembers.CA_STATE, MhMembers.WAREHOUSE_STATE)
+            // the entity refs are ENTITIES in the model's own words…
+            val kinds = MhMembers.REGISTRY.entityTypesList.associate { it.ref to it.objectKind }
+            options.map { kinds[it.entityTypeRef] }.distinct() shouldContainExactly listOf("entity")
+            // …while the option itself stays species-less: a member is a data row (review-087 F6)
+            options.map { it.objectKind }.distinct() shouldContainExactly listOf("")
+        }
+
+        "MV-T5 — a bound member's Domain names its entity; the lattice keeps the attribute" {
+            val response = MhMembers.resolve("How many stores in TN", MhMembers.e11Count())
+
+            response.resolution.bindingsList
+                .single { it.domain.rawText == "TN" }
+                .domain.entityTypeRef shouldBe MhMembers.STORE
+            // §5.4 — the lattice's addressable ref and attribution are the ATTRIBUTE's, unchanged
+            val attribution =
+                response.resolutionState.valuesList
+                    .single { it.span.text == "TN" }
+                    .attributionsList
+                    .single()
+            attribution.binding.ref shouldBe "${MhMembers.STORE_STATE}#store#7"
+            attribution.attributeRef shouldBe MhMembers.STORE_STATE
+        }
+
         "E13-en — `Customers in TN` binds through the DECLARED relation, one hop" {
             // `customer` holds no `state`; `customer_address` does, and declares `Reach(customer)`.
             val response = MhMembers.resolve("Customers in TN", MhMembers.e13En())

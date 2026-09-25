@@ -12,9 +12,9 @@ import org.tatrman.resolver.client.FuzzyClient
 import org.tatrman.resolver.model.ResolverEntityType
 import org.tatrman.resolver.model.ResolverThresholds
 import org.tatrman.resolver.model.kindsByRef
+import org.tatrman.resolver.model.memberEntityByCategory
 import org.tatrman.resolver.model.ownersByRef
 import org.tatrman.resolver.model.reachByRef
-import org.tatrman.resolver.model.refByCategory
 import org.tatrman.resolver.v1.Hypothesis
 import org.tatrman.resolver.v1.ResolutionState
 import org.tatrman.resolver.v1.RungLogEntry
@@ -121,7 +121,7 @@ class LookupRounds(
         // the registry through the same three helpers.
         val kinds = entityTypes.kindsByRef()
         val reach = entityTypes.reachByRef()
-        val memberOwners = entityTypes.refByCategory()
+        val memberOwners = entityTypes.memberEntityByCategory()
         val tried = mutableMapOf<Pair<Int, Int>, List<Hypothesis>>()
         var currentGated = gated
         var currentUngated = ungated

@@ -9,9 +9,9 @@ import org.tatrman.fuzzy.v1.SpanQuery
 import org.tatrman.resolver.model.ResolverEntityType
 import org.tatrman.resolver.model.ResolverThresholds
 import org.tatrman.resolver.model.kindsByRef
+import org.tatrman.resolver.model.memberEntityByCategory
 import org.tatrman.resolver.model.ownersByRef
 import org.tatrman.resolver.model.reachByRef
-import org.tatrman.resolver.model.refByCategory
 
 /**
  * gateSpans (RG-P5.S1.T4) — the heart. All proposed spans go out in ONE
@@ -71,7 +71,9 @@ object GateSpans {
                 val owners = entityTypes.ownersByRef()
                 val kinds = entityTypes.kindsByRef()
                 val reach = entityTypes.reachByRef()
-                val memberOwners = entityTypes.refByCategory()
+                // MV §5.3 — category → the ENTITY a member row belongs to. The same map
+                // `entityRefOf` reads below, so the Binder and the door name one owner.
+                val memberOwners = entityTypes.memberEntityByCategory()
                 candidates
                     .mapIndexed { i, cand ->
                         // The ONE decision, made in the one place that makes it (RV-P2.2). Note what is NOT
@@ -124,6 +126,7 @@ object GateSpans {
     ): GateOutcome {
         val bindings = mutableListOf<DomainBinding>()
         val options = mutableListOf<ClarificationOption>()
+        val memberEntities = entityTypes.memberEntityByCategory()
 
         for (span in gated) {
             if (span.contenders.isEmpty()) continue
@@ -133,10 +136,17 @@ object GateSpans {
                 // (RG-P6 review M).
                 span.contenders
                     .take(thresholds.maxOptions)
-                    .forEach { options += toOption(it.match, span.candidate, entityTypes) }
+                    .forEach { options += toOption(it.match, span.candidate, entityTypes, memberEntities) }
             } else {
                 bindings +=
-                    toBinding(span.candidate, span.contenders.first().match, entityTypes, siblings, snapshotHash)
+                    toBinding(
+                        span.candidate,
+                        span.contenders.first().match,
+                        entityTypes,
+                        memberEntities,
+                        siblings,
+                        snapshotHash,
+                    )
             }
         }
 
@@ -197,21 +207,47 @@ object GateSpans {
         }
     }
 
-    /** The declared entity type owning a match's fuzzy category, or the category itself. */
-    private fun entityRefOf(
+    /**
+     * The declared type whose vocabulary a match's category is, or the category itself. For a
+     * member row that is its ATTRIBUTE (MV §1: a category is exactly one attribute ref) — what
+     * `memberOf` names.
+     */
+    private fun vocabularyRefOf(
         m: FuzzyMatch,
         entityTypes: List<ResolverEntityType>,
     ): String = entityTypes.firstOrNull { m.category in it.categories }?.ref ?: m.category
+
+    /**
+     * The entity a match is about. MV (member-vocabulary contracts §5.3): for a MEMBER row, the
+     * ENTITY that owns its vocabulary ([memberEntities], the map the Binder's tier-M governance
+     * reads too) — a PK is a row of an entity, and the entity is what a resumed pin rebuilds its
+     * Domain from. For a declared row, the type whose vocabulary it came from, as always.
+     *
+     * Before MV this returned the member's ATTRIBUTE on every archive-fed estate, because the
+     * archive projects each vocabulary as its own type — which is why MH §7.5 had to spell the
+     * governor rule as `entityOf(owner(m))`. That deviation is now simply the rule (A-MH-2).
+     */
+    private fun entityRefOf(
+        m: FuzzyMatch,
+        entityTypes: List<ResolverEntityType>,
+        memberEntities: Map<String, String>,
+    ): String =
+        if (m.source == SourceTag.MEMBER) {
+            memberEntities[m.category] ?: m.category
+        } else {
+            vocabularyRefOf(m, entityTypes)
+        }
 
     private fun toBinding(
         cand: DomainSpanCandidate,
         top: FuzzyMatch,
         entityTypes: List<ResolverEntityType>,
+        memberEntities: Map<String, String>,
         siblings: SiblingCatalog,
         snapshotHash: String,
     ): DomainBinding {
         val isMember = top.source == SourceTag.MEMBER
-        val entityRef = entityRefOf(top, entityTypes)
+        val entityRef = entityRefOf(top, entityTypes, memberEntities)
         return DomainBinding(
             span = cand,
             entityTypeRef = entityRef,
@@ -231,6 +267,7 @@ object GateSpans {
         m: FuzzyMatch,
         cand: DomainSpanCandidate,
         entityTypes: List<ResolverEntityType>,
+        memberEntities: Map<String, String>,
     ): ClarificationOption {
         val isMember = m.source == SourceTag.MEMBER
         return ClarificationOption(
@@ -238,7 +275,7 @@ object GateSpans {
             label = m.candidate,
             resolvedId = if (isMember) m.candidateId else null,
             targetRef = if (!isMember && m.targetRef.isNotBlank()) m.targetRef else null,
-            entityTypeRef = entityRefOf(m, entityTypes),
+            entityTypeRef = entityRefOf(m, entityTypes, memberEntities),
             spanStart = cand.start,
             spanEnd = cand.end,
             spanText = cand.text,
@@ -254,7 +291,12 @@ object GateSpans {
                 if (isMember) "" else entityTypes.firstOrNull { it.ref == m.targetRef }?.objectKind.orEmpty(),
             // MH tier M — the mirror of the line above, and the same guard: a member is a data
             // row and its owner is the only thing that names it; a vocabulary row names itself.
-            memberOf = if (isMember) entityRefOf(m, entityTypes) else "",
+            //
+            // MV: the VOCABULARY's ref — the attribute — while `entityTypeRef` above names its
+            // entity. Two attributes of one entity can hold the same value (a billing and a
+            // shipping state), and then only the attribute tells the two options apart
+            // (resolver.proto `member_of`: "the attribute (or entity)").
+            memberOf = if (isMember) vocabularyRefOf(m, entityTypes) else "",
         )
     }
 

@@ -111,15 +111,27 @@ class LexiconArchiveRegistrySource(
      *
      * The terms keep their diacritics as authored: `SpanProposal` folds when it builds its anchor
      * index, and folding twice would lose the authored form for no gain.
+     *
+     * ✅ **MV (member-vocabulary contracts §5.2) — plus one entry per MEMBER VOCABULARY, terms or
+     * not.** A v5 archive lists every indexed attribute in `targets` with `memberVocabulary`, and
+     * most have no term (nobody writes an alias for `store.state`). Such an entry carries no
+     * [DeclaredVocabularyEntry.values] — so no anchors, which keeps the `MEMBER` argument above
+     * intact — but it registers the category its values are indexed under, with the entity that
+     * owns it. Before this, a governed value under `store` could not reach `store.state` by any
+     * path, and even the open lookup never asked for it (MV-T3 T1 measured both).
      */
     override suspend fun fetch(): DeclaredVocabulary {
         val lexicon = load()?.lexicon ?: return DeclaredVocabulary()
 
-        val entries =
+        val rowsByRef =
             lexicon.entries
                 .filter { it.targetClass == TargetClass.MODEL_OBJECT }
                 .groupBy { it.targetRef }
-                .map { (targetRef, rows) ->
+        val memberRefs = lexicon.targets.filterValues { it.memberVocabulary }.keys
+        val entries =
+            (rowsByRef.keys + memberRefs)
+                .map { targetRef ->
+                    val rows = rowsByRef[targetRef].orEmpty()
                     // MS: a lookup and a copy. A ref the archive declares nothing about — a
                     // pre-v3 archive, an md-backed estate, a ref the model does not contain —
                     // yields nulls, and "" is the correct reading of "nothing declared".
@@ -142,16 +154,19 @@ class LexiconArchiveRegistrySource(
                         nameRef = facts?.nameRef ?: "",
                         codeRef = facts?.codeRef ?: "",
                         codeFormat = facts?.codeFormat ?: "",
+                        // MV: the fourth lookup-and-copy. A pre-v5 archive decodes it as false.
+                        memberVocabulary = facts?.memberVocabulary ?: false,
                     )
                 }.sortedBy { it.category }
 
         // ⛑ The line whose absence is the whole issue: an empty vocabulary looks exactly like a
         // small one, so the size is stated every time it is projected rather than inferred.
         logger.info(
-            "declared vocabulary from {}: {} entity type(s), {} anchor(s), from {} archive entries " +
-                "({} non-object rows excluded)",
+            "declared vocabulary from {}: {} entity type(s) ({} member vocabularies), {} anchor(s), " +
+                "from {} archive entries ({} non-object rows excluded)",
             archivePath,
             entries.size,
+            entries.count { it.memberVocabulary },
             entries.sumOf { it.values.size },
             lexicon.entries.size,
             lexicon.entries.count { it.targetClass != TargetClass.MODEL_OBJECT },

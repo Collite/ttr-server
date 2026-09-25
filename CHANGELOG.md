@@ -16,6 +16,36 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+### resolver — a value governed by an entity is looked up in that entity's member vocabularies (MV-T3)
+
+The registry now learns every member vocabulary from the compiled lexicon archive
+(`ttr-lexicon-compiled/v5`). A value governed by an anchor is looked up where that anchor's values
+live.
+
+**Behaviour**
+
+- **Registry.** Every indexed attribute becomes a registry type, whether or not it has lexicon terms.
+  Its category is its own ref, its owner is its entity, and it has no anchors. Before, an attribute
+  without terms was absent from the registry. No question could reach its vocabulary except the
+  cross-category lookup round, which attributed the value to every attribute holding it.
+- **Governed lookup.** A value governed by an anchor (`stores in TN`) is gated to the anchor's own
+  categories plus its entity's member vocabularies (`store.state`, `store.store_name`). Nothing else is
+  added: `TN` under `stores` is not looked up in `customer_address.state`. The same rule scopes the
+  anchored lookup round and `resolve.gate:v1`.
+- **Re-gate.** A hypothesis naming an entity is confirmed by a member of that entity's own
+  vocabularies (`…Account.code#501001` confirms `…Account`). A member of another entity's vocabulary
+  still contradicts it.
+- **Entity names.** A member binding's and a member option's `entity_type_ref` is now the owning
+  entity (`er.entity.store`), not the attribute. `Option.member_of` still names the attribute. The
+  lattice is unchanged: `Binding.ref` is `<attribute>#<key>` and `Attribution.attribute_ref` is the
+  attribute.
+- **Unchanged.** A value whose governor owns no member vocabulary (`customers in TN`) is still found by
+  the open lookup and decided by the governor's declared relations, as before. A v4 archive gets exactly
+  the pre-MV answer.
+
+**Wire.** `resolver.v1.EntityType.member_vocabulary = 10` (**additive**): the per-request registry
+override can mark a type as a member vocabulary, as the archive does.
+
 ### lex-matcher — member vocabularies are loaded from Veles, keyed by attribute (MV-T2)
 
 The `metadata` loader (`FUZZY_LOADER_SOURCE=metadata`) now reads Veles' `ListMemberVocabularies`

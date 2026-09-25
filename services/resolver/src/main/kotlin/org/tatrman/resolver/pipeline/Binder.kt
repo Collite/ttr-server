@@ -146,8 +146,8 @@ object Binder {
         slot: SlotHint = SlotHint.NONE,
         kinds: Map<String, String> = emptyMap(),
         reach: Map<String, List<Reach>> = emptyMap(),
-        // MH tier M — fuzzy category → the ref whose member vocabulary it is (`owner(m)`).
-        // Defaulted and no-op when absent, like the three above it.
+        // MH tier M — fuzzy category → the entity whose member it is (`owner(m)`; MV §5.3,
+        // `memberEntityByCategory`). Defaulted and no-op when absent, like the three above it.
         memberOwners: Map<String, String> = emptyMap(),
     ): Verdict {
         val rejected = mutableListOf<ClassedMatch>()
@@ -402,11 +402,12 @@ object Binder {
      * same posture the containment collapse takes). `mandatory` is deliberately not consulted: a
      * nullable relation still names the owner the user meant.
      *
-     * ⚑ E(m) is `owners[owner(m)]`, not `owner(m)`. P3·S1·T1 measured what `owner(m)` actually is
-     * on this system — the COLUMN-level attribute ref, because the archive projects every declared
-     * vocabulary entry with `category == targetRef` — so comparing it with a governor's entity ref
-     * would never be true. On a registry that does project entities the two coincide and this
-     * reads as contracts §7.5's first clause verbatim.
+     * ✅ E(m) is `owner(m)` since MV-T3 (member-vocabulary contracts §5.3, A-MH-2): the producers
+     * hand [memberOwners] as `memberEntityByCategory` — category → the ENTITY — the same map
+     * `GateSpans` names a member's entity with. P3·S1·T1 had measured `owner(m)` as the
+     * column-level attribute ref, which is why this used to read `owners[owner(m)]`; the extra
+     * `owners` step below is kept so a caller passing the older category → attribute map
+     * (`refByCategory`) still gets the entity, and it is a no-op on the entity map.
      *
      * Refuse-over-guess is what keeps a FACT governor out: *"sales in TN"* is the store's state or
      * the customer's, and the fact reaches both. Only `entity`/`attribute` governors are admitted,
@@ -428,7 +429,7 @@ object Binder {
         val members = admitted.filter { !isModelObject(it) }
         if (members.size < 2) return admitted
 
-        /** The ENTITY behind a member's owning category — see the ⚑ above. */
+        /** The ENTITY behind a member's owning category — see the ✅ above. */
         fun entityOf(c: ClassedMatch): String {
             val owner = memberOwners[c.match.category] ?: c.match.category
             return owners[owner]?.takeIf { it.isNotBlank() } ?: owner

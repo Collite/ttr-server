@@ -5,6 +5,7 @@ import org.tatrman.nlp.v1.AnalyzeResponse
 import org.tatrman.nlp.v1.NerEntity
 import org.tatrman.nlp.v1.Token
 import org.tatrman.resolver.model.ResolverEntityType
+import org.tatrman.resolver.model.valueCategoriesByRef
 import org.tatrman.text.Normalization.fold
 
 /**
@@ -163,6 +164,9 @@ object SpanProposal {
 
         val allCategories = entityTypes.flatMap { it.categories }.distinct()
         val allRefs = entityTypes.map { it.ref }
+        // MV §5.3 — where a value governed by each object is looked up (its own categories, then
+        // its member vocabularies'). Built once per proposal; read by the governed block below.
+        val valueCategories = entityTypes.valueCategoriesByRef()
         val universal = universalCharRanges(parse.entitiesList)
 
         val hasParse = tokens.any { it.depHead > 0 }
@@ -303,8 +307,15 @@ object SpanProposal {
                 // whose vocabulary actually holds the value, which is a question about DATA that
                 // `SpanProposal` has no business answering: it proposes spans, it does not decide
                 // whose member a word is.
+                //
+                // ✅ MV (member-vocabulary contracts §5.3) — and the categories are where the
+                // owners' VALUES live: each owner's own categories ∪ its member vocabularies
+                // (`valueCategoriesByRef`). An entity's values are indexed under its attributes'
+                // refs, never its own, so before MV this lookup could not find `TN` under `stores`
+                // at all and every tier-M bind came through the open sibling and M3 (MH §7.5 ⚑).
+                // The GATED refs stay the owners: they are the governor the gate reasons about.
                 val refs = valueOwners.map { it.ref }.distinct()
-                val categories = valueOwners.flatMap { it.categories }.distinct()
+                val categories = valueOwners.flatMap { valueCategories[it.ref] ?: it.categories }.distinct()
                 for (childIdx in children[idx + 1].orEmpty()) {
                     val child = tokens[childIdx]
                     if (child.depRelation !in GOVERNED_VALUE_RELATIONS) continue

@@ -41,11 +41,13 @@ import org.tatrman.resolver.v1.ResolveResponse
  * the shape T2/T3 cannot see: three `M:` identities are a SAME-kind tie, and neither the slot
  * nor reachability is asked of a data row. What the sentence offers instead is the GOVERNOR.
  *
- * ⛔ The registry is modelled on what the ARCHIVE channel actually projects (P3·S1·T1): every
- * declared vocabulary entry carries `category == targetRef`
- * (`LexiconArchiveRegistrySource:124`), so a fuzzy member column is its own type and
- * `GateSpans.entityRefOf` returns the COLUMN-level attribute ref for a member row — never the
- * entity's. The `.state` types below exist for that reason and are not decoration.
+ * ⛔ The registry is modelled on what the ARCHIVE channel projects: every declared vocabulary
+ * entry carries `category == targetRef`, so a member vocabulary is its own type, gated by its
+ * attribute ref — and since MV-T3 (a v5 archive) it is there whether or not it has terms, flagged
+ * `member_vocabulary` and owned by its entity. `membersOf` reads that pair, which is how a value
+ * governed by `store` reaches `store.state`; `GateSpans` names a member's ENTITY as its
+ * `entity_type_ref` and its attribute as `member_of`. The `.state` types below exist for that
+ * reason and are not decoration. [MvEstate] builds the same estate through the real compiler.
  */
 object MhMembers {
     const val STORE = "er.entity.store"
@@ -82,6 +84,7 @@ object MhMembers {
         kind: String,
         owner: String = "",
         reach: List<Pair<String, Boolean>> = emptyList(),
+        member: Boolean = false,
     ): EntityType.Builder {
         val b =
             EntityType
@@ -90,6 +93,7 @@ object MhMembers {
                 .addCategories(ref)
                 .addAllAnchors(anchors)
                 .setObjectKind(kind)
+                .setMemberVocabulary(member)
         if (owner.isNotBlank()) b.ownerRef = owner
         for ((f, m) in reach) b.addReachedFrom(Reach.newBuilder().setFactRef(f).setMandatory(m))
         return b
@@ -122,12 +126,13 @@ object MhMembers {
                 ),
             ).addEntityTypes(et(WEB_SALES, listOf("web"), "entity_with_measures"))
             .addEntityTypes(et(ITEM, listOf("item", "položka"), "entity"))
-            // The member-bearing columns. Their `ownerRef` is what turns a column-level
-            // `owner(m)` back into the entity M3 reasons about.
-            .addEntityTypes(et(STORE_STATE, listOf(), "attribute", owner = STORE))
-            .addEntityTypes(et(CA_STATE, listOf(), "attribute", owner = CUSTOMER_ADDRESS))
-            .addEntityTypes(et(WAREHOUSE_STATE, listOf(), "attribute", owner = WAREHOUSE))
-            .addEntityTypes(et(STORE_NAME, listOf(), "attribute", owner = STORE))
+            // The member vocabularies — what a v5 archive projects for an indexed attribute with
+            // no terms (MV-T3): gated by their own ref, owned by their entity, flagged. `membersOf`
+            // reads the flag + owner pair; that is how a value governed by `store` reaches them.
+            .addEntityTypes(et(STORE_STATE, listOf(), "attribute", owner = STORE, member = true))
+            .addEntityTypes(et(CA_STATE, listOf(), "attribute", owner = CUSTOMER_ADDRESS, member = true))
+            .addEntityTypes(et(WAREHOUSE_STATE, listOf(), "attribute", owner = WAREHOUSE, member = true))
+            .addEntityTypes(et(STORE_NAME, listOf(), "attribute", owner = STORE, member = true))
             .addLocales("cs")
             .addLocales("en")
             .setSnapshotHash("snap-mh-m")

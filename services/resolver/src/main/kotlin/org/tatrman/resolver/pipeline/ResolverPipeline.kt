@@ -602,6 +602,9 @@ class ResolverPipeline(
                         it.nameAttributeRef,
                         it.codeAttributeRef,
                         it.codeFormat,
+                        // MV: and once more — a caller that could not mark a member vocabulary
+                        // could not exercise the governed lookup without building an archive.
+                        it.memberVocabulary,
                     )
                 }
             val thresholds =
