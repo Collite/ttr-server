@@ -123,6 +123,9 @@ class ValueKind(StrEnum):
     UNSPECIFIED = "UNSPECIFIED"
     LITERAL = "LITERAL"
     GROUNDED = "GROUNDED"
+    # LP contracts §2 — a QUOTED literal, taken as typed. Its text is `verbatim_text`
+    # (delimiters removed), never `span.text` (the span keeps the quotes the user typed).
+    VERBATIM = "VERBATIM"
 
 
 # ------------------------------------------------------------------------ messages
@@ -198,6 +201,12 @@ class ValueFinding(BaseModel):
     # The BOUND mention whose categories scoped the lookup (RV-33). Empty is meaningful:
     # it separates G3 (nothing to miss) from G4 (a known scope that missed).
     anchor_mention_id: str = ""
+    # LP contracts §2 — both OPTIONAL on the wire and meaningful only on a VERBATIM value.
+    # `verbatim_text` is the §1.4 text (delimiters removed, outer whitespace trimmed);
+    # `predicate_ref` is a `pred:` ref, absent when the question named no operator (then
+    # §2.2's default applies — the consumer's call, not "equals").
+    verbatim_text: str | None = None
+    predicate_ref: str | None = None
 
 
 class Hypothesis(BaseModel):

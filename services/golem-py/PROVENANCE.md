@@ -67,5 +67,11 @@ scoring input, never a source.
   the contract this service implements, produced by RV-P2 in the open, and named on the
   MAY-consult list as `hartland_cz`-lineage estate fixtures. Framework behaviour was
   established by inspecting the installed `pydantic-graph` package under test.
+- **2026-09-25 · LP review-103 L9 (VERBATIM values).** Clean-room observed. The legacy
+  `ai-platform` repository was not opened, listed or searched in the session that made this
+  change; `EXAMPLES.md` was not opened. What WAS read: the shared `.proto` tree
+  (`ValueFinding.verbatim_text` / `predicate_ref`, `VALUE_KIND_VERBATIM`), the resolver's
+  `LatticeAssembler` (the producer of the VERBATIM value, this repo), the LP `contracts.md`
+  §2/§5/§8 and `review-103.md` (Tatrman project documents), and this directory's own code.
 - Sessions that touch this directory later **append a dated line here**. A session that
   cannot attest to the above must say so explicitly rather than leave the record silent.

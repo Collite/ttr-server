@@ -223,6 +223,8 @@ def lattice_from_proto(msg: Any) -> ResolutionState:
                     else None
                 ),
                 anchor_mention_id=v.anchor_mention_id,
+                verbatim_text=v.verbatim_text if v.HasField("verbatim_text") else None,
+                predicate_ref=v.predicate_ref if v.HasField("predicate_ref") else None,
             )
             for v in msg.values
         ],
