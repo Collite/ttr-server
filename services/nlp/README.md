@@ -154,6 +154,24 @@ op_routing:
 default_language: "cs"
 ```
 
+#### Language tags
+
+Routing keys use a **bare primary subtag** (`LEMMATIZE.cs`), and so does every
+engine's `supported_languages()`. A request's `language` is folded to that subtag
+before it is looked up, so `en-US`, `en_US` and `EN` all route exactly as `en`
+does, and the response echoes the tag that actually served (`en`).
+
+This is not cosmetic. Before the fold, a region-qualified tag matched no routing
+key, no engine, no fallback and nothing in the last-resort capability scan: the
+request degraded to the floor with `RG-NLP-010 unsupported (language, op)` and
+returned zero tokens **without ever reaching a backend**, while the same text
+under `en` parsed normally. An estate whose caller sends a locale — hartland's
+Shem declares `locale_defaults: [en-US, cs-CZ]` — looked dark in both languages
+for what was only an unfolded tag.
+
+A region in a routing **key** is refused at boot (`LEMMATIZE.en-US`): requests are
+folded before lookup, so such a key could never match.
+
 ### Czech morphology — the lexicon front (LM, NLS-P9.1)
 
 A pipeline marked `morph: true` runs the curated Czech lexicon **in this

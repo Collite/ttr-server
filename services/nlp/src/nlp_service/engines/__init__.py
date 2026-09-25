@@ -41,6 +41,7 @@ from nlp_service.routing import (
     FLOOR_MODEL,
     FLOOR_MODEL_VERSION,
     Route,
+    normalize_language,
     validate_routing,
 )
 
@@ -195,7 +196,15 @@ class EngineRegistry:
         Falls back to the degrade floor (RG-NLP-010) when no engine serves the
         (language, op). Attaches RG-NLP-002 for a REMOTE_UNPINNED tier and
         RG-NLP-003 when a resolved model-bearing engine has an empty model id.
+
+        `language` is normalized to its primary subtag first, and the resolved
+        `Route` carries the NORMALIZED tag: a route describes what actually
+        served, and `en` is what served a request that said `en-US`. Normalizing
+        here as well as at the orchestrator's entry points is deliberate — the
+        pipeline runner and the capability matrix call this directly — and
+        `normalize_language` is idempotent so the double application is free.
         """
+        language = normalize_language(language)
         name = self._resolve_engine(op, language, engine_hint)
         if name is None:
             return Route(
