@@ -119,6 +119,20 @@ fun Application.configureRoutes(
                                             norm = it.provenance.norm,
                                             algorithm = it.provenance.algorithm,
                                             distance = it.provenance.distance,
+                                            // review-103 L6 — the v2 provenance, as the gRPC path
+                                            // carries it (empty / null on a v1 row).
+                                            tokenHits =
+                                                it.provenance.tokenHits.map { h ->
+                                                    org.fuzzy.common.TokenHit(
+                                                        queryToken = h.queryToken,
+                                                        candidateToken = h.candidateToken,
+                                                        kind = h.kind,
+                                                        distance = h.distance,
+                                                        queryPos = h.queryPos,
+                                                        candidatePos = h.candidatePos,
+                                                    )
+                                                },
+                                            coverage = it.provenance.coverage,
                                         ),
                                 )
                             }

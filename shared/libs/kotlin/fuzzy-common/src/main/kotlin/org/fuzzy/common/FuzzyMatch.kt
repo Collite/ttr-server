@@ -15,6 +15,23 @@ data class Provenance(
     val norm: String? = null,
     val algorithm: String? = null,
     val distance: Int? = null,
+    // LP-P0 `fuzzy.match:v2` (contracts §4.6; review-103 L6): the per-token hits and the candidate
+    // coverage the gRPC Provenance carries as `token_hits` (7) and `coverage` (8). Empty / null on a
+    // v1 row, exactly as on the wire — REST reported `method = TATRMAN_V2` while dropping both.
+    val tokenHits: List<TokenHit> = emptyList(),
+    val coverage: Double? = null,
+)
+
+/** LP-P0 (contracts §4.6) — how one query token matched one candidate token (a v2 row only). */
+@Serializable
+data class TokenHit(
+    val queryToken: String,
+    val candidateToken: String,
+    /** `exact` · `typo` · `prefix`. */
+    val kind: String,
+    val distance: Int = 0,
+    val queryPos: Int = 0,
+    val candidatePos: Int = 0,
 )
 
 @Serializable
