@@ -20,7 +20,7 @@ data class AppConfig(
      * Warehouse connection for the `metadata` loader source. Null for the
      * default `static` (in-repo JSON catalog) source, which needs no DB.
      * Required (non-null) when `loaderSource.source = "metadata"` — the loader
-     * composes `SELECT pk, col FROM table` per fuzzy column and runs it here.
+     * runs each member vocabulary's read plan (rendered by Veles) here.
      */
     val database: DatabaseConfig? = null,
 )
@@ -100,14 +100,16 @@ data class MetadataConfig(
     val host: String = "veles",
     val port: Int = 7261,
     val timeoutMs: Long = 10_000,
-    val schema: String = "db",
     /**
      * Source-identifier guard for the v1 single-source assumption. When
-     * set, the loader skips any fuzzy column whose `QualifiedName.namespace`
-     * differs from this value and records `fuzzy_loader_skipped_total{reason="wrong_source"}`.
+     * set, the loader skips any member vocabulary whose ATTRIBUTE's namespace
+     * differs from this value and records `member_vocabulary_skipped_total{reason="wrong_source"}`.
      * Empty string disables the check — the historical v1 "single source,
      * asserted not solved" behaviour. Multi-source deployments should set
      * this explicitly.
+     *
+     * (MV-T2: `schema` / `FUZZY_METADATA_SCHEMA` is gone — Veles lists member vocabularies
+     * by attribute, whatever schema their rows live in.)
      */
     val namespace: String = "",
 )
@@ -299,7 +301,6 @@ object ConfigLoader {
                 host = if (metadata.hasPath("host")) metadata.getString("host") else defaults.host,
                 port = if (metadata.hasPath("port")) metadata.getInt("port") else defaults.port,
                 timeoutMs = if (metadata.hasPath("timeout-ms")) metadata.getLong("timeout-ms") else defaults.timeoutMs,
-                schema = if (metadata.hasPath("schema")) metadata.getString("schema") else defaults.schema,
                 namespace = if (metadata.hasPath("namespace")) metadata.getString("namespace") else defaults.namespace,
             )
         } catch (e: com.typesafe.config.ConfigException) {

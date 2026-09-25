@@ -66,34 +66,6 @@ class FuzzyTelemetry {
             .description("Duration of cache refresh")
             .register(meterRegistry)
 
-    private val skippedNoPk =
-        Counter
-            .builder("fuzzy_loader_skipped_total")
-            .tag("reason", "no_pk")
-            .description("Skipped fuzzy targets due to no primary key")
-            .register(meterRegistry)
-
-    private val skippedCompositePk =
-        Counter
-            .builder("fuzzy_loader_skipped_total")
-            .tag("reason", "composite_pk")
-            .description("Skipped fuzzy targets due to composite primary key")
-            .register(meterRegistry)
-
-    private val skippedWrongSource =
-        Counter
-            .builder("fuzzy_loader_skipped_total")
-            .tag("reason", "wrong_source")
-            .description("Skipped fuzzy targets due to mismatched source")
-            .register(meterRegistry)
-
-    private val skippedSqlFailed =
-        Counter
-            .builder("fuzzy_loader_skipped_total")
-            .tag("reason", "sql_failed")
-            .description("Skipped fuzzy targets due to SQL failure")
-            .register(meterRegistry)
-
     private val metadataFailures =
         Counter
             .builder("fuzzy_loader_metadata_failures_total")
@@ -104,13 +76,19 @@ class FuzzyTelemetry {
         refreshDurationTimer.record(java.time.Duration.ofNanos((durationSeconds * 1_000_000_000).toLong()))
     }
 
+    /**
+     * MV-T2 — a member vocabulary the loader did not load, by reason: `no_key` (RG-FUZ-001),
+     * `no_read_plan` (RG-FUZ-003), `wrong_source`, `sql_failed`, `alias_sql_failed`. Renamed from
+     * `fuzzy_loader_skipped_total{no_pk|composite_pk|…}`: what is skipped is a vocabulary, and the
+     * key rule is Veles' now, not a table's primary key.
+     */
     fun recordSkipped(reason: String) {
-        when (reason) {
-            "no_pk" -> skippedNoPk.increment()
-            "composite_pk" -> skippedCompositePk.increment()
-            "wrong_source" -> skippedWrongSource.increment()
-            "sql_failed" -> skippedSqlFailed.increment()
-        }
+        Counter
+            .builder("member_vocabulary_skipped_total")
+            .tag("reason", reason)
+            .description("Member vocabularies the loader did not load, by reason")
+            .register(meterRegistry)
+            .increment()
     }
 
     fun recordMetadataFailure() {

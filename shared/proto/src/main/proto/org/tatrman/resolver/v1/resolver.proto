@@ -173,6 +173,14 @@ message EntityType {
   string name_attribute_ref = 7;
   string code_attribute_ref = 8;
   string code_format = 9;
+  // MV (member-vocabulary contracts §5.2) — this ref is an INDEXED attribute (or column): it
+  // has a member vocabulary, registered and queried under this very ref as its category, and
+  // its entity is `owner_ref`. That pair is how a value governed by the entity reaches the
+  // vocabulary (§5.3). Both channels supply it: this override, and the snapshot channel from
+  // the compiled lexicon archive's `targets[ref].memberVocabulary` (`ttr-lexicon-compiled/v5`),
+  // which lists every indexed attribute whether or not anyone wrote a term for it. False on
+  // an older archive, where a governed value reaches no member vocabulary (the pre-MV path).
+  bool member_vocabulary = 10;
 }
 
 // MH — an object with a declared relation TO this entity (archive `targets[ref].reachedFrom`),
@@ -244,9 +252,12 @@ message Universal {
 message Domain {
   string entity_type_ref = 1;
   string raw_text = 2;
-  string resolved_id = 3;    // set when instance-determinate (MEMBER hit)
+  string resolved_id = 3;    // set when instance-determinate (MEMBER hit) — the member's value
   string resolved_label = 4;
   repeated Candidate candidates = 5;
+  // MV (review-104 F6) — for a MEMBER hit, the attribute whose member vocabulary resolved_id is a
+  // value of (`er.<ns>.<entity>.<attribute>`); entity_type_ref names its entity. "" otherwise.
+  string member_of = 6;
 }
 
 message Candidate {
@@ -308,7 +319,8 @@ message Option {
   // empty for VOCABULARY options. A clarification over `TN` ×3 is literally unanswerable
   // without it: the three options carry the same label, the same span and no target_ref, so
   // the only thing that distinguishes them is whose value it is — the store's state, the
-  // customer's, or the warehouse's.
+  // customer's, or the warehouse's. Since MV-T3 it is the ATTRIBUTE (entity_type_ref names the
+  // entity), and it is signed into resume_token: two attributes of one entity can hold one value.
   string member_of = 8;
 }
 

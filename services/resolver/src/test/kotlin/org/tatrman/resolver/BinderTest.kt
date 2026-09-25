@@ -885,6 +885,37 @@ class BinderTest :
             bind.rejected.map { it.match.candidateId } shouldContainExactlyInAnyOrder listOf("ca#3", "wh#1")
         }
 
+        "review-104 F3 — one VALUE in three vocabularies is three readings, not one answer reached thrice" {
+            // As lex-matcher answers since A-MV-15: the id IS the value, so all three rows carry
+            // `TN`. An identity without the category collapsed them to one and bound whichever the
+            // matcher listed first — no governor, no question, and the owner silently chosen.
+            val sameValue =
+                listOf(storeState, caState, whState).map {
+                    member("TN", it, 1.0, EvidenceClass.EVIDENCE_CLASS_EXACT)
+                }
+
+            decideM(classedMatches = sameValue)
+                .shouldBeInstanceOf<Binder.Ambiguous>()
+                .admitted
+                .map { it.match.category } shouldContainExactlyInAnyOrder listOf(storeState, caState, whState)
+            // ...and the governor still picks its own attribute's reading out of the three.
+            decideM(classedMatches = sameValue, governorRef = store)
+                .shouldBeInstanceOf<Binder.Bind>()
+                .winner.match.category shouldBe storeState
+        }
+
+        "review-104 F2 — the same value reached twice in ONE vocabulary is one answer" {
+            // Two routes to `store.state = TN` (the governed span and a re-asked round) are not a tie.
+            decideM(
+                classedMatches =
+                    listOf(
+                        member("TN", storeState, 1.0, EvidenceClass.EVIDENCE_CLASS_EXACT),
+                        member("TN", storeState, 0.99, EvidenceClass.EVIDENCE_CLASS_EXACT),
+                    ),
+            ).shouldBeInstanceOf<Binder.Bind>()
+                .winner.match.score shouldBe 1.0
+        }
+
         "mh-m2: a governor that REACHES the owner in one declared hop binds — `customers in TN`" {
             decideM(governorRef = customer)
                 .shouldBeInstanceOf<Binder.Bind>()

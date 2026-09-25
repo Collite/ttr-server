@@ -24,7 +24,11 @@ package org.tatrman.fuzzy.core
  * filter, and lex-matcher never picks a winner across layers (that is the resolver's gate).
  */
 enum class SourceTag {
-    /** Data values — RV's `DATA`. The candidate `id` is a data PK (→ `resolved_id`). */
+    /**
+     * Data values — RV's `DATA`. The candidate `id` identifies the value within its category
+     * (→ `resolved_id`): since MV (A-MV-15) a member vocabulary's id IS the stored value, the thing
+     * a filter compares the attribute against; an older loader wrote the row's key.
+     */
     MEMBER,
 
     /** Legacy: declared lexicon / `valueLabels`, undifferentiated. Superseded by the two below. */

@@ -14,6 +14,7 @@ import org.slf4j.LoggerFactory
  * ```json
  * {
  *   "version": 1,
+ *   "methods": { "product": "TOKENS" },
  *   "categories": {
  *     "product": [
  *       { "id": "P001", "value": "Widget Mk I" },
@@ -25,6 +26,12 @@ import org.slf4j.LoggerFactory
  *   }
  * }
  * ```
+ *
+ * MV-T2 — `methods` gives a category's member rows their match method (`EXACT` · `TYPOS(n)` ·
+ * `TOKENS`), as Veles gives a member vocabulary its own. A category it does not name is `EXACT`: a
+ * member value nobody declared a slack for is matched exactly, the same rule an indexed attribute
+ * with no authored method follows (above, `customer`). Declared-term rows (`targetRef`) are not
+ * member rows and carry no category method.
  *
  * Each `value` is folded (NFD + lowercase) at load time so the matcher sees
  * the same tokens it would see for a query. The ai-platform `fuzzy.queries`
@@ -38,6 +45,7 @@ object FuzzyCatalog {
     @Serializable
     private data class CatalogFile(
         val version: Int = 1,
+        val methods: Map<String, String> = emptyMap(),
         val categories: Map<String, List<CatalogEntry>> = emptyMap(),
     )
 
@@ -77,12 +85,15 @@ object FuzzyCatalog {
                 return emptyMap()
             }
         val out =
-            parsed.categories.mapValues { (_, entries) ->
+            parsed.categories.mapValues { (category, entries) ->
+                val method = parsed.methods[category] ?: MatchMethodNames.EXACT
                 entries.map {
                     if (it.targetRef != null) {
                         Candidate.vocabulary(it.id, it.value, it.targetRef)
                     } else {
-                        Candidate.fromValues(it.id, it.value)
+                        // Built once with its method and category (review-104 F13): `copy` re-ran
+                        // the constructor's fold, method parse and NFC form for every row.
+                        Candidate.fromValues(it.id, it.value, method, category)
                     }
                 }
             }

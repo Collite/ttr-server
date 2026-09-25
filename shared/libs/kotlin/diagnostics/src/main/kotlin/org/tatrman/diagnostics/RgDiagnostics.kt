@@ -68,6 +68,15 @@ object RgDiagnostics {
                 "Member vocabulary '{category}' has no read plan — {reason}",
                 "The reason names the cause: an expression-mapped attribute, or an owner outside the translator's default namespace, is not renderable yet; anything else is the translator's own error. The vocabulary stays unloaded until it renders.",
             ),
+            // MV-T2 — the lex-matcher could not list member vocabularies. It keeps serving its previous
+            // load rather than an empty member layer: an outage must not read as "the estate has no values".
+            // `{served}` says which: the previous load, or — before the first listing — none yet.
+            RgDiagnostic(
+                "RG-FUZ-004",
+                Severity.WARNING,
+                "Member vocabularies unavailable — {reason}; {served}.",
+                "A Veles that predates ListMemberVocabularies answers UNIMPLEMENTED: release Veles and lex-matcher together. Otherwise check that Veles is reachable and has a model loaded.",
+            ),
             RgDiagnostic(
                 "RG-GND-001",
                 Severity.WARNING,

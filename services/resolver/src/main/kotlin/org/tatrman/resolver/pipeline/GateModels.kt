@@ -57,7 +57,8 @@ data class GatedSpan(
 
 /**
  * One resolved domain binding (internal model; T5 maps it to the `EntityBinding`
- * proto). MEMBER hits carry [resolvedId] (a data PK → instance-determinate);
+ * proto). MEMBER hits carry [resolvedId] (the member's value since A-MV-15 → instance-determinate)
+ * and [memberOf] (the attribute whose vocabulary it is);
  * VOCABULARY hits carry [targetRef] (a declared lexicon target). [siblingRefs] is
  * the Q-20 sibling-column expansion — a value match on a KOD/NAZEV column also
  * points at its sibling column (a catalog lookup, not inference).
@@ -74,6 +75,12 @@ data class DomainBinding(
     val score: Double,
     val algorithm: String,
     val snapshotHash: String,
+    /**
+     * MV (review-104 F6) — for a MEMBER binding, the attribute whose member vocabulary [resolvedId]
+     * is a value of; blank otherwise. [entityTypeRef] names the ENTITY since MV-T3, so without this
+     * `TN` as a billing state and as a shipping state of one customer were the same binding.
+     */
+    val memberOf: String = "",
 )
 
 /**
@@ -99,9 +106,9 @@ data class ClarificationOption(
      */
     val objectKind: String = "",
     /**
-     * MH tier M — for a MEMBER option, the ref whose member vocabulary produced it
-     * (`GateSpans.entityRefOf`); blank for a VOCABULARY option, which names its object through
-     * [targetRef] already.
+     * MH tier M — for a MEMBER option, the ref whose member vocabulary produced it — its ATTRIBUTE
+     * since MV-T3 (`GateSpans.vocabularyRefOf`), and signed into the resume token since review-104
+     * F6; blank for a VOCABULARY option, which names its object through [targetRef] already.
      *
      * The exact complement of [objectKind], and for the same reason: a clarification is only a
      * question if its options can be told apart. `object_kind` is what separates two OBJECTS

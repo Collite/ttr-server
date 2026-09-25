@@ -35,7 +35,7 @@ class ResumeSubjectBindingTest :
             .newBuilder()
             .setConversationId("c-sub")
             .setCallerSubject(subject)
-            .setResume(ResumeAnswer.newBuilder().setToken(token).setSelectedOptionId("M:df-adnak"))
+            .setResume(ResumeAnswer.newBuilder().setToken(token).setSelectedOptionId("M:er.qstred_df.member#df-adnak"))
             .build()
 
         "a token issued to alice cannot be resumed by a different principal" {

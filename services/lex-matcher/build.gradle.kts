@@ -89,6 +89,8 @@ dependencies {
     implementation(libs.tatrman.ttr.snapshot)
     implementation(libs.tatrman.ttr.lexicon)
     implementation(project(":shared:libs:kotlin:lex-matcher-core"))
+    // MV-T2 — RG-FUZ-00x wording comes from the one registry, not from string literals here.
+    implementation(project(":shared:libs:kotlin:diagnostics"))
     implementation(project(":shared:libs:kotlin:fuzzy-common"))
     // RG-P0.S3 — fold() now comes from the shared S-2 lib (was inline here).
     implementation(project(":shared:libs:kotlin:text"))
@@ -128,6 +130,8 @@ dependencies {
     testImplementation(libs.bundles.kotest)
     testImplementation(libs.mockk)
     testImplementation(libs.grpc.inprocess)
+    // MV-T2 — the member loader's read plans run through the real JDBC row mapping (PostgreSQL mode).
+    testImplementation(libs.h2)
     testImplementation(libs.ktor.client.mock)
     testImplementation(libs.ktor.server.test.host)
 }
