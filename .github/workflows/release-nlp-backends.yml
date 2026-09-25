@@ -16,8 +16,19 @@ name: Release NLP Backends (GHCR)
 #   NLP_NAMETAG3_MODEL_URL     (+ optional NLP_NAMETAG3_MODEL_SHA256)
 # spaCy/Stanza need no model arg (models are baked from pip in their Dockerfiles).
 #
-# Auth: GITHUB_TOKEN with packages:write — this repo is in the Collite org, so it can CREATE and push
-# the ghcr.io/collite/nlp-* packages (a local PAT needs the write:packages scope to do the same).
+# Auth: the TATRMAN_PKG_TOKEN PAT, with GITHUB_TOKEN as the fallback — the same pair
+# release-image.yml uses, and for the same reason.
+#
+# ⛔ GITHUB_TOKEN ALONE IS NOT ENOUGH HERE, and no amount of retrying changes that. GHCR grants a
+# repository's GITHUB_TOKEN write on a package only when that package was CREATED by a run in that
+# repository. `nlp-morphodita` and `nlp-nametag3` were not: the P(-1) `ttr-` prefix drop put them in
+# place by COPYING the `ttr-nlp-*` originals, so they are linked to no repository at all and the
+# token gets `denied: permission_denied: The requested installation does not exist` forever. Every
+# push this workflow ever made went to the `ttr-`-prefixed names, which is why it never hit this.
+#
+# The PAT authenticates as a USER, so per-package repository access does not apply and every package
+# the owner can write is reachable. GITHUB_TOKEN stays the fallback so the workflow still runs in a
+# fork or with no secrets set.
 
 on:
   workflow_dispatch:
@@ -72,11 +83,12 @@ jobs:
 
       - uses: docker/setup-buildx-action@v3
 
-      - uses: docker/login-action@v3
+      - name: Log in to GHCR
+        uses: docker/login-action@v4
         with:
           registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          username: ${{ secrets.TATRMAN_PKG_USER != '' && secrets.TATRMAN_PKG_USER || github.actor }}
+          password: ${{ secrets.TATRMAN_PKG_TOKEN != '' && secrets.TATRMAN_PKG_TOKEN || secrets.GITHUB_TOKEN }}
 
       - id: cfg
         shell: bash
