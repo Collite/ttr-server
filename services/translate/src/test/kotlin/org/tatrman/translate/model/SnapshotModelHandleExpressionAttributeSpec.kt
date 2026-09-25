@@ -187,7 +187,8 @@ private fun descriptor(
     ObjectDescriptor
         .newBuilder()
         .setQualifiedName(qn)
-        .setLocalName(qn.name) // mirrors MetadataServiceImpl: localName = qname.name
+        // As Veles sends it (`MetadataServiceImpl.toObjectDescriptor`): the last dotted segment only.
+        .setLocalName(qn.name.substringAfterLast('.'))
         .setSchemaCode(qn.schemaCode)
         .setKind(kind)
         .build()
