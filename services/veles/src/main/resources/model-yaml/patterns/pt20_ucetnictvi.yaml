@@ -16,7 +16,7 @@ query_patterns:
       nazev_ukazatele: "Kód nebo název ukazatele MÚ"
       obdobi: "Účetní období (RRRR.MM)"
     example:
-      question: "Vypiš účetní záznamy pro ukazatel VY KANCELAR za období 2026.03"
+      question: "Vypiš účetní záznamy pro ukazatel QT KANCELAR za období 2026.03"
     sql_template: |
       SELECT MIN(z.IDUCETZAP) AS IDUCETZAP,
              o.UCET_OBD,
@@ -50,7 +50,7 @@ query_patterns:
       nazev_strediska: "Název nebo kód střediska"
       obdobi: "Účetní období (RRRR.MM)"
     example:
-      question: "Vypiš účetní záznamy pro středisko DF ADNAK za období 2026.03 podle účetní hodnoty"
+      question: "Vypiš účetní záznamy pro středisko QT ORLAK za období 2026.03 podle účetní hodnoty"
     sql_template: |
       SELECT MIN(z.IDUCETZAP) AS IDUCETZAP,
              o.UCET_OBD,

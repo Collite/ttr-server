@@ -11,16 +11,16 @@ import io.kotest.matchers.shouldBe
  * GH #69 — IDF-weighted TATRMAN scoring.
  *
  * Mirrors the reported case: a category where the token "kancelar" appears in
- * every candidate (common) while "vy" is rare. Matching the common token alone
+ * every candidate (common) while "qt" is rare. Matching the common token alone
  * must NOT earn a high score; the full match and the rare-token match must win.
  */
 class TokenBasedIdfScoringTest :
     StringSpec({
-        // "kancelar" ∈ all 6 candidates (df=6, idf≈1.0); "vy" ∈ 2 (rare).
+        // "kancelar" ∈ all 6 candidates (df=6, idf≈1.0); "qt" ∈ 2 (rare).
         val candidates =
             listOf(
-                Candidate.fromValues("1", "VY KANCELAR"),
-                Candidate.fromValues("2", "Kancelar VY"),
+                Candidate.fromValues("1", "QT KANCELAR"),
+                Candidate.fromValues("2", "Kancelar QT"),
                 Candidate.fromValues("3", "Kancelar CS"),
                 Candidate.fromValues("4", "Kancelar SM"),
                 Candidate.fromValues("5", "Kancelar NT"),
@@ -36,11 +36,11 @@ class TokenBasedIdfScoringTest :
             )
 
         fun scores(idfEnabled: Boolean): Map<String, Double> =
-            matcher(idfEnabled).match("VY KANCELAR", 10).associate { it.first.value to it.second }
+            matcher(idfEnabled).match("QT KANCELAR", 10).associate { it.first.value to it.second }
 
         "IDF on — matching only the common token scores far below a full match" {
             val s = scores(idfEnabled = true)
-            val full = s["VY KANCELAR"] ?: 0.0
+            val full = s["QT KANCELAR"] ?: 0.0
             val commonOnly = s["Kancelar CS"] ?: 0.0
             full shouldBeGreaterThan 0.99
             // "Kancelar CS" shares only the ubiquitous "kancelar" — must fall well
@@ -51,9 +51,9 @@ class TokenBasedIdfScoringTest :
 
         "IDF on — the full match ranks first" {
             matcher(idfEnabled = true)
-                .match("VY KANCELAR", 10)
+                .match("QT KANCELAR", 10)
                 .first()
-                .first.value shouldBe "VY KANCELAR"
+                .first.value shouldBe "QT KANCELAR"
         }
 
         "IDF off (legacy) — the common-only match scores high, demonstrating the bug it fixes" {
@@ -65,9 +65,9 @@ class TokenBasedIdfScoringTest :
 
         "TokenIndex.idf — rarer tokens weigh more; common tokens floor at ≥1" {
             val index = TokenIndex(candidates)
-            index.idf("kancelar") shouldBeLessThan index.idf("vy")
+            index.idf("kancelar") shouldBeLessThan index.idf("qt")
             index.idf("kancelar") shouldBeGreaterThanOrEqual 1.0
             // An unseen token is treated as maximally rare (≥ any present token).
-            index.idf("zzz") shouldBeGreaterThan index.idf("vy")
+            index.idf("zzz") shouldBeGreaterThan index.idf("qt")
         }
     })

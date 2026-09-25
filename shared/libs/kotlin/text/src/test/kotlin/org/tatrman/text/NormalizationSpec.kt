@@ -25,7 +25,7 @@ class NormalizationSpec :
                 "Náměstí Míru" to "namesti miru",
                 // mixed case
                 "PRAHA" to "praha",
-                "DF ADNAK" to "df adnak",
+                "QT ORLAK" to "qt orlak",
                 "MaJeTeK" to "majetek",
                 // full Czech diacritic set
                 "ěščřžýáíéúůňťď" to "escrzyaieuuntd",

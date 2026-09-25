@@ -29,7 +29,7 @@ class AlgorithmCascadeTest :
                     mapOf(
                         category to
                             listOf(
-                                Candidate.fromValues("1", "DF ADNAK"),
+                                Candidate.fromValues("1", "QT ORLAK"),
                                 Candidate.fromValues("2", "Kancelář AD"),
                             ),
                     )
@@ -65,10 +65,10 @@ class AlgorithmCascadeTest :
                         CascadeStep(AlgorithmType.LEVENSHTEIN, 0.98),
                         CascadeStep(AlgorithmType.TATRMAN, 0.50),
                     )
-                val outcome = matcher.matchCascade("DF ADNAK", category, steps, 5)
+                val outcome = matcher.matchCascade("QT ORLAK", category, steps, 5)
                 outcome.matchedAlgorithm shouldBe AlgorithmType.LEVENSHTEIN
                 outcome.matches.first().candidateId shouldBe "1"
-                outcome.matches.first().candidate shouldBe "DF ADNAK"
+                outcome.matches.first().candidate shouldBe "QT ORLAK"
             }
         }
 
@@ -80,8 +80,8 @@ class AlgorithmCascadeTest :
                         CascadeStep(AlgorithmType.TATRMAN, 0.50),
                     )
                 // Extra token tanks whole-string Levenshtein but TATRMAN's token
-                // overlap with "DF ADNAK" stays strong.
-                val outcome = matcher.matchCascade("df adnak kancelar", category, steps, 5)
+                // overlap with "QT ORLAK" stays strong.
+                val outcome = matcher.matchCascade("qt orlak kancelar", category, steps, 5)
                 outcome.matchedAlgorithm shouldBe AlgorithmType.TATRMAN
                 outcome.matches.shouldNotBeEmpty()
             }
