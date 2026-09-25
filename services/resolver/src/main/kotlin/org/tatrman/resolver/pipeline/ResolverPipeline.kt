@@ -268,11 +268,20 @@ class ResolverPipeline(
             )
         }
 
+        // LP — a leftover mention headed by a word of a literal's `pred:` form is not something the
+        // user talked about, it is the comparison: once span proposal stopped folding *začínající*
+        // into *prodejny*, an analyser that tags the participle NOUN (MorphoDiTa does) would have
+        // proposed it on its own and asked the user what it means. The mention layer runs before the
+        // batch and cannot know which words are forms; this is the first line that does.
+        val formTokens = predicates.map { it.headToken }.toHashSet()
+        val ungatedSpans =
+            ungatedMentions
+                .filterNot { it.headToken in formTokens }
+                .map { GatedSpan(it, emptyList(), ambiguous = false) }
         // RV-P2.3 — the narrowing loop, between the broad pass and emit. It re-enters through the
         // same gate and re-assembles from the same internal model, so an emitted lattice is the
         // same KIND of object whether zero rounds ran or five did. Everything after this line is
         // written against the loop's result and cannot tell the difference.
-        val ungatedSpans = ungatedMentions.map { GatedSpan(it, emptyList(), ambiguous = false) }
         val rounds =
             lookupRounds.run(
                 lattice = assemble(broadPass.gated, ungatedSpans),
