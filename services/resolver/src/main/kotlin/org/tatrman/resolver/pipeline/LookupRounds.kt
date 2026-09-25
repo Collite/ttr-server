@@ -143,7 +143,10 @@ class LookupRounds(
             var added = 0
             val proposed = mutableListOf<Hypothesis>()
             for ((query, candidates) in answers) {
-                val span = spanFor(query, currentGated, currentUngated) ?: continue
+                // ✅LP-13 — a quoted literal has no span of its own until its lookup admits
+                // something; the rung builds it (see [quotedSpan]) and appends it on success.
+                val existing = spanFor(query, currentGated, currentUngated)
+                val span = existing ?: quotedSpan(query, currentGated + currentUngated, currentLattice) ?: continue
                 // The same gate the broad pass used. A round is a proposer; this is where its
                 // proposals stop being proposals (RV-7).
                 val verdict = Binder.gate(candidates, span.candidate, thresholds, owners, kinds, reach, memberOwners)
@@ -158,6 +161,10 @@ class LookupRounds(
                 if (verdict.admitted.isEmpty()) continue
                 val merged = merge(span, verdict)
                 added += verdict.admitted.size
+                if (existing == null) {
+                    currentGated = currentGated + merged
+                    continue
+                }
                 currentGated = replace(currentGated, span, merged)
                 currentUngated = replace(currentUngated, span, merged)
             }
@@ -256,6 +263,42 @@ class LookupRounds(
         (gated + ungated).firstOrNull {
             it.candidate.start == query.spanStart && it.candidate.end == query.spanEnd
         }
+
+    /**
+     * ✅LP-13 — the gated span a [RoundPlanner.Tier.QUOTED_VALUE] query stands for: the literal's
+     * own offsets (quotes included, as its VERBATIM value had them), its §1.4 text as the term, the
+     * attribute's member categories, and the head of the mention it was attributed through as its
+     * anchor — so the value it becomes is anchored exactly where the VERBATIM one was.
+     *
+     * Anchored, because the user named the axis twice over: the head mention, and the quotes.
+     */
+    private fun quotedSpan(
+        query: RoundPlanner.Query,
+        spans: List<GatedSpan>,
+        lattice: ResolutionState,
+    ): GatedSpan? {
+        if (query.tier != RoundPlanner.Tier.QUOTED_VALUE) return null
+        val anchor = lattice.mentionsList.firstOrNull { it.id == query.anchorMentionId }
+        val anchorHead =
+            anchor?.let { m ->
+                spans
+                    .firstOrNull { it.candidate.start == m.span.start && it.candidate.end == m.span.end }
+                    ?.candidate
+                    ?.headToken
+            } ?: -1
+        val candidate =
+            DomainSpanCandidate(
+                text = query.term,
+                start = query.spanStart,
+                end = query.spanEnd,
+                gatedEntityRefs = emptyList(),
+                categories = query.categories,
+                anchored = true,
+                origin = DomainSpanCandidate.Origin.QUOTED_LITERAL,
+                anchorHeadToken = anchorHead,
+            )
+        return GatedSpan(candidate, emptyList(), ambiguous = false)
+    }
 
     /**
      * Append, never re-decide. A candidate whose identity is already on the span is the same answer

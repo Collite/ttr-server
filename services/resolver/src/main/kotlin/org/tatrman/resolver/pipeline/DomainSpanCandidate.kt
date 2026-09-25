@@ -77,5 +77,13 @@ data class DomainSpanCandidate(
 
         /** The parse-less n-gram floor (R4-γ): a guess, and the lattice says so. */
         NGRAM_FLOOR,
+
+        /**
+         * ✅LP-13 — a quoted literal with no `pred:` trigger, looked up among the members of the
+         * name attribute it was attributed to: a value. Never proposed by [SpanProposal] (nothing
+         * inside a literal is); created only by the lookup rung's quoted tier
+         * ([RoundPlanner.Tier.QUOTED_VALUE]) when that lookup admits something.
+         */
+        QUOTED_LITERAL,
     }
 }

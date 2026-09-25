@@ -104,11 +104,24 @@ object LatticeAssembler {
 
         val gatedValues =
             valueSpans.map { span ->
+                // ✅LP-13 — a quoted literal the lookup rung matched against its head's members.
+                // Its span stays what the user TYPED (the literal's surface, quotes included, the
+                // same span its VERBATIM value had), and `verbatim_text` still says it was quoted:
+                // the re-gate keeps refusing hypotheses on it whatever it bound.
+                val quoted =
+                    if (span.candidate.origin == DomainSpanCandidate.Origin.QUOTED_LITERAL) {
+                        literals.spans.firstOrNull {
+                            it.literal.start == span.candidate.start && it.literal.end == span.candidate.end
+                        }
+                    } else {
+                        null
+                    }
                 val builder =
                     ValueFinding
                         .newBuilder()
-                        .setSpan(span(span.candidate.start, span.candidate.end, span.candidate.text))
+                        .setSpan(span(span.candidate.start, span.candidate.end, quoted?.surface ?: span.candidate.text))
                         .setKind(ValueKind.VALUE_KIND_LITERAL)
+                quoted?.let { builder.verbatimText = it.literal.text }
                 mentionIdByHead[span.candidate.anchorHeadToken]?.let { builder.anchorMentionId = it }
                 for (match in span.contenders) {
                     val binding = Bindings.of(match, snapshotHash)
@@ -252,8 +265,17 @@ object LatticeAssembler {
                             ?.ref ?: return@mapNotNull null
                     VerbatimAttribution.Trigger(span.candidate.headToken, ref)
                 } + predicates
+        // ✅LP-13 — a literal the quoted lookup BOUND is a member value now (emitted above, among
+        // the gated values), not a string to search for; its VERBATIM reading is withdrawn. One
+        // that found nothing, or an ambiguous one, stays: nothing gets worse than it was.
+        val lookedUp =
+            valueSpans
+                .filter {
+                    it.candidate.origin == DomainSpanCandidate.Origin.QUOTED_LITERAL && it.contenders.isNotEmpty()
+                }.map { it.candidate.start to it.candidate.end }
+                .toSet()
         val verbatimValues =
-            literals.spans.map { literal ->
+            literals.spans.filterNot { (it.literal.start to it.literal.end) in lookedUp }.map { literal ->
                 val builder =
                     ValueFinding
                         .newBuilder()
@@ -288,6 +310,9 @@ object LatticeAssembler {
                 val default = attributed?.let { VerbatimAttribution.defaultPredicate(it.facet) }.orEmpty()
                 val predicate = said.ifEmpty { default }
                 if (predicate.isNotEmpty()) builder.predicateRef = predicate
+                // …and says it was defaulted: a literal nobody qualified is, under ✅LP-13, a
+                // request to look it up among its head's members (see `RoundPlanner`).
+                if (said.isEmpty() && default.isNotEmpty()) builder.predicateImplied = true
                 builder
             }
         val valueBuilders =
@@ -460,6 +485,7 @@ object LatticeAssembler {
             DomainSpanCandidate.Origin.PROPER_NOUN,
             DomainSpanCandidate.Origin.NER_ENTITY,
             DomainSpanCandidate.Origin.LITERAL,
+            DomainSpanCandidate.Origin.QUOTED_LITERAL,
             -> Layer.VALUE
             // The parse-less n-gram floor guesses spans; a floor guess that matched is worth
             // reporting, one that did not is noise, and the honest record of the whole situation
