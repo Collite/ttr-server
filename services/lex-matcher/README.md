@@ -72,13 +72,33 @@ startup error unless `FUZZY_MATCH_VERSION=v1` goes with it.
 Only this service's shipped configuration moved. An embedder that never passes the argument keeps
 the pinned engine — that is what "v1 is byte-pinned" means.
 
+### v2 score normalization (`fuzzy.match.v2.normalize`, review-103 F3)
+
+§4.3's v2 score gives the order bonus to prefix and typo hits too, so a partial or typo match of a
+multi-token query could reach ≥ 1.0 — the value every consumer reads as "ordered exact" (the
+resolver classes a member row at ≥ 0.9999 as EXACT). v2 therefore keeps every row whose query tokens
+are **not all `exact`** under 1.0:
+
+- **`scale`** (default) — `S' = min(ceiling, S / S_perfect(n))`, where `S_perfect(n)` is the score of
+  an all-exact, in-order, full-coverage match of the same n-token query. One factor per query, so the
+  order among the non-exact rows is unchanged.
+- **`cap`** — `S' = min(S, ceiling)`.
+- **`off`** — the pre-fix §4.3 score. For calibration and rollback only.
+
+A row whose query tokens are all `exact` keeps its score in every mode, so ≥ 1.0 still means
+"ordered exact". `ceiling` must be > 0 and < 1.0, or the service refuses to start. The settings are
+inert under v1.
+
 | Config key | Env | Values | Default |
 |---|---|---|---|
 | `fuzzy.token-based.retrieval` | `FUZZY_TOKEN_BASED_RETRIEVAL` | `index-first` \| `legacy` | `index-first` |
 | `fuzzy.match.version` | `FUZZY_MATCH_VERSION` | `v1` \| `v2` | **`v2`** |
+| `fuzzy.match.v2.normalize.mode` | `FUZZY_V2_NORMALIZE_MODE` | `scale` \| `cap` \| `off` | `scale` |
+| `fuzzy.match.v2.normalize.ceiling` | `FUZZY_V2_NORMALIZE_CEILING` | `0 < c < 1.0` | `0.99` |
 
-The effective value is logged at startup (`Fuzzy match engine: fuzzy.match.version=…`) and echoed
-in `FuzzyStatusResponse.engine_version`, so the question "which engine is this pod serving?" is
+The effective values are logged at startup (`Fuzzy match engine: fuzzy.match.version=…
+fuzzy.match.v2.normalize: mode=… ceiling=…`). The version is also echoed in
+`FuzzyStatusResponse.engine_version`, so the question "which engine is this pod serving?" is
 answerable from outside the pod. Ask the pod, not the manifest.
 
 ## Run

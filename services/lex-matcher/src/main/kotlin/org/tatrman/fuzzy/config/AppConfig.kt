@@ -5,6 +5,7 @@ import com.typesafe.config.ConfigFactory
 import io.ktor.server.config.*
 import org.tatrman.fuzzy.core.MethodDispatcher
 import org.tatrman.fuzzy.core.ProfileScorer
+import org.tatrman.fuzzy.core.V2Normalization
 
 data class AppConfig(
     val serverPort: Int,
@@ -125,6 +126,11 @@ data class TokenBasedConfig(
     // `retrieval` above uses: the CODE default stays the pinned engine, the SHIPPED SERVICE moves.
     // V2 with LEGACY retrieval is a startup error (contracts §4.1).
     val matchVersion: org.tatrman.fuzzy.core.MatchVersion = org.tatrman.fuzzy.core.MatchVersion.V1,
+    // review-103 F3 (ruling 2, D3) — `fuzzy.match.v2.normalize.{mode,ceiling}` (env
+    // FUZZY_V2_NORMALIZE_MODE / FUZZY_V2_NORMALIZE_CEILING): how v2 keeps a row that is not
+    // all-exact under 1.0. Default scale/0.99 — the library's and the shipped value alike. Inert
+    // under v1.
+    val v2Normalization: V2Normalization = V2Normalization.DEFAULT,
 )
 
 /**
@@ -152,7 +158,8 @@ object ConfigLoader {
                 fuzzyConfig.hasPath("grpc.reflection-enabled") &&
                     fuzzyConfig.getBoolean("grpc.reflection-enabled"),
             refreshIntervalSeconds = fuzzyConfig.getLong("refreshIntervalSeconds"),
-            tokenBasedConfig = withMatchVersion(loadTokenBasedConfig(fuzzyConfig), fuzzyConfig),
+            tokenBasedConfig =
+                withV2Normalization(withMatchVersion(loadTokenBasedConfig(fuzzyConfig), fuzzyConfig), fuzzyConfig),
             nlp = loadNlpConfig(fuzzyConfig),
             loaderSource = loadLoaderSourceConfig(fuzzyConfig),
             metadata = loadMetadataConfig(fuzzyConfig),
@@ -227,6 +234,36 @@ object ConfigLoader {
         version.requireCompatible(tokenBased.retrieval)
         return tokenBased.copy(matchVersion = version)
     }
+
+    /**
+     * review-103 F3 (ruling 2, D3) — `fuzzy.match.v2.normalize.{mode,ceiling}` layered onto the
+     * token-based block. Blank (an env var exported empty) is unset and takes the default; a mode
+     * outside scale|cap|off, a ceiling that is not a number, or one outside (0, 1) is a STARTUP
+     * error naming the key — calibration is what this knob is for, so a typo must not quietly
+     * calibrate something else.
+     */
+    internal fun withV2Normalization(
+        tokenBased: TokenBasedConfig,
+        fuzzyConfig: com.typesafe.config.Config,
+    ): TokenBasedConfig {
+        val mode = V2Normalization.Mode.fromString(fuzzyConfig.optionalString("match.v2.normalize.mode"))
+        val ceilingText = fuzzyConfig.optionalString("match.v2.normalize.ceiling")
+        val ceiling =
+            if (ceilingText == null) {
+                V2Normalization.DEFAULT_CEILING
+            } else {
+                ceilingText.trim().toDoubleOrNull()
+                    ?: throw IllegalArgumentException(
+                        "fuzzy.match.v2.normalize.ceiling must be a number, got '$ceilingText'",
+                    )
+            }
+        // The constructor range-checks the ceiling (> 0, < 1.0) and names the key.
+        return tokenBased.copy(v2Normalization = V2Normalization(mode, ceiling))
+    }
+
+    /** The value at [path] as a string, or null when absent or blank (blank = unset). */
+    private fun com.typesafe.config.Config.optionalString(path: String): String? =
+        if (hasPath(path)) getString(path).takeIf { it.isNotBlank() } else null
 
     private fun loadTokenBasedConfig(fuzzyConfig: com.typesafe.config.Config): TokenBasedConfig =
         try {
