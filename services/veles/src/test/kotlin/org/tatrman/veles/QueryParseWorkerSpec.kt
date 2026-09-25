@@ -148,27 +148,27 @@ class QueryParseWorkerSpec :
         "QueryParseWorker parses each query against the model and records PARSED / FAILED" {
             val state = QueryParseState()
             val m = model()
-            state.reset(m.queries.keys)
+            state.reset(m.version.value, m.queries.keys)
             val worker = QueryParseWorker()
             worker.parseAll(m, state).join()
 
-            state.get(okQuery.qname).shouldBeInstanceOf<ParseStatus.ParseSuccess>()
+            state.get(m.version.value, okQuery.qname).shouldBeInstanceOf<ParseStatus.ParseSuccess>()
             // The parametrized query parses only because its `{name_filter}` placeholder is
             // de-braced to `?` via the ParameterBridge (declared params threaded through).
-            state.get(paramQuery.qname).shouldBeInstanceOf<ParseStatus.ParseSuccess>()
-            state.get(badSqlQuery.qname).shouldBeInstanceOf<ParseStatus.ParseFailure>()
-            state.get(unknownTableQuery.qname).shouldBeInstanceOf<ParseStatus.ParseFailure>()
-            val unsupported = state.get(unsupportedLangQuery.qname)
+            state.get(m.version.value, paramQuery.qname).shouldBeInstanceOf<ParseStatus.ParseSuccess>()
+            state.get(m.version.value, badSqlQuery.qname).shouldBeInstanceOf<ParseStatus.ParseFailure>()
+            state.get(m.version.value, unknownTableQuery.qname).shouldBeInstanceOf<ParseStatus.ParseFailure>()
+            val unsupported = state.get(m.version.value, unsupportedLangQuery.qname)
             unsupported.shouldBeInstanceOf<ParseStatus.ParseFailure>()
             unsupported.message shouldContain "PYTHON"
 
-            val counts = state.counts()
+            val counts = checkNotNull(state.counts(m.version.value))
             counts.parsed shouldBe 2
             counts.failed shouldBe 3
             counts.pending shouldBe 0
 
             // the parsed query's canonical form round-trips as a PlanNode
-            val ok = state.get(okQuery.qname)
+            val ok = state.get(m.version.value, okQuery.qname)
             ok.shouldBeInstanceOf<ParseStatus.ParseSuccess>()
             org.tatrman.plan.v1.PlanNode
                 .parseFrom(ok.canonicalFormProtoBytes) // must not throw
@@ -180,7 +180,7 @@ class QueryParseWorkerSpec :
             val registry = MetadataRegistry()
             registry.swap(m, ModelGraph.build(m))
             val state = QueryParseState()
-            state.reset(m.queries.keys)
+            state.reset(m.version.value, m.queries.keys)
             val service = MetadataServiceImpl(registry = registry, parseState = state)
 
             // before the worker runs: everything PENDING

@@ -33,6 +33,10 @@ failed with `sql_unparse_failed: PlanNode case 'NODE_NOT_SET'`.
   consumer that polled during the parse window gets the complete snapshot on its next conditional
   read instead of keeping the plan-less one until the model next changes. It settles once parsing
   is done. Without a live parse state (fixture boots) it stays the bare version.
+- A plan is only ever served for the model it was parsed against. Right after a model swap, until
+  parsing for the new model starts, a saved query is reported PENDING with no plan, where it used to
+  carry the previous model's. A late parse job from the previous model can no longer overwrite the
+  current result either.
 - **The ETag is no longer the model version.** It never was a documented one to rely on, but the
   proto comment said so: read the version from `snapshot.model.version` or
   `GetStatus.model_version`. `validate` did read it as the version; it now reads `GetStatus`

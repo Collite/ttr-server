@@ -43,10 +43,13 @@ class GetSnapshotCanonicalFormSpec :
         val okQn = QualifiedName(SchemaCode.UNSPECIFIED, "q", "ok")
         val badQn = QualifiedName(SchemaCode.UNSPECIFIED, "q", "bad")
 
-        fun model() =
+        fun model(
+            version: String = "v1",
+            okSql: String = "SELECT id, name FROM customers WHERE name <> ''",
+        ): Model =
             Model(
                 descriptor = ModelDescriptor(id = "test", name = "test"),
-                version = ModelVersion(value = "v1", swappedAt = Instant.now()),
+                version = ModelVersion(value = version, swappedAt = Instant.now()),
                 schemas =
                     mapOf(
                         "db" to
@@ -87,7 +90,7 @@ class GetSnapshotCanonicalFormSpec :
                             internalId = "q-ok",
                             qname = okQn,
                             sourceLanguage = "SQL",
-                            sourceText = "SELECT id, name FROM customers WHERE name <> ''",
+                            sourceText = okSql,
                             parseStatus = ParseStatus.ParsePending,
                         ),
                         Query(
@@ -105,7 +108,7 @@ class GetSnapshotCanonicalFormSpec :
             val m = model()
             val registry = MetadataRegistry()
             registry.swap(m, ModelGraph.build(m))
-            val state = QueryParseState().also { it.reset(m.queries.keys) }
+            val state = QueryParseState().also { it.reset(m.version.value, m.queries.keys) }
             return Triple(m, state, MetadataServiceImpl(registry = registry, parseState = state))
         }
 
@@ -129,7 +132,7 @@ class GetSnapshotCanonicalFormSpec :
             val resp = svc.snapshot()
             val ok = resp.query("ok")
             ok.parseStatus shouldBe ProtoParseStatus.PARSE_STATUS_PARSED
-            val parsed = state.get(okQn).shouldBeInstanceOf<ParseStatus.ParseSuccess>()
+            val parsed = state.get(m.version.value, okQn).shouldBeInstanceOf<ParseStatus.ParseSuccess>()
             ok.canonicalForm shouldBe PlanNode.parseFrom(parsed.canonicalFormProtoBytes)
             ok.canonicalForm.nodeCase shouldNotBe PlanNode.NodeCase.NODE_NOT_SET
 
@@ -171,5 +174,39 @@ class GetSnapshotCanonicalFormSpec :
             val registry = MetadataRegistry()
             registry.swap(m, ModelGraph.build(m))
             MetadataServiceImpl(registry).snapshot().etag shouldBe "v1"
+        }
+
+        // review-102 F4 — the state answers only for the model it was reset for.
+
+        "the swap window: until the parse state is reset for the new model, it serves no plan from the old one" {
+            val v1 = model()
+            val registry = MetadataRegistry().also { it.swap(v1, ModelGraph.build(v1)) }
+            val state = QueryParseState().also { it.reset(v1.version.value, v1.queries.keys) }
+            val svc = MetadataServiceImpl(registry = registry, parseState = state)
+            QueryParseWorker().also { it.parseAll(v1, state).join() }.close()
+            svc.snapshot().query("ok").hasCanonicalForm() shouldBe true
+
+            // v2 changes the query's text. The registry publishes it, THEN runs its listeners — the
+            // search-index rebuild first, the parse-state reset after it. In between:
+            val v2 = model(version = "v2", okSql = "SELECT id FROM customers")
+            registry.swap(v2, ModelGraph.build(v2))
+            val window = svc.snapshot().query("ok")
+            window.parseStatus shouldBe ProtoParseStatus.PARSE_STATUS_PENDING
+            window.hasCanonicalForm() shouldBe false
+        }
+
+        "a stale job from the previous model cannot overwrite the current model's result" {
+            val v1 = model()
+            val v2 = model(version = "v2", okSql = "SELECT id FROM customers")
+            val state = QueryParseState()
+            state.reset(v1.version.value, v1.queries.keys)
+            state.reset(v2.version.value, v2.queries.keys)
+            QueryParseWorker().also { it.parseAll(v2, state).join() }.close()
+            val current = state.get("v2", okQn).shouldBeInstanceOf<ParseStatus.ParseSuccess>()
+
+            // v1's job for the same qname lands last — as it can, since jobs are never cancelled.
+            state.set("v1", okQn, ParseStatus.ParseFailure("stale"))
+            state.get("v2", okQn) shouldBe current
+            state.get("v1", okQn) shouldBe null
         }
     })

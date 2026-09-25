@@ -143,8 +143,14 @@ class MetadataServiceImpl(
 ) : VelesServiceGrpcKt.VelesServiceCoroutineImplBase() {
     private val logger = org.slf4j.LoggerFactory.getLogger(MetadataServiceImpl::class.java)
 
-    /** Live parse status for a query — the background worker's view if available, else the model's stored value. */
-    private fun liveParseStatus(q: Query): DomainParseStatus = parseState?.get(q.qname) ?: q.parseStatus
+    /**
+     * Live parse status for a query of the snapshot [snap] — the background worker's view of THAT
+     * model if available, else the model's stored value.
+     */
+    private fun liveParseStatus(
+        q: Query,
+        snap: org.tatrman.ttr.metadata.registry.RegistrySnapshot,
+    ): DomainParseStatus = parseState?.get(snap.model.version.value, q.qname) ?: q.parseStatus
 
     /**
      * GH #53 — render a qname with its canonical lowercase schema token (`er.entity.x`), not the
@@ -283,10 +289,10 @@ class MetadataServiceImpl(
             val (patternQueries, namedQueries) =
                 packageQueries.partition { it.search.patterns.isNotEmpty() }
             bundleBuilder.addAllPatternQueries(
-                patternQueries.map { it.toModelBundleQuery(liveParseStatus(it), options) },
+                patternQueries.map { it.toModelBundleQuery(liveParseStatus(it, snap), options) },
             )
             bundleBuilder.addAllNamedQueries(
-                namedQueries.map { it.toModelBundleQuery(liveParseStatus(it), options) },
+                namedQueries.map { it.toModelBundleQuery(liveParseStatus(it, snap), options) },
             )
 
             if (request.includeRoles) {
@@ -480,7 +486,7 @@ class MetadataServiceImpl(
                 is Er2DbEntityMapping -> entryBuilder.er2DbEntityMapping = obj.toEr2DbEntityMappingDetail()
                 is Er2DbAttributeMapping -> entryBuilder.er2DbAttributeMapping = obj.toEr2DbAttributeMappingDetail()
                 is Er2DbRelationMapping -> entryBuilder.er2DbRelationMapping = obj.toEr2DbRelationMappingDetail()
-                is Query -> entryBuilder.query = obj.toQueryDetail(liveParseStatus(obj))
+                is Query -> entryBuilder.query = obj.toQueryDetail(liveParseStatus(obj, snap))
                 is Role -> entryBuilder.role = obj.toRoleDetail()
                 is Er2CncRoleMapping -> entryBuilder.er2CncRoleMapping = obj.toEr2CncRoleMappingDetail()
                 else -> Unit
@@ -507,7 +513,7 @@ class MetadataServiceImpl(
                 .filter {
                     request.languageFilter == ProtoLanguage.LANGUAGE_UNSPECIFIED ||
                         it.sourceLanguage.toProtoLanguage() == request.languageFilter
-                }.filter { request.parseStatusFilter.matches(liveParseStatus(it)) }
+                }.filter { request.parseStatusFilter.matches(liveParseStatus(it, snap)) }
                 .filter { request.`package`.isEmpty() || it.sourceFile.contains("/${request.`package`}/") }
                 .sortedBy { "${it.qname.schemaCode}.${it.qname.namespace}.${it.qname.name}" }
                 .toList()
@@ -520,7 +526,7 @@ class MetadataServiceImpl(
 
         return ListQueriesResponse
             .newBuilder()
-            .addAllItems(slice.map { it.toQueryDescriptor(liveParseStatus(it)) })
+            .addAllItems(slice.map { it.toQueryDescriptor(liveParseStatus(it, snap)) })
             .setPageInfo(
                 PageInfo
                     .newBuilder()
@@ -548,7 +554,7 @@ class MetadataServiceImpl(
                             ).build(),
                     ).build()
 
-        val live = liveParseStatus(q)
+        val live = liveParseStatus(q, snap)
         val builder =
             GetQueryResponse
                 .newBuilder()
@@ -611,7 +617,9 @@ class MetadataServiceImpl(
                 .build()
         }
         val totalQueries = snap.model.queries.size
-        val counts = parseState?.counts() ?: QueryParseState.Counts(parsed = 0, pending = totalQueries, failed = 0)
+        val counts =
+            parseState?.counts(snap.model.version.value)
+                ?: QueryParseState.Counts(parsed = 0, pending = totalQueries, failed = 0)
         builder
             .setModelLoaded(true)
             .setModelVersion(snap.model.version.value)

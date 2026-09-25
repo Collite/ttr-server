@@ -3,7 +3,6 @@ package org.tatrman.veles.parse
 
 import org.tatrman.ttr.metadata.model.ParseStatus
 import org.tatrman.ttr.metadata.model.QualifiedName
-import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
 
@@ -18,7 +17,20 @@ import java.util.concurrent.atomic.AtomicReference
  * this holder is the authoritative live view layered on top of it.
  */
 class QueryParseState {
-    private val byQname = ConcurrentHashMap<QualifiedName, AtomicReference<ParseStatus>>()
+    /**
+     * One model's parse state, replaced wholesale by [reset]. Every read and write names the model
+     * version it is about, and an epoch answers only for its own: GetSnapshot ships these results as
+     * the plans the translator expands, so a result must never cross from one model to another.
+     * Two paths used to let it: the swap window (the registry publishes the new model, then runs its
+     * listeners — the search-index rebuild first, this reset after it), and a previous model's parse
+     * job finishing after this model's job for the same qname (jobs are never cancelled).
+     */
+    private class Epoch(
+        val modelVersion: String?,
+        val byQname: Map<QualifiedName, AtomicReference<ParseStatus>>,
+    )
+
+    private val current = AtomicReference(Epoch(modelVersion = null, byQname = emptyMap()))
 
     // GH #112 — bumped on every reset and every recorded outcome, and folded into the GetSnapshot
     // ETag. Canonical forms land here *after* the model swap, while the model version is fixed at
@@ -27,19 +39,32 @@ class QueryParseState {
     // model lives.
     private val generation = AtomicLong(0)
 
-    /** Reset to one PENDING entry per qname. Call on model swap, before enqueueing parse jobs. */
-    fun reset(qnames: Collection<QualifiedName>) {
-        byQname.clear()
-        for (qn in qnames) byQname[qn] = AtomicReference(ParseStatus.ParsePending)
+    /**
+     * Start tracking [modelVersion]: one PENDING entry per qname. Call on model swap, before
+     * enqueueing parse jobs. Whatever was tracked for the previous model is dropped whole.
+     */
+    fun reset(
+        modelVersion: String,
+        qnames: Collection<QualifiedName>,
+    ) {
+        current.set(
+            Epoch(modelVersion, qnames.associateWith { AtomicReference<ParseStatus>(ParseStatus.ParsePending) }),
+        )
         generation.incrementAndGet()
     }
 
-    /** Record a parse outcome. No-op if [qname] isn't tracked (stale job after a swap). */
+    /**
+     * Record a parse outcome for [qname] under [modelVersion]. No-op if that is not the tracked
+     * model (a stale job from before a swap) or [qname] is not in it.
+     */
     fun set(
+        modelVersion: String,
         qname: QualifiedName,
         status: ParseStatus,
     ) {
-        val ref = byQname[qname] ?: return
+        val epoch = current.get()
+        if (epoch.modelVersion != modelVersion) return
+        val ref = epoch.byQname[qname] ?: return
         ref.set(status)
         generation.incrementAndGet()
     }
@@ -50,8 +75,18 @@ class QueryParseState {
      */
     fun generation(): Long = generation.get()
 
-    /** Live status for [qname], or null if not tracked (caller falls back to the model's stored status). */
-    fun get(qname: QualifiedName): ParseStatus? = byQname[qname]?.get()
+    /**
+     * Live status for [qname] in model [modelVersion], or null if that model is not the tracked one
+     * (yet — the swap window) or [qname] is not in it. Null ⇒ the caller falls back to the model's
+     * stored status (PENDING, no plan).
+     */
+    fun get(
+        modelVersion: String,
+        qname: QualifiedName,
+    ): ParseStatus? {
+        val epoch = current.get()
+        return if (epoch.modelVersion == modelVersion) epoch.byQname[qname]?.get() else null
+    }
 
     data class Counts(
         val parsed: Int,
@@ -59,11 +94,14 @@ class QueryParseState {
         val failed: Int,
     )
 
-    fun counts(): Counts {
+    /** Counts for model [modelVersion], or null if that model is not the tracked one (yet). */
+    fun counts(modelVersion: String): Counts? {
+        val epoch = current.get()
+        if (epoch.modelVersion != modelVersion) return null
         var parsed = 0
         var pending = 0
         var failed = 0
-        for (ref in byQname.values) {
+        for (ref in epoch.byQname.values) {
             when (ref.get()) {
                 is ParseStatus.ParseSuccess -> parsed++
                 is ParseStatus.ParsePending -> pending++
