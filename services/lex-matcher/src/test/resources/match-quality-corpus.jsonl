@@ -8,7 +8,7 @@
 {"query": "skoda octavia", "category": "product", "expected_top_id": "p-octavia", "class": "diacritics"}
 {"query": "skoda fabia", "category": "product", "expected_top_id": "p-fabia", "class": "diacritics"}
 {"query": "tesla inc", "category": "customer", "expected_top_id": "c-tesla", "class": "diacritics"}
-{"query": "shell uk", "category": "customer", "expected_top_id": "c-shell", "class": "diacritics"}
+{"query": "pelex uk", "category": "customer", "expected_top_id": "c-pelex", "class": "diacritics"}
 {"query": "octavii", "category": "product", "expected_top_id": "p-octavia", "class": "inflection"}
 {"query": "octavie", "category": "product", "expected_top_id": "p-octavia", "class": "inflection"}
 {"query": "fabii", "category": "product", "expected_top_id": "p-fabia", "class": "inflection"}
@@ -27,11 +27,11 @@
 {"query": "volkswagen golf", "category": "product", "expected_top_id": "p-golf", "class": "multi-word-order"}
 {"query": "pobočka pražská", "category": "branch", "expected_top_id": "b-praha", "class": "multi-word-order"}
 {"query": "inc tesla", "category": "customer", "expected_top_id": "c-tesla", "class": "multi-word-order"}
-{"query": "uk shell", "category": "customer", "expected_top_id": "c-shell", "class": "multi-word-order"}
+{"query": "uk pelex", "category": "customer", "expected_top_id": "c-pelex", "class": "multi-word-order"}
 {"query": "passat volkswagen", "category": "product", "expected_top_id": "p-passat", "class": "multi-word-order"}
 {"query": "oktavia", "category": "product", "expected_top_id": "p-octavia", "class": "typos"}
 {"query": "superrb", "category": "product", "expected_top_id": "p-superb", "class": "typos"}
-{"query": "shel uk", "category": "customer", "expected_top_id": "c-shell", "class": "typos"}
+{"query": "pele uk", "category": "customer", "expected_top_id": "c-pelex", "class": "typos"}
 {"query": "teslla", "category": "customer", "expected_top_id": "c-tesla", "class": "typos"}
 {"query": "dodavtel", "category": "customer", "expected_top_id": "c-dodavatel", "class": "typos"}
 {"query": "volkswagn golf", "category": "product", "expected_top_id": "p-golf", "class": "typos"}

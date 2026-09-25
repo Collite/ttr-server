@@ -29,7 +29,7 @@ class TextNormalizerCharacterizationSpec :
             listOf(
                 "Kolik jsme utržili za Octavie v pražských pobočkách za poslední fiskální čtvrtletí?",
                 "Zákazník",
-                "zákazníka Shell UK",
+                "zákazníka Pelex UK",
                 "Seznam všech dodavatelů z Německa",
                 "Zákazníci z Prahy a Brna",
                 "Souhrn prodejů za leden 2024",

@@ -33,7 +33,7 @@ class FuzzyRecallEvalTest :
         // --- canonical entities (id → display value) ---
         val entities =
             listOf(
-                "c1" to "Zákazník Shell UK",
+                "c1" to "Zákazník Pelex UK",
                 "c2" to "Dodavatel Tesla Brno",
                 "c3" to "Objednávka materiálu",
                 "c4" to "Faktura přijatá",
@@ -106,15 +106,15 @@ class FuzzyRecallEvalTest :
         val cases =
             listOf(
                 // exact / case-only / diacritic-only
-                Case("Zákazník Shell UK", "c1"),
-                Case("zakaznik shell uk", "c1"),
-                Case("ZÁKAZNÍK SHELL UK", "c1"),
+                Case("Zákazník Pelex UK", "c1"),
+                Case("zakaznik pelex uk", "c1"),
+                Case("ZÁKAZNÍK PELEX UK", "c1"),
                 Case("dodavatel tesla brno", "c2"),
                 Case("skoda auto mlada boleslav", "c6"),
                 Case("pobocka praha", "c7"),
                 // inflected
-                Case("zákazníka Shell UK", "c1", inflected = true),
-                Case("zákazníků Shell", "c1", inflected = true),
+                Case("zákazníka Pelex UK", "c1", inflected = true),
+                Case("zákazníků Pelex", "c1", inflected = true),
                 Case("reklamace zákazníka", "c9", inflected = true),
                 Case("reklamací zákazníka", "c9", inflected = true),
                 Case("dodavatele Tesla Brno", "c2", inflected = true),

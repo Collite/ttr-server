@@ -20,9 +20,9 @@ class TokenBasedMatcherV2Test :
                 Candidate.fromValues("c-oil", "Oil s.r.o."),
                 Candidate.fromValues("c-agro", "Agrofert, a.s."),
                 Candidate.fromValues("c-agro-petr", "Agrofert Petrochemie"),
-                Candidate.fromValues("c-shell", "Shell Czech Republic a.s."),
-                Candidate.fromValues("c-shelby", "Shelby s.r.o."),
-                Candidate.fromValues("c-omv", "OMV Česká republika, s.r.o."),
+                Candidate.fromValues("c-pelex", "Pelex Czech Republic a.s."),
+                Candidate.fromValues("c-peleby", "Peleby s.r.o."),
+                Candidate.fromValues("c-vex", "Vex Česká republika, s.r.o."),
                 Candidate.fromValues("c-benzina", "Benzina s.r.o."),
             )
         val index = TokenIndex(corpus)
@@ -56,15 +56,15 @@ class TokenBasedMatcherV2Test :
                 .candidate.id shouldBe "c-oil"
         }
 
-        "T2 — shel: a single token earns no order bonus (S = P + ε·C exactly)" {
-            val shell = scoreOf("shel", "c-shell")
-            // shel→shell: prefix at the 0.86 floor beats the 1-typo 0.85 (✅LP-8)
-            shell.score shouldBe (0.86 + TokenBasedMatcherV2.EPSILON * shell.coverage!! plusOrMinus 1e-12)
-            shell.tokenHits.single().kind shouldBe "prefix"
+        "T2 — pele: a single token earns no order bonus (S = P + ε·C exactly)" {
+            val pelex = scoreOf("pele", "c-pelex")
+            // pele→pelex: prefix at the 0.86 floor beats the 1-typo 0.85 (✅LP-8)
+            pelex.score shouldBe (0.86 + TokenBasedMatcherV2.EPSILON * pelex.coverage!! plusOrMinus 1e-12)
+            pelex.tokenHits.single().kind shouldBe "prefix"
 
-            val shelby = scoreOf("shel", "c-shelby")
-            shelby.tokenHits.single().kind shouldBe "prefix"
-            shelby.score shouldBe (0.86 + TokenBasedMatcherV2.EPSILON * shelby.coverage!! plusOrMinus 1e-12)
+            val peleby = scoreOf("pele", "c-peleby")
+            peleby.tokenHits.single().kind shouldBe "prefix"
+            peleby.score shouldBe (0.86 + TokenBasedMatcherV2.EPSILON * peleby.coverage!! plusOrMinus 1e-12)
         }
 
         "T2 — two prefix hits in order earn the order bonus v1 never gave them" {
@@ -168,7 +168,7 @@ class TokenBasedMatcherV2Test :
         }
 
         "score() = stable sort-then-take over the full scoring, for every limit (top-k selection)" {
-            for (query in listOf("valmy", "oil", "s.r.o.", "shel", "agro petr", "a.s.")) {
+            for (query in listOf("valmy", "oil", "s.r.o.", "pele", "agro petr", "a.s.")) {
                 val tokens = q(query)
                 val full =
                     corpus

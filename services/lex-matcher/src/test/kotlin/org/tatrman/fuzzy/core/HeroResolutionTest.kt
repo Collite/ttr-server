@@ -108,7 +108,7 @@ class HeroResolutionTest :
             val loader =
                 object : LoaderSource {
                     override suspend fun loadNextCache() =
-                        mapOf("db.dbo.customer.name" to listOf(Candidate.fromValues("1", "Shell")))
+                        mapOf("db.dbo.customer.name" to listOf(Candidate.fromValues("1", "Pelex")))
 
                     override fun warnings() =
                         listOf(
