@@ -163,7 +163,7 @@ fun Application.module(config: Config) {
     val parseState = QueryParseState()
     val parseWorker = QueryParseWorker()
     registry.addListener { snapshot ->
-        parseState.reset(snapshot.model.queries.keys)
+        parseState.reset(snapshot.model.version.value, snapshot.model.queries.keys)
         parseWorker.parseAll(snapshot.model, parseState)
     }
 

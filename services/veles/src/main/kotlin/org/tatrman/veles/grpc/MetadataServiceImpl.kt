@@ -149,8 +149,14 @@ class MetadataServiceImpl(
 ) : VelesServiceGrpcKt.VelesServiceCoroutineImplBase() {
     private val logger = org.slf4j.LoggerFactory.getLogger(MetadataServiceImpl::class.java)
 
-    /** Live parse status for a query — the background worker's view if available, else the model's stored value. */
-    private fun liveParseStatus(q: Query): DomainParseStatus = parseState?.get(q.qname) ?: q.parseStatus
+    /**
+     * Live parse status for a query of the snapshot [snap] — the background worker's view of THAT
+     * model if available, else the model's stored value.
+     */
+    private fun liveParseStatus(
+        q: Query,
+        snap: org.tatrman.ttr.metadata.registry.RegistrySnapshot,
+    ): DomainParseStatus = parseState?.get(snap.model.version.value, q.qname) ?: q.parseStatus
 
     /**
      * GH #53 — render a qname with its canonical lowercase schema token (`er.entity.x`), not the
@@ -291,10 +297,10 @@ class MetadataServiceImpl(
             val (patternQueries, namedQueries) =
                 packageQueries.partition { it.search.patterns.isNotEmpty() }
             bundleBuilder.addAllPatternQueries(
-                patternQueries.map { it.toModelBundleQuery(liveParseStatus(it), options) },
+                patternQueries.map { it.toModelBundleQuery(liveParseStatus(it, snap), options) },
             )
             bundleBuilder.addAllNamedQueries(
-                namedQueries.map { it.toModelBundleQuery(liveParseStatus(it), options) },
+                namedQueries.map { it.toModelBundleQuery(liveParseStatus(it, snap), options) },
             )
 
             if (request.includeRoles) {
@@ -457,7 +463,13 @@ class MetadataServiceImpl(
             registry.read()
                 ?: return GetSnapshotResponse.newBuilder().addMessages(notReadyMessage()).build()
 
-        val etag = snap.model.version.value
+        // GH #112 — the snapshot carries each query's canonical form from the LIVE parse state,
+        // which fills in after the swap; the ETag has to move with it or a consumer that fetched
+        // during the parse window never sees the plans. Read BEFORE the objects are walked, so a
+        // parse landing mid-walk makes the snapshot newer than its ETag (one extra fetch), never
+        // older. Without a live parse state the content is a function of the model alone and the
+        // ETag stays the bare version.
+        val etag = parseState?.let { "${snap.model.version.value}.q${it.generation()}" } ?: snap.model.version.value
         if (request.ifNoneMatch.isNotEmpty() && request.ifNoneMatch == etag) {
             return GetSnapshotResponse
                 .newBuilder()
@@ -503,7 +515,7 @@ class MetadataServiceImpl(
                 is Er2DbEntityMapping -> entryBuilder.er2DbEntityMapping = obj.toEr2DbEntityMappingDetail()
                 is Er2DbAttributeMapping -> entryBuilder.er2DbAttributeMapping = obj.toEr2DbAttributeMappingDetail()
                 is Er2DbRelationMapping -> entryBuilder.er2DbRelationMapping = obj.toEr2DbRelationMappingDetail()
-                is Query -> entryBuilder.query = obj.toQueryDetail(liveParseStatus(obj))
+                is Query -> entryBuilder.query = obj.toQueryDetail(liveParseStatus(obj, snap))
                 is Role -> entryBuilder.role = obj.toRoleDetail()
                 is Er2CncRoleMapping -> entryBuilder.er2CncRoleMapping = obj.toEr2CncRoleMappingDetail()
                 else -> Unit
@@ -598,7 +610,7 @@ class MetadataServiceImpl(
                 .filter {
                     request.languageFilter == ProtoLanguage.LANGUAGE_UNSPECIFIED ||
                         it.sourceLanguage.toProtoLanguage() == request.languageFilter
-                }.filter { request.parseStatusFilter.matches(liveParseStatus(it)) }
+                }.filter { request.parseStatusFilter.matches(liveParseStatus(it, snap)) }
                 .filter { request.`package`.isEmpty() || it.sourceFile.contains("/${request.`package`}/") }
                 .sortedBy { "${it.qname.schemaCode}.${it.qname.namespace}.${it.qname.name}" }
                 .toList()
@@ -611,7 +623,7 @@ class MetadataServiceImpl(
 
         return ListQueriesResponse
             .newBuilder()
-            .addAllItems(slice.map { it.toQueryDescriptor(liveParseStatus(it)) })
+            .addAllItems(slice.map { it.toQueryDescriptor(liveParseStatus(it, snap)) })
             .setPageInfo(
                 PageInfo
                     .newBuilder()
@@ -639,7 +651,7 @@ class MetadataServiceImpl(
                             ).build(),
                     ).build()
 
-        val live = liveParseStatus(q)
+        val live = liveParseStatus(q, snap)
         val builder =
             GetQueryResponse
                 .newBuilder()
@@ -702,7 +714,9 @@ class MetadataServiceImpl(
                 .build()
         }
         val totalQueries = snap.model.queries.size
-        val counts = parseState?.counts() ?: QueryParseState.Counts(parsed = 0, pending = totalQueries, failed = 0)
+        val counts =
+            parseState?.counts(snap.model.version.value)
+                ?: QueryParseState.Counts(parsed = 0, pending = totalQueries, failed = 0)
         builder
             .setModelLoaded(true)
             .setModelVersion(snap.model.version.value)
@@ -1675,9 +1689,20 @@ private fun Query.toQueryDetail(parseStatus: DomainParseStatus): QueryDetail =
         ).setParseStatus(parseStatus.toProtoParseStatus())
         .also { if (parseStatus is DomainParseStatus.ParseFailure) it.parseErrorMessage = parseStatus.message }
         .also { if (!search.isEmpty) it.search = search.toProto() }
-        // `canonical_form` / `uses` left unset — canonical form is available via GetQuery
-        // (include_canonical_form); `uses` (referenced objects) isn't tracked on the model yet (DF-T03).
-        .build()
+        // GH #112 — the canonical form of every parsed query. The snapshot is the model the
+        // translator runs on (`SnapshotModelHandle`): MAP_TO_PHYSICAL expands a query-backed entity
+        // into this plan, so without it every ER query over such an entity failed with
+        // `PlanNode case 'NODE_NOT_SET'`. GetSnapshot has no per-query include flag (GetQuery does),
+        // so it always carries it; a stored plan that does not decode is left unset, as GetQuery
+        // reports it (`canonical_form_unreadable`). `uses` isn't tracked on the model yet (DF-T03).
+        .also {
+            if (parseStatus is DomainParseStatus.ParseSuccess) {
+                runCatching {
+                    org.tatrman.plan.v1.PlanNode
+                        .parseFrom(parseStatus.canonicalFormProtoBytes)
+                }.onSuccess { plan -> it.canonicalForm = plan }
+            }
+        }.build()
 
 private fun org.tatrman.ttr.metadata.registry.RegistrySnapshot.toProtoDescriptor(): ProtoModelDescriptor =
     ProtoModelDescriptor

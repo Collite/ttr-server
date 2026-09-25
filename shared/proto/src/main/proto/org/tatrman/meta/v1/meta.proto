@@ -904,13 +904,16 @@ message SearchResult {
 // =============================================================================
 
 message GetSnapshotRequest {
-  string if_none_match = 1;                                 // ETag = ModelVersion.value; empty = always return
+  string if_none_match = 1;                                 // the ETag last received; empty = always return
   reserved 2 to 6;
 }
 
 message GetSnapshotResponse {
   bool not_modified = 1;                                    // true → snapshot field is empty
-  string etag = 2;                                          // current ModelVersion.value
+  // Opaque cache validator — NOT the model version (read that from `snapshot.model.version` or
+  // GetStatus.model_version). It is ModelVersion.value, suffixed `.q<n>` while Veles tracks live
+  // query-parse state: canonical forms land after the model swap, and the ETag moves with them.
+  string etag = 2;
   ModelSnapshot snapshot = 3;                               // populated only if not_modified = false
   repeated org.tatrman.common.v1.ResponseMessage messages = 99;
   reserved 100 to 104;

@@ -54,6 +54,32 @@ way, show up as `RG-FUZ-003` rather than being worked around:
 **Consumers:** built on `org.tatrman:*:0.13.6`, where `SearchHints.indexed` + `matchMethod` split the old
 `fuzzy` bit.
 
+### `meta.v1` GetSnapshot — the snapshot carries every parsed query's plan, and its ETag moves while they land (#112)
+
+An ER entity mapped to a saved query (`binding: { target: { query: … } }`, the shape a
+row-filtered entity is expanded into) could not be queried in the ER lane at all: the translate
+service builds its model from `GetSnapshot`, and the snapshot never set
+`QueryDetail.canonical_form`, so the entity expanded into an empty plan and every query over it
+failed with `sql_unparse_failed: PlanNode case 'NODE_NOT_SET'`.
+
+**Behaviour**
+
+- `GetSnapshot` sets `QueryDetail.canonical_form` for every query the parse worker has parsed —
+  the plan `GetQuery(include_canonical_form)` returns.
+- The plans land *after* a model swap, so `GetSnapshotResponse.etag` is now
+  `<ModelVersion.value>.q<n>` while Veles tracks live parse state, and moves as they land. A
+  consumer that polled during the parse window gets the complete snapshot on its next conditional
+  read instead of keeping the plan-less one until the model next changes. It settles once parsing
+  is done. Without a live parse state (fixture boots) it stays the bare version.
+- A plan is only ever served for the model it was parsed against. Right after a model swap, until
+  parsing for the new model starts, a saved query is reported PENDING with no plan, where it used to
+  carry the previous model's. A late parse job from the previous model can no longer overwrite the
+  current result either.
+- **The ETag is no longer the model version.** It never was a documented one to rely on, but the
+  proto comment said so: read the version from `snapshot.model.version` or
+  `GetStatus.model_version`. `validate` did read it as the version; it now reads `GetStatus`
+  (which also stops it shipping the whole model per `Validate`).
+
 ### `query.v1` / `validate.v1` — a caller-stated row window, a ceiling, and a warning when the cap binds
 
 `validate` caps every answer at `default-top-n` rows by injecting a `LIMIT`, and the cap was a
