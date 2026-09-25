@@ -17,8 +17,8 @@ import org.tatrman.text.Normalization.fold
  * Deterministic candidate sources:
  *   (a) **anchored subtrees** — for each declared anchor word found in the parse,
  *       the anchor's own nominal phrase (`pražských pobočkách` as ONE candidate)
- *       plus each nominal/proper-noun argument it governs (`středisko DF ADNAK`
- *       → the value `DF ADNAK`), gated against THAT entity only. Precision path.
+ *       plus each nominal/proper-noun argument it governs (`středisko QT ORLAK`
+ *       → the value `QT ORLAK`), gated against THAT entity only. Precision path.
  *   (b) **proper-noun arguments** — PROPN runs not already anchored and not
  *       universal-tagged, gated against ALL declared types. Admits data values
  *       like `Octavie` without re-admitting common-noun junk (the 33 spurious in
@@ -34,7 +34,7 @@ import org.tatrman.text.Normalization.fold
  *
  * Universal-typed NER spans (person/geo/time/number) are removed before domain
  * gating (spike §1). Institutions/objects stay domain-eligible and are actively
- * proposed by (c) — a domain value like `DF ADNAK` is `io`-tagged, so NER is not the
+ * proposed by (c) — a domain value like `QT ORLAK` is `io`-tagged, so NER is not the
  * domain filter; fuzzy is.
  *
  * RV-P2.1 adds one source and one exclusion, both needed by the lattice:
@@ -283,7 +283,7 @@ object SpanProposal {
                     )
                 coveredTokens += phraseIdx
             }
-            // Governed value arguments (e.g. `středisko` → `DF ADNAK`). Only for an anchor that
+            // Governed value arguments (e.g. `středisko` → `QT ORLAK`). Only for an anchor that
             // HAS values: an operator or a measure has no member vocabulary, so its nominal
             // arguments are not its values. Without this the operator word — which Stanza often
             // makes the root — governs the rest of the question, and every noun under it is
@@ -293,7 +293,7 @@ object SpanProposal {
             if (valueOwners.isNotEmpty()) {
                 // ⚑ A-MH-1a (MH-P3·S1·T2). Governed values used to be emitted PER OWNER — one
                 // candidate per owner on the SAME span — on the argument that merging them would
-                // offer `DF ADNAK` to every owner sharing the anchor. But `dedupe` keys on
+                // offer `QT ORLAK` to every owner sharing the anchor. But `dedupe` keys on
                 // `(start, end)`, so all but one were silently discarded and WHICH one survived
                 // was decided by the order the registry happened to list the owners in. That is
                 // not scoping, it is a coin toss with a stable-looking result.

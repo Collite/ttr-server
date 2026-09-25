@@ -153,7 +153,7 @@ class CallsSeedConformanceTest :
                     }
                     "resolution" -> {
                         val resolution = structured["resolution"]!!.jsonObject
-                        resolution["rationale"]!!.jsonPrimitive.content shouldBe "resumed via signed pin (M:df-adnak)"
+                        resolution["rationale"]!!.jsonPrimitive.content shouldBe "resumed via signed pin (M:qt-orlak)"
                         // The MEMBER pin reconstructs its Domain — resolved_id AND the
                         // entity_type_ref that review F restored (was empty before).
                         val domain =
@@ -162,7 +162,7 @@ class CallsSeedConformanceTest :
                                 .single()
                                 .jsonObject["domain"]!!
                                 .jsonObject
-                        domain["resolvedId"]!!.jsonPrimitive.content shouldBe "df-adnak"
+                        domain["resolvedId"]!!.jsonPrimitive.content shouldBe "qt-orlak"
                         domain["entityTypeRef"]!!.jsonPrimitive.content shouldBe "er.qstred_df"
                     }
                 }

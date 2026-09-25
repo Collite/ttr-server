@@ -12,7 +12,7 @@ import org.tatrman.resolver.v1.UniversalEntityType
  *
  * Q-20 spike §1: NameTag removes `g*`/`p*`/`t*`/`n*` (LOCATION/PERSON/DATE/NUMBER)
  * before domain gating; institutions (`i*`) and objects (`o*`) stay domain-eligible
- * — a domain value like `DF ADNAK` is `io`-tagged, so NER is not the domain filter,
+ * — a domain value like `QT ORLAK` is `io`-tagged, so NER is not the domain filter,
  * the fuzzy gate is.
  *
  * ⚠ BRITTLENESS (ported note): the CNEC leading-letter mapping mirrors NameTag 3 /

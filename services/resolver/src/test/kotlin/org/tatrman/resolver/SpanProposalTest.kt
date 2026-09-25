@@ -135,9 +135,9 @@ class SpanProposalTest :
                 false
         }
 
-        "anchored value: `středisko` governing `DF ADNAK` proposes the value gated to QSTRED_DF only" {
-            // "Zobraz středisko DF ADNAK" — 0 Zobraz(root) 1 středisko(obj,lemma) 2 DF(PROPN,flat→4)
-            // 3 ADNAK(PROPN,nmod→2)
+        "anchored value: `středisko` governing `QT ORLAK` proposes the value gated to QSTRED_DF only" {
+            // "Zobraz středisko QT ORLAK" — 0 Zobraz(root) 1 středisko(obj,lemma) 2 QT(PROPN,flat→4)
+            // 3 ORLAK(PROPN,nmod→2)
             val parse =
                 AnalyzeResponse
                     .newBuilder()
@@ -145,14 +145,14 @@ class SpanProposalTest :
                         listOf(
                             tok("Zobraz", 0, 6, "zobrazit", "VERB", 0, "root"),
                             tok("středisko", 7, 16, "středisko", "NOUN", 1, "obj"),
-                            tok("DF", 17, 19, "DF", "PROPN", 4, "flat"),
-                            tok("ADNAK", 20, 25, "ADNAK", "PROPN", 2, "nmod"),
+                            tok("QT", 17, 19, "QT", "PROPN", 4, "flat"),
+                            tok("ORLAK", 20, 25, "ORLAK", "PROPN", 2, "nmod"),
                         ),
                     ).build()
             val cands = SpanProposal.proposeDomainSpans(parse, listOf(qstred, branch))
             val value =
                 cands.single {
-                    it.text == "DF ADNAK" && it.origin == DomainSpanCandidate.Origin.GOVERNED_VALUE
+                    it.text == "QT ORLAK" && it.origin == DomainSpanCandidate.Origin.GOVERNED_VALUE
                 }
             value.anchored shouldBe true
             value.gatedEntityRefs shouldBe listOf("er.qstred_df")
@@ -164,7 +164,7 @@ class SpanProposalTest :
             // the governed lookup answers (`GateSpans.resolveOpenSiblings`).
             val open =
                 cands.single {
-                    it.text == "DF ADNAK" && it.origin == DomainSpanCandidate.Origin.OPEN_VALUE
+                    it.text == "QT ORLAK" && it.origin == DomainSpanCandidate.Origin.OPEN_VALUE
                 }
             open.anchored shouldBe false
             open.gatedEntityRefs shouldContainExactlyInAnyOrder listOf("er.qstred_df", "er.branch")

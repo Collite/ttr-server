@@ -55,28 +55,28 @@ class BinderTest :
             val verdict =
                 Binder.decide(
                     listOf(
-                        classed("df-adnak", 0.72, EvidenceClass.EVIDENCE_CLASS_ANCHORED_FUZZY_STRONG),
-                        classed("df-belus", 0.70, EvidenceClass.EVIDENCE_CLASS_ANCHORED_FUZZY_STRONG),
+                        classed("qt-orlak", 0.72, EvidenceClass.EVIDENCE_CLASS_ANCHORED_FUZZY_STRONG),
+                        classed("qt-belus", 0.70, EvidenceClass.EVIDENCE_CLASS_ANCHORED_FUZZY_STRONG),
                     ),
                     thresholds,
                 )
             val ambiguous = verdict.shouldBeInstanceOf<Binder.Ambiguous>()
             ambiguous.admitted.map { it.match.candidateId } shouldContainExactlyInAnyOrder
-                listOf("df-adnak", "df-belus")
+                listOf("qt-orlak", "qt-belus")
         }
 
         "same class but OUTSIDE the tie band: the score decides, because they are comparable" {
             val verdict =
                 Binder.decide(
                     listOf(
-                        classed("df-adnak", 0.95, EvidenceClass.EVIDENCE_CLASS_ANCHORED_FUZZY_STRONG),
-                        classed("df-belus", 0.71, EvidenceClass.EVIDENCE_CLASS_ANCHORED_FUZZY_STRONG),
+                        classed("qt-orlak", 0.95, EvidenceClass.EVIDENCE_CLASS_ANCHORED_FUZZY_STRONG),
+                        classed("qt-belus", 0.71, EvidenceClass.EVIDENCE_CLASS_ANCHORED_FUZZY_STRONG),
                     ),
                     thresholds,
                 )
             verdict
                 .shouldBeInstanceOf<Binder.Bind>()
-                .winner.match.candidateId shouldBe "df-adnak"
+                .winner.match.candidateId shouldBe "qt-orlak"
         }
 
         "(c) a higher class beats a higher score in a lower class — 0.99 UNANCHORED loses to 0.62 DECLARED" {

@@ -138,9 +138,9 @@ class LatticeAssemblerTest :
         "Binding: a sub-exact hit is fuzzy-strong, and anchoring is what separates the two classes" {
             val anchored =
                 mapped(
-                    member("df-adnak", "er.qstred_df.nazev", 0.72),
+                    member("qt-orlak", "er.qstred_df.nazev", 0.72),
                     DomainSpanCandidate(
-                        "DF ADNAK",
+                        "QT ORLAK",
                         0,
                         8,
                         listOf("er.qstred_df"),
@@ -152,9 +152,9 @@ class LatticeAssemblerTest :
                 )
             val unanchored =
                 mapped(
-                    member("df-adnak", "er.qstred_df.nazev", 0.72),
+                    member("qt-orlak", "er.qstred_df.nazev", 0.72),
                     DomainSpanCandidate(
-                        "DF ADNAK",
+                        "QT ORLAK",
                         0,
                         8,
                         listOf("er.qstred_df"),

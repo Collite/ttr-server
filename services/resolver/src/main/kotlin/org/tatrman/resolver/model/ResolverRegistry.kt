@@ -187,8 +187,8 @@ data class ResolverThresholds(
      *
      *  - `issues.md` §1, the garbage this list exists to kill — `501001` reaching *středisko*
      *    rows at **0.667** and **0.500**. Both must land in WEAK.
-     *  - `GateSpansTest`'s member-ambiguity fixture — `DF` reaching `DF ADNAK` **0.72** and
-     *    `DF BELUS` **0.70**, a real partial-token pair that must stay a clarification.
+     *  - `GateSpansTest`'s member-ambiguity fixture — `QT` reaching `QT ORLAK` **0.72** and
+     *    `QT BELUS` **0.70**, a real partial-token pair that must stay a clarification.
      *
      * The gap between 0.667 and 0.70 is what the number is fitted to, and fitting a threshold to
      * two fixtures is worth saying out loud rather than dressing up as a ruling. An estate raises

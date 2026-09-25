@@ -79,7 +79,7 @@ class Q20ParityTest :
                 val probe = p.jsonObject
                 if (probe["correct"]!!.jsonPrimitive.content != "true") return@forEach
                 val expectEntity = probe["expect_entity"]!!.jsonPrimitive.content
-                val top = probe["top"]!!.jsonPrimitive.content // e.g. "DF ADNAK(QSTRED_DF,name) 1.050"
+                val top = probe["top"]!!.jsonPrimitive.content // e.g. "QT ORLAK(QSTRED_DF,name) 1.050"
 
                 val matchedKind = top.substringAfter('(').substringBefore(')').substringAfter(',') // code | name
                 val score = top.substringAfterLast(' ').toDouble()

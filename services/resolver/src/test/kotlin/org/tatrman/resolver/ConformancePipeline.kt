@@ -50,7 +50,7 @@ object ConformancePipeline {
                     DeclaredVocabularyEntry(
                         category = "er.qstred_df.member",
                         targetRef = "er.qstred_df",
-                        values = listOf(DeclaredValue("df-adnak", "DF ADNAK"), DeclaredValue("df-belus", "DF BELUS")),
+                        values = listOf(DeclaredValue("qt-orlak", "QT ORLAK"), DeclaredValue("qt-belus", "QT BELUS")),
                     ),
                 ),
         )
@@ -126,8 +126,8 @@ object ConformancePipeline {
                     "ambiguous_member" ->
                         listOf(
                             listOf(
-                                member("df-adnak", "DF ADNAK", 0.80),
-                                member("df-belus", "DF BELUS", 0.79),
+                                member("qt-orlak", "QT ORLAK", 0.80),
+                                member("qt-belus", "QT BELUS", 0.79),
                             ),
                         )
                     // Every match is below the 0.5 bind floor ⇒ the real gate must bind
