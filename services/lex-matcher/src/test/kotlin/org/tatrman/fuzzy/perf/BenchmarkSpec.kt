@@ -9,7 +9,8 @@ import org.tatrman.fuzzy.core.TokenVocabulary
 import org.tatrman.fuzzy.core.VocabularyResolver
 
 /**
- * T6 — the perf artefact. Excluded from the default `test`; runs only under `-DincludePerf=true`:
+ * T6 — the perf artefact. **A REPORT, NOT A GATE**: it asserts nothing, and it is excluded from the
+ * default `test` — it runs only under `-DincludePerf=true`, which CI never sets:
  *
  *   ./gradlew :services:lex-matcher:test -DincludePerf=true
  *
@@ -18,6 +19,10 @@ import org.tatrman.fuzzy.core.VocabularyResolver
  * index-first) and prints markdown tables of p50/p95 wall time. Plus a resolver-only micro-bench
  * (FZ-P2·A T6). No hard assertions: numbers are environment-relative; the tables are the deliverable
  * pasted into `baseline.md`.
+ *
+ * review-103 L5 — that includes contracts §4.7 (iii) ("v2 p95 ≤ v1 p95"): the second case below
+ * PRINTS the verdict per class (`v2 ≤ v1 (p95)`), and a human reads it. A regression there turns
+ * nothing red; the LPA-2 record (SHORT +0.02 ms, accepted) is a reading of this table, not a pass.
  */
 class BenchmarkSpec :
     StringSpec({
@@ -144,7 +149,7 @@ class BenchmarkSpec :
         // second (warmer JIT, settled GC) by about the size of the difference being measured — seen
         // both ways on 2026-09-23. Here both engines are loaded side by side, every query is timed
         // on both back to back, and which goes first alternates per round.
-        "LP-P0 — fuzzy.match v1 vs v2, index-first, interleaved".config(enabled = includePerf) {
+        "LP-P0 — fuzzy.match v1 vs v2, index-first, interleaved (a report)".config(enabled = includePerf) {
             val benchProducts = CorpusGenerator.products(PerfFixture.BENCH_PRODUCTS, PerfFixture.CORPUS_SEED)
             val corpus =
                 mapOf(

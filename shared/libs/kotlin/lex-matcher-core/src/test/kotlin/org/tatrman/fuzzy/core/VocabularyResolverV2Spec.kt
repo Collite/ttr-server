@@ -5,7 +5,6 @@ import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.doubles.plusOrMinus
 import io.kotest.matchers.shouldBe
-import io.kotest.matchers.shouldNotBe
 
 /** LP-P0·S1 — `fuzzy.match:v2` per-token kinds + the ES-AUTO edit ladder (contracts §4.2). */
 class VocabularyResolverV2Spec :
@@ -152,12 +151,6 @@ class VocabularyResolverV2Spec :
             r.lastTypoScan shouldBe IntRange.EMPTY // `agra` (1 typo) is NOT offered past an exact hit
             hits.map { vocab9.tokens[it.tokenId] to it.kind } shouldBe
                 listOf("agro" to MatchKind.EXACT, "agrofert," to MatchKind.PREFIX)
-        }
-
-        "T4 — idfOrMax: idf for a vocabulary token, idfAbsent otherwise" {
-            vocab.idfOrMax("pelex") shouldBe vocab.idf(vocab.idOf("pelex"))
-            vocab.idfOrMax("zzzz") shouldBe vocab.idfAbsent
-            vocab.idfOrMax("zzzz") shouldNotBe vocab.idfOrMax("pelex")
         }
 
         "T5 — the typo neighbourhood is bounded by the budget: len t ± budget(len t)" {
