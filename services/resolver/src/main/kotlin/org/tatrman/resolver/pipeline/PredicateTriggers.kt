@@ -176,7 +176,8 @@ object PredicateTriggers {
      *
      * **Negation** (review-103 F12, D2). A negator right before the window turns the form into
      * its negation — *not starting with*, *do n't start with* — so a negated question never runs
-     * as its own opposite.
+     * as its own opposite. The negator's tokens then carry the trigger as well: they are part of
+     * the form, and §2.1 measures a head's distance from where the form begins.
      *
      * The strongest form per window speaks for it — *začíná* and *začínající* both firing is one
      * assertion made twice, the same argument [GroundingTriggers.collect] makes for a kernel. A
@@ -205,11 +206,12 @@ object PredicateTriggers {
                     }.maxByOrNull { it.score }
                     ?: continue
             val authored = best.targetRef.ifBlank { best.category }
-            val ref = if (negated(window, parse)) negate(authored) else authored
+            val negator = negatorTokens(window, parse)
+            val ref = if (negator.isNotEmpty()) negate(authored) else authored
             // A wider window wins a token it shares with a narrower one — `začínající na` is a
             // better statement about token 4 than `na` alone. Windows arrive narrow-first, so
             // overwriting lets the last (widest) stand.
-            for (token in window.tokens) byToken[token] = VerbatimAttribution.Trigger(token, ref)
+            for (token in negator + window.tokens) byToken[token] = VerbatimAttribution.Trigger(token, ref)
         }
         return byToken.values.toList()
     }
@@ -238,23 +240,25 @@ object PredicateTriggers {
         return hits.isEmpty() || hits.map { it.candidatePos }.toSet().size == formWidth
     }
 
-    /** True when the token right before [window] negates it. */
-    private fun negated(
+    /** The tokens of the negator right before [window], or none when nothing negates it. */
+    private fun negatorTokens(
         window: Window,
         parse: AnalyzeResponse,
-    ): Boolean {
+    ): List<Int> {
         val tokens = parse.tokensList
-        val before = window.tokens.firstOrNull()?.minus(1) ?: return false
-        val word = tokens.getOrNull(before)?.text?.lowercase() ?: return false
-        if (word in NEGATORS) return true
+        val before = window.tokens.firstOrNull()?.minus(1) ?: return emptyList()
+        val word = tokens.getOrNull(before)?.text?.lowercase() ?: return emptyList()
+        if (word in NEGATORS) return listOf(before)
         // `doesn't` on a tokenizer that splits the apostrophe off: `doesn` `'` `t`.
-        return word == "t" &&
-            tokens.getOrNull(before - 1)?.text in APOSTROPHES &&
-            tokens
-                .getOrNull(before - 2)
-                ?.text
-                ?.lowercase()
-                ?.endsWith("n") == true
+        val split =
+            word == "t" &&
+                tokens.getOrNull(before - 1)?.text in APOSTROPHES &&
+                tokens
+                    .getOrNull(before - 2)
+                    ?.text
+                    ?.lowercase()
+                    ?.endsWith("n") == true
+        return if (split) listOf(before - 2, before - 1, before) else emptyList()
     }
 
     /** [ref] under a negator: each predicate turns into its opposite and back. */

@@ -209,6 +209,27 @@ class PredicateTriggersTest :
             PredicateTriggers.negate("pred:equals") shouldBe "pred:not_equals"
         }
 
+        "D2 — the negator belongs to the form it negates, so it carries the trigger too" {
+            // §2.1 measures a head's distance past the literal's form (`VerbatimAttribution`), and
+            // a free negator is part of that form: *stores never starting with "abl"* must not
+            // leave *never* standing between the head and the unit the literal makes.
+            val parse = parseOf("stores", "never", "starting", "with", "\"", "abl", "\"")
+            val windows = PredicateTriggers.windowsOf(Literals.of("stores never starting with \"abl\"", parse), parse)
+            val form = VerbatimHero.predicate("pred:starts_with", "starting with")
+
+            val triggers =
+                PredicateTriggers.collect(
+                    windows,
+                    answer(windows, mapOf("starting with" to form)),
+                    offset = 0,
+                    thresholds = ResolverThresholds.LIVE,
+                    parse = parse,
+                )
+
+            triggers.map { it.headToken to it.ref } shouldContainExactlyInAnyOrder
+                listOf(1 to "pred:not_starts_with", 2 to "pred:not_starts_with", 3 to "pred:not_starts_with")
+        }
+
         "D2 — `doesn't` split by the tokenizer (`doesn` `'` `t`) negates too" {
             val parse = parseOf("name", "doesn", "'", "t", "contain", "\"", "abl", "\"")
             val windows = PredicateTriggers.windowsOf(Literals.of("name doesn ' t contain \"abl\"", parse), parse)

@@ -291,7 +291,7 @@ object LatticeAssembler {
                 // on it — and there is no layer that produced it, because the user quoted it.
                 // Zero attributions is not a failure to look: it is the honest "nothing here says
                 // which column", and `Gaps` reads it as G3.
-                val attributed = VerbatimAttribution.attribute(literal, parse, heads, codeRefs)
+                val attributed = VerbatimAttribution.attribute(literal, parse, heads, codeRefs, predicateTriggers)
                 attributed?.let {
                     builder.addAttributions(Attribution.newBuilder().setAttributeRef(it.attributeRef))
                     builder.anchorMentionId = it.mentionId

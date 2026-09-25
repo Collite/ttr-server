@@ -86,6 +86,9 @@ object MentionLayer {
                     covering.isNotEmpty() && covering.all { it.origin == DomainSpanCandidate.Origin.PROPER_NOUN }
                 }.toHashSet()
         val blocking = claimed - propnOnlyClaims
+        // The words a quoted literal hangs from are its restriction, not a phrase modifier — the
+        // rule span proposal applies to anchor phrases (see `SpanProposal.literalGovernors`).
+        val governors = SpanProposal.literalGovernors(tokens, literals.tokens)
 
         val out = mutableListOf<DomainSpanCandidate>()
         tokens.forEachIndexed { idx, token ->
@@ -94,7 +97,7 @@ object MentionLayer {
             if (isUniversal(token, universal)) return@forEachIndexed
             if (idx in claimed) return@forEachIndexed
 
-            val phrase = phraseIndices(idx, children, tokens, universal, blocking, literals.tokens)
+            val phrase = phraseIndices(idx, children, tokens, universal, blocking, literals.tokens, governors)
             val start = phrase.minOf { tokens[it].charStart }
             val end = phrase.maxOf { tokens[it].charEnd }
             // Anything the gate already asked about is already a lattice span — including the
@@ -125,6 +128,7 @@ object MentionLayer {
         universal: List<IntRange>,
         claimed: Set<Int>,
         literalTokens: Set<Int>,
+        governors: Set<Int>,
     ): List<Int> {
         // A phrase never spans a literal: only the modifiers on the head's own side of every
         // quoted string may join it (see `SpanProposal.literalFreeSide`).
@@ -136,6 +140,7 @@ object MentionLayer {
             if (isUniversal(child, universal)) continue
             if (child.text.any { it.isDigit() }) continue
             if (c in claimed) continue
+            if (c in governors) continue
             if (c !in side) continue
             included += c
         }
@@ -146,6 +151,7 @@ object MentionLayer {
                 (
                     !isUniversal(tokens[it], universal) &&
                         it !in claimed &&
+                        it !in governors &&
                         tokens[it].text.none { c -> c.isDigit() }
                 )
         }

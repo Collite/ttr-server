@@ -284,6 +284,35 @@ class VerbatimAttributionTest :
                 .shouldBeNull()
         }
 
+        "a trigger form against the literal is part of it: a left head is measured to its first word" {
+            // *stores not starting with "abl"*: three words of form between head and delimiter put
+            // the head four tokens away, and the positive *starting with* two words shorter kept
+            // it in reach — so negating a question used to lose its head (live, 2026-09-25).
+            val text = "stores not starting with \"abl\""
+            val parse =
+                parseOf(
+                    token("stores", 0, 6, 0),
+                    token("not", 7, 10, 0),
+                    token("starting", 11, 19, 0),
+                    token("with", 20, 24, 0),
+                    token("\"", 25, 26, 0),
+                    token("abl", 26, 29, 0),
+                    token("\"", 29, 30, 0),
+                )
+            val literal = Literals.of(text, parse).spans.single()
+            val heads = listOf(head(0, "m1", store))
+            val form = listOf(1, 2, 3).map { trigger(it, "pred:not_starts_with") }
+
+            VerbatimAttribution.attribute(literal, parse, heads, triggers = form)?.mentionId shouldBe "m1"
+            // Without the form the same four tokens are just four tokens.
+            VerbatimAttribution.attribute(literal, parse, heads).shouldBeNull()
+            // Only a form that REACHES the delimiter moves the edge: one the literal does not touch
+            // is somebody else's words, and the gap after it still counts.
+            VerbatimAttribution
+                .attribute(literal, parse, heads, triggers = form.dropLast(1))
+                .shouldBeNull()
+        }
+
         // ---- LP-P2b·T5 (§2/§3): the `pred:` ref beside the attribution -------------------------
 
         "the predicate is found up the same dep chain as the head" {

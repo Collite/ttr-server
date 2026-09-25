@@ -31,6 +31,14 @@ import org.tatrman.resolver.model.ResolverEntityType
  * question on the floor parse lost its head. The predicate window ([PredicateTriggers]) was always
  * measured from the delimiter; now both questions use one origin.
  *
+ * **A trigger form against the literal belongs to it.** When the words right before the opening
+ * delimiter are a `pred:` form — negator included — a head on the left is measured to the form's
+ * FIRST word. The form is how the user qualified the string, and the two are one unit: measured to
+ * the delimiter, *stores not starting with "abl"* put the head four tokens away while *stores
+ * starting with "abl"* kept it at three, so negating a question lost its head (hartland, the first
+ * day it ran a real parse — the parser had hung *starting* off the verb, so no chain reached
+ * *stores* either). A form the literal does not touch moves nothing.
+ *
  * **Left first is a rule, not a tie-break.** Czech and English both put the thing before the
  * string that restricts it (*dodací místa "Pelex"*, *stores named "Pelex"*), so a mention to the
  * right is only a fallback for the rare postposed head. As a mere tie-break it let
@@ -101,16 +109,18 @@ object VerbatimAttribution {
      *
      * [codeRefs] are the code attributes the registry declares (every entity's
      * [ResolverEntityType.codeRef]); an attribute head that IS one of them is a code facet, so
-     * *s kódem "AB12"* defaults to `equals`, not `contains`.
+     * *s kódem "AB12"* defaults to `equals`, not `contains`. [triggers] are the question's `pred:`
+     * triggers, which is how the distance rule knows where the literal's form begins.
      */
     fun attribute(
         literal: LiteralTokenSpan,
         parse: AnalyzeResponse,
         heads: List<Head>,
         codeRefs: Set<String> = emptySet(),
+        triggers: List<Trigger> = emptyList(),
     ): Attributed? {
         if (heads.isEmpty()) return null
-        for (head in candidates(literal, parse, heads)) {
+        for (head in candidates(literal, parse, heads, triggers)) {
             val (ref, facet) = facetOf(literal.literal.text, head.entityType, codeRefs) ?: continue
             return Attributed(ref, head.mentionId, facet)
         }
@@ -225,10 +235,11 @@ object VerbatimAttribution {
         literal: LiteralTokenSpan,
         parse: AnalyzeResponse,
         heads: List<Head>,
+        triggers: List<Trigger>,
     ): Sequence<Head> =
         sequence {
             yieldAll(chain(literal, parse, heads, Head::headToken))
-            yieldAll(byDistance(literal, heads))
+            yieldAll(byDistance(literal, heads, triggers))
         }.distinct()
 
     /** (1) — the first item on the dep_head chain, bounded to [MAX_HOPS]. */
@@ -264,19 +275,22 @@ object VerbatimAttribution {
 
     /**
      * (2) — the heads within [SpanProposal.MAX_ANCHOR_DISTANCE] tokens, edge to edge: every left
-     * one nearest first, and the right ones only when the left is empty.
+     * one nearest first, and the right ones only when the left is empty. The left edge is the
+     * start of the form against the literal, when there is one ([formStart]).
      */
     private fun byDistance(
         literal: LiteralTokenSpan,
         heads: List<Head>,
+        triggers: List<Trigger>,
     ): List<Head> {
         val open = literal.openToken() ?: return emptyList()
         val close = literal.closeToken() ?: return emptyList()
+        val edge = formStart(open, triggers)
         val reach = 1..SpanProposal.MAX_ANCHOR_DISTANCE
         val left =
             heads
-                .filter { it.lastToken < open }
-                .map { it to open - it.lastToken }
+                .filter { it.lastToken < edge }
+                .map { it to edge - it.lastToken }
                 .filter { (_, d) -> d in reach }
                 .sortedBy { (_, d) -> d }
                 .map { it.first }
@@ -287,6 +301,22 @@ object VerbatimAttribution {
             .filter { (_, d) -> d in reach }
             .sortedBy { (_, d) -> d }
             .map { it.first }
+    }
+
+    /**
+     * The first token of the unbroken run of trigger tokens ending right before [open], or [open]
+     * itself when the word before the delimiter is no trigger. Bounded by the run, which is at most
+     * a form plus its negator.
+     */
+    private fun formStart(
+        open: Int,
+        triggers: List<Trigger>,
+    ): Int {
+        if (triggers.isEmpty()) return open
+        val at = triggers.map { it.headToken }.toHashSet()
+        var edge = open
+        while (edge - 1 in at) edge--
+        return edge
     }
 
     /** The literal's first token, delimiter included — the edge a left neighbour is measured to. */

@@ -234,6 +234,9 @@ object SpanProposal {
         // it is a string the user wants passed through, and a hull that swallowed it would gate
         // `dodací místa "Pelex"` as one phrase against the store vocabulary.
         anchorTokens += literals.tokens
+        // …and the words a literal HANGS from are its restriction, not a sibling's modifier: see
+        // [literalGovernors]. Empty on the floor, where there is no chain to walk.
+        val governors = literalGovernors(tokens, literals.tokens)
 
         // (a) anchored subtrees
         tokens.forEachIndexed { idx, t ->
@@ -273,7 +276,8 @@ object SpanProposal {
             // `entityTypes` in the registry. `tržby` declared for both an entity and its own
             // measure was gated against whichever the archive happened to list first, so the
             // Binder was never shown the choice it exists to make.
-            val phraseIdx = anchorPhraseIndices(idx, children, tokens, universal, anchorTokens, literals.tokens)
+            val phraseIdx =
+                anchorPhraseIndices(idx, children, tokens, universal, anchorTokens, literals.tokens, governors)
             if (phraseIdx.isNotEmpty()) {
                 out +=
                     candidate(
@@ -521,11 +525,15 @@ object SpanProposal {
         universal: List<IntRange>,
         anchorTokens: Set<Int>,
         literalTokens: Set<Int> = emptySet(),
+        literalGovernors: Set<Int> = emptySet(),
     ): List<Int> {
         if (isUniversal(tokens[headIdx], universal)) return emptyList()
         val included = sortedSetOf(headIdx)
         for (c in children[headIdx + 1].orEmpty()) {
             if (c in anchorTokens) continue // a sibling anchor is its own mention, not a modifier
+            // A modifier a quoted literal hangs from says how the literal restricts this thing;
+            // it is not part of the thing's name (*prodejny začínající na „abl“*).
+            if (c in literalGovernors) continue
             // A code is a VALUE of the thing, never part of its name: `nummod` is in the phrase
             // relations for numeral words, and without this `účtu 5010O` becomes one mention and
             // the code is never looked up at all.
@@ -536,8 +544,9 @@ object SpanProposal {
                 included += c
             }
         }
-        // contiguous hull, dropping any universal token inside it
-        return contiguousHull(included, tokens, universal, anchorTokens, headIdx, literalTokens)
+        // contiguous hull, dropping any universal token inside it — and never filling a gap with
+        // a governor either, which would put back the word the loop above just left out
+        return contiguousHull(included, tokens, universal, anchorTokens + literalGovernors, headIdx, literalTokens)
     }
 
     private fun subtreeIndices(
@@ -618,6 +627,39 @@ object SpanProposal {
             !isUniversal(tokens[it], universal) &&
                 (it in kept || (it !in anchorTokens && !isCode(tokens[it])))
         }
+    }
+
+    /**
+     * LP — the tokens a quoted literal HANGS from: every token on the `dep_head` chain above a
+     * literal's tokens, the literal's own excluded.
+     *
+     * A phrase modifier among them is the literal's restriction, not part of its head's name. Both
+     * Czech analysers make the participle in *prodejny začínající na „abl“* an `amod` of the noun,
+     * and the literal hangs from the participle; folded into the anchor phrase it made *prodejny
+     * začínající*, which names nothing, so the mention bound nothing (G1) and the literal lost its
+     * head with it (G3). An adjective the literal does NOT hang from — *kamenné prodejny* — is still
+     * part of the name. Only a real parse has a chain; the floor returns nothing here, which is why
+     * the demo estate first met this on 2026-09-25, the day its analyser came up.
+     */
+    internal fun literalGovernors(
+        tokens: List<Token>,
+        literalTokens: Set<Int>,
+    ): Set<Int> {
+        if (literalTokens.isEmpty()) return emptySet()
+        val out = HashSet<Int>()
+        for (start in literalTokens) {
+            var current = start
+            // Bounded by the question's length, so a parse with a cycle in it cannot hang a resolve.
+            var hops = 0
+            while (hops++ < tokens.size) {
+                val next = (tokens.getOrNull(current)?.depHead ?: 0) - 1 // 1-based; 0 is the root
+                if (next < 0 || next == current) break
+                // A chain already walked from another literal token has nothing new above it.
+                if (next !in literalTokens && !out.add(next)) break
+                current = next
+            }
+        }
+        return out
     }
 
     /**
