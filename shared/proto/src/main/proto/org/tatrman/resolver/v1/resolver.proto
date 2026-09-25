@@ -429,9 +429,22 @@ message ValueFinding {
   //
   // `verbatim_text` is the §1.4 text: delimiters removed, outer whitespace trimmed,
   // everything else — case, diacritics, inner spaces, punctuation — exactly as typed.
-  // It is a bound PARAMETER wherever it lands (contracts §5), never interpolated.
+  // It is a bound PARAMETER wherever it lands (contracts §5), never interpolated. Set on
+  // every VERBATIM value, and on a LITERAL value a quoted literal's member lookup bound
+  // (✅LP-13) — i.e. whenever the value's span is a quoted literal.
   optional string predicate_ref = 7;
   optional string verbatim_text = 8;
+  // LP review-103 (D5 + ✅LP-13, additive). TRUE when the question named no predicate and
+  // `predicate_ref` carries §2.2's default for the facet the literal landed on
+  // (`pred:contains` for a name, `pred:equals` for a code). Absent/false when a trigger
+  // said it. Consumers that only render the filter can ignore it; it exists because "no
+  // trigger" is a decision input: a quoted literal with no trigger under a head whose name
+  // attribute has a member vocabulary is looked up among those members (✅LP-13), and one
+  // with a trigger never is.
+  //
+  // `verbatim_text` is also set on a LITERAL value that such a lookup bound: the span was
+  // quoted, and the re-gate keeps refusing hypotheses on a quoted span whatever it bound.
+  optional bool predicate_implied = 9;
 }
 
 // "This literal could be a value of THAT attribute."

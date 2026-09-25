@@ -41,8 +41,15 @@ import org.tatrman.fuzzy.v1.TargetClass as FuzzyTargetClass
  * and makes "we already tried that" a fact the planner can be tested on.
  */
 object RoundPlanner {
-    /** The narrowing priority. Lower ordinal = asked first; a tier runs only if all above are dry. */
-    enum class Tier { ANCHORED_VALUE, UNBOUND_MENTION, BROAD }
+    /**
+     * The narrowing priority. Lower ordinal = asked first; a tier runs only if all above are dry.
+     *
+     * [QUOTED_VALUE] (✅LP-13) is first because it is the one question the USER asked: a quoted
+     * literal with no `pred:` trigger, attributed to a name attribute that has a member vocabulary,
+     * is a request to find that value among the attribute's members. It is bounded by what the user
+     * quoted, and it needs no guess about which span or which scope.
+     */
+    enum class Tier { QUOTED_VALUE, ANCHORED_VALUE, UNBOUND_MENTION, BROAD }
 
     /**
      * One planned question. Carries what `LookupRequest` can express and the core cannot say any
@@ -58,6 +65,12 @@ object RoundPlanner {
         val methodOverride: String?,
         val maxCandidates: Int,
         val tier: Tier,
+        /**
+         * [Tier.QUOTED_VALUE] only: the mention the literal was attributed through. The literal
+         * has no gated span of its own (nothing inside quotes is proposed), so the rung builds
+         * one, and this is where its anchor comes from.
+         */
+        val anchorMentionId: String = "",
     ) {
         /** What "already asked" means: the same span, scoped the same way, at the same tier. */
         val key: String
@@ -99,60 +112,117 @@ object RoundPlanner {
 
         for (tier in Tier.entries) {
             val queries =
-                lattice.gapsList.mapNotNull { gap ->
-                    when (tier) {
-                        // G4 — the user named the axis and the lookup in it missed. The scope is
-                        // known, so the round re-asks inside it: "the user said účet, so check
-                        // `501001` against account". This is the only tier that narrows rather
-                        // than widens, which is why it goes first.
-                        Tier.ANCHORED_VALUE -> {
-                            if (gap.kind != GapKind.GAP_KIND_G4_METHOD_MISS) return@mapNotNull null
-                            val value = valuesById[gap.valueId] ?: return@mapNotNull null
-                            val anchor = mentionsById[value.anchorMentionId] ?: return@mapNotNull null
-                            // The categories the anchor actually BOUND — an anchor that bound
-                            // nothing lends no scope, which is the same distinction `Gaps` turns
-                            // on when it tells a scoped miss from an unscoped one.
-                            val categories =
-                                anchor.bindingsList
-                                    .flatMap { categoriesByRef[it.ref].orEmpty() }
-                                    .distinct()
-                            if (categories.isEmpty()) return@mapNotNull null
-                            query(gap.span, categories, emptyList(), config.maxCandidates, tier)
-                        }
-
-                        // G1 — nothing in this estate bound the word. Asked cross-category but
-                        // CLASS-scoped: a mention names something in the model, and answering
-                        // "what is this word?" with a data value that reads alike is where
-                        // issues.md started.
-                        Tier.UNBOUND_MENTION -> {
-                            if (gap.kind != GapKind.GAP_KIND_G1_UNBOUND) return@mapNotNull null
-                            query(gap.span, emptyList(), MENTION_CLASSES, config.maxCandidates, tier)
-                        }
-
-                        // G3 — nothing scoped it, so there is no scope to re-ask inside and the
-                        // only move left is to widen. Last, and bounded: an unscoped search is the
-                        // over-generation Q-20 removed, and a lattice is allowed to keep saying G3
-                        // rather than force a binding (P-3).
-                        Tier.BROAD -> {
-                            if (gap.kind != GapKind.GAP_KIND_G3_UNATTRIBUTED) return@mapNotNull null
-                            // LP contracts §2.4 — except a VERBATIM one. A headless literal is a
-                            // G3 like any other and is the ONE G3 that must not widen: the user
-                            // quoted it, which says "do not look this up" in the plainest way the
-                            // language has. The gap stays open and is answered by asking the user
-                            // which column, not by searching the estate for a string they already
-                            // told us is a string.
-                            if (valuesById[gap.valueId]?.kind == ValueKind.VALUE_KIND_VERBATIM) {
-                                return@mapNotNull null
-                            }
-                            query(gap.span, emptyList(), emptyList(), config.broadMaxCandidates, tier)
-                        }
-                    }
+                if (tier == Tier.QUOTED_VALUE) {
+                    quotedQueries(lattice, entityTypes, categoriesByRef, config)
+                } else {
+                    gapQueries(tier, lattice, categoriesByRef, mentionsById, valuesById, config)
                 }
             val fresh = queries.filter { it.key !in asked }.take(config.maxQueriesPerRound)
             if (fresh.isNotEmpty()) return fresh
         }
         return emptyList()
     }
+
+    /**
+     * ✅LP-13 (ruling 5, both worlds) — the quoted lane: a VERBATIM value nobody qualified
+     * (`predicate_implied`, landed on a NAME — a code-shaped one goes straight to `equals`: a quoted
+     * code means that code), attributed to exactly one attribute that owns a member vocabulary, is
+     * looked up in that vocabulary with its §1.4 text. Not gap-driven: the value is attributed and
+     * nothing about it is open — the user's quotes are the request.
+     *
+     * Falls away, leaving the VERBATIM `contains` in place, whenever the attribute has no member
+     * vocabulary (the column is not indexed), and — in [LookupRounds] — whenever the lookup admits
+     * nothing or the matcher does not answer. Nothing gets worse than it was.
+     */
+    private fun quotedQueries(
+        lattice: ResolutionState,
+        entityTypes: List<ResolverEntityType>,
+        categoriesByRef: Map<String, List<String>>,
+        config: LookupRoundConfig,
+    ): List<Query> {
+        val byRef = entityTypes.associateBy { it.ref }
+        return lattice.valuesList.mapNotNull { value ->
+            if (value.kind != ValueKind.VALUE_KIND_VERBATIM || !value.predicateImplied) return@mapNotNull null
+            if (value.predicateRef != NAME_DEFAULT) return@mapNotNull null
+            val attribute = value.attributionsList.singleOrNull()?.attributeRef ?: return@mapNotNull null
+            if (byRef[attribute]?.memberVocabulary != true) return@mapNotNull null
+            val categories = categoriesByRef[attribute].orEmpty()
+            if (categories.isEmpty()) return@mapNotNull null
+            Query(
+                spanStart = value.span.start,
+                spanEnd = value.span.end,
+                term = value.verbatimText,
+                categories = categories,
+                targetClasses = emptyList(),
+                methodOverride = null,
+                maxCandidates = config.maxCandidates,
+                tier = Tier.QUOTED_VALUE,
+                anchorMentionId = value.anchorMentionId,
+            )
+        }
+    }
+
+    /** §2.2's default for a literal that landed on a NAME — the only facet [quotedQueries] asks about. */
+    private const val NAME_DEFAULT = "pred:contains"
+
+    private fun gapQueries(
+        tier: Tier,
+        lattice: ResolutionState,
+        categoriesByRef: Map<String, List<String>>,
+        mentionsById: Map<String, org.tatrman.resolver.v1.Mention>,
+        valuesById: Map<String, org.tatrman.resolver.v1.ValueFinding>,
+        config: LookupRoundConfig,
+    ): List<Query> =
+        lattice.gapsList.mapNotNull { gap ->
+            when (tier) {
+                Tier.QUOTED_VALUE -> null
+                // G4 — the user named the axis and the lookup in it missed. The scope is
+                // known, so the round re-asks inside it: "the user said účet, so check
+                // `501001` against account". This is the only tier that narrows rather
+                // than widens, which is why it goes first.
+                Tier.ANCHORED_VALUE -> {
+                    if (gap.kind != GapKind.GAP_KIND_G4_METHOD_MISS) return@mapNotNull null
+                    val value = valuesById[gap.valueId] ?: return@mapNotNull null
+                    val anchor = mentionsById[value.anchorMentionId] ?: return@mapNotNull null
+                    // The categories the anchor actually BOUND — an anchor that bound
+                    // nothing lends no scope, which is the same distinction `Gaps` turns
+                    // on when it tells a scoped miss from an unscoped one.
+                    val categories =
+                        anchor.bindingsList
+                            .flatMap { categoriesByRef[it.ref].orEmpty() }
+                            .distinct()
+                    if (categories.isEmpty()) return@mapNotNull null
+                    query(gap.span, categories, emptyList(), config.maxCandidates, tier)
+                }
+
+                // G1 — nothing in this estate bound the word. Asked cross-category but
+                // CLASS-scoped: a mention names something in the model, and answering
+                // "what is this word?" with a data value that reads alike is where
+                // issues.md started.
+                Tier.UNBOUND_MENTION -> {
+                    if (gap.kind != GapKind.GAP_KIND_G1_UNBOUND) return@mapNotNull null
+                    query(gap.span, emptyList(), MENTION_CLASSES, config.maxCandidates, tier)
+                }
+
+                // G3 — nothing scoped it, so there is no scope to re-ask inside and the
+                // only move left is to widen. Last, and bounded: an unscoped search is the
+                // over-generation Q-20 removed, and a lattice is allowed to keep saying G3
+                // rather than force a binding (P-3).
+                Tier.BROAD -> {
+                    if (gap.kind != GapKind.GAP_KIND_G3_UNATTRIBUTED) return@mapNotNull null
+                    // LP contracts §2.4 — except a VERBATIM one. A headless literal is a
+                    // G3 like any other and is the ONE G3 that must not widen: the user
+                    // quoted it, which says "do not look this up" in the plainest way the
+                    // language has. The gap stays open and is answered by asking the user
+                    // which column, not by searching the estate for a string they already
+                    // told us is a string.
+                    if (valuesById[gap.valueId]?.kind == ValueKind.VALUE_KIND_VERBATIM) {
+                        return@mapNotNull null
+                    }
+                    query(gap.span, emptyList(), emptyList(), config.broadMaxCandidates, tier)
+                }
+            }
+        }
 
     private fun query(
         span: Span,
