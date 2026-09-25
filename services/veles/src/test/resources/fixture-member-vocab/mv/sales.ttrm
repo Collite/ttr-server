@@ -1,0 +1,13 @@
+package mv
+model db schema sales
+// review-102 F5 — an owner outside the translator's default namespace (`db.dbo`). The projection
+// names its owner unqualified, and `db.dbo.ledger` exists too: rendered, this vocabulary would read
+// THAT table's population. It is listed unrenderable instead.
+
+def table ledger {
+    primaryKey: ["id"]
+    columns: [
+        def column id { type: int, isKey: true },
+        def column account { type: varchar, search { searchable method: EXACT } }
+    ]
+}

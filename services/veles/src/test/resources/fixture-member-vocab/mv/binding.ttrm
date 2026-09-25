@@ -1,0 +1,18 @@
+package mv
+model binding
+
+def er2db_entity store_map { entity: er.entity.store, target: { table: db.dbo.stores } }
+def er2db_attribute store_id_map { attribute: er.entity.store.store_id, target: { column: db.dbo.stores.id } }
+def er2db_attribute store_name_map { attribute: er.entity.store.store_name, target: { column: db.dbo.stores.name } }
+def er2db_attribute store_state_map { attribute: er.entity.store.state, target: { column: db.dbo.stores.state } }
+def er2db_attribute store_label_map { attribute: er.entity.store.label, target: { column: db.dbo.stores.label } }
+def er2db_attribute store_display_map { attribute: er.entity.store.display, target: { expression: "name || ' (' || state || ')'" } }
+
+def er2db_entity currency_map { entity: er.entity.currency, target: { table: db.dbo.currencies } }
+
+def er2db_entity supplier_rival_map { entity: er.entity.supplier_rival, target: { view: db.dbo.supplier_rivals } }
+def er2db_entity brand_rival_map { entity: er.entity.brand_rival, target: { view: db.dbo.brand_rivals } }
+
+def er2db_entity order_line_map { entity: er.entity.order_line, target: { table: db.dbo.lines } }
+
+def er2db_entity open_store_map { entity: er.entity.open_store, target: { query: db.dbo.open_stores__filter } }

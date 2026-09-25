@@ -45,7 +45,7 @@ class QueryParseWorker(
             for (query in model.queries.values) {
                 launch {
                     gate.withPermit {
-                        state.set(query.qname, parseOne(translator, query))
+                        state.set(model.version.value, query.qname, parseOne(translator, query))
                     }
                 }
             }

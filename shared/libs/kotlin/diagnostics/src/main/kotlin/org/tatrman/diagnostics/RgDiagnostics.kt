@@ -51,14 +51,22 @@ object RgDiagnostics {
             RgDiagnostic(
                 "RG-FUZ-001",
                 Severity.WARNING,
-                "Declared fuzzy column '{column}' skipped (composite key / no single PK).",
-                "Give the column a single-column primary key or a surrogate id; see the loader report.",
+                "Member vocabulary '{category}' skipped — its owner has no single key (none declared, or a composite one).",
+                "Give the owning entity a single key attribute, or the table a single-column primary key. A view declares none: index its column through an entity over the view.",
             ),
             RgDiagnostic(
                 "RG-FUZ-002",
                 Severity.ERROR,
                 "Explicit but unknown fuzzy category '{category}' — leak guard returns EMPTY (never a global match).",
                 "Use a category advertised by GetStatus, or omit the category for a global match.",
+            ),
+            // MV-T1 — Veles cannot render a member vocabulary's read plan. Listed, `read_sql` empty:
+            // an index the translator cannot read is skipped loudly, never composed some other way.
+            RgDiagnostic(
+                "RG-FUZ-003",
+                Severity.WARNING,
+                "Member vocabulary '{category}' has no read plan — {reason}",
+                "The reason names the cause: an expression-mapped attribute, or an owner outside the translator's default namespace, is not renderable yet; anything else is the translator's own error. The vocabulary stays unloaded until it renders.",
             ),
             RgDiagnostic(
                 "RG-GND-001",

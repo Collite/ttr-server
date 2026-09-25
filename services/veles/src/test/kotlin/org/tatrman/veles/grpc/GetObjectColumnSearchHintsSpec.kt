@@ -40,7 +40,8 @@ class GetObjectColumnSearchHintsSpec :
                 name = name,
             )
 
-        "GetObject returns column with search.fuzzy=true when DbColumn.search.fuzzy is set" {
+        // MV-T1 T2 (contracts §2.2): the wire carries `indexed` + `match_method`; `fuzzy` = "the method is partial".
+        "GetObject returns column with search.indexed + match_method, and fuzzy=true for a partial method" {
             val customersQ = qn("db", "dbo", "customers")
             val nameQ = qn("db", "dbo", "customers.name")
             val table =
@@ -54,7 +55,7 @@ class GetObjectColumnSearchHintsSpec :
                                 qname = nameQ,
                                 table = customersQ,
                                 dataType = "varchar",
-                                search = SearchHints(fuzzy = true, searchable = true),
+                                search = SearchHints(searchable = true, indexed = true, matchMethod = "TYPOS(1)"),
                             ),
                         ),
                     primaryKey = listOf("id"),
@@ -65,8 +66,69 @@ class GetObjectColumnSearchHintsSpec :
             val req = GetObjectRequest.newBuilder().setQualifiedName(nameQ.toProto()).build()
             val resp = service.getObject(req)
 
+            resp.column.search.indexed shouldBe true
+            resp.column.search.matchMethod shouldBe "TYPOS(1)"
             resp.column.search.fuzzy shouldBe true
             resp.column.search.searchable shouldBe true
+        }
+
+        "an EXACT carrier is indexed on the wire but not partial — the hole MV closes" {
+            val storesQ = qn("db", "dbo", "stores")
+            val stateQ = qn("db", "dbo", "stores.state")
+            val table =
+                DbTable(
+                    internalId = "t1",
+                    qname = storesQ,
+                    columns =
+                        listOf(
+                            DbColumn(
+                                internalId = "c1",
+                                qname = stateQ,
+                                table = storesQ,
+                                dataType = "char",
+                                search = SearchHints(searchable = true, indexed = true, matchMethod = "EXACT"),
+                            ),
+                        ),
+                    primaryKey = listOf("id"),
+                )
+            val (service, _) = wire(modelOf(table))
+            val search =
+                service
+                    .getObject(
+                        GetObjectRequest.newBuilder().setQualifiedName(stateQ.toProto()).build(),
+                    ).column.search
+            search.indexed shouldBe true
+            search.matchMethod shouldBe "EXACT"
+            search.fuzzy shouldBe false
+        }
+
+        "an indexed carrier with no method is sent as EXACT" {
+            val storesQ = qn("db", "dbo", "stores")
+            val codeQ = qn("db", "dbo", "stores.code")
+            val table =
+                DbTable(
+                    internalId = "t1",
+                    qname = storesQ,
+                    columns =
+                        listOf(
+                            DbColumn(
+                                internalId = "c1",
+                                qname = codeQ,
+                                table = storesQ,
+                                dataType = "char",
+                                search = SearchHints(indexed = true),
+                            ),
+                        ),
+                    primaryKey = listOf("id"),
+                )
+            val (service, _) = wire(modelOf(table))
+            val search =
+                service
+                    .getObject(
+                        GetObjectRequest.newBuilder().setQualifiedName(codeQ.toProto()).build(),
+                    ).column.search
+            search.indexed shouldBe true
+            search.matchMethod shouldBe "EXACT"
         }
 
         "GetObject returns column with no search field when DbColumn.search is EMPTY" {
@@ -113,7 +175,6 @@ class GetObjectColumnSearchHintsSpec :
                                 dataType = "varchar",
                                 search =
                                     SearchHints(
-                                        fuzzy = false,
                                         searchable = true,
                                         keywords = LocalizedTextList(mapOf("cs" to listOf("stav", "status"))),
                                         aliases = listOf("order_status"),
@@ -130,6 +191,9 @@ class GetObjectColumnSearchHintsSpec :
 
             resp.column.search.searchable shouldBe true
             resp.column.search.fuzzy shouldBe false
+            // a bare `searchable` is a hint, not a vocabulary: not indexed, no method on the wire
+            resp.column.search.indexed shouldBe false
+            resp.column.search.matchMethod shouldBe ""
             resp.column.search.aliasesList shouldBe listOf("order_status")
         }
     })

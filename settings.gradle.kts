@@ -88,6 +88,8 @@ include(":shared:libs:kotlin:fuzzy-common")
 include(":shared:libs:kotlin:whois-common")
 include(":shared:libs:kotlin:keycloak-auth")
 include(":shared:libs:kotlin:meta-client")
+// MV-T1 — the Veles-snapshot → translator ModelHandle adapter, shared by translate + Veles.
+include(":shared:libs:kotlin:translate-snapshot")
 include(":shared:libs:kotlin:llm-client")
 // CH-D5 — the published Charon transfer seam (MoveExecutor + Plan + Either +
 // CharonError + MoveRpc), embedded in-process by radegast behind TransferMover.

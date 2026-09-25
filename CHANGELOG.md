@@ -16,6 +16,93 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+### `meta.v1` — member vocabularies (MV-T1): `ListMemberVocabularies`, and `SearchHints.indexed`
+
+A member vocabulary is the set of values one attribute takes over its entity's population, indexed for
+matching. Until now the lex-matcher built these itself: it listed "fuzzy columns" and composed its own
+SQL per physical column. So two entities over one table shared one index, and a view- or query-backed
+entity was indexed over its whole base table. Veles now publishes one vocabulary per indexed
+**attribute**, together with the read plan the translator renders from the entity.
+
+**Wire (additive)**
+
+- `VelesService.ListMemberVocabularies` returns `MemberVocabulary` items, one per carrier with a member
+  vocabulary, ordered by `category` and paged by it. Each item carries:
+  - `category`: the attribute's dotted qname, byte-equal to its compiled-lexicon target ref;
+  - `attribute` and `entity` (its owner), plus `key_attribute`;
+  - `read_sql`: `SELECT <key>, <value> … GROUP BY … ORDER BY <key>` rendered for the request's `dialect`
+    (a `translate.v1.SqlDialect` value name);
+  - `match_method`, `version` (SHA-256 over model version, `read_sql`, key and method), and `diagnostics`.
+- `SearchHints.indexed = 8` and `match_method = 9`. `fuzzy = 6` now means "the match method is partial"
+  (TYPOS/TOKENS). For every carrier that does not author both a method and the deprecated boolean, it
+  reads the same as before.
+- `ListObjectsRequest.indexed_only = 14`. `fuzzy_only = 12` is its deprecated alias for one release,
+  and one WARN per process is logged when it is used. ⚠ `method: EXACT` carriers are now indexed and are
+  therefore listed.
+- Diagnostics: `RG-FUZ-001` is reworded from "fuzzy column" to "member vocabulary". New `RG-FUZ-003`
+  (WARNING) means a vocabulary has no read plan, and names why: an expression-mapped attribute, an owner
+  outside the translator's default namespace, or the translator's own error.
+
+**How `read_sql` is rendered.** Veles renders it through `SnapshotModelHandle` over its own
+`GetSnapshot`. That is the exact adapter the translate service builds for every ER query, so an index
+reads an entity the way a query over it does. The adapter moved from `services/translate` into the new
+`shared/libs/kotlin/translate-snapshot` for this reason.
+- A query-backed entity renders over its saved query once that query has parsed (#112). The listing is
+  cached per `GetSnapshot` ETag, so it follows the parse instead of freezing the first answer.
+- Two carriers are listed with `RG-FUZ-003` rather than read some other way, because a query could not
+  read them by name either: an expression-mapped attribute (the translator's ER catalog has no
+  expressions; the rest of its entity renders, #113), and a carrier whose owner lives outside
+  `er.entity` / `db.dbo`, the one namespace per schema the translator resolves an unqualified name in.
+- A carrier that is its entity's own key (a code entity keyed by its code) renders as two columns, the
+  second aliased.
+
+**Consumers:** built on `org.tatrman:*:0.13.6`, where `SearchHints.indexed` + `matchMethod` split the old
+`fuzzy` bit.
+
+### `meta.v1` GetSnapshot — the snapshot carries every parsed query's plan, and its ETag moves while they land (#112)
+
+An ER entity mapped to a saved query (`binding: { target: { query: … } }`, the shape a
+row-filtered entity is expanded into) could not be queried in the ER lane at all: the translate
+service builds its model from `GetSnapshot`, and the snapshot never set
+`QueryDetail.canonical_form`, so the entity expanded into an empty plan and every query over it
+failed with `sql_unparse_failed: PlanNode case 'NODE_NOT_SET'`.
+
+**Behaviour**
+
+- `GetSnapshot` sets `QueryDetail.canonical_form` for every query the parse worker has parsed —
+  the plan `GetQuery(include_canonical_form)` returns.
+- The plans land *after* a model swap, so `GetSnapshotResponse.etag` is now
+  `<ModelVersion.value>.q<n>` while Veles tracks live parse state, and moves as they land. A
+  consumer that polled during the parse window gets the complete snapshot on its next conditional
+  read instead of keeping the plan-less one until the model next changes. It settles once parsing
+  is done. Without a live parse state (fixture boots) it stays the bare version.
+- A plan is only ever served for the model it was parsed against. Right after a model swap, until
+  parsing for the new model starts, a saved query is reported PENDING with no plan, where it used to
+  carry the previous model's. A late parse job from the previous model can no longer overwrite the
+  current result either.
+- **The ETag is no longer the model version.** It never was a documented one to rely on, but the
+  proto comment said so: read the version from `snapshot.model.version` or
+  `GetStatus.model_version`. `validate` did read it as the version; it now reads `GetStatus`
+  (which also stops it shipping the whole model per `Validate`).
+
+### translate — an expression-mapped attribute no longer makes its entity unqueryable (#113)
+
+An ER attribute may be mapped to an expression instead of a column
+(`target: { expression: "…" }`). The translate service kept such an attribute in its entity's
+ER catalog, although nothing can compute it — the translator's `ModelHandle` has no way to carry
+an expression. So it rode along in every scan of the entity, the physical table was asked for a
+column that does not exist, and **every** ER query over the entity failed with
+`sql_unparse_failed: field [<attr>] not found`, including queries that never named it.
+
+**Behaviour**
+
+- The snapshot adapter (`SnapshotModelHandle`) leaves out of the ER catalog every attribute whose
+  `er2db_attribute` mapping names no column. The rest of the entity is queryable again.
+- A query that names the expression attribute itself fails as an unknown column, at
+  validation. Querying expression attributes needs translator support and is not part of this
+  change.
+- An attribute with no mapping at all is unchanged: it still reads the column of the same name.
+
 ### `query.v1` / `validate.v1` — a caller-stated row window, a ceiling, and a warning when the cap binds
 
 `validate` caps every answer at `default-top-n` rows by injecting a `LIMIT`, and the cap was a

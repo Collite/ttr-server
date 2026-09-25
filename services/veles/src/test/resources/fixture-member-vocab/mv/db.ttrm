@@ -1,0 +1,67 @@
+package mv
+// (no `model db` header: the file kind comes from its name, and that kind admits `def query`)
+// MV-T1 — ListMemberVocabularies fixture (member-vocabulary contracts §9). Invented names.
+
+def table stores {
+    primaryKey: ["id"]
+    columns: [
+        def column id { type: int, isKey: true },
+        def column name { type: varchar },
+        def column state { type: char },
+        def column label { type: varchar }
+    ]
+}
+
+def table currencies {
+    primaryKey: ["code"]
+    columns: [
+        def column code { type: char, isKey: true },
+        def column label { type: varchar }
+    ]
+}
+
+// §9.1 — one table, two entities split by a disjoint filter (here: two views over it)
+def table rivals {
+    primaryKey: ["id"]
+    columns: [
+        def column id { type: int, isKey: true },
+        def column kind { type: int },
+        def column rival_name { type: varchar }
+    ]
+}
+
+def view supplier_rivals {
+    columns: [
+        def column id { type: int },
+        def column rival_name { type: varchar }
+    ]
+}
+
+def view brand_rivals {
+    columns: [
+        def column id { type: int },
+        def column rival_name { type: varchar }
+    ]
+}
+
+// composite key: an indexed attribute on it gets RG-FUZ-001
+def table lines {
+    primaryKey: ["order_id", "line_no"]
+    columns: [
+        def column order_id { type: int, isKey: true },
+        def column line_no { type: int, isKey: true },
+        def column sku_label { type: varchar }
+    ]
+}
+
+// §9.2 — a query-sourced entity
+def query open_stores__filter { language: SQL, sourceText: "SELECT * FROM stores WHERE state <> 'XX'" }
+
+// the db-only estate: an indexed column no attribute backs
+def table ledger {
+    primaryKey: ["id"]
+    columns: [
+        def column id { type: int, isKey: true },
+        def column account { type: varchar, search { searchable method: TYPOS(2) } }
+    ]
+}

@@ -1,0 +1,54 @@
+package mv
+model er
+
+def entity store {
+    attributes: [
+        def attribute store_id { type: int, isKey: true },
+        def attribute store_name { type: text, search { searchable method: TYPOS(1) } },
+        // EXACT is a member vocabulary (it was not before MV)
+        def attribute state { type: text, search { searchable method: EXACT } },
+        // a bare `searchable` is a hint, not a vocabulary
+        def attribute label { type: text, search { searchable } },
+        // indexed but expression-mapped: listed, not renderable (RG-FUZ-003). Its entity's other
+        // vocabularies still render — Veles sends the mapping with its target unset, and the
+        // translator's catalog leaves such an attribute out (#113)
+        def attribute display { type: text, search { searchable method: TOKENS } }
+    ]
+}
+
+// A code entity keyed by the indexed code itself: key and value are one attribute (review-102 F1)
+def entity currency {
+    attributes: [
+        def attribute code { type: text, isKey: true, search { searchable method: EXACT } },
+        def attribute label { type: text }
+    ]
+}
+
+def entity supplier_rival {
+    attributes: [
+        def attribute id { type: int, isKey: true },
+        def attribute rival_name { type: text, search { searchable method: TOKENS } }
+    ]
+}
+
+def entity brand_rival {
+    attributes: [
+        def attribute id { type: int, isKey: true },
+        def attribute rival_name { type: text, search { searchable method: TOKENS } }
+    ]
+}
+
+def entity order_line {
+    attributes: [
+        def attribute order_id { type: int, isKey: true },
+        def attribute line_no { type: int, isKey: true },
+        def attribute sku_label { type: text, search { searchable method: EXACT } }
+    ]
+}
+
+def entity open_store {
+    attributes: [
+        def attribute id { type: int, isKey: true },
+        def attribute name { type: text, search { searchable method: TYPOS(1) } }
+    ]
+}
