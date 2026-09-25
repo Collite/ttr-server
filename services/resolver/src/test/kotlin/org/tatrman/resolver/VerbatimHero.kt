@@ -155,18 +155,22 @@ internal object VerbatimHero {
     /**
      * LP-P2b — a `pred:` row, as `lex-matcher` serves one off the stdlib slice.
      *
-     * `EXACT`, because that is what the shipped slice authors for a single word and TOKENS for a
-     * phrase; the fake does not match, it answers, so the method only has to be the truth about
+     * [form] is the row's `candidate` — the authored FORM the matcher found (*začínající na*), not
+     * the ref: that is what a real matcher returns, and since review-103 F1 the resolver reads it
+     * to tell a whole form from a fragment. (This fake used to put the REF there, a shape no
+     * producer emits.) `EXACT` by default, because every form in the slice is EXACT since
+     * ruling 1; the fake does not match, it answers, so the method only has to be the truth about
      * the row a real matcher would have returned.
      */
     fun predicate(
         ref: String,
-        method: String = "TOKENS",
+        form: String,
+        method: String = "EXACT",
     ): FuzzyMatch =
         FuzzyMatch
             .newBuilder()
-            .setCandidateId("lex:$ref")
-            .setCandidate(ref)
+            .setCandidateId("lex:$ref:$form")
+            .setCandidate(form)
             .setScore(1.0)
             .setCategory(ref)
             .setSource(SourceTag.DECLARED)

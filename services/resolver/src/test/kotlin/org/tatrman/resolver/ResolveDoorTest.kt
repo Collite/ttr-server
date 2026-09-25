@@ -36,7 +36,7 @@ class ResolveDoorTest :
     StringSpec({
 
         // A fake core: records requests and answers by shape (fresh vs resume;
-        // an ambiguous "DF" text yields a clarification). No signing — the door
+        // an ambiguous "QT" text yields a clarification). No signing — the door
         // only passes the opaque token through; token crypto is ResumeTokenTest's job.
         class FakeCore {
             val requests = mutableListOf<ResolveRequest>()
@@ -51,14 +51,14 @@ class ResolveDoorTest :
                                 Resolution.newBuilder().setConfidence(1.0).setRationale("resumed via signed pin"),
                             ).setTraceId("t-resume")
                             .build()
-                    request.fresh.text.contains("DF") ->
+                    request.fresh.text.contains("QT") ->
                         ResolveResponse
                             .newBuilder()
                             .setAwaiting(
                                 AwaitingClarification
                                     .newBuilder()
-                                    .addOptions(Option.newBuilder().setId("M:df-adnak").setLabel("DF ADNAK"))
-                                    .addOptions(Option.newBuilder().setId("M:df-belus").setLabel("DF BELUS"))
+                                    .addOptions(Option.newBuilder().setId("M:qt-orlak").setLabel("QT ORLAK"))
+                                    .addOptions(Option.newBuilder().setId("M:qt-belus").setLabel("QT BELUS"))
                                     .setResumeToken("tok-abc"),
                             ).setCapabilities(Capabilities.newBuilder().setFuzzyReady(true))
                             .build()
@@ -122,7 +122,7 @@ class ResolveDoorTest :
             val handler = ResolveDoorHandler(ResolveDoor(core::resolve), requireIdentity = false)
 
             // Call 1: an ambiguous span → AwaitingClarification with a resume token.
-            val first = runBlocking { handler.handle(args("conversation_id" to "c-1", "text" to "za DF"), null, null) }
+            val first = runBlocking { handler.handle(args("conversation_id" to "c-1", "text" to "za QT"), null, null) }
             first.isError shouldBe false
             val awaiting = first.structuredContent.shouldNotBeNull().child("awaiting")
             awaiting.string("resumeToken") shouldBe "tok-abc"
@@ -132,7 +132,7 @@ class ResolveDoorTest :
             val second =
                 runBlocking {
                     handler.handle(
-                        args("conversation_id" to "c-1", "resume_token" to token, "selected_option_id" to "M:df-adnak"),
+                        args("conversation_id" to "c-1", "resume_token" to token, "selected_option_id" to "M:qt-orlak"),
                         null,
                         null,
                     )
@@ -147,7 +147,7 @@ class ResolveDoorTest :
             val resumeReq = core.requests.last()
             resumeReq.hasResume().shouldBeTrue()
             resumeReq.resume.token shouldBe "tok-abc"
-            resumeReq.resume.selectedOptionId shouldBe "M:df-adnak"
+            resumeReq.resume.selectedOptionId shouldBe "M:qt-orlak"
         }
 
         "resume without selected_option_id is an INVALID_ARGUMENT error" {

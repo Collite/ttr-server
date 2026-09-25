@@ -11,7 +11,12 @@ import io.kotest.matchers.booleans.shouldBeFalse
 import io.kotest.matchers.booleans.shouldBeTrue
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.shouldBe
+import org.tatrman.fuzzy.v1.FuzzyMatch
+import org.tatrman.fuzzy.v1.SourceTag as FuzzySourceTag
 import org.tatrman.fuzzy.v1.TargetClass as FuzzyTargetClass
+import org.tatrman.resolver.pipeline.Binder
+import org.tatrman.resolver.pipeline.Bindings
+import org.tatrman.resolver.v1.EvidenceClass
 import org.tatrman.resolver.v1.Attribution
 import org.tatrman.resolver.v1.Span
 import org.tatrman.resolver.v1.TargetClass as ResolverTargetClass
@@ -104,8 +109,8 @@ class ResolverCompatTest :
         // ---- LP-P2b·T1 (§3.2): the new class, in both protos ----------------------------------
 
         "STRING_PREDICATE is number 5 in BOTH protos, and that is load-bearing" {
-            // `Bindings.targetClassOf` maps the matcher's class to the resolver's **by NUMBER**
-            // (`TargetClass.forNumber(match.targetClass.number)`). Nothing in either file says the
+            // `Bindings.targetClassNumberOf` maps the matcher's class to the resolver's **by NUMBER**
+            // (it copies `match.targetClassValue`). Nothing in either file says the
             // two enums must agree — so the day they disagree, a `pred:` row from the matcher
             // would arrive at the resolver as a GROUNDING_TRIGGER, and the only symptom would be a
             // literal silently attributed to nothing. Contracts §3.2 pinned the number for this
@@ -123,12 +128,41 @@ class ResolverCompatTest :
                     .associate { it.name to it.number }
         }
 
-        "an old reader meeting target_class = 5 sees an unknown number, not another class" {
-            // The additive promise, on the enum rather than the field: proto3 keeps an unknown
-            // enum value as its number, so a peer built before LP reads 5 and reports UNRECOGNIZED
-            // — it does not round down to GROUNDING_TRIGGER and act on it.
-            ResolverTargetClass.forNumber(5) shouldBe ResolverTargetClass.TARGET_CLASS_STRING_PREDICATE
+        "a class number this build has no constant for does not take the resolve down (review-103 F15)" {
+            // What the pre-P2b resolver met on the day the matcher learned STRING_PREDICATE, and
+            // what THIS one meets the day a sixth class ships: `target_class = 6` off the wire.
+            // The old assertion here called `forNumber` on the NEW enum, which says nothing about
+            // a reader that lacks the value. This goes through the real code path instead.
             ResolverTargetClass.forNumber(6).shouldBeNull()
+            val fromTheFuture =
+                FuzzyMatch.parseFrom(
+                    FuzzyMatch
+                        .newBuilder()
+                        .setCandidateId("lex:pred:someday")
+                        .setCandidate("někdy")
+                        .setScore(1.0)
+                        .setCategory("pred:someday")
+                        .setTargetRef("pred:someday")
+                        .setSource(FuzzySourceTag.DECLARED)
+                        .setTargetClassValue(6)
+                        .build()
+                        .toByteArray(),
+                )
+            fromTheFuture.targetClass shouldBe FuzzyTargetClass.UNRECOGNIZED
+
+            // `Bindings.of` read `targetClass.number`, and `.number` on UNRECOGNIZED throws
+            // `Can't get the number of an unknown enum value` — the whole resolve, for one row.
+            val binding =
+                Bindings.of(
+                    Binder.ClassedMatch(fromTheFuture, EvidenceClass.EVIDENCE_CLASS_DECLARED_ALIAS),
+                    snapshotHash = "sha",
+                )
+
+            // The number is carried through, so the binding still says "a class I cannot name"…
+            binding.targetClassValue shouldBe 6
+            binding.targetClass shouldBe ResolverTargetClass.UNRECOGNIZED
+            // …and that is never a column.
+            Bindings.attributable(binding).shouldBeFalse()
         }
 
         "an old client parses a VERBATIM value, and sees a kind it has no name for" {

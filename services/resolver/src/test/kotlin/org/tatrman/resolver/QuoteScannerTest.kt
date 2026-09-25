@@ -153,6 +153,33 @@ class QuoteScannerTest :
                 span.tokens shouldBe listOf(2, 3, 4, 5)
                 span.delimiterTokens shouldBe listOf(1, 6)
             }
+
+            test("emoji earlier in the text: the literal is placed in the parse's code points (review-103 L8)") {
+                // Two astral characters before the question: 4 Kotlin chars, 2 code points. The
+                // nlp service counts code points, so its tokens start two chars "early" by Kotlin's
+                // count — comparing the scanner's code units with them put the literal one token
+                // to the right, and the word AFTER it was excluded from proposal.
+                val emoji = "\uD83D\uDE42\uD83D\uDE42"
+                val text = "$emoji zákazník \"Valmy\" a"
+                val parse =
+                    parseOf(
+                        token(emoji, 0, 2, "SYM"),
+                        token("zákazník", 3, 11),
+                        token("\"", 12, 13, "PUNCT"),
+                        token("Valmy", 13, 18),
+                        token("\"", 18, 19, "PUNCT"),
+                        token("a", 20, 21, "CCONJ"),
+                    )
+
+                val span = QuoteScanner.toTokenSpans(QuoteScanner.scan(text), text, parse).single()
+
+                span.tokens shouldBe listOf(3)
+                span.delimiterTokens shouldBe listOf(2, 4)
+                // From here on the literal speaks the lattice's offset base — code points.
+                span.literal.start shouldBe 12
+                span.literal.end shouldBe 19
+                span.surface shouldBe "\"Valmy\""
+            }
         }
 
         context("no parse at all") {
@@ -171,6 +198,15 @@ class QuoteScannerTest :
                 spans.single().tokens shouldBe listOf(3)
                 spans.single().delimiterTokens.shouldBeEmpty()
                 spans.single().literal.text shouldBe "Sh"
+            }
+
+            test("a NEXT LINE (U+0085) splits like a space, as Python's isspace() says (fixture 29)") {
+                val text = "zákazník\u0085\"Valmy\""
+
+                QuoteScanner.scan(text).single().text shouldBe "Valmy"
+                QuoteScanner
+                    .tokens(text, AnalyzeResponse.getDefaultInstance())
+                    .map { it.text } shouldBe listOf("zákazník", "\"Valmy\"")
             }
 
             test("a non-breaking space splits like a space, because Word and phones type one") {

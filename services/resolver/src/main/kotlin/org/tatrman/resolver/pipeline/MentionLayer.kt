@@ -35,6 +35,13 @@ object MentionLayer {
     fun propose(
         parse: AnalyzeResponse,
         gated: List<DomainSpanCandidate>,
+        // LP contracts §2 — the quoted literals. A word inside quotes is not something the user
+        // talked ABOUT, it is a string they want passed through: it heads no mention, joins no
+        // phrase, and no phrase reaches across it (review-103 F4a). Without this a NOUN inside
+        // quotes became an ungated mention with a grounding-trigger slot and an UNBOUND_MENTION
+        // lookup — *dodací místa "Zelená louka"* was looked up, bound, and then attributed the
+        // literal to its own words. Empty for a question with no quotes.
+        literals: Literals = Literals.NONE,
     ): List<DomainSpanCandidate> {
         val tokens = parse.tokensList
         if (tokens.isEmpty() || tokens.none { it.depHead > 0 }) return emptyList()
@@ -54,6 +61,7 @@ object MentionLayer {
             tokens.indices
                 .filter { i -> gated.any { it.start <= tokens[i].charStart && it.end >= tokens[i].charEnd } }
                 .toHashSet()
+                .apply { addAll(literals.tokens) }
 
         // ⛑ …with ONE exception, and it is the difference between `Marketplace revenue` resolving
         // and not. A **proper noun** is claimed by span proposal's PROPN branch on sight, with no
@@ -86,7 +94,7 @@ object MentionLayer {
             if (isUniversal(token, universal)) return@forEachIndexed
             if (idx in claimed) return@forEachIndexed
 
-            val phrase = phraseIndices(idx, children, tokens, universal, blocking)
+            val phrase = phraseIndices(idx, children, tokens, universal, blocking, literals.tokens)
             val start = phrase.minOf { tokens[it].charStart }
             val end = phrase.maxOf { tokens[it].charEnd }
             // Anything the gate already asked about is already a lattice span — including the
@@ -116,7 +124,11 @@ object MentionLayer {
         tokens: List<Token>,
         universal: List<IntRange>,
         claimed: Set<Int>,
+        literalTokens: Set<Int>,
     ): List<Int> {
+        // A phrase never spans a literal: only the modifiers on the head's own side of every
+        // quoted string may join it (see `SpanProposal.literalFreeSide`).
+        val side = SpanProposal.literalFreeSide(headIdx, literalTokens)
         val included = sortedSetOf(headIdx)
         for (c in children[headIdx + 1].orEmpty()) {
             val child = tokens[c]
@@ -124,6 +136,7 @@ object MentionLayer {
             if (isUniversal(child, universal)) continue
             if (child.text.any { it.isDigit() }) continue
             if (c in claimed) continue
+            if (c !in side) continue
             included += c
         }
         val lo = included.min()

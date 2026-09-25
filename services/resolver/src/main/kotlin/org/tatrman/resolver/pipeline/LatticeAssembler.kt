@@ -195,6 +195,10 @@ object LatticeAssembler {
         // to are the MODEL_OBJECT mentions — an operator, a member or a grounding trigger is not
         // a thing a string restricts — carrying the entity type whose DECLARED mention facet says
         // which column is the name.
+        //
+        // Each head carries its span's first and last TOKEN as well as its head word: §2.1's
+        // distance runs edge to edge (review-103 F2), and the edge of *dodací místa* nearest a
+        // literal after it is *místa*, not the head word the phrase was proposed from.
         val heads =
             mentionSpans
                 .zip(mentionBuilders)
@@ -205,8 +209,20 @@ object LatticeAssembler {
                             .firstOrNull { it.targetClass == TargetClass.TARGET_CLASS_MODEL_OBJECT }
                             ?.ref ?: return@mapNotNull null
                     val entityType = entityTypes.firstOrNull { it.ref == ref } ?: return@mapNotNull null
-                    VerbatimAttribution.Head(span.candidate.headToken, mention.id, entityType)
+                    val spanTokens =
+                        parse.tokensList.indices.filter { i ->
+                            val t = parse.tokensList[i]
+                            t.charStart >= span.candidate.start && t.charEnd <= span.candidate.end
+                        }
+                    VerbatimAttribution.Head(
+                        headToken = span.candidate.headToken,
+                        mentionId = mention.id,
+                        entityType = entityType,
+                        firstToken = spanTokens.minOrNull() ?: span.candidate.headToken,
+                        lastToken = spanTokens.maxOrNull() ?: span.candidate.headToken,
+                    )
                 }
+        val codeRefs = entityTypes.mapNotNull { it.codeRef.ifBlank { null } }.toSet()
         // LP §3 — and the other half of the same question: which mention says HOW.
         //
         // A `pred:` binding is excluded from attribution (`Bindings.attributable`) and from the
@@ -250,21 +266,28 @@ object LatticeAssembler {
                         .setVerbatimText(literal.literal.text)
                 // No binding rides with it, by the same argument as the grounded arm's anchor
                 // attribution: the literal is not a member of the attribute, it is a restriction
-                // on it — and there is no layer that produced it, because the user quoted it
-                // (contracts §2.3). Zero attributions is not a failure to look: it is the honest
-                // "nothing here says which column", and `Gaps` reads it as G3.
-                VerbatimAttribution.attribute(literal, parse, heads)?.let { attributed ->
-                    builder.addAttributions(Attribution.newBuilder().setAttributeRef(attributed.attributeRef))
-                    builder.anchorMentionId = attributed.mentionId
+                // on it — and there is no layer that produced it, because the user quoted it.
+                // Zero attributions is not a failure to look: it is the honest "nothing here says
+                // which column", and `Gaps` reads it as G3.
+                val attributed = VerbatimAttribution.attribute(literal, parse, heads, codeRefs)
+                attributed?.let {
+                    builder.addAttributions(Attribution.newBuilder().setAttributeRef(it.attributeRef))
+                    builder.anchorMentionId = it.mentionId
                 }
                 // Set independently of the attribution, and that is deliberate: a literal with a
                 // trigger and no head is still a question about *starting with* something, and the
                 // G3 that reports the missing head should not also lose what the user did say.
-                // "" when the question names no predicate — §2.2's default is the consumer's.
-                VerbatimAttribution
-                    .predicate(literal, parse, predicateTriggers)
-                    .takeIf { it.isNotEmpty() }
-                    ?.let { builder.predicateRef = it }
+                //
+                // With no trigger, §2.2's default is written out HERE (review-103 D5, closing
+                // ⚑LPQ-7): this is the one place that knows which facet — name or code — the
+                // literal landed on. A consumer that had to guess from the literal's shape could
+                // not see the head's `code_pattern` nor whether it declares a name at all, and
+                // guessed differently from this rule in both directions. A headless literal
+                // keeps a blank ref: there is no facet to default from.
+                val said = VerbatimAttribution.predicate(literal, parse, predicateTriggers)
+                val default = attributed?.let { VerbatimAttribution.defaultPredicate(it.facet) }.orEmpty()
+                val predicate = said.ifEmpty { default }
+                if (predicate.isNotEmpty()) builder.predicateRef = predicate
                 builder
             }
         val valueBuilders =

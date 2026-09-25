@@ -163,7 +163,7 @@ class CallsSeedConformanceTest :
                                 .single()
                                 .jsonObject["domain"]!!
                                 .jsonObject
-                        domain["resolvedId"]!!.jsonPrimitive.content shouldBe "df-adnak"
+                        domain["resolvedId"]!!.jsonPrimitive.content shouldBe "qt-orlak"
                         domain["entityTypeRef"]!!.jsonPrimitive.content shouldBe "er.qstred_df"
                     }
                 }

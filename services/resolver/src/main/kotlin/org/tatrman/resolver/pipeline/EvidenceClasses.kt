@@ -78,7 +78,7 @@ object EvidenceClasses {
             // value IS the thing. Restricted to the data layer on purpose — a declared row with no
             // authored method at all (a pre-0.12 snapshot) keeps the under-claiming P2.1 reading
             // below rather than being handed the strongest class in the order for a 1.0 score.
-            isMember && match.score >= thresholds.exact -> EvidenceClass.EVIDENCE_CLASS_EXACT
+            isMember && match.score >= thresholds.exact && allHitsExact(match) -> EvidenceClass.EVIDENCE_CLASS_EXACT
             // 2 — the layer. Learned sits below declared (RV-20): one confirmation activates an
             // overlay entry, only promotion into the lexicon raises its class.
             match.source == SourceTag.LEARNED -> EvidenceClass.EVIDENCE_CLASS_LEARNED_ALIAS
@@ -124,6 +124,21 @@ object EvidenceClasses {
             else -> EvidenceClass.EVIDENCE_CLASS_UNANCHORED_FUZZY_STRONG
         }
     }
+
+    /**
+     * review-103 F3 — the score alone does not prove a member matched ITSELF.
+     *
+     * `fuzzy.match:v2` gives every matched position the order bonus and adds a coverage term, so a
+     * partial or typo match could score ≥ 1.0 (`kovo brno stav` → 1.061) and take the strongest
+     * class there is. The engine now keeps such rows under 1.0 (ruling 2), but that normalization
+     * is configurable and can be switched off, so the class does not rest on it: where the row
+     * carries per-token provenance, every hit must be `exact`. A row with none (v1, or a profile
+     * row) is judged on the score as before.
+     */
+    private fun allHitsExact(match: FuzzyMatch): Boolean =
+        match.provenance.tokenHitsList.all { it.kind.equals(HIT_EXACT, ignoreCase = true) }
+
+    private const val HIT_EXACT = "exact"
 
     /** The wire spellings lex-matcher stamps into provenance (`MatchAlgorithm` / `Norm.wire`). */
     private const val PROFILE_EXACT = "exact"

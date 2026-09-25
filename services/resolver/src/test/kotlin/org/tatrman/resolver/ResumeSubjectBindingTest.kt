@@ -25,7 +25,7 @@ class ResumeSubjectBindingTest :
                 .newBuilder()
                 .setConversationId("c-sub")
                 .setCallerSubject(subject)
-                .setFresh(FreshQuestion.newBuilder().setText("kolik za DF"))
+                .setFresh(FreshQuestion.newBuilder().setText("kolik za QT"))
                 .build()
 
         fun resume(
@@ -35,7 +35,7 @@ class ResumeSubjectBindingTest :
             .newBuilder()
             .setConversationId("c-sub")
             .setCallerSubject(subject)
-            .setResume(ResumeAnswer.newBuilder().setToken(token).setSelectedOptionId("M:er.qstred_df.member#df-adnak"))
+            .setResume(ResumeAnswer.newBuilder().setToken(token).setSelectedOptionId("M:qt-orlak"))
             .build()
 
         "a token issued to alice cannot be resumed by a different principal" {
@@ -66,7 +66,7 @@ class ResumeSubjectBindingTest :
                 res.resolution.bindingsList
                     .single()
                     .domain
-            domain.resolvedId shouldBe "df-adnak"
+            domain.resolvedId shouldBe "qt-orlak"
             domain.entityTypeRef shouldBe "er.qstred_df" // review F: no longer empty
         }
     })

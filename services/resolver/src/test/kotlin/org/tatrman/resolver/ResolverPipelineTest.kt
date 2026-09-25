@@ -128,7 +128,7 @@ class ResolverPipelineTest :
                         options =
                             listOf(
                                 org.tatrman.resolver.token
-                                    .ResumeOption("M:df-adnak", "DF ADNAK", resolvedId = "df-adnak"),
+                                    .ResumeOption("M:qt-orlak", "QT ORLAK", resolvedId = "qt-orlak"),
                             ),
                         issuedAt = 1_752_000_000,
                         keyId = "k1",
@@ -143,14 +143,14 @@ class ResolverPipelineTest :
                             .newBuilder()
                             .setToken(
                                 token,
-                            ).setSelectedOptionId("M:df-adnak"),
+                            ).setSelectedOptionId("M:qt-orlak"),
                     ).build()
 
             val resp = runBlocking { pipeline.resolve(req) }
             resp.resolution.confidence shouldBe 1.0
             resp.resolution.bindingsList
                 .single()
-                .domain.resolvedId shouldBe "df-adnak"
+                .domain.resolvedId shouldBe "qt-orlak"
             fuzzy.calls shouldBe 0 // NO re-fuzzy on a signed pin
         }
 
