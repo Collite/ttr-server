@@ -83,7 +83,7 @@ private val FIXTURE_VOCAB: Map<String, List<Candidate>> =
             listOf(
                 Candidate.fromValues("c-zakaznik", "Zákazník Servis"),
                 Candidate.fromValues("c-dodavatel", "Dodavatel Morava"),
-                Candidate.fromValues("c-shell", "Shell UK"),
+                Candidate.fromValues("c-pelex", "Pelex UK"),
                 Candidate.fromValues("c-tesla", "Tesla Inc"),
             ),
         "branch" to
@@ -137,7 +137,7 @@ val FIXTURE_LEMMATIZER: Lemmatizer =
                 "zákazník" to "zakaznik",
                 "zákazníků" to "zakaznik",
                 "dodavatel" to "dodavatel",
-                "shell" to "shell",
+                "pelex" to "pelex",
                 "uk" to "uk",
                 "tesla" to "tesla",
                 "inc" to "inc",

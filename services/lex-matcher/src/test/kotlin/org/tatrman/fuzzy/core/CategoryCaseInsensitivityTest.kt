@@ -21,7 +21,7 @@ import kotlin.time.Duration.Companion.seconds
  * (e.g. "db.dbo.QSTRED_DF.KOD_STR"), but every query path lowercases the
  * requested category. The per-column index was therefore never hit: TATRMAN
  * silently fell back to the GLOBAL index (serving NAZEV_STR names for a
- * KOD_STR query — "DF ADNAK" was unfindable), and LEVENSHTEIN returned empty.
+ * KOD_STR query — "QT ORLAK" was unfindable), and LEVENSHTEIN returned empty.
  *
  * Asserts data flow, not call counts: a case-varied category resolves to the
  * right column's candidates, the wrong column is never leaked, and an
@@ -40,13 +40,13 @@ class CategoryCaseInsensitivityTest :
                     mapOf(
                         codeCategory to
                             listOf(
-                                Candidate.fromValues("273", "DF ADNAK"),
-                                Candidate.fromValues("492", "DF DAN PO"),
+                                Candidate.fromValues("273", "QT ORLAK"),
+                                Candidate.fromValues("492", "QT DAN PO"),
                             ),
                         nameCategory to
                             listOf(
-                                Candidate.fromValues("273", "Admin. náklady DF"),
-                                Candidate.fromValues("492", "Daň z příjmů právnických osob DF"),
+                                Candidate.fromValues("273", "Admin. náklady QT"),
+                                Candidate.fromValues("492", "Daň z příjmů právnických osob QT"),
                             ),
                     )
             }
@@ -73,17 +73,17 @@ class CategoryCaseInsensitivityTest :
                 repo.getCandidates(codeCategory).map { it.id }.toSet() shouldBe setOf("273", "492")
                 repo.getCandidates(codeCategory.lowercase()).map { it.id }.toSet() shouldBe setOf("273", "492")
 
-                // The code "DF ADNAK" lives only in KOD_STR — querying that
+                // The code "QT ORLAK" lives only in KOD_STR — querying that
                 // column (mixed case) must return it exactly, not fall back to
                 // the global index and serve NAZEV_STR names.
-                val codeHit = runBlocking { matcher.match("DF ADNAK", codeCategory, AlgorithmType.TATRMAN, 5) }
+                val codeHit = runBlocking { matcher.match("QT ORLAK", codeCategory, AlgorithmType.TATRMAN, 5) }
                 codeHit.first().candidateId shouldBe "273"
-                codeHit.first().candidate shouldBe "DF ADNAK"
+                codeHit.first().candidate shouldBe "QT ORLAK"
 
                 // The same query against the NAME column must NOT surface the
                 // code value — proves no cross-column leakage via global fallback.
-                val nameHit = runBlocking { matcher.match("DF ADNAK", nameCategory, AlgorithmType.TATRMAN, 5) }
-                nameHit.none { it.candidate == "DF ADNAK" } shouldBe true
+                val nameHit = runBlocking { matcher.match("QT ORLAK", nameCategory, AlgorithmType.TATRMAN, 5) }
+                nameHit.none { it.candidate == "QT ORLAK" } shouldBe true
             } finally {
                 repo.close()
             }
@@ -97,7 +97,7 @@ class CategoryCaseInsensitivityTest :
 
                 repo.getCandidates("db.dbo.DOES_NOT_EXIST.COL").shouldBeEmpty()
                 runBlocking {
-                    matcher.match("DF ADNAK", "db.dbo.DOES_NOT_EXIST.COL", AlgorithmType.TATRMAN, 5)
+                    matcher.match("QT ORLAK", "db.dbo.DOES_NOT_EXIST.COL", AlgorithmType.TATRMAN, 5)
                 }.shouldBeEmpty()
             } finally {
                 repo.close()

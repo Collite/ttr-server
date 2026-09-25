@@ -39,7 +39,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Protocol, runtime_checkable
 
-from golem_py.compose import StructuredQuestion
+from golem_py.compose import Filter, StructuredQuestion
 from golem_py.state import GapRecord, ResolutionState
 
 
@@ -78,6 +78,14 @@ def lattice_provenance(state: ResolutionState) -> dict[str, str]:
     return provenance
 
 
+def _render_filter(f: Filter) -> str:
+    """A member filter names its member; a VERBATIM one shows the text as typed, so the
+    envelope does not read as an unrestricted attribute."""
+    if f.verbatim:
+        return f'{f.ref} {f.predicate or "(§2.2 default)"} "{f.literal}"'
+    return f.member_ref or f.ref
+
+
 def render_content(question: StructuredQuestion, result: QueryResult | None) -> str:
     """A structural rendering, deliberately plain.
 
@@ -93,7 +101,7 @@ def render_content(question: StructuredQuestion, result: QueryResult | None) -> 
     if question.groupings:
         parts.append("by: " + ", ".join(question.groupings))
     if question.filters:
-        parts.append("where: " + ", ".join(f.member_ref or f.ref for f in question.filters))
+        parts.append("where: " + ", ".join(_render_filter(f) for f in question.filters))
     if question.time_grain:
         parts.append(f"period: {question.time_grain.normalized_value}")
     if question.operators:

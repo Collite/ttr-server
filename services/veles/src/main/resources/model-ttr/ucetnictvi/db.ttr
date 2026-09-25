@@ -147,7 +147,7 @@ WHERE (s.KOD_STR COLLATE Latin1_General_CI_AI LIKE CONCAT({nazev_strediska}, '%'
 GROUP BY z.IDUCTOBD, z.IDUCTOSN, z.IDSTRED,
          o.UCET_OBD, s.KOD_STR, s.NAZEV_STR,
          u.KOD_UCTU, u.NAZEV_UCTU
-ORDER BY SUM(z.HDKON_STAV) DESC""", search { patterns: ["(vypiš|vypis|ukaž|ukaz|zobraz) (účetní |ucetni |)(záznamy|zaznamy|zápisy|zapisy|pohyby) (pro |)(středisko|stredisko) {nazev_strediska} za (období|obdobi) {obdobi} podle (účetní hodnoty|ucetni hodnoty)", "(vypiš|vypis|ukaž|ukaz|zobraz) (účetní |ucetni |)(záznamy|zaznamy|zápisy|zapisy|pohyby) (pro |)(středisko|stredisko) {nazev_strediska} za (období|obdobi) {obdobi}"], examples: ["Vypiš účetní záznamy pro středisko DF ADNAK za období 2026.03 podle účetní hodnoty"] }
+ORDER BY SUM(z.HDKON_STAV) DESC""", search { patterns: ["(vypiš|vypis|ukaž|ukaz|zobraz) (účetní |ucetni |)(záznamy|zaznamy|zápisy|zapisy|pohyby) (pro |)(středisko|stredisko) {nazev_strediska} za (období|obdobi) {obdobi} podle (účetní hodnoty|ucetni hodnoty)", "(vypiš|vypis|ukaž|ukaz|zobraz) (účetní |ucetni |)(záznamy|zaznamy|zápisy|zapisy|pohyby) (pro |)(středisko|stredisko) {nazev_strediska} za (období|obdobi) {obdobi}"], examples: ["Vypiš účetní záznamy pro středisko QT ORLAK za období 2026.03 podle účetní hodnoty"] }
     parameters: [
         { name: nazev_strediska, type: varchar, label: "Název nebo kód střediska" },
         { name: obdobi, type: varchar, label: "Účetní období (RRRR.MM)" },
@@ -200,7 +200,7 @@ WHERE (mu.KOD_UKAZMU COLLATE Latin1_General_CI_AI LIKE CONCAT({nazev_ukazatele},
 GROUP BY z.IDUCTOBD, z.IDUCTOSN, z.IDSTRED,
          o.UCET_OBD, mu.KOD_UKAZMU, mu.NAZEV_UKAZMU,
          u.KOD_UCTU, u.NAZEV_UCTU
-ORDER BY SUM(z.HDKON_STAV) DESC""", search { patterns: ["(vypiš|vypis|ukaž|ukaz|zobraz) (účetní |ucetni |)(záznamy|zaznamy|zápisy|zapisy|pohyby) (pro |)(ukazatel|ukazatele) {nazev_ukazatele} za (období|obdobi) {obdobi}"], examples: ["Vypiš účetní záznamy pro ukazatel VY KANCELAR za období 2026.03"] }
+ORDER BY SUM(z.HDKON_STAV) DESC""", search { patterns: ["(vypiš|vypis|ukaž|ukaz|zobraz) (účetní |ucetni |)(záznamy|zaznamy|zápisy|zapisy|pohyby) (pro |)(ukazatel|ukazatele) {nazev_ukazatele} za (období|obdobi) {obdobi}"], examples: ["Vypiš účetní záznamy pro ukazatel QT KANCELAR za období 2026.03"] }
     parameters: [
         { name: nazev_ukazatele, type: varchar, label: "Kód nebo název ukazatele MÚ" },
         { name: obdobi, type: varchar, label: "Účetní období (RRRR.MM)" },

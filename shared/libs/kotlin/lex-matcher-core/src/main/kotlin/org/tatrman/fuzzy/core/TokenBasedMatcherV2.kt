@@ -25,13 +25,22 @@ import info.debatty.java.stringsimilarity.Levenshtein
  *
  * Weights come from the same [TokenIndex] v1 uses (same IDF formula), with document frequency pooled over
  * the edge-trimmed form ([TokenIndex.idfV2], ✅LP-7).
+ *
+ * **review-103 F3 (ruling 2, D3):** a row whose query tokens are NOT all `exact` is brought under 1.0
+ * by [normalization] — `S' = min(ceiling, S / S_perfect(n))` by default — so ≥ 1.0 keeps meaning
+ * "ordered exact". An all-exact row keeps S. See [V2Normalization].
  */
 class TokenBasedMatcherV2(
     private val tokenIndex: TokenIndex,
     private val orderBonusMultiplier: Double = 1.05,
     private val maxOrderBonus: Double = 1.5,
+    private val normalization: V2Normalization = V2Normalization.DEFAULT,
 ) : TokenScorer {
     private val levenshtein = Levenshtein()
+
+    // `S_perfect(n)` for the last query length seen — every candidate of one request shares it.
+    private var perfectFor = -1
+    private var perfectScore = 0.0
 
     /**
      * Per-instance (= per-request) memo of the pair verdict `(t, c) → kind/q`, or [NO_MATCH]. The
@@ -100,7 +109,10 @@ class TokenBasedMatcherV2(
         return if (lemma.score > surface.score) lemma else surface
     }
 
-    /** One axis. [collect] = false skips the provenance (hits list) — the score is unaffected. */
+    /**
+     * One axis. [collect] = false skips the provenance (hits list) — the score is unaffected: whether
+     * every query token hit EXACT is tracked on its own, not read back off the hits.
+     */
     private fun axisScore(
         queryTokens: List<String>,
         candidateTokens: List<String>,
@@ -120,12 +132,16 @@ class TokenBasedMatcherV2(
         var pairs = 0
         var lastPositions: IntArray? = null
         var matchedCount = 0
+        // D3 — false as soon as one query token is unmatched or hits by typo/prefix.
+        var allExact = true
         for ((qPos, t) in queryTokens.withIndex()) {
             val best = bestMatch(t, candidateTokens)
             if (best == null) {
+                allExact = false
                 weightTotal += tokenIndex.idfV2(t) // idf(t), or idfAbsent for a token outside the corpus
                 continue
             }
+            if (best.kind != MatchKind.EXACT) allExact = false
             val w = tokenIndex.idfV2(candidateTokens[best.cPos])
             weightedSum += w * best.quality
             weightTotal += w
@@ -159,7 +175,23 @@ class TokenBasedMatcherV2(
         val p = if (weightTotal > 0.0) weightedSum / weightTotal else 0.0
         val order = Math.pow(orderBonusMultiplier, pairs.toDouble()).coerceAtMost(maxOrderBonus)
         val s = p * order + EPSILON * coverage
-        return Scored(candidate, s, hits.orEmpty(), coverage)
+        val score = if (allExact) s else normalization.normalize(s, perfect(queryTokens.size))
+        return Scored(candidate, score, hits.orEmpty(), coverage)
+    }
+
+    /**
+     * D3 — `S_perfect(n)`: the order bonus of an all-exact, in-order match of an n-token query,
+     * `min(mult^(n(n−1)/2), maxOrderBonus)` — WITHOUT the `+ ε·C` term, so `S_perfect(1) = 1` and a
+     * one-token row keeps §4.3's S (see [V2Normalization]). The pair count is a Double so a long
+     * query cannot overflow it (the power saturates, and the cap takes over).
+     */
+    private fun perfect(n: Int): Double {
+        if (n != perfectFor) {
+            val pairs = n.toDouble() * (n - 1) / 2.0
+            perfectScore = Math.pow(orderBonusMultiplier, pairs).coerceAtMost(maxOrderBonus)
+            perfectFor = n
+        }
+        return perfectScore
     }
 
     private class Best(

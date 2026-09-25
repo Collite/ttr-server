@@ -43,7 +43,7 @@ class AliasTableIngestionTest :
             val result =
                 composeAliasCandidates(listOf(decl), pg) { sql ->
                     capturedSql = sql
-                    listOf(Candidate.fromValues("42", "Shelly"), Candidate.fromValues("42", "Shell Oil"))
+                    listOf(Candidate.fromValues("42", "Pelexy"), Candidate.fromValues("42", "Pelex Oil"))
                 }
 
             capturedSql shouldContain "SELECT"
@@ -51,7 +51,7 @@ class AliasTableIngestionTest :
             capturedSql shouldContain "ALIAS"
 
             val merged = result.getValue("db.dbo.customer.name") // lower-cased owner key
-            merged.map { it.value } shouldContainExactlyInAnyOrder listOf("Shelly", "Shell Oil")
+            merged.map { it.value } shouldContainExactlyInAnyOrder listOf("Pelexy", "Pelex Oil")
             merged.forEach {
                 it.id shouldBe "42" // same PK space
                 it.source shouldBe SourceTag.MEMBER

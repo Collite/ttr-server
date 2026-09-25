@@ -107,6 +107,8 @@ class FuzzyMatcher(
     private val lemmatizer: Lemmatizer = NoopLemmatizer,
     // GH #69 — IDF token weighting for the TATRMAN (token-based) path. Defaulted
     // so existing call sites / tests are unaffected; wired from config in Application.
+    // ⚑ A V1 switch only: v2 always weighs by IDF (contracts §4.3) and ignores it (review-103 L2 —
+    // the service WARNs at startup when it is off under v2).
     private val idfEnabled: Boolean = true,
     // FZ-P2 — retrieval path. Defaulted LEGACY so existing call sites / tests / goldens are
     // byte-identical; Application wires it from `fuzzy.token-based.retrieval`. The retriever is the
@@ -126,6 +128,10 @@ class FuzzyMatcher(
     // RV-P1.4 T4 — honours the authored match method (RV-32) on whatever the cascade produced.
     // A no-op for candidates with no authored method, so the pre-RV service is unaffected.
     private val methodDispatcher: MethodDispatcher = MethodDispatcher(),
+    // review-103 F3 (ruling 2, D3) — how v2 keeps a non-all-exact row under 1.0. Travels exactly like
+    // [matchVersion]: the service wires it from `fuzzy.match.v2.normalize`, an embedder that never
+    // passes it gets the same default the service ships (scale, 0.99). Inert under V1.
+    private val v2Normalization: V2Normalization = V2Normalization.DEFAULT,
 ) {
     init {
         matchVersion.requireCompatible(retrievalMode)
@@ -133,6 +139,9 @@ class FuzzyMatcher(
 
     /** LP-P0 — the effective engine version, echoed in `FuzzyStatusResponse.engine_version`. */
     val engineVersion: String get() = matchVersion.wire
+
+    /** D3 — the effective v2 normalization (meaningful only when [engineVersion] is `v2`). */
+    val normalization: V2Normalization get() = v2Normalization
 
     suspend fun match(
         query: String,
@@ -521,7 +530,8 @@ class FuzzyMatcher(
                                         distanceCache = DistanceCache(),
                                         idfEnabled = idfEnabled,
                                     )
-                                MatchVersion.V2 -> TokenBasedMatcherV2(tokenIndex)
+                                // v2 always weighs by IDF (contracts §4.3): `idfEnabled` is a v1 switch.
+                                MatchVersion.V2 -> TokenBasedMatcherV2(tokenIndex, normalization = v2Normalization)
                             }
                         scorer.score(querySurfaceTokens, queryLemmaTokens, retrieved, limit)
                     }

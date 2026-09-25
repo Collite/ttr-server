@@ -139,7 +139,17 @@ class IndexFirstRetriever(
         return out
     }
 
-    /** Top-[topN] ordinals by score descending, ties broken by ascending ordinal (determinism). */
+    /**
+     * Top-[topN] ordinals by score descending, ties broken by ascending ordinal (determinism).
+     *
+     * ⚑ review-103 L4 — this window is where v2's coverage tie-break (contracts §4.3, design §5.2)
+     * stops reaching. The approximate score here is P alone, so on a crowded posting list every row
+     * ties at the same P and the window keeps the LOWEST ordinals; the exact rescore then orders only
+     * those `topN` by coverage, and a better-covered row outside the window is never seen (700
+     * `Oil Trading …` rows plus `Oil` ⇒ top-1 is ordinal 0, not `Oil`). That conforms to §4.4
+     * ("unchanged top-N by accumulated P") — no behaviour change intended; design §5.2's "coverage
+     * orders the ask" holds only within the window.
+     */
     private fun topOrdinals(
         scores: HashMap<Int, Double>,
         topN: Int,

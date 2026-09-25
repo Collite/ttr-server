@@ -2,9 +2,10 @@
 package org.tatrman.fuzzy.core
 
 /**
- * LP-P0 — which TATRMAN scorer the service runs (`fuzzy.match.version`, contracts §4.1).
- * [V1] is today's [TokenBasedMatcher], byte-pinned; [V2] is [TokenBasedMatcherV2]. Default [V1]
- * until the LP-P3 golden verdict (LPA-2) — the goldens flip it, not a date.
+ * LP-P0 — which TATRMAN scorer runs (`fuzzy.match.version`, contracts §4.1). [V1] is the pre-LP
+ * [TokenBasedMatcher], byte-pinned; [V2] is [TokenBasedMatcherV2]. The LIBRARY default stays [V1]
+ * (✅LP-23 — an embedder that never asks keeps the engine it was built against); the `lex-matcher`
+ * SERVICE ships [V2] since LP-P3 (LPA-2) and passes that as its [fromString] default.
  */
 enum class MatchVersion(
     val wire: String,
@@ -23,12 +24,18 @@ enum class MatchVersion(
 
     companion object {
         /**
-         * `v1` · `v2` (case-insensitive); blank ⇒ [V1]. Anything else is an ERROR, unlike
+         * `v1` · `v2` (case-insensitive). Null or blank means UNSET — an env var exported empty, a
+         * config with no `fuzzy.match` block — and yields the caller's [default]: [V1] for the
+         * library, the shipped [V2] for the service (review-103 L1). Anything else is an ERROR, unlike
          * [RetrievalMode.fromString]'s silent default: a typo here would quietly run the engine the
-         * operator believes they switched off.
+         * operator believes they switched off — and so would reading "unset" as "v1" in a service
+         * that ships v2.
          */
-        fun fromString(value: String?): MatchVersion {
-            if (value.isNullOrBlank()) return V1
+        fun fromString(
+            value: String?,
+            default: MatchVersion = V1,
+        ): MatchVersion {
+            if (value.isNullOrBlank()) return default
             return entries.firstOrNull { it.wire == value.trim().lowercase() }
                 ?: throw IllegalArgumentException("fuzzy.match.version must be v1 or v2, got '$value'")
         }

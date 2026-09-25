@@ -74,12 +74,19 @@ from golem_py.state import (
 
 @dataclass
 class Filter:
-    """A restriction: an attribute, and the member it is restricted to."""
+    """A restriction: an attribute, and the member it is restricted to.
+
+    A VERBATIM filter (LP contracts §2/§5) has no member: `literal` is the quoted text as
+    typed — `verbatim_text`, never the span with its quotes — and `predicate` the `pred:`
+    kind the question named (`starts_with`, …), or "" when it named none (§2.2's default).
+    """
 
     ref: str
     member_ref: str = ""
     literal: str = ""
     anchor_mention_id: str = ""
+    predicate: str = ""
+    verbatim: bool = False
 
 
 @dataclass
@@ -146,11 +153,37 @@ def operator_refs(state: ResolutionState) -> list[str]:
     return ops
 
 
+_PRED_PREFIX = "pred:"
+
+
 def _filters(state: ResolutionState) -> list[Filter]:
     out: list[Filter] = []
     # Members first: a value attributed to an attribute IS a filter, and it is the most
     # specific thing the question said.
     for value in state.values:
+        if value.kind == ValueKind.UNSPECIFIED:
+            # Contracts §8 — a value kind this Golem cannot read is SKIPPED, never guessed
+            # at: its span is the user's text as typed, and a newer kind may keep characters
+            # (quotes, for one) that must not reach a filter.
+            continue
+        if value.kind == ValueKind.VERBATIM:
+            # review-103 L9 — the quoted text is `verbatim_text`. Before VERBATIM was known
+            # here it fell to UNSPECIFIED and the SPAN became the literal, quotes included
+            # (`'"Pelex"'`). No §1.4 text ⇒ nothing honest to filter on: skip.
+            if not value.verbatim_text:
+                continue
+            predicate = (value.predicate_ref or "").removeprefix(_PRED_PREFIX)
+            out.extend(
+                Filter(
+                    ref=attribution.attribute_ref,
+                    literal=value.verbatim_text,
+                    anchor_mention_id=value.anchor_mention_id,
+                    predicate=predicate,
+                    verbatim=True,
+                )
+                for attribution in value.attributions
+            )
+            continue
         for attribution in value.attributions:
             member_ref = attribution.binding.ref if attribution.binding else ""
             out.append(

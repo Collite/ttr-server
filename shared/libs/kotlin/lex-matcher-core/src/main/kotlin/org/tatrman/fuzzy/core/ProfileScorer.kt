@@ -47,6 +47,14 @@ data class Firing(
  *
  * Combination across a profile's rules is **max** (dis_max). With monotone-decreasing scores that
  * equals first-match-wins, and max is what makes a mis-ordered `match:` list harmless.
+ *
+ * **review-103 F3 — a `tokens` firing competes on `min(S, 1.0)`.** Its score is the engine's, and
+ * the engine's scale runs past 1.0 for an ordered exact match (v1's order bonus; v2's `+ ε·C`, so a
+ * one-token exact hit is 1.01). Compared raw, `[{canonical, exact 1.0}, {folded, tokens}]` fired
+ * `tokens` at 1.01 over its own exact rule, and the row was demoted from EXACT to DECLARED_ALIAS —
+ * the order bonus outranking the author's number. Capped, the two tie at 1.0, and a tie goes to the
+ * declared firing (exact/typos) in either rule order, so the list stays order-insensitive. A
+ * `tokens` firing that wins still carries the engine's own score, uncapped.
  */
 class ProfileScorer(
     /**
@@ -95,11 +103,25 @@ class ProfileScorer(
         var best: Firing? = null
         for (rule in profile.rules) {
             for (firing in firings(forms, result, rule)) {
-                if (best == null || firing.score > best.score) best = firing
+                if (best == null || firing.beats(best)) best = firing
             }
         }
         return best
     }
+
+    /**
+     * Strictly better than [other] — so the earlier firing keeps a tie — on the comparison score
+     * ([rank]), with one tie rule: the author's declared firing beats the engine's `tokens` reading.
+     */
+    private fun Firing.beats(other: Firing): Boolean {
+        val mine = rank()
+        val theirs = other.rank()
+        if (mine != theirs) return mine > theirs
+        return algorithm != MatchAlgorithm.TOKENS && other.algorithm == MatchAlgorithm.TOKENS
+    }
+
+    /** The comparison score: a `tokens` firing's engine score capped at 1.0 (review-103 F3). */
+    private fun Firing.rank(): Double = if (algorithm == MatchAlgorithm.TOKENS) minOf(score, 1.0) else score
 
     private fun firings(
         forms: QueryForms,

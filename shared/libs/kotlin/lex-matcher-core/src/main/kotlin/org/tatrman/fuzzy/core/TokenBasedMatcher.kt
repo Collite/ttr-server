@@ -14,7 +14,8 @@ class TokenBasedMatcher(
     // GH #69 — weight each token match by the rarity (IDF) of the matched
     // candidate token. Requires a corpus (tokenIndex); the corpus-less
     // similarity(s1,s2) path always uses the legacy char-overlap score. Flag
-    // off ⇒ exact legacy behaviour, for rollback / A-B.
+    // off ⇒ exact legacy behaviour, for rollback / A-B of THIS (v1) scorer only:
+    // `fuzzy.match:v2` always weighs by IDF and has no such flag (review-103 L2).
     private val idfEnabled: Boolean = true,
 ) : TokenScorer {
     private val logger = LoggerFactory.getLogger(TokenBasedMatcher::class.java)

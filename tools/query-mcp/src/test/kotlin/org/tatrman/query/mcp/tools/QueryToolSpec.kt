@@ -754,7 +754,7 @@ class QueryToolSpec :
                             put(
                                 "nazev_strediska",
                                 buildJsonObject {
-                                    put("value", JsonPrimitive("DF ADNAK"))
+                                    put("value", JsonPrimitive("QT ORLAK"))
                                     put("type", JsonPrimitive("varchar"))
                                 },
                             )
@@ -772,7 +772,7 @@ class QueryToolSpec :
             val p = params.first()
             p.name shouldBe "nazev_strediska"
             p.type shouldBe "text"
-            p.value.stringValue shouldBe "DF ADNAK"
+            p.value.stringValue shouldBe "QT ORLAK"
         }
 
         "v0 pattern_query → v1 query: TransDSL with query_ref pointing at a stored named query" {

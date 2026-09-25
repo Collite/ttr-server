@@ -7,6 +7,8 @@ import io.grpc.inprocess.InProcessChannelBuilder
 import io.grpc.inprocess.InProcessServerBuilder
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
+import io.kotest.matchers.doubles.shouldBeGreaterThanOrEqual
+import io.kotest.matchers.doubles.shouldBeLessThan
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 import kotlinx.coroutines.runBlocking
@@ -21,6 +23,7 @@ import org.tatrman.fuzzy.core.FuzzyMatcher
 import org.tatrman.fuzzy.core.MatchVersion
 import org.tatrman.fuzzy.core.RetrievalMode
 import org.tatrman.fuzzy.core.StringRepository
+import org.tatrman.fuzzy.core.V2Normalization
 import org.tatrman.fuzzy.loader.LoaderSource
 import org.tatrman.fuzzy.v1.BatchMatchRequest
 import org.tatrman.fuzzy.v1.FuzzyServiceGrpcKt
@@ -147,11 +150,16 @@ class EngineV2GrpcTest :
             }
         }
 
-        "config: fuzzy.match.version is read, defaults to v1, and a bad pair or value is a startup error" {
+        "config: fuzzy.match.version is read, absent/blank is the shipped v2, a bad pair or value stops startup" {
             fun fuzzy(hocon: String) = ConfigFactory.parseString(hocon)
 
             val indexFirst = TokenBasedConfig(retrieval = RetrievalMode.INDEX_FIRST)
-            ConfigLoader.withMatchVersion(indexFirst, fuzzy("")).matchVersion shouldBe MatchVersion.V1
+            // review-103 L1 — no key, no block, or an env var exported empty: unset ⇒ shipped v2, not v1.
+            ConfigLoader.withMatchVersion(indexFirst, fuzzy("")).matchVersion shouldBe MatchVersion.V2
+            ConfigLoader.withMatchVersion(indexFirst, fuzzy("match { }")).matchVersion shouldBe MatchVersion.V2
+            ConfigLoader.withMatchVersion(indexFirst, fuzzy("match.version = \"\"")).matchVersion shouldBe
+                MatchVersion.V2
+            ConfigLoader.withMatchVersion(indexFirst, fuzzy("match.version = v1")).matchVersion shouldBe MatchVersion.V1
             ConfigLoader
                 .withMatchVersion(indexFirst, fuzzy("match.version = v2"))
                 .matchVersion shouldBe MatchVersion.V2
@@ -163,10 +171,10 @@ class EngineV2GrpcTest :
             }
         }
 
-        // LP-P3 T3 (ruling LPA-2). The SHIPPED value moved v1 -> v2; the library default that
-        // `withMatchVersion` falls back to when the key is absent did NOT (the case above). Both
-        // assertions stay, because they are the two halves of the rollback story: deleting the key
-        // returns the service to v1, and so does FUZZY_MATCH_VERSION=v1, with no image involved.
+        // LP-P3 T3 (ruling LPA-2). The SHIPPED value moved v1 -> v2. Since review-103 L1 an absent
+        // or blank key ALSO runs v2 in the service (the case above) — deleting the key used to fall
+        // back to the library's v1 silently. The rollback is FUZZY_MATCH_VERSION=v1, explicitly, with
+        // no image involved.
         "application.conf ships v2 with the FUZZY_MATCH_VERSION override" {
             val conf = ConfigFactory.parseResources("application.conf").resolve()
             conf.getString("fuzzy.match.version") shouldBe "v2"
@@ -178,6 +186,73 @@ class EngineV2GrpcTest :
                     TokenBasedConfig(retrieval = RetrievalMode.INDEX_FIRST),
                     conf.getConfig("fuzzy"),
                 ).matchVersion shouldBe MatchVersion.V2
+        }
+
+        "config: fuzzy.match.v2.normalize — default scale/0.99, blank is the default, bad values stop startup" {
+            fun fuzzy(hocon: String) = ConfigFactory.parseString(hocon)
+
+            fun norm(hocon: String) = ConfigLoader.withV2Normalization(TokenBasedConfig(), fuzzy(hocon)).v2Normalization
+
+            norm("") shouldBe V2Normalization.DEFAULT
+            norm("match.v2.normalize { mode = cap, ceiling = 0.95 }") shouldBe
+                V2Normalization(V2Normalization.Mode.CAP, 0.95)
+            norm("match.v2.normalize { mode = OFF }") shouldBe V2Normalization(V2Normalization.Mode.OFF, 0.99)
+            // An env var exported empty is unset, not a value.
+            norm("match.v2.normalize { mode = \"\", ceiling = \"\" }") shouldBe V2Normalization.DEFAULT
+            norm("match.v2.normalize.ceiling = \"0.9\"").ceiling shouldBe 0.9
+
+            for (bad in listOf("1.0", "1", "1.5", "0", "-0.2")) {
+                val refused = shouldThrow<IllegalArgumentException> { norm("match.v2.normalize.ceiling = $bad") }
+                refused.message!! shouldContain "fuzzy.match.v2.normalize.ceiling"
+            }
+            shouldThrow<IllegalArgumentException> { norm("match.v2.normalize.ceiling = high") }.message!! shouldContain
+                "fuzzy.match.v2.normalize.ceiling must be a number"
+            shouldThrow<IllegalArgumentException> { norm("match.v2.normalize.mode = clip") }.message!! shouldContain
+                "fuzzy.match.v2.normalize.mode"
+        }
+
+        "application.conf ships scale/0.99 and wires FUZZY_V2_NORMALIZE_MODE / _CEILING" {
+            val raw = ConfigFactory.parseResources("application.conf")
+            val shipped = raw.resolve().getConfig("fuzzy")
+            ConfigLoader.withV2Normalization(TokenBasedConfig(), shipped).v2Normalization shouldBe
+                V2Normalization.DEFAULT
+            // The env names as the pod sets them: root-level keys a `${?…}` substitution resolves to.
+            val env =
+                ConfigFactory.parseMap(
+                    mapOf("FUZZY_V2_NORMALIZE_MODE" to "cap", "FUZZY_V2_NORMALIZE_CEILING" to "0.97"),
+                )
+            ConfigLoader
+                .withV2Normalization(TokenBasedConfig(), raw.withFallback(env).resolve().getConfig("fuzzy"))
+                .v2Normalization shouldBe V2Normalization(V2Normalization.Mode.CAP, 0.97)
+        }
+
+        "v2 over gRPC: the configured normalization reaches the wire (off vs the default)" {
+            suspend fun score(normalization: V2Normalization): Double =
+                withStub({
+                    FuzzyMatcher(
+                        it,
+                        retrievalMode = RetrievalMode.INDEX_FIRST,
+                        matchVersion = MatchVersion.V2,
+                        v2Normalization = normalization,
+                    )
+                }) { stub ->
+                    stub
+                        .batchMatch(
+                            BatchMatchRequest
+                                .newBuilder()
+                                .addSpans(
+                                    SpanQuery.newBuilder().setQuery("valmi oil slovakia").addCategories("customer"),
+                                ).build(),
+                        ).getResults(0)
+                        .getMatches(0)
+                        .also { it.candidateId shouldBe "c-valmy-sk" }
+                        .score
+                }
+            runBlocking {
+                // typo · exact · exact, in order: ≥ 1.0 as §4.3 wrote it, under 1.0 as shipped.
+                score(V2Normalization.OFF) shouldBeGreaterThanOrEqual 1.0
+                score(V2Normalization.DEFAULT) shouldBeLessThan 1.0
+            }
         }
 
         // LP-P3 T3 — the consequence of the flip that is easiest to miss: reaching for the FZ-P2

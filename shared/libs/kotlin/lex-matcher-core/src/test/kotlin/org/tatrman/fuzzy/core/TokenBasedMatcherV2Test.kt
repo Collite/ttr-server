@@ -20,13 +20,17 @@ class TokenBasedMatcherV2Test :
                 Candidate.fromValues("c-oil", "Oil s.r.o."),
                 Candidate.fromValues("c-agro", "Agrofert, a.s."),
                 Candidate.fromValues("c-agro-petr", "Agrofert Petrochemie"),
-                Candidate.fromValues("c-shell", "Shell Czech Republic a.s."),
-                Candidate.fromValues("c-shelby", "Shelby s.r.o."),
-                Candidate.fromValues("c-omv", "OMV Česká republika, s.r.o."),
+                Candidate.fromValues("c-pelex", "Pelex Czech Republic a.s."),
+                Candidate.fromValues("c-peleby", "Peleby s.r.o."),
+                Candidate.fromValues("c-vex", "Vex Česká republika, s.r.o."),
                 Candidate.fromValues("c-benzina", "Benzina s.r.o."),
             )
         val index = TokenIndex(corpus)
         val v2 = TokenBasedMatcherV2(index)
+
+        // review-103 D3 — `off` is §4.3's S as the contract wrote it; the cases below that pin the
+        // §4.3 arithmetic on a NON-exact row pin it here, and check the shipped `scale` against it.
+        val v2Off = TokenBasedMatcherV2(index, normalization = V2Normalization.OFF)
 
         fun q(text: String) = Candidate.tokenize(text)
 
@@ -34,6 +38,14 @@ class TokenBasedMatcherV2Test :
             query: String,
             id: String,
         ): Scored = v2.scoreCandidate(q(query), q(query), corpus.first { it.id == id })
+
+        fun offScoreOf(
+            query: String,
+            id: String,
+        ): Scored = v2Off.scoreCandidate(q(query), q(query), corpus.first { it.id == id })
+
+        // `S_perfect(n)` at the default multiplier/cap: min(1.05^(n(n−1)/2), 1.5) — no ε term.
+        fun perfect(n: Int) = Math.pow(1.05, n * (n - 1) / 2.0).coerceAtMost(1.5)
 
         "T2 — valmy: two candidates at equal P; coverage orders them, by less than ε" {
             val a = scoreOf("valmy", "c-valmy")
@@ -56,36 +68,47 @@ class TokenBasedMatcherV2Test :
                 .candidate.id shouldBe "c-oil"
         }
 
-        "T2 — shel: a single token earns no order bonus (S = P + ε·C exactly)" {
-            val shell = scoreOf("shel", "c-shell")
-            // shel→shell: prefix at the 0.86 floor beats the 1-typo 0.85 (✅LP-8)
-            shell.score shouldBe (0.86 + TokenBasedMatcherV2.EPSILON * shell.coverage!! plusOrMinus 1e-12)
-            shell.tokenHits.single().kind shouldBe "prefix"
+        "T2 — pele: a single token earns no order bonus (S = P + ε·C exactly)" {
+            val pelex = offScoreOf("pele", "c-pelex")
+            // pele→pelex: prefix at the 0.86 floor beats the 1-typo 0.85 (✅LP-8)
+            pelex.score shouldBe (0.86 + TokenBasedMatcherV2.EPSILON * pelex.coverage!! plusOrMinus 1e-12)
+            pelex.tokenHits.single().kind shouldBe "prefix"
 
-            val shelby = scoreOf("shel", "c-shelby")
-            shelby.tokenHits.single().kind shouldBe "prefix"
-            shelby.score shouldBe (0.86 + TokenBasedMatcherV2.EPSILON * shelby.coverage!! plusOrMinus 1e-12)
+            val peleby = offScoreOf("pele", "c-peleby")
+            peleby.tokenHits.single().kind shouldBe "prefix"
+            peleby.score shouldBe (0.86 + TokenBasedMatcherV2.EPSILON * peleby.coverage!! plusOrMinus 1e-12)
+
+            // D3 — shipped `scale`: S_perfect(1) = 1, so a one-token row keeps §4.3's S exactly.
+            perfect(1) shouldBe 1.0
+            scoreOf("pele", "c-pelex").score shouldBe pelex.score
+            scoreOf("pele", "c-pelex").tokenHits shouldBe pelex.tokenHits
         }
 
         "T2 — two prefix hits in order earn the order bonus v1 never gave them" {
-            val s = scoreOf("agro petr", "c-agro-petr")
+            val s = offScoreOf("agro petr", "c-agro-petr")
             s.tokenHits.map { it.kind } shouldBe listOf("prefix", "prefix")
             // P = 0.86 (both prefix hits at the floor: 4/8, 4/11), one in-order pair ⇒ ×1.05.
             s.score shouldBe (0.86 * 1.05 + TokenBasedMatcherV2.EPSILON * s.coverage!! plusOrMinus 1e-12)
             s.coverage!! shouldBe (1.0 plusOrMinus 1e-12)
 
             // …and reversed, the pair is out of order ⇒ no bonus.
-            val r = scoreOf("petr agro", "c-agro-petr")
+            val r = offScoreOf("petr agro", "c-agro-petr")
             r.score shouldBe (0.86 + TokenBasedMatcherV2.EPSILON * r.coverage!! plusOrMinus 1e-12)
+
+            // D3 — one factor per query length, so the in-order row still beats the reversed one.
+            scoreOf("agro petr", "c-agro-petr").score shouldBe (s.score / perfect(2) plusOrMinus 1e-12)
+            scoreOf("petr agro", "c-agro-petr").score shouldBe (r.score / perfect(2) plusOrMinus 1e-12)
         }
 
         "T2 — an unmatched query token weighs idf(t) (idfAbsent outside the corpus) and scores 0" {
-            val s = scoreOf("valmy zzzz", "c-valmy")
+            val s = offScoreOf("valmy zzzz", "c-valmy")
             val wValmy = index.idfV2("valmy")
             val wAbsent = index.idfV2("zzzz")
             val p = wValmy / (wValmy + wAbsent)
             s.score shouldBe (p + TokenBasedMatcherV2.EPSILON * s.coverage!! plusOrMinus 1e-12)
             s.tokenHits.map { it.queryToken } shouldBe listOf("valmy")
+            // D3 — an UNMATCHED token is not an exact one: the row is normalized too.
+            scoreOf("valmy zzzz", "c-valmy").score shouldBe (s.score / perfect(2) plusOrMinus 1e-12)
         }
 
         "T3 — provenance: one hit per matched query token, with kinds and both positions" {
@@ -168,7 +191,7 @@ class TokenBasedMatcherV2Test :
         }
 
         "score() = stable sort-then-take over the full scoring, for every limit (top-k selection)" {
-            for (query in listOf("valmy", "oil", "s.r.o.", "shel", "agro petr", "a.s.")) {
+            for (query in listOf("valmy", "oil", "s.r.o.", "pele", "agro petr", "a.s.")) {
                 val tokens = q(query)
                 val full =
                     corpus
@@ -185,6 +208,13 @@ class TokenBasedMatcherV2Test :
             MatchVersion.fromString(" ") shouldBe MatchVersion.V1
             MatchVersion.fromString("V2") shouldBe MatchVersion.V2
             shouldThrow<IllegalArgumentException> { MatchVersion.fromString("v3") }
+        }
+
+        "review-103 L1 — blank is UNSET and takes the caller's default (the service passes its shipped v2)" {
+            MatchVersion.fromString(null, default = MatchVersion.V2) shouldBe MatchVersion.V2
+            MatchVersion.fromString("", default = MatchVersion.V2) shouldBe MatchVersion.V2
+            MatchVersion.fromString("v1", default = MatchVersion.V2) shouldBe MatchVersion.V1
+            shouldThrow<IllegalArgumentException> { MatchVersion.fromString("v3", default = MatchVersion.V2) }
         }
 
         "T5 — v2 with legacy retrieval is refused with the contracts §4.1 message" {

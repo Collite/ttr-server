@@ -102,15 +102,6 @@ class TokenVocabulary(
     /** IDF weight for token id [id] (in `0 until size`). */
     fun idf(id: Int): Double = idf[id]
 
-    /**
-     * LP-P0 (contracts §4.3) — the weight of a query token [token] (folded): its IDF when it is in
-     * the vocabulary, else [idfAbsent] (maximally rare). v2 weighs an unmatched query token by this.
-     */
-    fun idfOrMax(token: String): Double {
-        val id = idOf(token)
-        return if (id >= 0) idf[id] else idfAbsent
-    }
-
     /** Candidate ordinals containing token id [id] (ascending). */
     fun postings(id: Int): IntArray = postings[id]
 }

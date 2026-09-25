@@ -83,13 +83,45 @@ startup error unless `FUZZY_MATCH_VERSION=v1` goes with it.
 Only this service's shipped configuration moved. An embedder that never passes the argument keeps
 the pinned engine — that is what "v1 is byte-pinned" means.
 
+**Blank is unset.** An empty `FUZZY_MATCH_VERSION` (or retrieval / normalization variable), or an
+operator's own config file with no `fuzzy.match` block, runs the **shipped** value (`v2`,
+`index-first`, `scale`/`0.99`) — never the library's `v1`. Rolling back is always an explicit
+`FUZZY_MATCH_VERSION=v1`. A value that does not parse — an unknown version or retrieval, a malformed
+`fuzzy.token-based` key, a `uniqueness-margin-floor` at or under 0.01 — stops the service with a
+message naming the key.
+
+**`FUZZY_TOKEN_BASED_IDF_ENABLED` is a v1 switch.** v2 always weighs tokens by IDF; setting it to
+`false` under v2 does nothing, and the service logs a WARN saying so at startup.
+
+### v2 score normalization (`fuzzy.match.v2.normalize`, review-103 F3)
+
+§4.3's v2 score gives the order bonus to prefix and typo hits too, so a partial or typo match of a
+multi-token query could reach ≥ 1.0 — the value every consumer reads as "ordered exact" (the
+resolver classes a member row at ≥ 0.9999 as EXACT). v2 therefore keeps every row whose query tokens
+are **not all `exact`** under 1.0:
+
+- **`scale`** (default) — `S' = min(ceiling, S / S_perfect(n))`, where `S_perfect(n)` is the order
+  bonus an all-exact, in-order match of the same n-token query earns, `min(1.05^(n(n−1)/2), 1.5)`
+  (no ε term). One factor per query, so the order among the non-exact rows is unchanged. A one-token
+  query divides by 1, so its typo and prefix scores are exactly the pre-fix numbers; for a longer
+  query the `ceiling` is what keeps a near-perfect partial match under 1.0.
+- **`cap`** — `S' = min(S, ceiling)`.
+- **`off`** — the pre-fix §4.3 score. For calibration and rollback only.
+
+A row whose query tokens are all `exact` keeps its score in every mode, so ≥ 1.0 still means
+"ordered exact". `ceiling` must be > 0 and < 1.0, or the service refuses to start. The settings are
+inert under v1.
+
 | Config key | Env | Values | Default |
 |---|---|---|---|
 | `fuzzy.token-based.retrieval` | `FUZZY_TOKEN_BASED_RETRIEVAL` | `index-first` \| `legacy` | `index-first` |
 | `fuzzy.match.version` | `FUZZY_MATCH_VERSION` | `v1` \| `v2` | **`v2`** |
+| `fuzzy.match.v2.normalize.mode` | `FUZZY_V2_NORMALIZE_MODE` | `scale` \| `cap` \| `off` | `scale` |
+| `fuzzy.match.v2.normalize.ceiling` | `FUZZY_V2_NORMALIZE_CEILING` | `0 < c < 1.0` | `0.99` |
 
-The effective value is logged at startup (`Fuzzy match engine: fuzzy.match.version=…`) and echoed
-in `FuzzyStatusResponse.engine_version`, so the question "which engine is this pod serving?" is
+The effective values are logged at startup (`Fuzzy match engine: fuzzy.match.version=…
+fuzzy.match.v2.normalize: mode=… ceiling=…`). The version is also echoed in
+`FuzzyStatusResponse.engine_version`, so the question "which engine is this pod serving?" is
 answerable from outside the pod. Ask the pod, not the manifest.
 
 ## Run

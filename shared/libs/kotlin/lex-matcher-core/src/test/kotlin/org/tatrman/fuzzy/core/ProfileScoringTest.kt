@@ -260,6 +260,65 @@ class ProfileScoringTest :
             hits.first().autoBindable shouldBe true
         }
 
+        // ---- review-103 F3: a `tokens` firing competes on min(S, 1.0) ------------------------------
+
+        // The `obrat` probe. The engine score is what a REAL v2 index-first match of the one-token
+        // query `obrat` gives the row `obrat`: EXACT, P = 1.0, C = 1.0 ⇒ S = 1.0 + ε = 1.01 (an
+        // all-exact row, so D3 leaves it alone). Raw, that `tokens` firing beat the exact rule.
+        fun v2EngineScore(
+            query: String,
+            value: String,
+        ): Double {
+            val candidate = Candidate.fromValues("x", value)
+            val tokens = Candidate.tokenize(query)
+            return TokenBasedMatcherV2(TokenIndex(listOf(candidate, Candidate.fromValues("y", "tržby"))))
+                .scoreCandidate(tokens, tokens, candidate)
+                .score
+        }
+
+        "F3 — `[{canonical, exact 1.0}, {folded, tokens}]` keeps its EXACT firing when tokens reads 1.01" {
+            val engine = v2EngineScore("obrat", "obrat")
+            engine shouldBe (1.01 plusOrMinus 1e-12)
+            val profile = MatchProfile(listOf(canonicalExact, NormRule(Norm.FOLDED, tokens = true)))
+
+            val hit = dispatch("obrat", row("obrat", profile, engineScore = engine)).single()
+
+            hit.provenance.norm shouldBe "canonical"
+            hit.provenance.algorithm shouldBe "exact"
+            hit.score shouldBe 1.00
+            hit.provenance.rawScore shouldBe engine // the engine's number stays reachable
+        }
+
+        "F3 — …and in the mis-ordered list too: a tie at 1.0 goes to the declared firing" {
+            val engine = v2EngineScore("obrat", "obrat")
+            val reversed = MatchProfile(listOf(NormRule(Norm.FOLDED, tokens = true), canonicalExact))
+
+            val hit = dispatch("obrat", row("obrat", reversed, engineScore = engine)).single()
+
+            hit.provenance.algorithm shouldBe "exact"
+            hit.provenance.norm shouldBe "canonical"
+            hit.score shouldBe 1.00
+        }
+
+        "F3 — a `tokens` firing still beats a LOWER declared score, and then carries the engine's own" {
+            // folded exact 0.90 vs tokens at 1.01 (capped to 1.0 for the comparison only).
+            val profile = MatchProfile(listOf(folded, NormRule(Norm.CANONICAL, tokens = true)))
+
+            val hit = dispatch("obrat", row("obrat", profile, engineScore = 1.01)).single()
+
+            hit.provenance.algorithm shouldBe "tokens"
+            hit.score shouldBe 1.01
+        }
+
+        "F3 — an ordered multi-token exact query (v1's 1.05 bonus) no longer outranks the exact rule" {
+            val profile = MatchProfile(listOf(canonicalExact, NormRule(Norm.CANONICAL, tokens = true)))
+
+            val hit = dispatch("čistý obrat", row("čistý obrat", profile, engineScore = 1.05)).single()
+
+            hit.provenance.algorithm shouldBe "exact"
+            hit.score shouldBe 1.00
+        }
+
         // ---- the override ---------------------------------------------------------------------------
 
         "`method_override` REPLACES a row's profile with the sugar profile it means" {

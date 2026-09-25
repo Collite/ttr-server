@@ -208,9 +208,18 @@ fun Application.module(serverConfig: KtorServerConfig) {
                     config.lexicon.uniquenessMarginFloor,
                     ProfileScorer(config.lexicon.minInClassScore),
                 ),
+            v2Normalization = config.tokenBasedConfig.v2Normalization,
         )
     log.info("Fuzzy retrieval mode: ${config.tokenBasedConfig.retrieval}")
-    log.info("Fuzzy match engine: fuzzy.match.version=${config.tokenBasedConfig.matchVersion.wire}")
+    ConfigLoader.startupWarnings(config).forEach { log.warn(it) }
+    // review-103 D3 — the EFFECTIVE normalization beside the engine version: "which scale is this
+    // pod's ≥ 1.0 on?" must be answerable from the log, like the version itself.
+    log.info(
+        "Fuzzy match engine: fuzzy.match.version={} fuzzy.match.v2.normalize: {}{}",
+        fuzzyMatcher.engineVersion,
+        fuzzyMatcher.normalization,
+        if (config.tokenBasedConfig.matchVersion == org.tatrman.fuzzy.core.MatchVersion.V1) " (inert under v1)" else "",
+    )
     // RV-44 ⚑M-5 — the EFFECTIVE value, logged at startup. A floor that silently drops candidates
     // is exactly the setting an operator needs to see confirmed rather than assume.
     log.info(

@@ -5,14 +5,13 @@ import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.doubles.plusOrMinus
 import io.kotest.matchers.shouldBe
-import io.kotest.matchers.shouldNotBe
 
 /** LP-P0·S1 — `fuzzy.match:v2` per-token kinds + the ES-AUTO edit ladder (contracts §4.2). */
 class VocabularyResolverV2Spec :
     StringSpec({
         val candidates =
             listOf(
-                Candidate.fromValues("A", "Shell Czech Republic"),
+                Candidate.fromValues("A", "Pelex Czech Republic"),
                 Candidate.fromValues("B", "Agrofert"),
                 Candidate.fromValues("C", "Valmy Oil"),
                 Candidate.fromValues("D", "abc"),
@@ -41,9 +40,9 @@ class VocabularyResolverV2Spec :
         }
 
         "exact ⇒ one entry, EXACT, q 1.0" {
-            val r = resolver().resolveV2("shell")
+            val r = resolver().resolveV2("pelex")
             r.size shouldBe 1
-            r[0].tokenId shouldBe vocab.idOf("shell")
+            r[0].tokenId shouldBe vocab.idOf("pelex")
             r[0].kind shouldBe MatchKind.EXACT
             r[0].quality shouldBe 1.0
         }
@@ -67,8 +66,8 @@ class VocabularyResolverV2Spec :
             hit.quality shouldBe (0.86 plusOrMinus 1e-12)
         }
 
-        "shel → shell: 1-typo (0.85) and prefix (0.86) ⇒ PREFIX — a prefix beats a single typo (✅LP-8)" {
-            val hit = resolver().resolveV2("shel").hit("shell")!!
+        "pele → pelex: 1-typo (0.85) and prefix (0.86) ⇒ PREFIX — a prefix beats a single typo (✅LP-8)" {
+            val hit = resolver().resolveV2("pele").hit("pelex")!!
             hit.kind shouldBe MatchKind.PREFIX
             hit.distance shouldBe 1
             hit.quality shouldBe (0.86 plusOrMinus 1e-12)
@@ -154,12 +153,6 @@ class VocabularyResolverV2Spec :
                 listOf("agro" to MatchKind.EXACT, "agrofert," to MatchKind.PREFIX)
         }
 
-        "T4 — idfOrMax: idf for a vocabulary token, idfAbsent otherwise" {
-            vocab.idfOrMax("shell") shouldBe vocab.idf(vocab.idOf("shell"))
-            vocab.idfOrMax("zzzz") shouldBe vocab.idfAbsent
-            vocab.idfOrMax("zzzz") shouldNotBe vocab.idfOrMax("shell")
-        }
-
         "T5 — the typo neighbourhood is bounded by the budget: len t ± budget(len t)" {
             val r = resolver()
             r.resolveV2("chzch") // 5 chars, budget 1
@@ -168,7 +161,7 @@ class VocabularyResolverV2Spec :
             r.lastTypoScan shouldBe 6..10
             r.resolveV2("xy") // 2 chars, budget 0 ⇒ no typo scan at all
             r.lastTypoScan shouldBe IntRange.EMPTY
-            r.resolveV2("shell") // exact short-circuits before any scan
+            r.resolveV2("pelex") // exact short-circuits before any scan
             r.lastTypoScan shouldBe IntRange.EMPTY
         }
     })

@@ -26,10 +26,10 @@ class Tier1FixesSpec :
         ): Double = ln((n + 1.0) / (df + 1.0)) + 1.0
 
         "(a) exact-token hit reproduces the IDF-weighted score (full exact match ⇒ 1.05 order bonus)" {
-            // "kancelar" ∈ all 3 (df=3), "vy" ∈ 1 (df=1). N=3.
+            // "kancelar" ∈ all 3 (df=3), "qt" ∈ 1 (df=1). N=3.
             val candidates =
                 listOf(
-                    Candidate.fromValues("1", "vy kancelar"),
+                    Candidate.fromValues("1", "qt kancelar"),
                     Candidate.fromValues("2", "kancelar cs"),
                     Candidate.fromValues("3", "kancelar sm"),
                 )
@@ -40,12 +40,12 @@ class Tier1FixesSpec :
                     distanceCache = DistanceCache(),
                     idfEnabled = true,
                 )
-            val scores = matcher.match("vy kancelar", 10).associate { it.first.id to it.second }
+            val scores = matcher.match("qt kancelar", 10).associate { it.first.id to it.second }
 
             // Candidate 1: both query tokens are exact hits (quality 1.0 each), ordered ⇒ base 1.0 × 1.05.
             abs((scores["1"] ?: 0.0) - 1.05) shouldBeLessThan 1e-9
 
-            // Candidate 2: "kancelar" exact (quality 1.0, weight idf=1.0); "vy" nearest "cs" at dist 2
+            // Candidate 2: "kancelar" exact (quality 1.0, weight idf=1.0); "qt" nearest "cs" at dist 2
             // (quality 0, weight idf(cs)); no ordered pair ⇒ bonus 1.0. base = 1.0 / (idf(cs) + idf(kancelar)).
             val expected2 = 1.0 / (idf(1, 3) + idf(3, 3))
             abs((scores["2"] ?: 0.0) - expected2) shouldBeLessThan 1e-9

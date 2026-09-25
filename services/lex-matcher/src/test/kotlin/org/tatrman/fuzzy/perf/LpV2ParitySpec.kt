@@ -2,6 +2,7 @@
 package org.tatrman.fuzzy.perf
 
 import io.kotest.core.spec.style.StringSpec
+import io.kotest.matchers.ints.shouldBeGreaterThan
 import io.kotest.matchers.shouldBe
 import kotlinx.serialization.json.Json
 import org.tatrman.fuzzy.core.FuzzyMatchResult
@@ -115,6 +116,9 @@ class LpV2ParitySpec :
                     "v2 changed a unique v1 top-1 in ${defects.size} case(s):\n" + defects.joinToString("\n"),
                 )
             }
+            // review-103 L5 — (i) is only a gate while there is something to keep: a corpus or query
+            // change that left no unique v1 top-1 would pass it vacuously (26 today).
+            unique shouldBeGreaterThan 0
         }
     }) {
     companion object {
