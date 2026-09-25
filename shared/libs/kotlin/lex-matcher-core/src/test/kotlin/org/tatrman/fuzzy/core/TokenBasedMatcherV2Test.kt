@@ -209,6 +209,13 @@ class TokenBasedMatcherV2Test :
             shouldThrow<IllegalArgumentException> { MatchVersion.fromString("v3") }
         }
 
+        "review-103 L1 — blank is UNSET and takes the caller's default (the service passes its shipped v2)" {
+            MatchVersion.fromString(null, default = MatchVersion.V2) shouldBe MatchVersion.V2
+            MatchVersion.fromString("", default = MatchVersion.V2) shouldBe MatchVersion.V2
+            MatchVersion.fromString("v1", default = MatchVersion.V2) shouldBe MatchVersion.V1
+            shouldThrow<IllegalArgumentException> { MatchVersion.fromString("v3", default = MatchVersion.V2) }
+        }
+
         "T5 — v2 with legacy retrieval is refused with the contracts §4.1 message" {
             MatchVersion.V1.requireCompatible(RetrievalMode.LEGACY)
             MatchVersion.V2.requireCompatible(RetrievalMode.INDEX_FIRST)

@@ -107,6 +107,8 @@ class FuzzyMatcher(
     private val lemmatizer: Lemmatizer = NoopLemmatizer,
     // GH #69 — IDF token weighting for the TATRMAN (token-based) path. Defaulted
     // so existing call sites / tests are unaffected; wired from config in Application.
+    // ⚑ A V1 switch only: v2 always weighs by IDF (contracts §4.3) and ignores it (review-103 L2 —
+    // the service WARNs at startup when it is off under v2).
     private val idfEnabled: Boolean = true,
     // FZ-P2 — retrieval path. Defaulted LEGACY so existing call sites / tests / goldens are
     // byte-identical; Application wires it from `fuzzy.token-based.retrieval`. The retriever is the

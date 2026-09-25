@@ -197,6 +197,7 @@ fun Application.module(serverConfig: KtorServerConfig) {
             v2Normalization = config.tokenBasedConfig.v2Normalization,
         )
     log.info("Fuzzy retrieval mode: ${config.tokenBasedConfig.retrieval}")
+    ConfigLoader.startupWarnings(config).forEach { log.warn(it) }
     // review-103 D3 — the EFFECTIVE normalization beside the engine version: "which scale is this
     // pod's ≥ 1.0 on?" must be answerable from the log, like the version itself.
     log.info(

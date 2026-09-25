@@ -72,6 +72,16 @@ startup error unless `FUZZY_MATCH_VERSION=v1` goes with it.
 Only this service's shipped configuration moved. An embedder that never passes the argument keeps
 the pinned engine — that is what "v1 is byte-pinned" means.
 
+**Blank is unset.** An empty `FUZZY_MATCH_VERSION` (or retrieval / normalization variable), or an
+operator's own config file with no `fuzzy.match` block, runs the **shipped** value (`v2`,
+`index-first`, `scale`/`0.99`) — never the library's `v1`. Rolling back is always an explicit
+`FUZZY_MATCH_VERSION=v1`. A value that does not parse — an unknown version or retrieval, a malformed
+`fuzzy.token-based` key, a `uniqueness-margin-floor` at or under 0.01 — stops the service with a
+message naming the key.
+
+**`FUZZY_TOKEN_BASED_IDF_ENABLED` is a v1 switch.** v2 always weighs tokens by IDF; setting it to
+`false` under v2 does nothing, and the service logs a WARN saying so at startup.
+
 ### v2 score normalization (`fuzzy.match.v2.normalize`, review-103 F3)
 
 §4.3's v2 score gives the order bonus to prefix and typo hits too, so a partial or typo match of a

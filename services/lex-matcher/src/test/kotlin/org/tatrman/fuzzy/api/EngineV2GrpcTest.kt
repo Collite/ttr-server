@@ -150,11 +150,16 @@ class EngineV2GrpcTest :
             }
         }
 
-        "config: fuzzy.match.version is read, defaults to v1, and a bad pair or value is a startup error" {
+        "config: fuzzy.match.version is read, absent/blank is the shipped v2, a bad pair or value stops startup" {
             fun fuzzy(hocon: String) = ConfigFactory.parseString(hocon)
 
             val indexFirst = TokenBasedConfig(retrieval = RetrievalMode.INDEX_FIRST)
-            ConfigLoader.withMatchVersion(indexFirst, fuzzy("")).matchVersion shouldBe MatchVersion.V1
+            // review-103 L1 — no key, no block, or an env var exported empty: unset ⇒ shipped v2, not v1.
+            ConfigLoader.withMatchVersion(indexFirst, fuzzy("")).matchVersion shouldBe MatchVersion.V2
+            ConfigLoader.withMatchVersion(indexFirst, fuzzy("match { }")).matchVersion shouldBe MatchVersion.V2
+            ConfigLoader.withMatchVersion(indexFirst, fuzzy("match.version = \"\"")).matchVersion shouldBe
+                MatchVersion.V2
+            ConfigLoader.withMatchVersion(indexFirst, fuzzy("match.version = v1")).matchVersion shouldBe MatchVersion.V1
             ConfigLoader
                 .withMatchVersion(indexFirst, fuzzy("match.version = v2"))
                 .matchVersion shouldBe MatchVersion.V2
@@ -166,10 +171,10 @@ class EngineV2GrpcTest :
             }
         }
 
-        // LP-P3 T3 (ruling LPA-2). The SHIPPED value moved v1 -> v2; the library default that
-        // `withMatchVersion` falls back to when the key is absent did NOT (the case above). Both
-        // assertions stay, because they are the two halves of the rollback story: deleting the key
-        // returns the service to v1, and so does FUZZY_MATCH_VERSION=v1, with no image involved.
+        // LP-P3 T3 (ruling LPA-2). The SHIPPED value moved v1 -> v2. Since review-103 L1 an absent
+        // or blank key ALSO runs v2 in the service (the case above) — deleting the key used to fall
+        // back to the library's v1 silently. The rollback is FUZZY_MATCH_VERSION=v1, explicitly, with
+        // no image involved.
         "application.conf ships v2 with the FUZZY_MATCH_VERSION override" {
             val conf = ConfigFactory.parseResources("application.conf").resolve()
             conf.getString("fuzzy.match.version") shouldBe "v2"
