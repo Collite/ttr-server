@@ -61,11 +61,11 @@
         "correct": true
       },
       {
-        "probe": "DF ADNAK",
+        "probe": "QT ORLAK",
         "expect_entity": "QSTRED_DF",
         "kind": "name",
         "decision": "bind",
-        "top": "DF ADNAK(QSTRED_DF,name) 1.050",
+        "top": "QT ORLAK(QSTRED_DF,name) 1.050",
         "correct": true
       },
       {
@@ -77,7 +77,7 @@
         "correct": true
       },
       {
-        "probe": "Kancelář VY",
+        "probe": "Kancelář QT",
         "expect_entity": "QSTRED_DF",
         "kind": "name",
         "decision": "bind_entity",
@@ -85,20 +85,20 @@
         "correct": true
       },
       {
-        "probe": "VY KANCELAR",
+        "probe": "QT KANCELAR",
         "expect_entity": "QXXUKAZMU",
         "kind": "name",
         "decision": "bind",
-        "top": "VY KANCELAR(QXXUKAZMU,name) 1.050",
+        "top": "QT KANCELAR(QXXUKAZMU,name) 1.050",
         "correct": true
       }
     ]
   },
   "value_extraction_detail_anchored": [
     {
-      "q": "Vypiš účetní záznamy pro středisko DF ADNAK za období 2026.03 podle účetní hodnoty",
+      "q": "Vypiš účetní záznamy pro středisko QT ORLAK za období 2026.03 podle účetní hodnoty",
       "gold": {
-        "df adnak": [
+        "qt orlak": [
           "db.dbo.QSTRED_DF.KOD_STR",
           "db.dbo.QSTRED_DF.NAZEV_STR"
         ]
@@ -151,9 +151,9 @@
       }
     },
     {
-      "q": "Středisko SM ADNAK a ukazatel Majetek pobočky",
+      "q": "Středisko SM ORLAK a ukazatel Majetek pobočky",
       "gold": {
-        "sm adnak": [
+        "sm orlak": [
           "db.dbo.QSTRED_DF.KOD_STR",
           "db.dbo.QSTRED_DF.NAZEV_STR"
         ],
@@ -163,7 +163,7 @@
         ]
       },
       "produced": {
-        "sm adnak": [
+        "sm orlak": [
           "db.dbo.QSTRED_DF.KOD_STR",
           "db.dbo.QSTRED_DF.NAZEV_STR"
         ],
@@ -181,7 +181,7 @@
   ],
   "ucetnictvi_detail_anchored": [
     {
-      "q": "Vypiš účetní záznamy pro středisko DF ADNAK za období 2026.03",
+      "q": "Vypiš účetní záznamy pro středisko QT ORLAK za období 2026.03",
       "want": [
         "QSTRED_DF"
       ],
@@ -189,11 +189,11 @@
         "QSTRED_DF"
       ],
       "binds": [
-        "DF ADNAK->QSTRED_DF(1.05)"
+        "QT ORLAK->QSTRED_DF(1.05)"
       ]
     },
     {
-      "q": "Vypiš účetní záznamy pro středisko Kancelář VY za období 2026.03",
+      "q": "Vypiš účetní záznamy pro středisko Kancelář QT za období 2026.03",
       "want": [
         "QSTRED_DF"
       ],
@@ -201,11 +201,11 @@
         "QSTRED_DF"
       ],
       "binds": [
-        "Kancelář VY období 2026.03->QSTRED_DF(0.51)"
+        "Kancelář QT období 2026.03->QSTRED_DF(0.51)"
       ]
     },
     {
-      "q": "Vypiš účetní záznamy pro ukazatel VY KANCELAR za období 2026.03",
+      "q": "Vypiš účetní záznamy pro ukazatel QT KANCELAR za období 2026.03",
       "want": [
         "QXXUKAZMU"
       ],
@@ -213,7 +213,7 @@
       "binds": []
     },
     {
-      "q": "Vypiš účetní záznamy pro ukazatel Kancelar VY za období 2026.03",
+      "q": "Vypiš účetní záznamy pro ukazatel Kancelar QT za období 2026.03",
       "want": [
         "QXXUKAZMU"
       ],
@@ -225,7 +225,7 @@
       ]
     },
     {
-      "q": "Zobraz vývoj nákladů pro středisko DF ADNAK za rok 2026",
+      "q": "Zobraz vývoj nákladů pro středisko QT ORLAK za rok 2026",
       "want": [
         "QSTRED_DF"
       ],
@@ -233,7 +233,7 @@
         "QSTRED_DF"
       ],
       "binds": [
-        "DF ADNAK rok 2026->QSTRED_DF(0.54)"
+        "QT ORLAK rok 2026->QSTRED_DF(0.54)"
       ]
     },
     {
@@ -276,12 +276,12 @@
       "entity_only": []
     },
     {
-      "q": "Detail zápisu pro středisko DF",
+      "q": "Detail zápisu pro středisko QT",
       "awaiting": true,
       "withheld": true,
       "pinned": [],
       "entity_only": [
-        "DF->QSTRED_DF"
+        "QT->QSTRED_DF"
       ]
     },
     {

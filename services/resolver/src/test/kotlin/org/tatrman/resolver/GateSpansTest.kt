@@ -194,12 +194,12 @@ class GateSpansTest :
         }
 
         "instance ambiguity → AwaitingClarification with the distinct contenders (capped at maxOptions)" {
-            val cands = listOf(cand("DF", 0, 2, listOf("er.qstred_df.kod", "er.qstred_df.nazev")))
+            val cands = listOf(cand("QT", 0, 2, listOf("er.qstred_df.kod", "er.qstred_df.nazev")))
             val resp =
                 batch(
                     fmr(
-                        fm("df-adnak", "DF ADNAK", 0.72, "er.qstred_df.nazev", SourceTag.MEMBER),
-                        fm("df-belus", "DF BELUS", 0.70, "er.qstred_df.nazev", SourceTag.MEMBER),
+                        fm("qt-orlak", "QT ORLAK", 0.72, "er.qstred_df.nazev", SourceTag.MEMBER),
+                        fm("qt-belus", "QT BELUS", 0.70, "er.qstred_df.nazev", SourceTag.MEMBER),
                     ),
                 )
             val clarify =
@@ -212,7 +212,7 @@ class GateSpansTest :
                         emptyMap(),
                         "snap-1",
                     ).shouldBeInstanceOf<Clarify>()
-            clarify.options.map { it.resolvedId } shouldContainExactlyInAnyOrder listOf("df-adnak", "df-belus")
+            clarify.options.map { it.resolvedId } shouldContainExactlyInAnyOrder listOf("qt-orlak", "qt-belus")
             clarify.options.size shouldBe 2
         }
 

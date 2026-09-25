@@ -28,7 +28,7 @@ class ResumeTokenTest :
                 parseRef = "parse-abc",
                 options =
                     listOf(
-                        ResumeOption(id = "M:df-adnak", label = "DF ADNAK", resolvedId = "df-adnak"),
+                        ResumeOption(id = "M:qt-orlak", label = "QT ORLAK", resolvedId = "qt-orlak"),
                         ResumeOption(id = "V:er.branch#term", label = "pobočka", targetRef = "er.branch#term"),
                     ),
                 issuedAt = 1_752_000_000,
@@ -40,7 +40,7 @@ class ResumeTokenTest :
             val token = codec.sign(payload())
             val verified = codec.verify(token).getOrThrow()
             verified shouldBe payload()
-            verified.options.map { it.id } shouldBe listOf("M:df-adnak", "V:er.branch#term")
+            verified.options.map { it.id } shouldBe listOf("M:qt-orlak", "V:er.branch#term")
         }
 
         "the token is opaque base64url (MCP-transport safe: no framing chars, no padding)" {

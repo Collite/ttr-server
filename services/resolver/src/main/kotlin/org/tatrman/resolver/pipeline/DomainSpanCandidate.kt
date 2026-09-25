@@ -50,7 +50,7 @@ data class DomainSpanCandidate(
         /** A declared anchor word's own nominal phrase: a MENTION of that model object. */
         ANCHOR_PHRASE,
 
-        /** A nominal argument governed by an anchor word (`středisko DF ADNAK`): a value. */
+        /** A nominal argument governed by an anchor word (`středisko QT ORLAK`): a value. */
         GOVERNED_VALUE,
 
         /** A proper-noun run not already anchored: a value. */
