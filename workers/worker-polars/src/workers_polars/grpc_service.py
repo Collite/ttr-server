@@ -18,8 +18,8 @@ import polars as pl
 import pyarrow as pa
 import pyarrow.ipc as ipc
 from opentelemetry import trace
-from org.tatrman.meta.v1 import meta_pb2
 from org.tatrman.common.v1 import response_message_pb2
+from org.tatrman.meta.v1 import meta_pb2
 from org.tatrman.worker.v1 import worker_pb2
 
 from workers_polars.config import WorkersPolarsConfig
