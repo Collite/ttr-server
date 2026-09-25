@@ -16,6 +16,35 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+### `resolver.v1` — quoted literals, corrected (LP review-103)
+
+What a consumer of the lattice will notice:
+
+- **`ValueFinding.predicate_ref` is now set whenever a VERBATIM value is attributed.** With no trigger in
+  the question, the resolver writes §2.2's default itself: `pred:equals` when the literal landed on the
+  head's code, and `pred:contains` for its name or for an attribute the user named. Absent now means only
+  "headless" (G3), where there is no facet to default from. Consumers no longer have to guess the facet
+  from the literal's shape (closes ⚑LPQ-7). A blank `predicate_ref` from an older resolver still means
+  "default".
+- **Three more predicate refs can arrive:** `pred:not_starts_with`, `pred:not_ends_with` and
+  `pred:not_equals`. They come from negated slice forms (*nezačínající na*, *not starting with*) and
+  from a negator right before a trigger (*do not start with*). A consumer that does not know a ref must
+  refuse it, as it already does.
+- **A predicate form fires only when the question contains the whole form.** A fragment such as *named*
+  (of *named exactly*) or *s názvem* (of *s názvem přesně*) no longer fires `equals`. Windows are now up
+  to three words wide, the widest form ttr-lexicon's RG-LEX-032 admits.
+- **The attribution window is measured edge to edge**, from the literal's delimiter to the nearest word
+  of the mention. A head on the left wins, and one on the right is used only when there is none on the
+  left. Predicates are taken from the left only. A mention bound to an **attribute** is its own answer
+  (*s názvem "Valmy"* → the name attribute).
+- **The code test is the head's pattern OR the fallback shape.** The fallback still needs a digit, except
+  under a head that declares a code and no name.
+- Words inside quotes are never mentions, and a phrase is cut at a literal rather than dropped.
+- A target class this build has no constant for (a newer matcher) is carried through as its number and
+  is never attributable, instead of failing the whole resolve.
+- Literal spans are in the parse's code-point offsets, like every other span in the lattice. U+0085
+  opens and closes a literal, as the shared corpus's fixture 29 pins.
+
 ### `meta.v1` — member vocabularies (MV-T1): `ListMemberVocabularies`, and `SearchHints.indexed`
 
 A member vocabulary is the set of values one attribute takes over its entity's population, indexed for

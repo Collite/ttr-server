@@ -14,41 +14,73 @@ import org.tatrman.resolver.model.ResolverEntityType
  *  1. walk the literal's `dep_head` chain, at most 3 hops, and take the first token that heads a
  *     MODEL_OBJECT mention — *dodací místa začínající na "Pelex"* hangs the literal off *místa*
  *     through the preposition, which is exactly the structure the question has;
- *  2. failing that, the nearest MODEL_OBJECT mention within 3 tokens, left preferred on a tie —
- *     the same [SpanProposal.MAX_ANCHOR_DISTANCE] rule source (e) scopes a bare code by, and the
- *     only rule left when there is no parse to walk;
+ *  2. failing that, the nearest MODEL_OBJECT mention within 3 tokens **to the left**, and only
+ *     when there is none there, the nearest within 3 tokens to the right — the same
+ *     [SpanProposal.MAX_ANCHOR_DISTANCE] bound source (e) scopes a bare code by, and the only rule
+ *     left when there is no parse to walk;
  *  3. failing that, nothing: the literal is **headless**, and the lattice says so with a G3 gap
  *     instead of offering it to every name column in the estate. An unscoped verbatim filter is
  *     the over-generation Q-20 removed, wearing a different hat.
  *
+ * **Distance is measured between two edges, never between two anchors** (review-103 F2). From
+ * the literal's OUTER delimiter — the opening quote for a word on its left, the closing one for a
+ * word on its right — to the NEAREST token of the mention's span. Measuring from the first content
+ * token counted the opening quote whenever a tokenizer splits it off (the floor tokenizer always
+ * does), and measuring to the mention's head word counted the rest of a two-word head: together
+ * they put *dodací místa začínající na "Pelex"* five tokens apart, and every trigger + literal
+ * question on the floor parse lost its head. The predicate window ([PredicateTriggers]) was always
+ * measured from the delimiter; now both questions use one origin.
+ *
+ * **Left first is a rule, not a tie-break.** Czech and English both put the thing before the
+ * string that restricts it (*dodací místa "Pelex"*, *stores named "Pelex"*), so a mention to the
+ * right is only a fallback for the rare postposed head. As a mere tie-break it let
+ * *prodejny začínající na "Pel" podle zákazníků* filter the customer column.
+ *
  * The attribute is the head's DECLARED mention facet — `semantics { name: · code: }`, carried on
  * [ResolverEntityType.nameRef]/[ResolverEntityType.codeRef] — never a column this object picked
  * by name. A code-shaped literal takes `code` **when the head declares one**; everything else
- * takes `name`. Where the head declares neither, the literal is headless by the same rule as (3):
- * a mention with no name column is not a thing a string can restrict.
+ * takes `name`. An **attribute** mention is its own answer: in *zákazníky s názvem "Valmy"* the
+ * user named the column (review-103 F14). A head that yields nothing — an entity with no facet, a
+ * measure — does not end the search; the walk goes on to the next candidate inside the same
+ * bounds, because *a mention with no name column* is not a thing a string can restrict.
  */
 object VerbatimAttribution {
     /** §2.1 — how far up the dep chain a literal may look for its head. */
     private const val MAX_HOPS = 3
 
-    /** §2.1 — the fallback shape of a code, for a head that declares no `code_format`. */
+    /** §2.1 — the fallback shape of a code, for a literal the head's own pattern did not claim. */
     private val CODE_SHAPE = Regex("^[A-Z0-9][A-Z0-9\\-/.]*$")
 
-    /** What a literal was attributed to, and through which mention. */
+    /** MS contracts §5 — the object kind of an attribute ref (see [ResolverEntityType.objectKind]). */
+    private const val ATTRIBUTE_KIND = "attribute"
+
+    /** The kinds that are never a thing a string restricts, whatever else they declare. */
+    private val NON_HEAD_KINDS = setOf("measure", "operator")
+
+    /** Which aspect of its head a literal was attributed to — what §2.2's default reads. */
+    enum class Facet { NAME, CODE }
+
+    /** What a literal was attributed to, through which mention, and under which facet. */
     data class Attributed(
         val attributeRef: String,
         val mentionId: String,
+        val facet: Facet = Facet.NAME,
     )
 
     /**
-     * One MODEL_OBJECT mention, as this rule needs it: the token it heads, its id, and the entity
-     * type its top binding names. Built by [LatticeAssembler], which is the only place that has
-     * all three at once.
+     * One MODEL_OBJECT mention, as this rule needs it: the token it heads, the first and last
+     * tokens of its span, its id, and the entity type its top binding names. Built by
+     * [LatticeAssembler], which is the only place that has all of it at once.
+     *
+     * [firstToken]/[lastToken] exist for the distance rule: the nearest word of a two-word head is
+     * its LAST word when the literal follows it, and the head token alone cannot say that.
      */
     data class Head(
         val headToken: Int,
         val mentionId: String,
         val entityType: ResolverEntityType,
+        val firstToken: Int = headToken,
+        val lastToken: Int = headToken,
     )
 
     /**
@@ -64,15 +96,25 @@ object VerbatimAttribution {
         val ref: String,
     )
 
+    /**
+     * The attribute [literal] restricts, or null when no head in reach declares one.
+     *
+     * [codeRefs] are the code attributes the registry declares (every entity's
+     * [ResolverEntityType.codeRef]); an attribute head that IS one of them is a code facet, so
+     * *s kódem "AB12"* defaults to `equals`, not `contains`.
+     */
     fun attribute(
         literal: LiteralTokenSpan,
         parse: AnalyzeResponse,
         heads: List<Head>,
+        codeRefs: Set<String> = emptySet(),
     ): Attributed? {
         if (heads.isEmpty()) return null
-        val head = nearest(literal, parse, heads, Head::headToken) ?: return null
-        val ref = attributeRefOf(literal.literal.text, head.entityType) ?: return null
-        return Attributed(ref, head.mentionId)
+        for (head in candidates(literal, parse, heads)) {
+            val (ref, facet) = facetOf(literal.literal.text, head.entityType, codeRefs) ?: continue
+            return Attributed(ref, head.mentionId, facet)
+        }
+        return null
     }
 
     /**
@@ -84,118 +126,177 @@ object VerbatimAttribution {
      * runs `Pelex → na → začínající → místa`, so the predicate is ON the path to the head and is
      * reached by the same walk that finds the head — one rule, one window, two questions.
      *
-     * `""` is not a failure. §2.2 gives the default from the attribute the literal was attributed
-     * to (a `name` ⇒ `contains`, a `code` ⇒ `equals`), which is the reading a user who wrote no
-     * trigger meant. The empty string says "the question did not say", and the consumer's default
-     * is where that is answered — never here, because this object does not know which of the two
-     * attributes won.
+     * **Left only** (review-103 F2b). A predicate form qualifies the string AFTER it — the claim
+     * [PredicateTriggers] is built on — so a trigger to the right of a literal belongs to the next
+     * literal, however the parse attached it: *prodejny zákazníka "Valmy" začínající na "Pe"* must
+     * not hand *Valmy* the *začínající na* that *Pe* owns.
      *
-     * ⚠ This depends on the predicate words reaching the lattice as a mention at all, which is
-     * span proposal's business, not this rule's. Where no span is proposed over the trigger the
-     * ref is `""` and §2.2's default applies — *starting with "Shell"* degrades to *contains
-     * "Shell"*, which is wider than asked but never wrong about WHICH column. LP-P3's live check
-     * is where that coverage gets measured.
+     * `""` is not a failure: §2.2's default applies. [LatticeAssembler] fills it in from the
+     * [Facet] the attribution landed on (review-103 D5), because only it knows both halves.
      */
     fun predicate(
         literal: LiteralTokenSpan,
         parse: AnalyzeResponse,
         triggers: List<Trigger>,
     ): String {
-        if (triggers.isEmpty()) return ""
-        return nearest(literal, parse, triggers, Trigger::headToken)?.ref.orEmpty()
+        val open = literal.openToken() ?: return ""
+        val left = triggers.filter { it.headToken < open }
+        if (left.isEmpty()) return ""
+        byParse(literal, parse, left, Trigger::headToken)?.let { return it.ref }
+        return left
+            .map { it to open - it.headToken }
+            .filter { (_, d) -> d in 1..SpanProposal.MAX_ANCHOR_DISTANCE }
+            .minByOrNull { (_, d) -> d }
+            ?.first
+            ?.ref
+            .orEmpty()
     }
+
+    /**
+     * §2.2's default, spelled as the ref a trigger would have produced: a code is matched whole, a
+     * name is searched inside.
+     */
+    fun defaultPredicate(facet: Facet): String =
+        when (facet) {
+            Facet.CODE -> PRED_EQUALS
+            Facet.NAME -> PRED_CONTAINS
+        }
 
     /**
      * §2.2's companion: which attribute of [entityType] a literal of this shape restricts, or null
      * when the entity declares no attribute that a string could restrict.
-     *
-     * Code beats name only when the literal LOOKS like a code and the head HAS one. The shape test
-     * prefers the model's own `code_format` where the entity declared one — a regex invented here
-     * would be a second rule about what a code is, and the model already has the first.
      */
     fun attributeRefOf(
         text: String,
         entityType: ResolverEntityType,
-    ): String? {
-        val codeShaped =
-            if (entityType.codeFormat.isNotBlank()) {
-                runCatching { Regex(entityType.codeFormat).matches(text) }.getOrDefault(false)
-            } else {
-                CODE_SHAPE.matches(text) && text.any { it.isDigit() }
-            }
-        if (codeShaped && entityType.codeRef.isNotBlank()) return entityType.codeRef
-        return entityType.nameRef.ifBlank { null }
+    ): String? = facetOf(text, entityType, emptySet())?.first
+
+    /**
+     * The attribute and facet [text] takes under [entityType].
+     *
+     *  - An **attribute** head is its own answer (review-103 F14): the user named the column. It is
+     *    a CODE facet when some entity declares it as its `code`, a NAME facet otherwise.
+     *  - A **measure** or an operator is never a head.
+     *  - Otherwise the entity's declared facet: `code` when the literal is code-shaped AND the
+     *    entity declares a code, `name` when it declares a name, else nothing.
+     */
+    private fun facetOf(
+        text: String,
+        entityType: ResolverEntityType,
+        codeRefs: Set<String>,
+    ): Pair<String, Facet>? {
+        if (entityType.objectKind == ATTRIBUTE_KIND) {
+            return entityType.ref to (if (entityType.ref in codeRefs) Facet.CODE else Facet.NAME)
+        }
+        if (entityType.objectKind in NON_HEAD_KINDS) return null
+        if (entityType.codeRef.isNotBlank() && codeShaped(text, entityType)) return entityType.codeRef to Facet.CODE
+        return entityType.nameRef.ifBlank { null }?.let { it to Facet.NAME }
     }
 
     /**
-     * The §2.1 search, over whatever class the caller is asking about: the parse first, proximity
-     * second, both bounded.
+     * §2.1, as amended by review-103 (rulings 3, F6): the head's own pattern **or** the fallback
+     * shape — not one instead of the other.
      *
-     * Generic because the two questions — *what does this literal restrict* and *how* — are one
-     * search asked twice. Two copies of a bounded graph walk is how the two windows drift apart,
-     * and the window is the contract here: 3 hops, 3 tokens, left preferred.
+     * [ResolverEntityType.codeFormat] is always a regex since the ttr-core fix (an authored
+     * `code_pattern`, or a period mask the compiler translated); a malformed one is a model defect
+     * and falls back to the shape rule rather than failing a question that has nothing to do with
+     * codes. The shape needs at least one digit — the rule that keeps a shouted `PELEX` out of the
+     * code column — EXCEPT under a head that declares a code and no name, where there is no name
+     * column for a letter-only literal to belong to (hartland's `AAAAAAAABAAAAAAA` keys).
      */
-    private fun <T> nearest(
+    private fun codeShaped(
+        text: String,
+        entityType: ResolverEntityType,
+    ): Boolean {
+        val declared =
+            entityType.codeFormat.isNotBlank() &&
+                runCatching { Regex(entityType.codeFormat).matches(text) }.getOrDefault(false)
+        if (declared) return true
+        if (!CODE_SHAPE.matches(text)) return false
+        val codeOnly = entityType.nameRef.isBlank()
+        return codeOnly || text.any { it.isDigit() }
+    }
+
+    /**
+     * The heads [attribute] may try, best first and without repeats: the dep chain in hop order,
+     * then the left neighbours by distance, then — only when there are none — the right ones.
+     */
+    private fun candidates(
         literal: LiteralTokenSpan,
         parse: AnalyzeResponse,
-        items: List<T>,
-        tokenOf: (T) -> Int,
-    ): T? = byParse(literal, parse, items, tokenOf) ?: byDistance(literal, items, tokenOf)
+        heads: List<Head>,
+    ): Sequence<Head> =
+        sequence {
+            yieldAll(chain(literal, parse, heads, Head::headToken))
+            yieldAll(byDistance(literal, heads))
+        }.distinct()
 
-    /** (1) — the dep_head chain, bounded to [MAX_HOPS]. */
+    /** (1) — the first item on the dep_head chain, bounded to [MAX_HOPS]. */
     private fun <T> byParse(
         literal: LiteralTokenSpan,
         parse: AnalyzeResponse,
         items: List<T>,
         tokenOf: (T) -> Int,
-    ): T? {
+    ): T? = chain(literal, parse, items, tokenOf).firstOrNull()
+
+    /** (1) — every item on the dep_head chain, in hop order, bounded to [MAX_HOPS]. */
+    private fun <T> chain(
+        literal: LiteralTokenSpan,
+        parse: AnalyzeResponse,
+        items: List<T>,
+        tokenOf: (T) -> Int,
+    ): List<T> {
         val tokens = parse.tokensList
-        if (tokens.isEmpty()) return null
-        val byToken = items.associateBy(tokenOf)
-        var current = literal.tokens.firstOrNull() ?: return null
+        if (tokens.isEmpty()) return emptyList()
+        val byToken = items.groupBy(tokenOf)
+        val out = mutableListOf<T>()
+        var current = literal.tokens.firstOrNull() ?: return emptyList()
         repeat(MAX_HOPS) {
-            val token = tokens.getOrNull(current) ?: return null
+            val token = tokens.getOrNull(current) ?: return out
             // `dep_head` is 1-based; 0 is the root, and the root has nothing above it.
             val next = token.depHead - 1
-            if (next < 0 || next == current) return null
-            byToken[next]?.let { return it }
+            if (next < 0 || next == current) return out
+            out += byToken[next].orEmpty()
             current = next
         }
-        return null
+        return out
     }
 
     /**
-     * (2) — the nearest item within [SpanProposal.MAX_ANCHOR_DISTANCE] tokens, left preferred.
-     *
-     * Left preference is not a coin toss: Czech and English both put the thing before the string
-     * that restricts it (*dodací místa "Pelex"*, *stores named "Pelex"*), so on an equal distance
-     * the word to the left is the one the question was about. The same holds for the trigger —
-     * *začínající na "Shell"* puts it left too.
+     * (2) — the heads within [SpanProposal.MAX_ANCHOR_DISTANCE] tokens, edge to edge: every left
+     * one nearest first, and the right ones only when the left is empty.
      */
-    private fun <T> byDistance(
+    private fun byDistance(
         literal: LiteralTokenSpan,
-        items: List<T>,
-        tokenOf: (T) -> Int,
-    ): T? {
-        val first = literal.tokens.firstOrNull() ?: return null
-        val last = literal.tokens.last()
-        return items
-            .map { it to distanceTo(tokenOf(it), first, last) }
-            .filter { (_, d) -> d in 1..SpanProposal.MAX_ANCHOR_DISTANCE }
-            .minWithOrNull(compareBy({ (_, d) -> d }, { (item, _) -> if (tokenOf(item) < first) 0 else 1 }))
-            ?.first
+        heads: List<Head>,
+    ): List<Head> {
+        val open = literal.openToken() ?: return emptyList()
+        val close = literal.closeToken() ?: return emptyList()
+        val reach = 1..SpanProposal.MAX_ANCHOR_DISTANCE
+        val left =
+            heads
+                .filter { it.lastToken < open }
+                .map { it to open - it.lastToken }
+                .filter { (_, d) -> d in reach }
+                .sortedBy { (_, d) -> d }
+                .map { it.first }
+        if (left.isNotEmpty()) return left
+        return heads
+            .filter { it.firstToken > close }
+            .map { it to it.firstToken - close }
+            .filter { (_, d) -> d in reach }
+            .sortedBy { (_, d) -> d }
+            .map { it.first }
     }
 
-    private fun distanceTo(
-        head: Int,
-        first: Int,
-        last: Int,
-    ): Int =
-        when {
-            head < first -> first - head
-            head > last -> head - last
-            else -> 0 // inside the literal — not a neighbour, and excluded from proposal anyway
-        }
+    /** The literal's first token, delimiter included — the edge a left neighbour is measured to. */
+    private fun LiteralTokenSpan.openToken(): Int? = (tokens + delimiterTokens).minOrNull()
+
+    /** The literal's last token, delimiter included — the edge a right neighbour is measured to. */
+    private fun LiteralTokenSpan.closeToken(): Int? = (tokens + delimiterTokens).maxOrNull()
+
+    private const val PRED_EQUALS = "pred:equals"
+    private const val PRED_CONTAINS = "pred:contains"
 }
 
 /**

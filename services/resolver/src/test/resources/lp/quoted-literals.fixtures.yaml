@@ -96,3 +96,9 @@ cases:
   - id: 28
     text: "z\xE1kazn\xEDk\xA0\"Valmy\""
     literals: [{text: Valmy, start: 9, end: 16}]
+  # 29 — NEXT LINE (U+0085) opens a literal like any other whitespace. Python's `str.isspace()`
+  # includes it; Java's `Character.isWhitespace` and `Character.isSpaceChar` both exclude it (it is
+  # a control character), so the Kotlin port names it explicitly (review-103 L8).
+  - id: 29
+    text: "z\xE1kazn\xEDk\x85\"Valmy\""
+    literals: [{text: Valmy, start: 9, end: 16}]

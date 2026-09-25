@@ -175,7 +175,7 @@ class ResolverPipeline(
         // model binds can still be a grounding trigger, and it can only be asked about in the one
         // BatchMatch this pass makes. The gate reads slots [0, candidates), the trigger annotation
         // reads the trailing ones — one round trip, two questions, kept apart.
-        val ungatedMentions = MentionLayer.propose(parse, candidates)
+        val ungatedMentions = MentionLayer.propose(parse, candidates, literals)
         val triggerSpans = GroundingTriggers.spansOf(candidates, ungatedMentions)
         // LP §3 — and the third question on the same pass: which words say HOW a quoted literal
         // restricts its attribute. Anchored on the LITERAL rather than on the mentions, because
@@ -219,6 +219,7 @@ class ResolverPipeline(
                 batchResp,
                 offset = candidates.size + triggerSpans.size,
                 thresholds = resolverRegistry.thresholds,
+                parse = parse,
             )
         // ✅ R1 — ground the time-typed universals ONCE, before the lattice is assembled, and
         // reuse the result across every re-assembly the lookup loop performs below. Doing it here

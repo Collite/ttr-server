@@ -52,7 +52,7 @@ object Bindings {
             Binding
                 .newBuilder()
                 .setRef(refOf(match, isMember))
-                .setTargetClass(targetClassOf(match, isMember))
+                .setTargetClassValue(targetClassNumberOf(match, isMember))
                 .setEvidenceClass(classed.evidenceClass)
                 .setSource(sourceOf(match.source))
                 .setInClassScore(match.score)
@@ -124,7 +124,8 @@ object Bindings {
      * a non-attributable class is rejected, and UNSPECIFIED is kept, which leaves members
      * untouched and needs no cooperation from the matcher.
      */
-    fun attributable(binding: Binding): Boolean = binding.targetClass !in NEVER_ATTRIBUTABLE
+    fun attributable(binding: Binding): Boolean =
+        binding.targetClass != TargetClass.UNRECOGNIZED && binding.targetClass !in NEVER_ATTRIBUTABLE
 
     /**
      * The classes that positively declare themselves non-attributable (§3.4).
@@ -133,6 +134,10 @@ object Bindings {
      * UNSPECIFIED is deliberately ABSENT: a member row carries no class at all, and excluding
      * "no class" would exclude the rows the value tier exists to reach — see the asymmetry in the
      * KDoc above.
+     *
+     * A class this build does not know (`UNRECOGNIZED` — the matcher is newer than the resolver) is
+     * treated like these in [attributable], not like UNSPECIFIED: a row that DECLARED a class
+     * declared that it is something, and "something this build cannot name" is not a column.
      */
     private val NEVER_ATTRIBUTABLE =
         setOf(
@@ -155,15 +160,23 @@ object Bindings {
             else -> match.category
         }
 
-    private fun targetClassOf(
+    /**
+     * The binding's class as a WIRE NUMBER — the two protos number their classes alike.
+     *
+     * ⛑ Read through `targetClassValue`, never `targetClass.number` (review-103 F15): a matcher
+     * newer than this resolver sends a class this build has no constant for, the getter returns
+     * `UNRECOGNIZED`, and `.number` on that THROWS — `Can't get the number of an unknown enum
+     * value`, and the whole resolve failed on one row. The raw number is passed through instead,
+     * so the binding still says "some class I do not know" and [attributable] refuses it.
+     */
+    private fun targetClassNumberOf(
         match: FuzzyMatch,
         isMember: Boolean,
-    ): TargetClass =
+    ): Int =
         when {
-            match.targetClass != FuzzyTargetClass.TARGET_CLASS_UNSPECIFIED ->
-                TargetClass.forNumber(match.targetClass.number) ?: TargetClass.TARGET_CLASS_UNSPECIFIED
-            isMember -> TargetClass.TARGET_CLASS_MEMBER
-            else -> TargetClass.TARGET_CLASS_UNSPECIFIED
+            match.targetClassValue != FuzzyTargetClass.TARGET_CLASS_UNSPECIFIED_VALUE -> match.targetClassValue
+            isMember -> TargetClass.TARGET_CLASS_MEMBER_VALUE
+            else -> TargetClass.TARGET_CLASS_UNSPECIFIED_VALUE
         }
 
     private fun sourceOf(source: FuzzySourceTag): SourceTag =
