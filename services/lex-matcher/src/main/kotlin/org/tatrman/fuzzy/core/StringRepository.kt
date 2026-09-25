@@ -18,9 +18,11 @@ data class CategoryStatusInfo(
     val source: SourceTag,
     val size: Int,
     val loadedAtEpochMs: Long,
+    /** MV-T2 — the method the category's member rows carry; null when it has none. */
+    val matchMethod: String? = null,
 )
 
-/** B-T4 loader-report entry (e.g. `RG-FUZ-001` PK-skipped declared column). */
+/** Loader-report entry: `RG-FUZ-001`/`003` for a vocabulary Veles could not plan, `RG-FUZ-004` for no listing. */
 data class LoaderWarningInfo(
     val code: String,
     val category: String,
@@ -174,6 +176,8 @@ class StringRepository(
             logger.warn("Loader signalled failure; preserving previous cache")
             return
         }
+        // Read with the load it describes (MV-T2): the categories' read-plan identities.
+        val planVersions = loaderSource.planVersions().mapKeys { it.key.lowercase() }
         // Category keys are matched case-insensitively. The query side
         // (Routes./match, FuzzyMatcher.match, getTokenIndex) lowercases the
         // requested category, so the stored key MUST be lowercase too. DB
@@ -213,7 +217,8 @@ class StringRepository(
         // Published only once the cache is whole — a reader mid-refresh keeps the previous keys
         // rather than seeing a half-filled map (see [knownCategories]).
         categoryKeys = java.util.Collections.unmodifiableSet(LinkedHashSet(nextCache.keys))
-        memberVersions = memberCache.mapValues { (_, candidates) -> categoryVersion(candidates) }
+        memberVersions =
+            memberCache.mapValues { (category, candidates) -> categoryVersion(candidates, planVersions[category]) }
         loadedAtMs = System.currentTimeMillis()
         version = computeVersion(nextCache, declaredHash, loadedAtMs)
         isCatalogReady.set(true)
@@ -290,6 +295,12 @@ class StringRepository(
      * A category's content signature: its candidates by id+value, order-independent. Same content
      * ⇒ same version across refreshes; one added row changes it.
      *
+     * MV-T2 — and the read plan that produced them, when the loader has one ([planVersion], Veles'
+     * `MemberVocabulary.version`). Content alone cannot see a changed plan that happens to read the
+     * same rows today (a new filter, a different key, another match method); the plan alone cannot
+     * see the warehouse's rows change — the loader reads those, Veles never does. The version moves
+     * when either does. Without a plan the digest is exactly the content one it always was.
+     *
      * Streamed, never materialised. The first cut of this concatenated every `id`+`value` into ONE
      * string and took its `hashCode` — for a member category of a million rows that is a ~100 MB
      * transient String built on every refresh, per category. Here each row is folded to a 64-bit
@@ -298,11 +309,18 @@ class StringRepository(
      * digest matches the sha256 every other identity in this service is expressed in — a 32-bit
      * `String.hashCode` is a weak answer to "did this layer change?".
      */
-    private fun categoryVersion(candidates: List<Candidate>): String {
+    private fun categoryVersion(
+        candidates: List<Candidate>,
+        planVersion: String? = null,
+    ): String {
         val signatures = LongArray(candidates.size) { rowSignature(candidates[it]) }
         signatures.sort()
 
         val digest = MessageDigest.getInstance("SHA-256")
+        planVersion?.let {
+            digest.update(it.toByteArray(Charsets.UTF_8))
+            digest.update(0)
+        }
         val row = ByteArray(Long.SIZE_BYTES)
         signatures.forEach { signature ->
             for (i in row.indices) row[i] = (signature ushr (8 * i)).toByte()
@@ -368,10 +386,11 @@ class StringRepository(
                     source = candidates.firstOrNull()?.source ?: SourceTag.MEMBER,
                     size = candidates.size,
                     loadedAtEpochMs = loadedAtMs,
+                    matchMethod = candidates.firstOrNull { it.source == SourceTag.MEMBER }?.matchMethod,
                 )
             }.sortedBy { it.category }
 
-    /** B-T4 loader report: PK-skipped declared columns etc. (`RG-FUZ-001`). Populated in S2.T7. */
+    /** Loader report: vocabularies listed but not loaded (`RG-FUZ-001`/`003`), or no listing at all (`RG-FUZ-004`). */
     fun loaderWarnings(): List<LoaderWarningInfo> = loaderSource.warnings()
 
     private fun computeVersion(

@@ -16,6 +16,50 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+### lex-matcher — member vocabularies are loaded from Veles, keyed by attribute (MV-T2)
+
+The `metadata` loader (`FUZZY_LOADER_SOURCE=metadata`) now reads Veles' `ListMemberVocabularies`
+instead of walking fuzzy-tagged columns and composing `SELECT pk, col FROM table`.
+
+**Behaviour**
+
+- **Categories.** One category per member vocabulary, named by the attribute's ref
+  (`er.<ns>.<entity>.<attribute>`, or `db.<ns>.<table>.<column>` on a db-only estate). Two entities over
+  one table are two categories, and a view- or query-backed entity reads its own population.
+  ⚠ Category names change from the column form (`db.dbo.store.s_state`) to the attribute form
+  (`er.entity.store.state`) for every estate that indexed an ER attribute.
+- **Read plans.** Each vocabulary's rows come from the read plan Veles rendered for the warehouse's
+  dialect. The loader always sends that dialect (`POSTGRESQL` / `MSSQL`) and composes no SQL of its own,
+  alias tables aside.
+- **Match methods.** Every member row carries its vocabulary's match method, so the dispatcher holds an
+  `EXACT` code to exact equality (`tn` finds `TN`; `tx` does not). Before, member rows carried no method
+  and every one was matched partially. A method the matcher does not know is matched `EXACT`, with a
+  WARN.
+- **`GetStatus`.**
+  - `CategoryStatus.match_method = 5` (**additive**) shows each member category's method.
+  - Warnings carry Veles' own diagnostics for vocabularies it could not plan: `RG-FUZ-001` (no single
+    key) and `RG-FUZ-003` (no read plan).
+  - New `RG-FUZ-004`: there is no listing at all. Causes are a Veles older than member vocabularies
+    (UNIMPLEMENTED), a model that is not loaded yet, or a transport failure. The previous load keeps
+    serving; a not-ready Veles no longer wipes the member layer.
+- **`member_index_versions`.** Now folds Veles' read-plan version into the content hash. A changed plan
+  moves a category's version even when it reads the same rows, and changed rows still move it.
+- **NULL rows.** A row with a NULL key or value is skipped. Before, one NULL lost the whole category.
+
+**Config and metrics**
+
+- `fuzzy.metadata.schema` / `FUZZY_METADATA_SCHEMA` are removed.
+- `FUZZY_METADATA_NAMESPACE` now guards the attribute's namespace.
+- `fuzzy_loader_skipped_total{no_pk|composite_pk|…}` is replaced by
+  `member_vocabulary_skipped_total{reason}`, with reasons `no_key`, `no_read_plan`, `wrong_source`,
+  `sql_failed` and `alias_sql_failed`.
+- The static catalog (`fuzzy-catalog.json`) gains an optional `methods` map. A member category it does
+  not name is `EXACT`.
+
+**Release together with Veles (MV-T1).** A Veles without `ListMemberVocabularies` leaves this loader on
+its previous load (`RG-FUZ-004`). A pre-MV lex-matcher against an MV Veles would index `EXACT` carriers
+with no method, i.e. partially.
+
 ### `meta.v1` — member vocabularies (MV-T1): `ListMemberVocabularies`, and `SearchHints.indexed`
 
 A member vocabulary is the set of values one attribute takes over its entity's population, indexed for

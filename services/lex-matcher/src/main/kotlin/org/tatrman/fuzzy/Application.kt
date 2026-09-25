@@ -34,6 +34,7 @@ import org.tatrman.fuzzy.loader.LoaderSource
 import org.tatrman.fuzzy.loader.MetadataLoaderSource
 import org.tatrman.fuzzy.loader.MetadataServiceClient
 import org.tatrman.fuzzy.loader.StaticLoaderSource
+import org.tatrman.fuzzy.loader.translatorDialect
 import org.tatrman.fuzzy.telemetry.FuzzyTelemetry
 import org.jetbrains.exposed.v1.jdbc.transactions.transaction
 import org.slf4j.LoggerFactory
@@ -52,16 +53,21 @@ fun main() {
 }
 
 /**
- * Runs a composed `SELECT pk, col` and maps each row to a [Candidate]. Used by
- * the `metadata` loader; relies on the Exposed connection opened by
- * [DatabaseFactory.connect]. Column order is `(pk, value)` per [buildSelect].
+ * Runs a read plan — a member vocabulary's `read_sql` from Veles, or a composed alias-table
+ * `SELECT pk, alias` — and maps each row to a [Candidate]. Used by the `metadata` loader; relies on
+ * the Exposed connection opened by [DatabaseFactory.connect]. Column order is `(key, value)`.
+ *
+ * A row with a NULL key or value is no member to match, and is skipped. (It used to reach
+ * `Candidate.fromValues` and throw, which lost the whole category to one NULL.)
  */
-private fun fetchSqlCandidates(sql: String): List<Candidate> {
+internal fun fetchSqlCandidates(sql: String): List<Candidate> {
     val results = mutableListOf<Candidate>()
     transaction {
         exec(sql) { rs ->
             while (rs.next()) {
-                results.add(Candidate.fromValues(rs.getString(1), rs.getString(2)))
+                val key: String? = rs.getString(1)
+                val value: String? = rs.getString(2)
+                if (key != null && value != null) results.add(Candidate.fromValues(key, value))
             }
         }
     }
@@ -111,11 +117,12 @@ fun Application.module(serverConfig: KtorServerConfig) {
 
     // Loader source selection.
     //   static   (default): read the in-repo JSON catalog — no DB, local/CI-friendly.
-    //   metadata          : the full ai-platform behaviour — ask Veles for the
-    //                       fuzzy columns, compose `SELECT pk, col FROM table`,
-    //                       query the warehouse, populate the catalog. Opens a DB
-    //                       pool + an Veles gRPC channel, both owned here and
-    //                       torn down in ApplicationStopping.
+    //   metadata          : ask Veles for the member vocabularies (one per indexed
+    //                       attribute, each with its read plan rendered for this
+    //                       warehouse's dialect), run the plans against the
+    //                       warehouse, populate the catalog. Opens a DB pool + a
+    //                       Veles gRPC channel, both owned here and torn down in
+    //                       ApplicationStopping.
     val metadataChannel: io.grpc.ManagedChannel? =
         if (config.loaderSource.source == "metadata") {
             io.grpc.ManagedChannelBuilder
@@ -136,13 +143,13 @@ fun Application.module(serverConfig: KtorServerConfig) {
                     )
             DatabaseFactory.connect(database)
             log.info(
-                "Loader source: metadata — veles at {}:{} schema={} sourceNamespace='{}' (fuzzy column indexing)",
+                "Loader source: metadata — veles at {}:{} sourceNamespace='{}' (member vocabularies, {} read plans)",
                 config.metadata.host,
                 config.metadata.port,
-                config.metadata.schema,
                 config.metadata.namespace,
+                database.translatorDialect(),
             )
-            val client = MetadataServiceClient(metadataChannel, config.metadata.schema, config.metadata.timeoutMs)
+            val client = MetadataServiceClient(metadataChannel, config.metadata.timeoutMs)
             MetadataLoaderSource(
                 client = client,
                 dialect = database,

@@ -42,7 +42,7 @@ message FuzzyStatusResponse {
   bool ready = 1;
   string vocabulary_version = 2;      // snapshot hash + load stamp (S-1)
   repeated CategoryStatus categories = 3;
-  repeated LoaderWarning warnings = 4; // B-T4: PK-skipped declared columns (RG-FUZ-001)
+  repeated LoaderWarning warnings = 4; // member vocabularies not loaded (RG-FUZ-001/003), no listing (RG-FUZ-004)
   LayerVersions layer_versions = 5;    // RV-39 (RV-P1.4)
   string engine_version = 6;           // LP-P0: effective fuzzy.match.version — "v1" | "v2"
 }
@@ -52,11 +52,15 @@ message CategoryStatus {
   SourceTag source = 2;
   int32 size = 3;           // candidate count
   int64 loaded_at_epoch_ms = 4;
+  // MV-T2 — the match method the category's MEMBER rows carry ("EXACT" | "TYPOS(n)" | "TOKENS"):
+  // a member vocabulary's own, from Veles. "" when the category has no member rows (declared terms
+  // carry a method per row).
+  string match_method = 5;
 }
 
 message LoaderWarning {
   string code = 1;          // e.g. "RG-FUZ-001"
-  string category = 2;
+  string category = 2;      // the member vocabulary's category; "" for a warning about the whole load (RG-FUZ-004)
   string message = 3;
 }
 

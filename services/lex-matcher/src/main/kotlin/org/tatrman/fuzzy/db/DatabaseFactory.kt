@@ -10,7 +10,7 @@ import org.tatrman.fuzzy.config.PostgresConfig
 import javax.sql.DataSource
 
 /**
- * Opens the Exposed connection the `metadata` loader runs `SELECT pk, col`
+ * Opens the Exposed connection the `metadata` loader runs member vocabularies' read plans
  * against. Only invoked when `fuzzy.loader.source = "metadata"`; the `static`
  * (in-repo JSON catalog) source never touches the DB.
  *
