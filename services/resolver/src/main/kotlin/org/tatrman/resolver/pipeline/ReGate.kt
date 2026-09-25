@@ -145,7 +145,10 @@ object ReGate {
         // VERBATIM value is `"Pelex"` (32–39), the delimiters included. On exact keys that
         // hypothesis finds no span and is refused as NO_SPAN — right outcome, wrong reason, and a
         // reason a rung is entitled to act on.
-        val verbatimValues = lattice.valuesList.filter { it.kind == ValueKind.VALUE_KIND_VERBATIM }
+        // ✅LP-13: a quoted literal its member lookup bound is a LITERAL value now, and still
+        // quoted — `verbatim_text` says so, and the refusal follows the quotes, not the kind.
+        val verbatimValues =
+            lattice.valuesList.filter { it.kind == ValueKind.VALUE_KIND_VERBATIM || it.hasVerbatimText() }
 
         fun verbatimAt(span: Span) = verbatimValues.firstOrNull { span.start < it.span.end && span.end > it.span.start }
         // MV §5.3 — the one scope rule the governed lookup reads: a ref's own categories, then its

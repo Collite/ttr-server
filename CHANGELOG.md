@@ -16,6 +16,23 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+### resolver — a quoted literal with no trigger is looked up among its head's members (✅LP-13)
+
+The quotes mean "this span is a value". With a `pred:` trigger the literal is a filter pattern, as
+before. With **no** trigger, and attributed to a name attribute that owns a member vocabulary, it is
+looked up in that vocabulary with its exact text. This is the first tier of the `lookup` rung, and it
+reads MV's scope rule.
+
+- **One match:** the literal binds. It becomes a LITERAL value with a member binding
+  (`<attribute>#<id>`) on the same quoted span, and it keeps its `verbatim_text`.
+- **Several matches:** G2 on the value, and the door asks.
+- **No match, no vocabulary, or no answer from the matcher:** the VERBATIM value stays, with
+  `pred:contains`. Nothing gets worse than it was.
+
+**Wire (additive).** `ValueFinding.predicate_implied = 9` is true when `predicate_ref` carries §2.2's
+default because the question named no predicate. `verbatim_text` is now also set on a LITERAL value
+that a quoted lookup bound, and the re-gate refuses hypotheses on any value that carries it.
+
 ### `resolver.v1` — quoted literals, corrected (LP review-103)
 
 What a consumer of the lattice will notice:
