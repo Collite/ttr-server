@@ -28,12 +28,24 @@ class TokenBasedMatcherV2Test :
         val index = TokenIndex(corpus)
         val v2 = TokenBasedMatcherV2(index)
 
+        // review-103 D3 — `off` is §4.3's S as the contract wrote it; the cases below that pin the
+        // §4.3 arithmetic on a NON-exact row pin it here, and check the shipped `scale` against it.
+        val v2Off = TokenBasedMatcherV2(index, normalization = V2Normalization.OFF)
+
         fun q(text: String) = Candidate.tokenize(text)
 
         fun scoreOf(
             query: String,
             id: String,
         ): Scored = v2.scoreCandidate(q(query), q(query), corpus.first { it.id == id })
+
+        fun offScoreOf(
+            query: String,
+            id: String,
+        ): Scored = v2Off.scoreCandidate(q(query), q(query), corpus.first { it.id == id })
+
+        // `S_perfect(n)` at the default multiplier/cap: min(1.05^(n(n−1)/2), 1.5) + ε.
+        fun perfect(n: Int) = Math.pow(1.05, n * (n - 1) / 2.0).coerceAtMost(1.5) + TokenBasedMatcherV2.EPSILON
 
         "T2 — valmy: two candidates at equal P; coverage orders them, by less than ε" {
             val a = scoreOf("valmy", "c-valmy")
@@ -57,35 +69,45 @@ class TokenBasedMatcherV2Test :
         }
 
         "T2 — pele: a single token earns no order bonus (S = P + ε·C exactly)" {
-            val pelex = scoreOf("pele", "c-pelex")
+            val pelex = offScoreOf("pele", "c-pelex")
             // pele→pelex: prefix at the 0.86 floor beats the 1-typo 0.85 (✅LP-8)
             pelex.score shouldBe (0.86 + TokenBasedMatcherV2.EPSILON * pelex.coverage!! plusOrMinus 1e-12)
             pelex.tokenHits.single().kind shouldBe "prefix"
 
-            val peleby = scoreOf("pele", "c-peleby")
+            val peleby = offScoreOf("pele", "c-peleby")
             peleby.tokenHits.single().kind shouldBe "prefix"
             peleby.score shouldBe (0.86 + TokenBasedMatcherV2.EPSILON * peleby.coverage!! plusOrMinus 1e-12)
+
+            // D3 — shipped `scale`: the same S over S_perfect(1) = 1 + ε, provenance untouched.
+            scoreOf("pele", "c-pelex").score shouldBe (pelex.score / perfect(1) plusOrMinus 1e-12)
+            scoreOf("pele", "c-pelex").tokenHits shouldBe pelex.tokenHits
         }
 
         "T2 — two prefix hits in order earn the order bonus v1 never gave them" {
-            val s = scoreOf("agro petr", "c-agro-petr")
+            val s = offScoreOf("agro petr", "c-agro-petr")
             s.tokenHits.map { it.kind } shouldBe listOf("prefix", "prefix")
             // P = 0.86 (both prefix hits at the floor: 4/8, 4/11), one in-order pair ⇒ ×1.05.
             s.score shouldBe (0.86 * 1.05 + TokenBasedMatcherV2.EPSILON * s.coverage!! plusOrMinus 1e-12)
             s.coverage!! shouldBe (1.0 plusOrMinus 1e-12)
 
             // …and reversed, the pair is out of order ⇒ no bonus.
-            val r = scoreOf("petr agro", "c-agro-petr")
+            val r = offScoreOf("petr agro", "c-agro-petr")
             r.score shouldBe (0.86 + TokenBasedMatcherV2.EPSILON * r.coverage!! plusOrMinus 1e-12)
+
+            // D3 — one factor per query length, so the in-order row still beats the reversed one.
+            scoreOf("agro petr", "c-agro-petr").score shouldBe (s.score / perfect(2) plusOrMinus 1e-12)
+            scoreOf("petr agro", "c-agro-petr").score shouldBe (r.score / perfect(2) plusOrMinus 1e-12)
         }
 
         "T2 — an unmatched query token weighs idf(t) (idfAbsent outside the corpus) and scores 0" {
-            val s = scoreOf("valmy zzzz", "c-valmy")
+            val s = offScoreOf("valmy zzzz", "c-valmy")
             val wValmy = index.idfV2("valmy")
             val wAbsent = index.idfV2("zzzz")
             val p = wValmy / (wValmy + wAbsent)
             s.score shouldBe (p + TokenBasedMatcherV2.EPSILON * s.coverage!! plusOrMinus 1e-12)
             s.tokenHits.map { it.queryToken } shouldBe listOf("valmy")
+            // D3 — an UNMATCHED token is not an exact one: the row is normalized too.
+            scoreOf("valmy zzzz", "c-valmy").score shouldBe (s.score / perfect(2) plusOrMinus 1e-12)
         }
 
         "T3 — provenance: one hit per matched query token, with kinds and both positions" {
