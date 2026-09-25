@@ -2,6 +2,7 @@
 package org.tatrman.resolver.pipeline
 
 import org.tatrman.resolver.model.ResolverEntityType
+import org.tatrman.resolver.model.valueCategoriesByRef
 import org.tatrman.resolver.v1.GapKind
 import org.tatrman.resolver.v1.ResolutionState
 import org.tatrman.resolver.v1.Span
@@ -88,7 +89,11 @@ object RoundPlanner {
         asked: Set<String>,
         config: LookupRoundConfig,
     ): List<Query> {
-        val categoriesByRef = entityTypes.associate { it.ref to it.categories }
+        // MV §5.3 — the governed lookup's scope rule, not just the anchor's own categories: a value
+        // re-asked "inside the axis the user named" must be asked where that axis's VALUES live,
+        // which for an entity is its member vocabularies. With none declared this is exactly the
+        // anchor's categories, as before.
+        val categoriesByRef = entityTypes.valueCategoriesByRef()
         val mentionsById = lattice.mentionsList.associateBy { it.id }
         val valuesById = lattice.valuesList.associateBy { it.id }
 

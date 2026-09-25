@@ -7,6 +7,8 @@ import org.tatrman.fuzzy.loader.LoaderSource
 import org.tatrman.fuzzy.loader.SnapshotVocabularySource
 import org.tatrman.fuzzy.telemetry.FuzzyTelemetry
 import kotlinx.coroutines.*
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import org.slf4j.LoggerFactory
 import java.security.MessageDigest
 import java.util.concurrent.ConcurrentHashMap
@@ -18,9 +20,11 @@ data class CategoryStatusInfo(
     val source: SourceTag,
     val size: Int,
     val loadedAtEpochMs: Long,
+    /** MV-T2 — the method the category's member rows carry; null when it has none. */
+    val matchMethod: String? = null,
 )
 
-/** B-T4 loader-report entry (e.g. `RG-FUZ-001` PK-skipped declared column). */
+/** Loader-report entry: `RG-FUZ-001`/`003` for a vocabulary Veles could not plan, `RG-FUZ-004` for no listing. */
 data class LoaderWarningInfo(
     val code: String,
     val category: String,
@@ -47,6 +51,8 @@ class StringRepository(
      * from a different overlay version.
      */
     private val overlayStore: OverlayStore = NoopOverlayStore,
+    /** review-104 F1 — the first retry after a refresh that found no member layer to load; tests shorten it. */
+    private val firstMemberRetryMs: Long = FIRST_MEMBER_RETRY_MS,
 ) : MatchRepository {
     private val logger = LoggerFactory.getLogger(StringRepository::class.java)
 
@@ -64,6 +70,12 @@ class StringRepository(
 
         /** Bytes of the digest kept in a category version — 16 hex chars, ample to compare on. */
         const val VERSION_BYTES: Int = 8
+
+        /** review-104 F1 — the first retry after a boot that found no member layer to load. */
+        const val FIRST_MEMBER_RETRY_MS: Long = 5_000L
+
+        /** Caps the doubling well below overflow; the refresh interval caps the delay anyway. */
+        const val MAX_BACKOFF_SHIFT: Int = 10
     }
 
     private val cache = ConcurrentHashMap<String, List<Candidate>>()
@@ -144,6 +156,29 @@ class StringRepository(
     @Volatile
     private var categoryKeys: Set<String> = emptySet()
 
+    // review-104 F1 — the member layer as last LOADED (lower-cased keys, lemmatised). A refresh with
+    // no member load to take keeps it and still runs the declared and overlay clocks on top: the
+    // member layer is the one Veles can take away, and it must not take the other two with it.
+    @Volatile
+    private var memberCache: Map<String, List<Candidate>> = emptyMap()
+
+    // review-104 F10 — member categories whose rows the authored-method gate narrows (EXACT,
+    // TYPOS(n)). Published with the cache; read by [narrowsAfterScoring].
+    @Volatile
+    private var narrowingCategories: Set<String> = emptySet()
+
+    // review-104 F1 — whether any member load has been taken, and how many refreshes in a row found
+    // none before the first one did. Only the second drives the retry backoff.
+    @Volatile
+    private var memberLoaded: Boolean = false
+
+    @Volatile
+    private var memberMisses: Int = 0
+
+    // review-104 F15 — one refresh at a time. `POST /refresh` and the scheduled tick used to be able
+    // to overlap, interleaving two loads' writes to the cache and to each layer's clock.
+    private val refreshLock = Mutex()
+
     init {
         startRefreshLoop()
     }
@@ -162,29 +197,71 @@ class StringRepository(
                 } catch (e: Exception) {
                     logger.error("Failed to refresh cache", e)
                 }
-                delay(config.refreshIntervalSeconds * 1000)
+                delay(nextDelayMs())
             }
         }
     }
 
-    private suspend fun refreshCache() {
+    /**
+     * review-104 F1 — the refresh interval, except while no member layer has EVER loaded: then a
+     * short doubling retry (5 s, 10 s, 20 s, … never past the interval).
+     *
+     * A lex-matcher that boots while Veles is still loading its model is told "not ready", and used
+     * to wait out the whole interval (600 s on hartland, 3600 s by default) before asking again.
+     * Once any member layer is served, a miss keeps it and the interval stands.
+     */
+    private fun nextDelayMs(): Long {
+        val interval = config.refreshIntervalSeconds * 1000
+        if (memberLoaded || memberMisses == 0) return interval
+        val backoff = firstMemberRetryMs shl (memberMisses - 1).coerceAtMost(MAX_BACKOFF_SHIFT)
+        return backoff.coerceAtMost(interval)
+    }
+
+    private suspend fun refreshCache() = refreshLock.withLock { refreshLocked() }
+
+    private suspend fun refreshLocked() {
         logger.info("Starting cache refresh...")
-        val loaded = loaderSource.loadNextCache()
+        // The rows and the read-plan identities that describe them arrive together (F15).
+        val loaded = loaderSource.load()
+
+        // review-104 F1 — no member load is not the end of the refresh. It used to return here,
+        // before the declared lexicon and the overlay were loaded and before readiness was set: on
+        // a first boot racing Veles the whole matcher stayed NotReady for an interval, and against a
+        // Veles without ListMemberVocabularies it never came up. Now the member layer is kept as it
+        // was — empty on a first boot, which GetStatus' RG-FUZ-004 says — and the rest proceeds.
+        var nextMembers = memberCache
+        var nextMemberVersions = memberVersions
+        var nextNarrowing = narrowingCategories
         if (loaded == null) {
-            logger.warn("Loader signalled failure; preserving previous cache")
-            return
-        }
-        // Category keys are matched case-insensitively. The query side
-        // (Routes./match, FuzzyMatcher.match, getTokenIndex) lowercases the
-        // requested category, so the stored key MUST be lowercase too. DB
-        // identifiers arrive upper-cased from the loader (e.g.
-        // "db.dbo.QSTRED_DF.KOD_STR"); without this the per-column index was
-        // never hit and lookups silently fell back to the global index,
-        // returning *other columns'* values (a KOD_STR query served NAZEV_STR).
-        val memberCache =
-            loaded.entries.associate { (category, raw) ->
-                category.lowercase() to lemmatiseCandidates(raw)
+            if (memberLoaded) {
+                logger.warn("Loader signalled failure; preserving the previous member layer")
+            } else {
+                memberMisses++
+                logger.warn(
+                    "Loader signalled failure before any member layer loaded (attempt {}); serving without one",
+                    memberMisses,
+                )
             }
+        } else {
+            val planVersions = loaded.planVersions.mapKeys { it.key.lowercase() }
+            // Category keys are matched case-insensitively. The query side
+            // (Routes./match, FuzzyMatcher.match, getTokenIndex) lowercases the
+            // requested category, so the stored key MUST be lowercase too. DB
+            // identifiers arrive upper-cased from the loader (e.g.
+            // "db.dbo.QSTRED_DF.KOD_STR"); without this the per-column index was
+            // never hit and lookups silently fell back to the global index,
+            // returning *other columns'* values (a KOD_STR query served NAZEV_STR).
+            nextMembers =
+                loaded.categories.entries.associate { (category, raw) ->
+                    category.lowercase() to lemmatiseCandidates(raw)
+                }
+            nextMemberVersions =
+                nextMembers.mapValues { (category, candidates) -> categoryVersion(candidates, planVersions[category]) }
+            nextNarrowing = nextMembers.filterValues { rows -> rows.any { narrowedAfterScoring(it) } }.keys
+            memberLoaded = true
+            memberMisses = 0
+            loadedAtMs = System.currentTimeMillis()
+        }
 
         // Second clock: reload + lemmatise declared vocabulary ONLY when its
         // snapshot hash changes (T5), then merge it into the member cache.
@@ -194,7 +271,7 @@ class StringRepository(
         // changes when a user answers a question — which is precisely why it gets its own clock
         // rather than riding the declared one.
         refreshOverlayIfChanged()
-        val nextCache = LinkedHashMap<String, List<Candidate>>(memberCache)
+        val nextCache = LinkedHashMap<String, List<Candidate>>(nextMembers)
         declaredCache.forEach { (key, vocab) ->
             nextCache.merge(key, vocab) { member, declared -> member + declared }
         }
@@ -213,8 +290,9 @@ class StringRepository(
         // Published only once the cache is whole — a reader mid-refresh keeps the previous keys
         // rather than seeing a half-filled map (see [knownCategories]).
         categoryKeys = java.util.Collections.unmodifiableSet(LinkedHashSet(nextCache.keys))
-        memberVersions = memberCache.mapValues { (_, candidates) -> categoryVersion(candidates) }
-        loadedAtMs = System.currentTimeMillis()
+        memberCache = nextMembers
+        memberVersions = nextMemberVersions
+        narrowingCategories = nextNarrowing
         version = computeVersion(nextCache, declaredHash, loadedAtMs)
         isCatalogReady.set(true)
         rebuildIndices()
@@ -290,6 +368,12 @@ class StringRepository(
      * A category's content signature: its candidates by id+value, order-independent. Same content
      * ⇒ same version across refreshes; one added row changes it.
      *
+     * MV-T2 — and the read plan that produced them, when the loader has one ([planVersion], Veles'
+     * `MemberVocabulary.version`). Content alone cannot see a changed plan that happens to read the
+     * same rows today (a new filter, a different key, another match method); the plan alone cannot
+     * see the warehouse's rows change — the loader reads those, Veles never does. The version moves
+     * when either does. Without a plan the digest is exactly the content one it always was.
+     *
      * Streamed, never materialised. The first cut of this concatenated every `id`+`value` into ONE
      * string and took its `hashCode` — for a member category of a million rows that is a ~100 MB
      * transient String built on every refresh, per category. Here each row is folded to a 64-bit
@@ -298,11 +382,18 @@ class StringRepository(
      * digest matches the sha256 every other identity in this service is expressed in — a 32-bit
      * `String.hashCode` is a weak answer to "did this layer change?".
      */
-    private fun categoryVersion(candidates: List<Candidate>): String {
+    private fun categoryVersion(
+        candidates: List<Candidate>,
+        planVersion: String? = null,
+    ): String {
         val signatures = LongArray(candidates.size) { rowSignature(candidates[it]) }
         signatures.sort()
 
         val digest = MessageDigest.getInstance("SHA-256")
+        planVersion?.let {
+            digest.update(it.toByteArray(Charsets.UTF_8))
+            digest.update(0)
+        }
         val row = ByteArray(Long.SIZE_BYTES)
         signatures.forEach { signature ->
             for (i in row.indices) row[i] = (signature ushr (8 * i)).toByte()
@@ -359,6 +450,20 @@ class StringRepository(
      */
     override fun servesDeclaredLayer(): Boolean = declaredCache.isNotEmpty() || overlayCache.isNotEmpty()
 
+    /**
+     * review-104 F10 — the declared/learned answer above, OR a member vocabulary the gate narrows:
+     * EXACT and TYPOS(n) admit fewer rows than the token scorer ranks, so they need the same
+     * headroom a declared term gets. Per category, so a TOKENS vocabulary — and a store whose member
+     * vocabularies are all TOKENS — keeps the byte-identical path.
+     */
+    override fun narrowsAfterScoring(category: String?): Boolean =
+        servesDeclaredLayer() ||
+            if (category == null) narrowingCategories.isNotEmpty() else category.lowercase() in narrowingCategories
+
+    /** A row the authored-method gate may reject after scoring: EXACT or TYPOS(n), never TOKENS. */
+    private fun narrowedAfterScoring(c: Candidate): Boolean =
+        c.authoredMethod != null && c.authoredMethod != MatchMethod.Tokens
+
     /** Per-category discovery + staleness for `GetStatus` (contracts §2). */
     fun categoryStatuses(): List<CategoryStatusInfo> =
         cache
@@ -368,10 +473,11 @@ class StringRepository(
                     source = candidates.firstOrNull()?.source ?: SourceTag.MEMBER,
                     size = candidates.size,
                     loadedAtEpochMs = loadedAtMs,
+                    matchMethod = candidates.firstOrNull { it.source == SourceTag.MEMBER }?.matchMethod,
                 )
             }.sortedBy { it.category }
 
-    /** B-T4 loader report: PK-skipped declared columns etc. (`RG-FUZ-001`). Populated in S2.T7. */
+    /** Loader report: vocabularies listed but not loaded (`RG-FUZ-001`/`003`), or no listing at all (`RG-FUZ-004`). */
     fun loaderWarnings(): List<LoaderWarningInfo> = loaderSource.warnings()
 
     private fun computeVersion(
@@ -392,8 +498,9 @@ class StringRepository(
 
     /**
      * Operator-triggered immediate reload (via `POST /refresh`), bypassing the background interval
-     * wait. Reuses [refreshCache]; on loader failure it preserves the previous cache (and throws
-     * nothing) just like the scheduled path.
+     * wait. Reuses [refreshCache] — and its lock, so it waits for a scheduled refresh in flight
+     * rather than interleaving with it; on loader failure it preserves the previous member layer
+     * (and throws nothing) just like the scheduled path.
      */
     suspend fun forceRefresh() = refreshCache()
 
@@ -423,6 +530,8 @@ class StringRepository(
                 targetRef = c.targetRef,
                 matchMethod = c.matchMethod,
                 targetClass = c.targetClass,
+                matchProfile = c.matchProfile,
+                category = c.category,
             )
         }
     }

@@ -60,4 +60,20 @@ interface MatchRepository {
      * Defaults to false — the honest answer for a member-only store, and for the many fakes.
      */
     fun servesDeclaredLayer(): Boolean = false
+
+    /**
+     * MV (review-104 F10) — true when some row [category] (null: any category) would be narrowed
+     * AFTER scoring, which is the question [FuzzyMatcher] scores wide for.
+     *
+     * Until MV that was exactly [servesDeclaredLayer]: only a declared or learned row carried an
+     * authored method, a class or a profile. A member row now carries its vocabulary's method, and
+     * `EXACT`/`TYPOS(n)` narrow — so an admissible member ranked just past the caller's limit by the
+     * recall-oriented token scorer was truncated before the gate saw it, and the query answered
+     * nothing. `TOKENS` narrows nothing, so a store whose member vocabularies are all TOKENS keeps
+     * the byte-identical path.
+     *
+     * Defaults to [servesDeclaredLayer], so every store that predates member methods — and every
+     * fake — answers exactly as before.
+     */
+    fun narrowsAfterScoring(category: String?): Boolean = servesDeclaredLayer()
 }

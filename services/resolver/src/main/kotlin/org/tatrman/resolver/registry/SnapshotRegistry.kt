@@ -66,6 +66,8 @@ class SnapshotRegistry(
                     nameRef = entries.first().nameRef,
                     codeRef = entries.first().codeRef,
                     codeFormat = entries.first().codeFormat,
+                    // MV: per-ref as well.
+                    memberVocabulary = entries.first().memberVocabulary,
                 )
             }
         val locales = (vocab.locales + configLocales).distinct()

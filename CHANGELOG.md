@@ -44,6 +44,107 @@ What a consumer of the lattice will notice:
   is never attributable, instead of failing the whole resolve.
 - Literal spans are in the parse's code-point offsets, like every other span in the lattice. U+0085
   opens and closes a literal, as the shared corpus's fixture 29 pins.
+### resolver — a value governed by an entity is looked up in that entity's member vocabularies (MV-T3)
+
+The registry now learns every member vocabulary from the compiled lexicon archive
+(`ttr-lexicon-compiled/v5`). A value governed by an anchor is looked up where that anchor's values
+live.
+
+**Behaviour**
+
+- **Registry.** Every indexed attribute becomes a registry type, whether or not it has lexicon terms.
+  Its category is its own ref, its owner is its entity, and it has no anchors. Before, an attribute
+  without terms was absent from the registry. No question could reach its vocabulary except the
+  cross-category lookup round, which attributed the value to every attribute holding it.
+- **Governed lookup.** A value governed by an anchor (`stores in TN`) is gated to the anchor's own
+  categories plus its entity's member vocabularies (`store.state`, `store.store_name`). Nothing else is
+  added: `TN` under `stores` is not looked up in `customer_address.state`. The same rule scopes the
+  anchored lookup round and `resolve.gate:v1`.
+- **Re-gate.** A hypothesis naming an entity is confirmed by a member of that entity's own
+  vocabularies (`…Account.code#501001` confirms `…Account`). A member of another entity's vocabulary
+  still contradicts it.
+- **Entity names.** A member binding's and a member option's `entity_type_ref` is now the owning
+  entity (`er.entity.store`), not the attribute. `Option.member_of` still names the attribute, and the
+  resume token now SIGNS it, so a resumed pin keeps its attribute. `Domain.member_of` carries it on the
+  binding (fresh and resumed). `Binding.ref` is `<attribute>#<value>` and `Attribution.attribute_ref` is
+  the attribute.
+- **Member identity is (vocabulary, value).** Two rows are one answer only when both the category and
+  the id agree. The same value in `store.state` and `warehouse.state` is two readings (the id alone
+  used to merge them), and an option's id is `M:<category>#<value>`.
+- **Unchanged.** A value whose governor owns no member vocabulary (`customers in TN`) is still found by
+  the open lookup and decided by the governor's declared relations, as before. A v4 archive gets exactly
+  the pre-MV answer.
+
+**Wire.**
+- `resolver.v1.EntityType.member_vocabulary = 10` (**additive**): the per-request registry override
+  can mark a type as a member vocabulary, as the archive does.
+- `resolver.v1.Domain.member_of = 6` (**additive**): the attribute a member binding is a value of.
+- ⚠ A member option's resume token carries `memberOf`. A resolver older than this release refuses such
+  a token (RG-RES-002) during a rolling deploy, and the user asks again. Other tokens are unchanged
+  byte for byte.
+
+### lex-matcher — member vocabularies are loaded from Veles, keyed by attribute (MV-T2)
+
+The `metadata` loader (`FUZZY_LOADER_SOURCE=metadata`) now reads Veles' `ListMemberVocabularies`
+instead of walking fuzzy-tagged columns and composing `SELECT pk, col FROM table`.
+
+**Behaviour**
+
+- **Categories.** One category per member vocabulary, named by the attribute's ref
+  (`er.<ns>.<entity>.<attribute>`, or `db.<ns>.<table>.<column>` on a db-only estate). Two entities over
+  one table are two categories, and a view- or query-backed entity reads its own population.
+  ⚠ Category names change from the column form (`db.dbo.store.s_state`) to the attribute form
+  (`er.entity.store.state`) for every estate that indexed an ER attribute.
+- **Read plans.** Each vocabulary's rows come from the read plan Veles rendered for the warehouse's
+  dialect. The loader always sends that dialect (`POSTGRESQL` / `MSSQL`) and composes no SQL of its own,
+  alias tables aside. A plan always runs as a query, including one that opens with `WITH` or `(`.
+- **Members are values.** A vocabulary's candidates are its attribute's DISTINCT values, and a
+  candidate's id is the value as the warehouse stores it. The read plan returns one row per entity row,
+  so three stores in Tennessee used to be three `TN` candidates with three keys. ⚠ `candidate_id`
+  (and so `resolved_id` and the member half of `Binding.ref`) changes from the entity's key to the
+  value. That id is what a consumer compares the attribute against, so a key there filtered
+  `state = '7'`. `GetStatus` sizes count values.
+- **Match methods.** Every member row carries its vocabulary's match method, so the dispatcher holds an
+  `EXACT` code to exact equality (`tn` finds `TN`; `tx` does not). Before, member rows carried no method
+  and every one was matched partially. A method the matcher does not know is matched `EXACT`, with a
+  WARN.
+- **`GetStatus`.**
+  - `CategoryStatus.match_method = 5` (**additive**) shows each member category's method.
+  - Warnings carry Veles' own diagnostics for vocabularies it could not plan: `RG-FUZ-001` (no single
+    key) and `RG-FUZ-003` (no read plan).
+  - New `RG-FUZ-004`: there is no listing at all. Causes are a Veles older than member vocabularies
+    (UNIMPLEMENTED), a model that is not loaded yet, or a transport failure. The previous load keeps
+    serving; a not-ready Veles no longer wipes the member layer. Before any listing, the service still
+    comes up: it is ready, it serves its declared lexicon and overlay, and it retries the listing after
+    5 s, doubling up to the refresh interval. The warning says no member vocabulary has loaded yet.
+  - A vocabulary that is listed but unreadable this time keeps its previous rows. That covers no read
+    plan (a query-backed entity in Veles' parse window) and a read plan the warehouse refused. Only a
+    vocabulary Veles stops listing leaves the layer.
+- **`member_index_versions`.** Now folds the read plan's identity (plan, key, method) into the content
+  hash. A changed plan moves a category's version even when it reads the same rows, and changed rows
+  still move it. An unrelated model edit does not move it: Veles' own item version hashes the model
+  version too, which is why it is not the one folded in.
+- **Matching.** A member row is held to its own method but takes part in neither `method_override` (a
+  lookup round's override applies to declared terms only) nor the uniqueness margin (two near-identical
+  values are a clarification, not a veto). An `EXACT` or `TYPOS(n)` vocabulary is scored with the same
+  headroom a declared term gets, so an exact value ranked just past the limit is still found. A
+  cross-category lookup reports each member's own category, where it used to report `unknown`.
+- **Refresh.** One refresh at a time: `POST /refresh` waits for a scheduled refresh in flight.
+- **NULL rows.** A row with a NULL key or value is skipped. Before, one NULL lost the whole category.
+
+**Config and metrics**
+
+- `fuzzy.metadata.schema` / `FUZZY_METADATA_SCHEMA` are removed.
+- `FUZZY_METADATA_NAMESPACE` now guards the attribute's namespace.
+- `fuzzy_loader_skipped_total{no_pk|composite_pk|…}` is replaced by
+  `member_vocabulary_skipped_total{reason}`, with reasons `no_key`, `no_read_plan`, `wrong_source`,
+  `sql_failed` and `alias_sql_failed`.
+- The static catalog (`fuzzy-catalog.json`) gains an optional `methods` map. A member category it does
+  not name is `EXACT`.
+
+**Release together with Veles (MV-T1).** A Veles without `ListMemberVocabularies` leaves this loader on
+its previous load (`RG-FUZ-004`). A pre-MV lex-matcher against an MV Veles would index `EXACT` carriers
+with no method, i.e. partially.
 
 ### `meta.v1` — member vocabularies (MV-T1): `ListMemberVocabularies`, and `SearchHints.indexed`
 

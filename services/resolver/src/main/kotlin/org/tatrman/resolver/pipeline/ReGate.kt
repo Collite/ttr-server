@@ -13,9 +13,10 @@ import org.tatrman.resolver.client.FuzzyClient
 import org.tatrman.resolver.model.ResolverEntityType
 import org.tatrman.resolver.model.ResolverThresholds
 import org.tatrman.resolver.model.kindsByRef
+import org.tatrman.resolver.model.memberEntityByCategory
 import org.tatrman.resolver.model.ownersByRef
 import org.tatrman.resolver.model.reachByRef
-import org.tatrman.resolver.model.refByCategory
+import org.tatrman.resolver.model.valueCategoriesByRef
 import org.tatrman.resolver.v1.Attribution
 import org.tatrman.resolver.v1.Binding
 import org.tatrman.resolver.v1.GapKind
@@ -147,7 +148,9 @@ object ReGate {
         val verbatimValues = lattice.valuesList.filter { it.kind == ValueKind.VALUE_KIND_VERBATIM }
 
         fun verbatimAt(span: Span) = verbatimValues.firstOrNull { span.start < it.span.end && span.end > it.span.start }
-        val categoriesByRef = entityTypes.associate { it.ref to it.categories }
+        // MV §5.3 — the one scope rule the governed lookup reads: a ref's own categories, then its
+        // member vocabularies'. Identical to `it.categories` on a registry that declares none.
+        val categoriesByRef = entityTypes.valueCategoriesByRef()
         // MS-P3·S2 — see GateSpans: every producer gates through the same containment map.
         val owners = entityTypes.ownersByRef()
         // MH: built once here, like `owners` — plan risk 6 is a defaulted parameter silently
@@ -155,7 +158,7 @@ object ReGate {
         // the registry through the same three helpers.
         val kinds = entityTypes.kindsByRef()
         val reach = entityTypes.reachByRef()
-        val memberOwners = entityTypes.refByCategory()
+        val memberOwners = entityTypes.memberEntityByCategory()
         // `Gate` is a public rpc and `hypotheses` is an unbounded repeated field, so the fan-out has
         // to be bounded by this service rather than by the caller's good manners: without this a
         // single request opens one concurrent matcher RPC per hypothesis, each with a 30s deadline.
@@ -250,7 +253,7 @@ object ReGate {
                 verdict is Binder.Ambiguous -> outcomes += outcome(hypothesis, Reason.AMBIGUOUS)
                 verdict is Binder.Bind -> {
                     val binding = Bindings.of(verdict.winner, snapshotHash).withRung(hypothesis.proposingRung)
-                    if (hypothesis.ref.isNotBlank() && !confirms(binding.ref, hypothesis.ref)) {
+                    if (hypothesis.ref.isNotBlank() && !confirms(binding.ref, hypothesis.ref, memberOwners)) {
                         outcomes += outcome(hypothesis, Reason.REF_MISMATCH)
                     } else {
                         bindings += binding
@@ -405,6 +408,11 @@ object ReGate {
      * declaring entity's categories when the registry knows it, so a hypothesis naming an entity
      * still reaches that entity's member columns. With no ref, the lattice's own anchoring
      * supplies the scope — the same scope a P2.3 round would have used.
+     *
+     * [categoriesByRef] is `valueCategoriesByRef` (MV §5.3), which is what makes "reaches that
+     * entity's member columns" true on a v5 archive: there the entity is gated by its own ref and
+     * its values live in its attributes' member vocabularies, so its own categories alone reached
+     * none of them.
      */
     private fun scopeFor(
         hypothesis: Hypothesis,
@@ -441,7 +449,14 @@ object ReGate {
     private fun confirms(
         bound: String,
         proposed: String,
-    ): Boolean = bound == proposed || bound.startsWith("$proposed#")
+        memberEntities: Map<String, String>,
+    ): Boolean =
+        bound == proposed ||
+            bound.startsWith("$proposed#") ||
+            // MV §5.3 — a member of a vocabulary the proposed ENTITY owns is a member of that
+            // entity: `…Account.code#501001` confirms `…Account`. Still one direction only — it is
+            // the member's category that is looked up, never the proposal widened.
+            (bound.contains('#') && memberEntities[bound.substringBefore('#')] == proposed)
 
     /**
      * The span as the gate needs to see it. Only [DomainSpanCandidate.anchored] is load-bearing

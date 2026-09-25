@@ -22,7 +22,8 @@ data class Candidate(
     val targetRef: String? = null,
     /**
      * RV-32 — the authored match method (`EXACT` · `TOKENS` · `TYPOS(n)`) from the compiled
-     * lexicon. Null for member candidates: nobody authored a method for a data value.
+     * lexicon — and, since MV, a member row's vocabulary method (the attribute's `method:`). Null
+     * only where nobody declared one.
      */
     val matchMethod: String? = null,
     /**
@@ -37,6 +38,14 @@ data class Candidate(
      * keeps their scoring untouched: [ProfileScorer] only ever sees a row that carries one.
      */
     val matchProfile: MatchProfile? = null,
+    /**
+     * MV (review-104 F12) — the member vocabulary this row belongs to, stamped where the row is
+     * built. A category-scoped lookup already knows it; the cross-category one does not, and used to
+     * report every member as `category = "unknown"` — so equal ids from two vocabularies collapsed
+     * into one row and nobody could attribute it. Null for declared, learned and hand-built rows,
+     * which keep that reading.
+     */
+    val category: String? = null,
 ) {
     /** Surface tokens ∪ lemma tokens — used to seed the candidate set for a query. */
     val allTokenSet: Set<String> get() = tokenSet + lemmaTokenSet
@@ -63,9 +72,10 @@ data class Candidate(
      * RV-P1.4 T4 — the authored form (diacritics intact) that `EXACT`/`TYPOS(n)` dispatch compares
      * against, precomputed for the same reason as [foldedValue].
      *
-     * **Null when no method was authored**, which is every member value — deliberately, so the
-     * member path pays no NFC normalisation at load. Nothing reads it for those rows: dispatch
-     * admits an unauthored candidate without ever looking at its canonical form.
+     * **Null when no method was authored** — deliberately, so an unauthored row pays no NFC
+     * normalisation at load. Nothing reads it for those rows: dispatch admits an unauthored
+     * candidate without ever looking at its canonical form. (Since MV every member row carries its
+     * vocabulary's method, so member rows pay it — once, which is why they are built once.)
      */
     val canonicalValue: String? =
         if (authoredMethod == null && matchProfile == null) null else TextNormalizer.canonical(value)
@@ -82,9 +92,17 @@ data class Candidate(
     companion object {
         val WHITESPACE_REGEX = Regex("\\s+")
 
+        /**
+         * A member row. [matchMethod] and [category] are taken here rather than `copy`-ed on
+         * afterwards (review-104 F13): `copy` re-runs the constructor, so every body `val` — the
+         * fold, the method's regex parse, the NFC canonical form — was computed twice per row.
+         */
+        @JvmOverloads
         fun fromValues(
             id: String,
             value: String,
+            matchMethod: String? = null,
+            category: String? = null,
         ): Candidate {
             val tokens = tokenize(value)
             val set = tokens.toSet()
@@ -95,6 +113,8 @@ data class Candidate(
                 tokenSet = set,
                 lemmaTokens = tokens,
                 lemmaTokenSet = set,
+                matchMethod = matchMethod,
+                category = category,
             )
         }
 
@@ -142,6 +162,7 @@ data class Candidate(
             matchMethod: String? = null,
             targetClass: TargetClass? = null,
             matchProfile: MatchProfile? = null,
+            category: String? = null,
         ): Candidate =
             Candidate(
                 id = id,
@@ -155,6 +176,7 @@ data class Candidate(
                 matchMethod = matchMethod,
                 targetClass = targetClass,
                 matchProfile = matchProfile,
+                category = category,
             )
 
         /** Tokens used for matching: lower-cased, NFD-folded, whitespace-split. */
