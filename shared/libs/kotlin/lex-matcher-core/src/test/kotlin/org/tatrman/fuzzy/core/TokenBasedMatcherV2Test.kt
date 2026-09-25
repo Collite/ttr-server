@@ -44,8 +44,8 @@ class TokenBasedMatcherV2Test :
             id: String,
         ): Scored = v2Off.scoreCandidate(q(query), q(query), corpus.first { it.id == id })
 
-        // `S_perfect(n)` at the default multiplier/cap: min(1.05^(n(n−1)/2), 1.5) + ε.
-        fun perfect(n: Int) = Math.pow(1.05, n * (n - 1) / 2.0).coerceAtMost(1.5) + TokenBasedMatcherV2.EPSILON
+        // `S_perfect(n)` at the default multiplier/cap: min(1.05^(n(n−1)/2), 1.5) — no ε term.
+        fun perfect(n: Int) = Math.pow(1.05, n * (n - 1) / 2.0).coerceAtMost(1.5)
 
         "T2 — valmy: two candidates at equal P; coverage orders them, by less than ε" {
             val a = scoreOf("valmy", "c-valmy")
@@ -78,8 +78,9 @@ class TokenBasedMatcherV2Test :
             peleby.tokenHits.single().kind shouldBe "prefix"
             peleby.score shouldBe (0.86 + TokenBasedMatcherV2.EPSILON * peleby.coverage!! plusOrMinus 1e-12)
 
-            // D3 — shipped `scale`: the same S over S_perfect(1) = 1 + ε, provenance untouched.
-            scoreOf("pele", "c-pelex").score shouldBe (pelex.score / perfect(1) plusOrMinus 1e-12)
+            // D3 — shipped `scale`: S_perfect(1) = 1, so a one-token row keeps §4.3's S exactly.
+            perfect(1) shouldBe 1.0
+            scoreOf("pele", "c-pelex").score shouldBe pelex.score
             scoreOf("pele", "c-pelex").tokenHits shouldBe pelex.tokenHits
         }
 

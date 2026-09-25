@@ -89,9 +89,11 @@ multi-token query could reach ≥ 1.0 — the value every consumer reads as "ord
 resolver classes a member row at ≥ 0.9999 as EXACT). v2 therefore keeps every row whose query tokens
 are **not all `exact`** under 1.0:
 
-- **`scale`** (default) — `S' = min(ceiling, S / S_perfect(n))`, where `S_perfect(n)` is the score of
-  an all-exact, in-order, full-coverage match of the same n-token query. One factor per query, so the
-  order among the non-exact rows is unchanged.
+- **`scale`** (default) — `S' = min(ceiling, S / S_perfect(n))`, where `S_perfect(n)` is the order
+  bonus an all-exact, in-order match of the same n-token query earns, `min(1.05^(n(n−1)/2), 1.5)`
+  (no ε term). One factor per query, so the order among the non-exact rows is unchanged. A one-token
+  query divides by 1, so its typo and prefix scores are exactly the pre-fix numbers; for a longer
+  query the `ceiling` is what keeps a near-perfect partial match under 1.0.
 - **`cap`** — `S' = min(S, ceiling)`.
 - **`off`** — the pre-fix §4.3 score. For calibration and rollback only.
 

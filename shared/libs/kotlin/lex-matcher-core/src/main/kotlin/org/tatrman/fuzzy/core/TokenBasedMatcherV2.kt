@@ -180,14 +180,15 @@ class TokenBasedMatcherV2(
     }
 
     /**
-     * D3 — `S_perfect(n)`: the §4.3 S of an all-exact, in-order, full-coverage match of an n-token
-     * query, `min(mult^(n(n−1)/2), maxOrderBonus) + ε`. The pair count is a Double so a long query
-     * cannot overflow it (the power saturates, and the cap takes over).
+     * D3 — `S_perfect(n)`: the order bonus of an all-exact, in-order match of an n-token query,
+     * `min(mult^(n(n−1)/2), maxOrderBonus)` — WITHOUT the `+ ε·C` term, so `S_perfect(1) = 1` and a
+     * one-token row keeps §4.3's S (see [V2Normalization]). The pair count is a Double so a long
+     * query cannot overflow it (the power saturates, and the cap takes over).
      */
     private fun perfect(n: Int): Double {
         if (n != perfectFor) {
             val pairs = n.toDouble() * (n - 1) / 2.0
-            perfectScore = Math.pow(orderBonusMultiplier, pairs).coerceAtMost(maxOrderBonus) + EPSILON
+            perfectScore = Math.pow(orderBonusMultiplier, pairs).coerceAtMost(maxOrderBonus)
             perfectFor = n
         }
         return perfectScore

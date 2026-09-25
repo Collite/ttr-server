@@ -63,7 +63,8 @@ class V2NormalizationSpec :
             query: String,
         ): FuzzyMatchResult = m.match(query, "customer", AlgorithmType.TATRMAN, 5).first()
 
-        fun perfect(n: Int) = Math.pow(1.05, n * (n - 1) / 2.0).coerceAtMost(1.5) + TokenBasedMatcherV2.EPSILON
+        // `S_perfect(n)` — the all-exact in-order order bonus, WITHOUT §4.3's ε term.
+        fun perfect(n: Int) = Math.pow(1.05, n * (n - 1) / 2.0).coerceAtMost(1.5)
 
         /** Every one of the query's [n] tokens hit, and every hit is EXACT. */
         fun Scored.allExact(n: Int) = tokenHits.size == n && tokenHits.all { it.kind == "exact" }
@@ -100,7 +101,46 @@ class V2NormalizationSpec :
                 // …by ONE factor per query length, S / S_perfect(3); coverage (C) is reported unscaled.
                 hit.score shouldBe (top(off, query).score / perfect(3) plusOrMinus 1e-12)
                 hit.provenance.coverage shouldBe top(off, query).provenance.coverage
+                println("D3 probe '$query': off %.4f → scale %.4f".format(top(off, query).score, hit.score))
             }
+        }
+
+        "S_perfect(1) = 1: a one-token non-exact row keeps §4.3's S byte for byte (typo, prefix, ED-2)" {
+            val off = matcher(V2Normalization.OFF)
+            val shipped = matcher()
+            for ((query, kind) in listOf("benzin" to "prefix", "valmi" to "typo", "agrofret" to "typo")) {
+                val before = top(off, query)
+                val now = top(shipped, query)
+                now.provenance.tokenHits
+                    .single()
+                    .kind shouldBe kind
+                now.candidateId shouldBe before.candidateId
+                now.score shouldBe before.score
+            }
+            // The case the ε cost: an ED-2 typo (q 0.70) stays at 0.70 + ε·C, on the resolver's
+            // LIVE_STRONG floor (0.70) rather than under it.
+            top(shipped, "agrofret").score shouldBeGreaterThanOrEqual 0.70
+        }
+
+        "without ε a near-perfect multi-token partial scales PAST 1.0 — the ceiling is what keeps it under" {
+            // A rare exact token plus a 24/25 prefix of a token every row shares: P ≈ 0.992, so
+            // S / S_perfect(2) = (P·1.05 + ε) / 1.05 ≥ 1.0.
+            val common = "abcdefghijklmnopqrstuvwxy"
+            val rows =
+                listOf(Candidate.fromValues("target", "Zebrax $common")) +
+                    (1..29).map { Candidate.fromValues("f$it", "Filler$it $common") }
+            val index = TokenIndex(rows)
+            val tokens = Candidate.tokenize("zebrax ${common.dropLast(1)}")
+            val raw =
+                TokenBasedMatcherV2(
+                    index,
+                    normalization = V2Normalization.OFF,
+                ).scoreCandidate(tokens, tokens, rows[0])
+            raw.tokenHits.map { it.kind } shouldBe listOf("exact", "prefix")
+            raw.score shouldBeGreaterThanOrEqual 1.0 // §4.3 as written: read as ordered exact
+            (raw.score / perfect(2)) shouldBeGreaterThanOrEqual 1.0 // the scale alone does not bound it
+            TokenBasedMatcherV2(index).scoreCandidate(tokens, tokens, rows[0]).score shouldBe
+                (V2Normalization.DEFAULT_CEILING plusOrMinus 1e-12)
         }
 
         "an all-exact, in-order query keeps §4.3's S (≥ 1.0) in every mode" {

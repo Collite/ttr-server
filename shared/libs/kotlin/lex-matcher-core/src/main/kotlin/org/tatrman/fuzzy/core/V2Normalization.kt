@@ -11,13 +11,18 @@ package org.tatrman.fuzzy.core
  * the resolver's member-EXACT class sits at 0.9999, so a unique partial member match was bound as
  * EXACT. This bounds every row whose query tokens are not ALL `exact`:
  *
- *  - [Mode.SCALE] (the default): `S' = min(ceiling, S / S_perfect(n))`, where `S_perfect(n)` is the S
- *    an all-exact, in-order, full-coverage match of the same n-token query gets —
- *    `min(mult^(n(n−1)/2), maxOrderBonus) + ε`. One linear factor per query, so the ORDER among the
- *    non-exact rows is unchanged, and each lands below 1.0 by construction (the ceiling is the
- *    guard, and the configurable half of it). ⚠ Two non-exact rows that both scale ABOVE the ceiling
- *    tie at it; the ceiling then orders them by candidate order (the stable sort), not by S. It takes
- *    a query whose non-exact token carries a small share of the IDF weight (P > ≈ 0.99).
+ *  - [Mode.SCALE] (the default): `S' = min(ceiling, S / S_perfect(n))`, where `S_perfect(n)` is the
+ *    ORDER BONUS an all-exact, in-order match of the same n-token query earns —
+ *    `min(mult^(n(n−1)/2), maxOrderBonus)`, deliberately WITHOUT §4.3's `+ ε·C` (the lead's
+ *    calibration, 2026-09-25). One linear factor per query, so the ORDER among the non-exact rows is
+ *    unchanged. `S_perfect(1) = 1`: a one-token non-exact row (q ≤ 0.86 for a typo or a short
+ *    prefix) can never reach 1.0 anyway, so it keeps §4.3's S byte for byte — dividing it by
+ *    `1 + ε` only pushed single-token typo/prefix scores across the resolver's thresholds (an ED-2
+ *    typo, 0.70 + ε·C, fell under `LIVE_STRONG` 0.70). Without the ε a multi-token row whose P is
+ *    near 1 CAN scale to ≥ 1.0, so the CEILING is what guarantees every non-exact row lands below
+ *    1.0 — it is the guard, and the configurable half of it. ⚠ Two non-exact rows that both scale to
+ *    or above the ceiling tie at it; the stable sort then orders them by candidate order, not by S.
+ *    It takes a query whose non-exact tokens carry a small share of the IDF weight.
  *  - [Mode.CAP]: `min(S, ceiling)` — the raw number, clipped.
  *  - [Mode.OFF]: §4.3's S untouched — the pre-fix engine, kept for calibration and rollback.
  *
@@ -68,7 +73,7 @@ data class V2Normalization(
 
     /**
      * The score of a row that is NOT all-exact: [raw] is its §4.3 S, [perfect] the query's
-     * `S_perfect(n)`. An all-exact row never comes here.
+     * `S_perfect(n)` (the all-exact in-order order bonus, no ε). An all-exact row never comes here.
      */
     fun normalize(
         raw: Double,
