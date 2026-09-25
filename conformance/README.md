@@ -78,7 +78,7 @@ These are verified on every gate run by `just conformance-verify-hashes` (readin
 semantic test would miss — fails the gate (RG-P6 review I). Keep the two lists in sync.
 ```
 ucetnictvi_entities_only.jsonl  d0e8b17fa6e989ff9e17bd4a035825946e2b551802d1edd38d3bd163676331f5
-match-quality-corpus.jsonl      4f4daa416dff6c40227887ff9573903ca489ee8c5fb0e0a5387a52134f1310e2
+match-quality-corpus.jsonl      e2d8a6cf33debfb4117bc130fb1cdc9126f11627b88a91aede661e0892f1d73d
 grounding-cases.json            a54491aa20ee4eac37b68c9b12a74658ed9b88e03051533289ce506e63590100
 e2e-cases.json                  0034ed387f31c1dca8ba1a56b22b72f968193ee5f1aacb0f20aa7336facf77f7
 hartland-cz/aliases.lex.yaml    78577f1f142fdb6b9bca261e559b69335885358bcd4ba9ed6fb2bd75d45b2208
