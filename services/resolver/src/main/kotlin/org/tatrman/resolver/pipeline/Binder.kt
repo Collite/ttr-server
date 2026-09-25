@@ -531,11 +531,20 @@ object Binder {
     private fun isModelObject(c: ClassedMatch): Boolean = c.match.source != SourceTag.MEMBER
 
     /**
-     * What makes two candidates the same THING: a member is its data PK, anything else is its
-     * declared target ref. Two rows that agree here are one answer reached twice, not a tie.
+     * What makes two candidates the same THING: a member is its VALUE within its vocabulary, anything
+     * else is its declared target ref. Two rows that agree here are one answer reached twice, not a
+     * tie.
+     *
+     * ✅ MV (A-MV-15, review-104 F2/F3) — `(vocabulary, value)`: the category AND the id, spelled as
+     * the binding's own ref (`<category>#<id>`). It used to be the id alone, which was a data PK and
+     * so looked unique; but T3 routes several vocabularies into one span, and `TN` in `store.state`
+     * and `TN` in `warehouse.state` are two readings — two owners M3 and E12 must tell apart — not
+     * one answer reached twice. Keys collide across entities the same way (store 1, warehouse 1). The
+     * id is the value since A-MV-15, which is the other half: N stores in Tennessee are ONE governed
+     * value, not N rows in a tie band.
      */
     fun identityKey(m: FuzzyMatch): String =
-        if (m.source == SourceTag.MEMBER) "M:${m.candidateId}" else "V:${m.targetRef}"
+        if (m.source == SourceTag.MEMBER) "M:${m.category}#${m.candidateId}" else "V:${m.targetRef}"
 }
 
 /**

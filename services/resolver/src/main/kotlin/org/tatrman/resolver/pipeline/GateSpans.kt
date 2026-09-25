@@ -260,6 +260,8 @@ object GateSpans {
             score = top.score,
             algorithm = top.provenance.method.ifBlank { "TATRMAN" },
             snapshotHash = snapshotHash,
+            // review-104 F6 — the attribute, which `entityRef` above no longer names for a member.
+            memberOf = if (isMember) vocabularyRefOf(top, entityTypes) else "",
         )
     }
 
@@ -300,12 +302,17 @@ object GateSpans {
         )
     }
 
-    /** Same resolved id (MEMBER) or same target_ref (VOCABULARY) → one binding (highest score). */
+    /**
+     * Same member of the same vocabulary (MEMBER) or same target_ref (VOCABULARY) → one binding
+     * (highest score). The vocabulary is part of a member's identity (review-104 F3): `TN` bound in
+     * `store.state` on one span and in `warehouse.state` on another are two bindings.
+     */
     private fun dedupeByIdentity(bindings: List<DomainBinding>): List<DomainBinding> {
         val best = LinkedHashMap<String, DomainBinding>()
         for (b in bindings) {
             val key =
-                b.resolvedId?.let { "M:$it" } ?: b.targetRef?.let { "V:$it" } ?: "S:${b.entityTypeRef}:${b.rawText}"
+                b.resolvedId?.let { "M:${b.memberOf}#$it" } ?: b.targetRef?.let { "V:$it" }
+                    ?: "S:${b.entityTypeRef}:${b.rawText}"
             val existing = best[key]
             if (existing == null || b.score > existing.score) best[key] = b
         }

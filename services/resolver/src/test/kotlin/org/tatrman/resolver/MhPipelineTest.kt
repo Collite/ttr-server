@@ -254,7 +254,7 @@ class MhPipelineTest :
             tn.attributionsList.map { it.attributeRef } shouldContainExactly listOf(MhMembers.STORE_STATE)
             tn.attributionsList
                 .single()
-                .binding.ref shouldBe "${MhMembers.STORE_STATE}#store#7"
+                .binding.ref shouldBe "${MhMembers.STORE_STATE}#TN"
         }
 
         "E11-cs — `Prodejny v TN` does the same on the Czech parse" {
@@ -264,7 +264,7 @@ class MhPipelineTest :
                 .single { it.span.text == "TN" }
                 .attributionsList
                 .single()
-                .binding.ref shouldBe "${MhMembers.STORE_STATE}#store#7"
+                .binding.ref shouldBe "${MhMembers.STORE_STATE}#TN"
         }
 
         "E11 — with the anchor's own homonymy resolved, the whole question resolves clean" {
@@ -286,7 +286,7 @@ class MhPipelineTest :
                 .single { it.span.text == "TN" }
                 .attributionsList
                 .single()
-                .binding.ref shouldBe "${MhMembers.STORE_STATE}#store#7"
+                .binding.ref shouldBe "${MhMembers.STORE_STATE}#TN"
         }
 
         "E12-en — `Sales in TN` asks, and every option names its OWNER" {
@@ -299,7 +299,7 @@ class MhPipelineTest :
                 listOf(MhMembers.STORE_STATE, MhMembers.CA_STATE, MhMembers.WAREHOUSE_STATE)
             // a member is a data row: no species, and the owner is the whole difference
             options.map { it.objectKind }.distinct() shouldContainExactly listOf("")
-            options.map { it.resolvedId } shouldContainExactlyInAnyOrder listOf("store#7", "ca#3", "wh#1")
+            options.map { it.resolvedId } shouldContainExactlyInAnyOrder listOf("TN", "TN", "TN")
         }
 
         "E12-bare — a lone `TN` asks the same question, owners and all" {
@@ -342,7 +342,7 @@ class MhPipelineTest :
                     .single { it.span.text == "TN" }
                     .attributionsList
                     .single()
-            attribution.binding.ref shouldBe "${MhMembers.STORE_STATE}#store#7"
+            attribution.binding.ref shouldBe "${MhMembers.STORE_STATE}#TN"
             attribution.attributeRef shouldBe MhMembers.STORE_STATE
         }
 
@@ -355,7 +355,7 @@ class MhPipelineTest :
                 .single { it.span.text == "TN" }
                 .attributionsList
                 .single()
-                .binding.ref shouldBe "${MhMembers.CA_STATE}#ca#3"
+                .binding.ref shouldBe "${MhMembers.CA_STATE}#TN"
         }
 
         "E13-cs — `Zákazníci v TN` likewise" {
@@ -365,7 +365,7 @@ class MhPipelineTest :
                 .single { it.span.text == "TN" }
                 .attributionsList
                 .single()
-                .binding.ref shouldBe "${MhMembers.CA_STATE}#ca#3"
+                .binding.ref shouldBe "${MhMembers.CA_STATE}#TN"
         }
 
         "E13 — the two rejected owners ride the rung log, nothing is silently dropped" {
@@ -385,7 +385,7 @@ class MhPipelineTest :
                 .single { it.span.text == "Nashville" }
                 .attributionsList
                 .single()
-                .binding.ref shouldBe "${MhMembers.STORE_NAME}#store#7"
+                .binding.ref shouldBe "${MhMembers.STORE_NAME}#Nashville"
         }
 
         "tier M is inert on an estate that declared no owners — the same question asks" {
@@ -408,7 +408,7 @@ class MhPipelineTest :
             // no `ownerRef` ⇒ no `entityOf` ⇒ M3 cannot fire, and three tied members still ask
             response.awaiting.optionsList
                 .filter { it.resolvedId.isNotBlank() }
-                .map { it.resolvedId } shouldContainExactlyInAnyOrder listOf("store#7", "ca#3", "wh#1")
+                .map { it.resolvedId } shouldContainExactlyInAnyOrder listOf("TN", "TN", "TN")
         }
 
         // ── what the hartland drill measured (P3·S1·T8, 2026-09-04) ─────────────────────
@@ -424,7 +424,7 @@ class MhPipelineTest :
                 .single { it.span.text == "TN" }
                 .attributionsList
                 .single()
-                .binding.ref shouldBe "${MhMembers.STORE_STATE}#store#7"
+                .binding.ref shouldBe "${MhMembers.STORE_STATE}#TN"
         }
 
         "drill — likewise E13-cs with the real tokens" {
@@ -435,7 +435,7 @@ class MhPipelineTest :
                 .single { it.span.text == "TN" }
                 .attributionsList
                 .single()
-                .binding.ref shouldBe "${MhMembers.CA_STATE}#ca#3"
+                .binding.ref shouldBe "${MhMembers.CA_STATE}#TN"
         }
 
         "⚑ drill — a value the NER calls a PLACE never reaches the domain gate at all" {

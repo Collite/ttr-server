@@ -252,9 +252,12 @@ message Universal {
 message Domain {
   string entity_type_ref = 1;
   string raw_text = 2;
-  string resolved_id = 3;    // set when instance-determinate (MEMBER hit)
+  string resolved_id = 3;    // set when instance-determinate (MEMBER hit) — the member's value
   string resolved_label = 4;
   repeated Candidate candidates = 5;
+  // MV (review-104 F6) — for a MEMBER hit, the attribute whose member vocabulary resolved_id is a
+  // value of (`er.<ns>.<entity>.<attribute>`); entity_type_ref names its entity. "" otherwise.
+  string member_of = 6;
 }
 
 message Candidate {
@@ -316,7 +319,8 @@ message Option {
   // empty for VOCABULARY options. A clarification over `TN` ×3 is literally unanswerable
   // without it: the three options carry the same label, the same span and no target_ref, so
   // the only thing that distinguishes them is whose value it is — the store's state, the
-  // customer's, or the warehouse's.
+  // customer's, or the warehouse's. Since MV-T3 it is the ATTRIBUTE (entity_type_ref names the
+  // entity), and it is signed into resume_token: two attributes of one entity can hold one value.
   string member_of = 8;
 }
 

@@ -50,10 +50,10 @@ class MvGovernedDrillTest :
 
         val governed =
             listOf(
-                Drill("E11-en", "Stores in TN", MhMembers.e11En(), "en", "TN", "$STORE_STATE#store#7"),
-                Drill("E11-cs", "Prodejny v TN", MhMembers.e11CsReal(), "cs", "TN", "$STORE_STATE#store#7"),
-                Drill("E11-count", "How many stores in TN", MhMembers.e11Count(), "en", "TN", "$STORE_STATE#store#7"),
-                Drill("E4-en", "Stores in Nashville", MhMembers.e4En(), "en", "Nashville", "$STORE_NAME#store#7"),
+                Drill("E11-en", "Stores in TN", MhMembers.e11En(), "en", "TN", "$STORE_STATE#TN"),
+                Drill("E11-cs", "Prodejny v TN", MhMembers.e11CsReal(), "cs", "TN", "$STORE_STATE#TN"),
+                Drill("E11-count", "How many stores in TN", MhMembers.e11Count(), "en", "TN", "$STORE_STATE#TN"),
+                Drill("E4-en", "Stores in Nashville", MhMembers.e4En(), "en", "Nashville", "$STORE_NAME#Nashville"),
             )
 
         for (d in governed) {
@@ -77,12 +77,33 @@ class MvGovernedDrillTest :
             val (response, _) = MvEstate.resolve("How many stores in TN", MhMembers.e11Count())
 
             response.hasAwaiting() shouldBe false
-            response.resolution.bindingsList
-                .single { it.domain.rawText == "TN" }
-                .domain.entityTypeRef shouldBe STORE
+            val domain =
+                response.resolution.bindingsList
+                    .single { it.domain.rawText == "TN" }
+                    .domain
+            domain.entityTypeRef shouldBe STORE
+            // review-104 F6 — and the ATTRIBUTE, which entity_type_ref stopped naming at MV-T3.
+            domain.memberOf shouldBe STORE_STATE
+            domain.resolvedId shouldBe "TN"
         }
 
-        "§9.6 — the binding is addressed by the ATTRIBUTE and its key; the attribution names the category" {
+        "review-104 F6 — a resumed member pin keeps its attribute: the SIGNED option rebuilds it" {
+            val (asked, _) = MvEstate.resolve("TN", MhMembers.e12Bare())
+            val pick = asked.awaiting.optionsList.single { it.memberOf == CA_STATE }
+
+            val pinned =
+                MvEstate
+                    .resume(asked.awaiting.resumeToken, pick.id)
+                    .resolution.bindingsList
+                    .single()
+                    .domain
+
+            pinned.entityTypeRef shouldBe CUSTOMER_ADDRESS
+            pinned.memberOf shouldBe CA_STATE
+            pinned.resolvedId shouldBe "TN"
+        }
+
+        "§9.6 — the binding is addressed by the ATTRIBUTE and its value (A-MV-15); the attribution names the category" {
             val (response, _) = MvEstate.resolve("How many stores in TN", MhMembers.e11Count())
 
             val attribution =
@@ -90,7 +111,7 @@ class MvGovernedDrillTest :
                     .single { it.span.text == "TN" }
                     .attributionsList
                     .single()
-            attribution.binding.ref shouldBe "$STORE_STATE#store#7"
+            attribution.binding.ref shouldBe "$STORE_STATE#TN"
             attribution.attributeRef shouldBe STORE_STATE
         }
 
@@ -103,7 +124,7 @@ class MvGovernedDrillTest :
 
             index.log.filter { it.query == "TN" && it.via == "batch" }.all { it.members.isEmpty() } shouldBe true
             response.attributionsOf("TN") shouldContainExactlyInAnyOrder
-                listOf("$STORE_STATE#store#7", "$CA_STATE#ca#3", "$WAREHOUSE_STATE#wh#1")
+                listOf("$STORE_STATE#TN", "$CA_STATE#TN", "$WAREHOUSE_STATE#TN")
         }
 
         "compat §9.8 — a pre-MV override (member types, no flag): the M2 fallback still binds" {
@@ -123,7 +144,7 @@ class MvGovernedDrillTest :
                     .resolutionState.valuesList
                     .single { it.span.text == "TN" }
 
-            tn.attributionsList.map { it.binding.ref } shouldContainExactly listOf("$STORE_STATE#store#7")
+            tn.attributionsList.map { it.binding.ref } shouldContainExactly listOf("$STORE_STATE#TN")
         }
 
         "compat §6 — on a v4 archive the governed question reaches no member, so blinded nothing binds" {
@@ -151,7 +172,7 @@ class MvGovernedDrillTest :
                 val (open, index) = MvEstate.resolve(text, tokens, lang, archive)
                 val (blinded, _) = MvEstate.resolve(text, tokens, lang, archive, blind = openBlind)
 
-                open.attributionsOf("TN") shouldContainExactly listOf("$CA_STATE#ca#3")
+                open.attributionsOf("TN") shouldContainExactly listOf("$CA_STATE#TN")
                 index.log
                     .first { it.query == "TN" }
                     .members

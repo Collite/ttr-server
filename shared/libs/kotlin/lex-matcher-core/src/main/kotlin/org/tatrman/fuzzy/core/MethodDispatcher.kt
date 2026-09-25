@@ -15,9 +15,16 @@ import info.debatty.java.stringsimilarity.Levenshtein
  *    would put three scales in one response — precisely the problem [FuzzyMatcher.matchCascade]
  *    avoids by returning one algorithm's results wholesale instead of merging.
  *
- * Candidates with no authored method (every member value, and every METADATA row) pass through
- * untouched. That is what keeps T7's "no behaviour change without the artifact present" true: with
- * no lexicon loaded, [dispatch] returns its input list, same instance.
+ * Candidates with no authored method (every METADATA row, and a member row of a store that
+ * predates member methods) pass through untouched. That is what keeps T7's "no behaviour change
+ * without the artifact present" true: with nothing authored, [dispatch] returns its input list, same
+ * instance.
+ *
+ * **Member rows (MV).** A member row carries its vocabulary's method, and the gate holds it to that
+ * method exactly as it holds a declared term — `state` is EXACT, so `tx` does not reach `TN`. Two
+ * things are the DECLARED layer's alone, and a member row takes part in neither (review-104 F4/F9):
+ * the caller's `method_override` (a rung widening or tightening its own terms) and RV-32's
+ * uniqueness margin (a verdict about which declared target a term means).
  */
 class MethodDispatcher(
     /**
@@ -110,9 +117,15 @@ class MethodDispatcher(
      * The override replaces a method, it never grants one: a row nobody authored has nothing to
      * override, so `method_override = EXACT` cannot reach into the data layer and gate it on exact
      * equality. A caller widening its own declared layer must not narrow the estate's.
+     *
+     * ⚑ MV (review-104 F9) — and a MEMBER row is never overridden, although it now carries a
+     * method. "Rows nobody authored" used to be exactly the data layer; since MV every member row
+     * carries its vocabulary's method, so the rule is stated by layer rather than inferred from a
+     * null. `EXACT` on a rung would otherwise drop every partial member hit, and `TOKENS` would widen
+     * an EXACT state code so `tx` reaches `TN`.
      */
     private fun FuzzyMatchResult.effectiveMethod(override: MatchMethod?): MatchMethod? =
-        authoredMethod?.let { override ?: it }
+        if (source == SourceTag.MEMBER) authoredMethod else authoredMethod?.let { override ?: it }
 
     /**
      * The profile this call actually scores by — and it obeys the same rule as [effectiveMethod]:
@@ -196,7 +209,7 @@ class MethodDispatcher(
     private fun withUniquenessMargin(admitted: List<Pair<FuzzyMatchResult, MatchMethod?>>): List<FuzzyMatchResult> {
         val bestByTarget =
             admitted
-                .filter { (result, method) -> method == MatchMethod.Tokens && !result.suppressed }
+                .filter { (result, method) -> competes(result, method) && !result.suppressed }
                 .groupBy { (result, _) -> result.identity }
                 .mapValues { (_, rows) -> rows.maxOf { (result, _) -> result.score } }
 
@@ -209,7 +222,7 @@ class MethodDispatcher(
         val runnerUp = ranked.getOrNull(1)?.value
 
         return admitted.map { (result, method) ->
-            if (method != MatchMethod.Tokens) {
+            if (!competes(result, method)) {
                 result
             } else {
                 // A suppressed row is absent from `bestByTarget`, so its own best is its own score.
@@ -236,6 +249,18 @@ class MethodDispatcher(
     }
 
     private val FuzzyMatchResult.identity: String get() = targetRef ?: candidateId
+
+    /**
+     * Whether a row takes part in RV-32's margin: a DECLARED `TOKENS` row. A member row does not,
+     * even a `TOKENS` one (MV, review-104 F4). Two stores named alike are two data values, and which
+     * one the user meant is the resolver's tie band to settle — as a clarification. A margin verdict
+     * here would read `auto_bindable = false`, which the resolver classes WEAK: never bound, never
+     * offered, so the span became a gap where it used to be a menu.
+     */
+    private fun competes(
+        result: FuzzyMatchResult,
+        method: MatchMethod?,
+    ): Boolean = method == MatchMethod.Tokens && result.source != SourceTag.MEMBER
 
     companion object {
         const val DEFAULT_UNIQUENESS_FLOOR: Double = 0.05

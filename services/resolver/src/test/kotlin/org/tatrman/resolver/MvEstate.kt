@@ -23,6 +23,7 @@ import org.tatrman.resolver.token.ResumeTokenCodec
 import org.tatrman.resolver.v1.FreshQuestion
 import org.tatrman.resolver.v1.ResolveRequest
 import org.tatrman.resolver.v1.ResolveResponse
+import org.tatrman.resolver.v1.ResumeAnswer
 import org.tatrman.ttr.lexicon.LexiconArea
 import org.tatrman.ttr.lexicon.LexiconDataFile
 import org.tatrman.ttr.lexicon.LexiconLoad
@@ -316,6 +317,33 @@ object MvEstate {
                 .setFresh(FreshQuestion.newBuilder().setText(text).setLocale(lang))
                 .build()
         return runBlocking { pipeline.resolve(request) } to index
+    }
+
+    /**
+     * A resume of [token] picking [optionId], through a pipeline keyed exactly like [resolve]'s. A
+     * signed pin calls neither NLP nor the matcher, so neither fake is consulted.
+     */
+    fun resume(
+        token: String,
+        optionId: String,
+        archive: Path = writeArchive(),
+    ): ResolveResponse {
+        val registry = registry(archive)
+        val pipeline =
+            ResolverPipeline(
+                MhMembers.FakeNlp(MhMembers.parse("", emptyArray()), "en"),
+                MemberIndex(emptyList()),
+                registry,
+                emptyMap(),
+                ResumeTokenCodec(mapOf("k1" to ByteArray(32) { it.toByte() }), activeKeyId = "k1"),
+            )
+        val request =
+            ResolveRequest
+                .newBuilder()
+                .setConversationId("mv-t3")
+                .setResume(ResumeAnswer.newBuilder().setToken(token).setSelectedOptionId(optionId))
+                .build()
+        return runBlocking { pipeline.resolve(request) }
     }
 
     /**

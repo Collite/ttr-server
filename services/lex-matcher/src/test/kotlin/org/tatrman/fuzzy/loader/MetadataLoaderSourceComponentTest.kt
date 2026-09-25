@@ -2,6 +2,14 @@
 package org.tatrman.fuzzy.loader
 
 import io.grpc.BindableService
+import io.kotest.assertions.nondeterministic.eventually
+import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
+import org.tatrman.fuzzy.core.FuzzyMatcher
+import org.tatrman.fuzzy.core.LookupQuery
+import org.tatrman.fuzzy.core.MatchVersion
+import org.tatrman.fuzzy.core.RetrievalMode
+import org.tatrman.fuzzy.core.SourceTag
+import kotlin.time.Duration.Companion.seconds
 import io.grpc.ManagedChannel
 import io.grpc.Server
 import io.grpc.Status
@@ -25,7 +33,6 @@ import org.tatrman.fuzzy.config.LoaderSourceConfig
 import org.tatrman.fuzzy.config.MetadataConfig
 import org.tatrman.fuzzy.config.MssqlConfig
 import org.tatrman.fuzzy.config.PostgresConfig
-import org.tatrman.fuzzy.core.Candidate
 import org.tatrman.fuzzy.core.LoaderWarningInfo
 import org.tatrman.fuzzy.core.StringRepository
 import org.tatrman.meta.v1.ListMemberVocabulariesRequest
@@ -149,23 +156,25 @@ class MetadataLoaderSourceComponentTest :
             fetched: MutableList<String> = mutableListOf(),
             sourceNamespace: String = "",
             dialect: org.tatrman.fuzzy.config.DatabaseConfig = postgres,
-            rows: (String) -> List<Candidate> = { listOf(Candidate.fromValues("1", "Acme")) },
+            rows: (String) -> List<ReadRow> = { listOf(ReadRow("1", "Acme")) },
+            aliasTables: () -> List<AliasTableDecl> = { emptyList() },
         ) = MetadataLoaderSource(
             client = h.client,
             dialect = dialect,
             sourceNamespace = sourceNamespace,
-            fetchCandidates = { sql ->
+            fetchRows = { sql ->
                 fetched += sql
                 rows(sql)
             },
+            aliasTables = aliasTables,
         )
 
-        fun cfg() =
+        fun cfg(refreshIntervalSeconds: Long = 0) =
             AppConfig(
                 serverPort = 7121,
                 grpcPort = 7221,
                 grpcReflectionEnabled = false,
-                refreshIntervalSeconds = 0,
+                refreshIntervalSeconds = refreshIntervalSeconds,
                 tokenBasedConfig =
                     org.tatrman.fuzzy.config
                         .TokenBasedConfig(),
@@ -250,14 +259,15 @@ class MetadataLoaderSourceComponentTest :
                 }
             val rows =
                 mapOf(
-                    supplierSql to listOf(Candidate.fromValues("1", "Nordwind"), Candidate.fromValues("2", "Acme")),
-                    brandSql to listOf(Candidate.fromValues("3", "Acme")),
+                    supplierSql to listOf(ReadRow("1", "Nordwind"), ReadRow("2", "Acme")),
+                    brandSql to listOf(ReadRow("3", "Acme")),
                 )
             harness(veles).use { h ->
                 val result = runBlocking { loader(h, rows = rows::getValue).loadNextCache() }!!
+                // A-MV-15: a member's id is its value.
                 result.getValue("er.entity.supplier_rival.rival_name").map { it.id } shouldContainExactly
-                    listOf("1", "2")
-                result.getValue("er.entity.brand_rival.rival_name").map { it.id } shouldContainExactly listOf("3")
+                    listOf("Nordwind", "Acme")
+                result.getValue("er.entity.brand_rival.rival_name").map { it.id } shouldContainExactly listOf("Acme")
             }
         }
 
@@ -336,7 +346,7 @@ class MetadataLoaderSourceComponentTest :
                     runBlocking {
                         loader(h, rows = { sql ->
                             if (sql == nameSql) error("relation does not exist")
-                            listOf(Candidate.fromValues("1", "TN"))
+                            listOf(ReadRow("1", "TN"))
                         }).loadNextCache()
                     }!!
                 result.keys shouldContainExactly setOf("er.entity.store.state")
@@ -443,7 +453,7 @@ class MetadataLoaderSourceComponentTest :
                         )
                 }
             harness(veles).use { h ->
-                val repo = StringRepository(cfg(), loader(h, rows = { listOf(Candidate.fromValues("47", "TN")) }))
+                val repo = StringRepository(cfg(), loader(h, rows = { listOf(ReadRow("47", "TN")) }))
                 try {
                     runBlocking { repo.forceRefresh() }
                     repo.getCandidates("er.entity.store.state").map { it.value } shouldBe listOf("TN")
@@ -496,7 +506,7 @@ class MetadataLoaderSourceComponentTest :
                     pages =
                         mapOf("" to page(listOf(vocabulary("er.entity.store.state", stateSql, version = "plan-1"))))
                 }
-            var rows = listOf(Candidate.fromValues("47", "TN"))
+            var rows = listOf(ReadRow("47", "TN"))
             harness(veles).use { h ->
                 val repo = StringRepository(cfg(), loader(h, rows = { rows }))
                 try {
@@ -518,7 +528,7 @@ class MetadataLoaderSourceComponentTest :
                     val replanned = version()
                     replanned shouldNotBe first // same rows, another plan
 
-                    rows = rows + Candidate.fromValues("48", "TX")
+                    rows = rows + ReadRow("48", "TX")
                     runBlocking { repo.forceRefresh() }
                     version() shouldNotBe replanned // same plan, other rows
                 } finally {
@@ -550,6 +560,277 @@ class MetadataLoaderSourceComponentTest :
                     } shouldContainExactly
                         listOf("er.entity.store.state (EXACT): 1", "er.entity.store.store_name (TYPOS(1)): 1")
                     repo.layerVersions().memberIndexVersions shouldNotContainKey "db.dbo.store.s_state"
+                } finally {
+                    repo.close()
+                }
+            }
+        }
+        // ---- review-104 ---------------------------------------------------------------------
+
+        "A-MV-15 (F2) — a member is a VALUE: same-label rows are one candidate, its id the value" {
+            val veles =
+                StubVeles().apply {
+                    pages = mapOf("" to page(listOf(vocabulary("er.entity.store.state", stateSql))))
+                }
+            harness(veles).use { h ->
+                // One row per STORE, as the plan reads them: three stores in Tennessee.
+                val storeRows =
+                    listOf(ReadRow("1", "TN"), ReadRow("2", "TN"), ReadRow("3", "TX"), ReadRow("4", "TN"))
+                val members =
+                    runBlocking { loader(h, rows = { storeRows }).loadNextCache() }!!
+                        .getValue("er.entity.store.state")
+
+                members.map { it.id to it.value } shouldContainExactly listOf("TN" to "TN", "TX" to "TX")
+                // ...each built with its vocabulary's method and category (F12, F13).
+                members.map { it.matchMethod to it.category }.distinct() shouldContainExactly
+                    listOf("EXACT" to "er.entity.store.state")
+            }
+        }
+
+        "F5 — a vocabulary Veles lists without a read plan keeps its previous load, and says so" {
+            val card = "SELECT \"id\", \"display\" FROM (SELECT …) AS \"src\" GROUP BY 1, 2 ORDER BY 1"
+            val veles =
+                StubVeles().apply {
+                    pages =
+                        mapOf(
+                            "" to
+                                page(
+                                    listOf(
+                                        vocabulary("er.entity.card.display", card),
+                                        vocabulary("er.entity.store.state", stateSql),
+                                    ),
+                                ),
+                        )
+                }
+            harness(veles).use { h ->
+                val l = loader(h, rows = { sql -> listOf(ReadRow("1", if (sql == card) "Gold" else "TN")) })
+                val first = runBlocking { l.load() }!!
+
+                // Veles restarts: the query-backed entity is in its parse window, so no read plan.
+                veles.pages =
+                    mapOf(
+                        "" to
+                            page(
+                                listOf(
+                                    vocabulary("er.entity.card.display", "", diagnostics = arrayOf("RG-FUZ-003")),
+                                    vocabulary("er.entity.store.state", stateSql),
+                                ),
+                            ),
+                    )
+                val second = runBlocking { l.load() }!!
+
+                second.categories.getValue("er.entity.card.display").map { it.value } shouldBe listOf("Gold")
+                second.planVersions.getValue("er.entity.card.display") shouldBe
+                    first.planVersions.getValue("er.entity.card.display")
+                l.warnings().single().message shouldContain "previous load is still served"
+
+                // Veles stops LISTING it: then, and only then, it leaves.
+                veles.pages = mapOf("" to page(listOf(vocabulary("er.entity.store.state", stateSql))))
+                runBlocking { l.load() }!!.categories.keys shouldContainExactly setOf("er.entity.store.state")
+            }
+        }
+
+        "F5 — a read plan the warehouse refuses keeps that vocabulary's previous rows" {
+            val veles =
+                StubVeles().apply {
+                    pages =
+                        mapOf(
+                            "" to
+                                page(
+                                    listOf(
+                                        vocabulary("er.entity.store.state", stateSql),
+                                        vocabulary("er.entity.store.store_name", nameSql, "TYPOS(1)"),
+                                    ),
+                                ),
+                        )
+                }
+            var warehouseDown = false
+            harness(veles).use { h ->
+                val l =
+                    loader(h, rows = { sql ->
+                        if (warehouseDown) error("connection refused")
+                        listOf(ReadRow("7", if (sql == nameSql) "ought" else "TN"))
+                    })
+                runBlocking { l.load() }
+                warehouseDown = true
+                val during = runBlocking { l.load() }!!
+
+                during.categories.mapValues { (_, rows) -> rows.map { it.value } } shouldBe
+                    mapOf("er.entity.store.state" to listOf("TN"), "er.entity.store.store_name" to listOf("ought"))
+                during.categories
+                    .getValue("er.entity.store.store_name")
+                    .single()
+                    .matchMethod shouldBe "TYPOS(1)"
+            }
+        }
+
+        "F8 — a model edit that leaves the read plan alone does not move the member version" {
+            val veles =
+                StubVeles().apply {
+                    pages =
+                        mapOf("" to page(listOf(vocabulary("er.entity.store.state", stateSql, version = "model-1"))))
+                }
+            harness(veles).use { h ->
+                val repo = StringRepository(cfg(), loader(h, rows = { listOf(ReadRow("47", "TN")) }))
+                try {
+                    fun version() = repo.layerVersions().memberIndexVersions.getValue("er.entity.store.state")
+                    runBlocking { repo.forceRefresh() }
+                    val before = version()
+
+                    // Veles' item version hashes the whole model version: a new measure moves it.
+                    veles.pages =
+                        mapOf("" to page(listOf(vocabulary("er.entity.store.state", stateSql, version = "model-2"))))
+                    runBlocking { repo.forceRefresh() }
+                    version() shouldBe before
+
+                    // ...while a changed method is a changed plan.
+                    veles.pages =
+                        mapOf(
+                            "" to
+                                page(
+                                    listOf(
+                                        vocabulary("er.entity.store.state", stateSql, "TYPOS(1)", version = "model-2"),
+                                    ),
+                                ),
+                        )
+                    runBlocking { repo.forceRefresh() }
+                    version() shouldNotBe before
+                } finally {
+                    repo.close()
+                }
+            }
+        }
+
+        "F12 — a cross-category lookup reports each member's own vocabulary, one row per vocabulary" {
+            val categories =
+                listOf("er.entity.store.state", "er.entity.customer_address.state", "er.entity.warehouse.state")
+            val veles =
+                StubVeles().apply {
+                    pages = mapOf("" to page(categories.map { vocabulary(it, "SELECT '$it'") }))
+                }
+            harness(veles).use { h ->
+                val repo = StringRepository(cfg(), loader(h, rows = { listOf(ReadRow("1", "TN")) }))
+                try {
+                    runBlocking { repo.forceRefresh() }
+                    // The G3 BROAD round's shape — no categories named — on the engine the service runs
+                    // (application.conf: index-first retrieval, v2). The legacy retrieval path seeds by
+                    // candidate id, and v2 refuses to start on it.
+                    val matcher =
+                        FuzzyMatcher(repo, retrievalMode = RetrievalMode.INDEX_FIRST, matchVersion = MatchVersion.V2)
+                    val hits = runBlocking { matcher.lookup(LookupQuery("TN")) }.candidates
+
+                    hits.map { it.category } shouldContainExactlyInAnyOrder categories
+                    hits.map { it.candidateId }.distinct() shouldContainExactly listOf("TN")
+                } finally {
+                    repo.close()
+                }
+            }
+        }
+
+        "F14 — alias rows merge under the member category's own spelling, not its lower-cased one" {
+            val category = "er.df.Zakaznik.Nazev"
+            val veles = StubVeles().apply { pages = mapOf("" to page(listOf(vocabulary(category, nameSql, "TOKENS")))) }
+            val decl =
+                AliasTableDecl(
+                    ownerCategory = category,
+                    tableQname =
+                        QualifiedName
+                            .newBuilder()
+                            .setNamespace("dbo")
+                            .setName("ZAKAZNIK_ALIAS")
+                            .build(),
+                    pkColumn = "ID",
+                    aliasColumn = "ALIAS",
+                )
+            harness(veles).use { h ->
+                val loaded =
+                    runBlocking {
+                        loader(
+                            h,
+                            rows = { sql ->
+                                listOf(
+                                    if (sql ==
+                                        nameSql
+                                    ) {
+                                        ReadRow("1", "Shell")
+                                    } else {
+                                        ReadRow("1", "Shelly")
+                                    },
+                                )
+                            },
+                            aliasTables = { listOf(decl) },
+                        ).loadNextCache()
+                    }!!
+
+                loaded.keys shouldContainExactly setOf(category)
+                loaded.getValue(category).map { it.value } shouldContainExactly listOf("Shell", "Shelly")
+                loaded.getValue(category).map { it.matchMethod }.distinct() shouldContainExactly listOf("TOKENS")
+            }
+        }
+
+        "F1 — a first boot that races Veles comes up: ready, its declared layer served, RG-FUZ-004 honest" {
+            val notReady =
+                ListMemberVocabulariesResponse
+                    .newBuilder()
+                    .addMessages(
+                        ResponseMessage
+                            .newBuilder()
+                            .setSeverity(Severity.WARNING)
+                            .setCode("metadata_not_ready")
+                            .setHumanMessage("No model loaded yet"),
+                    ).build()
+            val veles = StubVeles().apply { pages = mapOf("" to notReady) }
+            val declared =
+                object : SnapshotVocabularySource {
+                    override suspend fun fetch() =
+                        DeclaredVocabulary(
+                            listOf(
+                                DeclaredVocabularyEntry(
+                                    "md.measure.net",
+                                    "md.measure.net",
+                                    listOf(DeclaredValue("net", "obrat", SourceTag.DECLARED, "TOKENS")),
+                                ),
+                            ),
+                        )
+
+                    override fun hash() = "sha256:" + "cd".repeat(32)
+                }
+            harness(veles).use { h ->
+                val repo = StringRepository(cfg(), loader(h), snapshotSource = declared)
+                try {
+                    runBlocking { repo.forceRefresh() }
+
+                    repo.isCatalogReady() shouldBe true
+                    repo.getCandidates("md.measure.net").map { it.value } shouldBe listOf("obrat")
+                    repo.loaderWarnings().single().message shouldContain "no member vocabulary has been loaded yet"
+
+                    veles.pages = mapOf("" to page(listOf(vocabulary("er.entity.store.state", stateSql))))
+                    runBlocking { repo.forceRefresh() }
+
+                    repo.getCandidates("er.entity.store.state").map { it.value } shouldBe listOf("Acme")
+                    repo.getCandidates("md.measure.net").map { it.value } shouldBe listOf("obrat")
+                    repo.loaderWarnings().shouldBeEmpty()
+                } finally {
+                    repo.close()
+                }
+            }
+        }
+
+        "F1 — until a member layer first loads, the refresh retries within seconds, not a whole interval" {
+            // A Veles that predates ListMemberVocabularies until the test "releases" it.
+            val veles = StubVeles().apply { error = Status.UNIMPLEMENTED }
+            harness(veles).use { h ->
+                // The interval is an hour: only the first-boot backoff can reload inside the test.
+                val repo = StringRepository(cfg(refreshIntervalSeconds = 3_600), loader(h), firstMemberRetryMs = 50)
+                try {
+                    eventually(5.seconds) { repo.isCatalogReady() shouldBe true }
+                    repo.knownCategories().shouldBeEmpty()
+
+                    veles.error = null
+                    veles.pages = mapOf("" to page(listOf(vocabulary("er.entity.store.state", stateSql))))
+                    eventually(5.seconds) {
+                        repo.getCandidates("er.entity.store.state").map { it.value } shouldBe listOf("Acme")
+                    }
                 } finally {
                     repo.close()
                 }

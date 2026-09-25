@@ -20,7 +20,7 @@ import org.tatrman.fuzzy.config.PostgresConfig
 import org.tatrman.fuzzy.config.TokenBasedConfig
 import org.tatrman.fuzzy.core.FuzzyMatcher
 import org.tatrman.fuzzy.core.StringRepository
-import org.tatrman.fuzzy.fetchSqlCandidates
+import org.tatrman.fuzzy.fetchSqlRows
 import org.tatrman.fuzzy.v1.FuzzyStatusRequest
 import org.tatrman.meta.v1.ListMemberVocabulariesRequest
 import org.tatrman.meta.v1.ListMemberVocabulariesResponse
@@ -150,7 +150,7 @@ class HartlandShapedStatusTest :
                         client = MetadataServiceClient(channel, timeoutMs = 2_000),
                         dialect = PostgresConfig("h", 1, "hartland_us", "u", "p"),
                         sourceNamespace = "",
-                        fetchCandidates = ::fetchSqlCandidates,
+                        fetchRows = ::fetchSqlRows,
                     ),
                 )
             try {
@@ -163,19 +163,43 @@ class HartlandShapedStatusTest :
                     Files.writeString(Path.of(it), TextFormat.printer().printToString(status))
                 }
 
+                // A-MV-15 (review-104 F2): a member is a VALUE — two stores in TN are one `TN`.
                 status.categoriesList.map { "${it.category} (${it.matchMethod}): ${it.size}" } shouldContainExactly
                     listOf(
-                        "er.entity.customer_address.state (EXACT): 3",
-                        "er.entity.store.state (EXACT): 3",
+                        "er.entity.customer_address.state (EXACT): 2",
+                        "er.entity.store.state (EXACT): 2",
                         "er.entity.store.store_name (TYPOS(1)): 4",
                         "er.entity.warehouse.state (EXACT): 1",
                     )
                 status.warningsCount shouldBe 0
                 status.layerVersions.memberIndexVersionsMap.keys shouldBe hartland.map { it.first }.toSet()
+                // ...and its id is the value the attribute stores: what a filter compares it against.
+                repo.getCandidates("er.entity.store.state").map { it.id to it.value } shouldContainExactly
+                    listOf("TN" to "TN", "TX" to "TX")
             } finally {
                 repo.close()
                 channel.shutdownNow()
                 server.shutdownNow()
             }
+        }
+
+        "review-104 F11 — a read plan that does not open with SELECT still runs as a query" {
+            Database.connect(
+                "jdbc:h2:mem:mv-with;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1",
+                driver = "org.h2.Driver",
+            )
+            transaction {
+                exec("CREATE TABLE \"store\" (\"s_store_sk\" INT, \"s_state\" VARCHAR(2))")
+                exec("INSERT INTO \"store\" VALUES (1, 'TN'), (2, 'TX')")
+            }
+            // The shape a translator renders for a query-backed entity: a CTE, or a parenthesised
+            // SELECT. Left to guess, Exposed sends both through executeUpdate.
+            val withPlan =
+                "WITH \"src\" AS (SELECT \"s_store_sk\", \"s_state\" FROM \"store\") " +
+                    "SELECT \"s_store_sk\", \"s_state\" FROM \"src\" ORDER BY 1"
+            val parenthesised = "(SELECT \"s_store_sk\", \"s_state\" FROM \"store\" ORDER BY 1)"
+
+            fetchSqlRows(withPlan) shouldContainExactly listOf(ReadRow("1", "TN"), ReadRow("2", "TX"))
+            fetchSqlRows(parenthesised) shouldContainExactly listOf(ReadRow("1", "TN"), ReadRow("2", "TX"))
         }
     })

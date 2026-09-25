@@ -189,6 +189,60 @@ class MethodDispatcherTest :
             hits.single { it.candidateId == "m" }.autoBindable.shouldBeNull()
         }
 
+        // ---- member rows carry a method since MV (review-104 F4 / F9) ------------------------
+
+        "a member TOKENS row takes no part in the uniqueness margin — two stores named alike stay offerable" {
+            // A margin verdict reads auto_bindable = false, which the resolver classes WEAK: never
+            // bound, never offered. Two near-identical data values are the resolver's tie band to
+            // settle as a question, not the matcher's to veto.
+            val hits =
+                dispatcher.dispatch(
+                    "nashville",
+                    listOf(
+                        result("Nashville Central", "Nashville Central", 0.91, "TOKENS", null, SourceTag.MEMBER),
+                        result("Nashville East", "Nashville East", 0.90, "TOKENS", null, SourceTag.MEMBER),
+                    ),
+                )
+
+            hits.map { it.autoBindable } shouldBe listOf(null, null)
+            hits.map { it.uniquenessMargin } shouldBe listOf(null, null)
+        }
+
+        "...and a member row is no rival to a declared TOKENS term either" {
+            val hits =
+                dispatcher.dispatch(
+                    "obrat",
+                    listOf(
+                        result("a", "obrat", 0.95, "TOKENS", targetRef = "md.net"),
+                        result("m", "obrat", 0.95, "TOKENS", targetRef = null, source = SourceTag.MEMBER),
+                    ),
+                )
+
+            hits.single { it.candidateId == "a" }.autoBindable shouldBe true
+            hits.single { it.candidateId == "m" }.autoBindable.shouldBeNull()
+        }
+
+        "method_override never reaches a member row — an EXACT state code stays EXACT under a TOKENS rung" {
+            val stateCode = result("TN", "TN", 0.9, "EXACT", targetRef = null, source = SourceTag.MEMBER)
+
+            dispatcher.dispatch("tx", listOf(stateCode), override = MatchMethod.Tokens) shouldBe emptyList()
+        }
+
+        "...and a TYPOS(1) member keeps its slack under an EXACT rung" {
+            val name = result("Taxas", "Taxas", 0.8, "TYPOS(1)", targetRef = null, source = SourceTag.MEMBER)
+
+            dispatcher.dispatch("Texas", listOf(name), override = MatchMethod.Exact).map { it.candidateId } shouldBe
+                listOf("Taxas")
+        }
+
+        "the override still replaces a DECLARED term's method" {
+            val term = result("a", "obrat", 0.9, "EXACT")
+
+            dispatcher.dispatch("obraty", listOf(term)) shouldBe emptyList()
+            dispatcher.dispatch("obraty", listOf(term), override = MatchMethod.Tokens).map { it.candidateId } shouldBe
+                listOf("a")
+        }
+
         // ---- unauthored rows are untouched -------------------------------------------------
 
         "candidates with no authored method pass through unchanged" {

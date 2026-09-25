@@ -100,7 +100,8 @@ message FuzzyMatchResponse {
 // their numbers). MEMBER *is* RV's DATA; VOCABULARY is the pre-RV conflation of DECLARED and
 // METADATA, kept for the fixture-stub source that cannot tell them apart.
 enum SourceTag {
-  MEMBER = 0;      // data value — candidate_id is a data PK (→ resolved_id). RV: DATA.
+  MEMBER = 0;      // data value — candidate_id identifies it in its category (→ resolved_id): the
+                   // stored value itself since MV A-MV-15; an older loader sent the row's PK. RV: DATA.
   VOCABULARY = 1;  // legacy: declared lexicon/valueLabels, undifferentiated
   DECLARED = 2;    // authored in the lexicon/ area or as TTR-M `def term` sugar
   METADATA = 3;    // harvested from model labels (displayLabel/labelPlural/aliases/valueLabels)
@@ -112,7 +113,7 @@ enum SourceTag {
 // bakes in the member load stamp so it moves on every refresh whether or not a layer changed.
 message LayerVersions {
   string lexicon_artifact_hash = 1;               // CompiledLexicon.contentHash; "" when none loaded
-  map<string, string> member_index_versions = 2;  // category → content-derived version
+  map<string, string> member_index_versions = 2;  // category → content-derived version (⊕ its read plan's identity, MV)
   optional string overlay_version = 3;            // ABSENT when no overlay is loaded — absence is the contract
 }
 

@@ -70,10 +70,11 @@ object RgDiagnostics {
             ),
             // MV-T2 — the lex-matcher could not list member vocabularies. It keeps serving its previous
             // load rather than an empty member layer: an outage must not read as "the estate has no values".
+            // `{served}` says which: the previous load, or — before the first listing — none yet.
             RgDiagnostic(
                 "RG-FUZ-004",
                 Severity.WARNING,
-                "Member vocabularies unavailable — {reason}; the previous load is still served.",
+                "Member vocabularies unavailable — {reason}; {served}.",
                 "A Veles that predates ListMemberVocabularies answers UNIMPLEMENTED: release Veles and lex-matcher together. Otherwise check that Veles is reachable and has a model loaded.",
             ),
             RgDiagnostic(

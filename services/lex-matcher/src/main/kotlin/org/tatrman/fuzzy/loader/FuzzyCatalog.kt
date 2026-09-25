@@ -91,7 +91,9 @@ object FuzzyCatalog {
                     if (it.targetRef != null) {
                         Candidate.vocabulary(it.id, it.value, it.targetRef)
                     } else {
-                        Candidate.fromValues(it.id, it.value).copy(matchMethod = method)
+                        // Built once with its method and category (review-104 F13): `copy` re-ran
+                        // the constructor's fold, method parse and NFC form for every row.
+                        Candidate.fromValues(it.id, it.value, method, category)
                     }
                 }
             }

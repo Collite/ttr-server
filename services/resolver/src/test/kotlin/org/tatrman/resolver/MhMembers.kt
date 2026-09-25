@@ -65,17 +65,22 @@ object MhMembers {
     const val WAREHOUSE_STATE = "er.entity.warehouse.state"
     const val STORE_NAME = "er.entity.store.store_name"
 
-    /** The three `TN` members and the one `Nashville` member, by the category that holds them. */
+    /**
+     * The three `TN` members and the one `Nashville` member, by the category that holds them — as
+     * lex-matcher answers since A-MV-15: one row per VALUE of a vocabulary, its id the value itself.
+     * So the three `TN`s share an id and differ ONLY by category, which is what review-104 F3 was:
+     * an identity without the category collapsed them into one.
+     */
     val MEMBERS: Map<String, List<Triple<String, String, String>>> =
         mapOf(
             // query → [(candidateId, candidate, category)]
             "tn" to
                 listOf(
-                    Triple("store#7", "TN", STORE_STATE),
-                    Triple("ca#3", "TN", CA_STATE),
-                    Triple("wh#1", "TN", WAREHOUSE_STATE),
+                    Triple("TN", "TN", STORE_STATE),
+                    Triple("TN", "TN", CA_STATE),
+                    Triple("TN", "TN", WAREHOUSE_STATE),
                 ),
-            "nashville" to listOf(Triple("store#7", "Nashville", STORE_NAME)),
+            "nashville" to listOf(Triple("Nashville", "Nashville", STORE_NAME)),
         )
 
     private fun et(

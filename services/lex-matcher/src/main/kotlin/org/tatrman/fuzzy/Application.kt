@@ -33,9 +33,11 @@ import org.tatrman.fuzzy.loader.FuzzyCatalog
 import org.tatrman.fuzzy.loader.LoaderSource
 import org.tatrman.fuzzy.loader.MetadataLoaderSource
 import org.tatrman.fuzzy.loader.MetadataServiceClient
+import org.tatrman.fuzzy.loader.ReadRow
 import org.tatrman.fuzzy.loader.StaticLoaderSource
 import org.tatrman.fuzzy.loader.translatorDialect
 import org.tatrman.fuzzy.telemetry.FuzzyTelemetry
+import org.jetbrains.exposed.v1.core.statements.StatementType
 import org.jetbrains.exposed.v1.jdbc.transactions.transaction
 import org.slf4j.LoggerFactory
 import shared.ktor.KtorConfigFactory
@@ -54,20 +56,25 @@ fun main() {
 
 /**
  * Runs a read plan — a member vocabulary's `read_sql` from Veles, or a composed alias-table
- * `SELECT pk, alias` — and maps each row to a [Candidate]. Used by the `metadata` loader; relies on
- * the Exposed connection opened by [DatabaseFactory.connect]. Column order is `(key, value)`.
+ * `SELECT pk, alias` — and returns its rows. Used by the `metadata` loader, which builds each
+ * candidate once from them; relies on the Exposed connection opened by [DatabaseFactory.connect].
+ * Column order is `(key, value)`.
  *
  * A row with a NULL key or value is no member to match, and is skipped. (It used to reach
  * `Candidate.fromValues` and throw, which lost the whole category to one NULL.)
+ *
+ * Always executed as a query (review-104 F11). Left to guess, Exposed classifies a statement by its
+ * first word, and anything but `SELECT` — a translator plan opening with `WITH …` or `(SELECT …`
+ * — went through `executeUpdate`, which PostgreSQL's driver refuses once rows come back.
  */
-internal fun fetchSqlCandidates(sql: String): List<Candidate> {
-    val results = mutableListOf<Candidate>()
+internal fun fetchSqlRows(sql: String): List<ReadRow> {
+    val results = mutableListOf<ReadRow>()
     transaction {
-        exec(sql) { rs ->
+        exec(sql, explicitStatementType = StatementType.SELECT) { rs ->
             while (rs.next()) {
                 val key: String? = rs.getString(1)
                 val value: String? = rs.getString(2)
-                if (key != null && value != null) results.add(Candidate.fromValues(key, value))
+                if (key != null && value != null) results.add(ReadRow(key, value))
             }
         }
     }
@@ -154,7 +161,7 @@ fun Application.module(serverConfig: KtorServerConfig) {
                 client = client,
                 dialect = database,
                 sourceNamespace = config.metadata.namespace,
-                fetchCandidates = ::fetchSqlCandidates,
+                fetchRows = ::fetchSqlRows,
                 telemetry = telemetry,
             )
         } else {

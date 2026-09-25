@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package org.tatrman.resolver.token
 
+import kotlinx.serialization.EncodeDefault
+import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import java.security.MessageDigest
@@ -9,6 +11,7 @@ import javax.crypto.Mac
 import javax.crypto.spec.SecretKeySpec
 
 /** One signed option (contracts §5): the EXACT thing the resolver offered. */
+@OptIn(ExperimentalSerializationApi::class)
 @Serializable
 data class ResumeOption(
     val id: String,
@@ -21,6 +24,17 @@ data class ResumeOption(
      * `Domain.entity_type_ref` was empty and the PK could not be mapped to its table.
      */
     val entityTypeRef: String? = null,
+    /**
+     * MV (review-104 F6) — for a MEMBER option, the attribute whose vocabulary [resolvedId] is a
+     * value of. SIGNED, because since MV-T3 it is identity rather than presentation: [entityTypeRef]
+     * names the entity, and two options for one entity's billing and shipping state differ ONLY
+     * here. Unsigned, a resume rebuilt the same Domain for either pick.
+     *
+     * Never encoded when absent, so a token for a non-member option is byte-for-byte what an
+     * older resolver mints and reads.
+     */
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val memberOf: String? = null,
 )
 
 /**
