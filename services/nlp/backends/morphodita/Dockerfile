@@ -56,9 +56,25 @@ RUN test "${MODEL_URL}" != "REPLACE_WITH_DSPACE_BITSTREAM_URL" \
          echo "${MODEL_SHA256}  model.zip" | sha256sum -c -; \
        else echo "WARN: MODEL_SHA256 not pinned — set it after the first verified build"; fi \
     && unzip -q model.zip && rm model.zip \
-    # Normalize to a stable path regardless of the archive's top dir.
-    && TAGGER="$(find . -name '*.tagger' | head -1)" \
-    && mkdir -p /opt/model && cp "${TAGGER}" "/opt/model/${MODEL_ID}.tagger"
+    # Pick the tagger BY EXACT NAME, never "the first one".
+    #
+    # ⛔ This archive holds FOUR taggers — the plain one plus `-no_dia`,
+    # `-pos_only` and `-no_dia-pos_only`. `find -name '*.tagger' | head -1` took
+    # whichever the filesystem happened to list first and the `cp` below then gave
+    # it the PINNED name, so /models, the S-1 provenance echo and every model-id
+    # check reported the right model while the wrong one was loaded. It shipped
+    # `-no_dia` — a diacritics-RESTORATION model, keyed on diacritic-stripped
+    # forms — so correctly-spelled Czech was out-of-dictionary and fell to the
+    # guesser: `trhů` -> `trhů`, `žena` -> `žit`, while the misspelt `zena`
+    # cheerfully returned `žena`. Renaming the file is what made it invisible.
+    && TAGGER="$(find . -name "${MODEL_ID}.tagger" -type f)" \
+    && if [ -z "${TAGGER}" ] || [ "$(echo "${TAGGER}" | wc -l)" != "1" ]; then \
+         echo "ERROR: expected exactly one ${MODEL_ID}.tagger in the archive, found:"; \
+         echo "${TAGGER:-(none)}"; \
+         echo "archive contains:"; find . -name '*.tagger' -type f | sed 's/^/  /'; \
+         exit 1; fi \
+    && mkdir -p /opt/model && cp "${TAGGER}" "/opt/model/${MODEL_ID}.tagger" \
+    && echo "baked $(basename "${TAGGER}") ($(stat -c%s "/opt/model/${MODEL_ID}.tagger") bytes)"
 
 # ===== runtime =====
 FROM debian:bookworm-slim AS runtime
@@ -77,6 +93,55 @@ ENV CONNECTION_TIMEOUT=120
 
 COPY --from=build /src/src/rest_server/morphodita_server /usr/local/bin/morphodita_server
 COPY --from=model /opt/model /opt/model
+
+# ⛔ Build-time proof that the baked model is the right VARIANT, not merely the
+# right FILENAME — the check whose absence let `-no_dia` ship for two months under
+# the pinned id. Every identity signal (the file name, /models, the S-1 provenance
+# echo) is derived from MODEL_ID, so none of them can catch a swapped file. The only
+# thing that can is asking the model a question the variants answer differently.
+#
+# `trhů` is that question. The real tagger lemmatises it to `trh`; the diacritics-
+# restoration variant has no diacritic forms in its dictionary, so it falls to the
+# guesser and echoes the surface form back. Runs as root, BEFORE `USER appuser`, so
+# --log_file=/dev/stderr is writable either way.
+RUN <<'SMOKE'
+set -eu
+morphodita_server --connection_timeout=10 --log_file=/dev/stderr \
+  "${PORT}" "${MODEL_ID}" "/opt/model/${MODEL_ID}.tagger" 'build-check' &
+server=$!
+trap 'kill "${server}" 2>/dev/null || true' EXIT
+
+ready=""
+for _ in $(seq 1 60); do
+  if curl -fsS -X POST "http://127.0.0.1:${PORT}/tag" \
+       --data-urlencode 'data=pes' --data "model=${MODEL_ID}" \
+       --data output=vertical --data input=untokenized >/dev/null 2>&1; then
+    ready=1; break
+  fi
+  sleep 1
+done
+[ -n "${ready}" ] || { echo "ERROR: morphodita_server did not come up for the model smoke test"; exit 1; }
+
+out="$(curl -fsS -X POST "http://127.0.0.1:${PORT}/tag" \
+  --data-urlencode 'data=trhů' --data "model=${MODEL_ID}" \
+  --data output=vertical --data input=untokenized)"
+printf 'smoke: %s\n' "${out}"
+
+# The separators on the wire are JSON escapes — a literal backslash followed by t,
+# NOT tab characters (verified with od -c against a live server). Hence `grep -F`
+# on a backslash-t needle. And `printf %s`, never `echo`: /bin/sh here is dash,
+# whose builtin echo EXPANDS those backslash escapes into real tabs, which would
+# make this test fail against a perfectly good model.
+if printf '%s' "${out}" | grep -qF 'trhů\ttrh\t'; then
+  echo "OK: diacritic input lemmatises (trhů -> trh) — this is the full tagger"
+else
+  echo "ERROR: 'trhů' did not lemmatise to 'trh'."
+  echo "       The baked tagger is NOT czech-morfflex2.0-pdtc1.0-220710 — almost"
+  echo "       certainly the -no_dia (diacritics-restoration) variant, which is keyed"
+  echo "       on diacritic-stripped forms and guesses on correctly-spelled Czech."
+  exit 1
+fi
+SMOKE
 
 USER appuser
 EXPOSE 8080
