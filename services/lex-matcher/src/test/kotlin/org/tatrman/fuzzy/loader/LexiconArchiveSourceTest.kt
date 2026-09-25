@@ -156,9 +156,10 @@ class LexiconArchiveSourceTest :
                 // The CORE enum, not the artifact's — this reader's whole job on this field is to
                 // cross that boundary, and two same-named enums make the assertion worth spelling.
                 .toSet() shouldBe setOf(CoreTargetClass.STRING_PREDICATE)
-            // The authored method rides too: a multi-word form is TOKENS, a single word EXACT.
+            // The authored method rides too, and every `pred:` form is EXACT (✅LP-24): a fragment
+            // of a multi-word form must not fire the predicate on its own.
             val byValue = vocabulary.entries.flatMap { it.values }.associateBy { it.value }
-            byValue.getValue("začínající na").matchMethod shouldBe "TOKENS"
+            byValue.getValue("začínající na").matchMethod shouldBe "EXACT"
             byValue.getValue("obsahuje").matchMethod shouldBe "EXACT"
         }
 
