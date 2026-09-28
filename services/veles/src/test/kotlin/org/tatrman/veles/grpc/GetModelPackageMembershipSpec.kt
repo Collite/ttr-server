@@ -191,6 +191,36 @@ class GetModelPackageMembershipSpec :
             svc.bundle("c").entities() shouldBe setOf("loose", "extra")
         }
 
+        // A caller that gates on packages (an agent entitling what it reads) must be told the
+        // package, not left to derive it from `source_file` — the derivation #111 shows is wrong.
+        "every served descriptor states the package its file belongs to, not the one requested" {
+            val svc = service(estate())
+            val bundle = svc.bundle("a", "b", "c").model
+
+            bundle.entitiesList.associate { it.objectDescriptor.localName to it.objectDescriptor.packageName } shouldBe
+                mapOf("sale" to "a", "party" to "b", "extra" to "b", "loose" to "c")
+            bundle.entitiesList
+                .flatMap { e ->
+                    e.attributesList.map { e.objectDescriptor.localName to it.objectDescriptor.packageName }
+                }.toSet() shouldBe setOf("sale" to "a", "party" to "b", "extra" to "b", "loose" to "c")
+            bundle.patternQueriesList.associate {
+                it.objectDescriptor.localName to it.objectDescriptor.packageName
+            } shouldBe
+                mapOf("q_a" to "a", "q_b" to "b")
+
+            val listed =
+                svc
+                    .listObjects(ListObjectsRequest.newBuilder().setKind("entity").build())
+                    .itemsList
+                    .associate { it.localName to it.packageName }
+            listed shouldBe mapOf("sale" to "a", "party" to "b", "extra" to "b", "loose" to "c", "orphan" to "")
+            svc
+                .listQueries(ListQueriesRequest.getDefaultInstance())
+                .itemsList
+                .associate { it.objectDescriptor.localName to it.objectDescriptor.packageName } shouldBe
+                mapOf("q_a" to "a", "q_b" to "b")
+        }
+
         "a package's content hash covers its own files only" {
             val root = estate()
             val before = service(root).bundle("a", "b")

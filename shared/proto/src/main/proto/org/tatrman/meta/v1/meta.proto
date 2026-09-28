@@ -145,6 +145,12 @@ message ObjectDescriptor {
   string semantics_kind = 16;                               // RS-33: discovery accelerator — the object's
                                                             // EntitySemantics.kind (empty if none), so list_objects
                                                             // surfaces period/poi/fx tables without a per-object sweep
+  // The package this object belongs to: its file's `package` directive, else the package
+  // computed from the file's path — the same rule GetModel/ListObjects scope by (#111).
+  // Empty when no loaded file places the object (db-introspected objects). A caller that
+  // gates on packages must read THIS, never derive one from `source_file` or
+  // `qualified_name.package` (which stays unset for model objects).
+  string package_name = 17;
 }
 
 // Bound state of a model object. v0's "synthetic" concept made first-class.
