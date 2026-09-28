@@ -29,11 +29,15 @@ package org.tatrman.resolver.pipeline
  *   pipeline (where the parse is in scope) and read by `Binder.decide`. [SlotHint.NONE] on every
  *   value-origin candidate, on a re-gated synthetic candidate, and on a parse with no dependency
  *   tree — all three cases in which both Binder rules must be no-ops.
- * @property dualReading UD — this candidate was proposed OVER a universal NER span, as the governed
- *   argument of a value-bearing anchor (`Stores in TN`, `TN` typed a place; UD design §1.1). It
- *   exists so the pipeline can tell a deliberate dual reading from an accidental overlap: only a
- *   dual-reading candidate with contenders supersedes the universal, and one without is withdrawn so
- *   the universal stands alone (UD contracts §3–§4, `UniversalSeam`).
+ * @property dualReadingOf UD — the `(start, end)` of the universal NER entity this candidate was
+ *   proposed OVER, as the governed argument of a value-bearing anchor (`Stores in TN`, `TN` typed a
+ *   place; UD design §1.1); `null` for every other candidate. It exists so the pipeline can tell a
+ *   deliberate dual reading from an accidental overlap, and it names the ENTITY rather than
+ *   relying on the two spans agreeing: the candidate's extent is the parse's tokens, the
+ *   universal's is the NER engine's, and the two need not match to the character (review-108 F1:
+ *   NameTag's end overshoots a hyphenated name). Only a dual reading that found a member
+ *   supersedes the universal with exactly this extent; one that did not is withdrawn so the
+ *   universal stands alone (UD contracts §3–§4, A-UD-3/A-UD-4, `UniversalSeam`).
  */
 data class DomainSpanCandidate(
     val text: String,
@@ -50,8 +54,11 @@ data class DomainSpanCandidate(
     // (SpanProposal, MentionLayer, ReGate, tests), and every one of them must keep compiling.
     val slot: SlotHint = SlotHint.NONE,
     // LAST and defaulted for the same reason as `slot`.
-    val dualReading: Boolean = false,
+    val dualReadingOf: Pair<Int, Int>? = null,
 ) {
+    /** UD — whether this candidate is a dual reading at all; see [dualReadingOf]. */
+    val dualReading: Boolean get() = dualReadingOf != null
+
     /** Where a candidate came from — see [DomainSpanCandidate.origin]. */
     enum class Origin {
         /** A declared anchor word's own nominal phrase: a MENTION of that model object. */

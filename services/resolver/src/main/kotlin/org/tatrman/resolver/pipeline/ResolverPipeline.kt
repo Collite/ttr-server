@@ -206,20 +206,23 @@ class ResolverPipeline(
         // line that knows both readings' answers: the gate has spoken on every dual reading, and
         // nothing yet has read the universal list. A place the sentence scoped to an entity whose
         // member it is loses its span to that member (the universal is superseded); a dual reading
-        // that found nothing is withdrawn and the place stands exactly as before. BEFORE grounding,
+        // that found no member is withdrawn and the place stands exactly as before. BEFORE grounding,
         // the lattice and the door, so all three read the same survivors — and the `assemble`
         // lambda below closes over them, so every re-assembly the lookup loop makes agrees.
         val seam = UniversalSeam.supersede(universals, broadPass.gated)
         for ((u, g) in seam.superseded) {
+            // Ids and counts at INFO, like every other INFO line in this service; the user's words
+            // — a person's name, when the universal was a PERSON — only at DEBUG (review-108 F4).
             log.info(
-                "seam: {} \"{}\" [{},{}) superseded by {} ({} contenders)",
+                "seam: {} [{},{}) superseded by {} ({} contenders) conversation_id={}",
                 u.entityType.name,
-                u.text,
                 u.start,
                 u.end,
                 g.candidate.origin,
                 g.contenders.size,
+                request.conversationId,
             )
+            log.debug("seam: [{},{}) is \"{}\"", u.start, u.end, u.text)
         }
         val triggers =
             GroundingTriggers.collect(

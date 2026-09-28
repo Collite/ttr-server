@@ -1,18 +1,29 @@
 // SPDX-License-Identifier: Apache-2.0
 package org.tatrman.resolver
 
+import ch.qos.logback.classic.Level
+import ch.qos.logback.classic.LoggerContext
+import ch.qos.logback.classic.spi.ILoggingEvent
+import ch.qos.logback.core.read.ListAppender
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
+import org.slf4j.LoggerFactory
+import org.tatrman.fuzzy.v1.BatchMatchResponse
 import org.tatrman.fuzzy.v1.FuzzyMatch
+import org.tatrman.fuzzy.v1.FuzzyMatchResponse
+import org.tatrman.fuzzy.v1.SourceTag
 import org.tatrman.nlp.v1.NerEntity
 import org.tatrman.nlp.v1.Token
 import org.tatrman.resolver.pipeline.Binder
 import org.tatrman.resolver.pipeline.DomainSpanCandidate
+import org.tatrman.resolver.model.ResolverThresholds
+import org.tatrman.resolver.pipeline.GateSpans
 import org.tatrman.resolver.pipeline.GatedSpan
+import org.tatrman.resolver.pipeline.ResolverPipeline
 import org.tatrman.resolver.pipeline.SpanProposal
 import org.tatrman.resolver.pipeline.UniversalBinding
 import org.tatrman.resolver.pipeline.UniversalSeam
@@ -26,9 +37,11 @@ import org.tatrman.resolver.v1.ValueKind
  * UD-P1 (ttr-server#118, option 1) — the seam between a universal NER reading and the member
  * reading proposed over the same characters (UD contracts §4, A-UD-2).
  *
- * The rule: a dual-reading span that found a contender SUPERSEDES the universal under it (the
- * member wins the span); a dual-reading span that found nothing is WITHDRAWN (the universal stands
- * alone, exactly as before UD). Either way the lattice carries one finding per span.
+ * The rule: a dual-reading span that found a MEMBER supersedes the universal it was proposed over
+ * (the member wins the span); a dual-reading span that found no member is WITHDRAWN (the universal
+ * stands alone, exactly as before UD). Either way the lattice carries one finding per span.
+ * review-108 amended two words of that: "proposed over" is the ENTITY, not a containment test
+ * (A-UD-3, F1), and "member" is a member row, not any contender (✅UD-6, A-UD-4, F3).
  */
 class UdSeamTest :
     StringSpec({
@@ -40,9 +53,11 @@ class UdSeamTest :
         fun gated(
             start: Int = 10,
             end: Int = 12,
-            dual: Boolean = true,
+            // the entity the candidate was proposed over; `null` = not a dual reading
+            of: Pair<Int, Int>? = 10 to 12,
             contenders: Int = 1,
             origin: DomainSpanCandidate.Origin = DomainSpanCandidate.Origin.GOVERNED_VALUE,
+            sources: List<SourceTag> = List(contenders) { SourceTag.MEMBER },
         ) = GatedSpan(
             DomainSpanCandidate(
                 text = "TN",
@@ -52,19 +67,20 @@ class UdSeamTest :
                 categories = emptyList(),
                 anchored = origin == DomainSpanCandidate.Origin.GOVERNED_VALUE,
                 origin = origin,
-                dualReading = dual,
+                dualReadingOf = of,
             ),
-            List(contenders) { i ->
+            sources.mapIndexed { i, source ->
                 Binder.ClassedMatch(
                     FuzzyMatch
                         .newBuilder()
                         .setCandidateId("TN")
                         .setCategory("c$i")
+                        .setSource(source)
                         .build(),
                     EvidenceClass.EVIDENCE_CLASS_DECLARED_ALIAS,
                 )
             },
-            ambiguous = contenders > 1,
+            ambiguous = sources.size > 1,
         )
 
         "a dual reading with a contender over the universal supersedes it" {
@@ -92,16 +108,101 @@ class UdSeamTest :
         }
 
         "an accidental overlap never supersedes: the candidate must be a dual reading" {
-            val g = gated(dual = false)
+            val g = gated(of = null)
             val seam = UniversalSeam.supersede(listOf(tn), listOf(g))
 
             seam.universals shouldContainExactly listOf(tn)
             seam.gated shouldContainExactly listOf(g)
         }
 
-        "a dual reading that does not cover the universal does not supersede it" {
+        "A-UD-3 — a dual reading supersedes the ENTITY it was proposed over, whatever its own extent" {
+            // The candidate's extent is the parse's tokens, the universal's is the NER engine's.
+            // Narrower (an anchor word inside the name is not part of the value) or wider, the
+            // candidate says which entity it reads, and that is the one that goes (review-108 F1).
             val narrower = gated(start = 10, end = 11)
-            UniversalSeam.supersede(listOf(tn), listOf(narrower)).universals shouldContainExactly listOf(tn)
+            UniversalSeam.supersede(listOf(tn), listOf(narrower)).universals.shouldBeEmpty()
+
+            // NameTag's overshoot: the entity ends two characters after the tokens do
+            val overshot =
+                UniversalBinding(13, 28, "Frýdku - Místku", UniversalEntityType.LOCATION, "", "cnec:gu", "nametag3")
+            val tokens = gated(start = 13, end = 26, of = 13 to 28)
+            UniversalSeam.supersede(listOf(overshot), listOf(tokens)).superseded shouldContainExactly
+                listOf(overshot to tokens)
+        }
+
+        "A-UD-3 — …and never a universal it was not proposed over, however the spans overlap" {
+            // A dual reading of some OTHER entity that happens to contain this one's characters
+            val other = gated(start = 0, end = 12, of = 0 to 12)
+            UniversalSeam.supersede(listOf(tn), listOf(other)).universals shouldContainExactly listOf(tn)
+        }
+
+        "✅UD-6 — a dual reading that found only DECLARED rows does not supersede, and is withdrawn (A-UD-4)" {
+            // `Sales in Mobile` with a `mobile` channel alias: the place is spelled like a declared
+            // term, which is not the member reading that could take the span from it.
+            val declared = gated(contenders = 2, sources = listOf(SourceTag.DECLARED, SourceTag.METADATA))
+            val seam = UniversalSeam.supersede(listOf(tn), listOf(declared))
+
+            seam.universals shouldContainExactly listOf(tn)
+            seam.superseded.shouldBeEmpty()
+            seam.gated.shouldBeEmpty()
+        }
+
+        "✅UD-6 — a member among declared rows still speaks" {
+            val mixed = gated(contenders = 2, sources = listOf(SourceTag.DECLARED, SourceTag.MEMBER))
+            UniversalSeam.supersede(listOf(tn), listOf(mixed)).universals.shouldBeEmpty()
+        }
+
+        "✅UD-6 — a declared-only governed half does not silence an open half that found a member" {
+            // `resolveOpenSiblings` reads the same rule: without it, the governed half's declared
+            // hit dropped the open sibling that held the member, and the seam then withdrew the
+            // governed half — the member reading lost to a hit that could not win the span.
+            val types = MhMembers.entityTypes()
+
+            fun candidate(
+                origin: DomainSpanCandidate.Origin,
+                categories: List<String>,
+            ) = DomainSpanCandidate(
+                text = "Storeville",
+                start = 10,
+                end = 20,
+                gatedEntityRefs = emptyList(),
+                categories = categories,
+                anchored = origin == DomainSpanCandidate.Origin.GOVERNED_VALUE,
+                origin = origin,
+                dualReadingOf = 10 to 20,
+            )
+
+            fun row(
+                source: SourceTag,
+                category: String,
+            ) = FuzzyMatch
+                .newBuilder()
+                .setCandidate("Storeville")
+                .setCandidateId(if (source == SourceTag.MEMBER) "Storeville" else "lex:$category")
+                .setTargetRef(if (source == SourceTag.MEMBER) "" else category)
+                .setCategory(category)
+                .setSource(source)
+                .setScore(1.0)
+                .setMatchMethod("EXACT")
+                .build()
+
+            val governed = candidate(DomainSpanCandidate.Origin.GOVERNED_VALUE, listOf(MhMembers.STORE))
+            val open = candidate(DomainSpanCandidate.Origin.OPEN_VALUE, types.flatMap { it.categories })
+            val response =
+                BatchMatchResponse
+                    .newBuilder()
+                    .addResults(FuzzyMatchResponse.newBuilder().addMatches(row(SourceTag.DECLARED, MhMembers.STORE)))
+                    .addResults(FuzzyMatchResponse.newBuilder().addMatches(row(SourceTag.MEMBER, MhMembers.CA_STATE)))
+                    .build()
+            val gated =
+                GateSpans.gate(listOf(governed, open), response, types, ResolverThresholds.LIVE, emptyMap(), "").gated
+            val storeville = UniversalBinding(10, 20, "Storeville", UniversalEntityType.LOCATION, "", "", "stanza")
+            val seam = UniversalSeam.supersede(listOf(storeville), gated)
+
+            seam.superseded
+                .single()
+                .second.candidate.origin shouldBe DomainSpanCandidate.Origin.OPEN_VALUE
+            seam.gated.map { it.candidate.origin } shouldContainExactly listOf(DomainSpanCandidate.Origin.OPEN_VALUE)
         }
 
         "only what survived the open-sibling collapse counts (§4.5): the open sibling alone supersedes, once" {
@@ -119,7 +220,7 @@ class UdSeamTest :
         }
 
         "no dual reading anywhere ⇒ the inputs come back untouched (I-2)" {
-            val other = gated(start = 0, end = 6, dual = false, origin = DomainSpanCandidate.Origin.ANCHOR_PHRASE)
+            val other = gated(start = 0, end = 6, of = null, origin = DomainSpanCandidate.Origin.ANCHOR_PHRASE)
             val seam = UniversalSeam.supersede(listOf(tn), listOf(other))
 
             seam.universals shouldBe listOf(tn)
@@ -223,5 +324,98 @@ class UdSeamTest :
                 )
             val r = MhMembers.resolve("Nashville stores", preModifier, entities = place("Nashville", 0))
             r.findingsOn("Nashville").single().kind shouldBe ValueKind.VALUE_KIND_GROUNDED
+        }
+
+        // ── review-108 ──────────────────────────────────────────────────────────────────────────
+
+        "F1 — NameTag's overshooting end: the member still takes the span, and the place goes with it (A-UD-3)" {
+            // `Frýdku - Místku` (the three words NameTag found, joined) is 15 characters where the
+            // question has 13, so the entity ends at 33 and the tokens at 31. Containment said
+            // "not covered": the member kept its finding AND the place kept its own, with a G3 and
+            // a universal binding beside the domain one — two values for one filter.
+            val tokens =
+                arrayOf(
+                    MhMembers.tok("Kolik", 0, 5, "kolik", "DET", 2, "det:numgov"),
+                    MhMembers.tok("prodejen", 6, 14, "prodejna", "NOUN", 0, "root"),
+                    MhMembers.tok("ve", 15, 17, "v", "ADP", 4, "case"),
+                    MhMembers.tok("Frýdku", 18, 24, "Frýdek", "PROPN", 2, "nmod"),
+                    MhMembers.tok("-", 24, 25, "-", "PUNCT", 6, "punct"),
+                    MhMembers.tok("Místku", 25, 31, "Místek", "PROPN", 4, "flat"),
+                )
+            val r =
+                MhMembers.resolve(
+                    "Kolik prodejen ve Frýdku-Místku",
+                    tokens,
+                    lang = "cs",
+                    entities = listOf(MhMembers.ner("Frýdku - Místku", 18, 33, "LOCATION", "cnec:gu")),
+                )
+
+            val values = r.resolutionState.valuesList.filter { it.span.start >= 18 }
+            values.map { it.kind } shouldContainExactly listOf(ValueKind.VALUE_KIND_LITERAL)
+            values
+                .single()
+                .attributionsList
+                .map { it.binding.ref } shouldContainExactly listOf("${MhMembers.STORE_NAME}#Frýdek-Místek")
+            r.resolutionState.gapsList
+                .filter { it.span.start >= 18 }
+                .shouldBeEmpty()
+            r.hasAwaiting() shouldBe false
+            r.resolution.bindingsList.count { it.hasUniversal() } shouldBe 0
+            r.resolution.rationale shouldContain "0 universal"
+        }
+
+        "F2 — a coarse-MISC number is one grounded value, not two findings on one span" {
+            val tokens =
+                arrayOf(
+                    MhMembers.tok("Stores", 0, 6, "store", "NOUN", 0, "root"),
+                    MhMembers.tok("501001", 7, 13, "501001", "NUM", 1, "nummod"),
+                )
+            val r =
+                MhMembers.resolve("Stores 501001", tokens, entities = listOf(MhMembers.ner("501001", 7, 13, "MISC")))
+
+            r.findingsOn("501001").map { it.kind } shouldContainExactly listOf(ValueKind.VALUE_KIND_GROUNDED)
+            r.gapsOn("501001").shouldBeEmpty()
+        }
+
+        "F3 — a place spelled like a declared term stays a place (✅UD-6)" {
+            // The fixture's matcher finds the `store` anchor in `Storeville` (its stem heuristic),
+            // so both halves of the dual reading come back with DECLARED rows and no member. That
+            // is a reading of the spelling, not of the value: the place stands, and nobody is
+            // asked which OBJECT `Storeville` is.
+            val tokens =
+                arrayOf(
+                    MhMembers.tok("Stores", 0, 6, "store", "NOUN", 0, "root"),
+                    MhMembers.tok("in", 7, 9, "in", "ADP", 3, "case"),
+                    MhMembers.tok("Storeville", 10, 20, "Storeville", "PROPN", 1, "nmod"),
+                )
+            val r = MhMembers.resolve("Stores in Storeville", tokens, entities = place("Storeville", 10))
+
+            val storeville = r.findingsOn("Storeville").single()
+            storeville.kind shouldBe ValueKind.VALUE_KIND_GROUNDED
+            r.gapsOn("Storeville") shouldContainExactly listOf(GapKind.GAP_KIND_G3_UNATTRIBUTED)
+            r.awaiting.optionsList.none { it.span.text == "Storeville" } shouldBe true
+        }
+
+        "F4 — the seam's INFO line carries ids and counts, never the user's words" {
+            val ctx = LoggerFactory.getILoggerFactory() as LoggerContext
+            val logger = ctx.getLogger(ResolverPipeline::class.java)
+            val previousLevel = logger.level
+            val appender = ListAppender<ILoggingEvent>().apply { start() }
+            logger.level = Level.DEBUG
+            logger.addAppender(appender)
+            try {
+                MhMembers.resolve("Stores in TN", MhMembers.e11En(), entities = place("TN", 10))
+
+                val seam = appender.list.filter { it.formattedMessage.startsWith("seam:") }
+                seam.filter { it.level == Level.INFO }.map { it.formattedMessage } shouldContainExactly
+                    listOf("seam: LOCATION [10,12) superseded by GOVERNED_VALUE (1 contenders) conversation_id=mh-m")
+                // the words are there for whoever turns DEBUG on, and only for them
+                seam.filter { it.level == Level.DEBUG }.map { it.formattedMessage } shouldContainExactly
+                    listOf("seam: [10,12) is \"TN\"")
+            } finally {
+                logger.detachAppender(appender)
+                logger.level = previousLevel
+                appender.stop()
+            }
         }
     })

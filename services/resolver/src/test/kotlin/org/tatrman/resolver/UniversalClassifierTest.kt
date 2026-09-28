@@ -61,6 +61,24 @@ class UniversalClassifierTest :
             UniversalClassifier.classify("PERCENT") shouldBe UniversalEntityType.MISC
         }
 
+        "a coarse MISC whose text is a number stays universal MISC (review-108 F2)" {
+            // The LLM-emulated NER folds its classes to PERSON LOCATION ORGANIZATION DATE MISC —
+            // there is no number label to fall back on — so its numbers arrive as coarse MISC,
+            // as NameTag's `n*` does before the fold. A digit and no letter is a number.
+            UniversalClassifier.classify("MISC", "", "501001") shouldBe UniversalEntityType.MISC
+            UniversalClassifier.classify("MISC", "", "1 234,50") shouldBe UniversalEntityType.MISC
+            UniversalClassifier.classify("MISC", "", "12.5") shouldBe UniversalEntityType.MISC
+            UniversalClassifier.isUniversal("MISC", "", "501001") shouldBe true
+            // a code with a letter in it is a name; so is a name; so is an entity with no text
+            UniversalClassifier.classify("MISC", "", "5010O1") shouldBe null
+            UniversalClassifier.classify("MISC", "", "Orion") shouldBe null
+            UniversalClassifier.classify("MISC", "") shouldBe null
+            // a CNEC code still decides first, whatever the text
+            UniversalClassifier.classify("MISC", "cnec:op", "123") shouldBe null
+            // and a number has no member reading to offer
+            UniversalClassifier.dualReadingType("MISC", "", "501001") shouldBe null
+        }
+
         "coarse MISC is domain-eligible whatever its case, and isUniversal agrees" {
             UniversalClassifier.classify("misc") shouldBe null
             UniversalClassifier.classify(" MISC ") shouldBe null

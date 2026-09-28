@@ -66,7 +66,8 @@ object MhMembers {
     const val STORE_NAME = "er.entity.store.store_name"
 
     /**
-     * The three `TN` members and the one `Nashville` member, by the category that holds them — as
+     * The three `TN` members, the one `Nashville` member and one hyphenated store name (UD), by the
+     * category that holds them — as
      * lex-matcher answers since A-MV-15: one row per VALUE of a vocabulary, its id the value itself.
      * So the three `TN`s share an id and differ ONLY by category, which is what review-104 F3 was:
      * an identity without the category collapsed them into one.
@@ -81,6 +82,8 @@ object MhMembers {
                     Triple("TN", "TN", WAREHOUSE_STATE),
                 ),
             "nashville" to listOf(Triple("Nashville", "Nashville", STORE_NAME)),
+            // UD review-108 F1 — a store named by a hyphenated Czech town, asked in its locative.
+            "frýdku-místku" to listOf(Triple("Frýdek-Místek", "Frýdek-Místek", STORE_NAME)),
         )
 
     private fun et(

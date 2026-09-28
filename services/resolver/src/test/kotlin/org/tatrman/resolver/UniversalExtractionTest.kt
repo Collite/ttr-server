@@ -31,6 +31,18 @@ class UniversalExtractionTest :
                     "Nashville" to UniversalEntityType.LOCATION,
                 )
         }
+
+        "a coarse MISC that is a number is extracted as universal MISC, as before UD-P0 (review-108 F2)" {
+            val parse =
+                AnalyzeResponse
+                    .newBuilder()
+                    .addEntities(ner("501001", 0, 6, "MISC", ""))
+                    .addEntities(ner("Orion", 7, 12, "MISC", ""))
+                    .build()
+
+            UniversalExtraction.extractUniversal(parse).map { it.text to it.entityType } shouldContainExactly
+                listOf("501001" to UniversalEntityType.MISC)
+        }
     }) {
     private companion object {
         fun ner(

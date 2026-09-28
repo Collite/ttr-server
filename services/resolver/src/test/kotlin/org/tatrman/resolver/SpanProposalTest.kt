@@ -146,6 +146,29 @@ class SpanProposalTest :
             }
         }
 
+        "a coarse MISC that is a NUMBER is proposed by no path — not twice on one span (review-108 F2)" {
+            // Read as a name, `501001` was proposed by path (c) (unscoped, every type) AND by the
+            // literal run (scoped by `Stores`): two candidates on one span, `dedupe` keeping both
+            // because `anchored` is part of its key, and so two findings and a G3 + G4 over the
+            // same characters. A number stays universal MISC, as it was before UD-P0.
+            val parse =
+                MhMembers
+                    .parse(
+                        "Stores 501001",
+                        arrayOf(
+                            MhMembers.tok("Stores", 0, 6, "store", "NOUN", 0, "root"),
+                            MhMembers.tok("501001", 7, 13, "501001", "NUM", 1, "nummod"),
+                        ),
+                    ).toBuilder()
+                    .addEntities(MhMembers.ner("501001", 7, 13, "MISC"))
+                    .build()
+
+            SpanProposal
+                .proposeDomainSpans(parse, MhMembers.entityTypes())
+                .filter { it.text == "501001" }
+                .shouldBeEmpty()
+        }
+
         "a coarse-MISC modifier of an anchor joins its phrase; a place does not (UD-P0 — pinned as it is)" {
             // `Orion prodejny`: no longer universal, a coarse-MISC `compound` is an ordinary
             // modifier and the anchor's hull takes it, exactly as it takes the same word with no
@@ -640,7 +663,7 @@ class SpanProposalTest :
             val off = SpanProposal.proposeDomainSpans(MhMembers.parse("Stores in TN", MhMembers.e11En()), types)
             val on = SpanProposal.proposeDomainSpans(udParse("Stores in TN", MhMembers.e11En(), "TN", 10, 12), types)
 
-            on.map { it.copy(dualReading = false) } shouldBe off
+            on.map { it.copy(dualReadingOf = null) } shouldBe off
             on.filter { it.text == "TN" }.map { it.origin to it.dualReading } shouldContainExactly
                 listOf(DomainSpanCandidate.Origin.GOVERNED_VALUE to true, DomainSpanCandidate.Origin.OPEN_VALUE to true)
             on.single { it.origin == DomainSpanCandidate.Origin.ANCHOR_PHRASE }.dualReading shouldBe false
@@ -688,6 +711,27 @@ class SpanProposalTest :
             governed(flat, 10 to 18) shouldContainExactly listOf("New York")
             // the entity says what the place is: over `York` alone, the span is `York`
             governed(compound, 14 to 18) shouldContainExactly listOf("York")
+        }
+
+        "UD (a) the dual reading records the ENTITY it reads, even where the two extents differ (A-UD-3)" {
+            // NameTag reports an entity's end as start + len(" ".join(words)), so a hyphenated
+            // name split into three words overshoots by two: `Frýdku - Místku` is 15 characters
+            // where the question has 13. The candidate is the tokens' (13..26); the record is the
+            // entity's (13..28), and the seam pairs the two readings by the record (review-108 F1).
+            val parse =
+                MhMembers
+                    .parse("Zákazníci ve Frýdku-Místku", frydekMistek(), "cs")
+                    .toBuilder()
+                    .addEntities(MhMembers.ner("Frýdku - Místku", 13, 28, "LOCATION", "cnec:gu"))
+                    .build()
+            val governed =
+                SpanProposal
+                    .proposeDomainSpans(parse, MhMembers.entityTypes())
+                    .single { it.origin == DomainSpanCandidate.Origin.GOVERNED_VALUE }
+
+            (governed.start to governed.end) shouldBe (13 to 26)
+            governed.text shouldBe "Frýdku-Místku"
+            governed.dualReadingOf shouldBe (13 to 28)
         }
 
         "UD (a) only a place or a person is read twice: a DATE under an anchor proposes nothing, as today (⚑UD-5)" {
@@ -816,6 +860,16 @@ class SpanProposalTest :
                 .setDepRelation(depRelation)
                 .putAllFeats(feats)
                 .build()
+
+        /** `Zákazníci ve Frýdku-Místku` — the hyphen is its own token, as UD Czech splits it. */
+        fun frydekMistek(): Array<Token> =
+            arrayOf(
+                MhMembers.tok("Zákazníci", 0, 9, "zákazník", "NOUN", 0, "root"),
+                MhMembers.tok("ve", 10, 12, "v", "ADP", 3, "case"),
+                MhMembers.tok("Frýdku", 13, 19, "Frýdek", "PROPN", 1, "nmod"),
+                MhMembers.tok("-", 19, 20, "-", "PUNCT", 5, "punct"),
+                MhMembers.tok("Místku", 20, 26, "Místek", "PROPN", 3, "flat"),
+            )
 
         /** A §8.5-style parse with ONE NER entity (default: the place `GPE`) over `[start, end)`. */
         private fun udParse(

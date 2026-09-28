@@ -180,6 +180,11 @@ object GateSpans {
      * governor's scope is a real question, and widening it would not make it easier to answer.
      *
      * Paired strictly by origin, so no other candidate on any other path is affected.
+     *
+     * ✅UD-6 (A-UD-4) — for a DUAL READING (a pair proposed over a place or a person name) "spoke"
+     * means "found a member" ([UniversalSeam.speaks]): a declared-only hit on the governed half is
+     * not the member reading that could take the span from the place, so it must not silence an
+     * open half that found one. Every other pair is decided exactly as before.
      */
     private fun resolveOpenSiblings(gated: List<GatedSpan>): List<GatedSpan> {
         if (gated.none { it.candidate.origin == DomainSpanCandidate.Origin.OPEN_VALUE }) return gated
@@ -187,7 +192,7 @@ object GateSpans {
         fun spanOf(g: GatedSpan) = g.candidate.start to g.candidate.end
 
         fun spansWith(origin: DomainSpanCandidate.Origin) =
-            gated.filter { it.candidate.origin == origin && it.contenders.isNotEmpty() }.map(::spanOf).toSet()
+            gated.filter { it.candidate.origin == origin && UniversalSeam.speaks(it) }.map(::spanOf).toSet()
 
         val governedAnswered = spansWith(DomainSpanCandidate.Origin.GOVERNED_VALUE)
         val openAnswered = spansWith(DomainSpanCandidate.Origin.OPEN_VALUE)
@@ -199,7 +204,7 @@ object GateSpans {
                 // value span and a second G3 gap over the same characters (caught by
                 // `ms-shared-anchor-cs`, whose governed value matches nothing either way).
                 DomainSpanCandidate.Origin.OPEN_VALUE ->
-                    g.contenders.isNotEmpty() && spanOf(g) !in governedAnswered
+                    UniversalSeam.speaks(g) && spanOf(g) !in governedAnswered
                 DomainSpanCandidate.Origin.GOVERNED_VALUE ->
                     g.contenders.isNotEmpty() || spanOf(g) !in openAnswered
                 else -> true
