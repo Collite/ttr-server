@@ -13,6 +13,7 @@ import org.tatrman.ttr.metadata.model.QualifiedName
 import org.tatrman.ttr.metadata.model.SchemaCode
 import org.tatrman.ttr.metadata.graph.ModelGraph
 import org.tatrman.veles.grpc.MetadataServiceImpl
+import org.tatrman.veles.grpc.PackageIndex
 import org.tatrman.ttr.metadata.model.Model
 import org.tatrman.ttr.metadata.model.ModelDescriptor
 import org.tatrman.ttr.metadata.model.ModelVersion
@@ -84,7 +85,7 @@ class MetadataQuerySpec :
                 )
             val registry = MetadataRegistry()
             registry.swap(model, ModelGraph.build(model))
-            return MetadataServiceImpl(registry)
+            return MetadataServiceImpl(registry, packageIndex = PackageIndex())
         }
 
         "ListQueries returns all queries with parse status and parameter counts" {
@@ -191,7 +192,7 @@ class MetadataQuerySpec :
         }
 
         "ListQueries/GetQuery on an unloaded registry report metadata_not_ready" {
-            val empty = MetadataServiceImpl(MetadataRegistry())
+            val empty = MetadataServiceImpl(MetadataRegistry(), packageIndex = PackageIndex())
             empty
                 .listQueries(ListQueriesRequest.getDefaultInstance())
                 .messagesList

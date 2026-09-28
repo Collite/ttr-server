@@ -109,7 +109,8 @@ class GetSnapshotCanonicalFormSpec :
             val registry = MetadataRegistry()
             registry.swap(m, ModelGraph.build(m))
             val state = QueryParseState().also { it.reset(m.version.value, m.queries.keys) }
-            return Triple(m, state, MetadataServiceImpl(registry = registry, parseState = state))
+            val service = MetadataServiceImpl(registry = registry, parseState = state, packageIndex = PackageIndex())
+            return Triple(m, state, service)
         }
 
         suspend fun MetadataServiceImpl.snapshot(ifNoneMatch: String = ""): GetSnapshotResponse =
@@ -173,7 +174,7 @@ class GetSnapshotCanonicalFormSpec :
             val m = model()
             val registry = MetadataRegistry()
             registry.swap(m, ModelGraph.build(m))
-            MetadataServiceImpl(registry).snapshot().etag shouldBe "v1"
+            MetadataServiceImpl(registry, packageIndex = PackageIndex()).snapshot().etag shouldBe "v1"
         }
 
         // review-102 F4 — the state answers only for the model it was reset for.
@@ -182,7 +183,7 @@ class GetSnapshotCanonicalFormSpec :
             val v1 = model()
             val registry = MetadataRegistry().also { it.swap(v1, ModelGraph.build(v1)) }
             val state = QueryParseState().also { it.reset(v1.version.value, v1.queries.keys) }
-            val svc = MetadataServiceImpl(registry = registry, parseState = state)
+            val svc = MetadataServiceImpl(registry = registry, parseState = state, packageIndex = PackageIndex())
             QueryParseWorker().also { it.parseAll(v1, state).join() }.close()
             svc.snapshot().query("ok").hasCanonicalForm() shouldBe true
 

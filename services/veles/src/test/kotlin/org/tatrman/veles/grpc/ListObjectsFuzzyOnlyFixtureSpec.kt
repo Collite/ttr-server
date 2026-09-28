@@ -49,7 +49,7 @@ class ListObjectsFuzzyOnlyFixtureSpec :
             val result = reconciler.reconcile(listOf(source.load()))
             val registry = MetadataRegistry()
             registry.swap(result.model, ModelGraph.build(result.model), result.warnings + result.errors)
-            return MetadataServiceImpl(registry)
+            return MetadataServiceImpl(registry, packageIndex = PackageIndex())
         }
 
         fun columnQn(name: String): QualifiedName =

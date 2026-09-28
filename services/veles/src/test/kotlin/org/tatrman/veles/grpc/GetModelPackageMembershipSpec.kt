@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package org.tatrman.veles.grpc
 
+import com.typesafe.config.ConfigFactory
 import org.tatrman.meta.v1.GetModelRequest
 import org.tatrman.meta.v1.GetModelResponse
 import org.tatrman.meta.v1.ListObjectsRequest
@@ -8,14 +9,17 @@ import org.tatrman.meta.v1.ListQueriesRequest
 import org.tatrman.ttr.metadata.graph.ModelGraph
 import org.tatrman.ttr.metadata.model.ModelDescriptor
 import org.tatrman.ttr.metadata.reconcile.ModelReconciler
+import org.tatrman.ttr.metadata.refresh.MetadataRefresher
 import org.tatrman.ttr.metadata.registry.MetadataRegistry
 import org.tatrman.ttr.metadata.source.FileBasedSource
 import org.tatrman.ttr.metadata.source.LocalFsStorage
+import org.tatrman.veles.buildSources
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
 import java.nio.file.Files
 import java.nio.file.Path
+import java.nio.file.attribute.FileTime
 
 /**
  * ttr-server#111 — GetModel and the `package` filters of ListObjects / ListQueries scope by the
@@ -89,7 +93,7 @@ class GetModelPackageMembershipSpec :
                     .reconcile(listOf(snapshot))
             val registry = MetadataRegistry()
             registry.swap(result.model, ModelGraph.build(result.model), result.warnings + result.errors)
-            return MetadataServiceImpl(registry, packageIndex = PackageIndex().apply { record(snapshot) })
+            return MetadataServiceImpl(registry, packageIndex = servedIndex(snapshot))
         }
 
         suspend fun MetadataServiceImpl.bundle(vararg packages: String): GetModelResponse =
@@ -150,6 +154,41 @@ class GetModelPackageMembershipSpec :
             entitiesIn("b") shouldBe setOf("party", "extra")
             queriesIn("a") shouldBe setOf("q_a")
             queriesIn("b") shouldBe setOf("q_b")
+        }
+
+        // The production path, not a hand-fed index: Application's buildSources wraps every
+        // configured slot, the refresher loads and swaps, and the index serves what was swapped in.
+        "as wired in Application: every slot records, and a load is served once its model swaps in" {
+            val root = estate()
+            val config = ConfigFactory.parseString("metadata.sources.git { type = filesystem, path = \"$root\" }")
+            val registry = MetadataRegistry()
+            val index = PackageIndex().commitOnSwap(registry)
+            val slots = buildSources(config, index)
+            val refresher =
+                MetadataRefresher(
+                    sources = slots.map { it.source },
+                    sourceIds = slots.map { it.id },
+                    reconciler = ModelReconciler(ModelDescriptor(id = "test", name = "test", description = "wiring")),
+                    registry = registry,
+                )
+            val svc = MetadataServiceImpl(registry, packageIndex = index)
+
+            refresher.refresh(sourceId = "", force = true)
+            svc.bundle("b").entities() shouldBe setOf("party", "extra")
+
+            // `extra` moves to package c. Loaded, but its model is not swapped in yet: the served
+            // model still has `extra` in b, so the index must still say b.
+            val extra = root.resolve("b/a/extra.ttrm")
+            val touched = FileTime.fromMillis(Files.getLastModifiedTime(extra).toMillis() + 60_000)
+            Files.writeString(extra, "package c\n" + entity("extra"))
+            Files.setLastModifiedTime(extra, touched)
+            slots.forEach { it.source.load() }
+            svc.bundle("b").entities() shouldBe setOf("party", "extra")
+            svc.bundle("c").entities() shouldBe setOf("loose")
+
+            refresher.refresh(sourceId = "", force = true)
+            svc.bundle("b").entities() shouldBe setOf("party")
+            svc.bundle("c").entities() shouldBe setOf("loose", "extra")
         }
 
         "a package's content hash covers its own files only" {

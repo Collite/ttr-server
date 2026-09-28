@@ -223,6 +223,6 @@ private fun wire(model: Model): Pair<MetadataServiceImpl, MetadataRegistry> {
         )
     registry.addListener { snap -> holder.rebuild(snap) }
     registry.swap(model, ModelGraph.build(model))
-    val service = MetadataServiceImpl(registry, withAll, holder, tracer = null)
+    val service = MetadataServiceImpl(registry, withAll, holder, tracer = null, packageIndex = PackageIndex())
     return service to registry
 }

@@ -81,7 +81,7 @@ class ListObjectsFuzzyAttributeMappingSpec :
             result.errors shouldBe emptyList()
             val registry = MetadataRegistry()
             registry.swap(result.model, ModelGraph.build(result.model), result.warnings + result.errors)
-            return MetadataServiceImpl(registry)
+            return MetadataServiceImpl(registry, packageIndex = PackageIndex())
         }
 
         "fuzzy_only=true surfaces the column backing a fuzzy ER attribute (not the column's own flag)" {

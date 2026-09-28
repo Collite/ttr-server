@@ -211,7 +211,9 @@ message GetModelRequest {
   // Package names to include (e.g. ["ucetnictvi"]). Empty = error
   // (caller must opt in to a domain explicitly; bulk-all is not supported).
   // An object belongs to a package when its source file does: the file's
-  // `package` clause, else the package its directory implies.
+  // `package` clause, else the package its directory implies — that directory
+  // relative to the model root, dotted (`a/b/x.ttr` is `a.b`, not `a`; a file
+  // at the model root implies none).
   repeated string packages = 1;
 
   // Optional locale for localized labels. Empty = return all locales.
@@ -387,7 +389,7 @@ message ListObjectsRequest {
   bool fuzzy_only = 12;
   // Filter by package name (e.g. "ucetnictvi"). Empty = no filter.
   // AND-ed with other filters. Matches objects whose source file belongs to the
-  // package: the file's `package` clause, else the package its directory implies.
+  // package, same membership as GetModelRequest.packages.
   string package = 13;
   // MV — only objects with a member vocabulary: SearchHints.indexed carriers (any kind that carries
   // SearchHints), plus the DB columns that back an indexed ER attribute.

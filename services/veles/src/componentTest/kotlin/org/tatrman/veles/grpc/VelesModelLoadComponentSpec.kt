@@ -62,7 +62,7 @@ class VelesModelLoadComponentSpec :
             val result = reconciler.reconcile(listOf(source.load()))
             val registry = MetadataRegistry()
             registry.swap(result.model, ModelGraph.build(result.model), result.warnings + result.errors)
-            return MetadataServiceImpl(registry)
+            return MetadataServiceImpl(registry, packageIndex = PackageIndex())
         }
 
         "the bundled model-ttr reconciles and ListQueries surfaces the four TPC-DS curated queries" {

@@ -11,6 +11,7 @@ import org.tatrman.meta.v1.ValidateModelRequest
 import org.tatrman.plan.v1.QualifiedName
 import org.tatrman.ttr.metadata.graph.ModelGraph
 import org.tatrman.veles.grpc.MetadataServiceImpl
+import org.tatrman.veles.grpc.servedIndex
 import org.tatrman.veles.grpc.PackageIndex
 import org.tatrman.ttr.metadata.model.ModelDescriptor
 import org.tatrman.ttr.metadata.reconcile.ModelReconciler
@@ -55,7 +56,7 @@ class MetadataServiceFixtureSpec :
             val result = reconciler.reconcile(listOf(snapshot))
             val registry = MetadataRegistry()
             registry.swap(result.model, ModelGraph.build(result.model), result.warnings + result.errors)
-            return MetadataServiceImpl(registry, packageIndex = PackageIndex().apply { record(snapshot) })
+            return MetadataServiceImpl(registry, packageIndex = servedIndex(snapshot))
         }
 
         "GetModel(packages=[shop]) returns non-empty ModelBundle from the fixture" {
@@ -208,7 +209,7 @@ class MetadataServiceFixtureSpec :
         }
 
         "GetStatus reports DEGRADED when no snapshot has been loaded" {
-            val empty = MetadataServiceImpl(MetadataRegistry())
+            val empty = MetadataServiceImpl(MetadataRegistry(), packageIndex = PackageIndex())
             val r = empty.getStatus(GetStatusRequest.getDefaultInstance())
             r.modelLoaded shouldBe false
             r.overallStatus shouldBe OverallStatus.DEGRADED

@@ -4,6 +4,7 @@ package org.tatrman.veles.read
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
+import io.kotest.matchers.string.shouldNotContain
 import io.ktor.client.request.get
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.HttpStatusCode
@@ -30,6 +31,10 @@ import org.tatrman.ttr.metadata.search.keyword.KeywordAlgorithm
 import org.tatrman.ttr.metadata.search.keyword.StopWords
 import org.tatrman.ttr.metadata.search.regex.RegexAlgorithm
 import org.tatrman.ttr.metadata.search.substring.SubstringAlgorithm
+import org.tatrman.ttr.metadata.source.LoadedFile
+import org.tatrman.ttr.metadata.source.SourceSnapshot
+import org.tatrman.ttr.metadata.source.StorageFile
+import org.tatrman.veles.grpc.PackageIndex
 import java.time.Instant
 
 /**
@@ -44,8 +49,8 @@ class VelesReadRoutesSpec :
         "index reports schemas, packages, counts and version" {
             testApplication {
                 environment { config = MapApplicationConfig() }
-                val (registry, sr, holder) = wire(populatedModel())
-                application { routing { velesReadRoutes(registry, sr, holder) } }
+                val (registry, sr, holder, packages) = wire(populatedModel())
+                application { routing { velesReadRoutes(registry, sr, holder, packages) } }
 
                 client.get("/model/index").let {
                     it.status shouldBe HttpStatusCode.OK
@@ -64,7 +69,7 @@ class VelesReadRoutesSpec :
                 environment { config = MapApplicationConfig() }
                 val registry = MetadataRegistry()
                 val (sr, holder) = searchStack()
-                application { routing { velesReadRoutes(registry, sr, holder) } }
+                application { routing { velesReadRoutes(registry, sr, holder, PackageIndex()) } }
 
                 client.get("/model/index").let {
                     it.status shouldBe HttpStatusCode.ServiceUnavailable
@@ -76,8 +81,8 @@ class VelesReadRoutesSpec :
         "graph exposes nodes and the attribute→entity DEFINES edge" {
             testApplication {
                 environment { config = MapApplicationConfig() }
-                val (registry, sr, holder) = wire(populatedModel())
-                application { routing { velesReadRoutes(registry, sr, holder) } }
+                val (registry, sr, holder, packages) = wire(populatedModel())
+                application { routing { velesReadRoutes(registry, sr, holder, packages) } }
 
                 client.get("/model/graph").let {
                     it.status shouldBe HttpStatusCode.OK
@@ -88,11 +93,33 @@ class VelesReadRoutesSpec :
             }
         }
 
+        // ttr-server#111 — the package is the one the file belongs to, from the PackageIndex; the
+        // fixture's qnames carry no package (the loader never sets one), so nothing else could say
+        // "sales" here.
+        "graph scopes ?package= by the file's package, and every node carries it as pkg" {
+            testApplication {
+                environment { config = MapApplicationConfig() }
+                val (registry, sr, holder, packages) = wire(populatedModel())
+                application { routing { velesReadRoutes(registry, sr, holder, packages) } }
+
+                client.get("/model/graph?package=sales").let {
+                    it.status shouldBe HttpStatusCode.OK
+                    val body = it.bodyAsText()
+                    body shouldContain "\"qname\":\"er.sales.order\""
+                    body shouldContain "\"pkg\":\"sales\""
+                    body shouldNotContain "ordersList"
+                }
+                client.get("/model/graph?package=shop").let {
+                    it.bodyAsText() shouldBe """{"nodes":[],"edges":[]}"""
+                }
+            }
+        }
+
         "object returns the descriptor + string sourceLocation, 404 on miss" {
             testApplication {
                 environment { config = MapApplicationConfig() }
-                val (registry, sr, holder) = wire(populatedModel())
-                application { routing { velesReadRoutes(registry, sr, holder) } }
+                val (registry, sr, holder, packages) = wire(populatedModel())
+                application { routing { velesReadRoutes(registry, sr, holder, packages) } }
 
                 client.get("/model/object?qname=er.sales.order").let {
                     it.status shouldBe HttpStatusCode.OK
@@ -112,8 +139,8 @@ class VelesReadRoutesSpec :
         "search reuses the gRPC path; blank query is empty" {
             testApplication {
                 environment { config = MapApplicationConfig() }
-                val (registry, sr, holder) = wire(populatedModel())
-                application { routing { velesReadRoutes(registry, sr, holder) } }
+                val (registry, sr, holder, packages) = wire(populatedModel())
+                application { routing { velesReadRoutes(registry, sr, holder, packages) } }
 
                 client.get("/model/search?query=ordersList").let {
                     it.status shouldBe HttpStatusCode.OK
@@ -134,6 +161,7 @@ private data class Wired(
     val registry: MetadataRegistry,
     val searchRegistry: SearchAlgorithmRegistry,
     val indexHolder: SearchIndexHolder,
+    val packageIndex: PackageIndex,
 )
 
 private fun searchStack(): Pair<SearchAlgorithmRegistry, SearchIndexHolder> {
@@ -154,34 +182,54 @@ private fun searchStack(): Pair<SearchAlgorithmRegistry, SearchIndexHolder> {
 
 private fun wire(model: Model): Wired {
     val registry = MetadataRegistry()
+    val packageIndex = PackageIndex().commitOnSwap(registry)
+    // The load that produced the model: its one file declares `package sales`.
+    packageIndex.record(
+        SourceSnapshot(
+            sourceId = "test",
+            priority = 100,
+            version = "v1",
+            loadedFiles = listOf(orderFile),
+        ),
+    )
     val (withAll, holder) = searchStack()
     registry.addListener { snap -> holder.rebuild(snap) }
     registry.swap(model, ModelGraph.build(model))
-    return Wired(registry, withAll, holder)
+    return Wired(registry, withAll, holder, packageIndex)
 }
+
+private val orderFile =
+    LoadedFile(
+        storageFile = StorageFile(path = "/model/sales/order.ttr", sizeBytes = 0),
+        computedPackage = "sales",
+        declaredPackage = "sales",
+        imports = emptyList(),
+        definitions = emptyList(),
+        schemaCode = "er",
+        namespace = "sales",
+    )
 
 private fun qn(
     schema: SchemaCode,
     namespace: String,
     name: String,
-    pkg: String = "",
-): QualifiedName = QualifiedName(schemaCode = schema, namespace = namespace, name = name, `package` = pkg)
+): QualifiedName = QualifiedName(schemaCode = schema, namespace = namespace, name = name)
 
 /** One entity + its attribute (yields a DEFINES edge) + a matchable query. */
 private fun populatedModel(): Model {
-    val entityQn = qn(SchemaCode.ER, "sales", "order", pkg = "sales")
-    val attrQn = qn(SchemaCode.ER, "sales", "order.total", pkg = "sales")
+    val entityQn = qn(SchemaCode.ER, "sales", "order")
+    val attrQn = qn(SchemaCode.ER, "sales", "order.total")
     val entity =
         Entity(
             internalId = "e1",
             qname = entityQn,
-            sourceFile = "/model/sales/order.ttr",
+            sourceFile = orderFile.storageFile.path,
             attributes =
                 listOf(
                     Attribute(
                         internalId = "a1",
                         qname = attrQn,
-                        sourceFile = "/model/sales/order.ttr",
+                        sourceFile = orderFile.storageFile.path,
                         entity = entityQn,
                         type = "decimal",
                     ),
@@ -190,7 +238,7 @@ private fun populatedModel(): Model {
     val query =
         Query(
             internalId = "q1",
-            qname = qn(SchemaCode.UNSPECIFIED, "query", "ordersList", pkg = "sales"),
+            qname = qn(SchemaCode.UNSPECIFIED, "query", "ordersList"),
             sourceLanguage = "SQL",
             sourceText = "select 1",
             search = SearchHints(keywords = LocalizedTextList(mapOf("cs" to listOf("objednávky")))),

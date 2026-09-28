@@ -36,7 +36,7 @@ class ListObjectsPackageFilterSpec :
             val result = reconciler.reconcile(listOf(snapshot))
             val registry = MetadataRegistry()
             registry.swap(result.model, ModelGraph.build(result.model), result.warnings + result.errors)
-            return MetadataServiceImpl(registry, packageIndex = PackageIndex().apply { record(snapshot) })
+            return MetadataServiceImpl(registry, packageIndex = servedIndex(snapshot))
         }
 
         "ListObjects(kind=entity, package=prodeje) returns entities scoped to prodeje" {

@@ -9,6 +9,7 @@ import org.tatrman.plan.v1.SchemaCode
 import org.tatrman.plan.v1.QualifiedName
 import org.tatrman.ttr.metadata.graph.ModelGraph
 import org.tatrman.veles.grpc.MetadataServiceImpl
+import org.tatrman.veles.grpc.PackageIndex
 import org.tatrman.ttr.metadata.model.Er2CncRoleMapping
 import org.tatrman.ttr.metadata.model.ModelDescriptor
 import org.tatrman.ttr.metadata.reconcile.ModelReconciler
@@ -53,7 +54,7 @@ class Phase2_2ExpressivenessSpec :
             val result = reconciler.reconcile(snapshots)
             val registry = MetadataRegistry()
             registry.swap(result.model, ModelGraph.build(result.model), result.warnings + result.errors)
-            return MetadataServiceImpl(registry)
+            return MetadataServiceImpl(registry, packageIndex = PackageIndex())
         }
 
         // ----- B.2 stock vocabulary -----

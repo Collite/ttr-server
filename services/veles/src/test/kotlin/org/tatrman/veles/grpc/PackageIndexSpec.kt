@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 package org.tatrman.veles.grpc
 
+import org.tatrman.ttr.metadata.graph.ModelGraph
+import org.tatrman.ttr.metadata.model.ModelDescriptor
+import org.tatrman.ttr.metadata.reconcile.ModelReconciler
+import org.tatrman.ttr.metadata.registry.MetadataRegistry
 import org.tatrman.ttr.metadata.source.LoadedFile
 import org.tatrman.ttr.metadata.source.ModelSource
 import org.tatrman.ttr.metadata.source.SourceSnapshot
@@ -32,6 +36,13 @@ class PackageIndexSpec :
             vararg files: LoadedFile,
         ) = SourceSnapshot(sourceId = sourceId, priority = 100, version = "v", loadedFiles = files.toList())
 
+        /** A model swap, as the refresher does it after a successful reconcile. */
+        fun MetadataRegistry.swapIn() {
+            val reconciler = ModelReconciler(ModelDescriptor(id = "t", name = "t", description = "t"))
+            val model = reconciler.reconcile(emptyList()).model
+            swap(model, ModelGraph.build(model))
+        }
+
         "a declared package wins over the one the directory implies" {
             val index = PackageIndex()
             index.record(
@@ -42,6 +53,7 @@ class PackageIndexSpec :
                     file("/tmp/metadata-git/a/model/c/loose.ttrm", computed = "c"),
                 ),
             )
+            index.commit()
 
             index.packageOf("/tmp/metadata-git/a/model/er/sales.ttrm") shouldBe "a"
             index.packageOf("/tmp/metadata-git/a/model/c/loose.ttrm") shouldBe "c"
@@ -50,6 +62,7 @@ class PackageIndexSpec :
         "an unknown file and a blank package match nothing" {
             val index = PackageIndex()
             index.record(snapshot("git", file("/m/orphan.ttrm", computed = "")))
+            index.commit()
 
             index.packageOf("/m/elsewhere.ttrm") shouldBe null
             index.contains("", "/m/orphan.ttrm") shouldBe false
@@ -63,10 +76,12 @@ class PackageIndexSpec :
             val source = index.recording("github-model", ModelSource { next })
 
             source.load()
+            index.commit()
             index.packageOf("/git/a/x.ttr") shouldBe "a"
 
             next = snapshot("model-ttr", file("/bundled/b/y.ttr", computed = "b"))
             source.load()
+            index.commit()
             index.packageOf("/git/a/x.ttr") shouldBe null
             index.packageOf("/bundled/b/y.ttr") shouldBe "b"
         }
@@ -86,6 +101,31 @@ class PackageIndexSpec :
             source.load()
             fail = true
             shouldThrow<IllegalStateException> { source.load() }
+            index.commit()
             index.packageOf("/git/a/x.ttr") shouldBe "a"
+        }
+
+        "a load is served only once its model swaps in" {
+            val registry = MetadataRegistry()
+            val index = PackageIndex().commitOnSwap(registry)
+
+            index.record(snapshot("git", file("/git/a/x.ttr", computed = "a")))
+            index.packageOf("/git/a/x.ttr") shouldBe null
+
+            registry.swapIn()
+            index.packageOf("/git/a/x.ttr") shouldBe "a"
+        }
+
+        // The refresher's reconcile or swap failed: the registry keeps serving the previous model,
+        // so the index keeps serving that model's packages, not the load's.
+        "a load whose model never swaps in leaves the served packages alone" {
+            val registry = MetadataRegistry()
+            val index = PackageIndex().commitOnSwap(registry)
+            index.record(snapshot("git", file("/git/m/x.ttr", computed = "m", declared = "a")))
+            registry.swapIn()
+
+            index.record(snapshot("git", file("/git/m/x.ttr", computed = "m", declared = "b")))
+            index.packageOf("/git/m/x.ttr") shouldBe "a"
+            index.contains("b", "/git/m/x.ttr") shouldBe false
         }
     })

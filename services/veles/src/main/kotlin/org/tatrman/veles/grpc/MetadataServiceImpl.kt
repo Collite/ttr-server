@@ -138,7 +138,8 @@ import org.tatrman.ttr.semantics.semanticsblock.ResolvedEntitySemantics
  * model's stored (initial PENDING) state.
  *
  * Package scoping (GetModel, the `package` filters of ListObjects / ListQueries) reads
- * [packageIndex], fed by the sources' loads. Left empty, every package is empty.
+ * [packageIndex], fed by the sources' loads. It is required, not defaulted: an index nothing feeds
+ * makes every package empty, and a default would let a wiring slip ship exactly that, silently.
  */
 class MetadataServiceImpl(
     private val registry: MetadataRegistry,
@@ -149,7 +150,7 @@ class MetadataServiceImpl(
     private val tracer: Tracer? = null,
     private val parseState: QueryParseState? = null,
     private val refresher: MetadataRefresher? = null,
-    private val packageIndex: PackageIndex = PackageIndex(),
+    private val packageIndex: PackageIndex,
 ) : VelesServiceGrpcKt.VelesServiceCoroutineImplBase() {
     private val logger = org.slf4j.LoggerFactory.getLogger(MetadataServiceImpl::class.java)
 
