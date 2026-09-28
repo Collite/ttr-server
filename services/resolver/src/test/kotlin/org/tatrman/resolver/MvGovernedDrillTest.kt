@@ -6,6 +6,7 @@ import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
 import io.kotest.matchers.shouldBe
+import org.tatrman.nlp.v1.NerEntity
 import org.tatrman.nlp.v1.Token
 import org.tatrman.resolver.MvEstate.CA_STATE
 import org.tatrman.resolver.MvEstate.CUSTOMER_ADDRESS
@@ -15,6 +16,7 @@ import org.tatrman.resolver.MvEstate.STORE_STATE
 import org.tatrman.resolver.MvEstate.WAREHOUSE
 import org.tatrman.resolver.MvEstate.WAREHOUSE_STATE
 import org.tatrman.resolver.v1.ResolveResponse
+import org.tatrman.resolver.v1.ValueKind
 
 /**
  * MV-T6 (member-vocabulary contracts §9.5) — the MH tier-M drills re-run under MV, on the ARCHIVE
@@ -179,6 +181,154 @@ class MvGovernedDrillTest :
                     .shouldBeEmpty()
                 blinded.attributionsOf("TN").shouldBeEmpty()
             }
+        }
+
+        // ── UD (ttr-server#118) — the same drills NER=ON, with the entity the live service emits ──
+        //
+        // hartland's NLP types `TN`/`Nashville` a place (en `GPE`; cs NameTag `cnec:g…`) or, from a
+        // coarse-label engine, a code-less `MISC`. Before UD every one of these left as a grounded
+        // place with no attribution (tasks-ud-p1 T1). Now the governed argument is ALSO read as the
+        // anchor's member (option 1), and a coarse MISC is not universal at all (option 3).
+
+        data class NerDrill(
+            val id: String,
+            val text: String,
+            val tokens: Array<Token>,
+            val lang: String,
+            val entity: NerEntity,
+            val value: String,
+            val binds: String,
+        )
+
+        val nerGoverned =
+            listOf(
+                NerDrill(
+                    "E11-en GPE",
+                    "Stores in TN",
+                    MhMembers.e11En(),
+                    "en",
+                    MhMembers.ner("TN", 10, 12, "GPE"),
+                    "TN",
+                    "$STORE_STATE#TN",
+                ),
+                NerDrill(
+                    "E11-cs cnec:gu",
+                    "Prodejny v TN",
+                    MhMembers.e11CsReal(),
+                    "cs",
+                    MhMembers.ner("TN", 11, 13, "LOCATION", "cnec:gu"),
+                    "TN",
+                    "$STORE_STATE#TN",
+                ),
+                // option 3: not a dual reading — simply not universal, so the plain governed path
+                NerDrill(
+                    "E11-cs MISC",
+                    "Prodejny v TN",
+                    MhMembers.e11CsReal(),
+                    "cs",
+                    MhMembers.ner("TN", 11, 13, "MISC"),
+                    "TN",
+                    "$STORE_STATE#TN",
+                ),
+                NerDrill(
+                    "E11-count GPE",
+                    "How many stores in TN",
+                    MhMembers.e11Count(),
+                    "en",
+                    MhMembers.ner("TN", 19, 21, "GPE"),
+                    "TN",
+                    "$STORE_STATE#TN",
+                ),
+                NerDrill(
+                    "E4-en GPE",
+                    "Stores in Nashville",
+                    MhMembers.e4En(),
+                    "en",
+                    MhMembers.ner("Nashville", 10, 19, "GPE"),
+                    "Nashville",
+                    "$STORE_NAME#Nashville",
+                ),
+            )
+
+        for (d in nerGoverned) {
+            "UD ${d.id} `${d.text}` NER=ON binds through the GOVERNED lookup and the place is gone" {
+                val archive = MvEstate.writeArchive()
+                val (blinded, _) =
+                    MvEstate.resolve(d.text, d.tokens, d.lang, archive, blind = openBlind, entities = listOf(d.entity))
+                val (open, _) = MvEstate.resolve(d.text, d.tokens, d.lang, archive, entities = listOf(d.entity))
+
+                blinded.attributionsOf(d.value) shouldContainExactly listOf(d.binds)
+                open.attributionsOf(d.value) shouldContainExactly listOf(d.binds)
+                // one finding on the span, and it is the member — no grounded twin beside it
+                open.resolutionState.valuesList
+                    .filter { it.span.text == d.value }
+                    .map { it.kind } shouldContainExactly listOf(ValueKind.VALUE_KIND_LITERAL)
+            }
+        }
+
+        for ((id, tokens, lang) in listOf(
+            Triple("E13-en GPE", MhMembers.e13En(), "en"),
+            Triple("E13-cs cnec:gu", MhMembers.e13CsReal(), "cs"),
+        )) {
+            "UD $id NER=ON binds through the open lookup + M3; blinded, the place stands" {
+                val text = if (lang == "cs") "Zákazníci v TN" else "Customers in TN"
+                val start = text.indexOf("TN")
+                val entity =
+                    if (lang == "cs") {
+                        MhMembers.ner("TN", start, start + 2, "LOCATION", "cnec:gu")
+                    } else {
+                        MhMembers.ner("TN", start, start + 2, "GPE")
+                    }
+                val archive = MvEstate.writeArchive()
+                val (open, _) = MvEstate.resolve(text, tokens, lang, archive, entities = listOf(entity))
+                val (blinded, _) =
+                    MvEstate.resolve(text, tokens, lang, archive, blind = openBlind, entities = listOf(entity))
+
+                open.attributionsOf("TN") shouldContainExactly listOf("$CA_STATE#TN")
+                // With the open answer taken away the dual reading found nothing — withdrawn, so the
+                // NER's reading stands exactly as it did before UD (A-UD-2).
+                blinded.resolutionState.valuesList
+                    .single { it.span.text == "TN" }
+                    .kind shouldBe ValueKind.VALUE_KIND_GROUNDED
+            }
+        }
+
+        "UD E12-en `Sales in TN` NER=ON — a fact governs no member: asks by OWNER, as NER=OFF does" {
+            val (response, _) =
+                MvEstate.resolve("Sales in TN", MhMembers.e12En(), entities = listOf(MhMembers.ner("TN", 9, 11, "GPE")))
+
+            response.hasAwaiting() shouldBe true
+            response.awaiting.optionsList.map { it.memberOf } shouldContainExactlyInAnyOrder
+                listOf(STORE_STATE, CA_STATE, WAREHOUSE_STATE)
+        }
+
+        "UD E12-bare `TN` NER=ON — nothing governs it: still a place (no dual reading, option 2 not built)" {
+            val (response, _) =
+                MvEstate.resolve(
+                    "TN",
+                    MhMembers.e12Bare(),
+                    entities = listOf(MhMembers.ner("TN", 0, 2, "GPE")),
+                )
+
+            response.hasAwaiting() shouldBe false
+            response.resolutionState.valuesList
+                .single { it.span.text == "TN" }
+                .kind shouldBe ValueKind.VALUE_KIND_GROUNDED
+        }
+
+        "UD `Stores in Paris` NER=ON — no member anywhere: the place stands" {
+            val tokens =
+                arrayOf(
+                    MhMembers.tok("Stores", 0, 6, "store", "NOUN", 0, "root"),
+                    MhMembers.tok("in", 7, 9, "in", "ADP", 3, "case"),
+                    MhMembers.tok("Paris", 10, 15, "Paris", "PROPN", 1, "nmod"),
+                )
+            val (response, _) =
+                MvEstate.resolve("Stores in Paris", tokens, entities = listOf(MhMembers.ner("Paris", 10, 15, "GPE")))
+
+            val paris = response.resolutionState.valuesList.single { it.span.text == "Paris" }
+            paris.kind shouldBe ValueKind.VALUE_KIND_GROUNDED
+            paris.attributionsList.shouldBeEmpty()
         }
 
         "E12-bare — a lone `TN` still asks, three options labelled by OWNER" {

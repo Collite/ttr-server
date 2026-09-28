@@ -16,6 +16,21 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+### resolver — a place or person name scoped to an entity is looked up as that entity's member first (#118, UD-P1)
+
+The governed argument of a value-bearing anchor now gets a member reading even when the NER types it
+a place or a person. In `Stores in TN`, `TN` is `GPE`, and `store.state` holds `TN`.
+
+- **The member found something:** the member wins the span. The value is a `VALUE_KIND_LITERAL`
+  finding with the member's attribution. There is no grounded place beside it, and no universal
+  binding in `Resolution`. An ambiguity among members asks by owner (`member_of` per option).
+- **The member found nothing:** the NER reading stands, exactly as before (`VALUE_KIND_GROUNDED`, G3).
+- **Nothing changes** for bare, unanchored and pre-modifier places (`TN`, `Nashville stores`), for
+  dates and amounts, or for an argument of an operator or a measure.
+- Each superseded universal is logged at INFO:
+  `seam: <type> "<text>" [start,end) superseded by <origin> (<n> contenders)`.
+- No wire change.
+
 ### resolver — a coarse `MISC` entity with no CNEC code is a domain value, not a universal one (#118, UD-P0)
 
 `UniversalClassifier` no longer types a coarse `MISC` as universal unless a code says it is a number.

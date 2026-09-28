@@ -258,6 +258,8 @@ object MhMembers {
         start: Int,
         end: Int,
         label: String,
+        /** `cnec:<code>` as NameTag sends it (UD). Defaulted and LAST, so every call above is unchanged. */
+        normalizedValue: String = "",
     ): NerEntity =
         NerEntity
             .newBuilder()
@@ -265,6 +267,7 @@ object MhMembers {
             .setCharStart(start)
             .setCharEnd(end)
             .setLabel(label)
+            .setNormalizedValue(normalizedValue)
             .build()
 
     fun resolve(
