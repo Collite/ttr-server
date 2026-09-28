@@ -1,3 +1,5 @@
+package shop
+
 model db schema dbo
 def table customers {
     description: "Customer master table"

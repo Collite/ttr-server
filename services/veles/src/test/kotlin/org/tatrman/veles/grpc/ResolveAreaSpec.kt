@@ -44,7 +44,7 @@ class ResolveAreaSpec :
             val result = reconciler.reconcile(listOf(source.load()))
             val registry = MetadataRegistry()
             registry.swap(result.model, ModelGraph.build(result.model), result.warnings + result.errors)
-            return MetadataServiceImpl(registry)
+            return MetadataServiceImpl(registry, packageIndex = PackageIndex())
         }
 
         "resolveArea(accounting) returns the area's packages, description, tags, found=true" {
@@ -75,7 +75,7 @@ class ResolveAreaSpec :
         }
 
         "resolveArea on an unready registry surfaces metadata_not_ready" {
-            val empty = MetadataServiceImpl(MetadataRegistry())
+            val empty = MetadataServiceImpl(MetadataRegistry(), packageIndex = PackageIndex())
             val r = empty.resolveArea(ResolveAreaRequest.newBuilder().setArea("accounting").build())
             r.found shouldBe false
             r.messagesList.map { it.code } shouldContainExactly listOf("metadata_not_ready")

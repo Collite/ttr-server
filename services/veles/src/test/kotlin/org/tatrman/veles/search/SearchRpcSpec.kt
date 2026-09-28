@@ -8,6 +8,7 @@ import org.tatrman.ttr.metadata.model.SchemaCode
 import org.tatrman.ttr.metadata.model.parseSchemaCode
 import org.tatrman.ttr.metadata.graph.ModelGraph
 import org.tatrman.veles.grpc.MetadataServiceImpl
+import org.tatrman.veles.grpc.PackageIndex
 import org.tatrman.ttr.metadata.model.LocalizedTextList
 import org.tatrman.ttr.metadata.model.Model
 import org.tatrman.ttr.metadata.model.ModelDescriptor
@@ -167,7 +168,7 @@ private fun wire(vararg q: Query): Pair<MetadataServiceImpl, MetadataRegistry> {
             queries = q.associateBy { it.qname },
         )
     registry.swap(model, ModelGraph.build(model))
-    val service = MetadataServiceImpl(registry, withAll, holder, tracer = null)
+    val service = MetadataServiceImpl(registry, withAll, holder, tracer = null, packageIndex = PackageIndex())
     return service to registry
 }
 

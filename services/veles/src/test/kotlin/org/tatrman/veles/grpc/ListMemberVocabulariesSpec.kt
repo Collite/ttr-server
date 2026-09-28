@@ -56,7 +56,8 @@ class ListMemberVocabulariesSpec :
             registry.swap(result.model, ModelGraph.build(result.model), result.warnings)
             val state = QueryParseState().also { it.reset(result.model.version.value, result.model.queries.keys) }
             if (parsed) QueryParseWorker().also { it.parseAll(result.model, state).join() }.close()
-            return Triple(result.model, state, MetadataServiceImpl(registry = registry, parseState = state))
+            val service = MetadataServiceImpl(registry = registry, parseState = state, packageIndex = PackageIndex())
+            return Triple(result.model, state, service)
         }
 
         suspend fun service(): MetadataServiceImpl = served().third
@@ -82,7 +83,7 @@ class ListMemberVocabulariesSpec :
             check(fatal.isEmpty()) { "estate model failed to load: $fatal" }
             val registry = MetadataRegistry()
             registry.swap(model, ModelGraph.build(model), emptyList())
-            return MetadataServiceImpl(registry)
+            return MetadataServiceImpl(registry, packageIndex = PackageIndex())
         }
 
         suspend fun MetadataServiceImpl.all(dialect: String = "POSTGRESQL"): List<MemberVocabulary> =
@@ -262,6 +263,7 @@ class ListMemberVocabulariesSpec :
             val resp =
                 MetadataServiceImpl(
                     MetadataRegistry(),
+                    packageIndex = PackageIndex(),
                 ).listMemberVocabularies(ListMemberVocabulariesRequest.getDefaultInstance())
             resp.itemsCount shouldBe 0
             resp.messagesList.map { it.code } shouldBe listOf("metadata_not_ready")

@@ -20,6 +20,7 @@ import org.tatrman.ttr.metadata.registry.MetadataRegistry
 import org.tatrman.ttr.metadata.search.SearchAlgorithmRegistry
 import org.tatrman.ttr.metadata.search.SearchIndexHolder
 import org.tatrman.ttr.metadata.search.SearchQuery
+import org.tatrman.veles.grpc.PackageIndex
 
 /**
  * Read-only JSON projection of the in-memory model for a browser catalog viewer.
@@ -43,11 +44,17 @@ import org.tatrman.ttr.metadata.search.SearchQuery
  * constructed once in `Application.module` (Application.kt:150-157) and are passed
  * straight through here rather than rebuilt — a search route wired to an empty
  * registry would silently return no hits.
+ *
+ * Packages (the index's `packages`, graph's `?package=`, every node's `pkg`) come from the same
+ * [PackageIndex] the gRPC GetModel / ListObjects / ListQueries scope by (ttr-server#111): a file's
+ * `package` clause, else the package its directory implies. The loader never sets
+ * `QualifiedName.package`, so these routes must not read it.
  */
 fun Route.velesReadRoutes(
     registry: MetadataRegistry,
     searchRegistry: SearchAlgorithmRegistry,
     searchIndexHolder: SearchIndexHolder?,
+    packageIndex: PackageIndex,
 ) {
     // GET /model/index — packages / schemas / areas + counts + version.
     get("/model/index") {
@@ -61,14 +68,11 @@ fun Route.velesReadRoutes(
         val schemas =
             snap.model.schemas.keys
                 .sorted()
-        // Distinct package segment of every object's qname (QualifiedName.`package`,
-        // QualifiedName.kt:54). Blank packages are dropped. See the report's
-        // "mapping / approximation" note: the gRPC ListObjects package filter keys on
-        // the sourceFile path ("/<pkg>/", MetadataServiceImpl.kt:372) instead — swap the
-        // extractor below if qname.`package` is not populated for this model.
+        // Distinct package of every object's source file — the packages GetModel serves
+        // objects for. Objects of no package (stock roles, root-level files) are dropped.
         val packages =
             objects.values
-                .map { it.qname.`package` }
+                .mapNotNull { packageIndex.packageOf(it.sourceFile) }
                 .filter { it.isNotBlank() }
                 .distinct()
                 .sorted()
@@ -106,14 +110,14 @@ fun Route.velesReadRoutes(
         val nodes =
             snap.graph.byInternalId.values.filter { obj ->
                 (schemaParam == null || schemaCodeToToken(obj.qname.schemaCode) == schemaParam) &&
-                    (pkgParam == null || obj.qname.`package` == pkgParam)
+                    (pkgParam == null || packageIndex.contains(pkgParam, obj.sourceFile))
             }
         val keptIds = nodes.mapTo(mutableSetOf()) { it.internalId }
 
         val body =
             buildJsonObject {
                 putJsonArray("nodes") {
-                    nodes.forEach { obj -> addJsonObject { putNodeFields(obj) } }
+                    nodes.forEach { obj -> addJsonObject { putNodeFields(obj, packageIndex) } }
                 }
                 putJsonArray("edges") {
                     // forEachEdge is the graph's read-only edge walk (ModelGraph.kt:108).
@@ -180,7 +184,7 @@ fun Route.velesReadRoutes(
 
         val body =
             buildJsonObject {
-                putJsonObject("object") { putNodeFields(obj) }
+                putJsonObject("object") { putNodeFields(obj, packageIndex) }
                 // The domain ModelObject exposes only `sourceFile: String` — there is no
                 // structured file/line/column (Model.kt:85). We emit the string variant of
                 // the contract's `string | {file,line,column}` union.
@@ -226,8 +230,11 @@ fun Route.velesReadRoutes(
 
 private const val DEFAULT_SEARCH_LIMIT = 20
 
-/** The shared node/object body: qname / kind / label / schema / pkg. */
-private fun kotlinx.serialization.json.JsonObjectBuilder.putNodeFields(obj: ModelObject) {
+/** The shared node/object body: qname / kind / label / schema / pkg ("" = no package). */
+private fun kotlinx.serialization.json.JsonObjectBuilder.putNodeFields(
+    obj: ModelObject,
+    packageIndex: PackageIndex,
+) {
     put("qname", obj.qname.dotted())
     put("kind", obj.kind)
     // No uniform display "label" exists on ModelObject; the leaf identifier is what the
@@ -235,7 +242,7 @@ private fun kotlinx.serialization.json.JsonObjectBuilder.putNodeFields(obj: Mode
     // MetadataServiceImpl.kt:994). Prose lives in `description` — see report note.
     put("label", obj.qname.name.substringAfterLast('.'))
     put("schema", schemaCodeToToken(obj.qname.schemaCode))
-    put("pkg", obj.qname.`package`)
+    put("pkg", packageIndex.packageOf(obj.sourceFile).orEmpty())
 }
 
 /**

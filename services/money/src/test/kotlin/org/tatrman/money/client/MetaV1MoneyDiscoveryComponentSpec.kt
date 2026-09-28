@@ -14,6 +14,7 @@ import org.tatrman.ttr.metadata.registry.MetadataRegistry
 import org.tatrman.ttr.metadata.source.FileBasedSource
 import org.tatrman.ttr.metadata.source.LocalFsStorage
 import org.tatrman.veles.grpc.MetadataServiceImpl
+import org.tatrman.veles.grpc.PackageIndex
 import java.nio.file.Path
 
 /**
@@ -35,7 +36,7 @@ class MetaV1MoneyDiscoveryComponentSpec :
                 ).reconcile(listOf(source.load()))
             val registry = MetadataRegistry()
             registry.swap(result.model, ModelGraph.build(result.model), result.warnings + result.errors)
-            val service = MetadataServiceImpl(registry)
+            val service = MetadataServiceImpl(registry, packageIndex = PackageIndex())
 
             val serverName = "money-meta-${System.identityHashCode(service)}"
             val server =

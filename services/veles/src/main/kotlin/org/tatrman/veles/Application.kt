@@ -5,6 +5,7 @@ import com.typesafe.config.Config
 import com.typesafe.config.ConfigFactory
 import org.tatrman.ttr.metadata.graph.ModelGraph
 import org.tatrman.veles.grpc.MetadataServiceImpl
+import org.tatrman.veles.grpc.PackageIndex
 import org.tatrman.ttr.metadata.model.ModelDescriptor
 import org.tatrman.veles.parse.QueryParseState
 import org.tatrman.veles.parse.QueryParseWorker
@@ -104,7 +105,11 @@ fun Application.module(config: Config) {
     // Initial load — synchronous block on startup. The plan's polled refresher
     // (Section G follow-up) replaces this with a coroutine that re-runs the
     // load on schedule.
-    val sourceSlots = buildSources(config)
+    // ttr-server#111 — every load also records which package each of its files belongs to; the
+    // reconciled model keeps no such map, and package scoping must not guess it from the path.
+    // The index serves a load once its model swaps in, so it is the registry's FIRST listener.
+    val packageIndex = PackageIndex().commitOnSwap(registry)
+    val sourceSlots = buildSources(config, packageIndex)
     val refresher =
         MetadataRefresher(
             sources = sourceSlots.map { it.source },
@@ -175,6 +180,7 @@ fun Application.module(config: Config) {
             tracer = tracer,
             parseState = parseState,
             refresher = refresher,
+            packageIndex = packageIndex,
         )
 
     // Phase 07 B3 — RefreshScheduler (off by default; interval-seconds > 0 enables).
@@ -316,7 +322,7 @@ fun Application.module(config: Config) {
             )
         }
         metadataExportRoutes(registry)
-        velesReadRoutes(registry, searchRegistryWithAll, searchIndexHolder)
+        velesReadRoutes(registry, searchRegistryWithAll, searchIndexHolder, packageIndex)
     }
 
     monitor.subscribe(ApplicationStopping) {
@@ -329,12 +335,21 @@ fun Application.module(config: Config) {
 
 /** Each configured source paired with its declared id. The id pairs source records to
  *  `RefreshRequest.source_id` and `SourceRefreshResult.source_id` (Phase 07 B2 / DF-M04). */
-private data class SourceSlot(
+internal data class SourceSlot(
     val id: String,
     val source: ModelSource,
 )
 
-private fun buildSources(config: Config): List<SourceSlot> {
+/**
+ * The configured source slots, each recording its loads into [packageIndex] (ttr-server#111).
+ * The wrapping lives here, not at the call site, so no slot can reach the refresher unrecorded.
+ */
+internal fun buildSources(
+    config: Config,
+    packageIndex: PackageIndex,
+): List<SourceSlot> = configuredSources(config).map { it.copy(source = packageIndex.recording(it.id, it.source)) }
+
+private fun configuredSources(config: Config): List<SourceSlot> {
     // Phase 2.2 — the built-in stock-roles source always loads first. Its
     // priority is Int.MAX_VALUE so it wins all merge collisions; protected
     // qnames are enforced separately by the reconciler regardless of priority.

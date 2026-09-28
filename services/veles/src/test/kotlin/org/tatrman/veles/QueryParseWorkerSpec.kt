@@ -11,6 +11,7 @@ import org.tatrman.ttr.metadata.model.SchemaCode
 import org.tatrman.ttr.metadata.model.parseSchemaCode
 import org.tatrman.ttr.metadata.graph.ModelGraph
 import org.tatrman.veles.grpc.MetadataServiceImpl
+import org.tatrman.veles.grpc.PackageIndex
 import org.tatrman.ttr.metadata.model.DbColumn
 import org.tatrman.ttr.metadata.model.DbSchema
 import org.tatrman.ttr.metadata.model.DbTable
@@ -181,7 +182,7 @@ class QueryParseWorkerSpec :
             registry.swap(m, ModelGraph.build(m))
             val state = QueryParseState()
             state.reset(m.version.value, m.queries.keys)
-            val service = MetadataServiceImpl(registry = registry, parseState = state)
+            val service = MetadataServiceImpl(registry = registry, parseState = state, packageIndex = PackageIndex())
 
             // before the worker runs: everything PENDING
             service

@@ -1,3 +1,5 @@
+package shop
+
 model er
 def entity Customer {
     description: "A customer in the system"
