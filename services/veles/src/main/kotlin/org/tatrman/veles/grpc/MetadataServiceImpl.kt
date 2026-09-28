@@ -270,7 +270,12 @@ class MetadataServiceImpl(
         val cncSchema = snap.model.schemas["cnc"] as? CncSchema
         val allObjects = snap.model.objectByQname().values
 
-        val options = BundleOptions(includeSearchHints = request.includeSearchHints, locale = request.locale)
+        val options =
+            BundleOptions(
+                includeSearchHints = request.includeSearchHints,
+                locale = request.locale,
+                packageOf = packageIndex::packageOf,
+            )
         val bundleBuilder = ModelBundle.newBuilder()
 
         for (packageName in request.packagesList) {
@@ -411,7 +416,7 @@ class MetadataServiceImpl(
 
         return ListObjectsResponse
             .newBuilder()
-            .addAllItems(slice.map { it.toObjectDescriptor() })
+            .addAllItems(slice.map { it.toObjectDescriptor(packageIndex::packageOf) })
             .setPageInfo(
                 PageInfo
                     .newBuilder()
@@ -444,7 +449,7 @@ class MetadataServiceImpl(
         val builder =
             GetObjectResponse
                 .newBuilder()
-                .setObjectDescriptor(obj.toObjectDescriptor())
+                .setObjectDescriptor(obj.toObjectDescriptor(packageIndex::packageOf))
         when (obj) {
             is DbTable -> builder.table = obj.toDbTableDetail()
             is DbView -> builder.view = obj.toDbViewDetail()
@@ -516,7 +521,7 @@ class MetadataServiceImpl(
             val entryBuilder =
                 ObjectEntry
                     .newBuilder()
-                    .setObjectDescriptor(obj.toObjectDescriptor())
+                    .setObjectDescriptor(obj.toObjectDescriptor(packageIndex::packageOf))
             // Same per-kind detail population as GetObject (a few kinds — DbProcedure / Relation — stay descriptor-only).
             when (obj) {
                 is DbTable -> entryBuilder.table = obj.toDbTableDetail()
@@ -643,7 +648,7 @@ class MetadataServiceImpl(
 
         return ListQueriesResponse
             .newBuilder()
-            .addAllItems(slice.map { it.toQueryDescriptor(liveParseStatus(it, snap)) })
+            .addAllItems(slice.map { it.toQueryDescriptor(liveParseStatus(it, snap), packageIndex::packageOf) })
             .setPageInfo(
                 PageInfo
                     .newBuilder()
@@ -675,7 +680,7 @@ class MetadataServiceImpl(
         val builder =
             GetQueryResponse
                 .newBuilder()
-                .setObjectDescriptor(q.toObjectDescriptor())
+                .setObjectDescriptor(q.toObjectDescriptor(packageIndex::packageOf))
                 .setSourceLanguage(q.sourceLanguage.toProtoLanguage())
                 .setSourceText(q.sourceText)
                 .setParseStatus(live.toProtoParseStatus())
@@ -760,7 +765,7 @@ class MetadataServiceImpl(
                         .setMessage(ce.message)
                         .also {
                             val owner = snap.model.objectByQname()[ce.objectQname]
-                            if (owner != null) it.`object` = owner.toObjectDescriptor()
+                            if (owner != null) it.`object` = owner.toObjectDescriptor(packageIndex::packageOf)
                         }.build(),
                 )
             }
@@ -833,7 +838,7 @@ class MetadataServiceImpl(
                     val owner = byQname[hit.ownerQname] ?: return@mapNotNull null
                     SearchResult
                         .newBuilder()
-                        .setObjectDescriptor(owner.toObjectDescriptor())
+                        .setObjectDescriptor(owner.toObjectDescriptor(packageIndex::packageOf))
                         .setRelevanceScore(hit.score)
                         .setMatchedField(hit.matchedField)
                         .setSnippet(hit.snippet)
@@ -893,7 +898,7 @@ class MetadataServiceImpl(
                 slice.map { role ->
                     RoleEntry
                         .newBuilder()
-                        .setObjectDescriptor(role.toObjectDescriptor())
+                        .setObjectDescriptor(role.toObjectDescriptor(packageIndex::packageOf))
                         .setRole(role.toRoleDetail())
                         .build()
                 },
@@ -1028,8 +1033,8 @@ class MetadataServiceImpl(
                     .newBuilder()
                     .setType(step.edge.type.toProto())
                     .setDepth(step.depth)
-                    .setSource(source.toObjectDescriptor())
-                    .setTarget(target.toObjectDescriptor()),
+                    .setSource(source.toObjectDescriptor(packageIndex::packageOf))
+                    .setTarget(target.toObjectDescriptor(packageIndex::packageOf)),
             )
         }
         return builder.build()
@@ -1096,11 +1101,12 @@ class MetadataServiceImpl(
  */
 private fun Query.toQueryDescriptor(
     parseStatus: DomainParseStatus,
+    packageOf: (String) -> String?,
     locale: String = "",
 ): QueryDescriptor =
     QueryDescriptor
         .newBuilder()
-        .setObjectDescriptor(toObjectDescriptor(locale))
+        .setObjectDescriptor(toObjectDescriptor(packageOf, locale))
         .setSourceLanguage(sourceLanguage.toProtoLanguage())
         .setParseStatus(parseStatus.toProtoParseStatus())
         .setParameterCount(parameters.size)
@@ -1182,7 +1188,15 @@ private fun ModelObject.selectDescription(locale: String): String {
         ?: ""
 }
 
-private fun ModelObject.toObjectDescriptor(locale: String = ""): ObjectDescriptor =
+/**
+ * [packageOf] is required, not defaulted: every descriptor veles serves states its package
+ * (`ObjectDescriptor.package_name`), and a default would let a new call site serve one without it
+ * — which a caller gating on packages reads as "no package", i.e. as unplaceable.
+ */
+private fun ModelObject.toObjectDescriptor(
+    packageOf: (String) -> String?,
+    locale: String = "",
+): ObjectDescriptor =
     ObjectDescriptor
         .newBuilder()
         .setInternalId(internalId)
@@ -1197,6 +1211,7 @@ private fun ModelObject.toObjectDescriptor(locale: String = ""): ObjectDescripto
         .setSchemaCode(qname.schemaCode.toProto())
         .setKind(kind)
         .setSourceFile(sourceFile)
+        .also { b -> packageOf(sourceFile)?.let { b.packageName = it } }
         .setBinding(toProtoBinding(binding))
         // RS-33 discovery accelerator: surface the object's semantics kind (er
         // entity / db table) so list_objects finds period/poi/fx tables cheaply.
@@ -1374,7 +1389,7 @@ private fun Entity.toEntityDetail(): EntityDetail =
 private fun Entity.toModelBundleEntity(opts: BundleOptions): ModelBundleEntity =
     ModelBundleEntity
         .newBuilder()
-        .setObjectDescriptor(toObjectDescriptor(opts.locale))
+        .setObjectDescriptor(toObjectDescriptor(opts.packageOf, opts.locale))
         .setDetail(toEntityDetail().applyBundleOptions(opts))
         .addAllAttributes(attributes.map { it.toModelBundleAttribute(opts, mentionSemantics) })
         .build()
@@ -1385,7 +1400,7 @@ private fun Attribute.toModelBundleAttribute(
 ): ModelBundleAttribute =
     ModelBundleAttribute
         .newBuilder()
-        .setObjectDescriptor(toObjectDescriptor(opts.locale))
+        .setObjectDescriptor(toObjectDescriptor(opts.packageOf, opts.locale))
         .setDetail(toAttributeDetail(owner))
         .build()
 
@@ -1402,8 +1417,8 @@ private fun Query.toModelBundleQuery(
     val builder =
         ModelBundleQuery
             .newBuilder()
-            .setObjectDescriptor(toObjectDescriptor(opts.locale))
-            .setQueryDescriptor(toQueryDescriptor(parseStatus, opts.locale).applyBundleOptions(opts))
+            .setObjectDescriptor(toObjectDescriptor(opts.packageOf, opts.locale))
+            .setQueryDescriptor(toQueryDescriptor(parseStatus, opts.packageOf, opts.locale).applyBundleOptions(opts))
             .setSourceLanguage(sourceLanguage.toProtoLanguage())
             .setSourceText(sourceText)
     for (param in parameters) {
@@ -1496,6 +1511,8 @@ private fun Relation.toRelationDetail(): RelationDetail {
 private data class BundleOptions(
     val includeSearchHints: Boolean,
     val locale: String,
+    /** The package a source file belongs to — `ObjectDescriptor.package_name` on every bundled object. */
+    val packageOf: (String) -> String?,
 )
 
 private fun ProtoLocalizedString.filterLocale(locale: String): ProtoLocalizedString {
@@ -1627,14 +1644,14 @@ private fun DbView.toDbViewDetail(): DbViewDetail =
 private fun DbTable.toModelBundleTable(opts: BundleOptions): ModelBundleTable =
     ModelBundleTable
         .newBuilder()
-        .setObjectDescriptor(toObjectDescriptor(opts.locale))
+        .setObjectDescriptor(toObjectDescriptor(opts.packageOf, opts.locale))
         .setDetail(toDbTableDetail())
         .build()
 
 private fun DbView.toModelBundleView(opts: BundleOptions): ModelBundleView =
     ModelBundleView
         .newBuilder()
-        .setObjectDescriptor(toObjectDescriptor(opts.locale))
+        .setObjectDescriptor(toObjectDescriptor(opts.packageOf, opts.locale))
         .setDetail(toDbViewDetail())
         .build()
 
