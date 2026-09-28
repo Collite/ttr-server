@@ -136,6 +136,9 @@ import org.tatrman.ttr.semantics.semanticsblock.ResolvedEntitySemantics
  * When a [QueryParseState] is supplied, `parse_status` / `parse_error_*` for queries are read
  * live from the background [org.tatrman.veles.parse.QueryParseWorker]; otherwise they reflect the
  * model's stored (initial PENDING) state.
+ *
+ * Package scoping (GetModel, the `package` filters of ListObjects / ListQueries) reads
+ * [packageIndex], fed by the sources' loads. Left empty, every package is empty.
  */
 class MetadataServiceImpl(
     private val registry: MetadataRegistry,
@@ -146,6 +149,7 @@ class MetadataServiceImpl(
     private val tracer: Tracer? = null,
     private val parseState: QueryParseState? = null,
     private val refresher: MetadataRefresher? = null,
+    private val packageIndex: PackageIndex = PackageIndex(),
 ) : VelesServiceGrpcKt.VelesServiceCoroutineImplBase() {
     private val logger = org.slf4j.LoggerFactory.getLogger(MetadataServiceImpl::class.java)
 
@@ -269,31 +273,32 @@ class MetadataServiceImpl(
         val bundleBuilder = ModelBundle.newBuilder()
 
         for (packageName in request.packagesList) {
-            val packageRoot = "/$packageName/"
+            // ttr-server#111 — membership is the package the file belongs to, never a path match.
+            fun ModelObject.inPackage(): Boolean = packageIndex.contains(packageName, sourceFile)
 
             val packageEntities =
-                erSchema?.entities?.values?.filter { it.sourceFile.contains(packageRoot) } ?: emptyList()
+                erSchema?.entities?.values?.filter { it.inPackage() } ?: emptyList()
             bundleBuilder.addAllEntities(packageEntities.map { it.toModelBundleEntity(options) })
 
             val packageRelations =
-                erSchema?.relations?.values?.filter { it.sourceFile.contains(packageRoot) } ?: emptyList()
+                erSchema?.relations?.values?.filter { it.inPackage() } ?: emptyList()
             bundleBuilder.addAllRelations(packageRelations.map { it.toRelationDetail() })
 
             // Tables: ALL tables declared in the package's db.ttr, regardless of entity binding.
             // Per PF-1: the free-SQL planner needs the full physical schema.
             val packageTables =
-                dbSchema?.tables?.values?.filter { it.sourceFile.contains(packageRoot) } ?: emptyList()
+                dbSchema?.tables?.values?.filter { it.inPackage() } ?: emptyList()
             bundleBuilder.addAllTables(packageTables.map { it.toModelBundleTable(options) })
 
             val packageViews =
-                dbSchema?.views?.values?.filter { it.sourceFile.contains(packageRoot) } ?: emptyList()
+                dbSchema?.views?.values?.filter { it.inPackage() } ?: emptyList()
             bundleBuilder.addAllViews(packageViews.map { it.toModelBundleView(options) })
 
             // A3: pattern iff search.patterns is non-empty. Discrimination happens on the
             // domain object, so it is unaffected by include_search_hints stripping later.
             val packageQueries =
                 snap.model.queries.values
-                    .filter { it.sourceFile.contains(packageRoot) }
+                    .filter { it.inPackage() }
             val (patternQueries, namedQueries) =
                 packageQueries.partition { it.search.patterns.isNotEmpty() }
             bundleBuilder.addAllPatternQueries(
@@ -305,7 +310,7 @@ class MetadataServiceImpl(
 
             if (request.includeRoles) {
                 val packageRoles =
-                    cncSchema?.roles?.values?.filter { it.sourceFile.contains(packageRoot) } ?: emptyList()
+                    cncSchema?.roles?.values?.filter { it.inPackage() } ?: emptyList()
                 bundleBuilder.addAllRoles(
                     // NLS-P10: a role's description rides RoleDetail, not an ObjectDescriptor,
                     // so it needs the chain applied explicitly here.
@@ -319,7 +324,7 @@ class MetadataServiceImpl(
             if (request.includeDrillMap) {
                 val packageDrillMaps =
                     snap.model.drillMaps.values
-                        .filter { it.sourceFile.contains(packageRoot) }
+                        .filter { it.inPackage() }
                 bundleBuilder.addAllDrillMaps(packageDrillMaps.map { it.toDrillMapDetail() })
             }
 
@@ -329,7 +334,7 @@ class MetadataServiceImpl(
             val packageFiles =
                 allObjects
                     .asSequence()
-                    .filter { it.sourceFile.contains(packageRoot) }
+                    .filter { it.inPackage() }
                     .map { it.sourceFile }
                     .distinct()
                     .sorted()
@@ -393,7 +398,7 @@ class MetadataServiceImpl(
                         obj.searchHintsOrNull()?.indexed == true ||
                         (obj is DbColumn && obj.qname in backingIndexed)
                 }.filter { obj ->
-                    request.`package`.isEmpty() || obj.sourceFile.contains("/${request.`package`}/")
+                    request.`package`.isEmpty() || packageIndex.contains(request.`package`, obj.sourceFile)
                 }.sortedBy { "${it.qname.schemaCode}.${it.qname.namespace}.${it.qname.name}" }
                 .toList()
 
@@ -625,7 +630,7 @@ class MetadataServiceImpl(
                     request.languageFilter == ProtoLanguage.LANGUAGE_UNSPECIFIED ||
                         it.sourceLanguage.toProtoLanguage() == request.languageFilter
                 }.filter { request.parseStatusFilter.matches(liveParseStatus(it, snap)) }
-                .filter { request.`package`.isEmpty() || it.sourceFile.contains("/${request.`package`}/") }
+                .filter { request.`package`.isEmpty() || packageIndex.contains(request.`package`, it.sourceFile) }
                 .sortedBy { "${it.qname.schemaCode}.${it.qname.namespace}.${it.qname.name}" }
                 .toList()
 

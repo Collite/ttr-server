@@ -28,12 +28,14 @@ import java.nio.file.Path
  * v3: grounding (`kind:` / `role:`, RG-P3.S0) and mention (`name:` / `code:` /
  * `measures:`, MS-P2·S1):
  *
- *   fixture-semantics/{59-semantics.ttrm (er), 60-semantics-db.ttrm (db)}
+ *   fixture-semantics/semantics/{59-semantics.ttrm (er), 60-semantics-db.ttrm (db)}
  *     -> FileBasedSource -> ModelReconciler -> MetadataRegistry -> MetadataServiceImpl
  *     -> get_object / list_objects carry EntitySemantics / AttributeSemantics
  *
  * Provenance: 59/60-semantics are the grammar's golden conformance fixtures
- * (tatrman `tests/conformance/fixtures/`), vendored here verbatim. kind/role are
+ * (tatrman `tests/conformance/fixtures/`), vendored here verbatim — so they declare no
+ * `package`, and sit in `semantics/` to belong to the one their directory implies (GetModel
+ * serves packages, not directories: ttr-server#111). kind/role are
  * STRINGS (RS-33) — the open vocabulary lives in ttr-semantics, not in the proto.
  *
  * RED until RG-P3.S0.T3 adds the proto fields and T4 populates them.
@@ -50,10 +52,11 @@ class VelesSemanticsProjectionSpec :
                     storage = LocalFsStorage(id = resourceDir, rootPath = root),
                 )
             val reconciler = ModelReconciler(ModelDescriptor(id = "test", name = "test", description = resourceDir))
-            val result = reconciler.reconcile(listOf(source.load()))
+            val snapshot = source.load()
+            val result = reconciler.reconcile(listOf(snapshot))
             val registry = MetadataRegistry()
             registry.swap(result.model, ModelGraph.build(result.model), result.warnings + result.errors)
-            return MetadataServiceImpl(registry)
+            return MetadataServiceImpl(registry, packageIndex = PackageIndex().apply { record(snapshot) })
         }
 
         suspend fun MetadataServiceImpl.descriptorByName(
@@ -269,7 +272,7 @@ class VelesSemanticsProjectionSpec :
             val svc = serviceFrom("fixture-semantics")
             val bundle =
                 svc
-                    .getModel(GetModelRequest.newBuilder().addPackages("fixture-semantics").build())
+                    .getModel(GetModelRequest.newBuilder().addPackages("semantics").build())
                     .model
             // The bundle builds details through its OWN call path (toModelBundleEntity /
             // toModelBundleAttribute), which is the one a defaulted owner argument would have

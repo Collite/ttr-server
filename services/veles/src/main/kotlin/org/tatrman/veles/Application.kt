@@ -5,6 +5,7 @@ import com.typesafe.config.Config
 import com.typesafe.config.ConfigFactory
 import org.tatrman.ttr.metadata.graph.ModelGraph
 import org.tatrman.veles.grpc.MetadataServiceImpl
+import org.tatrman.veles.grpc.PackageIndex
 import org.tatrman.ttr.metadata.model.ModelDescriptor
 import org.tatrman.veles.parse.QueryParseState
 import org.tatrman.veles.parse.QueryParseWorker
@@ -104,7 +105,10 @@ fun Application.module(config: Config) {
     // Initial load — synchronous block on startup. The plan's polled refresher
     // (Section G follow-up) replaces this with a coroutine that re-runs the
     // load on schedule.
-    val sourceSlots = buildSources(config)
+    // ttr-server#111 — every load also records which package each of its files belongs to; the
+    // reconciled model keeps no such map, and package scoping must not guess it from the path.
+    val packageIndex = PackageIndex()
+    val sourceSlots = buildSources(config).map { it.copy(source = packageIndex.recording(it.id, it.source)) }
     val refresher =
         MetadataRefresher(
             sources = sourceSlots.map { it.source },
@@ -175,6 +179,7 @@ fun Application.module(config: Config) {
             tracer = tracer,
             parseState = parseState,
             refresher = refresher,
+            packageIndex = packageIndex,
         )
 
     // Phase 07 B3 — RefreshScheduler (off by default; interval-seconds > 0 enables).

@@ -47,10 +47,11 @@ class GetModelLocalizedDescriptionSpec :
                 )
             val reconciler =
                 ModelReconciler(ModelDescriptor(id = "test", name = "test", description = "localized fixture"))
-            val result = reconciler.reconcile(listOf(source.load()))
+            val snapshot = source.load()
+            val result = reconciler.reconcile(listOf(snapshot))
             val registry = MetadataRegistry()
             registry.swap(result.model, ModelGraph.build(result.model), result.warnings + result.errors)
-            return MetadataServiceImpl(registry)
+            return MetadataServiceImpl(registry, packageIndex = PackageIndex().apply { record(snapshot) })
         }
 
         suspend fun bundle(locale: String) =

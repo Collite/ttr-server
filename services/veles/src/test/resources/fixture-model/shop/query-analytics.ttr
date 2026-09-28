@@ -1,3 +1,5 @@
+package shop
+
 model query
 
 // Regression cover for the Hartland pattern-answering path: a query carrying

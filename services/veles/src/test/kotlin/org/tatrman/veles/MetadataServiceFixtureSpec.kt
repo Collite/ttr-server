@@ -11,6 +11,7 @@ import org.tatrman.meta.v1.ValidateModelRequest
 import org.tatrman.plan.v1.QualifiedName
 import org.tatrman.ttr.metadata.graph.ModelGraph
 import org.tatrman.veles.grpc.MetadataServiceImpl
+import org.tatrman.veles.grpc.PackageIndex
 import org.tatrman.ttr.metadata.model.ModelDescriptor
 import org.tatrman.ttr.metadata.reconcile.ModelReconciler
 import org.tatrman.ttr.metadata.registry.MetadataRegistry
@@ -50,18 +51,19 @@ class MetadataServiceFixtureSpec :
                     storage = LocalFsStorage(id = "fixture", rootPath = fixtureRoot),
                 )
             val reconciler = ModelReconciler(ModelDescriptor(id = "test", name = "test", description = "fixture"))
-            val result = reconciler.reconcile(listOf(source.load()))
+            val snapshot = source.load()
+            val result = reconciler.reconcile(listOf(snapshot))
             val registry = MetadataRegistry()
             registry.swap(result.model, ModelGraph.build(result.model), result.warnings + result.errors)
-            return MetadataServiceImpl(registry)
+            return MetadataServiceImpl(registry, packageIndex = PackageIndex().apply { record(snapshot) })
         }
 
-        "GetModel(packages=[fixture-model]) returns non-empty ModelBundle from the fixture" {
-            val r = service().getModel(GetModelRequest.newBuilder().addPackages("fixture-model").build())
+        "GetModel(packages=[shop]) returns non-empty ModelBundle from the fixture" {
+            val r = service().getModel(GetModelRequest.newBuilder().addPackages("shop").build())
             r.model.packageVersionsList.isEmpty() shouldBe false
             r.model.entitiesList.size shouldBeGreaterThan 0
             // M3: lock down the PackageVersion shape — name echoed, hash is a real sha256 hex.
-            r.model.packageVersionsList[0].packageName shouldBe "fixture-model"
+            r.model.packageVersionsList[0].packageName shouldBe "shop"
             r.model.packageVersionsList[0]
                 .contentHash.length shouldBe 64
             r.model.packageVersionsList[0]
@@ -76,7 +78,7 @@ class MetadataServiceFixtureSpec :
                 service().getModel(
                     GetModelRequest
                         .newBuilder()
-                        .addPackages("fixture-model")
+                        .addPackages("shop")
                         .setIncludeSearchHints(true)
                         .build(),
                 )

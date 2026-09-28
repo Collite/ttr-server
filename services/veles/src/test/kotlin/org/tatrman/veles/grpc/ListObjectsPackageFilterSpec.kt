@@ -32,10 +32,11 @@ class ListObjectsPackageFilterSpec :
                 ModelReconciler(
                     ModelDescriptor(id = "test", name = "test", description = "ucetnictvi fixture"),
                 )
-            val result = reconciler.reconcile(listOf(source.load()))
+            val snapshot = source.load()
+            val result = reconciler.reconcile(listOf(snapshot))
             val registry = MetadataRegistry()
             registry.swap(result.model, ModelGraph.build(result.model), result.warnings + result.errors)
-            return MetadataServiceImpl(registry)
+            return MetadataServiceImpl(registry, packageIndex = PackageIndex().apply { record(snapshot) })
         }
 
         "ListObjects(kind=entity, package=prodeje) returns entities scoped to prodeje" {
