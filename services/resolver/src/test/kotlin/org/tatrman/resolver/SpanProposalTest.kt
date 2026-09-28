@@ -14,6 +14,7 @@ import org.tatrman.nlp.v1.NerEntity
 import org.tatrman.nlp.v1.Token
 import org.tatrman.resolver.model.ResolverEntityType
 import org.tatrman.resolver.pipeline.DomainSpanCandidate
+import org.tatrman.resolver.pipeline.MentionLayer
 import org.tatrman.resolver.pipeline.SpanProposal
 
 /**
@@ -116,6 +117,82 @@ class SpanProposalTest :
             val octavie = cands.single { it.text == "Octavie" }
             octavie.anchored shouldBe false
             octavie.gatedEntityRefs shouldContainExactlyInAnyOrder listOf("er.branch", "er.product")
+        }
+
+        "(c) a coarse MISC with no CNEC code is domain-eligible and proposes against all types (UD-P0, #118)" {
+            // An engine that speaks coarse labels (the LLM-emulated NER; a NameTag entity whose
+            // tag was lost, `cnec:` + empty) calls a name that is not a person, place or date
+            // MISC. Until UD-P0 that was universal and NO path proposed it; it now takes the path
+            // `cnec:op` has taken since the RG hero — fuzzy is the filter, not the NER label.
+            for (normalized in listOf("", "cnec:")) {
+                val parse =
+                    AnalyzeResponse
+                        .newBuilder()
+                        .addAllTokens(
+                            listOf(
+                                tok("Kolik", 0, 5, "kolik", "ADV", 3, "advmod"),
+                                tok("za", 6, 8, "za", "ADP", 3, "case"),
+                                tok("Octavie", 9, 16, "Octavia", "NOUN", 0, "obl"),
+                            ),
+                        ).addEntities(ner("Octavie", 9, 16, "MISC", normalized))
+                        .build()
+                val cands = SpanProposal.proposeDomainSpans(parse, listOf(branch, product))
+                val octavie = cands.single { it.text == "Octavie" }
+                octavie.origin shouldBe DomainSpanCandidate.Origin.NER_ENTITY
+                octavie.anchored shouldBe false
+                octavie.gatedEntityRefs shouldContainExactlyInAnyOrder listOf("er.branch", "er.product")
+            }
+        }
+
+        "a coarse-MISC modifier of an anchor joins its phrase; a place does not (UD-P0 — pinned as it is)" {
+            // `Orion prodejny`: no longer universal, a coarse-MISC `compound` is an ordinary
+            // modifier and the anchor's hull takes it, exactly as it takes the same word with no
+            // NER entity at all (and as it takes a `cnec:op`). A place in the same position is
+            // still universal and still dropped from the hull — pre-modifier places stay places
+            // (UD design §4, gated v2).
+            val store =
+                ResolverEntityType(ref = "er.store", categories = listOf("er.store"), anchors = listOf("prodejna"))
+
+            fun parse(label: String) =
+                AnalyzeResponse
+                    .newBuilder()
+                    .addAllTokens(
+                        listOf(
+                            tok("Orion", 0, 5, "Orion", "NOUN", 2, "compound"),
+                            tok("prodejny", 6, 14, "prodejna", "NOUN", 0, "root"),
+                        ),
+                    ).addEntities(ner("Orion", 0, 5, label))
+                    .build()
+
+            val misc = SpanProposal.proposeDomainSpans(parse("MISC"), listOf(store, product))
+            misc.single { it.origin == DomainSpanCandidate.Origin.ANCHOR_PHRASE }.text shouldBe "Orion prodejny"
+            // …and path (c) stands aside: the phrase already speaks for the entity's characters.
+            misc.none { it.origin == DomainSpanCandidate.Origin.NER_ENTITY } shouldBe true
+
+            val place = SpanProposal.proposeDomainSpans(parse("GPE"), listOf(store, product))
+            place.single { it.origin == DomainSpanCandidate.Origin.ANCHOR_PHRASE }.text shouldBe "prodejny"
+            place.any { it.start < 5 } shouldBe false
+        }
+
+        "mention layer: a coarse-MISC modifier is claimed by path (c), not absorbed into the phrase (UD-P0)" {
+            // What the mention layer does with a token some gated candidate already covers: it
+            // blocks it (only a PROPER_NOUN claim is soft). So after UD-P0 the name is kept out of
+            // `widgets` by path (c)'s claim, where before it was kept out as universal — the
+            // leftover mention is the same, and the name now has a candidate of its own.
+            val parse =
+                AnalyzeResponse
+                    .newBuilder()
+                    .addAllTokens(
+                        listOf(
+                            tok("show", 0, 4, "show", "VERB", 0, "root"),
+                            tok("Orion", 5, 10, "Orion", "NOUN", 3, "compound"),
+                            tok("widgets", 11, 18, "widget", "NOUN", 1, "obj"),
+                        ),
+                    ).addEntities(ner("Orion", 5, 10, "MISC"))
+                    .build()
+            val gated = SpanProposal.proposeDomainSpans(parse, listOf(branch, product))
+            gated.single { it.text == "Orion" }.origin shouldBe DomainSpanCandidate.Origin.NER_ENTITY
+            MentionLayer.propose(parse, gated).map { it.text } shouldContainExactly listOf("widgets")
         }
 
         "(c) a universal NER entity (cnec:gu geo) is NOT proposed as a domain candidate" {
@@ -579,6 +656,8 @@ class SpanProposalTest :
             start: Int,
             end: Int,
             label: String,
+            /** `cnec:<code>` for a NameTag entity. Defaulted and LAST, so every call above is unchanged. */
+            normalizedValue: String = "",
         ): NerEntity =
             NerEntity
                 .newBuilder()
@@ -586,6 +665,7 @@ class SpanProposalTest :
                 .setCharStart(start)
                 .setCharEnd(end)
                 .setLabel(label)
+                .setNormalizedValue(normalizedValue)
                 .build()
     }
 }

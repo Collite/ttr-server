@@ -16,6 +16,19 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+### resolver — a coarse `MISC` entity with no CNEC code is a domain value, not a universal one (#118, UD-P0)
+
+`UniversalClassifier` no longer types a coarse `MISC` as universal unless a code says it is a number.
+This covers the label from Stanza/spaCy/LLM-emulated NER, and a NameTag entity whose tag was lost
+(`cnec:` with no code).
+
+- The name is proposed to the domain gate against every declared type, as a `cnec:o*` object always
+  was. It is no longer extracted as a universal `MISC` binding.
+- If nothing binds it, the value carries a **G3** gap. Before, it was a grounded `MISC` with no gap
+  at all.
+- Numbers are unchanged: `cnec:n*`, `NUMBER`, `CARDINAL`, `ORDINAL` and `PERCENT` stay universal
+  `MISC`.
+
 ### resolver — a quoted literal with no trigger is looked up among its head's members (✅LP-13)
 
 The quotes mean "this span is a value". With a `pred:` trigger the literal is a filter pattern, as
