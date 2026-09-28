@@ -38,6 +38,13 @@ import org.tatrman.text.Normalization.fold
  * proposed by (c) — a domain value like `QT ORLAK` is `io`-tagged, so NER is not the
  * domain filter; fuzzy is.
  *
+ * **One exception, the governed argument (UD, ttr-server#118).** A place or a person name that a
+ * value-bearing anchor governs (`Stores in TN`, `TN` typed a place) is ALSO proposed as that
+ * anchor's governed pair, carrying the entity it reads ([DomainSpanCandidate.dualReadingOf]);
+ * `UniversalSeam` then lets the member reading take the span only when it found a member. Every
+ * other path — (b), (c), (e), the floor, the phrase hull — still refuses universal characters, so
+ * a bare, an unanchored or a pre-modifier place stays a place (UD contracts §3).
+ *
  * RV-P2.1 adds one source and one exclusion, both needed by the lattice:
  *
  *   (e) **literal runs** — a run of code/number tokens (`501001`, `5010O1`, `10`), scoped
@@ -325,7 +332,32 @@ object SpanProposal {
                     if (child.depRelation !in GOVERNED_VALUE_RELATIONS) continue
                     if (child.upos.uppercase() !in NOMINAL_UPOS) continue
                     if (childIdx in anchorTokens) continue
-                    val valueIdx = subtreeIndices(childIdx, children, tokens, universal, anchorTokens, literals.tokens)
+                    // ✅ UD (ttr-server#118, option 1) — the DUAL READING. A place or a person name
+                    // the NER typed universal is excluded from every domain path below, and until
+                    // UD from this one too: `subtreeIndices` refuses a universal root, so `Stores in
+                    // TN` with `TN` labelled GPE proposed no value at all and `TN` left as a grounded
+                    // place the composer cannot filter stores by. But the sentence has scoped it —
+                    // the user named the entity, so the value is that entity's before it is a place.
+                    //
+                    // So here, and ONLY here (the governed argument of a value-bearing anchor), a
+                    // LOCATION/PERSON child takes exactly the path a non-universal argument takes:
+                    // the governed pair, flagged. Its extent is the ENTITY's, not the parse subtree —
+                    // the NER is what says where the place name begins and ends. Whether the member
+                    // reading wins is decided after the gate (`UniversalSeam`), never here: proposal
+                    // is unconditional. Every other reader of `universal` is untouched, so a bare, an
+                    // unanchored or a pre-modifier place stays a place (UD contracts §3.2).
+                    //
+                    // The candidate records WHICH entity it reads (`dualReadingOf`), because its
+                    // own extent is the tokens' and need not equal the entity's: an anchor word
+                    // inside the name is dropped below, and an engine's offsets can disagree with
+                    // the parse (review-108 F1). The seam pairs the two readings by that record.
+                    val dual = dualReadingEntity(childIdx, tokens, parse.entitiesList)
+                    val valueIdx =
+                        if (dual != null) {
+                            tokensWithin(dual, tokens).filterNot { it in anchorTokens }
+                        } else {
+                            subtreeIndices(childIdx, children, tokens, universal, anchorTokens, literals.tokens)
+                        }
                     if (valueIdx.isEmpty()) continue
                     out +=
                         candidate(
@@ -336,6 +368,7 @@ object SpanProposal {
                             anchored = true,
                             origin = DomainSpanCandidate.Origin.GOVERNED_VALUE,
                             headToken = childIdx,
+                            dualReadingOf = dual?.let { it.charStart to it.charEnd },
                         )
                     // ⚑ A-MH-1b (MH-P3·S1·T3) — the OPEN sibling, same span, every declared type.
                     //
@@ -360,6 +393,7 @@ object SpanProposal {
                             anchored = false,
                             origin = DomainSpanCandidate.Origin.OPEN_VALUE,
                             headToken = childIdx,
+                            dualReadingOf = dual?.let { it.charStart to it.charEnd },
                         )
                     coveredTokens += valueIdx
                 }
@@ -393,7 +427,7 @@ object SpanProposal {
         // NameTag flags it `op`). Gated against ALL declared types; fuzzy stays the filter.
         // Skipped where an already-emitted candidate covers the entity's span.
         for (e in parse.entitiesList) {
-            if (UniversalClassifier.isUniversal(e.label, e.normalizedValue)) continue
+            if (UniversalClassifier.isUniversal(e.label, e.normalizedValue, e.text)) continue
             if (out.any { it.start <= e.charStart && it.end >= e.charEnd }) continue
             // LP: NER is the path that finds a domain value the POS tagger missed — and a quoted
             // name is exactly the shape NameTag flags. `Pelex` in quotes is a string, not an org.
@@ -685,6 +719,7 @@ object SpanProposal {
         origin: DomainSpanCandidate.Origin,
         headToken: Int,
         anchorHeadToken: Int = -1,
+        dualReadingOf: Pair<Int, Int>? = null,
     ): DomainSpanCandidate {
         val sorted = indices.sorted()
         val start = sorted.minOf { tokens[it].charStart }
@@ -700,6 +735,7 @@ object SpanProposal {
             headToken,
             tokens.getOrNull(headToken)?.let { it.lemma.ifBlank { it.text } }.orEmpty(),
             anchorHeadToken,
+            dualReadingOf = dualReadingOf,
         )
     }
 
@@ -787,7 +823,7 @@ object SpanProposal {
     // UniversalClassifier — the same classification UniversalExtraction types by,
     // so the exclusion set and the universal bindings agree by construction.
     private fun universalCharRanges(entities: List<NerEntity>): List<IntRange> =
-        entities.filter { UniversalClassifier.isUniversal(it.label, it.normalizedValue) }.map {
+        entities.filter { UniversalClassifier.isUniversal(it.label, it.normalizedValue, it.text) }.map {
             it.charStart until
                 it.charEnd
         }
@@ -798,5 +834,32 @@ object SpanProposal {
     ): Boolean {
         val mid = (token.charStart + token.charEnd) / 2
         return universal.any { mid in it }
+    }
+
+    /**
+     * UD — the NER entity that makes [childIdx] a dual reading: the entity covering the token's
+     * mid-character (the geometry [isUniversal] uses) whose universal type has a member reading to
+     * offer ([UniversalClassifier.DUAL_READING_TYPES]). `null` when no such entity covers it — a
+     * date or an amount under an anchor stays as it was.
+     */
+    private fun dualReadingEntity(
+        childIdx: Int,
+        tokens: List<Token>,
+        entities: List<NerEntity>,
+    ): NerEntity? {
+        val mid = (tokens[childIdx].charStart + tokens[childIdx].charEnd) / 2
+        return entities.firstOrNull { e ->
+            mid in e.charStart until e.charEnd &&
+                UniversalClassifier.dualReadingType(e.label, e.normalizedValue, e.text) != null
+        }
+    }
+
+    /** Every token whose mid-character lies inside [entity]'s extent — the entity, as tokens. */
+    private fun tokensWithin(
+        entity: NerEntity,
+        tokens: List<Token>,
+    ): List<Int> {
+        val extent = entity.charStart until entity.charEnd
+        return tokens.indices.filter { (tokens[it].charStart + tokens[it].charEnd) / 2 in extent }
     }
 }

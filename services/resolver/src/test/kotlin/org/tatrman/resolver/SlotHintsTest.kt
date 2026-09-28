@@ -10,6 +10,9 @@ import org.tatrman.resolver.pipeline.FrameRolePreps
 import org.tatrman.resolver.pipeline.Slot
 import org.tatrman.resolver.pipeline.SlotHint
 import org.tatrman.resolver.pipeline.SlotHints
+import org.tatrman.resolver.pipeline.SpanProposal
+import org.tatrman.resolver.model.kindsByRef
+import org.tatrman.resolver.model.ownersByRef
 
 /**
  * MH T2 — the slot derivation, over the E-catalogue (design.md §1.4, contracts §8.2).
@@ -594,6 +597,49 @@ class SlotHintsTest :
                 )
 
             governorOf(p, cands, lang = "cs") shouldBe store
+        }
+
+        "UD — a dual reading is stamped exactly as the NER=OFF pair: both carry the governor, the flag survives" {
+            // The dual-reading pair is the governed pair (UD contracts §3.4): M3 needs the governor on
+            // the open sibling for `Customers in TN`, and nothing may tell the two apart but the flag.
+            val types = MhMembers.entityTypes()
+            val kindsByRef = types.kindsByRef()
+            val ownersByRef = types.ownersByRef()
+            for ((text, tokens, governor) in listOf(
+                Triple("Stores in TN", MhMembers.e11En(), MhMembers.STORE),
+                Triple("Customers in TN", MhMembers.e13En(), MhMembers.CUSTOMER),
+            )) {
+                val start = text.indexOf("TN")
+
+                fun stamped(ner: Boolean): List<DomainSpanCandidate> {
+                    val base = MhMembers.parse(text, tokens)
+                    val p =
+                        if (ner) {
+                            base
+                                .toBuilder()
+                                .addEntities(
+                                    MhMembers.ner("TN", start, start + 2, "GPE"),
+                                ).build()
+                        } else {
+                            base
+                        }
+                    return SlotHints.stamp(
+                        p,
+                        SpanProposal.proposeDomainSpans(p, types),
+                        kindsByRef,
+                        ownersByRef,
+                        "en",
+                        preps,
+                    )
+                }
+
+                val on = stamped(ner = true)
+                on.map { it.copy(dualReadingOf = null) } shouldBe stamped(ner = false)
+                val pair = on.filter { it.text == "TN" }
+                pair.map { it.origin } shouldBe
+                    listOf(DomainSpanCandidate.Origin.GOVERNED_VALUE, DomainSpanCandidate.Origin.OPEN_VALUE)
+                pair.all { it.dualReading && it.slot.governorRef == governor } shouldBe true
+            }
         }
 
         "E12-en — a FACT governor is no governor at all: blank, so the tie asks" {

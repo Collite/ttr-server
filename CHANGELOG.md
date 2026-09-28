@@ -16,6 +16,50 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+### `ttr-nlp` — a NameTag entity ends where its last word does (#118)
+
+`parse_nametag_conll` ended an entity at `start + len(" ".join(words))`. NameTag splits a hyphenated
+name into three words (`Frýdku`, `-`, `Místku`), and an abbreviation into word and period
+(`Ústí n. L.`), so the joined spelling was longer than the question and the entity's end ran into
+the next word. The end is now the source position of the last word, and `text` is the source slice
+(`original[char_start:char_end] == text`). An entity whose words were not all found in the source
+keeps the old spelling and end. Single-spaced names are unchanged.
+
+### resolver — a place or person name scoped to an entity is looked up as that entity's member first (#118, UD-P1)
+
+The governed argument of a value-bearing anchor now gets a member reading even when the NER types it
+a place or a person. In `Stores in TN`, `TN` is `GPE`, and `store.state` holds `TN`.
+
+- **A member was found:** the member wins the span. The value is a `VALUE_KIND_LITERAL` finding with
+  the member's attribution. There is no grounded place beside it, and no universal binding in
+  `Resolution`. An ambiguity among members asks by owner (`member_of` per option). The member
+  reading replaces the NER entity it was proposed over, even where the NER engine's offsets and
+  the parse's tokens disagree on where the name ends.
+- **No member was found:** the NER reading stands, exactly as before (`VALUE_KIND_GROUNDED`, G3).
+  A hit on a declared term (a model object's alias, an operator word) is not a member: a place
+  spelled like a declared term stays a place.
+- **Nothing changes** for bare, unanchored and pre-modifier places (`TN`, `Nashville stores`), for
+  dates and amounts, or for an argument of an operator or a measure.
+- Each superseded universal is logged at INFO, with no user text:
+  `seam: <type> [start,end) superseded by <origin> (<n> contenders) conversation_id=<id>`. The
+  span's text is logged at DEBUG.
+- No wire change.
+
+### resolver — a coarse `MISC` entity with no CNEC code is a domain value, not a universal one (#118, UD-P0)
+
+`UniversalClassifier` no longer types a coarse `MISC` as universal unless a code says it is a number.
+This covers the label from Stanza/spaCy/LLM-emulated NER, and a NameTag entity whose tag was lost
+(`cnec:` with no code).
+
+- The name is proposed to the domain gate against every declared type, as a `cnec:o*` object always
+  was. It is no longer extracted as a universal `MISC` binding.
+- If it is proposed as a value and nothing binds it, the value carries a **G3** gap. Before, it was
+  a grounded `MISC` with no gap at all. As a pre-modifier of an anchor (`Orion prodejny`) it joins
+  the anchor's phrase instead, as any word with no entity does, and is not a value of its own.
+- Numbers are unchanged: `cnec:n*`, `NUMBER`, `CARDINAL`, `ORDINAL` and `PERCENT` stay universal
+  `MISC`, and so does a coarse `MISC` whose text has a digit and no letter (`501001`). An engine
+  with no number label (the LLM-emulated NER) sends its numbers that way.
+
 ### resolver — a quoted literal with no trigger is looked up among its head's members (✅LP-13)
 
 The quotes mean "this span is a value". With a `pred:` trigger the literal is a filter pattern, as

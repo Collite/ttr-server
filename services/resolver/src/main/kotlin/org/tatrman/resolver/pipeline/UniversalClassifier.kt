@@ -15,14 +15,40 @@ import org.tatrman.resolver.v1.UniversalEntityType
  * — a domain value like `QT ORLAK` is `io`-tagged, so NER is not the domain filter,
  * the fuzzy gate is.
  *
+ * Two label vocabularies reach this object, and they do not say the same thing:
+ * - **CNEC-coded** (NameTag 3): the raw container code rides in `normalized_value` as
+ *   `cnec:<code>` and decides alone — `n*` is a number (universal `MISC`), `o*` an object
+ *   (domain-eligible), whatever the coarse label beside it says.
+ * - **coarse** (Stanza, spaCy, the LLM-emulated NER, or a NameTag entity whose tag was lost):
+ *   the label decides. Persons, places, dates, amounts and the number labels
+ *   (`NUMBER`/`CARDINAL`/`ORDINAL`/`PERCENT`) are universal; organisations are not.
+ *
+ * **A coarse `MISC` without a code is domain-eligible** (UD-P0, ttr-server#118 option 3).
+ * In a coarse vocabulary `MISC` means "named, but not a person, place, date or organisation"
+ * — the LLM-emulated NER prompt says exactly that — which is the class the code already keeps
+ * domain-eligible when NameTag spells it `o*`. Typing it universal did two quiet harms: the
+ * name never reached the fuzzy gate (so a store or product name the model declares could not
+ * bind), and `Gaps.selfGrounding` counts a grounded `MISC` as self-sufficient, so the value
+ * left with neither a binding nor a gap. Numbers stay universal `MISC`, by code (`cnec:n*`) or
+ * by their own coarse labels.
+ *
+ * **…unless its text is a number** (review-108 F2). A coarse vocabulary need not HAVE a number
+ * label: the LLM-emulated NER emulates NameTag with its classes folded to
+ * `PERSON LOCATION ORGANIZATION DATE MISC`, so a number it tags arrives as a coarse `MISC`,
+ * exactly as NameTag's `n*` does before the fold. Read as a name, `501001` was proposed twice
+ * on one span — unscoped by the NER path, scoped by the literal run — so a coarse `MISC` whose
+ * text has a digit and no letter stays universal `MISC`, which is what it was before UD-P0.
+ *
  * ⚠ BRITTLENESS (ported note): the CNEC leading-letter mapping mirrors NameTag 3 /
  * CNEC 2.0 container codes and is intentionally coarse. It is a heuristic over a
  * *closed* label set; if the NER backend's label scheme changes (a different model,
  * a coarse-label front), this map must be re-validated. The parity corpus (T6)
  * asserts it against the live NameTag output — that is the guard, not this comment.
+ * The coarse set was changed on purpose once: 2026-09-28, UD-P0 took `MISC` out of it.
  */
 object UniversalClassifier {
     // Coarse labels nlp/NameTag may emit at the front (PER/LOC/ORG/DATE/MONEY…).
+    // `MISC` is deliberately absent: see [isCoarseMisc].
     private val COARSE: Map<String, UniversalEntityType?> =
         mapOf(
             "PER" to UniversalEntityType.PERSON,
@@ -41,7 +67,6 @@ object UniversalClassifier {
             "ORG" to null,
             "ORGANIZATION" to null,
             "INSTITUTION" to null,
-            "MISC" to UniversalEntityType.MISC,
         )
 
     // CNEC 2.0 leading letters that are universal (removed before domain gating).
@@ -52,6 +77,14 @@ object UniversalClassifier {
             't' to UniversalEntityType.DATE,
             'n' to UniversalEntityType.MISC,
         )
+
+    /**
+     * The universal types whose NER reading can also be a declared member (UD, ⚑UD-5): a place
+     * or a person name may be a store's state or a salesperson's name. `DATE` and `MONEY` are
+     * kernel-typed and owned by grounding; `MISC` is numbers only, which take the literal path.
+     */
+    val DUAL_READING_TYPES: Set<UniversalEntityType> =
+        setOf(UniversalEntityType.LOCATION, UniversalEntityType.PERSON)
 
     /**
      * The universal type of an NER entity, or `null` if it is domain-eligible
@@ -65,15 +98,21 @@ object UniversalClassifier {
      * container letter keeps them apart — the RG hero's `op`-tagged "Octavie" reaches
      * `er.product` instead of binding as a universal MISC (while `no`-tagged numbers stay MISC).
      * Entities without a `cnec:` code (other engines' coarse labels) fall back to [label].
+     *
+     * [text] is the entity's surface, read for one question only: whether a coarse `MISC` is a
+     * number (review-108 F2). Defaulted and LAST; without it a coarse `MISC` reads as a name.
      */
     fun classify(
         label: String,
         normalizedValue: String = "",
+        text: String = "",
     ): UniversalEntityType? {
         cnecContainer(normalizedValue)?.let { return CNEC_UNIVERSAL[it] }
 
         val up = label.trim().uppercase()
         if (up.isEmpty()) return null
+        // Reached only without a usable code: a coarse MISC is a name — unless it is a number.
+        if (isCoarseMisc(up)) return if (isNumber(text)) UniversalEntityType.MISC else null
         if (COARSE.containsKey(up)) return COARSE[up]
         // CNEC container/type codes handed over as the label itself: short, lowercase
         // (e.g. "th", "gu", "ps", "no").
@@ -85,7 +124,28 @@ object UniversalClassifier {
         return null
     }
 
-    /** The CNEC container letter from a `cnec:<code>` normalized_value, or `null` if absent. */
+    /**
+     * The coarse `MISC` label (UD-P0). Named rather than left to the [COARSE] table's silence, so
+     * the next reader sees the rule: it is domain-eligible, like every label we do not know to be
+     * universal. [classify] only asks after the CNEC code has had its say.
+     */
+    private fun isCoarseMisc(upperLabel: String): Boolean = upperLabel == "MISC"
+
+    /**
+     * review-108 F2 — a digit and no letter: `501001`, `1 234,50`, `12.5`. What a coarse
+     * vocabulary with no number label hands over as `MISC`. A code with a letter in it (`5010O1`)
+     * is not a number and stays a name: the fuzzy gate is what knows whether it is a value.
+     */
+    private fun isNumber(text: String): Boolean = text.any { it.isDigit() } && text.none { it.isLetter() }
+
+    /**
+     * The CNEC container letter from a `cnec:<code>` normalized_value, or `null` if absent.
+     *
+     * `cnec:` with an EMPTY code is also `null`: NameTag found an entity and the tag was lost
+     * (`ttrnlp.doc.labels.parse_cnec` returns `""` for exactly this). There is then no code to
+     * decide, so [classify] falls back to the coarse label — which the front sets to `MISC` for
+     * an empty tag, and a coarse `MISC` is domain-eligible (⚑UD-4).
+     */
     private fun cnecContainer(normalizedValue: String): Char? {
         val v = normalizedValue.trim()
         if (!v.startsWith("cnec:")) return null
@@ -96,5 +156,17 @@ object UniversalClassifier {
     fun isUniversal(
         label: String,
         normalizedValue: String = "",
-    ): Boolean = classify(label, normalizedValue) != null
+        text: String = "",
+    ): Boolean = classify(label, normalizedValue, text) != null
+
+    /**
+     * The entity's universal type iff it is one a declared member can also carry
+     * ([DUAL_READING_TYPES]), else `null`. `null` for a domain-eligible entity too: a value that
+     * is not universal needs no second reading, it already has the domain path.
+     */
+    fun dualReadingType(
+        label: String,
+        normalizedValue: String = "",
+        text: String = "",
+    ): UniversalEntityType? = classify(label, normalizedValue, text)?.takeIf { it in DUAL_READING_TYPES }
 }

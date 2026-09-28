@@ -48,7 +48,7 @@ object MentionLayer {
 
         val universal =
             parse.entitiesList
-                .filter { UniversalClassifier.isUniversal(it.label, it.normalizedValue) }
+                .filter { UniversalClassifier.isUniversal(it.label, it.normalizedValue, it.text) }
                 .map { it.charStart until it.charEnd }
 
         val children = HashMap<Int, MutableList<Int>>()

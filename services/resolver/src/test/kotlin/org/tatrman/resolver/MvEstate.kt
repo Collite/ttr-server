@@ -12,6 +12,7 @@ import org.tatrman.fuzzy.v1.LookupRequest
 import org.tatrman.fuzzy.v1.LookupResponse
 import org.tatrman.fuzzy.v1.Provenance
 import org.tatrman.fuzzy.v1.SourceTag
+import org.tatrman.nlp.v1.NerEntity
 import org.tatrman.nlp.v1.Token
 import org.tatrman.resolver.client.FuzzyClient
 import org.tatrman.resolver.model.ResolverEntityType
@@ -299,12 +300,21 @@ object MvEstate {
         lang: String = "en",
         archive: Path = writeArchive(),
         blind: (List<String>) -> Boolean = { false },
+        // UD — the NER entities the live service emits for this question (NER=ON). LAST and
+        // defaulted: every MV drill above runs NER=OFF, as it always has.
+        entities: List<NerEntity> = emptyList(),
     ): Pair<ResolveResponse, MemberIndex> {
         val registry = registry(archive)
         val index = MemberIndex(runBlocking { registry.current().entityTypes }, blind)
+        val parse =
+            MhMembers
+                .parse(text, tokens, lang)
+                .toBuilder()
+                .addAllEntities(entities)
+                .build()
         val pipeline =
             ResolverPipeline(
-                MhMembers.FakeNlp(MhMembers.parse(text, tokens, lang), lang),
+                MhMembers.FakeNlp(parse, lang),
                 index,
                 registry,
                 emptyMap(),

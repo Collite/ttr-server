@@ -3,7 +3,6 @@ package org.tatrman.resolver
 
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldContainExactly
-import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldContainAll
 import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
 import io.kotest.matchers.shouldBe
@@ -438,17 +437,19 @@ class MhPipelineTest :
                 .binding.ref shouldBe "${MhMembers.CA_STATE}#TN"
         }
 
-        "⚑ drill — a value the NER calls a PLACE never reaches the domain gate at all" {
-            // The blocking finding of the P3 drill, pinned so it cannot be re-discovered by
-            // accident. hartland's live NLP labels `TN` GPE (en) / MISC (cs) and `Nashville`
-            // GPE; `UniversalClassifier` maps all three to a UNIVERSAL type, and universal
-            // spans are removed BEFORE domain gating. So on the real estate the tier-M value
-            // is extracted by the universal layer and is never offered to the member
-            // vocabulary — the rules are correct and simply never get asked.
+        "the drill's place-typed value reaches the domain gate as a dual reading and binds (UD, #118)" {
+            // HISTORY. This case used to pin the blocking finding of the P3 drill (README-P3 §2,
+            // "a value the NER calls a PLACE never reaches the domain gate at all"): hartland's
+            // live NLP labels `TN` GPE (en) and `Nashville` GPE, `UniversalClassifier` types them
+            // universal, and universal spans were removed BEFORE domain gating — so the tier-M
+            // value left as a grounded place with zero attributions, and the member rules were
+            // never asked. It was pinned here so that the day someone changed the seam, the test
+            // would say what it cost. It was deliberately NOT fixed in tier M.
             //
-            // This is not a tier-M defect and must not be "fixed" here: whether a universal
-            // LOCATION should ALSO be gated as a domain member is the universal/domain seam,
-            // and changing it would move every place-named value on every estate.
+            // The seam was changed on purpose, by UD (ttr-server#118, option 1): the governed
+            // argument of a value-bearing anchor is also read as that anchor's member, and a
+            // member reading that finds something wins the span. So the same question now binds.
+            // (The cs `MISC` half of the old note is UD option 3 — a coarse MISC is not universal.)
             val withPlace =
                 MhMembers.resolve(
                     "Stores in TN",
@@ -457,11 +458,9 @@ class MhPipelineTest :
                 )
 
             val tn = withPlace.resolutionState.valuesList.single { it.span.text == "TN" }
-            // Not "dropped": CLAIMED. It leaves as a grounded place with no domain attribution
-            // at all, so no member row is ever considered and no governor is ever consulted.
-            tn.kind shouldBe ValueKind.VALUE_KIND_GROUNDED
-            tn.hasGrounding() shouldBe true
-            tn.attributionsList.shouldBeEmpty()
+            tn.kind shouldBe ValueKind.VALUE_KIND_LITERAL
+            tn.hasGrounding() shouldBe false
+            tn.attributionsList.map { it.binding.ref } shouldContainExactly listOf("${MhMembers.STORE_STATE}#TN")
         }
     }) {
     private companion object {

@@ -3,6 +3,7 @@ package org.tatrman.resolver
 
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.booleans.shouldBeFalse
+import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
@@ -14,6 +15,8 @@ import org.tatrman.nlp.v1.NerEntity
 import org.tatrman.nlp.v1.Token
 import org.tatrman.resolver.model.ResolverEntityType
 import org.tatrman.resolver.pipeline.DomainSpanCandidate
+import org.tatrman.resolver.pipeline.Literals
+import org.tatrman.resolver.pipeline.MentionLayer
 import org.tatrman.resolver.pipeline.SpanProposal
 
 /**
@@ -116,6 +119,105 @@ class SpanProposalTest :
             val octavie = cands.single { it.text == "Octavie" }
             octavie.anchored shouldBe false
             octavie.gatedEntityRefs shouldContainExactlyInAnyOrder listOf("er.branch", "er.product")
+        }
+
+        "(c) a coarse MISC with no CNEC code is domain-eligible and proposes against all types (UD-P0, #118)" {
+            // An engine that speaks coarse labels (the LLM-emulated NER; a NameTag entity whose
+            // tag was lost, `cnec:` + empty) calls a name that is not a person, place or date
+            // MISC. Until UD-P0 that was universal and NO path proposed it; it now takes the path
+            // `cnec:op` has taken since the RG hero — fuzzy is the filter, not the NER label.
+            for (normalized in listOf("", "cnec:")) {
+                val parse =
+                    AnalyzeResponse
+                        .newBuilder()
+                        .addAllTokens(
+                            listOf(
+                                tok("Kolik", 0, 5, "kolik", "ADV", 3, "advmod"),
+                                tok("za", 6, 8, "za", "ADP", 3, "case"),
+                                tok("Octavie", 9, 16, "Octavia", "NOUN", 0, "obl"),
+                            ),
+                        ).addEntities(ner("Octavie", 9, 16, "MISC", normalized))
+                        .build()
+                val cands = SpanProposal.proposeDomainSpans(parse, listOf(branch, product))
+                val octavie = cands.single { it.text == "Octavie" }
+                octavie.origin shouldBe DomainSpanCandidate.Origin.NER_ENTITY
+                octavie.anchored shouldBe false
+                octavie.gatedEntityRefs shouldContainExactlyInAnyOrder listOf("er.branch", "er.product")
+            }
+        }
+
+        "a coarse MISC that is a NUMBER is proposed by no path — not twice on one span (review-108 F2)" {
+            // Read as a name, `501001` was proposed by path (c) (unscoped, every type) AND by the
+            // literal run (scoped by `Stores`): two candidates on one span, `dedupe` keeping both
+            // because `anchored` is part of its key, and so two findings and a G3 + G4 over the
+            // same characters. A number stays universal MISC, as it was before UD-P0.
+            val parse =
+                MhMembers
+                    .parse(
+                        "Stores 501001",
+                        arrayOf(
+                            MhMembers.tok("Stores", 0, 6, "store", "NOUN", 0, "root"),
+                            MhMembers.tok("501001", 7, 13, "501001", "NUM", 1, "nummod"),
+                        ),
+                    ).toBuilder()
+                    .addEntities(MhMembers.ner("501001", 7, 13, "MISC"))
+                    .build()
+
+            SpanProposal
+                .proposeDomainSpans(parse, MhMembers.entityTypes())
+                .filter { it.text == "501001" }
+                .shouldBeEmpty()
+        }
+
+        "a coarse-MISC modifier of an anchor joins its phrase; a place does not (UD-P0 — pinned as it is)" {
+            // `Orion prodejny`: no longer universal, a coarse-MISC `compound` is an ordinary
+            // modifier and the anchor's hull takes it, exactly as it takes the same word with no
+            // NER entity at all (and as it takes a `cnec:op`). A place in the same position is
+            // still universal and still dropped from the hull — pre-modifier places stay places
+            // (UD design §4, gated v2).
+            val store =
+                ResolverEntityType(ref = "er.store", categories = listOf("er.store"), anchors = listOf("prodejna"))
+
+            fun parse(label: String) =
+                AnalyzeResponse
+                    .newBuilder()
+                    .addAllTokens(
+                        listOf(
+                            tok("Orion", 0, 5, "Orion", "NOUN", 2, "compound"),
+                            tok("prodejny", 6, 14, "prodejna", "NOUN", 0, "root"),
+                        ),
+                    ).addEntities(ner("Orion", 0, 5, label))
+                    .build()
+
+            val misc = SpanProposal.proposeDomainSpans(parse("MISC"), listOf(store, product))
+            misc.single { it.origin == DomainSpanCandidate.Origin.ANCHOR_PHRASE }.text shouldBe "Orion prodejny"
+            // …and path (c) stands aside: the phrase already speaks for the entity's characters.
+            misc.none { it.origin == DomainSpanCandidate.Origin.NER_ENTITY } shouldBe true
+
+            val place = SpanProposal.proposeDomainSpans(parse("GPE"), listOf(store, product))
+            place.single { it.origin == DomainSpanCandidate.Origin.ANCHOR_PHRASE }.text shouldBe "prodejny"
+            place.any { it.start < 5 } shouldBe false
+        }
+
+        "mention layer: a coarse-MISC modifier is claimed by path (c), not absorbed into the phrase (UD-P0)" {
+            // What the mention layer does with a token some gated candidate already covers: it
+            // blocks it (only a PROPER_NOUN claim is soft). So after UD-P0 the name is kept out of
+            // `widgets` by path (c)'s claim, where before it was kept out as universal — the
+            // leftover mention is the same, and the name now has a candidate of its own.
+            val parse =
+                AnalyzeResponse
+                    .newBuilder()
+                    .addAllTokens(
+                        listOf(
+                            tok("show", 0, 4, "show", "VERB", 0, "root"),
+                            tok("Orion", 5, 10, "Orion", "NOUN", 3, "compound"),
+                            tok("widgets", 11, 18, "widget", "NOUN", 1, "obj"),
+                        ),
+                    ).addEntities(ner("Orion", 5, 10, "MISC"))
+                    .build()
+            val gated = SpanProposal.proposeDomainSpans(parse, listOf(branch, product))
+            gated.single { it.text == "Orion" }.origin shouldBe DomainSpanCandidate.Origin.NER_ENTITY
+            MentionLayer.propose(parse, gated).map { it.text } shouldContainExactly listOf("widgets")
         }
 
         "(c) a universal NER entity (cnec:gu geo) is NOT proposed as a domain candidate" {
@@ -549,6 +651,191 @@ class SpanProposalTest :
 
             anchor.text shouldBe "portfolios"
         }
+
+        // ── UD-P1 (ttr-server#118, option 1) — the governed argument's dual reading ─────────────
+        //
+        // A place or person name that a value-bearing anchor governs is read TWICE: as the NER
+        // says (universal, extracted elsewhere) and as the governed pair any other argument gets.
+        // Proposal is unconditional; whether the member reading wins is the seam's call, later.
+
+        "UD (a) a LOCATION under a value-bearing anchor gets the governed pair, flagged — NER=OFF plus the flag" {
+            val types = MhMembers.entityTypes()
+            val off = SpanProposal.proposeDomainSpans(MhMembers.parse("Stores in TN", MhMembers.e11En()), types)
+            val on = SpanProposal.proposeDomainSpans(udParse("Stores in TN", MhMembers.e11En(), "TN", 10, 12), types)
+
+            on.map { it.copy(dualReadingOf = null) } shouldBe off
+            on.filter { it.text == "TN" }.map { it.origin to it.dualReading } shouldContainExactly
+                listOf(DomainSpanCandidate.Origin.GOVERNED_VALUE to true, DomainSpanCandidate.Origin.OPEN_VALUE to true)
+            on.single { it.origin == DomainSpanCandidate.Origin.ANCHOR_PHRASE }.dualReading shouldBe false
+            val governed = on.single { it.origin == DomainSpanCandidate.Origin.GOVERNED_VALUE }
+            governed.anchored shouldBe true
+            governed.gatedEntityRefs shouldContainExactlyInAnyOrder listOf(MhMembers.STORE, MhMembers.STORE_SALES)
+            // MV §5.3 — the owners' member vocabularies are where the governed question looks
+            governed.categories shouldContain MhMembers.STORE_STATE
+            governed.categories shouldContain MhMembers.STORE_NAME
+            on
+                .single {
+                    it.origin == DomainSpanCandidate.Origin.OPEN_VALUE
+                }.gatedEntityRefs shouldContainExactlyInAnyOrder
+                types.map { it.ref }
+        }
+
+        "UD (a) the dual reading's span is the ENTITY's extent, not the parse subtree" {
+            val types = MhMembers.entityTypes()
+            // `York` heads, `New` is its compound: the subtree of `York` is `New York` either way
+            val compound =
+                arrayOf(
+                    MhMembers.tok("Stores", 0, 6, "store", "NOUN", 0, "root"),
+                    MhMembers.tok("in", 7, 9, "in", "ADP", 4, "case"),
+                    MhMembers.tok("New", 10, 13, "New", "PROPN", 4, "compound"),
+                    MhMembers.tok("York", 14, 18, "York", "PROPN", 1, "nmod"),
+                )
+            // `New` heads, `York` hangs off it as `flat`
+            val flat =
+                arrayOf(
+                    MhMembers.tok("Stores", 0, 6, "store", "NOUN", 0, "root"),
+                    MhMembers.tok("in", 7, 9, "in", "ADP", 3, "case"),
+                    MhMembers.tok("New", 10, 13, "New", "PROPN", 1, "nmod"),
+                    MhMembers.tok("York", 14, 18, "York", "PROPN", 3, "flat"),
+                )
+
+            fun governed(
+                tokens: Array<Token>,
+                entity: Pair<Int, Int>,
+            ) = SpanProposal
+                .proposeDomainSpans(udParse("Stores in New York", tokens, "?", entity.first, entity.second), types)
+                .filter { it.origin == DomainSpanCandidate.Origin.GOVERNED_VALUE && it.dualReading }
+                .map { it.text }
+
+            governed(compound, 10 to 18) shouldContainExactly listOf("New York")
+            governed(flat, 10 to 18) shouldContainExactly listOf("New York")
+            // the entity says what the place is: over `York` alone, the span is `York`
+            governed(compound, 14 to 18) shouldContainExactly listOf("York")
+        }
+
+        "UD (a) the dual reading records the ENTITY it reads, even where the two extents differ (A-UD-3)" {
+            // NameTag reports an entity's end as start + len(" ".join(words)), so a hyphenated
+            // name split into three words overshoots by two: `Frýdku - Místku` is 15 characters
+            // where the question has 13. The candidate is the tokens' (13..26); the record is the
+            // entity's (13..28), and the seam pairs the two readings by the record (review-108 F1).
+            val parse =
+                MhMembers
+                    .parse("Zákazníci ve Frýdku-Místku", frydekMistek(), "cs")
+                    .toBuilder()
+                    .addEntities(MhMembers.ner("Frýdku - Místku", 13, 28, "LOCATION", "cnec:gu"))
+                    .build()
+            val governed =
+                SpanProposal
+                    .proposeDomainSpans(parse, MhMembers.entityTypes())
+                    .single { it.origin == DomainSpanCandidate.Origin.GOVERNED_VALUE }
+
+            (governed.start to governed.end) shouldBe (13 to 26)
+            governed.text shouldBe "Frýdku-Místku"
+            governed.dualReadingOf shouldBe (13 to 28)
+        }
+
+        "UD (a) only a place or a person is read twice: a DATE under an anchor proposes nothing, as today (⚑UD-5)" {
+            val types = MhMembers.entityTypes()
+
+            fun under(
+                word: String,
+                label: String,
+            ) = SpanProposal.proposeDomainSpans(
+                udParse(
+                    "Stores in $word",
+                    arrayOf(
+                        MhMembers.tok("Stores", 0, 6, "store", "NOUN", 0, "root"),
+                        MhMembers.tok("in", 7, 9, "in", "ADP", 3, "case"),
+                        MhMembers.tok(word, 10, 10 + word.length, word, "PROPN", 1, "nmod"),
+                    ),
+                    word,
+                    10,
+                    10 + word.length,
+                    label,
+                ),
+                types,
+            )
+
+            // `2024` would prove nothing here — a NUM is never a governed value — so the date is a
+            // nominal the parser tags PROPN, which the governed block WOULD take if it were allowed.
+            under("March", "DATE").none { it.start < 15 && it.end > 10 } shouldBe true
+            under(
+                "Novak",
+                "PERSON",
+            ).filter { it.text == "Novak" }.map { it.origin to it.dualReading } shouldContainExactly
+                listOf(DomainSpanCandidate.Origin.GOVERNED_VALUE to true, DomainSpanCandidate.Origin.OPEN_VALUE to true)
+        }
+
+        "UD (a) no dual reading outside a value-bearing anchor's governed argument (contracts §3.2)" {
+            val types =
+                MhMembers.entityTypes() +
+                    ResolverEntityType(
+                        ref = "op:show",
+                        categories = listOf("op:show"),
+                        anchors = listOf("show"),
+                        objectKind = "operator",
+                    )
+
+            fun proposedOver(
+                text: String,
+                tokens: Array<Token>,
+                start: Int,
+                end: Int,
+                literals: Boolean = false,
+            ): List<DomainSpanCandidate> {
+                val parse = udParse(text, tokens, text.substring(start, end), start, end)
+                val lits = if (literals) Literals.of(text, parse) else Literals.NONE
+                return SpanProposal.proposeDomainSpans(parse, types, lits).filter { it.start < end && it.end > start }
+            }
+
+            // bare — nothing governs it
+            proposedOver("TN", MhMembers.e12Bare(), 0, 2).shouldBeEmpty()
+            // a pre-modifier of the anchor is not its argument (design §4: stays a place)
+            proposedOver(
+                "Nashville stores",
+                arrayOf(
+                    MhMembers.tok("Nashville", 0, 9, "Nashville", "PROPN", 2, "compound"),
+                    MhMembers.tok("stores", 10, 16, "store", "NOUN", 0, "root"),
+                ),
+                0,
+                9,
+            ).shouldBeEmpty()
+            // a valueless owner: a place under `show` is still a place
+            proposedOver(
+                "show TN",
+                arrayOf(
+                    MhMembers.tok("show", 0, 4, "show", "VERB", 0, "root"),
+                    MhMembers.tok("TN", 5, 7, "TN", "PROPN", 1, "obj"),
+                ),
+                5,
+                7,
+            ).shouldBeEmpty()
+            // an unbound governor: `cities` anchors nothing
+            proposedOver(
+                "Cities in TN",
+                arrayOf(
+                    MhMembers.tok("Cities", 0, 6, "city", "NOUN", 0, "root"),
+                    MhMembers.tok("in", 7, 9, "in", "ADP", 3, "case"),
+                    MhMembers.tok("TN", 10, 12, "TN", "PROPN", 1, "nmod"),
+                ),
+                10,
+                12,
+            ).shouldBeEmpty()
+            // inside quotes it is a string, not a place and not a member (LP; I-1)
+            proposedOver(
+                "Stores in \"TN\"",
+                arrayOf(
+                    MhMembers.tok("Stores", 0, 6, "store", "NOUN", 0, "root"),
+                    MhMembers.tok("in", 7, 9, "in", "ADP", 4, "case"),
+                    MhMembers.tok("\"", 10, 11, "\"", "PUNCT", 4, "punct"),
+                    MhMembers.tok("TN", 11, 13, "TN", "PROPN", 1, "nmod"),
+                    MhMembers.tok("\"", 13, 14, "\"", "PUNCT", 4, "punct"),
+                ),
+                11,
+                13,
+                literals = true,
+            ).shouldBeEmpty()
+        }
     }) {
     companion object {
         private fun tok(
@@ -574,11 +861,38 @@ class SpanProposalTest :
                 .putAllFeats(feats)
                 .build()
 
+        /** `Zákazníci ve Frýdku-Místku` — the hyphen is its own token, as UD Czech splits it. */
+        fun frydekMistek(): Array<Token> =
+            arrayOf(
+                MhMembers.tok("Zákazníci", 0, 9, "zákazník", "NOUN", 0, "root"),
+                MhMembers.tok("ve", 10, 12, "v", "ADP", 3, "case"),
+                MhMembers.tok("Frýdku", 13, 19, "Frýdek", "PROPN", 1, "nmod"),
+                MhMembers.tok("-", 19, 20, "-", "PUNCT", 5, "punct"),
+                MhMembers.tok("Místku", 20, 26, "Místek", "PROPN", 3, "flat"),
+            )
+
+        /** A §8.5-style parse with ONE NER entity (default: the place `GPE`) over `[start, end)`. */
+        private fun udParse(
+            text: String,
+            tokens: Array<Token>,
+            entityText: String,
+            start: Int,
+            end: Int,
+            label: String = "GPE",
+        ): AnalyzeResponse =
+            MhMembers
+                .parse(text, tokens)
+                .toBuilder()
+                .addEntities(MhMembers.ner(entityText, start, end, label))
+                .build()
+
         private fun ner(
             text: String,
             start: Int,
             end: Int,
             label: String,
+            /** `cnec:<code>` for a NameTag entity. Defaulted and LAST, so every call above is unchanged. */
+            normalizedValue: String = "",
         ): NerEntity =
             NerEntity
                 .newBuilder()
@@ -586,6 +900,7 @@ class SpanProposalTest :
                 .setCharStart(start)
                 .setCharEnd(end)
                 .setLabel(label)
+                .setNormalizedValue(normalizedValue)
                 .build()
     }
 }

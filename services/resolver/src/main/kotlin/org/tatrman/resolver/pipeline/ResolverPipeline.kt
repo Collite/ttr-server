@@ -202,6 +202,28 @@ class ResolverPipeline(
                 siblings,
                 resolverRegistry.snapshotHash,
             )
+        // ✅ UD (ttr-server#118) — the universal/domain seam, decided HERE because this is the first
+        // line that knows both readings' answers: the gate has spoken on every dual reading, and
+        // nothing yet has read the universal list. A place the sentence scoped to an entity whose
+        // member it is loses its span to that member (the universal is superseded); a dual reading
+        // that found no member is withdrawn and the place stands exactly as before. BEFORE grounding,
+        // the lattice and the door, so all three read the same survivors — and the `assemble`
+        // lambda below closes over them, so every re-assembly the lookup loop makes agrees.
+        val seam = UniversalSeam.supersede(universals, broadPass.gated)
+        for ((u, g) in seam.superseded) {
+            // Ids and counts at INFO, like every other INFO line in this service; the user's words
+            // — a person's name, when the universal was a PERSON — only at DEBUG (review-108 F4).
+            log.info(
+                "seam: {} [{},{}) superseded by {} ({} contenders) conversation_id={}",
+                u.entityType.name,
+                u.start,
+                u.end,
+                g.candidate.origin,
+                g.contenders.size,
+                request.conversationId,
+            )
+            log.debug("seam: [{},{}) is \"{}\"", u.start, u.end, u.text)
+        }
         val triggers =
             GroundingTriggers.collect(
                 triggerSpans,
@@ -230,7 +252,7 @@ class ResolverPipeline(
                 ?.let {
                     GroundingRung.ground(
                         client = it,
-                        universals = universals,
+                        universals = seam.universals,
                         questionText = fresh.text,
                         // The caller's package wins; config is the single-estate fallback (D1).
                         pkg = request.context.`package`.ifBlank { defaultPackage },
@@ -254,7 +276,7 @@ class ResolverPipeline(
                         resolverRegistry.snapshotHash,
                     ),
                 ungatedMentions = ungated,
-                universals = universals,
+                universals = seam.universals,
                 entityTypes = resolverRegistry.entityTypes,
                 snapshotHash = resolverRegistry.snapshotHash,
                 batch = batchResp,
@@ -284,8 +306,8 @@ class ResolverPipeline(
         // written against the loop's result and cannot tell the difference.
         val rounds =
             lookupRounds.run(
-                lattice = assemble(broadPass.gated, ungatedSpans),
-                gated = broadPass.gated,
+                lattice = assemble(seam.gated, ungatedSpans),
+                gated = seam.gated,
                 ungated = ungatedSpans,
                 entityTypes = resolverRegistry.entityTypes,
                 thresholds = resolverRegistry.thresholds,
@@ -320,7 +342,7 @@ class ResolverPipeline(
         when (outcome) {
             is Clarify ->
                 builder.awaiting = awaitingOf(outcome, request.conversationId, parse.traceId, request.callerSubject)
-            is Bound -> builder.resolution = resolutionOf(universals, outcome, parse, assessment.degradedFloor)
+            is Bound -> builder.resolution = resolutionOf(seam.universals, outcome, parse, assessment.degradedFloor)
         }
         return builder.build()
     }
