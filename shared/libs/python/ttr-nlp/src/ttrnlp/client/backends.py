@@ -503,6 +503,13 @@ def parse_nametag_conll(
     information a pack may want back — the importers read the raw tag rather than
     trusting the label, since the label is an adapter's interpretation and a stale
     one would mistype the annotation so that the rule wanting it never fires.
+
+    An entity's extent is where its words ARE in the source, not the length of
+    the words joined by spaces: NameTag tokenizes `Frýdku-Místku` as three words,
+    and `" ".join` spells it two characters longer than the question does, so the
+    end overshot into the next word. Where every word was found, `text` is the
+    source slice (`original[char_start:char_end] == text`), as for any tokenizer
+    here; a word the search missed keeps the joined spelling as before.
     """
     entities: list[NerEntity] = []
     if not conll:
@@ -511,24 +518,30 @@ def parse_nametag_conll(
     words: list[str] = []
     cnec = ""
     start = -1
+    end = -1
+    found_all = True
     cursor = 0
 
     def flush() -> None:
-        nonlocal words, cnec, start
+        nonlocal words, cnec, start, end, found_all
         if not words:
             return
-        text = " ".join(words)
+        joined = " ".join(words)
+        if start >= 0 and found_all:
+            text, char_end = original[start:end], end
+        else:
+            text, char_end = joined, (start + len(joined)) if start >= 0 else 0
         entities.append(
             NerEntity(
                 text=text,
                 label=cnec_to_universal(cnec),
                 char_start=start,
-                char_end=(start + len(text)) if start >= 0 else 0,
+                char_end=char_end,
                 normalized_value=f"{CNEC_PREFIX}{cnec}",
                 source_engine=source_engine,
             )
         )
-        words, cnec, start = [], "", -1
+        words, cnec, start, end, found_all = [], "", -1, -1, True
 
     for line in conll.strip().split("\n"):
         parts = line.split("\t")
@@ -544,13 +557,17 @@ def parse_nametag_conll(
             found = original.find(word, cursor)
             start = found
             if found >= 0:
-                cursor = found + len(word)
+                cursor = end = found + len(word)
+            else:
+                found_all = False
             words = [word]
         elif tag.startswith("I-") and words:
             words.append(word)
             found = original.find(word, cursor)
             if found >= 0:
-                cursor = found + len(word)
+                cursor = end = found + len(word)
+            else:
+                found_all = False
 
     flush()
     return entities

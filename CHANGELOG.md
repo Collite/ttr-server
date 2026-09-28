@@ -16,6 +16,15 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+### `ttr-nlp` — a NameTag entity ends where its last word does (#118)
+
+`parse_nametag_conll` ended an entity at `start + len(" ".join(words))`. NameTag splits a hyphenated
+name into three words (`Frýdku`, `-`, `Místku`), and an abbreviation into word and period
+(`Ústí n. L.`), so the joined spelling was longer than the question and the entity's end ran into
+the next word. The end is now the source position of the last word, and `text` is the source slice
+(`original[char_start:char_end] == text`). An entity whose words were not all found in the source
+keeps the old spelling and end. Single-spaced names are unchanged.
+
 ### resolver — a place or person name scoped to an entity is looked up as that entity's member first (#118, UD-P1)
 
 The governed argument of a value-bearing anchor now gets a member reading even when the NER types it
