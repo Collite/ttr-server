@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 from typing import Any, Dict, List, Set
@@ -222,8 +223,12 @@ def create_app() -> FastAPI:
                         detail="At least one operation must be specified"
                     )
 
-                # Run analysis
-                result = orchestrator.analyze(
+                # On a worker thread, never on the loop. `analyze` is synchronous and
+                # waits on backend HTTP (up to `timeout_seconds` × retries per engine);
+                # awaited inline, that wait froze every request on this process, the
+                # gRPC contract included, since both servers share the one loop.
+                result = await asyncio.to_thread(
+                    orchestrator.analyze,
                     text=request.text,
                     language=request.language,
                     ops=requested_ops,

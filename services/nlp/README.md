@@ -27,7 +27,12 @@ the UFAL stack). It is the NLP foundation consumed by Themis (via
   version), never blank. `GetStatus` returns the capability matrix with each
   routed (language, op)'s pinning `tier` (`SELF_HOSTED_PINNED` /
   `REMOTE_UNPINNED`). Diagnostics: `RG-NLP-002` (Lindat/unpinned), `RG-NLP-003`
-  (empty model), `RG-NLP-010` (degrade floor).
+  (empty model), `RG-NLP-004` (rate limit spent, op skipped), `RG-NLP-010`
+  (degrade floor).
+- **The loop stays free.** `Analyze` and `BatchLemmatize` (gRPC) and `/v1/analyze`
+  (REST) run the synchronous orchestrator on a worker thread, so a slow backend
+  delays only the request waiting on it. `RunPipeline` stays on the loop: a
+  `morph: true` run feeds the miss queue, which is mutated from the loop thread only.
 
 **NLS-P3 (the NLP suite):** the front gained the **pipeline surface** — a named
 pipeline runs engine ops, then gazetteer lists, then rule phases, and answers with
@@ -92,7 +97,11 @@ an annotated document.
 - **Languages**: Czech (cs), English (en)
 - **Operations**: NER only
 - **Endpoint**: `https://lindat.mff.cuni.cz/services/nametag`
-- **Rate Limit**: 5 req/min (configurable)
+- **Rate Limit**: 5 req/min (configurable). A call over the limit is **refused at
+  once**, never queued: the op is skipped with `RG-NLP-004` (warning) and the rest
+  of the analysis still runs. Waiting for a slot (up to 60 s) outlasts any
+  interactive caller's timeout, so the caller would lose the whole analysis
+  instead of one op.
 
 ### langid (lingua-language-detector)
 - **Languages**: Multiple (cs, en, de, sk, pl, hu, sl, hr, sr, mk, bg)

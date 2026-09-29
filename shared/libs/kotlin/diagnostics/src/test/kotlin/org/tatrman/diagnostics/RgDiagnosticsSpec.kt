@@ -23,6 +23,8 @@ class RgDiagnosticsSpec :
                 "RG-NLP-001" to Severity.ERROR,
                 "RG-NLP-002" to Severity.WARNING,
                 "RG-NLP-003" to Severity.ERROR,
+                // A remote tier's per-minute budget spent: the op skipped at once, never waited out.
+                "RG-NLP-004" to Severity.WARNING,
                 "RG-NLP-010" to Severity.INFO,
                 "RG-FUZ-001" to Severity.WARNING,
                 "RG-FUZ-002" to Severity.ERROR,

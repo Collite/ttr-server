@@ -26,6 +26,10 @@ RG_NLP_001 = "RG-NLP-001"
 RG_NLP_002 = "RG-NLP-002"
 # error — backend launched/responded without an explicit model id (S-1)
 RG_NLP_003 = "RG-NLP-003"
+# warning — the backend's rate limit (the remote tier's `rate_limit_per_minute`) is
+# spent: the op was skipped, not queued, and the rest of the analysis still ran.
+# Raised by `ttrnlp.client.backends.RateLimited`, whose message leads with it.
+RG_NLP_004 = "RG-NLP-004"
 # info — unsupported (lang, op): degrade floor applied (tokenize+fold+langid)
 RG_NLP_010 = "RG-NLP-010"
 
@@ -58,6 +62,7 @@ _SEVERITY: Dict[str, str] = {
     RG_NLP_001: "ERROR",
     RG_NLP_002: "WARNING",
     RG_NLP_003: "ERROR",
+    RG_NLP_004: "WARNING",
     RG_NLP_010: "INFO",
     NLS_NLP_011: "WARNING",
     NLS_PACK_010: "ERROR",
@@ -71,6 +76,7 @@ _MEANING: Dict[str, str] = {
     RG_NLP_001: "no engine backend reachable for a routed (language, op)",
     RG_NLP_002: "route points at a REMOTE_UNPINNED tier — non-conformant for parity/determinism",
     RG_NLP_003: "backend has no explicit model id (S-1 violation)",
+    RG_NLP_004: "backend rate limit spent — op skipped, not queued; the rest of the analysis ran",
     RG_NLP_010: "unsupported (language, op) — degrade floor applied (tokenize+fold+langid)",
     NLS_NLP_011: "op not routed in the active lane — skipped; the remaining phases still ran",
     NLS_PACK_010: "reload refused — the previous pack snapshot is still serving",
