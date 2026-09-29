@@ -170,6 +170,54 @@ anchor's own type carries the column categories.
 answerable: *"the store's state, the customer's, or the warehouse's?"* rather than `TN` three
 times. Blank for a vocabulary option, which names its object through `target_ref` already.
 
+## When the value is also a place or a person (the universal/domain seam)
+
+The NER layer types some words **universal** — a place, a person, a date, an amount, a number
+(`UniversalClassifier`). A universal span is grounded by the kernel and kept out of every domain
+proposal path, so the estate's vocabulary is never asked about it. That is right for `Paris` in
+*"sales since we opened in Paris"*, and wrong for `TN` in *"stores in TN"*, where the word is a
+member of the store's state column that the NER happens to call a place (ttr-server#118).
+
+**A place or person name that the sentence scopes to a declared entity is looked up as that
+entity's member first; the NER reading stands only when no member matches.**
+
+- **The scope is the governor.** The span must be the governed argument of a value-bearing anchor,
+  the position that gives any value `GOVERNED_VALUE` above (`stores in TN`, `prodejny v Nashvillu`).
+  `SpanProposal` gives it the ordinary governed pair over the entity's extent, marked as a dual
+  reading of that entity (`DomainSpanCandidate.dualReadingOf`). Only `LOCATION` and `PERSON` get
+  one: dates and amounts belong to grounding, and numbers to the literal path.
+- **A member decides.** Right after the broad-pass gate, `UniversalSeam.supersede` reads what each
+  dual reading found. A member row — bound, or a tie among members, which tier M then asks by
+  owner — removes the universal it was proposed over: never grounded, never assembled, never
+  reported, and the span carries one `LITERAL` finding. A declared row alone does not count: a
+  model object's alias or an operator word spelled like the place leaves the place standing.
+- **No member, no change.** A dual reading that found no member is withdrawn, and the place stands
+  exactly as before, grounded and with its G3. The candidate list still shows the pair: proposal
+  is unconditional, supersession is not.
+- **Paired by the entity, not by position.** A dual reading removes only the universal whose
+  offsets are the entity it read. The NER engine's extent and the parse tokens' need not agree to
+  the character (a hyphenated name, an anchor word inside the name), and a candidate that merely
+  overlaps a universal never removes it.
+
+**Not scoped, not changed.** A bare place (`TN`), an unanchored one, a pre-modifier of the anchor
+(`Nashville stores`), the argument of an anchor that holds no values (an operator, a measure word)
+and anything under a word that did not bind are proposed by no path, as before. Without a
+governor there is no entity whose member the word could be, and reading every place as a
+possible value would be a guess.
+
+**A coarse `MISC` is a name.** Engines disagree on what `MISC` means. NameTag's own code rides in
+`normalized_value` as `cnec:<code>` and decides alone (`n*` a number, `o*` an object). Without a
+code — Stanza, spaCy, the LLM-emulated NER, or a NameTag entity whose tag was lost — `MISC` means
+"named, but not a person, place, date or organisation", so it is domain-eligible and goes to the
+fuzzy gate like an `ORG`. Unless its text is a number (a digit and no letter: `501001`): a coarse
+vocabulary with no number label hands numbers over as `MISC`, and those stay universal `MISC`.
+
+Each supersession is logged once, at INFO, with ids and counts only —
+`seam: LOCATION [10,12) superseded by GOVERNED_VALUE (1 contenders) conversation_id=…` — and the
+span's text at DEBUG. No proto or lattice field records it. A turn that bound a place-looking value
+with **no** `seam:` line took the plain governed path: the NER never typed the word universal (a
+NameTag code outside `p`/`g`/`t`/`n`, say), so there was nothing to supersede.
+
 ## Configuration
 
 `frame-roles.conf` gains `count-heads` beside `grouping-preps` / `filter-preps` — per-language
@@ -190,6 +238,7 @@ nothing behaves exactly as it did before:
 | `Registry` override without `reached_from` | reachability rule inert |
 | no `owner_ref` on the member's attribute | tier M inert — `E(m)` cannot be resolved, so the tie asks |
 | a value with no governor, or a fact governor | tier M inert — it asks, by owner |
+| no NER entity on a governed argument (NER off, or nothing tagged) | seam inert — no dual reading, nothing superseded |
 
 No reader gate is needed for the v2 → v3 archive crossing: `reachedFrom` is a defaulted field
 inside `targets`, so a v2 archive decodes in a v3 reader and a v3 archive is read by an older
