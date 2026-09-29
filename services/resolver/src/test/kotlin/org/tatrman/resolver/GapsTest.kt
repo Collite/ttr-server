@@ -2,6 +2,7 @@
 package org.tatrman.resolver
 
 import io.kotest.core.spec.style.StringSpec
+import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.shouldBe
 import org.tatrman.nlp.v1.AnalyzeResponse
@@ -239,6 +240,100 @@ class GapsTest :
             gaps.map { it.valueId } shouldContainExactly listOf("v2")
         }
 
+        // ── #139 — a number that names something is not self-grounding ───────────────────────────
+
+        fun gapsFor(
+            value: ValueFinding,
+            vararg tokens: Token,
+        ) = Gaps.assess(
+            mentions = emptyList(),
+            values = listOf(value),
+            ambiguousSpans = emptySet(),
+            parse = AnalyzeResponse.newBuilder().addAllTokens(tokens.toList()).build(),
+            degraded = false,
+        )
+
+        "#139 — an account code the NER typed a number is a G3, so the turn can ask" {
+            // the real parses: cs Stanza hangs `501001` off `účet` as `dep`, en Stanza off `account` as `flat`
+            val cs =
+                gapsFor(
+                    grounded("v1", 5, 11, "501001", "MISC"),
+                    tok("účet", 0, 4, "NOUN", 0, "root"),
+                    tok("501001", 5, 11, "NUM", 1, "dep"),
+                )
+            cs.map { it.kind to it.valueId } shouldContainExactly listOf(GapKind.GAP_KIND_G3_UNATTRIBUTED to "v1")
+
+            val en =
+                gapsFor(
+                    grounded("v1", 8, 14, "501001", "MISC"),
+                    tok("account", 0, 7, "NOUN", 0, "root"),
+                    tok("501001", 8, 14, "NUM", 1, "flat"),
+                )
+            en.map { it.kind } shouldContainExactly listOf(GapKind.GAP_KIND_G3_UNATTRIBUTED)
+        }
+
+        "#139 — a count, a threshold, a bare number and a parse-less value stay self-grounding" {
+            // `top 10 products`: the number counts its noun
+            gapsFor(
+                grounded("v1", 4, 6, "10", "MISC"),
+                tok("top", 0, 3, "ADJ", 3, "amod"),
+                tok("10", 4, 6, "NUM", 3, "nummod"),
+                tok("products", 7, 15, "NOUN", 0, "root"),
+            ).shouldBeEmpty()
+            // `sales above 1000`: a preposition makes it a comparison, not a name
+            gapsFor(
+                grounded("v1", 12, 16, "1000", "MISC"),
+                tok("sales", 0, 5, "NOUN", 0, "root"),
+                tok("above", 6, 11, "ADP", 3, "case"),
+                tok("1000", 12, 16, "NUM", 1, "nmod"),
+            ).shouldBeEmpty()
+            // a bare number names nothing
+            gapsFor(grounded("v1", 0, 6, "501001", "MISC"), tok("501001", 0, 6, "NUM", 0, "root")).shouldBeEmpty()
+            // no parse (a re-gate of a parse-less lattice): unchanged
+            gapsFor(grounded("v1", 5, 11, "501001", "MISC")).shouldBeEmpty()
+            // `earned 5000`: an amount a VERB takes names nothing
+            gapsFor(
+                grounded("v1", 7, 11, "5000", "MISC"),
+                tok("earned", 0, 6, "VERB", 0, "root"),
+                tok("5000", 7, 11, "NUM", 1, "obj"),
+            ).shouldBeEmpty()
+            // a spelled-out numeral is not a code, whatever relation it hangs by
+            gapsFor(
+                grounded("v1", 5, 10, "deset", "MISC"),
+                tok("účet", 0, 4, "NOUN", 0, "root"),
+                tok("deset", 5, 10, "NUM", 1, "dep"),
+            ).shouldBeEmpty()
+        }
+
+        "#139 — through the pipeline: NameTag's `cnec:n_` account code keeps its grounding AND gets its G3" {
+            // hartland, live: `501001` = MISC · cnec:n_ (universal), so no path proposes it for a lookup
+            val r =
+                MhMembers.resolve(
+                    "účet 501001",
+                    arrayOf(
+                        MhMembers.tok("účet", 0, 4, "účet", "NOUN", 0, "root"),
+                        MhMembers.tok("501001", 5, 11, "501001", "NUM", 1, "dep"),
+                    ),
+                    lang = "cs",
+                    entities = listOf(MhMembers.ner("501001", 5, 11, "MISC", "cnec:n_")),
+                )
+
+            val value = r.resolutionState.valuesList.single { it.span.text == "501001" }
+            value.kind shouldBe ValueKind.VALUE_KIND_GROUNDED
+            value.grounding.kind shouldBe "MISC"
+            r.resolutionState.gapsList
+                .filter { it.valueId == value.id }
+                .map { it.kind } shouldContainExactly listOf(GapKind.GAP_KIND_G3_UNATTRIBUTED)
+        }
+
+        "#139 — the exception is for numbers only: a date under a noun is still the planner's value" {
+            gapsFor(
+                grounded("v1", 7, 11, "2025", "DATE"),
+                tok("výnosy", 0, 6, "NOUN", 0, "root"),
+                tok("2025", 7, 11, "NUM", 1, "nmod"),
+            ).shouldBeEmpty()
+        }
+
         "gaps come out in span order, whatever order they were found in" {
             val gaps =
                 Gaps.assess(
@@ -252,6 +347,25 @@ class GapsTest :
         }
     }) {
     companion object {
+        /** A parsed token; [head] is 1-based, 0 = root, as the NLP service sends it. */
+        private fun tok(
+            text: String,
+            start: Int,
+            end: Int,
+            upos: String,
+            head: Int,
+            relation: String,
+        ): Token =
+            Token
+                .newBuilder()
+                .setText(text)
+                .setCharStart(start)
+                .setCharEnd(end)
+                .setUpos(upos)
+                .setDepHead(head)
+                .setDepRelation(relation)
+                .build()
+
         private fun mention(
             id: String,
             start: Int,
