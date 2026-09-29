@@ -16,6 +16,19 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+### nlp — OpenTelemetry is off unless a collector is named
+
+The front defaulted its collector to `localhost:4317` and built the log, trace and metric exporters
+in every pod. Where no collector runs, which is any deployment with the chart's `telemetry` left at
+its default, each exporter retried forever: an ERROR/WARNING pair every few seconds in the pod log.
+
+- With no `OTEL_EXPORTER_OTLP_HOST` (the chart renders it only for `telemetry.enabled` with
+  `telemetry.otlpHost`), the front builds no exporters and does not instrument FastAPI or httpx.
+  Its request span and counters run against the OpenTelemetry API's no-ops.
+- The chart now **fails the render** for `telemetry.enabled: true` without `telemetry.otlpHost`,
+  instead of rendering nothing and leaving telemetry silently off.
+- A deployment that sets both keys is unchanged.
+
 ### `ttr-nlp` — a MorphoDiTa token reads like UD Czech: `feats`, and the POS UD gives it
 
 The MorphoDiTa adapter (`parse_morphodita_vertical`, which the nlp front's `option` lane uses for
