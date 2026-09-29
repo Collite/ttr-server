@@ -41,6 +41,7 @@ and a plausible-but-wrong span is worse than an obviously absent one.
 from __future__ import annotations
 
 import logging
+import threading
 import time
 from collections import deque
 from dataclasses import dataclass, field
@@ -131,12 +132,26 @@ class BackendSpec:
     timeout_seconds: int = 30
     max_retries: int = 3
     #: >0 only for the remote (Lindat) dev tier; self-hosted backends are
-    #: unthrottled, and a limit there would throttle our own cluster.
+    #: unthrottled, and a limit there would throttle our own cluster. A call over
+    #: the limit raises `RateLimited` at once; it is never queued (`_RateLimiter`).
     rate_limit_per_minute: int = 0
 
 
 class BackendError(Exception):
     """A backend did not answer usefully. Carries the last transport failure."""
+
+
+#: The front's diagnostic for a call the rate limit refused (nlp contracts §8). The
+#: message leads with it so the front's orchestrator can put the code on the wire
+#: rather than a generic engine error.
+RATE_LIMITED_CODE = "RG-NLP-004"
+
+
+class RateLimited(BackendError):
+    """The backend's per-minute budget is spent. The call was not made.
+
+    Raised at once rather than waited out: see `_RateLimiter`.
+    """
 
 
 def _httpx():
@@ -152,23 +167,38 @@ def _httpx():
 
 
 class _RateLimiter:
-    """A sliding one-minute window. Inert unless a limit is set."""
+    """A sliding one-minute window. Inert unless a limit is set.
+
+    A call over the limit is REFUSED, not delayed. This used to sleep until the
+    oldest call aged out of the window, up to 60 s. That sleep ran inside the
+    caller's request, and the nlp front's async handlers made it block the whole
+    event loop, so one throttled NER call stalled every request the service was
+    serving, a TOKENIZE-only one included. Even off the loop, a wait that long is
+    past any interactive caller's timeout: the caller loses the whole analysis
+    instead of the one op. A refusal costs only that op.
+
+    Thread-safe: the front runs analyses on worker threads.
+    """
 
     def __init__(self, per_minute: int):
         self._limit = per_minute
         self._calls: deque[float] = deque()
+        self._lock = threading.Lock()
 
-    def wait(self) -> None:
+    def acquire(self, name: str = "") -> None:
+        """Count one call, or raise `RateLimited` if the window is full."""
         if self._limit <= 0:
             return
-        now = time.time()
-        self._evict(now)
-        if len(self._calls) >= self._limit:
-            wait_for = 60.0 - (now - self._calls[0])
-            if wait_for > 0:
-                time.sleep(wait_for)
-                self._evict(time.time())
-        self._calls.append(time.time())
+        with self._lock:
+            now = time.monotonic()
+            self._evict(now)
+            if len(self._calls) >= self._limit:
+                free_in = 60.0 - (now - self._calls[0])
+                raise RateLimited(
+                    f"{RATE_LIMITED_CODE}: {name or 'backend'}: {self._limit}/min "
+                    f"spent, next slot in {free_in:.0f} s; call skipped"
+                )
+            self._calls.append(now)
 
     def _evict(self, now: float) -> None:
         while self._calls and (now - self._calls[0]) > 60.0:
@@ -209,7 +239,9 @@ class BackendClient:
         last: Exception | None = None
 
         for attempt in range(self.spec.max_retries + 1):
-            self._limiter.wait()
+            # Raises `RateLimited` past the budget, retry or not: a refused call
+            # is not retried, because the next attempt would be refused as well.
+            self._limiter.acquire(self.name or url)
             try:
                 with httpx.Client(
                     timeout=self.spec.timeout_seconds, follow_redirects=True
@@ -580,6 +612,8 @@ __all__ = [
     "BackendError",
     "BackendSpec",
     "EngineResult",
+    "RATE_LIMITED_CODE",
+    "RateLimited",
     "NerEntity",
     "NlpOp",
     "Token",

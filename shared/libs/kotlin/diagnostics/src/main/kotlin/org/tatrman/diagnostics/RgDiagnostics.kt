@@ -43,6 +43,12 @@ object RgDiagnostics {
                 "Set the model id in the backend config/chart; no empty or default model is permitted.",
             ),
             RgDiagnostic(
+                "RG-NLP-004",
+                Severity.WARNING,
+                "Backend '{engine}' rate limit spent — ({language}, {op}) skipped, not queued; the rest of the analysis ran.",
+                "Self-host the backend (SELF_HOSTED_PINNED, no limit), or raise rate_limit_per_minute if the remote tier allows it.",
+            ),
+            RgDiagnostic(
                 "RG-NLP-010",
                 Severity.INFO,
                 "Unsupported ({language}, {op}) — degrade floor applied (tokenize + fold + langid).",

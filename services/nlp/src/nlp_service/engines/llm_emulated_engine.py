@@ -67,6 +67,7 @@ from __future__ import annotations
 
 import json
 import logging
+import threading
 from collections import OrderedDict
 from pathlib import Path
 from typing import Any, Set
@@ -141,6 +142,10 @@ class LlmEmulatedEngine:
         self._ops = frozenset(_parse_ops(config.ops))
         self._languages = frozenset(config.languages)
         self._cache: OrderedDict[tuple, EngineResult] = OrderedDict()
+        # The front analyses on worker threads, and an OrderedDict's LRU moves are
+        # not safe across them (`move_to_end` on a key another thread just evicted
+        # raises). Held for the cache only, never across the gateway call.
+        self._cache_lock = threading.Lock()
 
     # ---- identity ---------------------------------------------------------
 
@@ -232,9 +237,10 @@ class LlmEmulatedEngine:
 
     def _ask(self, purpose: str, text: str, lang: str) -> dict:
         key = (TEMPLATE_VERSION, self._config.model, purpose, lang, text)
-        if (hit := self._cache.get(key)) is not None:
-            self._cache.move_to_end(key)
-            return hit  # type: ignore[return-value]
+        with self._cache_lock:
+            if (hit := self._cache.get(key)) is not None:
+                self._cache.move_to_end(key)
+                return hit  # type: ignore[return-value]
 
         system = _template_for_purpose(purpose, lang).read_text(encoding="utf-8")
         content = self._client.chat(system=system, user=text, purpose=purpose)
@@ -242,9 +248,10 @@ class LlmEmulatedEngine:
 
         # Only successes are cached. A failure must not become this deployment's
         # answer for that input — the next request may well be after the outage.
-        self._cache[key] = body  # type: ignore[assignment]
-        if len(self._cache) > max(1, self._config.cache_max_entries):
-            self._cache.popitem(last=False)
+        with self._cache_lock:
+            self._cache[key] = body  # type: ignore[assignment]
+            if len(self._cache) > max(1, self._config.cache_max_entries):
+                self._cache.popitem(last=False)
         return body
 
 

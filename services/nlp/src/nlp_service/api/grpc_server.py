@@ -135,7 +135,10 @@ class NlpServicer(nlp_pb2_grpc.NlpServiceServicer):
         if not ops:
             await context.abort(grpc.StatusCode.INVALID_ARGUMENT, "at least one op required")
 
-        result = self._orchestrator.analyze(
+        # On a worker thread: see `analyze` in `routes.py`. This process serves
+        # gRPC and REST from one loop, so a backend wait here stalls both.
+        result = await asyncio.to_thread(
+            self._orchestrator.analyze,
             text=request.text,
             language=request.language,
             ops=ops,
@@ -186,7 +189,9 @@ class NlpServicer(nlp_pb2_grpc.NlpServiceServicer):
     # ---- BatchLemmatize ---------------------------------------------------
 
     async def BatchLemmatize(self, request, context):  # noqa: N802
-        outcome = self._orchestrator.batch_lemmatize(list(request.texts), request.language)
+        outcome = await asyncio.to_thread(
+            self._orchestrator.batch_lemmatize, list(request.texts), request.language
+        )
         resp = nlp_pb2.BatchLemmatizeResponse()
         for lemmas in outcome.results:
             resp.results.append(nlp_pb2.LemmaList(lemmas=lemmas))
@@ -229,6 +234,12 @@ class NlpServicer(nlp_pb2_grpc.NlpServiceServicer):
                 f"({len(self._morph.diagnostics)} of them)",
             )
 
+        # Stays on the loop, unlike Analyze and BatchLemmatize. A `morph: true` run
+        # reports its misses into the queue sink, which is mutated from the loop
+        # thread only (`SpoolSink.flush`, `ReportToken`); running it on a worker
+        # would race them. The rate limit cannot stall it any more — a call over
+        # the budget is refused at once (`RG-NLP-004`) — so what remains on the
+        # loop is the backends' own response time.
         try:
             result = self._runner.run(
                 request.text,
