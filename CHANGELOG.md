@@ -16,6 +16,23 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+### resolver — a place is taken only by a member of an entity its anchor reaches (#118, ✅UD-7)
+
+The member reading of a place or person name (UD-P1) asks two questions: the anchor's own member
+vocabularies, and every member vocabulary. On a live estate the second one answered
+`Stores in Paris` with a return reason ("Parts missing", a fuzzy match) and `Stores in Dallas` with a
+warehouse ("Dallas DC"), and the answer took the span. Nothing was left to ask about, and the query
+filtered by the wrong thing.
+
+- A member now counts for that reading only when its entity is reached from the anchor's owner: the
+  owner itself, its owning entity, or an entity that declares a relation from it (`Customers in TN`
+  still binds `customer_address.state`). Other member rows are dropped before the Binder decides.
+- `Stores in Paris` and `Stores in Dallas` stay places, as they were before UD-P1.
+- Under a fact (`Sales in TN`), the ask is limited to the owners the fact reaches. A fact that
+  reaches only one of them binds it. With no NER entity on the value, nothing changes: the ask still
+  covers every owner.
+- Values the NER did not type a place or a person are unchanged. No wire change.
+
 ### `ttr-nlp` — a NameTag entity ends where its last word does (#118)
 
 `parse_nametag_conll` ended an entity at `start + len(" ".join(words))`. NameTag splits a hyphenated

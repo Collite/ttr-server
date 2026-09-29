@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package org.tatrman.resolver.pipeline
 
+import org.tatrman.fuzzy.v1.FuzzyMatch
 import org.tatrman.fuzzy.v1.SourceTag
+import org.tatrman.resolver.model.Reach
 
 /**
  * UD (ttr-server#118) — the seam between a universal NER reading and the member reading proposed
@@ -26,6 +28,15 @@ import org.tatrman.fuzzy.v1.SourceTag
  * value is a MEMBER of what the sentence scoped. A declared row — a model object's alias, an
  * operator word — found under the same characters says only that the place is spelled like a term
  * the estate declared (`Sales in Mobile` with a `mobile` channel alias), and the place stands.
+ *
+ * **…and only a member the governor reaches** (✅UD-7, A-UD-7, found by the C5 live drill). The
+ * OPEN half asks every member vocabulary, and one hit in an entity the sentence never scoped is not
+ * that entity's member: `Stores in Paris` found the return reason "Parts missing" (a TOKENS match),
+ * and M3 cannot catch it, because it breaks ties and a lone member is no tie. So [inScope] drops,
+ * before the Binder sees them, the member rows of a dual reading whose entity none of the anchor's
+ * owners ([DomainSpanCandidate.dualReadingScope]) reaches — the predicate M3 uses: the owner itself,
+ * its owning entity, or an entity that declares a reach from it. `Customers in TN` keeps
+ * `customer_address.state` (declared reach from `customer`); `Paris` stays a place.
  *
  * **Paired by the entity, not by geometry** (A-UD-3, review-108 F1). The universal's extent is the
  * NER engine's; the candidate's is the parse tokens'. They need not agree to the character —
@@ -64,6 +75,39 @@ object UniversalSeam {
         } else {
             g.contenders.isNotEmpty()
         }
+
+    /**
+     * ✅UD-7 — the matches a dual reading may be decided on: every non-member row, and each MEMBER
+     * row whose entity one of [DomainSpanCandidate.dualReadingScope] reaches. Every other candidate
+     * gets [matches] unchanged. Called by the broad-pass gate BEFORE the Binder, so its verdict —
+     * bind, ask, or nothing — is made over the rows that may answer, and a filtered-out member is
+     * never an option either. The lookup rounds do not call it because they never re-gate a dual
+     * reading: they re-ask G1, G3 and G4 gaps only, a dual reading that survived the seam found a
+     * member (so it has none of those), and a withdrawn one has no span left to attach to. A round
+     * that starts re-asking G2 must call this first.
+     *
+     * The entity of a member row is the one `Binder`'s M3 names: [memberOwners] maps its category to
+     * the owning entity, [owners] lifts an attribute to its entity.
+     */
+    fun inScope(
+        matches: List<FuzzyMatch>,
+        candidate: DomainSpanCandidate,
+        owners: Map<String, String>,
+        reach: Map<String, List<Reach>>,
+        memberOwners: Map<String, String>,
+    ): List<FuzzyMatch> {
+        if (!candidate.dualReading) return matches
+        val scope = candidate.dualReadingScope
+        return matches.filter { m ->
+            if (m.source != SourceTag.MEMBER) return@filter true
+            val owner = memberOwners[m.category] ?: m.category
+            val entity = owners[owner]?.takeIf { it.isNotBlank() } ?: owner
+            scope.any { g ->
+                val governorEntity = owners[g]?.takeIf { it.isNotBlank() } ?: g
+                entity == g || entity == governorEntity || reach[entity].orEmpty().any { it.factRef == g }
+            }
+        }
+    }
 
     fun supersede(
         universals: List<UniversalBinding>,
