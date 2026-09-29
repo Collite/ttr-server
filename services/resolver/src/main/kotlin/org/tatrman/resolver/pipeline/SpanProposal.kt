@@ -404,12 +404,17 @@ object SpanProposal {
             }
         }
 
-        // (b) proper-noun arguments not already anchored
+        // (b) proper-noun arguments not already anchored. Tokens are walked in index order, so a
+        // name is entered at its FIRST word — which is not always its head: the parser may hang
+        // `QT` off `ORLAK` (flat). The run is built from the name's own head (`nameChain`), so the
+        // name is proposed whole whichever word the parser made its head.
         tokens.forEachIndexed { idx, t ->
             if (idx in coveredTokens || idx in literals.tokens) return@forEachIndexed
             if (t.upos.uppercase() != "PROPN") return@forEachIndexed
             if (isUniversal(t, universal)) return@forEachIndexed
-            val runIdx = propnRun(idx, children, tokens, universal, coveredTokens, literals.tokens)
+            val chain = nameChain(idx, tokens, universal, coveredTokens, literals.tokens)
+            val head = chain.last()
+            val runIdx = propnRun(head, children, tokens, universal, coveredTokens, literals.tokens, chain)
             if (runIdx.isEmpty()) return@forEachIndexed
             out +=
                 candidate(
@@ -419,7 +424,7 @@ object SpanProposal {
                     allCategories,
                     anchored = false,
                     origin = DomainSpanCandidate.Origin.PROPER_NOUN,
-                    headToken = idx,
+                    headToken = head,
                 )
             coveredTokens += runIdx
         }
@@ -610,6 +615,34 @@ object SpanProposal {
         return contiguousHull(acc, tokens, universal, anchorTokens, rootIdx, literalTokens)
     }
 
+    /**
+     * From [idx] up to the head of the name it is part of: `[idx, …, head]`.
+     *
+     * A token climbs while it is a name part ([PROPN_RUN_RELATIONS]) of an open proper noun — not
+     * covered, not a literal, not universal — the same test [propnRun] applies going down, so the
+     * run is one name whichever word the parser made its head. A token that is no one's name part
+     * is its own head, and the chain is `[idx]`.
+     */
+    private fun nameChain(
+        idx: Int,
+        tokens: List<Token>,
+        universal: List<IntRange>,
+        covered: Set<Int>,
+        literalTokens: Set<Int>,
+    ): List<Int> {
+        val chain = mutableListOf(idx)
+        while (true) {
+            val token = tokens[chain.last()]
+            val parent = token.depHead - 1 // dep_head is 1-based; 0 means root
+            if (token.depRelation !in PROPN_RUN_RELATIONS || parent !in tokens.indices || parent in chain) break
+            val p = tokens[parent]
+            if (p.upos.uppercase() != "PROPN" || parent in covered || parent in literalTokens) break
+            if (isUniversal(p, universal)) break
+            chain += parent
+        }
+        return chain
+    }
+
     private fun propnRun(
         headIdx: Int,
         children: Map<Int, List<Int>>,
@@ -617,8 +650,11 @@ object SpanProposal {
         universal: List<IntRange>,
         covered: Set<Int>,
         literalTokens: Set<Int> = emptySet(),
+        /** The words climbed through to reach [headIdx] (`nameChain`) — part of the name too. */
+        chain: List<Int> = emptyList(),
     ): List<Int> {
         val included = sortedSetOf(headIdx)
+        included += chain
         for (c in children[headIdx + 1].orEmpty()) {
             if (c in covered) continue
             if (tokens[c].depRelation in PROPN_RUN_RELATIONS &&
