@@ -2,6 +2,7 @@
 package org.tatrman.resolver.pipeline
 
 import org.tatrman.nlp.v1.AnalyzeResponse
+import org.tatrman.nlp.v1.Token
 import org.tatrman.resolver.v1.Disposition
 import org.tatrman.resolver.v1.GapKind
 import org.tatrman.resolver.v1.GapRecord
@@ -73,7 +74,7 @@ object Gaps {
             if (!ambiguous) {
                 if (value.attributionsCount > 0) continue
                 if (value.anchorMentionId in operators) continue // the operator's own argument, not a gap
-                if (selfGrounding(value)) continue
+                if (selfGrounding(value) && !namesSomething(value, parse.tokensList)) continue
             }
             val anchored = value.anchorMentionId.isNotBlank()
             val kind =
@@ -113,11 +114,47 @@ object Gaps {
     /**
      * A grounded value that needs nothing from the model. A date, an amount or a number IS the
      * value the planner will use; a person, a place or an organisation is only a hint until an
-     * attribute claims it — which is why `Praze` is a gap and `2025` is not.
+     * attribute claims it — which is why `Praze` is a gap and `2025` is not. A number that names
+     * something (an account code) is the exception, [namesSomething] (#139).
      */
     private fun selfGrounding(value: ValueFinding): Boolean =
         value.kind == ValueKind.VALUE_KIND_GROUNDED &&
             value.grounding.kind in setOf("DATE", "MONEY", "MISC")
+
+    /**
+     * ttr-server#139 — a grounded number that NAMES something rather than counting it: `účet 501001`,
+     * `account 501001`. The NER typed it a number (NameTag `cnec:n_`, Stanza `CARDINAL`), so no path
+     * proposed it for a lookup, and [selfGrounding] then let it leave with no attribution and no gap:
+     * the code was lost and nothing asked. It is a G3 instead, so the turn can ask.
+     *
+     * Told apart from a quantity by the parse, never by the number: the value's head token carries a
+     * digit and hangs off a NOUN/PROPN by any relation but `nummod`, with no `case` of its own. So
+     * `top 10 products` (`nummod`) and `sales above 1000` (`case` above) stay self-grounding, as does
+     * a bare number (nothing it names) and a value with no parse (a re-gate of a parse-less lattice).
+     * Measured on real parses: Stanza puts `501001` under `account` as `flat`, and cs Stanza under
+     * `účet` as `dep`; both put a top-N count under its noun as `nummod`.
+     */
+    private fun namesSomething(
+        value: ValueFinding,
+        tokens: List<Token>,
+    ): Boolean {
+        if (value.grounding.kind != "MISC") return false
+        val inSpan =
+            tokens.indices.filter { i ->
+                tokens[i].charStart >= value.span.start && tokens[i].charEnd <= value.span.end
+            }
+        // the span's head: the one token whose own head lies outside it (`depHead` is 1-based, 0 = root)
+        val head = inSpan.firstOrNull { (tokens[it].depHead - 1) !in inSpan } ?: return false
+        val token = tokens[head]
+        if (token.text.none { it.isDigit() }) return false
+        if (relation(token) == "nummod") return false
+        val governor = tokens.getOrNull(token.depHead - 1) ?: return false
+        if (governor.upos.uppercase() !in setOf("NOUN", "PROPN")) return false
+        return tokens.none { it.depHead - 1 == head && relation(it) == "case" }
+    }
+
+    /** The universal relation, without a language subtype (`nmod:poss` → `nmod`). */
+    private fun relation(token: Token): String = token.depRelation.substringBefore(':').lowercase()
 
     private fun record(
         kind: GapKind,

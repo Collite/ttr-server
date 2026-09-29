@@ -16,6 +16,21 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+### resolver — a number that names something is a gap, not a silent grounding (#139)
+
+A number the NER types (NameTag `cnec:n…`, Stanza `CARDINAL`) is a universal `MISC`, so no path
+proposes it for a lookup, and a grounded `MISC` counted as self-sufficient. In `účet 501001` /
+`account 501001` the account code therefore left with no attribution and no gap: it was lost, and
+nothing asked about it.
+
+- Such a value now gets a **G3** (`GAP_KIND_G3_UNATTRIBUTED`) when the parse shows it names
+  something. Its head token carries a digit and hangs off a noun by any relation but `nummod`, with
+  no preposition of its own. It stays `VALUE_KIND_GROUNDED`; only the gap is new.
+- Counts and thresholds are unchanged and still need nothing: `top 10 products` (`nummod`),
+  `sales above 1000` (a preposition), an amount a verb takes, a bare number, and a spelled-out
+  numeral. So are dates and amounts.
+- No wire change.
+
 ### resolver — a place is taken only by a member of an entity its anchor reaches (#118, ✅UD-7)
 
 The member reading of a place or person name (UD-P1) asks two questions: the anchor's own member
