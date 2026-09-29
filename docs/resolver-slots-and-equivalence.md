@@ -218,7 +218,48 @@ span's text at DEBUG. No proto or lattice field records it. A turn that bound a 
 with **no** `seam:` line took the plain governed path: the NER never typed the word universal (a
 NameTag code outside `p`/`g`/`t`/`n`, say), so there was nothing to supersede.
 
+## Operator words: a command verb, a count adjective (ttr-server#58)
+
+An operator word (`show`, `compare`, `top`) used to reach the lattice only by accident. The archive
+channel declares no operator anchors, so the anchored path never proposed one, and the mention
+layer takes nouns only. Czech `Zobraz` got through because Stanza tags it a noun. The English
+imperative `Show` (a verb) and the Czech count adjective `nejlepších` (an adjective) did not: no
+mention, no binding, and in `nejlepších 10 prodejen` the `10` was looked up as a store and left a G4.
+
+**The resolver now asks the matcher about the words in two operator slots, in the operator class
+only, before it proposes spans.**
+
+- **Command:** a verb in the imperative (`Mood=Imp`): `Show`, `Compare`, `Ukaž`. A root verb that is
+  not a command (*"Which stores show growth?"*) is not asked about.
+- **Count:** an adjective beside a number that counts a noun after both: `nejlepších 10 prodejen`,
+  `10 nejlepších prodejen`, `the 10 largest stores`. The adjective must hang from the number or from
+  the counted noun, so a predicate (*Tržby byly nejvyšší 3 roky po sobě*) is not a slot.
+
+A word the matcher confirms becomes an anchor of that operator for this question, exactly as if the
+registry declared it: one mention bound to `op:…`. A count beside a count word is that operator's
+argument (`10` → `op:top-n`, no gap). A command scopes no literal (in `Show 501001` the code is not
+the verb's). **A word the matcher does not confirm leaves no trace.** It gets no mention and no gap,
+so `dalších 10 prodejen` and `Buy a car` read as they did before.
+
+The lookup is one `Lookup` per slot word (at most 4), issued concurrently, with
+`target_classes = [OPERATOR]`, under the lookup rung's budget (`budgetMs`). Only operator rows are
+accepted, even from a matcher that ignored the filter, so this path cannot bind a model object or a
+member. Across the 47 recorded questions of the frame-role corpus it asks about 20 words. With the
+stdlib skills, 18 of them are operator words, and the matcher drops the other 2.
+
+⚠ **The lookup has to fit the budget.** A matcher slower than `budgetMs` (250 ms by default) loses
+every operator word, and every lookup round with it. Measured on hartland on 2026-09-29, one
+`Lookup` took 300–500 ms, because lex-matcher lemmatizes each query through nlp, and that call alone
+takes about 380 ms. `RESOLVER_LOOKUP_BUDGET_MS` sets the budget for such an estate.
+
+The words themselves come from the estate's compiled lexicon, and by default from the lexicon
+stdlib's skills (`ttr-core`, `lexicon-stdlib/skills/*.md`). A word missing there is not found here:
+`nejvyšších` is not a `top-n` trigger today.
+
 ## Configuration
+
+`resolver.lookup-budget-ms` (env `RESOLVER_LOOKUP_BUDGET_MS`, default 250) bounds both the lookup
+rounds and the operator-word lookup. `0` switches both off.
 
 `frame-roles.conf` gains `count-heads` beside `grouping-preps` / `filter-preps` — per-language
 data, because the next language is a data change. A config file written before MH has no such
@@ -238,6 +279,7 @@ nothing behaves exactly as it did before:
 | `Registry` override without `reached_from` | reachability rule inert |
 | no `owner_ref` on the member's attribute | tier M inert — `E(m)` cannot be resolved, so the tie asks |
 | a value with no governor, or a fact governor | tier M inert — it asks, by owner |
+| lookup rung off (`budgetMs = 0`), or no `Lookup` on the matcher | operator words are not asked about; a noun-tagged one is still a mention |
 | no NER entity on a governed argument (NER off, or nothing tagged) | seam inert — no dual reading, nothing superseded |
 
 No reader gate is needed for the v2 → v3 archive crossing: `reachedFrom` is a defaulted field

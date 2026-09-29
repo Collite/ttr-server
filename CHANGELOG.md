@@ -42,6 +42,31 @@ Stanza lane already gives (new module `ttrnlp.client.pdt`, `pdt_to_ud`).
 
 Held to Stanza by a parity test on 22 live sentences: where the two engines' PDT tags agree,
 `upos` agrees on every token and `feats` on all but a listed, justified set.
+### resolver — an operator word the tagger tags correctly reaches the lattice (#58)
+
+An operator word became a mention only when the tagger called it a noun (Czech `Zobraz`). The
+English imperative `Show` (a verb) and the Czech count adjective `nejlepších` (an adjective) became
+nothing, and in `nejlepších 10 prodejen` the `10` was looked up as a store and left a G4.
+
+- Before span proposal, the resolver looks up the words in two slots with `Lookup`, restricted to
+  `target_classes = [TARGET_CLASS_OPERATOR]`: an imperative verb (`Mood=Imp`), and an adjective
+  beside a number that counts a noun (`nejlepších 10 prodejen`, `10 nejlepších prodejen`,
+  `the 10 largest stores`). At most 4 words per question, concurrently, within the lookup rung's
+  `budgetMs`, and not at all when the rung is off.
+- A confirmed word is a mention bound to its operator (`op:show`, `op:top-n`, …), and a count
+  beside a count word is that operator's argument, with no gap. A command word scopes no literal.
+- A word the matcher does not confirm leaves no mention and **no gap**: a verb or an adjective is
+  not an unknown noun, and asking about every command in a question would be noise. This deviates
+  from #58's proposed gap on a miss.
+- Only operator rows are accepted, so this path cannot bind a model object or a member (Q-20's
+  over-generation guard). Across the 47 recorded frame-role questions it asks about 20 words; with
+  the stdlib skills, 18 are operator words and the matcher drops the other 2.
+- Needs a lex-matcher that serves `Lookup` with class filtering (the lookup rung already does), and
+  one that answers within the budget. `RESOLVER_LOOKUP_BUDGET_MS` now overrides
+  `resolver.lookup-budget-ms` (default 250) for an estate whose matcher is slower: on hartland a
+  `Lookup` takes 300–500 ms, because lex-matcher lemmatizes each query through nlp, so every lookup
+  round there is abandoned today, with or without this change.
+- No wire change.
 
 ### resolver — a number that names something is a gap, not a silent grounding (#139)
 
