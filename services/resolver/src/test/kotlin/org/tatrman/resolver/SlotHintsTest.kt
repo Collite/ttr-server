@@ -634,7 +634,7 @@ class SlotHintsTest :
                 }
 
                 val on = stamped(ner = true)
-                on.map { it.copy(dualReadingOf = null) } shouldBe stamped(ner = false)
+                on.map { it.copy(dualReadingOf = null, dualReadingScope = emptyList()) } shouldBe stamped(ner = false)
                 val pair = on.filter { it.text == "TN" }
                 pair.map { it.origin } shouldBe
                     listOf(DomainSpanCandidate.Origin.GOVERNED_VALUE, DomainSpanCandidate.Origin.OPEN_VALUE)

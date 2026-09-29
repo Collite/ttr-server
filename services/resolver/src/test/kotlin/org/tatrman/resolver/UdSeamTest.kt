@@ -8,7 +8,6 @@ import ch.qos.logback.core.read.ListAppender
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldContainExactly
-import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 import org.slf4j.LoggerFactory
@@ -21,6 +20,9 @@ import org.tatrman.nlp.v1.Token
 import org.tatrman.resolver.pipeline.Binder
 import org.tatrman.resolver.pipeline.DomainSpanCandidate
 import org.tatrman.resolver.model.ResolverThresholds
+import org.tatrman.resolver.model.memberEntityByCategory
+import org.tatrman.resolver.model.ownersByRef
+import org.tatrman.resolver.model.reachByRef
 import org.tatrman.resolver.pipeline.GateSpans
 import org.tatrman.resolver.pipeline.GatedSpan
 import org.tatrman.resolver.pipeline.ResolverPipeline
@@ -170,6 +172,8 @@ class UdSeamTest :
                 anchored = origin == DomainSpanCandidate.Origin.GOVERNED_VALUE,
                 origin = origin,
                 dualReadingOf = 10 to 20,
+                // as `SpanProposal` sets it on both halves: the anchor's owners (✅UD-7)
+                dualReadingScope = listOf(MhMembers.STORE),
             )
 
             fun row(
@@ -192,7 +196,7 @@ class UdSeamTest :
                 BatchMatchResponse
                     .newBuilder()
                     .addResults(FuzzyMatchResponse.newBuilder().addMatches(row(SourceTag.DECLARED, MhMembers.STORE)))
-                    .addResults(FuzzyMatchResponse.newBuilder().addMatches(row(SourceTag.MEMBER, MhMembers.CA_STATE)))
+                    .addResults(FuzzyMatchResponse.newBuilder().addMatches(row(SourceTag.MEMBER, MhMembers.STORE_NAME)))
                     .build()
             val gated =
                 GateSpans.gate(listOf(governed, open), response, types, ResolverThresholds.LIVE, emptyMap(), "").gated
@@ -203,6 +207,82 @@ class UdSeamTest :
                 .single()
                 .second.candidate.origin shouldBe DomainSpanCandidate.Origin.OPEN_VALUE
             seam.gated.map { it.candidate.origin } shouldContainExactly listOf(DomainSpanCandidate.Origin.OPEN_VALUE)
+        }
+
+        // ── ✅UD-7 — which members a dual reading may answer with (UniversalSeam.inScope) ──────────
+
+        fun matchIn(
+            category: String,
+            source: SourceTag = SourceTag.MEMBER,
+        ): FuzzyMatch =
+            FuzzyMatch
+                .newBuilder()
+                .setCandidateId("v")
+                .setCategory(category)
+                .setSource(source)
+                .build()
+
+        fun dual(
+            scope: List<String>,
+            of: Pair<Int, Int>? = 10 to 12,
+        ) = DomainSpanCandidate(
+            text = "TN",
+            start = 10,
+            end = 12,
+            gatedEntityRefs = emptyList(),
+            categories = emptyList(),
+            anchored = false,
+            origin = DomainSpanCandidate.Origin.OPEN_VALUE,
+            dualReadingOf = of,
+            dualReadingScope = scope,
+        )
+
+        fun inScope(
+            candidate: DomainSpanCandidate,
+            vararg rows: FuzzyMatch,
+        ): List<String> {
+            val types = MhMembers.udEntityTypes()
+            return UniversalSeam
+                .inScope(
+                    rows.toList(),
+                    candidate,
+                    types.ownersByRef(),
+                    types.reachByRef(),
+                    types.memberEntityByCategory(),
+                ).map { it.category }
+        }
+
+        "✅UD-7 — a member speaks for a dual reading only when the anchor's owner reaches its entity" {
+            val all =
+                arrayOf(
+                    matchIn(MhMembers.STORE_STATE),
+                    matchIn(MhMembers.CA_STATE),
+                    matchIn(MhMembers.WAREHOUSE_NAME),
+                )
+
+            // the owner itself
+            inScope(dual(listOf(MhMembers.STORE)), *all) shouldContainExactly listOf(MhMembers.STORE_STATE)
+            // a declared reach FROM the owner: `customer_address` declares `Reach(customer)`
+            inScope(dual(listOf(MhMembers.CUSTOMER)), *all) shouldContainExactly listOf(MhMembers.CA_STATE)
+            // a fact reads its own reach: `store` declares `Reach(store_sales)`, the others do not
+            inScope(dual(listOf(MhMembers.STORE_SALES)), *all) shouldContainExactly listOf(MhMembers.STORE_STATE)
+        }
+
+        "✅UD-7 — an attribute owner is lifted to its entity, and declared rows are never the filter's business" {
+            val kept =
+                inScope(
+                    dual(listOf(MhMembers.STORE_NAME)),
+                    matchIn(MhMembers.STORE_STATE),
+                    matchIn(MhMembers.WAREHOUSE_STATE),
+                    matchIn(MhMembers.WAREHOUSE, SourceTag.DECLARED),
+                )
+            kept shouldContainExactly listOf(MhMembers.STORE_STATE, MhMembers.WAREHOUSE)
+        }
+
+        "✅UD-7 — a dual reading with no scope answers with no member; any other candidate is untouched" {
+            inScope(dual(emptyList()), matchIn(MhMembers.STORE_STATE)).shouldBeEmpty()
+            inScope(dual(emptyList(), of = null), matchIn(MhMembers.WAREHOUSE_NAME)) shouldContainExactly
+                listOf(MhMembers.WAREHOUSE_NAME)
         }
 
         "only what survived the open-sibling collapse counts (§4.5): the open sibling alone supersedes, once" {
@@ -303,13 +383,18 @@ class UdSeamTest :
             r.resolution.bindingsList.count { it.hasUniversal() } shouldBe 0
         }
 
-        "I-6 `Sales in TN` — a fact governs no member: the resolver asks by owner, and the place is gone" {
+        "I-6 `Sales in TN` — a fact governs no member, and it reaches ONE owner of the three: that one binds (✅UD-7)" {
+            // The open half finds `TN` in three state vocabularies. This registry declares a reach
+            // from `store_sales` to `store` only, so the customer's and the warehouse's `TN` are not
+            // members the sentence scoped, and the dual reading answers with the store's. (Before
+            // ✅UD-7 this asked among all three. With NER off, the plain pair still does: MH M2.)
             val r = MhMembers.resolve("Sales in TN", MhMembers.e12En(), entities = place("TN", 9))
 
-            r.hasAwaiting() shouldBe true
-            r.awaiting.optionsList.map { it.memberOf } shouldContainExactlyInAnyOrder
-                listOf(MhMembers.STORE_STATE, MhMembers.CA_STATE, MhMembers.WAREHOUSE_STATE)
-            r.findingsOn("TN").single().kind shouldBe ValueKind.VALUE_KIND_LITERAL
+            r.hasAwaiting() shouldBe false
+            val tnFinding = r.findingsOn("TN").single()
+            tnFinding.kind shouldBe ValueKind.VALUE_KIND_LITERAL
+            tnFinding.attributionsList.map { it.binding.ref } shouldContainExactly listOf("${MhMembers.STORE_STATE}#TN")
+            r.resolution.bindingsList.count { it.hasUniversal() } shouldBe 0
         }
 
         "I-7 bare `TN` and `Nashville stores` — nothing governs the place, so it stays a place" {
@@ -417,5 +502,70 @@ class UdSeamTest :
                 logger.level = previousLevel
                 appender.stop()
             }
+        }
+
+        // ── C5 live drill → ✅UD-7 (A-UD-7) ────────────────────────────────────────────────────────
+
+        fun dallas(anchor: Token) =
+            arrayOf(
+                anchor,
+                MhMembers.tok("in", anchor.charEnd + 1, anchor.charEnd + 3, "in", "ADP", 3, "case"),
+                MhMembers.tok("Dallas", anchor.charEnd + 4, anchor.charEnd + 10, "Dallas", "PROPN", 1, "nmod"),
+            )
+
+        // The lattice, not the door: `Stores` alone is the store/store_sales object homonym and asks.
+        fun ResolveResponse.standsAsPlace() {
+            val finding = findingsOn("Dallas").single()
+            finding.kind shouldBe ValueKind.VALUE_KIND_GROUNDED
+            finding.grounding.kind shouldBe UniversalEntityType.LOCATION.name
+            finding.attributionsList.shouldBeEmpty()
+            gapsOn("Dallas") shouldContainExactly listOf(GapKind.GAP_KIND_G3_UNATTRIBUTED)
+            awaiting.optionsList.none { it.span.text == "Dallas" } shouldBe true
+        }
+
+        "✅UD-7 — `Stores in Dallas`: a warehouse's name is not the store's member, so the place stands" {
+            // hartland, live: `Dallas` → `warehouse_name` "Dallas DC" through the OPEN half, alone, so M3
+            // (which breaks ties) never saw it and it bound. The store reaches no warehouse.
+            val r =
+                MhMembers.resolve(
+                    "Stores in Dallas",
+                    dallas(MhMembers.tok("Stores", 0, 6, "store", "NOUN", 0, "root")),
+                    entities = place("Dallas", 10),
+                    registry = MhMembers.UD_REGISTRY,
+                )
+            r.standsAsPlace()
+        }
+
+        "✅UD-7 — `Customers in Dallas` and `Sales in Dallas`: neither owner reaches the warehouse either" {
+            MhMembers
+                .resolve(
+                    "Customers in Dallas",
+                    dallas(MhMembers.tok("Customers", 0, 9, "customer", "NOUN", 0, "root")),
+                    entities = place("Dallas", 13),
+                    registry = MhMembers.UD_REGISTRY,
+                ).standsAsPlace()
+            MhMembers
+                .resolve(
+                    "Sales in Dallas",
+                    dallas(MhMembers.tok("Sales", 0, 5, "sale", "NOUN", 0, "root")),
+                    entities = place("Dallas", 9),
+                    registry = MhMembers.UD_REGISTRY,
+                ).standsAsPlace()
+        }
+
+        "✅UD-7 — `Warehouses in Dallas`: the warehouse's own name IS its member, and takes the span" {
+            val r =
+                MhMembers.resolve(
+                    "Warehouses in Dallas",
+                    dallas(MhMembers.tok("Warehouses", 0, 10, "warehouse", "NOUN", 0, "root")),
+                    entities = place("Dallas", 14),
+                    registry = MhMembers.UD_REGISTRY,
+                )
+
+            val finding = r.findingsOn("Dallas").single()
+            finding.kind shouldBe ValueKind.VALUE_KIND_LITERAL
+            finding.attributionsList.map { it.binding.ref } shouldContainExactly
+                listOf("${MhMembers.WAREHOUSE_NAME}#Dallas DC")
+            r.resolution.bindingsList.count { it.hasUniversal() } shouldBe 0
         }
     })

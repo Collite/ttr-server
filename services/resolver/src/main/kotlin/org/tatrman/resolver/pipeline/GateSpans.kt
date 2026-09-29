@@ -79,12 +79,21 @@ object GateSpans {
                         // The ONE decision, made in the one place that makes it (RV-P2.2). Note what is NOT
                         // filtered before the call: the bind floor is the binder's too, because a candidate
                         // the gate refused is still something the rung log should be able to name.
-                        val verdict =
-                            Binder.gate(
+                        // ✅UD-7 — a dual reading answers only with the members its anchor reaches.
+                        val matches =
+                            UniversalSeam.inScope(
                                 response.resultsList
                                     .getOrNull(i)
                                     ?.matchesList
                                     .orEmpty(),
+                                cand,
+                                owners,
+                                reach,
+                                memberOwners,
+                            )
+                        val verdict =
+                            Binder.gate(
+                                matches,
                                 cand,
                                 thresholds,
                                 owners,

@@ -293,13 +293,19 @@ class MvGovernedDrillTest :
             }
         }
 
-        "UD E12-en `Sales in TN` NER=ON — a fact governs no member: asks by OWNER, as NER=OFF does" {
+        "UD E12-en `Sales in TN` NER=ON — the dual reading answers only for the owner the fact reaches (✅UD-7)" {
+            // This model relates `store_sales` to `store` alone (`rel_store_sales_store`), so of the
+            // three `TN`s only the store's is a member the sentence scoped. NER=OFF still asks among
+            // all three (the plain pair keeps MH M2); a dual reading is held to the scope, so a place
+            // is never taken by a member of an entity the fact cannot filter by.
             val (response, _) =
                 MvEstate.resolve("Sales in TN", MhMembers.e12En(), entities = listOf(MhMembers.ner("TN", 9, 11, "GPE")))
 
-            response.hasAwaiting() shouldBe true
-            response.awaiting.optionsList.map { it.memberOf } shouldContainExactlyInAnyOrder
-                listOf(STORE_STATE, CA_STATE, WAREHOUSE_STATE)
+            response.hasAwaiting() shouldBe false
+            response.resolutionState.valuesList
+                .single { it.span.text == "TN" }
+                .attributionsList
+                .map { it.attributeRef } shouldContainExactly listOf(STORE_STATE)
         }
 
         "UD E12-bare `TN` NER=ON — nothing governs it: still a place (no dual reading, option 2 not built)" {

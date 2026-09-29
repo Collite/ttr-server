@@ -64,11 +64,12 @@ object MhMembers {
     const val CA_STATE = "er.entity.customer_address.state"
     const val WAREHOUSE_STATE = "er.entity.warehouse.state"
     const val STORE_NAME = "er.entity.store.store_name"
+    const val WAREHOUSE_NAME = "er.entity.warehouse.warehouse_name"
 
     /**
-     * The three `TN` members, the one `Nashville` member and one hyphenated store name (UD), by the
-     * category that holds them — as
-     * lex-matcher answers since A-MV-15: one row per VALUE of a vocabulary, its id the value itself.
+     * The three `TN` members, the one `Nashville` member, one hyphenated store name and one warehouse
+     * name (UD), by the category that holds them — as lex-matcher answers since A-MV-15: one row per
+     * VALUE of a vocabulary, its id the value itself.
      * So the three `TN`s share an id and differ ONLY by category, which is what review-104 F3 was:
      * an identity without the category collapsed them into one.
      */
@@ -84,6 +85,9 @@ object MhMembers {
             "nashville" to listOf(Triple("Nashville", "Nashville", STORE_NAME)),
             // UD review-108 F1 — a store named by a hyphenated Czech town, asked in its locative.
             "frýdku-místku" to listOf(Triple("Frýdek-Místek", "Frýdek-Místek", STORE_NAME)),
+            // UD ✅UD-7 (C5 live drill) — a place that is a member of ONE unrelated entity only, as
+            // hartland's `Dallas` is of `warehouse_name` ("Dallas DC", a TOKENS hit there).
+            "dallas" to listOf(Triple("Dallas DC", "Dallas DC", WAREHOUSE_NAME)),
         )
 
     private fun et(
@@ -148,6 +152,19 @@ object MhMembers {
 
     fun entityTypes(): List<ResolverEntityType> =
         ResolverPipeline.fromProto(REGISTRY, ResolverThresholds.LIVE).entityTypes
+
+    /**
+     * UD ✅UD-7 — §8.5 plus a fifth member column no MH case asks: `warehouse_name`, where hartland's
+     * `Dallas` lives ("Dallas DC"). A separate registry so §8.5 stays exactly what MH and MV pin.
+     */
+    val UD_REGISTRY: Registry =
+        REGISTRY
+            .toBuilder()
+            .addEntityTypes(et(WAREHOUSE_NAME, listOf(), "attribute", owner = WAREHOUSE, member = true))
+            .build()
+
+    fun udEntityTypes(): List<ResolverEntityType> =
+        ResolverPipeline.fromProto(UD_REGISTRY, ResolverThresholds.LIVE).entityTypes
 
     fun preps(): FrameRolePreps = FrameRolePreps.shipped()
 
@@ -300,7 +317,7 @@ object MhMembers {
     }
 
     /**
-     * A matcher holding exactly two kinds of row: the four MEMBER values above, and one DECLARED
+     * A matcher holding exactly two kinds of row: the MEMBER values above, and one DECLARED
      * row per OBJECT category whose anchors contain the query's lemma-ish surface. It answers a
      * span only about the categories the span asked for, which is the whole point — a governed
      * value asks about its owner's category and nothing else.

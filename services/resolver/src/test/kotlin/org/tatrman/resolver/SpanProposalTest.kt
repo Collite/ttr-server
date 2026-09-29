@@ -663,9 +663,13 @@ class SpanProposalTest :
             val off = SpanProposal.proposeDomainSpans(MhMembers.parse("Stores in TN", MhMembers.e11En()), types)
             val on = SpanProposal.proposeDomainSpans(udParse("Stores in TN", MhMembers.e11En(), "TN", 10, 12), types)
 
-            on.map { it.copy(dualReadingOf = null) } shouldBe off
+            on.map { it.copy(dualReadingOf = null, dualReadingScope = emptyList()) } shouldBe off
             on.filter { it.text == "TN" }.map { it.origin to it.dualReading } shouldContainExactly
                 listOf(DomainSpanCandidate.Origin.GOVERNED_VALUE to true, DomainSpanCandidate.Origin.OPEN_VALUE to true)
+            // ✅UD-7 — both halves carry the anchor's owners: the scope the open half answers in
+            on.filter { it.text == "TN" }.map { it.dualReadingScope.toSet() } shouldContainExactly
+                List(2) { setOf(MhMembers.STORE, MhMembers.STORE_SALES) }
+            on.single { it.origin == DomainSpanCandidate.Origin.ANCHOR_PHRASE }.dualReadingScope.shouldBeEmpty()
             on.single { it.origin == DomainSpanCandidate.Origin.ANCHOR_PHRASE }.dualReading shouldBe false
             val governed = on.single { it.origin == DomainSpanCandidate.Origin.GOVERNED_VALUE }
             governed.anchored shouldBe true

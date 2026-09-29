@@ -38,6 +38,14 @@ package org.tatrman.resolver.pipeline
  *   NameTag's end overshoots a hyphenated name). Only a dual reading that found a member
  *   supersedes the universal with exactly this extent; one that did not is withdrawn so the
  *   universal stands alone (UD contracts §3–§4, A-UD-3/A-UD-4, `UniversalSeam`).
+ * @property dualReadingScope UD ✅UD-7 — for a dual reading, the anchor's value-bearing owners (the
+ *   refs its `GOVERNED_VALUE` half is gated to), carried on BOTH halves; empty for every other
+ *   candidate. A member row speaks for the reading only when one of these reaches its entity
+ *   (`UniversalSeam.inScope`): the OPEN half asks every member vocabulary, and a lone hit in an
+ *   entity the sentence never scoped (`Stores in Paris` → a return reason "Parts missing") must not
+ *   take the span from the place. On the candidate rather than looked up from the governed sibling,
+ *   like [dualReadingOf]: the reading carries what it is a reading OF, and no reader has to find
+ *   its pair first.
  */
 data class DomainSpanCandidate(
     val text: String,
@@ -55,6 +63,7 @@ data class DomainSpanCandidate(
     val slot: SlotHint = SlotHint.NONE,
     // LAST and defaulted for the same reason as `slot`.
     val dualReadingOf: Pair<Int, Int>? = null,
+    val dualReadingScope: List<String> = emptyList(),
 ) {
     /** UD — whether this candidate is a dual reading at all; see [dualReadingOf]. */
     val dualReading: Boolean get() = dualReadingOf != null

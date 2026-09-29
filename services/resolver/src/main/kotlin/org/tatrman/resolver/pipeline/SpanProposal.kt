@@ -369,6 +369,7 @@ object SpanProposal {
                             origin = DomainSpanCandidate.Origin.GOVERNED_VALUE,
                             headToken = childIdx,
                             dualReadingOf = dual?.let { it.charStart to it.charEnd },
+                            dualReadingScope = if (dual != null) refs else emptyList(),
                         )
                     // ⚑ A-MH-1b (MH-P3·S1·T3) — the OPEN sibling, same span, every declared type.
                     //
@@ -394,6 +395,9 @@ object SpanProposal {
                             origin = DomainSpanCandidate.Origin.OPEN_VALUE,
                             headToken = childIdx,
                             dualReadingOf = dual?.let { it.charStart to it.charEnd },
+                            // ✅UD-7 — the OPEN half asks everything, but answers only for the
+                            // owners the governed half is gated to (`UniversalSeam.inScope`).
+                            dualReadingScope = if (dual != null) refs else emptyList(),
                         )
                     coveredTokens += valueIdx
                 }
@@ -720,6 +724,7 @@ object SpanProposal {
         headToken: Int,
         anchorHeadToken: Int = -1,
         dualReadingOf: Pair<Int, Int>? = null,
+        dualReadingScope: List<String> = emptyList(),
     ): DomainSpanCandidate {
         val sorted = indices.sorted()
         val start = sorted.minOf { tokens[it].charStart }
@@ -736,6 +741,7 @@ object SpanProposal {
             tokens.getOrNull(headToken)?.let { it.lemma.ifBlank { it.text } }.orEmpty(),
             anchorHeadToken,
             dualReadingOf = dualReadingOf,
+            dualReadingScope = dualReadingScope,
         )
     }
 
