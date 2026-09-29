@@ -272,6 +272,20 @@ class GapsTest :
             en.map { it.kind } shouldContainExactly listOf(GapKind.GAP_KIND_G3_UNATTRIBUTED)
         }
 
+        "#139 — the relation does not decide, the order does: a code after its noun as `nummod` is a G3" {
+            // hartland, live (0.11.6): in the fuller sentence cs Stanza hangs the code off `účet` as
+            // `nummod`, where the bare phrase had `dep` — `Náklady na účet 501001 v roce 2025`
+            val gaps =
+                gapsFor(
+                    grounded("v1", 16, 22, "501001", "MISC"),
+                    tok("Náklady", 0, 7, "NOUN", 0, "root"),
+                    tok("na", 8, 10, "ADP", 3, "case"),
+                    tok("účet", 11, 15, "NOUN", 1, "nmod"),
+                    tok("501001", 16, 22, "NUM", 3, "nummod"),
+                )
+            gaps.map { it.kind } shouldContainExactly listOf(GapKind.GAP_KIND_G3_UNATTRIBUTED)
+        }
+
         "#139 — a count, a threshold, a bare number and a parse-less value stay self-grounding" {
             // `top 10 products`: the number counts its noun
             gapsFor(
@@ -296,6 +310,19 @@ class GapsTest :
                 grounded("v1", 7, 11, "5000", "MISC"),
                 tok("earned", 0, 6, "VERB", 0, "root"),
                 tok("5000", 7, 11, "NUM", 1, "obj"),
+            ).shouldBeEmpty()
+            // cs `Top 10` (live): `10` follows the NOUN `Top`, but a rank word is followed by a count
+            gapsFor(
+                grounded("v1", 4, 6, "10", "MISC"),
+                tok("Top", 0, 3, "NOUN", 0, "root"),
+                tok("10", 4, 6, "NUM", 1, "nummod"),
+            ).shouldBeEmpty()
+            // before its noun it counts, even when a human reads a code (`item 1001 sales`, live)
+            gapsFor(
+                grounded("v1", 5, 9, "1001", "MISC"),
+                tok("item", 0, 4, "NOUN", 3, "compound"),
+                tok("1001", 5, 9, "NUM", 3, "nummod"),
+                tok("sales", 10, 15, "NOUN", 0, "root"),
             ).shouldBeEmpty()
             // a spelled-out numeral is not a code, whatever relation it hangs by
             gapsFor(

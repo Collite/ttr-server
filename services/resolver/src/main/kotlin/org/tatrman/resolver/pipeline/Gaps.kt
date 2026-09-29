@@ -127,12 +127,17 @@ object Gaps {
      * proposed it for a lookup, and [selfGrounding] then let it leave with no attribution and no gap:
      * the code was lost and nothing asked. It is a G3 instead, so the turn can ask.
      *
-     * Told apart from a quantity by the parse, never by the number: the value's head token carries a
-     * digit and hangs off a NOUN/PROPN by any relation but `nummod`, with no `case` of its own. So
-     * `top 10 products` (`nummod`) and `sales above 1000` (`case` above) stay self-grounding, as does
-     * a bare number (nothing it names) and a value with no parse (a re-gate of a parse-less lattice).
-     * Measured on real parses: Stanza puts `501001` under `account` as `flat`, and cs Stanza under
-     * `účet` as `dep`; both put a top-N count under its noun as `nummod`.
+     * Told apart from a quantity by WORD ORDER, never by the number: the value's head token carries a
+     * digit and FOLLOWS the NOUN/PROPN it hangs off, with no `case` of its own. A count comes before
+     * what it counts (`top 10 products`, `10 nejlepších prodejen`); a code comes after what it names
+     * (`account 501001`, `store 42`, `účet 501001`). A threshold has its preposition (`sales above
+     * 1000`), an amount a verb takes names nothing, and a bare number and a parse-less value (a re-gate
+     * of a parse-less lattice) have no noun to name: all of them stay self-grounding.
+     *
+     * Not by relation: live on hartland (resolver 0.11.6, 2026-09-29) cs Stanza hung the code off
+     * `účet` as `dep` in `účet 501001` but as `nummod` in `Náklady na účet 501001 v roce 2025`, and a
+     * relation rule missed the second. The one noun a count FOLLOWS is a rank word: cs `Top 10` hangs
+     * `10` off the noun `Top` ([RANK_HEADS]).
      */
     private fun namesSomething(
         value: ValueFinding,
@@ -147,11 +152,16 @@ object Gaps {
         val head = inSpan.firstOrNull { (tokens[it].depHead - 1) !in inSpan } ?: return false
         val token = tokens[head]
         if (token.text.none { it.isDigit() }) return false
-        if (relation(token) == "nummod") return false
-        val governor = tokens.getOrNull(token.depHead - 1) ?: return false
+        val governorIdx = token.depHead - 1
+        val governor = tokens.getOrNull(governorIdx) ?: return false
         if (governor.upos.uppercase() !in setOf("NOUN", "PROPN")) return false
+        if (head < governorIdx) return false // before its noun: it counts it
+        if (governor.lemma.ifBlank { governor.text }.lowercase() in RANK_HEADS) return false
         return tokens.none { it.depHead - 1 == head && relation(it) == "case" }
     }
+
+    /** Nouns a COUNT follows (cs `Top 10`: `10` is `nummod` of `Top`). Lower-case lemma or surface. */
+    private val RANK_HEADS = setOf("top")
 
     /** The universal relation, without a language subtype (`nmod:poss` → `nmod`). */
     private fun relation(token: Token): String = token.depRelation.substringBefore(':').lowercase()

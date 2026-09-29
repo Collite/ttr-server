@@ -459,7 +459,8 @@ class UdSeamTest :
                 MhMembers.resolve("Stores 501001", tokens, entities = listOf(MhMembers.ner("501001", 7, 13, "MISC")))
 
             r.findingsOn("501001").map { it.kind } shouldContainExactly listOf(ValueKind.VALUE_KIND_GROUNDED)
-            r.gapsOn("501001").shouldBeEmpty()
+            // …and since #139 a number AFTER the noun it names is owed a lookup: a G3, not silence
+            r.gapsOn("501001") shouldContainExactly listOf(GapKind.GAP_KIND_G3_UNATTRIBUTED)
         }
 
         "F3 — a place spelled like a declared term stays a place (✅UD-6)" {
