@@ -84,6 +84,46 @@ class SpanProposalTest :
             octavie.gatedEntityRefs shouldContainExactlyInAnyOrder listOf("er.branch", "er.product")
         }
 
+        // "Kolik prodal QT ORLAK" — 0 Kolik 1 prodal(root) 2 QT 3 ORLAK. The parser may hang a
+        // two-word name off EITHER word; path (b) must propose the whole name both ways.
+        fun twoWordName(
+            qtHead: Int,
+            qtRel: String,
+            orlakHead: Int,
+            orlakRel: String,
+        ) = AnalyzeResponse
+            .newBuilder()
+            .addAllTokens(
+                listOf(
+                    tok("Kolik", 0, 5, "kolik", "ADV", 2, "advmod"),
+                    tok("prodal", 6, 12, "prodat", "VERB", 0, "root"),
+                    tok("QT", 13, 15, "QT", "PROPN", qtHead, qtRel),
+                    tok("ORLAK", 16, 21, "ORLAK", "PROPN", orlakHead, orlakRel),
+                ),
+            ).build()
+
+        "(b) a name whose LATER word is its head proposes whole, not word by word" {
+            // Before: QT came first in index order, its own children were none, so it went alone;
+            // ORLAK then found QT covered — two lookups, neither of them the name.
+            val cands = SpanProposal.proposeDomainSpans(twoWordName(4, "flat", 2, "obl"), listOf(branch, product))
+            val name = cands.single { it.origin == DomainSpanCandidate.Origin.PROPER_NOUN }
+            (name.text to (name.start to name.end)) shouldBe ("QT ORLAK" to (13 to 21))
+            name.headToken shouldBe 3
+        }
+
+        "(b) a name whose FIRST word is its head still proposes whole" {
+            val cands = SpanProposal.proposeDomainSpans(twoWordName(2, "obl", 3, "flat"), listOf(branch, product))
+            val name = cands.single { it.origin == DomainSpanCandidate.Origin.PROPER_NOUN }
+            (name.text to name.headToken) shouldBe ("QT ORLAK" to 2)
+        }
+
+        "(b) two proper nouns joined by no name relation stay two names" {
+            // QT obl→prodal, ORLAK conj→QT: coordination is two things, not one name.
+            val cands = SpanProposal.proposeDomainSpans(twoWordName(2, "obl", 3, "conj"), listOf(branch, product))
+            cands.filter { it.origin == DomainSpanCandidate.Origin.PROPER_NOUN }.map { it.text } shouldContainExactly
+                listOf("QT", "ORLAK")
+        }
+
         "hero: the universal DATE span `poslední fiskální čtvrtletí` produces no domain candidate" {
             val cands = SpanProposal.proposeDomainSpans(hero, listOf(branch, product))
             cands.any { it.text.contains("čtvrtletí") } shouldBe false
