@@ -24,11 +24,15 @@ proposes it for a lookup, and a grounded `MISC` counted as self-sufficient. In `
 nothing asked about it.
 
 - Such a value now gets a **G3** (`GAP_KIND_G3_UNATTRIBUTED`) when the parse shows it names
-  something. Its head token carries a digit and hangs off a noun by any relation but `nummod`, with
-  no preposition of its own. It stays `VALUE_KIND_GROUNDED`; only the gap is new.
-- Counts and thresholds are unchanged and still need nothing: `top 10 products` (`nummod`),
-  `sales above 1000` (a preposition), an amount a verb takes, a bare number, and a spelled-out
-  numeral. So are dates and amounts.
+  something. Its head token carries a digit and comes **after** the noun it hangs off, with no
+  preposition of its own (`account 501001`, `store 42`, `účet 501001`). It stays
+  `VALUE_KIND_GROUNDED`; only the gap is new.
+- Counts and thresholds are unchanged and still need nothing: a count before its noun
+  (`top 10 products`, `10 nejlepších prodejen`), cs `Top 10`, `sales above 1000` (a preposition),
+  an amount a verb takes, a bare number, and a spelled-out numeral. So are dates and amounts.
+- The first cut (resolver 0.11.6) decided by relation (`nummod` = a count). Live, cs Stanza hangs
+  the code in `Náklady na účet 501001 v roce 2025` off `účet` as `nummod`, and that code stayed
+  silent. Word order is what separates the two.
 - No wire change.
 
 ### resolver — a place is taken only by a member of an entity its anchor reaches (#118, ✅UD-7)
