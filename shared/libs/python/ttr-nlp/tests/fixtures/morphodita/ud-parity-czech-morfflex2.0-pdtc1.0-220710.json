@@ -1,0 +1,3855 @@
+{
+  "_comment": "Two live readings of each sentence, captured 2026-09-29: `morphodita` is the verbatim `result` string of nlp-morphodita:0.11.0 `/tag` (input=untokenized, output=vertical, model czech-morfflex2.0-pdtc1.0-220710); `stanza` is the token list of nlp-stanza:0.11.0 `/analyze` (cs, modelVersion stanza-1.14.0), trimmed to the fields a reading has. Stanza is trained on UD Czech-PDT, so where its PDT tag equals MorphoDiTa's, its upos/feats are the UD convention for that tag. Do not tidy: the decorations ARE the test.",
+  "Zobraz nejlepších 10 prodejen podle tržeb": {
+    "morphodita": "Zobraz\tzobrazit\tVi-S---2--A-P--\nnejlepších\tlepší\tAAFP2----3A----\n10\t10\tC=-------------\nprodejen\tprodejna\tNNFP2-----A----\npodle\tpodle-2\tRR--2----------\ntržeb\ttržba\tNNFP2-----A----\n\n",
+    "stanza": [
+      {
+        "text": "Zobraz",
+        "charStart": 0,
+        "charEnd": 6,
+        "lemma": "zobraz",
+        "upos": "NOUN",
+        "xpos": "NNFS1-----A----",
+        "feats": {
+          "Case": "Nom",
+          "Gender": "Masc",
+          "Number": "Sing"
+        }
+      },
+      {
+        "text": "nejlepších",
+        "charStart": 7,
+        "charEnd": 17,
+        "lemma": "lepší",
+        "upos": "ADJ",
+        "xpos": "AAFP2----3A----",
+        "feats": {
+          "Case": "Gen",
+          "Degree": "Sup",
+          "Gender": "Fem",
+          "Number": "Plur",
+          "Polarity": "Pos"
+        }
+      },
+      {
+        "text": "10",
+        "charStart": 18,
+        "charEnd": 20,
+        "lemma": "10",
+        "upos": "NUM",
+        "xpos": "C=-------------",
+        "feats": {
+          "NumForm": "Digit",
+          "NumType": "Card"
+        }
+      },
+      {
+        "text": "prodejen",
+        "charStart": 21,
+        "charEnd": 29,
+        "lemma": "prodejna",
+        "upos": "NOUN",
+        "xpos": "NNFP2-----A----",
+        "feats": {
+          "Case": "Gen",
+          "Gender": "Fem",
+          "Number": "Plur"
+        }
+      },
+      {
+        "text": "podle",
+        "charStart": 30,
+        "charEnd": 35,
+        "lemma": "podle",
+        "upos": "ADP",
+        "xpos": "RR--2----------",
+        "feats": {
+          "AdpType": "Prep",
+          "Case": "Gen"
+        }
+      },
+      {
+        "text": "tržeb",
+        "charStart": 36,
+        "charEnd": 41,
+        "lemma": "tržba",
+        "upos": "NOUN",
+        "xpos": "NNFP2-----A----",
+        "feats": {
+          "Case": "Gen",
+          "Gender": "Fem",
+          "Number": "Plur"
+        }
+      }
+    ]
+  },
+  "Ukaž prvních pět zákazníků s nejvyššími náklady": {
+    "morphodita": "Ukaž\tukázat\tVi-S---2--A-P--\nprvních\tprvní-1\tCrIP2----------\npět\tpět-1`5\tCl-S4----------\nzákazníků\tzákazník\tNNMP2-----A----\ns\ts-1\tRR--7----------\nnejvyššími\tvysoký\tAAIP7----3A----\nnáklady\tnáklad\tNNIP7-----A----\n\n",
+    "stanza": [
+      {
+        "text": "Ukaž",
+        "charStart": 0,
+        "charEnd": 4,
+        "lemma": "ukázat",
+        "upos": "VERB",
+        "xpos": "Vi-S---2--A-P--",
+        "feats": {
+          "Aspect": "Perf",
+          "Mood": "Imp",
+          "Number": "Sing",
+          "Person": "2",
+          "Polarity": "Pos",
+          "VerbForm": "Fin"
+        }
+      },
+      {
+        "text": "prvních",
+        "charStart": 5,
+        "charEnd": 12,
+        "lemma": "první",
+        "upos": "ADJ",
+        "xpos": "CrMP2----------",
+        "feats": {
+          "Animacy": "Anim",
+          "Case": "Gen",
+          "Gender": "Masc",
+          "NumType": "Ord",
+          "Number": "Plur"
+        }
+      },
+      {
+        "text": "pět",
+        "charStart": 13,
+        "charEnd": 16,
+        "lemma": "pět",
+        "upos": "NUM",
+        "xpos": "Cl-S4----------",
+        "feats": {
+          "Case": "Nom",
+          "NumForm": "Word",
+          "NumType": "Card",
+          "Number": "Sing"
+        }
+      },
+      {
+        "text": "zákazníků",
+        "charStart": 17,
+        "charEnd": 26,
+        "lemma": "zákazník",
+        "upos": "NOUN",
+        "xpos": "NNMP2-----A----",
+        "feats": {
+          "Animacy": "Anim",
+          "Case": "Gen",
+          "Gender": "Masc",
+          "Number": "Plur"
+        }
+      },
+      {
+        "text": "s",
+        "charStart": 27,
+        "charEnd": 28,
+        "lemma": "s",
+        "upos": "ADP",
+        "xpos": "RR--7----------",
+        "feats": {
+          "AdpType": "Prep",
+          "Case": "Ins"
+        }
+      },
+      {
+        "text": "nejvyššími",
+        "charStart": 29,
+        "charEnd": 39,
+        "lemma": "vysoký",
+        "upos": "ADJ",
+        "xpos": "AAIP7----3A----",
+        "feats": {
+          "Animacy": "Inan",
+          "Case": "Ins",
+          "Degree": "Sup",
+          "Gender": "Masc",
+          "Number": "Plur",
+          "Polarity": "Pos"
+        }
+      },
+      {
+        "text": "náklady",
+        "charStart": 40,
+        "charEnd": 47,
+        "lemma": "náklad",
+        "upos": "NOUN",
+        "xpos": "NNIP7-----A----",
+        "feats": {
+          "Animacy": "Inan",
+          "Case": "Ins",
+          "Gender": "Masc",
+          "Number": "Plur"
+        }
+      }
+    ]
+  },
+  "Který sklad měl loni nejvíc vratek?": {
+    "morphodita": "Který\tkterý\tP4YS1----------\nsklad\tsklad\tNNIS1-----A----\nměl\tmít\tVpYS----R-AAI--\nloni\tloni\tDb-------------\nnejvíc\tvíce\tDg-------3A---1\nvratek\tvratka\tNNFP2-----A----\n?\t?\tZ:-------------\n\n",
+    "stanza": [
+      {
+        "text": "Který",
+        "charStart": 0,
+        "charEnd": 5,
+        "lemma": "který",
+        "upos": "DET",
+        "xpos": "P4YS1----------",
+        "feats": {
+          "Case": "Nom",
+          "Gender": "Masc",
+          "Number": "Sing",
+          "PronType": "Int,Rel"
+        }
+      },
+      {
+        "text": "sklad",
+        "charStart": 6,
+        "charEnd": 11,
+        "lemma": "sklad",
+        "upos": "NOUN",
+        "xpos": "NNIS4-----A----",
+        "feats": {
+          "Animacy": "Inan",
+          "Case": "Acc",
+          "Gender": "Masc",
+          "Number": "Sing"
+        }
+      },
+      {
+        "text": "měl",
+        "charStart": 12,
+        "charEnd": 15,
+        "lemma": "mít",
+        "upos": "VERB",
+        "xpos": "VpYS----R-AAI--",
+        "feats": {
+          "Aspect": "Imp",
+          "Gender": "Masc",
+          "Number": "Sing",
+          "Polarity": "Pos",
+          "Tense": "Past",
+          "VerbForm": "Part",
+          "Voice": "Act"
+        }
+      },
+      {
+        "text": "loni",
+        "charStart": 16,
+        "charEnd": 20,
+        "lemma": "loni",
+        "upos": "ADV",
+        "xpos": "Db-------------",
+        "feats": {}
+      },
+      {
+        "text": "nejvíc",
+        "charStart": 21,
+        "charEnd": 27,
+        "lemma": "více",
+        "upos": "ADV",
+        "xpos": "Dg-------3A---1",
+        "feats": {
+          "Degree": "Sup",
+          "Polarity": "Pos"
+        }
+      },
+      {
+        "text": "vratek",
+        "charStart": 28,
+        "charEnd": 34,
+        "lemma": "vratka",
+        "upos": "NOUN",
+        "xpos": "NNIS1-----A----",
+        "feats": {
+          "Animacy": "Inan",
+          "Case": "Nom",
+          "Gender": "Masc",
+          "Number": "Sing"
+        }
+      },
+      {
+        "text": "?",
+        "charStart": 34,
+        "charEnd": 35,
+        "lemma": "?",
+        "upos": "PUNCT",
+        "xpos": "Z:-------------",
+        "feats": {}
+      }
+    ]
+  },
+  "Jaké tržby by byly bez slev, kdyby se neprodávalo v Brně?": {
+    "morphodita": "Jaké\tjaký\tP4FP1----------\ntržby\ttržba\tNNFP1-----A----\nby\tbýt\tVc----------I--\nbyly\tbýt\tVpTP----R-AAI--\nbez\tbez-1\tRR--2----------\nslev\tsleva\tNNFP2-----A----\n,\t,\tZ:-------------\nkdyby\tkdyby\tJ,-------------\nse\tse_^(zvr._zájmeno/částice)\tP7--4----------\nneprodávalo\tprodávat_^(*4at)\tVpNS----R-NAI--\nv\tv-1\tRR--6----------\nBrně\tBrno_;G\tNNNS6-----A----\n?\t?\tZ:-------------\n\n",
+    "stanza": [
+      {
+        "text": "Jaké",
+        "charStart": 0,
+        "charEnd": 4,
+        "lemma": "jaký",
+        "upos": "DET",
+        "xpos": "P4FP1----------",
+        "feats": {
+          "Case": "Nom",
+          "Gender": "Fem",
+          "Number": "Plur",
+          "PronType": "Int,Rel"
+        }
+      },
+      {
+        "text": "tržby",
+        "charStart": 5,
+        "charEnd": 10,
+        "lemma": "tržba",
+        "upos": "NOUN",
+        "xpos": "NNFP1-----A----",
+        "feats": {
+          "Case": "Nom",
+          "Gender": "Fem",
+          "Number": "Plur"
+        }
+      },
+      {
+        "text": "by",
+        "charStart": 11,
+        "charEnd": 13,
+        "lemma": "být",
+        "upos": "AUX",
+        "xpos": "Vc----------I--",
+        "feats": {
+          "Aspect": "Imp",
+          "Mood": "Cnd",
+          "VerbForm": "Fin"
+        }
+      },
+      {
+        "text": "byly",
+        "charStart": 14,
+        "charEnd": 18,
+        "lemma": "být",
+        "upos": "AUX",
+        "xpos": "VpTP----R-AAI--",
+        "feats": {
+          "Animacy": "Inan",
+          "Aspect": "Imp",
+          "Gender": "Fem,Masc",
+          "Number": "Plur",
+          "Polarity": "Pos",
+          "Tense": "Past",
+          "VerbForm": "Part",
+          "Voice": "Act"
+        }
+      },
+      {
+        "text": "bez",
+        "charStart": 19,
+        "charEnd": 22,
+        "lemma": "bez",
+        "upos": "ADP",
+        "xpos": "RR--2----------",
+        "feats": {
+          "AdpType": "Prep",
+          "Case": "Gen"
+        }
+      },
+      {
+        "text": "slev",
+        "charStart": 23,
+        "charEnd": 27,
+        "lemma": "sleva",
+        "upos": "NOUN",
+        "xpos": "NNFP2-----A----",
+        "feats": {
+          "Case": "Gen",
+          "Gender": "Fem",
+          "Number": "Plur"
+        }
+      },
+      {
+        "text": ",",
+        "charStart": 27,
+        "charEnd": 28,
+        "lemma": ",",
+        "upos": "PUNCT",
+        "xpos": "Z:-------------",
+        "feats": {}
+      },
+      {
+        "text": "když",
+        "charStart": null,
+        "charEnd": null,
+        "lemma": "když",
+        "upos": "SCONJ",
+        "xpos": "J,-------------",
+        "feats": {}
+      },
+      {
+        "text": "by",
+        "charStart": null,
+        "charEnd": null,
+        "lemma": "být",
+        "upos": "AUX",
+        "xpos": "Vc-------------",
+        "feats": {
+          "Aspect": "Imp",
+          "Mood": "Cnd",
+          "VerbForm": "Fin"
+        }
+      },
+      {
+        "text": "se",
+        "charStart": 35,
+        "charEnd": 37,
+        "lemma": "se",
+        "upos": "PRON",
+        "xpos": "P7-X4----------",
+        "feats": {
+          "Case": "Acc",
+          "PronType": "Prs",
+          "Reflex": "Yes",
+          "Variant": "Short"
+        }
+      },
+      {
+        "text": "neprodávalo",
+        "charStart": 38,
+        "charEnd": 49,
+        "lemma": "prodávat",
+        "upos": "VERB",
+        "xpos": "VpNS----R-NAI--",
+        "feats": {
+          "Aspect": "Imp",
+          "Gender": "Neut",
+          "Number": "Sing",
+          "Polarity": "Neg",
+          "Tense": "Past",
+          "VerbForm": "Part",
+          "Voice": "Act"
+        }
+      },
+      {
+        "text": "v",
+        "charStart": 50,
+        "charEnd": 51,
+        "lemma": "v",
+        "upos": "ADP",
+        "xpos": "RR--6----------",
+        "feats": {
+          "AdpType": "Prep",
+          "Case": "Loc"
+        }
+      },
+      {
+        "text": "Brně",
+        "charStart": 52,
+        "charEnd": 56,
+        "lemma": "Brno",
+        "upos": "PROPN",
+        "xpos": "NNNS6-----A----",
+        "feats": {
+          "Case": "Loc",
+          "Gender": "Neut",
+          "NameType": "Geo",
+          "Number": "Sing"
+        }
+      },
+      {
+        "text": "?",
+        "charStart": 56,
+        "charEnd": 57,
+        "lemma": "?",
+        "upos": "PUNCT",
+        "xpos": "Z:-------------",
+        "feats": {}
+      }
+    ]
+  },
+  "Kolik objednávek bylo zrušeno a kolik jich nebylo doručeno?": {
+    "morphodita": "Kolik\tkolik\tCa--1----------\nobjednávek\tobjednávka\tNNFP2-----A----\nbylo\tbýt\tVpNS----R-AAI--\nzrušeno\tzrušit\tVsNS----X-APP--\na\ta-1\tJ^-------------\nkolik\tkolik\tCa--1----------\njich\ton-1\tPEXP2--3------1\nnebylo\tbýt\tVpNS----R-NAI--\ndoručeno\tdoručit\tVsNS----X-APP--\n?\t?\tZ:-------------\n\n",
+    "stanza": [
+      {
+        "text": "Kolik",
+        "charStart": 0,
+        "charEnd": 5,
+        "lemma": "kolik",
+        "upos": "DET",
+        "xpos": "Ca--1----------",
+        "feats": {
+          "Case": "Nom",
+          "NumType": "Card",
+          "PronType": "Dem,Ind"
+        }
+      },
+      {
+        "text": "objednávek",
+        "charStart": 6,
+        "charEnd": 16,
+        "lemma": "objednávka",
+        "upos": "NOUN",
+        "xpos": "NNFP2-----A----",
+        "feats": {
+          "Case": "Gen",
+          "Gender": "Fem",
+          "Number": "Plur"
+        }
+      },
+      {
+        "text": "bylo",
+        "charStart": 17,
+        "charEnd": 21,
+        "lemma": "být",
+        "upos": "AUX",
+        "xpos": "VpNS----R-AAI--",
+        "feats": {
+          "Aspect": "Imp",
+          "Gender": "Neut",
+          "Number": "Sing",
+          "Polarity": "Pos",
+          "Tense": "Past",
+          "VerbForm": "Part",
+          "Voice": "Act"
+        }
+      },
+      {
+        "text": "zrušeno",
+        "charStart": 22,
+        "charEnd": 29,
+        "lemma": "zrušený",
+        "upos": "ADJ",
+        "xpos": "VsNS----X-APP--",
+        "feats": {
+          "Aspect": "Perf",
+          "Degree": "Pos",
+          "Gender": "Neut",
+          "Number": "Sing",
+          "Polarity": "Pos",
+          "Variant": "Short",
+          "VerbForm": "Part",
+          "Voice": "Pass"
+        }
+      },
+      {
+        "text": "a",
+        "charStart": 30,
+        "charEnd": 31,
+        "lemma": "a",
+        "upos": "CCONJ",
+        "xpos": "J^-------------",
+        "feats": {}
+      },
+      {
+        "text": "kolik",
+        "charStart": 32,
+        "charEnd": 37,
+        "lemma": "kolik",
+        "upos": "DET",
+        "xpos": "Ca--1----------",
+        "feats": {
+          "Case": "Nom",
+          "NumType": "Card",
+          "PronType": "Dem,Ind"
+        }
+      },
+      {
+        "text": "jich",
+        "charStart": 38,
+        "charEnd": 42,
+        "lemma": "on",
+        "upos": "PRON",
+        "xpos": "PEXP2--3------1",
+        "feats": {
+          "Case": "Gen",
+          "Number": "Plur",
+          "Person": "3",
+          "PrepCase": "Npr",
+          "PronType": "Prs"
+        }
+      },
+      {
+        "text": "nebylo",
+        "charStart": 43,
+        "charEnd": 49,
+        "lemma": "být",
+        "upos": "AUX",
+        "xpos": "VpNS----R-NAI--",
+        "feats": {
+          "Aspect": "Imp",
+          "Gender": "Neut",
+          "Number": "Sing",
+          "Polarity": "Neg",
+          "Tense": "Past",
+          "VerbForm": "Part",
+          "Voice": "Act"
+        }
+      },
+      {
+        "text": "doručeno",
+        "charStart": 50,
+        "charEnd": 58,
+        "lemma": "doručený",
+        "upos": "ADJ",
+        "xpos": "VsNS----X-APP--",
+        "feats": {
+          "Aspect": "Perf",
+          "Degree": "Pos",
+          "Gender": "Neut",
+          "Number": "Sing",
+          "Polarity": "Pos",
+          "Variant": "Short",
+          "VerbForm": "Part",
+          "Voice": "Pass"
+        }
+      },
+      {
+        "text": "?",
+        "charStart": 58,
+        "charEnd": 59,
+        "lemma": "?",
+        "upos": "PUNCT",
+        "xpos": "Z:-------------",
+        "feats": {}
+      }
+    ]
+  },
+  "Porovnej polovinu nákladů s dvakrát vyššími tržbami za druhé čtvrtletí": {
+    "morphodita": "Porovnej\tporovnat\tVi-S---2--A-P--\npolovinu\tpolovina\tNNFS4-----A----\nnákladů\tnáklad\tNNIP2-----A----\ns\ts-1\tRR--7----------\ndvakrát\tdvakrát`2\tCv-------------\nvyššími\tvysoký\tAAFP7----2A----\ntržbami\ttržba\tNNFP7-----A----\nza\tza\tRR--4----------\ndruhé\tdruhý`2\tCrNS4----------\nčtvrtletí\tčtvrtletí\tNNNS4-----A----\n\n",
+    "stanza": [
+      {
+        "text": "Porovnej",
+        "charStart": 0,
+        "charEnd": 8,
+        "lemma": "porovnat",
+        "upos": "VERB",
+        "xpos": "Vi-S---2--A-P--",
+        "feats": {
+          "Aspect": "Perf",
+          "Mood": "Imp",
+          "Number": "Sing",
+          "Person": "2",
+          "Polarity": "Pos",
+          "VerbForm": "Fin"
+        }
+      },
+      {
+        "text": "polovinu",
+        "charStart": 9,
+        "charEnd": 17,
+        "lemma": "polovina",
+        "upos": "NOUN",
+        "xpos": "NNFS4-----A----",
+        "feats": {
+          "Case": "Acc",
+          "Gender": "Fem",
+          "Number": "Sing"
+        }
+      },
+      {
+        "text": "nákladů",
+        "charStart": 18,
+        "charEnd": 25,
+        "lemma": "náklad",
+        "upos": "NOUN",
+        "xpos": "NNIP2-----A----",
+        "feats": {
+          "Animacy": "Inan",
+          "Case": "Gen",
+          "Gender": "Masc",
+          "Number": "Plur"
+        }
+      },
+      {
+        "text": "s",
+        "charStart": 26,
+        "charEnd": 27,
+        "lemma": "s",
+        "upos": "ADP",
+        "xpos": "RR--7----------",
+        "feats": {
+          "AdpType": "Prep",
+          "Case": "Ins"
+        }
+      },
+      {
+        "text": "dvakrát",
+        "charStart": 28,
+        "charEnd": 35,
+        "lemma": "dvakrát",
+        "upos": "ADV",
+        "xpos": "Cv-------------",
+        "feats": {
+          "NumType": "Mult"
+        }
+      },
+      {
+        "text": "vyššími",
+        "charStart": 36,
+        "charEnd": 43,
+        "lemma": "vysoký",
+        "upos": "ADJ",
+        "xpos": "AAFP7----2A----",
+        "feats": {
+          "Case": "Ins",
+          "Degree": "Cmp",
+          "Gender": "Fem",
+          "Number": "Plur",
+          "Polarity": "Pos"
+        }
+      },
+      {
+        "text": "tržbami",
+        "charStart": 44,
+        "charEnd": 51,
+        "lemma": "tržba",
+        "upos": "NOUN",
+        "xpos": "NNFP7-----A----",
+        "feats": {
+          "Case": "Ins",
+          "Gender": "Fem",
+          "Number": "Plur"
+        }
+      },
+      {
+        "text": "za",
+        "charStart": 52,
+        "charEnd": 54,
+        "lemma": "za",
+        "upos": "ADP",
+        "xpos": "RR--4----------",
+        "feats": {
+          "AdpType": "Prep",
+          "Case": "Acc"
+        }
+      },
+      {
+        "text": "druhé",
+        "charStart": 55,
+        "charEnd": 60,
+        "lemma": "druhý",
+        "upos": "ADJ",
+        "xpos": "CrNS4----------",
+        "feats": {
+          "Case": "Acc",
+          "Gender": "Neut",
+          "NumType": "Ord",
+          "Number": "Sing"
+        }
+      },
+      {
+        "text": "čtvrtletí",
+        "charStart": 61,
+        "charEnd": 70,
+        "lemma": "čtvrtletí",
+        "upos": "NOUN",
+        "xpos": "NNNS4-----A----",
+        "feats": {
+          "Case": "Acc",
+          "Gender": "Neut",
+          "Number": "Sing"
+        }
+      }
+    ]
+  },
+  "Vypiš několik největších faktur s DPH z e-shopu firmy Marvy Oil, s.r.o.": {
+    "morphodita": "Vypiš\tvypsat\tVi-S---2--A-P--\nněkolik\tněkolik\tCa--4----------\nnejvětších\tvelký\tAAFP2----3A----\nfaktur\tfaktura\tNNFP2-----A----\ns\ts-1\tRR--7----------\nDPH\tDPH-1_^(daň_z_přidané_hodnoty)\tBNXXX-----A----\nz\tz-1\tRR--2----------\ne\te-33\tQ3-------------\n-\t-\tZ:-------------\nshopu\tshop_^(obchod)\tNNIS2-----A----\nfirmy\tfirma\tNNFS2-----A----\nMarvy\tMarv_;G\tNNIP1-----A----\nOil\toil_;m\tNNIS1-----A----\n,\t,\tZ:-------------\ns\tspolečnost\tNNFXX-----A---a\n.\t.\tZ:-------------\nr\tručení\tNNNS7-----A---b\n.\t.\tZ:-------------\no\tomezený\tAANS7----1A---b\n.\t.\tZ:-------------\n\n",
+    "stanza": [
+      {
+        "text": "Vypiš",
+        "charStart": 0,
+        "charEnd": 5,
+        "lemma": "Vypiš",
+        "upos": "PROPN",
+        "xpos": "NNMS1-----A----",
+        "feats": {
+          "Animacy": "Anim",
+          "Case": "Nom",
+          "Gender": "Masc",
+          "NameType": "Giv",
+          "Number": "Sing"
+        }
+      },
+      {
+        "text": "několik",
+        "charStart": 6,
+        "charEnd": 13,
+        "lemma": "několik",
+        "upos": "DET",
+        "xpos": "Ca--1----------",
+        "feats": {
+          "Case": "Nom",
+          "NumType": "Card",
+          "PronType": "Ind"
+        }
+      },
+      {
+        "text": "největších",
+        "charStart": 14,
+        "charEnd": 24,
+        "lemma": "velký",
+        "upos": "ADJ",
+        "xpos": "AAFP2----3A----",
+        "feats": {
+          "Case": "Gen",
+          "Degree": "Sup",
+          "Gender": "Fem",
+          "Number": "Plur",
+          "Polarity": "Pos"
+        }
+      },
+      {
+        "text": "faktur",
+        "charStart": 25,
+        "charEnd": 31,
+        "lemma": "faktura",
+        "upos": "NOUN",
+        "xpos": "NNFP2-----A----",
+        "feats": {
+          "Case": "Gen",
+          "Gender": "Fem",
+          "Number": "Plur"
+        }
+      },
+      {
+        "text": "s",
+        "charStart": 32,
+        "charEnd": 33,
+        "lemma": "s",
+        "upos": "ADP",
+        "xpos": "RR--7----------",
+        "feats": {
+          "AdpType": "Prep",
+          "Case": "Ins"
+        }
+      },
+      {
+        "text": "DPH",
+        "charStart": 34,
+        "charEnd": 37,
+        "lemma": "DPH",
+        "upos": "NOUN",
+        "xpos": "BNXXX-----A----",
+        "feats": {
+          "Abbr": "Yes"
+        }
+      },
+      {
+        "text": "z",
+        "charStart": 38,
+        "charEnd": 39,
+        "lemma": "z",
+        "upos": "ADP",
+        "xpos": "RR--2----------",
+        "feats": {
+          "AdpType": "Prep",
+          "Case": "Gen"
+        }
+      },
+      {
+        "text": "e",
+        "charStart": 40,
+        "charEnd": 41,
+        "lemma": "e",
+        "upos": "NOUN",
+        "xpos": "Q3-------------",
+        "feats": {
+          "Abbr": "Yes"
+        }
+      },
+      {
+        "text": "-",
+        "charStart": 41,
+        "charEnd": 42,
+        "lemma": "-",
+        "upos": "PUNCT",
+        "xpos": "Z:-------------",
+        "feats": {}
+      },
+      {
+        "text": "shopu",
+        "charStart": 42,
+        "charEnd": 47,
+        "lemma": "shopa",
+        "upos": "NOUN",
+        "xpos": "NNIS2-----A----",
+        "feats": {
+          "Animacy": "Inan",
+          "Case": "Gen",
+          "Gender": "Masc",
+          "Number": "Sing"
+        }
+      },
+      {
+        "text": "firmy",
+        "charStart": 48,
+        "charEnd": 53,
+        "lemma": "firma",
+        "upos": "NOUN",
+        "xpos": "NNFS2-----A----",
+        "feats": {
+          "Case": "Gen",
+          "Gender": "Fem",
+          "Number": "Sing"
+        }
+      },
+      {
+        "text": "Marvy",
+        "charStart": 54,
+        "charEnd": 59,
+        "lemma": "Marva",
+        "upos": "PROPN",
+        "xpos": "NNFS1-----A----",
+        "feats": {
+          "Case": "Nom",
+          "Gender": "Fem",
+          "NameType": "Geo",
+          "Number": "Sing"
+        }
+      },
+      {
+        "text": "Oil",
+        "charStart": 60,
+        "charEnd": 63,
+        "lemma": "Oil",
+        "upos": "X",
+        "xpos": "F%-------------",
+        "feats": {
+          "Foreign": "Yes"
+        }
+      },
+      {
+        "text": ",",
+        "charStart": 63,
+        "charEnd": 64,
+        "lemma": ",",
+        "upos": "PUNCT",
+        "xpos": "Z:-------------",
+        "feats": {}
+      },
+      {
+        "text": "s",
+        "charStart": 65,
+        "charEnd": 66,
+        "lemma": "společnost",
+        "upos": "NOUN",
+        "xpos": "NNFXX-----A---a",
+        "feats": {
+          "Abbr": "Yes",
+          "Gender": "Fem"
+        }
+      },
+      {
+        "text": ".",
+        "charStart": 66,
+        "charEnd": 67,
+        "lemma": ".",
+        "upos": "PUNCT",
+        "xpos": "Z:-------------",
+        "feats": {}
+      },
+      {
+        "text": "r",
+        "charStart": 67,
+        "charEnd": 68,
+        "lemma": "rok",
+        "upos": "NOUN",
+        "xpos": "NNNS7-----A---b",
+        "feats": {
+          "Abbr": "Yes",
+          "Case": "Ins",
+          "Gender": "Neut",
+          "Number": "Sing"
+        }
+      },
+      {
+        "text": ".",
+        "charStart": 68,
+        "charEnd": 69,
+        "lemma": ".",
+        "upos": "PUNCT",
+        "xpos": "Z:-------------",
+        "feats": {}
+      },
+      {
+        "text": "o",
+        "charStart": 69,
+        "charEnd": 70,
+        "lemma": "omezený",
+        "upos": "ADJ",
+        "xpos": "AANS7----1A---b",
+        "feats": {
+          "Abbr": "Yes",
+          "Case": "Ins",
+          "Degree": "Pos",
+          "Gender": "Neut",
+          "Number": "Sing",
+          "Polarity": "Pos"
+        }
+      },
+      {
+        "text": ".",
+        "charStart": 70,
+        "charEnd": 71,
+        "lemma": ".",
+        "upos": "PUNCT",
+        "xpos": "Z:-------------",
+        "feats": {}
+      }
+    ]
+  },
+  "Kde jsme prodávali víc než 20 % zboží a proč?": {
+    "morphodita": "Kde\tkde\tDb-------------\njsme\tbýt\tVB-P---1P-AAI--\nprodávali\tprodávat_^(*4at)\tVpMP----R-AAI--\nvíc\tvíce\tDg-------2A---1\nnež\tnež-2\tJ,-------------\n20\t20\tC=-------------\n%\t%\tZ:-------------\nzboží\tzboží\tNNNS2-----A----\na\ta-1\tJ^-------------\nproč\tproč\tDb-------------\n?\t?\tZ:-------------\n\n",
+    "stanza": [
+      {
+        "text": "Kde",
+        "charStart": 0,
+        "charEnd": 3,
+        "lemma": "kde",
+        "upos": "ADV",
+        "xpos": "Db-------------",
+        "feats": {
+          "PronType": "Int,Rel"
+        }
+      },
+      {
+        "text": "jsme",
+        "charStart": 4,
+        "charEnd": 8,
+        "lemma": "být",
+        "upos": "AUX",
+        "xpos": "VB-P---1P-AAI--",
+        "feats": {
+          "Aspect": "Imp",
+          "Mood": "Ind",
+          "Number": "Plur",
+          "Person": "1",
+          "Polarity": "Pos",
+          "Tense": "Pres",
+          "VerbForm": "Fin",
+          "Voice": "Act"
+        }
+      },
+      {
+        "text": "prodávali",
+        "charStart": 9,
+        "charEnd": 18,
+        "lemma": "prodávat",
+        "upos": "VERB",
+        "xpos": "VpMP----R-AAI--",
+        "feats": {
+          "Animacy": "Anim",
+          "Aspect": "Imp",
+          "Gender": "Masc",
+          "Number": "Plur",
+          "Polarity": "Pos",
+          "Tense": "Past",
+          "VerbForm": "Part",
+          "Voice": "Act"
+        }
+      },
+      {
+        "text": "víc",
+        "charStart": 19,
+        "charEnd": 22,
+        "lemma": "více",
+        "upos": "ADV",
+        "xpos": "Dg-------2A---1",
+        "feats": {
+          "Degree": "Cmp",
+          "Polarity": "Pos"
+        }
+      },
+      {
+        "text": "než",
+        "charStart": 23,
+        "charEnd": 26,
+        "lemma": "než",
+        "upos": "SCONJ",
+        "xpos": "J,-------------",
+        "feats": {}
+      },
+      {
+        "text": "20",
+        "charStart": 27,
+        "charEnd": 29,
+        "lemma": "20",
+        "upos": "NUM",
+        "xpos": "C=-------------",
+        "feats": {
+          "NumForm": "Digit",
+          "NumType": "Card"
+        }
+      },
+      {
+        "text": "%",
+        "charStart": 30,
+        "charEnd": 31,
+        "lemma": "%",
+        "upos": "SYM",
+        "xpos": "Z:-------------",
+        "feats": {}
+      },
+      {
+        "text": "zboží",
+        "charStart": 32,
+        "charEnd": 37,
+        "lemma": "zboží",
+        "upos": "NOUN",
+        "xpos": "NNNS2-----A----",
+        "feats": {
+          "Case": "Gen",
+          "Gender": "Neut",
+          "Number": "Sing"
+        }
+      },
+      {
+        "text": "a",
+        "charStart": 38,
+        "charEnd": 39,
+        "lemma": "a",
+        "upos": "CCONJ",
+        "xpos": "J^-------------",
+        "feats": {}
+      },
+      {
+        "text": "proč",
+        "charStart": 40,
+        "charEnd": 44,
+        "lemma": "proč",
+        "upos": "ADV",
+        "xpos": "Db-------------",
+        "feats": {
+          "PronType": "Int,Rel"
+        }
+      },
+      {
+        "text": "?",
+        "charStart": 44,
+        "charEnd": 45,
+        "lemma": "?",
+        "upos": "PUNCT",
+        "xpos": "Z:-------------",
+        "feats": {}
+      }
+    ]
+  },
+  "Nezobrazuj žádné prodejny, které nic neprodaly, a vše seřaď od nejmenší.": {
+    "morphodita": "Nezobrazuj\tzobrazovat\tVi-S---2--N-I--\nžádné\tžádný\tPWFP4----------\nprodejny\tprodejna\tNNFP4-----A----\n,\t,\tZ:-------------\nkteré\tkterý\tP4FP1----------\nnic\tnic\tPY--4----------\nneprodaly\tprodat\tVpTP----R-NAP--\n,\t,\tZ:-------------\na\ta-1\tJ^-------------\nvše\tvšechen\tPLNS1---------1\nseřaď\tseřadit\tVi-S---2--A-P--\nod\tod-1\tRR--2----------\nnejmenší\tmalý\tAAFS2----3A----\n.\t.\tZ:-------------\n\n",
+    "stanza": [
+      {
+        "text": "Nezobrazuj",
+        "charStart": 0,
+        "charEnd": 10,
+        "lemma": "zobrazovat",
+        "upos": "VERB",
+        "xpos": "VB-S---3P-NAP--",
+        "feats": {
+          "Aspect": "Imp",
+          "Mood": "Ind",
+          "Number": "Sing",
+          "Person": "1",
+          "Polarity": "Neg",
+          "Tense": "Pres",
+          "VerbForm": "Fin",
+          "Voice": "Act"
+        }
+      },
+      {
+        "text": "žádné",
+        "charStart": 11,
+        "charEnd": 16,
+        "lemma": "žádný",
+        "upos": "DET",
+        "xpos": "PWFP1----------",
+        "feats": {
+          "Case": "Nom",
+          "Gender": "Fem",
+          "Number": "Plur",
+          "PronType": "Neg"
+        }
+      },
+      {
+        "text": "prodejny",
+        "charStart": 17,
+        "charEnd": 25,
+        "lemma": "prodejna",
+        "upos": "NOUN",
+        "xpos": "NNFP1-----A----",
+        "feats": {
+          "Case": "Nom",
+          "Gender": "Fem",
+          "Number": "Plur"
+        }
+      },
+      {
+        "text": ",",
+        "charStart": 25,
+        "charEnd": 26,
+        "lemma": ",",
+        "upos": "PUNCT",
+        "xpos": "Z:-------------",
+        "feats": {}
+      },
+      {
+        "text": "které",
+        "charStart": 27,
+        "charEnd": 32,
+        "lemma": "který",
+        "upos": "DET",
+        "xpos": "P4FP1----------",
+        "feats": {
+          "Case": "Nom",
+          "Gender": "Fem",
+          "Number": "Plur",
+          "PronType": "Int,Rel"
+        }
+      },
+      {
+        "text": "nic",
+        "charStart": 33,
+        "charEnd": 36,
+        "lemma": "nic",
+        "upos": "PRON",
+        "xpos": "PY--4----------",
+        "feats": {
+          "Case": "Acc",
+          "PronType": "Neg"
+        }
+      },
+      {
+        "text": "neprodaly",
+        "charStart": 37,
+        "charEnd": 46,
+        "lemma": "prodat",
+        "upos": "VERB",
+        "xpos": "VpTP----R-NAP--",
+        "feats": {
+          "Animacy": "Inan",
+          "Aspect": "Perf",
+          "Gender": "Fem,Masc",
+          "Number": "Plur",
+          "Polarity": "Neg",
+          "Tense": "Past",
+          "VerbForm": "Part",
+          "Voice": "Act"
+        }
+      },
+      {
+        "text": ",",
+        "charStart": 46,
+        "charEnd": 47,
+        "lemma": ",",
+        "upos": "PUNCT",
+        "xpos": "Z:-------------",
+        "feats": {}
+      },
+      {
+        "text": "a",
+        "charStart": 48,
+        "charEnd": 49,
+        "lemma": "a",
+        "upos": "CCONJ",
+        "xpos": "J^-------------",
+        "feats": {}
+      },
+      {
+        "text": "vše",
+        "charStart": 50,
+        "charEnd": 53,
+        "lemma": "všechen",
+        "upos": "DET",
+        "xpos": "PLNS1---------1",
+        "feats": {
+          "Case": "Nom",
+          "Gender": "Neut",
+          "Number": "Sing",
+          "PronType": "Tot"
+        }
+      },
+      {
+        "text": "seřaď",
+        "charStart": 54,
+        "charEnd": 59,
+        "lemma": "seřít",
+        "upos": "VERB",
+        "xpos": "VB-S----P-AAI--",
+        "feats": {
+          "Aspect": "Imp",
+          "Number": "Sing",
+          "Polarity": "Pos",
+          "Tense": "Pres",
+          "VerbForm": "Part",
+          "Voice": "Act"
+        }
+      },
+      {
+        "text": "od",
+        "charStart": 60,
+        "charEnd": 62,
+        "lemma": "od",
+        "upos": "ADP",
+        "xpos": "RR--2----------",
+        "feats": {
+          "AdpType": "Prep",
+          "Case": "Gen"
+        }
+      },
+      {
+        "text": "nejmenší",
+        "charStart": 63,
+        "charEnd": 71,
+        "lemma": "malý",
+        "upos": "ADJ",
+        "xpos": "AAFS2----3A----",
+        "feats": {
+          "Case": "Gen",
+          "Degree": "Sup",
+          "Gender": "Fem",
+          "Number": "Sing",
+          "Polarity": "Pos"
+        }
+      },
+      {
+        "text": ".",
+        "charStart": 71,
+        "charEnd": 72,
+        "lemma": ".",
+        "upos": "PUNCT",
+        "xpos": "Z:-------------",
+        "feats": {}
+      }
+    ]
+  },
+  "Zobrazte si své objednávky za leden 2025, abychom viděli, že rostou.": {
+    "morphodita": "Zobrazte\tzobrazit\tVi-P---2--A-P--\nsi\tse_^(zvr._zájmeno/částice)\tP7--3----------\nsvé\tsvůj-1\tP8FP4---------1\nobjednávky\tobjednávka\tNNFP4-----A----\nza\tza\tRR--4----------\nleden\tleden\tNNIS4-----A----\n2025\t2025\tC=-------------\n,\t,\tZ:-------------\nabychom\taby\tJ,-----------m-\nviděli\tvidět\tVpMP----R-AAI--\n,\t,\tZ:-------------\nže\tže-1\tJ,-------------\nrostou\trůst-2\tVB-P---3P-AAI--\n.\t.\tZ:-------------\n\n",
+    "stanza": [
+      {
+        "text": "Zobrazte",
+        "charStart": 0,
+        "charEnd": 8,
+        "lemma": "zobrást",
+        "upos": "VERB",
+        "xpos": "Vi-P---2--A-P--",
+        "feats": {
+          "Aspect": "Perf",
+          "Mood": "Imp",
+          "Number": "Plur",
+          "Person": "1",
+          "Polarity": "Pos",
+          "VerbForm": "Fin"
+        }
+      },
+      {
+        "text": "si",
+        "charStart": 9,
+        "charEnd": 11,
+        "lemma": "se",
+        "upos": "PRON",
+        "xpos": "P7--3----------",
+        "feats": {
+          "Case": "Dat",
+          "PronType": "Prs",
+          "Reflex": "Yes",
+          "Variant": "Short"
+        }
+      },
+      {
+        "text": "své",
+        "charStart": 12,
+        "charEnd": 15,
+        "lemma": "svůj",
+        "upos": "DET",
+        "xpos": "P8FP4---------1",
+        "feats": {
+          "Case": "Acc",
+          "Gender": "Fem",
+          "Number": "Plur",
+          "Poss": "Yes",
+          "PronType": "Prs",
+          "Reflex": "Yes"
+        }
+      },
+      {
+        "text": "objednávky",
+        "charStart": 16,
+        "charEnd": 26,
+        "lemma": "objednávka",
+        "upos": "NOUN",
+        "xpos": "NNFP4-----A----",
+        "feats": {
+          "Case": "Acc",
+          "Gender": "Fem",
+          "Number": "Plur"
+        }
+      },
+      {
+        "text": "za",
+        "charStart": 27,
+        "charEnd": 29,
+        "lemma": "za",
+        "upos": "ADP",
+        "xpos": "RR--4----------",
+        "feats": {
+          "AdpType": "Prep",
+          "Case": "Acc"
+        }
+      },
+      {
+        "text": "leden",
+        "charStart": 30,
+        "charEnd": 35,
+        "lemma": "leden",
+        "upos": "NOUN",
+        "xpos": "NNIS4-----A----",
+        "feats": {
+          "Animacy": "Inan",
+          "Case": "Acc",
+          "Gender": "Masc",
+          "Number": "Sing"
+        }
+      },
+      {
+        "text": "2025",
+        "charStart": 36,
+        "charEnd": 40,
+        "lemma": "2025",
+        "upos": "NUM",
+        "xpos": "C=-------------",
+        "feats": {
+          "NumForm": "Digit",
+          "NumType": "Card"
+        }
+      },
+      {
+        "text": ",",
+        "charStart": 40,
+        "charEnd": 41,
+        "lemma": ",",
+        "upos": "PUNCT",
+        "xpos": "Z:-------------",
+        "feats": {}
+      },
+      {
+        "text": "aby",
+        "charStart": null,
+        "charEnd": null,
+        "lemma": "aby",
+        "upos": "SCONJ",
+        "xpos": "J,-------------",
+        "feats": {}
+      },
+      {
+        "text": "bychom",
+        "charStart": null,
+        "charEnd": null,
+        "lemma": "být",
+        "upos": "AUX",
+        "xpos": "Vc-P---1-------",
+        "feats": {
+          "Aspect": "Imp",
+          "Mood": "Cnd",
+          "Number": "Plur",
+          "Person": "1",
+          "VerbForm": "Fin"
+        }
+      },
+      {
+        "text": "viděli",
+        "charStart": 50,
+        "charEnd": 56,
+        "lemma": "vidět",
+        "upos": "VERB",
+        "xpos": "VpMP----R-AAI--",
+        "feats": {
+          "Animacy": "Anim",
+          "Aspect": "Imp",
+          "Gender": "Masc",
+          "Number": "Plur",
+          "Polarity": "Pos",
+          "Tense": "Past",
+          "VerbForm": "Part",
+          "Voice": "Act"
+        }
+      },
+      {
+        "text": ",",
+        "charStart": 56,
+        "charEnd": 57,
+        "lemma": ",",
+        "upos": "PUNCT",
+        "xpos": "Z:-------------",
+        "feats": {}
+      },
+      {
+        "text": "že",
+        "charStart": 58,
+        "charEnd": 60,
+        "lemma": "že",
+        "upos": "SCONJ",
+        "xpos": "J,-------------",
+        "feats": {}
+      },
+      {
+        "text": "rostou",
+        "charStart": 61,
+        "charEnd": 67,
+        "lemma": "růst",
+        "upos": "VERB",
+        "xpos": "VB-P---3P-AAI--",
+        "feats": {
+          "Aspect": "Imp",
+          "Mood": "Ind",
+          "Number": "Plur",
+          "Person": "3",
+          "Polarity": "Pos",
+          "Tense": "Pres",
+          "VerbForm": "Fin",
+          "Voice": "Act"
+        }
+      },
+      {
+        "text": ".",
+        "charStart": 67,
+        "charEnd": 68,
+        "lemma": ".",
+        "upos": "PUNCT",
+        "xpos": "Z:-------------",
+        "feats": {}
+      }
+    ]
+  },
+  "Tento měsíc bude prodáno méně, protože naše pobočka v Praze je zavřená.": {
+    "morphodita": "Tento\ttento\tPDIS4----------\nměsíc\tměsíc\tNNIS4-----A----\nbude\tbýt\tVB-S---3F-AAI--\nprodáno\tprodat\tVsNS----X-APP--\nméně\tméně\tDg-------2A----\n,\t,\tZ:-------------\nprotože\tprotože\tJ,-------------\nnaše\tnáš\tPSHS1-P1-------\npobočka\tpobočka\tNNFS1-----A----\nv\tv-1\tRR--6----------\nPraze\tPraha_;G\tNNFS6-----A----\nje\tbýt\tVB-S---3P-AAI--\nzavřená\tzavřený_^(*3ít)\tAAFS1----1A----\n.\t.\tZ:-------------\n\n",
+    "stanza": [
+      {
+        "text": "Tento",
+        "charStart": 0,
+        "charEnd": 5,
+        "lemma": "tento",
+        "upos": "DET",
+        "xpos": "PDYS1----------",
+        "feats": {
+          "Animacy": "Inan",
+          "Case": "Nom",
+          "Gender": "Masc",
+          "Number": "Sing",
+          "PronType": "Dem"
+        }
+      },
+      {
+        "text": "měsíc",
+        "charStart": 6,
+        "charEnd": 11,
+        "lemma": "měsíc",
+        "upos": "NOUN",
+        "xpos": "NNIS1-----A----",
+        "feats": {
+          "Animacy": "Inan",
+          "Case": "Nom",
+          "Gender": "Masc",
+          "Number": "Sing"
+        }
+      },
+      {
+        "text": "bude",
+        "charStart": 12,
+        "charEnd": 16,
+        "lemma": "být",
+        "upos": "AUX",
+        "xpos": "VB-S---3F-AAI--",
+        "feats": {
+          "Aspect": "Imp",
+          "Mood": "Ind",
+          "Number": "Sing",
+          "Person": "3",
+          "Polarity": "Pos",
+          "Tense": "Fut",
+          "VerbForm": "Fin",
+          "Voice": "Act"
+        }
+      },
+      {
+        "text": "prodáno",
+        "charStart": 17,
+        "charEnd": 24,
+        "lemma": "prodaný",
+        "upos": "ADJ",
+        "xpos": "VsNS----X-APP--",
+        "feats": {
+          "Aspect": "Perf",
+          "Degree": "Pos",
+          "Gender": "Neut",
+          "Number": "Sing",
+          "Polarity": "Pos",
+          "Variant": "Short",
+          "VerbForm": "Part",
+          "Voice": "Pass"
+        }
+      },
+      {
+        "text": "méně",
+        "charStart": 25,
+        "charEnd": 29,
+        "lemma": "méně",
+        "upos": "ADV",
+        "xpos": "Dg-------2A----",
+        "feats": {
+          "Degree": "Cmp",
+          "Polarity": "Pos"
+        }
+      },
+      {
+        "text": ",",
+        "charStart": 29,
+        "charEnd": 30,
+        "lemma": ",",
+        "upos": "PUNCT",
+        "xpos": "Z:-------------",
+        "feats": {}
+      },
+      {
+        "text": "protože",
+        "charStart": 31,
+        "charEnd": 38,
+        "lemma": "protože",
+        "upos": "SCONJ",
+        "xpos": "J,-------------",
+        "feats": {}
+      },
+      {
+        "text": "naše",
+        "charStart": 39,
+        "charEnd": 43,
+        "lemma": "náš",
+        "upos": "DET",
+        "xpos": "PSHS1-P1-------",
+        "feats": {
+          "Case": "Nom",
+          "Gender": "Fem,Neut",
+          "Number": "Sing",
+          "Number[psor]": "Plur",
+          "Person": "1",
+          "Poss": "Yes",
+          "PronType": "Prs"
+        }
+      },
+      {
+        "text": "pobočka",
+        "charStart": 44,
+        "charEnd": 51,
+        "lemma": "pobočka",
+        "upos": "NOUN",
+        "xpos": "NNFS1-----A----",
+        "feats": {
+          "Case": "Nom",
+          "Gender": "Fem",
+          "Number": "Sing"
+        }
+      },
+      {
+        "text": "v",
+        "charStart": 52,
+        "charEnd": 53,
+        "lemma": "v",
+        "upos": "ADP",
+        "xpos": "RR--6----------",
+        "feats": {
+          "AdpType": "Prep",
+          "Case": "Loc"
+        }
+      },
+      {
+        "text": "Praze",
+        "charStart": 54,
+        "charEnd": 59,
+        "lemma": "Praha",
+        "upos": "PROPN",
+        "xpos": "NNFS6-----A----",
+        "feats": {
+          "Case": "Loc",
+          "Gender": "Fem",
+          "NameType": "Geo",
+          "Number": "Sing"
+        }
+      },
+      {
+        "text": "je",
+        "charStart": 60,
+        "charEnd": 62,
+        "lemma": "být",
+        "upos": "AUX",
+        "xpos": "VB-S---3P-AAI--",
+        "feats": {
+          "Aspect": "Imp",
+          "Mood": "Ind",
+          "Number": "Sing",
+          "Person": "3",
+          "Polarity": "Pos",
+          "Tense": "Pres",
+          "VerbForm": "Fin",
+          "Voice": "Act"
+        }
+      },
+      {
+        "text": "zavřená",
+        "charStart": 63,
+        "charEnd": 70,
+        "lemma": "zavřený",
+        "upos": "ADJ",
+        "xpos": "AAFS1----1A----",
+        "feats": {
+          "Case": "Nom",
+          "Degree": "Pos",
+          "Gender": "Fem",
+          "Number": "Sing",
+          "Polarity": "Pos",
+          "VerbForm": "Part",
+          "Voice": "Pass"
+        }
+      },
+      {
+        "text": ".",
+        "charStart": 70,
+        "charEnd": 71,
+        "lemma": ".",
+        "upos": "PUNCT",
+        "xpos": "Z:-------------",
+        "feats": {}
+      }
+    ]
+  },
+  "Jeho sestra a jejich firma mi to ukázaly nejlépe.": {
+    "morphodita": "Jeho\tjeho\tP9XXXZS3-------\nsestra\tsestra\tNNFS1-----A----\na\ta-1\tJ^-------------\njejich\tjeho\tP9XXXXP3-------\nfirma\tfirma\tNNFS1-----A----\nmi\tjá\tPH-S3--1-------\nto\tten\tPDNS4----------\nukázaly\tukázat\tVpTP----R-AAP--\nnejlépe\tlépe\tDg-------3A----\n.\t.\tZ:-------------\n\n",
+    "stanza": [
+      {
+        "text": "Jeho",
+        "charStart": 0,
+        "charEnd": 4,
+        "lemma": "jeho",
+        "upos": "DET",
+        "xpos": "P9XXXZS3-------",
+        "feats": {
+          "Gender[psor]": "Masc,Neut",
+          "Number[psor]": "Sing",
+          "Person": "3",
+          "Poss": "Yes",
+          "PronType": "Prs"
+        }
+      },
+      {
+        "text": "sestra",
+        "charStart": 5,
+        "charEnd": 11,
+        "lemma": "sestra",
+        "upos": "NOUN",
+        "xpos": "NNFS1-----A----",
+        "feats": {
+          "Case": "Nom",
+          "Gender": "Fem",
+          "Number": "Sing"
+        }
+      },
+      {
+        "text": "a",
+        "charStart": 12,
+        "charEnd": 13,
+        "lemma": "a",
+        "upos": "CCONJ",
+        "xpos": "J^-------------",
+        "feats": {}
+      },
+      {
+        "text": "jejich",
+        "charStart": 14,
+        "charEnd": 20,
+        "lemma": "jeho",
+        "upos": "DET",
+        "xpos": "P9XXXXP3-------",
+        "feats": {
+          "Number[psor]": "Plur",
+          "Person": "3",
+          "Poss": "Yes",
+          "PronType": "Prs"
+        }
+      },
+      {
+        "text": "firma",
+        "charStart": 21,
+        "charEnd": 26,
+        "lemma": "firma",
+        "upos": "NOUN",
+        "xpos": "NNFS1-----A----",
+        "feats": {
+          "Case": "Nom",
+          "Gender": "Fem",
+          "Number": "Sing"
+        }
+      },
+      {
+        "text": "mi",
+        "charStart": 27,
+        "charEnd": 29,
+        "lemma": "já",
+        "upos": "PRON",
+        "xpos": "PH-S3--1-------",
+        "feats": {
+          "Case": "Dat",
+          "Number": "Sing",
+          "Person": "1",
+          "PronType": "Prs",
+          "Variant": "Short"
+        }
+      },
+      {
+        "text": "to",
+        "charStart": 30,
+        "charEnd": 32,
+        "lemma": "ten",
+        "upos": "DET",
+        "xpos": "PDNS4----------",
+        "feats": {
+          "Case": "Acc",
+          "Gender": "Neut",
+          "Number": "Sing",
+          "PronType": "Dem"
+        }
+      },
+      {
+        "text": "ukázaly",
+        "charStart": 33,
+        "charEnd": 40,
+        "lemma": "ukázat",
+        "upos": "VERB",
+        "xpos": "VpTP----R-AAP--",
+        "feats": {
+          "Animacy": "Inan",
+          "Aspect": "Perf",
+          "Gender": "Fem,Masc",
+          "Number": "Plur",
+          "Polarity": "Pos",
+          "Tense": "Past",
+          "VerbForm": "Part",
+          "Voice": "Act"
+        }
+      },
+      {
+        "text": "nejlépe",
+        "charStart": 41,
+        "charEnd": 48,
+        "lemma": "lépe",
+        "upos": "ADV",
+        "xpos": "Dg-------3A----",
+        "feats": {
+          "Degree": "Sup",
+          "Polarity": "Pos"
+        }
+      },
+      {
+        "text": ".",
+        "charStart": 48,
+        "charEnd": 49,
+        "lemma": ".",
+        "upos": "PUNCT",
+        "xpos": "Z:-------------",
+        "feats": {}
+      }
+    ]
+  },
+  "Já a ty jsme s ním a pro něj prodávali, kdo co chtěl.": {
+    "morphodita": "Já\tjá\tPP-S1--1-------\na\ta-1\tJ^-------------\nty\tten\tPDIP4----------\njsme\tbýt\tVB-P---1P-AAI--\ns\ts-1\tRR--7----------\nním\ton-1\tPEZS7--3------1\na\ta-1\tJ^-------------\npro\tpro-1\tRR--4----------\nněj\ton-1\tPEZS4--3-------\nprodávali\tprodávat_^(*4at)\tVpMP----R-AAI--\n,\t,\tZ:-------------\nkdo\tkdo\tPQ--1----------\nco\tco-1\tPQ--4----------\nchtěl\tchtít\tVpYS----R-AAI--\n.\t.\tZ:-------------\n\n",
+    "stanza": [
+      {
+        "text": "Já",
+        "charStart": 0,
+        "charEnd": 2,
+        "lemma": "já",
+        "upos": "PRON",
+        "xpos": "PP-S1--1-------",
+        "feats": {
+          "Case": "Nom",
+          "Number": "Sing",
+          "Person": "1",
+          "PronType": "Prs"
+        }
+      },
+      {
+        "text": "a",
+        "charStart": 3,
+        "charEnd": 4,
+        "lemma": "a",
+        "upos": "CCONJ",
+        "xpos": "J^-------------",
+        "feats": {}
+      },
+      {
+        "text": "ty",
+        "charStart": 5,
+        "charEnd": 7,
+        "lemma": "ten",
+        "upos": "DET",
+        "xpos": "PDMP4----------",
+        "feats": {
+          "Case": "Nom",
+          "Gender": "Masc",
+          "Number": "Plur",
+          "PronType": "Dem"
+        }
+      },
+      {
+        "text": "jsme",
+        "charStart": 8,
+        "charEnd": 12,
+        "lemma": "být",
+        "upos": "AUX",
+        "xpos": "VB-P---1P-AAI--",
+        "feats": {
+          "Aspect": "Imp",
+          "Mood": "Ind",
+          "Number": "Plur",
+          "Person": "1",
+          "Polarity": "Pos",
+          "Tense": "Pres",
+          "VerbForm": "Fin",
+          "Voice": "Act"
+        }
+      },
+      {
+        "text": "s",
+        "charStart": 13,
+        "charEnd": 14,
+        "lemma": "s",
+        "upos": "ADP",
+        "xpos": "RR--7----------",
+        "feats": {
+          "AdpType": "Prep",
+          "Case": "Ins"
+        }
+      },
+      {
+        "text": "ním",
+        "charStart": 15,
+        "charEnd": 18,
+        "lemma": "on",
+        "upos": "PRON",
+        "xpos": "PEZS7--3------1",
+        "feats": {
+          "Case": "Ins",
+          "Gender": "Masc,Neut",
+          "Number": "Sing",
+          "Person": "3",
+          "PrepCase": "Pre",
+          "PronType": "Prs"
+        }
+      },
+      {
+        "text": "a",
+        "charStart": 19,
+        "charEnd": 20,
+        "lemma": "a",
+        "upos": "CCONJ",
+        "xpos": "J^-------------",
+        "feats": {}
+      },
+      {
+        "text": "pro",
+        "charStart": 21,
+        "charEnd": 24,
+        "lemma": "pro",
+        "upos": "ADP",
+        "xpos": "RR--4----------",
+        "feats": {
+          "AdpType": "Prep",
+          "Case": "Acc"
+        }
+      },
+      {
+        "text": "něj",
+        "charStart": 25,
+        "charEnd": 28,
+        "lemma": "on",
+        "upos": "PRON",
+        "xpos": "PEZS4--3-------",
+        "feats": {
+          "Case": "Acc",
+          "Gender": "Masc,Neut",
+          "Number": "Sing",
+          "Person": "3",
+          "PrepCase": "Pre",
+          "PronType": "Prs"
+        }
+      },
+      {
+        "text": "prodávali",
+        "charStart": 29,
+        "charEnd": 38,
+        "lemma": "prodávat",
+        "upos": "VERB",
+        "xpos": "VpMP----R-AAI--",
+        "feats": {
+          "Animacy": "Anim",
+          "Aspect": "Imp",
+          "Gender": "Masc",
+          "Number": "Plur",
+          "Polarity": "Pos",
+          "Tense": "Past",
+          "VerbForm": "Part",
+          "Voice": "Act"
+        }
+      },
+      {
+        "text": ",",
+        "charStart": 38,
+        "charEnd": 39,
+        "lemma": ",",
+        "upos": "PUNCT",
+        "xpos": "Z:-------------",
+        "feats": {}
+      },
+      {
+        "text": "kdo",
+        "charStart": 40,
+        "charEnd": 43,
+        "lemma": "kdo",
+        "upos": "PRON",
+        "xpos": "PQ--1----------",
+        "feats": {
+          "Animacy": "Anim",
+          "Case": "Nom",
+          "PronType": "Int,Rel"
+        }
+      },
+      {
+        "text": "co",
+        "charStart": 44,
+        "charEnd": 46,
+        "lemma": "co",
+        "upos": "PRON",
+        "xpos": "PQ--4----------",
+        "feats": {
+          "Animacy": "Inan",
+          "Case": "Acc",
+          "PronType": "Int,Rel"
+        }
+      },
+      {
+        "text": "chtěl",
+        "charStart": 47,
+        "charEnd": 52,
+        "lemma": "chtít",
+        "upos": "VERB",
+        "xpos": "VpYS----R-AAI--",
+        "feats": {
+          "Aspect": "Imp",
+          "Gender": "Masc",
+          "Number": "Sing",
+          "Polarity": "Pos",
+          "Tense": "Past",
+          "VerbForm": "Part",
+          "Voice": "Act"
+        }
+      },
+      {
+        "text": ".",
+        "charStart": 52,
+        "charEnd": 53,
+        "lemma": ".",
+        "upos": "PUNCT",
+        "xpos": "Z:-------------",
+        "feats": {}
+      }
+    ]
+  },
+  "Někdo něco koupil, nikdo nic nevrátil a nějaký zákazník každý den platil.": {
+    "morphodita": "Někdo\tněkdo\tPK--1----------\nněco\tněco\tPK--4----------\nkoupil\tkoupit\tVpYS----R-AAP--\n,\t,\tZ:-------------\nnikdo\tnikdo\tPY--1----------\nnic\tnic\tPY--4----------\nnevrátil\tvrátit\tVpYS----R-NAP--\na\ta-1\tJ^-------------\nnějaký\tnějaký\tPZYS1----------\nzákazník\tzákazník\tNNMS1-----A----\nkaždý\tkaždý\tAAIS4----1A----\nden\tden-1_^(jednotka_času)\tNNIS4-----A----\nplatil\tplatit\tVpYS----R-AAI--\n.\t.\tZ:-------------\n\n",
+    "stanza": [
+      {
+        "text": "Někdo",
+        "charStart": 0,
+        "charEnd": 5,
+        "lemma": "někdo",
+        "upos": "PRON",
+        "xpos": "PK--1----------",
+        "feats": {
+          "Animacy": "Anim",
+          "Case": "Nom",
+          "PronType": "Ind"
+        }
+      },
+      {
+        "text": "něco",
+        "charStart": 6,
+        "charEnd": 10,
+        "lemma": "něco",
+        "upos": "PRON",
+        "xpos": "PK--4----------",
+        "feats": {
+          "Animacy": "Inan",
+          "Case": "Acc",
+          "PronType": "Ind"
+        }
+      },
+      {
+        "text": "koupil",
+        "charStart": 11,
+        "charEnd": 17,
+        "lemma": "koupit",
+        "upos": "VERB",
+        "xpos": "VpYS----R-AAP--",
+        "feats": {
+          "Aspect": "Perf",
+          "Gender": "Masc",
+          "Number": "Sing",
+          "Polarity": "Pos",
+          "Tense": "Past",
+          "VerbForm": "Part",
+          "Voice": "Act"
+        }
+      },
+      {
+        "text": ",",
+        "charStart": 17,
+        "charEnd": 18,
+        "lemma": ",",
+        "upos": "PUNCT",
+        "xpos": "Z:-------------",
+        "feats": {}
+      },
+      {
+        "text": "nikdo",
+        "charStart": 19,
+        "charEnd": 24,
+        "lemma": "nikdo",
+        "upos": "PRON",
+        "xpos": "PY--1----------",
+        "feats": {
+          "Animacy": "Anim",
+          "Case": "Nom",
+          "PronType": "Neg"
+        }
+      },
+      {
+        "text": "nic",
+        "charStart": 25,
+        "charEnd": 28,
+        "lemma": "nic",
+        "upos": "PRON",
+        "xpos": "PY--4----------",
+        "feats": {
+          "Case": "Acc",
+          "PronType": "Neg"
+        }
+      },
+      {
+        "text": "nevrátil",
+        "charStart": 29,
+        "charEnd": 37,
+        "lemma": "vrátit",
+        "upos": "VERB",
+        "xpos": "VpYS----R-NAP--",
+        "feats": {
+          "Aspect": "Perf",
+          "Gender": "Masc",
+          "Number": "Sing",
+          "Polarity": "Neg",
+          "Tense": "Past",
+          "VerbForm": "Part",
+          "Voice": "Act"
+        }
+      },
+      {
+        "text": "a",
+        "charStart": 38,
+        "charEnd": 39,
+        "lemma": "a",
+        "upos": "CCONJ",
+        "xpos": "J^-------------",
+        "feats": {}
+      },
+      {
+        "text": "nějaký",
+        "charStart": 40,
+        "charEnd": 46,
+        "lemma": "nějaký",
+        "upos": "DET",
+        "xpos": "PZYS1----------",
+        "feats": {
+          "Case": "Nom",
+          "Gender": "Masc",
+          "Number": "Sing",
+          "PronType": "Ind"
+        }
+      },
+      {
+        "text": "zákazník",
+        "charStart": 47,
+        "charEnd": 55,
+        "lemma": "zákazník",
+        "upos": "NOUN",
+        "xpos": "NNMS1-----A----",
+        "feats": {
+          "Animacy": "Anim",
+          "Case": "Nom",
+          "Gender": "Masc",
+          "Number": "Sing"
+        }
+      },
+      {
+        "text": "každý",
+        "charStart": 56,
+        "charEnd": 61,
+        "lemma": "každý",
+        "upos": "DET",
+        "xpos": "AAIS4----1A----",
+        "feats": {
+          "Animacy": "Inan",
+          "Case": "Acc",
+          "Gender": "Masc",
+          "Number": "Sing",
+          "PronType": "Tot"
+        }
+      },
+      {
+        "text": "den",
+        "charStart": 62,
+        "charEnd": 65,
+        "lemma": "den",
+        "upos": "NOUN",
+        "xpos": "NNIS4-----A----",
+        "feats": {
+          "Animacy": "Inan",
+          "Case": "Acc",
+          "Gender": "Masc",
+          "Number": "Sing"
+        }
+      },
+      {
+        "text": "platil",
+        "charStart": 66,
+        "charEnd": 72,
+        "lemma": "platit",
+        "upos": "VERB",
+        "xpos": "VpYS----R-AAI--",
+        "feats": {
+          "Aspect": "Imp",
+          "Gender": "Masc",
+          "Number": "Sing",
+          "Polarity": "Pos",
+          "Tense": "Past",
+          "VerbForm": "Part",
+          "Voice": "Act"
+        }
+      },
+      {
+        "text": ".",
+        "charStart": 72,
+        "charEnd": 73,
+        "lemma": ".",
+        "upos": "PUNCT",
+        "xpos": "Z:-------------",
+        "feats": {}
+      }
+    ]
+  },
+  "Faktura, jejíž částka je vysoká, a smlouva, jež platí, což víme sami.": {
+    "morphodita": "Faktura\tfaktura\tNNFS1-----A----\n,\t,\tZ:-------------\njejíž\tjehož\tP1FXXFS3-------\nčástka\tčástka\tNNFS1-----A----\nje\tbýt\tVB-S---3P-AAI--\nvysoká\tvysoký\tAAFS1----1A----\n,\t,\tZ:-------------\na\ta-1\tJ^-------------\nsmlouva\tsmlouva\tNNFS1-----A----\n,\t,\tZ:-------------\njež\tjenž_^(který_[ve_vedl.větě])\tP4FS1----------\nplatí\tplatit\tVB-S---3P-AAI--\n,\t,\tZ:-------------\ncož\tcož-1\tPQ--4----------\nvíme\tvědět\tVB-P---1P-AAI--\nsami\tsám_^(samotný)\tPLMP1----------\n.\t.\tZ:-------------\n\n",
+    "stanza": [
+      {
+        "text": "Faktura",
+        "charStart": 0,
+        "charEnd": 7,
+        "lemma": "faktura",
+        "upos": "NOUN",
+        "xpos": "NNFS1-----A----",
+        "feats": {
+          "Case": "Nom",
+          "Gender": "Fem",
+          "Number": "Sing"
+        }
+      },
+      {
+        "text": ",",
+        "charStart": 7,
+        "charEnd": 8,
+        "lemma": ",",
+        "upos": "PUNCT",
+        "xpos": "Z:-------------",
+        "feats": {}
+      },
+      {
+        "text": "jejíž",
+        "charStart": 9,
+        "charEnd": 14,
+        "lemma": "jehož",
+        "upos": "DET",
+        "xpos": "P1FXXFS3-------",
+        "feats": {
+          "Gender": "Fem",
+          "Gender[psor]": "Fem",
+          "Number[psor]": "Sing",
+          "Person": "3",
+          "Poss": "Yes",
+          "PronType": "Rel"
+        }
+      },
+      {
+        "text": "částka",
+        "charStart": 15,
+        "charEnd": 21,
+        "lemma": "částka",
+        "upos": "NOUN",
+        "xpos": "NNFS1-----A----",
+        "feats": {
+          "Case": "Nom",
+          "Gender": "Fem",
+          "Number": "Sing"
+        }
+      },
+      {
+        "text": "je",
+        "charStart": 22,
+        "charEnd": 24,
+        "lemma": "být",
+        "upos": "AUX",
+        "xpos": "VB-S---3P-AAI--",
+        "feats": {
+          "Aspect": "Imp",
+          "Mood": "Ind",
+          "Number": "Sing",
+          "Person": "3",
+          "Polarity": "Pos",
+          "Tense": "Pres",
+          "VerbForm": "Fin",
+          "Voice": "Act"
+        }
+      },
+      {
+        "text": "vysoká",
+        "charStart": 25,
+        "charEnd": 31,
+        "lemma": "vysoký",
+        "upos": "ADJ",
+        "xpos": "AAFS1----1A----",
+        "feats": {
+          "Case": "Nom",
+          "Degree": "Pos",
+          "Gender": "Fem",
+          "Number": "Sing",
+          "Polarity": "Pos"
+        }
+      },
+      {
+        "text": ",",
+        "charStart": 31,
+        "charEnd": 32,
+        "lemma": ",",
+        "upos": "PUNCT",
+        "xpos": "Z:-------------",
+        "feats": {}
+      },
+      {
+        "text": "a",
+        "charStart": 33,
+        "charEnd": 34,
+        "lemma": "a",
+        "upos": "CCONJ",
+        "xpos": "J^-------------",
+        "feats": {}
+      },
+      {
+        "text": "smlouva",
+        "charStart": 35,
+        "charEnd": 42,
+        "lemma": "smlouva",
+        "upos": "NOUN",
+        "xpos": "NNFS1-----A----",
+        "feats": {
+          "Case": "Nom",
+          "Gender": "Fem",
+          "Number": "Sing"
+        }
+      },
+      {
+        "text": ",",
+        "charStart": 42,
+        "charEnd": 43,
+        "lemma": ",",
+        "upos": "PUNCT",
+        "xpos": "Z:-------------",
+        "feats": {}
+      },
+      {
+        "text": "jež",
+        "charStart": 44,
+        "charEnd": 47,
+        "lemma": "jenž",
+        "upos": "PRON",
+        "xpos": "P4FS1----------",
+        "feats": {
+          "Case": "Nom",
+          "Gender": "Fem",
+          "Number": "Sing",
+          "PronType": "Rel"
+        }
+      },
+      {
+        "text": "platí",
+        "charStart": 48,
+        "charEnd": 53,
+        "lemma": "platit",
+        "upos": "VERB",
+        "xpos": "VB-S---3P-AAI--",
+        "feats": {
+          "Aspect": "Imp",
+          "Mood": "Ind",
+          "Number": "Sing",
+          "Person": "3",
+          "Polarity": "Pos",
+          "Tense": "Pres",
+          "VerbForm": "Fin",
+          "Voice": "Act"
+        }
+      },
+      {
+        "text": ",",
+        "charStart": 53,
+        "charEnd": 54,
+        "lemma": ",",
+        "upos": "PUNCT",
+        "xpos": "Z:-------------",
+        "feats": {}
+      },
+      {
+        "text": "což",
+        "charStart": 55,
+        "charEnd": 58,
+        "lemma": "což",
+        "upos": "PRON",
+        "xpos": "PQ--4----------",
+        "feats": {
+          "Case": "Acc",
+          "PronType": "Int,Rel"
+        }
+      },
+      {
+        "text": "víme",
+        "charStart": 59,
+        "charEnd": 63,
+        "lemma": "vědět",
+        "upos": "VERB",
+        "xpos": "VB-P---1P-AAI--",
+        "feats": {
+          "Aspect": "Imp",
+          "Mood": "Ind",
+          "Number": "Plur",
+          "Person": "1",
+          "Polarity": "Pos",
+          "Tense": "Pres",
+          "VerbForm": "Fin",
+          "Voice": "Act"
+        }
+      },
+      {
+        "text": "sami",
+        "charStart": 64,
+        "charEnd": 68,
+        "lemma": "samý",
+        "upos": "DET",
+        "xpos": "PLMP1----------",
+        "feats": {
+          "Animacy": "Anim",
+          "Case": "Nom",
+          "Gender": "Masc",
+          "Number": "Plur",
+          "PronType": "Emp",
+          "Variant": "Short"
+        }
+      },
+      {
+        "text": ".",
+        "charStart": 68,
+        "charEnd": 69,
+        "lemma": ".",
+        "upos": "PUNCT",
+        "xpos": "Z:-------------",
+        "feats": {}
+      }
+    ]
+  },
+  "Mnoho a málo, tolik a několikrát, kolikátý a desátý, tři a oba, dvojí a čtvrtina.": {
+    "morphodita": "Mnoho\tmnoho-2\tDg-------1A----\na\ta-1\tJ^-------------\nmálo\tmálo-3_^(málo_důsledný)\tDg-------1A----\n,\t,\tZ:-------------\ntolik\ttolik-3_^(ve_spojení_s_adj.)\tDb-------------\na\ta-1\tJ^-------------\nněkolikrát\tněkolikrát\tCo-------------\n,\t,\tZ:-------------\nkolikátý\tkolikátý\tCwYS1----------\na\ta-1\tJ^-------------\ndesátý\tdesátý\tCrIS1----------\n,\t,\tZ:-------------\ntři\ttři`3\tCl-P1----------\na\ta-1\tJ^-------------\noba\toba`2\tCnYP1----------\n,\t,\tZ:-------------\ndvojí\tdvojí\tCdXP1----------\na\ta-1\tJ^-------------\nčtvrtina\tčtvrtina\tNNFS1-----A----\n.\t.\tZ:-------------\n\n",
+    "stanza": [
+      {
+        "text": "Mnoho",
+        "charStart": 0,
+        "charEnd": 5,
+        "lemma": "mnoho",
+        "upos": "DET",
+        "xpos": "Ca--1----------",
+        "feats": {
+          "Case": "Nom",
+          "NumType": "Card",
+          "PronType": "Ind"
+        }
+      },
+      {
+        "text": "a",
+        "charStart": 6,
+        "charEnd": 7,
+        "lemma": "a",
+        "upos": "CCONJ",
+        "xpos": "J^-------------",
+        "feats": {}
+      },
+      {
+        "text": "málo",
+        "charStart": 8,
+        "charEnd": 12,
+        "lemma": "málo",
+        "upos": "DET",
+        "xpos": "Ca--1----------",
+        "feats": {
+          "Case": "Nom",
+          "NumType": "Card",
+          "PronType": "Ind"
+        }
+      },
+      {
+        "text": ",",
+        "charStart": 12,
+        "charEnd": 13,
+        "lemma": ",",
+        "upos": "PUNCT",
+        "xpos": "Z:-------------",
+        "feats": {}
+      },
+      {
+        "text": "tolik",
+        "charStart": 14,
+        "charEnd": 19,
+        "lemma": "tolik",
+        "upos": "DET",
+        "xpos": "Ca--1----------",
+        "feats": {
+          "Case": "Nom",
+          "NumType": "Card",
+          "PronType": "Dem"
+        }
+      },
+      {
+        "text": "a",
+        "charStart": 20,
+        "charEnd": 21,
+        "lemma": "a",
+        "upos": "CCONJ",
+        "xpos": "J^-------------",
+        "feats": {}
+      },
+      {
+        "text": "několikrát",
+        "charStart": 22,
+        "charEnd": 32,
+        "lemma": "několikrát",
+        "upos": "ADV",
+        "xpos": "Co-------------",
+        "feats": {
+          "NumType": "Mult",
+          "PronType": "Ind"
+        }
+      },
+      {
+        "text": ",",
+        "charStart": 32,
+        "charEnd": 33,
+        "lemma": ",",
+        "upos": "PUNCT",
+        "xpos": "Z:-------------",
+        "feats": {}
+      },
+      {
+        "text": "kolikátý",
+        "charStart": 34,
+        "charEnd": 42,
+        "lemma": "kolikátý",
+        "upos": "ADJ",
+        "xpos": "CrIS1----------",
+        "feats": {
+          "Animacy": "Inan",
+          "Case": "Nom",
+          "Gender": "Masc",
+          "NumType": "Ord",
+          "Number": "Sing"
+        }
+      },
+      {
+        "text": "a",
+        "charStart": 43,
+        "charEnd": 44,
+        "lemma": "a",
+        "upos": "CCONJ",
+        "xpos": "J^-------------",
+        "feats": {}
+      },
+      {
+        "text": "desátý",
+        "charStart": 45,
+        "charEnd": 51,
+        "lemma": "desátý",
+        "upos": "ADJ",
+        "xpos": "CrIS1----------",
+        "feats": {
+          "Animacy": "Inan",
+          "Case": "Nom",
+          "Gender": "Masc",
+          "NumType": "Ord",
+          "Number": "Sing"
+        }
+      },
+      {
+        "text": ",",
+        "charStart": 51,
+        "charEnd": 52,
+        "lemma": ",",
+        "upos": "PUNCT",
+        "xpos": "Z:-------------",
+        "feats": {}
+      },
+      {
+        "text": "tři",
+        "charStart": 53,
+        "charEnd": 56,
+        "lemma": "tři",
+        "upos": "NUM",
+        "xpos": "Cl-P1----------",
+        "feats": {
+          "Case": "Nom",
+          "NumForm": "Word",
+          "NumType": "Card",
+          "Number": "Plur"
+        }
+      },
+      {
+        "text": "a",
+        "charStart": 57,
+        "charEnd": 58,
+        "lemma": "a",
+        "upos": "CCONJ",
+        "xpos": "J^-------------",
+        "feats": {}
+      },
+      {
+        "text": "oba",
+        "charStart": 59,
+        "charEnd": 62,
+        "lemma": "oba",
+        "upos": "NUM",
+        "xpos": "CnYP1----------",
+        "feats": {
+          "Case": "Nom",
+          "Gender": "Masc",
+          "NumForm": "Word",
+          "NumType": "Card",
+          "Number": "Plur"
+        }
+      },
+      {
+        "text": ",",
+        "charStart": 62,
+        "charEnd": 63,
+        "lemma": ",",
+        "upos": "PUNCT",
+        "xpos": "Z:-------------",
+        "feats": {}
+      },
+      {
+        "text": "dvojí",
+        "charStart": 64,
+        "charEnd": 69,
+        "lemma": "dvojí",
+        "upos": "ADJ",
+        "xpos": "CrFS1----------",
+        "feats": {
+          "Animacy": "Inan",
+          "Case": "Nom",
+          "Gender": "Masc",
+          "NumType": "Ord",
+          "Number": "Sing"
+        }
+      },
+      {
+        "text": "a",
+        "charStart": 70,
+        "charEnd": 71,
+        "lemma": "a",
+        "upos": "CCONJ",
+        "xpos": "J^-------------",
+        "feats": {}
+      },
+      {
+        "text": "čtvrtina",
+        "charStart": 72,
+        "charEnd": 80,
+        "lemma": "čtvrtina",
+        "upos": "NOUN",
+        "xpos": "NNFS1-----A----",
+        "feats": {
+          "Case": "Nom",
+          "Gender": "Fem",
+          "Number": "Sing"
+        }
+      },
+      {
+        "text": ".",
+        "charStart": 80,
+        "charEnd": 81,
+        "lemma": ".",
+        "upos": "PUNCT",
+        "xpos": "Z:-------------",
+        "feats": {}
+      }
+    ]
+  },
+  "Otcův sklad, rád bych věděl, dělající prodavač, prodán, prodávat, prodávajíc a prodav.": {
+    "morphodita": "Otcův\totcův_^(*3ec)\tAUIS1M---------\nsklad\tsklad\tNNIS1-----A----\n,\t,\tZ:-------------\nrád\trád-1\tACYS------A----\nbych\tbýt\tVc----------Ic-\nvěděl\tvědět\tVpYS----R-AAI--\n,\t,\tZ:-------------\ndělající\tdělající_^(*4t)\tAGMS1-----A----\nprodavač\tprodavač\tNNMS1-----A----\n,\t,\tZ:-------------\nprodán\tprodat\tVsYS----X-APP--\n,\t,\tZ:-------------\nprodávat\tprodávat_^(*4at)\tVf--------A-I--\n,\t,\tZ:-------------\nprodávajíc\tprodávat_^(*4at)\tVeHS------A-I--\na\ta-1\tJ^-------------\nprodav\tprodat\tVmYS------A-P--\n.\t.\tZ:-------------\n\n",
+    "stanza": [
+      {
+        "text": "Otcův",
+        "charStart": 0,
+        "charEnd": 5,
+        "lemma": "Otcův",
+        "upos": "ADJ",
+        "xpos": "AUIS1M---------",
+        "feats": {
+          "Animacy": "Inan",
+          "Case": "Nom",
+          "Gender": "Masc",
+          "Gender[psor]": "Masc",
+          "NameType": "Giv",
+          "Number": "Sing",
+          "Poss": "Yes"
+        }
+      },
+      {
+        "text": "sklad",
+        "charStart": 6,
+        "charEnd": 11,
+        "lemma": "sklad",
+        "upos": "NOUN",
+        "xpos": "NNIS1-----A----",
+        "feats": {
+          "Animacy": "Inan",
+          "Case": "Nom",
+          "Gender": "Masc",
+          "Number": "Sing"
+        }
+      },
+      {
+        "text": ",",
+        "charStart": 11,
+        "charEnd": 12,
+        "lemma": ",",
+        "upos": "PUNCT",
+        "xpos": "Z:-------------",
+        "feats": {}
+      },
+      {
+        "text": "rád",
+        "charStart": 13,
+        "charEnd": 16,
+        "lemma": "rád",
+        "upos": "ADJ",
+        "xpos": "ACYS------A----",
+        "feats": {
+          "Degree": "Pos",
+          "Gender": "Masc",
+          "Number": "Sing",
+          "Polarity": "Pos",
+          "Variant": "Short"
+        }
+      },
+      {
+        "text": "bych",
+        "charStart": 17,
+        "charEnd": 21,
+        "lemma": "být",
+        "upos": "AUX",
+        "xpos": "Vc----------Ic-",
+        "feats": {
+          "Aspect": "Imp",
+          "Mood": "Cnd",
+          "Number": "Sing",
+          "Person": "1",
+          "VerbForm": "Fin"
+        }
+      },
+      {
+        "text": "věděl",
+        "charStart": 22,
+        "charEnd": 27,
+        "lemma": "vědět",
+        "upos": "VERB",
+        "xpos": "VpYS----R-AAI--",
+        "feats": {
+          "Aspect": "Imp",
+          "Gender": "Masc",
+          "Number": "Sing",
+          "Polarity": "Pos",
+          "Tense": "Past",
+          "VerbForm": "Part",
+          "Voice": "Act"
+        }
+      },
+      {
+        "text": ",",
+        "charStart": 27,
+        "charEnd": 28,
+        "lemma": ",",
+        "upos": "PUNCT",
+        "xpos": "Z:-------------",
+        "feats": {}
+      },
+      {
+        "text": "dělající",
+        "charStart": 29,
+        "charEnd": 37,
+        "lemma": "dělající",
+        "upos": "ADJ",
+        "xpos": "AGMS1-----A----",
+        "feats": {
+          "Animacy": "Anim",
+          "Aspect": "Imp",
+          "Case": "Nom",
+          "Gender": "Masc",
+          "Number": "Sing",
+          "Polarity": "Pos",
+          "Tense": "Pres",
+          "VerbForm": "Part",
+          "Voice": "Act"
+        }
+      },
+      {
+        "text": "prodavač",
+        "charStart": 38,
+        "charEnd": 46,
+        "lemma": "prodavač",
+        "upos": "NOUN",
+        "xpos": "NNMS1-----A----",
+        "feats": {
+          "Animacy": "Anim",
+          "Case": "Nom",
+          "Gender": "Masc",
+          "Number": "Sing"
+        }
+      },
+      {
+        "text": ",",
+        "charStart": 46,
+        "charEnd": 47,
+        "lemma": ",",
+        "upos": "PUNCT",
+        "xpos": "Z:-------------",
+        "feats": {}
+      },
+      {
+        "text": "prodán",
+        "charStart": 48,
+        "charEnd": 54,
+        "lemma": "prodaný",
+        "upos": "ADJ",
+        "xpos": "VsYS----X-APP--",
+        "feats": {
+          "Aspect": "Perf",
+          "Degree": "Pos",
+          "Gender": "Masc",
+          "Number": "Sing",
+          "Polarity": "Pos",
+          "Variant": "Short",
+          "VerbForm": "Part",
+          "Voice": "Pass"
+        }
+      },
+      {
+        "text": ",",
+        "charStart": 54,
+        "charEnd": 55,
+        "lemma": ",",
+        "upos": "PUNCT",
+        "xpos": "Z:-------------",
+        "feats": {}
+      },
+      {
+        "text": "prodávat",
+        "charStart": 56,
+        "charEnd": 64,
+        "lemma": "prodávat",
+        "upos": "VERB",
+        "xpos": "Vf--------A-I--",
+        "feats": {
+          "Aspect": "Imp",
+          "Polarity": "Pos",
+          "VerbForm": "Inf"
+        }
+      },
+      {
+        "text": ",",
+        "charStart": 64,
+        "charEnd": 65,
+        "lemma": ",",
+        "upos": "PUNCT",
+        "xpos": "Z:-------------",
+        "feats": {}
+      },
+      {
+        "text": "prodávajíc",
+        "charStart": 66,
+        "charEnd": 76,
+        "lemma": "prodávat",
+        "upos": "VERB",
+        "xpos": "VB-S---3P-AAI--",
+        "feats": {
+          "Aspect": "Imp",
+          "Mood": "Ind",
+          "Number": "Sing",
+          "Person": "3",
+          "Polarity": "Pos",
+          "Tense": "Pres",
+          "VerbForm": "Fin",
+          "Voice": "Act"
+        }
+      },
+      {
+        "text": "a",
+        "charStart": 77,
+        "charEnd": 78,
+        "lemma": "a",
+        "upos": "CCONJ",
+        "xpos": "J^-------------",
+        "feats": {}
+      },
+      {
+        "text": "prodav",
+        "charStart": 79,
+        "charEnd": 85,
+        "lemma": "prodav",
+        "upos": "VERB",
+        "xpos": "Vf--------A-P--",
+        "feats": {
+          "Aspect": "Perf",
+          "Polarity": "Pos",
+          "VerbForm": "Inf"
+        }
+      },
+      {
+        "text": ".",
+        "charStart": 85,
+        "charEnd": 86,
+        "lemma": ".",
+        "upos": "PUNCT",
+        "xpos": "Z:-------------",
+        "feats": {}
+      }
+    ]
+  },
+  "Vzhledem k tržbám místo nákladů ukaž tzv. obrat ČR v Kč atd. za 3. čtvrtletí.": {
+    "morphodita": "Vzhledem\tvzhledem\tRF-------------\nk\tk-1\tRR--3----------\ntržbám\ttržba\tNNFP3-----A----\nmísto\tmísto-2_^(záměnou_za)\tRR--2----------\nnákladů\tnáklad\tNNIP2-----A----\nukaž\tukázat\tVi-S---2--A-P--\ntzv\ttakzvaný\tAAXXX----1A---b\n.\t.\tZ:-------------\nobrat\tobrat-1_^(z_prodeje_zboží)\tNNIS4-----A----\nČR\tČR_;G_^(Česká_republika)\tBNXXX-----A----\nv\tv-1\tRR--6----------\nKč\tKč_^(koruna_česká)\tBNXXX-----A----\natd\tatd_^(a_tak_dále)\tBb-------------\n.\t.\tZ:-------------\nza\tza\tRR--4----------\n3\t3\tC=-------------\n.\t.\tZ:-------------\nčtvrtletí\tčtvrtletí\tNNNS6-----A----\n.\t.\tZ:-------------\n\n",
+    "stanza": [
+      {
+        "text": "Vzhledem",
+        "charStart": 0,
+        "charEnd": 8,
+        "lemma": "vzhledem",
+        "upos": "ADP",
+        "xpos": "RF-------------",
+        "feats": {
+          "AdpType": "Comprep"
+        }
+      },
+      {
+        "text": "k",
+        "charStart": 9,
+        "charEnd": 10,
+        "lemma": "k",
+        "upos": "ADP",
+        "xpos": "RR--3----------",
+        "feats": {
+          "AdpType": "Prep",
+          "Case": "Dat"
+        }
+      },
+      {
+        "text": "tržbám",
+        "charStart": 11,
+        "charEnd": 17,
+        "lemma": "tržba",
+        "upos": "NOUN",
+        "xpos": "NNFP3-----A----",
+        "feats": {
+          "Case": "Dat",
+          "Gender": "Fem",
+          "Number": "Plur"
+        }
+      },
+      {
+        "text": "místo",
+        "charStart": 18,
+        "charEnd": 23,
+        "lemma": "místo",
+        "upos": "ADP",
+        "xpos": "RR--2----------",
+        "feats": {
+          "AdpType": "Prep",
+          "Case": "Gen"
+        }
+      },
+      {
+        "text": "nákladů",
+        "charStart": 24,
+        "charEnd": 31,
+        "lemma": "náklad",
+        "upos": "NOUN",
+        "xpos": "NNIP2-----A----",
+        "feats": {
+          "Animacy": "Inan",
+          "Case": "Gen",
+          "Gender": "Masc",
+          "Number": "Plur"
+        }
+      },
+      {
+        "text": "ukaž",
+        "charStart": 32,
+        "charEnd": 36,
+        "lemma": "ukázat",
+        "upos": "VERB",
+        "xpos": "Vi-S---2--A-P--",
+        "feats": {
+          "Aspect": "Perf",
+          "Mood": "Imp",
+          "Number": "Sing",
+          "Person": "2",
+          "Polarity": "Pos",
+          "VerbForm": "Fin"
+        }
+      },
+      {
+        "text": "tzv",
+        "charStart": 37,
+        "charEnd": 40,
+        "lemma": "takzvaný",
+        "upos": "ADJ",
+        "xpos": "AAXXX----1A---b",
+        "feats": {
+          "Abbr": "Yes",
+          "Degree": "Pos",
+          "Polarity": "Pos"
+        }
+      },
+      {
+        "text": ".",
+        "charStart": 40,
+        "charEnd": 41,
+        "lemma": ".",
+        "upos": "PUNCT",
+        "xpos": "Z:-------------",
+        "feats": {}
+      },
+      {
+        "text": "obrat",
+        "charStart": 42,
+        "charEnd": 47,
+        "lemma": "obrat",
+        "upos": "NOUN",
+        "xpos": "NNIS1-----A----",
+        "feats": {
+          "Animacy": "Inan",
+          "Case": "Nom",
+          "Gender": "Masc",
+          "Number": "Sing"
+        }
+      },
+      {
+        "text": "ČR",
+        "charStart": 48,
+        "charEnd": 50,
+        "lemma": "ČR",
+        "upos": "PROPN",
+        "xpos": "BNXXX-----A----",
+        "feats": {
+          "Abbr": "Yes",
+          "NameType": "Geo"
+        }
+      },
+      {
+        "text": "v",
+        "charStart": 51,
+        "charEnd": 52,
+        "lemma": "v",
+        "upos": "ADP",
+        "xpos": "RR--6----------",
+        "feats": {
+          "AdpType": "Prep",
+          "Case": "Loc"
+        }
+      },
+      {
+        "text": "Kč",
+        "charStart": 53,
+        "charEnd": 55,
+        "lemma": "Kč",
+        "upos": "NOUN",
+        "xpos": "BNXXX-----A----",
+        "feats": {
+          "Abbr": "Yes"
+        }
+      },
+      {
+        "text": "atd",
+        "charStart": 56,
+        "charEnd": 59,
+        "lemma": "atd",
+        "upos": "ADV",
+        "xpos": "Bb-------------",
+        "feats": {
+          "Abbr": "Yes"
+        }
+      },
+      {
+        "text": ".",
+        "charStart": 59,
+        "charEnd": 60,
+        "lemma": ".",
+        "upos": "PUNCT",
+        "xpos": "Z:-------------",
+        "feats": {}
+      },
+      {
+        "text": "za",
+        "charStart": 61,
+        "charEnd": 63,
+        "lemma": "za",
+        "upos": "ADP",
+        "xpos": "RR--4----------",
+        "feats": {
+          "AdpType": "Prep",
+          "Case": "Acc"
+        }
+      },
+      {
+        "text": "3",
+        "charStart": 64,
+        "charEnd": 65,
+        "lemma": "3",
+        "upos": "NUM",
+        "xpos": "C=-------------",
+        "feats": {
+          "NumForm": "Digit",
+          "NumType": "Card"
+        }
+      },
+      {
+        "text": ".",
+        "charStart": 65,
+        "charEnd": 66,
+        "lemma": ".",
+        "upos": "PUNCT",
+        "xpos": "Z:-------------",
+        "feats": {}
+      },
+      {
+        "text": "čtvrtletí",
+        "charStart": 67,
+        "charEnd": 76,
+        "lemma": "čtvrtletí",
+        "upos": "NOUN",
+        "xpos": "NNNS4-----A----",
+        "feats": {
+          "Case": "Acc",
+          "Gender": "Neut",
+          "Number": "Sing"
+        }
+      },
+      {
+        "text": ".",
+        "charStart": 76,
+        "charEnd": 77,
+        "lemma": ".",
+        "upos": "PUNCT",
+        "xpos": "Z:-------------",
+        "feats": {}
+      }
+    ]
+  },
+  "Zboží za 100 $ nebo 50 € + DPH § 5, tedy 2 × víc.": {
+    "morphodita": "Zboží\tzboží\tNNNS1-----A----\nza\tza\tRR--4----------\n100\t100\tC=-------------\n$\t$\tZ:-------------\nnebo\tnebo\tJ^-------------\n50\t50\tC=-------------\n€\t€\tNNMS1-----A----\n+\t+\tZ:-------------\nDPH\tDPH-1_^(daň_z_přidané_hodnoty)\tBNXXX-----A----\n§\t§\tZ:-------------\n5\t5\tC=-------------\n,\t,\tZ:-------------\ntedy\ttedy-2\tJ^-------------\n2\t2\tC=-------------\n×\t×\tNNMS1-----A----\nvíc\tvíce\tDg-------2A---1\n.\t.\tZ:-------------\n\n",
+    "stanza": [
+      {
+        "text": "Zboží",
+        "charStart": 0,
+        "charEnd": 5,
+        "lemma": "zboží",
+        "upos": "NOUN",
+        "xpos": "NNNS1-----A----",
+        "feats": {
+          "Case": "Nom",
+          "Gender": "Neut",
+          "Number": "Sing"
+        }
+      },
+      {
+        "text": "za",
+        "charStart": 6,
+        "charEnd": 8,
+        "lemma": "za",
+        "upos": "ADP",
+        "xpos": "RR--4----------",
+        "feats": {
+          "AdpType": "Prep",
+          "Case": "Acc"
+        }
+      },
+      {
+        "text": "100",
+        "charStart": 9,
+        "charEnd": 12,
+        "lemma": "100",
+        "upos": "NUM",
+        "xpos": "C=-------------",
+        "feats": {
+          "NumForm": "Digit",
+          "NumType": "Card"
+        }
+      },
+      {
+        "text": "$",
+        "charStart": 13,
+        "charEnd": 14,
+        "lemma": "$",
+        "upos": "NOUN",
+        "xpos": "NNIXX-----A----",
+        "feats": {
+          "Abbr": "Yes",
+          "Gender": "Masc"
+        }
+      },
+      {
+        "text": "nebo",
+        "charStart": 15,
+        "charEnd": 19,
+        "lemma": "nebo",
+        "upos": "CCONJ",
+        "xpos": "J^-------------",
+        "feats": {}
+      },
+      {
+        "text": "50",
+        "charStart": 20,
+        "charEnd": 22,
+        "lemma": "50",
+        "upos": "NUM",
+        "xpos": "C=-------------",
+        "feats": {
+          "NumForm": "Digit",
+          "NumType": "Card"
+        }
+      },
+      {
+        "text": "€",
+        "charStart": 23,
+        "charEnd": 24,
+        "lemma": "€",
+        "upos": "NOUN",
+        "xpos": "NNFXX-----A---b",
+        "feats": {
+          "Abbr": "Yes",
+          "Gender": "Masc"
+        }
+      },
+      {
+        "text": "+",
+        "charStart": 25,
+        "charEnd": 26,
+        "lemma": "+",
+        "upos": "SYM",
+        "xpos": "Z:-------------",
+        "feats": {}
+      },
+      {
+        "text": "DPH",
+        "charStart": 27,
+        "charEnd": 30,
+        "lemma": "DPH",
+        "upos": "NOUN",
+        "xpos": "BNXXX-----A----",
+        "feats": {
+          "Abbr": "Yes"
+        }
+      },
+      {
+        "text": "§",
+        "charStart": 31,
+        "charEnd": 32,
+        "lemma": "§",
+        "upos": "SYM",
+        "xpos": "Z:-------------",
+        "feats": {}
+      },
+      {
+        "text": "5",
+        "charStart": 33,
+        "charEnd": 34,
+        "lemma": "5",
+        "upos": "NUM",
+        "xpos": "C=-------------",
+        "feats": {
+          "NumForm": "Digit",
+          "NumType": "Card"
+        }
+      },
+      {
+        "text": ",",
+        "charStart": 34,
+        "charEnd": 35,
+        "lemma": ",",
+        "upos": "PUNCT",
+        "xpos": "Z:-------------",
+        "feats": {}
+      },
+      {
+        "text": "tedy",
+        "charStart": 36,
+        "charEnd": 40,
+        "lemma": "tedy",
+        "upos": "CCONJ",
+        "xpos": "J^-------------",
+        "feats": {}
+      },
+      {
+        "text": "2",
+        "charStart": 41,
+        "charEnd": 42,
+        "lemma": "2",
+        "upos": "NUM",
+        "xpos": "C=-------------",
+        "feats": {
+          "NumForm": "Digit",
+          "NumType": "Card"
+        }
+      },
+      {
+        "text": "×",
+        "charStart": 43,
+        "charEnd": 44,
+        "lemma": "×",
+        "upos": "NOUN",
+        "xpos": "NNIS2-----A----",
+        "feats": {
+          "Case": "Nom",
+          "Gender": "Masc",
+          "Number": "Sing"
+        }
+      },
+      {
+        "text": "víc",
+        "charStart": 45,
+        "charEnd": 48,
+        "lemma": "více",
+        "upos": "ADV",
+        "xpos": "Dg-------2A---1",
+        "feats": {
+          "Degree": "Cmp",
+          "Polarity": "Pos"
+        }
+      },
+      {
+        "text": ".",
+        "charStart": 48,
+        "charEnd": 49,
+        "lemma": ".",
+        "upos": "PUNCT",
+        "xpos": "Z:-------------",
+        "feats": {}
+      }
+    ]
+  },
+  "Kde, kdy, jak, proč, tam, tady, někdy, nikdy, vždy a všude.": {
+    "morphodita": "Kde\tkde\tDb-------------\n,\t,\tZ:-------------\nkdy\tkdy\tDb-------------\n,\t,\tZ:-------------\njak\tjak-3\tDb-------------\n,\t,\tZ:-------------\nproč\tproč\tDb-------------\n,\t,\tZ:-------------\ntam\ttam\tDb-------------\n,\t,\tZ:-------------\ntady\ttady\tDb-------------\n,\t,\tZ:-------------\nněkdy\tněkdy\tDb-------------\n,\t,\tZ:-------------\nnikdy\tnikdy\tDb-------------\n,\t,\tZ:-------------\nvždy\tvždy\tDb-------------\na\ta-1\tJ^-------------\nvšude\tvšude\tDb-------------\n.\t.\tZ:-------------\n\n",
+    "stanza": [
+      {
+        "text": "Kde",
+        "charStart": 0,
+        "charEnd": 3,
+        "lemma": "kde",
+        "upos": "ADV",
+        "xpos": "Db-------------",
+        "feats": {
+          "PronType": "Int,Rel"
+        }
+      },
+      {
+        "text": ",",
+        "charStart": 3,
+        "charEnd": 4,
+        "lemma": ",",
+        "upos": "PUNCT",
+        "xpos": "Z:-------------",
+        "feats": {}
+      },
+      {
+        "text": "kdy",
+        "charStart": 5,
+        "charEnd": 8,
+        "lemma": "kdy",
+        "upos": "ADV",
+        "xpos": "Db-------------",
+        "feats": {
+          "PronType": "Int,Rel"
+        }
+      },
+      {
+        "text": ",",
+        "charStart": 8,
+        "charEnd": 9,
+        "lemma": ",",
+        "upos": "PUNCT",
+        "xpos": "Z:-------------",
+        "feats": {}
+      },
+      {
+        "text": "jak",
+        "charStart": 10,
+        "charEnd": 13,
+        "lemma": "jak",
+        "upos": "ADV",
+        "xpos": "Db-------------",
+        "feats": {
+          "PronType": "Int,Rel"
+        }
+      },
+      {
+        "text": ",",
+        "charStart": 13,
+        "charEnd": 14,
+        "lemma": ",",
+        "upos": "PUNCT",
+        "xpos": "Z:-------------",
+        "feats": {}
+      },
+      {
+        "text": "proč",
+        "charStart": 15,
+        "charEnd": 19,
+        "lemma": "proč",
+        "upos": "ADV",
+        "xpos": "Db-------------",
+        "feats": {
+          "PronType": "Int,Rel"
+        }
+      },
+      {
+        "text": ",",
+        "charStart": 19,
+        "charEnd": 20,
+        "lemma": ",",
+        "upos": "PUNCT",
+        "xpos": "Z:-------------",
+        "feats": {}
+      },
+      {
+        "text": "tam",
+        "charStart": 21,
+        "charEnd": 24,
+        "lemma": "tam",
+        "upos": "ADV",
+        "xpos": "Db-------------",
+        "feats": {
+          "PronType": "Dem"
+        }
+      },
+      {
+        "text": ",",
+        "charStart": 24,
+        "charEnd": 25,
+        "lemma": ",",
+        "upos": "PUNCT",
+        "xpos": "Z:-------------",
+        "feats": {}
+      },
+      {
+        "text": "tady",
+        "charStart": 26,
+        "charEnd": 30,
+        "lemma": "tady",
+        "upos": "ADV",
+        "xpos": "Db-------------",
+        "feats": {
+          "PronType": "Dem"
+        }
+      },
+      {
+        "text": ",",
+        "charStart": 30,
+        "charEnd": 31,
+        "lemma": ",",
+        "upos": "PUNCT",
+        "xpos": "Z:-------------",
+        "feats": {}
+      },
+      {
+        "text": "někdy",
+        "charStart": 32,
+        "charEnd": 37,
+        "lemma": "někdy",
+        "upos": "ADV",
+        "xpos": "Db-------------",
+        "feats": {
+          "PronType": "Ind"
+        }
+      },
+      {
+        "text": ",",
+        "charStart": 37,
+        "charEnd": 38,
+        "lemma": ",",
+        "upos": "PUNCT",
+        "xpos": "Z:-------------",
+        "feats": {}
+      },
+      {
+        "text": "nikdy",
+        "charStart": 39,
+        "charEnd": 44,
+        "lemma": "nikdy",
+        "upos": "ADV",
+        "xpos": "Db-------------",
+        "feats": {
+          "PronType": "Neg"
+        }
+      },
+      {
+        "text": ",",
+        "charStart": 44,
+        "charEnd": 45,
+        "lemma": ",",
+        "upos": "PUNCT",
+        "xpos": "Z:-------------",
+        "feats": {}
+      },
+      {
+        "text": "vždy",
+        "charStart": 46,
+        "charEnd": 50,
+        "lemma": "vždy",
+        "upos": "ADV",
+        "xpos": "Db-------------",
+        "feats": {
+          "PronType": "Tot"
+        }
+      },
+      {
+        "text": "a",
+        "charStart": 51,
+        "charEnd": 52,
+        "lemma": "a",
+        "upos": "CCONJ",
+        "xpos": "J^-------------",
+        "feats": {}
+      },
+      {
+        "text": "všude",
+        "charStart": 53,
+        "charEnd": 58,
+        "lemma": "všude",
+        "upos": "ADV",
+        "xpos": "Db-------------",
+        "feats": {
+          "PronType": "Tot"
+        }
+      },
+      {
+        "text": ".",
+        "charStart": 58,
+        "charEnd": 59,
+        "lemma": ".",
+        "upos": "PUNCT",
+        "xpos": "Z:-------------",
+        "feats": {}
+      }
+    ]
+  },
+  "Seřaď prodejny sestupně, zobrazit tabulku a nezobrazovat grafy.": {
+    "morphodita": "Seřaď\tseřadit\tVi-S---2--A-P--\nprodejny\tprodejna\tNNFP4-----A----\nsestupně\tsestupně_^(*1ý)\tDg-------1A----\n,\t,\tZ:-------------\nzobrazit\tzobrazit\tVf--------A-P--\ntabulku\ttabulka\tNNFS4-----A----\na\ta-1\tJ^-------------\nnezobrazovat\tzobrazovat\tVf--------N-I--\ngrafy\tgraf\tNNIP4-----A----\n.\t.\tZ:-------------\n\n",
+    "stanza": [
+      {
+        "text": "Seřaď",
+        "charStart": 0,
+        "charEnd": 5,
+        "lemma": "Seřaď",
+        "upos": "PROPN",
+        "xpos": "NNMS1-----A----",
+        "feats": {
+          "Animacy": "Anim",
+          "Case": "Nom",
+          "Gender": "Masc",
+          "NameType": "Giv",
+          "Number": "Sing"
+        }
+      },
+      {
+        "text": "prodejny",
+        "charStart": 6,
+        "charEnd": 14,
+        "lemma": "prodejna",
+        "upos": "NOUN",
+        "xpos": "NNFP2-----A----",
+        "feats": {
+          "Case": "Gen",
+          "Gender": "Fem",
+          "Number": "Plur"
+        }
+      },
+      {
+        "text": "sestupně",
+        "charStart": 15,
+        "charEnd": 23,
+        "lemma": "sestupně",
+        "upos": "ADV",
+        "xpos": "Dg-------1A----",
+        "feats": {
+          "Degree": "Pos",
+          "Polarity": "Pos"
+        }
+      },
+      {
+        "text": ",",
+        "charStart": 23,
+        "charEnd": 24,
+        "lemma": ",",
+        "upos": "PUNCT",
+        "xpos": "Z:-------------",
+        "feats": {}
+      },
+      {
+        "text": "zobrazit",
+        "charStart": 25,
+        "charEnd": 33,
+        "lemma": "zobrazit",
+        "upos": "VERB",
+        "xpos": "Vf--------A-P--",
+        "feats": {
+          "Aspect": "Perf",
+          "Polarity": "Pos",
+          "VerbForm": "Inf"
+        }
+      },
+      {
+        "text": "tabulku",
+        "charStart": 34,
+        "charEnd": 41,
+        "lemma": "tabulka",
+        "upos": "NOUN",
+        "xpos": "NNFS4-----A----",
+        "feats": {
+          "Case": "Acc",
+          "Gender": "Fem",
+          "Number": "Sing"
+        }
+      },
+      {
+        "text": "a",
+        "charStart": 42,
+        "charEnd": 43,
+        "lemma": "a",
+        "upos": "CCONJ",
+        "xpos": "J^-------------",
+        "feats": {}
+      },
+      {
+        "text": "nezobrazovat",
+        "charStart": 44,
+        "charEnd": 56,
+        "lemma": "zobrazovat",
+        "upos": "VERB",
+        "xpos": "Vf--------N-I--",
+        "feats": {
+          "Aspect": "Imp",
+          "Polarity": "Neg",
+          "VerbForm": "Inf"
+        }
+      },
+      {
+        "text": "grafy",
+        "charStart": 57,
+        "charEnd": 62,
+        "lemma": "graf",
+        "upos": "NOUN",
+        "xpos": "NNIP4-----A----",
+        "feats": {
+          "Animacy": "Inan",
+          "Case": "Acc",
+          "Gender": "Masc",
+          "Number": "Plur"
+        }
+      },
+      {
+        "text": ".",
+        "charStart": 62,
+        "charEnd": 63,
+        "lemma": ".",
+        "upos": "PUNCT",
+        "xpos": "Z:-------------",
+        "feats": {}
+      }
+    ]
+  },
+  "Kterých pět prodejen mělo nejvíce tržeb a kolik bylo nejvyšších?": {
+    "morphodita": "Kterých\tkterý\tP4XP2----------\npět\tpět-1`5\tCl-S1----------\nprodejen\tprodejna\tNNFP2-----A----\nmělo\tmít\tVpNS----R-AAI--\nnejvíce\tvíce\tDg-------3A----\ntržeb\ttržba\tNNFP2-----A----\na\ta-1\tJ^-------------\nkolik\tkolik\tCa--4----------\nbylo\tbýt\tVpNS----R-AAI--\nnejvyšších\tvysoký\tAAMP2----3A----\n?\t?\tZ:-------------\n\n",
+    "stanza": [
+      {
+        "text": "Kterých",
+        "charStart": 0,
+        "charEnd": 7,
+        "lemma": "který",
+        "upos": "DET",
+        "xpos": "P4XP2----------",
+        "feats": {
+          "Case": "Gen",
+          "Number": "Plur",
+          "PronType": "Int,Rel"
+        }
+      },
+      {
+        "text": "pět",
+        "charStart": 8,
+        "charEnd": 11,
+        "lemma": "pět",
+        "upos": "NUM",
+        "xpos": "Cl-S1----------",
+        "feats": {
+          "Case": "Nom",
+          "NumForm": "Word",
+          "NumType": "Card",
+          "Number": "Sing"
+        }
+      },
+      {
+        "text": "prodejen",
+        "charStart": 12,
+        "charEnd": 20,
+        "lemma": "prodejna",
+        "upos": "NOUN",
+        "xpos": "NNFP2-----A----",
+        "feats": {
+          "Case": "Gen",
+          "Gender": "Fem",
+          "Number": "Plur"
+        }
+      },
+      {
+        "text": "mělo",
+        "charStart": 21,
+        "charEnd": 25,
+        "lemma": "mít",
+        "upos": "VERB",
+        "xpos": "VpNS----R-AAI--",
+        "feats": {
+          "Aspect": "Imp",
+          "Gender": "Neut",
+          "Number": "Sing",
+          "Polarity": "Pos",
+          "Tense": "Past",
+          "VerbForm": "Part",
+          "Voice": "Act"
+        }
+      },
+      {
+        "text": "nejvíce",
+        "charStart": 26,
+        "charEnd": 33,
+        "lemma": "více",
+        "upos": "ADV",
+        "xpos": "Dg-------3A----",
+        "feats": {
+          "Degree": "Sup",
+          "Polarity": "Pos"
+        }
+      },
+      {
+        "text": "tržeb",
+        "charStart": 34,
+        "charEnd": 39,
+        "lemma": "tržba",
+        "upos": "NOUN",
+        "xpos": "NNFP2-----A----",
+        "feats": {
+          "Case": "Gen",
+          "Gender": "Fem",
+          "Number": "Plur"
+        }
+      },
+      {
+        "text": "a",
+        "charStart": 40,
+        "charEnd": 41,
+        "lemma": "a",
+        "upos": "CCONJ",
+        "xpos": "J^-------------",
+        "feats": {}
+      },
+      {
+        "text": "kolik",
+        "charStart": 42,
+        "charEnd": 47,
+        "lemma": "kolik",
+        "upos": "DET",
+        "xpos": "Ca--1----------",
+        "feats": {
+          "Case": "Nom",
+          "NumType": "Card",
+          "PronType": "Dem,Ind"
+        }
+      },
+      {
+        "text": "bylo",
+        "charStart": 48,
+        "charEnd": 52,
+        "lemma": "být",
+        "upos": "AUX",
+        "xpos": "VpNS----R-AAI--",
+        "feats": {
+          "Aspect": "Imp",
+          "Gender": "Neut",
+          "Number": "Sing",
+          "Polarity": "Pos",
+          "Tense": "Past",
+          "VerbForm": "Part",
+          "Voice": "Act"
+        }
+      },
+      {
+        "text": "nejvyšších",
+        "charStart": 53,
+        "charEnd": 63,
+        "lemma": "vysoký",
+        "upos": "ADJ",
+        "xpos": "AAFP2----3A----",
+        "feats": {
+          "Case": "Gen",
+          "Degree": "Sup",
+          "Gender": "Fem",
+          "Number": "Plur",
+          "Polarity": "Pos"
+        }
+      },
+      {
+        "text": "?",
+        "charStart": 63,
+        "charEnd": 64,
+        "lemma": "?",
+        "upos": "PUNCT",
+        "xpos": "Z:-------------",
+        "feats": {}
+      }
+    ]
+  }
+}
