@@ -28,7 +28,9 @@ resources:
     cpu: "1"
 
 # OpenTelemetry — nlp uses a host + gRPC-port + protocol triple (not a single endpoint URL).
-# Rendered only when enabled + otlpHost set; leave disabled for test runs.
+# Off by default: no OTEL_EXPORTER_OTLP_HOST is rendered, and the service then builds no
+# exporters at all. `enabled: true` without `otlpHost` fails the render rather than
+# shipping a switch that does nothing.
 telemetry:
   enabled: false
   otlpHost: ""

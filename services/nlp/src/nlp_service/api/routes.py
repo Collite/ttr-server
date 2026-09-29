@@ -8,6 +8,7 @@ from typing import Any, Dict, List, Set
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
+from opentelemetry import metrics, trace
 from pydantic import BaseModel, ConfigDict, Field
 
 from nlp_service.config import load_config
@@ -93,25 +94,35 @@ def create_app() -> FastAPI:
     config = load_config()
     service_name = "nlp"
 
-    # Build OTEL endpoint from environment
-    otel_host = os.getenv("OTEL_EXPORTER_OTLP_HOST", "localhost")
-    otel_port = int(os.getenv(
-        "OTEL_EXPORTER_OTLP_GRPC_PORT",
-        "4317" if os.getenv("NLP_SERVICE_OTEL_PROTOCOL", "grpc").lower() == "grpc"
-        else os.getenv("OTEL_EXPORTER_OTLP_HTTP_PORT", "4318")
-    ))
-    otel_protocol = os.getenv("NLP_SERVICE_OTEL_PROTOCOL", "grpc").lower()
-    otel_endpoint = f"{otel_host}:{otel_port}"
-
-    # Initialize OTEL via shared library
-    otel = setup_opentelemetry(
-        service_name=service_name,
-        otel_endpoint=otel_endpoint,
-        protocol=otel_protocol,
-        insecure=True,
-    )
-    tracer = otel["tracer"]
-    meter = otel["meter"]
+    # OpenTelemetry is OFF unless a collector is named. The chart renders
+    # OTEL_EXPORTER_OTLP_HOST only when `telemetry.enabled` and `telemetry.otlpHost`
+    # are both set, so its presence is the switch. It used to default to localhost:
+    # every pod without a collector built the three exporters anyway, and each
+    # retried forever against a port nothing listens on — an ERROR/WARNING pair every
+    # few seconds for logs, traces and metrics, in the pod log and in every test run.
+    # Off, the tracer and meter are the API's no-ops: the span and the counters below
+    # still run, and cost nothing.
+    otel_host = os.getenv("OTEL_EXPORTER_OTLP_HOST", "").strip()
+    telemetry_on = bool(otel_host)
+    if telemetry_on:
+        otel_protocol = os.getenv("NLP_SERVICE_OTEL_PROTOCOL", "grpc").lower()
+        otel_port = int(os.getenv(
+            "OTEL_EXPORTER_OTLP_GRPC_PORT",
+            "4317" if otel_protocol == "grpc"
+            else os.getenv("OTEL_EXPORTER_OTLP_HTTP_PORT", "4318")
+        ))
+        otel = setup_opentelemetry(
+            service_name=service_name,
+            otel_endpoint=f"{otel_host}:{otel_port}",
+            protocol=otel_protocol,
+            insecure=True,
+        )
+        tracer = otel["tracer"]
+        meter = otel["meter"]
+    else:
+        logger.info("OpenTelemetry off: OTEL_EXPORTER_OTLP_HOST is not set")
+        tracer = trace.get_tracer(service_name)
+        meter = metrics.get_meter(service_name)
 
     # Create metrics
     request_counter = meter.create_counter(
@@ -131,20 +142,21 @@ def create_app() -> FastAPI:
         version="0.1.0",
     )
 
-    # Instrument FastAPI via shared library
-    instrument_fastapi(app)
+    if telemetry_on:
+        # Instrument FastAPI via shared library
+        instrument_fastapi(app)
 
-    # RG-P1.S2.T6 — trace every front→backend HTTP call. The engine adapters
-    # use httpx.Client to reach the MorphoDiTa/NameTag 3 (and Stanza/spaCy)
-    # backends; auto-instrumentation emits a client span per call and propagates
-    # W3C trace context, so the trace stitches across the front↔backend boundary
-    # even though the UFAL servers don't self-instrument.
-    try:
-        from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
+        # RG-P1.S2.T6 — trace every front→backend HTTP call. The engine adapters
+        # use httpx.Client to reach the MorphoDiTa/NameTag 3 (and Stanza/spaCy)
+        # backends; auto-instrumentation emits a client span per call and propagates
+        # W3C trace context, so the trace stitches across the front↔backend boundary
+        # even though the UFAL servers don't self-instrument.
+        try:
+            from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
 
-        HTTPXClientInstrumentor().instrument()
-    except Exception:  # noqa: BLE001 — tracing must never block boot
-        logger.warning("httpx OTel instrumentation unavailable; backend calls untraced")
+            HTTPXClientInstrumentor().instrument()
+        except Exception:  # noqa: BLE001 — tracing must never block boot
+            logger.warning("httpx OTel instrumentation unavailable; backend calls untraced")
 
     # Initialize orchestrator
     orchestrator = Orchestrator(config)

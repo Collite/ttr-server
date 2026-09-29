@@ -31,6 +31,9 @@
   value: {{ .Values.llmEmulated.model | quote }}
 {{- end }}
 {{- end }}
+{{- if and .Values.telemetry.enabled (not .Values.telemetry.otlpHost) }}
+{{- fail "nlp: telemetry.enabled is true but telemetry.otlpHost is empty; name the collector, or leave telemetry off" }}
+{{- end }}
 {{- if and .Values.telemetry.enabled .Values.telemetry.otlpHost }}
 - name: OTEL_EXPORTER_OTLP_HOST
   value: {{ .Values.telemetry.otlpHost | quote }}
