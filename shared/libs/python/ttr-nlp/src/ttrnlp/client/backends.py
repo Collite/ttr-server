@@ -41,7 +41,6 @@ and a plausible-but-wrong span is worse than an obviously absent one.
 from __future__ import annotations
 
 import logging
-import re
 import threading
 import time
 from collections import deque
@@ -49,6 +48,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
 
+from ttrnlp.client.pdt import lemma_stem, pdt_tag_to_upos, pdt_to_ud
 from ttrnlp.doc.labels import CNEC_PREFIX, cnec_to_universal
 
 logger = logging.getLogger(__name__)
@@ -376,56 +376,6 @@ def batch_lemmatize_morphodita(
     return parse_morphodita_lemma_groups(vertical, len(texts))
 
 
-#: A homonym index, written straight after the stem: `místo-1`, `Hradec-2`.
-_HOMONYM_INDEX = re.compile(r"-\d+$")
-
-#: A PDT term-semantic marker, `_;<code>` in a raw lemma.
-_MARKER = re.compile(r"_;(.)")
-
-#: The markers of a proper name: `G` geography, `Y` given name, `S` surname, `K`
-#: company, `R` product, `m` any other. `E` (an inhabitant, `Pražan_;E`) is left
-#: out: UD tags it a common noun, although Czech capitalises it.
-_PROPER_NAME_MARKERS = frozenset("GYSKRm")
-
-
-def _strip_lemma_suffix(lemma: str) -> str:
-    """MorphoDiTa decorates a lemma: a homonym index right after the stem, then
-    comments and term-semantic markers, each after an `_`
-    (`místo-1_^(fyzické_umístění)`, `Hradec-2_;G`, `být_^(pomocné)`). Take the stem.
-
-    Both are removed, in the order they are written: the `_` part first, then the
-    index. Cutting at the `_` and stopping there left `místo-1` and `Shell-2` in every
-    lemma that also carried a comment or a marker, and a lemma with an index no
-    longer matched the word as a dictionary writes it.
-
-    Only a numeric index is an index (`Frýdek-Místek` is a stem), and only after a
-    letter, so a lemma that IS a hyphenated number keeps its shape.
-    """
-    stem = lemma.split("_", 1)[0] or lemma
-    if stem[:1].isalpha():
-        stem = _HOMONYM_INDEX.sub("", stem)
-    return stem
-
-
-def _is_proper_name(raw_lemma: str) -> bool:
-    """The lemma's markers when it has any; otherwise, a capitalised stem.
-
-    The markers decide first because they are the model's own classification:
-    `Pražan_;E` is capitalised and still a common noun. `Čech_;E_;Y` carries both
-    readings (a nationality and a surname) and counts as a name.
-
-    Without markers, the capital decides. MorfFlex writes every common-noun lemma
-    in lower case, a sentence-initial one too (`Obraty` -> `obrat-1`), so a capital
-    in the stem is the model saying "name" — which is how a name the guesser met
-    (`Kvartonu` -> `Kvarton`) is recognised, since the guesser does not always add
-    a marker.
-    """
-    markers = _MARKER.findall(raw_lemma)
-    if markers:
-        return any(m in _PROPER_NAME_MARKERS for m in markers)
-    return _strip_lemma_suffix(raw_lemma)[:1].isupper()
-
-
 def parse_morphodita_vertical(
     vertical: str, original: str
 ) -> tuple[list[Token], list[tuple[int, int]]]:
@@ -451,8 +401,9 @@ def parse_morphodita_vertical(
         parts = line.split("\t")
         word = parts[0]
         raw_lemma = parts[1] if len(parts) > 1 else word
-        lemma = _strip_lemma_suffix(raw_lemma)
+        lemma = lemma_stem(raw_lemma)
         xpos = parts[2] if len(parts) > 2 else ""
+        upos, feats = pdt_to_ud(xpos, raw_lemma, word)
 
         found = original.find(word, cursor)
         if found >= 0:
@@ -468,8 +419,9 @@ def parse_morphodita_vertical(
             char_start=char_start,
             char_end=char_end,
             lemma=lemma,
-            upos=pdt_tag_to_upos(xpos, raw_lemma),
+            upos=upos,
             xpos=xpos,
+            feats=feats,
         )
         tokens.append(token)
         sentence.append(token)
@@ -495,48 +447,13 @@ def parse_morphodita_lemma_groups(vertical: str, count: int) -> list[list[str]]:
                 current = []
             continue
         parts = line.split("\t")
-        current.append(_strip_lemma_suffix(parts[1] if len(parts) > 1 else parts[0]))
+        current.append(lemma_stem(parts[1] if len(parts) > 1 else parts[0]))
     if current:
         groups.append(current)
 
     while len(groups) < count:
         groups.append([])
     return groups[:count]
-
-
-#: PDT major tag -> UD POS. `N` is special-cased for proper nouns below.
-_PDT_TO_UPOS = {
-    "A": "ADJ",
-    "C": "NUM",
-    "D": "ADV",
-    "I": "INTJ",
-    "J": "CCONJ",
-    "P": "PRON",
-    "R": "ADP",
-    "T": "PART",
-    "V": "VERB",
-    "X": "X",
-    "Z": "PUNCT",
-}
-
-
-def pdt_tag_to_upos(pdt_tag: str, lemma: str = "") -> str:
-    """The first character of a PDT tag, as a UD POS. `lemma` is the RAW lemma.
-
-    A proper noun matters because `upos: PROPN` is what the invoices hero's
-    default-lane fallback rule matches on — the one thing that still finds
-    "Microsoft" when cs NER is unrouted — and what callers build name runs from.
-    But the tag does not say it: the Czech model tags `Zlín` and `město` alike,
-    `NN…`. The lemma does (`Zlín_;G`, `Novák_;Y`, a capitalised stem — see
-    `_is_proper_name`), so a noun is PROPN when its raw lemma says so. `NP` is kept
-    for a tagset that does emit it.
-    """
-    if not pdt_tag:
-        return ""
-    if pdt_tag[0] == "N":
-        proper = pdt_tag[1:2] == "P" or _is_proper_name(lemma)
-        return "PROPN" if proper else "NOUN"
-    return _PDT_TO_UPOS.get(pdt_tag[0], "X")
 
 
 # ── NameTag 3 CoNLL ──────────────────────────────────────────────────────────

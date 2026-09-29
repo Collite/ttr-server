@@ -20,11 +20,11 @@ from pathlib import Path
 import pytest
 
 from ttrnlp.client.backends import (
-    _strip_lemma_suffix,
     parse_morphodita_lemma_groups,
     parse_morphodita_vertical,
     pdt_tag_to_upos,
 )
+from ttrnlp.client.pdt import lemma_stem
 
 _FIXTURE = (
     Path(__file__).parent.parent
@@ -65,10 +65,14 @@ def test_a_lemma_with_only_an_index_or_only_a_comment_is_unchanged_from_before()
         ("1-2", "1-2"),  # a number keeps its shape
         ("_", "_"),  # the lemma of an underscore is not empty
         ("Shell-2_;m", "Shell"),
+        ("pět-1`5", "pět"),  # a numeral's value, after the index
+        ("druhý`2", "druhý"),
+        ("tolik-3_^(ve_spojení_s_adj.)", "tolik"),
+        ("`", "`"),  # the lemma of a backquote is not empty
     ],
 )
 def test_only_a_numeric_index_after_a_letter_is_stripped(raw, stem):
-    assert _strip_lemma_suffix(raw) == stem
+    assert lemma_stem(raw) == stem
 
 
 def test_the_batch_path_strips_the_same_way():

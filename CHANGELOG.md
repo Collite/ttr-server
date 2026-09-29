@@ -16,6 +16,32 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+### `ttr-nlp` — a MorphoDiTa token reads like UD Czech: `feats`, and the POS UD gives it
+
+The MorphoDiTa adapter (`parse_morphodita_vertical`, which the nlp front's `option` lane uses for
+Czech tokens, lemmas and POS) sent a coarse `upos` and **no `feats` at all**, so the same question
+read differently on the two lanes: no `Mood=Imp` on `Zobraz`, no `PronType=Int,Rel` on `Který`, and
+every numeral `NUM`. The PDT-C tag and the lemma now become UD Czech-PDT's reading, the one the
+Stanza lane already gives (new module `ttrnlp.client.pdt`, `pdt_to_ud`).
+
+- **`Token.feats` is filled** from the tag's positions (gender, animacy, number, case, person,
+  tense, degree, polarity, voice, aspect, possessor) plus what the subclass implies (`VerbForm`,
+  `Mood`, `NumType`, `NumForm`, `AdpType`, `Variant`, `Abbr`); `PronType`, `Poss`, `Reflex` and
+  `NameType` come from the lemma and its name markers.
+- **Some `upos` values change**, each to what UD Czech says: ordinals `NUM` → `ADJ`
+  (`prvních`, `NumType=Ord`); quantifiers `kolik`/`několik` `NUM` → `DET`; `dvakrát` → `ADV`;
+  determiners (`který`, `jaký`, `ten`, `náš`, `svůj`, `žádný`, `všechen`, `každý`) → `DET`;
+  every form of `být` → `AUX`; a passive participle (`prodáno`) → `ADJ`; subordinating
+  conjunctions (`že`, `kdyby`, `než`) → `SCONJ`; abbreviations (`DPH`, `atd.`) from `X` to the POS
+  they stand for, with `Abbr=Yes`; `%`, `§`, `+`, `$` → `SYM`. A caller that treats `NUM` as a
+  literal no longer sees `prvních` or `Kolik` as a value, the same as on the Stanza lane.
+- **A numeral's value leaves its lemma**: `pět-1`5` → `pět`, `druhý`2` → `druhý` (also in
+  `BatchLemmatize`, which lex-matcher lemmatizes queries with).
+- Not derived, because neither the tag nor the lemma settles them: a conditional's person and
+  number (`bych`), `Animacy` on `kdo`/`co`, `Style`.
+
+Held to Stanza by a parity test on 22 live sentences: where the two engines' PDT tags agree,
+`upos` agrees on every token and `feats` on all but a listed, justified set.
 ### resolver — an operator word the tagger tags correctly reaches the lattice (#58)
 
 An operator word became a mention only when the tagger called it a noun (Czech `Zobraz`). The
