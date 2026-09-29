@@ -1,0 +1,7 @@
+{
+  "_comment": "Verbatim `result` strings of nlp-morphodita:0.11.0 `/tag` (input=untokenized, output=vertical, model czech-morfflex2.0-pdtc1.0-220710), captured 2026-09-29 from a live backend. Do not tidy: the decorations ARE the test.",
+  "Zobraz prodeje dodacího místa v Hradci Králové za minulý rok": "Zobraz\tzobrazit\tVi-S---2--A-P--\nprodeje\tprodej_^(akt_prodeje_zboží)\tNNIS2-----A----\ndodacího\tdodací_^(*2t)\tAANS2----1A----\nmísta\tmísto-1_^(fyzické_umístění)\tNNNS2-----A----\nv\tv-1\tRR--6----------\nHradci\tHradec-2_;G\tNNIS6-----A----\nKrálové\tKrálové_;G_^(Dvůr_Králové)\tNNFS2-----A----\nza\tza\tRR--4----------\nminulý\tminulý\tAAIS4----1A----\nrok\trok\tNNIS4-----A----\n\n",
+  "Kolik prodal Novák ve Zlíně a v Praze?": "Kolik\tkolik\tCa--4----------\nprodal\tprodat\tVpYS----R-AAP--\nNovák\tNovák_;Y\tNNMS1-----A----\nve\tv-1\tRV--6----------\nZlíně\tZlín_;G\tNNIS6-----A----\na\ta-1\tJ^-------------\nv\tv-1\tRR--6----------\nPraze\tPraha_;G\tNNFS6-----A----\n?\t?\tZ:-------------\n\n",
+  "Obraty pobočky Kvartonu za rok 2025": "Obraty\tobrat-1_^(z_prodeje_zboží)\tNNIP1-----A----\npobočky\tpobočka\tNNFS2-----A----\nKvartonu\tKvarton\tNNIS2-----A----\nza\tza\tRR--4----------\nrok\trok\tNNIS4-----A----\n2025\t2025\tC=-------------\n\n",
+  "Pražané a Češi nakupují Škodovky od Škody": "Pražané\tPražan_;E\tNNMP1-----A----\na\ta-1\tJ^-------------\nČeši\tČech_;E_;Y\tNNMP1-----A----\nnakupují\tnakupovat\tVB-P---3P-AAI--\nŠkodovky\tŠkodovka_;m\tNNFP4-----A----\nod\tod-1\tRR--2----------\nŠkody\tŠkoda-1_;m\tNNFS2-----A----\n\n"
+}
