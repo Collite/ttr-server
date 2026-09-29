@@ -251,8 +251,9 @@ class LexiconArchiveRegistrySourceTest :
             //    would fragment ordinary noun phrases, because `anchorTokens` blocks a word from
             //    being folded into a sibling's phrase.
             //  - a GROUNDING_TRIGGER already has its own annotation path.
-            //  - an OPERATOR is tatrman-server#58's territory: Q-20 cut over-generation 33 → 0, and
-            //    widening proposal as a side effect of a plumbing change is how that gets lost.
+            //  - an OPERATOR is not an anchor either: Q-20 cut over-generation 33 → 0, and widening
+            //    proposal as a side effect of a plumbing change is how that gets lost. Operator words
+            //    are found per question instead, in the operator class only (#58, `OperatorWords`).
             val mixed =
                 """
                 schema: ttr-lexicon/v1

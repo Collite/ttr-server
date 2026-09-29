@@ -61,6 +61,13 @@ import org.tatrman.text.Normalization.fold
  *       Czech imperative (`Zobraz` comes back NOUN/`amod` under the measure — P0.2 report)
  *       silently swallows the operator word into `Zobraz náklady`, and `účtu` — governed by
  *       the root — is gated against the *measure's* categories instead of its own.
+ *
+ * **Operator words (ttr-server#58)** are anchors too, when the matcher has confirmed them for this
+ * question ([OperatorWords]): a word with no declared anchor of its own that sits in an operator slot
+ * is an anchor of the operator the matcher named, and path (a) proposes it exactly as it proposes a
+ * declared one. A declared anchor on the same word wins. A COUNT word scopes the literal beside it —
+ * `10` in `nejlepších 10 prodejen` is `op:top-n`'s argument — and a COMMAND word scopes none:
+ * `Show 501001` is a code nobody named the axis of, not a code the verb owns.
  */
 object SpanProposal {
     private const val MAX_NGRAM = 3
@@ -165,6 +172,9 @@ object SpanProposal {
         // nobody's governed value — the "an anchor word is nobody else's" rule, applied to a
         // stronger claim. Empty for a question with no quotes, which is nearly all of them.
         literals: Literals = Literals.NONE,
+        // ttr-server#58 — the slot words the matcher confirmed as operators ([OperatorWords.find]).
+        // Empty unless the lookup ran, which keeps every caller that does not ask byte-identical.
+        operatorWords: List<OperatorWords.Word> = emptyList(),
     ): List<DomainSpanCandidate> {
         val tokens = parse.tokensList
         if (tokens.isEmpty()) return emptyList()
@@ -214,14 +224,21 @@ object SpanProposal {
 
         val folded = tokens.map { fold(it.lemma.ifBlank { it.text }) }
 
+        // ttr-server#58 — a confirmed operator word, as the one-word anchor phrase a registry that
+        // declared it would have produced. Consulted only where no declared anchor matches.
+        val spoken =
+            operatorWords
+                .filter { it.token in tokens.indices }
+                .associate { w -> w.token to w.operators.map { AnchorPhrase(listOf(folded[w.token]), it) } }
+
         /** The longest declared phrase starting at [from], per owning entity type. */
         fun matchesAt(from: Int): List<AnchorPhrase> {
-            val byFirst = anchorPhrases[folded.getOrNull(from) ?: return emptyList()] ?: return emptyList()
+            val byFirst = anchorPhrases[folded.getOrNull(from) ?: return emptyList()] ?: return spoken[from].orEmpty()
             val hits =
                 byFirst.filter { phrase ->
                     phrase.words.withIndex().all { (i, w) -> folded.getOrNull(from + i) == w }
                 }
-            if (hits.isEmpty()) return emptyList()
+            if (hits.isEmpty()) return spoken[from].orEmpty()
             // Longest wins: an estate that declared both `by month` and `by month end` meant the
             // longer one where the question says it. Ties (same length, several owners) all stand
             // — that is a real ambiguity and the gate's to settle, not this layer's.
@@ -454,9 +471,11 @@ object SpanProposal {
                 )
         }
 
-        // (e) literal runs, scoped by the mention beside them (RV-P2.1 / RV-33).
+        // (e) literal runs, scoped by the mention beside them (RV-P2.1 / RV-33) — never by a command.
         val gated = dedupe(out)
-        val proposed = dedupe(gated + literalRuns(tokens, universal, gated, coveredTokens + literals.tokens))
+        val commands = operatorWords.filter { it.slot == OperatorWords.Slot.COMMAND }.map { it.token }.toSet()
+        val proposed =
+            dedupe(gated + literalRuns(tokens, universal, gated, coveredTokens + literals.tokens, commands))
         // LP: the invariant, stated once at the end rather than trusted to six exclusions above.
         // Each of those keeps a literal out of the source it guards; this one is the promise the
         // lattice depends on — NOTHING proposed overlaps a literal, however it was proposed.
@@ -475,8 +494,13 @@ object SpanProposal {
         universal: List<IntRange>,
         gated: List<DomainSpanCandidate>,
         covered: Set<Int>,
+        // ttr-server#58 — the heads of COMMAND operator words, which scope no literal.
+        commands: Set<Int> = emptySet(),
     ): List<DomainSpanCandidate> {
-        val mentions = gated.filter { it.origin == DomainSpanCandidate.Origin.ANCHOR_PHRASE && it.headToken >= 0 }
+        val mentions =
+            gated.filter {
+                it.origin == DomainSpanCandidate.Origin.ANCHOR_PHRASE && it.headToken >= 0 && it.headToken !in commands
+            }
         if (mentions.isEmpty()) return emptyList()
 
         val out = mutableListOf<DomainSpanCandidate>()

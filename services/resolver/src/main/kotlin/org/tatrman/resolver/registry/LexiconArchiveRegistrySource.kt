@@ -100,9 +100,11 @@ class LexiconArchiveRegistrySource(
      *    would change phrase building for every question mentioning one — `anchorTokens` blocks a
      *    word from being folded into a sibling's phrase, so member vocabulary would start
      *    fragmenting ordinary noun phrases.
-     *  - **`OPERATOR`** is tatrman-server#58's territory and is deliberately left alone here. Q-20
-     *    cut over-generation from 33 spurious binds to 0; widening proposal as a side effect of a
-     *    plumbing change is exactly how that result gets lost.
+     *  - **`OPERATOR`** is deliberately left alone here. Q-20 cut over-generation from 33 spurious
+     *    binds to 0; widening proposal as a side effect of a plumbing change is exactly how that
+     *    result gets lost. Operator words reach the lattice another way since ttr-server#58: the
+     *    pipeline asks the matcher about the words in an operator slot, in the operator class only,
+     *    and makes a confirmed one an anchor for that one question (`OperatorWords`).
      *  - **`GROUNDING_TRIGGER`** already has its own annotation path (`GroundingTriggers`).
      *  - **`STRING_PREDICATE`** (LP §3.4) is the comparison, not either side of it. It is also the
      *    class most likely to WIN its span — *obsahující* is a whole authored word — so letting it

@@ -135,7 +135,7 @@ class ResolverPipeline(
         val status = runCatching { nlp.getStatus() }.getOrNull()
         val assessment = assess(parse, status)
 
-        val resolverRegistry =
+        val declared =
             if (request.hasRegistry()) {
                 fromProto(
                     request.registry,
@@ -148,6 +148,21 @@ class ResolverPipeline(
         // LP contracts §2 — scanned once, here, because this is the last place the raw text
         // exists: everything below works from the parse, which carries tokens and not the string.
         val literals = Literals.of(fresh.text, parse)
+        // ttr-server#58 — the operator words no nominal path reaches (an imperative verb, an adjective
+        // beside a count), asked about in the operator class BEFORE proposal, because a confirmed one
+        // is an anchor and a count beside it is its argument: both are proposal's decisions. The
+        // operators found join the registry for this request only, so everything downstream reads an
+        // `operator` kind for them; proposal itself keeps the declared list, so no other path starts
+        // offering spans to operator categories.
+        val operatorWords = OperatorWords.find(fuzzy, parse, literals, declared.thresholds, lookupRounds.config)
+        val resolverRegistry =
+            if (operatorWords.isEmpty()) {
+                declared
+            } else {
+                declared.copy(
+                    entityTypes = declared.entityTypes + OperatorWords.entityTypes(operatorWords, declared.entityTypes),
+                )
+            }
         // LP §2.4 — a literal is never NER-typed and never grounded. The universal layer is where
         // that has to be said: `"12.5.2024"` in quotes is a string the user wants matched, and a
         // chrono value is precisely what it must NOT become — a date range filter is a different
@@ -165,7 +180,7 @@ class ResolverPipeline(
         val candidates =
             SlotHints.stamp(
                 parse,
-                SpanProposal.proposeDomainSpans(parse, resolverRegistry.entityTypes, literals),
+                SpanProposal.proposeDomainSpans(parse, declared.entityTypes, literals, operatorWords),
                 resolverRegistry.entityTypes.kindsByRef(),
                 resolverRegistry.entityTypes.ownersByRef(),
                 assessment.language,
