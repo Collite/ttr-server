@@ -16,7 +16,7 @@ import org.tatrman.translator.framework.SavedQueryBody
 import org.tatrman.translator.framework.SurfaceType
 
 /**
- * DQ — a slice of the **hartland** estate model (ttr-demo `model/`), the one the Golem's query door
+ * DQ — a slice of the **hartland** demo estate model (its `model/` tree), the one the Golem's query door
  * writes against: three ER entities, their DB tables, the ER→DB renames, and the two relations the
  * door's join questions cross.
  *
@@ -27,7 +27,7 @@ import org.tatrman.translator.framework.SurfaceType
  * gave the relation pairs would exercise a path hartland never takes. The FKs are therefore part of
  * the fixture, spelled the way `SnapshotModelHandle` passes them (`<table>.<column>` in `name`).
  *
- * Sources (ttr-demo @ 7fb9108): `er/sales.ttrm` (catalog_sales), `er/calendar.ttrm` (date_dim),
+ * Sources (hartland demo @ 7fb9108): `er/sales.ttrm` (catalog_sales), `er/calendar.ttrm` (date_dim),
  * `er/catalog.ttrm` (item), `er/relations.ttrm`, `binding/er2db.ttrm`, `db/fks.ttrm`. Columns not
  * read by any spec are left out; types follow `SnapshotModelHandle`'s surface mapping (a `decimal`
  * and a `date` arrive as FLOAT and DATETIME — the surface set has neither).
