@@ -143,10 +143,11 @@ class ListMemberVocabulariesSpec :
         "T5 — a table-backed entity renders to PHYSICAL names: key first, one row per (key, value), by key" {
             // Pinned from the translator's own output (MV_DUMP). Calcite spells DISTINCT as a GROUP BY
             // over the two projected columns — the same rows — and aliases the physical columns back to
-            // the attribute names (`id AS store_id`, `name AS store_name`).
+            // the attribute names (`id AS store_id`, `name AS store_name`). Since ttr-translator 0.11.0
+            // (TF-P2.S2) the order is T-SQL's — NULLs first ascending — and PostgreSQL spells it out.
             service().all().single { it.category == "er.entity.store.store_name" }.readSql shouldBe
                 "SELECT \"id\" AS \"store_id\", \"name\" AS \"store_name\"\nFROM \"stores\"\n" +
-                "GROUP BY \"id\", \"name\"\nORDER BY \"id\""
+                "GROUP BY \"id\", \"name\"\nORDER BY \"id\" NULLS FIRST"
         }
 
         "F1 — a carrier that IS its entity's key renders: two columns, one of them aliased (review-102)" {
@@ -156,7 +157,7 @@ class ListMemberVocabulariesSpec :
             code.keyAttribute shouldBe "er.entity.currency.code"
             code.diagnosticsList shouldBe emptyList()
             code.readSql shouldBe
-                "SELECT \"code\", \"code\" AS \"code0\"\nFROM \"currencies\"\nGROUP BY \"code\"\nORDER BY \"code\""
+                "SELECT \"code\", \"code\" AS \"code0\"\nFROM \"currencies\"\nGROUP BY \"code\"\nORDER BY \"code\" NULLS FIRST"
         }
 
         "T5 — the dialect is the caller's: MSSQL brackets, POSTGRESQL double quotes" {
@@ -200,7 +201,7 @@ class ListMemberVocabulariesSpec :
             // parsed it, and the entity expands into it — the population is the query's, not the table's.
             service().all().single { it.category == "er.entity.open_store.name" }.readSql shouldBe
                 "SELECT \"id\", \"name\"\nFROM \"stores\"\nWHERE \"state\" <> 'XX'\n" +
-                "GROUP BY \"id\", \"name\"\nORDER BY \"id\""
+                "GROUP BY \"id\", \"name\"\nORDER BY \"id\" NULLS FIRST"
         }
 
         "§9.2 — the listing follows the parse: before it RG-FUZ-003, after it rendered, on ONE instance" {
@@ -224,7 +225,7 @@ class ListMemberVocabulariesSpec :
             account.keyAttribute shouldBe "db.dbo.ledger.id"
             account.matchMethod shouldBe "TYPOS(2)"
             account.readSql shouldBe
-                "SELECT \"id\", \"account\"\nFROM \"ledger\"\nGROUP BY \"id\", \"account\"\nORDER BY \"id\""
+                "SELECT \"id\", \"account\"\nFROM \"ledger\"\nGROUP BY \"id\", \"account\"\nORDER BY \"id\" NULLS FIRST"
         }
 
         "version = SHA-256 over (model version, read_sql, key, method): stable across calls, moves with the read plan" {

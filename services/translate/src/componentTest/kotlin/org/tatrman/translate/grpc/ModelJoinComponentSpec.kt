@@ -61,7 +61,8 @@ class ModelJoinComponentSpec :
                         .setTargetDialect(SqlDialect.POSTGRESQL)
                         .build(),
                 )
-            return unparse.output to parseMessages + unparse.messagesList.map { "${it.severity}/${it.code}: ${it.humanMessage}" }
+            return unparse.output to
+                parseMessages + unparse.messagesList.map { "${it.severity}/${it.code}: ${it.humanMessage}" }
         }
 
         fun assertGolden(

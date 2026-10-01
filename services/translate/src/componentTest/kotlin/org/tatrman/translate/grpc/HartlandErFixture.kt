@@ -66,7 +66,9 @@ internal object HartlandErFixture {
             entity =
                 ModelEntity(
                     er(entity),
-                    attributes.map { (attr, _, type) -> ModelAttribute(attr, type, nullable = attr !in keys, isKey = attr in keys) },
+                    attributes.map { (attr, _, type) ->
+                        ModelAttribute(attr, type, nullable = attr !in keys, isKey = attr in keys)
+                    },
                 ),
             table =
                 ModelTable(
@@ -128,7 +130,10 @@ internal object HartlandErFixture {
     private val foreignKeys =
         listOf(
             // db/fks.ttrm: fk_cs_date, fk_cs_item
-            ModelForeignKey(listOf(column("catalog_sales", "cs_sold_date_sk")), listOf(column("date_dim", "d_date_sk"))),
+            ModelForeignKey(
+                listOf(column("catalog_sales", "cs_sold_date_sk")),
+                listOf(column("date_dim", "d_date_sk")),
+            ),
             ModelForeignKey(listOf(column("catalog_sales", "cs_item_sk")), listOf(column("item", "i_item_sk"))),
         )
 
@@ -170,7 +175,12 @@ internal object HartlandErFixture {
             override fun relations(): List<ModelRelation> = relations
 
             override fun entityMapping(entityQname: QualifiedName): EntityMapping? =
-                all.firstOrNull { it.entity.qname == entityQname }?.let { EntityMapping.ToTable(it.table.qname, whereFilter = null) }
+                all.firstOrNull { it.entity.qname == entityQname }?.let {
+                    EntityMapping.ToTable(
+                        it.table.qname,
+                        whereFilter = null,
+                    )
+                }
 
             override fun attributeColumnRenames(entityQname: QualifiedName): Map<String, String> =
                 all.firstOrNull { it.entity.qname == entityQname }?.renames ?: emptyMap()
@@ -180,7 +190,8 @@ internal object HartlandErFixture {
                 namespace: String,
             ): Map<QualifiedName, ModelSavedQuery> = emptyMap()
 
-            override fun savedQueryBody(queryQname: QualifiedName): SavedQueryBody = error("no saved queries in the hartland fixture")
+            override fun savedQueryBody(queryQname: QualifiedName): SavedQueryBody =
+                error("no saved queries in the hartland fixture")
 
             override fun currentVersion(): String = "hartland-er-fixture-v1"
 

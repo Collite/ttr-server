@@ -366,8 +366,10 @@ class TranslatorServiceImplSpec :
                                 .setTargetSchema(SchemaCode.DB),
                         ).build(),
                 )
-            resp.stagesList.size shouldBe 2
-            resp.stagesList[0].stageCode shouldBe "parse_and_to_rel"
+            // ttr-translator 0.11.1 (MJ) added `model_joins` — the statement after the bare-join
+            // rewrite, or "(no bare joins)" — between the parse and the unparse.
+            resp.stagesList.map { it.stageCode } shouldBe
+                listOf("parse_and_to_rel", "model_joins", "optimize_and_unparse")
         }
 
         "Explain rejects an empty request with a structured message" {

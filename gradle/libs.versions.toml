@@ -8,8 +8,11 @@ tatrman-grammar           = "0.13.7"
 # ttr-metadata, ttr-lexicon-compile's POM names it exactly), and the `bundle grammar` lane
 # publishes them at one version. Two versions here is the 0.10.3/0.10.4 failure.
 tatrman-ttr-metadata      = "0.13.7"
-tatrman-ttr-translator    = "0.10.3"
-tatrman-ttr-plan-proto    = "0.10.3"
+# Lockstep pair (`translator/v*` cuts both). DQ: 0.11.4 carries MJ's ModelJoinRewriter — a bare
+# ER `JOIN` with no `ON` (the form the Golem's LLM lane and its query door write) is conditioned
+# from the model's relations; on 0.10.3 Calcite refused it ("join requires a condition").
+tatrman-ttr-translator    = "0.11.4"
+tatrman-ttr-plan-proto    = "0.11.4"
 # SV-P1 S4 — Maven Central publishing via the Central Portal.
 vanniktech-publish        = "0.36.0"
 
