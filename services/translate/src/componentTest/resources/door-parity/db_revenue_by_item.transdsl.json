@@ -1,0 +1,1 @@
+{"core":[{"dataObject":{"schemaCode":"DB","namespace":"dbo","name":"catalog_sales"},"alias":"catalog_sales"}],"columns":[{"source":"catalog_sales","name":"cs_item_sk","alias":"cs_item_sk"},{"name":"cs_ext_sales_price","alias":"cs_ext_sales_price"}],"aggregation":{"group":["cs_item_sk"],"sum":[{"name":"cs_ext_sales_price","alias":"cs_ext_sales_price"}]}}

@@ -1,0 +1,3 @@
+SELECT "item"."product_name" AS "product_name"
+FROM "item"
+WHERE "item"."product_name" = {p0}
