@@ -7,6 +7,7 @@ import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
 import io.kotest.matchers.shouldBe
 import org.tatrman.nlp.v1.AnalyzeResponse
+import org.tatrman.nlp.v1.NerEntity
 import org.tatrman.nlp.v1.Token
 import org.tatrman.resolver.model.ResolverEntityType
 import org.tatrman.resolver.pipeline.MentionLayer
@@ -262,5 +263,131 @@ class DeclaredTermReachabilityTest :
             SpanProposal
                 .proposeDomainSpans(p, listOf(sales))
                 .none { it.anchored && it.text == "marketplace revenue" } shouldBe true
+        }
+
+        // ── (3) a declared phrase covers the words inside it ──────────────────────────
+
+        // hartland, 2026-10-01: the demo's headline question asked "I don't recognise "the revenues"".
+        // The demo estate (2026-09-24) declared the bare word (`revenue` → the all-channel `channel_sales`) and
+        // relied, in its own comment, on "the longer span wins". It did only where both anchors
+        // START on the same word. Here the bare word is the HEAD of the declared phrase, so it
+        // started an anchor phrase of its own: `det` folded `the` in, the sibling anchor
+        // `marketplace` was left out, and the hull `the [marketplace] revenues` went to the gate
+        // against `channel_sales` — matched nothing, gapped G1, and the turn asked.
+        val channelRevenue =
+            ResolverEntityType(
+                ref = "er.entity.channel_sales.ext_sales_price",
+                categories = listOf("er.entity.channel_sales.ext_sales_price"),
+                anchors = listOf("revenue", "revenues"),
+                objectKind = "measure",
+            )
+        val marketplaceRevenue = sales.copy(objectKind = "measure")
+
+        // "What are the marketplace revenues for 2025 by month?" — the live Stanza parse, verbatim.
+        // 0 What(PRON,root) 1 are(cop→1) 2 the(det→5) 3 marketplace(NOUN,compound→5)
+        // 4 revenues(NOUN,nsubj→1) 5 for(case→7) 6 2025(NUM,nmod→5) 7 by(case→9) 8 month(nmod→5) 9 ?
+        val headline =
+            parse(
+                tok("What", 0, 4, "what", "PRON", 0, "root"),
+                tok("are", 5, 8, "be", "AUX", 1, "cop"),
+                tok("the", 9, 12, "the", "DET", 5, "det"),
+                tok("marketplace", 13, 24, "marketplace", "NOUN", 5, "compound"),
+                tok("revenues", 25, 33, "revenue", "NOUN", 1, "nsubj"),
+                tok("for", 34, 37, "for", "ADP", 7, "case"),
+                tok("2025", 38, 42, "2025", "NUM", 5, "nmod"),
+                tok("by", 43, 45, "by", "ADP", 9, "case"),
+                tok("month", 46, 51, "month", "NOUN", 5, "nmod"),
+                tok("?", 51, 52, "?", "PUNCT", 1, "punct"),
+            ).toBuilder()
+                // …and Stanza's one entity: `2025` is a DATE, so a universal, and no literal run.
+                .addEntities(
+                    NerEntity
+                        .newBuilder()
+                        .setText("2025")
+                        .setLabel("DATE")
+                        .setCharStart(38)
+                        .setCharEnd(42)
+                        .setSourceEngine("stanza"),
+                ).build()
+
+        "⛑ a word inside a declared phrase is not proposed again on its own" {
+            val cands = SpanProposal.proposeDomainSpans(headline, listOf(dateDim, marketplaceRevenue, channelRevenue))
+            withClue("the bare word's owner must not be asked about a word the longer phrase already names") {
+                cands.none { "er.entity.channel_sales.ext_sales_price" in it.gatedEntityRefs } shouldBe true
+            }
+            val measure = cands.single { "er.entity.catalog_sales.ext_sales_price" in it.gatedEntityRefs }
+            measure.text shouldBe "marketplace revenues"
+            measure.start shouldBe 13
+            withClue("nothing reaches the gate or the mention layer as `the revenues`") {
+                (cands + MentionLayer.propose(headline, cands)).none { it.start == 9 } shouldBe true
+            }
+        }
+
+        "the bare word still anchors wherever no declared phrase covers it" {
+            // The control: "What are the revenues by month?" is the all-channel question.
+            // 0 What(root) 1 are(cop→1) 2 the(det→4) 3 revenues(nsubj→1) 4 by(case→6) 5 month(nmod→4) 6 ?
+            val bare =
+                parse(
+                    tok("What", 0, 4, "what", "PRON", 0, "root"),
+                    tok("are", 5, 8, "be", "AUX", 1, "cop"),
+                    tok("the", 9, 12, "the", "DET", 4, "det"),
+                    tok("revenues", 13, 21, "revenue", "NOUN", 1, "nsubj"),
+                    tok("by", 22, 24, "by", "ADP", 6, "case"),
+                    tok("month", 25, 30, "month", "NOUN", 4, "nmod"),
+                    tok("?", 30, 31, "?", "PUNCT", 1, "punct"),
+                )
+            val cands = SpanProposal.proposeDomainSpans(bare, listOf(dateDim, marketplaceRevenue, channelRevenue))
+            val measure = cands.single { "er.entity.channel_sales.ext_sales_price" in it.gatedEntityRefs }
+            bare.tokensList[measure.headToken].text shouldBe "revenues"
+        }
+
+        "a declared phrase inside a LONGER declared phrase yields to it" {
+            // The same rule one size up: `web sales revenue` names its object; `sales revenue`
+            // inside it is not a second mention.
+            val longer =
+                ResolverEntityType(
+                    ref = "er.entity.web_sales.ext_sales_price",
+                    categories = listOf("er.entity.web_sales.ext_sales_price"),
+                    anchors = listOf("web sales revenue"),
+                )
+            val inner =
+                ResolverEntityType(
+                    ref = "er.entity.sales.revenue",
+                    categories = listOf("er.entity.sales.revenue"),
+                    anchors = listOf("sales revenue"),
+                )
+            // 0 web(compound→3) 1 sales(compound→3) 2 revenue(root)
+            val p =
+                parse(
+                    tok("web", 0, 3, "web", "NOUN", 3, "compound"),
+                    tok("sales", 4, 9, "sales", "NOUN", 3, "compound"),
+                    tok("revenue", 10, 17, "revenue", "NOUN", 0, "root"),
+                )
+            SpanProposal
+                .proposeDomainSpans(p, listOf(longer, inner))
+                .filter { it.anchored }
+                .map { it.text } shouldBe listOf("web sales revenue")
+        }
+
+        "two declared phrases that only OVERLAP both stand — that is the gate's to settle" {
+            // Neither phrase contains the other, so neither covers the other: `marketplace
+            // revenue growth` may be read either way, and this layer does not pick.
+            val growth =
+                ResolverEntityType(
+                    ref = "er.entity.catalog_sales.revenue_growth",
+                    categories = listOf("er.entity.catalog_sales.revenue_growth"),
+                    anchors = listOf("revenue growth"),
+                )
+            // 0 marketplace(compound→3) 1 revenue(compound→3) 2 growth(root)
+            val p =
+                parse(
+                    tok("marketplace", 0, 11, "marketplace", "NOUN", 3, "compound"),
+                    tok("revenue", 12, 19, "revenue", "NOUN", 3, "compound"),
+                    tok("growth", 20, 26, "growth", "NOUN", 0, "root"),
+                )
+            SpanProposal
+                .proposeDomainSpans(p, listOf(sales, growth))
+                .filter { it.anchored }
+                .map { it.text } shouldContainExactlyInAnyOrder listOf("marketplace revenue", "revenue growth")
         }
     })

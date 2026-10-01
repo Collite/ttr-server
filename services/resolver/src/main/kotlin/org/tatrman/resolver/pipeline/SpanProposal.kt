@@ -262,6 +262,11 @@ object SpanProposal {
         // [literalGovernors]. Empty on the floor, where there is no chain to walk.
         val governors = literalGovernors(tokens, literals.tokens)
 
+        // The tokens of every multi-word anchor proposed so far — the words an estate has named as
+        // one phrase. Tokens are walked in order, so a phrase is always recorded before any word
+        // inside it is reached.
+        val declaredPhraseTokens = HashSet<Int>()
+
         // (a) anchored subtrees
         tokens.forEachIndexed { idx, t ->
             // LP: `zákazník "dodací místo"` asks for the STRING, not for the entity the estate
@@ -269,7 +274,25 @@ object SpanProposal {
             // index too — otherwise the one construct that means "do not look this up" would be
             // the one construct guaranteed to.
             if (idx in literals.tokens) return@forEachIndexed
-            val hits = matchesAt(idx)
+            // A declared phrase covers the words inside it: `matchesAt`'s longest-wins, carried
+            // past the phrase's first word. A hit that lies wholly inside a phrase already
+            // proposed is a word of that phrase, not a mention of its own.
+            //
+            // ⛑ hartland, 2026-10-01. With `revenue` declared bare (→ the all-channel fact) and
+            // `marketplace revenue` declared whole (→ one channel's), *"What are the marketplace
+            // revenues for 2025 by month?"* proposed both: the inner `revenues` is the phrase's
+            // HEAD, not its first word, so same-start longest-wins never saw the two compete. Its
+            // own anchor phrase folded `the` in, left the sibling anchor `marketplace` out, and the
+            // hull `the [marketplace] revenues` gated against the bare word's owner — matched
+            // nothing, gapped G1, and the demo's headline question asked "the revenues?".
+            //
+            // Only CONTAINMENT yields. Two phrases that merely overlap (`marketplace revenue` /
+            // `revenue growth`) both stand — neither names the other's words, and which reading
+            // the question means is the gate's to settle.
+            val hits =
+                matchesAt(idx).filterNot { p ->
+                    (idx until idx + p.words.size).all { it in declaredPhraseTokens }
+                }
             if (hits.isEmpty()) return@forEachIndexed
             // A MULTI-word anchor names its own extent: the estate said which words, so the span
             // is exactly those and no subtree expansion applies. Single-word anchors keep the
@@ -288,6 +311,7 @@ object SpanProposal {
                         headToken = syntacticHead(span, tokens),
                     )
                 coveredTokens += span
+                declaredPhraseTokens += span
                 return@forEachIndexed
             }
             // MS-P3.S1 (contracts §8.2) — the anchor phrase is ONE candidate carrying every
