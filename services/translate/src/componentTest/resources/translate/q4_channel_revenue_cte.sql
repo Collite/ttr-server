@@ -11,4 +11,4 @@ FROM (SELECT *
     INNER JOIN "date_dim" ON "t3"."sold_date_sk" = "date_dim"."d_date_sk"
 WHERE "date_dim"."d_year" = 2002
 GROUP BY "t3"."channel"
-ORDER BY 2 DESC
+ORDER BY SUM("t3"."net_paid") DESC NULLS LAST

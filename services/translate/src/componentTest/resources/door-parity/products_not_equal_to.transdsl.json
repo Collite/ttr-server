@@ -1,0 +1,1 @@
+{"core":[{"dataObject":{"schemaCode":"ER","namespace":"entity","name":"item"},"alias":"item"}],"columns":[{"source":"item","name":"product_name","alias":"product_name"}],"filter":{"function":{"operation":"ne","operands":[{"columnRef":{"sourceAlias":"item","name":"product_name"},"resultType":"text"},{"parameter":{"name":"p0"},"resultType":"text"}]},"resultType":"bool"}}

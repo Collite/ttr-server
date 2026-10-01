@@ -1,0 +1,6 @@
+SELECT "t0"."month", SUM("t"."ext_sales_price") AS "ext_sales_price"
+FROM (SELECT "cs_item_sk" AS "item", "cs_order_number" AS "order_number", "cs_sold_date_sk" AS "sold_date", "cs_quantity" AS "quantity", "cs_ext_sales_price" AS "ext_sales_price"
+        FROM "catalog_sales") AS "t"
+    INNER JOIN (SELECT "d_date_sk" AS "sk", "d_date" AS "cal_date", "d_year" AS "year", "d_moy" AS "month"
+        FROM "date_dim") AS "t0" ON "t"."sold_date" = "t0"."sk"
+GROUP BY "t0"."month"

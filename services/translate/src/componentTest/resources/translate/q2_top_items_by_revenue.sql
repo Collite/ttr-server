@@ -4,5 +4,5 @@ FROM "store_sales"
     INNER JOIN "date_dim" ON "store_sales"."ss_sold_date_sk" = "date_dim"."d_date_sk"
 WHERE "date_dim"."d_year" = 2002
 GROUP BY "item"."i_item_id"
-ORDER BY 2 DESC
+ORDER BY SUM("store_sales"."ss_net_paid") DESC NULLS LAST
 FETCH NEXT 100 ROWS ONLY
