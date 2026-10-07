@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 package org.tatrman.translate.grpc
 
+import io.kotest.assertions.withClue
 import io.kotest.core.annotation.Tags
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldNotBeEmpty
+import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
 import io.kotest.matchers.string.shouldContain
@@ -180,6 +182,40 @@ class DoorParityComponentSpec :
             compiled.first() shouldContain "\"cal_date\" >= TIMESTAMP '2025-01-01 00:00:00'"
         }
 
+        // LR C-2 — the shapes only the SQL language can write (a ranking, an implied trend grain).
+        // TransDSL refuses them by name, so there is no pair to compare: what is left of parity is
+        // that each COMPILES on the same route and keeps the clause it was written for.
+        val sqlOnly = File(System.getProperty("user.dir"), "src/componentTest/resources/door-sql")
+        val sqlOnlyNames =
+            sqlOnly
+                .listFiles()
+                .orEmpty()
+                .map { it.name }
+                .filter { it.endsWith(".sql") }
+                .map { it.removeSuffix(".sql") }
+                .sorted()
+
+        "the SQL-only goldens are all here" {
+            sqlOnlyNames.shouldNotBeEmpty()
+        }
+
+        sqlOnlyNames.forEach { name ->
+            "door-sql/$name — compiles to PostgreSQL, ordered as written" {
+                val pg =
+                    pg(File(sqlOnly, "$name.sql").readText(), Language.SQL, false, PipelineContext.getDefaultInstance())
+                pg shouldNotContain "FAILED"
+                pg shouldContain "ORDER BY"
+                // A ranking keeps its ORDER BY <measure> DESC NULLS LAST and its LIMIT — Calcite
+                // resolves the select alias to the aggregate and unparses LIMIT as FETCH NEXT on
+                // PostgreSQL. NULLS LAST must reach the physical SQL: PostgreSQL's own default under
+                // DESC is NULLS FIRST, and a group whose sum is NULL would then top the ranking.
+                if (name.startsWith("top_")) {
+                    pg shouldContain "DESC NULLS LAST"
+                    pg shouldContain "FETCH NEXT"
+                }
+            }
+        }
+
         names.forEach { name ->
             "$name — TransDSL and SQL compile to the same PostgreSQL" {
                 val ctx = context(name)
@@ -216,31 +252,77 @@ class DoorParityComponentSpec :
             }
 
         /**
+         * [TRANSDSL_REFUSES_UNFILTERED_JOIN], for a pair whose SQL groups by time grains: the SQL
+         * side must also keep LR C-2's grain `ORDER BY`, coarse to fine. TransDSL refuses these
+         * pairs, so nothing else compares that clause — and the year+month ones are the only
+         * fixtures that exercise multi-grain order.
+         */
+        private fun unfilteredJoinOrderedBy(vararg grains: String): Difference =
+            Difference(
+                "${TRANSDSL_REFUSES_UNFILTERED_JOIN.reason}; and SQL orders by ${grains.joinToString(", ")} (LR C-2)",
+            ) { viaTransDsl, viaSql ->
+                TRANSDSL_REFUSES_UNFILTERED_JOIN.check(viaTransDsl, viaSql)
+                val order = ORDER_BY.find(viaSql)?.groupValues?.get(1)
+                withClue(viaSql) { order.shouldNotBeNull() }
+                val positions = grains.map { order!!.indexOf("\"$it\"") }
+                withClue("ORDER BY $order") {
+                    positions.forEach { it shouldNotBe -1 }
+                    positions shouldBe positions.sorted()
+                }
+            }
+
+        private val ORDER_BY = Regex("""\nORDER BY ([^\n]*)""")
+
+        /**
          * Named pairs that differ, by fixture name → why. Every entry is asserted, not skipped.
          *
-         * - `revenue_by_month`, `quantity_by_brand_and_year` — see [TRANSDSL_REFUSES_UNFILTERED_JOIN].
-         * - `revenue_2025_by_month` — literal typing only: the wire keeps a date-only bound a DATE,
-         *   SQL validation coerces it to TIMESTAMP '… 00:00:00' against the DATETIME column. The same
-         *   comparison on PostgreSQL.
+         * - `revenue_by_month`, `quantity_by_brand_and_year`, `revenue_by_year_and_month` — see
+         *   [TRANSDSL_REFUSES_UNFILTERED_JOIN]; their SQL's grain `ORDER BY` is asserted on its own,
+         *   coarse to fine ([unfilteredJoinOrderedBy]).
+         * - `revenue_2025_by_month` — literal typing: the wire keeps a date-only bound a DATE, SQL
+         *   validation coerces it to TIMESTAMP '… 00:00:00' against the DATETIME column (the same
+         *   comparison on PostgreSQL) — and SQL orders by the grain, see [ORDERED_BY_GRAIN].
+         * - `revenue_2025_by_month_instants` — [ORDERED_BY_GRAIN] only.
          * - `products_equal_to`, `products_not_equal_to` — the SQL route case-folds `=` / `<>` against a
          *   text parameter (`CaseFoldingParams`: `LOWER(col) = LOWER(?)`); the TransDSL wire does not.
          *   Everything else is identical.
          */
         val KNOWN_DIFFERENCES: Map<String, Difference> =
             mapOf(
-                "revenue_by_month" to TRANSDSL_REFUSES_UNFILTERED_JOIN,
-                "quantity_by_brand_and_year" to TRANSDSL_REFUSES_UNFILTERED_JOIN,
+                "revenue_by_month" to unfilteredJoinOrderedBy("month"),
+                "quantity_by_brand_and_year" to unfilteredJoinOrderedBy("year"),
                 "revenue_2025_by_month" to
                     Difference(
-                        "a date-only bound: DATE on the wire, TIMESTAMP at midnight via SQL",
+                        "a date-only bound: DATE on the wire, TIMESTAMP at midnight via SQL; and SQL orders by the grain",
                     ) { viaTransDsl, viaSql ->
-                        viaSql shouldBe
+                        withoutGrainOrder(viaSql) shouldBe
                             viaTransDsl.replace(Regex("""DATE '(\d{4}-\d{2}-\d{2})'"""), "TIMESTAMP '$1 00:00:00'")
                         viaSql shouldNotBe viaTransDsl
                     },
                 "products_equal_to" to CASE_FOLDED,
                 "products_not_equal_to" to CASE_FOLDED,
+                // LR C-2 — SQL orders a grain grouping; TransDSL (no ORDER BY) cannot. Same rows.
+                "revenue_2025_by_month_instants" to ORDERED_BY_GRAIN,
+                "revenue_by_year_and_month" to unfilteredJoinOrderedBy("year", "month"),
             )
+
+        /** The `ORDER BY` line the SQL form adds (LR C-2), removed: what is left must be the TransDSL plan. */
+        private fun withoutGrainOrder(pg: String): String = pg.replace(Regex("""\nORDER BY [^\n]*"""), "")
+
+        /**
+         * LR C-2 — the SQL form orders a time-grain grouping (`ORDER BY "month"`); the TransDSL wire
+         * has no ORDER BY, so the rollback answers the same rows unordered. The order is asserted to
+         * be the ONLY difference.
+         */
+        private val ORDERED_BY_GRAIN: Difference
+            get() =
+                Difference(
+                    "SQL orders by the grouped time grain (LR C-2); TransDSL has no ORDER BY",
+                ) { viaTransDsl, viaSql ->
+                    viaSql shouldContain "ORDER BY"
+                    viaTransDsl shouldNotContain "ORDER BY"
+                    withoutGrainOrder(viaSql) shouldBe viaTransDsl
+                }
 
         private val CASE_FOLDED: Difference
             get() =
