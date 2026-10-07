@@ -20,6 +20,7 @@ Submit a query to the v1 platform; returns formatted result data plus a structur
 - `user_id` — trusted-network override; ignored when an `Authorization` token resolves
 - `hide_columns_matching` — **G3** — list of regex patterns; columns whose names match any pattern are hidden
 - `row_numbering` — **G3** — `none` (default) | `one_based` (prepends a `#` index column)
+- `source_schema` — `er` | `db` | `obj` — the catalog the source's identifiers resolve against. Default `db` when `source_language` is `sql`; otherwise unset.
 
 **Output:**
 - `content[0]` — `TextContent` with the formatted result (mediaType matches `format`)
@@ -38,6 +39,7 @@ Compile a query into target-dialect SQL without executing.
 **Optional input:**
 - `parameters`, `user_id` — same as `query`
 - `apply_security` — default `true`. Setting `false` requires admin role (rejected with `permission_denied` otherwise).
+- `source_schema` — `er` | `db` | `obj` — the catalog the source's identifiers resolve against, passed through to `ParseToRelNode`. When absent, no source schema is sent and the translator detects it from the source; note this differs from `query`, which defaults `sql` to `db`. To compile exactly what `query` ran, pass the same value (`db` for a `sql` source that `query` ran without one). Any other value is rejected with `unknown_source_schema`.
 
 **Output:**
 - `content[0]` — `TextContent` with the compiled SQL (mediaType `text/plain`)
