@@ -164,6 +164,14 @@ class RlsAcceptanceMatrixSpec :
             visibleNames(resp) shouldContainExactlyInAnyOrder listOf("Acme", "Beta", "Cobalt", "Delta")
         }
 
+        "LR C-5·2 — a caller whose tenant cannot be resolved is refused, not served every tenant" {
+            // Before the fail-closed change the policy was skipped and this caller got all four rows.
+            val resp = validateAs("alice", listOf("analyst"), applySecurity = true)
+            resp.hasPlan() shouldBe false
+            resp.securityAppliedList.isEmpty() shouldBe true
+            resp.messagesList.first().code shouldBe "access_denied"
+        }
+
         "bypass refused — non-admin with apply_security=false is forced back to scoped + Rule-6" {
             val resp = validateAs("tenant-7:alice", listOf("analyst"), applySecurity = false)
             resp.messagesList.any { it.code == "security_bypass_denied" } shouldBe true

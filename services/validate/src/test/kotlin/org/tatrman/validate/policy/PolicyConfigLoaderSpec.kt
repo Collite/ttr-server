@@ -6,6 +6,7 @@ import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.types.shouldBeInstanceOf
 
 class PolicyConfigLoaderSpec :
@@ -126,6 +127,117 @@ class PolicyConfigLoaderSpec :
             }
         }
 
+        "parses roles and exempt-roles as lists" {
+            val p =
+                PolicyConfigLoader
+                    .load(
+                        cfg(
+                            """
+                            validate.policies = [
+                              {
+                                id = "dc-scope"
+                                roles = ["scope-dc-5", "scope-dc-7"]
+                                exempt-roles = ["data-all"]
+                                match { type = "exact", qname = "db.dbo.inventory" }
+                                predicate { type = "in", column = "inv_warehouse_sk", values = [ { kind = "literal", value = 5, literal-type = "int" } ] }
+                              }
+                            ]
+                            """.trimIndent(),
+                        ),
+                    ).single()
+            p.roles shouldBe listOf("scope-dc-5", "scope-dc-7")
+            p.exemptRoles shouldBe listOf("data-all")
+        }
+
+        "absent roles and exempt-roles → empty lists (applies to everyone)" {
+            val p =
+                PolicyConfigLoader
+                    .load(
+                        cfg(
+                            """validate.policies = [ { id = "p", match { type = "all" }, predicate { type = "eq", column = "c", value { kind = "literal", value = 1 } } } ]""",
+                        ),
+                    ).single()
+            p.roles shouldBe emptyList<String>()
+            p.exemptRoles shouldBe emptyList<String>()
+        }
+
+        "roles given as a single string, not a list → PolicyConfigException naming the policy" {
+            val e =
+                shouldThrow<PolicyConfigException> {
+                    PolicyConfigLoader.load(
+                        cfg(
+                            """validate.policies = [ { id = "dc-scope", roles = "scope-dc-5", match { type = "all" }, predicate { type = "eq", column = "c", value { kind = "literal", value = 1 } } } ]""",
+                        ),
+                    )
+                }
+            e.message shouldContain "dc-scope"
+            e.message shouldContain "roles"
+        }
+
+        "exempt-roles given as an object → PolicyConfigException naming the policy" {
+            val e =
+                shouldThrow<PolicyConfigException> {
+                    PolicyConfigLoader.load(
+                        cfg(
+                            """validate.policies = [ { id = "p9", exempt-roles = { a = 1 }, match { type = "all" }, predicate { type = "eq", column = "c", value { kind = "literal", value = 1 } } } ]""",
+                        ),
+                    )
+                }
+            e.message shouldContain "p9"
+            e.message shouldContain "exempt-roles"
+        }
+
+        "a blank role name → PolicyConfigException (it would gate on nothing anyone holds)" {
+            shouldThrow<PolicyConfigException> {
+                PolicyConfigLoader.load(
+                    cfg(
+                        """validate.policies = [ { id = "p", roles = [""], match { type = "all" }, predicate { type = "eq", column = "c", value { kind = "literal", value = 1 } } } ]""",
+                    ),
+                )
+            }
+        }
+
+        // review-159 ⑩ — both fail silently at run time, so both fail at boot.
+        "an empty role list → PolicyConfigException (an empty `roles` would gate every caller in)" {
+            for (path in listOf("roles", "exempt-roles")) {
+                shouldThrow<PolicyConfigException> {
+                    PolicyConfigLoader.load(
+                        cfg(
+                            """validate.policies = [ { id = "p", $path = [], match { type = "all" }, predicate { type = "eq", column = "c", value { kind = "literal", value = 1 } } } ]""",
+                        ),
+                    )
+                }.message shouldContain "'$path' is empty"
+            }
+        }
+
+        "a role name with surrounding whitespace → PolicyConfigException (it would never match)" {
+            shouldThrow<PolicyConfigException> {
+                PolicyConfigLoader.load(
+                    cfg(
+                        """validate.policies = [ { id = "p", roles = [" scope-dc-5"], match { type = "all" }, predicate { type = "eq", column = "c", value { kind = "literal", value = 1 } } } ]""",
+                    ),
+                )
+            }.message shouldContain "surrounding whitespace"
+        }
+
+        "subject-attribute parses; a blank one → PolicyConfigException" {
+            val policy =
+                PolicyConfigLoader
+                    .load(
+                        cfg(
+                            """validate.policies = [ { id = "p", subject-attribute = "tenant_id", match { type = "all" }, predicate { type = "eq", column = "c", value { kind = "literal", value = 1 } } } ]""",
+                        ),
+                    ).single()
+            policy.subjectAttribute shouldBe "tenant_id"
+            shouldThrow<PolicyConfigException> {
+                PolicyConfigLoader.load(
+                    cfg(
+                        """validate.policies = [ { id = "p", subject-attribute = " ", match { type = "all" }, predicate { type = "eq", column = "c", value { kind = "literal", value = 1 } } } ]""",
+                    ),
+                )
+            }
+        }
+
         "missing predicate block → PolicyConfigException" {
             shouldThrow<PolicyConfigException> {
                 PolicyConfigLoader.load(cfg("""validate.policies = [ { id = "p", match { type = "all" } } ]"""))
@@ -138,5 +250,12 @@ class PolicyConfigLoaderSpec :
             val policies = PolicyConfigLoader.load(ConfigFactory.load())
             policies shouldHaveSize 1
             policies.single().id shouldBe "tenant_isolation"
+            // Gated on the tenant ITSELF, not on a role: every caller with a tenant is narrowed to it
+            // whatever roles they hold, and a caller without one is not refused wholesale now that
+            // an unresolvable attribute denies instead of skipping (ShippedPoliciesSpec evaluates it).
+            policies.single().roles shouldBe emptyList()
+            policies.single().subjectAttribute shouldBe "tenant_id"
+            policies.single().appliesTo(Caller(listOf("analyst"), setOf("tenant_id", "user_id"))) shouldBe true
+            policies.single().appliesTo(Caller(listOf("analyst"), setOf("user_id"))) shouldBe false
         }
     })

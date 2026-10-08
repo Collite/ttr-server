@@ -39,8 +39,19 @@ object PolicyToExpression {
                     .build()
         }
 
-    /** Build a literal [Expression] from a policy literal value — used for column-mask expressions (DF-S02). */
+    /** Build a literal [Expression] from a policy literal value. */
     fun literalExpression(v: PolicyValue.Literal): Expression = literal(v.value, v.type)
+
+    /**
+     * A column mask's expression (DF-S02): its literal, its caller attribute resolved for this call
+     * (an unresolvable one throws [UnresolvableAttributeException], as in a predicate), or a NULL
+     * when the rule names no value. Never absent: a MASK without an expression would serve the
+     * column as it is.
+     */
+    fun maskExpression(
+        maskValue: PolicyValue?,
+        identity: ResolvedIdentity,
+    ): Expression = value(maskValue ?: PolicyValue.Literal(value = null, type = "text"), identity)
 
     private fun eq(
         left: Expression,
@@ -168,8 +179,11 @@ data class ResolvedIdentity(
         attributes[name]
             ?: when (name) {
                 "user_id" -> userId
-                else -> error("UserAttribute '$name' is not resolved on identity '$userId'")
+                else -> throw UnresolvableAttributeException(name, userId)
             }
+
+    /** The attributes [attribute] resolves for this caller — what a policy's subject gate reads. */
+    fun attributeNames(): Set<String> = attributes.keys + "user_id"
 
     /** Layer whois-sourced (or other external) attributes underneath the authoritative core. */
     fun withExtra(extra: Map<String, String>): ResolvedIdentity =
@@ -189,3 +203,12 @@ data class ResolvedIdentity(
         }
     }
 }
+
+/**
+ * A policy names a caller attribute the identity does not carry. The engine turns this into a
+ * denial (LR C-5·2) — never into a skipped policy, which would serve the rows the policy restricts.
+ */
+class UnresolvableAttributeException(
+    val attribute: String,
+    userId: String,
+) : RuntimeException("UserAttribute '$attribute' is not resolved on identity '$userId'")

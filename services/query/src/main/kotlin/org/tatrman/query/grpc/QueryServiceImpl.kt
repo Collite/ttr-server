@@ -162,7 +162,7 @@ class QueryServiceImpl(
                                         validateErPlanCompile(windowed(cachedHit.erPlan, window), context, window)
                                             ?: run { return@flow }
                                     val dbParsed =
-                                        translateToDbPlain(erValidated.plan, context) ?: run { return@flow }
+                                        translateToDbChecked(erValidated.plan, context) ?: run { return@flow }
                                     val dbValidated =
                                         validateDbPlanCompile(dbParsed.plan, context, window) ?: run { return@flow }
                                     capNotices += erValidated.capNotices() + dbValidated.capNotices()
@@ -214,17 +214,10 @@ class QueryServiceImpl(
                                         )
                                         return@flow
                                     }
+                                    // The extension has already emitted the failure or the refusal.
                                     val dbValidated =
-                                        validateDbPlanCompile(windowed(dbParsed.plan, window), context, window) ?: run {
-                                            emit(
-                                                errorBatch(
-                                                    "validator_unavailable",
-                                                    "Failed to validate DB path",
-                                                    context,
-                                                ),
-                                            )
-                                            return@flow
-                                        }
+                                        validateDbPlanCompile(windowed(dbParsed.plan, window), context, window)
+                                            ?: run { return@flow }
                                     capNotices += dbValidated.capNotices()
                                     securityApplied += dbValidated.securityAppliedList
                                     effectiveSchemaLabel = SCHEMA_DB
@@ -255,7 +248,7 @@ class QueryServiceImpl(
                                         validateErPlanCompile(windowed(erPlanFromParse, window), context, window)
                                             ?: run { return@flow }
                                     val dbParsed =
-                                        translateToDbPlain(erValidated.plan, context) ?: run { return@flow }
+                                        translateToDbChecked(erValidated.plan, context) ?: run { return@flow }
                                     val dbValidated =
                                         validateDbPlanCompile(dbParsed.plan, context, window) ?: run { return@flow }
                                     capNotices += erValidated.capNotices() + dbValidated.capNotices()
@@ -411,7 +404,7 @@ class QueryServiceImpl(
                 )
             }
         return when (erValidatedResult) {
-            is RetryOutcome.Success -> erValidatedResult.value
+            is RetryOutcome.Success -> acceptedOrRefused(erValidatedResult.value, context)
             is RetryOutcome.Failure -> {
                 emit(
                     errorBatch(
@@ -425,36 +418,47 @@ class QueryServiceImpl(
         }
     }
 
-    private suspend fun kotlinx.coroutines.flow.FlowCollector<ResultBatch>.translateToDb(
+    /**
+     * The ER plan translated to DB, or null after emitting why not: the translator unreachable, or
+     * its ERROR (`translator_rejected`). Never an empty or rejected plan handed on to validate.
+     */
+    private suspend fun kotlinx.coroutines.flow.FlowCollector<ResultBatch>.translateToDbChecked(
         erPlan: PlanNode,
         context: PipelineContext,
-    ): PlanNode? {
-        val erPlanBytes = String(erPlan.toByteArray(), Charsets.ISO_8859_1)
-        val dbParseResult =
-            retry.execute("translator.parse_to_rel.target_db_from_rel_node") {
-                translator.parse(
-                    ParseRequest
-                        .newBuilder()
-                        .setSource(erPlanBytes)
-                        .setSourceLanguage(Language.REL_NODE)
-                        .setTargetSchema(SchemaCode.DB)
-                        .setContext(context)
-                        .build(),
-                )
-            }
-        return when (dbParseResult) {
-            is RetryOutcome.Success -> dbParseResult.value.plan
-            is RetryOutcome.Failure -> {
-                emit(
-                    errorBatch(
-                        "translator_unavailable",
-                        dbParseResult.cause.message ?: "translator unreachable",
-                        context,
-                    ),
-                )
-                null
-            }
+    ): ParseResponse? {
+        val dbParsed = translateToDbPlain(erPlan, context)
+        if (dbParsed == null) {
+            emit(errorBatch("translator_unavailable", "Failed to translate to DB", context))
+            return null
         }
+        dbParsed.messagesList.firstOrNull { it.severity == Severity.ERROR }?.let { first ->
+            emit(errorBatch("translator_rejected", first.humanMessage, context))
+            return null
+        }
+        return dbParsed
+    }
+
+    /**
+     * [validated] when validate returned a plan to run; else null after emitting its refusal. A
+     * refused pass must never reach translation or dispatch: its empty plan would run as one, or fail
+     * downstream under a code that hides why validate refused (`access_denied`, `column_denied`, …).
+     */
+    private suspend fun kotlinx.coroutines.flow.FlowCollector<ResultBatch>.acceptedOrRefused(
+        validated: ValidateResponse,
+        context: PipelineContext,
+    ): ValidateResponse? {
+        if (!validated.refused()) return validated
+        emit(
+            ResultBatch
+                .newBuilder()
+                .setIsFirst(true)
+                .setIsLast(true)
+                .setArrowIpc(ByteArray(0).toByteString())
+                .setContext(context)
+                .addAllMessages(validated.refusalMessages())
+                .build(),
+        )
+        return null
     }
 
     private suspend fun kotlinx.coroutines.flow.FlowCollector<ResultBatch>.validateDbPlanCompile(
@@ -474,7 +478,7 @@ class QueryServiceImpl(
                 )
             }
         return when (dbValidatedResult) {
-            is RetryOutcome.Success -> dbValidatedResult.value
+            is RetryOutcome.Success -> acceptedOrRefused(dbValidatedResult.value, context)
             is RetryOutcome.Failure -> {
                 emit(
                     errorBatch(
@@ -606,6 +610,7 @@ class QueryServiceImpl(
                                     "Failed to validate cached DB plan",
                                 ),
                             ).build()
+                    if (dbValidated.refused()) return dbValidated.refusalResponse(context, cached.detectionMessages)
                     return CompileResponse
                         .newBuilder()
                         .setPlan(dbValidated.plan)
@@ -677,6 +682,7 @@ class QueryServiceImpl(
                                         "Failed to validate DB path",
                                     ),
                                 ).build()
+                    if (dbValidated.refused()) return dbValidated.refusalResponse(context, resolution.detectionMessages)
 
                     requiredParameters = dbParsed.context.parametersList.toList()
                     predictedSchemaFingerprint = PredictedFingerprintComputer.compute(dbParsed.plan)
@@ -737,6 +743,7 @@ class QueryServiceImpl(
                                     "Failed to validate ER plan",
                                 ),
                             ).build()
+                    if (erValidated.refused()) return erValidated.refusalResponse(context, resolution.detectionMessages)
 
                     val dbParsed =
                         translateToDbPlain(erValidated.plan, context) ?: return CompileResponse
@@ -769,6 +776,7 @@ class QueryServiceImpl(
                                     "Failed to validate DB plan",
                                 ),
                             ).build()
+                    if (dbValidated.refused()) return dbValidated.refusalResponse(context, resolution.detectionMessages)
 
                     val cachedPlan =
                         CachedPlan(
@@ -810,6 +818,7 @@ class QueryServiceImpl(
                         "Failed to validate ER plan",
                     ),
                 ).build()
+        if (erValidated.refused()) return erValidated.refusalResponse(context, resolution.detectionMessages)
 
         val dbParsed =
             translateToDbPlain(erValidated.plan, context) ?: return CompileResponse
@@ -842,6 +851,7 @@ class QueryServiceImpl(
                         "Failed to validate DB plan",
                     ),
                 ).build()
+        if (dbValidated.refused()) return dbValidated.refusalResponse(context, resolution.detectionMessages)
 
         return CompileResponse
             .newBuilder()
@@ -1018,6 +1028,34 @@ class QueryServiceImpl(
             }
         }
     }
+
+    /** Validate refused the plan: an ERROR, or no plan to run. */
+    private fun ValidateResponse.refused(): Boolean = !hasPlan() || messagesList.any { it.severity == Severity.ERROR }
+
+    /**
+     * Validate's refusal as a caller reads it: the ERRORs first — every MCP caller takes the first
+     * one's code as the reason — then everything else. A response with no plan and no ERROR (no
+     * validator sends one) still refuses, as `validator_rejected`.
+     */
+    private fun ValidateResponse.refusalMessages(): List<ResponseMessage> {
+        val ordered = messagesList.sortedByDescending { it.severity == Severity.ERROR }
+        return if (ordered.any { it.severity == Severity.ERROR }) {
+            ordered
+        } else {
+            listOf(errorMessage("validator_rejected", "The validator returned no plan to run.")) + ordered
+        }
+    }
+
+    /** `compile`'s answer to a refused validate pass: no plan, the refusal first, then [also]. */
+    private fun ValidateResponse.refusalResponse(
+        context: PipelineContext,
+        also: List<ResponseMessage>,
+    ): CompileResponse =
+        CompileResponse
+            .newBuilder()
+            .setContext(context)
+            .addAllMessages(refusalMessages() + also)
+            .build()
 
     /** The row bound a validated plan executes under, when its root states one. */
     private fun rootLimit(plan: PlanNode): Long? =

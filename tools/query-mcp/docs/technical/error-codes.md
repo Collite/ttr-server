@@ -33,7 +33,7 @@ Agents must tolerate **unknown codes** in both channels — new codes land indep
 | `translator_unreachable`      | gRPC `UNAVAILABLE` or `DEADLINE_EXCEEDED` from `translator`. |
 | `validator_unreachable`       | gRPC `UNAVAILABLE` or `DEADLINE_EXCEEDED` from `validator`. |
 | `translator_rejected`         | Translator returned an `ERROR` severity ResponseMessage (parse / unparse failure). |
-| `validator_rejected`          | Validator rejected the plan (any `ERROR` severity message OR no plan in response). |
+| `validator_rejected`          | Validator rejected the plan (any `ERROR` severity message OR no plan in response). The validator puts its `ERROR`s first, so `messages[0].code` is the reason: e.g. `access_denied` (a row policy applies to the caller and cannot be enforced for it; the messages after it name each reason: `policy_unresolvable_attribute` — the policy needs a caller attribute the caller does not carry; `policy_restricted_write` — the plan writes a table the policy restricts, and a write cannot be narrowed; `policy_evaluation_failed` — the policy could not be evaluated) or `column_denied`. Both `compile` and `query` report it. |
 | `cancelled`                   | gRPC call cancelled before completion. |
 | `invalid_argument`            | gRPC `INVALID_ARGUMENT` from any upstream. |
 
@@ -69,9 +69,8 @@ The `Warning` proto carries no severity; v1 derives severity from a small known-
 | `model_version_missing`           | warn     | Request had no `model_version`. |
 | `metadata_unreachable`            | warn     | Validator couldn't reach the metadata service to verify model version. |
 | `security_bypass_denied`          | warn     | Non-admin caller asked `apply_security=false`; security is forced on. |
-| `policy_evaluation_skipped`       | warn     | Sql-security failed to evaluate a policy; predicate not applied for that rule. |
 | `llm_guard_skeleton`              | warn     | LLM-guard stage is enabled but currently a skeleton (Phase 1.6 carry-over). |
-| `security_skipped_for_workspace`  | info     | Plan references a session-scoped workspace; security was applied at workspace creation time, not re-evaluated here. _Phase 2.4._ |
+| `security_skipped_for_workspace`  | info     | Plan references a session-scoped workspace; security was applied when the workspace was created and is not re-applied to it. Every table the plan reads beside the workspace is filtered as usual. _Phase 2.4._ |
 
 ### Translator (`source_service = "translator"`)
 

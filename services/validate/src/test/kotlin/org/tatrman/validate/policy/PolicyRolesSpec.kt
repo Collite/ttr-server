@@ -62,9 +62,30 @@ class PolicyRolesSpec :
                 .literal.stringValue shouldBe "analyst"
         }
 
-        "missing bearer roles → a roles-gated policy is skipped, no whois fallback" {
+        "the role gate reads the request's auth_roles — a gated policy reaches holders only" {
+            val gated =
+                PolicyEngine(
+                    PolicyRegistry(
+                        listOf(
+                            Policy(
+                                id = "dc-scope",
+                                tableMatch = TableMatcher.Namespace(SchemaCode.DB, "dbo"),
+                                predicate = PolicyPredicate.Eq("warehouse_sk", PolicyValue.Literal(5, "int")),
+                                roles = listOf("scope-dc-5"),
+                            ),
+                        ),
+                    ),
+                )
+            gated.evaluatePolicies(req("analyst", "scope-dc-5")).predicatesList.map { it.ruleId } shouldBe
+                listOf("dc-scope")
+            gated.evaluatePolicies(req("analyst")).predicatesList shouldHaveSize 0
+            gated.evaluatePolicies(req("analyst")).messagesList shouldHaveSize 0
+        }
+
+        "missing bearer roles → a policy keyed on the roles attribute denies, no whois fallback" {
+            // LR C-5·2: this used to skip the policy and serve the rows unrestricted.
             val resp = engine.evaluatePolicies(req())
             resp.predicatesList shouldHaveSize 0
-            resp.messagesList.any { it.code == "policy_evaluation_skipped" } shouldBe true
+            resp.messagesList.map { it.code } shouldBe listOf("access_denied", "policy_unresolvable_attribute")
         }
     })

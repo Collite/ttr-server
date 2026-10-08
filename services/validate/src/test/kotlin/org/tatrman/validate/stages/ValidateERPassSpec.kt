@@ -47,7 +47,7 @@ class ValidatorERPassSpec :
             val plan = erScan(customerEntity)
             val predicate = regionEq("region", "EMEA")
             val isMatch = { qn: QualifiedName -> qn == customerEntity }
-            val wrapped = PlanWalker.wrapScans(plan, customerEntity, predicate, isMatch)
+            val wrapped = PlanWalker.wrapScans(plan, predicate, isMatch)
             wrapped.hasFilter() shouldBe true
             wrapped.filter.input.hasScan() shouldBe true
             wrapped.filter.condition shouldBe predicate
@@ -57,7 +57,7 @@ class ValidatorERPassSpec :
             val plan = erScan(customerEntity)
             val predicate = regionEq("region", "EMEA")
             val isMatch = { qn: QualifiedName -> qn.schemaCode == SchemaCode.DB }
-            val wrapped = PlanWalker.wrapScans(plan, customerEntity, predicate, isMatch)
+            val wrapped = PlanWalker.wrapScans(plan, predicate, isMatch)
             wrapped shouldBe plan
         }
 
@@ -80,7 +80,7 @@ class ValidatorERPassSpec :
                     ).build()
             val predicate = regionEq("region", "EMEA")
             val isMatch = { qn: QualifiedName -> qn == customerEntity }
-            val wrapped = PlanWalker.wrapScans(plan, customerEntity, predicate, isMatch)
+            val wrapped = PlanWalker.wrapScans(plan, predicate, isMatch)
             wrapped.hasProject() shouldBe true
             wrapped.project.input.hasFilter() shouldBe true
             wrapped.project.input.filter.input
@@ -121,7 +121,7 @@ class ValidatorERPassSpec :
                     ).build()
             val predicate = regionEq("region", "EMEA")
             val isMatch = { qn: QualifiedName -> qn == customerEntity }
-            val wrapped = PlanWalker.wrapScans(joinPlan, customerEntity, predicate, isMatch)
+            val wrapped = PlanWalker.wrapScans(joinPlan, predicate, isMatch)
             wrapped.hasJoin() shouldBe true
             wrapped.join.left.hasFilter() shouldBe true
             wrapped.join.left.filter.input
@@ -134,7 +134,7 @@ class ValidatorERPassSpec :
             val plan = dbScan(customerTable)
             val predicate = regionEq("region", "EMEA")
             val isMatch = { qn: QualifiedName -> qn == customerTable }
-            val wrapped = PlanWalker.wrapScans(plan, customerTable, predicate, isMatch)
+            val wrapped = PlanWalker.wrapScans(plan, predicate, isMatch)
             wrapped.hasFilter() shouldBe true
             wrapped.filter.input.hasTableScan() shouldBe true
         }
@@ -179,6 +179,64 @@ class ValidatorERPassSpec :
         "MixedLayerDetector.hasMixedLayers returns false for DB-only plan" {
             val dbOnlyPlan = dbScan(customerTable)
             MixedLayerDetector.hasMixedLayers(dbOnlyPlan) shouldBe false
+        }
+
+        // review-159 ⑤ — the detectors read the same ground as the security walk.
+        "MixedLayerDetector sees the layers across UNION branches and inside an expression subquery" {
+            val union =
+                PlanNode
+                    .newBuilder()
+                    .setUnion(
+                        org.tatrman.plan.v1.UnionNode
+                            .newBuilder()
+                            .addInputs(erScan(customerEntity))
+                            .addInputs(dbScan(customerTable)),
+                    ).build()
+            MixedLayerDetector.hasMixedLayers(union) shouldBe true
+
+            val existsDb =
+                PlanNode
+                    .newBuilder()
+                    .setFilter(
+                        org.tatrman.plan.v1.FilterNode
+                            .newBuilder()
+                            .setInput(erScan(customerEntity))
+                            .setCondition(
+                                Expression
+                                    .newBuilder()
+                                    .setSubquery(
+                                        org.tatrman.plan.v1.SubqueryExpression
+                                            .newBuilder()
+                                            .setKind("exists")
+                                            .setSubquery(dbScan(customerTable)),
+                                    ),
+                            ),
+                    ).build()
+            MixedLayerDetector.hasMixedLayers(existsDb) shouldBe true
+            MixedLayerDetector.collectUsedObjects(existsDb).map { it.qualifiedName } shouldBe
+                listOf("er.entity.customer", "db.dbo.customers")
+        }
+
+        "WorkspaceRefDetector finds a workspace under a UNION branch and inside a subquery" {
+            val ws =
+                PlanNode
+                    .newBuilder()
+                    .setWorkspaceRef(
+                        org.tatrman.plan.v1.WorkspaceRef
+                            .newBuilder()
+                            .setWorkspaceName("q1"),
+                    ).build()
+            val union =
+                PlanNode
+                    .newBuilder()
+                    .setUnion(
+                        org.tatrman.plan.v1.UnionNode
+                            .newBuilder()
+                            .addInputs(dbScan(customerTable))
+                            .addInputs(ws),
+                    ).build()
+            WorkspaceRefDetector.hasWorkspaceRef(union) shouldBe true
+            WorkspaceRefDetector.hasWorkspaceRef(dbScan(customerTable)) shouldBe false
         }
     })
 

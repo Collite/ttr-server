@@ -8,7 +8,6 @@ import org.tatrman.plan.v1.PlanNode
 import org.tatrman.security.v1.ColumnRule
 import org.tatrman.validate.v1.ValidationOptions
 import org.slf4j.LoggerFactory
-import org.tatrman.plan.v1.schemaCodeToToken
 
 /**
  * RULES stage. Two responsibilities:
@@ -99,11 +98,18 @@ class RuleEnforcer(
         if (applicable.isEmpty()) return plan to false
 
         var rejected = false
-        for (rule in applicable.filter { it.action == ColumnRule.Action.DENY }) {
+        // A MASK with nothing to mask the column with withholds it like a DENY: serving it as it is
+        // would be the one outcome the rule exists to prevent. (The policy engine always sends an
+        // expression; this guards any other producer.)
+        val withheld =
+            applicable.filter {
+                it.action == ColumnRule.Action.DENY || (it.action == ColumnRule.Action.MASK && !it.hasMaskExpression())
+            }
+        for (rule in withheld) {
             log.warn(
                 "Column rule '{}' denies access to {}.{}",
                 rule.ruleId,
-                qnameDot(rule.table),
+                rule.table.dotted(),
                 rule.column,
             )
             messages.add(
@@ -112,9 +118,7 @@ class RuleEnforcer(
                     .setSeverity(Severity.ERROR)
                     .setCode("column_denied")
                     .setHumanMessage(
-                        "Query references column '${rule.column}' on table '${qnameDot(
-                            rule.table,
-                        )}', which is restricted by policy.",
+                        "Query references column '${rule.column}' on table '${rule.table.dotted()}', which is restricted by policy.",
                     ).build(),
             )
             rejected = true
@@ -130,7 +134,7 @@ class RuleEnforcer(
                 .mapValues { (key, group) ->
                     if (group.size > 1) {
                         log.warn(
-                            "Multiple MASK rules for ${qnameDot(key.first)}.${key.second}; using rule '{}'",
+                            "Multiple MASK rules for ${key.first.dotted()}.${key.second}; using rule '{}'",
                             group.last().ruleId,
                         )
                     }
@@ -147,15 +151,6 @@ class RuleEnforcer(
                 // table). When multiple tables have masks on the same column name, the v1 walker
                 // can't disambiguate — both rules apply and the first match wins.
                 val rule = maskLookup.values.firstOrNull { it.column == ref.name } ?: return@rewriteColumnRefs null
-                if (!rule.hasMaskExpression()) {
-                    log.warn(
-                        "MASK rule '{}' for ${qnameDot(
-                            rule.table,
-                        )}.${rule.column} has no mask_expression; column left unmasked",
-                        rule.ruleId,
-                    )
-                    return@rewriteColumnRefs null
-                }
                 rule.maskExpression
             }
 
@@ -171,9 +166,7 @@ class RuleEnforcer(
                         .setSeverity(Severity.WARNING)
                         .setCode("mask_skipped_bare_column_ref")
                         .setHumanMessage(
-                            "MASK rule '${rule.ruleId}' for ${qnameDot(
-                                rule.table,
-                            )}.${rule.column} could not be applied to a group-by / sort / aggregate column reference; that occurrence is unmasked.",
+                            "MASK rule '${rule.ruleId}' for ${rule.table.dotted()}.${rule.column} could not be applied to a group-by / sort / aggregate column reference; that occurrence is unmasked.",
                         ).build(),
                 )
             }
@@ -216,15 +209,6 @@ class RuleEnforcer(
             // mask resolution; no bare column ref to resolve here.
             PlanNode.NodeCase.STORE,
             -> false
-        }
-
-    private fun qnameDot(qn: org.tatrman.plan.v1.QualifiedName): String =
-        buildString {
-            append(schemaCodeToToken(qn.schemaCode))
-            append('.')
-            append(qn.namespace)
-            append('.')
-            append(qn.name)
         }
 
     private fun effectiveCap(options: ValidationOptions): Int {

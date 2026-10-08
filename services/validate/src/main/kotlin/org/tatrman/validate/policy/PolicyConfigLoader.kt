@@ -2,6 +2,7 @@
 package org.tatrman.validate.policy
 
 import com.typesafe.config.Config
+import com.typesafe.config.ConfigException
 import org.tatrman.plan.v1.QualifiedName
 import org.tatrman.plan.v1.SchemaCode
 import org.slf4j.LoggerFactory
@@ -18,6 +19,9 @@ import org.tatrman.plan.v1.parseSchemaCode
  *   {
  *     id = "tenant_isolation"
  *     description = "Restrict rows to the calling user's tenant"   # optional
+ *     roles = ["tenant-scoped"]                                     # optional — applies only to holders
+ *     exempt-roles = ["data-all"]                                   # optional — never applies to holders
+ *     subject-attribute = "tenant_id"                               # optional — applies only to carriers
  *     match { type = "namespace", schema = "db", namespace = "dbo" }
  *     predicate {
  *       type = "eq"
@@ -35,7 +39,13 @@ import org.tatrman.plan.v1.parseSchemaCode
  * `match.type` ∈ { `all`, `exact` (+ `qname = "schema.namespace.name"`), `namespace` (+ `schema`, `namespace`) }.
  * `predicate.type` ∈ { `eq` (+ `column`, `value`), `in` (+ `column`, `values = [...]`), `and`/`or` (+ `left`, `right`), `not` (+ `child`) }.
  * `value.kind` ∈ { `literal` (+ `value`, `literal-type`), `user-attr` (+ `attribute`) }.
- * `column-rules[].action` ∈ { `deny`, `mask` (+ optional `mask-value` = a `value`) }.
+ * `column-rules[].action` ∈ { `deny`, `mask` (+ optional `mask-value` = a `value`; absent = NULL) }.
+ * `roles` / `exempt-roles` (LR C-5·1): non-empty lists of role names, matched exactly against the
+ * caller's `auth_roles`. No `roles` = the policy applies to every caller; an exempt role always wins.
+ * An empty list, or a name with surrounding whitespace, is a boot error: neither can be what the
+ * author meant, and both fail silently at run time (an empty `roles` would gate every caller IN).
+ * `subject-attribute`: the policy applies only to a caller whose identity carries this attribute
+ * ([Policy.subjectAttribute]).
  *
  * A malformed policy aborts startup with a message naming the offending policy id (fail-fast).
  * If `validate.policies` is absent, returns an empty list (the service then applies no row-level
@@ -80,7 +90,50 @@ object PolicyConfigLoader {
                 } else {
                     emptyList()
                 },
+            roles = roleList(id, c, "roles"),
+            exemptRoles = roleList(id, c, "exempt-roles"),
+            subjectAttribute =
+                c.optString("subject-attribute")?.also {
+                    if (it.isBlank() || it != it.trim()) {
+                        throw PolicyConfigException(
+                            "policy '$id': 'subject-attribute' must be an attribute name, got '$it'",
+                        )
+                    }
+                },
         )
+    }
+
+    /**
+     * `roles` / `exempt-roles`: absent → empty; anything but a non-empty list of names without
+     * surrounding whitespace → a boot error.
+     */
+    private fun roleList(
+        id: String,
+        c: Config,
+        path: String,
+    ): List<String> {
+        if (!c.hasPath(path)) return emptyList()
+        val roles =
+            try {
+                c.getStringList(path)
+            } catch (e: ConfigException.WrongType) {
+                throw PolicyConfigException(
+                    "policy '$id': '$path' must be a list of role names, e.g. $path = [\"analyst\"]",
+                    e,
+                )
+            }
+        if (roles.isEmpty()) {
+            throw PolicyConfigException(
+                "policy '$id': '$path' is empty — name at least one role, or leave '$path' out",
+            )
+        }
+        if (roles.any { it.isBlank() }) {
+            throw PolicyConfigException("policy '$id': '$path' holds a blank role name")
+        }
+        roles.firstOrNull { it != it.trim() }?.let {
+            throw PolicyConfigException("policy '$id': '$path' role name '$it' has surrounding whitespace")
+        }
+        return roles
     }
 
     private fun parseColumnRule(

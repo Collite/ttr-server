@@ -9,15 +9,14 @@ import org.tatrman.plan.v1.FunctionCall
 import org.tatrman.plan.v1.NamedExpression
 import org.tatrman.plan.v1.PlanNode
 import org.tatrman.plan.v1.QualifiedName
-import org.tatrman.translator.joiner.JoinerPlanWalker
+import org.tatrman.plan.v1.schemaCodeToToken
 
 /**
  * PlanNode tree utilities used by the validator stages.
  *
  * Two kinds of operations live here:
- *   - structural inspection (collect TableScans, find existing LimitOffset)
- *   - structural rewriting (wrap a TableScan with a Filter, rewrap the root
- *     with LimitOffset).
+ *   - structural inspection (the tables a plan reads or writes, the columns it touches)
+ *   - structural rewriting (wrap a scan with a security Filter, mask columns).
  *
  * Both are pure: they return a new `PlanNode` and never mutate inputs. Calcite
  * RelNodes are immutable too; this matches that contract.
@@ -33,148 +32,271 @@ import org.tatrman.translator.joiner.JoinerPlanWalker
  */
 internal object PlanWalker {
     /**
-     * Recursively rewrites every TableScan whose table equals [target] into
-     * `Filter(condition = predicate, input = TableScan(...))`.
+     * Every table / entity the plan reads (LR C-5·3): the scans in the plan tree — UNION branches
+     * included — AND the scans inside expression subqueries (`EXISTS` / `IN` / scalar, in a
+     * projection, a filter or a join condition, also under a CAST, a function or a window's OVER).
+     *
+     * It reads exactly the ground [wrapScans] rewrites — both go through [walk] — so the policy
+     * engine can never find a table the wrap does not reach. That disagreement is what this pair
+     * replaced: the engine read the tree only (a table in a subquery got no predicate) while the wrap
+     * went through the translator's child walker, which has no UNION case (a UNION branch got a
+     * predicate nobody placed, and the receipt still said the rule was applied).
      */
-    fun wrapTableScans(
-        plan: PlanNode,
-        target: QualifiedName,
-        predicate: Expression,
-    ): PlanNode =
-        when (plan.nodeCase) {
-            PlanNode.NodeCase.TABLE_SCAN ->
-                if (plan.tableScan.table == target) {
-                    PlanNode
-                        .newBuilder()
-                        .setFilter(
-                            FilterNode
-                                .newBuilder()
-                                .setInput(plan)
-                                .setCondition(predicate),
-                        ).build()
-                } else {
-                    plan
-                }
-            PlanNode.NodeCase.PROJECT ->
-                PlanNode
-                    .newBuilder()
-                    .setProject(
-                        plan.project
-                            .toBuilder()
-                            .setInput(wrapTableScans(plan.project.input, target, predicate)),
-                    ).build()
-            PlanNode.NodeCase.FILTER ->
-                PlanNode
-                    .newBuilder()
-                    .setFilter(
-                        plan.filter
-                            .toBuilder()
-                            .setInput(wrapTableScans(plan.filter.input, target, predicate)),
-                    ).build()
-            PlanNode.NodeCase.JOIN ->
-                PlanNode
-                    .newBuilder()
-                    .setJoin(
-                        plan.join
-                            .toBuilder()
-                            .setLeft(wrapTableScans(plan.join.left, target, predicate))
-                            .setRight(wrapTableScans(plan.join.right, target, predicate)),
-                    ).build()
-            PlanNode.NodeCase.AGGREGATE ->
-                PlanNode
-                    .newBuilder()
-                    .setAggregate(
-                        plan.aggregate
-                            .toBuilder()
-                            .setInput(wrapTableScans(plan.aggregate.input, target, predicate)),
-                    ).build()
-            PlanNode.NodeCase.SORT ->
-                PlanNode
-                    .newBuilder()
-                    .setSort(
-                        plan.sort
-                            .toBuilder()
-                            .setInput(wrapTableScans(plan.sort.input, target, predicate)),
-                    ).build()
-            PlanNode.NodeCase.LIMIT_OFFSET ->
-                PlanNode
-                    .newBuilder()
-                    .setLimitOffset(
-                        plan.limitOffset
-                            .toBuilder()
-                            .setInput(wrapTableScans(plan.limitOffset.input, target, predicate)),
-                    ).build()
-            PlanNode.NodeCase.SUBQUERY ->
-                PlanNode
-                    .newBuilder()
-                    .setSubquery(
-                        plan.subquery
-                            .toBuilder()
-                            .setSubquery(wrapTableScans(plan.subquery.subquery, target, predicate)),
-                    ).build()
-            PlanNode.NodeCase.UNION ->
-                PlanNode
-                    .newBuilder()
-                    .setUnion(
-                        plan.union
-                            .toBuilder()
-                            .clearInputs()
-                            .addAllInputs(plan.union.inputsList.map { wrapTableScans(it, target, predicate) }),
-                    ).build()
-            // Phase 2.4 — workspace_ref is a session-scoped leaf. Security
-            // is skipped on workspace-rooted plans (the SecurityApplier never
-            // gets here for those plans; the Validator orchestrator emits a
-            // `security_skipped_for_workspace` warning instead). Defensive
-            // pass-through here so wrapTableScans is a structural identity
-            // for workspace_ref leaves.
-            PlanNode.NodeCase.WORKSPACE_REF -> plan
-            // Store (write-plan root): recurse into the read subtree so the source
-            // rows of a write are RLS-filtered just like a read plan. The write
-            // `target` is a qname field, not a TableScan, so it is never wrapped.
-            PlanNode.NodeCase.STORE ->
-                PlanNode
-                    .newBuilder()
-                    .setStore(
-                        plan.store
-                            .toBuilder()
-                            .setInput(wrapTableScans(plan.store.input, target, predicate)),
-                    ).build()
-            PlanNode.NodeCase.SCAN, PlanNode.NodeCase.VALUES, PlanNode.NodeCase.NODE_NOT_SET -> plan
+    fun scannedTables(plan: PlanNode): Set<QualifiedName> = nodes(plan).mapNotNullTo(LinkedHashSet(), ::scannedTable)
+
+    /**
+     * The tables a write plan writes: each `StoreNode`'s `target`. A target is not a scan — no filter
+     * can be placed on it — so a row policy that covers one cannot narrow the write (LR C-5·2).
+     */
+    fun writeTargets(plan: PlanNode): Set<QualifiedName> =
+        nodes(plan).filter { it.nodeCase == PlanNode.NodeCase.STORE }.mapTo(LinkedHashSet()) { it.store.target }
+
+    /**
+     * Every node of [plan], pre-order — the nodes of expression subqueries included. What the
+     * detectors and [scannedTables] read: the same ground [wrapScans] rewrites.
+     */
+    fun nodes(plan: PlanNode): List<PlanNode> =
+        buildList {
+            walk(plan, onNode = { add(it) }) { it }
+        }
+
+    /** The table or entity [node] scans, or null when it is not a scan. */
+    fun scannedTable(node: PlanNode): QualifiedName? =
+        when (node.nodeCase) {
+            PlanNode.NodeCase.TABLE_SCAN -> node.tableScan.table
+            PlanNode.NodeCase.SCAN -> node.scan.getObject()
+            else -> null
         }
 
     /**
-     * Recursively rewrites every Scan node (both `ScanNode` and `TableScanNode`) whose qname
-     * matches [target] into `Filter(condition = predicate, input = Scan(...))`.
+     * Rewrites every scan (DB `TableScanNode` or ER `ScanNode`) for which [predicateFor] returns a
+     * predicate into `Filter(condition = predicate, input = Scan(...))`, wherever [scannedTables]
+     * would find it — one pass for every restricted table.
      *
-     * Used for both DB-layer passes (wrapping `TableScanNode`) and ER-layer passes
-     * (wrapping `ScanNode` with `schema_code = ER`). The [isMatch] lambda determines
-     * whether a given leaf node's qname is the target of this wrapping operation.
-     *
-     * Both `ScanNode` (ER) and `TableScanNode` (DB) carry a qname at their root. We match
-     * on the qname directly; the predicate text uses whichever name space the leaf is in
-     * (attribute names for ER scans, column names for DB tables).
+     * The FilterNode goes directly above the scan, so the security predicate runs on raw rows and
+     * every operator above the scan is preserved. The predicate is written in the leaf's own name
+     * space (attribute names for ER scans, column names for DB tables).
      */
     fun wrapScans(
         plan: PlanNode,
-        target: QualifiedName,
+        predicateFor: (QualifiedName) -> Expression?,
+    ): PlanNode = walk(plan) { leaf -> scannedTable(leaf)?.let(predicateFor)?.let { wrapInFilter(leaf, it) } ?: leaf }
+
+    /** [wrapScans] with one [predicate] for every scan whose qname satisfies [isMatch]. */
+    fun wrapScans(
+        plan: PlanNode,
         predicate: Expression,
         isMatch: (QualifiedName) -> Boolean,
+    ): PlanNode = wrapScans(plan) { table -> predicate.takeIf { isMatch(table) } }
+
+    /**
+     * The one walk. [onNode] sees every node, pre-order; [onLeaf] sees every leaf — a scan, a
+     * workspace ref, VALUES — and its result replaces the leaf. A node none of whose parts changed is
+     * returned as it is, so a read-only walk builds nothing.
+     */
+    private fun walk(
+        plan: PlanNode,
+        onNode: (PlanNode) -> Unit = {},
+        onLeaf: (PlanNode) -> PlanNode,
     ): PlanNode {
-        if (isMatchingScan(plan, isMatch)) {
-            return wrapInFilter(plan, predicate)
+        onNode(plan)
+
+        fun node(n: PlanNode): PlanNode = walk(n, onNode, onLeaf)
+
+        fun expr(e: Expression): Expression = walkExpr(e, onNode, onLeaf)
+        return when (plan.nodeCase) {
+            PlanNode.NodeCase.TABLE_SCAN,
+            PlanNode.NodeCase.SCAN,
+            PlanNode.NodeCase.WORKSPACE_REF,
+            PlanNode.NodeCase.VALUES,
+            -> onLeaf(plan)
+            PlanNode.NodeCase.NODE_NOT_SET -> plan
+            PlanNode.NodeCase.PROJECT -> {
+                val p = plan.project
+                val input = if (p.hasInput()) node(p.input) else p.input
+                val exprs = p.expressionsList.map { ne -> ne.mapExpression(::expr) }
+                if (input === p.input && exprs.sameAs(p.expressionsList)) {
+                    plan
+                } else {
+                    val b = p.toBuilder().clearExpressions().addAllExpressions(exprs)
+                    if (p.hasInput()) b.input = input
+                    plan.toBuilder().setProject(b).build()
+                }
+            }
+            PlanNode.NodeCase.FILTER -> {
+                val f = plan.filter
+                val input = if (f.hasInput()) node(f.input) else f.input
+                val condition = if (f.hasCondition()) expr(f.condition) else f.condition
+                if (input === f.input && condition === f.condition) {
+                    plan
+                } else {
+                    val b = f.toBuilder()
+                    if (f.hasInput()) b.input = input
+                    if (f.hasCondition()) b.condition = condition
+                    plan.toBuilder().setFilter(b).build()
+                }
+            }
+            PlanNode.NodeCase.JOIN -> {
+                val j = plan.join
+                val left = if (j.hasLeft()) node(j.left) else j.left
+                val right = if (j.hasRight()) node(j.right) else j.right
+                val condition = if (j.hasCondition()) expr(j.condition) else j.condition
+                if (left === j.left && right === j.right && condition === j.condition) {
+                    plan
+                } else {
+                    val b = j.toBuilder()
+                    if (j.hasLeft()) b.left = left
+                    if (j.hasRight()) b.right = right
+                    if (j.hasCondition()) b.condition = condition
+                    plan.toBuilder().setJoin(b).build()
+                }
+            }
+            PlanNode.NodeCase.UNION -> {
+                val inputs = plan.union.inputsList.map(::node)
+                if (inputs.sameAs(plan.union.inputsList)) {
+                    plan
+                } else {
+                    plan
+                        .toBuilder()
+                        .setUnion(
+                            plan.union
+                                .toBuilder()
+                                .clearInputs()
+                                .addAllInputs(inputs),
+                        ).build()
+                }
+            }
+            PlanNode.NodeCase.AGGREGATE ->
+                withInput(plan, plan.aggregate.hasInput(), plan.aggregate.input, ::node) {
+                    plan.toBuilder().setAggregate(plan.aggregate.toBuilder().setInput(it)).build()
+                }
+            PlanNode.NodeCase.SORT ->
+                withInput(plan, plan.sort.hasInput(), plan.sort.input, ::node) {
+                    plan.toBuilder().setSort(plan.sort.toBuilder().setInput(it)).build()
+                }
+            PlanNode.NodeCase.LIMIT_OFFSET ->
+                withInput(plan, plan.limitOffset.hasInput(), plan.limitOffset.input, ::node) {
+                    plan.toBuilder().setLimitOffset(plan.limitOffset.toBuilder().setInput(it)).build()
+                }
+            PlanNode.NodeCase.SUBQUERY ->
+                withInput(plan, plan.subquery.hasSubquery(), plan.subquery.subquery, ::node) {
+                    plan.toBuilder().setSubquery(plan.subquery.toBuilder().setSubquery(it)).build()
+                }
+            // Store (write-plan root): the rows written are read by `input`, which is filtered like any
+            // read plan. The write `target` is a qname field, not a scan — never wrapped; see
+            // [writeTargets].
+            PlanNode.NodeCase.STORE ->
+                withInput(plan, plan.store.hasInput(), plan.store.input, ::node) {
+                    plan.toBuilder().setStore(plan.store.toBuilder().setInput(it)).build()
+                }
         }
-        return JoinerPlanWalker.rewriteChildren(plan) { wrapScans(it, target, predicate, isMatch) }
     }
 
-    private fun isMatchingScan(
+    /** A single-input node: [plan] itself when its input did not change, else [rebuild] with the new one. */
+    private inline fun withInput(
         plan: PlanNode,
-        isMatch: (QualifiedName) -> Boolean,
-    ): Boolean =
-        when (plan.nodeCase) {
-            PlanNode.NodeCase.TABLE_SCAN -> isMatch(plan.tableScan.table)
-            PlanNode.NodeCase.SCAN -> isMatch(plan.scan.getObject())
-            else -> false
+        hasInput: Boolean,
+        input: PlanNode,
+        node: (PlanNode) -> PlanNode,
+        rebuild: (PlanNode) -> PlanNode,
+    ): PlanNode {
+        if (!hasInput) return plan
+        val walked = node(input)
+        return if (walked === input) plan else rebuild(walked)
+    }
+
+    /** Every expression kind that can hold a nested expression — a subquery can sit under any of them. */
+    private fun walkExpr(
+        e: Expression,
+        onNode: (PlanNode) -> Unit,
+        onLeaf: (PlanNode) -> PlanNode,
+    ): Expression {
+        fun expr(x: Expression): Expression = walkExpr(x, onNode, onLeaf)
+        return when (e.exprCase) {
+            Expression.ExprCase.SUBQUERY -> {
+                val sq = e.subquery
+                val inner = if (sq.hasSubquery()) walk(sq.subquery, onNode, onLeaf) else sq.subquery
+                val operands = sq.operandsList.map(::expr)
+                if (inner === sq.subquery && operands.sameAs(sq.operandsList)) {
+                    e
+                } else {
+                    val b = sq.toBuilder().clearOperands().addAllOperands(operands)
+                    if (sq.hasSubquery()) b.subquery = inner
+                    e.toBuilder().setSubquery(b).build()
+                }
+            }
+            Expression.ExprCase.FUNCTION -> {
+                val operands = e.function.operandsList.map(::expr)
+                if (operands.sameAs(e.function.operandsList)) {
+                    e
+                } else {
+                    e
+                        .toBuilder()
+                        .setFunction(
+                            e.function
+                                .toBuilder()
+                                .clearOperands()
+                                .addAllOperands(operands),
+                        ).build()
+                }
+            }
+            Expression.ExprCase.CAST ->
+                if (!e.cast.hasValue()) {
+                    e
+                } else {
+                    val value = expr(e.cast.value)
+                    if (value === e.cast.value) e else e.toBuilder().setCast(e.cast.toBuilder().setValue(value)).build()
+                }
+            Expression.ExprCase.OVER -> {
+                val o = e.over
+                val operands = o.operandsList.map(::expr)
+                val partitions = o.partitionKeysList.map(::expr)
+                val orders =
+                    o.orderKeysList.map { k ->
+                        if (!k.hasExpr()) {
+                            k
+                        } else {
+                            val walked = expr(k.expr)
+                            if (walked === k.expr) k else k.toBuilder().setExpr(walked).build()
+                        }
+                    }
+                if (operands.sameAs(o.operandsList) &&
+                    partitions.sameAs(o.partitionKeysList) &&
+                    orders.sameAs(o.orderKeysList)
+                ) {
+                    e
+                } else {
+                    e
+                        .toBuilder()
+                        .setOver(
+                            o
+                                .toBuilder()
+                                .clearOperands()
+                                .addAllOperands(operands)
+                                .clearPartitionKeys()
+                                .addAllPartitionKeys(partitions)
+                                .clearOrderKeys()
+                                .addAllOrderKeys(orders),
+                        ).build()
+                }
+            }
+            Expression.ExprCase.COLUMN_REF,
+            Expression.ExprCase.LITERAL,
+            Expression.ExprCase.PARAMETER,
+            Expression.ExprCase.EXPR_NOT_SET,
+            -> e
         }
+    }
+
+    private fun NamedExpression.mapExpression(f: (Expression) -> Expression): NamedExpression {
+        if (!hasExpression()) return this
+        val walked = f(expression)
+        return if (walked === expression) this else toBuilder().setExpression(walked).build()
+    }
+
+    /** Element-wise identity: the walk changed nothing in this list. */
+    private fun <T> List<T>.sameAs(other: List<T>): Boolean =
+        size == other.size && indices.all { this[it] === other[it] }
 
     private fun wrapInFilter(
         plan: PlanNode,
@@ -186,120 +308,46 @@ internal object PlanWalker {
             .build()
 }
 
+/** `schema.namespace.name` ("db.dbo.inventory", "er.entity.Order") — how validate names a table in every message. */
+internal fun QualifiedName.dotted(): String = "${schemaCodeToToken(schemaCode)}.$namespace.$name"
+
 /**
- * Phase 2.4 — detects whether a plan contains at least one `WorkspaceRef`
- * leaf. Workspace-rooted plans skip the SecurityApplier (no table to evaluate
- * against; data was already filtered when the workspace was first produced).
- * The Validator orchestrator emits a `security_skipped_for_workspace`
- * informational warning when this returns true.
+ * Phase 2.4 — whether a plan reads a session-scoped workspace anywhere (subqueries included). A
+ * workspace was filtered when it was produced, so the SecurityApplier never wraps one; the tables
+ * the plan reads beside it are filtered as usual. The Validator says so with a
+ * `security_skipped_for_workspace` warning.
  */
 internal object WorkspaceRefDetector {
-    fun hasWorkspaceRef(plan: org.tatrman.plan.v1.PlanNode): Boolean =
-        when (plan.nodeCase) {
-            org.tatrman.plan.v1.PlanNode.NodeCase.WORKSPACE_REF -> true
-            org.tatrman.plan.v1.PlanNode.NodeCase.TABLE_SCAN, org.tatrman.plan.v1.PlanNode.NodeCase.SCAN -> false
-            org.tatrman.plan.v1.PlanNode.NodeCase.PROJECT -> hasWorkspaceRef(plan.project.input)
-            org.tatrman.plan.v1.PlanNode.NodeCase.FILTER -> hasWorkspaceRef(plan.filter.input)
-            org.tatrman.plan.v1.PlanNode.NodeCase.JOIN ->
-                hasWorkspaceRef(plan.join.left) || hasWorkspaceRef(plan.join.right)
-            org.tatrman.plan.v1.PlanNode.NodeCase.UNION ->
-                plan.union.inputsList.any { hasWorkspaceRef(it) }
-            org.tatrman.plan.v1.PlanNode.NodeCase.AGGREGATE -> hasWorkspaceRef(plan.aggregate.input)
-            org.tatrman.plan.v1.PlanNode.NodeCase.SORT -> hasWorkspaceRef(plan.sort.input)
-            org.tatrman.plan.v1.PlanNode.NodeCase.LIMIT_OFFSET -> hasWorkspaceRef(plan.limitOffset.input)
-            org.tatrman.plan.v1.PlanNode.NodeCase.SUBQUERY -> hasWorkspaceRef(plan.subquery.subquery)
-            org.tatrman.plan.v1.PlanNode.NodeCase.STORE -> hasWorkspaceRef(plan.store.input)
-            org.tatrman.plan.v1.PlanNode.NodeCase.VALUES,
-            org.tatrman.plan.v1.PlanNode.NodeCase.NODE_NOT_SET,
-            -> false
-        }
+    fun hasWorkspaceRef(plan: PlanNode): Boolean =
+        PlanWalker.nodes(plan).any { it.nodeCase == PlanNode.NodeCase.WORKSPACE_REF }
 }
 
 /**
  * §60 — detects mixed-layer trees (both `ScanNode` with ER schemaCode and `TableScanNode`
- * with DB schemaCode in the same plan). The Validator rejects such trees with
- * `validator_mixed_layer_tree` before any other processing.
+ * with DB schemaCode in the same plan — UNION branches, a write's input and expression
+ * subqueries included). The Validator rejects such trees with `validator_mixed_layer_tree`
+ * before any other processing.
  */
 internal object MixedLayerDetector {
-    fun hasMixedLayers(plan: org.tatrman.plan.v1.PlanNode): Boolean {
-        var hasErScan = false
-        var hasTableScan = false
-        walk(plan) { node ->
-            when (node.nodeCase) {
-                org.tatrman.plan.v1.PlanNode.NodeCase.SCAN -> hasErScan = true
-                org.tatrman.plan.v1.PlanNode.NodeCase.TABLE_SCAN -> hasTableScan = true
-                else -> Unit
-            }
-        }
-        return hasErScan && hasTableScan
-    }
-
-    private fun walk(
-        plan: org.tatrman.plan.v1.PlanNode,
-        visitor: (org.tatrman.plan.v1.PlanNode) -> Unit,
-    ) {
-        visitor(plan)
-        when (plan.nodeCase) {
-            org.tatrman.plan.v1.PlanNode.NodeCase.PROJECT -> walk(plan.project.input, visitor)
-            org.tatrman.plan.v1.PlanNode.NodeCase.FILTER -> walk(plan.filter.input, visitor)
-            org.tatrman.plan.v1.PlanNode.NodeCase.JOIN -> {
-                walk(plan.join.left, visitor)
-                walk(plan.join.right, visitor)
-            }
-            org.tatrman.plan.v1.PlanNode.NodeCase.AGGREGATE -> walk(plan.aggregate.input, visitor)
-            org.tatrman.plan.v1.PlanNode.NodeCase.SORT -> walk(plan.sort.input, visitor)
-            org.tatrman.plan.v1.PlanNode.NodeCase.LIMIT_OFFSET -> walk(plan.limitOffset.input, visitor)
-            org.tatrman.plan.v1.PlanNode.NodeCase.SUBQUERY -> walk(plan.subquery.subquery, visitor)
-            else -> Unit
-        }
+    fun hasMixedLayers(plan: PlanNode): Boolean {
+        val nodes = PlanWalker.nodes(plan)
+        return nodes.any { it.nodeCase == PlanNode.NodeCase.SCAN } &&
+            nodes.any { it.nodeCase == PlanNode.NodeCase.TABLE_SCAN }
     }
 
     /**
      * §62 — collects all model object qnames (ER entities, DB tables) referenced by leaf scans
      * in the plan. Used to populate `PipelineContext.used_objects` for audit and lineage tracking.
      */
-    fun collectUsedObjects(plan: org.tatrman.plan.v1.PlanNode): List<org.tatrman.plan.v1.ObjectRef> {
-        val refs = mutableListOf<org.tatrman.plan.v1.ObjectRef>()
-        walk(plan) { node ->
-            when (node.nodeCase) {
-                org.tatrman.plan.v1.PlanNode.NodeCase.TABLE_SCAN -> {
-                    val t = node.tableScan.table
-                    refs.add(
-                        org.tatrman.plan.v1.ObjectRef
-                            .newBuilder()
-                            .setSchemaCode(t.schemaCode)
-                            .setKind("table")
-                            .setQualifiedName(qnameDot(t))
-                            .build(),
-                    )
-                }
-                org.tatrman.plan.v1.PlanNode.NodeCase.SCAN -> {
-                    val s = node.scan.getObject()
-                    refs.add(
-                        org.tatrman.plan.v1.ObjectRef
-                            .newBuilder()
-                            .setSchemaCode(s.schemaCode)
-                            .setKind("entity")
-                            .setQualifiedName(qnameDot(s))
-                            .build(),
-                    )
-                }
-                else -> Unit
-            }
-        }
-        return refs
-    }
-
-    private fun qnameDot(qn: org.tatrman.plan.v1.QualifiedName): String =
-        buildString {
-            append(
-                org.tatrman.plan.v1
-                    .schemaCodeToToken(qn.schemaCode),
-            )
-            append('.')
-            append(qn.namespace)
-            append('.')
-            append(qn.name)
+    fun collectUsedObjects(plan: PlanNode): List<org.tatrman.plan.v1.ObjectRef> =
+        PlanWalker.nodes(plan).mapNotNull { node ->
+            val table = PlanWalker.scannedTable(node) ?: return@mapNotNull null
+            org.tatrman.plan.v1.ObjectRef
+                .newBuilder()
+                .setSchemaCode(table.schemaCode)
+                .setKind(if (node.nodeCase == PlanNode.NodeCase.TABLE_SCAN) "table" else "entity")
+                .setQualifiedName(table.dotted())
+                .build()
         }
 }
 
@@ -317,115 +365,50 @@ internal object MixedLayerDetector {
  *     substituted with an arbitrary expression — they're documented as out-of-scope for v1 masking.
  */
 internal object ColumnUsage {
-    fun tableQnames(plan: PlanNode): Set<QualifiedName> = buildSet { collectTables(plan, this) }
-
-    fun columnNames(plan: PlanNode): Set<String> = buildSet { collectColumns(plan, this) }
-
-    private fun collectTables(
-        plan: PlanNode,
-        acc: MutableSet<QualifiedName>,
-    ) {
-        when (plan.nodeCase) {
-            PlanNode.NodeCase.TABLE_SCAN -> acc.add(plan.tableScan.table)
-            PlanNode.NodeCase.PROJECT -> {
-                plan.project.expressionsList.forEach { collectTablesInExpr(it.expression, acc) }
-                collectTables(plan.project.input, acc)
-            }
-            PlanNode.NodeCase.FILTER -> {
-                collectTablesInExpr(plan.filter.condition, acc)
-                collectTables(plan.filter.input, acc)
-            }
-            PlanNode.NodeCase.JOIN -> {
-                collectTablesInExpr(plan.join.condition, acc)
-                collectTables(plan.join.left, acc)
-                collectTables(plan.join.right, acc)
-            }
-            PlanNode.NodeCase.UNION -> plan.union.inputsList.forEach { collectTables(it, acc) }
-            PlanNode.NodeCase.AGGREGATE -> collectTables(plan.aggregate.input, acc)
-            PlanNode.NodeCase.SORT -> collectTables(plan.sort.input, acc)
-            PlanNode.NodeCase.LIMIT_OFFSET -> collectTables(plan.limitOffset.input, acc)
-            PlanNode.NodeCase.SUBQUERY -> collectTables(plan.subquery.subquery, acc)
-            // Store (write-plan root): the write `target` and the tables read by
-            // its `input` are both surfaces a DENY rule may fire on. Conservative
-            // (deny-leaning) posture: count both.
-            PlanNode.NodeCase.STORE -> {
-                acc.add(plan.store.target)
-                collectTables(plan.store.input, acc)
-            }
-            PlanNode.NodeCase.SCAN,
-            PlanNode.NodeCase.WORKSPACE_REF,
-            PlanNode.NodeCase.VALUES,
-            PlanNode.NodeCase.NODE_NOT_SET,
-            -> Unit
-        }
-    }
-
     /**
-     * Collects tables referenced *inside an Expression*. The only expression that can introduce a
-     * table is a [SubqueryExpression] (scalar / EXISTS / IN): its nested plan can scan completely
-     * new tables that never appear in the outer plan tree, so we descend into it via [collectTables].
-     * The subquery's left-hand operands (the `x` in `x IN (SELECT ...)`) are walked too — they may
-     * themselves wrap further subqueries.
+     * The tables and entities a plan reads ([PlanWalker.scannedTables]: DB and ER scans, UNION branches,
+     * subqueries) and the tables it writes. A DENY rule fires on either surface: conservative
+     * (deny-leaning) posture.
      */
-    private fun collectTablesInExpr(
-        e: Expression,
-        acc: MutableSet<QualifiedName>,
-    ) {
-        when (e.exprCase) {
-            Expression.ExprCase.FUNCTION -> e.function.operandsList.forEach { collectTablesInExpr(it, acc) }
-            Expression.ExprCase.OVER -> {
-                e.over.operandsList.forEach { collectTablesInExpr(it, acc) }
-                e.over.partitionKeysList.forEach { collectTablesInExpr(it, acc) }
-                e.over.orderKeysList.forEach { collectTablesInExpr(it.expr, acc) }
-            }
-            Expression.ExprCase.CAST -> collectTablesInExpr(e.cast.value, acc)
-            Expression.ExprCase.SUBQUERY -> {
-                e.subquery.operandsList.forEach { collectTablesInExpr(it, acc) }
-                collectTables(e.subquery.subquery, acc)
-            }
-            Expression.ExprCase.COLUMN_REF,
-            Expression.ExprCase.LITERAL,
-            Expression.ExprCase.PARAMETER,
-            Expression.ExprCase.EXPR_NOT_SET,
-            -> Unit
-        }
-    }
+    fun tableQnames(plan: PlanNode): Set<QualifiedName> = PlanWalker.scannedTables(plan) + PlanWalker.writeTargets(plan)
 
+    /** Every column name the plan's nodes touch, on the same ground as [tableQnames]. */
+    fun columnNames(plan: PlanNode): Set<String> =
+        buildSet {
+            PlanWalker.nodes(plan).forEach { node -> collectColumns(node, this) }
+        }
+
+    /** The columns ONE node names; its inputs and its subqueries' plans are nodes of their own. */
     private fun collectColumns(
         plan: PlanNode,
         acc: MutableSet<String>,
     ) {
         when (plan.nodeCase) {
             PlanNode.NodeCase.TABLE_SCAN -> plan.tableScan.outputColumnsList.forEach { acc.add(it.name) }
-            PlanNode.NodeCase.PROJECT -> {
-                plan.project.expressionsList.forEach { collectColumnsInExpr(it.expression, acc) }
-                collectColumns(plan.project.input, acc)
-            }
-            PlanNode.NodeCase.FILTER -> {
-                collectColumnsInExpr(plan.filter.condition, acc)
-                collectColumns(plan.filter.input, acc)
-            }
-            PlanNode.NodeCase.JOIN -> {
-                collectColumnsInExpr(plan.join.condition, acc)
-                collectColumns(plan.join.left, acc)
-                collectColumns(plan.join.right, acc)
-            }
-            PlanNode.NodeCase.UNION -> plan.union.inputsList.forEach { collectColumns(it, acc) }
+            PlanNode.NodeCase.SCAN -> plan.scan.outputColumnsList.forEach { acc.add(it.name) }
+            PlanNode.NodeCase.PROJECT ->
+                plan.project.expressionsList.forEach {
+                    collectColumnsInExpr(
+                        it.expression,
+                        acc,
+                    )
+                }
+            PlanNode.NodeCase.FILTER -> collectColumnsInExpr(plan.filter.condition, acc)
+            PlanNode.NodeCase.JOIN -> collectColumnsInExpr(plan.join.condition, acc)
             PlanNode.NodeCase.AGGREGATE -> {
                 plan.aggregate.groupKeysList.forEach { acc.add(it.name) }
-                plan.aggregate.aggregatesList.forEach { call -> call.argsList.forEach { acc.add(it.name) } }
-                collectColumns(plan.aggregate.input, acc)
+                plan.aggregate.aggregatesList.forEach { call ->
+                    call.argsList.forEach { acc.add(it.name) }
+                    call.withinGroupList.forEach { acc.add(it.column.name) }
+                }
             }
-            PlanNode.NodeCase.SORT -> {
-                plan.sort.sortKeysList.forEach { acc.add(it.column.name) }
-                collectColumns(plan.sort.input, acc)
-            }
-            PlanNode.NodeCase.LIMIT_OFFSET -> collectColumns(plan.limitOffset.input, acc)
-            PlanNode.NodeCase.SUBQUERY -> collectColumns(plan.subquery.subquery, acc)
-            // Store (write-plan root): its `input` read subtree already carries the
-            // grain-key + measure columns as a projection, so recursing covers them.
-            PlanNode.NodeCase.STORE -> collectColumns(plan.store.input, acc)
-            PlanNode.NodeCase.SCAN,
+            PlanNode.NodeCase.SORT -> plan.sort.sortKeysList.forEach { acc.add(it.column.name) }
+            // Store (write-plan root): its `input` read subtree already carries the grain-key + measure
+            // columns as a projection, and that subtree is walked as nodes of its own.
+            PlanNode.NodeCase.STORE,
+            PlanNode.NodeCase.UNION,
+            PlanNode.NodeCase.LIMIT_OFFSET,
+            PlanNode.NodeCase.SUBQUERY,
             PlanNode.NodeCase.WORKSPACE_REF,
             PlanNode.NodeCase.VALUES,
             PlanNode.NodeCase.NODE_NOT_SET,
@@ -433,6 +416,7 @@ internal object ColumnUsage {
         }
     }
 
+    /** Column refs in [e]; a subquery's own plan is walked as nodes, its LHS operands here. */
     private fun collectColumnsInExpr(
         e: Expression,
         acc: MutableSet<String>,
@@ -446,13 +430,7 @@ internal object ColumnUsage {
                 e.over.orderKeysList.forEach { collectColumnsInExpr(it.expr, acc) }
             }
             Expression.ExprCase.CAST -> collectColumnsInExpr(e.cast.value, acc)
-            // A subquery expression carries its own relational plan (which may reference new tables
-            // and columns) plus the LHS operands for `IN`. Recurse into both: the nested plan via
-            // collectColumns, the operands via collectColumnsInExpr.
-            Expression.ExprCase.SUBQUERY -> {
-                e.subquery.operandsList.forEach { collectColumnsInExpr(it, acc) }
-                collectColumns(e.subquery.subquery, acc)
-            }
+            Expression.ExprCase.SUBQUERY -> e.subquery.operandsList.forEach { collectColumnsInExpr(it, acc) }
             Expression.ExprCase.LITERAL,
             Expression.ExprCase.PARAMETER,
             Expression.ExprCase.EXPR_NOT_SET,

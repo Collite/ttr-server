@@ -25,6 +25,7 @@ import io.grpc.Status
 import io.grpc.StatusException
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldContain
+import io.kotest.matchers.collections.shouldNotContain
 import io.kotest.matchers.shouldBe
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.toList
@@ -1076,6 +1077,139 @@ class QueryServiceImplSpec :
                     ).run(windowRequest(2, 0))
                         .toList()
                 out.flatMap { it.messagesList } shouldBe emptyList()
+            }
+        }
+
+        // ── review-159 — a validate REFUSAL ends the request with its reason, on every path ──────
+        // The refusal deliberately lists a warning BEFORE its ERRORs (an older validator did): the
+        // caller must still read `access_denied` as the first message.
+        val accessDenied =
+            ValidateResponse
+                .newBuilder()
+                .addMessages(
+                    ResponseMessage
+                        .newBuilder()
+                        .setSeverity(
+                            Severity.WARNING,
+                        ).setCode("unknown_table")
+                        .setHumanMessage("x"),
+                ).addMessages(
+                    ResponseMessage
+                        .newBuilder()
+                        .setSeverity(
+                            Severity.ERROR,
+                        ).setCode("access_denied")
+                        .setHumanMessage("denied"),
+                ).addMessages(
+                    ResponseMessage
+                        .newBuilder()
+                        .setSeverity(Severity.ERROR)
+                        .setCode("policy_unresolvable_attribute")
+                        .setHumanMessage("needs region"),
+                ).build()
+
+        // Refuses on validate call [n] (1 = the first pass); passes every other call through.
+        fun refusingOnCall(
+            n: Int,
+            calls: MutableList<ValidateRequest>,
+        ): ValidatorClient =
+            ValidatorClient { req ->
+                calls += req
+                if (calls.size == n) {
+                    accessDenied
+                } else {
+                    ValidateResponse
+                        .newBuilder()
+                        .setPlan(req.plan)
+                        .setContext(req.context)
+                        .build()
+                }
+            }
+
+        fun recordingDispatcher(dispatched: MutableList<PlanNode>): DispatcherClient =
+            DispatcherClient { req ->
+                dispatched += req.plan
+                dispatcherStub.dispatch(req)
+            }
+
+        fun sqlRequest(): RunRequest =
+            RunRequest
+                .newBuilder()
+                .setSource("SELECT id FROM customers")
+                .setSourceLanguage(Language.SQL)
+                .setContext(PipelineContext.newBuilder().setUserId("u").setModelVersion("v"))
+                .build()
+
+        "run, DB path: a validate refusal is the answer — access_denied first, nothing dispatched" {
+            runBlocking {
+                val dispatched = CopyOnWriteArrayList<PlanNode>()
+                val out =
+                    service(
+                        translatorDetect = dbDetect,
+                        validator = refusingOnCall(1, CopyOnWriteArrayList()),
+                        dispatcher = recordingDispatcher(dispatched),
+                    ).run(sqlRequest()).toList()
+                out.size shouldBe 1
+                out[0].messagesList.map { it.code } shouldBe
+                    listOf("access_denied", "policy_unresolvable_attribute", "unknown_table")
+                dispatched shouldBe emptyList()
+            }
+        }
+
+        "run, ER path: pass 1's refusal is the answer — no DB translation, no pass 2, nothing dispatched" {
+            runBlocking {
+                val calls = CopyOnWriteArrayList<ValidateRequest>()
+                val parsed = CopyOnWriteArrayList<Language>()
+                val dispatched = CopyOnWriteArrayList<PlanNode>()
+                val out =
+                    service(
+                        translator =
+                            TranslatorClient { req ->
+                                parsed += req.sourceLanguage
+                                parseStub.parse(req)
+                            },
+                        validator = refusingOnCall(1, calls),
+                        dispatcher = recordingDispatcher(dispatched),
+                    ).run(sqlRequest()).toList()
+                out.size shouldBe 1
+                out[0].messagesList[0].code shouldBe "access_denied"
+                calls.size shouldBe 1
+                parsed shouldNotContain Language.REL_NODE
+                dispatched shouldBe emptyList()
+            }
+        }
+
+        "run, ER path: pass 2's refusal is the answer too" {
+            runBlocking {
+                val dispatched = CopyOnWriteArrayList<PlanNode>()
+                val out =
+                    service(
+                        validator = refusingOnCall(2, CopyOnWriteArrayList()),
+                        dispatcher = recordingDispatcher(dispatched),
+                    ).run(sqlRequest()).toList()
+                out.size shouldBe 1
+                out[0].messagesList[0].code shouldBe "access_denied"
+                dispatched shouldBe emptyList()
+            }
+        }
+
+        "compile, ER path: pass 1's refusal is the answer — no plan, access_denied first" {
+            runBlocking {
+                val calls = CopyOnWriteArrayList<ValidateRequest>()
+                val resp = service(validator = refusingOnCall(1, calls)).compile(sqlRequest())
+                resp.hasPlan() shouldBe false
+                resp.messagesList[0].code shouldBe "access_denied"
+                calls.size shouldBe 1
+            }
+        }
+
+        "compile, DB path: the refusal comes first and carries no plan" {
+            runBlocking {
+                val resp =
+                    service(translatorDetect = dbDetect, validator = refusingOnCall(1, CopyOnWriteArrayList()))
+                        .compile(sqlRequest())
+                resp.hasPlan() shouldBe false
+                resp.messagesList[0].code shouldBe "access_denied"
             }
         }
     })

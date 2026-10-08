@@ -120,4 +120,14 @@ message SecurityRuleApplied {
   // Example: "WHERE customer_id IN (subset visible to your tenant)".
   string predicate_summary = 2;
   reserved 3 to 7;
+  // The table or entity the rule's predicate was placed on, as `schema.namespace.name`
+  // ("db.dbo.inventory", "er.entity.Order"). One entry per (rule, table): a rule whose policy
+  // spans several tables reports each of them, so a reader sees every table it narrowed.
+  // Every entry IS a row restriction: a reader that must say "your result may be incomplete"
+  // keys on an entry being present (for `table`, when it is set). There is deliberately no
+  // boolean flag for it — a flag's proto default (false) would read "not restricted" from any
+  // producer that never set it.
+  string table = 8;
+  reserved 9;
+  reserved "restricted";
 }
