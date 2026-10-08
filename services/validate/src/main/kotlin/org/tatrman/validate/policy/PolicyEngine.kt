@@ -3,13 +3,13 @@ package org.tatrman.validate.policy
 
 import org.tatrman.common.v1.ResponseMessage
 import org.tatrman.common.v1.Severity
-import org.tatrman.plan.v1.PlanNode
 import org.tatrman.plan.v1.QualifiedName
 import org.tatrman.plan.v1.schemaCodeToToken
 import org.tatrman.security.v1.ColumnRule as ProtoColumnRule
 import org.tatrman.security.v1.EvaluatePoliciesRequest
 import org.tatrman.security.v1.EvaluatePoliciesResponse
 import org.tatrman.security.v1.TablePredicate
+import org.tatrman.validate.stages.PlanWalker
 import org.slf4j.LoggerFactory
 
 /**
@@ -33,7 +33,7 @@ class PolicyEngine(
 ) {
     suspend fun evaluatePolicies(request: EvaluatePoliciesRequest): EvaluatePoliciesResponse {
         val context = request.context
-        val tableQnames = collectTableScans(request.plan)
+        val tableQnames = PlanWalker.scannedTables(request.plan)
 
         val response = EvaluatePoliciesResponse.newBuilder().setContext(context)
         val identity = resolveIdentity(context.userId, context.authRolesList)
@@ -178,35 +178,6 @@ class PolicyEngine(
         } else {
             base.withExtra(mapOf("roles" to authRoles.joinToString(",")))
         }
-    }
-
-    private fun collectTableScans(
-        plan: PlanNode,
-        acc: MutableSet<QualifiedName> = mutableSetOf(),
-    ): Set<QualifiedName> {
-        when (plan.nodeCase) {
-            PlanNode.NodeCase.TABLE_SCAN -> acc.add(plan.tableScan.table)
-            PlanNode.NodeCase.SCAN -> acc.add(plan.scan.getObject())
-            PlanNode.NodeCase.PROJECT -> collectTableScans(plan.project.input, acc)
-            PlanNode.NodeCase.FILTER -> collectTableScans(plan.filter.input, acc)
-            PlanNode.NodeCase.JOIN -> {
-                collectTableScans(plan.join.left, acc)
-                collectTableScans(plan.join.right, acc)
-            }
-            PlanNode.NodeCase.UNION -> plan.union.inputsList.forEach { collectTableScans(it, acc) }
-            PlanNode.NodeCase.AGGREGATE -> collectTableScans(plan.aggregate.input, acc)
-            PlanNode.NodeCase.SORT -> collectTableScans(plan.sort.input, acc)
-            PlanNode.NodeCase.LIMIT_OFFSET -> collectTableScans(plan.limitOffset.input, acc)
-            PlanNode.NodeCase.SUBQUERY -> collectTableScans(plan.subquery.subquery, acc)
-            // Store (write-plan root): RLS read-predicates apply to the tables scanned
-            // by the `input` subtree that produces the rows to write; the write `target`
-            // is not a scanned source, so recurse into `input` only.
-            PlanNode.NodeCase.STORE -> collectTableScans(plan.store.input, acc)
-            // workspace_ref is a session-scoped leaf with no table to evaluate against.
-            PlanNode.NodeCase.WORKSPACE_REF -> Unit
-            PlanNode.NodeCase.VALUES, PlanNode.NodeCase.NODE_NOT_SET -> Unit
-        }
-        return acc
     }
 
     companion object {

@@ -23,7 +23,7 @@ class PlanWalkerSpec :
 
         "wrap a bare TableScan with a FilterNode" {
             val plan = scan(customers)
-            val out = PlanWalker.wrapTableScans(plan, customers, tenantPredicate)
+            val out = PlanWalker.wrapScans(plan, tenantPredicate) { it == customers }
             out.hasFilter() shouldBe true
             out.filter.input.hasTableScan() shouldBe true
             out.filter.condition shouldBe tenantPredicate
@@ -43,7 +43,7 @@ class PlanWalkerSpec :
                                     .setExpression(columnRef("id")),
                             ),
                     ).build()
-            val out = PlanWalker.wrapTableScans(plan, customers, tenantPredicate)
+            val out = PlanWalker.wrapScans(plan, tenantPredicate) { it == customers }
             out.hasProject() shouldBe true
             out.project.input.hasFilter() shouldBe true
             out.project.input.filter.input
@@ -52,7 +52,7 @@ class PlanWalkerSpec :
 
         "leave non-matching TableScans untouched" {
             val plan = scan(orders)
-            val out = PlanWalker.wrapTableScans(plan, customers, tenantPredicate)
+            val out = PlanWalker.wrapScans(plan, tenantPredicate) { it == customers }
             out shouldBe plan
         }
 

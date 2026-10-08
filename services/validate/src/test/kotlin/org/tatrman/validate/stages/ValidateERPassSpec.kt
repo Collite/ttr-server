@@ -47,7 +47,7 @@ class ValidatorERPassSpec :
             val plan = erScan(customerEntity)
             val predicate = regionEq("region", "EMEA")
             val isMatch = { qn: QualifiedName -> qn == customerEntity }
-            val wrapped = PlanWalker.wrapScans(plan, customerEntity, predicate, isMatch)
+            val wrapped = PlanWalker.wrapScans(plan, predicate, isMatch)
             wrapped.hasFilter() shouldBe true
             wrapped.filter.input.hasScan() shouldBe true
             wrapped.filter.condition shouldBe predicate
@@ -57,7 +57,7 @@ class ValidatorERPassSpec :
             val plan = erScan(customerEntity)
             val predicate = regionEq("region", "EMEA")
             val isMatch = { qn: QualifiedName -> qn.schemaCode == SchemaCode.DB }
-            val wrapped = PlanWalker.wrapScans(plan, customerEntity, predicate, isMatch)
+            val wrapped = PlanWalker.wrapScans(plan, predicate, isMatch)
             wrapped shouldBe plan
         }
 
@@ -80,7 +80,7 @@ class ValidatorERPassSpec :
                     ).build()
             val predicate = regionEq("region", "EMEA")
             val isMatch = { qn: QualifiedName -> qn == customerEntity }
-            val wrapped = PlanWalker.wrapScans(plan, customerEntity, predicate, isMatch)
+            val wrapped = PlanWalker.wrapScans(plan, predicate, isMatch)
             wrapped.hasProject() shouldBe true
             wrapped.project.input.hasFilter() shouldBe true
             wrapped.project.input.filter.input
@@ -121,7 +121,7 @@ class ValidatorERPassSpec :
                     ).build()
             val predicate = regionEq("region", "EMEA")
             val isMatch = { qn: QualifiedName -> qn == customerEntity }
-            val wrapped = PlanWalker.wrapScans(joinPlan, customerEntity, predicate, isMatch)
+            val wrapped = PlanWalker.wrapScans(joinPlan, predicate, isMatch)
             wrapped.hasJoin() shouldBe true
             wrapped.join.left.hasFilter() shouldBe true
             wrapped.join.left.filter.input
@@ -134,7 +134,7 @@ class ValidatorERPassSpec :
             val plan = dbScan(customerTable)
             val predicate = regionEq("region", "EMEA")
             val isMatch = { qn: QualifiedName -> qn == customerTable }
-            val wrapped = PlanWalker.wrapScans(plan, customerTable, predicate, isMatch)
+            val wrapped = PlanWalker.wrapScans(plan, predicate, isMatch)
             wrapped.hasFilter() shouldBe true
             wrapped.filter.input.hasTableScan() shouldBe true
         }

@@ -201,6 +201,41 @@ class PolicyEngineSpec :
             resp.predicatesList.map { it.table.name }.toSet() shouldBe setOf("customers", "orders")
         }
 
+        // LR C-5·3 — the engine used to collect tables from the plan tree only.
+        "a table read only inside an EXISTS subquery gets its predicate" {
+            val catalogSales = table("catalog_sales")
+            val exists =
+                Expression
+                    .newBuilder()
+                    .setSubquery(
+                        org.tatrman.plan.v1.SubqueryExpression
+                            .newBuilder()
+                            .setKind("exists")
+                            .setSubquery(scanOf(catalogSales)),
+                    ).build()
+            val plan =
+                PlanNode
+                    .newBuilder()
+                    .setFilter(
+                        org.tatrman.plan.v1.FilterNode
+                            .newBuilder()
+                            .setInput(scanOf(table("item")))
+                            .setCondition(exists),
+                    ).build()
+            val registry =
+                PolicyRegistry(
+                    listOf(
+                        Policy(
+                            id = "dc_cs",
+                            tableMatch = TableMatcher.Exact(catalogSales),
+                            predicate = PolicyPredicate.Eq("cs_warehouse_sk", PolicyValue.Literal(5, "int")),
+                        ),
+                    ),
+                )
+            val resp = PolicyEngine(registry).evaluatePolicies(request(plan, "t:alice"))
+            resp.predicatesList.map { it.table.name to it.ruleId } shouldBe listOf("catalog_sales" to "dc_cs")
+        }
+
         "engine reports loaded policy count" {
             val service = PolicyEngine(PolicyRegistry(DefaultPolicies.core))
             service.loadedPolicies() shouldBe DefaultPolicies.core.size

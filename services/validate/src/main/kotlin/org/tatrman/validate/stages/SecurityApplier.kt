@@ -50,7 +50,7 @@ class SecurityApplier(
 
         for ((table, group) in byTable) {
             val merged = AndPredicates.merge(group.map { it.predicate })
-            augmented = PlanWalker.wrapScans(augmented, target = table, predicate = merged) { qname -> qname == table }
+            augmented = PlanWalker.wrapScans(augmented, predicate = merged) { qname -> qname == table }
             for (entry in group) {
                 applied.add(
                     SecurityRuleApplied
