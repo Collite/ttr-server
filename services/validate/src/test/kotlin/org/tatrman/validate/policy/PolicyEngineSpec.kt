@@ -10,6 +10,8 @@ import org.tatrman.security.v1.EvaluatePoliciesRequest
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.string.shouldContain
+import org.tatrman.common.v1.Severity
 
 class PolicyEngineSpec :
     StringSpec({
@@ -27,6 +29,34 @@ class PolicyEngineSpec :
                                 .setNamespace("dbo")
                                 .setName("customers"),
                         ),
+                ).build()
+
+        fun table(name: String): QualifiedName =
+            QualifiedName
+                .newBuilder()
+                .setSchemaCode(org.tatrman.plan.v1.SchemaCode.DB)
+                .setNamespace("dbo")
+                .setName(name)
+                .build()
+
+        fun scanOf(table: QualifiedName): PlanNode =
+            PlanNode
+                .newBuilder()
+                .setTableScan(TableScanNode.newBuilder().setTable(table))
+                .build()
+
+        fun join(
+            left: PlanNode,
+            right: PlanNode,
+        ): PlanNode =
+            PlanNode
+                .newBuilder()
+                .setJoin(
+                    org.tatrman.plan.v1.JoinNode
+                        .newBuilder()
+                        .setLeft(left)
+                        .setRight(right)
+                        .setJoinType(org.tatrman.plan.v1.JoinType.INNER),
                 ).build()
 
         fun request(
@@ -53,16 +83,74 @@ class PolicyEngineSpec :
                 .literal.stringValue shouldBe "tenant-7"
         }
 
-        "policies skip silently when user_id does not provide the required attribute" {
+        // LR C-5·2 — fail closed. This case used to SKIP the policy with a `policy_evaluation_skipped`
+        // warning and let the query run without its predicate: a caller the policy could not be
+        // evaluated for saw every row it was meant to restrict.
+        "an applicable policy whose user attribute is unresolvable denies the request" {
             val service = PolicyEngine(PolicyRegistry(DefaultPolicies.core))
             val resp = service.evaluatePolicies(request(customersScan(), userId = "alice-no-tenant"))
 
-            // The policy references UserAttribute("tenant_id"), which is not present
-            // on a non-tenant-prefixed user_id; the service skips the policy and
-            // emits a warning rather than failing the whole call.
             resp.predicatesList shouldHaveSize 0
-            resp.messagesList shouldHaveSize 1
-            resp.messagesList[0].code shouldBe "policy_evaluation_skipped"
+            resp.messagesList.map { it.code } shouldBe listOf("access_denied", "policy_unresolvable_attribute")
+            resp.messagesList.all { it.severity == Severity.ERROR } shouldBe true
+            resp.messagesList[1].humanMessage shouldContain "tenant_isolation"
+            resp.messagesList[1].humanMessage shouldContain "tenant_id"
+        }
+
+        "the denial is the FIRST message even when a warning was raised before it" {
+            // golem (and any MCP caller) reads the first message's code as the rejection's code.
+            val unknownTables = StaticPolicyMetadataClient(version = "", knownQnames = emptySet())
+            val service = PolicyEngine(PolicyRegistry(DefaultPolicies.core), unknownTables)
+            val resp = service.evaluatePolicies(request(customersScan(), userId = "alice-no-tenant"))
+
+            resp.messagesList.map { it.code } shouldBe
+                listOf("access_denied", "policy_unresolvable_attribute", "unknown_table")
+        }
+
+        "a denial on one table drops every predicate — the request is refused, not narrowed" {
+            val orders = table("orders")
+            val registry =
+                PolicyRegistry(
+                    listOf(
+                        Policy(
+                            id = "orders_open",
+                            tableMatch = TableMatcher.Exact(orders),
+                            predicate = PolicyPredicate.Eq("status", PolicyValue.Literal("OPEN", "text")),
+                        ),
+                        Policy(
+                            id = "customers_region",
+                            tableMatch = TableMatcher.Exact(table("customers")),
+                            predicate = PolicyPredicate.Eq("region", PolicyValue.UserAttribute("region")),
+                            columnRules = listOf(ColumnRule("ssn", ColumnAction.Deny)),
+                        ),
+                    ),
+                )
+            val resp =
+                PolicyEngine(
+                    registry,
+                ).evaluatePolicies(request(join(customersScan(), scanOf(orders)), "t:alice"))
+
+            resp.predicatesList shouldHaveSize 0
+            resp.columnRulesList shouldHaveSize 0
+            resp.messagesList[0].code shouldBe "access_denied"
+        }
+
+        "an unresolvable attribute on a policy that does not apply to the caller is no denial" {
+            val registry =
+                PolicyRegistry(
+                    listOf(
+                        Policy(
+                            id = "region_scope",
+                            tableMatch = TableMatcher.Exact(table("customers")),
+                            predicate = PolicyPredicate.Eq("region", PolicyValue.UserAttribute("region")),
+                            roles = listOf("regional-manager"),
+                        ),
+                    ),
+                )
+            val resp = PolicyEngine(registry).evaluatePolicies(request(customersScan(), "t:alice"))
+
+            resp.predicatesList shouldHaveSize 0
+            resp.messagesList shouldHaveSize 0
         }
 
         "no policies apply outside the configured namespace" {

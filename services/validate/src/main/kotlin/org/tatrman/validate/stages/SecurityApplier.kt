@@ -2,6 +2,7 @@
 package org.tatrman.validate.stages
 
 import org.tatrman.common.v1.ResponseMessage
+import org.tatrman.common.v1.Severity
 import org.tatrman.plan.v1.PipelineContext
 import org.tatrman.plan.v1.PlanNode
 import org.tatrman.plan.v1.Warning
@@ -35,6 +36,12 @@ class SecurityApplier(
                     .setContext(context)
                     .build(),
             )
+
+        // LR C-5·2 — an ERROR from the engine is a denial. Nothing is wrapped and nothing is reported
+        // applied: the caller gets a refusal, never a plan restricted by only some of its policies.
+        if (response.messagesList.any { it.severity == Severity.ERROR }) {
+            return Result(plan = plan, applied = emptyList(), messages = response.messagesList.toList(), denied = true)
+        }
 
         val byTable = response.predicatesList.groupBy { it.table }
         var augmented = plan
@@ -93,6 +100,8 @@ class SecurityApplier(
         val messages: List<ResponseMessage>,
         val columnRules: List<ColumnRule> = emptyList(),
         val warnings: List<Warning> = emptyList(),
+        /** The policy engine refused the request; [plan] is the input, untouched, and must not run. */
+        val denied: Boolean = false,
     )
 
     companion object {

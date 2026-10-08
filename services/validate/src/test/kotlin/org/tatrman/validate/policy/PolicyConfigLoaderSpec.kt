@@ -209,5 +209,9 @@ class PolicyConfigLoaderSpec :
             val policies = PolicyConfigLoader.load(ConfigFactory.load())
             policies shouldHaveSize 1
             policies.single().id shouldBe "tenant_isolation"
+            // LR C-5·2: role-gated, so an estate whose callers carry no tenant is not refused
+            // wholesale now that an unresolvable attribute denies instead of skipping.
+            policies.single().roles shouldBe listOf("tenant-scoped")
+            policies.single().appliesTo(listOf("analyst")) shouldBe false
         }
     })

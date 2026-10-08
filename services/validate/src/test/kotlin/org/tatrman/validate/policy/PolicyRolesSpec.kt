@@ -82,9 +82,10 @@ class PolicyRolesSpec :
             gated.evaluatePolicies(req("analyst")).messagesList shouldHaveSize 0
         }
 
-        "missing bearer roles → a roles-gated policy is skipped, no whois fallback" {
+        "missing bearer roles → a policy keyed on the roles attribute denies, no whois fallback" {
+            // LR C-5·2: this used to skip the policy and serve the rows unrestricted.
             val resp = engine.evaluatePolicies(req())
             resp.predicatesList shouldHaveSize 0
-            resp.messagesList.any { it.code == "policy_evaluation_skipped" } shouldBe true
+            resp.messagesList.map { it.code } shouldBe listOf("access_denied", "policy_unresolvable_attribute")
         }
     })

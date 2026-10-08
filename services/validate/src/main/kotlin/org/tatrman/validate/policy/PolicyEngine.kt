@@ -5,6 +5,7 @@ import org.tatrman.common.v1.ResponseMessage
 import org.tatrman.common.v1.Severity
 import org.tatrman.plan.v1.PlanNode
 import org.tatrman.plan.v1.QualifiedName
+import org.tatrman.plan.v1.schemaCodeToToken
 import org.tatrman.security.v1.ColumnRule as ProtoColumnRule
 import org.tatrman.security.v1.EvaluatePoliciesRequest
 import org.tatrman.security.v1.EvaluatePoliciesResponse
@@ -36,6 +37,9 @@ class PolicyEngine(
 
         val response = EvaluatePoliciesResponse.newBuilder().setContext(context)
         val identity = resolveIdentity(context.userId, context.authRolesList)
+        // LR C-5·2 — fail closed: one per (policy, table) that applies to this caller and cannot be
+        // evaluated for it. Any entry refuses the whole request (see the end of this function).
+        val denials = mutableListOf<ResponseMessage>()
 
         // Metadata-aware: flag a stale plan (request model_version ≠ live model version).
         if (context.modelVersion.isNotEmpty()) {
@@ -78,14 +82,20 @@ class PolicyEngine(
                             .setRuleId(policy.id)
                             .setPredicateSummary(policy.description.ifEmpty { policy.id }),
                     )
-                } catch (ex: Exception) {
-                    log.warn("Skipping policy '{}' on table '{}': {}", policy.id, table.name, ex.message)
-                    response.addMessages(
-                        ResponseMessage
-                            .newBuilder()
-                            .setSeverity(Severity.WARNING)
-                            .setCode("policy_evaluation_skipped")
-                            .setHumanMessage("Policy '${policy.id}' on '${table.name}' skipped: ${ex.message}"),
+                } catch (ex: UnresolvableAttributeException) {
+                    log.warn(
+                        "Denying: policy '{}' on '{}' needs attribute '{}', unresolved for '{}'",
+                        policy.id,
+                        table.name,
+                        ex.attribute,
+                        context.userId,
+                    )
+                    denials.add(
+                        error(
+                            POLICY_UNRESOLVABLE_ATTRIBUTE,
+                            "Policy '${policy.id}' on '${qnameDot(table)}' needs the caller attribute " +
+                                "'${ex.attribute}', which is not available for this caller.",
+                        ),
                     )
                 }
             }
@@ -110,8 +120,45 @@ class PolicyEngine(
                 response.addColumnRules(b)
             }
         }
+        if (denials.isNotEmpty()) return denied(context, denials, response.messagesList)
         return response.build()
     }
+
+    /**
+     * The request is refused, not narrowed: no predicates and no column rules travel back, so nothing
+     * downstream can run a partly-restricted plan. `access_denied` comes FIRST — every MCP caller
+     * reads the first message's code as the rejection's code — then the per-policy reasons, then
+     * whatever warnings the walk raised.
+     */
+    private fun denied(
+        context: org.tatrman.plan.v1.PipelineContext,
+        reasons: List<ResponseMessage>,
+        warnings: List<ResponseMessage>,
+    ): EvaluatePoliciesResponse =
+        EvaluatePoliciesResponse
+            .newBuilder()
+            .setContext(context)
+            .addMessages(
+                error(
+                    ACCESS_DENIED,
+                    "Access denied: a row policy applies to this query and could not be evaluated for this caller.",
+                ),
+            ).addAllMessages(reasons)
+            .addAllMessages(warnings)
+            .build()
+
+    private fun error(
+        code: String,
+        human: String,
+    ): ResponseMessage =
+        ResponseMessage
+            .newBuilder()
+            .setSeverity(Severity.ERROR)
+            .setCode(code)
+            .setHumanMessage(human)
+            .build()
+
+    private fun qnameDot(qn: QualifiedName): String = "${schemaCodeToToken(qn.schemaCode)}.${qn.namespace}.${qn.name}"
 
     /** Loaded-policy count, for /status surfaces. */
     fun loadedPolicies(): Int = registry.size()
@@ -164,5 +211,11 @@ class PolicyEngine(
 
     companion object {
         private val log = LoggerFactory.getLogger(PolicyEngine::class.java)
+
+        /** The rejection code of a fail-closed denial (LR C-5·2). */
+        const val ACCESS_DENIED = "access_denied"
+
+        /** The reason: an applicable policy names a caller attribute the identity does not carry. */
+        const val POLICY_UNRESOLVABLE_ATTRIBUTE = "policy_unresolvable_attribute"
     }
 }

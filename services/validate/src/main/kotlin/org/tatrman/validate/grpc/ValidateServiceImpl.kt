@@ -193,6 +193,10 @@ class ValidateServiceImpl(
         if (effectiveApplySecurity) {
             // sql-security is a HARD dependency too — same fail-fast posture as metadata above.
             val securityResult = applySecurityOrFail(workingPlan, contextBuilder.build())
+            if (securityResult.denied) {
+                responseMessages.addAll(securityResult.messages)
+                return rejection(contextBuilder.build(), applied, responseMessages)
+            }
             workingPlan = securityResult.plan
             applied.addAll(securityResult.applied)
             responseMessages.addAll(securityResult.messages)
@@ -206,12 +210,7 @@ class ValidateServiceImpl(
         val rulesResult = ruleEnforcer.enforce(workingPlan, options, columnRules)
         responseMessages.addAll(rulesResult.messages)
         if (rulesResult.rejected) {
-            return ValidateResponse
-                .newBuilder()
-                .setContext(contextBuilder.build())
-                .addAllSecurityApplied(applied)
-                .addAllMessages(responseMessages)
-                .build()
+            return rejection(contextBuilder.build(), applied, responseMessages)
         }
         workingPlan = rulesResult.plan
 
@@ -273,6 +272,24 @@ class ValidateServiceImpl(
             .addAllMessages(responseMessages)
             .build()
     }
+
+    /**
+     * A response with no plan. Its ERRORs come first, in their own order, then everything else: every
+     * MCP caller (query-mcp's tools, and through them the Golem) reads the FIRST message's code as the
+     * rejection's code, and a warning raised earlier in the pipeline — `security_bypass_denied`, an
+     * engine's `unknown_table` — must not stand in for the reason the request was refused.
+     */
+    private fun rejection(
+        context: PipelineContext,
+        applied: List<org.tatrman.validate.v1.SecurityRuleApplied>,
+        messages: List<ResponseMessage>,
+    ): ValidateResponse =
+        ValidateResponse
+            .newBuilder()
+            .setContext(context)
+            .addAllSecurityApplied(applied)
+            .addAllMessages(messages.sortedByDescending { it.severity == Severity.ERROR })
+            .build()
 
     /**
      * Read the metadata model version, mapping any downstream failure to a clean gRPC

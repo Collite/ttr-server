@@ -49,7 +49,9 @@ class PolicyRegistry(
  * registry contents until HOCON-driven storage lands.
  *
  * Two named lists:
- *   - [core] is the DB-only production baseline (just `tenant_isolation`).
+ *   - [core] is the DB-only baseline (just `tenant_isolation`). Role-LESS here, unlike the shipped
+ *     `policies/policies.conf`, which gates it on `tenant-scoped` (LR C-5·2): these fixtures exercise
+ *     the predicate, and a gate would make every one of them restate the role.
  *   - [all] adds the [erCustomerRegionIsolation] demo policy on top — useful for ER-flow
  *     fixtures (validator pass-1 + dispatch end-to-end) and any test that wants the full set.
  *

@@ -160,15 +160,44 @@ class SecurityApplierSpec :
                             ResponseMessage
                                 .newBuilder()
                                 .setSeverity(Severity.WARNING)
-                                .setCode("policy_evaluation_skipped")
+                                .setCode("unknown_table")
                                 .setHumanMessage("partial"),
                         ).build()
                 }
             val applier = SecurityApplier(client)
             val result = applier.apply(scan(customers), PipelineContext.getDefaultInstance())
             result.messages.size shouldBe 1
-            result.messages[0].code shouldBe "policy_evaluation_skipped"
+            result.messages[0].code shouldBe "unknown_table"
             result.applied.size shouldBe 0
+            result.denied shouldBe false
+        }
+
+        "an ERROR from the policy engine is a denial: nothing wrapped, nothing reported applied" {
+            val client =
+                SecurityClient { _ ->
+                    EvaluatePoliciesResponse
+                        .newBuilder()
+                        .addPredicates(
+                            TablePredicate
+                                .newBuilder()
+                                .setTable(orders)
+                                .setPredicate(region)
+                                .setRuleId("orders_region"),
+                        ).addMessages(
+                            ResponseMessage
+                                .newBuilder()
+                                .setSeverity(Severity.ERROR)
+                                .setCode("access_denied")
+                                .setHumanMessage("denied"),
+                        ).build()
+                }
+            val plan = scan(orders)
+            val result = SecurityApplier(client).apply(plan, PipelineContext.getDefaultInstance())
+            result.denied shouldBe true
+            result.plan shouldBe plan
+            result.applied.size shouldBe 0
+            result.warnings.size shouldBe 0
+            result.messages[0].code shouldBe "access_denied"
         }
     })
 

@@ -508,6 +508,90 @@ class ValidatorServiceImplSpec :
             (denied.humanMessage.contains("ssn") && denied.humanMessage.contains("customers")) shouldBe true
         }
 
+        // --- LR C-5·2: a policy denial rejects the whole request ---
+
+        val denyingPolicyEngine =
+            SecurityClient { _ ->
+                EvaluatePoliciesResponse
+                    .newBuilder()
+                    .addMessages(message(Severity.WARNING, "unknown_table"))
+                    .addMessages(message(Severity.ERROR, "access_denied"))
+                    .addMessages(message(Severity.ERROR, "policy_unresolvable_attribute"))
+                    .build()
+            }
+
+        "a policy denial rejects the request: no plan, nothing applied, access_denied FIRST" {
+            val resp =
+                service(denyingPolicyEngine).validate(
+                    ValidateRequest
+                        .newBuilder()
+                        .setPlan(scan(customers))
+                        .setContext(PipelineContext.newBuilder().setUserId("u1").setModelVersion("v-test"))
+                        .setOptions(ValidationOptions.newBuilder().setApplySecurity(true).setEnforceTopN(true))
+                        .build(),
+                )
+            resp.hasPlan() shouldBe false
+            resp.securityAppliedList.size shouldBe 0
+            // The rejection's code is the first message's code to every MCP caller — the warning the
+            // engine raised before the denial must not take that place.
+            resp.messagesList.map { it.code } shouldBe
+                listOf("access_denied", "policy_unresolvable_attribute", "unknown_table")
+        }
+
+        "a refused bypass does not push the denial off the first place" {
+            val resp =
+                service(denyingPolicyEngine).validate(
+                    ValidateRequest
+                        .newBuilder()
+                        .setPlan(scan(customers))
+                        .setContext(PipelineContext.newBuilder().setUserId("u1").setModelVersion("v-test"))
+                        .setOptions(ValidationOptions.newBuilder().setApplySecurity(false))
+                        .build(),
+                )
+            resp.hasPlan() shouldBe false
+            resp.messagesList.first().code shouldBe "access_denied"
+            resp.messagesList.any { it.code == "security_bypass_denied" } shouldBe true
+        }
+
+        "a column denial is the first message too, ahead of a policy-engine warning" {
+            val denyWithWarning =
+                SecurityClient { _ ->
+                    EvaluatePoliciesResponse
+                        .newBuilder()
+                        .addMessages(message(Severity.WARNING, "unknown_table"))
+                        .addColumnRules(
+                            ColumnRule
+                                .newBuilder()
+                                .setTable(customers)
+                                .setColumn("ssn")
+                                .setAction(ColumnRule.Action.DENY)
+                                .setRuleId("pii_protection"),
+                        ).build()
+                }
+            val planTouchingSsn =
+                PlanNode
+                    .newBuilder()
+                    .setProject(
+                        ProjectNode
+                            .newBuilder()
+                            .setInput(scan(customers))
+                            .addExpressions(
+                                NamedExpression.newBuilder().setExpression(columnRef("ssn")).setAlias("ssn"),
+                            ),
+                    ).build()
+            val resp =
+                service(denyWithWarning).validate(
+                    ValidateRequest
+                        .newBuilder()
+                        .setPlan(planTouchingSsn)
+                        .setContext(PipelineContext.newBuilder().setUserId("u1").setModelVersion("v-test"))
+                        .setOptions(ValidationOptions.newBuilder().setApplySecurity(true))
+                        .build(),
+                )
+            resp.hasPlan() shouldBe false
+            resp.messagesList.map { it.code } shouldBe listOf("column_denied", "unknown_table")
+        }
+
         // Phase 08 C1 / DF-V06 — strict_coercion option.
         "strict_coercion=true rejects an int-vs-text comparison; strict_coercion=false approves it" {
             // A Filter(plan) where the condition is `int_col = 'text-literal'` — clearly a
@@ -642,4 +726,15 @@ private fun eq(
                 .addOperands(left)
                 .addOperands(right),
         ).setResultType("bool")
+        .build()
+
+private fun message(
+    severity: Severity,
+    code: String,
+): org.tatrman.common.v1.ResponseMessage =
+    org.tatrman.common.v1.ResponseMessage
+        .newBuilder()
+        .setSeverity(severity)
+        .setCode(code)
+        .setHumanMessage(code)
         .build()

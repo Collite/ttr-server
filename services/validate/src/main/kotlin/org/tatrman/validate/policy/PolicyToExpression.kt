@@ -168,7 +168,7 @@ data class ResolvedIdentity(
         attributes[name]
             ?: when (name) {
                 "user_id" -> userId
-                else -> error("UserAttribute '$name' is not resolved on identity '$userId'")
+                else -> throw UnresolvableAttributeException(name, userId)
             }
 
     /** Layer whois-sourced (or other external) attributes underneath the authoritative core. */
@@ -189,3 +189,12 @@ data class ResolvedIdentity(
         }
     }
 }
+
+/**
+ * A policy names a caller attribute the identity does not carry. The engine turns this into a
+ * denial (LR C-5·2) — never into a skipped policy, which would serve the rows the policy restricts.
+ */
+class UnresolvableAttributeException(
+    val attribute: String,
+    userId: String,
+) : RuntimeException("UserAttribute '$attribute' is not resolved on identity '$userId'")
