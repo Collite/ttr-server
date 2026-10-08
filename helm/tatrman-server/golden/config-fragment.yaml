@@ -25,6 +25,46 @@ data:
     
 
 ---
+# Source: tatrman-server/charts/validate/templates/configmap.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: validate-config-fragment
+  labels:
+    app.kubernetes.io/name: validate
+    app.kubernetes.io/instance: tatrman-server
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/version: "dev"
+    helm.sh/chart: validate-0.1.0
+data:
+  overlay.conf: |
+    # Rendered by the tatrman-service chart. Do not edit in the cluster — the source is the
+    # deployment's `configFragment.content`.
+    #
+    # `-Dconfig.file` REPLACES the classpath application.conf; this include is what keeps every
+    # default. It is written here rather than left to the fragment author on purpose.
+    include classpath("application.conf")
+
+    validate.policies = [
+      { id = "dc-scope", roles = ["kantheon-scope-dc-5"],
+        match { type = "exact", qname = "db.dbo.inventory" },
+        predicate { type = "in", column = "inv_warehouse_sk", values = [ { kind = "literal", value = 5, literal-type = "int" } ] } }
+      { id = "dc-scope", roles = ["kantheon-scope-dc-5"],
+        match { type = "exact", qname = "db.dbo.warehouse" },
+        predicate { type = "in", column = "w_warehouse_sk", values = [ { kind = "literal", value = 5, literal-type = "int" } ] } }
+      { id = "dc-scope", roles = ["kantheon-scope-dc-5"],
+        match { type = "exact", qname = "db.dbo.catalog_sales" },
+        predicate { type = "in", column = "cs_warehouse_sk", values = [ { kind = "literal", value = 5, literal-type = "int" } ] } }
+      { id = "dc-scope", roles = ["kantheon-scope-dc-5"],
+        match { type = "exact", qname = "db.dbo.web_sales" },
+        predicate { type = "in", column = "ws_warehouse_sk", values = [ { kind = "literal", value = 5, literal-type = "int" } ] } }
+      { id = "dc-scope", roles = ["kantheon-scope-dc-5"],
+        match { type = "exact", qname = "db.dbo.channel_sales" },
+        predicate { type = "in", column = "warehouse_sk", values = [ { kind = "literal", value = 5, literal-type = "int" } ] } }
+    ]
+    
+
+---
 # Source: tatrman-server/charts/charon/templates/service.yaml
 apiVersion: v1
 kind: Service
@@ -2108,6 +2148,8 @@ spec:
       app.kubernetes.io/instance: tatrman-server
   template:
     metadata:
+      annotations:
+        checksum/config-fragment: 3eb9587fc89742b3bd4423025011d01bb91302adeba884e7cbe64f22df2127e1
       labels:
         app.kubernetes.io/name: validate
         app.kubernetes.io/instance: tatrman-server
@@ -2134,6 +2176,9 @@ spec:
               value: veles
             - name: VELES_GRPC_PORT
               value: "7261"
+            
+            - name: JAVA_TOOL_OPTIONS
+              value: "-Dconfig.file=/etc/tatrman/conf.d/overlay.conf"
           readinessProbe:
             httpGet:
               path: /ready
@@ -2154,6 +2199,14 @@ spec:
             requests:
               cpu: 250m
               memory: 512Mi
+          volumeMounts:
+            - name: config-fragment
+              mountPath: /etc/tatrman/conf.d
+              readOnly: true
+      volumes:
+        - name: config-fragment
+          configMap:
+            name: validate-config-fragment
 
 ---
 # Source: tatrman-server/charts/veles-mcp/templates/deployment.yaml

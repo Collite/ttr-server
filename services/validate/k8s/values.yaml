@@ -60,3 +60,44 @@ podAnnotations: {}
 nodeSelector: {}
 tolerations: []
 affinity: {}
+
+# A per-deployment HOCON overlay, mounted and handed to the JVM as `-Dconfig.file` — how an estate
+# states its own row policies without a rebuild. HOCON lists REPLACE rather than merge, so a
+# `validate.policies` here replaces the built-in default set (`policies/policies.conf`) entirely.
+#
+# Example — a distribution-centre analyst role sees DC 5's rows only, everyone else sees all
+# (one entry per table, because each table names the warehouse in its own column; the shared id
+# is what the receipt reports, and each entry carries its table):
+#
+#   configFragment:
+#     content: |
+#       validate.policies = [
+#         { id = "dc-scope", roles = ["kantheon-scope-dc-5"],
+#           match { type = "exact", qname = "db.dbo.inventory" },
+#           predicate { type = "in", column = "inv_warehouse_sk", values = [ { kind = "literal", value = 5, literal-type = "int" } ] } }
+#         { id = "dc-scope", roles = ["kantheon-scope-dc-5"],
+#           match { type = "exact", qname = "db.dbo.warehouse" },
+#           predicate { type = "in", column = "w_warehouse_sk", values = [ { kind = "literal", value = 5, literal-type = "int" } ] } }
+#         { id = "dc-scope", roles = ["kantheon-scope-dc-5"],
+#           match { type = "exact", qname = "db.dbo.catalog_sales" },
+#           predicate { type = "in", column = "cs_warehouse_sk", values = [ { kind = "literal", value = 5, literal-type = "int" } ] } }
+#         { id = "dc-scope", roles = ["kantheon-scope-dc-5"],
+#           match { type = "exact", qname = "db.dbo.web_sales" },
+#           predicate { type = "in", column = "ws_warehouse_sk", values = [ { kind = "literal", value = 5, literal-type = "int" } ] } }
+#         { id = "dc-scope", roles = ["kantheon-scope-dc-5"],
+#           match { type = "exact", qname = "db.dbo.channel_sales" },
+#           predicate { type = "in", column = "warehouse_sk", values = [ { kind = "literal", value = 5, literal-type = "int" } ] } }
+#       ]
+#
+# Every table named must carry the column, or every query over it fails. `roles` / `exempt-roles`
+# and the fail-closed rule are documented in `policies/policies.conf`.
+#
+# OFF unless `content` is set — with it empty the render is byte-identical to before. The chart
+# writes `include classpath("application.conf")` at the top of the mounted file itself, because
+# `-Dconfig.file` REPLACES the classpath config rather than merging with it, and a fragment that
+# forgot the include would boot validate with no defaults at all. The pod template carries a hash
+# of the rendered ConfigMap, so an edit restarts the pod (validate reads policies once, at boot).
+configFragment:
+  content: ""
+  mountPath: /etc/tatrman/conf.d
+  key: overlay.conf

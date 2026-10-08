@@ -34,6 +34,32 @@ dispatch:
         "db.dbo.investment_*" = "pg-entry"
       }
 
+# validate in the SAME render — LR C-5·4: an estate's row policies arrive as a fragment too, and two
+# fragment-bearing deployments in one umbrella must each get their own ConfigMap, volume, mount and
+# `-Dconfig.file`. The content is the hartland DC-scope set; validate's `HartlandScopeFragmentSpec`
+# parses the ConfigMap RENDERED into the golden (include line and all) and evaluates it, so this
+# example cannot drift into something validate would refuse at boot.
+validate:
+  configFragment:
+    content: |
+      validate.policies = [
+        { id = "dc-scope", roles = ["kantheon-scope-dc-5"],
+          match { type = "exact", qname = "db.dbo.inventory" },
+          predicate { type = "in", column = "inv_warehouse_sk", values = [ { kind = "literal", value = 5, literal-type = "int" } ] } }
+        { id = "dc-scope", roles = ["kantheon-scope-dc-5"],
+          match { type = "exact", qname = "db.dbo.warehouse" },
+          predicate { type = "in", column = "w_warehouse_sk", values = [ { kind = "literal", value = 5, literal-type = "int" } ] } }
+        { id = "dc-scope", roles = ["kantheon-scope-dc-5"],
+          match { type = "exact", qname = "db.dbo.catalog_sales" },
+          predicate { type = "in", column = "cs_warehouse_sk", values = [ { kind = "literal", value = 5, literal-type = "int" } ] } }
+        { id = "dc-scope", roles = ["kantheon-scope-dc-5"],
+          match { type = "exact", qname = "db.dbo.web_sales" },
+          predicate { type = "in", column = "ws_warehouse_sk", values = [ { kind = "literal", value = 5, literal-type = "int" } ] } }
+        { id = "dc-scope", roles = ["kantheon-scope-dc-5"],
+          match { type = "exact", qname = "db.dbo.channel_sales" },
+          predicate { type = "in", column = "warehouse_sk", values = [ { kind = "literal", value = 5, literal-type = "int" } ] } }
+      ]
+
 # ⚑ charon in the SAME render, for the reason its own values are in the lexicon fixture: Helm
 # template names are global to an umbrella render, so a new volume contributor that was written as
 # a per-chart override of `tatrman-service.extraVolumes` would silently erase charon's. This
