@@ -181,9 +181,14 @@ class SecurityReachSpec :
                         .map { t ->
                             policies.first { (it.tableMatch as TableMatcher.Exact).qname == t }.id
                         }.toSet()
+                // …and, per entry, the table it restricted (C-5·5).
+                result.applied.map { it.table }.toSet() shouldBe readTables.map { dotted(it) }.toSet()
+                result.applied.all { it.restricted } shouldBe true
             }
         }
     })
+
+private fun dotted(qn: QualifiedName): String = "${qn.schemaCode.name.lowercase()}.${qn.namespace}.${qn.name}"
 
 private fun db(name: String): QualifiedName =
     QualifiedName

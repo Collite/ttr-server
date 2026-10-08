@@ -151,6 +151,42 @@ class SecurityApplierSpec :
             messages.any { it.contains("orders_region") && it.contains("db.dbo.orders") } shouldBe true
         }
 
+        // LR C-5·5 — the receipt says WHICH table each rule restricted, so a rule spanning several
+        // tables (one id, one entry per table) reads as several restrictions, not one.
+        "each applied entry names its table and is marked restricted" {
+            val client =
+                SecurityClient { _ ->
+                    EvaluatePoliciesResponse
+                        .newBuilder()
+                        .addPredicates(
+                            TablePredicate
+                                .newBuilder()
+                                .setTable(customers)
+                                .setPredicate(tenant)
+                                .setRuleId("dc-scope"),
+                        ).addPredicates(
+                            TablePredicate
+                                .newBuilder()
+                                .setTable(orders)
+                                .setPredicate(region)
+                                .setRuleId("dc-scope"),
+                        ).build()
+                }
+            val plan =
+                PlanNode
+                    .newBuilder()
+                    .setJoin(
+                        JoinNode
+                            .newBuilder()
+                            .setLeft(scan(customers))
+                            .setRight(scan(orders))
+                            .setJoinType(JoinType.INNER),
+                    ).build()
+            val result = SecurityApplier(client).apply(plan, PipelineContext.getDefaultInstance())
+            result.applied.map { Triple(it.ruleId, it.table, it.restricted) } shouldBe
+                listOf(Triple("dc-scope", "db.dbo.customers", true), Triple("dc-scope", "db.dbo.orders", true))
+        }
+
         "passes through warnings from the security service" {
             val client =
                 SecurityClient { _ ->

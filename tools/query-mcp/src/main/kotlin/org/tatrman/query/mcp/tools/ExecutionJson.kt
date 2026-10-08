@@ -85,6 +85,8 @@ object ExecutionJson {
                             buildJsonObject {
                                 put("ruleId", JsonPrimitive(rule.ruleId))
                                 put("predicateSummary", JsonPrimitive(rule.predicateSummary))
+                                put("table", JsonPrimitive(rule.table))
+                                put("restricted", JsonPrimitive(rule.restricted))
                             },
                         )
                     }

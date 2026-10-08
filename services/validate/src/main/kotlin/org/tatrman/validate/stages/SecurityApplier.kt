@@ -57,6 +57,10 @@ class SecurityApplier(
                         .newBuilder()
                         .setRuleId(entry.ruleId)
                         .setPredicateSummary(entry.predicateSummary)
+                        // LR C-5·5 — which table this rule narrowed; a reader keys "your result may
+                        // be incomplete" on `restricted`, per table.
+                        .setTable(qnameDot(table))
+                        .setRestricted(true)
                         .build(),
                 )
                 // DF-V05 / G7 — `security_predicate_applied` pipeline-warning per (table, rule)
