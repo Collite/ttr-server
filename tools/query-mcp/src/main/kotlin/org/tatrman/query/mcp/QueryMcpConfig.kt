@@ -38,6 +38,13 @@ data class QueryMcpConfig(
 
     data class Security(
         val requireIdentity: Boolean,
+        /** LR G2b — verify the bearer's RS256 signature, `iss` and `exp` before trusting any claim. */
+        val verifySignature: Boolean = false,
+        val issuer: String = "",
+        /** Blank = `<issuer>/protocol/openid-connect/certs`. */
+        val jwksUri: String = "",
+        /** Blank = `aud` is not checked. */
+        val audience: String = "",
     )
 
     companion object {
@@ -64,6 +71,10 @@ data class QueryMcpConfig(
                 security =
                     Security(
                         requireIdentity = root.getBoolean("security.require-identity"),
+                        verifySignature = root.getBoolean("security.verify-signature"),
+                        issuer = root.getString("security.issuer"),
+                        jwksUri = root.getString("security.jwks-uri"),
+                        audience = root.getString("security.audience"),
                     ),
                 toolTimeoutsMs =
                     root

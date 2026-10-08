@@ -22,6 +22,16 @@ results into JSON/CSV/TSV/Markdown rows, and resolves caller identity into the
   the user's OBO token, never service identity;
 - token-vs-`user_id` arg conflict → rejected `identity_conflict` (no spoofing).
 
+**The resolver DECODES the token; it does not verify it.** Set `security.verify-signature`
+(`QUERY_MCP_VERIFY_SIGNATURE`, chart `auth.verifySignature`) with the realm's issuer and the door
+verifies every bearer before trusting a claim: RS256 signature against the realm's JWKS (`kid`-cached,
+re-fetched at most every 30 s), `iss`, `exp` (and `aud` when set). A bearer that fails is answered
+**401 `invalid_token`** before the MCP transport sees it, and the gate refuses it too
+(`invalid_token`) rather than falling through to `X-User-Id` / `user_id`. Verifying, the door trusts
+the token alone (`IdentityPolicy.TOKEN_ONLY`): with the permissive policy a caller with no bearer and
+`user_id = "admin:x"` carries the validator's admin bypass role. Off (the default), the door must sit
+behind something that verifies.
+
 The resolved roles become `PipelineContext.auth_roles` and reach validate
 unchanged (bearer-roles, contracts §3) — verified end-to-end by
 `RunQueryFullChainComponentSpec` (run_query → real in-process query-runner → mocked
