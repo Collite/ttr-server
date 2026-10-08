@@ -2,6 +2,7 @@
 package org.tatrman.validate.policy
 
 import com.typesafe.config.Config
+import com.typesafe.config.ConfigException
 import org.tatrman.plan.v1.QualifiedName
 import org.tatrman.plan.v1.SchemaCode
 import org.slf4j.LoggerFactory
@@ -18,6 +19,8 @@ import org.tatrman.plan.v1.parseSchemaCode
  *   {
  *     id = "tenant_isolation"
  *     description = "Restrict rows to the calling user's tenant"   # optional
+ *     roles = ["tenant-scoped"]                                     # optional — applies only to holders
+ *     exempt-roles = ["data-all"]                                   # optional — never applies to holders
  *     match { type = "namespace", schema = "db", namespace = "dbo" }
  *     predicate {
  *       type = "eq"
@@ -36,6 +39,8 @@ import org.tatrman.plan.v1.parseSchemaCode
  * `predicate.type` ∈ { `eq` (+ `column`, `value`), `in` (+ `column`, `values = [...]`), `and`/`or` (+ `left`, `right`), `not` (+ `child`) }.
  * `value.kind` ∈ { `literal` (+ `value`, `literal-type`), `user-attr` (+ `attribute`) }.
  * `column-rules[].action` ∈ { `deny`, `mask` (+ optional `mask-value` = a `value`) }.
+ * `roles` / `exempt-roles` (LR C-5·1): lists of role names matched exactly against the caller's
+ * `auth_roles`. No `roles` = the policy applies to every caller; an exempt role always wins.
  *
  * A malformed policy aborts startup with a message naming the offending policy id (fail-fast).
  * If `validate.policies` is absent, returns an empty list (the service then applies no row-level
@@ -80,7 +85,31 @@ object PolicyConfigLoader {
                 } else {
                     emptyList()
                 },
+            roles = roleList(id, c, "roles"),
+            exemptRoles = roleList(id, c, "exempt-roles"),
         )
+    }
+
+    /** `roles` / `exempt-roles`: absent → empty; anything but a list of non-blank names → a boot error. */
+    private fun roleList(
+        id: String,
+        c: Config,
+        path: String,
+    ): List<String> {
+        if (!c.hasPath(path)) return emptyList()
+        val roles =
+            try {
+                c.getStringList(path)
+            } catch (e: ConfigException.WrongType) {
+                throw PolicyConfigException(
+                    "policy '$id': '$path' must be a list of role names, e.g. $path = [\"analyst\"]",
+                    e,
+                )
+            }
+        if (roles.any { it.isBlank() }) {
+            throw PolicyConfigException("policy '$id': '$path' holds a blank role name")
+        }
+        return roles
     }
 
     private fun parseColumnRule(

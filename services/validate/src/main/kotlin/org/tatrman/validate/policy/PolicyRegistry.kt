@@ -13,11 +13,22 @@ import org.tatrman.plan.v1.SchemaCode
 class PolicyRegistry(
     private val policies: List<Policy>,
 ) {
-    fun policiesFor(table: QualifiedName): List<Policy> = policies.filter { matches(it.tableMatch, table) }
+    /**
+     * The policies that apply to [table] for a caller holding [callerRoles]: the table-match covers
+     * the table AND the role gate admits the caller ([Policy.appliesTo]). The roles are required, not
+     * defaulted — a call that forgot them would read as "a caller with no roles" and silently drop
+     * every role-gated policy.
+     */
+    fun policiesFor(
+        table: QualifiedName,
+        callerRoles: Collection<String>,
+    ): List<Policy> = policies.filter { matches(it.tableMatch, table) && it.appliesTo(callerRoles) }
 
-    /** Column-level rules (DF-S02) from every policy whose table-match covers [table], with their owning policy id. */
-    fun columnRulesFor(table: QualifiedName): List<Pair<Policy, ColumnRule>> =
-        policiesFor(table).flatMap { p -> p.columnRules.map { p to it } }
+    /** Column-level rules (DF-S02) from every policy that applies to [table] for this caller, with their owning policy. */
+    fun columnRulesFor(
+        table: QualifiedName,
+        callerRoles: Collection<String>,
+    ): List<Pair<Policy, ColumnRule>> = policiesFor(table, callerRoles).flatMap { p -> p.columnRules.map { p to it } }
 
     fun size(): Int = policies.size
 

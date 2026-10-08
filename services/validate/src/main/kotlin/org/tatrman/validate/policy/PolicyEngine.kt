@@ -66,7 +66,7 @@ class PolicyEngine(
                         ),
                 )
             }
-            val applicable = registry.policiesFor(table)
+            val applicable = registry.policiesFor(table, context.authRolesList)
             for (policy in applicable) {
                 try {
                     val expr = PolicyToExpression.convert(policy.predicate, identity)
@@ -91,7 +91,7 @@ class PolicyEngine(
             }
             // Column-level rules for this table (DF-S02) — Validate's RuleEnforcer checks the actual
             // query's columns against these (deny → reject; mask → rewrite).
-            for ((policy, rule) in registry.columnRulesFor(table)) {
+            for ((policy, rule) in registry.columnRulesFor(table, context.authRolesList)) {
                 val b =
                     ProtoColumnRule
                         .newBuilder()

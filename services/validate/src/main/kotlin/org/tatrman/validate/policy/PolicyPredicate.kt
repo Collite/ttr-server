@@ -17,7 +17,21 @@ data class Policy(
     val description: String = "",
     /** Column-level rules (DF-S02): columns on the matched tables that are denied or masked. */
     val columnRules: List<ColumnRule> = emptyList(),
-)
+    /**
+     * The role gate (LR C-5·1). Non-empty: the policy applies only to a caller holding at least one
+     * of these roles. Empty: it applies to every caller — the semantics before the gate.
+     */
+    val roles: List<String> = emptyList(),
+    /**
+     * A caller holding any of these is never subject to the policy, even when it also holds a gating
+     * role. The only way to exempt anyone: a policy cannot be skipped for a caller it applies to.
+     */
+    val exemptRoles: List<String> = emptyList(),
+) {
+    /** Whether the policy applies to a caller holding [callerRoles]. Role names match exactly. */
+    fun appliesTo(callerRoles: Collection<String>): Boolean =
+        (roles.isEmpty() || roles.any { it in callerRoles }) && exemptRoles.none { it in callerRoles }
+}
 
 /** A column-level access rule on a policy's matched tables. */
 data class ColumnRule(

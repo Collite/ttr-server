@@ -62,6 +62,26 @@ class PolicyRolesSpec :
                 .literal.stringValue shouldBe "analyst"
         }
 
+        "the role gate reads the request's auth_roles — a gated policy reaches holders only" {
+            val gated =
+                PolicyEngine(
+                    PolicyRegistry(
+                        listOf(
+                            Policy(
+                                id = "dc-scope",
+                                tableMatch = TableMatcher.Namespace(SchemaCode.DB, "dbo"),
+                                predicate = PolicyPredicate.Eq("warehouse_sk", PolicyValue.Literal(5, "int")),
+                                roles = listOf("scope-dc-5"),
+                            ),
+                        ),
+                    ),
+                )
+            gated.evaluatePolicies(req("analyst", "scope-dc-5")).predicatesList.map { it.ruleId } shouldBe
+                listOf("dc-scope")
+            gated.evaluatePolicies(req("analyst")).predicatesList shouldHaveSize 0
+            gated.evaluatePolicies(req("analyst")).messagesList shouldHaveSize 0
+        }
+
         "missing bearer roles → a roles-gated policy is skipped, no whois fallback" {
             val resp = engine.evaluatePolicies(req())
             resp.predicatesList shouldHaveSize 0
