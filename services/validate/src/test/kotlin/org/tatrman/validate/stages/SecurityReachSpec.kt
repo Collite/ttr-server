@@ -127,26 +127,26 @@ class SecurityReachSpec :
         val unionInsideSubquery = filter(subquery("exists", dbUnion), scan(item))
 
         "the engine finds a table read only inside an EXISTS subquery" {
-            val result = applier.apply(existsInFilter, PipelineContext.getDefaultInstance())
+            val result = applier.applied(existsInFilter, PipelineContext.getDefaultInstance())
             result.applied.map { it.ruleId } shouldBe listOf("dc_cs")
         }
 
         "the subquery's scan is the one wrapped" {
-            val result = applier.apply(existsInFilter, PipelineContext.getDefaultInstance())
+            val result = applier.applied(existsInFilter, PipelineContext.getDefaultInstance())
             val inner = result.plan.filter.condition.subquery.subquery
             inner.filter.input.hasFilter() shouldBe true
             inner.filter.input.filter.input.tableScan.table shouldBe catalogSales
         }
 
         "both branches of a UNION of DB scans are wrapped" {
-            val result = applier.apply(dbUnion, PipelineContext.getDefaultInstance())
+            val result = applier.applied(dbUnion, PipelineContext.getDefaultInstance())
             result.plan.union.inputsList
                 .map { it.hasFilter() } shouldBe listOf(true, true)
             result.applied.map { it.ruleId } shouldContainExactlyInAnyOrder listOf("dc_cs", "dc_ws")
         }
 
         "both branches of a UNION of entity scans are wrapped" {
-            val result = applier.apply(entityUnion, PipelineContext.getDefaultInstance())
+            val result = applier.applied(entityUnion, PipelineContext.getDefaultInstance())
             result.plan.union.inputsList
                 .map {
                     it.filter.input.scan
@@ -164,7 +164,7 @@ class SecurityReachSpec :
             "a UNION inside an EXISTS subquery" to unionInsideSubquery,
         ).forEach { (shape, plan) ->
             "every scan of a restricted table ends up directly under its policy filter — $shape" {
-                val result = applier.apply(plan, PipelineContext.getDefaultInstance())
+                val result = applier.applied(plan, PipelineContext.getDefaultInstance())
                 val nodes = planNodes(result.plan)
                 val readTables = nodes.mapNotNull { scanned(it) }.filter { it in restricted }
                 readTables.isNotEmpty() shouldBe true
@@ -183,7 +183,6 @@ class SecurityReachSpec :
                         }.toSet()
                 // …and, per entry, the table it restricted (C-5·5).
                 result.applied.map { it.table }.toSet() shouldBe readTables.map { dotted(it) }.toSet()
-                result.applied.all { it.restricted } shouldBe true
             }
         }
     })

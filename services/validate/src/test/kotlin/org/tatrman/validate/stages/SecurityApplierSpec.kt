@@ -17,6 +17,7 @@ import org.tatrman.security.v1.EvaluatePoliciesResponse
 import org.tatrman.security.v1.TablePredicate
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.types.shouldBeInstanceOf
 import org.tatrman.validate.client.SecurityClient
 
 class SecurityApplierSpec :
@@ -41,7 +42,7 @@ class SecurityApplierSpec :
                 }
             val applier = SecurityApplier(client)
             val plan = scan(customers)
-            val result = applier.apply(plan, PipelineContext.getDefaultInstance())
+            val result = applier.applied(plan, PipelineContext.getDefaultInstance())
             result.plan.hasFilter() shouldBe true
             result.plan.filter.condition shouldBe tenant
             result.applied.size shouldBe 1
@@ -68,7 +69,7 @@ class SecurityApplierSpec :
                         ).build()
                 }
             val applier = SecurityApplier(client)
-            val result = applier.apply(scan(customers), PipelineContext.getDefaultInstance())
+            val result = applier.applied(scan(customers), PipelineContext.getDefaultInstance())
             result.plan.filter.condition
                 .hasFunction() shouldBe true
             result.plan.filter.condition.function.operation shouldBe "and"
@@ -105,7 +106,7 @@ class SecurityApplierSpec :
                             .setRight(scan(orders))
                             .setJoinType(JoinType.INNER),
                     ).build()
-            val result = applier.apply(plan, PipelineContext.getDefaultInstance())
+            val result = applier.applied(plan, PipelineContext.getDefaultInstance())
             result.plan.join.left
                 .hasFilter() shouldBe true
             result.plan.join.right
@@ -142,7 +143,7 @@ class SecurityApplierSpec :
                             .setRight(scan(orders))
                             .setJoinType(JoinType.INNER),
                     ).build()
-            val result = applier.apply(plan, PipelineContext.getDefaultInstance())
+            val result = applier.applied(plan, PipelineContext.getDefaultInstance())
             result.warnings.size shouldBe 2
             result.warnings.all { it.code == "security_predicate_applied" } shouldBe true
             result.warnings.all { it.sourceStage == "security" && it.sourceService == "validator" } shouldBe true
@@ -182,9 +183,9 @@ class SecurityApplierSpec :
                             .setRight(scan(orders))
                             .setJoinType(JoinType.INNER),
                     ).build()
-            val result = SecurityApplier(client).apply(plan, PipelineContext.getDefaultInstance())
-            result.applied.map { Triple(it.ruleId, it.table, it.restricted) } shouldBe
-                listOf(Triple("dc-scope", "db.dbo.customers", true), Triple("dc-scope", "db.dbo.orders", true))
+            val result = SecurityApplier(client).applied(plan, PipelineContext.getDefaultInstance())
+            result.applied.map { it.ruleId to it.table } shouldBe
+                listOf("dc-scope" to "db.dbo.customers", "dc-scope" to "db.dbo.orders")
         }
 
         "passes through warnings from the security service" {
@@ -201,11 +202,10 @@ class SecurityApplierSpec :
                         ).build()
                 }
             val applier = SecurityApplier(client)
-            val result = applier.apply(scan(customers), PipelineContext.getDefaultInstance())
+            val result = applier.applied(scan(customers), PipelineContext.getDefaultInstance())
             result.messages.size shouldBe 1
             result.messages[0].code shouldBe "unknown_table"
             result.applied.size shouldBe 0
-            result.denied shouldBe false
         }
 
         "an ERROR from the policy engine is a denial: nothing wrapped, nothing reported applied" {
@@ -228,12 +228,49 @@ class SecurityApplierSpec :
                         ).build()
                 }
             val plan = scan(orders)
+            // A denial carries no plan at all — there is nothing a careless caller could run.
             val result = SecurityApplier(client).apply(plan, PipelineContext.getDefaultInstance())
-            result.denied shouldBe true
-            result.plan shouldBe plan
-            result.applied.size shouldBe 0
-            result.warnings.size shouldBe 0
+            result.shouldBeInstanceOf<SecurityApplier.Denied>()
             result.messages[0].code shouldBe "access_denied"
+        }
+
+        "evaluate decides; wrap places every restricted table's filter in one pass" {
+            val client =
+                SecurityClient { _ ->
+                    EvaluatePoliciesResponse
+                        .newBuilder()
+                        .addPredicates(
+                            TablePredicate
+                                .newBuilder()
+                                .setTable(customers)
+                                .setPredicate(tenant)
+                                .setRuleId("a"),
+                        ).addPredicates(
+                            TablePredicate
+                                .newBuilder()
+                                .setTable(orders)
+                                .setPredicate(region)
+                                .setRuleId("b"),
+                        ).build()
+                }
+            val plan =
+                PlanNode
+                    .newBuilder()
+                    .setJoin(
+                        JoinNode
+                            .newBuilder()
+                            .setLeft(scan(customers))
+                            .setRight(scan(orders))
+                            .setJoinType(JoinType.INNER),
+                    ).build()
+            val decision =
+                SecurityApplier(client)
+                    .evaluate(plan, PipelineContext.getDefaultInstance())
+                    .shouldBeInstanceOf<SecurityApplier.Decision.Allowed>()
+            val wrapped = decision.wrap(plan)
+            wrapped.plan.join.left.filter.condition shouldBe tenant
+            wrapped.plan.join.right.filter.condition shouldBe region
+            wrapped.applied.map { it.ruleId } shouldBe listOf("a", "b")
         }
     })
 

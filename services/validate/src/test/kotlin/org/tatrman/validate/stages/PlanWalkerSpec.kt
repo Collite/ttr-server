@@ -56,6 +56,22 @@ class PlanWalkerSpec :
             out shouldBe plan
         }
 
+        // review-159 ⑫ — a read-only walk builds nothing; a wrap rebuilds only the path it changed.
+        "a walk that changes nothing returns the very same plan" {
+            val regions = qname("db", "dbo", "regions")
+            val plan = filter(inSubquery(columnRef("country"), scan(regions)), scan(customers))
+            (PlanWalker.wrapScans(plan) { null } === plan) shouldBe true
+            PlanWalker.scannedTables(plan) shouldBe setOf(customers, regions)
+        }
+
+        "one wrap pass places each table's own predicate" {
+            val orderPredicate = eq(columnRef("region"), intLiteral(7))
+            val plan = filter(inSubquery(columnRef("id"), scan(orders)), scan(customers))
+            val out = PlanWalker.wrapScans(plan) { mapOf(customers to tenantPredicate, orders to orderPredicate)[it] }
+            out.filter.input.filter.condition shouldBe tenantPredicate
+            out.filter.condition.subquery.subquery.filter.condition shouldBe orderPredicate
+        }
+
         "ColumnUsage collects tables and columns from an IN subquery referencing a new table" {
             val regions = qname("db", "dbo", "regions")
             // WHERE country IN (SELECT region_code FROM regions WHERE active = 1)

@@ -875,9 +875,10 @@ class QueryToolSpec :
             ((rules[0] as JsonObject)["ruleId"] as JsonPrimitive).content shouldBe "rls.tenant"
             ((rules[0] as JsonObject)["predicateSummary"] as JsonPrimitive).content shouldBe
                 "WHERE tenant_id = (your tenant)"
-            // LR C-5·5 — which table the rule restricted, and that it did.
+            // LR C-5·5 — which table the rule restricted. The entry itself says that it did: there
+            // is no flag whose absent (false) default would say it did not.
             ((rules[0] as JsonObject)["table"] as JsonPrimitive).content shouldBe "db.public.positions"
-            ((rules[0] as JsonObject)["restricted"] as JsonPrimitive).content shouldBe "true"
+            (rules[0] as JsonObject).containsKey("restricted") shouldBe false
         }
 
         "a statement half alone yields an execution object with empty plan fields, no error" {
@@ -1012,8 +1013,7 @@ private fun planHalfReceipt(): ExecutionReceipt =
                 .newBuilder()
                 .setRuleId("rls.tenant")
                 .setPredicateSummary("WHERE tenant_id = (your tenant)")
-                .setTable("db.public.positions")
-                .setRestricted(true),
+                .setTable("db.public.positions"),
         ).setDispatchTarget("worker-postgres:7401")
         .setEffectiveSchema("DB")
         .setCompileMs(31)

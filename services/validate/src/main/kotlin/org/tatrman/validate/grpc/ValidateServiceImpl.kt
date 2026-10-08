@@ -37,10 +37,13 @@ import org.tatrman.translator.framework.VerificationResult
  *      service-configured admin role (`validator.security-bypass.admin-role`, default
  *      `query-platform-admin`). Trust model: validator trusts the upstream-populated context; the
  *      MCP edge is the JWT trust boundary in v1. Inter-service JWT re-validation is v2.
+ *      The engine DECIDES here; its row filters are placed after RULES (3), so the column rules
+ *      read the plan as the caller asked it. A plan that reads a workspace is secured all the same:
+ *      only the workspace itself is never wrapped.
  *   3. RULES (Section C). TopN + column allow/deny/mask enforcement (DF-V01) — consumes the
  *      `column_rules` returned by sql-security alongside the row predicates. A `DENY` on a
  *      referenced column short-circuits with a `column_denied` ERROR and no plan; `MASK` rewrites
- *      `ColumnRef` expressions to the rule's mask expression.
+ *      `ColumnRef` expressions to the rule's mask expression. Then SECURITY's filters are placed.
  *   3b. STRICT_COERCION (Phase 08 C1 / DF-V06). Off by default; when on, comparison expressions
  *       whose operand surface-types disagree (`int vs text`, etc.) surface as
  *       `strict_coercion_rejected` ERRORs and the response carries no plan.
@@ -78,11 +81,7 @@ class ValidateServiceImpl(
                     human = "Plan contains both ER and DB layer nodes — mixed-layer trees are not supported.",
                 ),
             )
-            return ValidateResponse
-                .newBuilder()
-                .setContext(contextBuilder.build())
-                .addAllMessages(responseMessages)
-                .build()
+            return rejection(contextBuilder.build(), emptyList(), responseMessages)
         }
 
         // Section F — schema-version verification. Metadata is a HARD dependency: an
@@ -133,11 +132,7 @@ class ValidateServiceImpl(
                         human = "Role enrichment source is unavailable; the request is rejected (fail-closed).",
                     ),
                 )
-                return ValidateResponse
-                    .newBuilder()
-                    .setContext(contextBuilder.build())
-                    .addAllMessages(responseMessages)
-                    .build()
+                return rejection(contextBuilder.build(), emptyList(), responseMessages)
             }
         // Write the enriched roles back so the admin gate AND the SecurityApplier (which reads
         // PipelineContext.auth_roles for RLS) both see them. No-op in bearer mode.
@@ -170,49 +165,57 @@ class ValidateServiceImpl(
                 true
             }
 
-        // Phase 2.4 — workspace-rooted plans skip the SecurityApplier.
-        // Workspace data was already filtered when produced; re-evaluating
-        // would be wrong (double-filter) and not always possible (joined /
-        // aggregated workspace dfs may not have a clean predicate root).
-        // Trade-off documented in progress-phase-02-4-worker-polars.md.
-        val planContainsWorkspaceRef = WorkspaceRefDetector.hasWorkspaceRef(incomingPlan)
-        val effectiveApplySecurity = applySecurity && !planContainsWorkspaceRef
-        if (planContainsWorkspaceRef && applySecurity) {
+        // Phase 2.4 — a workspace was filtered when it was produced, so the SecurityApplier never
+        // wraps one (re-evaluating would double-filter, and a joined / aggregated workspace has no
+        // clean predicate root). Every TABLE the plan reads beside a workspace — joined to it, in a
+        // UNION branch, in a subquery — is still a scan, and security places its filter there as on
+        // any plan: a workspace never switches security off for the rest of the plan.
+        if (applySecurity && WorkspaceRefDetector.hasWorkspaceRef(incomingPlan)) {
             contextBuilder.addWarnings(
                 warning(
                     code = "security_skipped_for_workspace",
-                    message = "Plan references a session-scoped workspace; security applied at workspace creation time, not re-evaluated here.",
+                    message =
+                        "Plan references a session-scoped workspace; security was applied when the workspace was " +
+                            "created and is not re-applied to it. The plan's other tables are filtered as usual.",
                 ),
             )
         }
 
-        // Section B — SECURITY.
-        var workingPlan = incomingPlan
+        // Section B — SECURITY: the engine's decision. Its filters are placed after RULES, below.
         val applied = mutableListOf<org.tatrman.validate.v1.SecurityRuleApplied>()
-        var columnRules: List<org.tatrman.security.v1.ColumnRule> = emptyList()
-        if (effectiveApplySecurity) {
-            // sql-security is a HARD dependency too — same fail-fast posture as metadata above.
-            val securityResult = applySecurityOrFail(workingPlan, contextBuilder.build())
-            if (securityResult.denied) {
-                responseMessages.addAll(securityResult.messages)
-                return rejection(contextBuilder.build(), applied, responseMessages)
+        val allowed: SecurityApplier.Decision.Allowed? =
+            if (applySecurity) {
+                // sql-security is a HARD dependency too — same fail-fast posture as metadata above.
+                when (val decision = evaluateSecurityOrFail(incomingPlan, contextBuilder.build())) {
+                    is SecurityApplier.Denied -> {
+                        responseMessages.addAll(decision.messages)
+                        return rejection(contextBuilder.build(), applied, responseMessages)
+                    }
+                    is SecurityApplier.Decision.Allowed -> decision.also { responseMessages.addAll(it.messages) }
+                }
+            } else {
+                null
             }
-            workingPlan = securityResult.plan
-            applied.addAll(securityResult.applied)
-            responseMessages.addAll(securityResult.messages)
-            columnRules = securityResult.columnRules
-            // DF-V05 / G7 — propagate per-rule `security_predicate_applied` warnings into the
-            // PipelineContext so the warning surface reaches query-mcp's `pipeline_warnings`.
-            securityResult.warnings.forEach(contextBuilder::addWarnings)
-        }
 
-        // Section C — RULES (DF-V01 column deny/mask enforcement + TopN).
-        val rulesResult = ruleEnforcer.enforce(workingPlan, options, columnRules)
+        // Section C — RULES (DF-V01 column deny/mask enforcement + TopN), on the plan AS ASKED: the
+        // security filters are not in it yet, so a MASK on a policy's own column cannot rewrite the
+        // policy's filter, and no column is denied because only the filter names it.
+        val rulesResult = ruleEnforcer.enforce(incomingPlan, options, allowed?.columnRules.orEmpty())
         responseMessages.addAll(rulesResult.messages)
         if (rulesResult.rejected) {
             return rejection(contextBuilder.build(), applied, responseMessages)
         }
-        workingPlan = rulesResult.plan
+        var workingPlan = rulesResult.plan
+
+        // Section B, placed — every restricted scan under its policies' filter.
+        if (allowed != null) {
+            val wrapped = allowed.wrap(workingPlan)
+            workingPlan = wrapped.plan
+            applied.addAll(wrapped.applied)
+            // DF-V05 / G7 — propagate per-rule `security_predicate_applied` warnings into the
+            // PipelineContext so the warning surface reaches query-mcp's `pipeline_warnings`.
+            wrapped.warnings.forEach(contextBuilder::addWarnings)
+        }
 
         // Phase 08 C1 / DF-V06 — strict-mode coercion check. Off by default; when on, every
         // comparison whose operands carry disagreeing surface-type tags surfaces as a
@@ -223,12 +226,7 @@ class ValidateServiceImpl(
             val coercionErrors = StrictCoercionChecker.check(workingPlan)
             if (coercionErrors.isNotEmpty()) {
                 responseMessages.addAll(coercionErrors)
-                return ValidateResponse
-                    .newBuilder()
-                    .setContext(contextBuilder.build())
-                    .addAllSecurityApplied(applied)
-                    .addAllMessages(responseMessages)
-                    .build()
+                return rejection(contextBuilder.build(), applied, responseMessages)
             }
         }
 
@@ -248,12 +246,7 @@ class ValidateServiceImpl(
                             human = decision.reason,
                         ),
                     )
-                    return ValidateResponse
-                        .newBuilder()
-                        .setContext(contextBuilder.build())
-                        .addAllSecurityApplied(applied)
-                        .addAllMessages(responseMessages)
-                        .build()
+                    return rejection(contextBuilder.build(), applied, responseMessages)
                 }
             }
         }
@@ -309,13 +302,17 @@ class ValidateServiceImpl(
                 .asRuntimeException()
         }
 
-    /** As [readCurrentVersionOrFail] but for the sql-security `EvaluatePolicies` call. */
-    private suspend fun applySecurityOrFail(
+    /**
+     * As [readCurrentVersionOrFail] but for the sql-security `EvaluatePolicies` call. A policy the
+     * engine cannot apply is a [SecurityApplier.Denied], not an exception: what reaches the catch is
+     * an engine that could not run at all.
+     */
+    private suspend fun evaluateSecurityOrFail(
         plan: org.tatrman.plan.v1.PlanNode,
         context: PipelineContext,
-    ): SecurityApplier.Result =
+    ): SecurityApplier.Decision =
         try {
-            securityApplier.apply(plan, context)
+            securityApplier.evaluate(plan, context)
         } catch (c: CancellationException) {
             throw c
         } catch (e: Exception) {

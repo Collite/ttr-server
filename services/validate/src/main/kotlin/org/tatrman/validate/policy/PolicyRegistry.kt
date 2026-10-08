@@ -14,21 +14,21 @@ class PolicyRegistry(
     private val policies: List<Policy>,
 ) {
     /**
-     * The policies that apply to [table] for a caller holding [callerRoles]: the table-match covers
-     * the table AND the role gate admits the caller ([Policy.appliesTo]). The roles are required, not
-     * defaulted — a call that forgot them would read as "a caller with no roles" and silently drop
-     * every role-gated policy.
+     * The policies that apply to [table] for [caller]: the table-match covers the table AND the
+     * gates admit the caller ([Policy.appliesTo]). The caller is required, not defaulted — a call
+     * that forgot it would read as "a caller with no roles" and silently drop every gated policy.
+     * A policy's column rules ([Policy.columnRules], DF-S02) come with it.
      */
     fun policiesFor(
         table: QualifiedName,
-        callerRoles: Collection<String>,
-    ): List<Policy> = policies.filter { matches(it.tableMatch, table) && it.appliesTo(callerRoles) }
+        caller: Caller,
+    ): List<Policy> = policies.filter { matches(it.tableMatch, table) && it.appliesTo(caller) }
 
     /** Column-level rules (DF-S02) from every policy that applies to [table] for this caller, with their owning policy. */
     fun columnRulesFor(
         table: QualifiedName,
-        callerRoles: Collection<String>,
-    ): List<Pair<Policy, ColumnRule>> = policiesFor(table, callerRoles).flatMap { p -> p.columnRules.map { p to it } }
+        caller: Caller,
+    ): List<Pair<Policy, ColumnRule>> = policiesFor(table, caller).flatMap { p -> p.columnRules.map { p to it } }
 
     fun size(): Int = policies.size
 
@@ -49,9 +49,10 @@ class PolicyRegistry(
  * registry contents until HOCON-driven storage lands.
  *
  * Two named lists:
- *   - [core] is the DB-only baseline (just `tenant_isolation`). Role-LESS here, unlike the shipped
- *     `policies/policies.conf`, which gates it on `tenant-scoped` (LR C-5·2): these fixtures exercise
- *     the predicate, and a gate would make every one of them restate the role.
+ *   - [core] is the DB-only baseline (just `tenant_isolation`). UNGATED here, unlike the shipped
+ *     `policies/policies.conf`, whose `subject-attribute = "tenant_id"` leaves a caller without a
+ *     tenant alone: these fixtures exercise the predicate and the fail-closed refusal of a caller it
+ *     cannot be evaluated for. `ShippedPoliciesSpec` loads the shipped file itself.
  *   - [all] adds the [erCustomerRegionIsolation] demo policy on top — useful for ER-flow
  *     fixtures (validator pass-1 + dispatch end-to-end) and any test that wants the full set.
  *

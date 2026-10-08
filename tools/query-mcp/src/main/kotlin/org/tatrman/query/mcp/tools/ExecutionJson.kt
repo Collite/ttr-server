@@ -85,8 +85,8 @@ object ExecutionJson {
                             buildJsonObject {
                                 put("ruleId", JsonPrimitive(rule.ruleId))
                                 put("predicateSummary", JsonPrimitive(rule.predicateSummary))
+                                // Every entry is a row restriction of `table` (LR C-5·5).
                                 put("table", JsonPrimitive(rule.table))
-                                put("restricted", JsonPrimitive(rule.restricted))
                             },
                         )
                     }

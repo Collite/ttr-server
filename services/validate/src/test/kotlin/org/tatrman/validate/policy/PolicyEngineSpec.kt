@@ -5,13 +5,16 @@ import org.tatrman.plan.v1.Expression
 import org.tatrman.plan.v1.PipelineContext
 import org.tatrman.plan.v1.PlanNode
 import org.tatrman.plan.v1.QualifiedName
+import org.tatrman.plan.v1.StoreNode
 import org.tatrman.plan.v1.TableScanNode
+import org.tatrman.plan.v1.WriteMode
 import org.tatrman.security.v1.EvaluatePoliciesRequest
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 import org.tatrman.common.v1.Severity
+import java.util.concurrent.CopyOnWriteArrayList
 
 class PolicyEngineSpec :
     StringSpec({
@@ -99,12 +102,155 @@ class PolicyEngineSpec :
 
         "the denial is the FIRST message even when a warning was raised before it" {
             // golem (and any MCP caller) reads the first message's code as the rejection's code.
-            val unknownTables = StaticPolicyMetadataClient(version = "", knownQnames = emptySet())
-            val service = PolicyEngine(PolicyRegistry(DefaultPolicies.core), unknownTables)
-            val resp = service.evaluatePolicies(request(customersScan(), userId = "alice-no-tenant"))
+            val staleModel = StaticPolicyMetadataClient(version = "v-live")
+            val service = PolicyEngine(PolicyRegistry(DefaultPolicies.core), staleModel)
+            val resp =
+                service.evaluatePolicies(
+                    EvaluatePoliciesRequest
+                        .newBuilder()
+                        .setPlan(customersScan())
+                        .setContext(PipelineContext.newBuilder().setUserId("alice-no-tenant").setModelVersion("v-old"))
+                        .build(),
+                )
 
             resp.messagesList.map { it.code } shouldBe
-                listOf("access_denied", "policy_unresolvable_attribute", "unknown_table")
+                listOf("access_denied", "policy_unresolvable_attribute", "model_version_mismatch")
+        }
+
+        "a refused request looks no table up; an allowed one names an unknown table as db.dbo.x" {
+            val lookups = CopyOnWriteArrayList<QualifiedName>()
+            val counting =
+                object : PolicyMetadataClient {
+                    override suspend fun objectExists(qname: QualifiedName): Boolean {
+                        lookups += qname
+                        return false
+                    }
+
+                    override suspend fun currentVersion(): String = ""
+                }
+            val engine = PolicyEngine(PolicyRegistry(DefaultPolicies.core), counting)
+
+            engine.evaluatePolicies(request(customersScan(), userId = "alice-no-tenant"))
+            lookups shouldHaveSize 0
+
+            val allowed = engine.evaluatePolicies(request(customersScan(), userId = "t:alice"))
+            lookups shouldHaveSize 1
+            allowed.messagesList.single().humanMessage shouldContain "'db.dbo.customers'"
+        }
+
+        // review-159 ⑧ — a write target is not a scan: no filter can narrow which rows a write hits.
+        "a row policy on a table the plan WRITES refuses the write — policy_restricted_write" {
+            val store =
+                PlanNode
+                    .newBuilder()
+                    .setStore(
+                        StoreNode
+                            .newBuilder()
+                            .setTarget(table("inventory"))
+                            .setInput(scanOf(table("staging")))
+                            .setMode(WriteMode.REPLACE),
+                    ).build()
+            val resp = PolicyEngine(PolicyRegistry(DefaultPolicies.core)).evaluatePolicies(request(store, "t:alice"))
+
+            resp.predicatesList shouldHaveSize 0
+            resp.messagesList.map { it.code } shouldBe
+                listOf("access_denied", "policy_restricted_write")
+            resp.messagesList[1].humanMessage shouldContain "'db.dbo.inventory'"
+        }
+
+        "a write to a table no policy covers for this caller is no denial" {
+            val other = table("staging")
+            val registry =
+                PolicyRegistry(
+                    listOf(
+                        Policy(
+                            id = "inventory_scope",
+                            tableMatch = TableMatcher.Exact(table("inventory")),
+                            predicate = PolicyPredicate.Eq("w", PolicyValue.Literal(5, "int")),
+                        ),
+                    ),
+                )
+            val store =
+                PlanNode
+                    .newBuilder()
+                    .setStore(StoreNode.newBuilder().setTarget(other).setInput(scanOf(table("source"))))
+                    .build()
+            val resp = PolicyEngine(registry).evaluatePolicies(request(store, "t:alice"))
+
+            resp.messagesList.none { it.severity == Severity.ERROR } shouldBe true
+        }
+
+        // review-159 ⑭ — any failure to evaluate an applicable policy refuses; it never escapes as
+        // an exception the service would report "unavailable" (and the query service retry).
+        "a policy that fails to evaluate for an unexpected cause refuses — policy_evaluation_failed" {
+            val broken =
+                object {
+                    override fun toString(): String = error("no text form")
+                }
+            val registry =
+                PolicyRegistry(
+                    listOf(
+                        Policy(
+                            id = "broken",
+                            tableMatch = TableMatcher.Exact(table("customers")),
+                            predicate = PolicyPredicate.Eq("x", PolicyValue.Literal(broken, "text")),
+                        ),
+                    ),
+                )
+            val resp = PolicyEngine(registry).evaluatePolicies(request(customersScan(), "t:alice"))
+
+            resp.predicatesList shouldHaveSize 0
+            resp.messagesList.map { it.code } shouldBe listOf("access_denied", "policy_evaluation_failed")
+        }
+
+        // review-159 ④ — a MASK always travels with the expression to mask the column with.
+        "a MASK's value: a literal, a caller attribute resolved per call, or NULL when it names none" {
+            val registry =
+                PolicyRegistry(
+                    listOf(
+                        Policy(
+                            id = "masks",
+                            tableMatch = TableMatcher.Exact(table("customers")),
+                            predicate = PolicyPredicate.Eq("tenant_id", PolicyValue.UserAttribute("tenant_id")),
+                            columnRules =
+                                listOf(
+                                    ColumnRule("ssn", ColumnAction.Mask(PolicyValue.Literal("***", "text"))),
+                                    ColumnRule("owner", ColumnAction.Mask(PolicyValue.UserAttribute("user_id"))),
+                                    ColumnRule("salary", ColumnAction.Mask()),
+                                ),
+                        ),
+                    ),
+                )
+            val rules =
+                PolicyEngine(registry)
+                    .evaluatePolicies(request(customersScan(), "t:alice"))
+                    .columnRulesList
+                    .associate { it.column to it.maskExpression.literal }
+
+            rules.getValue("ssn").stringValue shouldBe "***"
+            rules.getValue("owner").stringValue shouldBe "alice"
+            rules.getValue("salary").isNull shouldBe true
+        }
+
+        "a MASK whose caller attribute cannot be resolved refuses, like a predicate's" {
+            val registry =
+                PolicyRegistry(
+                    listOf(
+                        Policy(
+                            id = "region_mask",
+                            tableMatch = TableMatcher.Exact(table("customers")),
+                            predicate = PolicyPredicate.Eq("open", PolicyValue.Literal(true, "bool")),
+                            columnRules =
+                                listOf(
+                                    ColumnRule("ssn", ColumnAction.Mask(PolicyValue.UserAttribute("region"))),
+                                ),
+                        ),
+                    ),
+                )
+            val resp = PolicyEngine(registry).evaluatePolicies(request(customersScan(), "t:alice"))
+
+            resp.columnRulesList shouldHaveSize 0
+            resp.messagesList.map { it.code } shouldBe listOf("access_denied", "policy_unresolvable_attribute")
         }
 
         "a denial on one table drops every predicate — the request is refused, not narrowed" {

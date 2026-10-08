@@ -27,11 +27,32 @@ data class Policy(
      * role. The only way to exempt anyone: a policy cannot be skipped for a caller it applies to.
      */
     val exemptRoles: List<String> = emptyList(),
+    /**
+     * The subject gate: when set, the policy applies only to a caller whose identity carries this
+     * attribute. Tenant isolation's subjects are exactly the callers with a `tenant:user` id, so it
+     * names `tenant_id`: a caller with a tenant is always narrowed to it, whatever roles they hold,
+     * and a caller without one is not the policy's subject. Any OTHER attribute the predicate needs
+     * and the caller lacks still refuses the request (LR C-5·2).
+     */
+    val subjectAttribute: String? = null,
 ) {
-    /** Whether the policy applies to a caller holding [callerRoles]. Role names match exactly. */
-    fun appliesTo(callerRoles: Collection<String>): Boolean =
-        (roles.isEmpty() || roles.any { it in callerRoles }) && exemptRoles.none { it in callerRoles }
+    /** Whether the policy applies to [caller]. Role names match exactly. */
+    fun appliesTo(caller: Caller): Boolean =
+        (roles.isEmpty() || roles.any { it in caller.roles }) &&
+            exemptRoles.none { it in caller.roles } &&
+            (subjectAttribute == null || subjectAttribute in caller.attributes)
 }
+
+/**
+ * Who is asking, as far as a policy's gates are concerned: the effective [roles] and the names of
+ * the identity [attributes] the caller carries ([ResolvedIdentity.attributeNames]). Both are required
+ * — a caller built without them would read as one with no roles and no attributes, and silently
+ * drop every gated policy.
+ */
+data class Caller(
+    val roles: Collection<String>,
+    val attributes: Set<String>,
+)
 
 /** A column-level access rule on a policy's matched tables. */
 data class ColumnRule(
@@ -43,7 +64,10 @@ sealed interface ColumnAction {
     /** The query may not reference this column at all. */
     data object Deny : ColumnAction
 
-    /** The column is replaced in the result by [maskValue] (a literal — e.g. "***" or NULL). */
+    /**
+     * The column is replaced in the result by [maskValue]: a literal ("***"), a caller attribute
+     * (resolved per call — an unresolvable one refuses the request), or, when absent, NULL.
+     */
     data class Mask(
         val maskValue: PolicyValue? = null,
     ) : ColumnAction

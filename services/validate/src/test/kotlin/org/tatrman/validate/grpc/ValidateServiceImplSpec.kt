@@ -23,6 +23,9 @@ import io.grpc.StatusRuntimeException
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
+import org.tatrman.validate.client.GatewayResponseFormat
+import org.tatrman.validate.client.LlmGatewayClient
+import org.tatrman.validate.client.LlmGatewayException
 import org.tatrman.validate.client.MetadataClient
 import org.tatrman.validate.client.SecurityClient
 import org.tatrman.validate.client.StaticMetadataClient
@@ -662,6 +665,204 @@ class ValidatorServiceImplSpec :
                 )
             approveResp.hasPlan() shouldBe true
             approveResp.messagesList.any { it.code == "strict_coercion_rejected" } shouldBe false
+        }
+
+        // ----- review-159 -----
+
+        fun request(
+            plan: PlanNode,
+            options: ValidationOptions.Builder = ValidationOptions.newBuilder().setApplySecurity(true),
+        ): ValidateRequest =
+            ValidateRequest
+                .newBuilder()
+                .setPlan(plan)
+                .setContext(PipelineContext.newBuilder().setUserId("u1").setModelVersion("v-test"))
+                .setOptions(options)
+                .build()
+
+        val workspace =
+            PlanNode
+                .newBuilder()
+                .setWorkspaceRef(
+                    org.tatrman.plan.v1.WorkspaceRef
+                        .newBuilder()
+                        .setWorkspaceName("q1"),
+                ).build()
+
+        // ② — a workspace switches off security for itself only, never for the tables beside it.
+        "a table joined to a workspace is still filtered; the workspace is left as it is" {
+            val plan =
+                PlanNode
+                    .newBuilder()
+                    .setJoin(
+                        org.tatrman.plan.v1.JoinNode
+                            .newBuilder()
+                            .setLeft(workspace)
+                            .setRight(scan(customers))
+                            .setJoinType(org.tatrman.plan.v1.JoinType.INNER),
+                    ).build()
+            val resp = service(matchingPolicy).validate(request(plan))
+            resp.plan.join.left
+                .hasWorkspaceRef() shouldBe true
+            resp.plan.join.right.filter.condition shouldBe tenant
+            resp.securityAppliedList.map { it.ruleId } shouldBe listOf("tenant_isolation")
+            resp.context.warningsList.any { it.code == "security_skipped_for_workspace" } shouldBe true
+        }
+
+        "a table in a UNION branch beside a workspace is still filtered" {
+            val plan =
+                PlanNode
+                    .newBuilder()
+                    .setUnion(
+                        org.tatrman.plan.v1.UnionNode
+                            .newBuilder()
+                            .addInputs(workspace)
+                            .addInputs(scan(customers)),
+                    ).build()
+            val resp = service(matchingPolicy).validate(request(plan))
+            resp.plan.union.inputsList[1]
+                .filter.condition shouldBe tenant
+        }
+
+        // ⑥ — every rejection lists its ERROR first, whatever warnings the pipeline raised before.
+        "a strict-coercion rejection comes before the row cap's warning" {
+            val intColEqText =
+                Expression
+                    .newBuilder()
+                    .setFunction(
+                        FunctionCall
+                            .newBuilder()
+                            .setOperation("eq")
+                            .addOperands(
+                                Expression
+                                    .newBuilder()
+                                    .setColumnRef(ColumnRef.newBuilder().setName("id").setType("int"))
+                                    .setResultType("int"),
+                            ).addOperands(
+                                Expression
+                                    .newBuilder()
+                                    .setLiteral(Literal.newBuilder().setStringValue("42").setType("text"))
+                                    .setResultType("text"),
+                            ),
+                    ).setResultType("bool")
+                    .build()
+            val plan =
+                PlanNode
+                    .newBuilder()
+                    .setFilter(
+                        org.tatrman.plan.v1.FilterNode
+                            .newBuilder()
+                            .setInput(scan(customers))
+                            .setCondition(intColEqText),
+                    ).build()
+            val resp =
+                service(SecurityClient { _ -> EvaluatePoliciesResponse.getDefaultInstance() }).validate(
+                    request(plan, ValidationOptions.newBuilder().setEnforceTopN(true).setStrictCoercion(true)),
+                )
+            resp.hasPlan() shouldBe false
+            resp.messagesList[0].code shouldBe "strict_coercion_rejected"
+            resp.messagesList.map { it.code }.contains(RuleEnforcer.TOP_N_APPLIED) shouldBe true
+        }
+
+        "an llm_guard rejection comes before the row cap's warning" {
+            val down =
+                object : LlmGatewayClient {
+                    override suspend fun chat(
+                        model: String,
+                        system: String,
+                        user: String,
+                        responseFormat: GatewayResponseFormat?,
+                    ): String = throw LlmGatewayException("gateway down")
+
+                    override fun close() = Unit
+                }
+            val svc =
+                ValidateServiceImpl(
+                    securityApplier = SecurityApplier { _ -> EvaluatePoliciesResponse.getDefaultInstance() },
+                    ruleEnforcer = RuleEnforcer(serviceDefault = 30),
+                    llmGuard = LlmGuard(enabled = true, gateway = down),
+                    metadataClient = StaticMetadataClient("v-test"),
+                )
+            val resp =
+                svc.validate(
+                    request(scan(customers), ValidationOptions.newBuilder().setEnforceTopN(true).setLlmGuard(true)),
+                )
+            resp.hasPlan() shouldBe false
+            resp.messagesList[0].code shouldBe "llm_guard_rejected"
+        }
+
+        // ⑨ — column rules read the plan as the caller asked it, before security's filters are in it.
+        "a MASK on the policy's own column masks the answer and leaves the policy filter intact" {
+            val masking =
+                SecurityClient { _ ->
+                    EvaluatePoliciesResponse
+                        .newBuilder()
+                        .addPredicates(
+                            TablePredicate
+                                .newBuilder()
+                                .setTable(customers)
+                                .setPredicate(tenant)
+                                .setRuleId("tenant_isolation"),
+                        ).addColumnRules(
+                            ColumnRule
+                                .newBuilder()
+                                .setTable(customers)
+                                .setColumn("tenant_id")
+                                .setAction(ColumnRule.Action.MASK)
+                                .setMaskExpression(
+                                    Expression
+                                        .newBuilder()
+                                        .setLiteral(Literal.newBuilder().setStringValue("***").setType("text")),
+                                ).setRuleId("mask_tenant"),
+                        ).build()
+                }
+            val plan =
+                PlanNode
+                    .newBuilder()
+                    .setProject(
+                        ProjectNode
+                            .newBuilder()
+                            .setInput(scan(customers))
+                            .addExpressions(NamedExpression.newBuilder().setExpression(columnRef("tenant_id"))),
+                    ).build()
+            val resp = service(masking).validate(request(plan))
+            resp.plan.project.expressionsList[0]
+                .expression.literal.stringValue shouldBe "***"
+            resp.plan.project.input.filter.condition shouldBe tenant
+        }
+
+        "a DENY on a column only the policy filter names does not refuse the query" {
+            val denying =
+                SecurityClient { _ ->
+                    EvaluatePoliciesResponse
+                        .newBuilder()
+                        .addPredicates(
+                            TablePredicate
+                                .newBuilder()
+                                .setTable(customers)
+                                .setPredicate(tenant)
+                                .setRuleId("tenant_isolation"),
+                        ).addColumnRules(
+                            ColumnRule
+                                .newBuilder()
+                                .setTable(customers)
+                                .setColumn("tenant_id")
+                                .setAction(ColumnRule.Action.DENY)
+                                .setRuleId("hide_tenant"),
+                        ).build()
+                }
+            val plan =
+                PlanNode
+                    .newBuilder()
+                    .setProject(
+                        ProjectNode
+                            .newBuilder()
+                            .setInput(scan(customers))
+                            .addExpressions(NamedExpression.newBuilder().setExpression(columnRef("name"))),
+                    ).build()
+            val resp = service(denying).validate(request(plan))
+            resp.hasPlan() shouldBe true
+            resp.plan.project.input.filter.condition shouldBe tenant
         }
     })
 

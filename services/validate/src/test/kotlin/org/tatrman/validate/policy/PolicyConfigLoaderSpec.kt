@@ -197,6 +197,47 @@ class PolicyConfigLoaderSpec :
             }
         }
 
+        // review-159 ⑩ — both fail silently at run time, so both fail at boot.
+        "an empty role list → PolicyConfigException (an empty `roles` would gate every caller in)" {
+            for (path in listOf("roles", "exempt-roles")) {
+                shouldThrow<PolicyConfigException> {
+                    PolicyConfigLoader.load(
+                        cfg(
+                            """validate.policies = [ { id = "p", $path = [], match { type = "all" }, predicate { type = "eq", column = "c", value { kind = "literal", value = 1 } } } ]""",
+                        ),
+                    )
+                }.message shouldContain "'$path' is empty"
+            }
+        }
+
+        "a role name with surrounding whitespace → PolicyConfigException (it would never match)" {
+            shouldThrow<PolicyConfigException> {
+                PolicyConfigLoader.load(
+                    cfg(
+                        """validate.policies = [ { id = "p", roles = [" scope-dc-5"], match { type = "all" }, predicate { type = "eq", column = "c", value { kind = "literal", value = 1 } } } ]""",
+                    ),
+                )
+            }.message shouldContain "surrounding whitespace"
+        }
+
+        "subject-attribute parses; a blank one → PolicyConfigException" {
+            val policy =
+                PolicyConfigLoader
+                    .load(
+                        cfg(
+                            """validate.policies = [ { id = "p", subject-attribute = "tenant_id", match { type = "all" }, predicate { type = "eq", column = "c", value { kind = "literal", value = 1 } } } ]""",
+                        ),
+                    ).single()
+            policy.subjectAttribute shouldBe "tenant_id"
+            shouldThrow<PolicyConfigException> {
+                PolicyConfigLoader.load(
+                    cfg(
+                        """validate.policies = [ { id = "p", subject-attribute = " ", match { type = "all" }, predicate { type = "eq", column = "c", value { kind = "literal", value = 1 } } } ]""",
+                    ),
+                )
+            }
+        }
+
         "missing predicate block → PolicyConfigException" {
             shouldThrow<PolicyConfigException> {
                 PolicyConfigLoader.load(cfg("""validate.policies = [ { id = "p", match { type = "all" } } ]"""))
@@ -209,9 +250,12 @@ class PolicyConfigLoaderSpec :
             val policies = PolicyConfigLoader.load(ConfigFactory.load())
             policies shouldHaveSize 1
             policies.single().id shouldBe "tenant_isolation"
-            // LR C-5·2: role-gated, so an estate whose callers carry no tenant is not refused
-            // wholesale now that an unresolvable attribute denies instead of skipping.
-            policies.single().roles shouldBe listOf("tenant-scoped")
-            policies.single().appliesTo(listOf("analyst")) shouldBe false
+            // Gated on the tenant ITSELF, not on a role: every caller with a tenant is narrowed to it
+            // whatever roles they hold, and a caller without one is not refused wholesale now that
+            // an unresolvable attribute denies instead of skipping (ShippedPoliciesSpec evaluates it).
+            policies.single().roles shouldBe emptyList()
+            policies.single().subjectAttribute shouldBe "tenant_id"
+            policies.single().appliesTo(Caller(listOf("analyst"), setOf("tenant_id", "user_id"))) shouldBe true
+            policies.single().appliesTo(Caller(listOf("analyst"), setOf("user_id"))) shouldBe false
         }
     })

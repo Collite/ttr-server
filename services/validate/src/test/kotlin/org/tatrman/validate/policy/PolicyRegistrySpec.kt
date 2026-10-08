@@ -38,18 +38,19 @@ class PolicyRegistrySpec :
 
         "a role-gated policy applies to a caller holding the role" {
             val registry = PolicyRegistry(listOf(policy("dc-scope", roles = listOf("scope-dc-5"))))
-            registry.policiesFor(inventory, listOf("analyst", "scope-dc-5")).map { it.id } shouldBe listOf("dc-scope")
+            registry.policiesFor(inventory, rolesOnly("analyst", "scope-dc-5")).map { it.id } shouldBe
+                listOf("dc-scope")
         }
 
         "a role-gated policy does not apply to a caller without the role" {
             val registry = PolicyRegistry(listOf(policy("dc-scope", roles = listOf("scope-dc-5"))))
-            registry.policiesFor(inventory, listOf("analyst")).shouldBeEmpty()
-            registry.policiesFor(inventory, emptyList()).shouldBeEmpty()
+            registry.policiesFor(inventory, rolesOnly("analyst")).shouldBeEmpty()
+            registry.policiesFor(inventory, rolesOnly()).shouldBeEmpty()
         }
 
         "holding any one of several gating roles is enough" {
             val registry = PolicyRegistry(listOf(policy("dc-scope", roles = listOf("scope-dc-5", "scope-dc-7"))))
-            registry.policiesFor(inventory, listOf("scope-dc-7")).map { it.id } shouldBe listOf("dc-scope")
+            registry.policiesFor(inventory, rolesOnly("scope-dc-7")).map { it.id } shouldBe listOf("dc-scope")
         }
 
         "an exempt role wins over a gating role the caller also holds" {
@@ -57,31 +58,31 @@ class PolicyRegistrySpec :
                 PolicyRegistry(
                     listOf(policy("dc-scope", roles = listOf("scope-dc-5"), exemptRoles = listOf("data-all"))),
                 )
-            registry.policiesFor(inventory, listOf("scope-dc-5", "data-all")).shouldBeEmpty()
+            registry.policiesFor(inventory, rolesOnly("scope-dc-5", "data-all")).shouldBeEmpty()
         }
 
         "a policy with no roles applies to everyone — the semantics before the gate" {
             val registry = PolicyRegistry(listOf(policy("everyone")))
-            registry.policiesFor(inventory, emptyList()).map { it.id } shouldBe listOf("everyone")
-            registry.policiesFor(inventory, listOf("analyst")).map { it.id } shouldBe listOf("everyone")
+            registry.policiesFor(inventory, rolesOnly()).map { it.id } shouldBe listOf("everyone")
+            registry.policiesFor(inventory, rolesOnly("analyst")).map { it.id } shouldBe listOf("everyone")
         }
 
         "a policy with only exempt roles applies to everyone except their holders" {
             val registry = PolicyRegistry(listOf(policy("all-but-auditors", exemptRoles = listOf("auditor"))))
-            registry.policiesFor(inventory, listOf("analyst")).map { it.id } shouldBe listOf("all-but-auditors")
-            registry.policiesFor(inventory, listOf("auditor")).shouldBeEmpty()
+            registry.policiesFor(inventory, rolesOnly("analyst")).map { it.id } shouldBe listOf("all-but-auditors")
+            registry.policiesFor(inventory, rolesOnly("auditor")).shouldBeEmpty()
         }
 
         "role names match exactly — no case folding, no substring" {
             val registry = PolicyRegistry(listOf(policy("dc-scope", roles = listOf("scope-dc-5"))))
-            registry.policiesFor(inventory, listOf("SCOPE-DC-5", "scope-dc-50", "scope-dc")).shouldBeEmpty()
+            registry.policiesFor(inventory, rolesOnly("SCOPE-DC-5", "scope-dc-50", "scope-dc")).shouldBeEmpty()
         }
 
         "column rules follow their policy's gate" {
             val deny = ColumnRule("inv_quantity_on_hand", ColumnAction.Deny)
             val registry =
                 PolicyRegistry(listOf(policy("dc-scope", roles = listOf("scope-dc-5"), columnRules = listOf(deny))))
-            registry.columnRulesFor(inventory, listOf("scope-dc-5")).map { it.second } shouldBe listOf(deny)
-            registry.columnRulesFor(inventory, listOf("analyst")).shouldBeEmpty()
+            registry.columnRulesFor(inventory, rolesOnly("scope-dc-5")).map { it.second } shouldBe listOf(deny)
+            registry.columnRulesFor(inventory, rolesOnly("analyst")).shouldBeEmpty()
         }
     })

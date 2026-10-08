@@ -281,7 +281,7 @@ class RuleEnforcerSpec :
             nameExpr.columnRef.name shouldBe "name"
         }
 
-        "MASK rule without mask_expression is silently skipped (left unmasked, logged)" {
+        "MASK rule without mask_expression withholds the column like a DENY — never served unmasked" {
             val plan =
                 PlanNode
                     .newBuilder()
@@ -302,10 +302,48 @@ class RuleEnforcerSpec :
 
             val out = enforcer.enforce(plan, options(enforce = false), listOf(maskNoExpr))
 
-            out.rejected shouldBe false
-            out.plan.project.expressionsList[0]
-                .expression
-                .hasColumnRef() shouldBe true
+            out.rejected shouldBe true
+            out.messages.map { it.code } shouldBe listOf("column_denied")
+        }
+
+        // review-159 ⑤ — an ER entity's column rules: the plan reads the entity through an ER scan.
+        "a DENY on an entity attribute fires on an ER plan" {
+            val customer =
+                QualifiedName
+                    .newBuilder()
+                    .setSchemaCode(org.tatrman.plan.v1.SchemaCode.ER)
+                    .setNamespace("entity")
+                    .setName("Customer")
+                    .build()
+            val plan =
+                PlanNode
+                    .newBuilder()
+                    .setProject(
+                        ProjectNode
+                            .newBuilder()
+                            .setInput(
+                                PlanNode
+                                    .newBuilder()
+                                    .setScan(
+                                        org.tatrman.plan.v1.ScanNode
+                                            .newBuilder()
+                                            .setObject(customer),
+                                    ),
+                            ).addExpressions(namedColumnRef("ssn")),
+                    ).build()
+            val denySsn =
+                ColumnRule
+                    .newBuilder()
+                    .setTable(customer)
+                    .setColumn("ssn")
+                    .setAction(ColumnRule.Action.DENY)
+                    .setRuleId("pii")
+                    .build()
+
+            val out = enforcer.enforce(plan, options(enforce = false), listOf(denySsn))
+
+            out.rejected shouldBe true
+            out.messages.single().humanMessage shouldContainStr "'er.entity.Customer'"
         }
 
         "MASK warns when the column is referenced as a bare ColumnRef (group_keys etc.)" {
