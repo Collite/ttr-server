@@ -18,11 +18,9 @@ import java.util.Base64
  *  2. `X-User-Id` request header — service-to-service shortcut.
  *  3. Tool-arg `user_id` — trusted-network shortcut.
  *
- * **v1 limitation.** This decodes the JWT *without verifying its signature*.
- * Production deployments are expected to terminate inbound auth at an
- * ingress / sidecar that validates the token before it reaches the MCP door;
- * this resolver only extracts claims for downstream context-passing.
- * Signature validation lives outside this library.
+ * **This decodes the JWT without verifying it.** Verification is [BearerVerifier]'s, run first by
+ * [IdentityGate.decide] when the door passes one (LR G2b): a door that does not verify must sit behind
+ * something that does, or anyone who reaches it can claim any user and any realm role.
  */
 object IdentityResolver {
     private val parser =
@@ -80,16 +78,21 @@ object IdentityResolver {
     fun parseTokenOrNull(authorizationHeader: String?): UserIdentity? =
         authorizationHeader?.let { tryParseToken(it, IdentityPolicy.PERMISSIVE) }
 
+    /** The token of an `Authorization: Bearer <token>` header; null for no header or another scheme. */
+    fun bearerTokenOf(authorizationHeader: String?): String? {
+        val header = authorizationHeader ?: return null
+        return header
+            .removePrefix("Bearer ")
+            .removePrefix("bearer ")
+            .trim()
+            .takeIf { it.isNotEmpty() && it != header.trim() }
+    }
+
     private fun tryParseToken(
         header: String,
         policy: IdentityPolicy,
     ): UserIdentity? {
-        val token =
-            header
-                .removePrefix("Bearer ")
-                .removePrefix("bearer ")
-                .trim()
-                .takeIf { it.isNotEmpty() && it != header.trim() } ?: return null
+        val token = bearerTokenOf(header) ?: return null
         val parts = token.split(".")
         if (parts.size < 2) return null
         val payloadJson =

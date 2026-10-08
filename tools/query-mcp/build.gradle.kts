@@ -128,6 +128,9 @@ dependencies {
 
     testImplementation(libs.bundles.kotest)
     testImplementation(libs.mockk)
+    // LR G2b — BearerAuthSpec drives the 401 interceptor in a test host, with RS256 tokens it signs.
+    testImplementation(libs.ktor.server.test.host)
+    testImplementation(libs.auth0.java.jwt)
     // Arrow IPC builders for tests that feed the formatter a real Arrow stream.
     testImplementation(libs.arrow.vector)
     testImplementation(libs.arrow.memory.netty)

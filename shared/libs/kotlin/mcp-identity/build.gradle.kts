@@ -21,5 +21,8 @@ tasks.test {
 
 dependencies {
     implementation(libs.kotlinx.serialization.json)
+    // LR G2b — RS256 verification of the bearer (BearerVerifier); the JWKS key source logs fetch failures.
+    implementation(libs.auth0.java.jwt)
+    implementation(libs.slf4j.api)
     testImplementation(libs.bundles.kotest)
 }

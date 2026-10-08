@@ -33,6 +33,16 @@ resources:
 # this on to exercise the fail-closed discipline end-to-end.
 requireIdentity: true
 
+# LR G2b — verify each bearer before trusting a claim: RS256 signature against the realm's JWKS, `iss`,
+# `exp` (and `aud` when set). Off = decode-only, for a door behind something that verifies. On, a bearer
+# that fails is answered 401, and X-User-Id / user_id / the `admin:` prefix stop being identities.
+# `issuer` is required when on; `jwksUri` defaults to `<issuer>/protocol/openid-connect/certs`.
+auth:
+  verifySignature: false
+  issuer: ""
+  jwksUri: ""
+  audience: ""
+
 # OpenTelemetry. Reads OTEL_EXPORTER_OTLP_ENDPOINT + the per-service OTEL_ENABLED_QUERY_MCP
 # flag. Point `endpoint` at a collector and set enabled; leave disabled where none exists
 # (e.g. test runs).

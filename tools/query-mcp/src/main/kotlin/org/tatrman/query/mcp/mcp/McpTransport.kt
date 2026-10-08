@@ -9,7 +9,9 @@ import io.modelcontextprotocol.kotlin.sdk.types.Implementation
 import io.modelcontextprotocol.kotlin.sdk.types.ServerCapabilities
 import org.slf4j.LoggerFactory
 import org.tatrman.query.mcp.QueryMcpConfig
+import org.tatrman.mcp.identity.BearerVerifier
 import org.tatrman.mcp.identity.IdentityGate
+import org.tatrman.query.mcp.identityPolicyOf
 import org.tatrman.mcp.identity.RequestContext
 
 private val logger = LoggerFactory.getLogger("query-mcp.transport")
@@ -26,12 +28,16 @@ private val logger = LoggerFactory.getLogger("query-mcp.transport")
  *   Ktor interceptor with `Authorization` and `X-User-Id` headers; tools
  *   read it to resolve identity. Threading-wise this is a ThreadLocal so it
  *   matches the pattern used by the existing erp-data-mcp service.
+ * @param verifier LR G2b — when set, the gate verifies the bearer (and trusts nothing else:
+ *   [identityPolicyOf]); the HTTP interceptor has already answered 401 for one that fails.
  */
 fun Application.installQueryMcp(
     cfg: QueryMcpConfig,
     registry: ToolRegistry,
     requestContext: RequestContext,
+    verifier: BearerVerifier? = null,
 ) {
+    val policy = identityPolicyOf(verifier)
     mcpStreamableHttp {
         val server =
             Server(
@@ -71,7 +77,14 @@ fun Application.installQueryMcp(
                 // (incl. a service-account token with no user claim).
                 when (
                     val decision =
-                        IdentityGate.decide(authHeader, userIdHeader, argUserId, cfg.security.requireIdentity)
+                        IdentityGate.decide(
+                            authHeader,
+                            userIdHeader,
+                            argUserId,
+                            cfg.security.requireIdentity,
+                            policy = policy,
+                            verifier = verifier,
+                        )
                 ) {
                     is IdentityGate.Decision.Reject -> {
                         logger.warn("Identity gate rejected tool '{}': {}", tool.name, decision.code)

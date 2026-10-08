@@ -141,6 +141,11 @@ fun main(): Unit =
                 readinessProbe = readinessProbe,
             )
 
+        val verifier = bearerVerifierOf(cfg.security)
+        if (verifier == null) {
+            logger.warn("bearer signature verification is OFF — claims, roles included, are decoded, not verified")
+        }
+
         val appConfig =
             serverConfig {
                 module {
@@ -154,6 +159,7 @@ fun main(): Unit =
                             requestContext.userIdHeader.remove()
                         }
                     }
+                    verifier?.let { installBearerVerification(it) }
                     installMcpKtorBase(mcpKtorConfig, telemetry.openTelemetrySdk)
                     routing {
                         get("/status") {
@@ -192,7 +198,7 @@ fun main(): Unit =
                             )
                         }
                     }
-                    installQueryMcp(cfg, registry, requestContext)
+                    installQueryMcp(cfg, registry, requestContext, verifier)
                 }
             }
 

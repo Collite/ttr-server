@@ -4,6 +4,7 @@ package org.tatrman.mcp.identity
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.types.shouldBeInstanceOf
 import java.util.Base64
 
@@ -141,5 +142,88 @@ class IdentityGateSpec :
             identity.id shouldBe "admin:ops"
             identity.roles shouldContain "analyst"
             identity.isAdmin shouldBe false // the admin: prefix did NOT grant admin under TOKEN_ONLY
+        }
+
+        // ── LR G2b — a verifying door ────────────────────────────────────────────────────────────
+        val realm = rsaPair()
+        val verifier =
+            JwksBearerVerifier(
+                { kid -> (realm.public as java.security.interfaces.RSAPublicKey).takeIf { kid == "k1" } },
+                issuer = "https://keycloak.example/realms/kantheon",
+            )
+
+        "a verified bearer is allowed, with the claims it carries" {
+            val token = signedToken(realm, roles = listOf("kantheon-area-hartland", "kantheon-scope-dc-5"))
+            val decision =
+                IdentityGate.decide(
+                    "Bearer $token",
+                    null,
+                    null,
+                    requireIdentity = true,
+                    policy = IdentityPolicy.TOKEN_ONLY,
+                    verifier = verifier,
+                )
+            val identity =
+                decision
+                    .shouldBeInstanceOf<IdentityGate.Decision.Allow>()
+                    .identity
+                    .shouldBeInstanceOf<UserIdentity>()
+            identity.id shouldBe "petr"
+            identity.roles shouldContain "kantheon-scope-dc-5"
+        }
+
+        "a forged bearer is refused — the role it claims never reaches a policy" {
+            // Same claims, our own key: exactly what a decode-only door used to accept.
+            val forged = signedToken(rsaPair(), roles = listOf("query-platform-admin"))
+            val reject =
+                IdentityGate
+                    .decide("Bearer $forged", null, null, requireIdentity = true, verifier = verifier)
+                    .shouldBeInstanceOf<IdentityGate.Decision.Reject>()
+            reject.code shouldBe "invalid_token"
+            reject.message shouldContain "signature"
+        }
+
+        "a forged bearer does not fall through to the header or the arg, even on a permissive door" {
+            val forged = makeJwt("""{"preferred_username":"petr","realm_access":{"roles":["query-platform-admin"]}}""")
+            val decision =
+                IdentityGate.decide(
+                    "Bearer $forged",
+                    userIdHeader = "admin:ops",
+                    argUserId = "admin:ops",
+                    requireIdentity = true,
+                    policy = IdentityPolicy.PERMISSIVE,
+                    verifier = verifier,
+                )
+            decision.shouldBeInstanceOf<IdentityGate.Decision.Reject>().code shouldBe "invalid_token"
+        }
+
+        "an expired bearer is refused as invalid, not as missing" {
+            val stale =
+                signedToken(
+                    realm,
+                    expiresAt =
+                        java.time.Instant
+                            .now()
+                            .minusSeconds(600),
+                )
+            val reject =
+                IdentityGate
+                    .decide("Bearer $stale", null, null, requireIdentity = true, verifier = verifier)
+                    .shouldBeInstanceOf<IdentityGate.Decision.Reject>()
+            reject.code shouldBe "invalid_token"
+            reject.message shouldContain "expired"
+        }
+
+        "no bearer at all is still missing_user_identity under TOKEN_ONLY — the header is not an identity" {
+            val decision =
+                IdentityGate.decide(
+                    null,
+                    userIdHeader = "admin:ops",
+                    argUserId = null,
+                    requireIdentity = true,
+                    policy = IdentityPolicy.TOKEN_ONLY,
+                    verifier = verifier,
+                )
+            decision.shouldBeInstanceOf<IdentityGate.Decision.Reject>().code shouldBe "missing_user_identity"
         }
     })
