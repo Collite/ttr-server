@@ -20,10 +20,12 @@ import org.tatrman.mcp.identity.UserIdentity
 import org.tatrman.plan.v1.PipelineContext
 import org.tatrman.plan.v1.PlanNode
 import org.tatrman.plan.v1.QualifiedName
+import org.tatrman.plan.v1.SchemaCode
 import org.tatrman.plan.v1.TableScanNode
 import org.tatrman.query.mcp.QueryMcpConfig
 import org.tatrman.query.mcp.upstream.TranslatorClient
 import org.tatrman.query.mcp.upstream.ValidatorClient
+import org.tatrman.translate.v1.Language
 import org.tatrman.translate.v1.ParseRequest
 import org.tatrman.translate.v1.ParseResponse
 import org.tatrman.translate.v1.TranslateRequest
@@ -87,7 +89,7 @@ class CompileToolSpec :
                 .setContext(req.context)
                 .build()
 
-        fun compileRequest(): CallToolRequest =
+        fun compileRequest(sourceSchema: String? = null): CallToolRequest =
             CallToolRequest(
                 params =
                     CallToolRequestParams(
@@ -97,8 +99,22 @@ class CompileToolSpec :
                                 put("source", JsonPrimitive("SELECT * FROM Customers"))
                                 put("source_language", JsonPrimitive("sql"))
                                 put("target_dialect", JsonPrimitive("mssql"))
+                                if (sourceSchema != null) put("source_schema", JsonPrimitive(sourceSchema))
                             },
                     ),
+            )
+
+        // Records every ParseRequest the tool sends, answering each with an empty plan.
+        fun capturingTranslator(captured: MutableList<ParseRequest>) =
+            fakeTranslator(
+                parseImpl = { req ->
+                    captured += req
+                    ParseResponse
+                        .newBuilder()
+                        .setPlan(plan)
+                        .setContext(req.context)
+                        .build()
+                },
             )
 
         "happy path with apply_security=true: parse → validate → unparse" {
@@ -431,5 +447,54 @@ class CompileToolSpec :
             res.isError shouldBe true
             val msgs = (res.structuredContent!!["messages"] as JsonArray)
             ((msgs[0] as JsonObject)["code"] as JsonPrimitive).content shouldBe "unknown_target_dialect"
+        }
+
+        "source_schema=er reaches ParseToRelNode as ER" {
+            val captured = mutableListOf<ParseRequest>()
+            val tool = CompileTool(cfg, capturingTranslator(captured), fakeValidator { req -> validated(req) })
+            val res = runBlocking { tool.execute(compileRequest(sourceSchema = "er"), identity = null) }
+
+            res.isError shouldBe false
+            captured.size shouldBe 1
+            captured[0].sourceSchema shouldBe SchemaCode.ER
+            // The target schema is not what the argument changes.
+            captured[0].targetSchema shouldBe SchemaCode.DB
+        }
+
+        // Absent must not mean "db": without the argument the request is the one compile has
+        // always sent, so the translator still decides which catalog the source reads. A blank
+        // value is read as absent.
+        "absent or blank source_schema leaves the ParseRequest unchanged" {
+            for (sourceSchema in listOf(null, "", "  ")) {
+                val captured = mutableListOf<ParseRequest>()
+                val tool = CompileTool(cfg, capturingTranslator(captured), fakeValidator { req -> validated(req) })
+                val res = runBlocking { tool.execute(compileRequest(sourceSchema), identity = null) }
+
+                res.isError shouldBe false
+                captured.size shouldBe 1
+                captured[0] shouldBe
+                    ParseRequest
+                        .newBuilder()
+                        .setSource("SELECT * FROM Customers")
+                        .setSourceLanguage(Language.SQL)
+                        .setTargetSchema(SchemaCode.DB)
+                        // The context carries a fresh correlation id per call; it is not under test.
+                        .setContext(captured[0].context)
+                        .build()
+                captured[0].sourceSchema shouldBe SchemaCode.SCHEMA_CODE_UNSPECIFIED
+            }
+        }
+
+        "unknown source_schema returns unknown_source_schema without calling the translator" {
+            val captured = mutableListOf<ParseRequest>()
+            val tool = CompileTool(cfg, capturingTranslator(captured), fakeValidator { req -> validated(req) })
+            val res = runBlocking { tool.execute(compileRequest(sourceSchema = "physical"), identity = null) }
+
+            res.isError shouldBe true
+            ((res.structuredContent!!["ok"] as JsonPrimitive).content) shouldBe "false"
+            val msgs = (res.structuredContent!!["messages"] as JsonArray)
+            ((msgs[0] as JsonObject)["code"] as JsonPrimitive).content shouldBe "unknown_source_schema"
+            ((msgs[0] as JsonObject)["text"] as JsonPrimitive).content shouldContain "'physical'"
+            captured.size shouldBe 0
         }
     })

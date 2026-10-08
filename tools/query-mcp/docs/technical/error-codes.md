@@ -17,6 +17,7 @@ Agents must tolerate **unknown codes** in both channels — new codes land indep
 | `missing_user_identity`       | query, compile  | `security.require-identity = true` and no identity could be resolved. |
 | `unknown_source_language`     | query, compile  | `source_language` is not one of `sql / transdsl / dfdsl / rel_node`. |
 | `unknown_target_dialect`      | compile         | `target_dialect` is not one of `mssql / postgresql / mysql_mariadb`. |
+| `unknown_source_schema`       | compile         | `source_schema` is not one of `er / db / obj`. |
 | `row_limit_out_of_range`      | query           | `row_limit` is not in `[1, row-limit-max]`. |
 | `invalid_regex`               | query           | **G3** — a `hide_columns_matching` pattern failed to compile. |
 | `permission_denied`           | compile         | `apply_security=false` requested by a non-admin caller. |

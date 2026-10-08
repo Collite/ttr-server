@@ -7,6 +7,7 @@ import org.tatrman.plan.v1.PipelineContext
 import org.tatrman.translate.v1.Language
 import org.tatrman.translate.v1.ParseRequest
 import org.tatrman.plan.v1.SchemaCode
+import org.tatrman.plan.v1.parseSchemaCode
 import org.tatrman.translate.v1.UnparseRequest
 import org.tatrman.validate.v1.ValidateRequest
 import org.tatrman.validate.v1.ValidationOptions
@@ -55,7 +56,8 @@ class CompileTool(
     override val description: String =
         """Compile a query into SQL without executing. Runs Translator → optional Validator → Translator
         UnparseFromRelNode in the chosen target dialect; returns the SQL plus a structured envelope.
-        Default applies row-level security predicates; admins may bypass with apply_security=false."""
+        Default applies row-level security predicates; admins may bypass with apply_security=false.
+        Optional source_schema (er | db | obj) names the catalog the source reads, as for query."""
 
     override val inputSchema: ToolSchema =
         ToolSchema(
@@ -74,6 +76,17 @@ class CompileTool(
                         enumSchemaProp(
                             description = "Target SQL dialect.",
                             values = listOf("mssql", "postgresql", "mysql_mariadb"),
+                        ),
+                    )
+                    put(
+                        "source_schema",
+                        enumSchemaProp(
+                            description =
+                                "Catalog the source's identifiers resolve against: er (entity model) | " +
+                                    "db (physical tables) | obj. Optional; when absent the translator detects " +
+                                    "it from the source. Pass the value given to `query` (which treats an " +
+                                    "absent value as db for sql) to compile the query `query` runs.",
+                            values = listOf("er", "db", "obj"),
                         ),
                     )
                     put(
@@ -138,6 +151,20 @@ class CompileTool(
                     "unknown_target_dialect",
                     "Unknown target_dialect '$targetDialectStr'. Use mssql | postgresql | mysql_mariadb.",
                 )
+        // Parsed with `parseSchemaCode`, as `query` parses it. Absent (or blank), the ParseRequest
+        // carries no source schema, exactly as before this argument existed, and the translator
+        // decides which catalog the source reads. An explicit value is passed through unchanged;
+        // an unrecognised one is rejected rather than ignored.
+        val sourceSchemaStr = args.stringFieldOrNull("source_schema")?.takeIf { it.isNotBlank() }
+        val sourceSchema =
+            sourceSchemaStr?.let {
+                parseSchemaCode(it)
+                    ?: return buildErrorResult(
+                        name,
+                        "unknown_source_schema",
+                        "Unknown source_schema '$it'. Use er | db | obj.",
+                    )
+            }
         val applySecurity = args.boolFieldOr("apply_security", true)
         if (!applySecurity && identity?.isAdmin != true) {
             return buildErrorResult(
@@ -168,6 +195,7 @@ class CompileTool(
                         .setSourceLanguage(sourceLanguage)
                         .setTargetSchema(SchemaCode.DB)
                         .setContext(context0)
+                        .also { b -> sourceSchema?.let { b.setSourceSchema(it) } }
                         .build(),
                 )
             } catch (e: StatusRuntimeException) {
