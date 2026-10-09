@@ -87,6 +87,11 @@ object PolicyToExpression {
                 .setResultType("bool")
                 .build()
         }
+        // One value: `col = v`, the same rows as `col IN (v)`. Calcite has no plain-call IN — `RexCall`
+        // asserts `kind != IN` unless the call is a subquery — so a wire `in` is decoded on an operator
+        // its own invariant rejects; with assertions off it builds, with them on it throws. A single-
+        // value membership (every DC scope on hartland, LR C-5·4) never needs to go there.
+        if (values.size == 1) return eq(left, values.single())
         val fn =
             FunctionCall
                 .newBuilder()

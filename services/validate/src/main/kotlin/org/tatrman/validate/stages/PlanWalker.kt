@@ -8,6 +8,7 @@ import org.tatrman.plan.v1.FilterNode
 import org.tatrman.plan.v1.FunctionCall
 import org.tatrman.plan.v1.NamedExpression
 import org.tatrman.plan.v1.PlanNode
+import org.tatrman.plan.v1.ProjectNode
 import org.tatrman.plan.v1.QualifiedName
 import org.tatrman.plan.v1.schemaCodeToToken
 
@@ -298,7 +299,52 @@ internal object PlanWalker {
     private fun <T> List<T>.sameAs(other: List<T>): Boolean =
         size == other.size && indices.all { this[it] === other[it] }
 
+    /**
+     * [plan] (a scan) under [predicate]. A policy names its table's PHYSICAL columns, and the filter
+     * goes where those columns are visible.
+     *
+     * A scan that renames its columns is the exception: an ENTITY query's scan carries the ER attribute
+     * names as `output_columns` aliases (MAP_TO_PHYSICAL), and the translator projects them at the scan's
+     * boundary, so above the scan `cs_warehouse_sk` no longer exists — only `warehouse` does. A filter
+     * placed there could not be unparsed (`field [cs_warehouse_sk] not found`), and every query a
+     * row-scoped caller asked through the entity layer failed (LR P3b S5, found live). For such a scan
+     * the filter goes UNDER the renaming: the bare scan, the filter on its physical columns, and a
+     * projection that restores exactly the aliased columns, in their order — what the plan above read
+     * before, unchanged. Hints stay on the scan, where the translator expects them.
+     */
     private fun wrapInFilter(
+        plan: PlanNode,
+        predicate: Expression,
+    ): PlanNode {
+        val renamed =
+            plan.nodeCase == PlanNode.NodeCase.TABLE_SCAN &&
+                plan.tableScan.outputColumnsList.any { it.alias.isNotEmpty() && it.alias != it.name }
+        if (!renamed) return filterOver(plan, predicate)
+        val scan = plan.tableScan
+        val bare = PlanNode.newBuilder().setTableScan(scan.toBuilder().clearOutputColumns()).build()
+        val renaming =
+            ProjectNode
+                .newBuilder()
+                .setInput(filterOver(bare, predicate))
+                .addAllExpressions(
+                    scan.outputColumnsList.map { column ->
+                        NamedExpression
+                            .newBuilder()
+                            .setExpression(
+                                Expression.newBuilder().setColumnRef(
+                                    ColumnRef
+                                        .newBuilder()
+                                        .setName(column.name)
+                                        .setType(column.type),
+                                ),
+                            ).setAlias(column.alias.ifEmpty { column.name })
+                            .build()
+                    },
+                )
+        return PlanNode.newBuilder().setProject(renaming).build()
+    }
+
+    private fun filterOver(
         plan: PlanNode,
         predicate: Expression,
     ): PlanNode =
