@@ -11,7 +11,8 @@
 # build outside the monorepo. That is deliberate: the studio proposes what the
 # compiler will accept, which means running the compiler's own code.
 
-FROM python:3.13-slim-bookworm AS base
+# Base images are ghcr.io/collite copies of the Docker official images (.github/workflows/mirror-base-images.yml).
+FROM ghcr.io/collite/python:3.13-slim-bookworm AS base
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -69,7 +70,7 @@ RUN python /build/shared/libs/python/ttr-nlp/scripts/gen_proto.py
 #
 # `npm ci` needs the lockfile and nothing else from the repo, so this layer is
 # cached across every backend change.
-FROM node:24-slim AS frontend
+FROM ghcr.io/collite/node:24-slim AS frontend
 
 WORKDIR /fe
 COPY services/morph-studio/frontend/package.json services/morph-studio/frontend/package-lock.json ./

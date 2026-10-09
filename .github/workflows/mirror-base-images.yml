@@ -1,20 +1,21 @@
 name: Mirror base images (GHCR)
 
-# The JVM services build FROM `ghcr.io/collite/eclipse-temurin:21-jre` (every Jib module, here and in
-# kantheon), a copy of the Docker official image kept in our own registry.
+# Every image built here and in kantheon starts FROM a copy of a Docker official image kept in our own
+# registry: the JVM services FROM `ghcr.io/collite/eclipse-temurin:21-jre` (every Jib module), the Python,
+# Node and nginx images FROM `ghcr.io/collite/{python,debian,node,nginx}:<tag>` (every Dockerfile).
 #
 # Why: Docker Hub rate-limits anonymous pulls per IP (100/h), and GitHub-hosted runners share their IPs
 # with everyone else's. Three releases cut together on 2026-10-09 all failed at Jib's base-image pull with
 # `TOOMANYREQUESTS: You have reached your unauthenticated pull rate limit`. The release lanes already log
 # in to GHCR, so a base image there costs no new secret.
 #
-# What: each line of MIRRORS copies <source> to <target>, keeping only linux/amd64 + linux/arm64 (the
-# platforms the Jib builds ask for) — the upstream index also lists Windows images, whose base layers
+# What: each line of MIRRORS copies <source> to <target>, keeping only linux/amd64 + linux/arm64 (every
+# platform our builds ask for) — the upstream index also lists Windows images, whose base layers
 # need not be copyable. The source is ECR Public's mirror of the Docker official images, which serves the
 # byte-identical index (same digest as Docker Hub's) without Docker Hub's anonymous limit.
 #
-# When: on a change to this file (a new line takes effect on merge), weekly (so the moving `21-jre` tag
-# picks up JRE and OS security patches the way the Docker Hub tag did), and by hand.
+# When: on a change to this file (a new line takes effect on merge), weekly (so the moving tags pick up
+# runtime and OS security patches the way the Docker Hub tags did), and by hand.
 #
 # ⛑ Pushed with this repo's GITHUB_TOKEN on purpose: a package CREATED by a run in this repository is
 # linked to it, so this workflow can always update it. A package first pushed any other way (a laptop
@@ -40,8 +41,18 @@ concurrency:
   cancel-in-progress: false
 
 env:
+  # Every Docker Hub base the two repos build from — the Jib base, then the Dockerfile FROMs. One copy
+  # serves both: ttr-server's Dockerfiles and kantheon's (metis, investment-door, the nginx frontends).
   MIRRORS: |
     public.ecr.aws/docker/library/eclipse-temurin:21-jre ghcr.io/collite/eclipse-temurin:21-jre
+    public.ecr.aws/docker/library/python:3.13-slim-bookworm ghcr.io/collite/python:3.13-slim-bookworm
+    public.ecr.aws/docker/library/python:3.13-slim ghcr.io/collite/python:3.13-slim
+    public.ecr.aws/docker/library/python:3.11-slim-bookworm ghcr.io/collite/python:3.11-slim-bookworm
+    public.ecr.aws/docker/library/debian:bookworm-slim ghcr.io/collite/debian:bookworm-slim
+    public.ecr.aws/docker/library/node:24-slim ghcr.io/collite/node:24-slim
+    public.ecr.aws/docker/library/node:24-trixie-slim ghcr.io/collite/node:24-trixie-slim
+    public.ecr.aws/docker/library/node:22-alpine ghcr.io/collite/node:22-alpine
+    public.ecr.aws/docker/library/nginx:alpine ghcr.io/collite/nginx:alpine
 
 jobs:
   mirror:

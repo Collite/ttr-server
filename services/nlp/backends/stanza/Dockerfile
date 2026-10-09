@@ -8,7 +8,8 @@
 #
 #   docker build -t nlp-stanza:dev services/nlp/backends/stanza
 
-FROM python:3.13-slim-bookworm AS base
+# Base images are ghcr.io/collite copies of the Docker official images (.github/workflows/mirror-base-images.yml).
+FROM ghcr.io/collite/python:3.13-slim-bookworm AS base
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1
 RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
 

@@ -15,7 +15,8 @@
 #   docker run --rm -v "$PWD:/work" nlp-morph-tools:dev compile /work/*.morph.yaml \
 #       -o /work/dist/cs.morph.snap --snapshot-version 0.1.0
 
-FROM python:3.13-slim-bookworm AS build
+# Base images are ghcr.io/collite copies of the Docker official images (.github/workflows/mirror-base-images.yml).
+FROM ghcr.io/collite/python:3.13-slim-bookworm AS build
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -30,7 +31,7 @@ COPY shared/libs/python/ttr-morph /build/shared/libs/python/ttr-morph
 
 RUN pip install --upgrade pip && pip install uv && uv sync --no-dev
 
-FROM python:3.13-slim-bookworm AS runtime
+FROM ghcr.io/collite/python:3.13-slim-bookworm AS runtime
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1

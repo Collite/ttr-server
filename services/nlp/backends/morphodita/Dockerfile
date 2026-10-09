@@ -16,7 +16,8 @@
 #     -t nlp-morphodita:dev services/nlp/backends/morphodita
 
 # ===== build stage: compile morphodita_server =====
-FROM debian:bookworm-slim AS build
+# Base images are ghcr.io/collite copies of the Docker official images (.github/workflows/mirror-base-images.yml).
+FROM ghcr.io/collite/debian:bookworm-slim AS build
 
 ARG MORPHODITA_VERSION=v1.11.3
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -31,7 +32,7 @@ RUN git clone --depth 1 --branch ${MORPHODITA_VERSION} https://github.com/ufal/m
 RUN cd src && make -j"$(nproc)" server
 
 # ===== model stage: fetch + verify the pinned tagger =====
-FROM debian:bookworm-slim AS model
+FROM ghcr.io/collite/debian:bookworm-slim AS model
 
 ARG MODEL_ID=czech-morfflex2.0-pdtc1.0-220710
 # LINDAT hdl:11234/1-4794. NOTE: LINDAT is now a DSpace-7 SPA — the legacy
@@ -77,7 +78,7 @@ RUN test "${MODEL_URL}" != "REPLACE_WITH_DSPACE_BITSTREAM_URL" \
     && echo "baked $(basename "${TAGGER}") ($(stat -c%s "/opt/model/${MODEL_ID}.tagger") bytes)"
 
 # ===== runtime =====
-FROM debian:bookworm-slim AS runtime
+FROM ghcr.io/collite/debian:bookworm-slim AS runtime
 
 RUN apt-get update && apt-get install -y --no-install-recommends libgomp1 curl ca-certificates \
     && rm -rf /var/lib/apt/lists/* \

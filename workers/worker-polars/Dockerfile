@@ -1,4 +1,5 @@
-FROM python:3.13-slim
+# Base images are ghcr.io/collite copies of the Docker official images (.github/workflows/mirror-base-images.yml).
+FROM ghcr.io/collite/python:3.13-slim
 
 ENV UV_PROJECT_ENVIRONMENT=/app/.venv
 ENV PATH=/app/.venv/bin:$PATH

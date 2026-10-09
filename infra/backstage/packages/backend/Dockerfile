@@ -12,7 +12,8 @@
 # Alternatively, there is also a multi-stage Dockerfile documented here:
 # https://backstage.io/docs/deployment/docker#multi-stage-build
 
-FROM node:24-trixie-slim
+# Base images are ghcr.io/collite copies of the Docker official images (.github/workflows/mirror-base-images.yml).
+FROM ghcr.io/collite/node:24-trixie-slim
 
 # Set Python interpreter for `node-gyp` to use
 ENV PYTHON=/usr/bin/python3

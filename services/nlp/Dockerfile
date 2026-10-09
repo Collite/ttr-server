@@ -12,7 +12,8 @@
 # Build from the repo root (uv path-deps + the proto tree resolve there):
 #   docker build -t nlp:dev -f services/nlp/Dockerfile .
 
-FROM python:3.13-slim-bookworm AS base
+# Base images are ghcr.io/collite copies of the Docker official images (.github/workflows/mirror-base-images.yml).
+FROM ghcr.io/collite/python:3.13-slim-bookworm AS base
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
