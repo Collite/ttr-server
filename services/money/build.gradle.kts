@@ -28,7 +28,7 @@ val isCi = System.getenv("CI") != null
 
 jib {
     from {
-        image = "eclipse-temurin:21-jre"
+        image = "ghcr.io/collite/eclipse-temurin:21-jre" // mirror of the Docker official image (mirror-base-images.yml)
         platforms {
             if (isCi) {
                 platform {

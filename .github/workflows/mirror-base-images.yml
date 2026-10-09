@@ -1,0 +1,91 @@
+name: Mirror base images (GHCR)
+
+# The JVM services build FROM `ghcr.io/collite/eclipse-temurin:21-jre` (every Jib module, here and in
+# kantheon), a copy of the Docker official image kept in our own registry.
+#
+# Why: Docker Hub rate-limits anonymous pulls per IP (100/h), and GitHub-hosted runners share their IPs
+# with everyone else's. Three releases cut together on 2026-10-09 all failed at Jib's base-image pull with
+# `TOOMANYREQUESTS: You have reached your unauthenticated pull rate limit`. The release lanes already log
+# in to GHCR, so a base image there costs no new secret.
+#
+# What: each line of MIRRORS copies <source> to <target>, keeping only linux/amd64 + linux/arm64 (the
+# platforms the Jib builds ask for) — the upstream index also lists Windows images, whose base layers
+# need not be copyable. The source is ECR Public's mirror of the Docker official images, which serves the
+# byte-identical index (same digest as Docker Hub's) without Docker Hub's anonymous limit.
+#
+# When: on a change to this file (a new line takes effect on merge), weekly (so the moving `21-jre` tag
+# picks up JRE and OS security patches the way the Docker Hub tag did), and by hand.
+#
+# ⛑ Pushed with this repo's GITHUB_TOKEN on purpose: a package CREATED by a run in this repository is
+# linked to it, so this workflow can always update it. A package first pushed any other way (a laptop
+# copy, a PAT) is linked to no repository, and GITHUB_TOKEN is then denied on it for good. The release
+# lanes READ it through their own GHCR login (a member's PAT), so its visibility does not matter to them.
+#
+# Adding an image: append `<source> <target>` to MIRRORS, then point the consumers at the target.
+
+on:
+  push:
+    branches: [master]
+    paths: ['.github/workflows/mirror-base-images.yml']
+  schedule:
+    - cron: '17 3 * * 1' # Mondays 03:17 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: mirror-base-images
+  cancel-in-progress: false
+
+env:
+  MIRRORS: |
+    public.ecr.aws/docker/library/eclipse-temurin:21-jre ghcr.io/collite/eclipse-temurin:21-jre
+
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Copy
+        run: |
+          set -euo pipefail
+          while read -r src dst; do
+            [ -z "${src}" ] && continue
+            echo "::group::${src} -> ${dst}"
+            docker buildx imagetools create \
+              --platform linux/amd64 --platform linux/arm64 \
+              --annotation "index:org.opencontainers.image.source=https://github.com/${GITHUB_REPOSITORY}" \
+              --annotation "index:org.opencontainers.image.description=Mirror of ${src} (linux/amd64, linux/arm64)" \
+              --tag "${dst}" "${src}"
+            echo "::endgroup::"
+          done <<< "${MIRRORS}"
+
+      # The copy is only useful if the platform images are the SAME images: compare each platform's
+      # manifest digest in the target with the source's. A mismatch fails the run.
+      - name: Verify
+        run: |
+          set -euo pipefail
+          digests() {
+            docker buildx imagetools inspect --raw "$1" \
+              | jq -r '.manifests[] | select(.platform.os == "linux" and (.platform.architecture == "amd64" or .platform.architecture == "arm64")) | "\(.platform.architecture) \(.digest)"' \
+              | sort
+          }
+          while read -r src dst; do
+            [ -z "${src}" ] && continue
+            if diff <(digests "${src}") <(digests "${dst}"); then
+              echo "✓ ${dst}: $(digests "${dst}" | tr '\n' ' ')"
+            else
+              echo "✗ ${dst} does not carry the platform images of ${src}" >&2
+              exit 1
+            fi
+          done <<< "${MIRRORS}"
