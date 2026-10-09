@@ -25,10 +25,11 @@ gateway's chain wall-clock budget: under load the caller got `502 upstream timeo
 finished.
 
 - **`org.tatrman:llm-client`:** `LlmGatewayEndpoint` gains `maxTokens` (default `DEFAULT_MAX_TOKENS` = 2000, as before)
-  and `reasoningEffort` (default null). `complete` / `completeWithMeta` default to the endpoint's values and still accept a
-  per-call override. `reasoning_effort` goes on the wire only when set (blank counts as unset); there is never an explicit
-  `null`. `LlmGatewayPromptExecutor` sends the Koog prompt's `params.maxTokens` when it has one, the endpoint's otherwise.
-  Additive: existing callers see no change. New: `LlmGatewayClient.defaultMaxTokens`.
+  and `reasoningEffort` (default null). On `complete` / `completeWithMeta` both parameters are now nullable: null means
+  the endpoint's value, and a per-call value still overrides it. They are resolved in the method body, so a consumer's
+  mock of the client never evaluates the endpoint. `reasoning_effort` goes on the wire only when set (blank counts as
+  unset); there is never an explicit `null`. `LlmGatewayPromptExecutor` sends the Koog prompt's `params.maxTokens` when
+  it has one, the endpoint's otherwise. Source-compatible: existing callers see no change.
 - **llm-gateway:** the chain wall-clock budget (`retry.wallClockBudgetMs`, also the upstream request timeout) can be set
   with `LLM_GATEWAY_RETRY_WALL_CLOCK_BUDGET_MS`. Default unchanged at 15 000.
 - **llm-gateway:** `reasoning_effort` is dropped for a non-reasoning model (it would 400 there), the mirror of the existing

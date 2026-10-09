@@ -89,16 +89,18 @@ class LlmGatewayClient(
             }
         }
 
-    /** The completion budget a call gets when it names none ([LlmGatewayEndpoint.maxTokens]). */
-    val defaultMaxTokens: Int get() = endpoint.maxTokens
-
+    /**
+     * [maxTokens] / [reasoningEffort] null = the [LlmGatewayEndpoint]'s. They are resolved in the body, never
+     * in a default-argument expression: a consumer's test double of this class has no endpoint, and a
+     * default that read it would fail every call made through the mock.
+     */
     suspend fun complete(
         prompt: String,
         systemPrompt: String = "",
         model: String = "sonnet",
         temperature: Double = 0.0,
-        maxTokens: Int = endpoint.maxTokens,
-        reasoningEffort: String? = endpoint.reasoningEffort,
+        maxTokens: Int? = null,
+        reasoningEffort: String? = null,
     ): Result<String> =
         completeWithMeta(prompt, systemPrompt, model, temperature, maxTokens, reasoningEffort).map { it.content }
 
@@ -106,14 +108,17 @@ class LlmGatewayClient(
      * [complete], plus what the gateway said about the call — the prompt-log row id, the served
      * route, usage and cost (see [LlmCompletion] for where each field is read). Same request, same
      * failure contract: a [Result.failure] carrying [LlmGatewayException], never a throw.
+     *
+     * [maxTokens] / [reasoningEffort] null = the endpoint's. A blank [reasoningEffort] sends none even
+     * when the endpoint names one.
      */
     suspend fun completeWithMeta(
         prompt: String,
         systemPrompt: String = "",
         model: String = "sonnet",
         temperature: Double = 0.0,
-        maxTokens: Int = endpoint.maxTokens,
-        reasoningEffort: String? = endpoint.reasoningEffort,
+        maxTokens: Int? = null,
+        reasoningEffort: String? = null,
     ): Result<LlmCompletion> =
         try {
             val request =
@@ -127,8 +132,8 @@ class LlmGatewayClient(
                             add(ChatMessage(role = "user", content = prompt))
                         },
                     temperature = temperature,
-                    maxTokens = maxTokens,
-                    reasoningEffort = reasoningEffort?.trim()?.takeIf { it.isNotEmpty() },
+                    maxTokens = maxTokens ?: endpoint.maxTokens,
+                    reasoningEffort = (reasoningEffort ?: endpoint.reasoningEffort)?.trim()?.takeIf { it.isNotEmpty() },
                 )
             val attribution =
                 currentCoroutineContext()[LlmCallContext]?.headers { rejected ->

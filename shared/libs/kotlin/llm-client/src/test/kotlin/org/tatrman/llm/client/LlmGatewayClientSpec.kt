@@ -402,6 +402,37 @@ class LlmGatewayClientSpec :
             )
         }
 
+        "a consumer's mock of the client takes calls that use the defaults (no endpoint behind it)" {
+            // Consumers stub the client in their own tests. A default argument that read the endpoint would
+            // be evaluated on the mock, which has none, and fail every call made through it.
+            val mock = io.mockk.mockk<LlmGatewayClient>()
+            io.mockk.coEvery { mock.completeWithMeta(any(), any(), any(), any(), any(), any()) } returns
+                Result.success(
+                    LlmCompletion(
+                        content = "ok",
+                        callRef = null,
+                        requestedModel = "mini",
+                        servedModel = null,
+                        servedProvider = null,
+                        fallbackFrom = null,
+                        cached = false,
+                        tokensPrompt = null,
+                        tokensCompletion = null,
+                        costUsd = null,
+                        durationMs = null,
+                    ),
+                )
+            mock.completeWithMeta("hi").getOrThrow().content shouldBe "ok"
+            LlmGatewayPromptExecutor(mock)
+                .execute(
+                    prompt("p") { user("hi") },
+                    LLModel(provider = LLMProvider.Anthropic, id = "claude-haiku"),
+                    emptyList(),
+                ).single()
+                .shouldBeInstanceOf<Message.Assistant>()
+                .content shouldBe "ok"
+        }
+
         // ── the Koog bridge's side channel ─────────────────────────────────────────────────────
 
         "LlmGatewayPromptExecutor hands every completion to onCompletion, in the caller's coroutine" {
