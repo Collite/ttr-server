@@ -246,7 +246,13 @@ jobs:
           # make sure you have permissions" and Gradle drops the cause without it, so a real
           # 403 arrives indistinguishable from a transient. The push credentials are the ones
           # the GHCR login step explains at length above.
+          #
+          # The base image is ours too — `ghcr.io/collite/eclipse-temurin:21-jre`, kept by
+          # mirror-base-images.yml — because Docker Hub's anonymous pull limit failed three releases
+          # at once (2026-10-09). The same credentials read it; stated, not left to Jib's discovery.
           ./gradlew "${GRADLE_MODULE}:jib" --no-configuration-cache --stacktrace \
+            -Djib.from.auth.username="${{ secrets.TATRMAN_PKG_USER != '' && secrets.TATRMAN_PKG_USER || github.actor }}" \
+            -Djib.from.auth.password="${{ secrets.TATRMAN_PKG_TOKEN != '' && secrets.TATRMAN_PKG_TOKEN || secrets.GITHUB_TOKEN }}" \
             -Djib.to.image="${REGISTRY}/${IMAGE_ORG}/${{ matrix.name }}:${{ matrix.version }}" \
             -Djib.to.auth.username="${{ secrets.TATRMAN_PKG_USER != '' && secrets.TATRMAN_PKG_USER || github.actor }}" \
             -Djib.to.auth.password="${{ secrets.TATRMAN_PKG_TOKEN != '' && secrets.TATRMAN_PKG_TOKEN || secrets.GITHUB_TOKEN }}"
