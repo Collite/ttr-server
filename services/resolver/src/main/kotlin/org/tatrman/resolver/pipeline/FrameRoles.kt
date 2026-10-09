@@ -2,6 +2,7 @@
 package org.tatrman.resolver.pipeline
 
 import org.tatrman.nlp.v1.AnalyzeResponse
+import org.tatrman.nlp.v1.Token
 import org.tatrman.resolver.v1.FrameRole
 import org.tatrman.resolver.v1.TargetClass
 
@@ -23,6 +24,7 @@ import org.tatrman.resolver.v1.TargetClass
  * R1  target_class == MEMBER                        -> +FILTER    # a member IS a restriction
  * R2  object_kind  == measure                       -> +MEASURE   # a measure IS the measure
  * R3  prep in GROUPING_PREPS and not capable(m)     -> +GROUPING
+ * R3' prep in DISTRIBUTIVE_PREPS, a model object, not capable  -> A/B (below)
  * R4  prep in FILTER_PREPS   and not capable(m)     -> +FILTER
  * R5  no prep, deprel == compound, not capable      -> +FILTER     # "WEB revenue"
  * R6  no prep, deprel starts "obl", not capable     -> +FILTER     # "minulý TÝDEN"
@@ -58,6 +60,9 @@ import org.tatrman.resolver.v1.TargetClass
 object FrameRoles {
     private val SUBJECT_DEPRELS = setOf("nsubj", "nsubj:pass")
 
+    /** R3' — the classes a distributive preposition never regroups: a kernel's trigger, a member value. */
+    private val NOT_DISTRIBUTIVE = setOf(TargetClass.TARGET_CLASS_GROUNDING_TRIGGER, TargetClass.TARGET_CLASS_MEMBER)
+
     /**
      * One mention as the rules see it: where it sits in the parse, and the two model facts
      * (what class it bound, what kind of object that is). Nothing else about the model is
@@ -70,6 +75,12 @@ object FrameRoles {
         val targetClass: TargetClass,
         val objectKind: String,
         val anchorsValue: Boolean,
+        /**
+         * cs LR S5 — the mention's exclusive end offset, so R3' can tell whether its preposition
+         * lies INSIDE the declared phrase. Defaulted and last: `-1` reads as "no extent", and R3'
+         * signal A then stays silent.
+         */
+        val charEnd: Int = -1,
     )
 
     fun derive(
@@ -82,6 +93,7 @@ object FrameRoles {
         val roles = mentions.associate { it.id to sortedSetOf<FrameRole>(compareBy { role -> role.number }) }
         val grouping = preps.grouping(lang)
         val filter = preps.filter(lang)
+        val distributive = preps.distributive(lang)
         val byHead = mentions.filter { it.headToken >= 0 }.associateBy { it.headToken }
 
         // -- R0 operators carry no frame role, ever (RV-35) --------------------
@@ -108,6 +120,11 @@ object FrameRoles {
                     // rows/count/value reading to the operator layer.
                     if (!capable) roles.getValue(m.id) += FrameRole.FRAME_ROLE_GROUPING
                 }
+                // R3' — `po` is "per month" or "after the year"; see [distributiveRoles]. Not for a
+                // grounding trigger („po roce 2020“ binds the time kernel) nor a member (R1 already
+                // made it a restriction): those keep R4's FILTER, exactly as before.
+                prep != null && prep in distributive && !capable && m.targetClass !in NOT_DISTRIBUTIVE ->
+                    roles.getValue(m.id) += distributiveRoles(m, parse)
                 prep != null && prep in filter -> {
                     if (!capable) roles.getValue(m.id) += FrameRole.FRAME_ROLE_FILTER
                 }
@@ -228,14 +245,58 @@ object FrameRoles {
     private fun measureCapable(mention: Input): Boolean =
         isMeasure(mention) || mention.objectKind.equals("entity_with_measures", ignoreCase = true)
 
+    /**
+     * **R3' — a distributive preposition (cs `po`), decided by two independent signals.**
+     *
+     * „Tržby z tržiště po měsících“ is by month; „tržby po roce 2020“ is after 2020. The same
+     * preposition, so neither table can hold it, and no one signal is reliable on its own:
+     *
+     *  - **A — the declaration.** The estate wrote the preposition into the phrase (`po měsících`
+     *    → the month attribute) and nothing hangs a value on it: the estate named a breakdown.
+     *    Says GROUPING, or nothing. Needs no morphology, so it holds for an unlemmatised
+     *    `po mesicich` too.
+     *  - **B — the grammar.** The governed noun's `Number`: plural reads per-X (GROUPING),
+     *    singular reads after-X (FILTER). Silent when the tagger gives no number — an unknown
+     *    word, a sentence without diacritics.
+     *
+     * Agreement, or one voice, decides. **Disagreement is not settled here**: the mention carries
+     * both GROUPING and FILTER, which no other rule produces, and a consumer reads that pair as
+     * "undecided" and hands the sentence to a reader that can weigh it (golem: the LLM lane). Both
+     * silent keeps R4's FILTER, so a mention neither signal speaks for reads exactly as before.
+     */
+    private fun distributiveRoles(
+        m: Input,
+        parse: AnalyzeResponse,
+    ): Set<FrameRole> {
+        val tokens = parse.tokensList
+        val case = caseTokenOf(parse, m.headToken)
+        val declared =
+            case != null && m.charEnd > m.charStart && case.charStart >= m.charStart && case.charEnd <= m.charEnd
+        val a = if (declared && !m.anchorsValue) FrameRole.FRAME_ROLE_GROUPING else null
+        val b =
+            when (tokens[m.headToken].featsMap["Number"]) {
+                "Plur" -> FrameRole.FRAME_ROLE_GROUPING
+                "Sing" -> FrameRole.FRAME_ROLE_FILTER
+                else -> null
+            }
+        return when {
+            a == null && b == null -> setOf(FrameRole.FRAME_ROLE_FILTER)
+            a == null || b == null || a == b -> setOfNotNull(a ?: b)
+            else -> setOf(FrameRole.FRAME_ROLE_GROUPING, FrameRole.FRAME_ROLE_FILTER)
+        }
+    }
+
+    /** The adposition attached to [headToken] by a `case` relation, if any. */
+    private fun caseTokenOf(
+        parse: AnalyzeResponse,
+        headToken: Int,
+    ): Token? = parse.tokensList.firstOrNull { headIndexOf(it.depHead) == headToken && it.depRelation == "case" }
+
     /** The lemma of the adposition attached to [headToken] by a `case` relation, folded low. */
     private fun prepositionOf(
         parse: AnalyzeResponse,
         headToken: Int,
-    ): String? =
-        parse.tokensList
-            .firstOrNull { headIndexOf(it.depHead) == headToken && it.depRelation == "case" }
-            ?.let { (it.lemma.ifBlank { it.text }).lowercase() }
+    ): String? = caseTokenOf(parse, headToken)?.let { (it.lemma.ifBlank { it.text }).lowercase() }
 
     /** Depth of a token in the dep tree; cycle-safe, because a bad parse must not hang a resolve. */
     private fun depth(

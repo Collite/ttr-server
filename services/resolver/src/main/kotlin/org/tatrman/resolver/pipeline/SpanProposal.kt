@@ -231,6 +231,21 @@ object SpanProposal {
 
         val folded = tokens.map { fold(it.lemma.ifBlank { it.text }) }
 
+        // ✅ A declared word matches the token's LEMMA or its SURFACE (cs LR S5). The index used to
+        // read lemmas only, and that made every inflected declared phrase unreachable on a
+        // lemmatising parser: the estate declares `po měsících` (by month), MorphoDiTa reads
+        // `po měsíc`, and the phrase never formed. The bare `měsících` then bound the stdlib time
+        // trigger, and „Tržby z tržiště v roce 2025 po měsících“ came back as one total with no gap.
+        // (`tržby z tržiště` reached the lattice only because the estate ALSO declared the lemma
+        // form `tržba z tržiště`.) A word the estate wrote as the user writes it is a declaration
+        // too — the third way a correctly-declared term could not reach the lattice.
+        val surfaces = tokens.map { fold(it.text) }
+
+        fun wordAt(
+            i: Int,
+            word: String,
+        ): Boolean = folded.getOrNull(i) == word || surfaces.getOrNull(i) == word
+
         // ttr-server#58 — a confirmed operator word, as the one-word anchor phrase a registry that
         // declared it would have produced. Consulted only where no declared anchor matches.
         val spoken =
@@ -240,10 +255,14 @@ object SpanProposal {
 
         /** The longest declared phrase starting at [from], per owning entity type. */
         fun matchesAt(from: Int): List<AnchorPhrase> {
-            val byFirst = anchorPhrases[folded.getOrNull(from) ?: return emptyList()] ?: return spoken[from].orEmpty()
+            val lemma = folded.getOrNull(from) ?: return emptyList()
+            val byFirst =
+                (anchorPhrases[lemma].orEmpty() + anchorPhrases[surfaces[from]].orEmpty())
+                    .distinct()
+                    .ifEmpty { return spoken[from].orEmpty() }
             val hits =
                 byFirst.filter { phrase ->
-                    phrase.words.withIndex().all { (i, w) -> folded.getOrNull(from + i) == w }
+                    phrase.words.withIndex().all { (i, w) -> wordAt(from + i, w) }
                 }
             if (hits.isEmpty()) return spoken[from].orEmpty()
             // Longest wins: an estate that declared both `by month` and `by month end` meant the

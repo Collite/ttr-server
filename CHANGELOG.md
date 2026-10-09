@@ -16,6 +16,25 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+### resolver — Czech grain phrases: a declared phrase matches as written, and `po` is decided by two signals
+
+On a Czech estate, *"Tržby z tržiště v roce 2025 po měsících"* (by month) answered one total, and
+the same question without diacritics failed downstream with a value-less month filter.
+
+- **The anchor index matches a declared word by the token's surface as well as its lemma.** The
+  estate declared `po měsících`; MorphoDiTa lemmatises it to `po měsíc`, so the phrase never formed
+  and the bare `měsících` bound the time trigger. Lemma-form declarations match as before.
+- **R3', the distributive preposition** (`frame-roles.conf` `distributive-preps`, cs: `po`). Czech
+  `po` reads "per X" (GROUPING) or "after X" (FILTER). Two signals decide, for a mention that is
+  neither a grounding trigger nor a member: A, the estate wrote the preposition into the declared
+  phrase and no value hangs on it; B, the noun's `Number` (plural = GROUPING, singular = FILTER).
+  Agreement or one voice decides; both silent keeps FILTER. When they **disagree**, the mention
+  carries **both GROUPING and FILTER**, a pair no other rule produces, meaning "undecided": a
+  consumer should route the question to a reader that can weigh the sentence.
+- `FrameRoles.Input` gains `charEnd` (defaulted). A config without `distributive-preps` never fires
+  R3'.
+- No wire change.
+
 ### resolver — a place's member reading takes the words the parse adds to its name (✅UD-9, #118)
 
 When the NER typed only part of a name as the place, the member reading covered only that part.
