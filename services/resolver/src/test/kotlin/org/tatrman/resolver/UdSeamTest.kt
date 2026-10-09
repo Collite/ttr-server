@@ -777,4 +777,68 @@ class UdSeamTest :
                 ),
             ).shouldBeEmpty()
         }
+
+        // ── ✅UD-9 — the NER names the city, the parse names the place (`Praha DC`) ──────────────────
+
+        // The live cs shape of `… pro Praha DC` (NameTag `cnec:gu` on `Praha` alone, `DC` its `nmod`),
+        // spelled with a DC this registry holds.
+        fun dcTail(vararg tail: Token): Array<Token> =
+            arrayOf(
+                MhMembers.tok("Tržby", 0, 5, "tržba", "NOUN", 0, "root"),
+                MhMembers.tok("z", 6, 7, "z", "ADP", 3, "case"),
+                MhMembers.tok("tržiště", 8, 15, "tržiště", "NOUN", 1, "nmod"),
+                MhMembers.tok("pro", 16, 19, "pro", "ADP", 5, "case"),
+                MhMembers.tok("Dallas", 20, 26, "Dallas", "PROPN", 1, "dep"),
+                *tail,
+            )
+
+        val cityOnly = listOf(MhMembers.ner("Dallas", 20, 26, "LOCATION", "cnec:gu"))
+
+        "✅UD-9 `Tržby z tržiště pro Dallas DC`, NER on the city alone — the member takes the whole name" {
+            // Before ✅UD-9 the reading was `Dallas`: it bound, and `DC` was left an unbound mention
+            // (G1) that the turn then asked about — „Nerozumím výrazu „DC““.
+            val r =
+                MhMembers.resolve(
+                    "Tržby z tržiště pro Dallas DC",
+                    dcTail(MhMembers.tok("DC", 27, 29, "DC", "NOUN", 5, "nmod")),
+                    lang = "cs",
+                    entities = cityOnly,
+                    registry = MhMembers.UD_REGISTRY,
+                )
+
+            r.boundTo("Dallas DC", "${MhMembers.WAREHOUSE_NAME}#Dallas DC")
+            r.resolutionState.mentionsList
+                .filter { it.span.text == "DC" }
+                .shouldBeEmpty()
+            r.hasAwaiting() shouldBe false
+        }
+
+        "✅UD-9 — the tail stops at the first word that does not continue the name" {
+            fun dualText(tokens: Array<Token>): List<String> =
+                SpanProposal
+                    .proposeDomainSpans(
+                        MhMembers
+                            .parse("", tokens, "cs")
+                            .toBuilder()
+                            .addAllEntities(cityOnly)
+                            .build(),
+                        MhMembers.udEntityTypes(),
+                    ).filter { it.dualReading }
+                    .map { it.text }
+                    .distinct()
+
+            // a preposition breaks the run, though `lednu` hangs off the city
+            dualText(
+                dcTail(
+                    MhMembers.tok("v", 27, 28, "v", "ADP", 7, "case"),
+                    MhMembers.tok("lednu", 29, 34, "leden", "NOUN", 5, "nmod"),
+                ),
+            ) shouldContainExactly listOf("Dallas")
+            // an anchor word is its own mention, never a place's tail (`store` is the store anchor)
+            dualText(dcTail(MhMembers.tok("store", 27, 32, "store", "NOUN", 5, "nmod"))) shouldContainExactly
+                listOf("Dallas")
+            // a word governed by something else is not the place's either
+            dualText(dcTail(MhMembers.tok("DC", 27, 29, "DC", "NOUN", 1, "nmod"))) shouldContainExactly
+                listOf("Dallas")
+        }
     })

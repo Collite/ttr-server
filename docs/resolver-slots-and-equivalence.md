@@ -205,6 +205,11 @@ entity's member first; the NER reading stands only when no member matches.**
 - **No member, no change.** A dual reading that found no member is withdrawn, and the place stands
   exactly as before, grounded and with its G3. The candidate list still shows the pair: proposal
   is unconditional, supersession is not.
+- **The name runs as far as the parse says.** The reading starts with the entity's own words and
+  takes in the words the parse attaches to the name right after it: NameTag types only `Praha` in
+  *"tržby pro Praha DC"*, and `DC` is its `nmod`, so the member looked up is `Praha DC`. The
+  run stops at the first word that does not continue the name (a preposition, an anchor word, a
+  word attached elsewhere), and never extends to the left.
 - **Paired by the entity, not by position.** A dual reading removes only the universal whose
   offsets are the entity it read. The NER engine's extent and the parse tokens' need not agree to
   the character (a hyphenated name, an anchor word inside the name), and a candidate that merely
