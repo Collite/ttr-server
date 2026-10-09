@@ -104,14 +104,19 @@ class PassthroughHandler(
      * Reasoning models (gpt-5 / o-series, `catalog.reasoning: true`) reject the sampling + legacy-token
      * params deterministic callers send: `temperature` (only the default 1 is allowed — a `0.0` 400s),
      * `top_p`, and `max_tokens` (must be `max_completion_tokens` — a `max_tokens` 400s). Normalize the
-     * outbound body for those models so every caller (golem/themis/pythia) works unchanged; no-op
-     * otherwise (byte-faithful passthrough preserved for normal models).
+     * outbound body for those models so every caller (golem/themis/pythia) works unchanged.
+     *
+     * The mirror case, for a normal model: `reasoning_effort` is a reasoning-model param that a normal
+     * model 400s on, so it is dropped — a caller configured for a reasoning model must not break when a
+     * fallback chain lands on a normal one. Nothing else is touched (byte-faithful passthrough otherwise).
      */
     private fun reasoningAware(
         body: JsonObject,
         target: UpstreamTarget,
     ): JsonObject {
-        if (!target.reasoning) return body
+        if (!target.reasoning) {
+            return if (REASONING_EFFORT in body) JsonObject(body - REASONING_EFFORT) else body
+        }
         val m = body.toMutableMap()
         m.remove("temperature")
         m.remove("top_p")
@@ -171,3 +176,5 @@ object UrlBuilder {
             .replace("{path}", path)
             .replace("{apiVersion}", target.apiVersion ?: "")
 }
+
+private const val REASONING_EFFORT = "reasoning_effort"

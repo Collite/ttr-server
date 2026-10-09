@@ -5,11 +5,14 @@ import ai.koog.prompt.dsl.prompt
 import ai.koog.prompt.llm.LLMProvider
 import ai.koog.prompt.llm.LLModel
 import ai.koog.prompt.message.Message
+import ai.koog.prompt.params.LLMParams
 import com.github.tomakehurst.wiremock.WireMockServer
 import com.github.tomakehurst.wiremock.client.WireMock.absent
 import com.github.tomakehurst.wiremock.client.WireMock.aResponse
 import com.github.tomakehurst.wiremock.client.WireMock.equalTo
 import com.github.tomakehurst.wiremock.client.WireMock.matching
+import com.github.tomakehurst.wiremock.client.WireMock.matchingJsonPath
+import com.github.tomakehurst.wiremock.client.WireMock.notContaining
 import com.github.tomakehurst.wiremock.client.WireMock.post
 import com.github.tomakehurst.wiremock.client.WireMock.postRequestedFor
 import com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo
@@ -304,6 +307,130 @@ class LlmGatewayClientSpec :
                 tracing.close()
             }
             wm.verify(postRequestedFor(urlPathEqualTo("/v1/chat/completions")).withHeader("traceparent", absent()))
+        }
+
+        // ── the completion budget and reasoning effort (what a call asks for) ──────────────────
+
+        fun sentFor(
+            endpoint: LlmGatewayEndpoint,
+            call: suspend (LlmGatewayClient) -> Unit,
+        ) {
+            val c = LlmGatewayClient(endpoint)
+            try {
+                kotlinx.coroutines.runBlocking { call(c) }
+            } finally {
+                c.close()
+            }
+        }
+
+        "a call that names no budget sends the endpoint's — 2000 when the endpoint names none either" {
+            stubCompletion()
+            client.completeWithMeta("hi").getOrThrow()
+            wm.verify(
+                postRequestedFor(urlPathEqualTo("/v1/chat/completions"))
+                    .withRequestBody(matchingJsonPath("$.max_tokens", equalTo("2000"))),
+            )
+        }
+
+        "an endpoint with a larger budget sends it on every call that names none" {
+            stubCompletion()
+            sentFor(LlmGatewayEndpoint("localhost", wm.port(), 5_000, maxTokens = 8000)) { c ->
+                c.completeWithMeta("hi").getOrThrow()
+                c.complete("hi").getOrThrow()
+            }
+            wm.verify(
+                2,
+                postRequestedFor(urlPathEqualTo("/v1/chat/completions"))
+                    .withRequestBody(matchingJsonPath("$.max_tokens", equalTo("8000"))),
+            )
+        }
+
+        "a call's own budget beats the endpoint's" {
+            stubCompletion()
+            sentFor(LlmGatewayEndpoint("localhost", wm.port(), 5_000, maxTokens = 8000)) { c ->
+                c.completeWithMeta("hi", maxTokens = 300).getOrThrow()
+            }
+            wm.verify(
+                postRequestedFor(urlPathEqualTo("/v1/chat/completions"))
+                    .withRequestBody(matchingJsonPath("$.max_tokens", equalTo("300"))),
+            )
+        }
+
+        "no reasoning effort configured puts no reasoning_effort key on the wire — not even null" {
+            stubCompletion()
+            client.completeWithMeta("hi").getOrThrow()
+            wm.verify(
+                postRequestedFor(urlPathEqualTo("/v1/chat/completions"))
+                    .withRequestBody(notContaining("reasoning_effort")),
+            )
+        }
+
+        "an endpoint's reasoning effort is sent as reasoning_effort; a blank one is not sent" {
+            stubCompletion()
+            sentFor(LlmGatewayEndpoint("localhost", wm.port(), 5_000, reasoningEffort = "low")) { c ->
+                c.completeWithMeta("hi").getOrThrow()
+            }
+            wm.verify(
+                postRequestedFor(urlPathEqualTo("/v1/chat/completions"))
+                    .withRequestBody(matchingJsonPath("$.reasoning_effort", equalTo("low"))),
+            )
+            wm.resetRequests()
+            sentFor(LlmGatewayEndpoint("localhost", wm.port(), 5_000, reasoningEffort = "  ")) { c ->
+                c.completeWithMeta("hi").getOrThrow()
+            }
+            wm.verify(
+                postRequestedFor(urlPathEqualTo("/v1/chat/completions"))
+                    .withRequestBody(notContaining("reasoning_effort")),
+            )
+        }
+
+        "the Koog bridge sends the prompt's maxTokens, and the endpoint's when the prompt has none" {
+            stubCompletion()
+            val model = LLModel(provider = LLMProvider.Anthropic, id = "claude-haiku")
+            sentFor(LlmGatewayEndpoint("localhost", wm.port(), 5_000, maxTokens = 8000)) { c ->
+                val executor = LlmGatewayPromptExecutor(c)
+                executor.execute(prompt("p") { user("hi") }, model, emptyList())
+                executor.execute(prompt("p", params = LLMParams(maxTokens = 1234)) { user("hi") }, model, emptyList())
+            }
+            wm.verify(
+                postRequestedFor(urlPathEqualTo("/v1/chat/completions"))
+                    .withRequestBody(matchingJsonPath("$.max_tokens", equalTo("8000"))),
+            )
+            wm.verify(
+                postRequestedFor(urlPathEqualTo("/v1/chat/completions"))
+                    .withRequestBody(matchingJsonPath("$.max_tokens", equalTo("1234"))),
+            )
+        }
+
+        "a consumer's mock of the client takes calls that use the defaults (no endpoint behind it)" {
+            // Consumers stub the client in their own tests. A default argument that read the endpoint would
+            // be evaluated on the mock, which has none, and fail every call made through it.
+            val mock = io.mockk.mockk<LlmGatewayClient>()
+            io.mockk.coEvery { mock.completeWithMeta(any(), any(), any(), any(), any(), any()) } returns
+                Result.success(
+                    LlmCompletion(
+                        content = "ok",
+                        callRef = null,
+                        requestedModel = "mini",
+                        servedModel = null,
+                        servedProvider = null,
+                        fallbackFrom = null,
+                        cached = false,
+                        tokensPrompt = null,
+                        tokensCompletion = null,
+                        costUsd = null,
+                        durationMs = null,
+                    ),
+                )
+            mock.completeWithMeta("hi").getOrThrow().content shouldBe "ok"
+            LlmGatewayPromptExecutor(mock)
+                .execute(
+                    prompt("p") { user("hi") },
+                    LLModel(provider = LLMProvider.Anthropic, id = "claude-haiku"),
+                    emptyList(),
+                ).single()
+                .shouldBeInstanceOf<Message.Assistant>()
+                .content shouldBe "ok"
         }
 
         // ── the Koog bridge's side channel ─────────────────────────────────────────────────────
