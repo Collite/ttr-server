@@ -66,6 +66,9 @@ object MhMembers {
     const val STORE_NAME = "er.entity.store.store_name"
     const val WAREHOUSE_NAME = "er.entity.warehouse.warehouse_name"
 
+    /** UD ✅UD-8 — hartland's marketplace measure, declared on its fact and phrased as the estate phrases it. */
+    const val MARKETPLACE_REVENUE = "er.entity.catalog_sales.ext_sales_price"
+
     /**
      * The three `TN` members, the one `Nashville` member, one hyphenated store name and one warehouse
      * name (UD), by the category that holds them — as lex-matcher answers since A-MV-15: one row per
@@ -88,6 +91,8 @@ object MhMembers {
             // UD ✅UD-7 (C5 live drill) — a place that is a member of ONE unrelated entity only, as
             // hartland's `Dallas` is of `warehouse_name` ("Dallas DC", a TOKENS hit there).
             "dallas" to listOf(Triple("Dallas DC", "Dallas DC", WAREHOUSE_NAME)),
+            // UD ✅UD-8 — the whole DC name, as the NER reads it in `… for Dallas DC`.
+            "dallas dc" to listOf(Triple("Dallas DC", "Dallas DC", WAREHOUSE_NAME)),
         )
 
     private fun et(
@@ -161,7 +166,18 @@ object MhMembers {
         REGISTRY
             .toBuilder()
             .addEntityTypes(et(WAREHOUSE_NAME, listOf(), "attribute", owner = WAREHOUSE, member = true))
-            .build()
+            // ✅UD-8 — the fact `warehouse` already declares a reach from, and its measure under the
+            // estate's own multi-word phrases (cs in the lemma form the anchor index matches on) plus
+            // one single word, so both branches of path (a) are exercised.
+            .addEntityTypes(et(CATALOG_SALES, listOf("catalog"), "entity_with_measures"))
+            .addEntityTypes(
+                et(
+                    MARKETPLACE_REVENUE,
+                    listOf("marketplace revenue", "tržba z tržiště", "turnover"),
+                    "measure",
+                    owner = CATALOG_SALES,
+                ),
+            ).build()
 
     fun udEntityTypes(): List<ResolverEntityType> =
         ResolverPipeline.fromProto(UD_REGISTRY, ResolverThresholds.LIVE).entityTypes
@@ -301,7 +317,7 @@ object MhMembers {
         val pipeline =
             ResolverPipeline(
                 FakeNlp(parse, lang),
-                MemberFuzzy(),
+                MemberFuzzy(registry),
                 SnapshotRegistry(StubRegistrySource(DeclaredVocabulary(), ""), ResolverThresholds.LIVE),
                 emptyMap(),
                 ResumeTokenCodec(mapOf("k1" to ByteArray(32) { it.toByte() }), activeKeyId = "k1"),
@@ -322,7 +338,9 @@ object MhMembers {
      * span only about the categories the span asked for, which is the whole point — a governed
      * value asks about its owner's category and nothing else.
      */
-    class MemberFuzzy : FuzzyClient {
+    class MemberFuzzy(
+        private val registry: Registry = REGISTRY,
+    ) : FuzzyClient {
         override suspend fun batchMatch(request: BatchMatchRequest): BatchMatchResponse {
             val builder = BatchMatchResponse.newBuilder()
             for (span in request.spansList) {
@@ -331,7 +349,7 @@ object MhMembers {
                 for ((id, label, category) in MEMBERS[span.query.lowercase()].orEmpty()) {
                     if (category in asked) matches += member(id, label, category)
                 }
-                for (etype in REGISTRY.entityTypesList) {
+                for (etype in registry.entityTypesList) {
                     if (etype.ref !in asked) continue
                     if (etype.anchorsList.none { stemMatch(it, span.query) }) continue
                     matches += declared(span.query, etype.ref)

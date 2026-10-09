@@ -39,7 +39,8 @@ package org.tatrman.resolver.pipeline
  *   supersedes the universal with exactly this extent; one that did not is withdrawn so the
  *   universal stands alone (UD contracts §3–§4, A-UD-3/A-UD-4, `UniversalSeam`).
  * @property dualReadingScope UD ✅UD-7 — for a dual reading, the anchor's value-bearing owners (the
- *   refs its `GOVERNED_VALUE` half is gated to), carried on BOTH halves; empty for every other
+ *   refs its `GOVERNED_VALUE` half is gated to — under a measure, the measure's fact, ✅UD-8),
+ *   carried on BOTH halves; empty for every other
  *   candidate. A member row speaks for the reading only when one of these reaches its entity
  *   (`UniversalSeam.inScope`): the OPEN half asks every member vocabulary, and a lone hit in an
  *   entity the sentence never scoped (`Stores in Paris` → a return reason "Parts missing") must not

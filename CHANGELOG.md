@@ -16,6 +16,25 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+### resolver — a place under a measure is looked up as a member of the measure's fact (✅UD-8, #118)
+
+The member reading of a place (UD-P1) was offered only to the argument of a single-word anchor that
+holds values. Two common shapes got none: a place under a **measure** (`Marketplace revenue for
+Memphis DC`), because a measure holds no values, and a place under a **multi-word** anchor
+(`Tržby z tržiště … pro Brno DC`), because a multi-word anchor governed nothing. The NER typed the
+DC name a place, so it stayed one, with a G3. The lookup round could not help either: it only
+attaches an answer to a span the domain proposed, and none was.
+
+- A place a measure governs gets the dual reading, with the measure's declared owner (its fact) as
+  the governor. Its member counts when the fact reaches the member's entity (✅UD-7), so `Marketplace
+  revenue for Dallas DC` binds `warehouse.warehouse_name` through the warehouse's declared relation
+  from `catalog_sales`, and `Marketplace revenue for Nashville` (a store, which that fact does not
+  reach) stays a place.
+- A multi-word anchor's head governs a place in the same way.
+- Nothing else is proposed. A measure's other arguments and a multi-word anchor's are values of no
+  governed path, as before (`revenue for books`, `v roce 2025`).
+- No wire change.
+
 ### nlp — OpenTelemetry is off unless a collector is named
 
 The front defaulted its collector to `localhost:4317` and built the log, trace and metric exporters

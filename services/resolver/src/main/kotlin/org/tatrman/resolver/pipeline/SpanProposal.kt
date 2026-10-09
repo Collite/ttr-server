@@ -41,9 +41,11 @@ import org.tatrman.text.Normalization.fold
  * **One exception, the governed argument (UD, ttr-server#118).** A place or a person name that a
  * value-bearing anchor governs (`Stores in TN`, `TN` typed a place) is ALSO proposed as that
  * anchor's governed pair, carrying the entity it reads ([DomainSpanCandidate.dualReadingOf]);
- * `UniversalSeam` then lets the member reading take the span only when it found a member. Every
- * other path — (b), (c), (e), the floor, the phrase hull — still refuses universal characters, so
- * a bare, an unanchored or a pre-modifier place stays a place (UD contracts §3).
+ * `UniversalSeam` then lets the member reading take the span only when it found a member. A
+ * measure governs a place for its fact, and a multi-word anchor governs one too (✅UD-8:
+ * `Marketplace revenue for Memphis DC`). Every other path — (b), (c), (e), the floor, the phrase
+ * hull — still refuses universal characters, so a bare, an unanchored or a pre-modifier place
+ * stays a place (UD contracts §3).
  *
  * RV-P2.1 adds one source and one exclusion, both needed by the lattice:
  *
@@ -78,8 +80,10 @@ object SpanProposal {
     /** UPOS tags whose tokens are literals: codes, numbers, symbols. */
     private val LITERAL_UPOS = setOf("NUM", "SYM")
 
+    private const val MEASURE_KIND = "measure"
+
     /** Object kinds with no member vocabulary — nothing they govern is a value of theirs. */
-    private val VALUELESS_OBJECT_KINDS = setOf("operator", "measure")
+    private val VALUELESS_OBJECT_KINDS = setOf("operator", MEASURE_KIND)
 
     /** Anchor-phrase pre-modifiers folded into the anchor noun's own candidate. */
     private val ANCHOR_PHRASE_RELATIONS = setOf("amod", "compound", "flat", "flat:name", "det", "nummod")
@@ -267,6 +271,152 @@ object SpanProposal {
         // inside it is reached.
         val declaredPhraseTokens = HashSet<Int>()
 
+        /**
+         * The value arguments the anchor [hits] matched governs, from its head token [head].
+         *
+         * Governed value arguments (e.g. `středisko` → `QT ORLAK`) are proposed only for an anchor
+         * that HAS values: an operator or a measure has no member vocabulary, so its nominal
+         * arguments are not its values. Without this the operator word — which Stanza often makes
+         * the root — governs the rest of the question, and every noun under it is proposed as a
+         * value of `op:show` (h2's `stanic`). A blank kind admits values, which is the pre-RV
+         * behaviour for a snapshot that carries no object kinds.
+         *
+         * ✅UD-8 — **a PLACE has two more governors, and only a place does.** The dual reading
+         * below is the one way into the domain for a value the NER typed universal: paths (b), (c),
+         * (e) and the floor all refuse its characters. So it is offered wherever an anchor governs
+         * the place, not only where an ordinary governed value would be:
+         *
+         *  - **under a measure**, scoped to the measure's FACT (its declared owner):
+         *    `Marketplace revenue for Memphis DC` asks for the fact's rows at that warehouse, so the
+         *    place is the fact's member before it is a place — the governor `UniversalSeam.inScope`
+         *    reaches through the fact's declared relations, exactly as it does for `Sales in TN`.
+         *    A measure still governs no ordinary value: `revenue for books` proposes nothing new.
+         *  - **under a multi-word anchor** ([placesOnly]), whose own extent is fixed: the estate
+         *    named the phrase, and the hartland measure phrases (`marketplace revenue`, `tržby z
+         *    tržiště`) are where a DC name is asked. Its ordinary governed values are still not
+         *    proposed — `v roce` under `tržby z tržiště` would become a value of the fact.
+         *
+         * Both were a G3 on hartland: the place stood, and the open lookup round could not attach a
+         * member to a span the domain never proposed, so the question lost its warehouse filter.
+         */
+        fun governedValues(
+            head: Int,
+            hits: List<AnchorPhrase>,
+            placesOnly: Boolean,
+        ) {
+            val valueOwners = hits.map { it.et }.filter { it.objectKind !in VALUELESS_OBJECT_KINDS }
+            // ⚑ A-MH-1a (MH-P3·S1·T2). Governed values used to be emitted PER OWNER — one
+            // candidate per owner on the SAME span — on the argument that merging them would
+            // offer `QT ORLAK` to every owner sharing the anchor. But `dedupe` keys on
+            // `(start, end)`, so all but one were silently discarded and WHICH one survived
+            // was decided by the order the registry happened to list the owners in. That is
+            // not scoping, it is a coin toss with a stable-looking result.
+            //
+            // So the candidate is built ONCE, gated to the UNION of the value-bearing owners
+            // — the MS-P3·S1 move applied to values. The gate can then find the one owner
+            // whose vocabulary actually holds the value, which is a question about DATA that
+            // `SpanProposal` has no business answering: it proposes spans, it does not decide
+            // whose member a word is.
+            //
+            // ✅ MV (member-vocabulary contracts §5.3) — and the categories are where the
+            // owners' VALUES live: each owner's own categories ∪ its member vocabularies
+            // (`valueCategoriesByRef`). An entity's values are indexed under its attributes'
+            // refs, never its own, so before MV this lookup could not find `TN` under `stores`
+            // at all and every tier-M bind came through the open sibling and M3 (MH §7.5 ⚑).
+            // The GATED refs stay the owners: they are the governor the gate reasons about.
+            val refs = if (placesOnly) emptyList() else valueOwners.map { it.ref }.distinct()
+            val categories = valueOwners.flatMap { valueCategories[it.ref] ?: it.categories }.distinct()
+            // ✅UD-8 — a place's governors: the value-bearing owners, then each measure's fact.
+            // With no measure among the hits this is exactly [valueOwners], so a dual reading
+            // under an entity is gated as it always was.
+            val placeOwners =
+                (
+                    valueOwners.map { it.ref } +
+                        hits.map { it.et }.filter { it.objectKind == MEASURE_KIND }.map { it.ownerRef }
+                ).filter { it.isNotBlank() }.distinct()
+            if (refs.isEmpty() && placeOwners.isEmpty()) return
+            // A fact the registry does not declare lends its ref, which no vocabulary is keyed by:
+            // the governed half then finds nothing and the open half carries the reading.
+            val placeCategories = placeOwners.flatMap { valueCategories[it] ?: listOf(it) }.distinct()
+            for (childIdx in children[head + 1].orEmpty()) {
+                val child = tokens[childIdx]
+                if (child.depRelation !in GOVERNED_VALUE_RELATIONS) continue
+                if (child.upos.uppercase() !in NOMINAL_UPOS) continue
+                if (childIdx in anchorTokens) continue
+                // ✅ UD (ttr-server#118, option 1) — the DUAL READING. A place or a person name
+                // the NER typed universal is excluded from every domain path below, and until
+                // UD from this one too: `subtreeIndices` refuses a universal root, so `Stores in
+                // TN` with `TN` labelled GPE proposed no value at all and `TN` left as a grounded
+                // place the composer cannot filter stores by. But the sentence has scoped it —
+                // the user named the entity, so the value is that entity's before it is a place.
+                //
+                // So here, and ONLY here (the governed argument of an anchor), a LOCATION/PERSON
+                // child takes exactly the path a non-universal argument takes: the governed pair,
+                // flagged. Its extent is the ENTITY's, not the parse subtree — the NER is what
+                // says where the place name begins and ends. Whether the member reading wins is
+                // decided after the gate (`UniversalSeam`), never here: proposal is
+                // unconditional. Every other reader of `universal` is untouched, so a bare, an
+                // unanchored or a pre-modifier place stays a place (UD contracts §3.2).
+                //
+                // The candidate records WHICH entity it reads (`dualReadingOf`), because its
+                // own extent is the tokens' and need not equal the entity's: an anchor word
+                // inside the name is dropped below, and an engine's offsets can disagree with
+                // the parse (review-108 F1). The seam pairs the two readings by that record.
+                val dual = dualReadingEntity(childIdx, tokens, parse.entitiesList)
+                if (dual == null && refs.isEmpty()) continue
+                if (dual != null && placeOwners.isEmpty()) continue
+                val governedRefs = if (dual != null) placeOwners else refs
+                val valueIdx =
+                    if (dual != null) {
+                        tokensWithin(dual, tokens).filterNot { it in anchorTokens }
+                    } else {
+                        subtreeIndices(childIdx, children, tokens, universal, anchorTokens, literals.tokens)
+                    }
+                if (valueIdx.isEmpty()) continue
+                out +=
+                    candidate(
+                        valueIdx,
+                        tokens,
+                        governedRefs,
+                        if (dual != null) placeCategories else categories,
+                        anchored = true,
+                        origin = DomainSpanCandidate.Origin.GOVERNED_VALUE,
+                        headToken = childIdx,
+                        dualReadingOf = dual?.let { it.charStart to it.charEnd },
+                        dualReadingScope = if (dual != null) governedRefs else emptyList(),
+                    )
+                // ⚑ A-MH-1b (MH-P3·S1·T3) — the OPEN sibling, same span, every declared type.
+                //
+                // The governed candidate above asks the anchor's owners and nobody else, which
+                // is right when they hold the value and silently wrong when they cannot: a
+                // fact governor (`sales in TN`) has no member vocabulary, so the lookup was
+                // always going to come back empty, and `coveredTokens` then stopped path (b)
+                // from ever proposing the word again. The question became a G3 gap for a
+                // reason that has nothing to do with the word.
+                //
+                // `SpanProposal` cannot know which lookup will succeed — that is a fact about
+                // the DATA — so it proposes both and lets the gate choose. Both ride the one
+                // batch (no second round trip), and `GateSpans.resolveOpenSiblings` drops this
+                // sibling whenever the governed reading BOUND, so a working governed lookup is
+                // byte-identical to what it was before.
+                out +=
+                    candidate(
+                        valueIdx,
+                        tokens,
+                        allRefs,
+                        allCategories,
+                        anchored = false,
+                        origin = DomainSpanCandidate.Origin.OPEN_VALUE,
+                        headToken = childIdx,
+                        dualReadingOf = dual?.let { it.charStart to it.charEnd },
+                        // ✅UD-7 — the OPEN half asks everything, but answers only for the
+                        // owners the governed half is gated to (`UniversalSeam.inScope`).
+                        dualReadingScope = if (dual != null) governedRefs else emptyList(),
+                    )
+                coveredTokens += valueIdx
+            }
+        }
+
         // (a) anchored subtrees
         tokens.forEachIndexed { idx, t ->
             // LP: `zákazník "dodací místo"` asks for the STRING, not for the entity the estate
@@ -296,7 +446,8 @@ object SpanProposal {
             if (hits.isEmpty()) return@forEachIndexed
             // A MULTI-word anchor names its own extent: the estate said which words, so the span
             // is exactly those and no subtree expansion applies. Single-word anchors keep the
-            // Q-20 behaviour below unchanged — phrase expansion plus governed values.
+            // Q-20 behaviour below unchanged — phrase expansion plus governed values. A multi-word
+            // one governs a place only (✅UD-8).
             val multiWord = hits.filter { it.words.size > 1 }
             if (multiWord.isNotEmpty()) {
                 val span = (idx until idx + multiWord.first().words.size).toList()
@@ -312,6 +463,9 @@ object SpanProposal {
                     )
                 coveredTokens += span
                 declaredPhraseTokens += span
+                // ✅UD-8 — the phrase governs what its head governs, but only a PLACE is proposed
+                // here: see [governedValues]. `Marketplace revenue for Memphis DC`.
+                governedValues(syntacticHead(span, tokens), multiWord, placesOnly = true)
                 return@forEachIndexed
             }
             // MS-P3.S1 (contracts §8.2) — the anchor phrase is ONE candidate carrying every
@@ -339,110 +493,7 @@ object SpanProposal {
                     )
                 coveredTokens += phraseIdx
             }
-            // Governed value arguments (e.g. `středisko` → `QT ORLAK`). Only for an anchor that
-            // HAS values: an operator or a measure has no member vocabulary, so its nominal
-            // arguments are not its values. Without this the operator word — which Stanza often
-            // makes the root — governs the rest of the question, and every noun under it is
-            // proposed as a value of `op:show` (h2's `stanic`). A blank kind admits values, which
-            // is the pre-RV behaviour for a snapshot that carries no object kinds.
-            val valueOwners = hits.map { it.et }.filter { it.objectKind !in VALUELESS_OBJECT_KINDS }
-            if (valueOwners.isNotEmpty()) {
-                // ⚑ A-MH-1a (MH-P3·S1·T2). Governed values used to be emitted PER OWNER — one
-                // candidate per owner on the SAME span — on the argument that merging them would
-                // offer `QT ORLAK` to every owner sharing the anchor. But `dedupe` keys on
-                // `(start, end)`, so all but one were silently discarded and WHICH one survived
-                // was decided by the order the registry happened to list the owners in. That is
-                // not scoping, it is a coin toss with a stable-looking result.
-                //
-                // So the candidate is built ONCE, gated to the UNION of the value-bearing owners
-                // — the MS-P3·S1 move applied to values. The gate can then find the one owner
-                // whose vocabulary actually holds the value, which is a question about DATA that
-                // `SpanProposal` has no business answering: it proposes spans, it does not decide
-                // whose member a word is.
-                //
-                // ✅ MV (member-vocabulary contracts §5.3) — and the categories are where the
-                // owners' VALUES live: each owner's own categories ∪ its member vocabularies
-                // (`valueCategoriesByRef`). An entity's values are indexed under its attributes'
-                // refs, never its own, so before MV this lookup could not find `TN` under `stores`
-                // at all and every tier-M bind came through the open sibling and M3 (MH §7.5 ⚑).
-                // The GATED refs stay the owners: they are the governor the gate reasons about.
-                val refs = valueOwners.map { it.ref }.distinct()
-                val categories = valueOwners.flatMap { valueCategories[it.ref] ?: it.categories }.distinct()
-                for (childIdx in children[idx + 1].orEmpty()) {
-                    val child = tokens[childIdx]
-                    if (child.depRelation !in GOVERNED_VALUE_RELATIONS) continue
-                    if (child.upos.uppercase() !in NOMINAL_UPOS) continue
-                    if (childIdx in anchorTokens) continue
-                    // ✅ UD (ttr-server#118, option 1) — the DUAL READING. A place or a person name
-                    // the NER typed universal is excluded from every domain path below, and until
-                    // UD from this one too: `subtreeIndices` refuses a universal root, so `Stores in
-                    // TN` with `TN` labelled GPE proposed no value at all and `TN` left as a grounded
-                    // place the composer cannot filter stores by. But the sentence has scoped it —
-                    // the user named the entity, so the value is that entity's before it is a place.
-                    //
-                    // So here, and ONLY here (the governed argument of a value-bearing anchor), a
-                    // LOCATION/PERSON child takes exactly the path a non-universal argument takes:
-                    // the governed pair, flagged. Its extent is the ENTITY's, not the parse subtree —
-                    // the NER is what says where the place name begins and ends. Whether the member
-                    // reading wins is decided after the gate (`UniversalSeam`), never here: proposal
-                    // is unconditional. Every other reader of `universal` is untouched, so a bare, an
-                    // unanchored or a pre-modifier place stays a place (UD contracts §3.2).
-                    //
-                    // The candidate records WHICH entity it reads (`dualReadingOf`), because its
-                    // own extent is the tokens' and need not equal the entity's: an anchor word
-                    // inside the name is dropped below, and an engine's offsets can disagree with
-                    // the parse (review-108 F1). The seam pairs the two readings by that record.
-                    val dual = dualReadingEntity(childIdx, tokens, parse.entitiesList)
-                    val valueIdx =
-                        if (dual != null) {
-                            tokensWithin(dual, tokens).filterNot { it in anchorTokens }
-                        } else {
-                            subtreeIndices(childIdx, children, tokens, universal, anchorTokens, literals.tokens)
-                        }
-                    if (valueIdx.isEmpty()) continue
-                    out +=
-                        candidate(
-                            valueIdx,
-                            tokens,
-                            refs,
-                            categories,
-                            anchored = true,
-                            origin = DomainSpanCandidate.Origin.GOVERNED_VALUE,
-                            headToken = childIdx,
-                            dualReadingOf = dual?.let { it.charStart to it.charEnd },
-                            dualReadingScope = if (dual != null) refs else emptyList(),
-                        )
-                    // ⚑ A-MH-1b (MH-P3·S1·T3) — the OPEN sibling, same span, every declared type.
-                    //
-                    // The governed candidate above asks the anchor's owners and nobody else, which
-                    // is right when they hold the value and silently wrong when they cannot: a
-                    // fact governor (`sales in TN`) has no member vocabulary, so the lookup was
-                    // always going to come back empty, and `coveredTokens` then stopped path (b)
-                    // from ever proposing the word again. The question became a G3 gap for a
-                    // reason that has nothing to do with the word.
-                    //
-                    // `SpanProposal` cannot know which lookup will succeed — that is a fact about
-                    // the DATA — so it proposes both and lets the gate choose. Both ride the one
-                    // batch (no second round trip), and `GateSpans.resolveOpenSiblings` drops this
-                    // sibling whenever the governed reading BOUND, so a working governed lookup is
-                    // byte-identical to what it was before.
-                    out +=
-                        candidate(
-                            valueIdx,
-                            tokens,
-                            allRefs,
-                            allCategories,
-                            anchored = false,
-                            origin = DomainSpanCandidate.Origin.OPEN_VALUE,
-                            headToken = childIdx,
-                            dualReadingOf = dual?.let { it.charStart to it.charEnd },
-                            // ✅UD-7 — the OPEN half asks everything, but answers only for the
-                            // owners the governed half is gated to (`UniversalSeam.inScope`).
-                            dualReadingScope = if (dual != null) refs else emptyList(),
-                        )
-                    coveredTokens += valueIdx
-                }
-            }
+            governedValues(idx, hits, placesOnly = false)
         }
 
         // (b) proper-noun arguments not already anchored. Tokens are walked in index order, so a
