@@ -16,6 +16,28 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+### query-mcp, resolver — an MCP tool call reads its own caller's identity, and no one else's
+
+Under concurrent calls an MCP door could evaluate a tool call with **no** identity (a caller who
+sent a bearer was refused `missing_user_identity`) or with **another in-flight caller's** headers.
+The doors stashed `Authorization` / `X-User-Id` in a thread-local from a Ktor interceptor and read
+it in the tool handler. The MCP SDK runs that handler inline on the request's coroutine, but the
+coroutine suspends on the way (reading the body; query-mcp's bearer check hops to
+`Dispatchers.IO`) and resumes on whatever worker thread is free. That thread's slot was empty or
+held a different request's headers. With row policies keyed on the caller's roles, the second case
+is a wrong-identity read.
+
+- **`ktor-configurator`** gains `McpRequestHeaders`, a coroutine context element holding one
+  request's `Authorization` and `X-User-Id`, plus `Application.installMcpRequestHeaders()`, which
+  runs the rest of each call's pipeline inside it. Handlers read `McpRequestHeaders.current()`.
+  Outside a request both are null, so the identity gates fail closed. The element travels with the
+  request's coroutine and its children, so dispatcher hops and `withTimeout` keep it. Its
+  `toString` never prints a credential.
+- **query-mcp** and the **resolver** door use it. `installQueryMcp` / `installResolveDoor` lose
+  their `RequestContext` parameter, and the internal `mcp-identity` `RequestContext` (the
+  thread-local) is removed. `IdentityGate` is unchanged.
+- No wire or config change.
+
 ### resolver — Czech grain phrases: a declared phrase matches as written, and `po` is decided by two signals
 
 On a Czech estate, *"Tržby z tržiště v roce 2025 po měsících"* (by month) answered one total, and

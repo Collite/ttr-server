@@ -12,7 +12,7 @@ import org.tatrman.query.mcp.QueryMcpConfig
 import org.tatrman.mcp.identity.BearerVerifier
 import org.tatrman.mcp.identity.IdentityGate
 import org.tatrman.query.mcp.identityPolicyOf
-import org.tatrman.mcp.identity.RequestContext
+import shared.ktor.mcp.McpRequestHeaders
 
 private val logger = LoggerFactory.getLogger("query-mcp.transport")
 
@@ -24,17 +24,17 @@ private val logger = LoggerFactory.getLogger("query-mcp.transport")
  * propagates to upstream gRPC streams via the standard Flow collector
  * cancellation pathway (see `tools/query-mcp/.../upstream/UpstreamClients.kt`).
  *
- * @param requestContext per-call thread-local stash — populated by an upstream
- *   Ktor interceptor with `Authorization` and `X-User-Id` headers; tools
- *   read it to resolve identity. Threading-wise this is a ThreadLocal so it
- *   matches the pattern used by the existing erp-data-mcp service.
+ * Identity: each tool call reads the `Authorization` / `X-User-Id` of the HTTP request it serves
+ * from [McpRequestHeaders], which the application installs with `installMcpRequestHeaders()`. It
+ * rides the request's coroutine, so a call that resumes on another thread still reads its own
+ * caller's headers (it used to be a thread-local; see [McpRequestHeaders] for why that was wrong).
+ *
  * @param verifier LR G2b — when set, the gate verifies the bearer (and trusts nothing else:
  *   [identityPolicyOf]); the HTTP interceptor has already answered 401 for one that fails.
  */
 fun Application.installQueryMcp(
     cfg: QueryMcpConfig,
     registry: ToolRegistry,
-    requestContext: RequestContext,
     verifier: BearerVerifier? = null,
 ) {
     val policy = identityPolicyOf(verifier)
@@ -58,8 +58,9 @@ fun Application.installQueryMcp(
                 inputSchema = tool.inputSchema,
                 outputSchema = tool.outputSchema,
             ) { request ->
-                val authHeader = requestContext.authHeader.get()
-                val userIdHeader = requestContext.userIdHeader.get()
+                val headers = McpRequestHeaders.current()
+                val authHeader = headers.authorization
+                val userIdHeader = headers.userId
                 val argUserId =
                     runCatching {
                         request.params.arguments

@@ -6,14 +6,12 @@ import com.typesafe.config.ConfigFactory
 import io.grpc.netty.shaded.io.grpc.netty.NettyServerBuilder
 import io.grpc.protobuf.services.ProtoReflectionServiceV1
 import io.ktor.server.application.Application
-import io.ktor.server.application.ApplicationCallPipeline
 import io.ktor.server.application.ApplicationStopping
 import io.ktor.server.application.call
 import io.ktor.server.application.serverConfig
 import io.ktor.server.cio.CIO
 import io.ktor.server.engine.EngineConnectorBuilder
 import io.ktor.server.engine.embeddedServer
-import io.ktor.server.request.header
 import io.ktor.server.response.respond
 import io.ktor.server.routing.get
 import io.ktor.server.routing.routing
@@ -23,7 +21,6 @@ import kotlinx.serialization.json.put
 import kotlinx.coroutines.runBlocking
 import org.slf4j.LoggerFactory
 import org.tatrman.mcp.identity.IdentityPolicy
-import org.tatrman.mcp.identity.RequestContext
 import org.tatrman.resolver.client.GrpcGroundingClient
 import org.tatrman.resolver.client.GrpcFuzzyClient
 import org.tatrman.resolver.client.GrpcNlpClient
@@ -45,6 +42,7 @@ import shared.ktor.KtorServerBootstrap
 import shared.ktor.installKtorServerBase
 import shared.ktor.mcp.McpKtorConfig
 import shared.ktor.mcp.installMcpKtorBase
+import shared.ktor.mcp.installMcpRequestHeaders
 import org.tatrman.resolver.telemetry.resolverTelemetry
 import shared.logging.IncomingCallLoggingInterceptor
 import shared.logging.OtelContextServerInterceptor
@@ -238,7 +236,6 @@ fun Application.module(config: Config) {
     // the `X-User-Id` header, the `user_id` arg, and the `admin:` role convention.
     val trustNetwork = config.hasPath("mcp.trust-network") && config.getBoolean("mcp.trust-network")
     val identityPolicy = if (trustNetwork) IdentityPolicy.PERMISSIVE else IdentityPolicy.TOKEN_ONLY
-    val requestContext = RequestContext()
     val door = ResolveDoor(pipeline::resolve)
     val doorHandler = ResolveDoorHandler(door, requireIdentity, identityPolicy)
     val doorServer =
@@ -247,16 +244,7 @@ fun Application.module(config: Config) {
             rootConfig =
                 serverConfig {
                     module {
-                        intercept(ApplicationCallPipeline.Plugins) {
-                            requestContext.authHeader.set(call.request.header("Authorization"))
-                            requestContext.userIdHeader.set(call.request.header("X-User-Id"))
-                            try {
-                                proceed()
-                            } finally {
-                                requestContext.authHeader.remove()
-                                requestContext.userIdHeader.remove()
-                            }
-                        }
+                        installMcpRequestHeaders()
                         installMcpKtorBase(
                             McpKtorConfig(
                                 serviceName = "resolver-door",
@@ -268,7 +256,7 @@ fun Application.module(config: Config) {
                             // the service only because the rest of the service was noop too.
                             otel,
                         )
-                        installResolveDoor(door, doorHandler, requestContext)
+                        installResolveDoor(door, doorHandler)
                     }
                 },
             configure = {

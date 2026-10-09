@@ -5,12 +5,10 @@ import com.typesafe.config.ConfigFactory
 import io.grpc.ConnectivityState
 import io.ktor.http.ContentType
 import io.ktor.server.application.Application
-import io.ktor.server.application.ApplicationCallPipeline
 import io.ktor.server.application.serverConfig
 import io.ktor.server.cio.CIO
 import io.ktor.server.engine.EngineConnectorBuilder
 import io.ktor.server.engine.embeddedServer
-import io.ktor.server.request.header
 import io.ktor.server.response.respondText
 import io.ktor.server.routing.get
 import io.ktor.server.routing.routing
@@ -25,12 +23,11 @@ import org.slf4j.event.Level
 import shared.ktor.mcp.McpKtorConfig
 import shared.ktor.mcp.McpTelemetry
 import shared.ktor.mcp.installMcpKtorBase
+import shared.ktor.mcp.installMcpRequestHeaders
 import shared.ktor.mcp.loadMcpServerConfig
-import io.ktor.server.application.call
 import io.ktor.server.request.httpMethod
 import io.ktor.server.request.path
 import org.tatrman.query.mcp.mcp.InstrumentedTool
-import org.tatrman.mcp.identity.RequestContext
 import org.tatrman.query.mcp.mcp.ToolRegistry
 import org.tatrman.query.mcp.mcp.installQueryMcp
 import org.tatrman.query.mcp.tools.CompileTool
@@ -102,8 +99,6 @@ fun main(): Unit =
                     ),
                 ),
             )
-        val requestContext = RequestContext()
-
         // Stage 3.5 T5 — register run_query/compile with capabilities-mcp
         // (warn-and-continue; opt in with CAPABILITIES_MCP_URL).
         registerWithCapabilities(rawConfig)
@@ -149,16 +144,7 @@ fun main(): Unit =
         val appConfig =
             serverConfig {
                 module {
-                    intercept(ApplicationCallPipeline.Plugins) {
-                        requestContext.authHeader.set(call.request.header("Authorization"))
-                        requestContext.userIdHeader.set(call.request.header("X-User-Id"))
-                        try {
-                            proceed()
-                        } finally {
-                            requestContext.authHeader.remove()
-                            requestContext.userIdHeader.remove()
-                        }
-                    }
+                    installMcpRequestHeaders()
                     verifier?.let { installBearerVerification(it) }
                     installMcpKtorBase(mcpKtorConfig, telemetry.openTelemetrySdk)
                     routing {
@@ -198,7 +184,7 @@ fun main(): Unit =
                             )
                         }
                     }
-                    installQueryMcp(cfg, registry, requestContext, verifier)
+                    installQueryMcp(cfg, registry, verifier)
                 }
             }
 
