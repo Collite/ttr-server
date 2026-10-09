@@ -341,6 +341,7 @@ object LatticeAssembler {
                                 ?: TargetClass.TARGET_CLASS_UNSPECIFIED,
                         objectKind = objectKindOf(span, mention, objectKinds),
                         anchorsValue = mention.id in anchoring,
+                        charEnd = span.candidate.end,
                     )
                 },
                 parse,

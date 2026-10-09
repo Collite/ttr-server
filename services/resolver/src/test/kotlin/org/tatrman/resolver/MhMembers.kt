@@ -372,6 +372,9 @@ object MhMembers {
             query: String,
         ): Boolean {
             val a = fold(anchor)
+            // a declared PHRASE matches its own span whole (`po měsících`), as the real matcher's
+            // TOKENS method does
+            if (a.contains(' ') && fold(query) == a) return true
             // per TOKEN, so a phrase span (`many stores`) still finds its head's anchor the way
             // the real matcher's token index does
             return fold(query).split(' ').any { q ->

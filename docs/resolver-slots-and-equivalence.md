@@ -272,6 +272,36 @@ The words themselves come from the estate's compiled lexicon, and by default fro
 stdlib's skills (`ttr-core`, `lexicon-stdlib/skills/*.md`). A word missing there is not found here:
 `nejvyšších` is not a `top-n` trigger today.
 
+## A declared phrase, as the user writes it, and the distributive `po`
+
+**A declared word matches the token's lemma or its surface.** The anchor index used to compare
+lemmas only, so an inflected phrase an estate declared could never form on a lemmatising parser:
+`po měsících` (by month) reads `po měsíc` under MorphoDiTa. The bare `měsících` then bound the
+stdlib time trigger, and *"Tržby z tržiště v roce 2025 po měsících"* came back as one total with no
+gap. A phrase written as the user writes it is a declaration too. Lemma-form declarations
+(`tržba z tržiště`) match exactly as before.
+
+**Czech `po` is "per X" or "after X", and two signals decide which** (rule R3', for a mention that
+is neither a grounding trigger nor a member). `distributive-preps` in `frame-roles.conf` lists the
+preposition (`cs = ["po"]`); it stays in `filter-preps` too.
+
+- **A, the declaration:** the estate wrote the preposition into the phrase (`po měsících` → the
+  month attribute) and no value hangs on the mention. A says GROUPING or nothing, and needs no
+  morphology, so it holds without diacritics (`po mesicich`).
+- **B, the grammar:** the governed noun's `Number` feature. Plural reads per-X (GROUPING), singular
+  reads after-X (FILTER). B says nothing when the tagger gives no number.
+
+| A | B | role |
+|---|---|---|
+| GROUPING | GROUPING or silent | GROUPING |
+| silent | GROUPING / FILTER | B's |
+| silent | silent | FILTER, as before |
+| GROUPING | FILTER | **both GROUPING and FILTER**: undecided |
+
+No other rule produces both roles on one mention, so the pair is a signal: the resolver did not
+guess, and a consumer should hand the sentence to a reader that can weigh it. A grounding trigger
+under `po` (*"po roce 2020"* binds the time kernel) keeps FILTER.
+
 ## Configuration
 
 `resolver.lookup-budget-ms` (env `RESOLVER_LOOKUP_BUDGET_MS`, default 250) bounds both the lookup
@@ -291,6 +321,7 @@ nothing behaves exactly as it did before:
 | pre-v3 archive (no `reachedFrom`) | reachability rule inert; the slot rule still works |
 | no `object_kind` (no mention facet declared) | both rules inert — nothing to prefer |
 | no `count-heads` in an override config | `COUNT_HEAD` never fires |
+| no `distributive-preps` in an override config | R3' never fires; `po` is FILTER, as before |
 | a re-gate (no parse) | `SlotHint.NONE` — both rules inert |
 | `Registry` override without `reached_from` | reachability rule inert |
 | no `owner_ref` on the member's attribute | tier M inert — `E(m)` cannot be resolved, so the tie asks |

@@ -31,6 +31,12 @@ class FrameRolePreps(
      * config file written before MH keeps loading and simply never fires the count slot.
      */
     private val countHeads: Map<String, Set<String>> = emptyMap(),
+    /**
+     * cs LR S5 — prepositions that are GROUPING in their distributive reading and FILTER
+     * otherwise (cs `po`). Last and defaulted, like [countHeads]: a config without the key never
+     * fires the distributive rule.
+     */
+    private val distributivePreps: Map<String, Set<String>> = emptyMap(),
 ) {
     fun grouping(lang: String): Set<String> = table(groupingPreps, lang)
 
@@ -38,6 +44,9 @@ class FrameRolePreps(
 
     /** MH — the lemmas that mark a counted noun's head; empty for a pre-MH config. */
     fun countHeads(lang: String): Set<String> = table(countHeads, lang)
+
+    /** cs LR S5 — the prepositions whose reading the distributive rule decides; see `frame-roles.conf`. */
+    fun distributive(lang: String): Set<String> = table(distributivePreps, lang)
 
     private fun table(
         tables: Map<String, Set<String>>,
@@ -88,6 +97,7 @@ class FrameRolePreps(
                 // MH: `tables` already returns an empty map for an absent path, so a config
                 // that predates the key loads unchanged.
                 countHeads = tables(config, "frame-roles.count-heads"),
+                distributivePreps = tables(config, "frame-roles.distributive-preps"),
             )
 
         private fun tables(
