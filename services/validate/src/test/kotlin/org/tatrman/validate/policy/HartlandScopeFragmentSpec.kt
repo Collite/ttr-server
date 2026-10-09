@@ -58,7 +58,9 @@ class HartlandScopeFragmentSpec :
             policies.map { it.roles }.toSet() shouldBe setOf(listOf("kantheon-scope-dc-5"))
         }
 
-        "a DC-5 caller gets `<warehouse column> IN (5)` on each scoped table" {
+        // The fragment says `type = "in"` with one value; the engine emits `<column> = 5` for it — the same
+        // rows, on an operator the translator decodes (a plain-call IN trips Calcite's own invariant).
+        "a DC-5 caller gets `<warehouse column> = 5` (the fragment's single-value IN) on each scoped table" {
             for ((table, column) in scoped) {
                 val resp = evaluate(table, "analyst", "kantheon-scope-dc-5")
                 resp.messagesList shouldHaveSize 0
@@ -66,7 +68,7 @@ class HartlandScopeFragmentSpec :
                     resp.predicatesList
                         .single()
                         .predicate.function
-                predicate.operation shouldBe "in"
+                predicate.operation shouldBe "eq"
                 predicate.operandsList[0].columnRef.name shouldBe column
                 predicate.operandsList[1].literal.intValue shouldBe 5L
             }
