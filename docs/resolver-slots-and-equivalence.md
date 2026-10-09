@@ -186,6 +186,17 @@ entity's member first; the NER reading stands only when no member matches.**
   `SpanProposal` gives it the ordinary governed pair over the entity's extent, marked as a dual
   reading of that entity (`DomainSpanCandidate.dualReadingOf`). Only `LOCATION` and `PERSON` get
   one: dates and amounts belong to grounding, and numbers to the literal path.
+- **A measure governs a place for its fact.** In *"marketplace revenue for Memphis DC"* the place
+  is the argument of a measure, which holds no values of its own. The governor is then the
+  measure's declared owner, the fact (`catalog_sales`): the question asks for the fact's rows at
+  that warehouse. A multi-word anchor (`marketplace revenue`, `tržby z tržiště`) governs a place
+  too. Neither governs an ordinary value: a measure's other arguments and a multi-word anchor's
+  are proposed by no governed path, as before (`revenue for books`, `v roce 2025`).
+- **Only a member the governor reaches.** The open half of the pair asks every member vocabulary,
+  so a hit counts only when its entity is the governor itself, the governor's entity, or an entity
+  that declares a relation from it (`reachedFrom`). `stores in Dallas` does not bind the
+  warehouse "Dallas DC", because a store reaches no warehouse; `marketplace revenue for Dallas DC`
+  does, because the warehouse declares a relation from `catalog_sales`.
 - **A member decides.** Right after the broad-pass gate, `UniversalSeam.supersede` reads what each
   dual reading found. A member row — bound, or a tie among members, which tier M then asks by
   owner — removes the universal it was proposed over: never grounded, never assembled, never
@@ -200,8 +211,8 @@ entity's member first; the NER reading stands only when no member matches.**
   overlaps a universal never removes it.
 
 **Not scoped, not changed.** A bare place (`TN`), an unanchored one, a pre-modifier of the anchor
-(`Nashville stores`), the argument of an anchor that holds no values (an operator, a measure word)
-and anything under a word that did not bind are proposed by no path, as before. Without a
+(`Nashville stores`), the argument of an operator and anything under a word that did not bind are
+proposed by no path, as before. Without a
 governor there is no entity whose member the word could be, and reading every place as a
 possible value would be a guess.
 

@@ -569,4 +569,212 @@ class UdSeamTest :
                 listOf("${MhMembers.WAREHOUSE_NAME}#Dallas DC")
             r.resolution.bindingsList.count { it.hasUniversal() } shouldBe 0
         }
+
+        // ── ✅UD-8 — a place a MEASURE governs is its fact's (hartland LR S5, live) ─────────────────
+
+        val valueOrigins = setOf(DomainSpanCandidate.Origin.GOVERNED_VALUE, DomainSpanCandidate.Origin.OPEN_VALUE)
+
+        // The live en parse of `Marketplace revenue for Dallas DC` (Stanza, hartland 2026-10-09): the
+        // multi-word measure phrase heads the sentence and the DC name hangs off its head.
+        fun marketplaceFor(
+            place: String,
+            placeTokens: (start: Int) -> List<Token>,
+        ): Array<Token> =
+            arrayOf(
+                MhMembers.tok("Marketplace", 0, 11, "marketplace", "NOUN", 2, "compound"),
+                MhMembers.tok("revenue", 12, 19, "revenue", "NOUN", 0, "root"),
+                MhMembers.tok("for", 20, 23, "for", "ADP", 4, "case"),
+            ) + placeTokens(24).also { require(it.first().text == place.substringBefore(' ')) }
+
+        fun dallasDc(start: Int) =
+            listOf(
+                MhMembers.tok("Dallas", start, start + 6, "Dallas", "PROPN", 2, "nmod"),
+                MhMembers.tok("DC", start + 7, start + 9, "DC", "PROPN", 4, "flat"),
+            )
+
+        fun ResolveResponse.boundTo(
+            text: String,
+            ref: String,
+        ) {
+            val finding = findingsOn(text).single()
+            finding.kind shouldBe ValueKind.VALUE_KIND_LITERAL
+            finding.hasGrounding() shouldBe false
+            finding.attributionsList.map { it.binding.ref } shouldContainExactly listOf(ref)
+            gapsOn(text).shouldBeEmpty()
+            resolution.bindingsList.count { it.hasUniversal() } shouldBe 0
+        }
+
+        "✅UD-8 `Marketplace revenue for Dallas DC` — a multi-word measure's place is its fact's member" {
+            // Before ✅UD-8: the place stood with a G3, the lookup round could not attach a member to
+            // a span the domain never proposed, and the door answered for every warehouse.
+            val r =
+                MhMembers.resolve(
+                    "Marketplace revenue for Dallas DC",
+                    marketplaceFor("Dallas DC", ::dallasDc),
+                    entities = place("Dallas DC", 24),
+                    registry = MhMembers.UD_REGISTRY,
+                )
+
+            r.boundTo("Dallas DC", "${MhMembers.WAREHOUSE_NAME}#Dallas DC")
+            r.resolutionState.mentionsList
+                .single { it.span.text == "Marketplace revenue" }
+                .bindingsList
+                .map { it.ref } shouldContainExactly listOf(MhMembers.MARKETPLACE_REVENUE)
+        }
+
+        "✅UD-8 — the dual reading is scoped to the measure's FACT, on both halves" {
+            val parse =
+                MhMembers
+                    .parse("Marketplace revenue for Dallas DC", marketplaceFor("Dallas DC", ::dallasDc))
+                    .toBuilder()
+                    .addAllEntities(place("Dallas DC", 24))
+                    .build()
+
+            SpanProposal
+                .proposeDomainSpans(parse, MhMembers.udEntityTypes())
+                .filter { it.text == "Dallas DC" }
+                .map { Triple(it.origin, it.dualReadingOf, it.dualReadingScope) } shouldContainExactly
+                listOf(
+                    Triple(DomainSpanCandidate.Origin.GOVERNED_VALUE, 24 to 33, listOf(MhMembers.CATALOG_SALES)),
+                    Triple(DomainSpanCandidate.Origin.OPEN_VALUE, 24 to 33, listOf(MhMembers.CATALOG_SALES)),
+                )
+        }
+
+        "✅UD-8 `Tržby z tržiště v roce 2025 pro Dallas DC` — the same in Czech, and `roce` stays nobody's value" {
+            // The live cs parse (MorphoDiTa + UDPipe, NameTag `cnec:gu`, hartland 2026-10-09). `roce` is
+            // a NOUN `nmod` of the phrase's head exactly as `Dallas` is: a multi-word anchor proposes
+            // the place only, or the year phrase would become a governed value of the fact.
+            val tokens =
+                arrayOf(
+                    MhMembers.tok("Tržby", 0, 5, "tržba", "NOUN", 0, "root"),
+                    MhMembers.tok("z", 6, 7, "z", "ADP", 3, "case"),
+                    MhMembers.tok("tržiště", 8, 15, "tržiště", "NOUN", 1, "nmod"),
+                    MhMembers.tok("v", 16, 17, "v", "ADP", 5, "case"),
+                    MhMembers.tok("roce", 18, 22, "rok", "NOUN", 1, "nmod"),
+                    MhMembers.tok("2025", 23, 27, "2025", "NUM", 5, "nummod"),
+                    MhMembers.tok("pro", 28, 31, "pro", "ADP", 8, "case"),
+                    MhMembers.tok("Dallas", 32, 38, "Dallas", "PROPN", 1, "dep"),
+                    MhMembers.tok("DC", 39, 41, "DC", "NOUN", 8, "flat:foreign"),
+                )
+            val entities = listOf(MhMembers.ner("Dallas DC", 32, 41, "LOCATION", "cnec:gu"))
+            val text = "Tržby z tržiště v roce 2025 pro Dallas DC"
+
+            MhMembers
+                .resolve(text, tokens, lang = "cs", entities = entities, registry = MhMembers.UD_REGISTRY)
+                .boundTo("Dallas DC", "${MhMembers.WAREHOUSE_NAME}#Dallas DC")
+
+            val parse =
+                MhMembers
+                    .parse(text, tokens, "cs")
+                    .toBuilder()
+                    .addAllEntities(entities)
+                    .build()
+            SpanProposal
+                .proposeDomainSpans(parse, MhMembers.udEntityTypes())
+                .filter { it.origin in valueOrigins }
+                .map { it.text }
+                .distinct() shouldContainExactly listOf("Dallas DC")
+        }
+
+        "✅UD-8 `Turnover for Dallas DC` — a single-word measure governs its fact's place too" {
+            val tokens =
+                arrayOf(
+                    MhMembers.tok("Turnover", 0, 8, "turnover", "NOUN", 0, "root"),
+                    MhMembers.tok("for", 9, 12, "for", "ADP", 3, "case"),
+                    MhMembers.tok("Dallas", 13, 19, "Dallas", "PROPN", 1, "nmod"),
+                    MhMembers.tok("DC", 20, 22, "DC", "PROPN", 3, "flat"),
+                )
+            MhMembers
+                .resolve(
+                    "Turnover for Dallas DC",
+                    tokens,
+                    entities = place("Dallas DC", 13),
+                    registry = MhMembers.UD_REGISTRY,
+                ).boundTo("Dallas DC", "${MhMembers.WAREHOUSE_NAME}#Dallas DC")
+        }
+
+        "✅UD-8 `Marketplace revenue for Nashville` — a member the fact does not reach leaves the place standing" {
+            // `Nashville` is a store's name, and the marketplace fact declares no reach to `store`
+            val r =
+                MhMembers.resolve(
+                    "Marketplace revenue for Nashville",
+                    marketplaceFor("Nashville") { start ->
+                        listOf(MhMembers.tok("Nashville", start, start + 9, "Nashville", "PROPN", 2, "nmod"))
+                    },
+                    entities = place("Nashville", 24),
+                    registry = MhMembers.UD_REGISTRY,
+                )
+
+            val finding = r.findingsOn("Nashville").single()
+            finding.kind shouldBe ValueKind.VALUE_KIND_GROUNDED
+            finding.attributionsList.shouldBeEmpty()
+            r.gapsOn("Nashville") shouldContainExactly listOf(GapKind.GAP_KIND_G3_UNATTRIBUTED)
+        }
+
+        "✅UD-8 — a multi-word ENTITY anchor governs a place, and still no ordinary value" {
+            // Before ✅UD-8 a multi-word anchor governed nothing at all. It now offers the dual
+            // reading (the only way in for a place) and keeps declining everything else.
+            val types =
+                MhMembers.udEntityTypes().map {
+                    if (it.ref == MhMembers.WAREHOUSE) it.copy(anchors = it.anchors + "distribution centre") else it
+                }
+
+            fun proposedValues(
+                arg: Token,
+                entities: List<NerEntity> = emptyList(),
+            ): List<Pair<DomainSpanCandidate.Origin, List<String>>> {
+                val tokens =
+                    listOf(
+                        MhMembers.tok("Distribution", 0, 12, "distribution", "NOUN", 2, "compound"),
+                        MhMembers.tok("centre", 13, 19, "centre", "NOUN", 0, "root"),
+                        MhMembers.tok("for", 20, 23, "for", "ADP", 4, "case"),
+                        arg,
+                    )
+                val parse =
+                    MhMembers
+                        .parse("", tokens.toTypedArray())
+                        .toBuilder()
+                        .addAllEntities(entities)
+                        .build()
+                return SpanProposal
+                    .proposeDomainSpans(parse, types)
+                    .filter { it.start == 24 }
+                    .map { it.origin to it.dualReadingScope }
+            }
+
+            proposedValues(
+                MhMembers.tok("Dallas", 24, 30, "Dallas", "PROPN", 2, "nmod"),
+                place("Dallas", 24),
+            ) shouldContainExactly
+                listOf(
+                    DomainSpanCandidate.Origin.GOVERNED_VALUE to listOf(MhMembers.WAREHOUSE),
+                    DomainSpanCandidate.Origin.OPEN_VALUE to listOf(MhMembers.WAREHOUSE),
+                )
+            proposedValues(MhMembers.tok("books", 24, 29, "book", "NOUN", 2, "nmod")).shouldBeEmpty()
+        }
+
+        "✅UD-8 — a measure still governs no ordinary value: only a place gets the reading" {
+            // `books` is no place, so nothing under either measure anchor proposes it as a value
+            fun proposedValues(
+                text: String,
+                tokens: Array<Token>,
+            ) = SpanProposal
+                .proposeDomainSpans(MhMembers.parse(text, tokens), MhMembers.udEntityTypes())
+                .filter { it.origin in valueOrigins }
+
+            proposedValues(
+                "Marketplace revenue for books",
+                marketplaceFor("books") { start ->
+                    listOf(MhMembers.tok("books", start, start + 5, "book", "NOUN", 2, "nmod"))
+                },
+            ).shouldBeEmpty()
+            proposedValues(
+                "Turnover for books",
+                arrayOf(
+                    MhMembers.tok("Turnover", 0, 8, "turnover", "NOUN", 0, "root"),
+                    MhMembers.tok("for", 9, 12, "for", "ADP", 3, "case"),
+                    MhMembers.tok("books", 13, 18, "book", "NOUN", 1, "nmod"),
+                ),
+            ).shouldBeEmpty()
+        }
     })
