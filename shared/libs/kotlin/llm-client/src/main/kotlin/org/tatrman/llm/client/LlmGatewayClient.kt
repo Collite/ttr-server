@@ -21,13 +21,15 @@ import io.opentelemetry.api.trace.propagation.W3CTraceContextPropagator
 import io.opentelemetry.context.Context
 import io.opentelemetry.context.propagation.TextMapSetter
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.serialization.EncodeDefault
+import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import org.slf4j.LoggerFactory
 
-/** Where the LLM gateway lives (host/port + request timeout). Lib-local so the
- *  client doesn't couple to any one agent's config type. */
+/** Where the LLM gateway lives (host/port + request timeout), and what a call asks for when its
+ *  caller says nothing. Lib-local so the client doesn't couple to any one agent's config type. */
 data class LlmGatewayEndpoint(
     val host: String,
     val port: Int,
@@ -35,7 +37,17 @@ data class LlmGatewayEndpoint(
     // Gateway 2.0 requires a per-consumer `Bearer ttrk-…` key on every route (KeyValidator.requireKey).
     // Optional + null-default so existing callers are unaffected; when set, `complete` sends it.
     val apiKey: String? = null,
+    // The completion budget of a call that names none. On a reasoning model (gpt-5, o-series) the budget
+    // also pays for the hidden reasoning, so a long prompt can spend all of it before writing a word —
+    // the call then "succeeds" with nothing usable. A caller with long prompts raises it here.
+    val maxTokens: Int = DEFAULT_MAX_TOKENS,
+    // Sent as `reasoning_effort` ("minimal" | "low" | "medium" | "high") when set; null or blank sends
+    // nothing and the model's own default applies. The gateway drops it for a non-reasoning model.
+    val reasoningEffort: String? = null,
 )
+
+/** The completion budget when neither the call nor its [LlmGatewayEndpoint] names one. */
+const val DEFAULT_MAX_TOKENS: Int = 2000
 
 /**
  * Client for the LLM gateway LLM gateway's OpenAI-shaped `/v1/chat/completions`
@@ -77,25 +89,36 @@ class LlmGatewayClient(
             }
         }
 
+    /**
+     * [maxTokens] / [reasoningEffort] null = the [LlmGatewayEndpoint]'s. They are resolved in the body, never
+     * in a default-argument expression: a consumer's test double of this class has no endpoint, and a
+     * default that read it would fail every call made through the mock.
+     */
     suspend fun complete(
         prompt: String,
         systemPrompt: String = "",
         model: String = "sonnet",
         temperature: Double = 0.0,
-        maxTokens: Int = 2000,
-    ): Result<String> = completeWithMeta(prompt, systemPrompt, model, temperature, maxTokens).map { it.content }
+        maxTokens: Int? = null,
+        reasoningEffort: String? = null,
+    ): Result<String> =
+        completeWithMeta(prompt, systemPrompt, model, temperature, maxTokens, reasoningEffort).map { it.content }
 
     /**
      * [complete], plus what the gateway said about the call — the prompt-log row id, the served
      * route, usage and cost (see [LlmCompletion] for where each field is read). Same request, same
      * failure contract: a [Result.failure] carrying [LlmGatewayException], never a throw.
+     *
+     * [maxTokens] / [reasoningEffort] null = the endpoint's. A blank [reasoningEffort] sends none even
+     * when the endpoint names one.
      */
     suspend fun completeWithMeta(
         prompt: String,
         systemPrompt: String = "",
         model: String = "sonnet",
         temperature: Double = 0.0,
-        maxTokens: Int = 2000,
+        maxTokens: Int? = null,
+        reasoningEffort: String? = null,
     ): Result<LlmCompletion> =
         try {
             val request =
@@ -109,7 +132,8 @@ class LlmGatewayClient(
                             add(ChatMessage(role = "user", content = prompt))
                         },
                     temperature = temperature,
-                    maxTokens = maxTokens,
+                    maxTokens = maxTokens ?: endpoint.maxTokens,
+                    reasoningEffort = (reasoningEffort ?: endpoint.reasoningEffort)?.trim()?.takeIf { it.isNotEmpty() },
                 )
             val attribution =
                 currentCoroutineContext()[LlmCallContext]?.headers { rejected ->
@@ -244,13 +268,19 @@ internal data class GatewayErrorBody(
     val code: String? = null,
 )
 
+@OptIn(ExperimentalSerializationApi::class)
 @Serializable
 data class ChatCompletionRequest(
     val model: String,
     val messages: List<ChatMessage>,
     val temperature: Double = 0.0,
     @SerialName("max_tokens")
-    val maxTokens: Int = 2000,
+    val maxTokens: Int = DEFAULT_MAX_TOKENS,
+    // Absent from the wire unless set: the client encodes defaults, and an explicit `null` is not
+    // something every upstream accepts.
+    @SerialName("reasoning_effort")
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val reasoningEffort: String? = null,
 )
 
 @Serializable

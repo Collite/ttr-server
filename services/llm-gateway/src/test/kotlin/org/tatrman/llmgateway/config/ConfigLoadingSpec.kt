@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package org.tatrman.llmgateway.config
 
+import com.typesafe.config.ConfigFactory
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldContainAll
 import io.kotest.matchers.ints.shouldBeGreaterThanOrEqual
@@ -55,6 +56,21 @@ class ConfigLoadingSpec :
                 .aliases shouldContainAll
                 listOf("haiku", "claude-haiku")
             cfg.catalog.models.flatMap { it.aliases } shouldContainAll listOf("gpt-4", "fast", "sonnet")
+        }
+
+        "the packaged retry budget is 15 s, and LLM_GATEWAY_RETRY_WALL_CLOCK_BUDGET_MS overrides it" {
+            val packaged = ConfigFactory.parseResources("providers.conf")
+            providersFrom(packaged.resolve()).retry.wallClockBudgetMs shouldBe 15_000
+            // `${?VAR}` looks the name up in the config before the environment, so a root key stands in
+            // for the env var here (resolveWith trips typesafe-config on the file's other `${?…}` merges).
+            val overridden =
+                ConfigFactory
+                    .parseMap(mapOf("LLM_GATEWAY_RETRY_WALL_CLOCK_BUDGET_MS" to 90_000))
+                    .withFallback(packaged)
+                    .resolve()
+            providersFrom(overridden).retry.wallClockBudgetMs shouldBe 90_000
+            // The override touches the budget only.
+            providersFrom(overridden).retry.maxAttempts shouldBe 3
         }
 
         // ── rejection rules ─────────────────────────────────────────────────────────────────────────

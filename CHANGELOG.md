@@ -36,6 +36,45 @@ written: `produkty` never met `produkt`, and bound the next row in reach instead
   `producer.algorithm` ends in `+lemma`. Member rows are untouched — the matcher lemmatises member
   queries itself.
 - No wire change, no config.
+### query-mcp, resolver — an MCP tool call reads its own caller's identity, and no one else's
+
+Under concurrent calls an MCP door could evaluate a tool call with **no** identity (a caller who
+sent a bearer was refused `missing_user_identity`) or with **another in-flight caller's** headers.
+The doors stashed `Authorization` / `X-User-Id` in a thread-local from a Ktor interceptor and read
+it in the tool handler. The MCP SDK runs that handler inline on the request's coroutine, but the
+coroutine suspends on the way (reading the body; query-mcp's bearer check hops to
+`Dispatchers.IO`) and resumes on whatever worker thread is free. That thread's slot was empty or
+held a different request's headers. With row policies keyed on the caller's roles, the second case
+is a wrong-identity read.
+
+- **`ktor-configurator`** gains `McpRequestHeaders`, a coroutine context element holding one
+  request's `Authorization` and `X-User-Id`, plus `Application.installMcpRequestHeaders()`, which
+  runs the rest of each call's pipeline inside it. Handlers read `McpRequestHeaders.current()`.
+  Outside a request both are null, so the identity gates fail closed. The element travels with the
+  request's coroutine and its children, so dispatcher hops and `withTimeout` keep it. Its
+  `toString` never prints a credential.
+- **query-mcp** and the **resolver** door use it. `installQueryMcp` / `installResolveDoor` lose
+  their `RequestContext` parameter, and the internal `mcp-identity` `RequestContext` (the
+  thread-local) is removed. `IdentityGate` is unchanged.
+- No wire or config change.
+### llm-client + llm-gateway — a long completion on a reasoning model is no longer cut off at 2000 tokens or 15 s
+
+A plan composer prompting a reasoning model (gpt-5-mini) failed in two ways. The client sent `max_tokens = 2000`
+on every call, and on a reasoning model that budget also pays for the hidden reasoning, so a long prompt could spend
+all of it and come back with nothing usable. Writing those 2000 tokens takes about 15 s, which is exactly the
+gateway's chain wall-clock budget: under load the caller got `502 upstream timeout` for a call the model would have
+finished.
+
+- **`org.tatrman:llm-client`:** `LlmGatewayEndpoint` gains `maxTokens` (default `DEFAULT_MAX_TOKENS` = 2000, as before)
+  and `reasoningEffort` (default null). On `complete` / `completeWithMeta` both parameters are now nullable: null means
+  the endpoint's value, and a per-call value still overrides it. They are resolved in the method body, so a consumer's
+  mock of the client never evaluates the endpoint. `reasoning_effort` goes on the wire only when set (blank counts as
+  unset); there is never an explicit `null`. `LlmGatewayPromptExecutor` sends the Koog prompt's `params.maxTokens` when
+  it has one, the endpoint's otherwise. Source-compatible: existing callers see no change.
+- **llm-gateway:** the chain wall-clock budget (`retry.wallClockBudgetMs`, also the upstream request timeout) can be set
+  with `LLM_GATEWAY_RETRY_WALL_CLOCK_BUDGET_MS`. Default unchanged at 15 000.
+- **llm-gateway:** `reasoning_effort` is dropped for a non-reasoning model (it would 400 there), the mirror of the existing
+  reasoning-model normalisation. Reasoning models receive it as sent.
 
 ### resolver — Czech grain phrases: a declared phrase matches as written, and `po` is decided by two signals
 
