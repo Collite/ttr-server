@@ -302,6 +302,43 @@ No other rule produces both roles on one mention, so the pair is a signal: the r
 guess, and a consumer should hand the sentence to a reader that can weigh it. A grounding trigger
 under `po` (*"po roce 2020"* binds the time kernel) keeps FILTER.
 
+## A mention is also looked up by its dictionary form
+
+The paragraph above is the anchor half of the asymmetry; this is the matcher half. The broad pass
+asks the matcher about the words the user wrote. The matcher's TOKENS and TYPOS paths compare on a
+lemma axis of their own, but a term authored `EXACT` is held to its exact form, and an estate
+declares an object by its citation form: every entity label (`produkt`, `portfolio`, `klient`) is
+one. So `produkty`, `portfolií` and `našich klientů` never met their own object. They bound the
+next row in reach instead (`produkty` → the English alias *product category*, by token + typo, so
+*"produkty začínající na „Voltaic“"* filtered the category column), or nothing (a `G1_UNBOUND`).
+
+**What is asked.** For an anchor phrase, the span's tokens minus its determiners (`det*`: an
+article, a demonstrative, a possessive says which one, and no estate declares *našich klientů* as
+a term). When exactly one content word is left and its lemma folds differently from what was
+written, that lemma is asked about in the mention's own categories, as one more slot of the same
+`BatchMatch`. The rows are folded back onto the mention's slot before anything reads the
+response.
+
+A phrase of several content words asks nothing, because its citation form is not the token-wise
+lemma of what was written. An adjective agrees with its head's gender (*nulové zásoby* → *nulová
+zásoba*, while the lemma of *nulové* is *nulový*), and a governed dependent keeps its case
+(*hodnota objednávky*). Lemmatising the head alone breaks the agreement just the same. A phrase
+matches as written, which is the paragraph above.
+
+**What a dictionary-form row may do — less than the same row met as written.**
+
+| | |
+|---|---|
+| rows admitted | declared or learned, method `EXACT` or `TYPOS(n)`, **no RV-44 profile** |
+| rows not admitted | member rows (the matcher lemmatises a member query itself); TOKENS rows (already scored on the matcher's lemma axis); profile rows (the estate listed which normalized forms count, `lemma` among them if it wants it); a row the written form already reached |
+| score | minus 0.1, wider than the 0.05 tie band: an equally good written row wins outright, a weaker one still loses (*product category* 0.71 against `produkt` 1.0) |
+| class | at most `DECLARED_ALIAS` (`LEARNED_ALIAS` for a learned row), never `EXACT`, which is a claim about the written form; the class a TYPOS hit on a profile-less declared row already has |
+| provenance | `norm = "lemma"` with no `algorithm` (a shape no matcher row has, since a profile row carries both), and `producer.algorithm` ends in `+lemma` |
+
+In English the lemma of a plural is usually declared beside it (`labelPlural`), so the dictionary
+form either folds to what was written or meets a row the written form already reached. The lookup
+rung (`LookupRounds`) still asks with the written form; it runs only on gaps the broad pass left.
+
 ## Configuration
 
 `resolver.lookup-budget-ms` (env `RESOLVER_LOOKUP_BUDGET_MS`, default 250) bounds both the lookup

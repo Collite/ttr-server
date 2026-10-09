@@ -197,6 +197,10 @@ class ResolverPipeline(
         // span proposal does not reach a participle (see `PredicateTriggers`); empty, and
         // therefore free, for every question with no literal in it.
         val predicateWindows = PredicateTriggers.windowsOf(literals, parse)
+        // ✅MH-D5 — and a fourth: each mention's dictionary form, where it differs from what was
+        // written. LAST, and folded back onto the mentions' own slots by `merge` before anything reads
+        // the response, so every offset below is exactly what it was.
+        val lemmaPlan = LemmaLookup.plan(candidates, parse)
         val batchReq =
             GateSpans
                 .buildBatchRequest(
@@ -206,8 +210,14 @@ class ResolverPipeline(
                 ).toBuilder()
                 .addAllSpans(GroundingTriggers.queries(triggerSpans, resolverRegistry.thresholds.maxOptions))
                 .addAllSpans(PredicateTriggers.queries(predicateWindows, resolverRegistry.thresholds.maxOptions))
+                .addAllSpans(LemmaLookup.queries(lemmaPlan, candidates, resolverRegistry.thresholds.maxOptions))
                 .build()
-        val batchResp = fuzzy.batchMatch(batchReq)
+        val batchResp =
+            LemmaLookup.merge(
+                fuzzy.batchMatch(batchReq),
+                lemmaPlan,
+                offset = candidates.size + triggerSpans.size + PredicateTriggers.slotCount(predicateWindows),
+            )
         val broadPass =
             GateSpans.gate(
                 candidates,
