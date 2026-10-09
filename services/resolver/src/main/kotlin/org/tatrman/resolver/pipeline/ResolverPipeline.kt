@@ -168,9 +168,15 @@ class ResolverPipeline(
         // chrono value is precisely what it must NOT become — a date range filter is a different
         // question from a name containing those characters. Dropping the universals here also
         // keeps them out of `GroundingRung`, which grounds what this list holds.
+        // The question goes along so a date NER typed in parts („říjnu“ + „2025“) is grounded as the one
+        // date the user wrote (`UniversalExtraction.joinCalendarParts`).
         val universals =
             if (assessment.csNer) {
-                UniversalExtraction.extractUniversal(parse).filterNot { literals.overlaps(it.start, it.end) }
+                UniversalExtraction
+                    .extractUniversal(
+                        parse,
+                        fresh.text,
+                    ).filterNot { literals.overlaps(it.start, it.end) }
             } else {
                 emptyList()
             }

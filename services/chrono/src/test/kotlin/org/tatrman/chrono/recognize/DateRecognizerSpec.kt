@@ -223,6 +223,59 @@ class DateRecognizerSpec :
                 .shouldBeEmpty()
         }
 
+        // ---- cs month names in every case form a question uses, with and without a year ----
+        // nominative · genitive · locative, with the prepositions a question puts before them. The
+        // resolver hands chrono the span NER typed — "říjnu 2025" once the parts are joined — so each
+        // form must carry its year; without one it stays the bare, reference-relative month.
+        val csMonths =
+            listOf(
+                Triple("leden", "ledna", "lednu"),
+                Triple("únor", "února", "únoru"),
+                Triple("březen", "března", "březnu"),
+                Triple("duben", "dubna", "dubnu"),
+                Triple("květen", "května", "květnu"),
+                Triple("červen", "června", "červnu"),
+                Triple("červenec", "července", "červenci"),
+                Triple("srpen", "srpna", "srpnu"),
+                Triple("září", "září", "září"),
+                Triple("říjen", "října", "říjnu"),
+                Triple("listopad", "listopadu", "listopadu"),
+                Triple("prosinec", "prosince", "prosinci"),
+            )
+        csMonths.forEachIndexed { i, (nominative, genitive, locative) ->
+            val month = i + 1
+            val code = "2025%02d".format(month)
+            for (span in listOf(
+                "$nominative 2025",
+                "$genitive 2025",
+                "$locative 2025",
+                "za $nominative 2025",
+                "během $genitive 2025",
+                "v $locative 2025",
+            )) {
+                "cs '$span' → that month of 2025" {
+                    val r = rec.recognize(span, ref).shouldNotBeNull()
+                    r.kind shouldBe ChronoKind.PERIOD
+                    r.startInclusive shouldBe day(2025, month, 1)
+                    r.endExclusive shouldBe day(2025, month, 1).plusMonths(1)
+                    r.periodCode shouldBe code
+                    r.alternatives.shouldBeEmpty()
+                }
+            }
+            "cs bare '$locative' (no year) stays the reference-relative month" {
+                val r = rec.recognize(locative, ref).shouldNotBeNull()
+                r.periodCode shouldBe "2026%02d".format(month)
+                if (month > ref.monthValue) {
+                    r.alternatives.map { it.periodCode } shouldBe listOf("2025%02d".format(month))
+                } else {
+                    r.alternatives.shouldBeEmpty()
+                }
+            }
+        }
+        "cs without diacritics 'v rijnu 2025' → October 2025" {
+            rec.recognize("v rijnu 2025", ref).shouldNotBeNull().periodCode shouldBe "202510"
+        }
+
         // ---- unrecognized ----
         "gibberish → null (caller emits UNGROUNDABLE / LLM fallback)" {
             rec.recognize("qwerty nonsense", ref).shouldBeNull()

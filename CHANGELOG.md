@@ -16,6 +16,23 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+### resolver — a Czech date the NER typed in parts is grounded as one date („v říjnu 2025“)
+
+*„Které položky tam byly v říjnu 2025 vyprodané?“* grounded **„říjnu“ as October of the current year** beside a
+separate whole 2025. NameTag (CNEC 2.0) types a written date two ways, and which one is not predictable from the words:
+„v květnu 2025“ comes back as one container entity (`cnec:T|B-tm`), „v říjnu 2025“ as two bare ones, a month (`cnec:tm`)
+and a year (`cnec:ty`). Each universal was grounded on its own, so chrono got a month with no year and read it against
+the reference date, as it must for a bare month.
+
+- `UniversalExtraction.extractUniversal(parse, text)` joins bare `td` (day) / `tm` (month) / `ty` (year) DATE parts that
+  touch across whitespace only, in calendar order, into the one date the user wrote („říjnu 2025“, „15. října 2025“). The
+  joined binding carries NameTag's own container code (`cnec:T|B-<first part>`), so both shapes read the same downstream.
+- Two years („2024 a 2025“), a year before a month, a coordination („v říjnu a listopadu 2025“) and parts separated by
+  anything but whitespace stay as they came. Without the question text (the parameter defaults to blank) nothing is joined.
+- chrono itself needed no change: it already reads every cs case form with a year (nominative, genitive, locative,
+  „za …“, „během …“), and a bare month stays reference-relative. Both are now pinned by a table over all twelve months.
+- No wire change.
+
 ### resolver — a mention is also looked up by its dictionary form
 
 On a Czech estate, *"… za produkty začínající na „Voltaic“ podle kategorie"* filtered the CATEGORY
