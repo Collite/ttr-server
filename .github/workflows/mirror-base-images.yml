@@ -9,10 +9,20 @@ name: Mirror base images (GHCR)
 # `TOOMANYREQUESTS: You have reached your unauthenticated pull rate limit`. The release lanes already log
 # in to GHCR, so a base image there costs no new secret.
 #
-# What: each line of MIRRORS copies <source> to <target>, keeping only linux/amd64 + linux/arm64 (every
-# platform our builds ask for) — the upstream index also lists Windows images, whose base layers
-# need not be copyable. The source is ECR Public's mirror of the Docker official images, which serves the
-# byte-identical index (same digest as Docker Hub's) without Docker Hub's anonymous limit.
+# What: each line of IMAGES (`<name>:<tag>`, a Docker official image) is copied to
+# `ghcr.io/collite/<name>:<tag>`, keeping only linux/amd64 + linux/arm64 (every platform our builds ask
+# for) — the upstream index also lists Windows images, whose base layers need not be copyable.
+#
+# Sources — two public mirrors of the official images, each serving the byte-identical index (the same
+# digest as Docker Hub's; checked for every line on 2026-10-09), and neither under Docker Hub's limit:
+#   1. mirror.gcr.io/library/<name>              Google's Docker Hub cache — tried first.
+#   2. public.ecr.aws/docker/library/<name>      ECR Public — anonymous ~1 request/s per IP. One copy
+#      fires several manifest + blob requests at once, so back-to-back copies got `429 Too Many
+#      Requests: Rate exceeded` (2026-10-09, the third image). Hence the fallback, not the first choice.
+# Every copy is retried with a growing pause, and the images are spaced apart.
+#
+# An image whose copy already carries the source's platform images is SKIPPED: the weekly run only
+# touches what upstream changed.
 #
 # When: on a change to this file (a new line takes effect on merge), weekly (so the moving tags pick up
 # runtime and OS security patches the way the Docker Hub tags did), and by hand.
@@ -22,7 +32,8 @@ name: Mirror base images (GHCR)
 # copy, a PAT) is linked to no repository, and GITHUB_TOKEN is then denied on it for good. The release
 # lanes READ it through their own GHCR login (a member's PAT), so its visibility does not matter to them.
 #
-# Adding an image: append `<source> <target>` to MIRRORS, then point the consumers at the target.
+# Adding an image: append `<name>:<tag>` to IMAGES, merge, wait for this run, then point the FROM at
+# `ghcr.io/collite/<name>:<tag>`.
 
 on:
   push:
@@ -41,18 +52,19 @@ concurrency:
   cancel-in-progress: false
 
 env:
+  TARGET: ghcr.io/collite
   # Every Docker Hub base the two repos build from — the Jib base, then the Dockerfile FROMs. One copy
   # serves both: ttr-server's Dockerfiles and kantheon's (metis, investment-door, the nginx frontends).
-  MIRRORS: |
-    public.ecr.aws/docker/library/eclipse-temurin:21-jre ghcr.io/collite/eclipse-temurin:21-jre
-    public.ecr.aws/docker/library/python:3.13-slim-bookworm ghcr.io/collite/python:3.13-slim-bookworm
-    public.ecr.aws/docker/library/python:3.13-slim ghcr.io/collite/python:3.13-slim
-    public.ecr.aws/docker/library/python:3.11-slim-bookworm ghcr.io/collite/python:3.11-slim-bookworm
-    public.ecr.aws/docker/library/debian:bookworm-slim ghcr.io/collite/debian:bookworm-slim
-    public.ecr.aws/docker/library/node:24-slim ghcr.io/collite/node:24-slim
-    public.ecr.aws/docker/library/node:24-trixie-slim ghcr.io/collite/node:24-trixie-slim
-    public.ecr.aws/docker/library/node:22-alpine ghcr.io/collite/node:22-alpine
-    public.ecr.aws/docker/library/nginx:alpine ghcr.io/collite/nginx:alpine
+  IMAGES: |
+    eclipse-temurin:21-jre
+    python:3.13-slim-bookworm
+    python:3.13-slim
+    python:3.11-slim-bookworm
+    debian:bookworm-slim
+    node:24-slim
+    node:24-trixie-slim
+    node:22-alpine
+    nginx:alpine
 
 jobs:
   mirror:
@@ -67,36 +79,64 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Copy
+      - name: Copy and verify
         run: |
-          set -euo pipefail
-          while read -r src dst; do
-            [ -z "${src}" ] && continue
-            echo "::group::${src} -> ${dst}"
-            docker buildx imagetools create \
-              --platform linux/amd64 --platform linux/arm64 \
-              --annotation "index:org.opencontainers.image.source=https://github.com/${GITHUB_REPOSITORY}" \
-              --annotation "index:org.opencontainers.image.description=Mirror of ${src} (linux/amd64, linux/arm64)" \
-              --tag "${dst}" "${src}"
-            echo "::endgroup::"
-          done <<< "${MIRRORS}"
+          set -uo pipefail
 
-      # The copy is only useful if the platform images are the SAME images: compare each platform's
-      # manifest digest in the target with the source's. A mismatch fails the run.
-      - name: Verify
-        run: |
-          set -euo pipefail
+          # "arch digest" per linux/amd64 + linux/arm64 platform image, sorted; empty if unreachable.
           digests() {
-            docker buildx imagetools inspect --raw "$1" \
-              | jq -r '.manifests[] | select(.platform.os == "linux" and (.platform.architecture == "amd64" or .platform.architecture == "arm64")) | "\(.platform.architecture) \(.digest)"' \
+            docker buildx imagetools inspect --raw "$1" 2>/dev/null \
+              | jq -r '.manifests[]? | select(.platform.os == "linux" and (.platform.architecture == "amd64" or .platform.architecture == "arm64")) | "\(.platform.architecture) \(.digest)"' \
               | sort
           }
-          while read -r src dst; do
-            [ -z "${src}" ] && continue
-            if diff <(digests "${src}") <(digests "${dst}"); then
-              echo "✓ ${dst}: $(digests "${dst}" | tr '\n' ' ')"
-            else
-              echo "✗ ${dst} does not carry the platform images of ${src}" >&2
-              exit 1
+
+          # The first source that answers, with its platform digests. Retried: a 429 reads as "no answer".
+          resolve_source() {
+            local img="$1" attempt src d
+            for attempt in 1 2 3 4; do
+              for src in "mirror.gcr.io/library/${img}" "public.ecr.aws/docker/library/${img}"; do
+                d=$(digests "${src}")
+                if [ -n "${d}" ]; then echo "${src}"; return 0; fi
+              done
+              sleep $((attempt * 10))
+            done
+            return 1
+          }
+
+          failed=0
+          while read -r img; do
+            [ -z "${img}" ] && continue
+            dst="${TARGET}/${img}"
+            echo "::group::${img} -> ${dst}"
+            if ! src=$(resolve_source "${img}"); then
+              echo "::error::${img}: no source answered (mirror.gcr.io, public.ecr.aws)"; failed=1; echo "::endgroup::"; continue
             fi
-          done <<< "${MIRRORS}"
+            want=$(digests "${src}")
+            if [ "$(digests "${dst}")" = "${want}" ]; then
+              echo "✓ up to date (${src}): $(echo "${want}" | tr '\n' ' ')"; echo "::endgroup::"; continue
+            fi
+            copied=0
+            for attempt in 1 2 3 4 5; do
+              for s in "mirror.gcr.io/library/${img}" "public.ecr.aws/docker/library/${img}"; do
+                if docker buildx imagetools create \
+                     --platform linux/amd64 --platform linux/arm64 \
+                     --annotation "index:org.opencontainers.image.source=https://github.com/${GITHUB_REPOSITORY}" \
+                     --annotation "index:org.opencontainers.image.description=Mirror of the Docker official image ${img} (linux/amd64, linux/arm64)" \
+                     --tag "${dst}" "${s}"; then
+                  copied=1; break 2
+                fi
+                sleep 5
+              done
+              echo "attempt ${attempt} failed — retrying"
+              sleep $((attempt * 15))
+            done
+            # The copy is only useful if the platform images are the SAME images.
+            if [ "${copied}" = 1 ] && [ "$(digests "${dst}")" = "${want}" ]; then
+              echo "✓ copied: $(echo "${want}" | tr '\n' ' ')"
+            else
+              echo "::error::${img}: copy failed or ${dst} does not carry the platform images of ${src}"; failed=1
+            fi
+            echo "::endgroup::"
+            sleep 5 # space the images apart (ECR Public's anonymous rate)
+          done <<< "${IMAGES}"
+          exit "${failed}"
