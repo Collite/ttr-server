@@ -156,6 +156,70 @@ class PassthroughHandlerSpec :
             sent["max_tokens"]!!.jsonPrimitive.content shouldBe "100"
         }
 
+        "reasoning_effort reaches a reasoning model as sent" {
+            var body = ""
+            val handler = capturing { r -> body = bodyOf(r) }
+            val target =
+                UpstreamTarget(
+                    providerName = "azure",
+                    kind = "openai-wire",
+                    baseUrl = "https://azure.test/openai/v1",
+                    upstream = "gpt-5-mini",
+                    urlPattern = "/{path}",
+                    apiVersion = null,
+                    authHeader = "Authorization",
+                    authScheme = "Bearer",
+                    reasoning = true,
+                )
+
+            runBlocking {
+                handler.complete(
+                    ChatRequest.parse(
+                        """{"model":"mini","max_tokens":8000,"reasoning_effort":"low","messages":[{"role":"user","content":"hi"}]}""",
+                    ),
+                    target,
+                    Key("k"),
+                )
+            }
+
+            val sent = Json.parseToJsonElement(body).jsonObject
+            sent["reasoning_effort"]!!.jsonPrimitive.content shouldBe "low"
+            sent["max_completion_tokens"]!!.jsonPrimitive.content shouldBe "8000"
+        }
+
+        "reasoning_effort is dropped for a non-reasoning model (it would 400); nothing else changes" {
+            var body = ""
+            val handler = capturing { r -> body = bodyOf(r) }
+            val target =
+                UpstreamTarget(
+                    providerName = "openai",
+                    kind = "openai-wire",
+                    baseUrl = "https://api.openai.com",
+                    upstream = "gpt-4o",
+                    urlPattern = "/v1/{path}",
+                    apiVersion = null,
+                    authHeader = "Authorization",
+                    authScheme = "Bearer",
+                    reasoning = false,
+                )
+
+            runBlocking {
+                handler.complete(
+                    ChatRequest.parse(
+                        """{"model":"gpt-4o","temperature":0.0,"max_tokens":100,"reasoning_effort":"low","messages":[{"role":"user","content":"hi"}]}""",
+                    ),
+                    target,
+                    Key("k"),
+                )
+            }
+
+            val sent = Json.parseToJsonElement(body).jsonObject
+            sent.containsKey("reasoning_effort") shouldBe false
+            sent["temperature"]!!.jsonPrimitive.content shouldBe "0.0"
+            sent["max_tokens"]!!.jsonPrimitive.content shouldBe "100"
+            sent["model"]!!.jsonPrimitive.content shouldBe "gpt-4o"
+        }
+
         "openai: /v1 path + Authorization: Bearer header form" {
             var url = ""
             var auth: String? = null

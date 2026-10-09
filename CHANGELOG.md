@@ -16,6 +16,24 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+### llm-client + llm-gateway — a long completion on a reasoning model is no longer cut off at 2000 tokens or 15 s
+
+A plan composer prompting a reasoning model (gpt-5-mini) failed in two ways. The client sent `max_tokens = 2000`
+on every call, and on a reasoning model that budget also pays for the hidden reasoning, so a long prompt could spend
+all of it and come back with nothing usable. Writing those 2000 tokens takes about 15 s, which is exactly the
+gateway's chain wall-clock budget: under load the caller got `502 upstream timeout` for a call the model would have
+finished.
+
+- **`org.tatrman:llm-client`:** `LlmGatewayEndpoint` gains `maxTokens` (default `DEFAULT_MAX_TOKENS` = 2000, as before)
+  and `reasoningEffort` (default null). `complete` / `completeWithMeta` default to the endpoint's values and still accept a
+  per-call override. `reasoning_effort` goes on the wire only when set (blank counts as unset); there is never an explicit
+  `null`. `LlmGatewayPromptExecutor` sends the Koog prompt's `params.maxTokens` when it has one, the endpoint's otherwise.
+  Additive: existing callers see no change. New: `LlmGatewayClient.defaultMaxTokens`.
+- **llm-gateway:** the chain wall-clock budget (`retry.wallClockBudgetMs`, also the upstream request timeout) can be set
+  with `LLM_GATEWAY_RETRY_WALL_CLOCK_BUDGET_MS`. Default unchanged at 15 000.
+- **llm-gateway:** `reasoning_effort` is dropped for a non-reasoning model (it would 400 there), the mirror of the existing
+  reasoning-model normalisation. Reasoning models receive it as sent.
+
 ### resolver — Czech grain phrases: a declared phrase matches as written, and `po` is decided by two signals
 
 On a Czech estate, *"Tržby z tržiště v roce 2025 po měsících"* (by month) answered one total, and

@@ -24,7 +24,9 @@ import kotlin.time.Instant
  * Scope:
  *  - `execute(prompt, model, tools)` — extracts text from System + User messages,
  *    maps Koog's [LLModel] id to a gateway tier key (`"haiku"` / `"sonnet"` /
- *    `"opus"`), returns a single [Message.Assistant] wrapping the gateway reply.
+ *    `"opus"`), returns a single [Message.Assistant] wrapping the gateway reply. The prompt's
+ *    `params.maxTokens` is the call's completion budget; without one, the client's
+ *    [LlmGatewayClient.defaultMaxTokens] applies (the endpoint's, not a constant here).
  *  - `executeStreaming` / `moderate` — the gateway exposes neither; both throw
  *    [UnsupportedOperationException].
  *  - `tools` ignored — agents call MCP tools directly, not via Koog tool-routing.
@@ -60,6 +62,7 @@ class LlmGatewayPromptExecutor(
                     systemPrompt = systemContent,
                     model = mapModelToGatewayKey(model),
                     temperature = temperature,
+                    maxTokens = prompt.params.maxTokens ?: gateway.defaultMaxTokens,
                 ).getOrThrow()
         // The call is served, billed and logged by now: a collector that throws must not turn it into a
         // failure Koog might retry (and pay for twice) — review-100 F18.
