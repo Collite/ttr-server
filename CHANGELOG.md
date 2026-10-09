@@ -16,6 +16,27 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+### resolver — a mention is also looked up by its dictionary form
+
+On a Czech estate, *"… za produkty začínající na „Voltaic“ podle kategorie"* filtered the CATEGORY
+column by the prefix (0 rows), and *"hodnota portfolií našich klientů"* left both objects unbound.
+The estate declares an object by its citation form (`produkt`, `portfolio`, `klient` — every entity
+label is one) with method `EXACT`, and the broad pass asked the matcher only about the words as
+written: `produkty` never met `produkt`, and bound the next row in reach instead (the English alias
+*product category*, by token + typo).
+
+- **One more slot in the same `BatchMatch`** for an anchor phrase whose single content word (its
+  determiners left out) has a lemma that differs from what was written. Its rows are folded back
+  onto the mention's own slot before anything reads the response; the batch shape every positional
+  reader sees is unchanged. A phrase of several content words asks nothing.
+- **A dictionary-form row does less than the same row met as written.** Only declared/learned rows
+  whose authored method is `EXACT` or `TYPOS(n)` and that carry no RV-44 matching profile; minus
+  0.1 (wider than the tie band, so an equally good written row wins); classed at most
+  `DECLARED_ALIAS` (`LEARNED_ALIAS` for a learned row), never `EXACT`; the binding's
+  `producer.algorithm` ends in `+lemma`. Member rows are untouched — the matcher lemmatises member
+  queries itself.
+- No wire change, no config.
+
 ### resolver — Czech grain phrases: a declared phrase matches as written, and `po` is decided by two signals
 
 On a Czech estate, *"Tržby z tržiště v roce 2025 po měsících"* (by month) answered one total, and

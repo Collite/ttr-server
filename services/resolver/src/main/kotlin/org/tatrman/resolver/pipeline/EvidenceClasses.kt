@@ -59,6 +59,18 @@ object EvidenceClasses {
         // author TOKENS on a term, but only the matcher can see how many targets it reaches.
         if (match.hasAutoBindable() && !match.autoBindable) return EvidenceClass.EVIDENCE_CLASS_WEAK
 
+        // ✅MH-D5 — a row met through the mention's DICTIONARY form (`LemmaLookup`): the estate's own
+        // term, reached through morphology rather than as written. At most an alias — never EXACT,
+        // which is a claim about the written form — the class a TYPOS hit on a profile-less declared
+        // row already has. Ahead of the authored method on purpose: the method it carries is `EXACT`.
+        if (LemmaLookup.isLemmaHit(match)) {
+            return if (match.source == SourceTag.LEARNED) {
+                EvidenceClass.EVIDENCE_CLASS_LEARNED_ALIAS
+            } else {
+                EvidenceClass.EVIDENCE_CLASS_DECLARED_ALIAS
+            }
+        }
+
         val method = if (match.hasMatchMethod()) match.matchMethod.trim() else ""
         val isMember = match.source == SourceTag.MEMBER
 
