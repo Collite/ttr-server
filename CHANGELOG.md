@@ -16,6 +16,20 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+### resolver — a place's member reading takes the words the parse adds to its name (✅UD-9, #118)
+
+When the NER typed only part of a name as the place, the member reading covered only that part.
+NameTag types `Praha` in `Tržby z tržiště pro Praha DC` and the parse hangs `DC` on it. The reading
+looked up `Praha`, which can still bind the DC, but `DC` was left over as an unbound mention (a
+G1), and the turn asked what „DC“ meant.
+
+- The reading now extends rightward over the words the parse attaches to the name: a nominal whose
+  head is already in the run, by `flat`, `flat:name`, `flat:foreign`, `compound`, `nmod` or `appos`.
+  The run stops at the first word that fails, an anchor word, a quoted literal, or another NER
+  entity. It never extends to the left.
+- Where the NER already types the whole name (`Dallas DC`), nothing changes.
+- No wire change.
+
 ### resolver — a place under a measure is looked up as a member of the measure's fact (✅UD-8, #118)
 
 The member reading of a place (UD-P1) was offered only to the argument of a single-word anchor that

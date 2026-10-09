@@ -94,6 +94,9 @@ object SpanProposal {
     /** Multi-word run relations that glue a proper-noun phrase together. */
     private val PROPN_RUN_RELATIONS = setOf("flat", "flat:name", "compound", "nmod", "appos")
 
+    /** ✅UD-9 — relations by which a word continues a place's name past its NER extent (`Praha DC`). */
+    private val NAME_TAIL_RELATIONS = PROPN_RUN_RELATIONS + setOf("flat:foreign")
+
     private val NOMINAL_UPOS = setOf("NOUN", "PROPN", "X")
 
     /**
@@ -368,7 +371,12 @@ object SpanProposal {
                 val governedRefs = if (dual != null) placeOwners else refs
                 val valueIdx =
                     if (dual != null) {
-                        tokensWithin(dual, tokens).filterNot { it in anchorTokens }
+                        withNameTail(
+                            tokensWithin(dual, tokens).filterNot { it in anchorTokens },
+                            tokens,
+                            universal,
+                            anchorTokens + literals.tokens,
+                        )
                     } else {
                         subtreeIndices(childIdx, children, tokens, universal, anchorTokens, literals.tokens)
                     }
@@ -993,6 +1001,39 @@ object SpanProposal {
             mid in e.charStart until e.charEnd &&
                 UniversalClassifier.dualReadingType(e.label, e.normalizedValue, e.text) != null
         }
+    }
+
+    /**
+     * ✅UD-9 — the words the parse hangs on a place name right AFTER its NER extent: `Praha DC`,
+     * where NameTag types `Praha` a place and the parse makes `DC` its `nmod`. The member's name is
+     * the whole run, and a reading of `Praha` alone left `DC` behind as an unbound mention (G1),
+     * which turned a bound member into a clarification about „DC“.
+     *
+     * Contiguous and conservative: the next token joins only while it is a nominal whose head is
+     * already in the run, by a name-continuing relation, and is neither an anchor, a quoted
+     * literal, nor part of another universal entity. The first token that fails ends the run, so a
+     * preposition (`Brno v lednu`) or an anchor word (`Brno prodejny`) is never swallowed. Nothing
+     * extends to the LEFT: the NER's start stands. Where the NER already spans the name
+     * (`Dallas DC` typed whole), there is no tail and the extent is exactly the entity's.
+     */
+    private fun withNameTail(
+        extent: List<Int>,
+        tokens: List<Token>,
+        universal: List<IntRange>,
+        excluded: Set<Int>,
+    ): List<Int> {
+        if (extent.isEmpty()) return extent
+        val run = extent.toMutableList()
+        var next = extent.max() + 1
+        while (next < tokens.size) {
+            val t = tokens[next]
+            if (next in excluded || isUniversal(t, universal)) break
+            if (t.upos.uppercase() !in NOMINAL_UPOS) break
+            if (t.depRelation !in NAME_TAIL_RELATIONS || (t.depHead - 1) !in run) break
+            run += next
+            next++
+        }
+        return run
     }
 
     /** Every token whose mid-character lies inside [entity]'s extent — the entity, as tokens. */
