@@ -11,7 +11,8 @@
 # Build from the repo root (the shared .proto tree resolves there):
 #   docker build -t golem-py:dev -f services/golem-py/Dockerfile .
 
-FROM python:3.13-slim-bookworm AS base
+# Base images are ghcr.io/collite copies of the Docker official images (.github/workflows/mirror-base-images.yml).
+FROM ghcr.io/collite/python:3.13-slim-bookworm AS base
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \

@@ -14,7 +14,8 @@
 # ARCH: build for the x86 cluster — `docker buildx build --platform linux/amd64`.
 # Model redistribution (FI-4): CC BY-NC-SA 4.0 — publishing the image is gated.
 
-FROM python:3.11-slim-bookworm AS base
+# Base images are ghcr.io/collite copies of the Docker official images (.github/workflows/mirror-base-images.yml).
+FROM ghcr.io/collite/python:3.11-slim-bookworm AS base
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
