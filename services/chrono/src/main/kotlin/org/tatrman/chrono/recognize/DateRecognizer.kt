@@ -114,7 +114,8 @@ class DateRecognizer {
         triggered: Boolean = false,
     ): ChronoRecognition? {
         if (!quarterWordRe.containsMatchIn(n)) return null
-        val thisScope = hasAny(n, "this", "current", "tento", "toto", "soucasn", "aktualn")
+        // The month/year scope words decline the same way before a quarter ("v tomto čtvrtletí").
+        val thisScope = hasAny(n, thisScopeWords)
         val lastScope = hasAny(n, "last", "previous", "past", "posledni", "minul", "predchoz")
         val scopeless = !thisScope && !lastScope
         if (scopeless && !triggered) return null // no scope and no trigger → the LLM fallback's
@@ -274,6 +275,32 @@ class DateRecognizer {
 
     // ----- relative: today/yesterday/tomorrow · this/last week/month/year · last N days/months -----
 
+    /**
+     * The scope words, folded (Normalization.fold), matched as substrings of the span.
+     *
+     * Czech declines the demonstrative and the adjective with the noun, so each scope comes in the
+     * forms a question puts it in: *tento měsíc*, *tohoto měsíce*, *v tomto měsíci*, *tenhle týden*;
+     * *minulý / minulého / v minulém*; *loňský rok*, *loňské tržby*. Only the stems that cannot be a
+     * different word inside a date span are listed — `posledni` is NOT a scope for a month or a year,
+     * because *za poslední měsíc* is as often the trailing thirty days as the calendar month before.
+     */
+    private val thisScopeWords =
+        (
+            "this current " +
+                "tento tato toto tohoto tomto tomuto timto tenhle tohle tomhle tohohle " +
+                // "letos", "letošní" — this year
+                "letos aktualn soucasn"
+        ).split(' ')
+    private val lastScopeWords =
+        // "loni", "vloni", "loňský" — last year
+        "last previous minul predchoz loni lonsk".split(' ')
+
+    /** Two periods back: *předloni*, *předloňský*, *předminulý měsíc*. Asked before [lastScopeWords], which they contain. */
+    private val twoBackScopeWords = listOf("predlon", "predminul")
+
+    /** The locative of *rok* (*v minulém roce*) — a whole word, since "roce" sits inside other words. */
+    private val roceRe = Regex("""\broce\b""")
+
     private val lastNRe =
         Regex("""(?:last|past|poslednic?h?|minul\w*)\s+(\d{1,3})\s+(day|days|month|months|den|dn[iíuů]|mesic\w*)""")
 
@@ -298,17 +325,24 @@ class DateRecognizer {
                 }
             return ChronoRecognition(start, reference.plusDays(1), ChronoKind.RELATIVE, 0.85)
         }
-        val thisScope = hasAny(n, "this", "tento", "tato", "letos") // "letos" = this year
-        val lastScope = hasAny(n, "last", "minul", "loni", "predchoz") // "loni" = last year
+        val thisScope = hasAny(n, thisScopeWords)
+        val lastScope = hasAny(n, lastScopeWords)
+        val twoBack = hasAny(n, twoBackScopeWords)
         // A declared trigger with no scope word reads as the CURRENT period (RV-42): the estate
         // put the word in its slice, so "fiskální rok" is a period it means, not noise. Scoped at
         // a lower confidence than an authored "tento"/"minulý", because the scope is inferred.
-        val scopeless = !thisScope && !lastScope
+        val scopeless = !thisScope && !lastScope && !twoBack
         if (scopeless && !triggered) return null
-        val delta = if (lastScope) -1L else 0L
+        // "předloni" also contains "loni", so the two-back words are asked first.
+        val delta =
+            when {
+                twoBack -> -2L
+                lastScope -> -1L
+                else -> 0L
+            }
         val confidence = if (scopeless) TRIGGERED_SCOPELESS_CONFIDENCE else 0.9
         return when {
-            hasAny(n, "week", "tyden", "tydnu") -> weekInterval(reference, delta, confidence)
+            hasAny(n, "week", "tyden", "tydn") -> weekInterval(reference, delta, confidence)
             hasAny(n, "month", "mesic") -> {
                 val base = reference.plusMonths(delta)
                 // Carry a period code (yyyyMM) so a period-coded package (e.g. an
@@ -323,7 +357,7 @@ class DateRecognizer {
                     "%04d%02d".format(base.year, base.monthValue),
                 )
             }
-            hasAny(n, "year", "rok", "letos", "loni") ->
+            hasAny(n, "year", "rok", "letos", "loni", "lonsk", "predlon") || roceRe.containsMatchIn(n) ->
                 yearInterval(
                     reference.year + delta.toInt(),
                     // A scopeless fiscal mention is a FISCAL_YEAR, not a plain calendar year —
@@ -374,5 +408,10 @@ class DateRecognizer {
     private fun hasAny(
         n: String,
         vararg needles: String,
+    ): Boolean = needles.any { n.contains(it) }
+
+    private fun hasAny(
+        n: String,
+        needles: List<String>,
     ): Boolean = needles.any { n.contains(it) }
 }

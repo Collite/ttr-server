@@ -131,9 +131,14 @@ class ResolverPipeline(
     private suspend fun freshResolve(request: ResolveRequest): ResolveResponse {
         val fresh = request.fresh
         val locale = fresh.locale
-        val parse = nlp.analyze(analyzeRequest(fresh.text, locale))
+        val analyzed = nlp.analyze(analyzeRequest(fresh.text, locale))
         val status = runCatching { nlp.getStatus() }.getOrNull()
-        val assessment = assess(parse, status)
+        val assessment = assess(analyzed, status)
+        // A period stated relative to today („minulý měsíc“, „letos“) is typed a date beside NER's
+        // own, so it is grounded rather than left an unbound FILTER word (`RelativePeriods`). Only
+        // where NER runs: without it there are no universals, and a span taken out of the mention
+        // layer would reach neither a value nor a gap.
+        val parse = if (assessment.csNer) RelativePeriods.augment(analyzed, fresh.text) else analyzed
 
         val declared =
             if (request.hasRegistry()) {

@@ -186,6 +186,66 @@ class DateRecognizerSpec :
             r.endExclusive shouldBe day(2026, 5, 11)
             rec.recognize("minulý týden", ref).shouldNotBeNull().startInclusive shouldBe day(2026, 5, 4)
         }
+        // ---- cs relative periods in the forms a question puts them in (LR, the Czech demo's reserve
+        // „Tržby z tržiště za minulý měsíc pro Brno DC“). The demonstrative and the adjective decline
+        // with the noun, and each form must land on the same period as its nominative.
+        val csRelative =
+            listOf(
+                // last month = April 2026
+                "minulý měsíc" to (day(2026, 4, 1) to day(2026, 5, 1)),
+                "za minulý měsíc" to (day(2026, 4, 1) to day(2026, 5, 1)),
+                "minulého měsíce" to (day(2026, 4, 1) to day(2026, 5, 1)),
+                "v minulém měsíci" to (day(2026, 4, 1) to day(2026, 5, 1)),
+                "předchozí měsíc" to (day(2026, 4, 1) to day(2026, 5, 1)),
+                "minuly mesic" to (day(2026, 4, 1) to day(2026, 5, 1)),
+                // the month before last = March 2026
+                "předminulý měsíc" to (day(2026, 3, 1) to day(2026, 4, 1)),
+                // this month = May 2026
+                "tento měsíc" to (day(2026, 5, 1) to day(2026, 6, 1)),
+                "tenhle měsíc" to (day(2026, 5, 1) to day(2026, 6, 1)),
+                "tohoto měsíce" to (day(2026, 5, 1) to day(2026, 6, 1)),
+                "v tomto měsíci" to (day(2026, 5, 1) to day(2026, 6, 1)),
+                "aktuální měsíc" to (day(2026, 5, 1) to day(2026, 6, 1)),
+                // this year = 2026
+                "letos" to (day(2026, 1, 1) to day(2027, 1, 1)),
+                "letošní" to (day(2026, 1, 1) to day(2027, 1, 1)),
+                "letošní rok" to (day(2026, 1, 1) to day(2027, 1, 1)),
+                "tento rok" to (day(2026, 1, 1) to day(2027, 1, 1)),
+                "v tomto roce" to (day(2026, 1, 1) to day(2027, 1, 1)),
+                // last year = 2025
+                "loni" to (day(2025, 1, 1) to day(2026, 1, 1)),
+                "vloni" to (day(2025, 1, 1) to day(2026, 1, 1)),
+                "loňský rok" to (day(2025, 1, 1) to day(2026, 1, 1)),
+                "loňské" to (day(2025, 1, 1) to day(2026, 1, 1)),
+                "minulý rok" to (day(2025, 1, 1) to day(2026, 1, 1)),
+                "minulého roku" to (day(2025, 1, 1) to day(2026, 1, 1)),
+                "v minulém roce" to (day(2025, 1, 1) to day(2026, 1, 1)),
+                // two years back = 2024 — "předloni" also contains "loni"
+                "předloni" to (day(2024, 1, 1) to day(2025, 1, 1)),
+                "předloňský rok" to (day(2024, 1, 1) to day(2025, 1, 1)),
+                // weeks: the reference is Friday 2026-05-15, its week starts Monday 05-11
+                "tento týden" to (day(2026, 5, 11) to day(2026, 5, 18)),
+                "minulého týdne" to (day(2026, 5, 4) to day(2026, 5, 11)),
+                "v minulém týdnu" to (day(2026, 5, 4) to day(2026, 5, 11)),
+            )
+        for ((span, interval) in csRelative) {
+            "cs relative '$span' → ${interval.first}/${interval.second}" {
+                val r = rec.recognize(span, ref).shouldNotBeNull()
+                r.startInclusive shouldBe interval.first
+                r.endExclusive shouldBe interval.second
+                r.confidence shouldBe 0.9
+            }
+        }
+        "last month carries its period code, so a period-keyed fact can bind it" {
+            rec.recognize("minulého měsíce", ref).shouldNotBeNull().periodCode shouldBe "202604"
+            rec.recognize("předminulý měsíc", ref).shouldNotBeNull().periodCode shouldBe "202603"
+        }
+        "'poslední měsíc' is not read as the calendar month before — it is as often the trailing month" {
+            rec.recognize("poslední měsíc", ref).shouldBeNull()
+        }
+        "a word that only contains 'roce' is not the locative of rok" {
+            rec.recognize("minulé procento", ref).shouldBeNull()
+        }
         "last N months / poslední 3 měsíce → rolling window ending today" {
             val r = rec.recognize("poslední 3 měsíce", ref).shouldNotBeNull()
             r.startInclusive shouldBe day(2026, 2, 15)
