@@ -36,6 +36,41 @@ import java.sql.ResultSetMetaData
 object PostgresArrowTypeMapper {
     private const val ORIGINAL_TYPE_KEY = "pg.original_type"
 
+    /** Decimal128's precision ceiling. */
+    const val DECIMAL128_MAX_PRECISION: Int = 38
+
+    /**
+     * #155 / #83 — the widest scale an UNCONSTRAINED numeric gets: 18 decimals, which leaves 20 integer
+     * digits inside Decimal128's 38. A numeric with no typmod (`a / b`, `SUM(x)`, `AVG(x)`, a UNION branch
+     * with an untyped NULL) reports precision 0 and scale 0, and that scale 0 means "not declared", not
+     * "integer". The metadata alone maps such a column to `Decimal(38, 18)`; [ResultSetToArrow] then
+     * narrows it to the scale the first batch's values actually carry (a sum of money stays at 2).
+     */
+    const val UNCONSTRAINED_MAX_SCALE: Int = 18
+
+    /** The integer digits an unconstrained numeric always has room for: 38 − [UNCONSTRAINED_MAX_SCALE]. */
+    const val UNCONSTRAINED_MIN_INTEGER_DIGITS: Int = DECIMAL128_MAX_PRECISION - UNCONSTRAINED_MAX_SCALE
+
+    /** PostgreSQL's largest declarable `numeric(p, s)` precision; anything above is a driver marker. */
+    private const val PG_MAX_DECLARED_PRECISION = 1000
+
+    /**
+     * True for a `numeric` / `decimal` result column with no declared precision: pgjdbc 42 reports
+     * precision 0 for it, older drivers 131089. A declared `numeric(p, s)` always reports 1..1000.
+     */
+    fun isUnconstrainedNumeric(
+        nativeTypeName: String,
+        jdbcType: JDBCType,
+        precision: Int,
+    ): Boolean {
+        val name = nativeTypeName.lowercase()
+        val numeric =
+            name == "numeric" ||
+                name == "decimal" ||
+                (name != "money" && (jdbcType == JDBCType.NUMERIC || jdbcType == JDBCType.DECIMAL))
+        return numeric && precision !in 1..PG_MAX_DECLARED_PRECISION
+    }
+
     /**
      * Build an Arrow [Field] for a JDBC ResultSet column. Reads JDBC type code +
      * Postgres native type name + precision/scale; nullability from the
@@ -79,11 +114,7 @@ object PostgresArrowTypeMapper {
             "float8", "double", "double precision" ->
                 ArrowType.FloatingPoint(FloatingPointPrecision.DOUBLE) to null
 
-            "numeric", "decimal" -> {
-                val p = if (precision in 1..38) precision else 38
-                val s = if (scale in 0..p) scale else 0
-                ArrowType.Decimal(p, s, 128) to null
-            }
+            "numeric", "decimal" -> decimalType(name, jdbcType, precision, scale) to null
             // Postgres `money` is locale-scaled to 2 decimals; v1 Midas does not use it.
             "money" -> ArrowType.Decimal(19, 2, 128) to null
 
@@ -134,11 +165,7 @@ object PostgresArrowTypeMapper {
             JDBCType.INTEGER -> Types.MinorType.INT.type to null
             JDBCType.BIGINT -> Types.MinorType.BIGINT.type to null
             JDBCType.BIT, JDBCType.BOOLEAN -> Types.MinorType.BIT.type to null
-            JDBCType.DECIMAL, JDBCType.NUMERIC -> {
-                val p = if (precision in 1..38) precision else 38
-                val s = if (scale in 0..p) scale else 0
-                ArrowType.Decimal(p, s, 128) to null
-            }
+            JDBCType.DECIMAL, JDBCType.NUMERIC -> decimalType(jdbcType.name, jdbcType, precision, scale) to null
             JDBCType.REAL -> ArrowType.FloatingPoint(FloatingPointPrecision.SINGLE) to null
             JDBCType.FLOAT, JDBCType.DOUBLE -> ArrowType.FloatingPoint(FloatingPointPrecision.DOUBLE) to null
             JDBCType.CHAR, JDBCType.VARCHAR, JDBCType.LONGVARCHAR,
@@ -153,6 +180,24 @@ object PostgresArrowTypeMapper {
                 Types.MinorType.VARBINARY.type to null
             else -> Types.MinorType.VARBINARY.type to mapOf(ORIGINAL_TYPE_KEY to jdbcType.name.lowercase())
         }
+
+    /**
+     * A declared `numeric(p, s)` maps to `Decimal(p, s)` (precision clamped to Decimal128's 38). An
+     * unconstrained one maps to the widest scale, [UNCONSTRAINED_MAX_SCALE], never to scale 0 (#155 / #83).
+     */
+    private fun decimalType(
+        name: String,
+        jdbcType: JDBCType,
+        precision: Int,
+        scale: Int,
+    ): ArrowType.Decimal {
+        if (isUnconstrainedNumeric(name, jdbcType, precision)) {
+            return ArrowType.Decimal(DECIMAL128_MAX_PRECISION, UNCONSTRAINED_MAX_SCALE, 128)
+        }
+        val p = if (precision in 1..DECIMAL128_MAX_PRECISION) precision else DECIMAL128_MAX_PRECISION
+        val s = if (scale in 0..p) scale else 0
+        return ArrowType.Decimal(p, s, 128)
+    }
 
     /** Exposed for tests. */
     internal fun originalTypeKey(): String = ORIGINAL_TYPE_KEY

@@ -245,6 +245,9 @@ class ExecutePipeline(
                 // Step 7 — stream batches.
                 val converter = ResultSetToArrow(allocator, opt.batchSizeRows, opt.maxBlobBytesPerCell)
                 val schema = converter.schemaOf(resultSet.metaData)
+                // The metadata schema's fingerprint stands for an empty result. A data batch announces
+                // the fingerprint of the schema it carries: an unconstrained numeric is sized from the
+                // first batch's values (#155 / #83), so the two can differ.
                 val fingerprint = ArrowIpcSerializer.fingerprintFor(schema)
 
                 // Emit one `unsupported_type_as_binary` pipeline warning per column mapped to opaque
@@ -291,8 +294,22 @@ class ExecutePipeline(
                             .setIsLast(false)
                             .setContext(if (!firstEmitted) firstBatchContext else unparse.context)
                     if (!firstEmitted) {
-                        builder.setSchemaFingerprint(fingerprint)
+                        builder.setSchemaFingerprint(
+                            root?.let { ArrowIpcSerializer.fingerprintFor(it.schema) } ?: fingerprint,
+                        )
                         firstEmitted = true
+                    }
+                    batch.rounded.forEach { (column, scale) ->
+                        builder.addMessages(
+                            ResponseMessage
+                                .newBuilder()
+                                .setSeverity(Severity.WARNING)
+                                .setCode("numeric_scale_rounded")
+                                .setHumanMessage(
+                                    "Column '$column' has no declared scale and was sized to $scale decimal " +
+                                        "place(s) from the first batch; values in this batch with more were rounded.",
+                                ),
+                        )
                     }
                     batch.rejections.forEach { rej ->
                         builder.addMessages(

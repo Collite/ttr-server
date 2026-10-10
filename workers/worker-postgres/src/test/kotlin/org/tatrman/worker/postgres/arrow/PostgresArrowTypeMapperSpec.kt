@@ -54,11 +54,29 @@ class PostgresArrowTypeMapperSpec :
             d.scale shouldBe 4
             d.bitWidth shouldBe 128
         }
-        "unconstrained numeric (precision 0) clamps to Decimal128(38,0)" {
+        // #155 / #83 — a numeric with no typmod (`a / b`, `SUM(x)`, a UNION with an untyped NULL)
+        // reports precision 0 and scale 0. Scale 0 there means "not declared", not "integer": the
+        // metadata-only type is the widest the batch can narrow from, never Decimal128(38,0).
+        "unconstrained numeric (precision 0) maps to Decimal128(38,18), not (38,0)" {
             val (t, _) = PostgresArrowTypeMapper.mapType("numeric", JDBCType.NUMERIC, 0, 0)
             val d = t.shouldBeInstanceOf<ArrowType.Decimal>()
             d.precision shouldBe 38
-            d.scale shouldBe 0
+            d.scale shouldBe PostgresArrowTypeMapper.UNCONSTRAINED_MAX_SCALE
+        }
+        "unconstrained numeric: precision 0 and the old driver's 131089 both count; a declared one does not" {
+            PostgresArrowTypeMapper.isUnconstrainedNumeric("numeric", JDBCType.NUMERIC, 0) shouldBe true
+            PostgresArrowTypeMapper.isUnconstrainedNumeric("numeric", JDBCType.NUMERIC, 131089) shouldBe true
+            PostgresArrowTypeMapper.isUnconstrainedNumeric("decimal", JDBCType.DECIMAL, 0) shouldBe true
+            PostgresArrowTypeMapper.isUnconstrainedNumeric("numeric", JDBCType.NUMERIC, 18) shouldBe false
+            PostgresArrowTypeMapper.isUnconstrainedNumeric("numeric", JDBCType.NUMERIC, 1000) shouldBe false
+            PostgresArrowTypeMapper.isUnconstrainedNumeric("int8", JDBCType.BIGINT, 0) shouldBe false
+            PostgresArrowTypeMapper.isUnconstrainedNumeric("money", JDBCType.DOUBLE, 0) shouldBe false
+        }
+        "a declared numeric wider than Decimal128 keeps its declared scale (unchanged)" {
+            val (t, _) = PostgresArrowTypeMapper.mapType("numeric", JDBCType.NUMERIC, 50, 10)
+            val d = t.shouldBeInstanceOf<ArrowType.Decimal>()
+            d.precision shouldBe 38
+            d.scale shouldBe 10
         }
         "varchar/text/bpchar/name map to VARCHAR (UTF8)" {
             listOf("varchar", "text", "bpchar", "char", "name").forEach { name ->

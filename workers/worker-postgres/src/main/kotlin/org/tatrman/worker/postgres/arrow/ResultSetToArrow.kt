@@ -20,13 +20,16 @@ import org.apache.arrow.vector.UInt1Vector
 import org.apache.arrow.vector.VarBinaryVector
 import org.apache.arrow.vector.VarCharVector
 import org.apache.arrow.vector.VectorSchemaRoot
+import org.apache.arrow.vector.types.pojo.ArrowType
 import org.apache.arrow.vector.types.pojo.Field
+import org.apache.arrow.vector.types.pojo.FieldType
 import org.apache.arrow.vector.types.pojo.Schema
 import org.slf4j.LoggerFactory
 import java.math.BigDecimal
 import java.math.RoundingMode
 import java.nio.charset.StandardCharsets
 import java.sql.Date
+import java.sql.JDBCType
 import java.sql.ResultSet
 import java.sql.ResultSetMetaData
 import java.sql.Time
@@ -48,61 +51,202 @@ class ResultSetToArrow(
     private val batchRows: Int,
     private val maxBlobBytesPerCell: Long,
 ) {
+    /**
+     * Unconstrained numeric columns (#155 / #83): their metadata scale is "not declared", so the FIRST
+     * batch sizes them. Its values for those columns are held back, the column gets the largest scale
+     * they carry (capped at [PostgresArrowTypeMapper.UNCONSTRAINED_MAX_SCALE], narrower when the integer
+     * part needs the room), and every later batch reuses that schema: one schema per result. A later
+     * value with more decimals is rounded to it and reported in [Batch.rounded].
+     */
     fun convert(resultSet: ResultSet): Sequence<Batch> {
         val meta = resultSet.metaData
         val fields = (1..meta.columnCount).map { PostgresArrowTypeMapper.fieldFor(meta, it) }
-        val schema = Schema(fields)
+        val open =
+            (1..meta.columnCount)
+                .filter {
+                    PostgresArrowTypeMapper.isUnconstrainedNumeric(
+                        meta.getColumnTypeName(it),
+                        JDBCType.valueOf(meta.getColumnType(it)),
+                        meta.getPrecision(it),
+                    )
+                }.toSet()
         return sequence {
+            var schema = Schema(fields)
+            var sizing = open.isNotEmpty()
             do {
-                val (root, rowCount, rejections) = nextBatch(resultSet, meta, schema)
-                if (rowCount == 0 && rejections.isEmpty() && root != null) {
+                val next = nextBatch(resultSet, meta, schema, open, sizing)
+                val root = next.root
+                if (sizing) {
+                    schema = root.schema
+                    sizing = false
+                }
+                if (next.rowCount == 0 && next.rejections.isEmpty()) {
                     root.close()
                     break
                 }
-                yield(Batch(root = root, rowCount = rowCount, rejections = rejections))
-                if (rowCount < batchRows) break
+                yield(
+                    Batch(root = root, rowCount = next.rowCount, rejections = next.rejections, rounded = next.rounded),
+                )
+                if (next.rowCount < batchRows) break
             } while (true)
         }
     }
 
+    private class NextBatch(
+        val root: VectorSchemaRoot,
+        val rowCount: Int,
+        val rejections: List<RejectedRow>,
+        val rounded: Map<String, Int>,
+    )
+
+    /**
+     * Read up to [batchRows] rows. With [sizing], the [open] columns' values are held back instead of
+     * written, and the batch is returned on a root whose open columns are sized from them.
+     */
     private fun nextBatch(
         resultSet: ResultSet,
         meta: ResultSetMetaData,
         schema: Schema,
-    ): Triple<VectorSchemaRoot?, Int, List<RejectedRow>> {
+        open: Set<Int>,
+        sizing: Boolean,
+    ): NextBatch {
         val root = VectorSchemaRoot.create(schema, allocator)
         root.allocateNew()
         var row = 0
         val rejections = mutableListOf<RejectedRow>()
+        val rounded = linkedMapOf<String, Int>()
+        val held: Map<Int, MutableList<BigDecimal?>>? = if (sizing) open.associateWith { mutableListOf() } else null
         try {
             while (row < batchRows && resultSet.next()) {
-                val rejection = appendRow(root, meta, resultSet, row)
+                val rowHeld = if (held != null) HashMap<Int, BigDecimal?>() else null
+                val rejection = appendRow(root, meta, resultSet, row, open, rowHeld, rounded)
                 if (rejection != null) {
                     rejections.add(rejection)
                 } else {
+                    rowHeld?.forEach { (col, v) -> held!!.getValue(col).add(v) }
                     row++
                 }
             }
             root.setRowCount(row)
-            return Triple(root, row, rejections)
+            val out = if (held != null) sizeHeldColumns(root, held, row, meta) else root
+            return NextBatch(out, row, rejections, rounded)
         } catch (t: Throwable) {
             root.close()
             throw t
         }
     }
 
+    /**
+     * Replace each held column's placeholder vector with a `Decimal(38, s)` vector, `s` the largest scale
+     * its values carry, capped so the largest integer part (and never fewer than
+     * [PostgresArrowTypeMapper.UNCONSTRAINED_MIN_INTEGER_DIGITS] digits) still fits.
+     */
+    private fun sizeHeldColumns(
+        root: VectorSchemaRoot,
+        held: Map<Int, List<BigDecimal?>>,
+        rowCount: Int,
+        meta: ResultSetMetaData,
+    ): VectorSchemaRoot {
+        // Every scale first: a value that cannot fit fails here, before any vector is swapped.
+        val scales = held.mapValues { (col, values) -> sizedScale(root.fieldVectors[col - 1].name, values) }
+        val vectors =
+            root.fieldVectors.mapIndexed { i, placeholder ->
+                val values = held[i + 1] ?: return@mapIndexed placeholder
+                val scale = scales.getValue(i + 1)
+                val field =
+                    Field(
+                        placeholder.name,
+                        FieldType(
+                            placeholder.field.isNullable,
+                            ArrowType.Decimal(PostgresArrowTypeMapper.DECIMAL128_MAX_PRECISION, scale, 128),
+                            null,
+                            placeholder.field.metadata,
+                        ),
+                        emptyList(),
+                    )
+                placeholder.close()
+                val vector = DecimalVector(field, allocator)
+                vector.allocateNew(rowCount.coerceAtLeast(1))
+                values.forEachIndexed { r, v ->
+                    if (v == null) vector.setNull(r) else vector.setSafe(r, v.setScale(scale, RoundingMode.HALF_UP))
+                }
+                vector.valueCount = rowCount
+                vector as FieldVector
+            }
+        // The placeholder root only owned the vectors carried over (closed with the new root) and the
+        // placeholders closed above, so it is dropped, not closed.
+        return VectorSchemaRoot(vectors.map { it.field }, vectors, rowCount)
+    }
+
+    private fun sizedScale(
+        column: String,
+        values: List<BigDecimal?>,
+    ): Int {
+        val present = values.filterNotNull()
+        if (present.isEmpty()) return PostgresArrowTypeMapper.UNCONSTRAINED_MAX_SCALE
+        val maxScale = present.maxOf { it.scale().coerceAtLeast(0) }
+        val maxInteger = present.maxOf { integerDigits(it) }
+        check(maxInteger <= PostgresArrowTypeMapper.DECIMAL128_MAX_PRECISION) {
+            "Column '$column': a value with $maxInteger integer digits does not fit Decimal128 " +
+                "(${PostgresArrowTypeMapper.DECIMAL128_MAX_PRECISION} digits)."
+        }
+        val room =
+            PostgresArrowTypeMapper.DECIMAL128_MAX_PRECISION -
+                maxOf(maxInteger, PostgresArrowTypeMapper.UNCONSTRAINED_MIN_INTEGER_DIGITS)
+        return minOf(maxScale, room).coerceAtLeast(0)
+    }
+
+    private fun integerDigits(v: BigDecimal): Int = (v.precision() - v.scale()).coerceAtLeast(0)
+
     private fun appendRow(
         root: VectorSchemaRoot,
         meta: ResultSetMetaData,
         rs: ResultSet,
         row: Int,
+        open: Set<Int>,
+        rowHeld: MutableMap<Int, BigDecimal?>?,
+        rounded: MutableMap<String, Int>,
     ): RejectedRow? {
         for (col in 1..meta.columnCount) {
+            if (col in open) {
+                val v = rs.getBigDecimal(col)
+                if (rowHeld != null) {
+                    rowHeld[col] = v
+                } else {
+                    setOpenDecimal(root.fieldVectors[col - 1] as DecimalVector, row, v, rounded)
+                }
+                continue
+            }
             val vector = root.fieldVectors[col - 1]
             val rejection = setCell(vector, row, rs, col, meta)
             if (rejection != null) return rejection
         }
         return null
+    }
+
+    /** A value of an already-sized unconstrained numeric column: rounded to the column's scale, and reported if that lost digits. */
+    private fun setOpenDecimal(
+        vector: DecimalVector,
+        row: Int,
+        value: BigDecimal?,
+        rounded: MutableMap<String, Int>,
+    ) {
+        if (value == null) {
+            vector.setNull(row)
+            return
+        }
+        val scaled = scaleFor(value, vector.scale)
+        // Rounding at the cap is PostgreSQL's own precision (a quotient is already rounded there);
+        // rounding below what the first batch chose is a loss the caller must hear about.
+        if (vector.scale < PostgresArrowTypeMapper.UNCONSTRAINED_MAX_SCALE && scaled.compareTo(value) != 0) {
+            rounded[vector.name] = vector.scale
+        }
+        check(scaled.precision() <= vector.precision) {
+            "Column '${vector.name}': value $value needs more than the ${vector.precision - vector.scale} " +
+                "integer digits Decimal128(${vector.precision}, ${vector.scale}) leaves " +
+                "(${PostgresArrowTypeMapper.DECIMAL128_MAX_PRECISION} digits in all)."
+        }
+        vector.setSafe(row, scaled)
     }
 
     private fun setCell(
@@ -248,6 +392,11 @@ class ResultSetToArrow(
         val root: VectorSchemaRoot?,
         val rowCount: Int,
         val rejections: List<RejectedRow>,
+        /**
+         * Unconstrained numeric columns whose values in THIS batch carried more decimals than the
+         * first batch sized them to, with the scale they were rounded to (#155 / #83).
+         */
+        val rounded: Map<String, Int> = emptyMap(),
     )
 
     data class RejectedRow(
@@ -255,7 +404,11 @@ class ResultSetToArrow(
         val sizeBytes: Long,
     )
 
-    /** Convenience: pull every column metadata field once, e.g. for the schema fingerprint. */
+    /**
+     * The schema from the column metadata alone. An unconstrained numeric shows its widest type here
+     * (`Decimal(38, 18)`); the batches [convert] yields carry it sized from the values, so a fingerprint
+     * of what was SENT is taken from the first batch's root.
+     */
     fun schemaOf(meta: ResultSetMetaData): Schema =
         Schema((1..meta.columnCount).map { PostgresArrowTypeMapper.fieldFor(meta, it) })
 
