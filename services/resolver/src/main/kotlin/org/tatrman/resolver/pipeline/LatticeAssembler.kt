@@ -487,6 +487,7 @@ object LatticeAssembler {
             DomainSpanCandidate.Origin.NER_ENTITY,
             DomainSpanCandidate.Origin.LITERAL,
             DomainSpanCandidate.Origin.QUOTED_LITERAL,
+            DomainSpanCandidate.Origin.MEMBER_PHRASE,
             -> Layer.VALUE
             // The parse-less n-gram floor guesses spans; a floor guess that matched is worth
             // reporting, one that did not is noise, and the honest record of the whole situation
