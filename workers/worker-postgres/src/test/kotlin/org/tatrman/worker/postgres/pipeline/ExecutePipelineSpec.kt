@@ -249,6 +249,81 @@ class ExecutePipelineSpec :
                 }
             }
         }
+
+        // #155 / #83 — an unconstrained numeric (a share computed in SQL) is sized from the first
+        // batch's values: 0.2441 stays 0.2441, not 0. The first batch announces the fingerprint of the
+        // schema it actually carries, and a later batch whose values need more decimals says so.
+        "an unconstrained numeric keeps its decimals end to end; a later rounding is a warning" {
+            runBlocking {
+                val translator =
+                    translator { req ->
+                        UnparseResponse
+                            .newBuilder()
+                            .setOutput("SELECT late / total AS share FROM t")
+                            .setContext(req.context)
+                            .build()
+                    }
+                val rsMeta = mockk<ResultSetMetaData>()
+                every { rsMeta.columnCount } returns 1
+                every { rsMeta.getColumnLabel(1) } returns "share"
+                every { rsMeta.getColumnName(1) } returns "share"
+                every { rsMeta.getColumnTypeName(1) } returns "numeric"
+                every { rsMeta.getColumnType(1) } returns Types.NUMERIC
+                every { rsMeta.getPrecision(1) } returns 0
+                every { rsMeta.getScale(1) } returns 0
+                every { rsMeta.isNullable(1) } returns ResultSetMetaData.columnNullable
+                val rs = mockk<ResultSet>(relaxed = true)
+                every { rs.metaData } returns rsMeta
+                every { rs.next() } returnsMany listOf(true, true, true, false)
+                every { rs.getBigDecimal(1) } returnsMany
+                    listOf(BigDecimal("0.2441"), BigDecimal("0.5"), BigDecimal("0.33333"))
+                val stmt = mockk<PreparedStatement>(relaxed = true)
+                every { stmt.executeQuery() } returns rs
+                val conn = mockk<Connection>(relaxed = true)
+                every { conn.prepareStatement(any()) } returns stmt
+                val pool = mockk<ConnectionPoolManager>()
+                every { pool.supportedConnections } returns setOf("pg-midas")
+                every { pool.requiresTenantId("pg-midas") } returns false
+                every { pool.acquire("pg-midas") } returns conn
+
+                val out =
+                    ExecutePipeline(pool, translator, limits)
+                        .execute(
+                            ExecuteRequest
+                                .newBuilder()
+                                .setPlan(scan("public", "t"))
+                                .setContext(PipelineContext.getDefaultInstance())
+                                .setConnectionId("pg-midas")
+                                .setOptions(ExecutionOptions.newBuilder().setBatchSizeRows(2))
+                                .build(),
+                        ).toList()
+
+                val data = out.filter { !it.arrowIpc.isEmpty }
+                data.size shouldBe 2
+                RootAllocator(Long.MAX_VALUE).use { alloc ->
+                    ArrowStreamReader(ByteArrayInputStream(data[0].arrowIpc.toByteArray()), alloc).use { reader ->
+                        reader.loadNextBatch() shouldBe true
+                        val root = reader.vectorSchemaRoot
+                        val share = root.getVector("share") as DecimalVector
+                        share.scale shouldBe 4
+                        share.getObject(0) shouldBe BigDecimal("0.2441")
+                        share.getObject(1) shouldBe BigDecimal("0.5000")
+                        data[0].schemaFingerprint shouldBe
+                            org.tatrman.worker.postgres.arrow.ArrowIpcSerializer
+                                .fingerprintFor(root.schema)
+                    }
+                    ArrowStreamReader(ByteArrayInputStream(data[1].arrowIpc.toByteArray()), alloc).use { reader ->
+                        reader.loadNextBatch() shouldBe true
+                        (reader.vectorSchemaRoot.getVector("share") as DecimalVector).getObject(0) shouldBe
+                            BigDecimal("0.3333")
+                    }
+                }
+                data[0].messagesList.none { it.code == "numeric_scale_rounded" } shouldBe true
+                val warning = data[1].messagesList.single { it.code == "numeric_scale_rounded" }
+                warning.severity shouldBe Severity.WARNING
+                warning.humanMessage.contains("'share'") shouldBe true
+            }
+        }
     })
 
 private fun scan(
