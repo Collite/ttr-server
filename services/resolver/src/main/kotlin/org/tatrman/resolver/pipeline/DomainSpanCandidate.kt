@@ -109,5 +109,12 @@ data class DomainSpanCandidate(
          * ([RoundPlanner.Tier.QUOTED_VALUE]) when that lookup admits something.
          */
         QUOTED_LITERAL,
+
+        /**
+         * A member's label written out unquoted and read by the parse as a clause (*s důvodem
+         * Nedorazilo včas*), confirmed verbatim against a member vocabulary before proposal
+         * ([MemberPhrases]): a value, gated against the vocabularies that confirmed it.
+         */
+        MEMBER_PHRASE,
     }
 }

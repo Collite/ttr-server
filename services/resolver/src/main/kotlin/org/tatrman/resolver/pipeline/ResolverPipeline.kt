@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package org.tatrman.resolver.pipeline
 
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import org.slf4j.LoggerFactory
 import org.tatrman.diagnostics.RgDiagnostics
 import org.tatrman.nlp.v1.AnalyzeRequest
@@ -159,7 +161,29 @@ class ResolverPipeline(
         // operators found join the registry for this request only, so everything downstream reads an
         // `operator` kind for them; proposal itself keeps the declared list, so no other path starts
         // offering spans to operator categories.
-        val operatorWords = OperatorWords.find(fuzzy, parse, literals, declared.thresholds, lookupRounds.config)
+        //
+        // …and, on the same round trip, a member's label typed out unquoted that the parse reads as a
+        // clause („s důvodem Nedorazilo včas“): asked of the member vocabularies, verbatim, because no
+        // proposal path reaches a verb (`MemberPhrases`). Both are lookups before proposal, so they
+        // run side by side; either one finding nothing leaves the question as it was.
+        val (operatorWords, memberPhrases) =
+            coroutineScope {
+                val operators =
+                    async { OperatorWords.find(fuzzy, parse, literals, declared.thresholds, lookupRounds.config) }
+                val members =
+                    async {
+                        MemberPhrases.find(
+                            fuzzy,
+                            parse,
+                            fresh.text,
+                            literals,
+                            declared.entityTypes,
+                            declared.thresholds,
+                            lookupRounds.config,
+                        )
+                    }
+                operators.await() to members.await()
+            }
         val resolverRegistry =
             if (operatorWords.isEmpty()) {
                 declared
@@ -188,10 +212,11 @@ class ResolverPipeline(
         // MH — the slot is stamped HERE, right after proposal, because this is where the parse is
         // in scope: `GateSpans.gate` receives candidates only (architecture A3). Same list, same
         // order; only `DomainSpanCandidate.slot` is filled.
+        val proposed = SpanProposal.proposeDomainSpans(parse, declared.entityTypes, literals, operatorWords)
         val candidates =
             SlotHints.stamp(
                 parse,
-                SpanProposal.proposeDomainSpans(parse, declared.entityTypes, literals, operatorWords),
+                proposed + MemberPhrases.candidates(memberPhrases, proposed, parse),
                 resolverRegistry.entityTypes.kindsByRef(),
                 resolverRegistry.entityTypes.ownersByRef(),
                 assessment.language,
