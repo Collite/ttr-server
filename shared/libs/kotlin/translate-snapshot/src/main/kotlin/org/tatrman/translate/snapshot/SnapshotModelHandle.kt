@@ -129,7 +129,11 @@ class SnapshotModelHandle(
                         val attr =
                             ModelAttribute(
                                 name = entry.objectDescriptor.localName.substringAfterLast('.'),
-                                surfaceType = SurfaceType.fromTag(entry.attribute.type) ?: SurfaceType.TEXT,
+                                // The model's own type names (`decimal`, `date`, `integer`, …), not
+                                // only the five DSL tags: an exact-tag lookup sent `decimal` to TEXT,
+                                // and SUM over a TEXT attribute was implicitly CAST to DECIMAL(19, 9),
+                                // which overflows from 10^10 up once a CASE/COALESCE re-casts the sum.
+                                surfaceType = surfaceTypeOf(entry.attribute.type),
                                 nullable = entry.attribute.nullable,
                                 isKey = entry.attribute.isKey,
                             )
@@ -180,7 +184,7 @@ class SnapshotModelHandle(
                                     entry.query.parametersList.map {
                                         ParamSpec(
                                             it.name,
-                                            SurfaceType.fromTag(it.type) ?: SurfaceType.TEXT,
+                                            surfaceTypeOf(it.type),
                                         )
                                     },
                                 outputColumns = emptyList(),
