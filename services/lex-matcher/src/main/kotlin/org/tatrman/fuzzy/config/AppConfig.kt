@@ -17,6 +17,7 @@ data class AppConfig(
     val refreshIntervalSeconds: Long,
     val tokenBasedConfig: TokenBasedConfig = TokenBasedConfig(),
     val nlp: NlpConfig = NlpConfig(),
+    val entityProfile: EntityProfileConfig = EntityProfileConfig(),
     val loaderSource: LoaderSourceConfig = LoaderSourceConfig(),
     val metadata: MetadataConfig = MetadataConfig(),
     val lexicon: LexiconConfig = LexiconConfig(),
@@ -160,6 +161,19 @@ data class NlpConfig(
     val lang: String = "cs",
 )
 
+/**
+ * UD-P3 — the named-entity profile of the member vocabularies ([org.tatrman.fuzzy.core.EntityProfiler]).
+ * Runs only when [NlpConfig.enabled] too: it is the same nlp, asked for NER instead of lemmas.
+ * [maxMembers] 0 profiles every vocabulary whatever its size (⚑UD-13 (a)); a positive value skips the
+ * larger ones. [timeoutMs] is per packed call of at most [chunkChars] characters.
+ */
+data class EntityProfileConfig(
+    val enabled: Boolean = true,
+    val chunkChars: Int = org.tatrman.fuzzy.core.EntityProfiler.DEFAULT_CHUNK_CHARS,
+    val maxMembers: Int = 0,
+    val timeoutMs: Long = 60_000,
+)
+
 object ConfigLoader {
     /** review-103 L1 — the engine the service runs when `fuzzy.match.version` is absent or blank. */
     val SHIPPED_MATCH_VERSION: MatchVersion = MatchVersion.V2
@@ -181,6 +195,7 @@ object ConfigLoader {
             tokenBasedConfig =
                 withV2Normalization(withMatchVersion(loadTokenBasedConfig(fuzzyConfig), fuzzyConfig), fuzzyConfig),
             nlp = loadNlpConfig(fuzzyConfig),
+            entityProfile = loadEntityProfileConfig(fuzzyConfig),
             loaderSource = loadLoaderSourceConfig(fuzzyConfig),
             metadata = loadMetadataConfig(fuzzyConfig),
             lexicon = loadLexiconConfig(fuzzyConfig),
@@ -221,6 +236,39 @@ object ConfigLoader {
                 "Unknown fuzzy.type: '${fuzzyConfig.getString("type")}' (expected postgres|mssql)",
             )
         }
+    }
+
+    private fun loadEntityProfileConfig(fuzzyConfig: com.typesafe.config.Config): EntityProfileConfig {
+        val defaults = EntityProfileConfig()
+        if (!fuzzyConfig.hasPath("entity-profile")) return defaults
+        val c = fuzzyConfig.getConfig("entity-profile")
+
+        // Read as strings: an environment override arrives as one, and `getInt` on "" would throw.
+        fun intOr(
+            key: String,
+            default: Int,
+        ): Int =
+            if (c.hasPath(key)) {
+                c
+                    .getString(key)
+                    .trim()
+                    .ifBlank { null }
+                    ?.toInt() ?: default
+            } else {
+                default
+            }
+        return EntityProfileConfig(
+            enabled = if (c.hasPath("enabled")) c.getBoolean("enabled") else defaults.enabled,
+            chunkChars =
+                intOr("chunk-chars", defaults.chunkChars).also {
+                    require(it > 0) { "fuzzy.entity-profile.chunk-chars must be > 0, got $it" }
+                },
+            maxMembers =
+                intOr("max-members", defaults.maxMembers).also {
+                    require(it >= 0) { "fuzzy.entity-profile.max-members must be >= 0, got $it" }
+                },
+            timeoutMs = if (c.hasPath("timeout-ms")) c.getLong("timeout-ms") else defaults.timeoutMs,
+        )
     }
 
     private fun loadNlpConfig(fuzzyConfig: com.typesafe.config.Config): NlpConfig =

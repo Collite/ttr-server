@@ -5,6 +5,7 @@ import io.grpc.Status
 import io.grpc.StatusException
 import org.tatrman.fuzzy.core.AlgorithmType
 import org.tatrman.fuzzy.core.CascadeStep
+import org.tatrman.fuzzy.core.EntityProfile
 import org.tatrman.fuzzy.core.FuzzyMatchResult
 import org.tatrman.fuzzy.core.FuzzyMatcher
 import org.tatrman.fuzzy.core.LayerVersions
@@ -19,6 +20,8 @@ import org.tatrman.fuzzy.telemetry.FuzzyTelemetry
 import org.tatrman.fuzzy.v1.BatchMatchRequest
 import org.tatrman.fuzzy.v1.BatchMatchResponse
 import org.tatrman.fuzzy.v1.CategoryStatus
+import org.tatrman.fuzzy.v1.EntityCount
+import org.tatrman.fuzzy.v1.EntityProfile as ProtoEntityProfile
 import org.tatrman.fuzzy.v1.FuzzyMatch
 import org.tatrman.fuzzy.v1.FuzzyMatchResponse
 import org.tatrman.fuzzy.v1.FuzzyServiceGrpcKt
@@ -107,6 +110,7 @@ class GrpcService(
                     ).setSize(s.size)
                     .setLoadedAtEpochMs(s.loadedAtEpochMs)
                     .setMatchMethod(s.matchMethod ?: "")
+                    .apply { s.entityProfile?.let { setEntityProfile(it.toProto()) } }
                     .build(),
             )
         }
@@ -191,6 +195,23 @@ class GrpcService(
             ProtoTargetClass.TARGET_CLASS_STRING_PREDICATE -> CoreTargetClass.STRING_PREDICATE
             ProtoTargetClass.TARGET_CLASS_UNSPECIFIED, ProtoTargetClass.UNRECOGNIZED -> null
         }
+
+    /** UD-P3 — a category's entity profile, as `GetStatus` reports it. */
+    private fun EntityProfile.toProto(): ProtoEntityProfile =
+        ProtoEntityProfile
+            .newBuilder()
+            .setMembers(members)
+            .setNerModel(nerModel)
+            .addAllEntities(
+                entities.map {
+                    EntityCount
+                        .newBuilder()
+                        .setLabel(it.label)
+                        .setCode(it.code)
+                        .setMembers(it.members)
+                        .build()
+                },
+            ).build()
 
     private fun CoreTargetClass.toProto(): ProtoTargetClass =
         when (this) {
