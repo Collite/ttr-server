@@ -465,7 +465,7 @@ class QueryServiceImplSpec :
                     svc.compile(
                         RunRequest
                             .newBuilder()
-                            .setSource("SELECT id FROM qskupzbozi_df")
+                            .setSource("SELECT id FROM item")
                             .setSourceLanguage(Language.SQL)
                             .setContext(PipelineContext.newBuilder().setModelVersion("v"))
                             .build(),
@@ -535,7 +535,7 @@ class QueryServiceImplSpec :
                     svc.compile(
                         RunRequest
                             .newBuilder()
-                            .setSource("SELECT id FROM qskupzbozi_df")
+                            .setSource("SELECT id FROM item")
                             .setSourceLanguage(Language.SQL)
                             .setContext(PipelineContext.newBuilder().setModelVersion("v"))
                             .build(),
@@ -603,7 +603,7 @@ class QueryServiceImplSpec :
                                     .newBuilder()
                                     .setSeverity(Severity.ERROR)
                                     .setCode("schema_object_unknown")
-                                    .setHumanMessage("Table QSKUPZBOZIX not found"),
+                                    .setHumanMessage("Table ITEMX not found"),
                             ).build()
                     }
                 val countingParseStub =
@@ -624,7 +624,7 @@ class QueryServiceImplSpec :
                     svc.compile(
                         RunRequest
                             .newBuilder()
-                            .setSource("SELECT id FROM qskupzbozix")
+                            .setSource("SELECT id FROM itemx")
                             .setSourceLanguage(Language.SQL)
                             .setContext(PipelineContext.newBuilder().setModelVersion("v"))
                             .build(),
@@ -753,7 +753,7 @@ class QueryServiceImplSpec :
                 val req =
                     RunRequest
                         .newBuilder()
-                        .setSource("SELECT id FROM qskupzbozi_df")
+                        .setSource("SELECT id FROM item")
                         .setSourceLanguage(Language.SQL)
                         .setContext(PipelineContext.newBuilder().setModelVersion("v"))
                         .build()
@@ -794,7 +794,7 @@ class QueryServiceImplSpec :
                 val req =
                     RunRequest
                         .newBuilder()
-                        .setSource("SELECT id FROM qskupzbozi_df")
+                        .setSource("SELECT id FROM item")
                         .setSourceLanguage(Language.SQL)
                         .setContext(PipelineContext.newBuilder().setUserId("u").setModelVersion("v"))
                         .build()

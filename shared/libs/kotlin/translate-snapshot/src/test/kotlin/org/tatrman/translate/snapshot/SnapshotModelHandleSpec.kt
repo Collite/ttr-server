@@ -72,7 +72,7 @@ class SnapshotModelHandleSpec :
             // the attribute name, and record only entries where attr name differs from column name.
             val entityQn = qname(SchemaCode.ER, "entity", "produkt")
 
-            fun colQn(col: String) = qname(SchemaCode.DB, "dbo", "QSKUPZBOZI_DF.$col")
+            fun colQn(col: String) = qname(SchemaCode.DB, "dbo", "item.$col")
 
             fun attrMappingEntry(
                 attrName: String,
@@ -107,18 +107,18 @@ class SnapshotModelHandleSpec :
                     .newBuilder()
                     .addObjects(entityEntry(entityQn))
                     // Three differing → recorded; one matching → omitted.
-                    .addObjects(attrMappingEntry("id_produktu", "IDSKUPZBOZI"))
-                    .addObjects(attrMappingEntry("kód_produktu", "KOD_SKUP_ZBOZI"))
-                    .addObjects(attrMappingEntry("název_produktu", "NAZEV_SKUP_ZBOZI"))
+                    .addObjects(attrMappingEntry("id_produktu", "i_item_sk"))
+                    .addObjects(attrMappingEntry("kód_produktu", "i_item_id"))
+                    .addObjects(attrMappingEntry("název_produktu", "i_product_name"))
                     .addObjects(attrMappingEntry("same_name", "same_name"))
                     .build()
 
             val handle = SnapshotModelHandle.from(snapshot)
             handle.attributeColumnRenames(entityQn) shouldContainExactly
                 mapOf(
-                    "id_produktu" to "IDSKUPZBOZI",
-                    "kód_produktu" to "KOD_SKUP_ZBOZI",
-                    "název_produktu" to "NAZEV_SKUP_ZBOZI",
+                    "id_produktu" to "i_item_sk",
+                    "kód_produktu" to "i_item_id",
+                    "název_produktu" to "i_product_name",
                 )
         }
     })
