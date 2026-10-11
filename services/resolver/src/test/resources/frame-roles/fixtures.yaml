@@ -35,7 +35,7 @@
 #   anchor mention inherits SUBJECT-candidacy").
 # * `occurrence` disambiguates a surface string that appears more than once.
 #
-# world: dfp      = the DFP/ucetnictvi world the heroes and issues.md come from.
+# world: pilot    = the pilot accounting estate the heroes and issues.md come from.
 #        hartland = hartland_cz, the ecosystem-standard fixture estate (BM-10).
 
 schema: rv-frame-roles-fixtures/v1
@@ -51,7 +51,7 @@ fixtures:
 
   - id: h1-cs
     lang: cs
-    world: dfp
+    world: pilot
     source: "design.md H1 + issues.md §Looking in wrong entity (2026-07-28)"
     text: "Zobraz náklady účtu 501001 v roce 2025 podle období"
     hard_classes: [operator-roleless, measure-as-subject, grouping-podle, anchored-value]
@@ -86,7 +86,7 @@ fixtures:
 
   - id: h1prime-cs
     lang: cs
-    world: dfp
+    world: pilot
     source: "design.md H1' (typo variant)"
     text: "Zobraz náklady účtu 5010O1 v roce 2025 podle období"
     hard_classes: [operator-roleless, measure-as-subject, grouping-podle, typo-value]
@@ -121,7 +121,7 @@ fixtures:
 
   - id: h2-cs
     lang: cs
-    world: dfp
+    world: pilot
     source: "issues.md §Not admitting not knowing the entity (2026-07-28) + design.md H2"
     text: "Zobraz prvních 10 čerpacích stanic v Praze podle tržby za 12 měsíců."
     hard_classes: [operator-roleless, top-n, unbound-subject, filter-only-mention, podle-is-order-by]
@@ -161,7 +161,7 @@ fixtures:
 
   - id: h5-cs
     lang: cs
-    world: dfp
+    world: pilot
     source: "design.md H5 (S15 — the skill-entry hero)"
     text: "Ukaž vývoj nákladů střediska 220 za posledních 12 měsíců a porovnej s plánem."
     hard_classes: [operator-roleless, multi-operator, measure-as-subject, anchored-value, second-measure]
@@ -201,7 +201,7 @@ fixtures:
 
   - id: imperativeless-cs
     lang: cs
-    world: dfp
+    world: pilot
     source: "task list T1 — the imperative-less hard class, verbatim"
     text: "náklady 501001 2025?"
     hard_classes: [imperative-less, no-verb, unanchored-value]
@@ -221,7 +221,7 @@ fixtures:
 
   - id: measure-as-subject-cs
     lang: cs
-    world: dfp
+    world: pilot
     source: "task list T1 — the measure-as-subject hard class, verbatim"
     text: "Zobraz tržby podle středisek"
     hard_classes: [operator-roleless, measure-as-subject, grouping-podle]
@@ -241,7 +241,7 @@ fixtures:
 
   - id: double-grouping-cs
     lang: cs
-    world: dfp
+    world: pilot
     source: "task list T1 — the double-grouping hard class"
     text: "Zobraz náklady podle období a středisek"
     hard_classes: [operator-roleless, measure-as-subject, double-grouping, coordination]
@@ -803,7 +803,7 @@ fixtures:
 
   - id: h1-en
     lang: en
-    world: dfp
+    world: pilot
     source: "design.md H1 (English form)"
     text: "Show me the costs of account 501001 in 2025 by period."
     hard_classes: [operator-roleless, measure-as-subject, grouping-by, anchored-value]
@@ -830,7 +830,7 @@ fixtures:
 
   - id: h2-en
     lang: en
-    world: dfp
+    world: pilot
     source: "design.md H2"
     text: "Top 10 gas stations in Prague by revenue."
     hard_classes: [operator-roleless, top-n, unbound-subject, filter-only-mention, by-is-order-by, imperative-less]

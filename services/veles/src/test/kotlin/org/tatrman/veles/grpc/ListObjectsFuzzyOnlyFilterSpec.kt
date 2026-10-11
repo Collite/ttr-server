@@ -197,14 +197,14 @@ class ListObjectsFuzzyOnlyFilterSpec :
             val table =
                 DbTable(
                     internalId = "t1",
-                    qname = qn("db", "dbo", "QSTRED_DF"),
+                    qname = qn("db", "dbo", "STREDISKO"),
                     columns =
                         listOf(
-                            column(qn("db", "dbo", "QSTRED_DF.IDSTRED"), "int", indexed = false, searchable = false),
-                            column(qn("db", "dbo", "QSTRED_DF.KOD_STR"), "text", indexed = false, searchable = false),
-                            column(qn("db", "dbo", "QSTRED_DF.NAZEV_STR"), "text", indexed = false, searchable = false),
+                            column(qn("db", "dbo", "STREDISKO.ID"), "int", indexed = false, searchable = false),
+                            column(qn("db", "dbo", "STREDISKO.KOD"), "text", indexed = false, searchable = false),
+                            column(qn("db", "dbo", "STREDISKO.NAZEV"), "text", indexed = false, searchable = false),
                         ),
-                    primaryKey = listOf("IDSTRED"),
+                    primaryKey = listOf("ID"),
                 )
             val kodAttr =
                 org.tatrman.ttr.metadata.model.Attribute(
@@ -237,7 +237,7 @@ class ListObjectsFuzzyOnlyFilterSpec :
                         attribute = kodAttr.qname,
                         target =
                             org.tatrman.ttr.metadata.model.AttributeMappingTarget.Column(
-                                qn("db", "dbo", "QSTRED_DF.KOD_STR"),
+                                qn("db", "dbo", "STREDISKO.KOD"),
                             ),
                     ),
                     org.tatrman.ttr.metadata.model.Er2DbAttributeMapping(
@@ -246,7 +246,7 @@ class ListObjectsFuzzyOnlyFilterSpec :
                         attribute = nazevAttr.qname,
                         target =
                             org.tatrman.ttr.metadata.model.AttributeMappingTarget.Column(
-                                qn("db", "dbo", "QSTRED_DF.NAZEV_STR"),
+                                qn("db", "dbo", "STREDISKO.NAZEV"),
                             ),
                     ),
                 )
@@ -275,9 +275,9 @@ class ListObjectsFuzzyOnlyFilterSpec :
                         .build(),
                 )
 
-            // KOD_STR + NAZEV_STR surface via their fuzzy attributes; IDSTRED does not.
+            // KOD + NAZEV surface via their fuzzy attributes; ID does not.
             resp.itemsList.map { it.qualifiedName.name }.toSet() shouldBe
-                setOf("QSTRED_DF.KOD_STR", "QSTRED_DF.NAZEV_STR")
+                setOf("STREDISKO.KOD", "STREDISKO.NAZEV")
         }
 
         "ListObjects(kind=column, fuzzy_only=true) returns empty when no fuzzy columns exist" {

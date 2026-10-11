@@ -49,8 +49,8 @@ class GapsTest :
             val ambiguous =
                 mention("m1", 0, 9, "středisko")
                     .toBuilder()
-                    .addBindings(binding("er.qstred_df"))
-                    .addBindings(binding("er.qxxukazmu"))
+                    .addBindings(binding("er.stredisko"))
+                    .addBindings(binding("er.ukazatel"))
                     .build()
             val gaps =
                 Gaps.assess(

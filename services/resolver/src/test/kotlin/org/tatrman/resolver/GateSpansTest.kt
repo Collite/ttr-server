@@ -33,12 +33,13 @@ class GateSpansTest :
         val thresholds = ResolverThresholds.LIVE
         val product = ResolverEntityType("er.product", listOf("er.product"), emptyList())
         val branch = ResolverEntityType("er.branch", listOf("er.branch"), listOf("pobočka"))
-        val qtypdok = ResolverEntityType("er.qtypdok", listOf("er.qtypdok.kod", "er.qtypdok.nazev"), listOf("doklad"))
-        val qstred =
-            ResolverEntityType("er.qstred_df", listOf("er.qstred_df.kod", "er.qstred_df.nazev"), listOf("středisko"))
-        val qxxukazmu =
-            ResolverEntityType("er.qxxukazmu", listOf("er.qxxukazmu.kod", "er.qxxukazmu.nazev"), listOf("ukazatel"))
-        val allTypes = listOf(product, branch, qtypdok, qstred, qxxukazmu)
+        val typDokladu =
+            ResolverEntityType("er.typ_dokladu", listOf("er.typ_dokladu.kod", "er.typ_dokladu.nazev"), listOf("doklad"))
+        val stredisko =
+            ResolverEntityType("er.stredisko", listOf("er.stredisko.kod", "er.stredisko.nazev"), listOf("středisko"))
+        val ukazatel =
+            ResolverEntityType("er.ukazatel", listOf("er.ukazatel.kod", "er.ukazatel.nazev"), listOf("ukazatel"))
+        val allTypes = listOf(product, branch, typDokladu, stredisko, ukazatel)
 
         "one BatchMatch: buildBatchRequest emits one positional SpanQuery per candidate" {
             val cands =
@@ -98,18 +99,18 @@ class GateSpansTest :
         }
 
         "exact-match dominance: an exact code binds despite a lower near-name (code-vs-name)" {
-            val cands = listOf(cand("FAP", 0, 3, listOf("er.qtypdok.kod", "er.qtypdok.nazev")))
+            val cands = listOf(cand("FAP", 0, 3, listOf("er.typ_dokladu.kod", "er.typ_dokladu.nazev")))
             val resp =
                 batch(
                     fmr(
-                        fm("code-FAP", "FAP", 0.9999, "er.qtypdok.kod", SourceTag.MEMBER),
+                        fm("code-FAP", "FAP", 0.9999, "er.typ_dokladu.kod", SourceTag.MEMBER),
                         fm(
                             "name-fap",
                             "Faktura přijatá",
                             0.61,
-                            "er.qtypdok.nazev",
+                            "er.typ_dokladu.nazev",
                             SourceTag.VOCABULARY,
-                            targetRef = "er.qtypdok.nazev",
+                            targetRef = "er.typ_dokladu.nazev",
                         ),
                     ),
                 )
@@ -126,7 +127,7 @@ class GateSpansTest :
                     .bindings
                     .single()
             b.resolvedId shouldBe "code-FAP"
-            b.entityTypeRef shouldBe "er.qtypdok"
+            b.entityTypeRef shouldBe "er.typ_dokladu"
         }
 
         "two DISTINCT exact matches are a genuine tie → clarify, not a silent bind" {
@@ -150,12 +151,12 @@ class GateSpansTest :
         "exact dominance still drops a sub-exact near name (single exact contender binds)" {
             // one match at exact, a second BELOW exact but within the ambiguity gap of it:
             // the near name is dropped by the exact filter, so it binds without clarifying.
-            val cands = listOf(cand("FAP", 0, 3, listOf("er.qtypdok.kod", "er.qtypdok.nazev")))
+            val cands = listOf(cand("FAP", 0, 3, listOf("er.typ_dokladu.kod", "er.typ_dokladu.nazev")))
             val resp =
                 batch(
                     fmr(
-                        fm("code-FAP", "FAP", 0.9999, "er.qtypdok.kod", SourceTag.MEMBER),
-                        fm("near-fap", "FAPx", 0.98, "er.qtypdok.kod", SourceTag.MEMBER),
+                        fm("code-FAP", "FAP", 0.9999, "er.typ_dokladu.kod", SourceTag.MEMBER),
+                        fm("near-fap", "FAPx", 0.98, "er.typ_dokladu.kod", SourceTag.MEMBER),
                     ),
                 )
             val b =
@@ -194,12 +195,12 @@ class GateSpansTest :
         }
 
         "instance ambiguity → AwaitingClarification with the distinct contenders (capped at maxOptions)" {
-            val cands = listOf(cand("QT", 0, 2, listOf("er.qstred_df.kod", "er.qstred_df.nazev")))
+            val cands = listOf(cand("QT", 0, 2, listOf("er.stredisko.kod", "er.stredisko.nazev")))
             val resp =
                 batch(
                     fmr(
-                        fm("qt-orlak", "QT ORLAK", 0.72, "er.qstred_df.nazev", SourceTag.MEMBER),
-                        fm("qt-belus", "QT BELUS", 0.70, "er.qstred_df.nazev", SourceTag.MEMBER),
+                        fm("qt-orlak", "QT ORLAK", 0.72, "er.stredisko.nazev", SourceTag.MEMBER),
+                        fm("qt-belus", "QT BELUS", 0.70, "er.stredisko.nazev", SourceTag.MEMBER),
                     ),
                 )
             val clarify =
@@ -320,9 +321,9 @@ class GateSpansTest :
         }
 
         "sibling-column: a MEMBER value on the NAZEV column also points at its KOD sibling" {
-            val cands = listOf(cand("MAJETEK", 0, 7, listOf("er.qxxukazmu.kod", "er.qxxukazmu.nazev")))
-            val siblings = mapOf("er.qxxukazmu.nazev" to listOf("er.qxxukazmu.kod"))
-            val resp = batch(fmr(fm("majetek-1", "MAJETEK", 0.95, "er.qxxukazmu.nazev", SourceTag.MEMBER)))
+            val cands = listOf(cand("MAJETEK", 0, 7, listOf("er.ukazatel.kod", "er.ukazatel.nazev")))
+            val siblings = mapOf("er.ukazatel.nazev" to listOf("er.ukazatel.kod"))
+            val resp = batch(fmr(fm("majetek-1", "MAJETEK", 0.95, "er.ukazatel.nazev", SourceTag.MEMBER)))
             val b =
                 GateSpans
                     .gate(
@@ -335,8 +336,8 @@ class GateSpansTest :
                     ).shouldBeInstanceOf<Bound>()
                     .bindings
                     .single()
-            b.siblingRefs shouldContainExactly listOf("er.qxxukazmu.kod")
-            b.entityTypeRef shouldBe "er.qxxukazmu"
+            b.siblingRefs shouldContainExactly listOf("er.ukazatel.kod")
+            b.entityTypeRef shouldBe "er.ukazatel"
         }
         // --- MH — the slot and the reach reach the gate, and the outcome shows it ---------------
         //
@@ -613,12 +614,19 @@ class GateSpansTest :
         }
 
         "T4 — a VOCABULARY tie leaves member_of empty and keeps naming its species" {
-            val cands = listOf(cand("doklad", 0, 6, listOf("er.qtypdok.kod", "er.qxxukazmu.kod")))
+            val cands = listOf(cand("doklad", 0, 6, listOf("er.typ_dokladu.kod", "er.ukazatel.kod")))
             val resp =
                 batch(
                     fmr(
-                        fm("t1", "doklad", 1.0, "er.qtypdok.kod", SourceTag.VOCABULARY, targetRef = "er.qtypdok"),
-                        fm("t2", "doklad", 1.0, "er.qxxukazmu.kod", SourceTag.VOCABULARY, targetRef = "er.qxxukazmu"),
+                        fm(
+                            "t1",
+                            "doklad",
+                            1.0,
+                            "er.typ_dokladu.kod",
+                            SourceTag.VOCABULARY,
+                            targetRef = "er.typ_dokladu",
+                        ),
+                        fm("t2", "doklad", 1.0, "er.ukazatel.kod", SourceTag.VOCABULARY, targetRef = "er.ukazatel"),
                     ),
                 )
 
@@ -629,7 +637,7 @@ class GateSpansTest :
 
             clarify.options.map { it.memberOf }.distinct() shouldContainExactly listOf("")
             clarify.options.map { it.targetRef } shouldContainExactlyInAnyOrder
-                listOf("er.qtypdok", "er.qxxukazmu")
+                listOf("er.typ_dokladu", "er.ukazatel")
         }
     }) {
     companion object {

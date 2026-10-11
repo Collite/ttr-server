@@ -48,8 +48,8 @@ object ConformancePipeline {
             entries =
                 listOf(
                     DeclaredVocabularyEntry(
-                        category = "er.qstred_df.member",
-                        targetRef = "er.qstred_df",
+                        category = "er.stredisko.member",
+                        targetRef = "er.stredisko",
                         values = listOf(DeclaredValue("qt-orlak", "QT ORLAK"), DeclaredValue("qt-belus", "QT BELUS")),
                     ),
                 ),
@@ -163,7 +163,7 @@ object ConformancePipeline {
                 .setCandidateId(id)
                 .setCandidate(label)
                 .setScore(score)
-                .setCategory("er.qstred_df.member")
+                .setCategory("er.stredisko.member")
                 .setSource(SourceTag.MEMBER)
                 .build()
     }

@@ -1,6 +1,10 @@
 corpus dir commit: afd4cae53aa6866bcfafd82514d66b6e62d424fa
 e931689cd9cb2f977bd574452aad99690b46038f282cbcbc07c87877827eb6c1  seed.jsonl (      50 lines)
-ccda5f2a891a16789b3b6cb752b3baab9b9a8b8fe96e2f01fd41a8d7444352a7  ucetnictvi_entities_only.jsonl (      12 lines)
-2026-09-25: client names in ucetnictvi_entities_only.jsonl (and in q20-spike-results.json, which
+ccda5f2a891a16789b3b6cb752b3baab9b9a8b8fe96e2f01fd41a8d7444352a7  entities_only.jsonl (      12 lines)
+2026-09-25: client names in entities_only.jsonl (and in q20-spike-results.json, which
 cites the same questions) replaced by invented same-length names (LP review-103 F19/D6); the hash
 above is the renamed file's. No question, span or expectation changed otherwise.
+2026-10-11: the file renamed from its source package's name to entities_only.jsonl (content and hash
+unchanged), and in q20-spike-results.json the source's table and column names replaced by neutral ones
+(STREDISKO, UKAZATEL, TYP_DOKLADU, each with KOD/NAZEV) and the package's metric keys by
+`entities_only`. No number, question, span or expectation changed.

@@ -38,11 +38,11 @@ class ListObjectsFuzzyAttributeMappingSpec :
                 """
                 model db schema dbo
 
-                def table QSTRED_DF {
-                    primaryKey: ["IDSTRED"]
+                def table STREDISKO {
+                    primaryKey: ["ID"]
                     columns: [
-                        def column IDSTRED { type: int, isKey: true },
-                        def column KOD_STR { type: text }
+                        def column ID { type: int, isKey: true },
+                        def column KOD { type: text }
                     ]
                 }
                 """.trimIndent(),
@@ -65,12 +65,12 @@ class ListObjectsFuzzyAttributeMappingSpec :
                 """
                 model binding
 
-                def er2db_entity stredisko { entity: er.entity.stredisko, target: { table: db.dbo.QSTRED_DF } }
+                def er2db_entity stredisko { entity: er.entity.stredisko, target: { table: db.dbo.STREDISKO } }
                 def er2db_attribute stredisko.id_strediska {
-                    attribute: er.entity.stredisko.id_strediska, target: { column: db.dbo.QSTRED_DF.IDSTRED }
+                    attribute: er.entity.stredisko.id_strediska, target: { column: db.dbo.STREDISKO.ID }
                 }
                 def er2db_attribute stredisko.kod_strediska {
-                    attribute: er.entity.stredisko.kod_strediska, target: { column: db.dbo.QSTRED_DF.KOD_STR }
+                    attribute: er.entity.stredisko.kod_strediska, target: { column: db.dbo.STREDISKO.KOD }
                 }
                 """.trimIndent(),
             )
@@ -94,8 +94,8 @@ class ListObjectsFuzzyAttributeMappingSpec :
                         .build(),
                 )
 
-            // KOD_STR is not tagged fuzzy itself — it's fuzzy only because kod_strediska maps to it.
-            resp.itemsList.map { it.qualifiedName.name } shouldBe listOf("QSTRED_DF.KOD_STR")
+            // KOD is not tagged fuzzy itself — it's fuzzy only because kod_strediska maps to it.
+            resp.itemsList.map { it.qualifiedName.name } shouldBe listOf("STREDISKO.KOD")
         }
 
         "fuzzy_only=false still returns every column" {
@@ -109,6 +109,6 @@ class ListObjectsFuzzyAttributeMappingSpec :
                 )
 
             resp.itemsList.map { it.qualifiedName.name }.toSet() shouldBe
-                setOf("QSTRED_DF.IDSTRED", "QSTRED_DF.KOD_STR")
+                setOf("STREDISKO.ID", "STREDISKO.KOD")
         }
     })

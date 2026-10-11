@@ -24,7 +24,7 @@ class TextNormalizerCharacterizationSpec :
                 .normalize(input.lowercase(), Normalizer.Form.NFD)
                 .replace(combiningMarks, "")
 
-        // sample drawn from the S1 (seed.jsonl) + S2 (ucetnictvi / hero) Czech corpora
+        // sample drawn from the S1 (seed.jsonl) + S2 (ENTITIES_ONLY / hero) Czech corpora
         val sample =
             listOf(
                 "Kolik jsme utržili za Octavie v pražských pobočkách za poslední fiskální čtvrtletí?",
