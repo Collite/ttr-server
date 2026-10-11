@@ -34,7 +34,7 @@ service VelesService {
 
   // -------- Areas (subject-area → packages; Golem P4 S4.2, 2026-06-25) --------
   // Resolve a subject area to its member packages (+ description/tags), loaded
-  // from `model-ttr/areas/*.ttrm`. Areas are an authoring/registry concept that
+  // from the model's `def area` blocks. Areas are an authoring/registry concept that
   // is NOT part of the object graph; Golem assembles a Shem by resolving its
   // `areas` → packages → GetModel. See docs/architecture/fork/contracts.md §1.1.
   rpc ResolveArea(ResolveAreaRequest) returns (ResolveAreaResponse);
@@ -214,7 +214,7 @@ message ModelDescriptor {
 // =============================================================================
 
 message GetModelRequest {
-  // Package names to include (e.g. ["ucetnictvi"]). Empty = error
+  // Package names to include (e.g. ["hartland"]). Empty = error
   // (caller must opt in to a domain explicitly; bulk-all is not supported).
   // An object belongs to a package when its source file does: the file's
   // `package` clause, else the package its directory implies — that directory
@@ -301,11 +301,11 @@ message GetModelResponse {
 
 // -------- ResolveArea (Golem P4 S4.2) --------
 message ResolveAreaRequest {
-  string area = 1;   // subject-area name, e.g. "accounting"
+  string area = 1;   // subject-area name, e.g. "hartland"
 }
 
 message ResolveAreaResponse {
-  // Member packages of the area, e.g. ["obchodni_doklady", "ucetnictvi"]. Empty
+  // Member packages of the area, e.g. ["sales", "returns"]. Empty
   // when `found` is false. Feed straight into GetModel(packages=...).
   repeated string packages = 1;
   string description       = 2;   // area description (may be empty); seeds Golem's description_for_router
@@ -393,7 +393,7 @@ message ListObjectsRequest {
   // DEPRECATED alias of `indexed_only` (MV): the bit it filtered on always meant "indexed".
   // Honoured for one release, with one WARN per process.
   bool fuzzy_only = 12;
-  // Filter by package name (e.g. "ucetnictvi"). Empty = no filter.
+  // Filter by package name (e.g. "hartland"). Empty = no filter.
   // AND-ed with other filters. Matches objects whose source file belongs to the
   // package, same membership as GetModelRequest.packages.
   string package = 13;

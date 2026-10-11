@@ -16,6 +16,13 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+### meta-mcp — tool descriptions give Hartland examples
+
+The examples in the meta-mcp tool descriptions and manifests (the package filter, `get_model`'s package list,
+`resolve_area`'s area, `get_object`'s ids, `get_roles_for_entity`'s qname) named a client's model packages; they now
+name the public Hartland demo model that Veles serves by default (`hartland`, `er.entity.item`,
+`db.dbo.customer_address`, `er.entity.store_sales`). The `meta.v1` proto comments follow. No behaviour or wire change.
+
 ### veles — a model source that fails to load no longer hides behind a bundled model (#180)
 
 When the git model source could not be loaded (a bad token, a wrong branch, no network), Veles quietly served the
