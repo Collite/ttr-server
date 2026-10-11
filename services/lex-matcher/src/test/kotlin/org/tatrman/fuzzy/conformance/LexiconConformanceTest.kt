@@ -53,7 +53,7 @@ import kotlin.io.path.writeBytes
  * disagreement with the code. Hand-writing a `CompiledLexicon` would have tested the last link
  * only, and this arc has already been bitten once by a test that proved less than it looked like.
  *
- * Hermetic: no live services, no DFP, no network. The corpus is hash-pinned in
+ * Hermetic: no live services, no pilot estate, no network. The corpus is hash-pinned in
  * `conformance/corpus-hashes.sha256` and runs in the gating tier.
  */
 class LexiconConformanceTest :
