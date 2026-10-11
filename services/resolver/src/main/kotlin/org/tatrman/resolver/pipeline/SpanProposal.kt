@@ -112,7 +112,7 @@ object SpanProposal {
      * Falls back to the first token when every `dep_head` stays inside the run — a coordination
      * shape this can meet, and the first token is no worse an answer there than any other.
      */
-    private fun syntacticHead(
+    internal fun syntacticHead(
         run: List<Int>,
         tokens: List<Token>,
     ): Int {
@@ -990,7 +990,7 @@ object SpanProposal {
     // Universal NER spans (removed before domain gating) come from the shared
     // UniversalClassifier — the same classification UniversalExtraction types by,
     // so the exclusion set and the universal bindings agree by construction.
-    private fun universalCharRanges(entities: List<NerEntity>): List<IntRange> =
+    internal fun universalCharRanges(entities: List<NerEntity>): List<IntRange> =
         entities.filter { UniversalClassifier.isUniversal(it.label, it.normalizedValue, it.text) }.map {
             it.charStart until
                 it.charEnd
@@ -1035,7 +1035,7 @@ object SpanProposal {
      * extends to the LEFT: the NER's start stands. Where the NER already spans the name
      * (`Dallas DC` typed whole), there is no tail and the extent is exactly the entity's.
      */
-    private fun withNameTail(
+    internal fun withNameTail(
         extent: List<Int>,
         tokens: List<Token>,
         universal: List<IntRange>,
@@ -1056,7 +1056,7 @@ object SpanProposal {
     }
 
     /** Every token whose mid-character lies inside [entity]'s extent — the entity, as tokens. */
-    private fun tokensWithin(
+    internal fun tokensWithin(
         entity: NerEntity,
         tokens: List<Token>,
     ): List<Int> {

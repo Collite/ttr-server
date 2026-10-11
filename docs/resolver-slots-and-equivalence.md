@@ -215,11 +215,34 @@ entity's member first; the NER reading stands only when no member matches.**
   the character (a hyphenated name, an anchor word inside the name), and a candidate that merely
   overlaps a universal never removes it.
 
-**Not scoped, not changed.** A bare place (`TN`), an unanchored one, a pre-modifier of the anchor
-(`Nashville stores`), the argument of an operator and anything under a word that did not bind are
-proposed by no path, as before. Without a
-governor there is no entity whose member the word could be, and reading every place as a
-possible value would be a guess.
+**Not scoped: asked only of the vocabularies that hold such names.** A bare place (*"how many
+weeks did Brno DC have no stock"*), an unanchored one, or a pre-modifier of the anchor
+(`Nashville stores`) has no governor, so there is no entity whose member the word could be.
+Asking every vocabulary about it is the guess UD declined: a lone city then finds anything that
+shares a word with it (`Paris` → the return reason "Parts missing"). Instead, the gate is the data:
+
+- **lex-matcher measures which vocabularies hold names.** After each refresh it runs the same NER
+  over every member vocabulary's values (packed many to a call, each in a short carrier phrase in
+  the data's language) and reports, per vocabulary, how many values carry an entity of each kind
+  (`GetStatus` → `CategoryStatus.entity_profile`). The profile is cached by the vocabulary's content
+  version and the NER model, so an unchanged estate is not re-read.
+- **The resolver asks only those.** A universal `LOCATION` or `PERSON` that no governed dual reading
+  reads gets one more dual reading, origin `NAMED_MEMBER`, scoped to the member vocabularies whose
+  values the classifier types the same way (`NamedMembers`). The return reasons hold no place
+  names, so `Paris` never reaches them; the warehouse names do, so `Brno DC` does. A type with no
+  such vocabulary proposes nothing.
+- **Only the whole name speaks.** A member counts only when its value IS the span, modulo case,
+  diacritics and spacing. A TOKENS or TYPOS hit does not, so a bare `Dallas` never becomes the
+  warehouse "Dallas DC". Part of a name (an inflected town inside a longer member) is not read.
+- **The same seam decides.** A member that spoke supersedes the place, and its whole extent is one
+  value: a tail word (`DC` after a `Brno` NameTag typed alone) leaves no finding of its own. Several
+  vocabularies holding the exact name (a bare `TN` in three state columns) is a tie among members,
+  and asks. No member: the reading is withdrawn and the place stands, with its G3, as before.
+
+The resolver reads the profile from `GetStatus` at most once a minute, and only for a question that
+has a place or a person in it. No profile (an older lex-matcher, nlp off, a vocabulary not yet
+profiled) means no `NAMED_MEMBER` reading, and the resolve is exactly what it was. The argument of
+an operator and anything under a word that did not bind are proposed by no other path, as before.
 
 **A coarse `MISC` is a name.** Engines disagree on what `MISC` means. NameTag's own code rides in
 `normalized_value` as `cnec:<code>` and decides alone (`n*` a number, `o*` an object). Without a
@@ -229,7 +252,8 @@ fuzzy gate like an `ORG`. Unless its text is a number (a digit and no letter: `5
 vocabulary with no number label hands numbers over as `MISC`, and those stay universal `MISC`.
 
 Each supersession is logged once, at INFO, with ids and counts only —
-`seam: LOCATION [10,12) superseded by GOVERNED_VALUE (1 contenders) conversation_id=…` — and the
+`seam: LOCATION [10,12) superseded by GOVERNED_VALUE (1 contenders) conversation_id=…`, or
+`… by NAMED_MEMBER …` for a bare place — and the
 span's text at DEBUG. No proto or lattice field records it. A turn that bound a place-looking value
 with **no** `seam:` line took the plain governed path: the NER never typed the word universal (a
 NameTag code outside `p`/`g`/`t`/`n`, say), so there was nothing to supersede.
@@ -365,6 +389,8 @@ nothing behaves exactly as it did before:
 | a value with no governor, or a fact governor | tier M inert — it asks, by owner |
 | lookup rung off (`budgetMs = 0`), or no `Lookup` on the matcher | operator words are not asked about; a noun-tagged one is still a mention |
 | no NER entity on a governed argument (NER off, or nothing tagged) | seam inert — no dual reading, nothing superseded |
+| no entity profile on `GetStatus` (an older lex-matcher, nlp off, `fuzzy.entity-profile.enabled=false`) | no `NAMED_MEMBER` reading — a bare place stays a place |
+| `resolver.named-members.enabled=false` | the same, whatever lex-matcher reports |
 
 No reader gate is needed for the v2 → v3 archive crossing: `reachedFrom` is a defaulted field
 inside `targets`, so a v2 archive decodes in a v3 reader and a v3 archive is read by an older
