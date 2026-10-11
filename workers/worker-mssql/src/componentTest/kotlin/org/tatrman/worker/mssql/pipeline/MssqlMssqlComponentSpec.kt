@@ -96,9 +96,9 @@ class MssqlMssqlComponentSpec :
                 val pool =
                     ConnectionPoolManager(
                         mapOf(
-                            "df-test" to
+                            "mssql-default" to
                                 ConnectionConfig(
-                                    id = "df-test",
+                                    id = "mssql-default",
                                     jdbcUrl = dbUrl,
                                     username = sa,
                                     password = pw,
@@ -127,7 +127,7 @@ class MssqlMssqlComponentSpec :
                                         .newBuilder()
                                         .setPlan(scan("dbo", "sample_orders"))
                                         .setContext(PipelineContext.getDefaultInstance())
-                                        .setConnectionId("df-test")
+                                        .setConnectionId("mssql-default")
                                         .setOptions(ExecutionOptions.getDefaultInstance())
                                         .build(),
                                 ).toList()
@@ -155,8 +155,8 @@ class MssqlMssqlComponentSpec :
                 tail.receipt.dialect shouldBe "MSSQL"
                 tail.receipt.statement shouldBe query
                 tail.receipt.statementTruncated shouldBe false
-                tail.receipt.connectionId shouldBe "df-test"
-                tail.receipt.engineLabel shouldBe "worker-mssql@df-test"
+                tail.receipt.connectionId shouldBe "mssql-default"
+                tail.receipt.engineLabel shouldBe "worker-mssql@mssql-default"
                 tail.receipt.rowsTotal shouldBe 2L
                 tail.receipt.durationMs shouldBeGreaterThan 0L
                 tail.receipt.rls shouldBe RlsOutcome.RLS_NOT_REQUIRED

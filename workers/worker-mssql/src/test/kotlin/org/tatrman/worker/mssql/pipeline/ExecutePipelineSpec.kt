@@ -72,10 +72,10 @@ class ExecutePipelineSpec :
                 val pool =
                     ConnectionPoolManager(
                         mapOf(
-                            "df-test" to
+                            "mssql-default" to
                                 org.tatrman.worker.mssql.connection
                                     .ConnectionConfig(
-                                        id = "df-test",
+                                        id = "mssql-default",
                                         jdbcUrl = "jdbc:sqlserver://nope:1433;databaseName=X",
                                         username = "u",
                                         password = "p",
@@ -104,7 +104,7 @@ class ExecutePipelineSpec :
                                 .newBuilder()
                                 .setPlan(scan("dbo", "customers"))
                                 .setContext(PipelineContext.getDefaultInstance())
-                                .setConnectionId("df-test")
+                                .setConnectionId("mssql-default")
                                 .setOptions(ExecutionOptions.getDefaultInstance())
                                 .build(),
                         ).toList()

@@ -16,6 +16,16 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+### Shipped defaults name no pilot estate
+
+Defaults baked into the images named one pilot deployment. They are now neutral; a deployment that set its own values
+is unaffected.
+
+- **dispatch `world.default-connection`** is `mssql-default` (was the pilot's connection id), and **worker-mssql's
+  shipped env-driven connection template** has the same id, so the two still pair up with no further config when
+  `MSSQL_DB_*` activates the template. Upgrade: a deployment that routed to the old id by default and served it from
+  its own connection block sets `WORLD_DEFAULT_CONNECTION` (or renames the block).
+
 ### meta-mcp — tool descriptions give Hartland examples
 
 The examples in the meta-mcp tool descriptions and manifests (the package filter, `get_model`'s package list,

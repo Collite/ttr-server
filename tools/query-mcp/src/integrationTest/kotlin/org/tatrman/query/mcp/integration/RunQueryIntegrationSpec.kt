@@ -58,11 +58,11 @@ class RunQueryIntegrationSpec :
         //      the mssql-init seed: id/tenant_id/region/amount, 4 rows incl 't-alpha').
         //   2. Calcite "Object 'dbo' not found" → reference the table UNQUALIFIED (a namespace is not
         //      a Calcite schema; Translate re-qualifies to dbo.sample_orders on MSSQL unparse).
-        //   3. `no_worker_for_connection: df-test` → Mssql ran fixture mode + advertised no
-        //      connection. Now the real-MSSQL variant is wired: the shipped `df-test` connection
+        //   3. `no_worker_for_connection: mssql-default` → Mssql ran fixture mode + advertised no
+        //      connection. Now the real-MSSQL variant is wired: the shipped `mssql-default` connection
         //      template in mssql application.conf activates from MSSQL_DB_* (host=mssql,
         //      db=kantheon_local, password from the per-run mssql-sa-secret), `MSSQL_USE_FIXTURE
-        //      =false`, and `DISPATCH_USE_FIXTURE=false` so Dispatch's poller learns df-test from
+        //      =false`, and `DISPATCH_USE_FIXTURE=false` so Dispatch's poller learns mssql-default from
         //      Mssql' GetCapabilities. (Needs mssql `:testing` republished from the new fixture.)
         //
         // rlsPolicyContext (OFF) — the RLS path. Still NOT testable here: query-runquery runs Validate

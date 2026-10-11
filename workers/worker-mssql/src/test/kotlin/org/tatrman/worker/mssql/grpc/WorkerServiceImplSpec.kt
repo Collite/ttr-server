@@ -79,9 +79,9 @@ class WorkerServiceImplSpec :
                 val (svc, _) =
                     service(
                         mapOf(
-                            "df-test-fin" to
+                            "mssql-finance" to
                                 ConnectionConfig(
-                                    id = "df-test-fin",
+                                    id = "mssql-finance",
                                     jdbcUrl = "jdbc:sqlserver://h:1433;databaseName=X",
                                     username = "u",
                                     password = "p",
@@ -94,7 +94,7 @@ class WorkerServiceImplSpec :
                 resp.engineVersion shouldBe "MS SQL Server 2019"
                 resp.supportedLanguagesList shouldContain "SQL"
                 resp.supportedDialectsList shouldContain "MSSQL"
-                resp.supportedConnectionsList shouldContain "df-test-fin"
+                resp.supportedConnectionsList shouldContain "mssql-finance"
                 resp.supportsStatefulSessions shouldBe false
                 resp.maxConcurrentSessions shouldBe 0
                 resp.limits.defaultTimeoutSeconds shouldBe 300L
@@ -108,9 +108,9 @@ class WorkerServiceImplSpec :
                 val (svc, _) =
                     service(
                         mapOf(
-                            "df-test" to
+                            "mssql-default" to
                                 ConnectionConfig(
-                                    id = "df-test",
+                                    id = "mssql-default",
                                     jdbcUrl = "jdbc:sqlserver://h:1433;databaseName=X",
                                     username = "u",
                                     password = "p",
@@ -122,8 +122,8 @@ class WorkerServiceImplSpec :
                 resp.ready shouldBe true
                 resp.overallStatus shouldBe OverallStatus.OK
                 resp.connectionsList shouldContain
-                    resp.connectionsList.first { it.connectionId == "df-test" }
-                val cs = resp.connectionsList.first { it.connectionId == "df-test" }
+                    resp.connectionsList.first { it.connectionId == "mssql-default" }
+                val cs = resp.connectionsList.first { it.connectionId == "mssql-default" }
                 cs.connected shouldBe true
                 cs.database shouldBe "X"
                 cs.jdbcUrl shouldContainStr "databaseName=X"
@@ -144,9 +144,9 @@ class WorkerServiceImplSpec :
                 val (svc, pool) =
                     service(
                         mapOf(
-                            "df-test" to
+                            "mssql-default" to
                                 ConnectionConfig(
-                                    id = "df-test",
+                                    id = "mssql-default",
                                     jdbcUrl = "jdbc:sqlserver://h:1433;databaseName=X",
                                     username = "u",
                                     password = "p",
@@ -157,7 +157,7 @@ class WorkerServiceImplSpec :
                     )
                 pool.recordProbeResult(
                     ConnectionPoolManager.ProbeResult(
-                        connectionId = "df-test",
+                        connectionId = "mssql-default",
                         connected = false,
                         lastError = "Login failed for user 'u'.",
                         lastProbed = Instant.now(),
@@ -176,9 +176,9 @@ class WorkerServiceImplSpec :
                 val (svc, _) =
                     service(
                         mapOf(
-                            "df-test" to
+                            "mssql-default" to
                                 ConnectionConfig(
-                                    id = "df-test",
+                                    id = "mssql-default",
                                     jdbcUrl = "jdbc:sqlserver://h:1433;databaseName=X",
                                     username = "u",
                                     password = "p",
@@ -200,9 +200,9 @@ class WorkerServiceImplSpec :
                 val (svc, _) =
                     service(
                         mapOf(
-                            "df-test" to
+                            "mssql-default" to
                                 ConnectionConfig(
-                                    id = "df-test",
+                                    id = "mssql-default",
                                     jdbcUrl = "jdbc:sqlserver://h:1433;databaseName=X",
                                     username = "u",
                                     password = "p",
@@ -221,33 +221,33 @@ class WorkerServiceImplSpec :
                 val (svc, _) =
                     service(
                         mapOf(
-                            "df-test" to
+                            "mssql-default" to
                                 ConnectionConfig(
-                                    id = "df-test",
+                                    id = "mssql-default",
                                     jdbcUrl = "jdbc:sqlserver://h:1433;databaseName=tatrman",
                                     username = "u",
                                     password = "p",
                                     database = "tatrman",
                                     defaultSchema = "dbo",
                                 ),
-                            "df-test-fin" to
+                            "mssql-finance" to
                                 ConnectionConfig(
-                                    id = "df-test-fin",
-                                    jdbcUrl = "jdbc:sqlserver://h:1433;databaseName=df_fin",
+                                    id = "mssql-finance",
+                                    jdbcUrl = "jdbc:sqlserver://h:1433;databaseName=finance",
                                     username = "u",
                                     password = "p",
-                                    database = "df_fin",
+                                    database = "finance",
                                     defaultSchema = "fin",
                                 ),
                         ),
                     )
                 val resp = svc.getCapabilities(GetCapabilitiesRequest.getDefaultInstance())
                 val byId = resp.connectionsList.associateBy { it.connectionId }
-                byId.keys shouldContainExactlyInAnyOrder setOf("df-test", "df-test-fin")
-                byId["df-test"]!!.database shouldBe "tatrman"
-                byId["df-test"]!!.defaultSchema shouldBe "dbo"
-                byId["df-test-fin"]!!.database shouldBe "df_fin"
-                byId["df-test-fin"]!!.defaultSchema shouldBe "fin"
+                byId.keys shouldContainExactlyInAnyOrder setOf("mssql-default", "mssql-finance")
+                byId["mssql-default"]!!.database shouldBe "tatrman"
+                byId["mssql-default"]!!.defaultSchema shouldBe "dbo"
+                byId["mssql-finance"]!!.database shouldBe "finance"
+                byId["mssql-finance"]!!.defaultSchema shouldBe "fin"
             }
         }
     })

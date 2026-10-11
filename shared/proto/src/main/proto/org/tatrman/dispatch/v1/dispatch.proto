@@ -28,7 +28,7 @@
 // HOCON config shape (informational — not part of the proto):
 //   dispatch {
 //     workers = [ { endpoint = "...", role-hint = "mssql" }, ... ]
-//     default-connection = "df-test-main"
+//     default-connection = "mssql-default"
 //     capability-refresh {
 //       interval-seconds = 60
 //       timeout-seconds = 5
