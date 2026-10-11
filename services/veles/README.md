@@ -77,6 +77,20 @@ Hartland's, so a URI alone would look for `master` and `model/` in your reposito
 | `METADATA_GIT_TOKEN` | A read token for a private repository (`METADATA_GIT_USERNAME` defaults to `x-access-token`). |
 | `METADATA_GIT_CHECKOUT_DIR` | Where to clone (default `<tmp>/metadata-git/github-model`). |
 
+**A second repository.** A model whose packages live in two repositories (a public one and a private
+one, say) can be served by one Veles: set `METADATA_GIT2_REMOTE_URI` and Veles adds a second git
+source, `second-model`, beside the first. It is off when the URI is unset. The two are separate
+sources: each is cloned, refreshed and reported on `/status` on its own, and the reconciler merges
+them by package as it merges any two sources. Veles is ready only when both have loaded.
+
+| Env | Meaning |
+|---|---|
+| `METADATA_GIT2_REMOTE_URI` | The second repository. Unset or empty = no second source. |
+| `METADATA_GIT2_BRANCH` | Its branch. Default `master`. |
+| `METADATA_GIT2_SUBDIR` | Its model's directory. Default `model`. |
+| `METADATA_GIT2_TOKEN` | Its read token. Default: `METADATA_GIT_TOKEN`, so one token that reads both repositories is enough. |
+| `METADATA_GIT2_USERNAME` / `METADATA_GIT2_CHECKOUT_DIR` | As for the first source (checkout default `<tmp>/metadata-git/second-model`). |
+
 **No fallback model (ttr-server#180).** Veles bundles no model. When the repository can't be loaded
 (a bad token, a wrong branch or sub-path, no network), Veles serves no model — the built-in stock
 roles only, so every catalog call answers empty — and:

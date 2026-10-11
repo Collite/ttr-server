@@ -6,6 +6,7 @@ import com.typesafe.config.ConfigFactory
 import com.typesafe.config.ConfigResolveOptions
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldBeEmpty
+import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.string.shouldNotBeEmpty
@@ -134,4 +135,98 @@ class VelesSourceConfigSpec :
             state.description shouldContain "file://***@"
             (state.description + state.lastError).contains("s3cret") shouldBe false
         }
+
+        "the second git source is off unless its repository is set" {
+            val dir = Files.createTempDirectory("veles-src")
+            val resolved = shipped.resolve(noEnv)
+            resolved.getString("metadata.sources.second-model.remote-uri") shouldBe ""
+            val (board, _) =
+                loadAll(
+                    config(
+                        """
+                        metadata.sources.github-model.remote-uri = "${unreachable(dir)}"
+                        metadata.sources.github-model.local-checkout-dir = "${dir.resolve("checkout")}"
+                        """.trimIndent(),
+                    ),
+                )
+            board.states().map { it.id } shouldBe listOf("github-model")
+        }
+
+        "a second git repository is a source of its own, merged into one model" {
+            val dir = Files.createTempDirectory("veles-src")
+            val shop =
+                Path.of(checkNotNull(this::class.java.classLoader.getResource("fixture-model/shop")).toURI())
+            val first =
+                gitRepo(dir.resolve("first")) { model -> shop.toFile().copyRecursively(model.resolve("shop").toFile()) }
+            val second =
+                gitRepo(dir.resolve("second")) { model ->
+                    Files.writeString(Files.createDirectories(model.resolve("books")).resolve("books.ttr"), BOOKS)
+                }
+            val (board, snapshots) =
+                loadAll(
+                    config(
+                        """
+                        metadata.sources.github-model.remote-uri = "file://$first"
+                        metadata.sources.github-model.local-checkout-dir = "${dir.resolve("checkout-1")}"
+                        metadata.sources.second-model.remote-uri = "file://$second"
+                        metadata.sources.second-model.local-checkout-dir = "${dir.resolve("checkout-2")}"
+                        """.trimIndent(),
+                    ),
+                )
+
+            board.states().map { it.id } shouldContainExactlyInAnyOrder listOf("github-model", "second-model")
+            board.states().all { it.loadedOnce } shouldBe true
+            board.states().single { it.id == "second-model" }.description shouldContain "branch master, sub-path model"
+            val served =
+                ModelReconciler(ModelDescriptor(id = "t", name = "t"))
+                    .reconcile(snapshots)
+                    .model
+                    .objectByQname()
+                    .keys
+                    .map { it.toString() }
+            served.any { "Customer" in it } shouldBe true
+            served.any { "Book" in it } shouldBe true
+        }
+
+        "the second source reads the first one's token unless it is given its own" {
+            fun password(vararg lines: String) =
+                config(lines.joinToString("\n")).getString("metadata.sources.second-model.password")
+            password("METADATA_GIT_TOKEN = t1") shouldBe "t1"
+            password("METADATA_GIT_TOKEN = t1", "METADATA_GIT2_TOKEN = t2") shouldBe "t2"
+        }
     })
+
+/** A second package for the second repository — one entity, so the merged model can be told apart. */
+private const val BOOKS = """package books
+
+model er
+def entity Book {
+    description: "A book"
+    attributes: [
+        def attribute id { type: int, isKey: true }
+    ]
+}
+"""
+
+/** A one-commit git repository on `master` whose `model/` [fill] writes. */
+private fun gitRepo(
+    root: Path,
+    fill: (Path) -> Unit,
+): Path {
+    val model = Files.createDirectories(root.resolve("model"))
+    fill(model)
+
+    fun git(vararg args: String) {
+        val p =
+            ProcessBuilder("git", "-c", "user.name=t", "-c", "user.email=t@t", *args)
+                .directory(root.toFile())
+                .redirectErrorStream(true)
+                .start()
+        val out = p.inputStream.bufferedReader().readText()
+        check(p.waitFor() == 0) { "git ${args.joinToString(" ")} failed: $out" }
+    }
+    git("init", "-q", "-b", "master")
+    git("add", ".")
+    git("commit", "-q", "-m", "model")
+    return root
+}
