@@ -136,6 +136,40 @@ class EntityProfilerTest :
                 listOf(EntityCount("LOCATION", "cnec:gu", 1), EntityCount("PERSON", "cnec:pf", 2))
         }
 
+        "an entity that runs across two values counts for neither — NameTag chains look-alike lines" {
+            // a NER that reads "DC.\nv Praha" as one place spanning the end of one value and the next
+            val chaining =
+                object : NlpBatchClient {
+                    override suspend fun batchLemmatize(
+                        texts: List<String>,
+                        language: String,
+                    ): List<List<String>> = texts.map { listOf(it) }
+
+                    override suspend fun entities(
+                        text: String,
+                        language: String,
+                    ): NerResult {
+                        val from = text.indexOf("DC.\nv Praha")
+                        return NerResult(
+                            listOf(
+                                NerSpan(from, from + "DC.\nv Praha".length, "LOCATION", "cnec:gu"),
+                                NerSpan(text.indexOf("Ostrava"), text.indexOf("Ostrava") + 7, "LOCATION", "cnec:gu"),
+                            ),
+                            "nametag3:test",
+                        )
+                    }
+                }
+            val profile =
+                runBlocking {
+                    EntityProfiler(
+                        chaining,
+                        "cs",
+                    ).profile(mapOf("dc" to ("v1" to warehouses)))
+                }.getValue("dc")
+            // only Ostrava DC carries a place; Brno DC and Praha DC share a crossing entity and get none
+            profile.entities shouldContainExactly listOf(EntityCount("LOCATION", "cnec:gu", 1))
+        }
+
         "values are trimmed, collapsed and de-duplicated before they are counted" {
             EntityProfiler.distinctValues(listOf("Brno DC   ", "Brno DC", " ", "Praha\nDC")) shouldContainExactly
                 listOf("Brno DC", "Praha DC")

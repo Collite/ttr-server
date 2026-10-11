@@ -32,7 +32,8 @@ data class EntityCount(
  *
  * **Packing.** Values go to nlp many at a time, one per line, each inside a short carrier phrase in
  * the data's language (`v Brno DC.` / `in Dallas DC.`), and each entity is mapped back to the value
- * whose characters it overlaps. The carrier gives the NER a sentence to read a bare label in, which
+ * whose characters it overlaps — an entity that runs across two values is dropped. The carrier gives
+ * the NER a sentence to read a bare label in, which
  * is how it meets the name in a question. It leans towards places, and that is the cheap direction to
  * err in: an over-counted vocabulary costs the resolver one more exact-match lookup, while a missed
  * one keeps a real name unreachable.
@@ -186,9 +187,13 @@ class EntityProfiler(
                 }
             if (model.isBlank()) model = result.model
             for (entity in result.entities) {
-                for (i in chunk.valuesOverlapping(entity.start, entity.end)) {
-                    kindsByValue.getOrPut(i) { HashSet() } += entity.label to entity.code
-                }
+                // An entity that runs across a value boundary is no value's: NameTag reads a packed batch
+                // as running text and chains look-alike lines into one name (`… Lampa MX-32Z.\nv … Lampa
+                // MX-4EK`, measured on hartland). A blank line between values does not stop it, so the
+                // entity is dropped rather than credited to every value it touches.
+                val values = chunk.valuesOverlapping(entity.start, entity.end)
+                if (values.size != 1) continue
+                kindsByValue.getOrPut(values.single()) { HashSet() } += entity.label to entity.code
             }
         }
         val counts =
