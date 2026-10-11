@@ -28,6 +28,16 @@ is unaffected.
 - **geo's Nominatim User-Agent** is `tatrman-geo/1.0 (+https://github.com/Collite/ttr-server)`, in the service default
   and in the chart (`geo.nominatim.userAgent`, was `tatrman-geo/1.0`); it still identifies the application as the OSM
   usage policy requires, and `GEO_NOMINATIM_USER_AGENT` / the chart value still override it.
+- **identity's Keycloak realm** defaults to `tatrman` (the umbrella chart's dev IdP realm; was the pilot's). It is read
+  only in `db` mode; `KEYCLOAK_REALM` sets it.
+- **identity's ERP user source ships no SQL.** Its four reads were one ERP's schema, hard-coded, with a fallback email
+  domain to match. They are now configuration, `erp-database.queries.{users, roles, user-roles, role-hierarchy}`
+  (`ERP_USERS_QUERY`, `ERP_ROLES_QUERY`, `ERP_USER_ROLES_QUERY`, `ERP_ROLE_HIERARCHY_QUERY`), each returning the columns
+  `infra/identity/README.md` lists, plus `erp-database.fallback-email-domain` (`ERP_FALLBACK_EMAIL_DOMAIN`). While any
+  query is unset the ERP source is skipped with a WARN and no ERP connection is opened. **Upgrade:** a `db`-mode
+  deployment that runs the ERP sync (`WHOIS_ERP_SYNC_ENABLED=true`) sets the four queries for its ERP, and the fallback
+  domain if it relied on one; without a domain a user with no email is skipped rather than merged with others on a
+  blank email. `json` mode (the chart default) is unaffected.
 
 ### meta-mcp — tool descriptions give Hartland examples
 

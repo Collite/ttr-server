@@ -34,6 +34,24 @@ HTTP **7110** (`WHOIS_SERVER_PORT`, kept from ai-platform). No gRPC, no MCP wrap
 - `whois.repository.type = db`: Postgres-backed (`who-is-database`), Flyway V1–V5 on boot, with
   the Keycloak/ERP sync loop active. The live deployment runs in `db` mode.
 
+### The ERP user source
+
+An ERP's user schema is its own, so the image ships no ERP SQL. The `db`-mode ERP sync
+(`WHOIS_ERP_SYNC_ENABLED`) reads four queries from `erp-database.queries`, each returning the
+columns named here:
+
+| key (env) | columns |
+|---|---|
+| `users` (`ERP_USERS_QUERY`) | `user_id`, `username`, `fullname` (`"First Last"`), `email` — the users to sync, active ones only |
+| `roles` (`ERP_ROLES_QUERY`) | `id`, `code`, `description` |
+| `user-roles` (`ERP_USER_ROLES_QUERY`) | `user_id`, `role_id` |
+| `role-hierarchy` (`ERP_ROLE_HIERARCHY_QUERY`) | `parent_role`, `child_role` (a role that is its own parent is a root) |
+
+While any of the four is unset the ERP source is skipped: a WARN at startup names the missing keys,
+and no ERP connection is opened. Users are matched across sources by email, so a user whose email is
+blank becomes `<username>@<erp-database.fallback-email-domain>` (`ERP_FALLBACK_EMAIL_DOMAIN`); with
+no domain set, such a user is skipped and counted in a WARN.
+
 ## Run
 
 ```
