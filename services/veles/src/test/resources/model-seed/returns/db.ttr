@@ -1,0 +1,212 @@
+package returns
+def table catalog_returns { description: """Marketplace returns — one row per returned order line (TPC-DS catalog_returns).
+""", primaryKey: ["cr_order_number", "cr_item_sk"],
+    columns: [
+        def column cr_order_number { type: int, isKey: true, description: "Order number of the returned line", },
+        def column cr_item_sk { type: int, isKey: true, description: "Returned item (item.i_item_sk)", },
+        def column cr_returned_date_sk { type: int, optional: true, description: "Return date (date_dim.d_date_sk)", },
+        def column cr_returning_customer_sk { type: int, optional: true, description: "Returning customer (customer.c_customer_sk)", },
+        def column cr_reason_sk { type: int, optional: true, description: "Return reason (reason.r_reason_sk)", },
+        def column cr_warehouse_sk { type: int, optional: true, description: "Distribution center receiving the return (warehouse.w_warehouse_sk)", },
+        def column cr_return_quantity { type: int, optional: true, description: "Units returned", },
+        def column cr_return_amount { type: decimal, optional: true, description: "Returned amount", },
+    ]
+}
+
+def table reason { description: """Return reasons.
+""", primaryKey: ["r_reason_sk"],
+    columns: [
+        def column r_reason_sk { type: int, isKey: true, description: "Reason key", },
+        def column r_reason_id { type: text, optional: true, description: "Reason code", search { searchable: true, descriptions { en: ["Find a reason by its code. Example: WHERE r_reason_id = 'AAAAAAAABAAAAAAA'"] } } },
+        def column r_reason_desc { type: text, optional: true, description: "Reason description", search { searchable: true, fuzzy: true, descriptions { en: ["Find a reason by its description. Example: WHERE r_reason_desc COLLATE Latin1_General_CI_AI LIKE '%on time%'"] } } },
+    ]
+}
+
+def table item { description: """Products (TPC-DS item, one row per item version).
+""", primaryKey: ["i_item_sk"],
+    columns: [
+        def column i_item_sk { type: int, isKey: true, description: "Item key", },
+        def column i_item_id { type: text, optional: true, description: "Item code (one SKU)", search { searchable: true, descriptions { en: ["Find an item by its code. Example: WHERE i_item_id = 'AAAAAAAAABAAAAAA'"] } } },
+        def column i_product_name { type: text, optional: true, description: "Product name", search { searchable: true, fuzzy: true, descriptions { en: ["Find an item by name. Example: WHERE i_product_name COLLATE Latin1_General_CI_AI LIKE '%able%'"] } } },
+        def column i_brand { type: text, optional: true, description: "Brand", search { fuzzy: true } },
+        def column i_class { type: text, optional: true, description: "Class within the category", },
+        def column i_category { type: text, optional: true, description: "Category", search { fuzzy: true } },
+        def column i_current_price { type: decimal, optional: true, description: "Current unit price", },
+        def column i_rec_end_date { type: datetime, optional: true, description: "End of this item version (empty for the current version)", },
+    ]
+}
+
+def table warehouse { description: """Distribution centers.
+""", primaryKey: ["w_warehouse_sk"],
+    columns: [
+        def column w_warehouse_sk { type: int, isKey: true, description: "Distribution center key", },
+        def column w_warehouse_id { type: text, optional: true, description: "Distribution center code", },
+        def column w_warehouse_name { type: text, optional: true, description: "Distribution center name", search { searchable: true, fuzzy: true, descriptions { en: ["Find a distribution center by name. Example: WHERE w_warehouse_name LIKE '%Memphis%'"] } } },
+        def column w_city { type: text, optional: true, description: "City", },
+        def column w_state { type: text, optional: true, description: "State (two-letter code)", search { searchable: true, descriptions { en: ["Find distribution centers by state. Example: WHERE w_state = 'TN'"] } } },
+    ]
+}
+
+def table customer { description: """Customers.
+""", primaryKey: ["c_customer_sk"],
+    columns: [
+        def column c_customer_sk { type: int, isKey: true, description: "Customer key", },
+        def column c_customer_id { type: text, optional: true, description: "Customer code", },
+        def column c_first_name { type: text, optional: true, description: "First name", },
+        def column c_last_name { type: text, optional: true, description: "Last name", search { searchable: true, descriptions { en: ["Find a customer by last name. Example: WHERE c_last_name COLLATE Latin1_General_CI_AI LIKE '%smith%'"] } } },
+        def column c_birth_year { type: int, optional: true, description: "Year of birth", },
+    ]
+}
+
+def table date_dim { description: """Calendar — one row per day.
+""", primaryKey: ["d_date_sk"],
+    columns: [
+        def column d_date_sk { type: int, isKey: true, description: "Day key", },
+        def column d_date { type: datetime, optional: true, description: "Calendar date", },
+        def column d_year { type: int, optional: true, description: "Year", search { searchable: true, descriptions { en: ["Find days by year. Example: WHERE d_year = 2024"] } } },
+        def column d_moy { type: int, optional: true, description: "Month of year (1-12)", },
+        def column d_qoy { type: int, optional: true, description: "Quarter of year (1-4)", },
+    ]
+}
+
+def table catalog_sales { description: """Marketplace sales lines (TPC-DS catalog_sales).
+""", primaryKey: ["cs_order_number", "cs_item_sk"],
+    columns: [
+        def column cs_order_number { type: int, isKey: true, description: "Order number", },
+        def column cs_item_sk { type: int, isKey: true, description: "Sold item (item.i_item_sk)", },
+        def column cs_sold_date_sk { type: int, optional: true, description: "Sale date (date_dim.d_date_sk)", },
+        def column cs_bill_customer_sk { type: int, optional: true, description: "Billed customer (customer.c_customer_sk)", },
+        def column cs_call_center_sk { type: int, optional: true, description: "Seller support center (call_center.cc_call_center_sk)", },
+        def column cs_warehouse_sk { type: int, optional: true, description: "Fulfilling distribution center (warehouse.w_warehouse_sk)", },
+        def column cs_quantity { type: int, optional: true, description: "Units sold", },
+        def column cs_ext_sales_price { type: decimal, optional: true, description: "Extended sales price (revenue of the line)", },
+    ]
+}
+
+def table call_center { description: """Seller support centers of the marketplace.
+""", primaryKey: ["cc_call_center_sk"],
+    columns: [
+        def column cc_call_center_sk { type: int, isKey: true, description: "Support center key", },
+        def column cc_call_center_id { type: text, optional: true, description: "Support center code", },
+        def column cc_name { type: text, optional: true, description: "Support center name", search { searchable: true, fuzzy: true, descriptions { en: ["Find a support center by name. Example: WHERE cc_name LIKE '%North%'"] } } },
+        def column cc_class { type: text, optional: true, description: "Support center class (small, medium, large)", },
+    ]
+}
+
+def query return_detail { description: "Detail of one returned order: every returned line with its item, reason and sale", language: SQL, sourceText: """WITH r AS
+  (SELECT cr.cr_order_number, cr.cr_item_sk FROM catalog_returns cr WHERE cr.cr_order_number = {order_number})
+SELECT cr.cr_order_number,
+       i.i_item_id,
+       i.i_product_name,
+       rs.r_reason_desc,
+       cr.cr_return_quantity,
+       cr.cr_return_amount,
+       cs.cs_quantity,
+       cs.cs_ext_sales_price
+FROM catalog_returns cr
+JOIN r ON r.cr_order_number = cr.cr_order_number AND r.cr_item_sk = cr.cr_item_sk
+LEFT JOIN item i ON i.i_item_sk = cr.cr_item_sk
+LEFT JOIN reason rs ON rs.r_reason_sk = cr.cr_reason_sk
+LEFT JOIN catalog_sales cs ON cs.cs_order_number = cr.cr_order_number AND cs.cs_item_sk = cr.cr_item_sk
+ORDER BY i.i_item_id""", search { patterns: ["(detail|show) (of |)(the |)(returned |)(order|return) {order_number}"], examples: ["Detail of returned order 12345"] }
+    parameters: [
+        { name: order_number, type: int, label: "Order number of the return" },
+    ]
+}
+
+def query returns_by_reason { description: "Returned units and amount per return reason for a year", language: SQL, sourceText: """SELECT rs.r_reason_id,
+       rs.r_reason_desc,
+       SUM(cr.cr_return_quantity) AS returned_units,
+       SUM(cr.cr_return_amount) AS returned_amount
+FROM catalog_returns cr
+JOIN reason rs ON rs.r_reason_sk = cr.cr_reason_sk
+JOIN date_dim d ON d.d_date_sk = cr.cr_returned_date_sk
+WHERE d.d_year = {year}
+GROUP BY rs.r_reason_id, rs.r_reason_desc
+ORDER BY returned_amount DESC""", search { patterns: ["(returns|returned units) (by|per) (reason|reasons) (in |for |)(year |){year}"], examples: ["Returns by reason in 2024"] }
+    parameters: [
+        { name: year, type: int, label: "Calendar year" },
+    ]
+}
+
+def query returns_by_warehouse { description: "Returned units per distribution center for one return reason", language: SQL, sourceText: """SELECT w.w_warehouse_name,
+       w.w_state,
+       SUM(cr.cr_return_quantity) AS returned_units
+FROM catalog_returns cr
+JOIN warehouse w ON w.w_warehouse_sk = cr.cr_warehouse_sk
+JOIN reason rs ON rs.r_reason_sk = cr.cr_reason_sk
+WHERE rs.r_reason_desc COLLATE Latin1_General_CI_AI LIKE CONCAT('%', {reason}, '%')
+GROUP BY w.w_warehouse_name, w.w_state
+ORDER BY returned_units DESC""", search { patterns: ["(returns|returned units) (by|per) (distribution center|dc|warehouse) (for |with |)(reason |){reason}"], examples: ["Returns per distribution center for reason \"Did not get it on time\""] }
+    parameters: [
+        { name: reason, type: text, label: "Return reason (part of the description)" },
+    ]
+}
+
+def query returns_by_item { description: "Returned units per item for one category", language: SQL, sourceText: """SELECT i.i_item_id,
+       i.i_product_name,
+       i.i_brand,
+       SUM(cr.cr_return_quantity) AS returned_units,
+       SUM(cr.cr_return_amount) AS returned_amount
+FROM catalog_returns cr
+JOIN item i ON i.i_item_sk = cr.cr_item_sk
+WHERE i.i_category = {category}
+GROUP BY i.i_item_id, i.i_product_name, i.i_brand
+ORDER BY returned_units DESC""", search { patterns: ["(returns|returned items) (in |for |)(category |){category}"], examples: ["Returned items in Electronics"] }
+    parameters: [
+        { name: category, type: text, label: "Item category" },
+    ]
+}
+
+def query return_rate_by_category { description: "Returned units as a share of units sold, per category, for a year", language: SQL, sourceText: """SELECT s.i_category,
+       s.sold_units,
+       COALESCE(r.returned_units, 0) AS returned_units,
+       CAST(COALESCE(r.returned_units, 0) AS decimal(18, 4)) / NULLIF(s.sold_units, 0) AS return_rate
+FROM (SELECT i.i_category, SUM(cs.cs_quantity) AS sold_units
+      FROM catalog_sales cs
+      JOIN item i ON i.i_item_sk = cs.cs_item_sk
+      JOIN date_dim d ON d.d_date_sk = cs.cs_sold_date_sk
+      WHERE d.d_year = {year}
+      GROUP BY i.i_category) s
+LEFT JOIN (SELECT i.i_category, SUM(cr.cr_return_quantity) AS returned_units
+           FROM catalog_returns cr
+           JOIN item i ON i.i_item_sk = cr.cr_item_sk
+           JOIN date_dim d ON d.d_date_sk = cr.cr_returned_date_sk
+           WHERE d.d_year = {year}
+           GROUP BY i.i_category) r ON r.i_category = s.i_category
+ORDER BY return_rate DESC""", search { patterns: ["(return rate|returns rate) (by|per) category (in |for |)(year |){year}"], examples: ["Return rate by category in 2024"] }
+    parameters: [
+        { name: year, type: int, label: "Calendar year" },
+    ]
+}
+
+def query calendar__filter { description: "Synthetic query materialising the row-filter declared on YAML entity calendar.", language: SQL, sourceText: "SELECT * FROM date_dim WHERE d_year >= 2024", tags: ["synthetic", "yaml-import", "where-filter"],}
+
+def query item__filter { description: "Synthetic query materialising the row-filter declared on YAML entity item.", language: SQL, sourceText: "SELECT * FROM item WHERE i_rec_end_date IS NULL", tags: ["synthetic", "yaml-import", "where-filter"],}
+
+def fk catalog_return_reason { description: "A return names its reason", from: [db.dbo.catalog_returns.cr_reason_sk], to: [db.dbo.reason.r_reason_sk],
+}
+
+def fk catalog_return_item { description: "A return is of one item", from: [db.dbo.catalog_returns.cr_item_sk], to: [db.dbo.item.i_item_sk],
+}
+
+def fk catalog_return_warehouse { description: "A return is received by a distribution center", from: [db.dbo.catalog_returns.cr_warehouse_sk], to: [db.dbo.warehouse.w_warehouse_sk],
+}
+
+def fk catalog_return_customer { description: "A return comes from a customer", from: [db.dbo.catalog_returns.cr_returning_customer_sk], to: [db.dbo.customer.c_customer_sk],
+}
+
+def fk catalog_return_date { description: "A return is dated by its return day", from: [db.dbo.catalog_returns.cr_returned_date_sk], to: [db.dbo.date_dim.d_date_sk],
+}
+
+def fk catalog_sale_item { description: "A sale line is of one item", from: [db.dbo.catalog_sales.cs_item_sk], to: [db.dbo.item.i_item_sk],
+}
+
+def fk catalog_sale_call_center { description: "A sale line is handled by a support center", from: [db.dbo.catalog_sales.cs_call_center_sk], to: [db.dbo.call_center.cc_call_center_sk],
+}
+
+def fk catalog_sale_date { description: "A sale line is dated by its sale day", from: [db.dbo.catalog_sales.cs_sold_date_sk], to: [db.dbo.date_dim.d_date_sk],
+}
+
+def fk catalog_sale_customer { description: "A sale line is billed to a customer", from: [db.dbo.catalog_sales.cs_bill_customer_sk], to: [db.dbo.customer.c_customer_sk],
+}

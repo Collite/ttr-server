@@ -45,7 +45,8 @@ class TpcdsQueryIntegrationSpec :
 
         val analyst = unsignedJwt("alice", roles = listOf("analyst"))
 
-        // The four curated shapes, verbatim from the Veles tpcds model (`model-ttr/tpcds/db.ttr`),
+        // The four curated shapes, verbatim from the Veles tpcds fixture
+        // (`services/veles/src/test/resources/model-tpcds/tpcds/db.ttr`),
         // with `{year}` inlined to the oracle year 2002.
         val storeSalesByMonth =
             """

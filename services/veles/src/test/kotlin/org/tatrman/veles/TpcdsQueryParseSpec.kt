@@ -17,7 +17,7 @@ import java.nio.file.Path
 
 /**
  * WS-T2 T3 — the four TPC-DS curated queries parse to a RelNode plan against the
- * `tpcds` model. Reconciles the real `model-ttr` tree, applies the `{name}` → `?`
+ * `tpcds` model. Reconciles the `model-tpcds` fixture tree, applies the `{name}` → `?`
  * parameter bridge (the rewrite Translate's orchestrator performs before parse —
  * `TranslatorServiceImpl` §432; the raw `QueryParseWorker` leaves parameterised
  * queries FAILED because Calcite can't parse `{year}`), then parses each via the
@@ -47,13 +47,13 @@ class TpcdsQueryParseSpec :
             run {
                 val root: Path =
                     Path
-                        .of(checkNotNull(this::class.java.classLoader.getResource("model-ttr/tpcds")).toURI())
+                        .of(checkNotNull(this::class.java.classLoader.getResource("model-tpcds/tpcds")).toURI())
                         .parent
                 val source =
                     FileBasedSource(
-                        sourceId = "model-ttr",
+                        sourceId = "model-tpcds",
                         priority = 100,
-                        storage = LocalFsStorage(id = "model-ttr", rootPath = root),
+                        storage = LocalFsStorage(id = "model-tpcds", rootPath = root),
                     )
                 ModelReconciler(ModelDescriptor(id = "test", name = "test", description = "tpcds parse fixture"))
                     .reconcile(listOf(source.load()))

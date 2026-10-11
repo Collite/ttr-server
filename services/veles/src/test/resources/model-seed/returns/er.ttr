@@ -1,0 +1,121 @@
+package returns
+def entity catalog_return { description: """Marketplace returns — one row per returned order line (TPC-DS catalog_returns).
+""", labelPlural: "marketplace returns", aliases: ["return", "returned line", "marketplace return"], binding: { target: { table: db.dbo.catalog_returns } },
+    attributes: [
+        def attribute order_number { type: int, isKey: true, description: "Order number of the returned line", binding: cr_order_number, },
+        def attribute item_sk { type: int, isKey: true, description: "Returned item (item.i_item_sk)", binding: cr_item_sk, },
+        def attribute returned_date_sk { type: int, optional: true, description: "Return date (date_dim.d_date_sk)", binding: cr_returned_date_sk, },
+        def attribute customer_sk { type: int, optional: true, description: "Returning customer (customer.c_customer_sk)", binding: cr_returning_customer_sk, },
+        def attribute reason_sk { type: int, optional: true, description: "Return reason (reason.r_reason_sk)", binding: cr_reason_sk, },
+        def attribute warehouse_sk { type: int, optional: true, description: "Distribution center receiving the return (warehouse.w_warehouse_sk)", binding: cr_warehouse_sk, },
+        def attribute return_quantity { type: int, optional: true, description: "Units returned", binding: cr_return_quantity, },
+        def attribute return_amount { type: float, optional: true, description: "Returned amount", binding: cr_return_amount, },
+    ]
+}
+
+def entity calendar { description: """Calendar — one row per day.
+""", labelPlural: "days", aliases: ["calendar", "day", "date"], binding: { target: { query: db.dbo.calendar__filter } },
+    attributes: [
+        def attribute date_sk { type: int, isKey: true, description: "Day key", binding: d_date_sk, },
+        def attribute cal_date { type: datetime, optional: true, description: "Calendar date", binding: d_date, },
+        def attribute year_number { type: int, optional: true, description: "Year", search { searchable: true, descriptions { en: ["Find days by year. Example: WHERE d_year = 2024"] } } binding: d_year, },
+        def attribute month_of_year { type: int, optional: true, description: "Month of year (1-12)", binding: d_moy, },
+        def attribute quarter_of_year { type: int, optional: true, description: "Quarter of year (1-4)", valueLabels: { "1": { en: "Q1" }, "2": { en: "Q2" }, "3": { en: "Q3" }, "4": { en: "Q4" } }, binding: d_qoy, },
+    ]
+}
+
+def entity call_center { description: """Seller support centers of the marketplace.
+""", labelPlural: "support centers", aliases: ["support center", "seller support"], binding: { target: { table: db.dbo.call_center } },
+    attributes: [
+        def attribute call_center_sk { type: int, isKey: true, description: "Support center key", binding: cc_call_center_sk, },
+        def attribute call_center_id { type: text, optional: true, description: "Support center code", binding: cc_call_center_id, },
+        def attribute call_center_name { type: text, optional: true, description: "Support center name", search { searchable: true, fuzzy: true, descriptions { en: ["Find a support center by name. Example: WHERE cc_name LIKE '%North%'"] } } binding: cc_name, },
+        def attribute call_center_class { type: text, optional: true, description: "Support center class (small, medium, large)", binding: cc_class, },
+    ]
+}
+
+def entity catalog_sale { description: """Marketplace sales lines (TPC-DS catalog_sales).
+""", labelPlural: "marketplace sales", aliases: ["marketplace sale", "order line", "sale"], binding: { target: { table: db.dbo.catalog_sales } },
+    attributes: [
+        def attribute order_number { type: int, isKey: true, description: "Order number", binding: cs_order_number, },
+        def attribute item_sk { type: int, isKey: true, description: "Sold item (item.i_item_sk)", binding: cs_item_sk, },
+        def attribute sold_date_sk { type: int, optional: true, description: "Sale date (date_dim.d_date_sk)", binding: cs_sold_date_sk, },
+        def attribute customer_sk { type: int, optional: true, description: "Billed customer (customer.c_customer_sk)", binding: cs_bill_customer_sk, },
+        def attribute call_center_sk { type: int, optional: true, description: "Seller support center (call_center.cc_call_center_sk)", binding: cs_call_center_sk, },
+        def attribute warehouse_sk { type: int, optional: true, description: "Fulfilling distribution center (warehouse.w_warehouse_sk)", binding: cs_warehouse_sk, },
+        def attribute quantity { type: int, optional: true, description: "Units sold", binding: cs_quantity, },
+        def attribute ext_sales_price { type: float, optional: true, description: "Extended sales price (revenue of the line)", binding: cs_ext_sales_price, },
+    ]
+}
+
+def entity customer { description: """Customers.
+""", labelPlural: "customers", aliases: ["customer", "buyer"], binding: { target: { table: db.dbo.customer } },
+    attributes: [
+        def attribute customer_sk { type: int, isKey: true, description: "Customer key", binding: c_customer_sk, },
+        def attribute customer_id { type: text, optional: true, description: "Customer code", binding: c_customer_id, },
+        def attribute first_name { type: text, optional: true, description: "First name", binding: c_first_name, },
+        def attribute last_name { type: text, optional: true, description: "Last name", search { searchable: true, descriptions { en: ["Find a customer by last name. Example: WHERE c_last_name COLLATE Latin1_General_CI_AI LIKE '%smith%'"] } } binding: c_last_name, },
+        def attribute birth_year { type: int, optional: true, description: "Year of birth", binding: c_birth_year, },
+    ]
+}
+
+def entity item { description: """Products (TPC-DS item, one row per item version).
+""", labelPlural: "items", aliases: ["item", "product", "SKU"], binding: { target: { query: db.dbo.item__filter } },
+    attributes: [
+        def attribute item_sk { type: int, isKey: true, description: "Item key", binding: i_item_sk, },
+        def attribute item_id { type: text, optional: true, description: "Item code (one SKU)", search { searchable: true, descriptions { en: ["Find an item by its code. Example: WHERE i_item_id = 'AAAAAAAAABAAAAAA'"] } } binding: i_item_id, },
+        def attribute product_name { type: text, optional: true, description: "Product name", search { searchable: true, fuzzy: true, descriptions { en: ["Find an item by name. Example: WHERE i_product_name COLLATE Latin1_General_CI_AI LIKE '%able%'"] } } binding: i_product_name, },
+        def attribute brand { type: text, optional: true, description: "Brand", search { fuzzy: true } binding: i_brand, },
+        def attribute class { type: text, optional: true, description: "Class within the category", binding: i_class, },
+        def attribute category { type: text, optional: true, description: "Category", search { fuzzy: true } binding: i_category, },
+        def attribute current_price { type: float, optional: true, description: "Current unit price", binding: i_current_price, },
+        def attribute valid_to { type: datetime, optional: true, description: "End of this item version (empty for the current version)", binding: i_rec_end_date, },
+    ]
+}
+
+def entity return_reason { description: """Return reasons.
+""", labelPlural: "return reasons", aliases: ["reason", "return reason"], binding: { target: { table: db.dbo.reason } },
+    attributes: [
+        def attribute reason_sk { type: int, isKey: true, description: "Reason key", binding: r_reason_sk, },
+        def attribute reason_code { type: text, optional: true, description: "Reason code", search { searchable: true, descriptions { en: ["Find a reason by its code. Example: WHERE r_reason_id = 'AAAAAAAABAAAAAAA'"] } } binding: r_reason_id, },
+        def attribute reason_desc { type: text, optional: true, description: "Reason description", search { searchable: true, fuzzy: true, descriptions { en: ["Find a reason by its description. Example: WHERE r_reason_desc COLLATE Latin1_General_CI_AI LIKE '%on time%'"] } } binding: r_reason_desc, },
+    ]
+}
+
+def entity warehouse { description: """Distribution centers.
+""", labelPlural: "distribution centers", aliases: ["distribution center", "DC", "warehouse"], binding: { target: { table: db.dbo.warehouse } },
+    attributes: [
+        def attribute warehouse_sk { type: int, isKey: true, description: "Distribution center key", binding: w_warehouse_sk, },
+        def attribute warehouse_id { type: text, optional: true, description: "Distribution center code", binding: w_warehouse_id, },
+        def attribute warehouse_name { type: text, optional: true, description: "Distribution center name", search { searchable: true, fuzzy: true, descriptions { en: ["Find a distribution center by name. Example: WHERE w_warehouse_name LIKE '%Memphis%'"] } } binding: w_warehouse_name, },
+        def attribute city { type: text, optional: true, description: "City", binding: w_city, },
+        def attribute state { type: text, optional: true, description: "State (two-letter code)", search { searchable: true, descriptions { en: ["Find distribution centers by state. Example: WHERE w_state = 'TN'"] } } binding: w_state, },
+    ]
+}
+
+def relation catalog_return_reason { description: "A return names its reason", from: er.entity.catalog_return, to: er.entity.return_reason, cardinality: { from: "0..*", to: "0..1" }, join: [{ from: er.entity.catalog_return.reason_sk, to: er.entity.return_reason.reason_sk }], binding: db.dbo.catalog_return_reason,
+}
+
+def relation catalog_return_item { description: "A return is of one item", from: er.entity.catalog_return, to: er.entity.item, cardinality: { from: "0..*", to: "0..1" }, join: [{ from: er.entity.catalog_return.item_sk, to: er.entity.item.item_sk }], binding: db.dbo.catalog_return_item,
+}
+
+def relation catalog_return_warehouse { description: "A return is received by a distribution center", from: er.entity.catalog_return, to: er.entity.warehouse, cardinality: { from: "0..*", to: "0..1" }, join: [{ from: er.entity.catalog_return.warehouse_sk, to: er.entity.warehouse.warehouse_sk }], binding: db.dbo.catalog_return_warehouse,
+}
+
+def relation catalog_return_customer { description: "A return comes from a customer", from: er.entity.catalog_return, to: er.entity.customer, cardinality: { from: "0..*", to: "0..1" }, join: [{ from: er.entity.catalog_return.customer_sk, to: er.entity.customer.customer_sk }], binding: db.dbo.catalog_return_customer,
+}
+
+def relation catalog_return_date { description: "A return is dated by its return day", from: er.entity.catalog_return, to: er.entity.calendar, cardinality: { from: "0..*", to: "0..1" }, join: [{ from: er.entity.catalog_return.returned_date_sk, to: er.entity.calendar.date_sk }], binding: db.dbo.catalog_return_date,
+}
+
+def relation catalog_sale_item { description: "A sale line is of one item", from: er.entity.catalog_sale, to: er.entity.item, cardinality: { from: "0..*", to: "0..1" }, join: [{ from: er.entity.catalog_sale.item_sk, to: er.entity.item.item_sk }], binding: db.dbo.catalog_sale_item,
+}
+
+def relation catalog_sale_call_center { description: "A sale line is handled by a support center", from: er.entity.catalog_sale, to: er.entity.call_center, cardinality: { from: "0..*", to: "0..1" }, join: [{ from: er.entity.catalog_sale.call_center_sk, to: er.entity.call_center.call_center_sk }], binding: db.dbo.catalog_sale_call_center,
+}
+
+def relation catalog_sale_date { description: "A sale line is dated by its sale day", from: er.entity.catalog_sale, to: er.entity.calendar, cardinality: { from: "0..*", to: "0..1" }, join: [{ from: er.entity.catalog_sale.sold_date_sk, to: er.entity.calendar.date_sk }], binding: db.dbo.catalog_sale_date,
+}
+
+def relation catalog_sale_customer { description: "A sale line is billed to a customer", from: er.entity.catalog_sale, to: er.entity.customer, cardinality: { from: "0..*", to: "0..1" }, join: [{ from: er.entity.catalog_sale.customer_sk, to: er.entity.customer.customer_sk }], binding: db.dbo.catalog_sale_customer,
+}

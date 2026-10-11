@@ -18,19 +18,19 @@ class ListObjectsPackageFilterSpec :
 
         val fixtureRoot: Path =
             Path
-                .of(checkNotNull(this::class.java.classLoader.getResource("model-ttr/ucetnictvi")).toURI())
+                .of(checkNotNull(this::class.java.classLoader.getResource("model-seed/returns")).toURI())
                 .parent
 
         fun service(): MetadataServiceImpl {
             val source =
                 FileBasedSource(
-                    sourceId = "ucetnictvi",
+                    sourceId = "model-seed",
                     priority = 100,
-                    storage = LocalFsStorage(id = "ucetnictvi", rootPath = fixtureRoot),
+                    storage = LocalFsStorage(id = "model-seed", rootPath = fixtureRoot),
                 )
             val reconciler =
                 ModelReconciler(
-                    ModelDescriptor(id = "test", name = "test", description = "ucetnictvi fixture"),
+                    ModelDescriptor(id = "test", name = "test", description = "Hartland seed fixture"),
                 )
             val snapshot = source.load()
             val result = reconciler.reconcile(listOf(snapshot))
@@ -39,29 +39,29 @@ class ListObjectsPackageFilterSpec :
             return MetadataServiceImpl(registry, packageIndex = servedIndex(snapshot))
         }
 
-        "ListObjects(kind=entity, package=prodeje) returns entities scoped to prodeje" {
+        "ListObjects(kind=entity, package=sales) returns entities scoped to sales" {
             val svc = service()
             val respFiltered =
                 svc.listObjects(
                     ListObjectsRequest
                         .newBuilder()
                         .setKind("entity")
-                        .setPackage("prodeje")
+                        .setPackage("sales")
                         .build(),
                 )
-            // All returned items (if any) should have sourceFile containing /prodeje/
-            // If the fixture has no prodeje entities, this list is empty
-            respFiltered.itemsList.all { it.sourceFile.contains("/prodeje/") } shouldBe true
+            // All returned items (if any) should have sourceFile containing /sales/
+            // If the fixture has no sales entities, this list is empty
+            respFiltered.itemsList.all { it.sourceFile.contains("/sales/") } shouldBe true
         }
 
-        "ListObjects(kind=entity, package=ucetnictvi) returns entities from ucetnictvi package" {
+        "ListObjects(kind=entity, package=returns) returns entities from the returns package" {
             val svc = service()
             val resp =
                 svc.listObjects(
                     ListObjectsRequest
                         .newBuilder()
                         .setKind("entity")
-                        .setPackage("ucetnictvi")
+                        .setPackage("returns")
                         .build(),
                 )
 
@@ -69,7 +69,7 @@ class ListObjectsPackageFilterSpec :
             (entityCount >= 7) shouldBe true
             resp.itemsList.all {
                 it.qualifiedName.schemaCode == SchemaCode.ER &&
-                    it.sourceFile.contains("/ucetnictvi/")
+                    it.sourceFile.contains("/returns/")
             } shouldBe true
         }
 
@@ -93,20 +93,20 @@ class ListObjectsPackageFilterSpec :
             respFiltered.itemsList.size shouldBe respAll.itemsList.size
         }
 
-        "ListObjects(kind=table, package=ucetnictvi) returns tables from ucetnictvi" {
+        "ListObjects(kind=table, package=returns) returns tables from returns" {
             val svc = service()
             val resp =
                 svc.listObjects(
                     ListObjectsRequest
                         .newBuilder()
                         .setKind("table")
-                        .setPackage("ucetnictvi")
+                        .setPackage("returns")
                         .build(),
                 )
 
             resp.itemsList.all {
                 it.qualifiedName.schemaCode == SchemaCode.DB &&
-                    it.sourceFile.contains("/ucetnictvi/")
+                    it.sourceFile.contains("/returns/")
             } shouldBe true
         }
     })

@@ -33,23 +33,18 @@ tasks.test {
     useJUnitPlatform()
 }
 
-// VelesModelLoadComponentSpec reconciles the real bundled model tree through the live
-// ttr-metadata reconciler (LocalFsStorage → a real directory). The suite carries Veles on its
-// runtime classpath as a JAR, so the spec cannot resolve the model dir from a classpath resource
-// URI (that would be a `jar:` URI → FileSystemNotFoundException). Hand it the authored resources
-// dir on disk instead.
+// VelesModelLoadComponentSpec reconciles the `model-seed` and `model-tpcds` fixture trees through
+// the live ttr-metadata reconciler (LocalFsStorage → a real directory), so hand it their parent
+// directory on disk.
+// Veles bundles no model (ttr-server#180): the model comes from the configured git source.
 tasks.named<Test>("componentTest") {
     systemProperty(
         "veles.modelRoot",
         layout.projectDirectory
-            .dir("src/main/resources/model-ttr")
+            .dir("src/test/resources")
             .asFile.absolutePath,
     )
 }
-
-// (yamlToTtr task removed: TTR-only fork — model is now sourced from `org.tatrman.ttr.*`
-// modeler artifacts and the bundled `model-ttr` resource tree. The `just yaml-to-ttr`
-// recipe no longer applies; the legacy YAML dir stays in tree as a one-time reference.)
 
 dependencies {
     // TTR metadata library (third-party, Collite/ttr-core) — Veles runs on this
@@ -107,9 +102,9 @@ dependencies {
     // Ktor testApplication host — drives VelesReadRoutes over HTTP (the llm-gateway pattern).
     testImplementation(libs.ktor.server.test.host)
 
-    // Component tier (WS-C1 T4) — loads the **real bundled `model-ttr/` tree** (not a synthetic
-    // fixture) through the live ttr-metadata reconciler and asserts the shipped TPC-DS curated
-    // queries + areas resolve. Needs the metadata library (FileBasedSource / reconciler / registry /
+    // Component tier (WS-C1 T4) — loads the whole `model-tpcds/` and `model-seed/` fixture trees
+    // (TPC-DS, and the Hartland returns slice, each with its area) through the live ttr-metadata
+    // reconciler and asserts the TPC-DS curated queries + areas resolve. Needs the metadata library (FileBasedSource / reconciler / registry /
     // graph) and the protos on the componentTest compile classpath (both `implementation` in main,
     // so not visible to the suite transitively).
     "componentTestImplementation"(libs.tatrman.ttr.metadata)

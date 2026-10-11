@@ -1,0 +1,6 @@
+def area hartland {
+    description: "Sales, returns, inventory and customer analytics for Hartland Stores — store, web and marketplace channels",
+    tags: ["reporting", "demo"],
+    packages: [sales, returns],
+    entities: [returns.catalog_return],
+}

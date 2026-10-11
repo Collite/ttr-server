@@ -1,4 +1,0 @@
-package prodeje
-def er2cnc_role prodeje__structural { entity: er.entity.prodeje, role: cnc.cnc.role.structural,
-}
-
