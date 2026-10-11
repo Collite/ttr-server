@@ -1,5 +1,5 @@
 {
-  "_comment": "Two live readings of each sentence, captured 2026-09-29: `morphodita` is the verbatim `result` string of nlp-morphodita:0.11.0 `/tag` (input=untokenized, output=vertical, model czech-morfflex2.0-pdtc1.0-220710); `stanza` is the token list of nlp-stanza:0.11.0 `/analyze` (cs, modelVersion stanza-1.14.0), trimmed to the fields a reading has. Stanza is trained on UD Czech-PDT, so where its PDT tag equals MorphoDiTa's, its upos/feats are the UD convention for that tag. Do not tidy: the decorations ARE the test.",
+  "_comment": "Two live readings of each sentence, captured 2026-10-11: `morphodita` is the verbatim `result` string of nlp-morphodita:0.11.0 `/tag` (input=untokenized, output=vertical, model czech-morfflex2.0-pdtc1.0-220710); `stanza` is the token list of nlp-stanza:0.11.0 `/analyze` (cs, modelVersion stanza-1.14.0), trimmed to the fields a reading has. Stanza is trained on UD Czech-PDT, so where its PDT tag equals MorphoDiTa's, its upos/feats are the UD convention for that tag. Do not tidy: the decorations ARE the test.",
   "Zobraz nejlepších 10 prodejen podle tržeb": {
     "morphodita": "Zobraz\tzobrazit\tVi-S---2--A-P--\nnejlepších\tlepší\tAAFP2----3A----\n10\t10\tC=-------------\nprodejen\tprodejna\tNNFP2-----A----\npodle\tpodle-2\tRR--2----------\ntržeb\ttržba\tNNFP2-----A----\n\n",
     "stanza": [
@@ -753,8 +753,8 @@
       }
     ]
   },
-  "Vypiš několik největších faktur s DPH z e-shopu firmy Marvy Oil, s.r.o.": {
-    "morphodita": "Vypiš\tvypsat\tVi-S---2--A-P--\nněkolik\tněkolik\tCa--4----------\nnejvětších\tvelký\tAAFP2----3A----\nfaktur\tfaktura\tNNFP2-----A----\ns\ts-1\tRR--7----------\nDPH\tDPH-1_^(daň_z_přidané_hodnoty)\tBNXXX-----A----\nz\tz-1\tRR--2----------\ne\te-33\tQ3-------------\n-\t-\tZ:-------------\nshopu\tshop_^(obchod)\tNNIS2-----A----\nfirmy\tfirma\tNNFS2-----A----\nMarvy\tMarv_;G\tNNIP1-----A----\nOil\toil_;m\tNNIS1-----A----\n,\t,\tZ:-------------\ns\tspolečnost\tNNFXX-----A---a\n.\t.\tZ:-------------\nr\tručení\tNNNS7-----A---b\n.\t.\tZ:-------------\no\tomezený\tAANS7----1A---b\n.\t.\tZ:-------------\n\n",
+  "Vypiš několik největších faktur s DPH z e-shopu firmy Bramblewick Kids, s.r.o.": {
+    "morphodita": "Vypiš\tvypsat\tVi-S---2--A-P--\nněkolik\tněkolik\tCa--4----------\nnejvětších\tvelký\tAAFP2----3A----\nfaktur\tfaktura\tNNFP2-----A----\ns\ts-1\tRR--7----------\nDPH\tDPH-1_^(daň_z_přidané_hodnoty)\tBNXXX-----A----\nz\tz-1\tRR--2----------\ne\te-33\tQ3-------------\n-\t-\tZ:-------------\nshopu\tshop_^(obchod)\tNNIS2-----A----\nfirmy\tfirma\tNNFS2-----A----\nBramblewick\tBramblewick-77\tF%-------------\nKids\tKids-77\tF%-------------\n,\t,\tZ:-------------\ns\tspolečnost\tNNFXX-----A---a\n.\t.\tZ:-------------\nr\tručení\tNNNS7-----A---b\n.\t.\tZ:-------------\no\tomezený\tAANS7----1A---b\n.\t.\tZ:-------------\n\n",
     "stanza": [
       {
         "text": "Vypiš",
@@ -895,24 +895,21 @@
         }
       },
       {
-        "text": "Marvy",
+        "text": "Bramblewick",
         "charStart": 54,
-        "charEnd": 59,
-        "lemma": "Marva",
-        "upos": "PROPN",
-        "xpos": "NNFS1-----A----",
+        "charEnd": 65,
+        "lemma": "Bramblewick",
+        "upos": "X",
+        "xpos": "F%-------------",
         "feats": {
-          "Case": "Nom",
-          "Gender": "Fem",
-          "NameType": "Geo",
-          "Number": "Sing"
+          "Foreign": "Yes"
         }
       },
       {
-        "text": "Oil",
-        "charStart": 60,
-        "charEnd": 63,
-        "lemma": "Oil",
+        "text": "Kids",
+        "charStart": 66,
+        "charEnd": 70,
+        "lemma": "Kids",
         "upos": "X",
         "xpos": "F%-------------",
         "feats": {
@@ -921,8 +918,8 @@
       },
       {
         "text": ",",
-        "charStart": 63,
-        "charEnd": 64,
+        "charStart": 70,
+        "charEnd": 71,
         "lemma": ",",
         "upos": "PUNCT",
         "xpos": "Z:-------------",
@@ -930,8 +927,8 @@
       },
       {
         "text": "s",
-        "charStart": 65,
-        "charEnd": 66,
+        "charStart": 72,
+        "charEnd": 73,
         "lemma": "společnost",
         "upos": "NOUN",
         "xpos": "NNFXX-----A---a",
@@ -942,8 +939,8 @@
       },
       {
         "text": ".",
-        "charStart": 66,
-        "charEnd": 67,
+        "charStart": 73,
+        "charEnd": 74,
         "lemma": ".",
         "upos": "PUNCT",
         "xpos": "Z:-------------",
@@ -951,8 +948,8 @@
       },
       {
         "text": "r",
-        "charStart": 67,
-        "charEnd": 68,
+        "charStart": 74,
+        "charEnd": 75,
         "lemma": "rok",
         "upos": "NOUN",
         "xpos": "NNNS7-----A---b",
@@ -965,8 +962,8 @@
       },
       {
         "text": ".",
-        "charStart": 68,
-        "charEnd": 69,
+        "charStart": 75,
+        "charEnd": 76,
         "lemma": ".",
         "upos": "PUNCT",
         "xpos": "Z:-------------",
@@ -974,8 +971,8 @@
       },
       {
         "text": "o",
-        "charStart": 69,
-        "charEnd": 70,
+        "charStart": 76,
+        "charEnd": 77,
         "lemma": "omezený",
         "upos": "ADJ",
         "xpos": "AANS7----1A---b",
@@ -990,8 +987,8 @@
       },
       {
         "text": ".",
-        "charStart": 70,
-        "charEnd": 71,
+        "charStart": 77,
+        "charEnd": 78,
         "lemma": ".",
         "upos": "PUNCT",
         "xpos": "Z:-------------",
