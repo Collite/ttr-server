@@ -2486,7 +2486,11 @@ spec:
             - name: VELES_GRPC_PORT
               value: "7261"
             - name: METADATA_GIT_REMOTE_URI
-              value: "https://github.com/Tatrman/ai-models.git"
+              value: "https://github.com/Collite/ttr-demo.git"
+            - name: METADATA_GIT_BRANCH
+              value: "master"
+            - name: METADATA_GIT_SUBDIR
+              value: "model"
             - name: OTEL_SERVICE_NAME
               value: "veles"
             - name: OTEL_ENABLED_METADATA

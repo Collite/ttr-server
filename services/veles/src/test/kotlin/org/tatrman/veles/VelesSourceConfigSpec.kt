@@ -53,6 +53,13 @@ class VelesSourceConfigSpec :
             resolved.getBoolean("metadata.sources.local-model.enabled") shouldBe false
         }
 
+        "the shipped default source is the public Hartland demo model" {
+            val git = shipped.resolve(noEnv).getConfig("metadata.sources.github-model")
+            git.getString("remote-uri") shouldBe "https://github.com/Collite/ttr-demo.git"
+            git.getString("branch") shouldBe "master"
+            git.getString("subdirectory") shouldBe "model"
+        }
+
         "a git source that can't be loaded serves no model, is not ready, and says why" {
             val dir = Files.createTempDirectory("veles-src")
             val (board, snapshots) =

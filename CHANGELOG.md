@@ -32,6 +32,11 @@ sample model it bundled, and `/ready` reported UP. It now serves only what it wa
   **`/metrics`** gains `veles_model_source_load_failures_total{source}` and `veles_model_source_loaded{source}`.
 - A source that has never loaded is retried from 5 s backing off to 60 s, instead of waiting for the next scheduled
   refresh.
+- **The default model source is the public Hartland demo model**: `https://github.com/Collite/ttr-demo.git`, branch
+  `master`, sub-path `model` — in Veles' own defaults and in the chart (`veles.metadata.gitRemoteUri`, and the new
+  `veles.metadata.gitBranch` / `gitSubdirectory`, which render nothing when `veles.extraEnv` already sets
+  `METADATA_GIT_BRANCH` / `METADATA_GIT_SUBDIR`). Set all three to serve your own model: an install that overrides only
+  the URI now looks for branch `master` and sub-path `model` in it.
 
 ### resolver — a Czech date the NER typed in parts is grounded as one date („v říjnu 2025“)
 

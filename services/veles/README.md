@@ -43,13 +43,18 @@ just deploy-kt veles        # Jib image + k8s/overlays/local (local K3s)
 ## Model source
 
 Veles serves the model of one git repository (the `github-model` source in `application.conf`),
-cloned at boot and re-fetched every `METADATA_REFRESH_INTERVAL_SECONDS` (300 by default):
+cloned at boot and re-fetched every `METADATA_REFRESH_INTERVAL_SECONDS` (300 by default).
+
+**The default is the public Hartland demo model** (Collite/ttr-demo, branch `master`, sub-path `model`):
+it needs no token, so `docker run` or a fresh chart install has a model to explore. To serve your own
+model, set the URI, the branch and the sub-path together — the branch and sub-path defaults are
+Hartland's, so a URI alone would look for `master` and `model/` in your repository.
 
 | Env | Meaning |
 |---|---|
-| `METADATA_GIT_REMOTE_URI` | The repository. Empty = no model source at all: Veles logs an error and stays not ready. |
-| `METADATA_GIT_BRANCH` | The branch. Set it together with the URI. |
-| `METADATA_GIT_SUBDIR` | The model's directory inside the repository. Set it together with the URI. |
+| `METADATA_GIT_REMOTE_URI` | The repository. Default `https://github.com/Collite/ttr-demo.git`. Empty = no model source at all: Veles logs an error and stays not ready. |
+| `METADATA_GIT_BRANCH` | The branch. Default `master`. Set it together with the URI. |
+| `METADATA_GIT_SUBDIR` | The model's directory inside the repository. Default `model`. Set it together with the URI. |
 | `METADATA_GIT_TOKEN` | A read token for a private repository (`METADATA_GIT_USERNAME` defaults to `x-access-token`). |
 | `METADATA_GIT_CHECKOUT_DIR` | Where to clone (default `<tmp>/metadata-git/github-model`). |
 

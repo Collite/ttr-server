@@ -2,8 +2,9 @@
 #
 # A light, backing-free subset that reaches Ready on a fresh throwaway kind cluster,
 # proving the umbrella actually installs and comes up (not just templates): veles
-# (serves its built-in classpath model — no external model repo needed), the query
-# spine sample, identity, health, and the dev IdP. Low requests keep it inside a
+# (loads its default model, the public Hartland demo repository — no token needed;
+# it is Ready only once that model has loaded), the query spine sample, identity,
+# health, and the dev IdP. Low requests keep it inside a
 # 2-CPU CI runner.
 #
 # OFF (need external backing / registries the product doesn't ship): the workers
