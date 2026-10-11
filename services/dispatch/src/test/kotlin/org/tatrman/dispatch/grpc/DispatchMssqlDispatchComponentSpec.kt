@@ -29,7 +29,7 @@ import org.tatrman.worker.v1.ResultBatch
  * Fork Stage 3.3 T6 — Dispatch ⇄ Mssql dispatch component test (in-process worker).
  *
  * Dispatch receives a validated fixture plan, matches it to Mssql by capability
- * (engine "mssql" serving connection "df-test"), and streams the worker's Arrow IPC
+ * (engine "mssql" serving connection "hartland-default"), and streams the worker's Arrow IPC
  * batches back through itself. Dispatch's contract is pass-through fidelity: it must
  * not wrap, reorder, or mutate the worker's `arrow_ipc` frames (the Arrow encode/
  * decode round-trip itself is pinned worker-side by ArrowIpcFormatterContractSpec).
@@ -53,19 +53,19 @@ class DispatchMssqlDispatchComponentSpec :
                 ConfigFactory.parseString(
                     """
                     world {
-                      default-connection = "df-unserved"
+                      default-connection = "pg-unserved"
                       table-connections {
-                        "db.dbo.ORDERS*" = "df-test"
+                        "db.dbo.ORDERS*" = "hartland-default"
                       }
                     }
                     """.trimIndent(),
                 ),
             )
 
-        // Mssql: an in-process MSSQL worker serving df-test, streaming two real frames.
+        // Mssql: an in-process MSSQL worker serving hartland-default, streaming two real frames.
         val mssql =
             MssqlStub(
-                connections = listOf("df-test"),
+                connections = listOf("hartland-default"),
                 execute = {
                     flow {
                         emit(
@@ -135,7 +135,7 @@ class DispatchMssqlDispatchComponentSpec :
         }
 
         "unroutable plan fails closed with a typed Rule-6 message, not a hang" {
-            // db.dbo.CUSTOMERS maps to nothing → default-connection df-unserved, which no
+            // db.dbo.CUSTOMERS maps to nothing → default-connection pg-unserved, which no
             // worker serves. The stream must terminate carrying the error, not block.
             val req =
                 DispatchRequest

@@ -29,19 +29,19 @@ class DetectSourceSchemaSpec :
         val dbNamespace = "dbo"
         val erNamespace = "entity"
 
-        val qskupzboziQname =
+        val itemCategoryQname =
             QualifiedName
                 .newBuilder()
                 .setSchemaCode(SchemaCode.DB)
                 .setNamespace(dbNamespace)
-                .setName("qskupzbozi_df")
+                .setName("item_category")
                 .build()
-        val qzboziQname =
+        val itemQname =
             QualifiedName
                 .newBuilder()
                 .setSchemaCode(SchemaCode.DB)
                 .setNamespace(dbNamespace)
-                .setName("qzbozi_df")
+                .setName("item")
                 .build()
         val produktQname =
             QualifiedName
@@ -58,22 +58,22 @@ class DetectSourceSchemaSpec :
                 .setName("skupina")
                 .build()
 
-        val qskupzboziTable =
+        val itemCategoryTable =
             ModelTable(
-                qname = qskupzboziQname,
+                qname = itemCategoryQname,
                 columns =
                     listOf(
                         org.tatrman.translator.framework
-                            .ModelColumn("idskupzbozi", SurfaceType.INT),
+                            .ModelColumn("category_id", SurfaceType.INT),
                         org.tatrman.translator.framework
-                            .ModelColumn("kod_skup_zbozi", SurfaceType.TEXT),
+                            .ModelColumn("category_code", SurfaceType.TEXT),
                         org.tatrman.translator.framework
-                            .ModelColumn("nazev", SurfaceType.TEXT),
+                            .ModelColumn("name", SurfaceType.TEXT),
                     ),
             )
-        val qzboziTable =
+        val itemTable =
             ModelTable(
-                qname = qzboziQname,
+                qname = itemQname,
                 columns =
                     listOf(
                         org.tatrman.translator.framework
@@ -107,12 +107,12 @@ class DetectSourceSchemaSpec :
                     schemaCode: SchemaCode,
                     namespace: String,
                 ): Map<QualifiedName, ModelTable> =
-                    listOf(qskupzboziTable, qzboziTable)
+                    listOf(itemCategoryTable, itemTable)
                         .filter { it.qname.schemaCode == schemaCode && it.qname.namespace == namespace }
                         .associateBy { it.qname }
 
                 override fun columns(tableQname: QualifiedName): List<ModelColumn> =
-                    listOf(qskupzboziTable, qzboziTable)
+                    listOf(itemCategoryTable, itemTable)
                         .find { it.qname == tableQname }
                         ?.columns ?: emptyList()
 
@@ -158,7 +158,7 @@ class DetectSourceSchemaSpec :
                 service.detectSourceSchema(
                     DetectSchemaRequest
                         .newBuilder()
-                        .setSource("SELECT idskupzbozi, kod_skup_zbozi FROM QSKUPZBOZI_DF WHERE nazev LIKE 'O%'")
+                        .setSource("SELECT category_id, category_code FROM ITEM_CATEGORY WHERE name LIKE 'O%'")
                         .setSourceLanguage(Language.SQL)
                         .setStatedSchema(SchemaCode.SCHEMA_CODE_UNSPECIFIED)
                         .build(),
@@ -175,7 +175,7 @@ class DetectSourceSchemaSpec :
                 service.detectSourceSchema(
                     DetectSchemaRequest
                         .newBuilder()
-                        .setSource("SELECT id FROM QSKUPZBOZI_DF")
+                        .setSource("SELECT id FROM ITEM_CATEGORY")
                         .setSourceLanguage(Language.SQL)
                         .setStatedSchema(SchemaCode.ER)
                         .build(),
@@ -192,7 +192,7 @@ class DetectSourceSchemaSpec :
                 service.detectSourceSchema(
                     DetectSchemaRequest
                         .newBuilder()
-                        .setSource("SELECT id FROM QSKUPZBOZIX")
+                        .setSource("SELECT id FROM ITEM_CATEGORYX")
                         .setSourceLanguage(Language.SQL)
                         .setStatedSchema(SchemaCode.SCHEMA_CODE_UNSPECIFIED)
                         .build(),
@@ -203,7 +203,7 @@ class DetectSourceSchemaSpec :
             resp.messagesList[0].severity.name shouldBe "ERROR"
             resp.messagesList[0].code shouldBe "schema_object_unknown"
             resp.suggestionsList shouldHaveSize 1
-            resp.suggestionsList[0].candidatesList shouldContainExactlyInAnyOrder listOf("qskupzbozi_df")
+            resp.suggestionsList[0].candidatesList shouldContainExactlyInAnyOrder listOf("item_category")
         }
 
         "NOT_APPLICABLE when sourceLanguage=DATAFRAME_DSL" {
@@ -211,7 +211,7 @@ class DetectSourceSchemaSpec :
                 service.detectSourceSchema(
                     DetectSchemaRequest
                         .newBuilder()
-                        .setSource("SELECT id FROM QSKUPZBOZI_DF")
+                        .setSource("SELECT id FROM ITEM_CATEGORY")
                         .setSourceLanguage(Language.DATAFRAME_DSL)
                         .setStatedSchema(SchemaCode.SCHEMA_CODE_UNSPECIFIED)
                         .build(),

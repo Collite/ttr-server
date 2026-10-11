@@ -59,7 +59,7 @@ class ExecutionReceiptDispatchSpec :
                     .setStatementKind(StatementKind.SQL_EXECUTED)
                     .setStatement("SELECT 1")
                     .setRowsTotal(7)
-                    .setEngineLabel("worker-mssql@df-fin")
+                    .setEngineLabel("worker-mssql@pg-store")
                     .build()
             val out =
                 runBlocking {
@@ -76,7 +76,7 @@ class ExecutionReceiptDispatchSpec :
             first.receipt.dispatchTarget shouldBe "worker-a:9000"
             first.receipt.statement shouldBe "SELECT 1"
             first.receipt.rowsTotal shouldBe 7L
-            first.receipt.engineLabel shouldBe "worker-mssql@df-fin"
+            first.receipt.engineLabel shouldBe "worker-mssql@pg-store"
         }
 
         "only the first batch is stamped — the rest pass through untouched" {
@@ -170,8 +170,8 @@ private fun worldConfig(): WorldConfig =
         ConfigFactory.parseString(
             """
             world {
-              default-connection = "df-fin"
-              table-connections { "db.dbo.*" = "df-fin" }
+              default-connection = "pg-store"
+              table-connections { "db.dbo.*" = "pg-store" }
             }
             """.trimIndent(),
         ),
@@ -186,7 +186,7 @@ private fun scan(): PlanNode =
                     .newBuilder()
                     .setSchemaCode(SchemaCode.DB)
                     .setNamespace("dbo")
-                    .setName("QHDOK_FAKTURY"),
+                    .setName("store_sales"),
             ),
         ).build()
 
@@ -247,7 +247,7 @@ private class ReceiptStubClient(
         GetCapabilitiesResponse
             .newBuilder()
             .setEngineName("mssql")
-            .addSupportedConnections("df-fin")
+            .addSupportedConnections("pg-store")
             .setSupportsStatefulSessions(stateful)
             .build()
 

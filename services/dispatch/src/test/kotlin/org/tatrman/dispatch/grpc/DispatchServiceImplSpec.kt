@@ -34,17 +34,17 @@ import org.tatrman.dispatch.world.WorldConfig
 
 class DispatchServiceImplSpec :
     StringSpec({
-        val finCustomers = qname("db", "dbo", "QHDOK_FAKTURY")
-        val crmSubject = qname("db", "dbo", "QSUBJEKT_KLIENT")
+        val storeSales = qname("db", "dbo", "store_sales")
+        val customerAddress = qname("db", "dbo", "customer_address")
         val world =
             WorldConfig.fromConfig(
                 ConfigFactory.parseString(
                     """
                     world {
-                      default-connection = "df-default"
+                      default-connection = "pg-default"
                       table-connections {
-                        "db.dbo.QHDOK_*" = "df-fin"
-                        "db.dbo.QSUBJEKT*" = "df-crm"
+                        "db.dbo.store_*" = "pg-store"
+                        "db.dbo.customer*" = "pg-customer"
                       }
                     }
                     """.trimIndent(),
@@ -53,7 +53,7 @@ class DispatchServiceImplSpec :
 
         fun fixture(
             stateful: Boolean = false,
-            connections: List<String> = listOf("df-fin"),
+            connections: List<String> = listOf("pg-store"),
             execute: (ExecuteRequest) -> Flow<ResultBatch> = { defaultStream() },
         ): Pair<DispatchServiceImpl, StickyRegistry> {
             val client = StubClient(connections = connections, supportsStateful = stateful, execute = execute)
@@ -78,7 +78,7 @@ class DispatchServiceImplSpec :
         fun fixtureWithFailover(): Pair<DispatchServiceImpl, StickyRegistry> {
             val client =
                 StubClient(
-                    connections = listOf("df-fin"),
+                    connections = listOf("pg-store"),
                     supportsStateful = true,
                     execute = { defaultStream() },
                 )
@@ -110,7 +110,7 @@ class DispatchServiceImplSpec :
             val req =
                 DispatchRequest
                     .newBuilder()
-                    .setPlan(scan(finCustomers))
+                    .setPlan(scan(storeSales))
                     .setContext(PipelineContext.getDefaultInstance())
                     .build()
             val out = svc.dispatch(req).toList()
@@ -120,7 +120,7 @@ class DispatchServiceImplSpec :
         }
 
         "cross-database plan rejected with cross_database_not_supported" {
-            val (svc, _) = fixture(connections = listOf("df-fin", "df-crm"))
+            val (svc, _) = fixture(connections = listOf("pg-store", "pg-customer"))
             val req =
                 DispatchRequest
                     .newBuilder()
@@ -130,8 +130,8 @@ class DispatchServiceImplSpec :
                             .setJoin(
                                 JoinNode
                                     .newBuilder()
-                                    .setLeft(scan(finCustomers))
-                                    .setRight(scan(crmSubject))
+                                    .setLeft(scan(storeSales))
+                                    .setRight(scan(customerAddress))
                                     .setJoinType(JoinType.INNER),
                             ).build(),
                     ).setContext(PipelineContext.getDefaultInstance())
@@ -143,24 +143,24 @@ class DispatchServiceImplSpec :
         }
 
         "explicit connection_id overrides derived with warning" {
-            val (svc, _) = fixture(connections = listOf("df-fin", "df-other"))
+            val (svc, _) = fixture(connections = listOf("pg-store", "pg-other"))
             val req =
                 DispatchRequest
                     .newBuilder()
-                    .setPlan(scan(finCustomers))
+                    .setPlan(scan(storeSales))
                     .setContext(PipelineContext.getDefaultInstance())
-                    .setConnectionId("df-other")
+                    .setConnectionId("pg-other")
                     .build()
             val out = svc.dispatch(req).toList()
             out[0].context.warningsList.map { it.code } shouldContain "connection_id_overrides_derived"
         }
 
         "no Worker for connection emits no_worker_for_connection" {
-            val (svc, _) = fixture(connections = listOf("df-other"))
+            val (svc, _) = fixture(connections = listOf("pg-other"))
             val req =
                 DispatchRequest
                     .newBuilder()
-                    .setPlan(scan(finCustomers))
+                    .setPlan(scan(storeSales))
                     .setContext(PipelineContext.getDefaultInstance())
                     .build()
             val out = svc.dispatch(req).toList()
@@ -168,7 +168,7 @@ class DispatchServiceImplSpec :
         }
 
         "Values-only plan routes to default-connection" {
-            val (svc, _) = fixture(connections = listOf("df-default"))
+            val (svc, _) = fixture(connections = listOf("pg-default"))
             val req =
                 DispatchRequest
                     .newBuilder()
@@ -191,7 +191,7 @@ class DispatchServiceImplSpec :
             val req =
                 DispatchRequest
                     .newBuilder()
-                    .setPlan(scan(finCustomers))
+                    .setPlan(scan(storeSales))
                     .setContext(PipelineContext.newBuilder().setSessionId("s-1"))
                     .build()
             svc.dispatch(req).toList()
@@ -203,7 +203,7 @@ class DispatchServiceImplSpec :
             val req =
                 DispatchRequest
                     .newBuilder()
-                    .setPlan(scan(finCustomers))
+                    .setPlan(scan(storeSales))
                     .setContext(PipelineContext.newBuilder().setSessionId("s-1"))
                     .build()
             svc.dispatch(req).toList()
@@ -229,7 +229,7 @@ class DispatchServiceImplSpec :
             val req =
                 DispatchRequest
                     .newBuilder()
-                    .setPlan(scan(finCustomers))
+                    .setPlan(scan(storeSales))
                     .setContext(PipelineContext.getDefaultInstance())
                     .build()
             val out = svc.dispatch(req).toList()
@@ -243,7 +243,7 @@ class DispatchServiceImplSpec :
             val req =
                 DispatchRequest
                     .newBuilder()
-                    .setPlan(scan(finCustomers))
+                    .setPlan(scan(storeSales))
                     .setContext(PipelineContext.newBuilder().setSessionId("s-2"))
                     .build()
             val out = svc.dispatch(req).toList()
@@ -251,8 +251,8 @@ class DispatchServiceImplSpec :
         }
 
         "DF-D01 — non-sticky traffic with multiple workers routes to the least-loaded one" {
-            val a = StubClient(connections = listOf("df-fin"), supportsStateful = false) { defaultStream() }
-            val b = StubClient(connections = listOf("df-fin"), supportsStateful = false) { defaultStream() }
+            val a = StubClient(connections = listOf("pg-store"), supportsStateful = false) { defaultStream() }
+            val b = StubClient(connections = listOf("pg-store"), supportsStateful = false) { defaultStream() }
             val reg = WorkerRegistry()
             reg.seed(
                 listOf(
@@ -269,7 +269,7 @@ class DispatchServiceImplSpec :
             val req =
                 DispatchRequest
                     .newBuilder()
-                    .setPlan(scan(finCustomers))
+                    .setPlan(scan(storeSales))
                     .setContext(PipelineContext.getDefaultInstance())
                     .build()
             val out = svc.dispatch(req).toList()
@@ -281,8 +281,8 @@ class DispatchServiceImplSpec :
         }
 
         "DF-D01 — ties broken deterministically by endpoint string" {
-            val a = StubClient(connections = listOf("df-fin"), supportsStateful = false) { defaultStream() }
-            val b = StubClient(connections = listOf("df-fin"), supportsStateful = false) { defaultStream() }
+            val a = StubClient(connections = listOf("pg-store"), supportsStateful = false) { defaultStream() }
+            val b = StubClient(connections = listOf("pg-store"), supportsStateful = false) { defaultStream() }
             val reg = WorkerRegistry()
             reg.seed(
                 listOf(
@@ -296,7 +296,7 @@ class DispatchServiceImplSpec :
             val req =
                 DispatchRequest
                     .newBuilder()
-                    .setPlan(scan(finCustomers))
+                    .setPlan(scan(storeSales))
                     .setContext(PipelineContext.getDefaultInstance())
                     .build()
             val out = svc.dispatch(req).toList()
@@ -314,8 +314,8 @@ class DispatchServiceImplSpec :
             // instances). We verify by constructing the dispatcher twice and confirming the chosen
             // pod (recorded into sticky on first dispatch) matches.
             fun twoWorkerFixture(): Pair<DispatchServiceImpl, StickyRegistry> {
-                val a = StubClient(connections = listOf("df-fin"), supportsStateful = true) { defaultStream() }
-                val b = StubClient(connections = listOf("df-fin"), supportsStateful = true) { defaultStream() }
+                val a = StubClient(connections = listOf("pg-store"), supportsStateful = true) { defaultStream() }
+                val b = StubClient(connections = listOf("pg-store"), supportsStateful = true) { defaultStream() }
                 val reg = WorkerRegistry()
                 reg.seed(
                     listOf(
@@ -332,7 +332,7 @@ class DispatchServiceImplSpec :
             val req =
                 DispatchRequest
                     .newBuilder()
-                    .setPlan(scan(finCustomers))
+                    .setPlan(scan(storeSales))
                     .setContext(PipelineContext.newBuilder().setSessionId("stable-session-1"))
                     .build()
             svc1.dispatch(req).toList()
@@ -358,7 +358,7 @@ class DispatchServiceImplSpec :
             val req =
                 DispatchRequest
                     .newBuilder()
-                    .setPlan(scan(finCustomers))
+                    .setPlan(scan(storeSales))
                     .setContext(PipelineContext.newBuilder().setSessionId("s-3"))
                     .build()
             val out = svc.dispatch(req).toList()
@@ -385,7 +385,7 @@ class DispatchServiceImplSpec :
                 )
             resp.workersList.size shouldBe 1
             resp.workersList[0].health shouldBe WorkerHealthStatus.HEALTHY
-            resp.workersList[0].capabilities.supportedConnectionsList shouldContain "df-fin"
+            resp.workersList[0].capabilities.supportedConnectionsList shouldContain "pg-store"
         }
 
         "GetStatus aggregates correctly" {
@@ -398,7 +398,7 @@ class DispatchServiceImplSpec :
             resp.ready shouldBe true
             resp.knownWorkers shouldBe 1
             resp.healthyWorkers shouldBe 1
-            resp.defaultConnection shouldBe "df-default"
+            resp.defaultConnection shouldBe "pg-default"
         }
 
         // ----- Phase 2.4 — workspace-rooted routing -----
@@ -446,14 +446,14 @@ class DispatchServiceImplSpec :
         "routing_decision warning includes database + schema when worker advertises ConnectionInfo (#57 Phase C)" {
             val client =
                 StubClient(
-                    connections = listOf("df-fin"),
+                    connections = listOf("pg-store"),
                     supportsStateful = false,
                     execute = { defaultStream() },
                     connectionInfos =
                         listOf(
                             ConnectionInfo
                                 .newBuilder()
-                                .setConnectionId("df-fin")
+                                .setConnectionId("pg-store")
                                 .setDatabase("tatrman")
                                 .setDefaultSchema("dbo")
                                 .build(),
@@ -480,7 +480,7 @@ class DispatchServiceImplSpec :
                     .dispatch(
                         DispatchRequest
                             .newBuilder()
-                            .setPlan(scan(finCustomers))
+                            .setPlan(scan(storeSales))
                             .setContext(PipelineContext.getDefaultInstance())
                             .build(),
                     ).toList()
@@ -500,7 +500,7 @@ class DispatchServiceImplSpec :
                     .dispatch(
                         DispatchRequest
                             .newBuilder()
-                            .setPlan(scan(finCustomers))
+                            .setPlan(scan(storeSales))
                             .setContext(PipelineContext.getDefaultInstance())
                             .build(),
                     ).toList()
@@ -516,12 +516,12 @@ class DispatchServiceImplSpec :
         // fills in empty plan namespaces before forwarding the ExecuteRequest.
         "dispatcher fills in TableScan namespace from worker's default_schema when plan namespace is empty" {
             val captured = AtomicReference<ExecuteRequest>()
-            // Empty plan namespace makes the qname key `db.QHDOK_FAKTURY`, which matches no
-            // world pattern → routing falls back to default-connection = df-default. Worker
+            // Empty plan namespace makes the qname key `db.store_sales`, which matches no
+            // world pattern → routing falls back to default-connection = pg-default. Worker
             // advertises that connection so a candidate exists.
             val client =
                 StubClient(
-                    connections = listOf("df-default"),
+                    connections = listOf("pg-default"),
                     supportsStateful = false,
                     execute = { req ->
                         captured.set(req)
@@ -531,7 +531,7 @@ class DispatchServiceImplSpec :
                         listOf(
                             ConnectionInfo
                                 .newBuilder()
-                                .setConnectionId("df-default")
+                                .setConnectionId("pg-default")
                                 .setDatabase("tatrman")
                                 .setDefaultSchema("dbo")
                                 .build(),
@@ -553,7 +553,7 @@ class DispatchServiceImplSpec :
             )
             val svc = DispatchServiceImpl(registry, StickyRegistry(), world)
 
-            val emptyNs = qname("db", "", "QHDOK_FAKTURY")
+            val emptyNs = qname("db", "", "store_sales")
             svc
                 .dispatch(
                     DispatchRequest
@@ -568,14 +568,14 @@ class DispatchServiceImplSpec :
                 .plan.tableScan.table.namespace shouldBe "dbo"
             captured
                 .get()
-                .plan.tableScan.table.name shouldBe "QHDOK_FAKTURY"
+                .plan.tableScan.table.name shouldBe "store_sales"
         }
 
         "dispatcher warns schema_mismatch when plan namespace differs from worker's default_schema" {
             val captured = AtomicReference<ExecuteRequest>()
             val client =
                 StubClient(
-                    connections = listOf("df-fin"),
+                    connections = listOf("pg-store"),
                     supportsStateful = false,
                     execute = { req ->
                         captured.set(req)
@@ -585,7 +585,7 @@ class DispatchServiceImplSpec :
                         listOf(
                             ConnectionInfo
                                 .newBuilder()
-                                .setConnectionId("df-fin")
+                                .setConnectionId("pg-store")
                                 .setDatabase("tatrman")
                                 .setDefaultSchema("fin")
                                 .build(),
@@ -612,7 +612,7 @@ class DispatchServiceImplSpec :
                     .dispatch(
                         DispatchRequest
                             .newBuilder()
-                            .setPlan(scan(finCustomers)) // namespace="dbo"
+                            .setPlan(scan(storeSales)) // namespace="dbo"
                             .setContext(PipelineContext.getDefaultInstance())
                             .build(),
                     ).toList()
@@ -628,7 +628,7 @@ class DispatchServiceImplSpec :
             val captured = AtomicReference<ExecuteRequest>()
             val client =
                 StubClient(
-                    connections = listOf("df-default"),
+                    connections = listOf("pg-default"),
                     supportsStateful = false,
                     execute = { req ->
                         captured.set(req)
@@ -651,7 +651,7 @@ class DispatchServiceImplSpec :
             )
             val svc = DispatchServiceImpl(registry, StickyRegistry(), world)
 
-            val emptyNs = qname("db", "", "QHDOK_FAKTURY")
+            val emptyNs = qname("db", "", "store_sales")
             val out =
                 svc
                     .dispatch(

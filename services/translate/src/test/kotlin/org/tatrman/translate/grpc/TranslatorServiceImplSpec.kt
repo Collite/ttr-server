@@ -53,7 +53,7 @@ class TranslatorServiceImplSpec :
         "ParseToRelNode resolves ER columns containing Czech diacritics" {
             // Repro for IRL bug: WHERE-clause column `název_produktu` is rejected even
             // though the `produkt` ER entity declares it as an attribute. Mirrors the
-            // user's actual payload against the model's `produkt` entity (bt02_artikl.yaml).
+            // shape of the user's payload: Czech ER attribute names with diacritics.
             val produktModel = buildProduktErModel()
             val produktService = TranslatorServiceImpl(StaticModelHandleProvider(produktModel))
             val resp =
@@ -104,14 +104,14 @@ class TranslatorServiceImplSpec :
             unparseResp.messagesList shouldHaveSize 0
             // Generated MSSQL (verified manually, asserted in pieces below):
             //   SELECT [id_produktu], [kód_produktu]
-            //   FROM (SELECT [IDSKUPZBOZI] AS [id_produktu],
-            //                [KOD_SKUP_ZBOZI] AS [kód_produktu],
-            //                [NAZEV_SKUP_ZBOZI] AS [název_produktu]
-            //         FROM [dbo].[QSKUPZBOZI_DF]) AS [t]
+            //   FROM (SELECT [I_ITEM_SK] AS [id_produktu],
+            //                [I_ITEM_ID] AS [kód_produktu],
+            //                [I_PRODUCT_NAME] AS [název_produktu]
+            //         FROM [dbo].[ITEM]) AS [t]
             //   WHERE [název_produktu] LIKE 'A%'
             // Issue #57 Phase A — no `[db].` virtual prefix in the emitted SQL.
-            unparseResp.output.shouldContainIgnoringCase("QSKUPZBOZI_DF")
-            unparseResp.output.shouldContainIgnoringCase("IDSKUPZBOZI")
+            unparseResp.output.shouldContainIgnoringCase("[dbo].[ITEM]")
+            unparseResp.output.shouldContainIgnoringCase("I_ITEM_SK")
             unparseResp.output.shouldContainIgnoringCase("AS [id_produktu]")
             unparseResp.output.shouldContainIgnoringCase("AS [název_produktu]")
             unparseResp.output.shouldContainIgnoringCase("WHERE [název_produktu]")
@@ -150,7 +150,7 @@ class TranslatorServiceImplSpec :
                 )
             unparseResp.messagesList shouldHaveSize 0
             // Postgres dialect → double-quoted identifiers, never MSSQL square brackets.
-            unparseResp.output.shouldContainIgnoringCase("QSKUPZBOZI_DF")
+            unparseResp.output.shouldContainIgnoringCase("\"ITEM\"")
             unparseResp.output.shouldContain("\"id_produktu\"")
             unparseResp.output.shouldContain("\"název_produktu\"")
             unparseResp.output shouldNotContain "[id_produktu]"
@@ -183,16 +183,16 @@ class TranslatorServiceImplSpec :
             val filterNode = resp.plan.project.input
             val tableScanNode = filterNode.filter.input
             tableScanNode.nodeCase shouldBe PlanNode.NodeCase.TABLE_SCAN
-            tableScanNode.tableScan.table.name shouldBe "QSKUPZBOZI_DF"
+            tableScanNode.tableScan.table.name shouldBe "ITEM"
             tableScanNode.tableScan.table.schemaCode shouldBe SchemaCode.DB
 
             // TableScan.output_columns: keyed by alias (= ER attribute name)
             val byAlias = tableScanNode.tableScan.outputColumnsList.associateBy { it.alias }
-            (byAlias["id_produktu"]?.name) shouldBe "IDSKUPZBOZI"
+            (byAlias["id_produktu"]?.name) shouldBe "I_ITEM_SK"
             (byAlias["id_produktu"]?.type) shouldBe "int"
-            (byAlias["kód_produktu"]?.name) shouldBe "KOD_SKUP_ZBOZI"
+            (byAlias["kód_produktu"]?.name) shouldBe "I_ITEM_ID"
             (byAlias["kód_produktu"]?.type) shouldBe "text"
-            (byAlias["název_produktu"]?.name) shouldBe "NAZEV_SKUP_ZBOZI"
+            (byAlias["název_produktu"]?.name) shouldBe "I_PRODUCT_NAME"
             (byAlias["název_produktu"]?.type) shouldBe "text"
 
             // Filter ColumnRef stays in ER vocabulary (resolves via TableScan's alias).
@@ -497,22 +497,22 @@ private fun qname(
         .build()
 
 /**
- * Minimal model mirroring the production `produkt` entity (bt02_artikl.yaml) — Czech
- * ER attribute names with diacritics, backed by a synthetic DB table so the ER↔DB
- * mapping is wired (not used by parse-only assertions but kept consistent).
+ * Minimal model: a `produkt` entity with Czech ER attribute names with diacritics,
+ * backed by Hartland's `item` table so the ER↔DB mapping is wired (not used by
+ * parse-only assertions but kept consistent).
  */
 private fun buildProduktErModel(): ModelHandle {
-    val tableQn = qname(SchemaCode.DB, "dbo", "QSKUPZBOZI_DF")
+    val tableQn = qname(SchemaCode.DB, "dbo", "ITEM")
     val table =
         ModelTable(
             qname = tableQn,
             columns =
                 listOf(
-                    ModelColumn("IDSKUPZBOZI", SurfaceType.INT, nullable = false),
-                    ModelColumn("KOD_SKUP_ZBOZI", SurfaceType.TEXT, nullable = true),
-                    ModelColumn("NAZEV_SKUP_ZBOZI", SurfaceType.TEXT, nullable = true),
+                    ModelColumn("I_ITEM_SK", SurfaceType.INT, nullable = false),
+                    ModelColumn("I_ITEM_ID", SurfaceType.TEXT, nullable = true),
+                    ModelColumn("I_PRODUCT_NAME", SurfaceType.TEXT, nullable = true),
                 ),
-            primaryKey = listOf("IDSKUPZBOZI"),
+            primaryKey = listOf("I_ITEM_SK"),
         )
     val entityQn = qname(SchemaCode.ER, "entity", "produkt")
     val entity =
@@ -554,9 +554,9 @@ private fun buildProduktErModel(): ModelHandle {
         override fun attributeColumnRenames(entityQname: QualifiedName): Map<String, String> =
             if (entityQname == entityQn) {
                 mapOf(
-                    "id_produktu" to "IDSKUPZBOZI",
-                    "kód_produktu" to "KOD_SKUP_ZBOZI",
-                    "název_produktu" to "NAZEV_SKUP_ZBOZI",
+                    "id_produktu" to "I_ITEM_SK",
+                    "kód_produktu" to "I_ITEM_ID",
+                    "název_produktu" to "I_PRODUCT_NAME",
                 )
             } else {
                 emptyMap()
