@@ -107,6 +107,7 @@ fun Application.module(serverConfig: KtorServerConfig) {
                 host = config.nlp.host,
                 port = config.nlp.port,
                 deadlineSeconds = (config.nlp.timeoutMs / 1000).coerceAtLeast(1),
+                entityDeadlineSeconds = (config.entityProfile.timeoutMs / 1000).coerceAtLeast(1),
             )
         } else {
             null
@@ -195,7 +196,34 @@ fun Application.module(serverConfig: KtorServerConfig) {
                         .of(path),
                 )
             } ?: NoopOverlayStore
-    val repository = StringRepository(config, loaderSource, telemetry, lemmatizer, lexiconSource, overlaySource)
+    // UD-P3 — the named-entity profile, over the same nlp channel the lemmatiser uses.
+    val entityProfiler =
+        if (nlpBatchClient != null && config.entityProfile.enabled) {
+            log.info(
+                "Entity profiling enabled (lang={}, chunk-chars={}, max-members={})",
+                config.nlp.lang,
+                config.entityProfile.chunkChars,
+                config.entityProfile.maxMembers,
+            )
+            org.tatrman.fuzzy.core.EntityProfiler(
+                nlpBatchClient,
+                config.nlp.lang,
+                config.entityProfile.chunkChars,
+                config.entityProfile.maxMembers,
+            )
+        } else {
+            null
+        }
+    val repository =
+        StringRepository(
+            config,
+            loaderSource,
+            telemetry,
+            lemmatizer,
+            lexiconSource,
+            overlaySource,
+            entityProfiler = entityProfiler,
+        )
     val fuzzyMatcher =
         FuzzyMatcher(
             repository,

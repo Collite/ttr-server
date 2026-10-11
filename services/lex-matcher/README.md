@@ -43,6 +43,33 @@ The entity catalog populates from one of two loader sources (opt-in via config):
   member layer. A first boot with no listing still comes up, serving its declared lexicon,
   and retries the listing within seconds rather than a whole refresh interval.
 
+## Entity profile (`fuzzy.entity-profile`)
+
+After each refresh the matcher runs nlp's NER over every member vocabulary's values and reports, per
+category, which kinds of names it found there: `GetStatus` → `CategoryStatus.entity_profile`, with the
+values profiled, a count per NER kind (label + code, e.g. `LOCATION` / `cnec:gu`) and the NER model.
+The resolver reads it to decide which vocabularies may claim a place or a person name the NER typed in
+a question when no word in the question scopes it (*"how many weeks did Brno DC have no stock"*).
+Only the vocabularies whose own values carry such names are asked, and only a value that is the whole
+name binds.
+
+- **How.** Values go to nlp `Analyze` (NER only) many at a time, one per line, each inside a carrier
+  phrase in `nlp.lang` (`v Brno DC.` / `in Dallas DC.`), at most `chunk-chars` characters per call;
+  each entity is mapped back to the value whose characters it overlaps.
+- **When.** After the refresh has published, so the matcher is ready while the NER reads. `POST
+  /refresh` starts a pass in the background.
+- **Cache.** Per category, by its content version and the NER identity in nlp's capability matrix. An
+  unchanged vocabulary under the same NER costs nothing but one nlp status call per refresh.
+- **Degradable.** nlp off, down or failing leaves a category without a profile (a WARN), and the
+  resolver then treats it as holding no names, which is the behaviour before profiles existed.
+
+| Config key | Env | Default |
+|---|---|---|
+| `fuzzy.entity-profile.enabled` | `FUZZY_ENTITY_PROFILE_ENABLED` | `true` (needs `fuzzy.nlp.enabled`) |
+| `fuzzy.entity-profile.chunk-chars` | `FUZZY_ENTITY_PROFILE_CHUNK_CHARS` | `8000` |
+| `fuzzy.entity-profile.max-members` | `FUZZY_ENTITY_PROFILE_MAX_MEMBERS` | `0` = every vocabulary; N skips larger ones |
+| `fuzzy.entity-profile.timeout-ms` | `FUZZY_ENTITY_PROFILE_TIMEOUT_MS` | `60000` per call |
+
 ## Retrieval modes (TATRMAN path)
 
 The TATRMAN matcher supports two retrieval strategies behind

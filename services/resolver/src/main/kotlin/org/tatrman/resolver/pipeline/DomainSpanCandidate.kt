@@ -116,5 +116,14 @@ data class DomainSpanCandidate(
          * ([MemberPhrases]): a value, gated against the vocabularies that confirmed it.
          */
         MEMBER_PHRASE,
+
+        /**
+         * UD-P3 — a place or a person name nothing governs (*mělo Brno DC nulové zásoby*), offered as
+         * a member of the vocabularies whose own values the NER finds such names in ([NamedMembers]).
+         * A dual reading like the governed one: it takes the span from the place only when a member
+         * of one of those vocabularies IS the name, whole ([NamedMembers.admitted]); otherwise it is
+         * withdrawn and the place stands.
+         */
+        NAMED_MEMBER,
     }
 }

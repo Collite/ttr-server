@@ -56,6 +56,26 @@ message CategoryStatus {
   // a member vocabulary's own, from Veles. "" when the category has no member rows (declared terms
   // carry a method per row).
   string match_method = 5;
+  // UD-P3 — what the NER makes of this MEMBER vocabulary's values: run over each value at load,
+  // with the same NER the resolver runs over the question. ABSENT when the category was not
+  // profiled (no member rows, nlp off or down, profiling disabled): absence means "unknown", and a
+  // reader must treat it exactly as a vocabulary with no names in it.
+  optional EntityProfile entity_profile = 6;
+}
+
+// UD-P3 — a member vocabulary's named-entity profile: how many of its values carry an entity of
+// each kind. The kinds are the NER's own (label + fine-grained code), not a classification: which
+// of them are places or persons is the reader's rule to apply.
+message EntityProfile {
+  int32 members = 1;                     // values profiled
+  repeated EntityCount entities = 2;     // one per (label, code) seen; empty ⇒ no names found
+  string ner_model = 3;                  // engine:model of the NER that produced it (S-1)
+}
+
+message EntityCount {
+  string label = 1;   // the NER's coarse label, e.g. "LOCATION", "GPE", "PERSON"
+  string code = 2;    // the fine-grained code as nlp sends it in normalized_value ("cnec:gu"); "" when none
+  int32 members = 3;  // values carrying at least one entity of this kind
 }
 
 message LoaderWarning {

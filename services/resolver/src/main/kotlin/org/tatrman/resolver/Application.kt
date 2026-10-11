@@ -23,6 +23,7 @@ import org.slf4j.LoggerFactory
 import org.tatrman.mcp.identity.IdentityPolicy
 import org.tatrman.resolver.client.GrpcGroundingClient
 import org.tatrman.resolver.client.GrpcFuzzyClient
+import org.tatrman.resolver.pipeline.NamedCategorySource
 import org.tatrman.resolver.client.GrpcNlpClient
 import org.tatrman.resolver.grpc.ResolverGrpcService
 import org.tatrman.resolver.mcp.ResolveDoor
@@ -181,6 +182,21 @@ fun Application.module(config: Config) {
     // (rotation window). Key management is chart discipline (S-3).
     val tokenCodec = buildResumeTokenCodec(config)
 
+    // UD-P3 — which member vocabularies hold place or person names, from lex-matcher's entity
+    // profiles. On by default: without a profile it proposes nothing, so an estate whose lex-matcher
+    // does not profile behaves exactly as before.
+    val namedCategories =
+        if (config.getBoolean("resolver.named-members.enabled")) {
+            NamedCategorySource(
+                fuzzyClient,
+                ttlMs = config.getLong("resolver.named-members.status-ttl-seconds") * 1000,
+                timeoutMs = config.getLong("resolver.named-members.status-timeout-ms"),
+            )
+        } else {
+            log.info("named members disabled (resolver.named-members.enabled=false) — a bare place stays a place")
+            null
+        }
+
     val pipeline =
         ResolverPipeline(
             nlpClient,
@@ -192,6 +208,7 @@ fun Application.module(config: Config) {
             lookupRounds = LookupRounds(fuzzyClient, lookupRoundConfig),
             grounding = groundingClient,
             defaultPackage = resolverPackage,
+            namedCategories = namedCategories,
         )
     val resolverService = ResolverGrpcService(pipeline, otel)
 

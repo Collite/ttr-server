@@ -79,6 +79,9 @@ class ResolverPipeline(
     // is the default everywhere: it adds an upstream to a hot path, so it is opted into.
     private val grounding: GroundingClient? = null,
     private val defaultPackage: String = "",
+    // UD-P3 — which member vocabularies hold place or person names (lex-matcher's entity profiles).
+    // Null = the reading is off, and a bare place stays a place exactly as before UD-P3.
+    private val namedCategories: NamedCategorySource? = null,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -213,10 +216,22 @@ class ResolverPipeline(
         // in scope: `GateSpans.gate` receives candidates only (architecture A3). Same list, same
         // order; only `DomainSpanCandidate.slot` is filled.
         val proposed = SpanProposal.proposeDomainSpans(parse, declared.entityTypes, literals, operatorWords)
+        val withPhrases = proposed + MemberPhrases.candidates(memberPhrases, proposed, parse)
+        // UD-P3 — a place or a person name nothing governs, offered to the member vocabularies whose
+        // values the NER finds such names in. LAST, so every slot before it is where it always was,
+        // and only where a universal could have a member reading at all: a question with no place in
+        // it asks lex-matcher nothing new (I-2).
+        val named =
+            if (universals.any { it.entityType in UniversalClassifier.DUAL_READING_TYPES }) {
+                namedCategories?.current() ?: NamedCategories.NONE
+            } else {
+                NamedCategories.NONE
+            }
+        val namedMembers = NamedMembers.candidates(parse, withPhrases, named, declared.entityTypes, literals)
         val candidates =
             SlotHints.stamp(
                 parse,
-                proposed + MemberPhrases.candidates(memberPhrases, proposed, parse),
+                withPhrases + namedMembers,
                 resolverRegistry.entityTypes.kindsByRef(),
                 resolverRegistry.entityTypes.ownersByRef(),
                 assessment.language,
@@ -226,7 +241,15 @@ class ResolverPipeline(
         // model binds can still be a grounding trigger, and it can only be asked about in the one
         // BatchMatch this pass makes. The gate reads slots [0, candidates), the trigger annotation
         // reads the trailing ones — one round trip, two questions, kept apart.
-        val ungatedMentions = MentionLayer.propose(parse, candidates, literals)
+        //
+        // UD-P3 — derived WITHOUT the named-member readings: whether one of them takes its words is
+        // known only after the gate, and one that is withdrawn must leave the mentions as they were.
+        val ungatedMentions =
+            MentionLayer.propose(
+                parse,
+                candidates.filterNot { it.origin == DomainSpanCandidate.Origin.NAMED_MEMBER },
+                literals,
+            )
         val triggerSpans = GroundingTriggers.spansOf(candidates, ungatedMentions)
         // LP §3 — and the third question on the same pass: which words say HOW a quoted literal
         // restricts its attribute. Anchored on the LITERAL rather than on the mentions, because
@@ -271,6 +294,11 @@ class ResolverPipeline(
         // the lattice and the door, so all three read the same survivors — and the `assemble`
         // lambda below closes over them, so every re-assembly the lookup loop makes agrees.
         val seam = UniversalSeam.supersede(universals, broadPass.gated)
+        // UD-P3 — a named member that spoke is one value over its whole extent, which may be wider
+        // than the place it took (`Praha` + `DC`): what else was proposed or left over on those words
+        // goes. Nothing goes when none spoke.
+        val spokenNames = seam.gated.filter { it.candidate.origin == DomainSpanCandidate.Origin.NAMED_MEMBER }
+        val gatedSpans = seam.gated.filterNot { NamedMembers.claimedBy(spokenNames, it.candidate) }
         for ((u, g) in seam.superseded) {
             // Ids and counts at INFO, like every other INFO line in this service; the user's words
             // — a person's name, when the universal was a PERSON — only at DEBUG (review-108 F4).
@@ -360,6 +388,7 @@ class ResolverPipeline(
         val ungatedSpans =
             ungatedMentions
                 .filterNot { it.headToken in formTokens }
+                .filterNot { NamedMembers.claimedBy(spokenNames, it) }
                 .map { GatedSpan(it, emptyList(), ambiguous = false) }
         // RV-P2.3 — the narrowing loop, between the broad pass and emit. It re-enters through the
         // same gate and re-assembles from the same internal model, so an emitted lattice is the
@@ -367,8 +396,8 @@ class ResolverPipeline(
         // written against the loop's result and cannot tell the difference.
         val rounds =
             lookupRounds.run(
-                lattice = assemble(seam.gated, ungatedSpans),
-                gated = seam.gated,
+                lattice = assemble(gatedSpans, ungatedSpans),
+                gated = gatedSpans,
                 ungated = ungatedSpans,
                 entityTypes = resolverRegistry.entityTypes,
                 thresholds = resolverRegistry.thresholds,

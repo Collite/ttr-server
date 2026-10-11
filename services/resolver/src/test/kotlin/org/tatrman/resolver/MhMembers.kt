@@ -4,6 +4,9 @@ package org.tatrman.resolver
 import kotlinx.coroutines.runBlocking
 import org.tatrman.fuzzy.v1.BatchMatchRequest
 import org.tatrman.fuzzy.v1.BatchMatchResponse
+import org.tatrman.fuzzy.v1.CategoryStatus
+import org.tatrman.fuzzy.v1.EntityCount
+import org.tatrman.fuzzy.v1.EntityProfile
 import org.tatrman.fuzzy.v1.FuzzyMatch
 import org.tatrman.fuzzy.v1.FuzzyMatchResponse
 import org.tatrman.fuzzy.v1.FuzzyStatusResponse
@@ -21,6 +24,7 @@ import org.tatrman.resolver.client.NlpClient
 import org.tatrman.resolver.model.ResolverEntityType
 import org.tatrman.resolver.model.ResolverThresholds
 import org.tatrman.resolver.pipeline.FrameRolePreps
+import org.tatrman.resolver.pipeline.NamedCategorySource
 import org.tatrman.resolver.pipeline.ResolverPipeline
 import org.tatrman.resolver.registry.DeclaredVocabulary
 import org.tatrman.resolver.registry.SnapshotRegistry
@@ -66,6 +70,10 @@ object MhMembers {
     const val STORE_NAME = "er.entity.store.store_name"
     const val WAREHOUSE_NAME = "er.entity.warehouse.warehouse_name"
 
+    /** UD-P3 — a vocabulary with no names in it, where F-8's `Paris` found "Parts missing". */
+    const val REASON = "er.entity.reason"
+    const val REASON_DESC = "er.entity.reason.reason_desc"
+
     /** UD ✅UD-8 — hartland's marketplace measure, declared on its fact and phrased as the estate phrases it. */
     const val MARKETPLACE_REVENUE = "er.entity.catalog_sales.ext_sales_price"
 
@@ -93,6 +101,11 @@ object MhMembers {
             "dallas" to listOf(Triple("Dallas DC", "Dallas DC", WAREHOUSE_NAME)),
             // UD ✅UD-8 — the whole DC name, as the NER reads it in `… for Dallas DC`.
             "dallas dc" to listOf(Triple("Dallas DC", "Dallas DC", WAREHOUSE_NAME)),
+            // UD-P3 — the hartland CZ warehouses, asked bare (`mělo Brno DC nulové zásoby`).
+            "brno dc" to listOf(Triple("Brno DC", "Brno DC", WAREHOUSE_NAME)),
+            "praha dc" to listOf(Triple("Praha DC", "Praha DC", WAREHOUSE_NAME)),
+            // UD-P3 — F-8: the return reason a lone `Paris` reached through the open lookup (TOKENS).
+            "paris" to listOf(Triple("Parts missing", "Parts missing", REASON_DESC)),
         )
 
     private fun et(
@@ -181,6 +194,50 @@ object MhMembers {
 
     fun udEntityTypes(): List<ResolverEntityType> =
         ResolverPipeline.fromProto(UD_REGISTRY, ResolverThresholds.LIVE).entityTypes
+
+    /** UD-P3 — [UD_REGISTRY] plus a return-reason vocabulary, which holds no names. */
+    val NAMED_REGISTRY: Registry =
+        UD_REGISTRY
+            .toBuilder()
+            .addEntityTypes(et(REASON, listOf("reason", "důvod"), "entity"))
+            .addEntityTypes(et(REASON_DESC, listOf(), "attribute", owner = REASON, member = true))
+            .build()
+
+    fun namedEntityTypes(): List<ResolverEntityType> =
+        ResolverPipeline.fromProto(NAMED_REGISTRY, ResolverThresholds.LIVE).entityTypes
+
+    /**
+     * UD-P3 — lex-matcher's `GetStatus` with an entity profile on each of [profiles]: category → the
+     * NER kinds (label, code) its values carry, one value each. A category not listed has no profile.
+     */
+    fun profiles(vararg profiles: Pair<String, List<Pair<String, String>>>): FuzzyStatusResponse =
+        FuzzyStatusResponse
+            .newBuilder()
+            .setReady(true)
+            .addAllCategories(
+                profiles.map { (category, kinds) ->
+                    CategoryStatus
+                        .newBuilder()
+                        .setCategory(category)
+                        .setSource(SourceTag.MEMBER)
+                        .setEntityProfile(
+                            EntityProfile
+                                .newBuilder()
+                                .setMembers(kinds.size.coerceAtLeast(1))
+                                .setNerModel("nametag3:test")
+                                .addAllEntities(
+                                    kinds.map { (label, code) ->
+                                        EntityCount
+                                            .newBuilder()
+                                            .setLabel(label)
+                                            .setCode(code)
+                                            .setMembers(1)
+                                            .build()
+                                    },
+                                ),
+                        ).build()
+                },
+            ).build()
 
     fun preps(): FrameRolePreps = FrameRolePreps.shipped()
 
@@ -312,15 +369,20 @@ object MhMembers {
         lang: String = "en",
         registry: Registry = REGISTRY,
         entities: List<NerEntity> = emptyList(),
+        // UD-P3 — lex-matcher's entity profiles ([profiles]); null = the named-member reading is off.
+        status: FuzzyStatusResponse? = null,
+        // …and the matcher itself, for a test that reads what it was asked.
+        fuzzy: FuzzyClient = MemberFuzzy(registry, status ?: FuzzyStatusResponse.getDefaultInstance()),
     ): ResolveResponse {
         val parse = parse(text, tokens, lang).toBuilder().addAllEntities(entities).build()
         val pipeline =
             ResolverPipeline(
                 FakeNlp(parse, lang),
-                MemberFuzzy(registry),
+                fuzzy,
                 SnapshotRegistry(StubRegistrySource(DeclaredVocabulary(), ""), ResolverThresholds.LIVE),
                 emptyMap(),
                 ResumeTokenCodec(mapOf("k1" to ByteArray(32) { it.toByte() }), activeKeyId = "k1"),
+                namedCategories = status?.let { NamedCategorySource(fuzzy) },
             )
         val request =
             ResolveRequest
@@ -340,8 +402,13 @@ object MhMembers {
      */
     class MemberFuzzy(
         private val registry: Registry = REGISTRY,
+        private val status: FuzzyStatusResponse = FuzzyStatusResponse.getDefaultInstance(),
     ) : FuzzyClient {
+        /** Every span this matcher was asked about, in order. */
+        val asked = mutableListOf<org.tatrman.fuzzy.v1.SpanQuery>()
+
         override suspend fun batchMatch(request: BatchMatchRequest): BatchMatchResponse {
+            asked += request.spansList
             val builder = BatchMatchResponse.newBuilder()
             for (span in request.spansList) {
                 val asked = span.categoriesList.toSet()
@@ -359,7 +426,7 @@ object MhMembers {
             return builder.build()
         }
 
-        override suspend fun getStatus(): FuzzyStatusResponse = FuzzyStatusResponse.getDefaultInstance()
+        override suspend fun getStatus(): FuzzyStatusResponse = status
 
         /**
          * A deliberately crude stand-in for the real matcher's fold + lemma handling: an anchor

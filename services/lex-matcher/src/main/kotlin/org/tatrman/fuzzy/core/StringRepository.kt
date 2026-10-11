@@ -22,6 +22,8 @@ data class CategoryStatusInfo(
     val loadedAtEpochMs: Long,
     /** MV-T2 — the method the category's member rows carry; null when it has none. */
     val matchMethod: String? = null,
+    /** UD-P3 — what the NER found in the category's member values; null when it was not profiled. */
+    val entityProfile: EntityProfile? = null,
 )
 
 /** Loader-report entry: `RG-FUZ-001`/`003` for a vocabulary Veles could not plan, `RG-FUZ-004` for no listing. */
@@ -53,6 +55,12 @@ class StringRepository(
     private val overlayStore: OverlayStore = NoopOverlayStore,
     /** review-104 F1 — the first retry after a refresh that found no member layer to load; tests shorten it. */
     private val firstMemberRetryMs: Long = FIRST_MEMBER_RETRY_MS,
+    /**
+     * UD-P3 — runs the NER over the member vocabularies after each refresh ([profileEntities]).
+     * Null (nlp off, or profiling switched off) ⇒ no category is ever profiled, which is the matcher
+     * as it was before UD-P3.
+     */
+    private val entityProfiler: EntityProfiler? = null,
 ) : MatchRepository {
     private val logger = LoggerFactory.getLogger(StringRepository::class.java)
 
@@ -179,6 +187,13 @@ class StringRepository(
     // to overlap, interleaving two loads' writes to the cache and to each layer's clock.
     private val refreshLock = Mutex()
 
+    // UD-P3 — the member categories' entity profiles, published whole when a profiling pass ends.
+    @Volatile
+    private var entityProfiles: Map<String, EntityProfile> = emptyMap()
+
+    // UD-P3 — one profiling pass at a time; its own lock, so a long first pass never holds a refresh up.
+    private val profileLock = Mutex()
+
     init {
         startRefreshLoop()
     }
@@ -197,6 +212,10 @@ class StringRepository(
                 } catch (e: Exception) {
                     logger.error("Failed to refresh cache", e)
                 }
+                // After the refresh has published, never inside it: the matcher serves (and reports
+                // ready) while the NER reads the values, and a category is offered names only once its
+                // profile exists.
+                profileEntities()
                 delay(nextDelayMs())
             }
         }
@@ -465,8 +484,9 @@ class StringRepository(
         c.authoredMethod != null && c.authoredMethod != MatchMethod.Tokens
 
     /** Per-category discovery + staleness for `GetStatus` (contracts §2). */
-    fun categoryStatuses(): List<CategoryStatusInfo> =
-        cache
+    fun categoryStatuses(): List<CategoryStatusInfo> {
+        val profiles = entityProfiles
+        return cache
             .map { (category, candidates) ->
                 CategoryStatusInfo(
                     category = category,
@@ -474,8 +494,36 @@ class StringRepository(
                     size = candidates.size,
                     loadedAtEpochMs = loadedAtMs,
                     matchMethod = candidates.firstOrNull { it.source == SourceTag.MEMBER }?.matchMethod,
+                    entityProfile = profiles[category],
                 )
             }.sortedBy { it.category }
+    }
+
+    /**
+     * UD-P3 — profile the member layer as last loaded ([EntityProfiler]): each category's member
+     * values with its content version, which is the profile's cache key. Runs after a refresh has
+     * published, under its own lock, and never throws: a failed pass keeps the profiles there were.
+     */
+    internal suspend fun profileEntities() {
+        val profiler = entityProfiler ?: return
+        profileLock.withLock {
+            val members = memberCache
+            val versions = memberVersions
+            try {
+                entityProfiles =
+                    profiler.profile(
+                        members.mapValues { (category, rows) ->
+                            (versions[category] ?: "") to
+                                rows.filter { it.source == SourceTag.MEMBER }.map { it.value }
+                        },
+                    )
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                logger.warn("Entity profiling failed; keeping the previous profiles", e)
+            }
+        }
+    }
 
     /** Loader report: vocabularies listed but not loaded (`RG-FUZ-001`/`003`), or no listing at all (`RG-FUZ-004`). */
     fun loaderWarnings(): List<LoaderWarningInfo> = loaderSource.warnings()
@@ -502,7 +550,13 @@ class StringRepository(
      * rather than interleaving with it; on loader failure it preserves the previous member layer
      * (and throws nothing) just like the scheduled path.
      */
-    suspend fun forceRefresh() = refreshCache()
+    suspend fun forceRefresh() {
+        refreshCache()
+        // UD-P3 — in the background: a first pass over a large vocabulary takes the NER a while, and
+        // an operator's `POST /refresh` should not wait for it. Serialised with the loop's own pass by
+        // its lock, and a pass over unchanged vocabularies is a status call.
+        scope.launch { profileEntities() }
+    }
 
     /**
      * Populates each candidate's [Candidate.lemmaTokens] (the folded lemmas of its surface tokens)

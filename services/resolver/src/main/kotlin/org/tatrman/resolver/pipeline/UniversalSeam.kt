@@ -38,6 +38,11 @@ import org.tatrman.resolver.model.Reach
  * its owning entity, or an entity that declares a reach from it. `Customers in TN` keeps
  * `customer_address.state` (declared reach from `customer`); `Paris` stays a place.
  *
+ * **…or, for a place nothing governs, only a member that IS the name** (UD-P3). A bare place
+ * (`mělo Brno DC nulové zásoby`) has no anchor, so `NamedMembers` scopes its reading to the
+ * vocabularies whose own values the NER calls places, and [inScope] admits only a member whose value
+ * is the span, whole. Superseding and withdrawing are the same as for a governed reading.
+ *
  * **Paired by the entity, not by geometry** (A-UD-3, review-108 F1). The universal's extent is the
  * NER engine's; the candidate's is the parse tokens'. They need not agree to the character —
  * NameTag's end overshoots a hyphenated name, and an anchor word inside the name is left out of the
@@ -97,6 +102,14 @@ object UniversalSeam {
         memberOwners: Map<String, String>,
     ): List<FuzzyMatch> {
         if (!candidate.dualReading) return matches
+        // UD-P3 — a NAMED_MEMBER reading has no anchor to reach from: its scope is the vocabularies
+        // whose values the NER names (the data's counterpart of the reach), and only a member that IS
+        // the name may answer for it (I-13).
+        if (candidate.origin ==
+            DomainSpanCandidate.Origin.NAMED_MEMBER
+        ) {
+            return NamedMembers.admitted(matches, candidate)
+        }
         val scope = candidate.dualReadingScope
         return matches.filter { m ->
             if (m.source != SourceTag.MEMBER) return@filter true
