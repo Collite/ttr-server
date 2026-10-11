@@ -48,7 +48,8 @@ def test_an_imperative_says_it_is_one():
         ("Zobraz nejlepších 10 prodejen podle tržeb", "Zobraz"),
         ("Ukaž prvních pět zákazníků s nejvyššími náklady", "Ukaž"),
         (
-            "Vypiš několik největších faktur s DPH z e-shopu firmy Marvy Oil, s.r.o.",
+            "Vypiš několik největších faktur s DPH z e-shopu "
+            "firmy Bramblewick Kids, s.r.o.",
             "Vypiš",
         ),
         ("Seřaď prodejny sestupně, zobrazit tabulku a nezobrazovat grafy.", "Seřaď"),
@@ -110,7 +111,7 @@ def test_a_quantifier_is_a_determiner_not_a_literal():
     assert tokens["Kolik"].feats["NumType"] == "Card"
     assert tokens["Kolik"].feats["PronType"] == "Int,Rel"
     several = _by_word(
-        "Vypiš několik největších faktur s DPH z e-shopu firmy Marvy Oil, s.r.o."
+        "Vypiš několik největších faktur s DPH z e-shopu firmy Bramblewick Kids, s.r.o."
     )
     assert (several["několik"].upos, several["několik"].feats["PronType"]) == (
         "DET",

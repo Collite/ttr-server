@@ -32,6 +32,9 @@ import org.tatrman.ttr.metadata.source.ModelSource
 import org.tatrman.ttr.metadata.source.ModelStorage
 import org.tatrman.ttr.metadata.source.SourceSnapshot
 import org.tatrman.veles.export.metadataExportRoutes
+import org.tatrman.veles.health.SourceLoadBoard
+import org.tatrman.veles.health.modelHealthRoutes
+import org.tatrman.veles.health.redactCredentials
 import org.tatrman.veles.read.velesReadRoutes
 // YamlImportSource was removed in Phase 2.1 — kantheon is TTR-only (see buildSourceFromConfig).
 import io.grpc.netty.shaded.io.grpc.netty.NettyServerBuilder
@@ -49,6 +52,7 @@ import io.micrometer.prometheusmetrics.PrometheusConfig
 import io.micrometer.prometheusmetrics.PrometheusMeterRegistry
 import io.opentelemetry.api.OpenTelemetry
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import shared.otel.OtelEndpointConfig
 import shared.otel.createOpenTelemetrySdk
 import kotlinx.coroutines.launch
@@ -90,6 +94,8 @@ fun Application.module(config: Config) {
     // Phase 09 B4 / DF-M16 — Prometheus meter registry. The metadata service was the only v1
     // service without `/metrics`; other services scrape from a comparable mount point.
     val meterRegistry = PrometheusMeterRegistry(PrometheusConfig.DEFAULT)
+    // ttr-server#180 — every configured source's loads, for /ready, /status and /metrics.
+    val loadBoard = SourceLoadBoard(meterRegistry)
 
     val registry = MetadataRegistry()
     val reconciler =
@@ -109,7 +115,7 @@ fun Application.module(config: Config) {
     // reconciled model keeps no such map, and package scoping must not guess it from the path.
     // The index serves a load once its model swaps in, so it is the registry's FIRST listener.
     val packageIndex = PackageIndex().commitOnSwap(registry)
-    val sourceSlots = buildSources(config, packageIndex)
+    val sourceSlots = buildSources(config, packageIndex, loadBoard)
     val refresher =
         MetadataRefresher(
             sources = sourceSlots.map { it.source },
@@ -118,9 +124,12 @@ fun Application.module(config: Config) {
             registry = registry,
         )
     launch(Dispatchers.IO) {
-        if (sourceSlots.isEmpty()) {
-            log.warn("No sources configured — metadata service will report not-ready")
-            return@launch
+        if (loadBoard.states().isEmpty()) {
+            log.error(
+                "No model source configured: METADATA_GIT_REMOTE_URI is empty and no other source is enabled. " +
+                    "Veles serves no model and /ready answers 503 until one is configured — set " +
+                    "METADATA_GIT_REMOTE_URI, METADATA_GIT_BRANCH and METADATA_GIT_SUBDIR.",
+            )
         }
         val snapshots = sourceSlots.map { runCatching { it.source.load() }.getOrElse { emptySnapshotForError(it) } }
         refresher.recordInitial(snapshots)
@@ -135,6 +144,7 @@ fun Application.module(config: Config) {
             result.errors.size,
         )
         log.logModelLoadIssues(result.errors, result.warnings)
+        retryUntilLoaded(loadBoard, refresher)
     }
 
     // Search feature — algorithm registry + per-language indexes. Holder
@@ -240,34 +250,8 @@ fun Application.module(config: Config) {
 
     routing {
         get("/health") { call.respond(buildJsonObject { put("status", "UP") }) }
-        get("/ready") {
-            val snap = registry.read()
-            if (snap == null) {
-                call.respond(
-                    io.ktor.http.HttpStatusCode.ServiceUnavailable,
-                    buildJsonObject { put("status", "NOT_READY") },
-                )
-            } else {
-                call.respond(
-                    buildJsonObject {
-                        put("status", "UP")
-                        put("model_version", snap.model.version.value)
-                    },
-                )
-            }
-        }
-        get("/status") {
-            val snap = registry.read()
-            call.respond(
-                buildJsonObject {
-                    put("service", "metadata")
-                    put("model_loaded", snap != null)
-                    put("model_version", snap?.model?.version?.value ?: "")
-                    put("object_count", snap?.graph?.size() ?: 0)
-                    put("queries_total", snap?.model?.queries?.size ?: 0)
-                },
-            )
-        }
+        // ttr-server#180 — /ready waits for the configured source; /status says what each source did.
+        modelHealthRoutes(registry, loadBoard)
         // Phase 09 B4 / DF-M16 — Prometheus scrape endpoint.
         get("/metrics") {
             call.respondText(meterRegistry.scrape(), ContentType.Text.Plain)
@@ -338,22 +322,36 @@ fun Application.module(config: Config) {
 internal data class SourceSlot(
     val id: String,
     val source: ModelSource,
+    /** What the source reads, credentials redacted — logged at startup and shown in `/status`. */
+    val description: String = "",
 )
 
 /**
- * The configured source slots, each recording its loads into [packageIndex] (ttr-server#111).
- * The wrapping lives here, not at the call site, so no slot can reach the refresher unrecorded.
+ * The configured source slots, each recording its loads into [packageIndex] (ttr-server#111) and,
+ * apart from the built-in stock roles, into [loadBoard] (ttr-server#180). The wrapping lives here,
+ * not at the call site, so no slot can reach the refresher unrecorded.
  */
 internal fun buildSources(
     config: Config,
     packageIndex: PackageIndex,
-): List<SourceSlot> = configuredSources(config).map { it.copy(source = packageIndex.recording(it.id, it.source)) }
+    loadBoard: SourceLoadBoard = SourceLoadBoard(),
+): List<SourceSlot> =
+    configuredSources(config).map { slot ->
+        val recorded =
+            if (slot.id == BuiltinStockSource.SOURCE_ID) {
+                slot.source
+            } else {
+                log.info("Model source '{}': {}", slot.id, slot.description)
+                loadBoard.recording(slot.id, slot.description, slot.source)
+            }
+        slot.copy(source = packageIndex.recording(slot.id, recorded))
+    }
 
 private fun configuredSources(config: Config): List<SourceSlot> {
     // Phase 2.2 — the built-in stock-roles source always loads first. Its
     // priority is Int.MAX_VALUE so it wins all merge collisions; protected
     // qnames are enforced separately by the reconciler regardless of priority.
-    val builtins = listOf(SourceSlot(BuiltinStockSource.SOURCE_ID, BuiltinStockSource()))
+    val builtins = listOf(SourceSlot(BuiltinStockSource.SOURCE_ID, BuiltinStockSource(), "built-in stock roles"))
     if (!config.hasPath("metadata.sources")) return builtins
     val sourcesConfig = config.getConfig("metadata.sources")
     val configured =
@@ -366,14 +364,19 @@ private fun configuredSources(config: Config): List<SourceSlot> {
 
             // A source may name another (possibly `enabled = false`) source block as its
             // `fallback`. The two are served mutually-exclusively via FallbackSource — never
-            // merged — so the bundled fallback can't resurrect repo-deleted defs. Used for the
-            // GitHub model source (primary) with the bundled resources model as fallback.
+            // merged — so a stale fallback can't resurrect defs the primary has deleted.
+            // ttr-server#180: no source has a fallback unless one is configured explicitly
+            // (`METADATA_GIT_FALLBACK` for the git source); Veles bundles no model of its own.
             val fallbackId = if (sub.hasPath("fallback")) sub.getString("fallback").ifBlank { null } else null
             if (fallbackId == null) {
-                return@mapNotNull buildSourceFromConfig(sub, id)?.let { SourceSlot(id, it) }
+                return@mapNotNull buildSourceFromConfig(sub, id)?.let { SourceSlot(id, it, describeSource(sub)) }
             }
 
-            val fallbackSource = buildReferencedSource(sourcesConfig, fallbackId)
+            val fallbackSub = referencedSourceConfig(sourcesConfig, fallbackId)
+            val fallbackSource =
+                fallbackSub?.let { fs ->
+                    buildSourceFromConfig(fs, if (fs.hasPath("id")) fs.getString("id") else fallbackId)
+                }
             val primary = buildSourceFromConfig(sub, id)
             when {
                 fallbackSource == null -> {
@@ -382,30 +385,35 @@ private fun configuredSources(config: Config): List<SourceSlot> {
                         id,
                         fallbackId,
                     )
-                    primary?.let { SourceSlot(id, it) }
+                    primary?.let { SourceSlot(id, it, describeSource(sub)) }
                 }
-                primary != null -> SourceSlot(id, FallbackSource(id, primary, fallbackSource))
+                primary != null ->
+                    SourceSlot(
+                        id,
+                        FallbackSource(id, primary, fallbackSource),
+                        "${describeSource(sub)}; fallback '$fallbackId': ${describeSource(fallbackSub)}",
+                    )
                 else -> {
-                    // Primary couldn't be built (e.g. git `remote-uri` blank in local/CI) — load
-                    // the bundled fallback directly so the service still has a model.
+                    // Primary unbuildable (e.g. a blank git `remote-uri`) and a fallback was asked
+                    // for explicitly — serve the fallback as the source.
                     log.info(
-                        "primary source '{}' unconfigured — loading bundled fallback '{}' directly",
+                        "primary source '{}' unconfigured — loading its configured fallback '{}' directly",
                         id,
                         fallbackId,
                     )
-                    SourceSlot(id, fallbackSource)
+                    SourceSlot(id, fallbackSource, "fallback '$fallbackId': ${describeSource(fallbackSub)}")
                 }
             }
         }
     return builtins + configured
 }
 
-/** Build the source named [refId] (matched by block key or `id`), ignoring its `enabled` flag —
- *  used to materialise a block referenced only as another source's `fallback`. */
-private fun buildReferencedSource(
+/** The block named [refId] (matched by block key or `id`) — used to materialise a block
+ *  referenced only as another source's `fallback`, whatever its own `enabled` flag says. */
+private fun referencedSourceConfig(
     sourcesConfig: Config,
     refId: String,
-): ModelSource? {
+): Config? {
     val key =
         sourcesConfig.root().keys.firstOrNull { k ->
             val sub = sourcesConfig.getConfig(k)
@@ -415,9 +423,46 @@ private fun buildReferencedSource(
         log.warn("fallback source id '{}' not found among metadata.sources", refId)
         return null
     }
-    val sub = sourcesConfig.getConfig(key)
-    val id = if (sub.hasPath("id")) sub.getString("id") else key
-    return buildSourceFromConfig(sub, id)
+    return sourcesConfig.getConfig(key)
+}
+
+/** One line saying what a `metadata.sources.<id>` block reads, with any URI credentials redacted. */
+private fun describeSource(sub: Config): String {
+    fun str(path: String) = if (sub.hasPath(path)) sub.getString(path) else ""
+    return when (val type = str("type")) {
+        "git" -> {
+            val branch = str("branch").ifBlank { "main" }
+            val subdirectory = str("subdirectory").ifBlank { "/" }
+            "git ${redactCredentials(str("remote-uri"))} (branch $branch, sub-path $subdirectory)"
+        }
+        "filesystem" -> "filesystem ${str("path")}"
+        "resources" -> "classpath ${str("path")}"
+        else -> type
+    }
+}
+
+/**
+ * ttr-server#180 — until every configured source has loaded once, retry the ones that have not,
+ * backing off from 5 s to 60 s. Without this a source that failed at boot (the network not up
+ * yet, a token not mounted yet) would wait for the next scheduled refresh — five minutes by
+ * default, or never with the scheduler off — while `/ready` answers 503.
+ */
+private suspend fun retryUntilLoaded(
+    loadBoard: SourceLoadBoard,
+    refresher: MetadataRefresher,
+) {
+    var backoffSeconds = 5L
+    while (loadBoard.notLoaded().isNotEmpty()) {
+        val pending = loadBoard.notLoaded()
+        log.warn(
+            "Model source(s) {} not loaded yet — retrying in {}s (see /status for the last error)",
+            pending,
+            backoffSeconds,
+        )
+        delay(backoffSeconds * 1000)
+        pending.forEach { id -> runCatching { refresher.refresh(sourceId = id, force = true) } }
+        backoffSeconds = minOf(backoffSeconds * 2, 60L)
+    }
 }
 
 /** Construct a [ModelSource] from one `metadata.sources.<id>` block (storage × parser-kind),

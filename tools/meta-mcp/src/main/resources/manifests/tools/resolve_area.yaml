@@ -2,9 +2,9 @@ capability_id: "meta.resolve_area:v1"
 category: "meta"
 version: "1.0.0"
 description: |
-  Golem P4 S4.2 — resolve a subject area (e.g. 'accounting') to the package
+  Golem P4 S4.2 — resolve a subject area (e.g. 'hartland') to the package
   set it spans, plus its description and tags. A Golem Shem declaring
-  `areas: [accounting]` uses this to expand the area into the concrete Veles
+  `areas: [hartland]` uses this to expand the area into the concrete Veles
   packages it must pull via get_model. `found=false` when the area is unknown.
 service_endpoint: "http://veles-mcp.kantheon.svc.cluster.local:7262"
 search_tags:

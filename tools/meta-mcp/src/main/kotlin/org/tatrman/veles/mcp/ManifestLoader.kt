@@ -32,7 +32,7 @@ internal class ManifestLoader {
     private val mapper =
         com.fasterxml.jackson.databind.ObjectMapper(YAMLFactory()).apply {
             registerModule(KotlinModule.Builder().build())
-            // The manifests use snake_case keys (matching ai-platform's
+            // The manifests use snake_case keys (matching the predecessor platform's
             // `tools/capabilities-mcp` convention); map them to the
             // camelCase Kotlin data-class properties.
             propertyNamingStrategy =

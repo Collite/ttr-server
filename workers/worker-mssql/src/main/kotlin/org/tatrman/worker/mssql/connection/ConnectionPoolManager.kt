@@ -17,7 +17,7 @@ import java.util.concurrent.ConcurrentHashMap
  * Configuration shape (HOCON `connections` block in application.conf):
  *
  *     connections {
- *       df-test-fin {
+ *       mssql-finance {
  *         host = "..."
  *         port = 1433
  *         database = "..."
@@ -165,7 +165,7 @@ class ConnectionPoolManager(
             if (!config.hasPath("connections")) return ConnectionPoolManager(emptyMap())
             val root = config.getConfig("connections")
             // A connection block whose `host` is absent/blank is INERT — skipped, not an error.
-            // This lets a shipped, env-driven template block (e.g. `df-test { host = ${?MSSQL_DB_HOST} … }`)
+            // This lets a shipped, env-driven template block (e.g. `mssql-default { host = ${?MSSQL_DB_HOST} … }`)
             // stay dormant when the env is unset (fixture deployments boot with zero connections) and
             // activate only where an overlay supplies MSSQL_DB_HOST/… (charon/architecture §6).
             val map =

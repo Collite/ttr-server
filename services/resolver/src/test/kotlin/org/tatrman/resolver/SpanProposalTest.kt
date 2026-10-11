@@ -32,14 +32,14 @@ class SpanProposalTest :
     StringSpec({
 
         // The declared registry the spike's anchored gating uses. `pobočka` is the
-        // er.branch lexicon term (the anchor); `středisko` is the QSTRED_DF anchor.
+        // er.branch lexicon term (the anchor); `středisko` is the STREDISKO anchor.
         val branch =
             ResolverEntityType(ref = "er.branch", categories = listOf("er.branch"), anchors = listOf("pobočka"))
         val product = ResolverEntityType(ref = "er.product", categories = listOf("er.product"), anchors = emptyList())
-        val qstred =
+        val stredisko =
             ResolverEntityType(
-                ref = "er.qstred_df",
-                categories = listOf("er.qstred_df.kod", "er.qstred_df.nazev"),
+                ref = "er.stredisko",
+                categories = listOf("er.stredisko.kod", "er.stredisko.nazev"),
                 anchors = listOf("středisko"),
             )
 
@@ -279,7 +279,7 @@ class SpanProposalTest :
                 false
         }
 
-        "anchored value: `středisko` governing `QT ORLAK` proposes the value gated to QSTRED_DF only" {
+        "anchored value: `středisko` governing `QT ORLAK` proposes the value gated to STREDISKO only" {
             // "Zobraz středisko QT ORLAK" — 0 Zobraz(root) 1 středisko(obj,lemma) 2 QT(PROPN,flat→4)
             // 3 ORLAK(PROPN,nmod→2)
             val parse =
@@ -293,14 +293,14 @@ class SpanProposalTest :
                             tok("ORLAK", 20, 25, "ORLAK", "PROPN", 2, "nmod"),
                         ),
                     ).build()
-            val cands = SpanProposal.proposeDomainSpans(parse, listOf(qstred, branch))
+            val cands = SpanProposal.proposeDomainSpans(parse, listOf(stredisko, branch))
             val value =
                 cands.single {
                     it.text == "QT ORLAK" && it.origin == DomainSpanCandidate.Origin.GOVERNED_VALUE
                 }
             value.anchored shouldBe true
-            value.gatedEntityRefs shouldBe listOf("er.qstred_df")
-            value.categories shouldContainExactlyInAnyOrder listOf("er.qstred_df.kod", "er.qstred_df.nazev")
+            value.gatedEntityRefs shouldBe listOf("er.stredisko")
+            value.categories shouldContainExactlyInAnyOrder listOf("er.stredisko.kod", "er.stredisko.nazev")
 
             // A-MH-1b: the governed scoping above is unchanged, and the span now ALSO carries an
             // open sibling. It is not a second reading of the value — it is the question "is this
@@ -311,7 +311,7 @@ class SpanProposalTest :
                     it.text == "QT ORLAK" && it.origin == DomainSpanCandidate.Origin.OPEN_VALUE
                 }
             open.anchored shouldBe false
-            open.gatedEntityRefs shouldContainExactlyInAnyOrder listOf("er.qstred_df", "er.branch")
+            open.gatedEntityRefs shouldContainExactlyInAnyOrder listOf("er.stredisko", "er.branch")
         }
 
         "no over-generation: a common noun that is neither an anchor nor a proper noun proposes nothing" {
@@ -325,7 +325,7 @@ class SpanProposalTest :
                             tok("záznamy", 7, 14, "záznam", "NOUN", 1, "obj"),
                         ),
                     ).build()
-            SpanProposal.proposeDomainSpans(parse, listOf(branch, product, qstred)) shouldBe emptyList()
+            SpanProposal.proposeDomainSpans(parse, listOf(branch, product, stredisko)) shouldBe emptyList()
         }
 
         // --- MS-P3·S1 — the same-span multi-owner merge (contracts §8.2, design.md §10.2) ----
@@ -444,7 +444,7 @@ class SpanProposalTest :
         }
 
         "MS invariant: no two ANCHOR_PHRASE candidates ever share a span (contracts §8.2)" {
-            val registry = listOf(branch, product, qstred, sales, salesAmount)
+            val registry = listOf(branch, product, stredisko, sales, salesAmount)
             listOf(hero, sharedAnchor, anchorGoverningValue).forEach { parse ->
                 val spans =
                     SpanProposal
@@ -466,7 +466,7 @@ class SpanProposalTest :
                             tok("MAJETEK", 9, 16, "", "", 0, ""),
                         ),
                     ).build()
-            val cands = SpanProposal.proposeDomainSpans(parse, listOf(branch, product, qstred))
+            val cands = SpanProposal.proposeDomainSpans(parse, listOf(branch, product, stredisko))
             cands shouldNotBe emptyList<DomainSpanCandidate>()
             cands.map { it.text } shouldContain "MAJETEK"
             cands.all { !it.anchored } shouldBe true

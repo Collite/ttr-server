@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Kantheon-local stand-in for the cross-platform `ResponseMessage` referenced by
-// AGENTS.md §6.1 / Rule 6. ai-platform defines a `ResponseMessage` inside
+// AGENTS.md §6.1 / Rule 6. the predecessor platform defines a `ResponseMessage` inside
 // `com.tatrman.metadata.v1` that carries a metadata-domain `ObjectRef`, so it
 // is not portable to non-metadata services.
 //
-// TODO(cross-repo): when ai-platform extracts a domain-free
+// TODO(cross-repo): when the predecessor platform extracts a domain-free
 // `com.tatrman.common.v1.ResponseMessage`, swap kantheon imports to use it
 // and delete this file.
 syntax = "proto3";

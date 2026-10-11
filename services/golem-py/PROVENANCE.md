@@ -44,21 +44,21 @@ scoring input, never a source.
 
 | Source | Why |
 |---|---|
-| the **legacy `ai-platform` repository**, in whole or in part | the thing being independently reimplemented |
+| the **legacy predecessor platform's repository**, in whole or in part | the thing being independently reimplemented |
 | **`EXAMPLES.md`'s "Python + LangGraph agent" row** and anything it points at | it is a pointer *into* the legacy agent |
 | any legacy **prompt text**, **eval fixture**, or **agent config** | expression, not interface |
 | the legacy Golem's **conversation corpora** | fixtures are `hartland_cz` only |
 
 ## Compliance record
 
-- **2026-08-02 · RV-P0.3, this spike.** Clean-room observed. The legacy `ai-platform`
+- **2026-08-02 · RV-P0.3, this spike.** Clean-room observed. The legacy predecessor platform's
   repository was **not opened at any point** in the session that produced this
   directory — not read, not searched, not listed. `EXAMPLES.md` was not opened.
   Framework API came from context7 (`/pydantic/pydantic-ai`) and from the installed
   package's own behaviour under test. The contract mirror in `agent.py` was typed from
   `contracts.md` §1. The fixture question is hero H1 from `design.md`.
 - **2026-08-06 · RV-P4.1, the graduation into `services/golem-py/`.** Clean-room
-  observed. The legacy `ai-platform` repository was not opened, listed or searched in
+  observed. The legacy predecessor platform's repository was not opened, listed or searched in
   the session that produced this service; `EXAMPLES.md` was not opened. What WAS read:
   `contracts.md` (§1 lattice, §3 ladder, §6 Golem surfaces), `design.md` v3.1, the
   shared `.proto` tree, this repo's own Python conventions (`services/nlp`), and the
@@ -68,7 +68,7 @@ scoring input, never a source.
   MAY-consult list as `hartland_cz`-lineage estate fixtures. Framework behaviour was
   established by inspecting the installed `pydantic-graph` package under test.
 - **2026-09-25 · LP review-103 L9 (VERBATIM values).** Clean-room observed. The legacy
-  `ai-platform` repository was not opened, listed or searched in the session that made this
+  predecessor-platform repository was not opened, listed or searched in the session that made this
   change; `EXAMPLES.md` was not opened. What WAS read: the shared `.proto` tree
   (`ValueFinding.verbatim_text` / `predicate_ref`, `VALUE_KIND_VERBATIM`), the resolver's
   `LatticeAssembler` (the producer of the VERBATIM value, this repo), the LP `contracts.md`

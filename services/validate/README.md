@@ -1,8 +1,8 @@
 # validate
 
-> **forked-from:** `ai-platform@2575b923dca521fea0e3156257e4b779f02a6ed4` (`services/validator/`), tag `kantheon-fork-point`, forked 2026-06-14 (Stage 3.1).
-> **also forked-from:** `ai-platform@2575b923dca521fea0e3156257e4b779f02a6ed4` (`infra/sql-security/`), the policy engine folded in-process (Stage 3.2, 2026-06-14).
-> Maintained independently since the fork; do not assume parity with the ai-platform originals.
+> **forked-from:** the legacy predecessor platform (`services/validator/`), forked 2026-06-14 (Stage 3.1).
+> **also forked-from:** the legacy predecessor platform (`infra/sql-security/`), the policy engine folded in-process (Stage 3.2, 2026-06-14).
+> Maintained independently since the fork; do not assume parity with the originals.
 
 **validate** — the validator for kantheon, the single mandatory checkpoint between
 "what the user wanted" and "what runs against data". It receives a physical

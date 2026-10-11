@@ -18,7 +18,7 @@
         "recall": 0.667,
         "f1": 0.571
       },
-      "ucetnictvi": {
+      "entities_only": {
         "tp": 3,
         "fp": 11,
         "fn": 2,
@@ -39,7 +39,7 @@
         "recall": 0.833,
         "f1": 0.909
       },
-      "ucetnictvi": {
+      "entities_only": {
         "tp": 4,
         "fp": 4,
         "fn": 1,
@@ -54,42 +54,42 @@
     "code_vs_name": [
       {
         "probe": "FAP",
-        "expect_entity": "QTYPDOK",
+        "expect_entity": "TYP_DOKLADU",
         "kind": "code",
         "decision": "bind",
-        "top": "FAP(QTYPDOK,code) 1.000",
+        "top": "FAP(TYP_DOKLADU,code) 1.000",
         "correct": true
       },
       {
         "probe": "QT ORLAK",
-        "expect_entity": "QSTRED_DF",
+        "expect_entity": "STREDISKO",
         "kind": "name",
         "decision": "bind",
-        "top": "QT ORLAK(QSTRED_DF,name) 1.050",
+        "top": "QT ORLAK(STREDISKO,name) 1.050",
         "correct": true
       },
       {
         "probe": "MAJETEK",
-        "expect_entity": "QXXUKAZMU",
+        "expect_entity": "UKAZATEL",
         "kind": "code_or_name",
         "decision": "bind_entity",
-        "top": "MAJETEK(QXXUKAZMU,name) 1.000",
+        "top": "MAJETEK(UKAZATEL,name) 1.000",
         "correct": true
       },
       {
         "probe": "Kancelář QT",
-        "expect_entity": "QSTRED_DF",
+        "expect_entity": "STREDISKO",
         "kind": "name",
         "decision": "bind_entity",
-        "top": "Kancelář AD(QSTRED_DF,name) 1.000",
+        "top": "Kancelář AD(STREDISKO,name) 1.000",
         "correct": true
       },
       {
         "probe": "QT KANCELAR",
-        "expect_entity": "QXXUKAZMU",
+        "expect_entity": "UKAZATEL",
         "kind": "name",
         "decision": "bind",
-        "top": "QT KANCELAR(QXXUKAZMU,name) 1.050",
+        "top": "QT KANCELAR(UKAZATEL,name) 1.050",
         "correct": true
       }
     ]
@@ -99,8 +99,8 @@
       "q": "Vypiš účetní záznamy pro středisko QT ORLAK za období 2026.03 podle účetní hodnoty",
       "gold": {
         "qt orlak": [
-          "db.dbo.QSTRED_DF.KOD_STR",
-          "db.dbo.QSTRED_DF.NAZEV_STR"
+          "db.dbo.STREDISKO.KOD",
+          "db.dbo.STREDISKO.NAZEV"
         ]
       },
       "produced": {}
@@ -109,14 +109,14 @@
       "q": "Zobraz středisko Kancelář AD",
       "gold": {
         "kancelář ad": [
-          "db.dbo.QSTRED_DF.KOD_STR",
-          "db.dbo.QSTRED_DF.NAZEV_STR"
+          "db.dbo.STREDISKO.KOD",
+          "db.dbo.STREDISKO.NAZEV"
         ]
       },
       "produced": {
         "kancelář": [
-          "db.dbo.QSTRED_DF.KOD_STR",
-          "db.dbo.QSTRED_DF.NAZEV_STR"
+          "db.dbo.STREDISKO.KOD",
+          "db.dbo.STREDISKO.NAZEV"
         ]
       }
     },
@@ -124,14 +124,14 @@
       "q": "Náklady ukazatele MAJETEK za 2025.12",
       "gold": {
         "majetek": [
-          "db.dbo.QXXUKAZMU.KOD_UKAZMU",
-          "db.dbo.QXXUKAZMU.NAZEV_UKAZMU"
+          "db.dbo.UKAZATEL.KOD",
+          "db.dbo.UKAZATEL.NAZEV"
         ]
       },
       "produced": {
         "majetek": [
-          "db.dbo.QXXUKAZMU.KOD_UKAZMU",
-          "db.dbo.QXXUKAZMU.NAZEV_UKAZMU"
+          "db.dbo.UKAZATEL.KOD",
+          "db.dbo.UKAZATEL.NAZEV"
         ]
       }
     },
@@ -139,14 +139,14 @@
       "q": "Doklady typu FAP za leden 2026",
       "gold": {
         "fap": [
-          "db.dbo.QTYPDOK.NAZEV_TYPDOK",
-          "db.dbo.QTYPDOK.TYP_DOK"
+          "db.dbo.TYP_DOKLADU.NAZEV",
+          "db.dbo.TYP_DOKLADU.KOD"
         ]
       },
       "produced": {
         "typu fap": [
-          "db.dbo.QTYPDOK.NAZEV_TYPDOK",
-          "db.dbo.QTYPDOK.TYP_DOK"
+          "db.dbo.TYP_DOKLADU.NAZEV",
+          "db.dbo.TYP_DOKLADU.KOD"
         ]
       }
     },
@@ -154,22 +154,22 @@
       "q": "Středisko SM ORLAK a ukazatel Majetek pobočky",
       "gold": {
         "sm orlak": [
-          "db.dbo.QSTRED_DF.KOD_STR",
-          "db.dbo.QSTRED_DF.NAZEV_STR"
+          "db.dbo.STREDISKO.KOD",
+          "db.dbo.STREDISKO.NAZEV"
         ],
         "majetek pobočky": [
-          "db.dbo.QXXUKAZMU.KOD_UKAZMU",
-          "db.dbo.QXXUKAZMU.NAZEV_UKAZMU"
+          "db.dbo.UKAZATEL.KOD",
+          "db.dbo.UKAZATEL.NAZEV"
         ]
       },
       "produced": {
         "sm orlak": [
-          "db.dbo.QSTRED_DF.KOD_STR",
-          "db.dbo.QSTRED_DF.NAZEV_STR"
+          "db.dbo.STREDISKO.KOD",
+          "db.dbo.STREDISKO.NAZEV"
         ],
         "majetek pobočky": [
-          "db.dbo.QXXUKAZMU.KOD_UKAZMU",
-          "db.dbo.QXXUKAZMU.NAZEV_UKAZMU"
+          "db.dbo.UKAZATEL.KOD",
+          "db.dbo.UKAZATEL.NAZEV"
         ]
       }
     },
@@ -179,35 +179,35 @@
       "produced": {}
     }
   ],
-  "ucetnictvi_detail_anchored": [
+  "entities_only_detail_anchored": [
     {
       "q": "Vypiš účetní záznamy pro středisko QT ORLAK za období 2026.03",
       "want": [
-        "QSTRED_DF"
+        "STREDISKO"
       ],
       "got": [
-        "QSTRED_DF"
+        "STREDISKO"
       ],
       "binds": [
-        "QT ORLAK->QSTRED_DF(1.05)"
+        "QT ORLAK->STREDISKO(1.05)"
       ]
     },
     {
       "q": "Vypiš účetní záznamy pro středisko Kancelář QT za období 2026.03",
       "want": [
-        "QSTRED_DF"
+        "STREDISKO"
       ],
       "got": [
-        "QSTRED_DF"
+        "STREDISKO"
       ],
       "binds": [
-        "Kancelář QT období 2026.03->QSTRED_DF(0.51)"
+        "Kancelář QT období 2026.03->STREDISKO(0.51)"
       ]
     },
     {
       "q": "Vypiš účetní záznamy pro ukazatel QT KANCELAR za období 2026.03",
       "want": [
-        "QXXUKAZMU"
+        "UKAZATEL"
       ],
       "got": [],
       "binds": []
@@ -215,25 +215,25 @@
     {
       "q": "Vypiš účetní záznamy pro ukazatel Kancelar QT za období 2026.03",
       "want": [
-        "QXXUKAZMU"
+        "UKAZATEL"
       ],
       "got": [
-        "QXXUKAZMU"
+        "UKAZATEL"
       ],
       "binds": [
-        "Kancelar->QXXUKAZMU(1.00)"
+        "Kancelar->UKAZATEL(1.00)"
       ]
     },
     {
       "q": "Zobraz vývoj nákladů pro středisko QT ORLAK za rok 2026",
       "want": [
-        "QSTRED_DF"
+        "STREDISKO"
       ],
       "got": [
-        "QSTRED_DF"
+        "STREDISKO"
       ],
       "binds": [
-        "QT ORLAK rok 2026->QSTRED_DF(0.54)"
+        "QT ORLAK rok 2026->STREDISKO(0.54)"
       ]
     },
     {
@@ -253,7 +253,7 @@
       "awaiting": true,
       "withheld": false,
       "pinned": [
-        "Praha->QSTRED_DF"
+        "Praha->STREDISKO"
       ],
       "entity_only": []
     },
@@ -262,7 +262,7 @@
       "awaiting": true,
       "withheld": false,
       "pinned": [
-        "VY->QSTRED_DF"
+        "VY->STREDISKO"
       ],
       "entity_only": []
     },
@@ -271,7 +271,7 @@
       "awaiting": true,
       "withheld": false,
       "pinned": [
-        "Náklady->QXXUKAZMU"
+        "Náklady->UKAZATEL"
       ],
       "entity_only": []
     },
@@ -281,7 +281,7 @@
       "withheld": true,
       "pinned": [],
       "entity_only": [
-        "QT->QSTRED_DF"
+        "QT->STREDISKO"
       ]
     },
     {
@@ -289,7 +289,7 @@
       "awaiting": true,
       "withheld": false,
       "pinned": [
-        "Mzdy->QXXUKAZMU"
+        "Mzdy->UKAZATEL"
       ],
       "entity_only": []
     }
@@ -298,95 +298,95 @@
     {
       "q": "Který zákazník má fakturu číslo 12345?",
       "spurious": [
-        "fakturu číslo->QTYPDOK(0.55)"
+        "fakturu číslo->TYP_DOKLADU(0.55)"
       ]
     },
     {
       "q": "Zobraz všechny faktury od zákazníka Microsoft",
       "spurious": [
-        "faktury->QTYPDOK(1.00)"
+        "faktury->TYP_DOKLADU(1.00)"
       ]
     },
     {
       "q": "Kde sídlí dodavatel ACME Corp?",
       "spurious": [
-        "Corp->QXXUKAZMU(0.50)"
+        "Corp->UKAZATEL(0.50)"
       ]
     },
     {
       "q": "Kolik faktur má zákazník Samsung?",
       "spurious": [
-        "faktur->QTYPDOK(1.00)"
+        "faktur->TYP_DOKLADU(1.00)"
       ]
     },
     {
       "q": "Platby od zákazníka Google za Q1 2024",
       "spurious": [
-        "Platby->QSTRED_DF(0.50)"
+        "Platby->STREDISKO(0.50)"
       ]
     },
     {
       "q": "Smlouvy s platností do konce roku 2024",
       "spurious": [
-        "roku->QTYPDOK(0.67)",
-        "konce->QSTRED_DF(0.50)"
+        "roku->TYP_DOKLADU(0.67)",
+        "konce->STREDISKO(0.50)"
       ]
     },
     {
       "q": "Pošli fakturu na adresu Alfa Corp",
       "spurious": [
-        "fakturu->QTYPDOK(1.00)",
-        "adresu->QXXUKAZMU(0.50)",
-        "Corp->QXXUKAZMU(0.50)"
+        "fakturu->TYP_DOKLADU(1.00)",
+        "adresu->UKAZATEL(0.50)",
+        "Corp->UKAZATEL(0.50)"
       ]
     },
     {
       "q": "Jaká je celková suma objednávek za březen?",
       "spurious": [
-        "suma->QSTRED_DF(0.50)"
+        "suma->STREDISKO(0.50)"
       ]
     },
     {
       "q": "Zobraz historii plateb zákazníka Netflix",
       "spurious": [
-        "plateb->QSTRED_DF(0.50)"
+        "plateb->STREDISKO(0.50)"
       ]
     },
     {
       "q": "Kontakty na obchodního partnera Meta",
       "spurious": [
-        "partnera->QTYPDOK(0.50)",
-        "Meta->QXXUKAZMU(0.50)"
+        "partnera->TYP_DOKLADU(0.50)",
+        "Meta->UKAZATEL(0.50)"
       ]
     },
     {
       "q": "Platby přijaté v červenci 2024",
       "spurious": [
-        "Platby přijaté->QTYPDOK(0.66)"
+        "Platby přijaté->TYP_DOKLADU(0.66)"
       ]
     },
     {
       "q": "EAN kód produktu Samsung Galaxy S24",
       "spurious": [
-        "Galaxy->QXXUKAZMU(0.57)"
+        "Galaxy->UKAZATEL(0.57)"
       ]
     },
     {
       "q": "Město dodání pro objednávku 54321",
       "spurious": [
-        "dodání->QTYPDOK(0.50)"
+        "dodání->TYP_DOKLADU(0.50)"
       ]
     },
     {
       "q": "Kolik dnů je po splatnosti faktura 11111?",
       "spurious": [
-        "splatnosti faktura->QTYPDOK(0.59)"
+        "splatnosti faktura->TYP_DOKLADU(0.59)"
       ]
     },
     {
       "q": "Seznam poboček v Moravskoslezském kraji",
       "spurious": [
-        "Seznam poboček->QXXUKAZMU(0.53)"
+        "Seznam poboček->UKAZATEL(0.53)"
       ]
     }
   ]

@@ -23,19 +23,19 @@ class GetModelSpec :
 
         val fixtureRoot: Path =
             Path
-                .of(checkNotNull(this::class.java.classLoader.getResource("model-ttr/ucetnictvi")).toURI())
+                .of(checkNotNull(this::class.java.classLoader.getResource("model-seed/returns")).toURI())
                 .parent
 
         fun service(): MetadataServiceImpl {
             val source =
                 FileBasedSource(
-                    sourceId = "ucetnictvi",
+                    sourceId = "model-seed",
                     priority = 100,
-                    storage = LocalFsStorage(id = "ucetnictvi", rootPath = fixtureRoot),
+                    storage = LocalFsStorage(id = "model-seed", rootPath = fixtureRoot),
                 )
             val reconciler =
                 ModelReconciler(
-                    ModelDescriptor(id = "test", name = "test", description = "ucetnictvi fixture"),
+                    ModelDescriptor(id = "test", name = "test", description = "Hartland seed fixture"),
                 )
             val snapshot = source.load()
             val result = reconciler.reconcile(listOf(snapshot))
@@ -44,13 +44,31 @@ class GetModelSpec :
             return MetadataServiceImpl(registry, packageIndex = servedIndex(snapshot))
         }
 
-        "GetModel(packages=[ucetnictvi]) returns non-empty ModelBundle" {
+        // The TPC-DS seed lives in its own tree: its tables share their names with the Hartland
+        // slice above (both are TPC-DS), and one model holds one definition per qualified name.
+        fun tpcdsService(): MetadataServiceImpl {
+            val root: Path =
+                Path.of(checkNotNull(this::class.java.classLoader.getResource("model-tpcds/tpcds")).toURI()).parent
+            val source =
+                FileBasedSource(
+                    sourceId = "model-tpcds",
+                    priority = 100,
+                    storage = LocalFsStorage(id = "model-tpcds", rootPath = root),
+                )
+            val snapshot = source.load()
+            val result = ModelReconciler(ModelDescriptor(id = "test", name = "test")).reconcile(listOf(snapshot))
+            val registry = MetadataRegistry()
+            registry.swap(result.model, ModelGraph.build(result.model), result.warnings + result.errors)
+            return MetadataServiceImpl(registry, packageIndex = servedIndex(snapshot))
+        }
+
+        "GetModel(packages=[returns]) returns non-empty ModelBundle" {
             val svc = service()
             val resp =
                 svc.getModel(
                     GetModelRequest
                         .newBuilder()
-                        .addPackages("ucetnictvi")
+                        .addPackages("returns")
                         .setIncludeSearchHints(true)
                         .setIncludeRoles(true)
                         .setIncludeDrillMap(true)
@@ -64,7 +82,7 @@ class GetModelSpec :
             val queryCount = resp.model.patternQueriesList.size
             (queryCount >= 5) shouldBe true
             resp.model.packageVersionsList.size shouldBe 1
-            resp.model.packageVersionsList[0].packageName shouldBe "ucetnictvi"
+            resp.model.packageVersionsList[0].packageName shouldBe "returns"
             resp.model.packageVersionsList[0]
                 .contentHash
                 .isEmpty() shouldBe false
@@ -80,7 +98,7 @@ class GetModelSpec :
         // MetadataServiceImpl §260) is not the guard here; FK join behaviour is
         // exercised end-to-end by the Translate unparse + query smoke (T4/T7).
         "GetModel(packages=[tpcds]) loads the TPC-DS seven-table star" {
-            val svc = service()
+            val svc = tpcdsService()
             val resp =
                 svc.getModel(
                     GetModelRequest
@@ -107,7 +125,7 @@ class GetModelSpec :
         // separately by TpcdsQueryParseSpec, which runs the parse worker; the bare
         // reconcile here leaves queries PENDING.)
         "ListQueries(tags=[tpcds]) returns the four curated queries with their params" {
-            val svc = service()
+            val svc = tpcdsService()
             val r = svc.listQueries(ListQueriesRequest.newBuilder().addTags("tpcds").build())
             val byName = r.itemsList.associateBy { it.objectDescriptor.localName }
 
@@ -131,35 +149,34 @@ class GetModelSpec :
             }
         }
 
-        "entities list contains an entity with středisko alias when include_search_hints=true" {
+        "entities list contains an entity with the `distribution center` alias when include_search_hints=true" {
             val svc = service()
             val resp =
                 svc.getModel(
                     GetModelRequest
                         .newBuilder()
-                        .addPackages("ucetnictvi")
+                        .addPackages("returns")
                         .setIncludeSearchHints(true)
                         .build(),
                 )
 
-            val hasStrediskoAlias =
+            val hasDistributionCenterAlias =
                 resp.model.entitiesList.any { entity ->
-                    entity.detail.aliasesList.contains("středisko")
+                    entity.detail.aliasesList.contains("distribution center")
                 }
-            hasStrediskoAlias shouldBe true
+            hasDistributionCenterAlias shouldBe true
         }
 
-        "PF-1: tables includes ALL tables in the package, not just bound ones (incl. QUCTOBD)" {
-            // QUCTOBD and QUCTOSN_DF are declared in ucetnictvi/db.ttr but their entities
-            // (účetní_období, účet_účetní_osnovy) bind to *__filter sqlQueries instead of
-            // directly to these tables — so the tables are unbound from the ER perspective.
-            // PF-1 requires them in the bundle anyway.
+        "PF-1: tables includes ALL tables in the package, not just bound ones (incl. date_dim)" {
+            // date_dim and item are declared in returns/db.ttr but their entities (calendar,
+            // item) bind to *__filter sqlQueries instead of directly to these tables — so the
+            // tables are unbound from the ER perspective. PF-1 requires them in the bundle anyway.
             val svc = service()
             val resp =
                 svc.getModel(
                     GetModelRequest
                         .newBuilder()
-                        .addPackages("ucetnictvi")
+                        .addPackages("returns")
                         .build(),
                 )
 
@@ -169,10 +186,10 @@ class GetModelSpec :
                     .map { it.objectDescriptor.qualifiedName.name }
                     .toSet()
 
-            tableLocalNames shouldContain "QUCTOBD"
-            tableLocalNames shouldContain "QUCTOSN_DF"
+            tableLocalNames shouldContain "date_dim"
+            tableLocalNames shouldContain "item"
 
-            resp.model.tablesList.all { it.objectDescriptor.sourceFile.contains("/ucetnictvi/") } shouldBe true
+            resp.model.tablesList.all { it.objectDescriptor.sourceFile.contains("/returns/") } shouldBe true
         }
 
         "A3: namedQueries holds synthetic *__filter queries; patternQueries always have search.patterns" {
@@ -181,7 +198,7 @@ class GetModelSpec :
                 svc.getModel(
                     GetModelRequest
                         .newBuilder()
-                        .addPackages("ucetnictvi")
+                        .addPackages("returns")
                         .setIncludeSearchHints(true)
                         .build(),
                 )
@@ -190,8 +207,8 @@ class GetModelSpec :
                 resp.model.namedQueriesList
                     .map { it.objectDescriptor.qualifiedName.name }
                     .toSet()
-            namedLocal shouldContain "účet_účetní_osnovy__filter"
-            namedLocal shouldContain "účetní_období__filter"
+            namedLocal shouldContain "item__filter"
+            namedLocal shouldContain "calendar__filter"
 
             // Every pattern_query must have at least one search.patterns entry (that's the
             // discriminator) — even after locale/search-hint stripping, the partition
@@ -208,7 +225,7 @@ class GetModelSpec :
                 svc.getModel(
                     GetModelRequest
                         .newBuilder()
-                        .addPackages("ucetnictvi")
+                        .addPackages("returns")
                         .setIncludeSearchHints(false)
                         .setIncludeRoles(true)
                         .build(),
@@ -228,7 +245,7 @@ class GetModelSpec :
                 svc.getModel(
                     GetModelRequest
                         .newBuilder()
-                        .addPackages("ucetnictvi")
+                        .addPackages("returns")
                         .setIncludeRoles(false)
                         .build(),
                 )
@@ -242,7 +259,7 @@ class GetModelSpec :
                 svc.getModel(
                     GetModelRequest
                         .newBuilder()
-                        .addPackages("ucetnictvi")
+                        .addPackages("returns")
                         .setLocale("cs")
                         .setIncludeRoles(true)
                         .build(),
@@ -262,8 +279,8 @@ class GetModelSpec :
         }
 
         "A2: content_hash is stable across reloads of the same fixture, and a real sha256 hex" {
-            val a = service().getModel(GetModelRequest.newBuilder().addPackages("ucetnictvi").build())
-            val b = service().getModel(GetModelRequest.newBuilder().addPackages("ucetnictvi").build())
+            val a = service().getModel(GetModelRequest.newBuilder().addPackages("returns").build())
+            val b = service().getModel(GetModelRequest.newBuilder().addPackages("returns").build())
 
             a.model.packageVersionsList[0].contentHash shouldBe b.model.packageVersionsList[0].contentHash
             a.model.packageVersionsList[0]
@@ -279,7 +296,7 @@ class GetModelSpec :
                 svc.getModel(
                     GetModelRequest
                         .newBuilder()
-                        .addPackages("ucetnictvi")
+                        .addPackages("returns")
                         .build(),
                 )
 
@@ -297,19 +314,19 @@ class GetModelSpec :
                 svc.getModel(
                     GetModelRequest
                         .newBuilder()
-                        .addPackages("ucetnictvi")
+                        .addPackages("returns")
                         .build(),
                 )
 
-            // The detail pattern declares one parameter (id_ucetniho_zapisu); make sure
+            // The detail pattern declares one parameter (order_number); make sure
             // the bundle wire actually carries it.
             val detail =
                 resp.model.patternQueriesList.firstOrNull {
-                    it.objectDescriptor.qualifiedName.name == "ucetni_doklad_detail"
+                    it.objectDescriptor.qualifiedName.name == "return_detail"
                 }
-            checkNotNull(detail) { "ucetni_doklad_detail pattern should be in the bundle" }
+            checkNotNull(detail) { "return_detail pattern should be in the bundle" }
             detail.parametersList.size shouldBe 1
-            detail.parametersList[0].name shouldBe "id_ucetniho_zapisu"
+            detail.parametersList[0].name shouldBe "order_number"
             detail.sourceText.isNotEmpty() shouldBe true
         }
 
@@ -325,7 +342,7 @@ class GetModelSpec :
                 svc.getModel(
                     GetModelRequest
                         .newBuilder()
-                        .addPackages("ucetnictvi")
+                        .addPackages("returns")
                         .setIncludeDrillMap(false)
                         .build(),
                 )

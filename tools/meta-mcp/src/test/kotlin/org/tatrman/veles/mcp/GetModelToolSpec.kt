@@ -77,7 +77,7 @@ class GetModelToolSpec :
 
         // ----- C1.5: happy path with populated bundle -----
 
-        "get_model with packages=[ucetnictvi] returns a structured ModelBundle JSON" {
+        "get_model with packages=[hartland] returns a structured ModelBundle JSON" {
             val grpc = stubGrpc()
             val bundle =
                 ModelBundle
@@ -88,16 +88,16 @@ class GetModelToolSpec :
                             .setObjectDescriptor(
                                 ObjectDescriptor
                                     .newBuilder()
-                                    .setLocalName("ucetni_stredisko")
+                                    .setLocalName("store")
                                     .setQualifiedName(
                                         ProtoQname
                                             .newBuilder()
                                             .setSchemaCode(SchemaCode.ER)
                                             .setNamespace("entity")
-                                            .setName("ucetni_stredisko")
+                                            .setName("store")
                                             .build(),
                                     ).build(),
-                            ).setDetail(EntityDetail.newBuilder().setLabelPlural("střediska").build())
+                            ).setDetail(EntityDetail.newBuilder().setLabelPlural("Stores").build())
                             .build(),
                     ).addTables(
                         ModelBundleTable
@@ -105,33 +105,33 @@ class GetModelToolSpec :
                             .setObjectDescriptor(
                                 ObjectDescriptor
                                     .newBuilder()
-                                    .setLocalName("QSDOK")
+                                    .setLocalName("store_sales")
                                     .setQualifiedName(
                                         ProtoQname
                                             .newBuilder()
                                             .setSchemaCode(SchemaCode.DB)
                                             .setNamespace("dbo")
-                                            .setName("QSDOK")
+                                            .setName("store_sales")
                                             .build(),
-                                    ).setSourceFile("/ucetnictvi/db.ttr")
+                                    ).setSourceFile("/hartland/db/facts.ttrm")
                                     .build(),
                             ).build(),
                     ).addPackageVersions(
                         PackageVersion
                             .newBuilder()
-                            .setPackageName("ucetnictvi")
+                            .setPackageName("hartland")
                             .setContentHash("deadbeef")
                             .setLoadedAt("2026-05-28T00:00:00Z")
                             .build(),
                     ).build()
             coEvery {
-                grpc.getModel(listOf("ucetnictvi"), "", true, true, true)
+                grpc.getModel(listOf("hartland"), "", true, true, true)
             } returns GetModelResponse.newBuilder().setModel(bundle).build()
 
             val tools = Tools(grpc)
             val args =
                 buildJsonObject {
-                    put("packages", buildJsonArray { add(JsonPrimitive("ucetnictvi")) })
+                    put("packages", buildJsonArray { add(JsonPrimitive("hartland")) })
                 }
             val result = tools.getModelCallback(request(args))
 
@@ -141,7 +141,7 @@ class GetModelToolSpec :
             (structured["tables"] as JsonArray).size shouldBe 1
             (structured["packageVersions"] as JsonArray).size shouldBe 1
             val pv = (structured["packageVersions"] as JsonArray)[0] as JsonObject
-            pv["packageName"]?.jsonPrimitive?.content shouldBe "ucetnictvi"
+            pv["packageName"]?.jsonPrimitive?.content shouldBe "hartland"
             pv["contentHash"]?.jsonPrimitive?.content shouldBe "deadbeef"
         }
 
@@ -165,7 +165,7 @@ class GetModelToolSpec :
             val tools = Tools(grpc)
             val args =
                 buildJsonObject {
-                    put("packages", buildJsonArray { add(JsonPrimitive("ucetnictvi")) })
+                    put("packages", buildJsonArray { add(JsonPrimitive("hartland")) })
                     put("locale", JsonPrimitive("cs"))
                     put("include_search_hints", JsonPrimitive(false))
                     put("include_roles", JsonPrimitive(false))
@@ -173,7 +173,7 @@ class GetModelToolSpec :
                 }
             (tools.getModelCallback(request(args)).isError == true) shouldBe false
 
-            packagesSlot.captured shouldBe listOf("ucetnictvi")
+            packagesSlot.captured shouldBe listOf("hartland")
             localeSlot.captured shouldBe "cs"
             includeSearchHintsSlot.captured shouldBe false
             includeRolesSlot.captured shouldBe false
@@ -186,19 +186,19 @@ class GetModelToolSpec :
 
         "get_model derives package-led qnames from sourceFile (entities + relation endpoints)" {
             val grpc = stubGrpc()
-            val artikl =
+            val catalogReturn =
                 ProtoQname
                     .newBuilder()
                     .setSchemaCode(SchemaCode.ER)
                     .setNamespace("entity")
-                    .setName("artikl")
+                    .setName("catalog_return")
                     .build()
-            val skupina =
+            val returnReason =
                 ProtoQname
                     .newBuilder()
                     .setSchemaCode(SchemaCode.ER)
                     .setNamespace("entity")
-                    .setName("skupina_artiklu")
+                    .setName("return_reason")
                     .build()
 
             fun entity(q: ProtoQname): ModelBundleEntity =
@@ -209,36 +209,36 @@ class GetModelToolSpec :
                             .newBuilder()
                             .setLocalName(q.name)
                             .setQualifiedName(q)
-                            .setSourceFile("/tmp/metadata-git/github-model/model-ttr/artikl/er.ttr")
+                            .setSourceFile("/tmp/metadata-git/github-model/model/returns/er.ttrm")
                             .build(),
                     ).build()
             val bundle =
                 ModelBundle
                     .newBuilder()
-                    .addEntities(entity(artikl))
-                    .addEntities(entity(skupina))
+                    .addEntities(entity(catalogReturn))
+                    .addEntities(entity(returnReason))
                     .addRelations(
                         RelationDetail
                             .newBuilder()
-                            .setFromEntity(artikl)
-                            .setToEntity(skupina)
+                            .setFromEntity(catalogReturn)
+                            .setToEntity(returnReason)
                             .build(),
                     ).build()
             coEvery {
-                grpc.getModel(listOf("artikl"), "", true, true, true)
+                grpc.getModel(listOf("returns"), "", true, true, true)
             } returns GetModelResponse.newBuilder().setModel(bundle).build()
 
             val tools = Tools(grpc)
-            val args = buildJsonObject { put("packages", buildJsonArray { add(JsonPrimitive("artikl")) }) }
+            val args = buildJsonObject { put("packages", buildJsonArray { add(JsonPrimitive("returns")) }) }
             val structured = tools.getModelCallback(request(args)).structuredContent as JsonObject
 
             val ent0 = (structured["entities"] as JsonArray)[0] as JsonObject
-            ent0["id"]?.jsonPrimitive?.content shouldBe "artikl.er.entity.artikl"
-            ent0["qname"]?.jsonPrimitive?.content shouldBe "artikl.er.entity.artikl"
+            ent0["id"]?.jsonPrimitive?.content shouldBe "returns.er.entity.catalog_return"
+            ent0["qname"]?.jsonPrimitive?.content shouldBe "returns.er.entity.catalog_return"
 
             val rel0 = (structured["relations"] as JsonArray)[0] as JsonObject
-            rel0["fromEntity"]?.jsonPrimitive?.content shouldBe "artikl.er.entity.artikl"
-            rel0["toEntity"]?.jsonPrimitive?.content shouldBe "artikl.er.entity.skupina_artiklu"
+            rel0["fromEntity"]?.jsonPrimitive?.content shouldBe "returns.er.entity.catalog_return"
+            rel0["toEntity"]?.jsonPrimitive?.content shouldBe "returns.er.entity.return_reason"
         }
 
         // ----- C1.3: package filter on get_entities / get_pattern_queries / get_sql_queries -----
@@ -251,13 +251,13 @@ class GetModelToolSpec :
             } returns ListObjectsResponse.getDefaultInstance()
 
             val tools = Tools(grpc)
-            val args = buildJsonObject { put("package", JsonPrimitive("ucetnictvi")) }
+            val args = buildJsonObject { put("package", JsonPrimitive("hartland")) }
             tools.getEntitiesCallback(
                 CallToolRequest(CallToolRequestParams(name = "get_entities", arguments = args)),
             )
 
-            packageSlot.captured shouldBe "ucetnictvi"
-            coVerify { grpc.listObjects(kind = "entity", packageFilter = "ucetnictvi") }
+            packageSlot.captured shouldBe "hartland"
+            coVerify { grpc.listObjects(kind = "entity", packageFilter = "hartland") }
         }
 
         "get_pattern_queries forwards `package` to MetadataGrpcClient.listQueries" {
@@ -268,12 +268,12 @@ class GetModelToolSpec :
             } returns ListQueriesResponse.getDefaultInstance()
 
             val tools = Tools(grpc)
-            val args = buildJsonObject { put("package", JsonPrimitive("ucetnictvi")) }
+            val args = buildJsonObject { put("package", JsonPrimitive("hartland")) }
             tools.getPatternQueriesCallback(
                 CallToolRequest(CallToolRequestParams(name = "get_pattern_queries", arguments = args)),
             )
 
-            packageSlot.captured shouldBe "ucetnictvi"
+            packageSlot.captured shouldBe "hartland"
         }
 
         "get_sql_queries forwards `package` to MetadataGrpcClient.listQueries" {
@@ -284,11 +284,11 @@ class GetModelToolSpec :
             } returns ListQueriesResponse.getDefaultInstance()
 
             val tools = Tools(grpc)
-            val args = buildJsonObject { put("package", JsonPrimitive("ucetnictvi")) }
+            val args = buildJsonObject { put("package", JsonPrimitive("hartland")) }
             tools.getSqlQueriesCallback(
                 CallToolRequest(CallToolRequestParams(name = "get_sql_queries", arguments = args)),
             )
 
-            packageSlot.captured shouldBe "ucetnictvi"
+            packageSlot.captured shouldBe "hartland"
         }
     })

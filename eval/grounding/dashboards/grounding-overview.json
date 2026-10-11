@@ -1,8 +1,8 @@
 {
-  "__comment": "fabric-infra DRAFT (A14.3) — Grounding overview. Import into the df-test Grafana; do not provision from ai-platform. Datasource via the $datasource variable.",
+  "__comment": "GitOps DRAFT (A14.3) — Grounding overview. Import into the estate's Grafana; do not provision from this repo. Datasource via the $datasource variable.",
   "title": "Grounding — time / geo / money",
   "uid": "grounding-overview",
-  "tags": ["grounding", "df-test"],
+  "tags": ["grounding"],
   "schemaVersion": 39,
   "version": 1,
   "editable": true,

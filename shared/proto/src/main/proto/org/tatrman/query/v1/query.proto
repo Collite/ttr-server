@@ -2,8 +2,8 @@
 // =============================================================================
 // Kantheon — Query service (the query orchestrator)
 //
-// Forked from ai-platform `com/tatrman/runner/v1/query_runner.proto`
-// (ai-platform@2575b923, tag kantheon-fork-point) at fork Stage 3.5. Renamed
+// Forked from the predecessor platform's `com/tatrman/runner/v1/query_runner.proto`
+// at fork Stage 3.5. Renamed
 // into the constellation: QueryRunnerService -> QueryService.
 //
 // Query is the agent's single entry point for query execution. A thin

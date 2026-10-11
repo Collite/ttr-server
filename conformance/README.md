@@ -6,19 +6,19 @@ demonstrated" gate; the other two tiers seed the fuller E2E coverage that SV-P4 
 
 | Tier | Runnable | Gating? | What it asserts |
 |---|---|---|---|
-| **Service-level** | `just conformance-service-level` | **YES** (CI) | The service-level corpora + the RV-P4 conversation tier pass, hermetic + self-contained + **no DFP dependency**. |
+| **Service-level** | `just conformance-service-level` | **YES** (CI) | The service-level corpora + the RV-P4 conversation tier pass, hermetic + self-contained + **no pilot-estate dependency**. |
 | **E2E core** (`calls:`) | `services/resolver/.../conformance/calls/` seeds (`CallsSeedConformanceTest`, `RefusalOverGuessConformanceTest`, gated) | drivable seeds run vs the REAL pipeline; full at SV-P4 | Multi-turn door conversations. The refusal-over-guess + clarification-round-trip seeds drive the actual `ResolverPipeline` (SpanProposal → GateSpans → HMAC codec) via hermetic nlp/fuzzy fakes; `seed_only` fixtures (hero, geo-dark) are shape-validated pending the live SV-P4 stack. |
 | **Extended** (pilot) | `just eval-grounding` (live) | **NO** (scored-not-gating) | Live grounding eval over the pilot corpus (arrives via RO-19 ask ③). Reports pass-rate; never fails CI. |
 
 ## The gating service-level tier — `just conformance-service-level`
 
-Runs six **hermetic** corpora (zero live services, zero DFP) — five service-level, plus
+Runs six **hermetic** corpora (zero live services, zero pilot estate) — five service-level, plus
 the RV-P4 conversation tier that sits above them:
 
 1. **ENTITIES_ONLY** (resolver) — `Q20ParityTest` over
-   `services/resolver/src/test/resources/q20/ucetnictvi_entities_only.jsonl` (12 cases).
+   `services/resolver/src/test/resources/q20/entities_only.jsonl` (12 cases).
    Replays the recorded Q-20 span-gating behavior through the real `GateSpans`. Acceptance baseline
-   from the vendored spike (config C: **P=1.0, ucetnictvi R≥0.8, 0 spurious, awaiting 1/5**).
+   from the vendored spike (config C: **P=1.0, ENTITIES_ONLY R≥0.8, 0 spurious, awaiting 1/5**).
    Provenance: `q20-spike-results.json` + `PROVENANCE.txt` (numbers cited, never recomputed).
 2. **Q-17 match-quality** (fuzzy) — `MatchQualityCorpusTest` over
    `services/lex-matcher/src/test/resources/match-quality-corpus.jsonl` (40 cases: diacritics /
@@ -77,8 +77,8 @@ These are verified on every gate run by `just conformance-verify-hashes` (readin
 `conformance/corpus-hashes.sha256`); a silent edit — even whitespace/reordering a
 semantic test would miss — fails the gate (RG-P6 review I). Keep the two lists in sync.
 ```
-ucetnictvi_entities_only.jsonl  ccda5f2a891a16789b3b6cb752b3baab9b9a8b8fe96e2f01fd41a8d7444352a7
-match-quality-corpus.jsonl      e2d8a6cf33debfb4117bc130fb1cdc9126f11627b88a91aede661e0892f1d73d
+entities_only.jsonl             ccda5f2a891a16789b3b6cb752b3baab9b9a8b8fe96e2f01fd41a8d7444352a7
+match-quality-corpus.jsonl      f994789391af7773bb1061f1d7953a2aa870fd5233877574547cca284a5c2a3d
 grounding-cases.json            a54491aa20ee4eac37b68c9b12a74658ed9b88e03051533289ce506e63590100
 e2e-cases.json                  0034ed387f31c1dca8ba1a56b22b72f968193ee5f1aacb0f20aa7336facf77f7
 hartland-cz/aliases.lex.yaml    78577f1f142fdb6b9bca261e559b69335885358bcd4ba9ed6fb2bd75d45b2208
@@ -90,8 +90,8 @@ The hartland_cz leg pins **three** files, not one: the corpus is authored source
 time, so the lexicon and the skill are as much fixture as the cases are. A silent edit to either
 would change what is served without changing a single expectation.
 
-### Why hermetic (no DFP)
-The gate must be green in CI without a deployed stack or any DFP client — that is the SV-P3 promise.
+### Why hermetic (no pilot estate)
+The gate must be green in CI without a deployed stack or any pilot estate — that is the SV-P3 promise.
 (The grounding leg's one network touch is a one-time install of the **pinned** test deps in
 `eval/grounding/requirements-test.txt`, skipped once present — no unpinned/floating package, so the
 run stays reproducible; RG-P6 review H.)

@@ -16,6 +16,58 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+### Shipped defaults name no pilot estate
+
+Defaults baked into the images named one pilot deployment. They are now neutral; a deployment that set its own values
+is unaffected.
+
+- **dispatch `world.default-connection`** is `mssql-default` (was the pilot's connection id), and **worker-mssql's
+  shipped env-driven connection template** has the same id, so the two still pair up with no further config when
+  `MSSQL_DB_*` activates the template. Upgrade: a deployment that routed to the old id by default and served it from
+  its own connection block sets `WORLD_DEFAULT_CONNECTION` (or renames the block).
+- **geo's Nominatim User-Agent** is `tatrman-geo/1.0 (+https://github.com/Collite/ttr-server)`, in the service default
+  and in the chart (`geo.nominatim.userAgent`, was `tatrman-geo/1.0`); it still identifies the application as the OSM
+  usage policy requires, and `GEO_NOMINATIM_USER_AGENT` / the chart value still override it.
+- **identity's Keycloak realm** defaults to `tatrman` (the umbrella chart's dev IdP realm; was the pilot's). It is read
+  only in `db` mode; `KEYCLOAK_REALM` sets it.
+- **identity's ERP user source ships no SQL.** Its four reads were one ERP's schema, hard-coded, with a fallback email
+  domain to match. They are now configuration, `erp-database.queries.{users, roles, user-roles, role-hierarchy}`
+  (`ERP_USERS_QUERY`, `ERP_ROLES_QUERY`, `ERP_USER_ROLES_QUERY`, `ERP_ROLE_HIERARCHY_QUERY`), each returning the columns
+  `infra/identity/README.md` lists, plus `erp-database.fallback-email-domain` (`ERP_FALLBACK_EMAIL_DOMAIN`). While any
+  query is unset the ERP source is skipped with a WARN and no ERP connection is opened. **Upgrade:** a `db`-mode
+  deployment that runs the ERP sync (`WHOIS_ERP_SYNC_ENABLED=true`) sets the four queries for its ERP, and the fallback
+  domain if it relied on one; without a domain a user with no email is skipped rather than merged with others on a
+  blank email. `json` mode (the chart default) is unaffected.
+
+### meta-mcp — tool descriptions give Hartland examples
+
+The examples in the meta-mcp tool descriptions and manifests (the package filter, `get_model`'s package list,
+`resolve_area`'s area, `get_object`'s ids, `get_roles_for_entity`'s qname) named a client's model packages; they now
+name the public Hartland demo model that Veles serves by default (`hartland`, `er.entity.item`,
+`db.dbo.customer_address`, `er.entity.store_sales`). The `meta.v1` proto comments follow. No behaviour or wire change.
+
+### veles — a model source that fails to load no longer hides behind a bundled model (#180)
+
+When the git model source could not be loaded (a bad token, a wrong branch, no network), Veles quietly served the
+sample model it bundled, and `/ready` reported UP. It now serves only what it was configured to serve.
+
+- **No fallback by default, and no bundled model.** A failed source leaves Veles with no model (the built-in stock roles
+  only). A fallback is opt-in: `METADATA_GIT_FALLBACK=local-model` with `METADATA_TTR_ROOT=<dir>` serves that directory
+  while the repository is unavailable, never merged with it.
+- **`/ready` waits for the configured source.** 503 until every configured source has loaded at least once (a load
+  that finds no model objects does not count) and its model is swapped in; the body names the source and its last
+  error. An empty `METADATA_GIT_REMOTE_URI` configures no source: an error at startup, and never ready.
+- **`/status`** gains `ready` and `sources[]` (what each source reads, credentials redacted; `loaded`,
+  `last_attempt_at`, `last_success_at`, `last_error`, `consecutive_failures`, `failures_total`, `serving_fallback`);
+  **`/metrics`** gains `veles_model_source_load_failures_total{source}` and `veles_model_source_loaded{source}`.
+- A source that has never loaded is retried from 5 s backing off to 60 s, instead of waiting for the next scheduled
+  refresh.
+- **The default model source is the public Hartland demo model**: `https://github.com/Collite/ttr-demo.git`, branch
+  `master`, sub-path `model` — in Veles' own defaults and in the chart (`veles.metadata.gitRemoteUri`, and the new
+  `veles.metadata.gitBranch` / `gitSubdirectory`, which render nothing when `veles.extraEnv` already sets
+  `METADATA_GIT_BRANCH` / `METADATA_GIT_SUBDIR`). Set all three to serve your own model: an install that overrides only
+  the URI now looks for branch `master` and sub-path `model` in it.
+
 ### resolver — a Czech date the NER typed in parts is grounded as one date („v říjnu 2025“)
 
 *„Které položky tam byly v říjnu 2025 vyprodané?“* grounded **„říjnu“ as October of the current year** beside a

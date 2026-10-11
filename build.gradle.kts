@@ -106,10 +106,10 @@ val publishableLibs =
         ":shared:libs:kotlin:ktor-configurator",
         ":shared:libs:kotlin:db-common",
         ":shared:libs:kotlin:data-formatter",
-        // FZ-P3 — the extracted fuzzy engine, consumed by ai-platform (NX-B pattern).
+        // FZ-P3 — the extracted fuzzy engine, consumed by a downstream platform (NX-B pattern).
         ":shared:libs:kotlin:lex-matcher-core",
         // text (RG-P0.S3 — the one S-2 fold) is now published: lex-matcher-core depends on it, so
-        // ai-platform (consuming lex-matcher-core) needs the fold resolvable — exactly the cross-repo
+        // A downstream platform (consuming lex-matcher-core) needs the fold resolvable — exactly the cross-repo
         // consumer the RG-P0.S3 note anticipated. diagnostics still has no external consumer.
         ":shared:libs:kotlin:text",
         ":shared:libs:kotlin:fuzzy-common",

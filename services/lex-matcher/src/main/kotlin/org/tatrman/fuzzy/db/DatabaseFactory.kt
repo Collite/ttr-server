@@ -14,7 +14,7 @@ import javax.sql.DataSource
  * against. Only invoked when `fuzzy.loader.source = "metadata"`; the `static`
  * (in-repo JSON catalog) source never touches the DB.
  *
- * Forked from ai-platform `fuzzy-matcher` (lean carve-out re-added 2026-06-14):
+ * Forked from the predecessor platform's `fuzzy-matcher` (lean carve-out re-added 2026-06-14):
  * package + config types moved to `org.tatrman.fuzzy.*`.
  */
 object DatabaseFactory {

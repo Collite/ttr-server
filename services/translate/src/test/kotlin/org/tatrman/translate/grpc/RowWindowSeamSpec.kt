@@ -108,7 +108,7 @@ class RowWindowSeamSpec :
         }
 
         "a caller's row window survives REL_NODE → DB as a root LimitOffset" {
-            val page2 = relNodeToDb(windowed(planFor("SELECT id, name FROM QSUBJEKT ORDER BY id"), 200, 400))
+            val page2 = relNodeToDb(windowed(planFor("SELECT id, name FROM customer ORDER BY id"), 200, 400))
 
             page2.nodeCase shouldBe PlanNode.NodeCase.LIMIT_OFFSET
             page2.limitOffset.limit shouldBe 200L
@@ -118,7 +118,7 @@ class RowWindowSeamSpec :
         // The offset is the half that makes paging paging: a dropped LIMIT yields too many rows and is
         // noticed, a dropped OFFSET yields page one forever and reads as a complete answer.
         "and reaches the emitted SQL, both bounds" {
-            val sql = postgres(relNodeToDb(windowed(planFor("SELECT id, name FROM QSUBJEKT ORDER BY id"), 200, 400)))
+            val sql = postgres(relNodeToDb(windowed(planFor("SELECT id, name FROM customer ORDER BY id"), 200, 400)))
 
             sql shouldContain "OFFSET 400"
             sql shouldContain "FETCH NEXT 200"
@@ -127,7 +127,7 @@ class RowWindowSeamSpec :
         // Without this the pair above would pass against a translator that wrapped EVERY plan in some
         // default window — the assertions would be true for the wrong reason.
         "an unwrapped plan comes back unwindowed — the node is the caller's, not the translator's" {
-            val plain = relNodeToDb(planFor("SELECT id, name FROM QSUBJEKT ORDER BY id"))
+            val plain = relNodeToDb(planFor("SELECT id, name FROM customer ORDER BY id"))
 
             plain.nodeCase shouldBe PlanNode.NodeCase.SORT
             postgres(plain) shouldContain "ORDER BY"
@@ -137,7 +137,7 @@ class RowWindowSeamSpec :
         // and `windowed` skips wrapping then — so if one is wrapped explicitly it must still cross
         // intact rather than being optimised away into "no window at all".
         "an offset-only window crosses too — paging past the end is still a window" {
-            val offsetOnly = relNodeToDb(windowed(planFor("SELECT id, name FROM QSUBJEKT ORDER BY id"), 0, 800))
+            val offsetOnly = relNodeToDb(windowed(planFor("SELECT id, name FROM customer ORDER BY id"), 0, 800))
 
             offsetOnly.nodeCase shouldBe PlanNode.NodeCase.LIMIT_OFFSET
             offsetOnly.limitOffset.offset shouldBe 800L

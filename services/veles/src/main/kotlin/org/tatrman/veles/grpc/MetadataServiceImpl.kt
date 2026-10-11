@@ -1202,7 +1202,7 @@ private fun ModelObject.toObjectDescriptor(
         .setInternalId(internalId)
         .setQualifiedName(qname.toProto())
         // `qname.name` is the dotted leaf path under the namespace (e.g.
-        // "QTYPDOK.NAZEV_TYPDOK" for a column under db.dbo). Callers like
+        // "TYP_DOKLADU.NAZEV" for a column under db.dbo). Callers like
         // fuzzy-matcher need just the trailing segment as a SQL identifier;
         // mirrors the DbColumn.localName() helper at the bottom of this file.
         .setLocalName(qname.name.substringAfterLast('.'))

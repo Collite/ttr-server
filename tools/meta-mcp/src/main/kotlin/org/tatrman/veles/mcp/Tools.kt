@@ -227,7 +227,7 @@ class Tools(
                                 "id",
                                 buildJsonObject {
                                     put("type", "string")
-                                    put("description", "Table identifier (e.g., schema.table_name)")
+                                    put("description", "Table identifier (e.g. db.dbo.customer_address)")
                                 },
                             )
                         },
@@ -248,7 +248,7 @@ class Tools(
                                 "package",
                                 buildJsonObject {
                                     put("type", "string")
-                                    put("description", "Filter by package name (e.g. ucetnictvi)")
+                                    put("description", "Filter by package name (e.g. hartland)")
                                 },
                             )
                         },
@@ -314,7 +314,7 @@ class Tools(
                                 "package",
                                 buildJsonObject {
                                     put("type", "string")
-                                    put("description", "Filter by package name (e.g. ucetnictvi)")
+                                    put("description", "Filter by package name (e.g. hartland)")
                                 },
                             )
                         },
@@ -362,7 +362,7 @@ class Tools(
                                 "package",
                                 buildJsonObject {
                                     put("type", "string")
-                                    put("description", "Filter by package name (e.g. ucetnictvi)")
+                                    put("description", "Filter by package name (e.g. hartland)")
                                 },
                             )
                         },
@@ -452,7 +452,7 @@ class Tools(
                                 buildJsonObject {
                                     put("type", "array")
                                     put("items", buildJsonObject { put("type", "string") })
-                                    put("description", "List of package names to fetch (e.g. [\"ucetnictvi\"])")
+                                    put("description", "List of package names to fetch (e.g. [\"hartland\"])")
                                 },
                             )
                             put(
@@ -529,7 +529,7 @@ class Tools(
 
     // ---------------------------------------------------------------------
     // Golem P4 S4.2 — resolve a subject `area` to its package set. A Golem Shem
-    // declaring `areas: [accounting]` resolves it here to the concrete packages
+    // declaring `areas: [hartland]` resolves it here to the concrete packages
     // it must pull (via get_model). Zero-logic wrapper over veles's
     // ResolveArea RPC.
     // ---------------------------------------------------------------------
@@ -538,7 +538,7 @@ class Tools(
         Tool(
             name = "resolve_area",
             description =
-                "Resolve a subject area (e.g. 'accounting') to the package set it spans, plus its " +
+                "Resolve a subject area (e.g. 'hartland') to the package set it spans, plus its " +
                     "description and tags. A Golem Shem uses this to expand its `areas: [...]` list " +
                     "into the concrete Veles packages to fetch via get_model. " +
                     "`found=false` when the area is unknown.",
@@ -550,7 +550,7 @@ class Tools(
                                 "area",
                                 buildJsonObject {
                                     put("type", "string")
-                                    put("description", "Bare area name, e.g. 'accounting'")
+                                    put("description", "Bare area name, e.g. 'hartland'")
                                 },
                             )
                         },
@@ -1403,9 +1403,9 @@ class Tools(
         Tool(
             name = "get_roles_for_entity",
             description =
-                "Return the conceptual roles attached to a given ER entity (e.g. `er.entity.sales` → " +
-                    "`[cnc.role.fact, cnc.role.transaction]`). The `qname` arg accepts either a " +
-                    "dotted local name (`sales`) or the full qname (`er.entity.sales`).",
+                "Return the conceptual roles attached to a given ER entity (e.g. `er.entity.store_sales` → " +
+                    "`[cnc.role.fact]`). The `qname` arg accepts either a " +
+                    "dotted local name (`store_sales`) or the full qname (`er.entity.store_sales`).",
             inputSchema =
                 ToolSchema(
                     properties =
@@ -1414,7 +1414,7 @@ class Tools(
                                 put("type", "string")
                                 put(
                                     "description",
-                                    "Entity qname (`er.entity.sales`) or local name (`sales`).",
+                                    "Entity qname (`er.entity.store_sales`) or local name (`store_sales`).",
                                 )
                             }
                         },
@@ -1633,7 +1633,7 @@ private fun org.tatrman.plan.v1.QualifiedName.toDottedQname(): String {
 }
 
 // Derive the package name from a metadata sourceFile path. Packages are a path
-// concept (`…/model-ttr/<package>/file.ttr`) — the qname does not carry them. Prefer
+// concept (`…/<package>/file.ttr`) — the qname does not carry them. Prefer
 // a requested-package name that appears as a path segment (mirrors the metadata
 // service's ListObjects `/<pkg>/` filter); fall back to the file's parent directory.
 private fun packageFromSource(

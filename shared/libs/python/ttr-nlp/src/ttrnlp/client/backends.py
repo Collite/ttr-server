@@ -3,7 +3,7 @@
 
 These moved out of `services/nlp` because they are not the service's: they are how
 anything talks to a Tatrman NLP backend image, and the service was simply the
-first caller. `nlp-mcp` and the legacy `ai-platform` front need the same code, and
+first caller. `nlp-mcp` and the legacy predecessor front need the same code, and
 the alternative to moving it was a third copy diverging in its retry behaviour.
 
 **What moved, and what did not** (⚑NLS-D7). Here: the transport, and the four

@@ -10,7 +10,7 @@ import org.tatrman.fuzzy.core.Candidate
  * shipped as JSON in `src/main/resources/fuzzy-catalog.json` and parsed by
  * `FuzzyCatalog.fromResource(...)`) and returns it as the cache contents.
  *
- * Ai-platform's `StaticLoaderSource` ran `SELECT pk, col FROM table` against
+ * The predecessor platform's `StaticLoaderSource` ran `SELECT pk, col FROM table` against
  * a live SQL backend for each query; the kantheon lean carve-out drops the
  * DB layer entirely at v1 (the catalog is a closed test set, not a query
  * against a warehouse). The metadata-driven loader remains in code for

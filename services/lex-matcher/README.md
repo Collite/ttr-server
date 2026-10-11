@@ -1,7 +1,7 @@
 # lex-matcher
 
-> **forked-from:** `ai-platform@2575b923dca521fea0e3156257e4b779f02a6ed4` (`services/fuzzy-matcher/` + `tools/fuzzy-mcp/`), tag `kantheon-fork-point`, forked 2026-06-13 (Stage 2.2).
-> Maintained independently since the fork; do not assume parity with the ai-platform original.
+> **forked-from:** the legacy predecessor platform (`services/fuzzy-matcher/` + `tools/fuzzy-mcp/`), forked 2026-06-13 (Stage 2.2).
+> Maintained independently since the fork; do not assume parity with the original.
 
 **lex-matcher** — the Czech-aware fuzzy matcher for kantheon. Given a user term and an
 entity type, it returns the best-matching catalog entries through an algorithm

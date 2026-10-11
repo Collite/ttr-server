@@ -267,9 +267,9 @@ class StringRepository(
             // (Routes./match, FuzzyMatcher.match, getTokenIndex) lowercases the
             // requested category, so the stored key MUST be lowercase too. DB
             // identifiers arrive upper-cased from the loader (e.g.
-            // "db.dbo.QSTRED_DF.KOD_STR"); without this the per-column index was
+            // "db.dbo.STREDISKO.KOD"); without this the per-column index was
             // never hit and lookups silently fell back to the global index,
-            // returning *other columns'* values (a KOD_STR query served NAZEV_STR).
+            // returning *other columns'* values (a KOD query served NAZEV).
             nextMembers =
                 loaded.categories.entries.associate { (category, raw) ->
                     category.lowercase() to lemmatiseCandidates(raw)
@@ -631,7 +631,7 @@ class StringRepository(
 
     // Category keys are normalised to lowercase on both write (refreshCache)
     // and read (here) so lookups are case-insensitive. DB-identifier categories
-    // arrive upper-cased (e.g. "db.dbo.QSTRED_DF.KOD_STR"); without this the
+    // arrive upper-cased (e.g. "db.dbo.STREDISKO.KOD"); without this the
     // per-column index was missed and lookups leaked other columns' values.
     override fun getCandidates(category: String?): List<Candidate> =
         if (category != null) {

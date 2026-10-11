@@ -138,13 +138,13 @@ class LatticeAssemblerTest :
         "Binding: a sub-exact hit is fuzzy-strong, and anchoring is what separates the two classes" {
             val anchored =
                 mapped(
-                    member("qt-orlak", "er.qstred_df.nazev", 0.72),
+                    member("qt-orlak", "er.stredisko.nazev", 0.72),
                     DomainSpanCandidate(
                         "QT ORLAK",
                         0,
                         8,
-                        listOf("er.qstred_df"),
-                        listOf("er.qstred_df.nazev"),
+                        listOf("er.stredisko"),
+                        listOf("er.stredisko.nazev"),
                         anchored = true,
                         origin = DomainSpanCandidate.Origin.GOVERNED_VALUE,
                     ),
@@ -152,13 +152,13 @@ class LatticeAssemblerTest :
                 )
             val unanchored =
                 mapped(
-                    member("qt-orlak", "er.qstred_df.nazev", 0.72),
+                    member("qt-orlak", "er.stredisko.nazev", 0.72),
                     DomainSpanCandidate(
                         "QT ORLAK",
                         0,
                         8,
-                        listOf("er.qstred_df"),
-                        listOf("er.qstred_df.nazev"),
+                        listOf("er.stredisko"),
+                        listOf("er.stredisko.nazev"),
                         anchored = false,
                         origin = DomainSpanCandidate.Origin.PROPER_NOUN,
                     ),
@@ -331,8 +331,8 @@ class LatticeAssemblerTest :
                                 gatedSpan(
                                     mention("středisko", 0, 9, head = 0),
                                     listOf(
-                                        declared("er.qstred_df", "er.qstred_df", score = 0.88),
-                                        declared("er.qxxukazmu", "er.qxxukazmu", score = 0.86),
+                                        declared("er.stredisko", "er.stredisko", score = 0.88),
+                                        declared("er.ukazatel", "er.ukazatel", score = 0.86),
                                     ),
                                     ambiguous = true,
                                 ),
@@ -350,7 +350,7 @@ class LatticeAssemblerTest :
                 .single()
                 .bindingsList
                 .map { it.ref } shouldContainExactly
-                listOf("er.qstred_df", "er.qxxukazmu")
+                listOf("er.stredisko", "er.ukazatel")
         }
 
         "a universal extraction is a GROUNDED value carrying what typed it" {

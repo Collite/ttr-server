@@ -50,7 +50,7 @@ The registry override in each case file is the same estate seen from the resolve
 
 `h1-cs`'s registry is the **structural fix for `issues.md` §"Looking in wrong entity"**: the
 account entity declares its anchor word, so `501001` is looked up in `md.dimension.Account.code`
-and never offered `db.dbo.QSTRED_DF.KOD_STR` at 0.667.
+and never offered `db.dbo.STREDISKO.KOD` at 0.667.
 
 ## Regenerating
 

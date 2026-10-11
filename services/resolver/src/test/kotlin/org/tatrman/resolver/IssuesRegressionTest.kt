@@ -62,7 +62,7 @@ class IssuesRegressionTest :
             //
             //   1. SCOPE (P2.1, Q-20 anchored proposal) — the user said *účtu*, so the literal is
             //      only ever asked about in the account categories. The středisko row below is
-            //      offered in `er.qstred_df.kod` and the fake is category-scoped like the real
+            //      offered in `er.stredisko.kod` and the fake is category-scoped like the real
             //      matcher, so a regression in scoping alone would let it through.
             //   2. CLASS (P2.2, RV-14) — and if it did get through, 0.667 is WEAK, and WEAK never
             //      binds. Asserted separately in `H1GatePairTest`, where the same row is placed
@@ -74,8 +74,8 @@ class IssuesRegressionTest :
                         mapOf(
                             "501001" to
                                 listOf(
-                                    member("5AU 5001", "er.qstred_df.kod", 0.667),
-                                    member("7AX 0800", "er.qstred_df.kod", 0.500),
+                                    member("5AU 5001", "er.stredisko.kod", 0.667),
+                                    member("7AX 0800", "er.stredisko.kod", 0.500),
                                 ),
                         ),
                 )
@@ -91,18 +91,18 @@ class IssuesRegressionTest :
             // direction two — no středisko candidate anywhere in the lattice, at any strength
             state.valuesList
                 .flatMap { it.attributionsList }
-                .none { it.attributeRef.contains("qstred") || it.binding.ref.contains("5AU") }
+                .none { it.attributeRef.contains("stredisko") || it.binding.ref.contains("5AU") }
                 .shouldBeTrue()
             state.mentionsList
                 .flatMap { it.bindingsList }
-                .none { it.ref.contains("qstred") }
+                .none { it.ref.contains("stredisko") }
                 .shouldBeTrue()
             state.gapsList shouldBe emptyList()
         }
 
         "issues-260728-2: `Praze` stays an UNRESOLVED G3 and `čerpacích stanic` an empty G1" {
             // "Not admitting not knowing the entity". The old resolver offered
-            // `db.dbo.QSTRED_DF.KOD_STR` for *Praze* because recall was preferred everywhere; P-3
+            // `db.dbo.STREDISKO.KOD` for *Praze* because recall was preferred everywhere; P-3
             // says recall is kept and nothing is forced, which means the honest answer is a TYPED
             // gap rather than a binding or a silence.
             val state = resolve("h2-cs")
@@ -125,7 +125,7 @@ class IssuesRegressionTest :
             // and nothing was forced anywhere else either
             state.mentionsList
                 .flatMap { it.bindingsList }
-                .none { it.ref.contains("qstred") }
+                .none { it.ref.contains("stredisko") }
                 .shouldBeTrue()
         }
     }) {

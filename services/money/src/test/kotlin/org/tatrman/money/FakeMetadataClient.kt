@@ -38,7 +38,7 @@ class FakeMetadataClient(
 
     private fun Obj.toColumnRef(): ColumnRef = ColumnRef(qname = qname, entityName = entityName, columnName = name)
 
-    /** Package-wide attribute columns carrying [role] (mirrors the ai-platform role filter). */
+    /** Package-wide attribute columns carrying [role] (mirrors the predecessor platform's role filter). */
     private fun roleColumns(
         role: String,
         pkg: String,

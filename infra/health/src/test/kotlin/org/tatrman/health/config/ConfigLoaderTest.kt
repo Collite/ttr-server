@@ -16,12 +16,12 @@ class ConfigLoaderTest :
             val config = ConfigLoader.load()
 
             config.technologies.size shouldBeGreaterThan 30
-            // A representative slice across the fabric-infra estate and the kantheon
+            // A representative slice across the shared-cluster estate and the kantheon
             // constellation (agents, platform services, workers, MCP wrappers, technical
             // wave), plus the two host-based checker types (native HTTP, TCP).
             config.technologies.keys shouldContainAll
                 setOf(
-                    // fabric-infra (shared cluster)
+                    // shared cluster estate
                     "seaweed",
                     "kantheon-postgres",
                     "keycloak-postgres",
@@ -50,13 +50,13 @@ class ConfigLoaderTest :
                 )
         }
 
-        "no legacy ai-platform / erp-sql check targets survive the re-point" {
+        "no legacy predecessor-platform / erp-sql check targets survive the re-point" {
             val keys = ConfigLoader.load().technologies.keys
             // Stage 5.2 T3: targets re-pointed to the kantheon estate; the legacy line is gone.
             keys.none { it.startsWith("sql-") } shouldBe true
             // SV-P0 S4: `fuzzy-mcp` and `llm-gateway` were removed from this legacy guard —
             // the J-v2 service renames make these functional names our OWN
-            // spine services' health-check targets, colliding with the old ai-platform names.
+            // spine services' health-check targets, colliding with the predecessor platform's names.
             keys shouldNotContainAnyOf
                 setOf("metadata", "fuzzy-matcher", "meta-mcp", "erp-data-mcp", "erp-sql")
         }

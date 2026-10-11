@@ -47,7 +47,7 @@ the SAME query now resolves
 | `GET /v1/queue` | FI-7 surfaces 3+4, ordered by how often the front saw the word |
 | `POST /v1/queue/{id}/verdict` | `verify` · `reject` · `route` (LM-10's human override) |
 | `POST /v1/export` | the layer files, gated |
-| `POST /v1/export/proposals` | the DFP lane (LM-12) — proposed-entry fragments for `ai-models` |
+| `POST /v1/export/proposals` | the DFP lane (LM-12) — proposed-entry fragments for that world's model repository |
 | `GET /v1/vzory` | the closed pattern inventory the UI's picker is built from |
 | `GET /v1/machine` | the LM-14 status machine, so the UI keeps no copy of it |
 | `GET /v1/status`, `/healthz`, `/readyz` | |

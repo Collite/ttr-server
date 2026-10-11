@@ -47,7 +47,7 @@ metadata:
 # self-hosted Nominatim is the supported source.
 nominatim:
   baseUrl: ""
-  userAgent: "tatrman-geo/1.0"
+  userAgent: "tatrman-geo/1.0 (+https://github.com/Collite/ttr-server)"
 
 # Durable boundary cache (PostGIS/Postgres). Disabled ⇒ in-memory cache. Enable + point at a
 # service-local Postgres to persist geocoded boundaries across restarts. Password via secretEnv.

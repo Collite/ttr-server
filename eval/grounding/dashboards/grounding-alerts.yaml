@@ -1,6 +1,6 @@
-# Grounding alerting rules — fabric-infra draft (A14.3).
+# Grounding alerting rules — GitOps draft (A14.3).
 # Prometheus rule group. Move to the deployed PrometheusRule / rules ConfigMap in
-# fabric-infra; do not apply from this repo.
+# the GitOps repo; do not apply from this repo.
 #
 # Gate (A14.5): the LLM-fallback share of OK groundings must stay < 10% over 1d.
 groups:

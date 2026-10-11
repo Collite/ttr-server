@@ -19,8 +19,8 @@ eval/grounding/
 ├── build_corpus.py            # consolidates services/{chrono,geo,money} corpora → grounding-cases.json
 ├── report.py                  # pure eval + aggregation core (unit-tested, no I/O)
 ├── run_eval.py                # runner: bulk → grounding-mcp, e2e → golem /v2/chat
-├── dashboards/                # Grafana + alert DRAFTS (belong in fabric-infra)
-├── rollout/                   # per-instance config DRAFT + release checklist (fabric-infra)
+├── dashboards/                # Grafana + alert DRAFTS (belong in the GitOps repo)
+├── rollout/                   # per-instance config DRAFT + release checklist (GitOps)
 └── tests/                     # corpus validity + report-core unit tests (run with no cluster)
 ```
 
@@ -43,7 +43,7 @@ just eval-grounding-test
 # Regenerate the consolidated corpus after editing a service corpus / supplemental.json:
 just eval-grounding-build
 
-# Against a deployed df-test stack (needs A11/A12 live):
+# Against a deployed pilot stack (needs A11/A12 live):
 just eval-grounding
 #   → eval/grounding/reports/{metrics.json,report.md}
 #   gates: bulk pass-rate ≥ 80% AND LLM-fallback rate ≤ 10%
@@ -55,10 +55,10 @@ model can serve; unservable cases are `skipped:model-unavailable`, not failed.
 ## A14.5 — acceptance run
 
 **Full step-by-step runbook: [`ACCEPTANCE.md`](ACCEPTANCE.md)** (prerequisites, the
-fabric-infra apps to create, deploy order, connectivity smoke test, gate triage, traces).
+GitOps apps to create, deploy order, connectivity smoke test, gate triage, traces).
 Quick checklist below.
 
-> Gated on A11/A12/A13 live on df-test. Runtime/review-pause until then.
+> Gated on A11/A12/A13 live on the pilot estate. Runtime/review-pause until then.
 
 - [ ] `just eval-grounding` green: **bulk pass-rate ≥ 80%**.
 - [ ] **LLM-fallback rate < 10%** (the primary A14 target) — from `report.md`.

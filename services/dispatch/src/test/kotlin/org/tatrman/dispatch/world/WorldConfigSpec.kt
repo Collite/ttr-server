@@ -12,11 +12,11 @@ class WorldConfigSpec :
             ConfigFactory.parseString(
                 """
                 world {
-                  default-connection = "df-test"
+                  default-connection = "hartland-default"
                   table-connections {
-                    "db.dbo.QHDOK_FAKTURY" = "df-test-fin-exact"
-                    "db.dbo.QHDOK_*"       = "df-test-fin"
-                    "db.dbo.QSUBJEKT*"     = "df-test-crm"
+                    "db.dbo.store_sales" = "hartland-store-exact"
+                    "db.dbo.store_*"       = "hartland-store"
+                    "db.dbo.customer*"     = "hartland-customer"
                   }
                 }
                 """.trimIndent(),
@@ -24,23 +24,23 @@ class WorldConfigSpec :
         val world = WorldConfig.fromConfig(cfg)
 
         "exact match wins over prefix" {
-            world.routingFor(qname("db.dbo.QHDOK_FAKTURY")) shouldBe "df-test-fin-exact"
+            world.routingFor(qname("db.dbo.store_sales")) shouldBe "hartland-store-exact"
         }
 
         "prefix match works" {
-            world.routingFor(qname("db.dbo.QHDOK_OBJEDNAVKY")) shouldBe "df-test-fin"
+            world.routingFor(qname("db.dbo.store_returns")) shouldBe "hartland-store"
         }
 
         "prefix match without underscore separator" {
-            world.routingFor(qname("db.dbo.QSUBJEKT_KLIENT")) shouldBe "df-test-crm"
+            world.routingFor(qname("db.dbo.customer_address")) shouldBe "hartland-customer"
         }
 
         "fall back to null when no pattern matches" {
-            world.routingFor(qname("db.dbo.QOTHER")) shouldBe null
+            world.routingFor(qname("db.dbo.item")) shouldBe null
         }
 
         "resolveOrDefault falls back to default-connection" {
-            world.resolveOrDefault(qname("db.dbo.QOTHER")) shouldBe "df-test"
+            world.resolveOrDefault(qname("db.dbo.item")) shouldBe "hartland-default"
         }
 
         // WS-T2 T6 — the TPC-DS warehouse tables route to the pg-tpcds connection (served by Postgres).
@@ -49,7 +49,7 @@ class WorldConfigSpec :
                 ConfigFactory.parseString(
                     """
                     world {
-                      default-connection = "df-test"
+                      default-connection = "hartland-default"
                       table-connections {
                         "db.dbo.store_sales"   = "pg-tpcds"
                         "db.dbo.catalog_sales" = "pg-tpcds"
@@ -77,7 +77,7 @@ class WorldConfigSpec :
         }
 
         "an unmodelled table still falls back to the default connection" {
-            tpcds.resolveOrDefault(qname("db.dbo.web_returns")) shouldBe "df-test"
+            tpcds.resolveOrDefault(qname("db.dbo.web_returns")) shouldBe "hartland-default"
         }
     })
 

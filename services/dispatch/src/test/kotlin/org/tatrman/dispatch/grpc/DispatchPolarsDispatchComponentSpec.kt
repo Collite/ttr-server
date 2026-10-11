@@ -49,7 +49,7 @@ class DispatchPolarsDispatchComponentSpec :
         val world =
             WorldConfig.fromConfig(
                 ConfigFactory.parseString(
-                    """world { default-connection = "df-default" }""",
+                    """world { default-connection = "pg-default" }""",
                 ),
             )
 

@@ -41,29 +41,31 @@ class ResolveAreaToolSpec :
 
         "resolve_area forwards area and returns packages/description/tags/found" {
             val grpc = stubGrpc()
-            coEvery { grpc.resolveArea("accounting") } returns
+            coEvery { grpc.resolveArea("hartland") } returns
                 ResolveAreaResponse
                     .newBuilder()
-                    .addPackages("obchodni_doklady")
-                    .addPackages("ucetnictvi")
-                    .setDescription("Účetnictví a navazující obchodní doklady")
-                    .addTags("finance")
+                    .addPackages("sales")
+                    .addPackages("returns")
+                    .setDescription("Sales, returns, inventory and customer analytics for Hartland Stores")
+                    .addTags("reporting")
+                    .addTags("demo")
                     .setFound(true)
                     .build()
 
             val res =
                 tools(grpc).resolveAreaCallback(
-                    request(buildJsonObject { put("area", JsonPrimitive("accounting")) }),
+                    request(buildJsonObject { put("area", JsonPrimitive("hartland")) }),
                 )
             (res.isError == true) shouldBe false
-            coVerify(exactly = 1) { grpc.resolveArea("accounting") }
+            coVerify(exactly = 1) { grpc.resolveArea("hartland") }
             val structured = res.structuredContent as JsonObject
             (structured["found"] as JsonPrimitive).content shouldBe "true"
-            (structured["description"] as JsonPrimitive).content shouldBe "Účetnictví a navazující obchodní doklady"
+            (structured["description"] as JsonPrimitive).content shouldBe
+                "Sales, returns, inventory and customer analytics for Hartland Stores"
             val pkgs = (structured["packages"] as JsonArray).map { (it as JsonPrimitive).content }
-            pkgs shouldBe listOf("obchodni_doklady", "ucetnictvi")
+            pkgs shouldBe listOf("sales", "returns")
             val tags = (structured["tags"] as JsonArray).map { (it as JsonPrimitive).content }
-            tags shouldBe listOf("finance")
+            tags shouldBe listOf("reporting", "demo")
         }
 
         "missing area returns an error result without calling gRPC" {

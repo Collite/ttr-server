@@ -1,7 +1,7 @@
 # nlp
 
-> **forked-from:** `ai-platform@2575b923dca521fea0e3156257e4b779f02a6ed4` (`infra/nlp/`), tag `kantheon-fork-point`, forked 2026-06-14 (service formerly named Kadmos).
-> Maintained independently since the fork; do not assume parity with the ai-platform original.
+> **forked-from:** the legacy predecessor platform (`infra/nlp/`), forked 2026-06-14 (service formerly named Kadmos).
+> Maintained independently since the fork; do not assume parity with the original.
 
 The **NLP foundation service** for kantheon — multi-engine analysis (Stanza, spaCy, NameTag/MorphoDiTa via UFAL, langid) over Python/FastAPI.
 
@@ -329,7 +329,7 @@ just lint-py services/nlp
 
 The NLP eval corpus (`eval/corpus/seed.jsonl`, 50 hand-curated Czech questions
 with expected parses + entity bindings) and harness (`eval/run_eval.py`) are
-carried over **verbatim** from the ai-platform original — same code, same corpus.
+carried over **verbatim** from the predecessor original — same code, same corpus.
 Run it against a deployed service:
 
 ```bash
@@ -339,9 +339,9 @@ uv run python eval/run_eval.py --url http://localhost:7270
 ```
 
 **Baseline:** because the engine code and corpus are byte-identical to the
-ai-platform original at the fork point, nlp answers identically by
+predecessor original at the fork point, nlp answers identically by
 construction — the Stage 2.6 Themis gate builds on this. A numeric baseline is
-recorded at the first live deployment (the ai-platform original shipped no
+recorded at the first live deployment (the predecessor original shipped no
 recorded `eval/reports` metrics, and the harness needs a running service +
 remote UFAL endpoints to score; live infra was unavailable in the fork session,
 deferred to the deployment pipeline — Veles/Echo precedent). Reports land in

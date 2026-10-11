@@ -17,56 +17,52 @@ import org.tatrman.ttr.metadata.source.LocalFsStorage
 import java.nio.file.Path
 
 /**
- * WS-C1 T4 — the **real bundled model** load: where the unit `ResolveAreaSpec`/`MetadataQuerySpec`
- * exercise `ResolveArea`/`ListQueries` against small synthetic fixtures, this reconciles the actual
- * shipped `src/main/resources/model-ttr/` tree (TPC-DS + the ucetnictvi/obchodni_doklady accounting
- * packages + their area definitions) through the live ttr-metadata reconciler and asserts the
- * curated query set and the areas resolve off the packaged model. It guards the WS-T2 model
- * authoring against silent regressions in the bundled resources (a broken `.ttr`/`.ttrm` that unit
- * fixtures wouldn't catch).
+ * WS-C1 T4 — a whole model tree loaded from a real directory: where the unit
+ * `ResolveAreaSpec`/`MetadataQuerySpec` exercise `ResolveArea`/`ListQueries` against small synthetic
+ * fixtures, this reconciles whole fixture trees — `src/test/resources/model-tpcds/` (the TPC-DS
+ * package and its area) and `model-seed/` (the Hartland `returns` slice and its area) — through the
+ * live ttr-metadata reconciler, from disk the way a git checkout is read, and asserts the curated
+ * query set and the areas resolve. Two trees, two models: both are TPC-DS, so their table names
+ * overlap, and one model holds one definition per qualified name.
  *
- * No container — but it drives the real reconciler over the packaged model rather than a mock, so
+ * Veles bundles no model since ttr-server#180 — the served model comes from the configured git
+ * source — so this tree is a test fixture, not a shipped resource.
+ *
+ * No container — but it drives the real reconciler over a whole model tree rather than a mock, so
  * it belongs to the component tier, out of the mocked `test` gate.
- *
- * **Scope note (deviation, tracked in the C1 session handoff):** the deploy-test C1 T4 wording lists
- * an `investment` model, but no investment TTR model is authored in the repo yet (that lands with the
- * Midas arc). This spec covers the two model families that actually ship today — TPC-DS and
- * accounting — and adds investment when its model does.
  */
 @Tags("component")
 class VelesModelLoadComponentSpec :
     StringSpec({
 
-        // Root the source at the authored model tree (`src/main/resources/model-ttr`), so the
-        // WHOLE shipped model — every package + the `areas/*.ttrm` — reconciles exactly as the
-        // service loads it at runtime. The dir is injected by the build (`veles.modelRoot`)
-        // rather than resolved from a classpath resource: on CI the project rides the suite
-        // classpath as a JAR, so `getResource("model-ttr/..").toURI()` is a `jar:` URI with no
-        // open filesystem (FileSystemNotFoundException) — and `LocalFsStorage` needs a real dir.
-        val modelRoot: Path =
+        // Root each source at a fixture tree under `src/test/resources`, so the WHOLE tree — every
+        // package + the `areas/*.ttrm` — reconciles exactly as the service loads a checkout at
+        // runtime. The dir is injected by the build (`veles.modelRoot`) because `LocalFsStorage`
+        // needs a real directory, not a classpath resource URI.
+        val resourcesRoot: Path =
             Path.of(
                 checkNotNull(System.getProperty("veles.modelRoot")) {
                     "veles.modelRoot not set — see services/veles/build.gradle.kts componentTest config"
                 },
             )
 
-        fun service(): MetadataServiceImpl {
+        fun service(tree: String): MetadataServiceImpl {
             val source =
                 FileBasedSource(
-                    sourceId = "model-ttr",
+                    sourceId = tree,
                     priority = 100,
-                    storage = LocalFsStorage(id = "model-ttr", rootPath = modelRoot),
+                    storage = LocalFsStorage(id = tree, rootPath = resourcesRoot.resolve(tree)),
                 )
             val reconciler =
-                ModelReconciler(ModelDescriptor(id = "bundled", name = "bundled", description = "packaged model-ttr"))
+                ModelReconciler(ModelDescriptor(id = tree, name = tree, description = "$tree fixture tree"))
             val result = reconciler.reconcile(listOf(source.load()))
             val registry = MetadataRegistry()
             registry.swap(result.model, ModelGraph.build(result.model), result.warnings + result.errors)
             return MetadataServiceImpl(registry, packageIndex = PackageIndex())
         }
 
-        "the bundled model-ttr reconciles and ListQueries surfaces the four TPC-DS curated queries" {
-            val r = service().listQueries(ListQueriesRequest.newBuilder().addTags("tpcds").build())
+        "the model-tpcds tree reconciles and ListQueries surfaces the four TPC-DS curated queries" {
+            val r = service("model-tpcds").listQueries(ListQueriesRequest.newBuilder().addTags("tpcds").build())
             r.itemsList
                 .map { it.objectDescriptor.localName }
                 .shouldContainAll(
@@ -77,18 +73,18 @@ class VelesModelLoadComponentSpec :
                 )
         }
 
-        "ResolveArea(tpcds) resolves the TPC-DS package off the bundled model" {
-            val r = service().resolveArea(ResolveAreaRequest.newBuilder().setArea("tpcds").build())
+        "ResolveArea(tpcds) resolves the TPC-DS package off the tree" {
+            val r = service("model-tpcds").resolveArea(ResolveAreaRequest.newBuilder().setArea("tpcds").build())
             r.found shouldBe true
             r.packagesList shouldContainAll listOf("tpcds")
             r.description.shouldNotBeEmpty()
             r.tagsList shouldContainAll listOf("warehouse", "tpc-ds")
         }
 
-        "ResolveArea(accounting) resolves the ucetnictvi package off the bundled model" {
-            val r = service().resolveArea(ResolveAreaRequest.newBuilder().setArea("accounting").build())
+        "ResolveArea(hartland) resolves the returns package off the tree" {
+            val r = service("model-seed").resolveArea(ResolveAreaRequest.newBuilder().setArea("hartland").build())
             r.found shouldBe true
-            r.packagesList shouldContainAll listOf("ucetnictvi")
+            r.packagesList shouldContainAll listOf("returns")
             r.description.shouldNotBeEmpty()
         }
     })

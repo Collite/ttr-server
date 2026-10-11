@@ -1,9 +1,9 @@
 # veles
 
-> **forked-from:** `ai-platform@2575b923dca521fea0e3156257e4b779f02a6ed4` (`infra/metadata/`), tag `kantheon-fork-point`, forked 2026-06-13 (originally named Ariadne; Veles is the survivor persona name).
-> Maintained independently since the fork; do not assume parity with the ai-platform original.
+> **forked-from:** the legacy predecessor platform (`infra/metadata/`), forked 2026-06-13 (originally named Ariadne; Veles is the survivor persona name).
+> Maintained independently since the fork; do not assume parity with the original.
 
-The **model-graph service** for kantheon. Loads the `ai-models` model (YAML/JSON via ClasspathStorage, Git source via `METADATA_GIT_*` for live reload) into an in-memory `ModelSnapshot`, then serves `ListObjects` / `GetObject` / `Search` / `ListQueries` / `GetModel` / `ResolveArea` / `GetStatus` / `Refresh` over gRPC (VelesService) and HTTP. The gRPC service proto is forked as `org.tatrman.meta.v1` / `VelesService` (Stage 1.2; the old `MetadataService` is gone).
+The **model-graph service** for kantheon. Loads a TTR model from a git repository (`METADATA_GIT_*`, re-fetched for live reload — see [Model source](#model-source)) into an in-memory `ModelSnapshot`, then serves `ListObjects` / `GetObject` / `Search` / `ListQueries` / `GetModel` / `ResolveArea` / `GetStatus` / `Refresh` over gRPC (VelesService) and HTTP. The gRPC service proto is forked as `org.tatrman.meta.v1` / `VelesService` (Stage 1.2; the old `MetadataService` is gone).
 
 ## Runs on the `org.tatrman:ttr-metadata` library (Stage M4.1, ttr-metadata adoption)
 
@@ -18,9 +18,9 @@ Since the ttr-metadata swap (arc doc: [`docs/architecture/fork/ttr-metadata-adop
 
 **Drift rule (contract, enforced by review + CI grep):** core model/graph/search/resolution fixes ship as a **new `org.tatrman:ttr-metadata` release**, never as a re-fork under `services/veles`. A PR adding such logic here is bounced to the library. The guard greps (all must be empty) live in the arc doc's execution checklist. The pinned version is `tatrman-ttr-metadata` in `gradle/libs.versions.toml` (currently `0.8.6`, published to GitHub Packages; the `0.0.1-LOCAL`/`mavenLocal()` local-iteration interim is retired).
 
-**Areas (Golem P4 S4.2, 2026-06-25):** `ResolveArea(area) → packages + description + tags` resolves a subject area to its member packages, loaded from `model-ttr/areas/*.ttrm` (`AreaDef`, modeler ≥ 0.7.0). Golem assembles a Shem by resolving its `areas` → packages → `GetModel`.
+**Areas (Golem P4 S4.2, 2026-06-25):** `ResolveArea(area) → packages + description + tags` resolves a subject area to its member packages, loaded from the model's `def area` blocks (`AreaDef`, modeler ≥ 0.7.0). Golem assembles a Shem by resolving its `areas` → packages → `GetModel`.
 
-**Prompt-serving REMOVED (Golem P4 S4.2, 2026-06-25; reverses the 2026-06-13 addition):** the `GetPrompts` RPC, the `prompts/` package, and the `prompts/` Git subtree are gone — **the model is just the model.** Prompts belong to the **Shem** now (mounted with the Golem pod; each Golem's `PromptStore` loads its own `prompts/{locale}/…`). The Git source is back to `model-ttr/` only. See `docs/architecture/fork/contracts.md` §1.1.
+**Prompt-serving REMOVED (Golem P4 S4.2, 2026-06-25; reverses the 2026-06-13 addition):** the `GetPrompts` RPC, the `prompts/` package, and the `prompts/` Git subtree are gone — **the model is just the model.** Prompts belong to the **Shem** now (mounted with the Golem pod; each Golem's `PromptStore` loads its own `prompts/{locale}/…`). The git source carries the model only. See `docs/architecture/fork/contracts.md` §1.1.
 
 ## Package root
 
@@ -59,5 +59,39 @@ just test-kt veles          # Kotest unit + component suite
 just deploy-kt veles        # Jib image + k8s/overlays/local (local K3s)
 ```
 
-ClasspathStorage (the in-repo `model-ttr/` seed, incl. `model-ttr/areas/`) is the
-default source; set `METADATA_GIT_*` to load the `ai-models` repo with live reload.
+## Model source
+
+Veles serves the model of one git repository (the `github-model` source in `application.conf`),
+cloned at boot and re-fetched every `METADATA_REFRESH_INTERVAL_SECONDS` (300 by default).
+
+**The default is the public Hartland demo model** (Collite/ttr-demo, branch `master`, sub-path `model`):
+it needs no token, so `docker run` or a fresh chart install has a model to explore. To serve your own
+model, set the URI, the branch and the sub-path together — the branch and sub-path defaults are
+Hartland's, so a URI alone would look for `master` and `model/` in your repository.
+
+| Env | Meaning |
+|---|---|
+| `METADATA_GIT_REMOTE_URI` | The repository. Default `https://github.com/Collite/ttr-demo.git`. Empty = no model source at all: Veles logs an error and stays not ready. |
+| `METADATA_GIT_BRANCH` | The branch. Default `master`. Set it together with the URI. |
+| `METADATA_GIT_SUBDIR` | The model's directory inside the repository. Default `model`. Set it together with the URI. |
+| `METADATA_GIT_TOKEN` | A read token for a private repository (`METADATA_GIT_USERNAME` defaults to `x-access-token`). |
+| `METADATA_GIT_CHECKOUT_DIR` | Where to clone (default `<tmp>/metadata-git/github-model`). |
+
+**No fallback model (ttr-server#180).** Veles bundles no model. When the repository can't be loaded
+(a bad token, a wrong branch or sub-path, no network), Veles serves no model — the built-in stock
+roles only, so every catalog call answers empty — and:
+
+- `GET /ready` answers **503** until every configured source has loaded at least once and its model
+  is swapped in; the body says which source has not loaded and why. A source that loads but finds
+  no model objects (an empty repository or a wrong sub-path) has not loaded. Once a source has
+  loaded, a later failed refresh keeps the last good model and does not affect readiness.
+- `GET /status` lists every source (`sources[]`: what it reads, `loaded`, `last_attempt_at`,
+  `last_success_at`, `last_error`, `consecutive_failures`, `failures_total`, `serving_fallback`).
+- `GET /metrics` has `veles_model_source_load_failures_total{source}` and
+  `veles_model_source_loaded{source}`.
+- A source that has never loaded is retried every 5 s, backing off to 60 s, independent of the
+  refresh interval.
+
+A fallback is opt-in, for demos that must come up offline: `METADATA_GIT_FALLBACK=local-model`
+with `METADATA_TTR_ROOT=/path/to/model` serves that directory while the repository is unavailable
+(never merged with it), and `/status` reports `serving_fallback: true`.

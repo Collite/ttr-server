@@ -1,9 +1,9 @@
 # keycloak-auth
 
-> **forked-from:** `ai-platform@2575b923dca521fea0e3156257e4b779f02a6ed4` (`shared/libs/kotlin/erp-sql-common/src/.../auth/`), tag `kantheon-fork-point`, extracted 2026-06-24 (fork Phase 5 Stage 5.0).
-> Maintained independently since the fork; do not assume parity with the ai-platform original.
+> **forked-from:** the legacy predecessor platform (`shared/libs/kotlin/erp-sql-common/src/.../auth/`), extracted 2026-06-24 (fork Phase 5 Stage 5.0).
+> Maintained independently since the fork; do not assume parity with the original.
 
-A generic Keycloak `client_credentials` token provider, **extracted** off ai-platform's
+A generic Keycloak `client_credentials` token provider, **extracted** off the predecessor platform's
 `erp-sql-common.auth`. These four files have **zero** imports from the rest of
 `erp-sql-common`, so the legacy ERP-SQL line need not fork to carry them — they move
 into this standalone, domain-free lib instead.

@@ -35,7 +35,7 @@ telemetry:
   endpoint: ""
   serviceName: health-check-service
 
-# Per-target check wiring. The bundled application.conf carries kantheon + fabric-infra defaults;
+# Per-target check wiring. The bundled application.conf carries kantheon + shared-cluster defaults;
 # a deploying env appends HEALTH_*_URL / HEALTH_*_HOST / HEALTH_*_PORT overrides here to retune
 # DNS/ports/paths for its cluster (and the monitoring Prometheus URL for prometheus-type checks).
 extraEnv: []

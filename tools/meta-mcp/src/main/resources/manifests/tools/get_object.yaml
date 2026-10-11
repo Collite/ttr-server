@@ -3,7 +3,7 @@ category: "meta"
 version: "1.0.0"
 description: |
   Fetch a single veles object by qualified name. The MCP wrapper takes the
-  `id` argument (e.g. "er.entity.artikl" or "db.table.dodaci_misto"), parses it
+  `id` argument (e.g. "er.entity.item" or "db.dbo.customer_address"), parses it
   into a `QualifiedName` proto, and returns the typed detail (table / view /
   column / entity / attribute / relation / role / procedure / etc.).
 service_endpoint: "http://veles-mcp.kantheon.svc.cluster.local:7262"

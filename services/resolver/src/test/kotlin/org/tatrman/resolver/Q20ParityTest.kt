@@ -35,7 +35,7 @@ import org.tatrman.resolver.pipeline.SiblingCatalog
  *     carry full provenance (S-1/S-4), and expand to its sibling column.
  *  2. **Acceptance baseline** — the C-config (anchored) precision/recall/awaiting/
  *     over-generation numbers are read from the vendored spike result and asserted
- *     as this phase's baseline: value-extraction P=1.0, ucetnictvi R≥0.8, seed
+ *     as this phase's baseline: value-extraction P=1.0, ENTITIES_ONLY R≥0.8, seed
  *     over-generation eliminated (0).
  *
  * ⚠ Boundary (Q-20 caveat §5 + task-management rule 4): the *live-parse + live
@@ -49,11 +49,11 @@ class Q20ParityTest :
         // Q-20 vocab.py: 3 sibling entity types, each a (code_ref, name_ref) pair.
         val entities =
             mapOf(
-                "QSTRED_DF" to Pair("db.dbo.QSTRED_DF.KOD_STR", "db.dbo.QSTRED_DF.NAZEV_STR"),
-                "QXXUKAZMU" to Pair("db.dbo.QXXUKAZMU.KOD_UKAZMU", "db.dbo.QXXUKAZMU.NAZEV_UKAZMU"),
-                "QTYPDOK" to Pair("db.dbo.QTYPDOK.TYP_DOK", "db.dbo.QTYPDOK.NAZEV_TYPDOK"),
+                "STREDISKO" to Pair("db.dbo.STREDISKO.KOD", "db.dbo.STREDISKO.NAZEV"),
+                "UKAZATEL" to Pair("db.dbo.UKAZATEL.KOD", "db.dbo.UKAZATEL.NAZEV"),
+                "TYP_DOKLADU" to Pair("db.dbo.TYP_DOKLADU.KOD", "db.dbo.TYP_DOKLADU.NAZEV"),
             )
-        val anchors = mapOf("QSTRED_DF" to "středisko", "QXXUKAZMU" to "ukazatel", "QTYPDOK" to "doklad")
+        val anchors = mapOf("STREDISKO" to "středisko", "UKAZATEL" to "ukazatel", "TYP_DOKLADU" to "doklad")
 
         val entityTypes =
             entities.map { (ent, refs) ->
@@ -79,7 +79,7 @@ class Q20ParityTest :
                 val probe = p.jsonObject
                 if (probe["correct"]!!.jsonPrimitive.content != "true") return@forEach
                 val expectEntity = probe["expect_entity"]!!.jsonPrimitive.content
-                val top = probe["top"]!!.jsonPrimitive.content // e.g. "QT ORLAK(QSTRED_DF,name) 1.050"
+                val top = probe["top"]!!.jsonPrimitive.content // e.g. "QT ORLAK(STREDISKO,name) 1.050"
 
                 val matchedKind = top.substringAfter('(').substringBefore(')').substringAfter(',') // code | name
                 val score = top.substringAfterLast(' ').toDouble()
@@ -123,15 +123,15 @@ class Q20ParityTest :
         "acceptance baseline: the recorded C-config (anchored) numbers are this phase's gate" {
             val c = spike["C_anchored_fallback"]!!.jsonObject
             val valueExtraction = c["value_extraction"]!!.jsonObject
-            val ucetnictvi = c["ucetnictvi"]!!.jsonObject
+            val entitiesOnly = c["entities_only"]!!.jsonObject
 
             // value-extraction reaches the LLM's precision on anchored spans (spike A/C).
             valueExtraction["precision"]!!.jsonPrimitive.content.toDouble() shouldBe 1.0
             valueExtraction["recall"]!!.jsonPrimitive.content.toDouble() shouldBeGreaterThanOrEqual 0.80
 
-            // ucetnictvi meets the inherited ≥0.80 recall gate; precision recovered vs all-spans.
-            ucetnictvi["recall"]!!.jsonPrimitive.content.toDouble() shouldBeGreaterThanOrEqual 0.80
-            ucetnictvi["precision"]!!.jsonPrimitive.content.toDouble() shouldBeGreaterThanOrEqual 0.50
+            // ENTITIES_ONLY meets the inherited ≥0.80 recall gate; precision recovered vs all-spans.
+            entitiesOnly["recall"]!!.jsonPrimitive.content.toDouble() shouldBeGreaterThanOrEqual 0.80
+            entitiesOnly["precision"]!!.jsonPrimitive.content.toDouble() shouldBeGreaterThanOrEqual 0.50
 
             // over-generation eliminated (config B's 33 spurious → 0) — the whole point of anchoring.
             c["seed_spurious_binds"]!!.jsonPrimitive.content.toInt() shouldBe 0
@@ -142,14 +142,14 @@ class Q20ParityTest :
             val b = spike["B_all_spans"]!!.jsonObject
             // Recorded so a regression toward naive all-spans gating is a visible, cited failure.
             b["seed_spurious_binds"]!!.jsonPrimitive.content.toDouble() shouldBeGreaterThanOrEqual 30.0
-            b["ucetnictvi"]!!
+            b["entities_only"]!!
                 .jsonObject["precision"]!!
                 .jsonPrimitive.content
                 .toDouble() shouldBeLessThanOrEqual 0.30
         }
 
         "corpus wiring: the vendored ENTITIES_ONLY corpus loads and its domain entity types are anchor-covered" {
-            val lines = readResource("q20/ucetnictvi_entities_only.jsonl").trim().lines().filter { it.isNotBlank() }
+            val lines = readResource("q20/entities_only.jsonl").trim().lines().filter { it.isNotBlank() }
             lines.size shouldBe 12
             // Every non-universal expected entity_type in the corpus maps to a declared anchor.
             val corpusEntityTypes =

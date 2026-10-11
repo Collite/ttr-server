@@ -103,7 +103,7 @@ class ExecutionReceiptPipelineSpec :
         }
     })
 
-private const val CONN = "df-test"
+private const val CONN = "mssql-default"
 private const val SELECT = "SELECT id FROM dbo.sample_orders"
 
 private val LIMITS =

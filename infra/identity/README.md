@@ -1,7 +1,7 @@
 # identity
 
-> **forked-from:** `ai-platform@2575b923dca521fea0e3156257e4b779f02a6ed4` (`infra/whois/`), tag `kantheon-fork-point`, forked 2026-06-24 (fork Phase 5 Stage 5.1).
-> Maintained independently since the fork; do not assume parity with the ai-platform original.
+> **forked-from:** the legacy predecessor platform (`infra/whois/`), forked 2026-06-24 (fork Phase 5 Stage 5.1).
+> Maintained independently since the fork; do not assume parity with the original.
 
 The **user/role directory** and **OPA bundle server** — a technical-wave (no-persona) service
 in the `infra/` tree. It syncs users + roles from upstream sources (Keycloak admin API, ERP DB)
@@ -25,7 +25,7 @@ lib (`org.tatrman.identity.domain`); the Keycloak token provider in the `keycloa
 
 ## Port
 
-HTTP **7110** (`WHOIS_SERVER_PORT`, kept from ai-platform). No gRPC, no MCP wrapper.
+HTTP **7110** (`WHOIS_SERVER_PORT`, kept from the predecessor platform). No gRPC, no MCP wrapper.
 
 ## Repository modes
 
@@ -33,6 +33,24 @@ HTTP **7110** (`WHOIS_SERVER_PORT`, kept from ai-platform). No gRPC, no MCP wrap
   — used for local boot and the component tests; no DB needed.
 - `whois.repository.type = db`: Postgres-backed (`who-is-database`), Flyway V1–V5 on boot, with
   the Keycloak/ERP sync loop active. The live deployment runs in `db` mode.
+
+### The ERP user source
+
+An ERP's user schema is its own, so the image ships no ERP SQL. The `db`-mode ERP sync
+(`WHOIS_ERP_SYNC_ENABLED`) reads four queries from `erp-database.queries`, each returning the
+columns named here:
+
+| key (env) | columns |
+|---|---|
+| `users` (`ERP_USERS_QUERY`) | `user_id`, `username`, `fullname` (`"First Last"`), `email` — the users to sync, active ones only |
+| `roles` (`ERP_ROLES_QUERY`) | `id`, `code`, `description` |
+| `user-roles` (`ERP_USER_ROLES_QUERY`) | `user_id`, `role_id` |
+| `role-hierarchy` (`ERP_ROLE_HIERARCHY_QUERY`) | `parent_role`, `child_role` (a role that is its own parent is a root) |
+
+While any of the four is unset the ERP source is skipped: a WARN at startup names the missing keys,
+and no ERP connection is opened. Users are matched across sources by email, so a user whose email is
+blank becomes `<username>@<erp-database.fallback-email-domain>` (`ERP_FALLBACK_EMAIL_DOMAIN`); with
+no domain set, such a user is skipped and counted in a WARN.
 
 ## Run
 

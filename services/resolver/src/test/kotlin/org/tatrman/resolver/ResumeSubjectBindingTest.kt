@@ -35,7 +35,7 @@ class ResumeSubjectBindingTest :
             .newBuilder()
             .setConversationId("c-sub")
             .setCallerSubject(subject)
-            .setResume(ResumeAnswer.newBuilder().setToken(token).setSelectedOptionId("M:er.qstred_df.member#qt-orlak"))
+            .setResume(ResumeAnswer.newBuilder().setToken(token).setSelectedOptionId("M:er.stredisko.member#qt-orlak"))
             .build()
 
         "a token issued to alice cannot be resumed by a different principal" {
@@ -67,6 +67,6 @@ class ResumeSubjectBindingTest :
                     .single()
                     .domain
             domain.resolvedId shouldBe "qt-orlak"
-            domain.entityTypeRef shouldBe "er.qstred_df" // review F: no longer empty
+            domain.entityTypeRef shouldBe "er.stredisko" // review F: no longer empty
         }
     })

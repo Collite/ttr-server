@@ -20,7 +20,7 @@ import org.tatrman.keycloak.auth.TokenProvider
 class KeycloakClientComponentSpec :
     StringSpec({
 
-        val realm = "df-test"
+        val realm = "tatrman"
         val staticToken =
             object : TokenProvider {
                 override suspend fun getToken(): String = "test-token"

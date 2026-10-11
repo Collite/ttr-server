@@ -16,7 +16,7 @@ class ConnectionPoolManagerSpec :
                 ConfigFactory.parseString(
                     """
                     connections {
-                      df-test-fin {
+                      mssql-finance {
                         host = "fin.example"
                         port = 1433
                         database = "ERP_FIN"
@@ -24,7 +24,7 @@ class ConnectionPoolManagerSpec :
                         password = "p"
                         max-pool-size = 5
                       }
-                      df-test-crm {
+                      mssql-crm {
                         host = "crm.example"
                         database = "ERP_CRM"
                         username = "u2"
@@ -35,8 +35,8 @@ class ConnectionPoolManagerSpec :
                 )
             val mgr = ConnectionPoolManager.fromConfig(config)
             mgr.supportedConnections shouldHaveSize 2
-            mgr.supportedConnections shouldContain "df-test-fin"
-            mgr.supportedConnections shouldContain "df-test-crm"
+            mgr.supportedConnections shouldContain "mssql-finance"
+            mgr.supportedConnections shouldContain "mssql-crm"
         }
 
         "fromConfig handles a missing connections block as empty" {
@@ -81,7 +81,7 @@ class ConnectionPoolManagerSpec :
                     password = "p"
                     """.trimIndent(),
                 )
-            val parsed = ConnectionConfig.fromConfig("df-test", cfg)
+            val parsed = ConnectionConfig.fromConfig("mssql-default", cfg)
             parsed.database shouldBe "tatrman"
             parsed.defaultSchema shouldBe "dbo"
         }

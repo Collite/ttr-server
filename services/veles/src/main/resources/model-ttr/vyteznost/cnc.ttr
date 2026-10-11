@@ -1,7 +1,0 @@
-package vyteznost
-def er2cnc_role výtěžnost_regálu__structural { entity: er.entity.výtěžnost_regálu, role: cnc.cnc.role.structural,
-}
-
-def er2cnc_role výtěžnost_regálu_kanál__structural { entity: er.entity.výtěžnost_regálu_kanál, role: cnc.cnc.role.structural,
-}
-

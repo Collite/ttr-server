@@ -42,7 +42,7 @@ kotlin-logging            = "7.0.0"
 typesafe-config           = "1.4.3"
 
 # YAML / Jackson
-# Held at 2.18.1: ai-platform moved to Jackson 3.0.4, but 3.0 also relocated
+# Held at 2.18.1: the predecessor platform moved to Jackson 3.0.4, but 3.0 also relocated
 # `jackson-module-kotlin` to group `tools.jackson.module` and reorganises
 # databind/yaml under `tools.jackson.*`. Bumping the version alone would break
 # the module coordinates below — treat as a separate migration decision.
@@ -58,12 +58,12 @@ testcontainers            = "2.0.3"
 # kantheon side; all bring-up/teardown is olymp's (testing architecture §3).
 fabric8                   = "7.7.0"
 
-# OTel (kept lean; full stack pulled via ai-platform.otel.config)
+# OTel (kept lean; full stack pulled via the predecessor platform's otel config)
 otel                      = "1.58.0"
 otel-semconv              = "1.38.0"
 # Used by otel-logback-appender-1.0; align with ktor-otel 2.18.1-alpha transitively.
 otel-instrumentation-base = "2.18.1-alpha"
-# Aligns opentelemetry-ktor-3.0 with ai-platform.
+# Aligns opentelemetry-ktor-3.0 with the predecessor platform.
 ktor-otel                 = "2.18.1-alpha"
 
 # Caches
@@ -114,13 +114,13 @@ jgit                                 = "6.8.0.202311291450-r"
 apache-commons-compress              = "1.24.0"
 micrometer                           = "1.16.2"
 
-# (fork Stage 2.6) The last ai-platform Maven coordinate — com.tatrman:shared-proto
+# (fork Stage 2.6) The last predecessor-platform Maven coordinate — com.tatrman:shared-proto
 # (Themis's residual nlp.v1) — was removed here. Themis now consumes only in-repo
 # protos via :shared:proto. No com.tatrman Maven artifact remains.
 
 # LLM gateway (Spring Boot) — fork Stage 2.5. The repo's only
 # Spring module; resolved from mavenCentral (incl. Spring AI 2.0.0-M2, as
-# ai-platform did — no milestone repo needed).
+# the predecessor platform did — no milestone repo needed).
 spring-boot               = "4.0.2"
 spring-dep                = "1.1.7"
 spring-ai                 = "2.0.0-M2"
@@ -262,7 +262,7 @@ opentelemetry-extension-kotlin      = { module = "io.opentelemetry:opentelemetry
 opentelemetry-sdk-testing           = { module = "io.opentelemetry:opentelemetry-sdk-testing",              version.ref = "otel" }
 otel-logback-appender               = { module = "io.opentelemetry.instrumentation:opentelemetry-logback-appender-1.0", version.ref = "otel-instrumentation-base" }
 
-# Caches — Caffeine. Used by themis ResolverCache; central pin matches ai-platform.
+# Caches — Caffeine. Used by themis ResolverCache; central pin matches the predecessor platform.
 caffeine                            = { module = "com.github.ben-manes.caffeine:caffeine",                  version.ref = "caffeine" }
 
 # Tests
@@ -281,7 +281,7 @@ testcontainers-postgresql           = { module = "org.testcontainers:testcontain
 fabric8-kubernetes-client           = { module = "io.fabric8:kubernetes-client",                            version.ref = "fabric8" }
 
 # (fork Stage 2.6) com.tatrman:shared-proto removed — Themis retargeted to
-# in-repo protos (:shared:proto). No ai-platform Maven coordinate remains.
+# in-repo protos (:shared:proto). No predecessor-platform Maven coordinate remains.
 
 # Engine
 calcite-core                        = { module = "org.apache.calcite:calcite-core",                         version.ref = "calcite" }

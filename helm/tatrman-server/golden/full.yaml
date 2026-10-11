@@ -1176,7 +1176,7 @@ spec:
             - name: GEO_NOMINATIM_BASE_URL
               value: "http://nominatim.ttr-server.svc.cluster.local:8080"
             - name: GEO_NOMINATIM_USER_AGENT
-              value: "tatrman-geo/1.0"
+              value: "tatrman-geo/1.0 (+https://github.com/Collite/ttr-server)"
             - name: GEO_DB_ENABLED
               value: "true"
             - name: GEO_DB_HOST
@@ -2486,7 +2486,11 @@ spec:
             - name: VELES_GRPC_PORT
               value: "7261"
             - name: METADATA_GIT_REMOTE_URI
-              value: "https://github.com/Tatrman/ai-models.git"
+              value: "https://github.com/Collite/ttr-demo.git"
+            - name: METADATA_GIT_BRANCH
+              value: "master"
+            - name: METADATA_GIT_SUBDIR
+              value: "model"
             - name: OTEL_SERVICE_NAME
               value: "veles"
             - name: OTEL_ENABLED_METADATA
@@ -2711,7 +2715,7 @@ spec:
             - name: GEO_NOMINATIM_BASE_URL
               value: "http://nominatim.ttr-server.svc.cluster.local:8080"
             - name: GEO_NOMINATIM_USER_AGENT
-              value: "tatrman-geo/1.0"
+              value: "tatrman-geo/1.0 (+https://github.com/Collite/ttr-server)"
             - name: GEO_DB_ENABLED
               value: "true"
             - name: GEO_DB_HOST

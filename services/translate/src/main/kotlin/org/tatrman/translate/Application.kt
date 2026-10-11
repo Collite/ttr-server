@@ -47,7 +47,7 @@ import java.util.concurrent.TimeUnit
 private val log = LoggerFactory.getLogger("org.tatrman.translate.Application")
 
 /**
- * Representative warm-up query against the boot fixture (`dbo.QSUBJEKT`). Mirrors the
+ * Representative warm-up query against the boot fixture (`dbo.customer`). Mirrors the
  * hot paths a real pattern query hits — INNER JOIN (with a colliding key name),
  * MIN/SUM aggregates, CAST(text→float), unary minus, `||` concat + SUBSTRING + LIKE,
  * GROUP BY, ORDER BY DESC + row limit — so priming it warms the parse AND unparse halves.
@@ -57,8 +57,8 @@ internal val WARMUP_SQL =
     SELECT MIN(a.id) AS mn,
            SUM(CAST(a.name AS FLOAT)) AS s,
            -SUM(CAST(a.name AS FLOAT)) AS neg
-    FROM QSUBJEKT a
-    JOIN QSUBJEKT b ON a.id = b.id
+    FROM customer a
+    JOIN customer b ON a.id = b.id
     WHERE (a.name LIKE a.name || '%' OR a.name LIKE '%' || a.name || '%')
       AND SUBSTRING(a.name, 1, 1) = 'A'
     GROUP BY a.id

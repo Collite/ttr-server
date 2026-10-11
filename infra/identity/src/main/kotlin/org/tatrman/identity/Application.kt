@@ -7,6 +7,7 @@ import org.tatrman.keycloak.auth.CachingTokenProvider
 import org.tatrman.keycloak.auth.KeycloakTokenProvider
 import org.tatrman.identity.client.ErpClient
 import org.tatrman.identity.client.KeycloakClient
+import org.tatrman.identity.client.UserSourceClient
 import org.tatrman.identity.domain.UserSource
 import org.tatrman.identity.repository.UserRepositoryDb
 import org.tatrman.identity.repository.UserRepositoryJson
@@ -102,13 +103,14 @@ fun Application.module(
                 30_000L
             }
         val keycloakClient = KeycloakClient.fromConfig(config, cachingTokenProvider, "keycloak", keycloakTimeout)
+        // Null while `erp-database.queries` is unset: the ERP source is then skipped (ErpClient logs which keys).
         val erpClient = ErpClient.fromConfig(config, "erp-database")
 
         val clients =
-            mapOf(
-                UserSource.KEYCLOAK to keycloakClient,
-                UserSource.ERP to erpClient,
-            )
+            buildMap<UserSource, UserSourceClient> {
+                put(UserSource.KEYCLOAK, keycloakClient)
+                erpClient?.let { put(UserSource.ERP, it) }
+            }
 
         val userRepositoryDb = userRepository as UserRepositoryDb
         val syncConfig = WhoisSyncService.loadSyncConfig(config)

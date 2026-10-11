@@ -1,0 +1,24 @@
+package returns
+def er2cnc_role catalog_return__structural { entity: er.entity.catalog_return, role: cnc.cnc.role.structural,
+}
+
+def er2cnc_role calendar__master { entity: er.entity.calendar, role: cnc.cnc.role.master,
+}
+
+def er2cnc_role call_center__master { entity: er.entity.call_center, role: cnc.cnc.role.master,
+}
+
+def er2cnc_role catalog_sale__structural { entity: er.entity.catalog_sale, role: cnc.cnc.role.structural,
+}
+
+def er2cnc_role customer__master { entity: er.entity.customer, role: cnc.cnc.role.master,
+}
+
+def er2cnc_role item__master { entity: er.entity.item, role: cnc.cnc.role.master,
+}
+
+def er2cnc_role return_reason__master { entity: er.entity.return_reason, role: cnc.cnc.role.master,
+}
+
+def er2cnc_role warehouse__master { entity: er.entity.warehouse, role: cnc.cnc.role.master,
+}

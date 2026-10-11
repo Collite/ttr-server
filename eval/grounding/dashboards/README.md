@@ -1,14 +1,14 @@
-# Grounding dashboards + alerts — fabric-infra drafts (A14.3)
+# Grounding dashboards + alerts — GitOps drafts (A14.3)
 
-**These are drafts staged here for review — they belong in the separate `fabric-infra`
-repo, not in ai-platform** (observability manifests live there per the repo's
+**These are drafts staged here for review — they belong in the separate GitOps
+repo, not in this one** (observability manifests live there per the repo's
 "no deployment manifests here" rule). Move on rollout:
 
 - `grounding-overview.json` → a Grafana dashboard (import via provisioning or the UI).
-  Target home in fabric-infra: `apps/observability/overlays/df-test/dashboards/`
+  Target home in the GitOps repo: `apps/observability/overlays/<estate>/dashboards/`
   (wherever the existing service dashboards are provisioned).
 - `grounding-alerts.yaml` → a Prometheus/Alerting rule group. Target home:
-  the Prometheus rules ConfigMap / `PrometheusRule` set already deployed in fabric-infra.
+  the Prometheus rules ConfigMap / `PrometheusRule` set already deployed from the GitOps repo.
 
 ## Metrics consumed (already emitted; no service change needed)
 

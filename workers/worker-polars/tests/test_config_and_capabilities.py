@@ -19,7 +19,7 @@ def cfg():
 
 
 def test_config_loads_with_expected_defaults(cfg):
-    # Ports match conf/application.conf and the df-test deployment env
+    # Ports match conf/application.conf and the deployed worker env
     # (POLARS_SERVER_GRPC_PORT=7301 / POLARS_SERVER_PORT=7300).
     assert cfg.grpc.port == 7301
     assert cfg.http.port == 7300

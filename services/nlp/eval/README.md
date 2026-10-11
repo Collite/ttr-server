@@ -1,14 +1,14 @@
 # nlp Evaluation
 
 This directory contains the evaluation infrastructure for the nlp NLP service
-(formerly Kadmos; forked from ai-platform `infra/nlp/eval`, unchanged — same
-harness + corpus, so the kantheon results equal the ai-platform original's at the
+(formerly Kadmos; forked from the predecessor platform's `infra/nlp/eval`, unchanged — same
+harness + corpus, so the kantheon results equal the predecessor original's at the
 fork point).
 
 ## Corpus
 
 The corpus lives in `corpus/seed.jsonl` (50 hand-curated Czech questions with expected
-parses and entity bindings), carried over verbatim from the ai-platform original.
+parses and entity bindings), carried over verbatim from the predecessor original.
 
 `corpus/rules.jsonl` is the separate rule-pack corpus scored by `--rules`: two
 heroes, paraphrases, and decoys that must match **nothing**. The decoys carry most

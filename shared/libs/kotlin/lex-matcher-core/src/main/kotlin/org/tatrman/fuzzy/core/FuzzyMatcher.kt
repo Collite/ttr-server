@@ -119,7 +119,7 @@ class FuzzyMatcher(
     // retriever follows it, so a v2 prefix hit is retrievable, not only rescorable.
     //
     // ⚑ This default did NOT move at LP-P3. The `lex-matcher` service ships v2 from its own
-    // application.conf; this is the LIBRARY, and its other embedder (ai-platform's fuzzy-matcher,
+    // application.conf; this is the LIBRARY, and its other embedder (a downstream platform's fuzzy-matcher,
     // via `org.tatrman:lex-matcher-core`) chooses its engine in its own deployment. An embedder
     // that never passes this argument keeps the engine it was built against — which is the whole
     // meaning of "v1 is byte-pinned" in contracts §4.1.

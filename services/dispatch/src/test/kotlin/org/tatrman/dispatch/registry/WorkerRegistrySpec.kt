@@ -19,15 +19,15 @@ class WorkerRegistrySpec :
             GetCapabilitiesResponse
                 .newBuilder()
                 .setEngineName("mssql")
-                .addSupportedConnections("df-test")
+                .addSupportedConnections("hartland-default")
                 .build()
 
         "lookupForConnection returns only HEALTHY workers" {
             val r = WorkerRegistry()
             r.seed(listOf(seedEntry(ep)))
-            r.lookupForConnection("df-test").size shouldBe 0
+            r.lookupForConnection("hartland-default").size shouldBe 0
             r.recordSuccess(ep, caps)
-            r.lookupForConnection("df-test").size shouldBe 1
+            r.lookupForConnection("hartland-default").size shouldBe 1
             r.lookupForConnection("nope").size shouldBe 0
         }
 
@@ -68,11 +68,11 @@ class WorkerRegistrySpec :
                 GetCapabilitiesResponse
                     .newBuilder()
                     .setEngineName("mssql")
-                    .addSupportedConnections("df-test")
+                    .addSupportedConnections("hartland-default")
                     .addConnections(
                         ConnectionInfo
                             .newBuilder()
-                            .setConnectionId("df-test")
+                            .setConnectionId("hartland-default")
                             .setDatabase("tatrman")
                             .setDefaultSchema("dbo")
                             .build(),
@@ -87,7 +87,7 @@ class WorkerRegistrySpec :
                     lastPolled = null,
                     consecutiveFailures = 0,
                 )
-            val info = entry.connectionInfo("df-test")
+            val info = entry.connectionInfo("hartland-default")
             info?.database shouldBe "tatrman"
             info?.defaultSchema shouldBe "dbo"
             entry.connectionInfo("unknown") shouldBe null
@@ -98,7 +98,7 @@ class WorkerRegistrySpec :
                 GetCapabilitiesResponse
                     .newBuilder()
                     .setEngineName("mssql")
-                    .addSupportedConnections("df-test")
+                    .addSupportedConnections("hartland-default")
                     // No connections[] entries — represents a pre-Phase-B worker.
                     .build()
             val entry =
@@ -111,7 +111,7 @@ class WorkerRegistrySpec :
                     lastPolled = null,
                     consecutiveFailures = 0,
                 )
-            entry.connectionInfo("df-test") shouldBe null
+            entry.connectionInfo("hartland-default") shouldBe null
         }
     })
 

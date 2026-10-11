@@ -1,7 +1,7 @@
 # Kantheon Developer Portal (Backstage)
 
-> **forked-from:** `ai-platform@2575b923dca521fea0e3156257e4b779f02a6ed4` (`infra/backstage/`), tag `kantheon-fork-point`, forked 2026-06-24 (fork Phase 5 Stage 5.5).
-> Maintained independently since the fork; do not assume parity with the ai-platform original. The fork is a **rebrand + catalog re-point** — the Backstage app source is unchanged; `organization.name`, `app.title`, baseUrls and the **software catalog** move to Kantheon.
+> **forked-from:** the legacy predecessor platform (`infra/backstage/`), forked 2026-06-24 (fork Phase 5 Stage 5.5).
+> Maintained independently since the fork; do not assume parity with the original. The fork is a **rebrand + catalog re-point** — the Backstage app source is unchanged; `organization.name`, `app.title`, baseUrls and the **software catalog** move to Kantheon.
 
 The Kantheon developer portal — a technical-wave (no-persona) Backstage app in `infra/`. Own Node +
 Yarn toolchain (a documented build exception, like llm-gateway's Spring Boot), its own backend on
@@ -14,10 +14,10 @@ Yarn toolchain (a documented build exception, like llm-gateway's Spring Boot), i
   System + Group and a `Component` per pantheon citizen (agents Iris-BFF/Themis/Golem/Pythia/Hebe;
   platform services Veles/query/lex-matcher/nlp/translate/dispatch/validate/llm-gateway/Charon/Metis;
   workers worker-mssql/worker-polars/worker-postgres; `capabilities-mcp`; technical wave identity/health/landing). Wired as
-  a `catalog.locations` file entry; replaces ai-platform's example catalog.
+  a `catalog.locations` file entry; replaces the predecessor's example catalog.
 - `docs/catalog-info.yaml`, `templates/agent-starter/template.yaml`, `app-config.local.yaml`
   (`doc.aip.localhost` → `doc.kantheon.localhost`), the OIDC username-transform comment in
-  `packages/backend/src/index.ts` — all rebranded off the prior client-specific naming and ai-platform.
+  `packages/backend/src/index.ts` — all rebranded off the prior client-specific and predecessor-platform naming.
 
 ## Build / run
 
@@ -30,4 +30,4 @@ yarn start
 The image is built and tagged `kantheon/backstage` (port 7007) at deploy; deploy manifests fork
 from `deployment/apps/backstage`. The `yarn tsc && yarn build` + Backstage component tests run in
 CI (the Node toolchain is not exercised on the local Rancher path); this stage's deterministic
-local gate is YAML/catalog well-formedness + a residual prior-naming sweep (client name + `ai-platform`).
+local gate is YAML/catalog well-formedness + a residual prior-naming sweep (client and predecessor-platform names).

@@ -17,16 +17,16 @@ import java.nio.file.Path
 /**
  * Golem Phase 4 Stage 4.2 T1/T2 — ResolveArea.
  *
- * Loads a FileBasedSource over a fixture root containing `areas/accounting.ttrm`
- * (a directive-less `.ttrm` file holding `def area accounting { ... }`), runs it
+ * Loads a FileBasedSource over a fixture root containing `areas/hartland.ttrm`
+ * (a directive-less `.ttrm` file holding `def area hartland { ... }`), runs it
  * through the reconciler into a registry snapshot, and exercises the
  * MetadataServiceImpl.resolveArea RPC.
  */
 class ResolveAreaSpec :
     StringSpec({
 
-        // A dedicated resource root (NOT under `model-ttr`) so it doesn't shadow the
-        // bundled `model-ttr` tree on the classpath (getResource returns the first match).
+        // A dedicated resource root (NOT under `model-seed`) so it doesn't shadow the
+        // `model-seed` tree on the classpath (getResource returns the first match).
         val fixtureRoot: Path =
             Path
                 .of(checkNotNull(this::class.java.classLoader.getResource("model-areas/areas")).toURI())
@@ -47,12 +47,12 @@ class ResolveAreaSpec :
             return MetadataServiceImpl(registry, packageIndex = PackageIndex())
         }
 
-        "resolveArea(accounting) returns the area's packages, description, tags, found=true" {
-            val r = service().resolveArea(ResolveAreaRequest.newBuilder().setArea("accounting").build())
+        "resolveArea(hartland) returns the area's packages, description, tags, found=true" {
+            val r = service().resolveArea(ResolveAreaRequest.newBuilder().setArea("hartland").build())
             r.found shouldBe true
-            r.packagesList shouldContainExactly listOf("obchodni_doklady", "ucetnictvi")
+            r.packagesList shouldContainExactly listOf("sales", "returns")
             r.description.shouldNotBeEmpty()
-            r.tagsList shouldContainExactly listOf("finance")
+            r.tagsList shouldContainExactly listOf("reporting", "demo")
             r.messagesList.size shouldBe 0
         }
 
@@ -76,7 +76,7 @@ class ResolveAreaSpec :
 
         "resolveArea on an unready registry surfaces metadata_not_ready" {
             val empty = MetadataServiceImpl(MetadataRegistry(), packageIndex = PackageIndex())
-            val r = empty.resolveArea(ResolveAreaRequest.newBuilder().setArea("accounting").build())
+            val r = empty.resolveArea(ResolveAreaRequest.newBuilder().setArea("hartland").build())
             r.found shouldBe false
             r.messagesList.map { it.code } shouldContainExactly listOf("metadata_not_ready")
         }

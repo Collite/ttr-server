@@ -12,7 +12,7 @@ import org.tatrman.plan.v1.TableScanNode
 import org.tatrman.security.v1.EvaluatePoliciesRequest
 
 /**
- * Fork Stage 3.2 — the bearer-roles seam. Replaces ai-platform's whois-enrichment spec:
+ * Fork Stage 3.2 — the bearer-roles seam. Replaces the predecessor platform's whois-enrichment spec:
  * roles arrive on the request context (`auth_roles`, from the bearer's `realm_access.roles`),
  * NOT from a whois lookup. A policy that gates on `UserAttribute("roles")` evaluates against
  * the forwarded roles; with no roles present it is skipped (no whois fallback).

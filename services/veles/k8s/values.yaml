@@ -35,11 +35,18 @@ telemetry:
   endpoint: ""
   serviceName: veles
 
-# Veles loads its model + prompts from a git remote. Env-agnostic default = the canonical
-# ai-models repo; a deploying env (or a test context needing a seed-aligned model) overrides
-# `gitRemoteUri` and supplies the PAT via `secretEnv`.
+# The model Veles serves: a git repository (cloned at boot, re-fetched for live reload). The default
+# is the PUBLIC Hartland demo model — Collite/ttr-demo, branch `master`, sub-path `model` — which needs
+# no token, so a fresh install has a model to explore. To serve your own model set all three keys
+# (the branch and sub-path defaults are Hartland's); a private repository also needs the PAT
+# (`secretEnv` METADATA_GIT_TOKEN). An empty `gitRemoteUri` configures no source: Veles logs an
+# error and never turns ready. Veles bundles no fallback model (ttr-server#180): until the source
+# has loaded once, /ready answers 503 and /status says why. An empty `gitBranch`/`gitSubdirectory`
+# renders no env var (Veles' own defaults apply), and so does one that `extraEnv` already sets.
 metadata:
-  gitRemoteUri: "https://github.com/Tatrman/ai-models.git"
+  gitRemoteUri: "https://github.com/Collite/ttr-demo.git"
+  gitBranch: "master"
+  gitSubdirectory: "model"
 
 # Secret-backed env (valueFrom.secretKeyRef). `optional: true` mirrors the kustomize base — the
 # pod boots without the PAT (public/fixture remotes need none).

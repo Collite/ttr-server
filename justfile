@@ -605,7 +605,7 @@ charts-publish:
 # ── release guard ────────────────────────────────────────────────────────────────
 # A tag names a COMMIT, and `git tag` reads it from the checkout you are standing in. A `main`
 # that has not pulled the merge you just made tags the PREVIOUS commit under a NEW version —
-# the image builds, deploys, and reproduces the bug verbatim (ai-platform 2026-09-20:
+# the image builds, deploys, and reproduces the bug verbatim (the predecessor platform, 2026-09-20:
 # glossary/v0.11.7 == v0.11.6, one golden-set run wasted). Ancestry is not enough — a stale
 # HEAD *is* an ancestor of origin/main — so this fetches and demands equality with the
 # branch's origin counterpart, and says which way the two differ and what to run.

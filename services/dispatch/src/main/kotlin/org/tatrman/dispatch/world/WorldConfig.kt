@@ -9,10 +9,10 @@ import org.tatrman.plan.v1.schemaCodeToToken
  * Maps physical table qnames to a `connection_id`. Loaded from HOCON at boot:
  *
  *   world {
- *     default-connection = "df-test"
+ *     default-connection = "hartland-default"
  *     table-connections {
- *       "db.dbo.QHDOK_*"   = "df-test-fin"
- *       "db.dbo.QSUBJEKT*" = "df-test-crm"
+ *       "db.dbo.store_*"   = "hartland-store"
+ *       "db.dbo.customer*" = "hartland-customer"
  *     }
  *   }
  *

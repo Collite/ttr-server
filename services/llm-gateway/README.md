@@ -1,7 +1,7 @@
 # prometheus
 
-> **forked-from:** `ai-platform@2575b923dca521fea0e3156257e4b779f02a6ed4` (`infra/llm-gateway/`), tag `kantheon-fork-point`, forked 2026-06-14.
-> Maintained independently since the fork; do not assume parity with the ai-platform original.
+> **forked-from:** the legacy predecessor platform (`infra/llm-gateway/`), forked 2026-06-14.
+> Maintained independently since the fork; do not assume parity with the original.
 
 **Prometheus** is the **LLM gateway** for kantheon — it centralizes and manages access to Large
 Language Models (Azure OpenAI, Anthropic, …) for every other service and agent. It is the repo's

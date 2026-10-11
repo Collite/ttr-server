@@ -168,7 +168,7 @@ backend (default `0.9.2`, the nlp image family).
 | Key | Type | Default | Notes |
 |---|---|---|---|
 | `geo.nominatim.baseUrl` | string | `""` | **No default (Q-19).** Unset ⇒ geocoding is **dark by policy** (reports dark, fails loud, never wrong — RS-19). The public OSM Nominatim is **not** a valid production endpoint. Self-host and set this. |
-| `geo.nominatim.userAgent` | string | `tatrman-geo/1.0` | |
+| `geo.nominatim.userAgent` | string | `tatrman-geo/1.0 (+https://github.com/Collite/ttr-server)` | |
 | `geo.db.enabled` | bool | `false` | Durable boundary cache (PostGIS/Postgres). Off ⇒ in-memory. |
 | `geo.db.{host,port,name,user}` | | — / 5432 / geo / geo | Password via `geo.secretEnv` (Secret ref). |
 | `geo.db.boundaryCacheTtlDays` | int | `90` | |
@@ -193,7 +193,29 @@ config-baked in the resolver image (`application.conf`), not values-exposed.
 
 ---
 
-## 6. Security notes (the standing rules)
+## 6. Model source (`veles.metadata.*`)
+
+Veles serves the model of one git repository, cloned at install and re-fetched every 5 minutes.
+
+| Key | Type | Default | Notes |
+|---|---|---|---|
+| `veles.metadata.gitRemoteUri` | string | `https://github.com/Collite/ttr-demo.git` | The **public Hartland demo model**, so a fresh install has a model to explore with no token. `""` ⇒ no model source: Veles logs an error and never turns ready. |
+| `veles.metadata.gitBranch` | string | `master` | Hartland's branch. **Set it together with `gitRemoteUri`.** `""` renders no env var (Veles' own default applies). |
+| `veles.metadata.gitSubdirectory` | string | `model` | The model's directory inside the repository — Hartland's. **Set it together with `gitRemoteUri`.** |
+| `veles.secretEnv` | list | `METADATA_GIT_TOKEN` from Secret `veles-github-pat` (key `token`, optional) | A read token for a private repository. |
+
+`gitBranch` / `gitSubdirectory` render nothing when `veles.extraEnv` already sets `METADATA_GIT_BRANCH` /
+`METADATA_GIT_SUBDIR` (the older way to set them), so an existing install keeps its values and gets no
+duplicate env var.
+
+**No fallback model (ttr-server#180).** Veles bundles no model. If the repository can't be loaded (a
+bad token, a wrong branch or sub-path, no network), Veles serves no model and its `/ready` answers 503
+until the source has loaded once; `GET /status` on Veles shows the source and its last error. A
+source that loads but finds no model objects has not loaded.
+
+---
+
+## 7. Security notes (the standing rules)
 
 - **Secrets by reference only.** Every secret is a K8s `Secret` ref (`secretEnv[].{secretName,secretKey}`) —
   no plaintext secret value is a chart value (the no-secret-API rule). The one exception is
@@ -203,10 +225,12 @@ config-baked in the resolver image (`application.conf`), not values-exposed.
   (`missing_user_identity`). Trusted-network shortcuts are off (§4.1).
 - **Resolver fail-closed** on an empty resume-key set (§5.3) unless `allowEphemeralKey`.
 - **Geo dark-by-policy** with no Nominatim endpoint (§5.2): honest degrade, never a wrong answer.
+- **No silent model substitution** (§6): a model source that fails to load leaves Veles not ready
+  and serving nothing, never another model.
 
 ---
 
-## 7. Per-service passthrough
+## 8. Per-service passthrough
 
 Anything under a service's key that is not listed above is passed to that service's own chart —
 see `services/<x>/k8s/values.yaml` (or `workers/`, `tools/`, `infra/`) for its full surface

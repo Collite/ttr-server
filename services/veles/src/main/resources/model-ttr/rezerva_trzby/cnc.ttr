@@ -1,4 +1,0 @@
-package rezerva_trzby
-def er2cnc_role rezerva_tržby__structural { entity: er.entity.rezerva_tržby, role: cnc.cnc.role.structural,
-}
-

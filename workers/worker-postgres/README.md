@@ -7,8 +7,8 @@ workers the dispatcher dispatches to, alongside **worker-mssql** (MSSQL) and
 runs it over JDBC **read-only under per-tenant row-level security**, and streams the
 result as Arrow IPC batches back through the dispatcher.
 
-worker-postgres is **born in-repo** by mirroring worker-mssql — it forks the never-built ai-platform
-`workers/postgres` brief, not ai-platform code, so it carries **no `forked-from`
+worker-postgres is **born in-repo** by mirroring worker-mssql — it forks the never-built predecessor-platform
+`workers/postgres` brief, not predecessor-platform code, so it carries **no `forked-from`
 provenance header** (AGENTS.md §12.1; same as Charon/Metis). worker-mssql is the structural
 template; the deltas are the Postgres driver/URL, the `PostgresArrowTypeMapper`, and the
 one genuinely new thing — the RLS session contract. See

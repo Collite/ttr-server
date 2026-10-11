@@ -1,8 +1,8 @@
 # query-mcp
 
-> **forked-from:** `ai-platform@e6ee38c77541dd8c2b7a31af3fbec8d4c008dabc` (`tools/query-mcp/`, ai-platform HEAD), forked 2026-06-15 (Stage 3.5).
-> *Forked from HEAD, not the `kantheon-fork-point` tag:* query-mcp saw a post-fork-point, proto-compatible "pattern query parametrization" improvement (Conversions + tests) worth carrying; `shared/proto/.../plan` was unchanged between the tag and HEAD, so there is no proto drift.
-> Maintained independently since the fork; do not assume parity with the ai-platform original.
+> **forked-from:** the legacy predecessor platform (`tools/query-mcp/`, its HEAD at the time), forked 2026-06-15 (Stage 3.5).
+> *Forked from HEAD, not the fork-point tag:* query-mcp saw a post-fork-point, proto-compatible "pattern query parametrization" improvement (Conversions + tests) worth carrying; `shared/proto/.../plan` was unchanged between the tag and HEAD, so there is no proto drift.
+> Maintained independently since the fork; do not assume parity with the original.
 
 **query-mcp** — the agent-facing MCP edge for **query-runner**. Exposes the
 `query` (run_query) and `compile` tools over StreamableHTTP, turns Arrow IPC

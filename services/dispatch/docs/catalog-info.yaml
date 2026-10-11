@@ -15,4 +15,4 @@ spec:
   type: service
   lifecycle: production
   owner: df-platform
-  system: ai-platform
+  system: kantheon

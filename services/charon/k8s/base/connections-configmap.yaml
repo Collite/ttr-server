@@ -4,7 +4,7 @@
 # entries below are the canonical v1 set — an ERP read-replica (read-only) and
 # an analytics-staging DB (read/write). Credentials are NEVER inline: `${ENV}`
 # tokens are substituted from the container env, which is fed by the
-# `charon-db-credentials` sealed secret (fabric-infra; see deployment.yaml).
+# `charon-db-credentials` sealed secret (the GitOps repo; see deployment.yaml).
 #
 # **Pythia's internal Postgres is deliberately NOT listed** (contracts §4) — so
 # no request can reach it through Charon.

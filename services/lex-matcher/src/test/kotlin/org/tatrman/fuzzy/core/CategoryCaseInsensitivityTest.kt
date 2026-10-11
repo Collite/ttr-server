@@ -18,10 +18,10 @@ import kotlin.time.Duration.Companion.seconds
  * Regression for the category-key case mismatch (golem/resolver fuzzy bug).
  *
  * The metadata loader keys categories with the DB identifier's original case
- * (e.g. "db.dbo.QSTRED_DF.KOD_STR"), but every query path lowercases the
+ * (e.g. "db.dbo.STREDISKO.KOD"), but every query path lowercases the
  * requested category. The per-column index was therefore never hit: TATRMAN
- * silently fell back to the GLOBAL index (serving NAZEV_STR names for a
- * KOD_STR query — "QT ORLAK" was unfindable), and LEVENSHTEIN returned empty.
+ * silently fell back to the GLOBAL index (serving NAZEV names for a
+ * KOD query — "QT ORLAK" was unfindable), and LEVENSHTEIN returned empty.
  *
  * Asserts data flow, not call counts: a case-varied category resolves to the
  * right column's candidates, the wrong column is never leaked, and an
@@ -30,8 +30,8 @@ import kotlin.time.Duration.Companion.seconds
 class CategoryCaseInsensitivityTest :
     StringSpec({
 
-        val codeCategory = "db.dbo.QSTRED_DF.KOD_STR"
-        val nameCategory = "db.dbo.QSTRED_DF.NAZEV_STR"
+        val codeCategory = "db.dbo.STREDISKO.KOD"
+        val nameCategory = "db.dbo.STREDISKO.NAZEV"
 
         // Loader returns UPPER-CASED category keys, as the real metadata loader does.
         val loader =
@@ -73,9 +73,9 @@ class CategoryCaseInsensitivityTest :
                 repo.getCandidates(codeCategory).map { it.id }.toSet() shouldBe setOf("273", "492")
                 repo.getCandidates(codeCategory.lowercase()).map { it.id }.toSet() shouldBe setOf("273", "492")
 
-                // The code "QT ORLAK" lives only in KOD_STR — querying that
+                // The code "QT ORLAK" lives only in KOD — querying that
                 // column (mixed case) must return it exactly, not fall back to
-                // the global index and serve NAZEV_STR names.
+                // the global index and serve NAZEV names.
                 val codeHit = runBlocking { matcher.match("QT ORLAK", codeCategory, AlgorithmType.TATRMAN, 5) }
                 codeHit.first().candidateId shouldBe "273"
                 codeHit.first().candidate shouldBe "QT ORLAK"

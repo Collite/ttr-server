@@ -54,7 +54,7 @@ FROM deps AS models
 ARG MODEL_ID=nametag3-czech-cnec2.0-240830
 # LINDAT hdl:11234/1-5677. As with MorphoDiTa, LINDAT is a DSpace-7 SPA — pass the
 # resolved DSpace REST bitstream-content URL as a build-arg (working URL recorded
-# in the ai-platform Q-10 harness). Pin MODEL_SHA256 after the first download.
+# in the predecessor platform's Q-10 harness). Pin MODEL_SHA256 after the first download.
 ARG MODEL_URL=REPLACE_WITH_DSPACE_BITSTREAM_URL
 ARG MODEL_SHA256=REPLACE_WITH_VERIFIED_DIGEST
 

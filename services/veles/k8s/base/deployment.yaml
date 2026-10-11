@@ -28,9 +28,13 @@ spec:
               value: "7260"
             - name: VELES_GRPC_PORT
               value: "7261"
+            # The public Hartland demo model (Veles' own default); a deploying env overrides all three.
             - name: METADATA_GIT_REMOTE_URI
-              value: "https://github.com/Tatrman/ai-models.git"
-              # Override per cluster with the canonical fabric-infra secret.
+              value: "https://github.com/Collite/ttr-demo.git"
+            - name: METADATA_GIT_BRANCH
+              value: "master"
+            - name: METADATA_GIT_SUBDIR
+              value: "model"
             - name: METADATA_GIT_TOKEN
               valueFrom:
                 secretKeyRef:

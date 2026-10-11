@@ -68,7 +68,7 @@ data class NlpAnalyzeResult(
 /**
  * gRPC client for `org.tatrman.nlp.v1.NlpService` (RG-P1.S1 — gRPC is the
  * service contract; the nlp REST endpoint is a dev/health mirror). Migrated
- * from the forked ai-platform `POST /v1/analyze` HTTP client. Owns its
+ * from the forked predecessor-platform `POST /v1/analyze` HTTP client. Owns its
  * [ManagedChannel]; call [close] on shutdown. Mirrors fuzzy-mcp's
  * `FuzzyGrpcClient`.
  */

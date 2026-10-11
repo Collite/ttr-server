@@ -83,6 +83,6 @@ grounded **condition** must survive the cascade, but plan composition around it 
 | `money-amountOnly` | money | amount, no FX table → foreign currency UNGROUNDABLE | `model=amountOnly` |
 | `money-ambiguous` | money | amount column ambiguous → AWAITING_CLARIFICATION | `model=ambiguous` |
 
-Against df-test the runner tags each result with its `model` and reports coverage; only cases
+Against a deployed estate the runner tags each result with its `model` and reports coverage; only cases
 whose `model` the deployed metadata model can satisfy are scored as pass/fail, the rest as
 `skipped:model-unavailable` (see `run_eval.py`).

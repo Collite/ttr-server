@@ -22,7 +22,7 @@ import kotlin.time.Duration.Companion.seconds
 class AlgorithmCascadeTest :
     StringSpec({
 
-        val category = "db.dbo.QSTRED_DF.KOD_STR"
+        val category = "db.dbo.STREDISKO.KOD"
         val loader =
             object : LoaderSource {
                 override suspend fun loadNextCache() =
