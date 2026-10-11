@@ -9,7 +9,9 @@ import org.tatrman.fuzzy.v1.FuzzyStatusResponse
 import org.tatrman.fuzzy.v1.SourceTag
 import org.tatrman.nlp.v1.AnalyzeResponse
 import org.tatrman.resolver.client.FuzzyClient
+import org.tatrman.resolver.model.Reach
 import org.tatrman.resolver.model.ResolverEntityType
+import org.tatrman.resolver.model.ownersByRef
 import org.tatrman.resolver.v1.UniversalEntityType
 import org.tatrman.text.Normalization.fold
 
@@ -30,10 +32,23 @@ import org.tatrman.text.Normalization.fold
  * `GetStatus`). A place is offered only to the vocabularies whose values the NER calls places — the
  * return reasons hold none, so `Paris` never reaches them; the warehouse names do, so `Brno DC` does.
  *
- * **Stage 1: the whole name, verbatim.** A member row speaks for this reading only when its value IS
- * the span, modulo case, diacritics and spacing ([admitted]) — the rule `MemberPhrases` confirms a
- * label by. A TOKENS or TYPOS hit never does, so `Dallas` does not become the warehouse "Dallas DC".
- * Part of a name (`v Brně` for "Brno DC") is Stage 2, not built.
+ * **Stage 1: the whole name, verbatim.** A member row speaks for this reading when its value IS the
+ * span, modulo case, diacritics and spacing ([admitted]) — the rule `MemberPhrases` confirms a label
+ * by. A TOKENS or TYPOS hit never does, so `Dallas` does not become the warehouse "Dallas DC".
+ *
+ * **Stage 2 (⚑UD-12 (a), 2026-10-11): the name through its dictionary form, and part of a name —
+ * where the sentence reaches it.** Czech names decline („v Brně“, „Ostravě“), and a member may hold
+ * the town inside a longer name ("Brno DC"). The span's lemmas ([DomainSpanCandidate.nameLemma]) are
+ * compared too:
+ *  - **the whole name by its lemmas** („Ostravě“ → the store "Ostrava") speaks when the question names
+ *    no model object, or when one it names reaches the member's entity;
+ *  - **part of a name** (the lemmas a whole-word run inside the member: „Brně“ in "Brno DC") speaks
+ *    only when a model object the question names reaches the member's entity (A-UD-7's predicate):
+ *    «v Brně nulové zásoby» reaches the warehouse through the inventory, «Jak se vedlo Brně?» reaches
+ *    nothing, and a bare partial name stays a place.
+ * A member the question's objects reach outranks one they do not: on hartland the stores are named
+ * after towns, so «v Brně nulové zásoby» holds the store "Brno" whole and the warehouse "Brno DC" in
+ * part, and the stock is the warehouse's.
  *
  * **What it does not touch.** A governed place keeps its governed reading: nothing is proposed over an
  * entity a governed dual reading already reads. No profile, or no named vocabulary for the entity's
@@ -81,6 +96,16 @@ object NamedMembers {
                         }
                 }.toHashSet()
 
+        // UD-P3 S2 — the model objects the question names, each with its owner (a measure's fact): the
+        // anchors whose reach decides a name read in part or through its dictionary form.
+        val owners = entityTypes.ownersByRef()
+        val anchors =
+            proposed
+                .filter { it.origin == DomainSpanCandidate.Origin.ANCHOR_PHRASE }
+                .flatMap { it.gatedEntityRefs }
+                .flatMap { ref -> listOfNotNull(ref, owners[ref]?.takeIf { it.isNotBlank() }) }
+                .distinct()
+
         val out = mutableListOf<DomainSpanCandidate>()
         for (e in parse.entitiesList) {
             val type = UniversalClassifier.dualReadingType(e.label, e.normalizedValue, e.text) ?: continue
@@ -112,29 +137,89 @@ object NamedMembers {
                     headToken = head,
                     lemma = tokens[head].lemma.ifBlank { tokens[head].text },
                     dualReadingOf = entity,
+                    dualReadingScope = anchors,
+                    nameLemma = lemmaSurface(run, tokens),
                 )
         }
         return out
     }
 
     /**
-     * I-13 — the rows that may decide a NAMED_MEMBER reading: MEMBER rows of the vocabularies it was
-     * scoped to whose value is the span itself, verbatim modulo case, diacritics and spacing. Nothing
-     * else — not a TOKENS or TYPOS member hit, not a declared row — so a reading that found only those
-     * has nothing to bind and is withdrawn.
+     * I-13 — the rows that may decide a NAMED_MEMBER reading, MEMBER rows of the vocabularies it was
+     * scoped to only (the category is checked HERE as well as asked for, as in `MemberPhrases`: a
+     * matcher that ignored the filter must not turn a place into another vocabulary's member):
+     *  - the value IS the span, verbatim modulo case, diacritics and spacing (Stage 1);
+     *  - the value is the span's dictionary form, when the question names no model object or one it
+     *    names reaches the row's entity (Stage 2);
+     *  - the span's dictionary form is a whole-word run inside the value, when a model object the
+     *    question names reaches the row's entity (Stage 2, ⚑UD-12 (a)).
+     * Any other hit — a TOKENS or TYPOS row that matches none of these, a declared row — is not a reading
+     * of the name, and a reading left with none is withdrawn. When some admitted row's entity is reached,
+     * only reached rows stay: the sentence scoped them.
      *
-     * The category is checked HERE as well as asked for, as in `MemberPhrases`: a matcher that ignored
-     * the filter must not be able to turn a place into some other vocabulary's member.
+     * The reach is A-UD-7's predicate over [DomainSpanCandidate.dualReadingScope] (the question's model
+     * objects and their owners): the object itself, its entity, or an entity that declares a relation
+     * from it.
      */
     fun admitted(
         matches: List<FuzzyMatch>,
         candidate: DomainSpanCandidate,
+        owners: Map<String, String> = emptyMap(),
+        reach: Map<String, List<Reach>> = emptyMap(),
+        memberOwners: Map<String, String> = emptyMap(),
     ): List<FuzzyMatch> {
-        val scope = candidate.categories.mapTo(HashSet()) { it.lowercase() }
+        val categories = candidate.categories.mapTo(HashSet()) { it.lowercase() }
         val name = key(candidate.text)
-        return matches.filter {
-            it.source == SourceTag.MEMBER && it.category.lowercase() in scope && key(it.candidate) == name
+        val lemma = key(candidate.nameLemma)
+        val lemmaWords = lemma.split(' ').filter { it.isNotEmpty() }
+        val anchors = candidate.dualReadingScope
+
+        fun reached(m: FuzzyMatch): Boolean {
+            if (anchors.isEmpty()) return false
+            val owner = memberOwners[m.category] ?: m.category
+            val entity = owners[owner]?.takeIf { it.isNotBlank() } ?: owner
+            return anchors.any { g ->
+                val governorEntity = owners[g]?.takeIf { it.isNotBlank() } ?: g
+                entity == g || entity == governorEntity || reach[entity].orEmpty().any { it.factRef == g }
+            }
         }
+
+        val admitted =
+            matches.filter { m ->
+                if (m.source != SourceTag.MEMBER || m.category.lowercase() !in categories) return@filter false
+                val value = key(m.candidate)
+                when {
+                    value == name -> true
+                    lemma.isEmpty() -> false
+                    value == lemma -> anchors.isEmpty() || reached(m)
+                    containsRun(value.split(' '), lemmaWords) -> reached(m)
+                    else -> false
+                }
+            }
+        val inReach = admitted.filter(::reached)
+        return inReach.ifEmpty { admitted }
+    }
+
+    /** Whether [words] holds [run] as consecutive whole words. */
+    private fun containsRun(
+        words: List<String>,
+        run: List<String>,
+    ): Boolean = run.isNotEmpty() && run.size < words.size && words.windowed(run.size).any { it == run }
+
+    /** The dictionary form of a token run: each word's lemma, joined as the text joins the words. */
+    private fun lemmaSurface(
+        run: List<Int>,
+        tokens: List<org.tatrman.nlp.v1.Token>,
+    ): String {
+        val sb = StringBuilder()
+        var previousEnd = -1
+        for (i in run.sorted()) {
+            val t = tokens[i]
+            if (previousEnd in 0 until t.charStart) sb.append(' ')
+            sb.append(t.lemma.ifBlank { t.text })
+            previousEnd = t.charEnd
+        }
+        return sb.toString()
     }
 
     /**

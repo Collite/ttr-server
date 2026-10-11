@@ -106,6 +106,13 @@ object MhMembers {
             "praha dc" to listOf(Triple("Praha DC", "Praha DC", WAREHOUSE_NAME)),
             // UD-P3 — F-8: the return reason a lone `Paris` reached through the open lookup (TOKENS).
             "paris" to listOf(Triple("Parts missing", "Parts missing", REASON_DESC)),
+            // UD-P3 S2 — a declined town, as the matcher answers it on hartland: the store named after
+            // the town (TYPOS) and the warehouse that holds it in part (TOKENS).
+            "brně" to
+                listOf(
+                    Triple("Brno DC", "Brno DC", WAREHOUSE_NAME),
+                    Triple("Brno", "Brno", STORE_NAME),
+                ),
         )
 
     private fun et(

@@ -16,6 +16,9 @@ import org.tatrman.fuzzy.v1.SourceTag
 import org.tatrman.nlp.v1.NerEntity
 import org.tatrman.nlp.v1.Token
 import org.tatrman.resolver.client.FuzzyClient
+import org.tatrman.resolver.model.memberEntityByCategory
+import org.tatrman.resolver.model.ownersByRef
+import org.tatrman.resolver.model.reachByRef
 import org.tatrman.resolver.pipeline.DomainSpanCandidate
 import org.tatrman.resolver.pipeline.NamedCategories
 import org.tatrman.resolver.pipeline.NamedCategorySource
@@ -498,6 +501,152 @@ class NamedMembersTest :
                 .attributionsList
                 .map { it.binding.ref } shouldContainExactly
                 listOf("${MhMembers.STORE_STATE}#TN")
+        }
+
+        // ── UD-P3 S2 (⚑UD-12 (a)) — the name through its dictionary form, and part of a name ──────
+
+        val townsNamed =
+            MhMembers.profiles(MhMembers.WAREHOUSE_NAME to listOf(place), MhMembers.STORE_NAME to listOf(place))
+
+        fun brne(
+            text: String,
+            tokens: Array<Token>,
+            start: Int,
+        ) = MhMembers.resolve(
+            text,
+            tokens,
+            "cs",
+            MhMembers.NAMED_REGISTRY,
+            listOf(MhMembers.ner("Brně", start, start + 4, "LOCATION", "cnec:gu")),
+            townsNamed,
+        )
+
+        "S2 — a question whose measure reaches the warehouse reads «v Brně» as part of «Brno DC», not the store" {
+            // «Jaký byl turnover v Brně»: `turnover` is the marketplace measure, whose fact the warehouse
+            // declares a reach from; the store named "Brno" is the whole name, but the sentence scoped
+            // the warehouse.
+            val tokens =
+                arrayOf(
+                    MhMembers.tok("Jaký", 0, 4, "jaký", "DET", 3, "det"),
+                    MhMembers.tok("byl", 5, 8, "být", "AUX", 0, "root"),
+                    MhMembers.tok("turnover", 9, 17, "turnover", "NOUN", 2, "nsubj"),
+                    MhMembers.tok("v", 18, 19, "v", "ADP", 5, "case"),
+                    MhMembers.tok("Brně", 20, 24, "Brno", "PROPN", 2, "obl"),
+                )
+            val r = brne("Jaký byl turnover v Brně", tokens, 20)
+
+            r
+                .findingsOn("Brně")
+                .single()
+                .attributionsList
+                .map { it.binding.ref } shouldContainExactly
+                listOf("${MhMembers.WAREHOUSE_NAME}#Brno DC")
+            r.gapsOn("Brně").shouldBeEmpty()
+        }
+
+        "S2 — with no model object in the question, the whole name through its lemma binds: the store" {
+            val tokens =
+                arrayOf(
+                    MhMembers.tok("Jak", 0, 3, "jak", "ADV", 3, "advmod"),
+                    MhMembers.tok("se", 4, 6, "se", "PRON", 3, "expl:pass"),
+                    MhMembers.tok("vedlo", 7, 12, "vést", "VERB", 0, "root"),
+                    MhMembers.tok("Brně", 13, 17, "Brno", "PROPN", 3, "obl:arg"),
+                )
+            val r = brne("Jak se vedlo Brně", tokens, 13)
+
+            r
+                .findingsOn("Brně")
+                .single()
+                .attributionsList
+                .map { it.binding.ref } shouldContainExactly
+                listOf("${MhMembers.STORE_NAME}#Brno")
+        }
+
+        "S2 — a model object that reaches neither keeps the place: no bare guess at a store or a warehouse" {
+            // «Kolik zákazníků je v Brně»: the customer reaches no store and no warehouse.
+            val tokens =
+                arrayOf(
+                    MhMembers.tok("Kolik", 0, 5, "kolik", "DET", 2, "det:numgov"),
+                    MhMembers.tok("zákazníků", 6, 15, "zákazník", "NOUN", 5, "nsubj"),
+                    MhMembers.tok("je", 16, 18, "být", "AUX", 5, "cop"),
+                    MhMembers.tok("v", 19, 20, "v", "ADP", 5, "case"),
+                    MhMembers.tok("Brně", 21, 25, "Brno", "PROPN", 0, "root"),
+                )
+            val r = brne("Kolik zákazníků je v Brně", tokens, 21)
+
+            r.findingsOn("Brně").single().kind shouldBe ValueKind.VALUE_KIND_GROUNDED
+            r.gapsOn("Brně") shouldContainExactly listOf(GapKind.GAP_KIND_G3_UNATTRIBUTED)
+        }
+
+        "S2 — part of a name never speaks without a model object that reaches it (⚑UD-12 (a))" {
+            val c =
+                proposeOver(
+                    listOf(MhMembers.ner("Brně", 17, 21, "LOCATION", "cnec:gu")),
+                    NamedCategories.fromStatus(townsNamed),
+                    arrayOf(
+                        MhMembers.tok("Kolik", 0, 5, "kolik", "DET", 2, "det:numgov"),
+                        MhMembers.tok("týdnů", 6, 11, "týden", "NOUN", 3, "nsubj"),
+                        MhMembers.tok("mělo", 12, 16, "mít", "VERB", 0, "root"),
+                        MhMembers.tok("Brně", 17, 21, "Brno", "PROPN", 3, "obl"),
+                    ),
+                    "Kolik týdnů mělo Brně",
+                ).single()
+            c.nameLemma shouldBe "Brno"
+            c.dualReadingScope.shouldBeEmpty()
+
+            fun row(
+                value: String,
+                category: String,
+            ) = FuzzyMatch
+                .newBuilder()
+                .setCandidate(value)
+                .setCandidateId(value)
+                .setCategory(category)
+                .setSource(SourceTag.MEMBER)
+                .setScore(0.86)
+                .build()
+            val types = MhMembers.namedEntityTypes()
+            val owners = types.ownersByRef()
+            val reach = types.reachByRef()
+            val memberOwners = types.memberEntityByCategory()
+            val rows = listOf(row("Brno DC", MhMembers.WAREHOUSE_NAME), row("Brno", MhMembers.STORE_NAME))
+
+            // no anchor: the whole name by its lemma only
+            NamedMembers.admitted(rows, c, owners, reach, memberOwners).map { it.candidate } shouldContainExactly
+                listOf("Brno")
+            // an anchor reaching the warehouse: the part it reaches outranks the whole it does not
+            val scoped = c.copy(dualReadingScope = listOf(MhMembers.CATALOG_SALES))
+            NamedMembers.admitted(rows, scoped, owners, reach, memberOwners).map { it.candidate } shouldContainExactly
+                listOf("Brno DC")
+            // an anchor reaching neither: nothing — not even the whole name through its lemma
+            val elsewhere = c.copy(dualReadingScope = listOf(MhMembers.CUSTOMER))
+            NamedMembers.admitted(rows, elsewhere, owners, reach, memberOwners).shouldBeEmpty()
+            // the town written whole («Brno») is the store's name as written, which speaks anyway — but
+            // where the question reaches the warehouse, the reached reading outranks it
+            val nominative = scoped.copy(text = "Brno")
+            NamedMembers
+                .admitted(
+                    rows,
+                    nominative,
+                    owners,
+                    reach,
+                    memberOwners,
+                ).map { it.candidate } shouldContainExactly
+                listOf("Brno DC")
+        }
+
+        "S2 — the whole name as written still binds whatever the question names (Stage 1 unchanged)" {
+            val c = proposeOver(wholeName, dcProfile).single().copy(dualReadingScope = listOf(MhMembers.CUSTOMER))
+            val row =
+                FuzzyMatch
+                    .newBuilder()
+                    .setCandidate("Brno DC")
+                    .setCandidateId("Brno DC")
+                    .setCategory(MhMembers.WAREHOUSE_NAME)
+                    .setSource(SourceTag.MEMBER)
+                    .setScore(1.0)
+                    .build()
+            NamedMembers.admitted(listOf(row), c).map { it.candidate } shouldContainExactly listOf("Brno DC")
         }
 
         "I-2 — a question with no place in it never reads the profile" {
