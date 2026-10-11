@@ -25,6 +25,9 @@ is unaffected.
   shipped env-driven connection template** has the same id, so the two still pair up with no further config when
   `MSSQL_DB_*` activates the template. Upgrade: a deployment that routed to the old id by default and served it from
   its own connection block sets `WORLD_DEFAULT_CONNECTION` (or renames the block).
+- **geo's Nominatim User-Agent** is `tatrman-geo/1.0 (+https://github.com/Collite/ttr-server)`, in the service default
+  and in the chart (`geo.nominatim.userAgent`, was `tatrman-geo/1.0`); it still identifies the application as the OSM
+  usage policy requires, and `GEO_NOMINATIM_USER_AGENT` / the chart value still override it.
 
 ### meta-mcp — tool descriptions give Hartland examples
 

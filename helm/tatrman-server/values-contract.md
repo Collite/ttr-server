@@ -168,7 +168,7 @@ backend (default `0.9.2`, the nlp image family).
 | Key | Type | Default | Notes |
 |---|---|---|---|
 | `geo.nominatim.baseUrl` | string | `""` | **No default (Q-19).** Unset ⇒ geocoding is **dark by policy** (reports dark, fails loud, never wrong — RS-19). The public OSM Nominatim is **not** a valid production endpoint. Self-host and set this. |
-| `geo.nominatim.userAgent` | string | `tatrman-geo/1.0` | |
+| `geo.nominatim.userAgent` | string | `tatrman-geo/1.0 (+https://github.com/Collite/ttr-server)` | |
 | `geo.db.enabled` | bool | `false` | Durable boundary cache (PostGIS/Postgres). Off ⇒ in-memory. |
 | `geo.db.{host,port,name,user}` | | — / 5432 / geo / geo | Password via `geo.secretEnv` (Secret ref). |
 | `geo.db.boundaryCacheTtlDays` | int | `90` | |

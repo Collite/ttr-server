@@ -1094,7 +1094,7 @@ spec:
             - name: METADATA_GRPC_PORT
               value: "7261"
             - name: GEO_NOMINATIM_USER_AGENT
-              value: "tatrman-geo/1.0"
+              value: "tatrman-geo/1.0 (+https://github.com/Collite/ttr-server)"
             - name: GEO_DB_ENABLED
               value: "false"
             - name: GEO_BOUNDARY_CACHE_TTL_DAYS
