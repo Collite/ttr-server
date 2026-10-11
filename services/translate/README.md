@@ -1,7 +1,7 @@
 # translate
 
-> **forked-from:** `ai-platform@2575b923dca521fea0e3156257e4b779f02a6ed4` (`services/translator/`), tag `kantheon-fork-point`, forked 2026-06-14.
-> Maintained independently since the fork; do not assume parity with the ai-platform original.
+> **forked-from:** the legacy predecessor platform (`services/translator/`), forked 2026-06-14.
+> Maintained independently since the fork; do not assume parity with the original.
 
 The **translator** for kantheon — a thin gRPC service wrapping the
 `ttr-translator` Calcite/RelNode engine. Converts between the supported

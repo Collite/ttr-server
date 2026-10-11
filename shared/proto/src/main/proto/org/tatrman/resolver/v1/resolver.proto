@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // org.tatrman.resolver.v1 — the deterministic resolver core (RG-P5, workstream E).
 //
-// Reshaped from the ai-platform reference resolver per RS-23: the `function_specs`
+// Reshaped from the predecessor platform's reference resolver per RS-23: the `function_specs`
 // / joint-inference / ResolveMode (NORMAL) machinery is REMOVED — that LLM
 // escalation ladder is the kantheon Resolving Agent's job (Q-21). This service is
 // the deterministic core only: parse → extractUniversal → proposeDomainSpans

@@ -15,7 +15,7 @@ tasks.test {
 
 dependencies {
     // The one S-2 fold (RG-P0.S3): `TextNormalizer` delegates to `org.tatrman.text.Normalization`
-    // so every matcher folds byte-identically. `api` so consumers (ai-platform) get it transitively.
+    // so every matcher folds byte-identically. `api` so consumers (a downstream platform) get it transitively.
     api(project(":shared:libs:kotlin:text"))
 
     // Levenshtein (bounded + unbounded) — the only heavy engine dependency.

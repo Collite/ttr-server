@@ -1,7 +1,7 @@
 # veles
 
-> **forked-from:** `ai-platform@2575b923dca521fea0e3156257e4b779f02a6ed4` (`infra/metadata/`), tag `kantheon-fork-point`, forked 2026-06-13 (originally named Ariadne; Veles is the survivor persona name).
-> Maintained independently since the fork; do not assume parity with the ai-platform original.
+> **forked-from:** the legacy predecessor platform (`infra/metadata/`), forked 2026-06-13 (originally named Ariadne; Veles is the survivor persona name).
+> Maintained independently since the fork; do not assume parity with the original.
 
 The **model-graph service** for kantheon. Loads a TTR model from a git repository (`METADATA_GIT_*`, re-fetched for live reload — see [Model source](#model-source)) into an in-memory `ModelSnapshot`, then serves `ListObjects` / `GetObject` / `Search` / `ListQueries` / `GetModel` / `ResolveArea` / `GetStatus` / `Refresh` over gRPC (VelesService) and HTTP. The gRPC service proto is forked as `org.tatrman.meta.v1` / `VelesService` (Stage 1.2; the old `MetadataService` is gone).
 

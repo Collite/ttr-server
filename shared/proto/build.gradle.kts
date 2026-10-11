@@ -28,7 +28,7 @@ dependencies {
     api(libs.grpc.kotlin.stub)
     // Generated grpc-kotlin stubs reference kotlinx.coroutines.flow.Flow. This
     // was previously leaking onto the compile classpath transitively via the
-    // ai-platform-proto `api` dep; that dep was removed in fork Stage 2.6, so
+    // predecessor-platform proto `api` dep; that dep was removed in fork Stage 2.6, so
     // depend on coroutines directly.
     api(libs.kotlinx.coroutines.core)
     // ttr-translator arc B1: the canonical plan.v1/transdsl.v1/dfdsl.v1 wire formats
@@ -37,7 +37,7 @@ dependencies {
     // recompiling them here), so `import "org/tatrman/plan/v1/plan.proto"` in the
     // downstream service protos keeps resolving. FQCNs are identical (org.tatrman.*).
     api(libs.tatrman.ttr.plan.proto)
-    // All other protos are in-repo. The ai-platform Maven dep (com.tatrman:shared-proto,
+    // All other protos are in-repo. The predecessor platform's Maven dep (com.tatrman:shared-proto,
     // Themis's residual nlp.v1) was removed in fork Stage 2.6 — Themis now imports
     // org.tatrman.nlp.v1 + common.v1, both generated here.
 
@@ -54,7 +54,7 @@ protobuf {
     plugins {
         // Phase 2.1 — gRPC Java + Kotlin codegen so service modules (veles, dispatcher,
         // worker, etc.) get `*ServiceGrpcKt` base classes from the in-repo protos. Aligned
-        // to ai-platform's protoc-gen-grpc-java 1.78.0 / protoc-gen-grpc-kotlin 1.5.0.
+        // to the predecessor platform's protoc-gen-grpc-java 1.78.0 / protoc-gen-grpc-kotlin 1.5.0.
         id("grpc") {
             artifact = "io.grpc:protoc-gen-grpc-java:1.78.0"
         }
@@ -136,7 +136,7 @@ ktlint {
 
 // --- Python packaging (Phase 1.2 T4) ---------------------------------------------------
 //
-// Mirrors the ai-platform pattern (see `ai-platform/shared/proto/build.gradle.kts`
+// Mirrors the predecessor platform's pattern (its `shared/proto/build.gradle.kts`
 // `PreparePythonPackage`). The output is a uv-importable package rooted at
 // `build/python-package/src/`; every Python service consumes it via
 // `just proto-py` (which invokes `:shared:proto:preparePythonPackage`).

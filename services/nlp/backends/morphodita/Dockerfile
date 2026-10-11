@@ -38,7 +38,7 @@ ARG MODEL_ID=czech-morfflex2.0-pdtc1.0-220710
 # LINDAT hdl:11234/1-4794. NOTE: LINDAT is now a DSpace-7 SPA — the legacy
 # `/xmlui/bitstream/handle/...zip` URL returns an HTML page, NOT the file. Pass
 # the resolved DSpace REST bitstream-content URL as a build-arg (the working URL
-# is recorded in the ai-platform Q-10 harness, infra/nlp/spikes/q10):
+# is recorded in the predecessor platform's Q-10 harness, infra/nlp/spikes/q10):
 #   --build-arg MODEL_URL='https://lindat.mff.cuni.cz/repository/server/api/core/bitstreams/<uuid>/content'
 # Fill MODEL_SHA256 from the first verified download to pin it (digest-pin).
 ARG MODEL_URL=REPLACE_WITH_DSPACE_BITSTREAM_URL

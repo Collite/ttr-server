@@ -34,7 +34,7 @@ import org.slf4j.LoggerFactory
  * member rows and carry no category method.
  *
  * Each `value` is folded (NFD + lowercase) at load time so the matcher sees
- * the same tokens it would see for a query. The ai-platform `fuzzy.queries`
+ * the same tokens it would see for a query. The predecessor platform's `fuzzy.queries`
  * SQL block is gone — the catalog is a closed test set, not a query against
  * a warehouse.
  */

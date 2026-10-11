@@ -1,5 +1,5 @@
 {
-  "_provenance": "RG-P1.S2.T1 parity seed. The hero-sentence golden lemmas are the recorded Q-10 ground truth (docs/features/resolution/plan/spikes/q10-nlp-selfhosting.md §2). The ≥20-case parity table's raw tuples live in the ai-platform Q-10 harness (results/parity.json) and are not vendored here; the component-tier parity tests instead reproduce Q-10's method directly — self-hosted ⇄ Lindat over the same pinned model — so no idealized gold is fabricated.",
+  "_provenance": "RG-P1.S2.T1 parity seed. The hero-sentence golden lemmas are the recorded Q-10 ground truth (docs/features/resolution/plan/spikes/q10-nlp-selfhosting.md §2). The ≥20-case parity table's raw tuples live in the predecessor platform's Q-10 harness (results/parity.json) and are not vendored here; the component-tier parity tests instead reproduce Q-10's method directly — self-hosted ⇄ Lindat over the same pinned model — so no idealized gold is fabricated.",
   "pinned_models": {
     "morphodita": "czech-morfflex2.0-pdtc1.0-220710",
     "nametag3": "nametag3-czech-cnec2.0-240830"

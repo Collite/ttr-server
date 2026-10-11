@@ -1,7 +1,7 @@
 # dispatch
 
-> **forked-from:** `ai-platform@2575b923dca521fea0e3156257e4b779f02a6ed4` (`services/dispatcher/`), tag `kantheon-fork-point`, forked 2026-06-15 (Stage 3.3).
-> Maintained independently since the fork; do not assume parity with the ai-platform original.
+> **forked-from:** the legacy predecessor platform (`services/dispatcher/`), forked 2026-06-15 (Stage 3.3).
+> Maintained independently since the fork; do not assume parity with the original.
 
 **dispatch** — the worker dispatcher for kantheon. It routes a validated, physical
 `PlanNode` (post-validate) to a capable worker and pipes the worker's

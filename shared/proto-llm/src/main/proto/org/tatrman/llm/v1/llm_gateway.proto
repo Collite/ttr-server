@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 syntax = "proto3";
 
-// Forked from ai-platform@kantheon-fork-point
+// Forked from the predecessor platform at the fork point
 //   (shared/proto/src/main/proto/org/tatrman/llmgateway/v1/llm_gateway_chat.proto).
 // Fork Stage 2.5 (LLM gateway). Package org.tatrman.llmgateway.grpc →
 // org.tatrman.llm.v1; service ChatService → LlmGatewayService (persona

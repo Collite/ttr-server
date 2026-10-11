@@ -2,7 +2,7 @@
 // =============================================================================
 // Kantheon — Validate (validator) service
 //
-// Forked from ai-platform@2575b923dca521fea0e3156257e4b779f02a6ed4 (tag kantheon-fork-point)
+// Forked from the predecessor platform at the fork point
 //   (shared/proto/src/main/proto/com/tatrman/validator/v1/validator.proto).
 // Fork Stage 3.1 (Validate). Package com.tatrman.validator.v1 →
 // org.tatrman.validate.v1; service ValidatorService → ValidateService (RPC name kept);

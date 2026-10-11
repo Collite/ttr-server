@@ -2,7 +2,7 @@
 """`NlpClient` — the async gRPC client for the `nlp` front (NL-16).
 
 The wheel ships the client so that every consumer speaks the same one. There were
-going to be at least three otherwise: `nlp-mcp`, the legacy `ai-platform` front,
+going to be at least three otherwise: `nlp-mcp`, the legacy predecessor front,
 and whatever wanted `RunPipeline` next — each with its own idea of a deadline and
 its own proto-to-Python translation.
 

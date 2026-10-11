@@ -190,7 +190,7 @@ class QueryServiceImplSpec :
         }
 
         // Fork Stage 3.5 T3 — cache REPLAY must serve the right compiled plan for the right
-        // args, not merely "dispatcher called once". Inherited trap (ai-platform CLAUDE.md):
+        // args, not merely "dispatcher called once". Inherited trap (the predecessor platform's CLAUDE.md):
         // call-counting mocks miss cache-replay bugs (wrong-entry / shared-mutable-plan / key
         // collision). Two distinct queries → two entries; replaying query 1 must dispatch
         // query 1's plan, captured at Dispatch's edge.

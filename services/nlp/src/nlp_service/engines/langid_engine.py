@@ -50,7 +50,7 @@ class LangidEngine:
             # lingua-language-detector 2.x API: `detect_language_of` returns a
             # `Language | None`; confidence comes from
             # `compute_language_confidence_values` (sorted desc). The forked
-            # ai-platform original called the non-existent `.detect(...)` +
+            # The predecessor original called the non-existent `.detect(...)` +
             # `.iso_code_639_1.value`, so language detection silently defaulted
             # to Czech for every input — fixed here (fork-time bugfix, Stage 2.3).
             detected = self._detector.detect_language_of(text)

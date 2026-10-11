@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 syntax = "proto3";
 
-// Forked from ai-platform@2575b923dca521fea0e3156257e4b779f02a6ed4 (tag kantheon-fork-point)
+// Forked from the predecessor platform at the fork point
 //   (shared/proto/src/main/proto/com/tatrman/nlp/v1/nlp.proto).
 // Fork Stage 2.3 (Nlp). Package + outer-class renamed com.tatrman.nlp.v1 →
 // org.tatrman.nlp.v1; the Rule-6 messages=99 field re-targeted from

@@ -2,7 +2,7 @@
 // =============================================================================
 // Kantheon — Translate (translator) service
 //
-// Forked from ai-platform@kantheon-fork-point
+// Forked from the predecessor platform at the fork point
 //   (shared/proto/src/main/proto/com/tatrman/translator/v1/translator.proto).
 // Fork Stage 2.4 (Translate). Package com.tatrman.translator.v1 →
 // org.tatrman.translate.v1; service TranslatorService → TranslateService (RPC names

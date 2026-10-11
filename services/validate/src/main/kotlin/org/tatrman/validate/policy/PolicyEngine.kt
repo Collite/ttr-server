@@ -17,7 +17,7 @@ import org.slf4j.LoggerFactory
 
 /**
  * PolicyEngine — the in-process row-level-security + column-rule evaluator folded from
- * ai-platform's `infra/sql-security` `SecurityServiceImpl.evaluatePolicies` (fork Stage 3.2).
+ * the predecessor platform's `infra/sql-security` `SecurityServiceImpl.evaluatePolicies` (fork Stage 3.2).
  *
  * The fold drops the gRPC/REST service layers, the legacy SQL-fragment endpoint, OPA, and the
  * **whois role lookup**. Roles now arrive on the bearer: `EvaluatePoliciesRequest.context.auth_roles`

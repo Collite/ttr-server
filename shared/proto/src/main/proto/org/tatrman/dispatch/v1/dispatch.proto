@@ -2,8 +2,8 @@
 // =============================================================================
 // Kantheon — Dispatch service (the worker dispatcher)
 //
-// Forked from ai-platform `com/tatrman/dispatcher/v1/dispatcher.proto`
-// (ai-platform@2575b923, tag kantheon-fork-point) at fork Stage 3.3. Renamed
+// Forked from the predecessor platform's `com/tatrman/dispatcher/v1/dispatcher.proto`
+// at fork Stage 3.3. Renamed
 // into the constellation: DispatcherService -> DispatchService. Dispatch is the
 // genus carried by the dispatcher; the workers it routes to are the Dispatchs
 // (Mssql the MSSQL worker, Polars the Polars worker).

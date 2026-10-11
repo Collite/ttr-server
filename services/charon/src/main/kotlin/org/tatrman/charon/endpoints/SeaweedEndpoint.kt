@@ -201,7 +201,7 @@ class SeaweedEndpoint(
                     .key(r.tempKey)
                     .build(),
             )
-            // Retention-tag object tags (lifecycle rules in fabric-infra
+            // Retention-tag object tags (lifecycle rules in the GitOps repo
             // act on these; local MinIO ignores tags).
             val tag = r.retentionTag
             if (!tag.isNullOrBlank()) {

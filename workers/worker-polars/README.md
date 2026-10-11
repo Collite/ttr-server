@@ -1,7 +1,7 @@
 # worker-polars
 
-> **forked-from:** `ai-platform@2575b923dca521fea0e3156257e4b779f02a6ed4` (`workers/polars/`), tag `kantheon-fork-point`, forked 2026-06-15 (Stage 3.4).
-> Maintained independently since the fork; do not assume parity with the ai-platform original.
+> **forked-from:** the legacy predecessor platform (`workers/polars/`), forked 2026-06-15 (Stage 3.4).
+> Maintained independently since the fork; do not assume parity with the original.
 
 **worker-polars** — the Polars worker for kantheon, the second of the
 workers the dispatcher dispatches to. Python + Polars + gRPC +
@@ -36,7 +36,7 @@ Default ports: HTTP 7300 / gRPC 7301. Tests: `just test-py workers/worker-polars
 `(session_id, df_name)`, with an idle-TTL sweeper, per-df / per-session / total
 byte caps, and a max-sessions cap. The same semantics Metis Phase 1 will port —
 any deviation found during the fork is flagged here for Metis to inherit. **No
-deviation from the ai-platform source was found at the fork point.**
+deviation from the predecessor source was found at the fork point.**
 
 ## Schema fingerprint (cross-engine contract)
 

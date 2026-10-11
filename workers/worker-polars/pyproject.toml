@@ -1,7 +1,7 @@
 [project]
 name = "workers-polars"
 version = "0.1.0"
-description = "Polars — the Polars worker (DataFrame engine) for kantheon. Stateful, session-scoped workspace store; implements org.tatrman.worker.v1.WorkerService. Forked from ai-platform workers/polars."
+description = "Polars — the Polars worker (DataFrame engine) for kantheon. Stateful, session-scoped workspace store; implements org.tatrman.worker.v1.WorkerService. Forked from the predecessor platform's workers/polars."
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [

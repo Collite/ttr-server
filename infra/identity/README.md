@@ -1,7 +1,7 @@
 # identity
 
-> **forked-from:** `ai-platform@2575b923dca521fea0e3156257e4b779f02a6ed4` (`infra/whois/`), tag `kantheon-fork-point`, forked 2026-06-24 (fork Phase 5 Stage 5.1).
-> Maintained independently since the fork; do not assume parity with the ai-platform original.
+> **forked-from:** the legacy predecessor platform (`infra/whois/`), forked 2026-06-24 (fork Phase 5 Stage 5.1).
+> Maintained independently since the fork; do not assume parity with the original.
 
 The **user/role directory** and **OPA bundle server** — a technical-wave (no-persona) service
 in the `infra/` tree. It syncs users + roles from upstream sources (Keycloak admin API, ERP DB)
@@ -25,7 +25,7 @@ lib (`org.tatrman.identity.domain`); the Keycloak token provider in the `keycloa
 
 ## Port
 
-HTTP **7110** (`WHOIS_SERVER_PORT`, kept from ai-platform). No gRPC, no MCP wrapper.
+HTTP **7110** (`WHOIS_SERVER_PORT`, kept from the predecessor platform). No gRPC, no MCP wrapper.
 
 ## Repository modes
 

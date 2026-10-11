@@ -40,7 +40,7 @@ ENV_STATIC_DIR = "MORPH_STUDIO_STATIC_DIR"
 
 #: The two lanes of contracts §7. `studio` is the ordinary one: analysts work
 #: the queue in the UI and `POST /export` emits the world's layer file. `dfp` is
-#: the LM-12 ruling: that world's analysts edit files in `ai-models`, so the
+#: the LM-12 ruling: that world's analysts edit files in their model repository, so the
 #: queue emits *proposed-entry fragments* for that lane and the authoring UI is
 #: not the way in. The difference is which export endpoint is meaningful, not a
 #: different data model.

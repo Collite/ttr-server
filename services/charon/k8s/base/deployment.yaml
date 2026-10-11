@@ -30,11 +30,11 @@ spec:
               value: "7251"
             # Stage 1.3 — both Seaweed (Stage 1.2) and Redis (Stage 1.3)
             # endpoints are wired. The env values point at the platform
-            # Seaweed/Redis (fabric-infra). Credentials for the Seaweed
+            # Seaweed/Redis (shared cluster). Credentials for the Seaweed
             # S3 gateway come via the CHARON_S3_ACCESS_KEY /
             # CHARON_S3_SECRET_KEY sealed secret (T5, Bora-owned content
             # task per plan §3.3); the empty defaults here mean "trust
-            # the local fabric-infra endpoint" — a production deploy
+            # the local shared-cluster endpoint" — a production deploy
             # mounts the sealed secret and overrides.
             - name: CHARON_S3_ENDPOINT
               value: "http://data-seaweedfs:8333"
@@ -42,7 +42,7 @@ spec:
               value: "redis://data-redis:6379"
             # Phase 2 — connection registry mounted at this path (the
             # charon-connections ConfigMap below). DB credentials come from the
-            # charon-db-credentials sealed secret (fabric-infra, Bora-owned);
+            # charon-db-credentials sealed secret (the GitOps repo, Bora-owned);
             # envFrom is optional so a blob-only pod still starts. A listed
             # connection with an unset env fails lazily, NOT the pod (plan §4
             # Stage 2.3 — "one broken DB ≠ unready pod").

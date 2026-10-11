@@ -82,7 +82,7 @@ include(":shared:libs:kotlin:diagnostics")
 // RG-P3 grounding kernel (workstream D) — consolidated PlanExpr/SqlRenderer/RecipeBuilder scaffolding.
 include(":shared:libs:kotlin:grounding-core")
 include(":shared:libs:kotlin:grounding-lexicon")
-// FZ-P3 — the pure fuzzy engine, extracted so ai-platform consumes it instead of a copy.
+// FZ-P3 — the pure fuzzy engine, extracted so a downstream platform consumes it instead of a copy.
 include(":shared:libs:kotlin:lex-matcher-core")
 include(":shared:libs:kotlin:fuzzy-common")
 include(":shared:libs:kotlin:whois-common")
@@ -113,7 +113,7 @@ include(":services:lex-matcher")
 include(":services:llm-gateway")
 // RG-P5 — the deterministic resolver core (workstream E). ZERO LLM by arch test.
 include(":services:resolver")
-// RG-P3 grounding services (workstream D) — moved from ai-platform, J-v2 renamed.
+// RG-P3 grounding services (workstream D) — moved from the predecessor platform, J-v2 renamed.
 include(":services:chrono")
 include(":services:money")
 include(":services:geo")

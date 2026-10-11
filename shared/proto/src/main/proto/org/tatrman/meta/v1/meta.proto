@@ -190,7 +190,7 @@ message PageInfo {
 // response. Consumers check `messages` whenever a response slot may legitimately
 // be empty.
 //
-// Fork note (2026-06-13, kantheon-fork-point → org.tatrman.meta.v1):
+// Fork note (2026-06-13, the fork point → org.tatrman.meta.v1):
 // the original `message ResponseMessage` + `enum Severity` that lived here
 // have been deleted; the kantheon-local stand-in at
 // `org.tatrman.common.v1.ResponseMessage` (with `Severity` inline) is
@@ -538,7 +538,7 @@ message DbForeignKeyDetail {
 // `semanticsKind: String?` (contracts-v1.5): the vocabulary evolves in
 // ttr-semantics without proto bumps; consumers dispatch on known values and MUST
 // tolerate unknown ones (J-v2 additive). Absent message = no semantics declared
-// on the object. (ai-platform's closed `EntitySemantics`/`AttributeSemantics`
+// on the object. (the predecessor platform's closed `EntitySemantics`/`AttributeSemantics`
 // enums stay legacy-side and die at the SV-P5 cutover.)
 //
 // ttr-semantics vocabulary v3 (MS) split what used to be one table into two

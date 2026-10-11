@@ -98,11 +98,11 @@ def export_layers(
 def export_proposals(session: Session, settings: Settings) -> ExportResult:
     """The DFP lane (LM-12): *proposed*-entry fragments, not published truth.
 
-    That world's analysts edit their layer as files in `ai-models`, so what the
-    queue owes them is not a UI and not a finished layer — it is the material to
-    review, in the file format their own validator already runs over. Which is
-    why this endpoint exports the entries the other one deliberately withholds,
-    and marks every one of them.
+    That world's analysts edit their layer as files in their model repository, so
+    what the queue owes them is not a UI and not a finished layer — it is the
+    material to review, in the file format their own validator already runs over.
+    Which is why this endpoint exports the entries the other one deliberately
+    withholds, and marks every one of them.
 
     ⚑ **Split by layer, exactly as `export_layers` is.** One fragment carrying
     everything below the gate put every core-routed proposal into a file

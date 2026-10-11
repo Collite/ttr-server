@@ -22,7 +22,7 @@ import org.tatrman.nlp.mcp.telemetry.NlpMcpTelemetry
 /**
  * The single `analyze` MCP tool — a zero-logic wrapper translating MCP tool
  * calls into `NlpService.Analyze` (gRPC) on the Nlp service (contracts §1:
- * nlp-mcp exposes `Analyze` only; the ai-platform `parse` convenience shorthand
+ * nlp-mcp exposes `Analyze` only; the predecessor platform's `parse` convenience shorthand
  * is dropped in the lean fork). [client] is nullable: a blank backend host →
  * `null` and every invocation surfaces a "not wired" error rather than crashing
  * boot (local-without-cluster mode, mirroring veles-mcp / fuzzy-mcp).

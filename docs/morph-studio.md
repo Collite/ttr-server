@@ -119,7 +119,7 @@ the file's header. It never touches a core snapshot.
 
 ## The `dfp` lane (LM-12)
 
-That world's analysts edit their layer as files in the `ai-models` repository,
+That world's analysts edit their layer as files in their own model repository,
 so there is no authoring UI: `MORPH_STUDIO_MODE=dfp`, no
 `MORPH_STUDIO_STATIC_DIR`, and the queue emits proposed-entry fragments through
 `POST /v1/export/proposals` instead of rows in a browser. A studio with no

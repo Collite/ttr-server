@@ -10,7 +10,7 @@ name: Publish server libraries (GH Packages)
 #     db-common · data-formatter · lex-matcher-core · text · fuzzy-common ·
 #     whois-common · keycloak-auth · meta-client · llm-client · transfer-core
 #   (capabilities-client trimmed — no external consumer; see build.gradle.kts.)
-#   FZ-P3 added lex-matcher-core (the extracted fuzzy engine, consumed by ai-platform)
+#   FZ-P3 added lex-matcher-core (the extracted fuzzy engine, consumed by a downstream platform)
 #   and text (its S-2 fold dependency — the RG-P0.S3 cross-repo consumer landed).
 #   CH-P2 added transfer-core (the Charon transfer seam, consumed in-process by
 #   tatrman-platform's radegast); this same set's server-proto now also carries
@@ -56,7 +56,7 @@ jobs:
             | grep -viE 'CHANGELOG|docs/|history|lore|Forked 2026|formerly|_to_delete' \
             | grep -viE 'PrometheusMeterRegistry|PrometheusConfig|PrometheusHealthCheck|prometheus\.io|:9090|/metrics|actuator|micrometer|registry.prometheus|MeterRegistry|prometheus (meter|call|scrape|registry|endpoint)|monitoring|include:.*prometheus' \
             | grep -viE 'prometheusUrl|hasPath\("prometheus|getConfig\("prometheus|config\.prometheus|"prometheus" ->|prometheus \{|PromQL|prometheus-client|prometheus_client|prometheus-jvm|prometheus - Prom' \
-            | grep -viE '"prometheus",|Prometheus (metrics|exposition)|the fabric-infra estate' \
+            | grep -viE '"prometheus",|Prometheus (metrics|exposition)' \
             || true)
           if [ -n "$matches" ]; then
             echo "::error::retired persona strings on a wire/build surface — publish blocked (naming ledger §5):"

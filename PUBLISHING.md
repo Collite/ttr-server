@@ -32,7 +32,7 @@ and all its content checks without spending a public version number.
 ### Which lane a consumer reads (2026-09-24)
 
 Maven Central is an **output** of this ecosystem, never an input. Every internal
-consumer — this repo, `kantheon`, `tatrman-platform`, `ai-platform` — resolves
+consumer — this repo, `kantheon`, `tatrman-platform`, a downstream platform — resolves
 `org.tatrman:*` from **GitHub Packages alone**: each one's `settings.gradle.kts`
 carries `mavenCentral { content { excludeGroup("org.tatrman") } }` beside the
 `Collite/ttr-{core,server}` package repos, so the two lanes cannot race and no

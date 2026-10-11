@@ -56,7 +56,7 @@ dependencies {
     // GitArchiveStorage (jgit) behind the ModelStorage SPI (MD3) — jgit +
     // commons-compress ride this transitively; Veles must not re-declare them.
     implementation(libs.tatrman.ttr.metadata.git)
-    // `erp-sql-metadata` was a declared-but-unused dep in the ai-platform build (no `shared.erp.*`
+    // `erp-sql-metadata` was a declared-but-unused dep in the predecessor platform's build (no `shared.erp.*`
     // imports in any source). Dropped from the kantheon fork.
     implementation(project(":shared:libs:kotlin:ktor-configurator"))
     implementation(project(":shared:libs:kotlin:otel-config"))

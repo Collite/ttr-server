@@ -2,7 +2,7 @@
 """Clients (NL-16, ⚑NLS-D7).
 
 `grpc.py` is the `org.tatrman.nlp.v1` client consumers talk to the `nlp` front
-with (nlp-mcp, the legacy ai-platform front); `backends.py` holds the HTTP
+with (nlp-mcp, the legacy predecessor front); `backends.py` holds the HTTP
 engine-adapter clients, moved here out of `services/nlp/src/nlp_service/engines/`
 because they describe how to talk to a backend image rather than which one to talk
 to — routing, the registry and the orchestrator stayed service-side.
