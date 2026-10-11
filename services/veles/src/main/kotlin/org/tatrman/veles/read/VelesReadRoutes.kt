@@ -12,8 +12,14 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
 import kotlinx.serialization.json.putJsonObject
+import kotlinx.serialization.json.JsonObjectBuilder
 import org.tatrman.ttr.metadata.graph.EdgeType
+import org.tatrman.ttr.metadata.model.Attribute
+import org.tatrman.ttr.metadata.model.DbForeignKey
+import org.tatrman.ttr.metadata.model.Entity
+import org.tatrman.ttr.metadata.model.LocalizedText
 import org.tatrman.ttr.metadata.model.ModelObject
+import org.tatrman.ttr.metadata.model.Relation
 import org.tatrman.ttr.metadata.model.schemaCodeToToken
 import org.tatrman.ttr.metadata.query.MetadataQuery
 import org.tatrman.ttr.metadata.registry.MetadataRegistry
@@ -230,20 +236,76 @@ fun Route.velesReadRoutes(
 
 private const val DEFAULT_SEARCH_LIMIT = 20
 
-/** The shared node/object body: qname / kind / label / schema / pkg ("" = no package). */
-private fun kotlinx.serialization.json.JsonObjectBuilder.putNodeFields(
+/**
+ * The shared node/object body: qname / kind / label / schema / pkg ("" = no package), then the
+ * optional fields below — each OMITTED when empty, so the shape only ever grows (ttr-server#185):
+ *
+ *  - `description` (plain form) and `descriptionLocalized` (`{lang: text}`, the NLS-P10 form), on any
+ *    object. At most one of the two is authored.
+ *  - `displayLabel` (`{lang: text}`) on entities and attributes; `labelPlural` (string) on entities.
+ *  - on a relation: `from` / `to` (entity qnames) and `cardinality` (`{from: "0..*", to: "1"}`, the
+ *    authored range form) — what a catalog ER view needs to draw the relation as an edge.
+ *  - on a foreign key: `fromColumns` / `toColumns` (column qnames).
+ *
+ * Every language is sent; the reader picks one. The catalog viewer chooses its language at runtime
+ * (`?lang=`, a setting, the browser) and applies the same D7 chain to descriptions that the gRPC
+ * `GetModel(locale)` applies here (requested locale → plain form → `en` → first by language code).
+ */
+private fun JsonObjectBuilder.putNodeFields(
     obj: ModelObject,
     packageIndex: PackageIndex,
 ) {
     put("qname", obj.qname.dotted())
     put("kind", obj.kind)
-    // No uniform display "label" exists on ModelObject; the leaf identifier is what the
-    // gRPC ObjectDescriptor surfaces as the display name (`local_name`,
-    // MetadataServiceImpl.kt:994). Prose lives in `description` — see report note.
+    // The leaf identifier, as the gRPC ObjectDescriptor surfaces it (`local_name`,
+    // MetadataServiceImpl.kt:994). The localized name is `displayLabel` below.
     put("label", obj.qname.name.substringAfterLast('.'))
     put("schema", schemaCodeToToken(obj.qname.schemaCode))
     put("pkg", packageIndex.packageOf(obj.sourceFile).orEmpty())
+
+    if (obj.description.isNotBlank()) put("description", obj.description)
+    putLocalized("descriptionLocalized", obj.descriptionLocalized)
+    when (obj) {
+        is Entity -> {
+            putLocalized("displayLabel", obj.displayLabel)
+            if (obj.labelPlural.isNotBlank()) put("labelPlural", obj.labelPlural)
+        }
+        is Attribute -> putLocalized("displayLabel", obj.displayLabel)
+        is Relation -> {
+            put("from", obj.fromEntity.dotted())
+            put("to", obj.toEntity.dotted())
+            putJsonObject("cardinality") {
+                put("from", rangeOf(obj.cardinality.fromMin, obj.cardinality.fromMax))
+                put("to", rangeOf(obj.cardinality.toMin, obj.cardinality.toMax))
+            }
+        }
+        is DbForeignKey -> {
+            putJsonArray("fromColumns") { obj.fromColumns.forEach { add(it.dotted()) } }
+            putJsonArray("toColumns") { obj.toColumns.forEach { add(it.dotted()) } }
+        }
+        else -> Unit
+    }
 }
+
+/** `{lang: text}`, languages in a stable order; nothing at all for an empty text. */
+private fun JsonObjectBuilder.putLocalized(
+    key: String,
+    text: LocalizedText,
+) {
+    if (text.isEmpty) return
+    putJsonObject(key) { text.byLanguage.toSortedMap().forEach { (lang, value) -> put(lang, value) } }
+}
+
+/** A cardinality bound pair in the authored TTR form: `1`, `0..1`, `0..*` (`-1` = unbounded). */
+private fun rangeOf(
+    min: Int,
+    max: Int,
+): String =
+    when {
+        max == -1 -> "$min..*"
+        min == max -> "$min"
+        else -> "$min..$max"
+    }
 
 /**
  * Map the domain [EdgeType] onto the 4 contract literals. The domain enum

@@ -32,6 +32,25 @@ Since the ttr-metadata swap (arc doc: [`docs/architecture/fork/ttr-metadata-adop
 - gRPC: **7261** (`VELES_GRPC_PORT`)
 - meta-mcp wrapper: **7262** (separate module)
 
+## JSON read API (the catalog viewer's)
+
+`GET /model/index`, `/model/graph?schema=&package=`, `/model/object?qname=`, `/model/search?query=&limit=`
+(`read/VelesReadRoutes.kt`) are a read-only JSON projection of the loaded model for a browser catalog,
+the Studio Viewer (Collite/ttr-core). A node (`/model/graph` `nodes[]`, `/model/object` `object`) is
+`{ qname, kind, label, schema, pkg }`, where `label` is the leaf identifier, plus these optional fields,
+each omitted when empty (ttr-server#185):
+
+| Field | On | |
+|---|---|---|
+| `displayLabel` | entity, attribute | `{ "en": "Product", "cs": "Produkt" }`, every authored language |
+| `labelPlural` | entity | `"Products"` |
+| `description` / `descriptionLocalized` | any object | the plain form / the `{ lang: text }` form |
+| `from`, `to`, `cardinality` | relation | entity qnames; `{ "from": "0..*", "to": "1" }` |
+| `fromColumns`, `toColumns` | foreign key | column qnames |
+
+Veles picks no locale here. The reader chooses the language and applies the D7 chain to descriptions:
+requested locale → plain form → `en` → first by language code.
+
 ## Run
 
 ```bash
