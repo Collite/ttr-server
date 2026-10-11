@@ -16,6 +16,23 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+### veles — a model source that fails to load no longer hides behind a bundled model (#180)
+
+When the git model source could not be loaded (a bad token, a wrong branch, no network), Veles quietly served the
+sample model it bundled, and `/ready` reported UP. It now serves only what it was configured to serve.
+
+- **No fallback by default, and no bundled model.** A failed source leaves Veles with no model (the built-in stock roles
+  only). A fallback is opt-in: `METADATA_GIT_FALLBACK=local-model` with `METADATA_TTR_ROOT=<dir>` serves that directory
+  while the repository is unavailable, never merged with it.
+- **`/ready` waits for the configured source.** 503 until every configured source has loaded at least once (a load
+  that finds no model objects does not count) and its model is swapped in; the body names the source and its last
+  error. An empty `METADATA_GIT_REMOTE_URI` configures no source: an error at startup, and never ready.
+- **`/status`** gains `ready` and `sources[]` (what each source reads, credentials redacted; `loaded`,
+  `last_attempt_at`, `last_success_at`, `last_error`, `consecutive_failures`, `failures_total`, `serving_fallback`);
+  **`/metrics`** gains `veles_model_source_load_failures_total{source}` and `veles_model_source_loaded{source}`.
+- A source that has never loaded is retried from 5 s backing off to 60 s, instead of waiting for the next scheduled
+  refresh.
+
 ### resolver — a Czech date the NER typed in parts is grounded as one date („v říjnu 2025“)
 
 *„Které položky tam byly v říjnu 2025 vyprodané?“* grounded **„říjnu“ as October of the current year** beside a
