@@ -102,13 +102,11 @@ object UniversalSeam {
         memberOwners: Map<String, String>,
     ): List<FuzzyMatch> {
         if (!candidate.dualReading) return matches
-        // UD-P3 — a NAMED_MEMBER reading has no anchor to reach from: its scope is the vocabularies
-        // whose values the NER names (the data's counterpart of the reach), and only a member that IS
-        // the name may answer for it (I-13).
-        if (candidate.origin ==
-            DomainSpanCandidate.Origin.NAMED_MEMBER
-        ) {
-            return NamedMembers.admitted(matches, candidate)
+        // UD-P3 — a NAMED_MEMBER reading has no anchor of its own: its scope is the vocabularies whose
+        // values the NER names (the data's counterpart of the reach), only a member that IS the name
+        // answers for it as written, and the question's model objects decide the rest (I-13, S2).
+        if (candidate.origin == DomainSpanCandidate.Origin.NAMED_MEMBER) {
+            return NamedMembers.admitted(matches, candidate, owners, reach, memberOwners)
         }
         val scope = candidate.dualReadingScope
         return matches.filter { m ->

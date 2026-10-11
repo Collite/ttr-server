@@ -231,9 +231,18 @@ shares a word with it (`Paris` → the return reason "Parts missing"). Instead, 
   values the classifier types the same way (`NamedMembers`). The return reasons hold no place
   names, so `Paris` never reaches them; the warehouse names do, so `Brno DC` does. A type with no
   such vocabulary proposes nothing.
-- **Only the whole name speaks.** A member counts only when its value IS the span, modulo case,
-  diacritics and spacing. A TOKENS or TYPOS hit does not, so a bare `Dallas` never becomes the
-  warehouse "Dallas DC". Part of a name (an inflected town inside a longer member) is not read.
+- **The whole name speaks; a declined or partial name only where the sentence reaches it.** A member
+  counts when its value IS the span, modulo case, diacritics and spacing; a TOKENS or TYPOS hit alone
+  does not, so a bare `Dallas` never becomes the warehouse "Dallas DC". The span's dictionary form is
+  compared too, because Czech names decline:
+  - the whole name through its lemmas (*Ostravě* → the store "Ostrava") counts when the question names
+    no model object, or one it names reaches the member's entity;
+  - part of a name (*Brně* inside "Brno DC") counts only when a model object the question names reaches
+    the member's entity — the same reach test a governed place uses. *"How many weeks did Brno have
+    no stock"* reaches the warehouse through the inventory measure; *"How many customers are in Brno"*
+    reaches neither the store nor the warehouse, and *Brno* stays a place.
+  A member the question's objects reach outranks one they do not: where stores are named after towns,
+  the stock question binds the warehouse, not the store called "Brno".
 - **The same seam decides.** A member that spoke supersedes the place, and its whole extent is one
   value: a tail word (`DC` after a `Brno` NameTag typed alone) leaves no finding of its own. Several
   vocabularies holding the exact name (a bare `TN` in three state columns) is a tie among members,

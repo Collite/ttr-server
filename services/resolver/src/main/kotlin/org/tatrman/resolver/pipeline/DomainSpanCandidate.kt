@@ -46,7 +46,11 @@ package org.tatrman.resolver.pipeline
  *   entity the sentence never scoped (`Stores in Paris` → a return reason "Parts missing") must not
  *   take the span from the place. On the candidate rather than looked up from the governed sibling,
  *   like [dualReadingOf]: the reading carries what it is a reading OF, and no reader has to find
- *   its pair first.
+ *   its pair first. For a [Origin.NAMED_MEMBER] reading, which no anchor governs, it is every
+ *   model object the question's anchors name, each with its owner (UD-P3 S2): what may reach a
+ *   member that is only part of the name, or the name through its dictionary form.
+ * @property nameLemma UD-P3 S2 — a NAMED_MEMBER reading's dictionary form: its words' lemmas, as
+ *   the text joins them. "" for every other candidate.
  */
 data class DomainSpanCandidate(
     val text: String,
@@ -65,6 +69,9 @@ data class DomainSpanCandidate(
     // LAST and defaulted for the same reason as `slot`.
     val dualReadingOf: Pair<Int, Int>? = null,
     val dualReadingScope: List<String> = emptyList(),
+    // UD-P3 S2 — a NAMED_MEMBER reading's dictionary form, the lemmas of its words („Brně DC“ →
+    // „Brno DC“); "" for every other candidate. LAST and defaulted, like the two above.
+    val nameLemma: String = "",
 ) {
     /** UD — whether this candidate is a dual reading at all; see [dualReadingOf]. */
     val dualReading: Boolean get() = dualReadingOf != null
