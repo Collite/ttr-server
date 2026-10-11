@@ -78,7 +78,7 @@ class RunQueryIntegrationSpec :
 
         // T1 — happy path: real rows from real MSSQL, real columns from Translate translation.
         // NOTE: the table is referenced UNQUALIFIED (`sample_orders`, not `dbo.sample_orders`) — the
-        // proven form (Translate WARMUP_SQL `FROM QSUBJEKT`, tpcds-query `FROM store_sales`). Calcite
+        // proven form (Translate WARMUP_SQL `FROM customer`, tpcds-query `FROM store_sales`). Calcite
         // resolves it against the model's default DB namespace (dbo); a `dbo.` prefix fails with
         // "Object 'dbo' not found" because the namespace isn't a literal Calcite schema. Translate
         // re-qualifies to `dbo.sample_orders` on unparse to the MSSQL dialect, so Mssql hits the

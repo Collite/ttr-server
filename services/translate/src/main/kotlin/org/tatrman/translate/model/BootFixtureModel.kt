@@ -34,9 +34,10 @@ object BootFixtureModel {
             .setName(name)
             .build()
 
-    private val qsubjekt =
+    // The Hartland demo model's shape: `er.entity.customer` maps to `db.dbo.customer`.
+    private val customerTable =
         ModelTable(
-            qname = qname(SchemaCode.DB, "dbo", "QSUBJEKT"),
+            qname = qname(SchemaCode.DB, "dbo", "customer"),
             columns =
                 listOf(
                     ModelColumn("id", SurfaceType.INT, nullable = false),
@@ -64,7 +65,7 @@ object BootFixtureModel {
             primaryKey = listOf("id"),
         )
 
-    private val dbTables = listOf(qsubjekt, sampleOrders)
+    private val dbTables = listOf(customerTable, sampleOrders)
 
     private val customerEntity =
         ModelEntity(
@@ -106,7 +107,7 @@ object BootFixtureModel {
 
             override fun entityMapping(entityQname: QualifiedName): EntityMapping? =
                 if (entityQname == customerEntity.qname) {
-                    EntityMapping.ToTable(table = qsubjekt.qname, whereFilter = null)
+                    EntityMapping.ToTable(table = customerTable.qname, whereFilter = null)
                 } else {
                     null
                 }

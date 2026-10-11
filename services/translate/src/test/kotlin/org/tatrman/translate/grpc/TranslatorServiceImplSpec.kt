@@ -40,7 +40,7 @@ class TranslatorServiceImplSpec :
                 service.parseToRelNode(
                     ParseRequest
                         .newBuilder()
-                        .setSource("SELECT id, name FROM qsubjekt")
+                        .setSource("SELECT id, name FROM customer")
                         .setSourceLanguage(Language.SQL)
                         .setTargetSchema(SchemaCode.DB)
                         .build(),
@@ -211,7 +211,7 @@ class TranslatorServiceImplSpec :
         "ParseToRelNode handles source_schema=ER + target_schema=DB (full ER→DB pipeline)" {
             // Verifies the split: SQL uses ER identifiers (parsed against the ER catalog),
             // pipeline continues into MapToPhysical so the output scans reference DB tables.
-            // BootFixtureModel's `customer` → `QSUBJEKT`; attribute names match column names
+            // BootFixtureModel's ER `customer` → DB `customer`; attribute names match column names
             // (id, name) — isolates the source_schema concern from the v1 attribute-rename gap.
             val resp =
                 service.parseToRelNode(
@@ -254,7 +254,7 @@ class TranslatorServiceImplSpec :
             // Repro for IRL bug: SELECT against an ER entity name (lowercase, ER-side)
             // with target_schema = ER must parse successfully — Calcite's default schema
             // must follow target_schema, not stay pinned to db.dbo.
-            // BootFixtureModel exposes `customer` as the ER entity (mapped to DB table QSUBJEKT).
+            // BootFixtureModel exposes `customer` as the ER entity (mapped to DB table `customer`).
             val resp =
                 service.parseToRelNode(
                     ParseRequest
@@ -273,7 +273,7 @@ class TranslatorServiceImplSpec :
                 service.parseToRelNode(
                     ParseRequest
                         .newBuilder()
-                        .setSource("SELECT does_not_exist FROM qsubjekt")
+                        .setSource("SELECT does_not_exist FROM customer")
                         .setSourceLanguage(Language.SQL)
                         .setTargetSchema(SchemaCode.DB)
                         .build(),
@@ -287,7 +287,7 @@ class TranslatorServiceImplSpec :
                 service.parseToRelNode(
                     ParseRequest
                         .newBuilder()
-                        .setSource("SELECT id FROM qsubjekt")
+                        .setSource("SELECT id FROM customer")
                         .setSourceLanguage(Language.SQL)
                         .setTargetSchema(SchemaCode.DB)
                         .build(),
@@ -301,7 +301,7 @@ class TranslatorServiceImplSpec :
                         .setTargetDialect(SqlDialect.MSSQL)
                         .build(),
                 )
-            resp.output.shouldContainIgnoringCase("qsubjekt")
+            resp.output.shouldContainIgnoringCase("customer")
             resp.messagesList shouldHaveSize 0
         }
 
@@ -310,14 +310,14 @@ class TranslatorServiceImplSpec :
                 service.translate(
                     TranslateRequest
                         .newBuilder()
-                        .setSource("SELECT id FROM qsubjekt")
+                        .setSource("SELECT id FROM customer")
                         .setSourceLanguage(Language.SQL)
                         .setTargetLanguage(Language.SQL)
                         .setTargetSchema(SchemaCode.DB)
                         .setTargetDialect(SqlDialect.MSSQL)
                         .build(),
                 )
-            resp.output.shouldContainIgnoringCase("qsubjekt")
+            resp.output.shouldContainIgnoringCase("customer")
             resp.messagesList shouldHaveSize 0
         }
 
@@ -361,7 +361,7 @@ class TranslatorServiceImplSpec :
                         .setParse(
                             ParseRequest
                                 .newBuilder()
-                                .setSource("SELECT id FROM qsubjekt")
+                                .setSource("SELECT id FROM customer")
                                 .setSourceLanguage(Language.SQL)
                                 .setTargetSchema(SchemaCode.DB),
                         ).build(),
@@ -402,7 +402,7 @@ class TranslatorServiceImplSpec :
                 service.parseToRelNode(
                     ParseRequest
                         .newBuilder()
-                        .setSource("SELECT id, name FROM qsubjekt WHERE name = {q} OR name = {q}")
+                        .setSource("SELECT id, name FROM customer WHERE name = {q} OR name = {q}")
                         .setSourceLanguage(Language.SQL)
                         .setTargetSchema(SchemaCode.DB)
                         .setContext(context)
@@ -449,7 +449,7 @@ class TranslatorServiceImplSpec :
                 service.parseToRelNode(
                     ParseRequest
                         .newBuilder()
-                        .setSource("SELECT id FROM qsubjekt WHERE name = {q}")
+                        .setSource("SELECT id FROM customer WHERE name = {q}")
                         .setSourceLanguage(Language.SQL)
                         .setTargetSchema(SchemaCode.DB)
                         .setContext(context)
