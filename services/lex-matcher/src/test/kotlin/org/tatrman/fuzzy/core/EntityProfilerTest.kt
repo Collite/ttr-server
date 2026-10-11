@@ -9,7 +9,12 @@ import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.maps.shouldBeEmpty
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import org.tatrman.fuzzy.api.GrpcService
 import org.tatrman.fuzzy.config.AppConfig
 import org.tatrman.fuzzy.config.NlpConfig
@@ -38,6 +43,10 @@ class EntityProfilerTest :
             val texts = mutableListOf<String>()
             var fail = false
 
+            /** A call whose text contains [gateOn] waits for [gate]: a large vocabulary still being read. */
+            var gateOn = ""
+            val gate = CompletableDeferred<Unit>()
+
             private val known =
                 listOf(
                     Triple("Brno", "LOCATION", "cnec:gu"),
@@ -58,6 +67,7 @@ class EntityProfilerTest :
             ): NerResult {
                 calls.incrementAndGet()
                 texts += text
+                if (gateOn.isNotEmpty() && gateOn in text) gate.await()
                 if (fail) error("nlp down")
                 val spans =
                     known.flatMap { (name, label, code) ->
@@ -212,6 +222,35 @@ class EntityProfilerTest :
             profiles.keys shouldBe setOf("r")
         }
 
+        "the cache answers first, then the smallest vocabulary goes to the NER first, each reported as it is measured" {
+            val ner = FakeNer()
+            val profiler = EntityProfiler(ner, "cs")
+            val big = "big" to ("v1" to listOf("Brno Lampa", "Praha Lampa", "Lampa", "Stůl", "Židle"))
+            val small = "small" to ("v1" to listOf("Praha DC"))
+            val seen = mutableListOf<Set<String>>()
+            runBlocking { profiler.profile(mapOf(big, small)) { seen += it.keys } }
+
+            ner.texts.first() shouldContain "Praha DC"
+            seen shouldContainExactly listOf(emptySet(), setOf("small"), setOf("small", "big"))
+
+            // a second pass with only `big` changed: the cache hit is reported before the NER is asked
+            seen.clear()
+            val bigger = "big" to ("v2" to listOf("Brno Lampa", "Ostrava Křeslo"))
+            runBlocking { profiler.profile(mapOf(bigger, small)) { seen += it.keys } }
+            seen shouldContainExactly listOf(setOf("small"), setOf("small", "big"))
+        }
+
+        "a pass the cache answers whole reports nothing and asks the NER nothing" {
+            val ner = FakeNer()
+            val profiler = EntityProfiler(ner, "cs")
+            val input = mapOf("dc" to ("v1" to warehouses))
+            runBlocking { profiler.profile(input) }
+            var reported = 0
+            runBlocking { profiler.profile(input) { reported++ } }.keys shouldBe setOf("dc")
+            reported shouldBe 0
+            ner.calls.get() shouldBe 1
+        }
+
         "a category that left the estate leaves the cache" {
             val ner = FakeNer()
             val profiler = EntityProfiler(ner, "cs")
@@ -281,6 +320,72 @@ class EntityProfilerTest :
             } finally {
                 channel.shutdownNow()
                 server.shutdownNow()
+                repo.close()
+            }
+        }
+
+        val productRef = "er.entity.item.product_name"
+        val products = listOf("Brno Lampa", "Stůl Oslo", "Židle Praha", "Křeslo", "Komoda", "Věšák", "Lampa")
+
+        fun loaderWithProducts() =
+            StaticLoaderSource(
+                mapOf(
+                    dcRef to warehouses.map { Candidate.fromValues(it, it, "TOKENS", dcRef) },
+                    productRef to products.map { Candidate.fromValues(it, it, "TOKENS", productRef) },
+                ),
+            )
+
+        fun StringRepository.profileOf(category: String) =
+            categoryStatuses().single { it.category == category }.entityProfile
+
+        "a small vocabulary is published while a large one is still being read" {
+            val ner = FakeNer().apply { gateOn = "Komoda" }
+            val repo = StringRepository(cfg(), loaderWithProducts(), entityProfiler = EntityProfiler(ner, "cs"))
+            try {
+                runBlocking {
+                    repo.forceRefresh()
+                    val pass = launch(Dispatchers.Default) { repo.profileEntities() }
+                    withTimeout(5_000) { while (repo.profileOf(dcRef) == null) delay(10) }
+
+                    repo.profileOf(dcRef)!!.entities shouldContainExactly listOf(EntityCount("LOCATION", "cnec:gu", 2))
+                    repo.profileOf(productRef) shouldBe null
+
+                    ner.gate.complete(Unit)
+                    pass.join()
+                    repo.profileOf(productRef)!!.members shouldBe products.size
+                }
+            } finally {
+                ner.gate.complete(Unit)
+                repo.close()
+            }
+        }
+
+        "a vocabulary a re-profile has not reached yet keeps the profile it had" {
+            var identity = "nametag3:240830"
+            val ner = FakeNer(identity = { identity })
+            val repo = StringRepository(cfg(), loaderWithProducts(), entityProfiler = EntityProfiler(ner, "cs"))
+            try {
+                runBlocking {
+                    repo.forceRefresh()
+                    repo.profileEntities()
+                    val before = repo.profileOf(productRef)!!
+
+                    // a new NER model: everything is read again, and the products wait on the gate
+                    identity = "nametag3:next"
+                    ner.gateOn = "Komoda"
+                    val asked = ner.calls.get()
+                    val pass = launch(Dispatchers.Default) { repo.profileEntities() }
+                    // the warehouses read, the products asked for and held at the gate
+                    withTimeout(5_000) { while (ner.calls.get() < asked + 2) delay(10) }
+
+                    repo.profileOf(productRef) shouldBe before
+                    repo.profileOf(dcRef)!!.members shouldBe 3
+
+                    ner.gate.complete(Unit)
+                    pass.join()
+                }
+            } finally {
+                ner.gate.complete(Unit)
                 repo.close()
             }
         }

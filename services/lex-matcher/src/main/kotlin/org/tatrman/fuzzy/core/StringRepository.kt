@@ -503,12 +503,15 @@ class StringRepository(
      * UD-P3 — profile the member layer as last loaded ([EntityProfiler]): each category's member
      * values with its content version, which is the profile's cache key. Runs after a refresh has
      * published, under its own lock, and never throws: a failed pass keeps the profiles there were.
+     * Each vocabulary's profile is published as soon as it is measured, smallest first, so the small
+     * vocabularies are named in seconds even when a large one takes the NER minutes.
      */
     internal suspend fun profileEntities() {
         val profiler = entityProfiler ?: return
         profileLock.withLock {
             val members = memberCache
             val versions = memberVersions
+            val previous = entityProfiles
             try {
                 entityProfiles =
                     profiler.profile(
@@ -516,7 +519,12 @@ class StringRepository(
                             (versions[category] ?: "") to
                                 rows.filter { it.source == SourceTag.MEMBER }.map { it.value }
                         },
-                    )
+                    ) { measured ->
+                        // Published as each vocabulary is measured. One the pass has not reached yet
+                        // keeps the profile it had, so a re-profile never un-names it midway; at the
+                        // end the pass's own result replaces the lot.
+                        entityProfiles = previous.filterKeys { it in members && it !in measured } + measured
+                    }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {

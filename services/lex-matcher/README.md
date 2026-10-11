@@ -57,9 +57,13 @@ name binds.
   phrase in `nlp.lang` (`v Brno DC.` / `in Dallas DC.`), at most `chunk-chars` characters per call;
   each entity is mapped back to the value whose characters it overlaps.
 - **When.** After the refresh has published, so the matcher is ready while the NER reads. `POST
-  /refresh` starts a pass in the background.
+  /refresh` starts a pass in the background. The smallest vocabularies are read first and each profile
+  is published as soon as it is measured, so a handful of warehouse names is named within seconds while
+  a vocabulary of eighteen thousand product names takes the NER minutes. A vocabulary the pass has not
+  reached yet keeps the profile it had.
 - **Cache.** Per category, by its content version and the NER identity in nlp's capability matrix. An
-  unchanged vocabulary under the same NER costs nothing but one nlp status call per refresh.
+  unchanged vocabulary under the same NER costs nothing but one nlp status call per refresh. The cache
+  is in memory, so a restart reads every vocabulary again (keeping it in Redis: ttr-server#189).
 - **Degradable.** nlp off, down or failing leaves a category without a profile (a WARN), and the
   resolver then treats it as holding no names, which is the behaviour before profiles existed.
 
