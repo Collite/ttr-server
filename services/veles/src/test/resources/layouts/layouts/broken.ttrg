@@ -1,0 +1,6 @@
+graph broken {
+  model: er,
+  objects: [
+    hartland.er.entity.item,
+    hartland.er.entity.store
+}

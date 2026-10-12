@@ -1,0 +1,9 @@
+package outlet
+
+model er schema outlet
+
+// VL-P2 layout fixture — a second package that also has an `item`: the bare name is ambiguous.
+
+def entity item {
+    attributes: [ def attribute outlet_item_id { type: int, isKey: true } ]
+}

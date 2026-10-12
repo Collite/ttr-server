@@ -9,6 +9,7 @@ import io.ktor.server.routing.Route
 import io.ktor.server.routing.get
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonObjectBuilder
+import kotlinx.serialization.json.add
 import kotlinx.serialization.json.addJsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
@@ -25,7 +26,9 @@ const val NO_MODEL_SOURCE = "no_model_source_configured"
  * built from those loads is swapped in ([SourceLoadBoard.isReady]); until then it answers 503 with
  * a one-line reason.
  * `/status` always answers 200 and carries the per-source detail: what each source is, whether it
- * has loaded, when it last tried and succeeded, and the last error.
+ * has loaded, when it last tried and succeeded, and the last error — and `issues`, the files of the served
+ * model that were left out: a layout file that does not parse or repeats a taken name,
+ * `layout <path>: <reason>` (VL V-38). Neither makes the model any less loaded.
  */
 fun Route.modelHealthRoutes(
     registry: MetadataRegistry,
@@ -61,6 +64,7 @@ fun Route.modelHealthRoutes(
                 put("object_count", snap?.graph?.size() ?: 0)
                 put("queries_total", snap?.model?.queries?.size ?: 0)
                 if (board.states().isEmpty()) put("error", NO_MODEL_SOURCE)
+                putJsonArray("issues") { snap?.layouts?.issues?.forEach { add(it.toString()) } }
                 putJsonArray("sources") { board.states().forEach { addJsonObject { putState(it) } } }
             },
         )
