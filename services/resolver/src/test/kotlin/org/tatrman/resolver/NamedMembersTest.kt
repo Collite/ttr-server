@@ -201,6 +201,57 @@ class NamedMembersTest :
             c.dualReadingOf shouldBe (17 to 21)
         }
 
+        /**
+         * «Marketplace revenue for Memphis DC» as Stanza parses it on hartland's US world: English puts
+         * the compound's head last, so `Memphis` is the `compound` of `DC` and `DC` hangs on `revenue`.
+         */
+        fun memphisDc(): Array<Token> =
+            arrayOf(
+                MhMembers.tok("Marketplace", 0, 11, "marketplace", "NOUN", 2, "compound"),
+                MhMembers.tok("revenue", 12, 19, "revenue", "NOUN", 0, "root"),
+                MhMembers.tok("for", 20, 23, "for", "ADP", 5, "case"),
+                MhMembers.tok("Memphis", 24, 31, "Memphis", "PROPN", 5, "compound"),
+                MhMembers.tok("DC", 32, 34, "DC", "PROPN", 2, "nmod"),
+            )
+
+        val memphisDcText = "Marketplace revenue for Memphis DC"
+        val memphisOnly = listOf(MhMembers.ner("Memphis", 24, 31, "GPE"))
+
+        "…and the word the town is a compound OF, where the language puts the head last (`Memphis` ← `DC`)" {
+            val c = proposeOver(memphisOnly, dcProfile, memphisDc(), memphisDcText).single()
+
+            c.text shouldBe "Memphis DC"
+            c.start shouldBe 24
+            c.end shouldBe 34
+            c.dualReadingOf shouldBe (24 to 31)
+        }
+
+        "…but a head-final tail stops at a declared mention, as the dependent one does" {
+            // `Memphis warehouse`: `warehouse` is the anchor the town is a compound of
+            val tokens =
+                arrayOf(
+                    MhMembers.tok("Memphis", 0, 7, "Memphis", "PROPN", 2, "compound"),
+                    MhMembers.tok("warehouse", 8, 17, "warehouse", "NOUN", 0, "root"),
+                )
+            val mention =
+                DomainSpanCandidate(
+                    "warehouse",
+                    8,
+                    17,
+                    listOf(MhMembers.WAREHOUSE),
+                    listOf(MhMembers.WAREHOUSE),
+                    anchored = true,
+                    origin = DomainSpanCandidate.Origin.ANCHOR_PHRASE,
+                )
+            proposeOver(
+                listOf(MhMembers.ner("Memphis", 0, 7, "GPE")),
+                dcProfile,
+                tokens,
+                "Memphis warehouse",
+                listOf(mention),
+            ).single().text shouldBe "Memphis"
+        }
+
         "I-11 — no named vocabulary for the entity's type: nothing is proposed" {
             proposeOver(wholeName, NamedCategories.NONE).shouldBeEmpty()
             // a person-named vocabulary is not asked about a place
@@ -358,6 +409,29 @@ class NamedMembersTest :
 
             // …while without the member, `DC` keeps the reading it always had
             resolveBrno(townOnly, status = null, tokens = tokens).findingsOn("DC").size shouldBe 1
+        }
+
+        "`for Memphis DC` in English — the warehouse binds whole, and `DC` leaves no mention or gap behind" {
+            val r =
+                MhMembers.resolve(
+                    memphisDcText,
+                    memphisDc(),
+                    "en",
+                    MhMembers.NAMED_REGISTRY,
+                    memphisOnly,
+                    dcNamed,
+                )
+
+            r
+                .findingsOn("Memphis DC")
+                .single()
+                .attributionsList
+                .map { it.binding.ref } shouldContainExactly
+                listOf("${MhMembers.WAREHOUSE_NAME}#Memphis DC")
+            r.findingsOn("Memphis").shouldBeEmpty()
+            r.resolutionState.mentionsList.none { it.span.text == "DC" } shouldBe true
+            r.gapsOn("DC").shouldBeEmpty()
+            r.resolution.bindingsList.count { it.hasUniversal() } shouldBe 0
         }
 
         "a reading that found no member is withdrawn, and the resolve is the one without a profile (I-12)" {

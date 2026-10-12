@@ -58,7 +58,7 @@ class IncomingCallLoggingInterceptor : ServerInterceptor {
                     if (status.isOk) {
                         log.info("⇣ {} closed OK", method)
                     } else {
-                        log.warn("⇣ {} closed {}: {}", method, status.code, status.description ?: "")
+                        logFailedClose(log, method, status)
                     }
                     super.close(status, trailers)
                 }
@@ -81,6 +81,35 @@ class IncomingCallLoggingInterceptor : ServerInterceptor {
             }
         }
     }
+}
+
+/**
+ * The close line of a failed call. A handler that THROWS closes `UNKNOWN` with an empty description
+ * and the exception only as the status's `cause` — which never crosses the wire, so this line is the
+ * one place it can be seen (ttr-server#197: two resolver crashes that logged nothing but
+ * `closed UNKNOWN: `). The WARN line names the exception's class and where it was thrown; the
+ * message and the stack go to DEBUG, because an exception message can quote the caller's words and
+ * those stay off the INFO/WARN lines.
+ */
+internal fun logFailedClose(
+    log: org.slf4j.Logger,
+    method: String,
+    status: Status,
+) {
+    val cause = status.cause
+    if (cause == null) {
+        log.warn("⇣ {} closed {}: {}", method, status.code, status.description ?: "")
+        return
+    }
+    log.warn(
+        "⇣ {} closed {}: {} — {} at {}",
+        method,
+        status.code,
+        status.description ?: "",
+        cause.javaClass.name,
+        cause.stackTrace.firstOrNull() ?: "<no frame>",
+    )
+    if (log.isDebugEnabled) log.debug("⇣ {} failed", method, cause)
 }
 
 /**
