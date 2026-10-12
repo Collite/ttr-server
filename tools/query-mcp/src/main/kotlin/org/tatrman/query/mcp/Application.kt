@@ -51,10 +51,11 @@ fun main(): Unit =
         val mcpServerConfig = loadMcpServerConfig(rawConfig, "query-mcp", 7307)
 
         logger.info(
-            "Starting query-mcp on port {} → {} (transport={})",
+            "Starting query-mcp on port {} → {} (transport={}, session idle timeout {} s)",
             cfg.serverPort,
             cfg.mcpPath,
             cfg.mcpTransport,
+            cfg.sessionIdleTimeoutSeconds,
         )
 
         val telemetry = McpTelemetry("query-mcp", mcpServerConfig.telemetryOtlpProtocol ?: "grpc")
@@ -184,7 +185,9 @@ fun main(): Unit =
                             )
                         }
                     }
-                    installQueryMcp(cfg, registry, verifier)
+                    val sessions = installQueryMcp(cfg, registry, verifier)
+                    // ttr-server#201 — open MCP sessions; flat over a run of calls when expiry works.
+                    metrics.gauge("query_mcp_open_sessions", sessions) { it.size.toDouble() }
                 }
             }
 
