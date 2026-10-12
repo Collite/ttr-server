@@ -25,6 +25,12 @@ October"), the question it is in, and the user's earlier questions; the first te
 and one naming several leaves the date as before. A bare number is not read as a year (it looks the same as an
 amount), and relative periods ("last month") stay relative to `reference_datetime`.
 
+Czech says a year as an adjective as often as an adverb, and every form counts, in any case: *letošní prodeje*,
+*tohoroční*, *loňské výpadky zásob*, *vloňský*, *minuloroční*, *předešlý rok*, *předloňský*, *předminuloroční*.
+The one-word adjectives the resolver did not yet type as a period (*vloňský*, *tohoroční*, *minuloroční*,
+*předminuloroční*, *předešlý rok/měsíc*) now are, and chrono grounds each to its year. A bare *roční* stays
+"annual".
+
 - **`grounding.v1` `GroundingContext.prior_questions`** (8, new): the user's earlier questions, newest first.
 - **`resolver.v1` `ResolveContext.prior_questions`** (4, new): the resolver passes it through to the grounding
   kernels unchanged. Additive: a caller that does not set it gets the question-only reading.

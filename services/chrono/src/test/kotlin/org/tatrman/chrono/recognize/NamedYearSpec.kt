@@ -77,6 +77,34 @@ class NamedYearSpec :
             years("předloni") shouldBe setOf(2024)
             years("předloňské tržby") shouldBe setOf(2024)
         }
+        "a year said as an adjective, in the case the sentence puts it" {
+            years("letošní prodeje") shouldBe setOf(2026)
+            years("Porovnej s letošními prodeji") shouldBe setOf(2026)
+            years("tohoroční obrat") shouldBe setOf(2026)
+            years("tohoročních objednávek") shouldBe setOf(2026)
+            years("loňské výpadky zásob") shouldBe setOf(2025)
+            years("v loňském říjnu") shouldBe setOf(2025)
+            years("loňských tržeb") shouldBe setOf(2025)
+            years("vloňské vratky") shouldBe setOf(2025)
+            years("minuloroční prodeje") shouldBe setOf(2025)
+            years("minuloročního obratu") shouldBe setOf(2025)
+            years("předloňské výpadky") shouldBe setOf(2024)
+            years("předminuloroční tržby") shouldBe setOf(2024)
+            years("last year's sales") shouldBe setOf(2025)
+        }
+        "an adjective with „rok“ in any case" {
+            years("tržby minulého roku") shouldBe setOf(2025)
+            years("v předešlém roce") shouldBe setOf(2025)
+            years("předešlého roku") shouldBe setOf(2025)
+            years("v předchozím roce") shouldBe setOf(2025)
+            years("předminulého roku") shouldBe setOf(2024)
+        }
+        "„roční“ alone is annual, not a year" {
+            years("roční tržby").shouldBeEmpty()
+        }
+        "„předminuloroční“ is two back, not also one back" {
+            years("předminuloroční tržby") shouldBe setOf(2024)
+        }
         "„předloni“ is two back, not also one back" {
             years("Tržby předloni") shouldBe setOf(2024)
         }

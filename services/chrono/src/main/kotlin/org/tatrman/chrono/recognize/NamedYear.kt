@@ -20,8 +20,10 @@ import java.time.LocalDate
  *  - after a preposition only a time takes — "in 2025", "during 2025", "since 2025",
  *    "během 2025" (not "for", "od", "do": "for 2000 dollars", "do 2000 Kč");
  *  - inside a full date — "15.10.2025", "2025-10-15", "2025-10";
- *  - as a year relative to the reference — "letos", "loni", "předloni", "minulý rok",
- *    "this year", "last year".
+ *  - as a year relative to the reference, adverb or adjective in any case form — "letos",
+ *    "letošní prodeje", "tohoroční", "loni", "vloni", "loňské výpadky zásob", "vloňský",
+ *    "minuloroční", "minulý / předešlý rok", "předloni", "předloňský", "předminuloroční",
+ *    "this year", "last year's".
  *
  * Any other bare "2025" is NOT read. It looks exactly like an amount, and missing it costs only the
  * reading chrono gave before this existed (the reference year), where misreading an amount would
@@ -41,15 +43,25 @@ object NamedYear {
     private val numericDateRe = Regex("""\b\d{1,2}\s*[./]\s*\d{1,2}\s*[./]\s*(\d{4})\b""")
     private val isoDateRe = Regex("""\b(\d{4})-\d{1,2}(?:-\d{1,2})?\b""")
 
-    /** Relative years, folded: two back, one back, this one. */
-    private val twoBackRe = Regex("""\bpredlon\w*|\bpredminul\w*\s+(?:rok|roku|roce|rokem)\b|\byear before last\b""")
+    /**
+     * Relative years, folded: two back, one back, this one. Czech says a year as an adverb
+     * (*letos*, *loni*), an adjective (*letošní*, *loňské*, *tohoroční*, *minuloroční*) or an
+     * adjective with *rok* (*minulého roku*, *v předešlém roce*); every case form starts with the
+     * stem, so a stem with `\w*` takes them all.
+     */
+    private val twoBackRe =
+        Regex(
+            """\bpredlon\w*|\bpredminulorocn\w*|\bpredminul\w*\s+(?:rok|roku|roce|rokem)\b|\byear before last\b""",
+        )
     private val lastRe =
         Regex(
-            """\b(?:v?loni|lonsk\w*)\b|\b(?:minul|predchoz)\w*\s+(?:rok|roku|roce|rokem)\b|\b(?:last|previous) year\b""",
+            """\b(?:v?loni|v?lonsk\w*|minulorocn\w*)\b|\b(?:minul|predchoz|predesl)\w*\s+(?:rok|roku|roce|rokem)\b""" +
+                """|\b(?:last|previous) year\b""",
         )
     private val thisRe =
         Regex(
-            """\bletos\w*|\b(?:tento|tomto|tohoto|tenhle|aktualn\w*|soucasn\w*)\s+(?:rok|roku|roce|rokem)\b""" +
+            """\bletos\w*|\btohorocn\w*""" +
+                """|\b(?:tento|tomto|tohoto|tenhle|aktualn\w*|soucasn\w*)\s+(?:rok|roku|roce|rokem)\b""" +
                 """|\b(?:this|current) year\b""",
         )
 

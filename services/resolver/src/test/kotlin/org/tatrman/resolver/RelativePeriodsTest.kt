@@ -69,6 +69,21 @@ class RelativePeriodsTest :
             found("Kolik vratek bylo vloni?") shouldContainExactly listOf("vloni")
         }
 
+        "the other year adjectives, colloquial ones included" {
+            found("letošní prodeje podle prodejny") shouldContainExactly listOf("letošní")
+            found("loňské výpadky zásob") shouldContainExactly listOf("loňské")
+            found("vloňské vratky") shouldContainExactly listOf("vloňské")
+            found("Tohoroční obrat z webu") shouldContainExactly listOf("Tohoroční")
+            found("minuloroční prodeje") shouldContainExactly listOf("minuloroční")
+            found("předminuloroční tržby") shouldContainExactly listOf("předminuloroční")
+            found("Tržby za předešlý rok") shouldContainExactly listOf("předešlý rok")
+            found("Tržby v předešlém měsíci") shouldContainExactly listOf("předešlém měsíci")
+        }
+
+        "„roční“ alone is annual, never a period" {
+            found("roční tržby podle prodejny").shouldBeEmpty()
+        }
+
         "without diacritics, and in capitals" {
             found("trzby z trziste za minuly mesic") shouldContainExactly listOf("minuly mesic")
             found("TRŽBY ZA MINULÝ MĚSÍC") shouldContainExactly listOf("MINULÝ MĚSÍC")

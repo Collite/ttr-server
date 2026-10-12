@@ -441,6 +441,55 @@ class DateRecognizerSpec :
             thisYear.periodCode shouldBe "202612"
             withClue("the user said which December — nothing to ask") { thisYear.alternatives.shouldBeEmpty() }
         }
+        "a year said as an adjective in the question is the year a bare month leans on" {
+            rec
+                .recognize("v říjnu", ref, context = listOf("Které položky měly loňské výpadky zásob v říjnu?"))
+                .shouldNotBeNull()
+                .periodCode shouldBe "202510"
+            val thisYear =
+                rec
+                    .recognize(
+                        "prosinec",
+                        ref,
+                        context = listOf("Jak se vyvíjely letošní prodeje — a prosinec?"),
+                    ).shouldNotBeNull()
+            thisYear.periodCode shouldBe "202612"
+            withClue("the question said which December — nothing to ask") { thisYear.alternatives.shouldBeEmpty() }
+            rec
+                .recognize("v březnu", ref, context = listOf("a v březnu?", "Minuloroční prodeje podle prodejny"))
+                .shouldNotBeNull()
+                .periodCode shouldBe "202503"
+        }
+        "a year adjective in the span is the span's own" {
+            rec.recognize("v loňském říjnu", ref).shouldNotBeNull().periodCode shouldBe "202510"
+            rec.recognize("letošního prosince", ref).shouldNotBeNull().periodCode shouldBe "202612"
+            rec
+                .recognize(
+                    "v tohoročním březnu",
+                    ref,
+                    context = listOf("Tržby v roce 2024"),
+                ).shouldNotBeNull()
+                .periodCode shouldBe
+                "202603"
+        }
+        "a year adjective alone is that whole year" {
+            for ((span, year) in listOf(
+                "tohoroční" to 2026,
+                "minuloroční" to 2025,
+                "vloňské" to 2025,
+                "předminuloroční" to 2024,
+            )) {
+                val r = rec.recognize(span, ref).shouldNotBeNull()
+                withClue(span) {
+                    r.startInclusive shouldBe day(year, 1, 1)
+                    r.endExclusive shouldBe day(year + 1, 1, 1)
+                }
+            }
+        }
+        "„předešlý rok“ / „předešlý měsíc“ are the one before" {
+            rec.recognize("předešlý rok", ref).shouldNotBeNull().startInclusive shouldBe day(2025, 1, 1)
+            rec.recognize("předešlý měsíc", ref).shouldNotBeNull().periodCode shouldBe "202604"
+        }
         "a relative period is relative to the reference, whatever the conversation says" {
             rec
                 .recognize("minulý měsíc", ref, context = listOf("Tržby v roce 2025"))

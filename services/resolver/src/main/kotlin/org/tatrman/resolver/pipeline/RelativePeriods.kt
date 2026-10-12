@@ -45,7 +45,7 @@ object RelativePeriods {
     // reach another word: `tent\w*` is not a demonstrative, `rok\w*` reaches `rokle`.
     private const val THIS =
         "tento|tohoto|tomto|tomuto|timto|tenhle|tohohle|tomhle|toto|tohle|letosn\\w*|aktualn\\w*|soucasn\\w*"
-    private const val LAST = "minul\\w*|predminul\\w*|predchoz\\w*|lonsk\\w*|predlonsk\\w*"
+    private const val LAST = "minul\\w*|predminul\\w*|predchoz\\w*|predesl\\w*|v?lonsk\\w*|predlonsk\\w*"
     private const val UNIT = "mesic\\w*|tyden|tydn\\w*|rok|roku|roce|rokem|ctvrtlet\\w*"
 
     private val PATTERNS =
@@ -54,8 +54,10 @@ object RelativePeriods {
             Regex("""\b(?:$THIS|$LAST)\s+(?:$UNIT)\b"""),
             // cs: a year by itself — "letos", "loni", "vloni", "předloni"
             Regex("""\b(?:letos|loni|vloni|predloni)\b"""),
-            // cs: a year adjective with no period noun after it — "loňské tržby", "letošní obrat"
-            Regex("""\b(?:letosn|lonsk|predlonsk)\w*\b"""),
+            // cs: a year adjective with no period noun after it — "loňské tržby", "letošní obrat",
+            // "vloňské", "tohoroční prodeje", "minuloroční", "předminuloroční" (never a bare `rocn`:
+            // "roční" alone is "annual")
+            Regex("""\b(?:letosn|v?lonsk|predlonsk|tohorocn|minulorocn|predminulorocn)\w*\b"""),
             // en: NER usually types these already; added when it did not
             Regex("""\b(?:this|last|previous|current)\s+(?:week|month|quarter|year)\b"""),
         )

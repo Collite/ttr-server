@@ -321,12 +321,12 @@ class DateRecognizer {
         (
             "this current " +
                 "tento tato toto tohoto tomto tomuto timto tenhle tohle tomhle tohohle " +
-                // "letos", "letošní" — this year
-                "letos aktualn soucasn"
+                // "letos", "letošní", "tohoroční" — this year
+                "letos tohorocn aktualn soucasn"
         ).split(' ')
     private val lastScopeWords =
-        // "loni", "vloni", "loňský" — last year
-        "last previous minul predchoz loni lonsk".split(' ')
+        // "loni", "vloni", "loňský", "vloňský", "minuloroční" (via `minul`), "předešlý" — last year
+        "last previous minul predchoz predesl loni lonsk".split(' ')
 
     /** Two periods back: *předloni*, *předloňský*, *předminulý měsíc*. Asked before [lastScopeWords], which they contain. */
     private val twoBackScopeWords = listOf("predlon", "predminul")
@@ -390,7 +390,10 @@ class DateRecognizer {
                     "%04d%02d".format(base.year, base.monthValue),
                 )
             }
-            hasAny(n, "year", "rok", "letos", "loni", "lonsk", "predlon") || roceRe.containsMatchIn(n) ->
+            // The one-word year adjectives: *minuloroční*, *tohoroční* (and *předminuloroční*, which
+            // contains the first). Not a bare `rocn` — *roční* alone is "annual", not a year.
+            hasAny(n, "year", "rok", "letos", "loni", "lonsk", "predlon", "minulorocn", "tohorocn") ||
+                roceRe.containsMatchIn(n) ->
                 yearInterval(
                     reference.year + delta.toInt(),
                     // A scopeless fiscal mention is a FISCAL_YEAR, not a plain calendar year —
