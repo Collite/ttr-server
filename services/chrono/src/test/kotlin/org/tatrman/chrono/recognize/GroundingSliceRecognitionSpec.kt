@@ -205,12 +205,33 @@ class GroundingSliceRecognitionSpec :
             }
         }
 
-        "a numbered week or month of a stated year is not the reference's week or month" {
-            // No rule reads "week 12" yet, so these fall through to the fallback; what they must not
-            // be is the current week or month, which is what the bare-mention reading made them.
-            recognizer.recognize("week 12 of 2025", reference, withEnglish) shouldBe null
-            recognizer.recognize("month 3 of 2025", reference, withEnglish) shouldBe null
-            recognizer.recognize("quarter 2 of 2025", reference, withEnglish) shouldBe null
+        "a period of a stated year is ungrounded with the slice too, never the reference's period" {
+            // The live shapes: with the slice, each of these was a period around the reference
+            // ("the second quarter of 2025" was 2026Q2 here, "the last week of 2025" the week before).
+            for (span in listOf(
+                "week 12 of 2025",
+                "month 3 of 2025",
+                "quarter 2 of 2025",
+                "quarter in 2025",
+                "the second quarter of 2025",
+                "the last quarter of 2025",
+                "the second week of 2025",
+                "the last week of 2025",
+                "the first month of 2025",
+                "the last month of 2025",
+                "the second half of 2025",
+                "poslední čtvrtletí 2025",
+                "poslední měsíc roku 2025",
+            )) {
+                withClue(span) { recognizer.recognize(span, reference, withEnglish) shouldBe null }
+            }
+        }
+
+        "a period with no year of its own still reads at the reference, with the slice" {
+            recognizer.recognize("last week", reference, withEnglish)!!.startInclusive shouldBe LocalDate.of(2026, 5, 4)
+            recognizer.recognize("this month", reference, withEnglish)!!.periodCode shouldBe "202605"
+            recognizer.recognize("minulý měsíc", reference, withEnglish)!!.periodCode shouldBe "202604"
+            recognizer.recognize("letos po měsících", reference, withEnglish)!!.periodCode shouldBe "202605"
         }
 
         "a bare mention with no year of its own still reads at the reference" {

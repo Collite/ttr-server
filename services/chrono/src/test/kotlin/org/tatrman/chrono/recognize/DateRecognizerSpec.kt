@@ -7,7 +7,6 @@ import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
-import io.kotest.matchers.shouldNotBe
 import java.time.DayOfWeek
 import java.time.LocalDate
 
@@ -510,14 +509,93 @@ class DateRecognizerSpec :
                 }
             }
         }
-        "a week or a month a scope word names is not widened to the year beside it" {
-            // "the last week of 2025" is the final week of 2025, which no rule reads yet. What it must
-            // not become is the whole of 2025, which handing the span to the calendar-year rule would do.
-            for (span in listOf("the last week of 2025", "the last month of 2025")) {
+        // A period OF a stated year — "the second quarter of 2025", "the last week of 2025" — is read
+        // by no rule yet. Its two wrong readings are both confident numbers: the period around the
+        // reference (what the relative rules made of it) and the whole of 2025 (what the calendar-year
+        // rule made of it). Ungrounded is the safe answer: a consumer falls through on a date with
+        // no range and reads the words from the question.
+        val periodsOfAStatedYear =
+            listOf(
+                "the second quarter of 2025",
+                "the third quarter of 2025",
+                "the last quarter of 2025",
+                "quarter in 2025",
+                "quarters of 2025",
+                "the second week of 2025",
+                "the last week of 2025",
+                "week 12 of 2025",
+                "the 12th week of 2025",
+                "the first month of 2025",
+                "the last month of 2025",
+                "month 3 of 2025",
+                "last 3 months of 2025",
+                "the second half of 2025",
+                "the first half-year of 2025",
+                "the halves of 2025",
+                "the first day of 2025",
+                "last 30 days of 2025",
+                "druhé pololetí 2025",
+                "poslední čtvrtletí 2025",
+                "třetí kvartál 2025",
+                "první týden roku 2025",
+                "v posledním týdnu roku 2025",
+                "poslední měsíc roku 2025",
+                "v prvních měsících roku 2025",
+                "první den roku 2025",
+                "posledních 10 dnů roku 2025",
+            )
+        for (span in periodsOfAStatedYear) {
+            "a period of a stated year is ungrounded, not the whole year nor the reference's: '$span'" {
+                rec.recognize(span, ref).shouldBeNull()
+            }
+        }
+        "a span with no year of its own still reads its period at the reference" {
+            rec.recognize("last week", ref).shouldNotBeNull().startInclusive shouldBe day(2026, 5, 4)
+            rec.recognize("this month", ref).shouldNotBeNull().periodCode shouldBe "202605"
+            rec.recognize("minulý měsíc", ref).shouldNotBeNull().periodCode shouldBe "202604"
+            // Pinned as untouched by #213, not as right: the month arm reads "po měsících" (by month)
+            // as the current month.
+            rec.recognize("letos po měsících", ref).shouldNotBeNull().periodCode shouldBe "202605"
+            rec.recognize("last fiscal quarter", ref).shouldNotBeNull().periodCode shouldBe "2026Q1"
+        }
+        "a year-only span is still that year" {
+            for (span in listOf("the year 2025", "year to date 2025", "2025 year to date", "v roce 2025", "rok 2025")) {
                 val r = rec.recognize(span, ref).shouldNotBeNull()
                 withClue(span) {
-                    r.kind shouldNotBe ChronoKind.CALENDAR_YEAR
-                    (r.endExclusive <= r.startInclusive.plusMonths(1)) shouldBe true
+                    r.kind shouldBe ChronoKind.CALENDAR_YEAR
+                    r.startInclusive shouldBe day(2025, 1, 1)
+                    r.endExclusive shouldBe day(2026, 1, 1)
+                }
+            }
+        }
+        "a rule that reads the period itself still wins over the stated-year guard" {
+            rec.recognize("the month of March 2025", ref).shouldNotBeNull().periodCode shouldBe "202503"
+            rec.recognize("v březnu 2025", ref).shouldNotBeNull().periodCode shouldBe "202503"
+            rec.recognize("15. března 2025", ref).shouldNotBeNull().startInclusive shouldBe day(2025, 3, 15)
+            rec.recognize("15.3.2025", ref).shouldNotBeNull().startInclusive shouldBe day(2025, 3, 15)
+            rec.recognize("2025-03-15", ref).shouldNotBeNull().startInclusive shouldBe day(2025, 3, 15)
+            rec.recognize("period 202503", ref).shouldNotBeNull().periodCode shouldBe "202503"
+            val fiscal = rec.recognize("fiscal year 2025", ref).shouldNotBeNull()
+            fiscal.kind shouldBe ChronoKind.FISCAL_YEAR
+            fiscal.startInclusive shouldBe day(2025, 1, 1)
+        }
+        "'monthly', 'quarterly' and their Czech adjectives name a grain, not a period of the year" {
+            for (span in listOf(
+                "monthly 2025",
+                "quarterly results 2025",
+                "weekly sales 2025",
+                "daily 2025",
+                "měsíční tržby 2025",
+                "čtvrtletní výsledky 2025",
+                "pololetní 2025",
+                "kvartální 2025",
+                "týdenní 2025",
+                "denní 2025",
+            )) {
+                val r = rec.recognize(span, ref).shouldNotBeNull()
+                withClue(span) {
+                    r.kind shouldBe ChronoKind.CALENDAR_YEAR
+                    r.startInclusive shouldBe day(2025, 1, 1)
                 }
             }
         }

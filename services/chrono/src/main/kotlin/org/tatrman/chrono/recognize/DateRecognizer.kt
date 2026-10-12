@@ -58,9 +58,7 @@ class DateRecognizer {
     ): ChronoRecognition? {
         val n = Normalization.fold(span).trim()
         if (n.isEmpty()) return null
-        // The trigger's scope-free reading is for a bare mention. A span that states its own year
-        // ("the year 2025", "week 12 of 2025") is not one, and reads as it would with no slice (#213).
-        val triggered = triggers.matches(span) && !statesYear(n)
+        val triggered = triggers.matches(span)
         val target = detectTarget(n)
         val years = Years(stated = NamedYear.single(span, reference), leaned = NamedYear.firstOf(context, reference))
         val base =
@@ -137,6 +135,9 @@ class DateRecognizer {
         triggered: Boolean = false,
     ): ChronoRecognition? {
         if (!quarterWordRe.containsMatchIn(n)) return null
+        // Every quarter here is relative to the reference. A quarter OF a stated year ("the last
+        // quarter of 2025") is not, and no rule reads it yet: it stays ungrounded (#213).
+        if (statesYear(n)) return null
         // The month/year scope words decline the same way before a quarter ("v tomto čtvrtletí").
         val thisScope = hasAny(n, thisScopeWords)
         val lastScope = hasAny(n, "last", "previous", "past", "posledni", "minul", "predchoz")
@@ -302,8 +303,14 @@ class DateRecognizer {
      *
      * A year word beside the digits ("the year 2025", "v roce 2025", "this year 2025") still lands
      * here: [relative] does not read a span that writes out its year ([statesYear], #213).
+     *
+     * A unit smaller than a year beside the digits ([subYearUnitRe]: "the second quarter of 2025",
+     * "the last week of 2025", "druhé pololetí 2025") is a period OF that year, and no rule reads
+     * one yet. The whole year would be a confident wrong number, so the span stays ungrounded: a
+     * consumer falls through on a date with no range and reads the words from the question (#213).
      */
     private fun calendarYear(n: String): ChronoRecognition? {
+        if (subYearUnitRe.containsMatchIn(n)) return null
         val digitRuns = digitRunRe.findAll(n).map { it.value }.toList()
         val only = digitRuns.singleOrNull() ?: return null
         val y = only.takeIf { it.length == 4 }?.toIntOrNull() ?: return null
@@ -315,11 +322,24 @@ class DateRecognizer {
 
     /**
      * Does the span write out a year of its own: a four-digit run in [PLAUSIBLE_YEARS], the same
-     * run [calendarYear] reads? Such a span is not a period at the reference. Neither the
-     * trigger's bare-mention reading nor [relative]'s year arm reads it (#213).
+     * run [calendarYear] reads? Such a span is not a period at the reference, so neither
+     * [relative] nor [fiscalQuarter] reads it (#213).
      */
     private fun statesYear(n: String): Boolean =
         digitRunRe.findAll(n).any { it.value.length == 4 && it.value.toInt() in PLAUSIBLE_YEARS }
+
+    /**
+     * A unit smaller than a year, on the folded span: an English word with its plural, matched
+     * whole, and a Czech noun stem in any case. Whole words and noun stems only, so the adjectives
+     * that name a grain rather than a period do not count: "monthly", "quarterly", "weekly",
+     * "daily", *měsíční*, *čtvrtletní*, *pololetní*, *kvartální*, *týdenní*, *denní*. The `dn` stem
+     * takes *dne*, *dni*, *dnů*, *dny* and also *dnes*, which is a day too.
+     */
+    private val subYearUnitRe =
+        Regex(
+            """\b(?:quarters?|half|halves|weeks?|months?|days?|today|yesterday|tomorrow)\b""" +
+                """|\b(?:ctvrtlet|kvartal|pololet|mesic)(?!n)\w*|\btyden\b|\btydn\w*|\bden\b|\bdn\w*|\bvcera\b|\bzitra\b""",
+        )
 
     // ----- relative: today/yesterday/tomorrow · this/last week/month/year · last N days/months -----
 
@@ -357,6 +377,10 @@ class DateRecognizer {
         reference: LocalDate,
         triggered: Boolean = false,
     ): ChronoRecognition? {
+        // Every period here is relative to the reference. A span that writes out its own year is
+        // not (#213): "the year 2025" and "this year 2025" are `calendarYear`'s, and "the last week
+        // of 2025" or "week 12 of 2025" is a period of that year, which no rule reads yet.
+        if (statesYear(n)) return null
         when {
             hasAny(n, "today", "dnes") -> return dayInterval(reference, 0.95)
             hasAny(n, "yesterday", "vcera") -> return dayInterval(reference.minusDays(1), 0.95)
@@ -405,9 +429,6 @@ class DateRecognizer {
                     "%04d%02d".format(base.year, base.monthValue),
                 )
             }
-            // A year the span writes out is that year, whatever scope word sits beside it ("this year
-            // 2025", "minulý rok 2024"): `calendarYear` reads the digits (#213).
-            statesYear(n) -> null
             // The one-word year adjectives: *minuloroční*, *tohoroční* (and *předminuloroční*, which
             // contains the first). Not a bare `rocn` — *roční* alone is "annual", not a year.
             hasAny(n, "year", "rok", "letos", "loni", "lonsk", "predlon", "minulorocn", "tohorocn") ||

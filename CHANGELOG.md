@@ -16,17 +16,23 @@ outside this repo could notice is in.
 
 ## Unreleased
 
-### chrono — a span that writes out its year is that year (#213)
+### chrono — a span that writes out its year is that year, or nothing (#213)
 
-With the lexicon's `ground:chrono` trigger slice loaded, a span that said both a period word and a year read as
-the current period: "the year 2025", "year 2025", "calendar year 2025" and "rok 2025" grounded to the reference
-year, "week 12 of 2025" to the reference week. The trigger's scope-free reading ("fiscal year" alone is the current
-one) now applies only to a span with no year of its own, so a span that states one reads exactly as it does with no
-slice. A scope word beside a written year no longer overrules it either: "this year 2025" and "minulý rok 2024" are
-2025 and 2024. Unchanged: a bare "fiscal year", "quarter" or "rok" is still the current period, and "this year",
-"last year", *letos* and *loni* still read against `reference_datetime`. No rule reads a week, month or quarter
-*of* a stated year yet: "week 12 of 2025" is now ungrounded rather than the current week, and "the second quarter
-of 2025" reads as the whole of 2025, as it already did without a slice.
+With the lexicon's `ground:chrono` trigger slice loaded, a span that said both a period word and a year read as a
+period around `reference_datetime`: "the year 2025", "calendar year 2025" and "rok 2025" grounded to the reference
+year, "week 12 of 2025" to the reference week, "the last quarter of 2025" to the quarter before the reference. The
+rules that read a period relative to the reference no longer read a span that writes out its own year.
+
+- **A year-only span is that year:** "the year 2025", "year to date 2025", "v roce 2025", "rok 2025", and with a
+  scope word beside it, "this year 2025" and "minulý rok 2024".
+- **A period *of* a stated year is ungrounded:** "the second quarter of 2025", "the last week of 2025", "week 12 of
+  2025", "the first month of 2025", "the second half of 2025", "druhé pololetí 2025". No rule reads one yet, and
+  the whole year would be a confident wrong number; a date value with no range lets the consumer fall through. Some
+  of these were the whole of 2025 before ("the second half of 2025"); none is now. "Monthly", "quarterly" and the
+  Czech adjectives (*měsíční*, *čtvrtletní*, …) name a grain, not a period, and do not count.
+- **Unchanged:** a rule that reads the period itself still wins ("the month of March 2025", "15.3.2025",
+  "fiscal year 2025"); a span with no year of its own still reads at the reference ("last week", "this month",
+  *minulý měsíc*, a bare "fiscal year" or "quarter").
 
 ### A date with no year takes the year the conversation is about
 
