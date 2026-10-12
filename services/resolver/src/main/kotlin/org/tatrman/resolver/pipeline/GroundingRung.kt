@@ -103,6 +103,10 @@ object GroundingRung {
         pkg: String,
         referenceDatetime: String,
         locale: String = "",
+        // The caller's earlier questions, newest first (ResolveContext.prior_questions). Passed
+        // through untouched: the kernel is what reads a date, so it is what decides what a
+        // yearless "říjen" leans on — this rung only carries the conversation to it.
+        priorQuestions: List<String> = emptyList(),
     ): Map<Pair<Int, Int>, Grounded> {
         if (pkg.isBlank()) {
             // Not a warning per resolve — this is a deployment mistake, and repeating it per turn
@@ -130,7 +134,8 @@ object GroundingRung {
                                     // is not "use now" — it is a relative span the kernel cannot
                                     // resolve. Absolute spans like `2025` are unaffected.
                                     .setReferenceDatetime(referenceDatetime)
-                                    .setLocale(locale),
+                                    .setLocale(locale)
+                                    .addAllPriorQuestions(priorQuestions),
                             ).build(),
                     )
                 }.getOrElse { e ->

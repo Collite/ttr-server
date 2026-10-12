@@ -27,12 +27,15 @@ class DateRecognizer {
          */
         const val TRIGGERED_SCOPELESS_CONFIDENCE = 0.8
 
+        /** One range for every rule that reads a year, here and in [NamedYear]. */
+        val PLAUSIBLE_YEARS = NamedYear.PLAUSIBLE_YEARS
+
         /**
-         * The range a four-digit run has to fall in to be read as a year. Mirrors the guard
-         * `periodCode` already applies to its own `yyyy` half, so the two entry points cannot
-         * disagree about what counts as a plausible year.
+         * A date whose year came from the question or the conversation rather than from the span.
+         * The same as a yearless month read at the reference: the year is inferred either way, and
+         * the inference is still well above chrono's 0.6 clarification floor.
          */
-        val PLAUSIBLE_YEARS = 1900..2999
+        const val LEANED_YEAR_CONFIDENCE = 0.85
     }
 
     /**
@@ -42,28 +45,46 @@ class DateRecognizer {
      *   recognition exactly as it was. What a trigger buys is the SCOPE-FREE reading: "fiskální
      *   rok" with no year, or a bare "čtvrtletí", is a period at the reference rather than a
      *   fall-through — the estate said the words are its own, so a bare mention is not noise.
+     * @param context what a date with no year of its own leans on, nearest first: the question the
+     *   span is in, then the user's earlier questions, newest first. The first that names a year
+     *   decides ([NamedYear.firstOf]) — "po celý měsíc říjen" after "v říjnu 2025" is October 2025,
+     *   not the reference's October. Empty leaves a yearless date at the reference year, as before.
      */
     fun recognize(
         span: String,
         reference: LocalDate,
         triggers: GroundingSlice = GroundingSlice.empty(CHRONO_KIND),
+        context: List<String> = emptyList(),
     ): ChronoRecognition? {
         val n = Normalization.fold(span).trim()
         if (n.isEmpty()) return null
         val triggered = triggers.matches(span)
         val target = detectTarget(n)
+        val years = Years(stated = NamedYear.single(span, reference), leaned = NamedYear.firstOf(context, reference))
         val base =
             fiscalYear(n)
                 ?: fiscalQuarter(n, reference, triggered)
                 ?: periodCode(n)
                 ?: isoDate(n)
-                ?: numericDate(n, reference)
-                ?: namedMonthDate(n, reference)
+                ?: numericDate(n, reference, years)
+                ?: namedMonthDate(n, reference, years)
                 ?: relative(n, reference, triggered)
                 ?: calendarYear(n)
                 ?: return null
         return if (target != null) base.copy(target = target) else base
     }
+
+    /**
+     * The year a date that writes none is in, from outside its own digits.
+     *
+     * @property stated a year the span names in words — "loni v říjnu", "letos v září". Its own,
+     *   so it is as good as a written one.
+     * @property leaned the year the question or the conversation names (`recognize`'s `context`).
+     */
+    private data class Years(
+        val stated: Int?,
+        val leaned: Int?,
+    )
 
     // ----- date-role targeting (which column, not which interval) -----
 
@@ -184,11 +205,16 @@ class DateRecognizer {
     private fun numericDate(
         n: String,
         reference: LocalDate,
+        years: Years = Years(null, null),
     ): ChronoRecognition? {
         val m = dmyRe.find(n) ?: return null
         val day = m.groupValues[1].toInt()
         val month = m.groupValues[2].toInt()
-        val year = m.groupValues[3].takeIf { it.isNotEmpty() }?.toInt() ?: reference.year
+        val year =
+            m.groupValues[3].takeIf { it.isNotEmpty() }?.toInt()
+                ?: years.stated
+                ?: years.leaned
+                ?: reference.year
         if (month !in 1..12 || day !in 1..31) return null
         val d = runCatching { LocalDate.of(year, month, day) }.getOrNull() ?: return null
         // Slightly lower confidence when the year was inferred (no explicit year in the span).
@@ -203,14 +229,16 @@ class DateRecognizer {
     private fun namedMonthDate(
         n: String,
         reference: LocalDate,
+        years: Years = Years(null, null),
     ): ChronoRecognition? {
         val month = Months.find(n) ?: return null
-        val year =
+        val stated =
             yearRe
                 .find(n)
                 ?.groupValues
                 ?.get(1)
                 ?.toIntOrNull()
+                ?: years.stated
         // A 1–2 digit token → the day-of-month; else month granularity (a period). The year is only
         // ever a 4-digit token (yearRe), and `\b\d{1,2}\b` cannot match digits inside it, so no
         // value-based exclusion is needed — filtering out days that merely equal year%100 (e.g. the
@@ -220,11 +248,16 @@ class DateRecognizer {
                 .findAll(n)
                 .map { it.groupValues[1].toInt() }
                 .firstOrNull { it in 1..31 }
+        // A year the span does not name comes from the question or the conversation before it falls
+        // back to the reference — and a month that has one is never the ambiguous bare future month.
+        val year = stated ?: years.leaned
         return if (day != null) {
             val d = runCatching { LocalDate.of(year ?: reference.year, month, day) }.getOrNull() ?: return null
-            dayInterval(d, if (year != null) 0.95 else 0.85)
+            dayInterval(d, if (stated != null) 0.95 else 0.85)
+        } else if (stated != null) {
+            monthPeriod(stated, month, 0.9)
         } else if (year != null) {
-            monthPeriod(year, month, 0.9)
+            monthPeriod(year, month, LEANED_YEAR_CONFIDENCE)
         } else if (month > reference.monthValue) {
             // A bare FUTURE month (no year) is genuinely ambiguous: this year (upcoming) or last
             // year (most recent past). Primary = this year; the alternative drives A8.6 clarification.
@@ -288,12 +321,12 @@ class DateRecognizer {
         (
             "this current " +
                 "tento tato toto tohoto tomto tomuto timto tenhle tohle tomhle tohohle " +
-                // "letos", "letošní" — this year
-                "letos aktualn soucasn"
+                // "letos", "letošní", "tohoroční" — this year
+                "letos tohorocn aktualn soucasn"
         ).split(' ')
     private val lastScopeWords =
-        // "loni", "vloni", "loňský" — last year
-        "last previous minul predchoz loni lonsk".split(' ')
+        // "loni", "vloni", "loňský", "vloňský", "minuloroční" (via `minul`), "předešlý" — last year
+        "last previous minul predchoz predesl loni lonsk".split(' ')
 
     /** Two periods back: *předloni*, *předloňský*, *předminulý měsíc*. Asked before [lastScopeWords], which they contain. */
     private val twoBackScopeWords = listOf("predlon", "predminul")
@@ -357,7 +390,10 @@ class DateRecognizer {
                     "%04d%02d".format(base.year, base.monthValue),
                 )
             }
-            hasAny(n, "year", "rok", "letos", "loni", "lonsk", "predlon") || roceRe.containsMatchIn(n) ->
+            // The one-word year adjectives: *minuloroční*, *tohoroční* (and *předminuloroční*, which
+            // contains the first). Not a bare `rocn` — *roční* alone is "annual", not a year.
+            hasAny(n, "year", "rok", "letos", "loni", "lonsk", "predlon", "minulorocn", "tohorocn") ||
+                roceRe.containsMatchIn(n) ->
                 yearInterval(
                     reference.year + delta.toInt(),
                     // A scopeless fiscal mention is a FISCAL_YEAR, not a plain calendar year —

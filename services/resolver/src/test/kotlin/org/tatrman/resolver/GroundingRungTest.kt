@@ -195,6 +195,30 @@ class GroundingRungTest :
                 req.context.referenceDatetime shouldBe "2026-08-28T00:00:00Z"
             }
             req.spanText shouldBe "2025"
+            withClue("no conversation was given, so none is invented") {
+                req.context.priorQuestionsList shouldBe
+                    emptyList()
+            }
+        }
+
+        "the caller's earlier questions reach the kernel as given, newest first" {
+            val kernel = FakeKernel { okWith("2025-10-01", "2025-11-01", erColumn("date_dim", "cal_date")) }
+            val earlier = listOf("Which products sold out in October 2025?", "Store sales by city in 2025")
+            runBlocking {
+                GroundingRung.ground(
+                    kernel,
+                    listOf(date("October", 21, 28)),
+                    "And all of October?",
+                    "hartland",
+                    "2026-10-12T00:00:00Z",
+                    priorQuestions = earlier,
+                )
+            }
+            withClue("the kernel reads a yearless month against these — the rung only carries them") {
+                kernel.seen
+                    .single()
+                    .context.priorQuestionsList shouldBe earlier
+            }
         }
 
         "⚑ a DB-coded anchor is REFUSED as an attribution, but the interval survives" {

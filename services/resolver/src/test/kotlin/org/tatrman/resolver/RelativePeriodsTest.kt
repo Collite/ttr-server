@@ -69,6 +69,21 @@ class RelativePeriodsTest :
             found("Kolik vratek bylo vloni?") shouldContainExactly listOf("vloni")
         }
 
+        "the other year adjectives, colloquial ones included" {
+            found("letošní prodeje podle prodejny") shouldContainExactly listOf("letošní")
+            found("loňské výpadky zásob") shouldContainExactly listOf("loňské")
+            found("vloňské vratky") shouldContainExactly listOf("vloňské")
+            found("Tohoroční obrat z webu") shouldContainExactly listOf("Tohoroční")
+            found("minuloroční prodeje") shouldContainExactly listOf("minuloroční")
+            found("předminuloroční tržby") shouldContainExactly listOf("předminuloroční")
+            found("Tržby za předešlý rok") shouldContainExactly listOf("předešlý rok")
+            found("Tržby v předešlém měsíci") shouldContainExactly listOf("předešlém měsíci")
+        }
+
+        "„roční“ alone is annual, never a period" {
+            found("roční tržby podle prodejny").shouldBeEmpty()
+        }
+
         "without diacritics, and in capitals" {
             found("trzby z trziste za minuly mesic") shouldContainExactly listOf("minuly mesic")
             found("TRŽBY ZA MINULÝ MĚSÍC") shouldContainExactly listOf("MINULÝ MĚSÍC")
@@ -131,6 +146,15 @@ class RelativePeriodsTest :
 
             state.mentionsList.filter { overlapsMinulyMesic(it.span.start, it.span.end) }.shouldBeEmpty()
             state.gapsList.filter { overlapsMinulyMesic(it.span.start, it.span.end) }.shouldBeEmpty()
+        }
+
+        "the caller's earlier questions travel from ResolveContext to the kernel" {
+            val kernel = AnsweringKernel()
+            val earlier = listOf("Tržby z tržiště podle distribučního centra v roce 2025")
+            resolve(R1, r1Tokens(), kernel, nerServed = true, priorQuestions = earlier)
+            kernel.seen
+                .single()
+                .context.priorQuestionsList shouldContainExactly earlier
         }
 
         "without NER the parse is left as it came — a span taken from the mentions would reach nothing" {
@@ -202,6 +226,7 @@ class RelativePeriodsTest :
             tokens: List<Token>,
             kernel: GroundingClient,
             nerServed: Boolean,
+            priorQuestions: List<String> = emptyList(),
         ): ResolutionState {
             val pipeline =
                 ResolverPipeline(
@@ -245,8 +270,12 @@ class RelativePeriodsTest :
                             .newBuilder()
                             .setConversationId("relative-periods")
                             .setFresh(FreshQuestion.newBuilder().setText(q).setLocale("cs"))
-                            .setContext(ResolveContext.newBuilder().setReferenceDatetime("2026-10-10T00:00:00Z"))
-                            .build(),
+                            .setContext(
+                                ResolveContext
+                                    .newBuilder()
+                                    .setReferenceDatetime("2026-10-10T00:00:00Z")
+                                    .addAllPriorQuestions(priorQuestions),
+                            ).build(),
                     ).resolutionState
             }
         }

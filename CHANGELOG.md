@@ -16,6 +16,25 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+### A date with no year takes the year the conversation is about
+
+chrono read a month or day that names no year at the reference year, even when the question around it named
+one: in "Which products sold out in October 2025? — all of October", the bare "October" was October of the
+current year. A yearless date now takes its year from, nearest first, the span's own words ("last year in
+October"), the question it is in, and the user's earlier questions; the first text that names a year decides,
+and one naming several leaves the date as before. A bare number is not read as a year (it looks the same as an
+amount), and relative periods ("last month") stay relative to `reference_datetime`.
+
+Czech says a year as an adjective as often as an adverb, and every form counts, in any case: *letošní prodeje*,
+*tohoroční*, *loňské výpadky zásob*, *vloňský*, *minuloroční*, *předešlý rok*, *předloňský*, *předminuloroční*.
+The one-word adjectives the resolver did not yet type as a period (*vloňský*, *tohoroční*, *minuloroční*,
+*předminuloroční*, *předešlý rok/měsíc*) now are, and chrono grounds each to its year. A bare *roční* stays
+"annual".
+
+- **`grounding.v1` `GroundingContext.prior_questions`** (8, new): the user's earlier questions, newest first.
+- **`resolver.v1` `ResolveContext.prior_questions`** (4, new): the resolver passes it through to the grounding
+  kernels unchanged. Additive: a caller that does not set it gets the question-only reading.
+
 ### Shipped defaults name no pilot estate
 
 Defaults baked into the images named one pilot deployment. They are now neutral; a deployment that set its own values

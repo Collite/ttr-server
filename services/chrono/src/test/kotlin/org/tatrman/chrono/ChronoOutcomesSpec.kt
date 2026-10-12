@@ -25,14 +25,22 @@ class ChronoOutcomesSpec :
         fun request(
             span: String,
             answerId: String = "",
+            question: String = "",
+            priorQuestions: List<String> = emptyList(),
         ): GroundRequest =
             GroundRequest
                 .newBuilder()
                 .setSpanText(span)
+                .setQuestionText(question)
                 .setKind(EntityKind.DATE_TIME)
                 .setPackage("cnc")
-                .setContext(GroundingContext.newBuilder().setReferenceDatetime(ref).setTimezone(tz))
-                .apply { if (answerId.isNotEmpty()) clarificationAnswerId = answerId }
+                .setContext(
+                    GroundingContext
+                        .newBuilder()
+                        .setReferenceDatetime(ref)
+                        .setTimezone(tz)
+                        .addAllPriorQuestions(priorQuestions),
+                ).apply { if (answerId.isNotEmpty()) clarificationAnswerId = answerId }
                 .build()
 
         "a bare future month → AWAITING_CLARIFICATION with this-year + last-year options" {
@@ -79,6 +87,47 @@ class ChronoOutcomesSpec :
             val svc =
                 ChronoGroundingService(FakeMetadataClient.accounting("cnc"), llmFallback = FakeLlmGateway("not json"))
             svc.ground(request("three weeks after Easter")).status shouldBe GroundResponse.Status.UNGROUNDABLE
+        }
+
+        "a bare month leans on the year its question names — no clarification, that year's period" {
+            val svc = ChronoGroundingService(FakeMetadataClient.accounting("cnc"), llmFallback = null)
+            val r =
+                svc.ground(
+                    request("December", question = "Which products sold out in December 2025? — all of December"),
+                )
+            r.status shouldBe GroundResponse.Status.OK
+            r.result.join.parametersList
+                .single()
+                .value.stringValue shouldBe "202512"
+        }
+
+        "a bare month in a follow-up leans on the conversation's earlier questions" {
+            val svc = ChronoGroundingService(FakeMetadataClient.accounting("cnc"), llmFallback = null)
+            val r =
+                svc.ground(
+                    request(
+                        "December",
+                        question = "And in December?",
+                        priorQuestions = listOf("Store sales by city in 2025"),
+                    ),
+                )
+            r.status shouldBe GroundResponse.Status.OK
+            r.result.join.parametersList
+                .single()
+                .value.stringValue shouldBe "202512"
+        }
+
+        "the LLM fallback reads the same conversation the rules lean on" {
+            val gateway = FakeLlmGateway(VALID_LLM_RESULT)
+            val svc = ChronoGroundingService(FakeMetadataClient.accounting("cnc"), llmFallback = gateway)
+            svc.ground(
+                request(
+                    "three weeks after Easter",
+                    question = "And then?",
+                    priorQuestions = listOf("Store sales in 2025"),
+                ),
+            )
+            gateway.lastUserPrompt!!.contains("Earlier question: \"Store sales in 2025\"") shouldBe true
         }
 
         "D-T4: a rules-hit with a gateway present stays RULES and never calls the LLM" {

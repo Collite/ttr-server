@@ -347,6 +347,7 @@ class ResolverPipeline(
                         pkg = request.context.`package`.ifBlank { defaultPackage },
                         referenceDatetime = request.context.referenceDatetime,
                         locale = locale,
+                        priorQuestions = request.context.priorQuestionsList,
                     )
                 }.orEmpty()
 
