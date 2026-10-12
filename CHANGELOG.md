@@ -16,6 +16,18 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+### chrono — a span that writes out its year is that year (#213)
+
+With the lexicon's `ground:chrono` trigger slice loaded, a span that said both a period word and a year read as
+the current period: "the year 2025", "year 2025", "calendar year 2025" and "rok 2025" grounded to the reference
+year, "week 12 of 2025" to the reference week. The trigger's scope-free reading ("fiscal year" alone is the current
+one) now applies only to a span with no year of its own, so a span that states one reads exactly as it does with no
+slice. A scope word beside a written year no longer overrules it either: "this year 2025" and "minulý rok 2024" are
+2025 and 2024. Unchanged: a bare "fiscal year", "quarter" or "rok" is still the current period, and "this year",
+"last year", *letos* and *loni* still read against `reference_datetime`. No rule reads a week, month or quarter
+*of* a stated year yet: "week 12 of 2025" is now ungrounded rather than the current week, and "the second quarter
+of 2025" reads as the whole of 2025, as it already did without a slice.
+
 ### A date with no year takes the year the conversation is about
 
 chrono read a month or day that names no year at the reference year, even when the question around it named

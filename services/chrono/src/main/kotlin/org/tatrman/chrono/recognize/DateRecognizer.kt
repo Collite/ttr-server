@@ -58,7 +58,9 @@ class DateRecognizer {
     ): ChronoRecognition? {
         val n = Normalization.fold(span).trim()
         if (n.isEmpty()) return null
-        val triggered = triggers.matches(span)
+        // The trigger's scope-free reading is for a bare mention. A span that states its own year
+        // ("the year 2025", "week 12 of 2025") is not one, and reads as it would with no slice (#213).
+        val triggered = triggers.matches(span) && !statesYear(n)
         val target = detectTarget(n)
         val years = Years(stated = NamedYear.single(span, reference), leaned = NamedYear.firstOf(context, reference))
         val base =
@@ -277,6 +279,8 @@ class DateRecognizer {
 
     // ----- bare calendar year: "2025" -----
 
+    private val digitRunRe = Regex("""\d+""")
+
     /**
      * A span that is nothing but a four-digit year.
      *
@@ -295,9 +299,12 @@ class DateRecognizer {
      * The year must be the span's ONLY digit run. A second number means the span is some other
      * construct that the recognizers above declined to claim, and guessing a year out of it would
      * be inventing a filter the user never asked for.
+     *
+     * A year word beside the digits ("the year 2025", "v roce 2025", "this year 2025") still lands
+     * here: [relative] does not read a span that writes out its year ([statesYear], #213).
      */
     private fun calendarYear(n: String): ChronoRecognition? {
-        val digitRuns = Regex("""\d+""").findAll(n).map { it.value }.toList()
+        val digitRuns = digitRunRe.findAll(n).map { it.value }.toList()
         val only = digitRuns.singleOrNull() ?: return null
         val y = only.takeIf { it.length == 4 }?.toIntOrNull() ?: return null
         if (y !in PLAUSIBLE_YEARS) return null
@@ -305,6 +312,14 @@ class DateRecognizer {
         // that span also said the WORD "year", where this one is inferred from shape alone.
         return yearInterval(y, ChronoKind.CALENDAR_YEAR, 0.9)
     }
+
+    /**
+     * Does the span write out a year of its own: a four-digit run in [PLAUSIBLE_YEARS], the same
+     * run [calendarYear] reads? Such a span is not a period at the reference. Neither the
+     * trigger's bare-mention reading nor [relative]'s year arm reads it (#213).
+     */
+    private fun statesYear(n: String): Boolean =
+        digitRunRe.findAll(n).any { it.value.length == 4 && it.value.toInt() in PLAUSIBLE_YEARS }
 
     // ----- relative: today/yesterday/tomorrow · this/last week/month/year · last N days/months -----
 
@@ -390,6 +405,9 @@ class DateRecognizer {
                     "%04d%02d".format(base.year, base.monthValue),
                 )
             }
+            // A year the span writes out is that year, whatever scope word sits beside it ("this year
+            // 2025", "minulý rok 2024"): `calendarYear` reads the digits (#213).
+            statesYear(n) -> null
             // The one-word year adjectives: *minuloroční*, *tohoroční* (and *předminuloroční*, which
             // contains the first). Not a bare `rocn` — *roční* alone is "annual", not a year.
             hasAny(n, "year", "rok", "letos", "loni", "lonsk", "predlon", "minulorocn", "tohorocn") ||

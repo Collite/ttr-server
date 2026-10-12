@@ -7,6 +7,7 @@ import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.shouldNotBe
 import java.time.DayOfWeek
 import java.time.LocalDate
 
@@ -490,6 +491,37 @@ class DateRecognizerSpec :
             rec.recognize("předešlý rok", ref).shouldNotBeNull().startInclusive shouldBe day(2025, 1, 1)
             rec.recognize("předešlý měsíc", ref).shouldNotBeNull().periodCode shouldBe "202604"
         }
+        // #213: a year the span writes out is that year. A scope word beside it does not move it to
+        // the reference's year (or the one before); the calendar-year rule reads the digits.
+        "a scope word does not overrule the year the span writes out" {
+            for ((span, year) in listOf(
+                "this year 2025" to 2025,
+                "this year (2025)" to 2025,
+                "last year 2024" to 2024,
+                "previous year 2023" to 2023,
+                "minulý rok 2024" to 2024,
+                "letos 2025" to 2025,
+            )) {
+                val r = rec.recognize(span, ref).shouldNotBeNull()
+                withClue(span) {
+                    r.startInclusive shouldBe day(year, 1, 1)
+                    r.endExclusive shouldBe day(year + 1, 1, 1)
+                    r.kind shouldBe ChronoKind.CALENDAR_YEAR
+                }
+            }
+        }
+        "a week or a month a scope word names is not widened to the year beside it" {
+            // "the last week of 2025" is the final week of 2025, which no rule reads yet. What it must
+            // not become is the whole of 2025, which handing the span to the calendar-year rule would do.
+            for (span in listOf("the last week of 2025", "the last month of 2025")) {
+                val r = rec.recognize(span, ref).shouldNotBeNull()
+                withClue(span) {
+                    r.kind shouldNotBe ChronoKind.CALENDAR_YEAR
+                    (r.endExclusive <= r.startInclusive.plusMonths(1)) shouldBe true
+                }
+            }
+        }
+
         "a relative period is relative to the reference, whatever the conversation says" {
             rec
                 .recognize("minulý měsíc", ref, context = listOf("Tržby v roce 2025"))
