@@ -97,6 +97,9 @@ object SpanProposal {
     /** ✅UD-9 — relations by which a word continues a place's name past its NER extent (`Praha DC`). */
     private val NAME_TAIL_RELATIONS = PROPN_RUN_RELATIONS + setOf("flat:foreign")
 
+    /** …and the relation by which a name's last word hangs on the word that continues it (`Memphis` ← `DC`). */
+    private val HEAD_FINAL_NAME_RELATIONS = setOf("compound")
+
     private val NOMINAL_UPOS = setOf("NOUN", "PROPN", "X")
 
     /**
@@ -1034,6 +1037,12 @@ object SpanProposal {
      * preposition (`Brno v lednu`) or an anchor word (`Brno prodejny`) is never swallowed. Nothing
      * extends to the LEFT: the NER's start stands. Where the NER already spans the name
      * (`Dallas DC` typed whole), there is no tail and the extent is exactly the entity's.
+     *
+     * The tail word may also be the run's HEAD rather than its dependent: English puts a compound's
+     * head last, so Stanza parses `for Memphis DC` with `Memphis` the `compound` of `DC` and `DC`
+     * hung on the noun the name belongs to. The word the run's last token is a [HEAD_FINAL_NAME_RELATIONS]
+     * dependent of continues the name the same way — a reading of `Memphis` alone left `DC` behind,
+     * and in a world with a state called `DC` the leftover asked which `DC` was meant.
      */
     internal fun withNameTail(
         extent: List<Int>,
@@ -1048,7 +1057,10 @@ object SpanProposal {
             val t = tokens[next]
             if (next in excluded || isUniversal(t, universal)) break
             if (t.upos.uppercase() !in NOMINAL_UPOS) break
-            if (t.depRelation !in NAME_TAIL_RELATIONS || (t.depHead - 1) !in run) break
+            val hangsOnRun = t.depRelation in NAME_TAIL_RELATIONS && (t.depHead - 1) in run
+            val last = tokens[run.last()]
+            val headsRun = last.depRelation in HEAD_FINAL_NAME_RELATIONS && last.depHead - 1 == next
+            if (!hangsOnRun && !headsRun) break
             run += next
             next++
         }

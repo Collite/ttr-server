@@ -104,6 +104,8 @@ object MhMembers {
             // UD-P3 — the hartland CZ warehouses, asked bare (`mělo Brno DC nulové zásoby`).
             "brno dc" to listOf(Triple("Brno DC", "Brno DC", WAREHOUSE_NAME)),
             "praha dc" to listOf(Triple("Praha DC", "Praha DC", WAREHOUSE_NAME)),
+            // …and a hartland US one, asked in English (`for Memphis DC`, the town a compound of `DC`).
+            "memphis dc" to listOf(Triple("Memphis DC", "Memphis DC", WAREHOUSE_NAME)),
             // UD-P3 — F-8: the return reason a lone `Paris` reached through the open lookup (TOKENS).
             "paris" to listOf(Triple("Parts missing", "Parts missing", REASON_DESC)),
             // UD-P3 S2 — a declined town, as the matcher answers it on hartland: the store named after
