@@ -29,6 +29,7 @@ import org.tatrman.resolver.v1.TargetClass
  * R5  no prep, deprel == compound, not capable      -> +FILTER     # "WEB revenue"
  * R6  no prep, deprel starts "obl", not capable     -> +FILTER     # "minulý TÝDEN"
  * R6' no prep, deprel == advmod, binds an attribute -> +FILTER     # "LONI" (spike F-1)
+ * R6" no prep, deprel == amod, a model attribute     -> +GROUPING   # "MONTHLY revenue" (#152)
  * R7  deprel == conj  -> inherit the head mention's FILTER / GROUPING
  * R8  m anchors a value and deprel not nsubj        -> +FILTER     # "účtu 501001"
  * R9  residue: the nsubj candidate, else the shallowest+leftmost   -> +SUBJECT (AT MOST ONE)
@@ -142,6 +143,15 @@ object FrameRoles {
                         // an adverb that binds an attribute is restricting by it.
                         relation == "advmod" && m.objectKind.equals("attribute", ignoreCase = true) ->
                             roles.getValue(m.id) += FrameRole.FRAME_ROLE_FILTER
+                        // ttr-server#152: an adjective that names an ATTRIBUTE — the model object,
+                        // not one of its values (a member is R1's FILTER) — asks for the breakdown
+                        // by it. *Monthly marketplace revenue* is per month: `monthly` is declared
+                        // for the month attribute and hangs on the measure as `amod`, and with no
+                        // rule for it the declared grain bound and was then read as nothing.
+                        relation == "amod" &&
+                            m.targetClass == TargetClass.TARGET_CLASS_MODEL_OBJECT &&
+                            m.objectKind.equals("attribute", ignoreCase = true) ->
+                            roles.getValue(m.id) += FrameRole.FRAME_ROLE_GROUPING
                     }
             }
         }

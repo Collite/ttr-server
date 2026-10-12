@@ -16,6 +16,18 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+### A calendar word inside a grain is the grain, not a date
+
+English NER types the calendar word of a grain phrase a date, and the resolver grounded it as one beside the
+grouping the estate declared. "Marketplace revenue by month in 2025" restricted the question to the current
+month AND 2025; "Store revenue by month" to the current month alone; and "Marketplace revenue by quarter in
+2025", where the NER typed `quarter in 2025` as one span, was grounded as the current quarter, with 2025 lost.
+Where a declared phrase the matcher confirms as a model object shares words with a date, the words are now the
+phrase's: the date keeps only the rest (`2025`), and a date with nothing left is not grounded at all. A
+declared one-word grain the NER typed a date ("Monthly marketplace revenue") is proposed and binds like any
+other declared word, and an adjective naming an attribute is a `FRAME_ROLE_GROUPING`. A phrase the matcher does
+not confirm takes nothing, so a grain the estate never declared reads as before.
+
 ### A date with no year takes the year the conversation is about
 
 chrono read a month or day that names no year at the reference year, even when the question around it named
