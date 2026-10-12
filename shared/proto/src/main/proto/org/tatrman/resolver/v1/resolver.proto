@@ -116,6 +116,11 @@ message ResolveContext {
   // derive neither. Empty is legal and means "use the resolver's configured default"
   // (`resolver.package`), which is what a single-estate deployment will do.
   string package = 3;
+  // The user's earlier questions in this conversation, newest first. The resolver does not read
+  // them; it hands them to the grounding kernels (grounding.v1 GroundingContext.prior_questions),
+  // so a date that names no year takes the year the conversation is about. A third ambient fact
+  // only the CALLER has: the resolver sees one question, never the conversation around it.
+  repeated string prior_questions = 4;
 }
 
 // Caller-supplied registry override (RS-24). When absent the snapshot-fed

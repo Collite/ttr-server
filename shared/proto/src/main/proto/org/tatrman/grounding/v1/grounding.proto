@@ -76,6 +76,11 @@ message GroundingContext {
   string here_place_ref = 5;          // resolvable place id/name meaning "here"
   FxPolicy fx_policy = 6;
   double tolerance_pct = 7;           // "around X" half-width, e.g. 10.0
+  // The user's earlier questions in this conversation, newest first — what a follow-up leans
+  // on. A date that names no year takes the year the conversation is about: "and in September?"
+  // after a question about 2025 is September 2025. The agent fills it from the turn's history;
+  // empty means the question stands alone, which is how it was read before this field existed.
+  repeated string prior_questions = 8;
   map<string, string> extras = 15;    // forward-compatible tenant knobs
 }
 

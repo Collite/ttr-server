@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package org.tatrman.chrono.recognize
 
+import io.kotest.assertions.withClue
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.nulls.shouldBeNull
@@ -334,6 +335,117 @@ class DateRecognizerSpec :
         }
         "cs without diacritics 'v rijnu 2025' → October 2025" {
             rec.recognize("v rijnu 2025", ref).shouldNotBeNull().periodCode shouldBe "202510"
+        }
+
+        // ---- a yearless date leans on the question, then on the conversation ----
+        // The live shape: the plan composer asked back, and the answer was added to the question —
+        // „Které položky byly v říjnu 2025 vyprodané? — po celý měsíc říjen“. The bare „říjen“ read
+        // as the reference's October, and the query asked about two Octobers.
+        "a bare month takes the year its question names" {
+            val q = "Které položky byly v říjnu 2025 vyprodané? — po celý měsíc říjen"
+            val r = rec.recognize("říjen", ref, context = listOf(q)).shouldNotBeNull()
+            r.periodCode shouldBe "202510"
+            r.startInclusive shouldBe day(2025, 10, 1)
+            r.endExclusive shouldBe day(2025, 11, 1)
+            r.alternatives.shouldBeEmpty()
+        }
+        "a past month leans too — not only the future one that would have asked" {
+            // March (3) <= May (5): without context this is March 2026, unambiguously.
+            rec
+                .recognize(
+                    "v březnu",
+                    ref,
+                    context = listOf("Tržby v roce 2025 — a v březnu?"),
+                ).shouldNotBeNull()
+                .periodCode shouldBe
+                "202503"
+        }
+        "a follow-up with no year leans on the earlier question that names one" {
+            val r =
+                rec
+                    .recognize(
+                        "v září",
+                        ref,
+                        context =
+                            listOf(
+                                "A jak to bylo v září?",
+                                "Kolik máme prodejen?",
+                                "Tržby podle prodejny v roce 2025",
+                            ),
+                    ).shouldNotBeNull()
+            r.periodCode shouldBe "202509"
+            r.alternatives.shouldBeEmpty()
+        }
+        "the question's own year beats an earlier question's" {
+            rec
+                .recognize("září", ref, context = listOf("Tržby v září 2024, celé září", "Tržby v roce 2025"))
+                .shouldNotBeNull()
+                .periodCode shouldBe "202409"
+        }
+        "a question naming two years leans on neither, nor on the conversation" {
+            val r =
+                rec
+                    .recognize(
+                        "prosinec",
+                        ref,
+                        context = listOf("Porovnej říjen 2024 s říjnem 2025 a prosinec", "Tržby v roce 2023"),
+                    ).shouldNotBeNull()
+            withClue("the reference reading, as before: a future month is still ambiguous") {
+                r.periodCode shouldBe "202612"
+                r.alternatives.map { it.periodCode } shouldBe listOf("202512")
+            }
+        }
+        "an amount in the question is not a year to lean on" {
+            rec
+                .recognize(
+                    "v březnu",
+                    ref,
+                    context = listOf("Položky nad 2000 Kč prodané v březnu"),
+                ).shouldNotBeNull()
+                .periodCode shouldBe
+                "202603"
+        }
+        "a leaned year is inferred — below a written one" {
+            val leaned = rec.recognize("říjen", ref, context = listOf("Tržby v roce 2025")).shouldNotBeNull()
+            val written = rec.recognize("říjen 2025", ref).shouldNotBeNull()
+            (leaned.confidence < written.confidence) shouldBe true
+        }
+        "a day with no year leans the same way" {
+            rec
+                .recognize(
+                    "15. října",
+                    ref,
+                    context = listOf("Objednávky v roce 2025"),
+                ).shouldNotBeNull()
+                .startInclusive shouldBe
+                day(2025, 10, 15)
+            rec
+                .recognize(
+                    "15.3.",
+                    ref,
+                    context = listOf("Objednávky v roce 2025"),
+                ).shouldNotBeNull()
+                .startInclusive shouldBe
+                day(2025, 3, 15)
+        }
+        "a year said in the span is the span's own, and beats the conversation" {
+            rec.recognize("loni v říjnu", ref).shouldNotBeNull().periodCode shouldBe "202510"
+            rec.recognize("předloni v březnu", ref).shouldNotBeNull().periodCode shouldBe "202403"
+            val thisYear =
+                rec
+                    .recognize(
+                        "letos v prosinci",
+                        ref,
+                        context = listOf("Tržby v roce 2025"),
+                    ).shouldNotBeNull()
+            thisYear.periodCode shouldBe "202612"
+            withClue("the user said which December — nothing to ask") { thisYear.alternatives.shouldBeEmpty() }
+        }
+        "a relative period is relative to the reference, whatever the conversation says" {
+            rec
+                .recognize("minulý měsíc", ref, context = listOf("Tržby v roce 2025"))
+                .shouldNotBeNull()
+                .periodCode shouldBe "202604"
         }
 
         // ---- unrecognized ----

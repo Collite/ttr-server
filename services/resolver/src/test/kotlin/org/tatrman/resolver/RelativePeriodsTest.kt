@@ -133,6 +133,15 @@ class RelativePeriodsTest :
             state.gapsList.filter { overlapsMinulyMesic(it.span.start, it.span.end) }.shouldBeEmpty()
         }
 
+        "the caller's earlier questions travel from ResolveContext to the kernel" {
+            val kernel = AnsweringKernel()
+            val earlier = listOf("Tržby z tržiště podle distribučního centra v roce 2025")
+            resolve(R1, r1Tokens(), kernel, nerServed = true, priorQuestions = earlier)
+            kernel.seen
+                .single()
+                .context.priorQuestionsList shouldContainExactly earlier
+        }
+
         "without NER the parse is left as it came — a span taken from the mentions would reach nothing" {
             val kernel = AnsweringKernel()
             val state = resolve(R1, r1Tokens(), kernel, nerServed = false)
@@ -202,6 +211,7 @@ class RelativePeriodsTest :
             tokens: List<Token>,
             kernel: GroundingClient,
             nerServed: Boolean,
+            priorQuestions: List<String> = emptyList(),
         ): ResolutionState {
             val pipeline =
                 ResolverPipeline(
@@ -245,8 +255,12 @@ class RelativePeriodsTest :
                             .newBuilder()
                             .setConversationId("relative-periods")
                             .setFresh(FreshQuestion.newBuilder().setText(q).setLocale("cs"))
-                            .setContext(ResolveContext.newBuilder().setReferenceDatetime("2026-10-10T00:00:00Z"))
-                            .build(),
+                            .setContext(
+                                ResolveContext
+                                    .newBuilder()
+                                    .setReferenceDatetime("2026-10-10T00:00:00Z")
+                                    .addAllPriorQuestions(priorQuestions),
+                            ).build(),
                     ).resolutionState
             }
         }

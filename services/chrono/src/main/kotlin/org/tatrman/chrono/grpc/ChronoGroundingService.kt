@@ -87,8 +87,14 @@ class ChronoGroundingService(
             // RV-P1.6: the slice is narrowed to the request's language — a term carries the
             // `lang` its author declared, and an English trigger has no business firing on a
             // Czech question. A blank locale narrows nothing.
-            recognizer.recognize(request.spanText, reference, triggers.current().forLang(request.context.locale))
-                ?: return fallback(request, "could not recognize a time expression in '${request.spanText}'")
+            recognizer.recognize(
+                request.spanText,
+                reference,
+                triggers.current().forLang(request.context.locale),
+                // A date that names no year leans on the question it is in, then on the user's
+                // earlier questions — "po celý měsíc říjen" after "v říjnu 2025" is October 2025.
+                context = listOf(request.questionText) + request.context.priorQuestionsList,
+            ) ?: return fallback(request, "could not recognize a time expression in '${request.spanText}'")
 
         val resolved: ChronoRecognition =
             when {
@@ -242,13 +248,15 @@ class ChronoGroundingService(
     }
 
     private fun llmUserPrompt(request: GroundRequest): String =
-        """
-        Span: "${request.spanText}"
-        Question: "${request.questionText}"
-        reference_datetime: ${request.context.referenceDatetime}
-        timezone: ${request.context.timezone}
-        package: ${request.getPackage()}
-        """.trimIndent()
+        buildString {
+            appendLine("Span: \"${request.spanText}\"")
+            appendLine("Question: \"${request.questionText}\"")
+            // The rules lean a yearless date on these; the fallback reads the same conversation.
+            request.context.priorQuestionsList.forEach { appendLine("Earlier question: \"$it\"") }
+            appendLine("reference_datetime: ${request.context.referenceDatetime}")
+            appendLine("timezone: ${request.context.timezone}")
+            append("package: ${request.getPackage()}")
+        }
 
     // ----- helpers -----
 
