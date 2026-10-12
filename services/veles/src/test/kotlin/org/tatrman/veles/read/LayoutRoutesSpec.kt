@@ -60,7 +60,16 @@ class LayoutRoutesSpec :
             registry: MetadataRegistry = fixture.registry,
         ): Pair<HttpStatusCode, String> {
             environment { config = MapApplicationConfig() }
-            application { routing { velesReadRoutes(registry, SearchAlgorithmRegistry(emptyMap()), null, PackageIndex()) } }
+            application {
+                routing {
+                    velesReadRoutes(
+                        registry,
+                        SearchAlgorithmRegistry(emptyMap()),
+                        null,
+                        PackageIndex(),
+                    )
+                }
+            }
             val r = client.get(path)
             return r.status to r.bodyAsText()
         }
@@ -73,13 +82,21 @@ class LayoutRoutesSpec :
                 o["layouts"]!!.jsonArray.map { it.jsonObject["name"]!!.jsonPrimitive.content } shouldBe
                     listOf("dup_a", "authored", "auto_residue", "main_canvas", "missing", "sidecar")
                 o["modelVersion"]!!.jsonPrimitive.content shouldBe fixture.model.version.value
-                val missing = o["layouts"]!!.jsonArray.single { it.jsonObject["name"]!!.jsonPrimitive.content == "missing" }
+                val missing =
+                    o["layouts"]!!.jsonArray.single {
+                        it.jsonObject["name"]!!.jsonPrimitive.content ==
+                            "missing"
+                    }
                 json(missing.toString()) shouldBe
                     json(
                         """{"name":"missing","schema":"er","objectCount":1,"missingCount":1,"ambiguousCount":1,""" +
                             """"hasPositions":false,"source":"layouts/missing.ttrg"}""",
                     )
-                val authored = o["layouts"]!!.jsonArray.single { it.jsonObject["name"]!!.jsonPrimitive.content == "authored" }
+                val authored =
+                    o["layouts"]!!.jsonArray.single {
+                        it.jsonObject["name"]!!.jsonPrimitive.content ==
+                            "authored"
+                    }
                 authored.jsonObject["objectCount"]!!.jsonPrimitive.content shouldBe "3"
                 authored.jsonObject["hasPositions"]!!.jsonPrimitive.content shouldBe "true"
             }
@@ -140,7 +157,8 @@ class LayoutRoutesSpec :
             testApplication {
                 val o = json(get("/model/layout?name=missing").second).jsonObject
                 o["missing"] shouldBe json("""["hartland.er.entity.customer"]""")
-                o["ambiguous"] shouldBe json("""[{"ref":"item","candidates":["hartland.er.entity.item","outlet.er.outlet.item"]}]""")
+                o["ambiguous"] shouldBe
+                    json("""[{"ref":"item","candidates":["hartland.er.entity.item","outlet.er.outlet.item"]}]""")
                 o["objects"] shouldBe json("""["hartland.er.entity.store"]""")
                 o["positions"] shouldBe json("{}")
                 o["mode"]!!.jsonPrimitive.content shouldBe "auto"

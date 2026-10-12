@@ -126,11 +126,13 @@ private fun ResolvedLayout.body(modelVersion: String) =
         modelVersion = modelVersion,
     )
 
-private suspend fun ApplicationCall.respondJson(json: String) = respondText(json, ContentType.Application.Json, HttpStatusCode.OK)
+private suspend fun ApplicationCall.respondJson(json: String) =
+    respondText(json, ContentType.Application.Json, HttpStatusCode.OK)
 
 private suspend fun ApplicationCall.respondError(
     status: HttpStatusCode,
     error: String,
 ) = respondText("""{"error":"$error"}""", ContentType.Application.Json, status)
 
-private suspend fun ApplicationCall.respondModelNotLoaded() = respondError(HttpStatusCode.ServiceUnavailable, "model not loaded")
+private suspend fun ApplicationCall.respondModelNotLoaded() =
+    respondError(HttpStatusCode.ServiceUnavailable, "model not loaded")
