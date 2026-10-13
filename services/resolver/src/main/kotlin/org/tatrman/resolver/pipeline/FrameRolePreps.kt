@@ -90,6 +90,7 @@ class FrameRolePreps(
 
     /** ttr-server#206 — the prepositions after which a four-digit number is a year; see `frame-roles.conf`. */
     fun temporal(lang: String): Set<String> = table(temporalPreps, lang)
+
     /** ttr-server#152 — the calendar adjectives' lemmas, as written in the config; see `frame-roles.conf`. */
     fun grainAdjectives(lang: String): Set<String> = table(grainAdjectives, lang)
 
