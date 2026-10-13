@@ -260,10 +260,9 @@ class ResolverPipeline(
         // written. LAST, and folded back onto the mentions' own slots by `merge` before anything reads
         // the response, so every offset below is exactly what it was.
         val lemmaPlan = LemmaLookup.plan(candidates, parse)
-        // ttr-server#204 — and a fifth: each mention as its head, without its determiners and bare
-        // adjectives (`the marketplace` → `marketplace`), plus one question per word left out that
-        // could restrict it, whether the lexicon knows it. Read only where the phrase binds nothing.
-        // LAST, and taken off the response before anything positional reads it.
+        // ttr-server#204 — and a fifth: each gated mention as its head, without its determiners and
+        // bare adjectives (`the marketplace` → `marketplace`). Read only where the phrase binds
+        // nothing. LAST, and taken off the response before anything positional reads it.
         val retryPlan = MentionRetry.plan(parse, candidates, ungatedMentions, preps, assessment.language)
         val batchReq =
             GateSpans
@@ -280,9 +279,10 @@ class ResolverPipeline(
         val lemmaOffset = candidates.size + triggerSpans.size + PredicateTriggers.slotCount(predicateWindows)
         val retryOffset = lemmaOffset + lemmaPlan.size
         val rawBatch = fuzzy.batchMatch(batchReq)
-        val retries = MentionRetry.collect(rawBatch, retryPlan, retryOffset, resolverRegistry.thresholds)
+        val retryAnswers = MentionRetry.collect(rawBatch, retryPlan, retryOffset)
         val batchResp = LemmaLookup.merge(MentionRetry.strip(rawBatch, retryOffset), lemmaPlan, offset = lemmaOffset)
-        val broadPass =
+
+        fun gateWith(retries: MentionRetry.Answers) =
             GateSpans.gate(
                 candidates,
                 batchResp,
@@ -292,6 +292,22 @@ class ResolverPipeline(
                 resolverRegistry.snapshotHash,
                 retries = retries.byCandidate,
             )
+        val firstPass = gateWith(retryAnswers)
+        // ttr-server#204 — a head the gate took binds without the words its mention left out, so this
+        // is the moment to ask whether the lexicon knows any of them — and the only one: the question
+        // is global and reaches the member index, so a phrase that bound as written never pays for
+        // it. A known word cancels its retry, and the mention takes its phrase's own verdict.
+        val taken = MentionRetry.taken(firstPass.gated, retryAnswers)
+        val known =
+            MentionRetry.known(
+                fuzzy,
+                taken.flatMap { it.asked }.distinct(),
+                resolverRegistry.thresholds,
+                resolverRegistry.thresholds.maxOptions,
+            )
+        val cancelled = taken.filter { r -> r.asked.any { it in known } }
+        val retries = retryAnswers.without(cancelled)
+        val broadPass = if (cancelled.isEmpty()) firstPass else gateWith(retries)
         // ✅ UD (ttr-server#118) — the universal/domain seam, decided HERE because this is the first
         // line that knows both readings' answers: the gate has spoken on every dual reading, and
         // nothing yet has read the universal list. A place the sentence scoped to an entity whose

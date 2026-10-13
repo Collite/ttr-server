@@ -1,12 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 package org.tatrman.resolver.pipeline
 
+import kotlinx.coroutines.CancellationException
+import org.slf4j.LoggerFactory
+import org.tatrman.fuzzy.v1.BatchMatchRequest
 import org.tatrman.fuzzy.v1.BatchMatchResponse
 import org.tatrman.fuzzy.v1.FuzzyMatch
 import org.tatrman.fuzzy.v1.SourceTag
 import org.tatrman.fuzzy.v1.SpanQuery
 import org.tatrman.nlp.v1.AnalyzeResponse
 import org.tatrman.nlp.v1.Token
+import org.tatrman.resolver.client.FuzzyClient
 import org.tatrman.resolver.model.ResolverThresholds
 
 /**
@@ -34,28 +38,38 @@ import org.tatrman.resolver.model.ResolverThresholds
  *    ([DomainSpanCandidate.residue]): a G1 with no frame role, which a consumer must ask or compose
  *    about rather than answer the unrestricted number. `akčních tržeb` reads "revenue, and `akčních`
  *    not understood" — never "revenue".
- *  - **Known** — each left-out adjective and each residue determiner is also asked once, in the same
- *    batch, with no categories (the matcher's global index, every class). If any row that is not
- *    member data answers it at the bind floor, the word is the estate's (`largest` is an `op:top-n`
+ *  - **Known** — each left-out adjective and each residue determiner is asked about ([known]) with
+ *    no categories (the matcher's global index, every class). If a row that is not member data is
+ *    that word's WHOLE form at the bind floor, the word is the estate's (`largest` is an `op:top-n`
  *    trigger, `meziroční` a chrono trigger), and the retry is cancelled: nothing is left out, and the
- *    mention stays as it was. A slot the matcher did not answer counts as known. A silent determiner
- *    is never asked: an article names nothing.
+ *    mention stays as it was. A longer form that merely holds the word is not the word: under
+ *    `fuzzy.match:v2` the one-word question `total` scores 1.0 against a search block's title
+ *    *Running total of customer spend*, and `Total revenue` must still bind. The rule is
+ *    [PredicateTriggers.coversWholeForm]'s. A question the matcher did not answer counts as known. A
+ *    silent determiner is never asked: an article names nothing.
+ *
+ *    **Asked only when it decides something.** The global question reaches the member index, so it
+ *    is put only for a head about to bind without the word — never for a phrase that bound as
+ *    written, nor for a head that found nothing either.
  *
  * **Where it is asked**, because mentions are bound in two places:
  *  - **the broad pass, for a gated anchor phrase** — one more `SpanQuery`, scoped to the anchor's
  *    own categories, as a trailing slot of the same `BatchMatch`; its rows are read only when the
- *    phrase itself bound NOTHING (`GateSpans.gate`);
+ *    phrase itself bound NOTHING (`GateSpans.gate`). The words it left out are asked about after the
+ *    gate, for the heads it took ([taken]); a known one sends the mention back to its phrase's verdict.
  *  - **the lookup round, for any mention still G1** — the leftover nouns `MentionLayer` proposes
- *    (`What share`, `the highest share`) are bound nowhere else. The round asks the phrase and, beside
- *    it, the head ([RoundPlanner]); the head's answer is admitted only if the phrase's was not
- *    (`LookupRounds`).
+ *    (`What share`, `the highest share`) are bound nowhere else. A round asks the phrase; only a round
+ *    after it, with the mention still G1, asks the head ([RoundPlanner]), and the words it leaves out
+ *    beside it (`LookupRounds`).
  *
  * A row reached through the head is stamped with [ALGORITHM_SUFFIX] on `provenance.method`, so the
- * binding's `producer.algorithm` says how it was reached. No wire change, no extra round trip.
+ * binding's `producer.algorithm` says how it was reached. No wire change.
  */
 object MentionRetry {
     /** Appended to `provenance.method`, which becomes the binding's `producer.algorithm`. */
     const val ALGORITHM_SUFFIX: String = "+core"
+
+    private val log = LoggerFactory.getLogger(MentionRetry::class.java)
 
     /** One mention's second lookup. */
     data class Retry(
@@ -84,17 +98,12 @@ object MentionRetry {
 
     data class Plan(
         val retries: List<Retry>,
-        /** Every word some retry asks about, once each — one guard slot per word. */
-        val asked: List<String>,
     ) {
         /** The retries the broad pass asks, in slot order. */
         val gated: List<Retry> get() = retries.filter { it.candidateIndex >= 0 }
 
-        /** How many trailing slots [queries] appends. */
-        val slotCount: Int get() = gated.size + asked.size
-
         companion object {
-            val EMPTY = Plan(emptyList(), emptyList())
+            val EMPTY = Plan(emptyList())
         }
     }
 
@@ -104,13 +113,21 @@ object MentionRetry {
         val bindsAs: DomainSpanCandidate,
     )
 
-    /** What the batch said about the plan: only the retries no known word cancelled. */
+    /** What the batch said about the plan, less the retries a known word cancelled ([without]). */
     data class Answers(
         /** For `GateSpans.gate`, by candidate index. */
         val byCandidate: Map<Int, Second>,
         /** For `LookupRounds`, by the mention's span. */
         val bySpan: Map<Pair<Int, Int>, Retry>,
     ) {
+        /** These answers without [cancelled]: their mentions stay as their phrases left them. */
+        fun without(cancelled: Collection<Retry>): Answers {
+            if (cancelled.isEmpty()) return this
+            val indices = cancelled.map { it.candidateIndex }.toSet()
+            val spans = cancelled.map { it.start to it.end }.toSet()
+            return Answers(byCandidate - indices, bySpan - spans)
+        }
+
         companion object {
             val NONE = Answers(emptyMap(), emptyMap())
         }
@@ -171,10 +188,10 @@ object MentionRetry {
         }
 
         val retries = candidates.mapIndexedNotNull { i, c -> retry(c, i) } + ungated.mapNotNull { retry(it, -1) }
-        return Plan(retries, retries.flatMap { it.asked }.distinct())
+        return Plan(retries)
     }
 
-    /** The trailing slots: each gated retry in its own scope, then each asked word in none (global). */
+    /** The trailing slots: each gated retry, in its own scope. */
     fun queries(
         plan: Plan,
         perSpanLimit: Int,
@@ -186,51 +203,106 @@ object MentionRetry {
                 .addAllCategories(r.mention.categories)
                 .setLimit(perSpanLimit)
                 .build()
-        } +
-            plan.asked.map { word ->
-                SpanQuery
-                    .newBuilder()
-                    .setQuery(word)
-                    .setLimit(perSpanLimit)
-                    .build()
-            }
+        }
 
-    /** The plan's answers, read from [response]'s slots from [offset] on — where [queries] put them. */
+    /**
+     * The plan's answers, read from [response]'s slots from [offset] on — where [queries] put them.
+     * Every retry, none cancelled yet: which words it left out the lexicon knows is asked only once
+     * a head is about to bind without them ([taken], [known]).
+     */
     fun collect(
         response: BatchMatchResponse,
         plan: Plan,
         offset: Int,
-        thresholds: ResolverThresholds,
     ): Answers {
         if (plan.retries.isEmpty()) return Answers.NONE
         val results = response.resultsList
-        val gated = plan.gated
-        val known =
-            plan.asked
-                .filterIndexed { k, _ ->
-                    // Unanswered is KNOWN: a retry is a bet on what the left-out words mean, and a
-                    // matcher that did not answer has not covered it.
-                    val slot = results.getOrNull(offset + gated.size + k) ?: return@filterIndexed true
-                    slot.matchesList.any { it.source != SourceTag.MEMBER && it.score >= thresholds.bind }
-                }.toSet()
-        val cleared = plan.retries.filter { r -> r.asked.none { it in known } }
         val byCandidate =
-            gated
-                .withIndex()
-                .filter { (_, r) -> r in cleared }
-                .associate { (k, r) ->
-                    r.candidateIndex to
-                        Second(
-                            results
-                                .getOrNull(offset + k)
-                                ?.matchesList
-                                .orEmpty()
-                                .map(::stamp),
-                            r.bound,
-                        )
-                }
-        return Answers(byCandidate, cleared.associateBy { it.start to it.end })
+            plan.gated.withIndex().associate { (k, r) ->
+                r.candidateIndex to
+                    Second(
+                        results
+                            .getOrNull(offset + k)
+                            ?.matchesList
+                            .orEmpty()
+                            .map(::stamp),
+                        r.bound,
+                    )
+            }
+        return Answers(byCandidate, plan.retries.associateBy { it.start to it.end })
     }
+
+    /**
+     * The gated retries whose head the broad pass's gate took — the phrase bound nothing and the head
+     * answered — each recognised by its stamped rows on the mention it binds as. The words these left
+     * out are the only ones the broad pass needs to ask [known] about.
+     */
+    fun taken(
+        gated: List<GatedSpan>,
+        answers: Answers,
+    ): List<Retry> =
+        answers.bySpan.values.filter { r ->
+            r.candidateIndex in answers.byCandidate &&
+                gated.any { g ->
+                    g.candidate === r.bound &&
+                        g.contenders.any {
+                            it.match.provenance.method
+                                .endsWith(ALGORITHM_SUFFIX)
+                        }
+                }
+        }
+
+    /**
+     * Which of [words] the lexicon knows: one `BatchMatch`, one question per word, with no categories
+     * (the matcher's global index, every class). A word is known when a row that is not member data is
+     * its whole form ([PredicateTriggers.coversWholeForm]) at the bind floor.
+     *
+     * Unanswered is KNOWN: a retry is a bet on what the left-out words mean, and a matcher that did
+     * not answer — a short response, or a failed call — has not covered it.
+     */
+    suspend fun known(
+        fuzzy: FuzzyClient,
+        words: List<String>,
+        thresholds: ResolverThresholds,
+        perSpanLimit: Int,
+    ): Set<String> {
+        if (words.isEmpty()) return emptySet()
+        val request =
+            BatchMatchRequest
+                .newBuilder()
+                .addAllSpans(
+                    words.map {
+                        SpanQuery
+                            .newBuilder()
+                            .setQuery(it)
+                            .setLimit(perSpanLimit)
+                            .build()
+                    },
+                ).build()
+        val response =
+            try {
+                fuzzy.batchMatch(request)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                log.warn("mention retry: could not ask whether the lexicon knows {} — treated as known", words, e)
+                return words.toSet()
+            }
+        return words
+            .filterIndexed { k, _ ->
+                val slot = response.resultsList.getOrNull(k) ?: return@filterIndexed true
+                slot.matchesList.any { knows(it, thresholds) }
+            }.toSet()
+    }
+
+    /** A one-word question's row that makes the word the estate's: see [known]. */
+    internal fun knows(
+        match: FuzzyMatch,
+        thresholds: ResolverThresholds,
+    ): Boolean =
+        match.source != SourceTag.MEMBER &&
+            match.score >= thresholds.bind &&
+            PredicateTriggers.coversWholeForm(1, match)
 
     /**
      * The residues of the gated retries the broad pass bound — the head's binding now recorded on

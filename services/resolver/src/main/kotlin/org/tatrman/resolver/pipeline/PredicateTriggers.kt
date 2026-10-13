@@ -228,6 +228,16 @@ object PredicateTriggers {
     internal fun coversWholeForm(
         window: Window,
         match: FuzzyMatch,
+    ): Boolean = coversWholeForm(window.tokens.size, match)
+
+    /**
+     * The same rule for a question [width] words wide that is no window: ttr-server#204's "does the
+     * lexicon know this word?" (`MentionRetry.known`) meets the same v2 trap — a one-word question
+     * scores 1.0 against any longer form that holds the word.
+     */
+    internal fun coversWholeForm(
+        width: Int,
+        match: FuzzyMatch,
     ): Boolean {
         if (match.hasMatchMethod() && match.matchMethod.trim().equals(EXACT, ignoreCase = true)) return true
         val formWidth =
@@ -235,7 +245,7 @@ object PredicateTriggers {
                 .trim()
                 .split(WHITESPACE)
                 .count { it.isNotBlank() }
-        if (formWidth != window.tokens.size) return false
+        if (formWidth != width) return false
         val hits = match.provenance.tokenHitsList
         return hits.isEmpty() || hits.map { it.candidatePos }.toSet().size == formWidth
     }

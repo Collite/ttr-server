@@ -39,13 +39,19 @@ could not read as a change of view, and "What share of …" lost its ratio opera
     role. The head then binds over its own words only, so "Podíl akčních tržeb" reads revenue and the ratio bound,
     „akčních“ not understood: a consumer asks or composes rather than answering the unrestricted number.
 - **A modifier the lexicon knows cancels the retry.** Each left-out adjective, and each left-out determiner that is not
-  silent, is asked once across every category and class. If any row that is not member data answers it at the bind
-  floor (a term, an operator, a grounding trigger), nothing is left out and the mention stays as it was ("the largest
-  stores": `largest` is an operator word). A declared modifier ("Monthly") was never folded in the first place. An
-  adjective with words of its own ("How many stores") is kept.
+  silent, is asked across every category and class. If a row that is not member data is that word's whole form at the
+  bind floor (a term, an operator, a grounding trigger), nothing is left out and the mention stays as it was ("the
+  largest stores": `largest` is an operator word). A longer term that only holds the word does not count: under
+  `fuzzy.match:v2` the one-word question "total" scores 1.0 against any longer term containing it, and "Total revenue"
+  still binds. A declared modifier ("Monthly") was never folded in the first place. An adjective with words of its own
+  ("How many stores") is kept.
+- **Asked only when it decides something.** That question reaches every class, member data included, so it is put
+  only for a head about to bind without the word: never for a phrase that bound as written, nor for a head that found
+  nothing.
 - **Where it is asked:** an anchored mention in the broad pass, as one more slot of the same `BatchMatch`, scoped to the
-  anchor's categories; any mention still `G1` (including the nouns no anchor proposes, such as "What share") in the
-  lookup round, beside the phrase's own question and in the same round trip.
+  anchor's categories (the left-out words are asked about after the gate, for the heads it took); any mention still
+  `G1` (including the nouns no anchor proposes, such as "What share") in the lookup round, as its head only in a round
+  after its phrase missed, and after every other gap's own question in that round.
 - The rule is the same in every language. Czech has no articles, but „Celkové tržby“ now binds with no gap, and
   „nejvyšší podíl“ binds `podíl` with „nejvyšší“ reported.
 - No wire change. One new config table (`frame-roles.silent-modifiers`).

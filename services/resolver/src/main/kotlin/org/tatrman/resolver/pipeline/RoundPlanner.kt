@@ -73,8 +73,8 @@ object RoundPlanner {
         val anchorMentionId: String = "",
         /**
          * ttr-server#204 — [Tier.UNBOUND_MENTION] only: the mention asked as its head
-         * (`MentionRetry`), not as written. Planned right after the phrase's own query, and its answer
-         * is admitted only if the phrase's was not ([LookupRounds]).
+         * (`MentionRetry`), not as written. Planned only in a round after the phrase's own query, for
+         * a mention still G1, and after every phrase of its round ([withRetries]).
          */
         val retry: Boolean = false,
     ) {
@@ -126,7 +126,7 @@ object RoundPlanner {
                     quotedQueries(lattice, entityTypes, categoriesByRef, config)
                 } else {
                     gapQueries(tier, lattice, categoriesByRef, mentionsById, valuesById, config)
-                        .let { if (tier == Tier.UNBOUND_MENTION) withRetries(it, retries) else it }
+                        .let { if (tier == Tier.UNBOUND_MENTION) withRetries(it, retries, asked) else it }
                 }
             val fresh = queries.filter { it.key !in asked }.take(config.maxQueriesPerRound)
             if (fresh.isNotEmpty()) return fresh
@@ -174,20 +174,26 @@ object RoundPlanner {
     }
 
     /**
-     * ttr-server#204 — each unbound mention that has a head to fall back on is asked twice in the same
-     * round: as written, then as its head, in that order and with the same class scope. The order is
-     * what lets [LookupRounds] give the phrase's own answer precedence; the round costs one round trip
-     * either way, because its calls run concurrently.
+     * ttr-server#204 — an unbound mention that has a head to fall back on is asked as its head, with
+     * the same class scope, only once asking it as written left it G1: its phrase's query is already
+     * in [asked] and the gap is still open. A phrase that binds never costs a second question.
+     *
+     * The heads go after every phrase of the tier, so the round's cap ([LookupRoundConfig.maxQueriesPerRound])
+     * spends itself on the gaps' own questions first, and a head takes only what is left of it — or
+     * waits for the next round.
      */
     private fun withRetries(
         queries: List<Query>,
         retries: Map<Pair<Int, Int>, String>,
+        asked: Set<String>,
     ): List<Query> {
         if (retries.isEmpty()) return queries
-        return queries.flatMap { q ->
-            val core = retries[q.spanStart to q.spanEnd] ?: return@flatMap listOf(q)
-            listOf(q, q.copy(term = core, retry = true))
-        }
+        val heads =
+            queries.mapNotNull { q ->
+                if (q.key !in asked) return@mapNotNull null
+                retries[q.spanStart to q.spanEnd]?.let { core -> q.copy(term = core, retry = true) }
+            }
+        return queries + heads
     }
 
     /** §2.2's default for a literal that landed on a NAME — the only facet [quotedQueries] asks about. */

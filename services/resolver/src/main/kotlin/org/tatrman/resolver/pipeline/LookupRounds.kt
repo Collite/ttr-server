@@ -143,7 +143,19 @@ class LookupRounds(
             round++
 
             val startedAt = nanoTime()
-            val answers = ask(queries, remainingMs)
+            // ttr-server#204 — a head is planned only for a mention its phrase left G1 (RoundPlanner),
+            // so this is the round where the words it leaves out decide something: they are asked
+            // about beside it, in the same round trip, and a word the lexicon knows cancels it.
+            val (answers, known) =
+                coroutineScope {
+                    val words =
+                        queries
+                            .filter { it.retry }
+                            .flatMap { retries[it.spanStart to it.spanEnd]?.asked.orEmpty() }
+                            .distinct()
+                    val known = async { knownWords(words, thresholds, remainingMs) }
+                    ask(queries, remainingMs) to known.await()
+                }
             var added = 0
             val proposed = mutableListOf<Hypothesis>()
             for ((query, answered) in answers) {
@@ -151,9 +163,10 @@ class LookupRounds(
                 // something; the rung builds it (see [quotedSpan]) and appends it on success.
                 val existing = spanFor(query, currentGated, currentUngated)
                 // ttr-server#204 — a mention asked as its head speaks only if asking it as written
-                // left it empty. The phrase's query comes first in the round ([RoundPlanner]), and
-                // `existing` is read after its answer was merged, so a phrase that bound wins here.
+                // left it empty: its phrase was asked a round earlier, and nothing has bound it since.
                 if (query.retry && existing?.contenders?.isNotEmpty() == true) continue
+                val retry = if (query.retry) retries[query.spanStart to query.spanEnd] else null
+                if (retry != null && retry.asked.any { it in known }) continue
                 val candidates = if (query.retry) answered.map(MentionRetry::stamp) else answered
                 val span = existing ?: quotedSpan(query, currentGated + currentUngated, currentLattice) ?: continue
                 // The same gate the broad pass used. A round is a proposer; this is where its
@@ -170,7 +183,6 @@ class LookupRounds(
                 if (verdict.admitted.isEmpty()) continue
                 // ttr-server#204 — a head that bound for its mention binds over its own words when a
                 // word left out must surface, and that word joins the lattice as its own G1.
-                val retry = if (query.retry) retries[query.spanStart to query.spanEnd] else null
                 val narrowed = retry?.narrowed
                 val merged = merge(span, verdict).let { if (narrowed != null) it.copy(candidate = narrowed) else it }
                 if (narrowed != null) {
@@ -202,6 +214,21 @@ class LookupRounds(
                     .build()
         }
         return Result(currentGated, currentUngated, currentLattice, log)
+    }
+
+    /**
+     * ttr-server#204 — which of [words] the lexicon knows ([MentionRetry.known]), within what is left
+     * of the budget. Unanswered is known, and a question the budget cut short is unanswered.
+     */
+    private suspend fun knownWords(
+        words: List<String>,
+        thresholds: ResolverThresholds,
+        remainingMs: Long,
+    ): Set<String> {
+        if (words.isEmpty()) return emptySet()
+        return withTimeoutOrNull(remainingMs) {
+            MentionRetry.known(fuzzy, words, thresholds, thresholds.maxOptions)
+        } ?: words.toSet()
     }
 
     /** One round's questions, concurrently — a round costs one round-trip, not one per span. */

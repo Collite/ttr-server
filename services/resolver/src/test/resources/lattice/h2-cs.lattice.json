@@ -175,6 +175,15 @@
       "round": 2,
       "rung": "lookup",
       "action": "lookup",
+      "mentionIds": [
+        "m3"
+      ],
+      "gapsOpen": 2
+    },
+    {
+      "round": 3,
+      "rung": "lookup",
+      "action": "lookup",
       "valueIds": [
         "v2"
       ],

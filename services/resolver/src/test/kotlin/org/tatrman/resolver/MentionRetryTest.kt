@@ -20,6 +20,7 @@ import org.tatrman.fuzzy.v1.LookupResponse
 import org.tatrman.fuzzy.v1.Provenance
 import org.tatrman.fuzzy.v1.SourceTag
 import org.tatrman.fuzzy.v1.SpanQuery
+import org.tatrman.fuzzy.v1.TokenHit
 import org.tatrman.nlp.v1.AnalyzeRequest
 import org.tatrman.nlp.v1.AnalyzeResponse
 import org.tatrman.nlp.v1.Capability
@@ -152,15 +153,47 @@ class MentionRetryTest :
 
             r.refsOn("Total revenue") shouldContainExactly listOf(REVENUE)
             r.bindingOn("Total revenue").producer.algorithm shouldNotEndWith "+core"
+            // …and the word it left out cost nothing: the lexicon is asked whether it knows `Total`
+            // only when a head is about to bind without it (the global question reaches every
+            // class, member data included)
+            lexicon.batch.filter { it.categoriesCount == 0 }.map { it.query } shouldNotContain "Total"
         }
 
         "…and a folded phrase the lookup round binds keeps that answer too" {
-            // The round asks the phrase first and its head beside it; the phrase's answer wins.
+            // The round asks the phrase first; the head would be asked only in a later round, had the
+            // phrase missed. It did not, so neither the head nor the word it leaves out is asked.
             val lexicon = Lexicon(ROWS + row("the highest share", TOP_N, FuzzyTargetClass.TARGET_CLASS_OPERATOR))
             val r = resolve(HIGHEST_SHARE, lexicon)
 
             r.refsOn("the highest share") shouldContainExactly listOf(TOP_N)
             r.bindingOn("the highest share").producer.algorithm shouldNotEndWith "+core"
+            lexicon.lookups.map { it.term } shouldNotContain "share"
+            lexicon.batch.filter { it.categoriesCount == 0 }.map { it.query } shouldNotContain "highest"
+        }
+
+        "`Total revenue` binds even where a longer term holds `total`: a word is known by a whole form only" {
+            // Under fuzzy.match:v2 the one-word question `total` scores 1.0 against any longer term
+            // that holds it — here a search block's title — because the score is over the query's
+            // words. That is not the estate knowing `total`: the retry stands, and revenue binds.
+            val lexicon = Lexicon(ROWS, contained = listOf(SPEND_SEARCH))
+            val r = resolve(TOTAL_REVENUE, lexicon)
+
+            r.refsOn("Total revenue") shouldContainExactly listOf(REVENUE)
+            r.resolutionState.gapsList.shouldBeEmpty()
+            // the guard ran — it was asked, and answered — it just did not fire
+            lexicon.batch.filter { it.categoriesCount == 0 }.map { it.query } shouldContain "Total"
+        }
+
+        "a modifier the lexicon knows cancels a round's retry too: `the largest share` stays whole" {
+            // A leftover mention, bound only in the lookup round. Its head `share` binds there, and
+            // `largest` (an op:top-n trigger) is asked about right then: known, so the retry is
+            // cancelled and the phrase stays a G1, as `the largest stores` does in the broad pass.
+            val lexicon = Lexicon(ROWS)
+            val r = resolve(LARGEST_SHARE, lexicon)
+
+            r.mentionOn("the largest share").bindingsList.shouldBeEmpty()
+            r.gapsOn("the largest share") shouldContainExactly listOf(GapKind.GAP_KIND_G1_UNBOUND)
+            lexicon.batch.filter { it.categoriesCount == 0 }.map { it.query } shouldContain "largest"
         }
 
         "a modifier the lexicon knows is never thrown away: `the largest stores` is not asked as `stores`" {
@@ -398,9 +431,14 @@ class MentionRetryTest :
      * The matcher as a dictionary: a query meets the rows of the words it holds, as written (case and
      * diacritics folded), and nothing else. A span asked with categories meets only those; one asked
      * with none meets every row, as lex-matcher's global index does. A `Lookup` honours its classes.
+     *
+     * [contained] rows are met the way `fuzzy.match:v2` meets a longer term: by any query whose every
+     * word the term holds, scored over the QUERY's words — so a one-word query scores 1.0 against a
+     * five-word term that contains it, with a token hit on the one word it matched.
      */
     private class Lexicon(
         rows: List<FuzzyMatch>,
+        private val contained: List<FuzzyMatch> = emptyList(),
     ) : FuzzyClient {
         private val byTerm = rows.groupBy { fold(it.candidate) }
 
@@ -416,7 +454,7 @@ class MentionRetryTest :
                     FuzzyMatchResponse
                         .newBuilder()
                         .addAllMatches(
-                            byTerm[fold(span.query)].orEmpty().filter {
+                            meet(span.query).filter {
                                 asked.isEmpty() ||
                                     it.category in asked
                             },
@@ -429,11 +467,36 @@ class MentionRetryTest :
         override suspend fun lookup(request: LookupRequest): LookupResponse {
             lookups += request
             val rows =
-                byTerm[fold(request.term)]
-                    .orEmpty()
+                meet(request.term)
                     .filter { request.categoriesCount == 0 || it.category in request.categoriesList }
                     .filter { request.targetClassesCount == 0 || it.targetClass in request.targetClassesList }
             return LookupResponse.newBuilder().addAllCandidates(rows).build()
+        }
+
+        private fun meet(query: String): List<FuzzyMatch> {
+            val words = fold(query).split(' ').filter { it.isNotBlank() }
+            val partial =
+                contained.mapNotNull { row ->
+                    val form = fold(row.candidate).split(' ')
+                    if (words.any { it !in form }) return@mapNotNull null
+                    row
+                        .toBuilder()
+                        .setProvenance(
+                            row.provenance.toBuilder().addAllTokenHits(
+                                words.mapIndexed { q, w ->
+                                    TokenHit
+                                        .newBuilder()
+                                        .setQueryToken(w)
+                                        .setCandidateToken(w)
+                                        .setKind("exact")
+                                        .setQueryPos(q)
+                                        .setCandidatePos(form.indexOf(w))
+                                        .build()
+                                },
+                            ),
+                        ).build()
+                }
+            return byTerm[fold(query)].orEmpty() + partial
         }
 
         override suspend fun getStatus(): FuzzyStatusResponse = FuzzyStatusResponse.getDefaultInstance()
@@ -528,6 +591,27 @@ class MentionRetryTest :
                 row("largest", TOP_N, FuzzyTargetClass.TARGET_CLASS_OPERATOR),
                 row("top", TOP_N, FuzzyTargetClass.TARGET_CLASS_OPERATOR),
             )
+
+        /** A saved search's title, as `fuzzy.match:v2` serves it to a query that holds some of its words. */
+        val SPEND_SEARCH: FuzzyMatch =
+            FuzzyMatch
+                .newBuilder()
+                .setCandidateId("lex:search.customer_spend:running total of customer spend")
+                .setCandidate("Running total of customer spend")
+                .setScore(1.0)
+                .setCategory("search.customer_spend")
+                .setSource(SourceTag.DECLARED)
+                .setTargetRef("search.customer_spend")
+                .setTargetClass(FuzzyTargetClass.TARGET_CLASS_MODEL_OBJECT)
+                .setMatchMethod("TOKENS")
+                .setProvenance(
+                    Provenance
+                        .newBuilder()
+                        .setProducer("lex-matcher")
+                        .setMethod("TATRMAN_V2")
+                        .setNorm("canonical")
+                        .setAlgorithm("tokens"),
+                ).build()
 
         fun etype(
             ref: String,
@@ -734,6 +818,24 @@ class MentionRetryTest :
                 Tok("half", "half", "NOUN", 15, "obl"),
                 Tok("of", "of", "ADP", 24, "case"),
                 Tok("2025", "2025", "NUM", 22, "nmod"),
+                Tok("?", "?", "PUNCT", 4, "punct"),
+            )
+
+        /** [HIGHEST_SHARE]'s tree, with the superlative the lexicon knows. Hand-built in that shape. */
+        val LARGEST_SHARE =
+            Question(
+                "Which distribution center had the largest share of returns?",
+                "en",
+                emptyList(),
+                Tok("Which", "which", "DET", 3, "det", INT),
+                Tok("distribution", "distribution", "NOUN", 3, "compound"),
+                Tok("center", "center", "NOUN", 4, "nsubj"),
+                Tok("had", "have", "VERB", 0, "root", mapOf("Mood" to "Ind", "VerbForm" to "Fin")),
+                Tok("the", "the", "DET", 7, "det", ART),
+                Tok("largest", "large", "ADJ", 7, "amod", mapOf("Degree" to "Sup")),
+                Tok("share", "share", "NOUN", 4, "obj"),
+                Tok("of", "of", "ADP", 9, "case"),
+                Tok("returns", "return", "NOUN", 7, "nmod"),
                 Tok("?", "?", "PUNCT", 4, "punct"),
             )
 
