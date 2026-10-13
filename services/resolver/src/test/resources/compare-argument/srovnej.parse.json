@@ -1,0 +1,151 @@
+{
+  "language": "cs",
+  "languageConfidence": 0.7061183300670427,
+  "engineUsed": "morphodita",
+  "tokens": [
+    {
+      "text": "Srovnej",
+      "charEnd": 7,
+      "lemma": "srovnat",
+      "upos": "VERB",
+      "xpos": "Vi-S---2--A-P--",
+      "feats": {
+        "Aspect": "Perf",
+        "Mood": "Imp",
+        "Number": "Sing",
+        "Person": "2",
+        "Polarity": "Pos",
+        "VerbForm": "Fin"
+      },
+      "depRelation": "root"
+    },
+    {
+      "text": "tržby",
+      "charStart": 8,
+      "charEnd": 13,
+      "lemma": "tržba",
+      "upos": "NOUN",
+      "xpos": "NNFP4-----A----",
+      "feats": {
+        "Case": "Acc",
+        "Gender": "Fem",
+        "Number": "Plur"
+      },
+      "depHead": 1,
+      "depRelation": "obj"
+    },
+    {
+      "text": "z",
+      "charStart": 14,
+      "charEnd": 15,
+      "lemma": "z",
+      "upos": "ADP",
+      "xpos": "RR--2----------",
+      "feats": {
+        "AdpType": "Prep",
+        "Case": "Gen"
+      },
+      "depHead": 4,
+      "depRelation": "case"
+    },
+    {
+      "text": "tržiště",
+      "charStart": 16,
+      "charEnd": 23,
+      "lemma": "tržiště",
+      "upos": "NOUN",
+      "xpos": "NNNS2-----A----",
+      "feats": {
+        "Case": "Gen",
+        "Gender": "Neut",
+        "Number": "Sing"
+      },
+      "depHead": 2,
+      "depRelation": "nmod"
+    },
+    {
+      "text": "a",
+      "charStart": 24,
+      "charEnd": 25,
+      "lemma": "a",
+      "upos": "CCONJ",
+      "xpos": "J^-------------",
+      "depHead": 7,
+      "depRelation": "cc"
+    },
+    {
+      "text": "z",
+      "charStart": 26,
+      "charEnd": 27,
+      "lemma": "z",
+      "upos": "ADP",
+      "xpos": "RR--2----------",
+      "feats": {
+        "AdpType": "Prep",
+        "Case": "Gen"
+      },
+      "depHead": 7,
+      "depRelation": "case"
+    },
+    {
+      "text": "webu",
+      "charStart": 28,
+      "charEnd": 32,
+      "lemma": "web",
+      "upos": "NOUN",
+      "xpos": "NNIS2-----A----",
+      "feats": {
+        "Animacy": "Inan",
+        "Case": "Gen",
+        "Gender": "Masc",
+        "Number": "Sing"
+      },
+      "depHead": 4,
+      "depRelation": "conj"
+    }
+  ],
+  "sentences": [
+    {
+      "charEnd": 32
+    }
+  ],
+  "detectedLanguage": "cs",
+  "used": [
+    {
+      "op": "DETECT_LANGUAGE",
+      "engine": "langid",
+      "model": "lingua",
+      "modelVersion": "lingua-2.0"
+    },
+    {
+      "op": "TOKENIZE",
+      "engine": "morphodita",
+      "model": "czech-morfflex2.0-pdtc1.0-220710",
+      "modelVersion": "czech-morfflex2.0-pdtc1.0-220710"
+    },
+    {
+      "op": "LEMMATIZE",
+      "engine": "morphodita",
+      "model": "czech-morfflex2.0-pdtc1.0-220710",
+      "modelVersion": "czech-morfflex2.0-pdtc1.0-220710"
+    },
+    {
+      "op": "POS_TAG",
+      "engine": "morphodita",
+      "model": "czech-morfflex2.0-pdtc1.0-220710",
+      "modelVersion": "czech-morfflex2.0-pdtc1.0-220710"
+    },
+    {
+      "op": "DEP_PARSE",
+      "engine": "stanza",
+      "model": "stanza-cs-en",
+      "modelVersion": "stanza-1.10.0"
+    },
+    {
+      "op": "NER",
+      "engine": "nametag3",
+      "model": "nametag3-czech-cnec2.0-240830",
+      "modelVersion": "nametag3-czech-cnec2.0-240830"
+    }
+  ]
+}

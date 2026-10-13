@@ -221,12 +221,23 @@ object OperatorWords {
             emptyList()
         }
 
-    /** In the compiled lexicon an operator's target ref IS its category key (`op:top-n`). */
+    /**
+     * In the compiled lexicon an operator's target ref IS its category key (`op:top-n`), so the type
+     * is registered under its REF — never under the row's `category`.
+     *
+     * ttr-server#207 — [find] asks across all categories (a `Lookup` scoped by class only), and the
+     * matcher has no category to stamp on such an answer: every row comes back `category = "unknown"`.
+     * Registered under that, the request's operator claimed the placeholder as its vocabulary. Every
+     * other row a cross-category lookup bound in the same request — a lookup round's — carries the
+     * same placeholder, so the door named it after the operator („Porovnej tržby z tržiště a z webu“:
+     * `webu` → `op:compare`), and the broad pass asked the operator word in a category the matcher
+     * does not hold, so it never bound there.
+     */
     private fun operatorType(match: FuzzyMatch): ResolverEntityType {
         val ref = match.targetRef.ifBlank { match.category }
         return ResolverEntityType(
             ref = ref,
-            categories = listOf(match.category.ifBlank { ref }),
+            categories = listOf(ref),
             anchors = emptyList(),
             objectKind = KIND_OPERATOR,
         )
