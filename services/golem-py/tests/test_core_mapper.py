@@ -85,8 +85,10 @@ def test_the_rung_log_arrives_with_the_cores_own_round_zero() -> None:
     state = lattice_golden("h2-cs")
 
     assert state.rung_log[0].rung == "core" and state.rung_log[0].round == 0
-    assert [e.rung for e in state.rung_log] == ["core", "lookup", "lookup"]
+    assert [e.rung for e in state.rung_log] == ["core", "lookup", "lookup", "lookup"]
+    # `čerpacích stanic` is asked as written, and only in the next round as its head (#204).
     assert state.rung_log[1].mention_ids == ["m3"]
+    assert state.rung_log[2].mention_ids == ["m3"]
 
 
 def test_h1prime_carries_the_method_miss_that_the_regate_pair_answers() -> None:

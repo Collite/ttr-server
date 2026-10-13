@@ -1,0 +1,23 @@
+{
+  "layouts": [
+    {
+      "name": "db_tables",
+      "schema": "db",
+      "objectCount": 2,
+      "missingCount": 2,
+      "ambiguousCount": 0,
+      "hasPositions": true,
+      "source": "layouts/db_tables.ttrg"
+    },
+    {
+      "name": "positions",
+      "schema": "er",
+      "objectCount": 3,
+      "missingCount": 1,
+      "ambiguousCount": 0,
+      "hasPositions": true,
+      "source": "layouts/positions.ttrg"
+    }
+  ],
+  "modelVersion": "hartland-fixture"
+}

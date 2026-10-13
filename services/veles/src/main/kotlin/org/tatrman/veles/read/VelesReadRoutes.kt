@@ -232,6 +232,9 @@ fun Route.velesReadRoutes(
             }
         call.respondJson(body.toString())
     }
+
+    // VL-P2 — GET /model/layouts, GET /model/layout?name= (LayoutRoutes.kt).
+    layoutRoutes(registry)
 }
 
 private const val DEFAULT_SEARCH_LIMIT = 20

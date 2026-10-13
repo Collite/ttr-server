@@ -1,0 +1,20 @@
+package hartland
+
+model db schema dbo
+
+// VL-P2 layout fixture — two tables and the foreign key between them.
+
+def table item {
+    primaryKey: [i_item_sk]
+    columns: [ def column i_item_sk { type: int, isKey: true } ]
+}
+
+def table store_sales {
+    primaryKey: [ss_ticket_number]
+    columns: [
+        def column ss_ticket_number { type: int, isKey: true },
+        def column ss_item_sk       { type: int }
+    ]
+}
+
+def fk fk_ss_item { from: [db.dbo.store_sales.ss_item_sk], to: [db.dbo.item.i_item_sk] }

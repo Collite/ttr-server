@@ -5,6 +5,7 @@ import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.shouldNotBe
 import org.tatrman.resolver.model.ResolverEntityType
 import org.tatrman.resolver.pipeline.LookupRoundConfig
 import org.tatrman.resolver.pipeline.RoundPlanner
@@ -94,6 +95,59 @@ class RoundPlannerTest :
                     FuzzyTargetClass.TARGET_CLASS_MODEL_OBJECT,
                     FuzzyTargetClass.TARGET_CLASS_OPERATOR,
                 )
+        }
+
+        "#204 — a G1 with a head to fall back on is asked as written, and as its head only once that missed" {
+            val retries = mapOf((19 to 35) to "stanic")
+            val first = RoundPlanner.plan(g1Lattice(), listOf(account), emptySet(), config, retries)
+
+            // the phrase alone: its head is not spent on a mention the phrase may yet bind
+            first.map { it.term to it.retry } shouldContainExactly listOf("čerpacích stanic" to false)
+
+            // the next round finds the mention still G1, with its phrase asked: now the head, same scope
+            val second = RoundPlanner.plan(g1Lattice(), listOf(account), first.map { it.key }.toSet(), config, retries)
+            second.map { it.term to it.retry } shouldContainExactly listOf("stanic" to true)
+            second.single().tier shouldBe RoundPlanner.Tier.UNBOUND_MENTION
+            (second.single().spanStart to second.single().spanEnd) shouldBe (19 to 35)
+            second.single().targetClasses shouldContainExactly
+                listOf(FuzzyTargetClass.TARGET_CLASS_MODEL_OBJECT, FuzzyTargetClass.TARGET_CLASS_OPERATOR)
+            // two questions, so two keys: asking one must not mark the other asked
+            second.single().key shouldNotBe first.single().key
+            // …and once both are asked, the tier is dry
+            val asked = (first + second).map { it.key }.toSet()
+            RoundPlanner.plan(g1Lattice(), listOf(account), asked, config, retries) shouldBe emptyList()
+        }
+
+        "#204 — a head never takes a phrase's place in a round: the phrases are planned first" {
+            // Three G1 mentions, each with a head to fall back on, two questions a round. The heads
+            // wait until every phrase has been asked, so a retry cannot push another gap's own lookup
+            // out of the round's budget.
+            val builder = ResolutionState.newBuilder()
+            val retries = mutableMapOf<Pair<Int, Int>, String>()
+            repeat(3) { i ->
+                builder.addMentions(Mention.newBuilder().setId("m$i").setSpan(span(i * 20, i * 20 + 9, "the word$i")))
+                builder.addGaps(gap(GapKind.GAP_KIND_G1_UNBOUND, i * 20, i * 20 + 9, "the word$i", mentionId = "m$i"))
+                retries[i * 20 to i * 20 + 9] = "word$i"
+            }
+            val lattice = builder.build()
+            val capped = config.copy(maxQueriesPerRound = 2)
+
+            val first = RoundPlanner.plan(lattice, listOf(account), emptySet(), capped, retries)
+            first.map { it.term to it.retry } shouldContainExactly listOf("the word0" to false, "the word1" to false)
+
+            val asked = first.map { it.key }.toMutableSet()
+            val second = RoundPlanner.plan(lattice, listOf(account), asked, capped, retries)
+            second.map { it.term to it.retry } shouldContainExactly listOf("the word2" to false, "word0" to true)
+
+            asked += second.map { it.key }
+            val third = RoundPlanner.plan(lattice, listOf(account), asked, capped, retries)
+            third.map { it.term to it.retry } shouldContainExactly listOf("word1" to true, "word2" to true)
+        }
+
+        "#204 — without a retry for its span, a G1 is planned exactly as before" {
+            RoundPlanner
+                .plan(g1Lattice(), listOf(account), emptySet(), config, mapOf((0 to 4) to "other"))
+                .map { it.term to it.retry } shouldContainExactly listOf("čerpacích stanic" to false)
         }
 
         "a G3 widens, last and bounded — `max_candidates` is the cap that keeps it honest" {

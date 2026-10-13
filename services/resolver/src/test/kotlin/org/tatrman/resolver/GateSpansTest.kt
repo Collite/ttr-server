@@ -20,6 +20,7 @@ import org.tatrman.resolver.pipeline.Bound
 import org.tatrman.resolver.pipeline.Clarify
 import org.tatrman.resolver.pipeline.DomainSpanCandidate
 import org.tatrman.resolver.pipeline.GateSpans
+import org.tatrman.resolver.pipeline.MentionRetry
 import org.tatrman.resolver.pipeline.Slot
 import org.tatrman.resolver.pipeline.SlotHint
 
@@ -638,6 +639,92 @@ class GateSpansTest :
             clarify.options.map { it.memberOf }.distinct() shouldContainExactly listOf("")
             clarify.options.map { it.targetRef } shouldContainExactlyInAnyOrder
                 listOf("er.typ_dokladu", "er.ukazatel")
+        }
+
+        // ── ttr-server#204 — a mention's second lookup, as its head ─────────────────────────────
+
+        val channel = ResolverEntityType("er.channel", listOf("er.channel"), listOf("marketplace"))
+        val head = fm("t-marketplace", "marketplace", 1.0, "er.channel", SourceTag.VOCABULARY, targetRef = "er.channel")
+
+        "#204 — a phrase that bound NOTHING is answered by its head" {
+            val cands = listOf(cand("the marketplace", 0, 15, listOf("er.channel")))
+            val outcome =
+                GateSpans.gate(
+                    cands,
+                    batch(fmr()),
+                    listOf(channel),
+                    thresholds,
+                    emptyMap(),
+                    "snap-1",
+                    retries = mapOf(0 to MentionRetry.Second(listOf(head), cands[0])),
+                )
+
+            val b = outcome.shouldBeInstanceOf<Bound>().bindings.single()
+            b.targetRef shouldBe "er.channel"
+            b.rawText shouldBe "the marketplace"
+        }
+
+        "#204 — the head's answer is recorded on the mention it binds as: its own words, when one surfaces" {
+            val cands = listOf(cand("promotional marketplace", 0, 23, listOf("er.channel")))
+            val narrowed = cands[0].copy(text = "marketplace", start = 12, end = 23)
+            val outcome =
+                GateSpans.gate(
+                    cands,
+                    batch(fmr()),
+                    listOf(channel),
+                    thresholds,
+                    emptyMap(),
+                    "snap-1",
+                    retries = mapOf(0 to MentionRetry.Second(listOf(head), narrowed)),
+                )
+
+            val b = outcome.shouldBeInstanceOf<Bound>().bindings.single()
+            b.rawText shouldBe "marketplace"
+            outcome.gated.single().candidate shouldBe narrowed
+        }
+
+        "#204 — a phrase that bound keeps its own answer, and its head is never read" {
+            val cands = listOf(cand("the marketplace", 0, 15, listOf("er.channel", "er.other")))
+            val own = fm("t-own", "the marketplace", 1.0, "er.other", SourceTag.VOCABULARY, targetRef = "er.other")
+            val outcome =
+                GateSpans.gate(
+                    cands,
+                    batch(fmr(own)),
+                    listOf(channel, ResolverEntityType("er.other", listOf("er.other"), emptyList())),
+                    thresholds,
+                    emptyMap(),
+                    "snap-1",
+                    retries = mapOf(0 to MentionRetry.Second(listOf(head), cands[0])),
+                )
+
+            outcome
+                .shouldBeInstanceOf<Bound>()
+                .bindings
+                .single()
+                .targetRef shouldBe "er.other"
+        }
+
+        "#204 — a phrase that is AMBIGUOUS on its own still asks: its head does not settle it" {
+            val cands = listOf(cand("the doklad", 0, 10, listOf("er.typ_dokladu.kod", "er.ukazatel.kod")))
+            val tie =
+                fmr(
+                    fm("t1", "doklad", 1.0, "er.typ_dokladu.kod", SourceTag.VOCABULARY, targetRef = "er.typ_dokladu"),
+                    fm("t2", "doklad", 1.0, "er.ukazatel.kod", SourceTag.VOCABULARY, targetRef = "er.ukazatel"),
+                )
+            val single =
+                fm("t1", "doklad", 1.0, "er.typ_dokladu.kod", SourceTag.VOCABULARY, targetRef = "er.typ_dokladu")
+            val outcome =
+                GateSpans.gate(
+                    cands,
+                    batch(tie),
+                    allTypes,
+                    thresholds,
+                    emptyMap(),
+                    "snap-1",
+                    retries = mapOf(0 to MentionRetry.Second(listOf(single), cands[0])),
+                )
+
+            outcome.shouldBeInstanceOf<Clarify>().options shouldHaveSize 2
         }
     }) {
     companion object {

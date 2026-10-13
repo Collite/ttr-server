@@ -62,6 +62,9 @@ object GateSpans {
         thresholds: ResolverThresholds,
         siblings: SiblingCatalog,
         snapshotHash: String,
+        // ttr-server#204 — a mention's second lookup, by candidate index (`MentionRetry`). Read only
+        // where the first bound nothing.
+        retries: Map<Int, MentionRetry.Second> = emptyMap(),
     ): GateOutcome =
         outcomeOf(
             // MS-P3·S2 — one owners map per gate call, shared by every span (contracts §8.3).
@@ -80,20 +83,9 @@ object GateSpans {
                         // filtered before the call: the bind floor is the binder's too, because a candidate
                         // the gate refused is still something the rung log should be able to name.
                         // ✅UD-7 — a dual reading answers only with the members its anchor reaches.
-                        val matches =
-                            UniversalSeam.inScope(
-                                response.resultsList
-                                    .getOrNull(i)
-                                    ?.matchesList
-                                    .orEmpty(),
-                                cand,
-                                owners,
-                                reach,
-                                memberOwners,
-                            )
-                        val verdict =
+                        fun decide(rows: List<FuzzyMatch>): Binder.Verdict =
                             Binder.gate(
-                                matches,
+                                UniversalSeam.inScope(rows, cand, owners, reach, memberOwners),
                                 cand,
                                 thresholds,
                                 owners,
@@ -101,8 +93,27 @@ object GateSpans {
                                 reach,
                                 memberOwners,
                             )
+                        val first =
+                            decide(
+                                response.resultsList
+                                    .getOrNull(i)
+                                    ?.matchesList
+                                    .orEmpty(),
+                            )
+                        // ttr-server#204 — the phrase as folded bound nothing (`the marketplace`), so
+                        // its head speaks for it, decided by the same call. A phrase that bound, or that
+                        // is ambiguous on its own, keeps its answer: the second rows are never read.
+                        // The head's answer is recorded on the mention it binds as — the head's own
+                        // words when a word left out must surface as a residue (`MentionRetry`).
+                        val retried =
+                            retries[i]
+                                ?.takeIf { first is Binder.NoBind }
+                                ?.let { second ->
+                                    decide(second.rows).takeIf { it !is Binder.NoBind }?.let { second.bindsAs to it }
+                                }
+                        val verdict = retried?.second ?: first
                         GatedSpan(
-                            cand,
+                            retried?.first ?: cand,
                             verdict.admitted,
                             ambiguous = verdict is Binder.Ambiguous,
                             // MH-D3: only a Bind can carry equivalents — an ambiguous span proved

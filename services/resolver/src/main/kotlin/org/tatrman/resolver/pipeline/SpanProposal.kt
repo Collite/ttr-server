@@ -6,6 +6,7 @@ import org.tatrman.nlp.v1.NerEntity
 import org.tatrman.nlp.v1.Token
 import org.tatrman.resolver.model.ResolverEntityType
 import org.tatrman.resolver.model.valueCategoriesByRef
+import org.tatrman.resolver.v1.UniversalEntityType
 import org.tatrman.text.Normalization.fold
 
 /**
@@ -47,6 +48,12 @@ import org.tatrman.text.Normalization.fold
  * hull — still refuses universal characters, so a bare, an unanchored or a pre-modifier place
  * stays a place (UD contracts §3).
  *
+ * **…and a declared word the NER typed a date by itself (ttr-server#152).** Stanza types the grain
+ * adjective of *Monthly revenue* a DATE, and the declared `monthly` never bound. A one-word anchor
+ * whose word is the whole of a DATE is proposed as if the NER had not typed it; `UniversalSeam`
+ * keeps one reading of the word after the gate. A multi-word anchor (`by month`) always names its
+ * own extent, so it never needed this.
+ *
  * RV-P2.1 adds one source and one exclusion, both needed by the lattice:
  *
  *   (e) **literal runs** — a run of code/number tokens (`501001`, `5010O1`, `10`), scoped
@@ -82,8 +89,10 @@ object SpanProposal {
 
     private const val MEASURE_KIND = "measure"
 
+    private const val OPERATOR_KIND = "operator"
+
     /** Object kinds with no member vocabulary — nothing they govern is a value of theirs. */
-    private val VALUELESS_OBJECT_KINDS = setOf("operator", MEASURE_KIND)
+    private val VALUELESS_OBJECT_KINDS = setOf(OPERATOR_KIND, MEASURE_KIND)
 
     /** Anchor-phrase pre-modifiers folded into the anchor noun's own candidate. */
     private val ANCHOR_PHRASE_RELATIONS = setOf("amod", "compound", "flat", "flat:name", "det", "nummod")
@@ -195,6 +204,17 @@ object SpanProposal {
         // its member vocabularies'). Built once per proposal; read by the governed block below.
         val valueCategories = entityTypes.valueCategoriesByRef()
         val universal = universalCharRanges(parse.entitiesList)
+        // ttr-server#152 — the one-word dates: token → the char range of the DATE the NER typed
+        // over exactly that word and nothing else (`Monthly`). A date wider than its word (`last
+        // year`) is not here, so a declared `year` never takes a word out of `last year`.
+        val dateWords: Map<Int, IntRange> =
+            parse.entitiesList
+                .filter {
+                    UniversalClassifier.classify(it.label, it.normalizedValue, it.text) ==
+                        UniversalEntityType.DATE
+                }.mapNotNull { e ->
+                    tokensWithin(e, tokens).singleOrNull()?.let { it to (e.charStart until e.charEnd) }
+                }.toMap()
 
         val hasParse = tokens.any { it.depHead > 0 }
         if (!hasParse) {
@@ -490,7 +510,8 @@ object SpanProposal {
                         anchored = true,
                         origin = DomainSpanCandidate.Origin.ANCHOR_PHRASE,
                         headToken = syntacticHead(span, tokens),
-                    )
+                        // ttr-server#204 — the estate's words, every one: never asked again without some.
+                    ).copy(declaredPhrase = true)
                 coveredTokens += span
                 declaredPhraseTokens += span
                 // ✅UD-8 — the phrase governs what its head governs, but only a PLACE is proposed
@@ -508,8 +529,17 @@ object SpanProposal {
             // `entityTypes` in the registry. `tržby` declared for both an entity and its own
             // measure was gated against whichever the archive happened to list first, so the
             // Binder was never shown the choice it exists to make.
+            // ttr-server#152 — a declared word the NER typed a date, ALL of the date (`Monthly`), is
+            // proposed like any other declared word: the estate named it, and a date reading of the
+            // same one word cannot also be kept. Which reading keeps it is decided after the gate,
+            // by `UniversalSeam` — the declared one only when the matcher confirms it.
+            val phraseUniversal =
+                dateWords[idx]
+                    ?.takeIf { hits.none { it.et.objectKind == OPERATOR_KIND } }
+                    ?.let { date -> universal.filterNot { it == date } }
+                    ?: universal
             val phraseIdx =
-                anchorPhraseIndices(idx, children, tokens, universal, anchorTokens, literals.tokens, governors)
+                anchorPhraseIndices(idx, children, tokens, phraseUniversal, anchorTokens, literals.tokens, governors)
             if (phraseIdx.isNotEmpty()) {
                 out +=
                     candidate(
@@ -689,6 +719,96 @@ object SpanProposal {
             token.featsMap["PronType"]
                 ?.split(',')
                 ?.any { it.trim().equals("Int", ignoreCase = true) } == true
+
+    /**
+     * What a mention is asked as when its phrase, as folded, bound nothing ([retryOf]): [core], the
+     * phrase without the words left out, and [dropped], those words, one dependent at a time.
+     */
+    internal data class Retry(
+        val core: List<Int>,
+        val dropped: List<Dropped>,
+    ) {
+        /** The adjectives among the words left out. */
+        val modifiers: List<Int> get() = dropped.filterNot { it.determiner }.map { it.root }
+    }
+
+    /** One dependent a retry leaves out: its own token [root], with [tokens] — it and what hangs from it. */
+    internal data class Dropped(
+        val root: Int,
+        val tokens: List<Int>,
+        val determiner: Boolean,
+    )
+
+    /**
+     * ttr-server#204 — the words of a mention a second lookup may leave out.
+     *
+     * Both phrase builders fold the head noun's `det` and `amod` dependents into its mention — this
+     * file's anchor phrase and `MentionLayer`'s leftover — and #98's narrowness control says why they
+     * must: *the account* / *toho účtu* is ONE mention, and a clarification quotes the user's words
+     * back. But the matcher holds the estate's word, not the user's phrase. `marketplace` is declared
+     * and `the marketplace` is not, so an `EXACT` row cannot meet the phrase, and every English
+     * mention with an article in it came back G1 (`the marketplace`, `the web`, `What share`) while
+     * the bare word bound. `MentionRetry` asks again with what this returns, and decides what becomes
+     * of each word left out — silently gone, or surfaced as a word nothing understood:
+     *
+     *  - **Every `det*` dependent of [head], with whatever hangs from it, is left out.** An article
+     *    or an interrogative says WHICH one (#98 took the interrogative out of the anchor phrase
+     *    outright); `no`, `all`, `these` restrict, and `MentionRetry` surfaces them.
+     *  - **A BARE `amod` dependent — an adjective with no dependent of its own — is left out.**
+     *    Whether the lexicon knows the word is the matcher's to say, and a known one cancels the
+     *    retry: `largest` is an operator word, and *the largest stores* asked as `stores` would
+     *    answer a different question. A DECLARED modifier never gets this far: an anchor word is
+     *    nobody's modifier, so `Monthly` in *Monthly revenue* is a mention of its own already.
+     *  - **An adjective with words of its own is kept** — *How many stores*, *vyzvednuté na
+     *    prodejně*: what it governs restricts the noun, and the noun alone would be another question.
+     *
+     * Null when nothing would be left out — the second lookup would be the first one again. The head
+     * is never left out: it is what the mention is.
+     */
+    internal fun retryOf(
+        phrase: List<Int>,
+        head: Int,
+        tokens: List<Token>,
+    ): Retry? {
+        if (head !in phrase) return null
+        val inPhrase = phrase.toHashSet()
+        val dependents = HashMap<Int, MutableList<Int>>()
+        tokens.forEachIndexed { i, t ->
+            // dep_head is 1-based; 0 is the root
+            if (t.depHead > 0) dependents.getOrPut(t.depHead - 1) { mutableListOf() } += i
+        }
+        val dropped = mutableListOf<Dropped>()
+        for (c in dependents[head].orEmpty()) {
+            if (c !in inPhrase || c == head) continue
+            val relation = tokens[c].depRelation
+            when {
+                relation == "det" || relation.startsWith("det:") ->
+                    // A parse with a cycle in it could reach the head from below; the head stays.
+                    dropped += Dropped(c, (subtreeWithin(c, dependents, inPhrase) - head).sorted(), determiner = true)
+                relation == "amod" && dependents[c].isNullOrEmpty() ->
+                    dropped += Dropped(c, listOf(c), determiner = false)
+            }
+        }
+        if (dropped.isEmpty()) return null
+        val left = dropped.flatMap { it.tokens }.toSet()
+        return Retry(phrase.filter { it !in left }.sorted(), dropped.sortedBy { it.root })
+    }
+
+    /** [root] and everything below it, inside [scope] — what leaves a phrase with [root]. */
+    private fun subtreeWithin(
+        root: Int,
+        dependents: Map<Int, List<Int>>,
+        scope: Set<Int>,
+    ): Set<Int> {
+        val out = HashSet<Int>()
+        val stack = ArrayDeque(listOf(root))
+        while (stack.isNotEmpty()) {
+            val i = stack.removeLast()
+            if (i !in scope || !out.add(i)) continue
+            dependents[i]?.let { stack.addAll(it) }
+        }
+        return out
+    }
 
     private fun anchorPhraseIndices(
         headIdx: Int,
