@@ -1,0 +1,9 @@
+// one ref the model lacks, one bare name two packages define
+graph missing {
+  model: er,
+  objects: [
+    hartland.er.entity.customer,
+    hartland.er.entity.store,
+    item
+  ]
+}

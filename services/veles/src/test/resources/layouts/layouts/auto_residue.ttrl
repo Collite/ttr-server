@@ -1,0 +1,10 @@
+ttrl 1
+
+// the designer server's residue: nodes under a stated mode: auto (A-VL-3 b — dropped, a warning)
+canvas auto_residue {
+    skin: "er.chen"
+    mode: auto
+    nodes: {
+        "hartland.er.entity.item": { x: 999, y: 999 }
+    }
+}

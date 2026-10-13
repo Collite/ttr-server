@@ -1,0 +1,5 @@
+// the same name as dup_a.ttrg: the second file is not served (V-38)
+graph dup_a {
+  model: er,
+  objects: [ hartland.er.entity.item ]
+}

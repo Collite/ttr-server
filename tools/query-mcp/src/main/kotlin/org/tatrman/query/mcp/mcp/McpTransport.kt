@@ -4,7 +4,6 @@ package org.tatrman.query.mcp.mcp
 import io.ktor.server.application.Application
 import io.modelcontextprotocol.kotlin.sdk.server.Server
 import io.modelcontextprotocol.kotlin.sdk.server.ServerOptions
-import io.modelcontextprotocol.kotlin.sdk.server.mcpStreamableHttp
 import io.modelcontextprotocol.kotlin.sdk.types.Implementation
 import io.modelcontextprotocol.kotlin.sdk.types.ServerCapabilities
 import org.slf4j.LoggerFactory
@@ -13,6 +12,10 @@ import org.tatrman.mcp.identity.BearerVerifier
 import org.tatrman.mcp.identity.IdentityGate
 import org.tatrman.query.mcp.identityPolicyOf
 import shared.ktor.mcp.McpRequestHeaders
+import shared.ktor.mcp.McpSessionRegistry
+import shared.ktor.mcp.mcpStreamableHttpWithSessionExpiry
+import kotlin.time.Duration.Companion.seconds
+import kotlin.time.TimeSource
 
 private val logger = LoggerFactory.getLogger("query-mcp.transport")
 
@@ -29,16 +32,26 @@ private val logger = LoggerFactory.getLogger("query-mcp.transport")
  * rides the request's coroutine, so a call that resumes on another thread still reads its own
  * caller's headers (it used to be a thread-local; see [McpRequestHeaders] for why that was wrong).
  *
+ * Sessions (ttr-server#201): a session no request has used for `cfg.sessionIdleTimeoutSeconds` is
+ * closed, and a `DELETE` ends one at once, so a client that opens a session per call and never ends
+ * it cannot pile them up. See [mcpStreamableHttpWithSessionExpiry].
+ *
  * @param verifier LR G2b — when set, the gate verifies the bearer (and trusts nothing else:
  *   [identityPolicyOf]); the HTTP interceptor has already answered 401 for one that fails.
+ * @param timeSource the clock session idleness is measured on; tests pass a manual one.
+ * @return the open sessions, for the `query_mcp_open_sessions` gauge.
  */
 fun Application.installQueryMcp(
     cfg: QueryMcpConfig,
     registry: ToolRegistry,
     verifier: BearerVerifier? = null,
-) {
+    timeSource: TimeSource.WithComparableMarks = TimeSource.Monotonic,
+): McpSessionRegistry {
     val policy = identityPolicyOf(verifier)
-    mcpStreamableHttp {
+    return mcpStreamableHttpWithSessionExpiry(
+        idleTimeout = cfg.sessionIdleTimeoutSeconds.seconds,
+        timeSource = timeSource,
+    ) {
         val server =
             Server(
                 serverInfo = Implementation(name = "query-mcp", version = "0.1.0"),

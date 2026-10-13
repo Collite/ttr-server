@@ -44,6 +44,11 @@ class FrameRolePreps(
      * keeps the shipped table rather than an empty one.
      */
     private val silentModifiers: Map<String, Set<String>> = emptyMap(),
+    /**
+     * ttr-server#152 — the calendar adjectives R6" reads as a grain (`monthly`). Last and defaulted,
+     * like [countHeads]: a config without the key leaves R6" the NER's signal alone.
+     */
+    private val grainAdjectives: Map<String, Set<String>> = emptyMap(),
 ) {
     fun grouping(lang: String): Set<String> = table(groupingPreps, lang)
 
@@ -76,6 +81,9 @@ class FrameRolePreps(
 
     /** cs LR S5 — the prepositions whose reading the distributive rule decides; see `frame-roles.conf`. */
     fun distributive(lang: String): Set<String> = table(distributivePreps, lang)
+
+    /** ttr-server#152 — the calendar adjectives' lemmas, as written in the config; see `frame-roles.conf`. */
+    fun grainAdjectives(lang: String): Set<String> = table(grainAdjectives, lang)
 
     private fun table(
         tables: Map<String, Set<String>>,
@@ -141,6 +149,7 @@ class FrameRolePreps(
                     } else {
                         tables(silentFallback, SILENT_MODIFIERS)
                     },
+                grainAdjectives = tables(config, "frame-roles.grain-adjectives"),
             )
 
         private fun tables(

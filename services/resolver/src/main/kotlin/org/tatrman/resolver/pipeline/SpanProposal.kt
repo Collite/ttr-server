@@ -6,6 +6,7 @@ import org.tatrman.nlp.v1.NerEntity
 import org.tatrman.nlp.v1.Token
 import org.tatrman.resolver.model.ResolverEntityType
 import org.tatrman.resolver.model.valueCategoriesByRef
+import org.tatrman.resolver.v1.UniversalEntityType
 import org.tatrman.text.Normalization.fold
 
 /**
@@ -47,6 +48,12 @@ import org.tatrman.text.Normalization.fold
  * hull — still refuses universal characters, so a bare, an unanchored or a pre-modifier place
  * stays a place (UD contracts §3).
  *
+ * **…and a declared word the NER typed a date by itself (ttr-server#152).** Stanza types the grain
+ * adjective of *Monthly revenue* a DATE, and the declared `monthly` never bound. A one-word anchor
+ * whose word is the whole of a DATE is proposed as if the NER had not typed it; `UniversalSeam`
+ * keeps one reading of the word after the gate. A multi-word anchor (`by month`) always names its
+ * own extent, so it never needed this.
+ *
  * RV-P2.1 adds one source and one exclusion, both needed by the lattice:
  *
  *   (e) **literal runs** — a run of code/number tokens (`501001`, `5010O1`, `10`), scoped
@@ -82,8 +89,10 @@ object SpanProposal {
 
     private const val MEASURE_KIND = "measure"
 
+    private const val OPERATOR_KIND = "operator"
+
     /** Object kinds with no member vocabulary — nothing they govern is a value of theirs. */
-    private val VALUELESS_OBJECT_KINDS = setOf("operator", MEASURE_KIND)
+    private val VALUELESS_OBJECT_KINDS = setOf(OPERATOR_KIND, MEASURE_KIND)
 
     /** Anchor-phrase pre-modifiers folded into the anchor noun's own candidate. */
     private val ANCHOR_PHRASE_RELATIONS = setOf("amod", "compound", "flat", "flat:name", "det", "nummod")
@@ -195,6 +204,17 @@ object SpanProposal {
         // its member vocabularies'). Built once per proposal; read by the governed block below.
         val valueCategories = entityTypes.valueCategoriesByRef()
         val universal = universalCharRanges(parse.entitiesList)
+        // ttr-server#152 — the one-word dates: token → the char range of the DATE the NER typed
+        // over exactly that word and nothing else (`Monthly`). A date wider than its word (`last
+        // year`) is not here, so a declared `year` never takes a word out of `last year`.
+        val dateWords: Map<Int, IntRange> =
+            parse.entitiesList
+                .filter {
+                    UniversalClassifier.classify(it.label, it.normalizedValue, it.text) ==
+                        UniversalEntityType.DATE
+                }.mapNotNull { e ->
+                    tokensWithin(e, tokens).singleOrNull()?.let { it to (e.charStart until e.charEnd) }
+                }.toMap()
 
         val hasParse = tokens.any { it.depHead > 0 }
         if (!hasParse) {
@@ -509,8 +529,17 @@ object SpanProposal {
             // `entityTypes` in the registry. `tržby` declared for both an entity and its own
             // measure was gated against whichever the archive happened to list first, so the
             // Binder was never shown the choice it exists to make.
+            // ttr-server#152 — a declared word the NER typed a date, ALL of the date (`Monthly`), is
+            // proposed like any other declared word: the estate named it, and a date reading of the
+            // same one word cannot also be kept. Which reading keeps it is decided after the gate,
+            // by `UniversalSeam` — the declared one only when the matcher confirms it.
+            val phraseUniversal =
+                dateWords[idx]
+                    ?.takeIf { hits.none { it.et.objectKind == OPERATOR_KIND } }
+                    ?.let { date -> universal.filterNot { it == date } }
+                    ?: universal
             val phraseIdx =
-                anchorPhraseIndices(idx, children, tokens, universal, anchorTokens, literals.tokens, governors)
+                anchorPhraseIndices(idx, children, tokens, phraseUniversal, anchorTokens, literals.tokens, governors)
             if (phraseIdx.isNotEmpty()) {
                 out +=
                     candidate(

@@ -83,6 +83,7 @@ Compile a query into target-dialect SQL without executing.
 - StreamableHTTP at `${query-mcp.mcp.path}` (default `/mcp`).
 - HTTP probes: `/health`, `/ready`, `/status`, `/metrics`, `/shutdown`.
 - `/ready` returns 200 only when all three upstream gRPC channels (query-runner, translator, validator) are in `READY` or `IDLE` connectivity state.
+- **Sessions.** An MCP session that no request has used for `query-mcp.mcp.session-idle-timeout-seconds` (`QUERY_MCP_SESSION_IDLE_TIMEOUT_SECONDS`, default 600) is closed, whatever the client does; a request in flight is never cut, and the clock restarts when it ends. A `DELETE` with the session's `mcp-session-id` ends it at once. A request that carries a closed session's id is answered 404, and the client starts a new session. Each removal logs one INFO line (`MCP session … expired after … idle` / `… ended by the client (DELETE)`, with the number still open); `/metrics` has the `query_mcp_open_sessions` gauge.
 
 ## Identity
 
