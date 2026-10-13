@@ -16,6 +16,25 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+### resolver — a misspelt word of a longer member value is not offered as that value (#208)
+
+"Marketplace revenue in 2025 for Allen" asked whether `Allen` meant the warehouse Allentown DC or the product
+"ablen stpriationought": `allen` is one edit from `ablen`, and the product's other word is not in the question at all.
+`fuzzy.match:v2` scores how well the question's words are matched, so a one-word question one edit from any word of any
+name scores 0.85 whatever the rest of the name says, and the two sat in one tie band. Alone in its band, the same kind
+of row bound outright ("for Ablin" became a filter on that product).
+
+A member row is now WEAK, so never bound and never offered, when both hold:
+
+- every word of the question it matched, it matched by a **typo** (no exact and no prefix match), and
+- those words carry **no more than half** of the value's weight: the row's `provenance.coverage` (the IDF-weighted share
+  of the value the question reached) is at most 0.5.
+
+So `Allen` binds Allentown DC (the start of `Allentown`, typed right). Unchanged: one exact word of a name ("Memphis" →
+Memphis DC); a typo on the word that carries most of a name ("Alentown" → Allentown DC: `DC` ends every warehouse name,
+coverage 0.68); a misspelt whole name ("Dalas DC"); a typo next to an exact word ("Voltaic Monitr"); declared terms; and
+rows with no per-word provenance (the v1 engine). No wire change: lex-matcher already sends both fields on every v2 row.
+
 ### A date with no year takes the year the conversation is about
 
 chrono read a month or day that names no year at the reference year, even when the question around it named
