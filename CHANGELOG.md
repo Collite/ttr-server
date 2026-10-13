@@ -16,6 +16,23 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+### resolver — a year written straight after the measure is a date on its anchor („Store revenue 2025“, #206)
+
+"Marketplace revenue 2025", "Store revenue 2025" and „Tržby z tržiště 2025“ left the year grounded but unattributed
+(`GAP_KIND_G3_UNATTRIBUTED`), while "… in 2025" attributed it. The NER is where the two part: Stanza types the bare year
+`CARDINAL` and NameTag `n_` / `nc` (a number), but `DATE` / `ty` once a preposition is there. A number is never offered to
+the date kernel, and one after a noun with no preposition reads as a code naming it (#139), hence the G3.
+
+- A number the NER typed `MISC` is now offered to the date kernel as a DATE when it is one four-digit token with no
+  preposition of its own, it hangs off a word of a mention whose top binding is a **measure** (object kind `measure`),
+  and it stands right after that mention (punctuation aside). It stays a DATE only if the kernel grounds it to an anchor
+  column; otherwise it is exactly what the NER said, G3 included. Attributed, it is the same value `in 2025` gives.
+- Unchanged: a number before the measure (a count, "1500 units"), after anything that is not a measure (`Revenue of
+  store 1042`, „Tržby prodejny 2025“, and an `entity_with_measures` such as an order, which a number may name), with a
+  preposition, or not four digits (`top 10`, `over 1000000`, `501001`). A year the parse hangs off one measure while it
+  stands after another (`Revenue and stock on hand 2025`) is ambiguous and stays G3.
+- No wire change.
+
 ### A date with no year takes the year the conversation is about
 
 chrono read a month or day that names no year at the reference year, even when the question around it named

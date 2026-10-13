@@ -332,6 +332,17 @@ class ResolverPipeline(
                 thresholds = resolverRegistry.thresholds,
                 parse = parse,
             )
+        // ttr-server#206 — a year written straight after a measure ("Store revenue 2025") is typed a
+        // number by the NER, so the kernel was never asked about it. It is offered as the date it is,
+        // and stays one only where the kernel anchors it (`BareYears`). Decided HERE, after the gate,
+        // because whether the words before it are a measure is the gate's answer.
+        val bareYears =
+            BareYears.find(
+                seam.universals,
+                parse,
+                gatedSpans,
+                resolverRegistry.entityTypes.kindsByRef(),
+            )
         // ✅ R1 — ground the time-typed universals ONCE, before the lattice is assembled, and
         // reuse the result across every re-assembly the lookup loop performs below. Doing it here
         // rather than inside LatticeAssembler keeps that object pure and keeps the RPC count at
@@ -341,7 +352,7 @@ class ResolverPipeline(
                 ?.let {
                     GroundingRung.ground(
                         client = it,
-                        universals = seam.universals,
+                        universals = BareYears.asDates(seam.universals, bareYears),
                         questionText = fresh.text,
                         // The caller's package wins; config is the single-estate fallback (D1).
                         pkg = request.context.`package`.ifBlank { defaultPackage },
@@ -350,6 +361,19 @@ class ResolverPipeline(
                         priorQuestions = request.context.priorQuestionsList,
                     )
                 }.orEmpty()
+        // A bare year the kernel anchored is a date from here on; any other goes back to the number
+        // the NER said it was, interval and all. Everything below reads `settled`, never the seam's
+        // list, so the lattice and the resolution tell the same story.
+        val settled = BareYears.settle(seam.universals, bareYears, groundedSpans)
+        for (year in bareYears) {
+            log.info(
+                "bare-year: [{},{}) {} conversation_id={}",
+                year.first,
+                year.second,
+                if (year in settled.grounded) "anchored, read as a date" else "not anchored, left as NER typed it",
+                request.conversationId,
+            )
+        }
 
         // The lattice (RV-P2.1) is annotation, not outcome: it is emitted the same way whether
         // the gate bound everything or is asking a question, because what the core UNDERSTOOD
@@ -366,7 +390,7 @@ class ResolverPipeline(
                         resolverRegistry.snapshotHash,
                     ),
                 ungatedMentions = ungated,
-                universals = seam.universals,
+                universals = settled.universals,
                 entityTypes = resolverRegistry.entityTypes,
                 snapshotHash = resolverRegistry.snapshotHash,
                 batch = batchResp,
@@ -374,7 +398,7 @@ class ResolverPipeline(
                 preps = preps,
                 degraded = assessment.degradedFloor,
                 triggers = triggers,
-                grounded = groundedSpans,
+                grounded = settled.grounded,
                 literals = literals,
                 predicates = predicates,
             )
@@ -433,7 +457,7 @@ class ResolverPipeline(
         when (outcome) {
             is Clarify ->
                 builder.awaiting = awaitingOf(outcome, request.conversationId, parse.traceId, request.callerSubject)
-            is Bound -> builder.resolution = resolutionOf(seam.universals, outcome, parse, assessment.degradedFloor)
+            is Bound -> builder.resolution = resolutionOf(settled.universals, outcome, parse, assessment.degradedFloor)
         }
         return builder.build()
     }
