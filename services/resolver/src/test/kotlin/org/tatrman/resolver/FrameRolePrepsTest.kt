@@ -61,6 +61,29 @@ class FrameRolePrepsTest :
             preps.countHeads("en") shouldBe emptySet()
         }
 
+        "#206 — the shipped temporal prepositions: a period, never a range; absent from an older config" {
+            val shipped = FrameRolePreps.shipped()
+            shipped.temporal("cs") shouldBe setOf("za", "v", "ve", "během")
+            shipped.temporal("en") shouldBe setOf("in", "for", "during")
+            shipped.temporal("cs-CZ") shouldBe shipped.temporal("cs")
+            // The kernel reads the year alone: a range preposition would turn "until 2025" into 2025.
+            listOf("od", "do", "since", "until", "through").forEach { range ->
+                (shipped.temporal("cs") + shipped.temporal("en")) shouldNotContain range
+            }
+
+            val preTemporal =
+                write(
+                    """
+                    frame-roles {
+                        grouping-preps { cs = ["podle"] }
+                        filter-preps   { cs = ["za"] }
+                        default-lang = "cs"
+                    }
+                    """.trimIndent(),
+                )
+            FrameRolePreps.load(configWith(preTemporal)).temporal("cs") shouldBe emptySet()
+        }
+
         "an estate override replaces the shipped tables wholesale" {
             val file =
                 write(

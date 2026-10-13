@@ -39,6 +39,12 @@ class FrameRolePreps(
      */
     private val distributivePreps: Map<String, Set<String>> = emptyMap(),
     /**
+     * ttr-server#206 — the prepositions that put a PERIOD on a year (`za 2025`, `for 2025`), read by
+     * `MistypedYears` to offer a year the NER typed a number to the date kernel. Last and defaulted,
+     * like the two above: a config without the key never offers one.
+     */
+    private val temporalPreps: Map<String, Set<String>> = emptyMap(),
+    /**
      * ttr-server#204 — the words a mention may lose silently when it is asked again as its head
      * ([isSilent]). Last and defaulted; see `frame-roles.conf` for why an override without the key
      * keeps the shipped table rather than an empty one.
@@ -82,6 +88,8 @@ class FrameRolePreps(
     /** cs LR S5 — the prepositions whose reading the distributive rule decides; see `frame-roles.conf`. */
     fun distributive(lang: String): Set<String> = table(distributivePreps, lang)
 
+    /** ttr-server#206 — the prepositions after which a four-digit number is a year; see `frame-roles.conf`. */
+    fun temporal(lang: String): Set<String> = table(temporalPreps, lang)
     /** ttr-server#152 — the calendar adjectives' lemmas, as written in the config; see `frame-roles.conf`. */
     fun grainAdjectives(lang: String): Set<String> = table(grainAdjectives, lang)
 
@@ -143,6 +151,7 @@ class FrameRolePreps(
                 // that predates the key loads unchanged.
                 countHeads = tables(config, "frame-roles.count-heads"),
                 distributivePreps = tables(config, "frame-roles.distributive-preps"),
+                temporalPreps = tables(config, "frame-roles.temporal-preps"),
                 silentModifiers =
                     if (config.hasPath(SILENT_MODIFIERS) || silentFallback == null) {
                         tables(config, SILENT_MODIFIERS)
