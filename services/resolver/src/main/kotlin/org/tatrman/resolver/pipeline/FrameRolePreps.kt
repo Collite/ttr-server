@@ -37,6 +37,12 @@ class FrameRolePreps(
      * fires the distributive rule.
      */
     private val distributivePreps: Map<String, Set<String>> = emptyMap(),
+    /**
+     * ttr-server#206 — the prepositions that put a PERIOD on a year (`za 2025`, `for 2025`), read by
+     * `MistypedYears` to offer a year the NER typed a number to the date kernel. Last and defaulted,
+     * like the two above: a config without the key never offers one.
+     */
+    private val temporalPreps: Map<String, Set<String>> = emptyMap(),
 ) {
     fun grouping(lang: String): Set<String> = table(groupingPreps, lang)
 
@@ -47,6 +53,9 @@ class FrameRolePreps(
 
     /** cs LR S5 — the prepositions whose reading the distributive rule decides; see `frame-roles.conf`. */
     fun distributive(lang: String): Set<String> = table(distributivePreps, lang)
+
+    /** ttr-server#206 — the prepositions after which a four-digit number is a year; see `frame-roles.conf`. */
+    fun temporal(lang: String): Set<String> = table(temporalPreps, lang)
 
     private fun table(
         tables: Map<String, Set<String>>,
@@ -98,6 +107,7 @@ class FrameRolePreps(
                 // that predates the key loads unchanged.
                 countHeads = tables(config, "frame-roles.count-heads"),
                 distributivePreps = tables(config, "frame-roles.distributive-preps"),
+                temporalPreps = tables(config, "frame-roles.temporal-preps"),
             )
 
         private fun tables(

@@ -332,16 +332,17 @@ class ResolverPipeline(
                 thresholds = resolverRegistry.thresholds,
                 parse = parse,
             )
-        // ttr-server#206 — a year written straight after a measure ("Store revenue 2025") is typed a
-        // number by the NER, so the kernel was never asked about it. It is offered as the date it is,
-        // and stays one only where the kernel anchors it (`BareYears`). Decided HERE, after the gate,
-        // because whether the words before it are a measure is the gate's answer.
-        val bareYears =
-            BareYears.find(
+        // ttr-server#206 — a year the NER typed a number ("Store revenue 2025", „Tržby z prodejen za
+        // 2025“) was never asked about. It is offered to the kernel as the date it is, and stays one
+        // only where the kernel anchors it (`MistypedYears`). Decided HERE, after the gate, because
+        // whether the words before a bare year are a measure is the gate's answer.
+        val mistypedYears =
+            MistypedYears.find(
                 seam.universals,
                 parse,
                 gatedSpans,
                 resolverRegistry.entityTypes.kindsByRef(),
+                preps.temporal(assessment.language),
             )
         // ✅ R1 — ground the time-typed universals ONCE, before the lattice is assembled, and
         // reuse the result across every re-assembly the lookup loop performs below. Doing it here
@@ -352,7 +353,7 @@ class ResolverPipeline(
                 ?.let {
                     GroundingRung.ground(
                         client = it,
-                        universals = BareYears.asDates(seam.universals, bareYears),
+                        universals = MistypedYears.asDates(seam.universals, mistypedYears),
                         questionText = fresh.text,
                         // The caller's package wins; config is the single-estate fallback (D1).
                         pkg = request.context.`package`.ifBlank { defaultPackage },
@@ -361,13 +362,13 @@ class ResolverPipeline(
                         priorQuestions = request.context.priorQuestionsList,
                     )
                 }.orEmpty()
-        // A bare year the kernel anchored is a date from here on; any other goes back to the number
-        // the NER said it was, interval and all. Everything below reads `settled`, never the seam's
-        // list, so the lattice and the resolution tell the same story.
-        val settled = BareYears.settle(seam.universals, bareYears, groundedSpans)
-        for (year in bareYears) {
+        // A year the kernel anchored is a date from here on; any other goes back to the number the
+        // NER said it was, interval and all. Everything below reads `settled`, never the seam's list,
+        // so the lattice and the resolution tell the same story.
+        val settled = MistypedYears.settle(seam.universals, mistypedYears, groundedSpans)
+        for (year in mistypedYears) {
             log.info(
-                "bare-year: [{},{}) {} conversation_id={}",
+                "mistyped-year: [{},{}) {} conversation_id={}",
                 year.first,
                 year.second,
                 if (year in settled.grounded) "anchored, read as a date" else "not anchored, left as NER typed it",

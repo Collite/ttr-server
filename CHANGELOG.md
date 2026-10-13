@@ -16,21 +16,29 @@ outside this repo could notice is in.
 
 ## Unreleased
 
-### resolver — a year written straight after the measure is a date on its anchor („Store revenue 2025“, #206)
+### resolver — a year the NER typed a number is a date on its anchor („Store revenue 2025“, „za 2025“, #206)
 
 "Marketplace revenue 2025", "Store revenue 2025" and „Tržby z tržiště 2025“ left the year grounded but unattributed
-(`GAP_KIND_G3_UNATTRIBUTED`), while "… in 2025" attributed it. The NER is where the two part: Stanza types the bare year
-`CARDINAL` and NameTag `n_` / `nc` (a number), but `DATE` / `ty` once a preposition is there. A number is never offered to
-the date kernel, and one after a noun with no preposition reads as a code naming it (#139), hence the G3.
+(`GAP_KIND_G3_UNATTRIBUTED`), while "… in 2025" attributed it. „Tržby z prodejen za 2025“ was worse: the year was dropped
+with no gap at all, and the consumer's default period answered instead. The NER is where they part: Stanza types the bare
+year `CARDINAL`; NameTag types it `n_` / `nc` (a number) bare and after *za*, *ve*, *během*, but `ty` in „v roce 2025“.
+A number is never offered to the date kernel; after a noun with no preposition it reads as a code (#139), and after a
+preposition nothing read it.
 
-- A number the NER typed `MISC` is now offered to the date kernel as a DATE when it is one four-digit token with no
-  preposition of its own, it hangs off a word of a mention whose top binding is a **measure** (object kind `measure`),
-  and it stands right after that mention (punctuation aside). It stays a DATE only if the kernel grounds it to an anchor
-  column; otherwise it is exactly what the NER said, G3 included. Attributed, it is the same value `in 2025` gives.
-- Unchanged: a number before the measure (a count, "1500 units"), after anything that is not a measure (`Revenue of
-  store 1042`, „Tržby prodejny 2025“, and an `entity_with_measures` such as an order, which a number may name), with a
-  preposition, or not four digits (`top 10`, `over 1000000`, `501001`). A year the parse hangs off one measure while it
-  stands after another (`Revenue and stock on hand 2025`) is ambiguous and stays G3.
+- A number the NER typed `MISC` is now offered to the date kernel as a DATE when it is one four-digit token in 1900–2999
+  with nothing but punctuation and at most one preposition hanging off it, and either
+  - **no preposition**: it hangs off a word of a mention whose top binding is a **measure** (object kind `measure`) and
+    stands right after that mention (punctuation aside); or
+  - **a temporal preposition**: its preposition (lemma or surface) is in the new `frame-roles.temporal-preps` table —
+    shipped `cs = [za, v, ve, během]`, `en = [in, for, during]`; an estate override without the key offers nothing.
+- It stays a DATE only if the kernel grounds it to an anchor column; otherwise it is exactly what the NER said. Attributed,
+  it is the same value `in 2025` gives.
+- Unchanged: a number with a unit under it („Tržby za 2000 Kč“ — Stanza makes `2000` the head with `Kč` beneath), before
+  the measure (a count; „v 2025 kusech“), a bare number after anything that is not a measure (`Revenue of store 1042`,
+  „Prodejna 1042“, an `entity_with_measures` such as `Store sales 2025`, which stays G3), and anything not a four-digit
+  year (`top 10`, `501001`). Range prepositions (*od*, *do*, *since*, *until*, *through*) are deliberately not in the
+  table: the kernel reads the year alone, and „do 2025“ is not the year 2025. A bare year the parse hangs off one measure
+  while it stands after another (`Revenue and stock on hand 2025`) is ambiguous and stays G3.
 - No wire change.
 
 ### A date with no year takes the year the conversation is about

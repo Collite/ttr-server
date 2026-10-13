@@ -52,20 +52,23 @@ import org.tatrman.resolver.v1.ValueFinding
 import org.tatrman.resolver.v1.ValueKind
 
 /**
- * ttr-server#206 — a year written straight after the measure, with no preposition, is a date on that
- * measure's date anchor, the same as `in 2025`.
+ * ttr-server#206 — a year the NER typed a number is a date on the estate's date anchor, the same as
+ * `in 2025`: written straight after the measure ("Store revenue 2025"), or after a temporal preposition
+ * the NER did not count as making it a date („Tržby z prodejen za 2025“).
  *
- * Through the whole pipeline, over the parses the engines actually return. The NER is where the two
- * phrasings part: for the SAME words before the year,
+ * Through the whole pipeline, over the parses the engines actually return. The NER is where the
+ * phrasings part: for the SAME words around the year,
  *
  *  - Stanza (en, OntoNotes) types `2025` a `CARDINAL` in "Marketplace revenue 2025" and "Store revenue
  *    2025", but a `DATE` in "Marketplace revenue in 2025", "2025 marketplace revenue" and "Revenue 2025
  *    by channel";
- *  - NameTag 3 (cs, CNEC 2.0) types it `n_` / `nc` (a number) in „Tržby z tržiště 2025“ and „Tržby
- *    2025“, but `ty` (a year) in „Tržby z tržiště v roce 2025“.
+ *  - NameTag 3 (cs, CNEC 2.0) types it `n_` / `nc` (a number) in „Tržby z tržiště 2025“, „Tržby 2025“,
+ *    „… za 2025“, „… ve 2025“ and „… během 2025“, but `ty` (a year) in „… v roce 2025“ and „… v 2025“.
  *
- * A number is never offered to the date kernel, and one that follows a noun with no preposition reads
- * as a code naming that noun (`Gaps.namesSomething`, #139): grounded, unattributed, G3.
+ * A number is never offered to the date kernel. After a noun with no preposition it reads as a code
+ * naming that noun (`Gaps.namesSomething`, #139): grounded, unattributed, G3. After a preposition
+ * nothing reads it at all: the year was dropped with no gap, and the consumer's default period
+ * answered instead.
  *
  * **Provenance of the parses (2026-10-13).** en: Stanza 1.11.0, `en` default package (tokenize, lemma,
  * pos, depparse, ner `ontonotes-ww-multi_charlm`), the engine hartland routes every en op to; it
@@ -73,9 +76,10 @@ import org.tatrman.resolver.v1.ValueKind
  * Stanza 1.11.0 `cs` (hartland's cs DEP_PARSE engine), entities from NameTag 3
  * `nametag3-czech-cnec2.0-240830` (hartland's cs NER model, via LINDAT), carried the way the nlp front
  * hands them over — the coarse label plus `cnec:<tag>` (`ttrnlp.doc.labels`). The lemmas and POS on
- * these words agree with MorphoDiTa's (cf. `CsGrainPhraseTest`'s live quote).
+ * these words agree with MorphoDiTa's (cf. `CsGrainPhraseTest`'s live quote). One label in this spec is
+ * substituted, and says so where it is.
  */
-class BareYearAttributionTest :
+class MistypedYearAttributionTest :
     StringSpec({
 
         // ── the bug: the bare year after the measure ──────────────────────────────────────────────
@@ -115,6 +119,85 @@ class BareYearAttributionTest :
             turn.gapsOnYear().shouldBeEmpty()
         }
 
+        // ── a year after a temporal preposition the NER typed a number ──────────────────────────
+
+        "cs „Tržby z prodejen za 2025“ — the corpus question (e2): `za 2025` is a date, not dropped" {
+            val turn = resolve(TRZBY_Z_PRODEJEN_ZA_2025)
+
+            turn.year().shouldBeAnchored()
+            turn.gapsOnYear().shouldBeEmpty()
+            turn.asked shouldContainExactly listOf("2025")
+        }
+
+        "cs „Tržby z tržiště za 2025“" {
+            resolve(TRZBY_Z_TRZISTE_ZA_2025).year().shouldBeAnchored()
+        }
+
+        "cs „Tržby ve 2025“ — `ve` reads by its lemma `v`" {
+            resolve(TRZBY_VE_2025).year().shouldBeAnchored()
+        }
+
+        "cs „Tržby během 2025“" {
+            resolve(TRZBY_BEHEM_2025).year().shouldBeAnchored()
+        }
+
+        "en: the table is read for English too — `Marketplace revenue for 2025` as a CARDINAL" {
+            // ⚠ The ONE substituted label in this spec. Stanza typed every English year after a
+            // preposition we tried a DATE (18 phrasings, 2026-10-13), so no real en input reaches this
+            // rule today; the tree is Stanza's, the CARDINAL is not. Kept so the en row of the table
+            // is proven read, not merely present.
+            val turn = resolve(MARKETPLACE_REVENUE_FOR_2025.copy(entities = listOf(stanza("2025", 24, "CARDINAL"))))
+
+            turn.year().shouldBeAnchored()
+            turn.gapsOnYear().shouldBeEmpty()
+        }
+
+        "cs „Tržby za 2000 Kč“ — four digits in the year range, but `Kč` hangs off it: an amount" {
+            val turn = resolve(TRZBY_ZA_2000_KC)
+
+            turn.value("2000").grounding.kind shouldBe "MISC"
+            turn.value("2000").attributionsList.shouldBeEmpty()
+            turn.asked.shouldBeEmpty()
+        }
+
+        "cs „Tržby za 1500 Kč“ — an amount" {
+            val turn = resolve(TRZBY_ZA_1500_KC)
+
+            turn.value("1500").grounding.kind shouldBe "MISC"
+            turn.asked.shouldBeEmpty()
+        }
+
+        "en `Revenue for 2000 dollars` — the NER types the amount MONEY, so it is never a candidate" {
+            val turn = resolve(REVENUE_FOR_2000_DOLLARS)
+
+            turn.value("2000 dollars").grounding.kind shouldBe "MONEY"
+            turn.asked.shouldBeEmpty()
+        }
+
+        "cs „Objednávky v 2025 kusech“ — the preposition belongs to `kusech`; `2025` counts them" {
+            val turn = resolve(OBJEDNAVKY_V_2025_KUSECH)
+
+            turn.value("2025").grounding.kind shouldBe "MISC"
+            turn.asked.shouldBeEmpty()
+        }
+
+        "cs „Prodejna 1042“ — no preposition and no measure: still the code reading" {
+            val turn = resolve(PRODEJNA_1042)
+
+            turn.value("1042").grounding.kind shouldBe "MISC"
+            turn.gapKinds("1042") shouldContainExactly listOf(GapKind.GAP_KIND_G3_UNATTRIBUTED)
+            turn.asked.shouldBeEmpty()
+        }
+
+        "cs „Tržby do 2025“ — a range preposition is not in the table: never offered as the year 2025" {
+            // The kernel reads the year alone, so „do 2025“ (until 2025) would come back as the
+            // calendar year 2025 — a different period, told as an answer.
+            val turn = resolve(TRZBY_DO_2025)
+
+            turn.value("2025").grounding.kind shouldBe "MISC"
+            turn.asked.shouldBeEmpty()
+        }
+
         // ── the phrasings that already attributed stay exactly as they were ─────────────────────
 
         listOf(
@@ -124,6 +207,7 @@ class BareYearAttributionTest :
             REVENUE_2025_BY_CHANNEL,
             STORE_REVENUE_IN_2025,
             TRZBY_Z_TRZISTE_V_ROCE_2025,
+            TRZBY_V_2025,
         ).forEach { case ->
             "unchanged: `${case.text}` — NER typed the year a DATE, and it attributes as before" {
                 val turn = resolve(case)
@@ -152,6 +236,17 @@ class BareYearAttributionTest :
             // (`entity_with_measures`), and a fact row can be named by a number — order 2025. Only a
             // measure is never named by one, so this stays the code reading it was.
             val turn = resolve(MARKETPLACE_ORDER_2025)
+
+            turn.year().grounding.kind shouldBe "MISC"
+            turn.gapsOnYear() shouldContainExactly listOf(GapKind.GAP_KIND_G3_UNATTRIBUTED)
+            turn.asked.shouldBeEmpty()
+        }
+
+        "`Store sales 2025` — the sales FACT, not a measure: it asks (G3) rather than attach or drop" {
+            // The boundary above, on a phrasing people do use: "store sales" binds the store-sales
+            // entity (`entity_with_measures`). The year is not attached, but it is not lost either —
+            // it is the G3 the turn can ask about.
+            val turn = resolve(STORE_SALES_2025)
 
             turn.year().grounding.kind shouldBe "MISC"
             turn.gapsOnYear() shouldContainExactly listOf(GapKind.GAP_KIND_G3_UNATTRIBUTED)
@@ -269,6 +364,7 @@ class BareYearAttributionTest :
         const val STORE = "er.entity.store"
         const val ITEM = "er.entity.item"
         const val CATALOG_SALES = "er.entity.catalog_sales"
+        const val STORE_SALES = "er.entity.store_sales"
 
         /** The ref the kernel's anchor column renders to (`GroundingRung.attributeRef`). */
         const val DATE_ANCHOR = "er.entity.date_dim.cal_date"
@@ -295,9 +391,10 @@ class BareYearAttributionTest :
                 .addEntityTypes(type(CHANNEL_REVENUE, "measure", "revenue", "tržby"))
                 .addEntityTypes(type(ON_HAND, "measure", "stock on hand", "stav zásob"))
                 .addEntityTypes(type(CHANNEL, "attribute", "channel"))
-                .addEntityTypes(type(STORE, "entity", "store", "prodejna", "prodejny"))
+                .addEntityTypes(type(STORE, "entity", "store", "prodejna", "prodejny", "prodejen"))
                 .addEntityTypes(type(ITEM, "entity", "products"))
                 .addEntityTypes(type(CATALOG_SALES, "entity_with_measures", "marketplace", "marketplace order"))
+                .addEntityTypes(type(STORE_SALES, "entity_with_measures", "store sales"))
                 .addLocales("en")
                 .addLocales("cs")
                 .setSnapshotHash("snap-bare-year")
@@ -495,6 +592,18 @@ class BareYearAttributionTest :
                 listOf(stanza("2025", 18, "CARDINAL")),
             )
 
+        val STORE_SALES_2025 =
+            Case(
+                "Store sales 2025",
+                "en",
+                listOf(
+                    t("Store", 0, "store", "NOUN", 2, "compound"),
+                    t("sales", 6, "sale", "NOUN", 0, "root"),
+                    t("2025", 12, "2025", "NUM", 2, "nmod:unmarked"),
+                ),
+                listOf(stanza("2025", 12, "CARDINAL")),
+            )
+
         val TOP_10_PRODUCTS =
             Case(
                 "Top 10 products by revenue",
@@ -604,6 +713,145 @@ class BareYearAttributionTest :
                     t("2025", 23, "2025", "NUM", 5, "nummod"),
                 ),
                 listOf(nametag("2025", 23, "ty")),
+            )
+
+        val TRZBY_Z_PRODEJEN_ZA_2025 =
+            Case(
+                "Tržby z prodejen za 2025",
+                "cs",
+                listOf(
+                    t("Tržby", 0, "tržba", "NOUN", 0, "root"),
+                    t("z", 6, "z", "ADP", 3, "case"),
+                    t("prodejen", 8, "prodejna", "NOUN", 1, "nmod"),
+                    t("za", 17, "za", "ADP", 5, "case"),
+                    t("2025", 20, "2025", "NUM", 1, "dep"),
+                ),
+                listOf(nametag("2025", 20, "nc")),
+            )
+
+        val TRZBY_Z_TRZISTE_ZA_2025 =
+            Case(
+                "Tržby z tržiště za 2025",
+                "cs",
+                listOf(
+                    t("Tržby", 0, "tržba", "NOUN", 0, "root"),
+                    t("z", 6, "z", "ADP", 3, "case"),
+                    t("tržiště", 8, "tržiště", "NOUN", 1, "nmod"),
+                    t("za", 16, "za", "ADP", 5, "case"),
+                    t("2025", 19, "2025", "NUM", 1, "dep"),
+                ),
+                listOf(nametag("2025", 19, "nc")),
+            )
+
+        val TRZBY_VE_2025 =
+            Case(
+                "Tržby ve 2025",
+                "cs",
+                listOf(
+                    t("Tržby", 0, "tržba", "NOUN", 0, "root"),
+                    t("ve", 6, "v", "ADP", 3, "case"),
+                    t("2025", 9, "2025", "NUM", 1, "nummod"),
+                ),
+                listOf(nametag("2025", 9, "nc")),
+            )
+
+        val TRZBY_BEHEM_2025 =
+            Case(
+                "Tržby během 2025",
+                "cs",
+                listOf(
+                    t("Tržby", 0, "tržba", "NOUN", 0, "root"),
+                    t("během", 6, "během", "ADP", 3, "case"),
+                    t("2025", 12, "2025", "NUM", 1, "nummod"),
+                ),
+                listOf(nametag("2025", 12, "nc")),
+            )
+
+        val TRZBY_V_2025 =
+            Case(
+                "Tržby v 2025",
+                "cs",
+                listOf(
+                    t("Tržby", 0, "tržba", "NOUN", 0, "root"),
+                    t("v", 6, "v", "ADP", 3, "case"),
+                    t("2025", 8, "2025", "NUM", 1, "nummod"),
+                ),
+                listOf(nametag("2025", 8, "ty")),
+            )
+
+        val TRZBY_DO_2025 =
+            Case(
+                "Tržby do 2025",
+                "cs",
+                listOf(
+                    t("Tržby", 0, "tržba", "NOUN", 0, "root"),
+                    t("do", 6, "do", "ADP", 3, "case"),
+                    t("2025", 9, "2025", "NUM", 1, "nummod"),
+                ),
+                listOf(nametag("2025", 9, "nc")),
+            )
+
+        val TRZBY_ZA_2000_KC =
+            Case(
+                "Tržby za 2000 Kč",
+                "cs",
+                listOf(
+                    t("Tržby", 0, "tržba", "NOUN", 0, "root"),
+                    t("za", 6, "za", "ADP", 3, "case"),
+                    t("2000", 9, "2000", "NUM", 1, "nummod"),
+                    t("Kč", 14, "Kč", "NOUN", 3, "nmod"),
+                ),
+                listOf(nametag("2000", 9, "nc"), nametag("Kč", 14, "om")),
+            )
+
+        val TRZBY_ZA_1500_KC =
+            Case(
+                "Tržby za 1500 Kč",
+                "cs",
+                listOf(
+                    t("Tržby", 0, "tržba", "NOUN", 0, "root"),
+                    t("za", 6, "za", "ADP", 3, "case"),
+                    t("1500", 9, "1500", "NUM", 1, "dep"),
+                    t("Kč", 14, "Kč", "NOUN", 3, "nmod"),
+                ),
+                listOf(nametag("1500", 9, "nc"), nametag("Kč", 14, "om")),
+            )
+
+        val OBJEDNAVKY_V_2025_KUSECH =
+            Case(
+                "Objednávky v 2025 kusech",
+                "cs",
+                listOf(
+                    t("Objednávky", 0, "objednávka", "NOUN", 0, "root"),
+                    t("v", 11, "v", "ADP", 4, "case"),
+                    t("2025", 13, "2025", "NUM", 4, "nummod"),
+                    t("kusech", 18, "kus", "NOUN", 1, "nmod"),
+                ),
+                listOf(nametag("2025", 13, "nc")),
+            )
+
+        val PRODEJNA_1042 =
+            Case(
+                "Prodejna 1042",
+                "cs",
+                listOf(
+                    t("Prodejna", 0, "prodejna", "NOUN", 0, "root"),
+                    t("1042", 9, "1042", "NUM", 1, "nummod"),
+                ),
+                listOf(nametag("1042", 9, "n_")),
+            )
+
+        val REVENUE_FOR_2000_DOLLARS =
+            Case(
+                "Revenue for 2000 dollars",
+                "en",
+                listOf(
+                    t("Revenue", 0, "revenue", "NOUN", 0, "root"),
+                    t("for", 8, "for", "ADP", 4, "case"),
+                    t("2000", 12, "2000", "NUM", 4, "nummod"),
+                    t("dollars", 17, "dollar", "NOUN", 1, "nmod"),
+                ),
+                listOf(stanza("2000 dollars", 12, "MONEY")),
             )
 
         val TRZBY_PRODEJNY_2025 =
