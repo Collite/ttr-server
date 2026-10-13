@@ -293,7 +293,10 @@ class ResolverPipeline(
         // that found no member is withdrawn and the place stands exactly as before. BEFORE grounding,
         // the lattice and the door, so all three read the same survivors — and the `assemble`
         // lambda below closes over them, so every re-assembly the lookup loop makes agrees.
-        val seam = UniversalSeam.supersede(universals, broadPass.gated)
+        // ttr-server#152 — and the grain: a date that shares words with a declared phrase the gate
+        // confirmed (`month` in `by month`, `quarter in 2025` across `by quarter`) keeps only the
+        // words the phrase does not have, so `by month` is a grouping and not also this month.
+        val seam = UniversalSeam.supersede(universals, broadPass.gated, parse, fresh.text)
         // UD-P3 — a named member that spoke is one value over its whole extent, which may be wider
         // than the place it took (`Praha` + `DC`): what else was proposed or left over on those words
         // goes. Nothing goes when none spoke.
@@ -312,6 +315,17 @@ class ResolverPipeline(
                 request.conversationId,
             )
             log.debug("seam: [{},{}) is \"{}\"", u.start, u.end, u.text)
+        }
+        for ((u, kept) in seam.trimmed) {
+            log.info(
+                "seam: {} [{},{}) cut to [{},{}) by a grain conversation_id={}",
+                u.entityType.name,
+                u.start,
+                u.end,
+                kept.start,
+                kept.end,
+                request.conversationId,
+            )
         }
         val triggers =
             GroundingTriggers.collect(

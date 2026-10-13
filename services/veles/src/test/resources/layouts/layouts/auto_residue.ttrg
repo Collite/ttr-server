@@ -1,0 +1,13 @@
+graph auto_residue {
+  model: er,
+  objects: [
+    hartland.er.entity.item,
+    hartland.er.entity.store
+  ],
+  layout: {
+    nodes: {
+      hartland.er.entity.item: { x: 10, y: 20 },
+      hartland.er.entity.store: { x: 30, y: 40 }
+    }
+  }
+}
