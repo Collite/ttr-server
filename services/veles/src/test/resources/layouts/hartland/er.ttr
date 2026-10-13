@@ -1,0 +1,21 @@
+package hartland
+
+model er
+
+// VL-P2 layout fixture — three entities and three relations of the Hartland store world.
+
+def entity item {
+    attributes: [ def attribute item_id { type: int, isKey: true } ]
+}
+
+def entity store {
+    attributes: [ def attribute store_id { type: int, isKey: true } ]
+}
+
+def entity store_sales {
+    attributes: [ def attribute sale_id { type: int, isKey: true } ]
+}
+
+def relation rel_store_sales_item  { from: er.entity.store_sales, to: er.entity.item,  cardinality: { from: "0..*", to: "1" } }
+def relation rel_store_sales_store { from: er.entity.store_sales, to: er.entity.store, cardinality: { from: "0..*", to: "1" } }
+def relation rel_store_item        { from: er.entity.store,       to: er.entity.item,  cardinality: { from: "0..*", to: "0..*" } }

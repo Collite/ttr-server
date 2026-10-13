@@ -16,6 +16,27 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+### Veles serves the layouts committed next to the model
+
+A layout — a schema, the cards it shows, where they sit — saved from the Studio Viewer as a `.ttrg` (with its
+`.ttrl` sidecar when there is one) and committed under the model root is now served to every viewer of that
+model. Veles reads the layout files with each model load, resolves their cards against that model, and answers
+two new read routes (VL contracts §6):
+
+- `GET /model/layouts` — every layout, by schema then name: `name`, `schema`, `objectCount`, `missingCount`,
+  `ambiguousCount`, `hasPositions`, `source` (the path under the model root), and the `modelVersion`.
+- `GET /model/layout?name=` — one layout: its cards as full qnames, their positions, `mode`, `skin`,
+  `collapsed`, the references it names that the model lacks (`missing`) or holds more than once
+  (`ambiguous`, with the candidates), relations it lists (`ignored`), where its positions came from
+  (`positionsFrom`: `in-file` | `sidecar` | `null`), `source` and `modelVersion`. Every field is always
+  present, empty ones as `[]`, `{}` or `null`. A name that is not an identifier is `400 {"error":"bad name"}`;
+  an unknown one `404 {"error":"not found"}`. Both routes answer `503` until a model is loaded.
+
+A layout file that does not parse, or repeats a name another file already has, is left out and listed in
+`/status` under the new `issues` array (`layout layouts/sales.ttrg: …`); the model loads regardless. Both
+routes are GET-only, like the four read routes before them; committing to the model's repository is how a
+layout is published. Requires the TTR toolchain 0.14.1.
+
 ### A date with no year takes the year the conversation is about
 
 chrono read a month or day that names no year at the reference year, even when the question around it named
