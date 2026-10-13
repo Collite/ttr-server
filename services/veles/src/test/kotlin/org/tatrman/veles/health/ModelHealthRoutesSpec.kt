@@ -17,6 +17,11 @@ import org.tatrman.ttr.metadata.reconcile.ModelReconciler
 import org.tatrman.ttr.metadata.registry.MetadataRegistry
 import org.tatrman.ttr.metadata.source.ModelSource
 import org.tatrman.ttr.metadata.source.SourceSnapshot
+import org.tatrman.veles.read.loadLayoutFixture
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 
 /** ttr-server#180 — `/ready` waits for the configured source; `/status` says what each source did. */
 class ModelHealthRoutesSpec :
@@ -109,7 +114,27 @@ class ModelHealthRoutesSpec :
                     it shouldContain "\"ready\":true"
                     it shouldContain "\"loaded\":true"
                     it shouldContain "\"version\":\"abc\""
+                    // a model with no layout files: nothing left out
+                    it shouldContain "\"issues\":[]"
                 }
+            }
+        }
+
+        // VL-P2 T3 (contracts V-38) — a layout file that fails is an issue; the model stays loaded and whole
+        "/status lists the layout files left out of the index, and the model stays loaded" {
+            testApplication {
+                environment { config = MapApplicationConfig() }
+                val fixture = loadLayoutFixture()
+                application { routing { modelHealthRoutes(fixture.registry, SourceLoadBoard()) } }
+
+                val status = Json.parseToJsonElement(client.get("/status").bodyAsText()).jsonObject
+                status["model_loaded"]!!.jsonPrimitive.content shouldBe "true"
+                status["object_count"]!!.jsonPrimitive.content shouldBe fixture.graph.size().toString()
+                status["issues"]!!.jsonArray.map { it.jsonPrimitive.content } shouldBe
+                    listOf(
+                        "layout layouts/broken.ttrg: line 6: expected `,` or `]` in objects",
+                        "layout layouts/dup_b.ttrg: the name dup_a is already taken by layouts/dup_a.ttrg",
+                    )
             }
         }
     })

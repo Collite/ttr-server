@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package org.tatrman.chrono.recognize
 
+import io.kotest.assertions.withClue
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
@@ -141,5 +142,143 @@ class GroundingSliceRecognitionSpec :
             val r = recognizer.recognize("týden", reference, slice("týden" to TriggerMethod.Typos(1)))
 
             r!!.confidence shouldBe 0.8
+        }
+
+        // ---- a span that states its own year is not a bare mention (#213) ----------------------
+        // "Marketplace revenue for the year 2025" grounded `the year 2025` to the CURRENT year: the
+        // `year` trigger made the span scopeless-but-mine, and the relative rule read that as the
+        // reference's year before the calendar-year rule could read the 2025 the span states.
+
+        val withEnglish =
+            GroundingSlice(
+                kind = "chrono",
+                terms =
+                    stdlibish.terms +
+                        listOf("roku", "roce", "týden").map {
+                            GroundingTerm(Normalization.fold(it), it, TriggerMethod.Typos(1), "cs")
+                        } +
+                        listOf("year", "month", "week", "quarter").map {
+                            GroundingTerm(it, it, TriggerMethod.Typos(1), "en")
+                        } +
+                        GroundingTerm("fiscal year", "fiscal year", TriggerMethod.Tokens, "en"),
+                version = "sha256:test",
+            )
+
+        "a span that states its year grounds that year, not the reference's (#213)" {
+            for (span in listOf(
+                "the year 2025",
+                "year 2025",
+                "for the year 2025",
+                "in the year 2025",
+                "calendar year 2025",
+                "rok 2025",
+                "roku 2025",
+                "v roce 2025",
+                "za rok 2025",
+            )) {
+                withClue(span) {
+                    withEnglish.matches(span) shouldBe true // the trigger fires: the slice is in play
+                    val r = recognizer.recognize(span, reference, withEnglish)
+                    r shouldNotBe null
+                    r!!.startInclusive shouldBe LocalDate.of(2025, 1, 1)
+                    r.endExclusive shouldBe LocalDate.of(2026, 1, 1)
+                    r.kind shouldBe ChronoKind.CALENDAR_YEAR
+                }
+            }
+        }
+
+        "with a stated year, the slice changes nothing: the span reads as it does without one" {
+            for (span in listOf(
+                "the year 2025",
+                "rok 2025",
+                "2025 year to date",
+                "year to date 2025",
+                "week 12 of 2025",
+                "the 12th week of 2025",
+                "month 3 of 2025",
+                "quarter 2 of 2025",
+                "the second quarter of 2025",
+            )) {
+                withClue(span) {
+                    recognizer.recognize(span, reference, withEnglish) shouldBe recognizer.recognize(span, reference)
+                }
+            }
+        }
+
+        "a period of a stated year is ungrounded with the slice too, never the reference's period" {
+            // The live shapes: with the slice, each of these was a period around the reference
+            // ("the second quarter of 2025" was 2026Q2 here, "the last week of 2025" the week before).
+            for (span in listOf(
+                "week 12 of 2025",
+                "month 3 of 2025",
+                "quarter 2 of 2025",
+                "quarter in 2025",
+                "the second quarter of 2025",
+                "the last quarter of 2025",
+                "the second week of 2025",
+                "the last week of 2025",
+                "the first month of 2025",
+                "the last month of 2025",
+                "the second half of 2025",
+                "poslední čtvrtletí 2025",
+                "poslední měsíc roku 2025",
+            )) {
+                withClue(span) { recognizer.recognize(span, reference, withEnglish) shouldBe null }
+            }
+        }
+
+        "a period with no year of its own still reads at the reference, with the slice" {
+            recognizer.recognize("last week", reference, withEnglish)!!.startInclusive shouldBe LocalDate.of(2026, 5, 4)
+            recognizer.recognize("this month", reference, withEnglish)!!.periodCode shouldBe "202605"
+            recognizer.recognize("minulý měsíc", reference, withEnglish)!!.periodCode shouldBe "202604"
+            recognizer.recognize("letos po měsících", reference, withEnglish)!!.periodCode shouldBe "202605"
+        }
+
+        "a bare mention with no year of its own still reads at the reference" {
+            for ((span, kind) in listOf(
+                "fiscal year" to ChronoKind.FISCAL_YEAR,
+                "the fiscal year" to ChronoKind.FISCAL_YEAR,
+                "fiskální rok" to ChronoKind.FISCAL_YEAR,
+                "the year" to ChronoKind.RELATIVE,
+                "rok" to ChronoKind.RELATIVE,
+            )) {
+                withClue(span) {
+                    val r = recognizer.recognize(span, reference, withEnglish)
+                    r shouldNotBe null
+                    r!!.startInclusive shouldBe LocalDate.of(2026, 1, 1)
+                    r.endExclusive shouldBe LocalDate.of(2027, 1, 1)
+                    r.kind shouldBe kind
+                    r.confidence shouldBe 0.8
+                }
+            }
+            recognizer.recognize("week", reference, withEnglish)!!.startInclusive shouldBe LocalDate.of(2026, 5, 11)
+            recognizer.recognize("quarter", reference, withEnglish)!!.periodCode shouldBe "2026Q2"
+        }
+
+        "a scoped year is unchanged by the slice" {
+            for ((span, year) in listOf(
+                "this year" to 2026,
+                "last year" to 2025,
+                "letos" to 2026,
+                "loni" to 2025,
+                "minulý rok" to 2025,
+            )) {
+                withClue(span) {
+                    val r = recognizer.recognize(span, reference, withEnglish)
+                    r!!.startInclusive shouldBe LocalDate.of(year, 1, 1)
+                    r.confidence shouldBe 0.9
+                }
+            }
+        }
+
+        "a stated fiscal year is still the fiscal-year rule's" {
+            for (span in listOf("fiscal year 2025", "fiskální rok 2025")) {
+                withClue(span) {
+                    val r = recognizer.recognize(span, reference, withEnglish)
+                    r!!.kind shouldBe ChronoKind.FISCAL_YEAR
+                    r.startInclusive shouldBe LocalDate.of(2025, 1, 1)
+                    r.confidence shouldBe 0.95
+                }
+            }
         }
     })

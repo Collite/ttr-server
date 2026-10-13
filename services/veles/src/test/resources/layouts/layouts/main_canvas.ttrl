@@ -1,0 +1,10 @@
+ttrl 1
+
+// what the Studio's WS store writes for a single-canvas document (A-VL-2)
+canvas main {
+    mode: manual
+    nodes: {
+        "hartland.er.entity.item": { x: 40, y: 60 }
+        "hartland.er.entity.store_sales": { x: 240, y: 60 }
+    }
+}

@@ -38,6 +38,57 @@ output, which does not end its handler, so even a `DELETE` left the stream behin
 - **Upgrade:** a client that keeps one session across calls and goes quiet for longer than the timeout gets 404 on
   its next call and must initialize again, as after a restart. No wire change. The repo's other MCP doors still
   mount the SDK transport directly.
+### chrono — a span that writes out its year is that year, or nothing (#213)
+
+With the lexicon's `ground:chrono` trigger slice loaded, a span that said both a period word and a year read as a
+period around `reference_datetime`: "the year 2025", "calendar year 2025" and "rok 2025" grounded to the reference
+year, "week 12 of 2025" to the reference week, "the last quarter of 2025" to the quarter before the reference. The
+rules that read a period relative to the reference no longer read a span that writes out its own year.
+
+- **A year-only span is that year:** "the year 2025", "year to date 2025", "v roce 2025", "rok 2025", and with a
+  scope word beside it, "this year 2025" and "minulý rok 2024".
+- **A period *of* a stated year is ungrounded:** "the second quarter of 2025", "the last week of 2025", "week 12 of
+  2025", "the first month of 2025", "the second half of 2025", "druhé pololetí 2025". No rule reads one yet, and
+  the whole year would be a confident wrong number; a date value with no range lets the consumer fall through. Some
+  of these were the whole of 2025 before ("the second half of 2025"); none is now. "Monthly", "quarterly" and the
+  Czech adjectives (*měsíční*, *čtvrtletní*, …) name a grain, not a period, and do not count.
+- **Unchanged:** a rule that reads the period itself still wins ("the month of March 2025", "15.3.2025",
+  "fiscal year 2025"); a span with no year of its own still reads at the reference ("last week", "this month",
+  *minulý měsíc*, a bare "fiscal year" or "quarter").
+### A calendar word inside a grain is the grain, not a date
+
+English NER types the calendar word of a grain phrase a date, and the resolver grounded it as one beside the
+grouping the estate declared. "Marketplace revenue by month in 2025" restricted the question to the current
+month AND 2025; "Store revenue by month" to the current month alone; and "Marketplace revenue by quarter in
+2025", where the NER typed `quarter in 2025` as one span, was grounded as the current quarter, with 2025 lost.
+Where a declared phrase the matcher confirms as a model object shares words with a date, the words are now the
+phrase's: the date keeps only the rest (`2025`), and a date with nothing left is not grounded at all. A word
+that bounds the date stays with it ("by month since 2024" keeps `since 2024`), and the cut date drops the NER's
+normalisation of the wider span. A declared one-word grain the NER typed a date ("Monthly marketplace revenue")
+is proposed and binds like any other declared word, and a calendar adjective naming an attribute is a
+`FRAME_ROLE_GROUPING`: one listed in the new `frame-roles.grain-adjectives` table, or one the NER typed a date
+by itself. Any other adjective naming an attribute keeps the role it had. A phrase the matcher does not confirm
+takes nothing, so a grain the estate never declared reads as before.
+### Veles serves the layouts committed next to the model
+
+A layout — a schema, the cards it shows, where they sit — saved from the Studio Viewer as a `.ttrg` (with its
+`.ttrl` sidecar when there is one) and committed under the model root is now served to every viewer of that
+model. Veles reads the layout files with each model load, resolves their cards against that model, and answers
+two new read routes (VL contracts §6):
+
+- `GET /model/layouts` — every layout, by schema then name: `name`, `schema`, `objectCount`, `missingCount`,
+  `ambiguousCount`, `hasPositions`, `source` (the path under the model root), and the `modelVersion`.
+- `GET /model/layout?name=` — one layout: its cards as full qnames, their positions, `mode`, `skin`,
+  `collapsed`, the references it names that the model lacks (`missing`) or holds more than once
+  (`ambiguous`, with the candidates), relations it lists (`ignored`), where its positions came from
+  (`positionsFrom`: `in-file` | `sidecar` | `null`), `source` and `modelVersion`. Every field is always
+  present, empty ones as `[]`, `{}` or `null`. A name that is not an identifier is `400 {"error":"bad name"}`;
+  an unknown one `404 {"error":"not found"}`. Both routes answer `503` until a model is loaded.
+
+A layout file that does not parse, or repeats a name another file already has, is left out and listed in
+`/status` under the new `issues` array (`layout layouts/sales.ttrg: …`); the model loads regardless. Both
+routes are GET-only, like the four read routes before them; committing to the model's repository is how a
+layout is published. Requires the TTR toolchain 0.14.1.
 
 ### A date with no year takes the year the conversation is about
 

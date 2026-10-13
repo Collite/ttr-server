@@ -1,0 +1,17 @@
+// positions in the file; one card by its bare name; a relation listed (ignored, V-1)
+graph authored {
+  model: er,
+  objects: [
+    hartland.er.entity.item,
+    hartland.er.entity.rel_store_item,
+    hartland.er.entity.store,
+    store_sales
+  ],
+  layout: {
+    nodes: {
+      hartland.er.entity.item: { x: 320, y: 180 },
+      hartland.er.entity.store: { x: 580, y: 180 },
+      store_sales: { x: 320, y: 400 }
+    }
+  }
+}
