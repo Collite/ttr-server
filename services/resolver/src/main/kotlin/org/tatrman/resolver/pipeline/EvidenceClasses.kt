@@ -96,7 +96,9 @@ object EvidenceClasses {
             match.source == SourceTag.LEARNED -> EvidenceClass.EVIDENCE_CLASS_LEARNED_ALIAS
             !isMember -> EvidenceClass.EVIDENCE_CLASS_DECLARED_ALIAS
             // 3 — the data layer, where the class floor is the only thing standing between a
-            // similarity readout and a binding.
+            // similarity readout and a binding. A misspelt word of a longer value is under it
+            // whatever it scored (ttr-server#208, see [typoOnPartOfValue]).
+            typoOnPartOfValue(match) -> EvidenceClass.EVIDENCE_CLASS_WEAK
             match.score < thresholds.strong -> EvidenceClass.EVIDENCE_CLASS_WEAK
             anchored -> EvidenceClass.EVIDENCE_CLASS_ANCHORED_FUZZY_STRONG
             else -> EvidenceClass.EVIDENCE_CLASS_UNANCHORED_FUZZY_STRONG
@@ -150,7 +152,45 @@ object EvidenceClasses {
     private fun allHitsExact(match: FuzzyMatch): Boolean =
         match.provenance.tokenHitsList.all { it.kind.equals(HIT_EXACT, ignoreCase = true) }
 
+    /**
+     * ttr-server#208 — a member row whose only evidence is a misspelling of ONE word of a longer value.
+     *
+     * `fuzzy.match:v2` scores the QUERY side (contracts §4.3): `P` is how well the query's words are
+     * matched, and how much of the candidate they reach (`C`) only breaks ties, at ε = 0.01. That is
+     * deliberate — `Memphis` must find `Memphis DC` — but it means a one-word query that is one edit
+     * from ANY word of ANY value scores 0.85, whatever the rest of the value says. `Allen` reached the
+     * product `ablen stpriationought` at 0.855 that way, next to the warehouse `Allentown DC` at 0.867,
+     * and the two were offered side by side. In a vocabulary of thousands of multi-word names a short
+     * word is often one edit from some word of some name, so on the score alone this is noise.
+     *
+     * The rule, over the row's own provenance (both fields ship on every v2 row, so no wire change):
+     *  - **every** matched query word matched by `typo` — no `exact` and no `prefix` hit vouches for
+     *    the reading (`Voltaic Monitr` keeps its exact `voltaic`; `Allen` → `Allentown DC` is a prefix,
+     *    the start of the word typed right); and
+     *  - the matched words carry **no more than half** of the value's weight: coverage `C ≤ 0.5`. `C`
+     *    is IDF-weighted, so it measures how much of what tells this value from its neighbours the
+     *    query reached. `ablen stpriationought` is two words, each in one product: `C = 0.5`. A value
+     *    that is one distinctive word plus a word every value shares (`Allentown DC` — all five
+     *    warehouse names end in `DC`) is mostly that word (`C = 0.68`), so `Alentown` is still a
+     *    misspelt name and keeps its class. A misspelling of the WHOLE value (`Dalas DC`, `C = 1`)
+     *    is untouched as well.
+     *
+     * Such a row is WEAK — never bound, never offered — whatever its score: the user did not name
+     * that value, and one edit on part of it is not evidence that they did. A row without v2
+     * provenance (no hits, or no coverage: the v1 engine) is judged on its score as before.
+     */
+    private fun typoOnPartOfValue(match: FuzzyMatch): Boolean {
+        val provenance = match.provenance
+        if (provenance.tokenHitsCount == 0 || !provenance.hasCoverage()) return false
+        return provenance.tokenHitsList.all { it.kind.equals(HIT_TYPO, ignoreCase = true) } &&
+            provenance.coverage <= MAX_PART_COVERAGE
+    }
+
     private const val HIT_EXACT = "exact"
+    private const val HIT_TYPO = "typo"
+
+    /** "One word of a longer value": the matched words carry no more than half of its IDF weight. */
+    private const val MAX_PART_COVERAGE = 0.5
 
     /** The wire spellings lex-matcher stamps into provenance (`MatchAlgorithm` / `Norm.wire`). */
     private const val PROFILE_EXACT = "exact"
