@@ -1,4 +1,4 @@
-// the same name as dup_a.ttrg: the second file is not served (V-38)
+// the same name as dup_a.ttrg: neither file is served (V-38, A-VL-7)
 graph dup_a {
   model: er,
   objects: [ hartland.er.entity.item ]

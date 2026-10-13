@@ -80,7 +80,7 @@ class LayoutRoutesSpec :
                 status shouldBe HttpStatusCode.OK
                 val o = json(body).jsonObject
                 o["layouts"]!!.jsonArray.map { it.jsonObject["name"]!!.jsonPrimitive.content } shouldBe
-                    listOf("dup_a", "authored", "auto_residue", "main_canvas", "missing", "sidecar")
+                    listOf("tables", "authored", "auto_residue", "main_canvas", "missing", "sidecar")
                 o["modelVersion"]!!.jsonPrimitive.content shouldBe fixture.model.version.value
                 val missing =
                     o["layouts"]!!.jsonArray.single {
@@ -179,6 +179,10 @@ class LayoutRoutesSpec :
             testApplication {
                 // a file that failed (V-38) is not served
                 get("/model/layout?name=broken").first shouldBe HttpStatusCode.NotFound
+            }
+            testApplication {
+                // a name two files declare is served by neither (A-VL-7)
+                get("/model/layout?name=dup_a").first shouldBe HttpStatusCode.NotFound
             }
         }
 

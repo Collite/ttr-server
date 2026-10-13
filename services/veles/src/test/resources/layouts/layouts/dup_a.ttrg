@@ -1,9 +1,5 @@
-// a db layout: two tables, the foreign key listed (ignored)
+// dup_b.ttrg declares the same name: neither file is served (V-38, A-VL-7)
 graph dup_a {
   model: db,
-  objects: [
-    hartland.db.dbo.fk_ss_item,
-    hartland.db.dbo.item,
-    hartland.db.dbo.store_sales
-  ]
+  objects: [ hartland.db.dbo.item ]
 }

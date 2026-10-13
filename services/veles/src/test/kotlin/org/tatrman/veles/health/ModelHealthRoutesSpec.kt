@@ -133,7 +133,8 @@ class ModelHealthRoutesSpec :
                 status["issues"]!!.jsonArray.map { it.jsonPrimitive.content } shouldBe
                     listOf(
                         "layout layouts/broken.ttrg: line 6: expected `,` or `]` in objects",
-                        "layout layouts/dup_b.ttrg: the name dup_a is already taken by layouts/dup_a.ttrg",
+                        "layout layouts/dup_a.ttrg: the name dup_a is also declared by layouts/dup_b.ttrg",
+                        "layout layouts/dup_b.ttrg: the name dup_a is also declared by layouts/dup_a.ttrg",
                     )
             }
         }

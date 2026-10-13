@@ -168,11 +168,7 @@ fun Route.velesReadRoutes(
                 .values
                 .firstOrNull { it.qname.dotted() == qnameParam }
         if (obj == null) {
-            return@get call.respondText(
-                """{"error":"not found"}""",
-                ContentType.Application.Json,
-                HttpStatusCode.NotFound,
-            )
+            return@get call.respondError(HttpStatusCode.NotFound, "not found")
         }
 
         // "References / dependencies" = the objects this one points at in the graph:
@@ -324,12 +320,16 @@ private fun EdgeType.toWire(): String =
         EdgeType.USES -> "USES"
     }
 
-private suspend fun io.ktor.server.application.ApplicationCall.respondJson(json: String) =
+// The response helpers every read route shares (the layout routes too), so the error bodies keep one shape.
+
+internal suspend fun io.ktor.server.application.ApplicationCall.respondJson(json: String) =
     respondText(json, ContentType.Application.Json, HttpStatusCode.OK)
 
-private suspend fun io.ktor.server.application.ApplicationCall.respondModelNotLoaded() =
-    respondText(
-        """{"error":"model not loaded"}""",
-        ContentType.Application.Json,
-        HttpStatusCode.ServiceUnavailable,
-    )
+/** `{"error":"<error>"}` with [status]. */
+internal suspend fun io.ktor.server.application.ApplicationCall.respondError(
+    status: HttpStatusCode,
+    error: String,
+) = respondText(buildJsonObject { put("error", error) }.toString(), ContentType.Application.Json, status)
+
+internal suspend fun io.ktor.server.application.ApplicationCall.respondModelNotLoaded() =
+    respondError(HttpStatusCode.ServiceUnavailable, "model not loaded")

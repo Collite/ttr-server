@@ -1,10 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package org.tatrman.veles.read
 
-import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
-import io.ktor.server.application.ApplicationCall
-import io.ktor.server.response.respondText
 import io.ktor.server.routing.Route
 import io.ktor.server.routing.get
 import kotlinx.serialization.Serializable
@@ -20,7 +17,8 @@ import org.tatrman.ttr.parser.model.LayoutDocument
  * file that failed is not here but on `/status.issues[]` (V-38). Read-only: git is the write path (G-4).
  *
  * Every field of both bodies is always present — an empty list as `[]`, empty positions as `{}`, no skin /
- * positionsFrom as `null` (A-VL-2): the viewer reads the body as given, and its fixtures pin the key set.
+ * positionsFrom as `null` (A-VL-2): the viewer reads the body as given, and its fixtures pin the key set. The
+ * error bodies are the other read routes' (`respondError`, `respondModelNotLoaded` in VelesReadRoutes.kt).
  */
 fun Route.layoutRoutes(registry: MetadataRegistry) {
     get("/model/layouts") {
@@ -125,14 +123,3 @@ private fun ResolvedLayout.body(modelVersion: String) =
         source = source,
         modelVersion = modelVersion,
     )
-
-private suspend fun ApplicationCall.respondJson(json: String) =
-    respondText(json, ContentType.Application.Json, HttpStatusCode.OK)
-
-private suspend fun ApplicationCall.respondError(
-    status: HttpStatusCode,
-    error: String,
-) = respondText("""{"error":"$error"}""", ContentType.Application.Json, status)
-
-private suspend fun ApplicationCall.respondModelNotLoaded() =
-    respondError(HttpStatusCode.ServiceUnavailable, "model not loaded")
