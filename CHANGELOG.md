@@ -16,6 +16,28 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+### query-mcp — an MCP session nobody uses expires, and a `DELETE` ends one at once
+
+query-mcp kept every MCP session it ever opened. The MCP SDK ends a session only when the client sends `DELETE`
+with the session's `mcp-session-id`. A client that opens a session per call and only closes its connection left
+behind, on every call, the session's transport, a per-session SDK server with its notification job, and the
+session's standalone GET stream, parked on a socket in `CLOSE_WAIT`. The SDK's own close only closes that stream's
+output, which does not end its handler, so even a `DELETE` left the stream behind.
+
+- **`ktor-configurator`** gains `Application.mcpStreamableHttpWithSessionExpiry(path, idleTimeout, sweepInterval,
+  timeSource, block)`. It mounts the SDK's Streamable HTTP transport and returns an `McpSessionRegistry` (open count,
+  `expireIdle()`). A background sweep (every `idleTimeout / 4`, clamped to 1–30 s) closes each session that no POST
+  or DELETE has used for `idleTimeout`: it ends the GET stream, closes the SDK server (cancelling its notification
+  job) and drops the transport. A request still carrying the old id is answered 404, which by the MCP spec tells the
+  client to start a new session. A session with a request in flight is never expired; its clock restarts when the
+  request ends. A `DELETE` takes the session out of the registry before the SDK answers, and the rest is closed
+  after. Each removal logs one INFO line with the reason and the number of sessions still open.
+- **query-mcp** mounts its transport with it. New config **`query-mcp.mcp.session-idle-timeout-seconds`**
+  (`QUERY_MCP_SESSION_IDLE_TIMEOUT_SECONDS`), default **600**, must be positive. New gauge
+  **`query_mcp_open_sessions`**; the startup line names the timeout.
+- **Upgrade:** a client that keeps one session across calls and goes quiet for longer than the timeout gets 404 on
+  its next call and must initialize again, as after a restart. No wire change. The repo's other MCP doors still
+  mount the SDK transport directly.
 ### chrono — a span that writes out its year is that year, or nothing (#213)
 
 With the lexicon's `ground:chrono` trigger slice loaded, a span that said both a period word and a year read as a
