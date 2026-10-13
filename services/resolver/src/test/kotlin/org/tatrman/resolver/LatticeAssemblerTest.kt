@@ -286,9 +286,46 @@ class LatticeAssemblerTest :
             state.valuesList.single().attributionsList shouldBe emptyList()
         }
 
-        "a MODEL_OBJECT row on the same span IS an attribution — the control for the rule above" {
+        "a MEMBER row on the same span IS an attribution — the control for the rule above" {
             // Without this, the assertion above would pass equally well if the span never reached
             // the value layer at all, and a probe that cannot tell those two apart proves nothing.
+            val state =
+                LatticeAssembler.assemble(
+                    parse = AnalyzeResponse.getDefaultInstance(),
+                    gate =
+                        Bound(
+                            emptyList(),
+                            0.0,
+                            listOf(
+                                gatedSpan(
+                                    literal("2025", 39, 43, anchorHead = -1),
+                                    listOf(member("2025", "er.entity.date_dim.year", 1.0)),
+                                    ambiguous = false,
+                                ),
+                            ),
+                        ),
+                    ungatedMentions = emptyList(),
+                    universals = emptyList(),
+                    entityTypes = emptyList(),
+                    snapshotHash = "snap-1",
+                    lang = "cs",
+                    preps = FrameRolePreps.shipped(),
+                    batch = BatchMatchResponse.getDefaultInstance(),
+                )
+            val attribution =
+                state.valuesList
+                    .single()
+                    .attributionsList
+                    .single()
+            attribution.attributeRef shouldBe "er.entity.date_dim.year"
+            attribution.binding.ref shouldBe "er.entity.date_dim.year#2025"
+        }
+
+        "⛑ ttr-server#227 — a MODEL_OBJECT row on a literal is NOT an attribution, and the literal stays" {
+            // hartland, 2026-10-13: *roce* reached the lattice as a value whose attribution bound
+            // `er.entity.date_dim.year` — the column itself, where the contract has a member of it. A word
+            // that can be a mention becomes one (`ValueReadings`); a literal run cannot, so it stays a value
+            // and says honestly that nothing attributed it.
             val state =
                 LatticeAssembler.assemble(
                     parse = AnalyzeResponse.getDefaultInstance(),
@@ -312,11 +349,79 @@ class LatticeAssemblerTest :
                     preps = FrameRolePreps.shipped(),
                     batch = BatchMatchResponse.getDefaultInstance(),
                 )
+            state.mentionsList shouldBe emptyList()
             state.valuesList
                 .single()
-                .attributionsList
+                .span.text shouldBe "roce"
+            state.valuesList.single().attributionsList shouldBe emptyList()
+        }
+
+        "ttr-server#227 — a word proposed as a value that reads as a model object is a mention of that object" {
+            fun proposed(
+                text: String,
+                start: Int,
+                origin: DomainSpanCandidate.Origin,
+                head: Int,
+            ) = DomainSpanCandidate(
+                text,
+                start,
+                start + text.length,
+                listOf("er.entity.web_sales"),
+                listOf("er.entity.web_sales"),
+                anchored = false,
+                origin = origin,
+                headToken = head,
+                lemma = text,
+            )
+            val year = "er.entity.date_dim.year"
+            val warehouse = "er.entity.warehouse.warehouse_name"
+            val state =
+                LatticeAssembler.assemble(
+                    parse = AnalyzeResponse.getDefaultInstance(),
+                    gate =
+                        Bound(
+                            emptyList(),
+                            0.0,
+                            listOf(
+                                // the object reading: a mention, bound as it read
+                                gatedSpan(
+                                    proposed("roce", 36, DomainSpanCandidate.Origin.OPEN_VALUE, head = 8),
+                                    listOf(declared(year, year)),
+                                    ambiguous = false,
+                                ),
+                                // the member reading: a value, as always
+                                gatedSpan(
+                                    proposed("Brno DC", 44, DomainSpanCandidate.Origin.OPEN_VALUE, head = 10),
+                                    listOf(member("Brno DC", warehouse, 1.06)),
+                                    ambiguous = false,
+                                ),
+                                // a dual reading is the seam's: still a value, attributed to its member only
+                                gatedSpan(
+                                    proposed("TN", 60, DomainSpanCandidate.Origin.GOVERNED_VALUE, head = 12)
+                                        .copy(dualReadingOf = 60 to 62),
+                                    listOf(declared(year, year), member("TN", "er.entity.store.state", 1.0)),
+                                    ambiguous = true,
+                                ),
+                            ),
+                        ),
+                    ungatedMentions = emptyList(),
+                    universals = emptyList(),
+                    entityTypes = emptyList(),
+                    snapshotHash = "snap-1",
+                    lang = "cs",
+                    preps = FrameRolePreps.shipped(),
+                    batch = BatchMatchResponse.getDefaultInstance(),
+                )
+
+            state.mentionsList.map { it.span.text to it.bindingsList.map { b -> b.ref } } shouldContainExactly
+                listOf("roce" to listOf(year))
+            state.mentionsList
                 .single()
-                .attributeRef shouldBe "er.entity.date_dim.year"
+                .bindingsList
+                .single()
+                .targetClass shouldBe LatticeTargetClass.TARGET_CLASS_MODEL_OBJECT
+            state.valuesList.map { v -> v.span.text to v.attributionsList.map { it.binding.ref } } shouldContainExactly
+                listOf("Brno DC" to listOf("$warehouse#Brno DC"), "TN" to listOf("er.entity.store.state#TN"))
         }
 
         "an ambiguous span keeps ALL its candidates — the lattice does not pick one" {

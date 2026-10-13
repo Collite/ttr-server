@@ -30,6 +30,10 @@ import org.tatrman.ttr.lexicon.LexiconValidator
  * grounded spans (what the question restricts BY). A span's layer is decided by which
  * deterministic source proposed it — never by what happened to match, so a mention that binds
  * nothing is still a mention, and that is what makes G1 expressible at all.
+ *
+ * One exception runs the other way (ttr-server#227): a word proposed as a VALUE whose best reading is
+ * a model object is a mention of that object ([ValueReadings]). A value's attribution binds a member;
+ * the object itself is what a mention binds.
  */
 object LatticeAssembler {
     /** The only kernel the rung is wired to today; see [GroundingRung]. */
@@ -66,8 +70,12 @@ object LatticeAssembler {
         // downstream, which is what a question that names no comparison meant.
         predicates: List<VerbatimAttribution.Trigger> = emptyList(),
     ): ResolutionState {
+        // ttr-server#227 — a word proposed as a value whose best reading is a model object is a mention
+        // of that object: a value's attribution binds a member, never the object itself.
         val gatedByLayer =
-            gate.gated.groupBy { layerOf(it, hasTrigger = (it.candidate.start to it.candidate.end) in triggers) }
+            gate.gated
+                .map(ValueReadings::mentionOf)
+                .groupBy { layerOf(it, hasTrigger = (it.candidate.start to it.candidate.end) in triggers) }
         val mentionSpans =
             (gatedByLayer[Layer.MENTION].orEmpty() + ungatedMentions)
                 .sortedWith(compareBy({ it.candidate.start }, { it.candidate.end }))
@@ -125,10 +133,11 @@ object LatticeAssembler {
                 mentionIdByHead[span.candidate.anchorHeadToken]?.let { builder.anchorMentionId = it }
                 for (match in span.contenders) {
                     val binding = Bindings.of(match, snapshotHash)
-                    // The same rule the re-gate applies: an attribution names an attribute, so an
-                    // operator, a grounding-trigger or a `pred:` row is not one
-                    // (`Bindings.attributable`). Both producers are filtered because either can be
-                    // the one that runs first — the core pass here, or a later lookup round.
+                    // The same rule the re-gate applies: an attribution binds a member of an
+                    // attribute, so an operator, a grounding-trigger, a `pred:` row or the model
+                    // object itself is not one (`Bindings.attributable`). Both producers are filtered
+                    // because either can be the one that runs first — the core pass here, or a later
+                    // lookup round.
                     if (!Bindings.attributable(binding)) continue
                     builder.addAttributions(
                         Attribution

@@ -1,0 +1,131 @@
+{
+  "language": "en",
+  "languageConfidence": 0.5373154166316274,
+  "engineUsed": "stanza",
+  "tokens": [
+    {
+      "text": "marketplace",
+      "charEnd": 11,
+      "lemma": "marketplace",
+      "upos": "PROPN",
+      "xpos": "NNP",
+      "feats": {
+        "Number": "Sing"
+      },
+      "depHead": 2,
+      "depRelation": "compound"
+    },
+    {
+      "text": "revenu",
+      "charStart": 12,
+      "charEnd": 18,
+      "lemma": "revenu",
+      "upos": "PROPN",
+      "xpos": "NNP",
+      "feats": {
+        "Number": "Sing"
+      },
+      "depRelation": "root"
+    },
+    {
+      "text": "in",
+      "charStart": 19,
+      "charEnd": 21,
+      "lemma": "in",
+      "upos": "ADP",
+      "xpos": "IN",
+      "depHead": 4,
+      "depRelation": "case"
+    },
+    {
+      "text": "2025",
+      "charStart": 22,
+      "charEnd": 26,
+      "lemma": "2025",
+      "upos": "NUM",
+      "xpos": "CD",
+      "feats": {
+        "NumForm": "Digit",
+        "NumType": "Card"
+      },
+      "depHead": 2,
+      "depRelation": "nmod"
+    },
+    {
+      "text": "by",
+      "charStart": 27,
+      "charEnd": 29,
+      "lemma": "by",
+      "upos": "ADP",
+      "xpos": "IN",
+      "depHead": 6,
+      "depRelation": "case"
+    },
+    {
+      "text": "month",
+      "charStart": 30,
+      "charEnd": 35,
+      "lemma": "month",
+      "upos": "NOUN",
+      "xpos": "NN",
+      "feats": {
+        "Number": "Sing"
+      },
+      "depHead": 2,
+      "depRelation": "nmod"
+    }
+  ],
+  "sentences": [
+    {
+      "charEnd": 35
+    }
+  ],
+  "entities": [
+    {
+      "text": "2025",
+      "label": "DATE",
+      "charStart": 22,
+      "charEnd": 26,
+      "sourceEngine": "stanza"
+    }
+  ],
+  "detectedLanguage": "en",
+  "used": [
+    {
+      "op": "DETECT_LANGUAGE",
+      "engine": "langid",
+      "model": "lingua",
+      "modelVersion": "lingua-2.0"
+    },
+    {
+      "op": "TOKENIZE",
+      "engine": "stanza",
+      "model": "stanza-cs-en",
+      "modelVersion": "stanza-1.10.0"
+    },
+    {
+      "op": "LEMMATIZE",
+      "engine": "stanza",
+      "model": "stanza-cs-en",
+      "modelVersion": "stanza-1.10.0"
+    },
+    {
+      "op": "POS_TAG",
+      "engine": "stanza",
+      "model": "stanza-cs-en",
+      "modelVersion": "stanza-1.10.0"
+    },
+    {
+      "op": "DEP_PARSE",
+      "engine": "stanza",
+      "model": "stanza-cs-en",
+      "modelVersion": "stanza-1.10.0"
+    },
+    {
+      "op": "NER",
+      "engine": "stanza",
+      "model": "stanza-cs-en",
+      "modelVersion": "stanza-1.10.0"
+    }
+  ]
+}

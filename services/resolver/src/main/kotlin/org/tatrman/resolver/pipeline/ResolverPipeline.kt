@@ -357,6 +357,20 @@ class ResolverPipeline(
                 thresholds = resolverRegistry.thresholds,
                 snapshotHash = resolverRegistry.snapshotHash,
             )
+        // ttr-server#227 — a word proposed as a value that reads as a model object, and that a grounding
+        // trigger claims, is the kernel's: the mention the mention layer makes of the same word where no
+        // anchor governs it („v roce 2025“ under `webu` reads as under `po čtvrtletích`). It leaves the
+        // gated spans — so the door does not bind the object either — and joins the ungated mentions.
+        val kernelWords = ValueReadings.ownedByKernel(gatedSpans, triggers)
+        val boundSpans = if (kernelWords.isEmpty()) gatedSpans else gatedSpans.filterNot { it in kernelWords }
+        for (word in kernelWords) {
+            log.info(
+                "value-reading: [{},{}) reads as a model object and a trigger claims it — a mention conversation_id={}",
+                word.candidate.start,
+                word.candidate.end,
+                request.conversationId,
+            )
+        }
         // The predicate slots sit AFTER the grounding ones, so the offset is both of the earlier
         // blocks. Stated as a sum rather than a constant because that is the invariant: each
         // question appends its own slots and reads back from where the previous one ended.
@@ -376,7 +390,7 @@ class ResolverPipeline(
             MistypedYears.find(
                 seam.universals,
                 parse,
-                gatedSpans,
+                boundSpans,
                 resolverRegistry.entityTypes.kindsByRef(),
                 preps.temporal(assessment.language),
             )
@@ -450,8 +464,11 @@ class ResolverPipeline(
         // ttr-server#204 — and a word a retry left out that restricts its mention is a mention of its
         // own, unbound: the head bound without it, and nothing downstream may read it as unsaid.
         val ungatedSpans =
-            (ungatedMentions + MentionRetry.residuesBound(broadPass.gated, retries))
-                .filterNot { it.headToken in formTokens }
+            (
+                ungatedMentions +
+                    MentionRetry.residuesBound(broadPass.gated, retries) +
+                    kernelWords.map { ValueReadings.asMention(it.candidate) }
+            ).filterNot { it.headToken in formTokens }
                 .filterNot { NamedMembers.claimedBy(spokenNames, it) }
                 .map { GatedSpan(it, emptyList(), ambiguous = false) }
         // RV-P2.3 — the narrowing loop, between the broad pass and emit. It re-enters through the
@@ -460,8 +477,8 @@ class ResolverPipeline(
         // written against the loop's result and cannot tell the difference.
         val rounds =
             lookupRounds.run(
-                lattice = assemble(gatedSpans, ungatedSpans),
-                gated = gatedSpans,
+                lattice = assemble(boundSpans, ungatedSpans),
+                gated = boundSpans,
                 ungated = ungatedSpans,
                 entityTypes = resolverRegistry.entityTypes,
                 thresholds = resolverRegistry.thresholds,

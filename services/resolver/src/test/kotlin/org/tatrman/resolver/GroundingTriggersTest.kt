@@ -44,7 +44,7 @@ class GroundingTriggersTest :
             GroundingTriggers.CATEGORIES.all { it.startsWith(LexiconValidator.GROUND_PREFIX) } shouldBe true
         }
 
-        "only the mention layer is asked, once per span" {
+        "the mention layer is asked, once per span, and a literal is not" {
             val ucet = mention("účtu", 15, 19, head = 2)
             // the SAME span reached through a second entity type — one anchor word may be owned by
             // two model objects, and a trigger is about the surface, not about who scoped it
@@ -55,6 +55,32 @@ class GroundingTriggersTest :
             val spans = GroundingTriggers.spansOf(listOf(ucet, ucetAgain, code), listOf(leftover))
 
             spans.map { it.text } shouldContainExactly listOf("účtu", "stanic")
+        }
+
+        "ttr-server#227 — a word proposed as a value is asked too; a code, a quoted string and a member name are not" {
+            // *roce* under `webu` is proposed as web's governed value, and whether it IS a value is the
+            // gate's answer on this same batch — so its trigger has to be asked on it too, or a word that
+            // turns out to be a mention arrives without the trigger it carries everywhere else.
+            fun proposed(
+                text: String,
+                start: Int,
+                origin: DomainSpanCandidate.Origin,
+            ) = mention(text, start, start + text.length, head = 3).copy(origin = origin, anchored = false)
+
+            val governed = proposed("roce", 29, DomainSpanCandidate.Origin.GOVERNED_VALUE)
+            val open = governed.copy(origin = DomainSpanCandidate.Origin.OPEN_VALUE)
+            val properNoun = proposed("revenu", 40, DomainSpanCandidate.Origin.PROPER_NOUN)
+            val ner = proposed("Octavie", 50, DomainSpanCandidate.Origin.NER_ENTITY)
+            val code = literal("501001", 60, 66)
+            val quoted = proposed("Pelex", 70, DomainSpanCandidate.Origin.QUOTED_LITERAL)
+            val phrase = proposed("Nedorazilo včas", 80, DomainSpanCandidate.Origin.MEMBER_PHRASE)
+            val named = proposed("Brno DC", 100, DomainSpanCandidate.Origin.NAMED_MEMBER)
+            // a place an anchor governs: the seam decides it, and a member reading is all it can be
+            val dual = proposed("TN", 110, DomainSpanCandidate.Origin.GOVERNED_VALUE).copy(dualReadingOf = 110 to 112)
+
+            GroundingTriggers
+                .spansOf(listOf(governed, open, properNoun, ner, code, quoted, phrase, named, dual), emptyList())
+                .map { it.text } shouldContainExactly listOf("roce", "revenu", "Octavie")
         }
 
         "a floor guess is still asked: a trigger is a lexicon fact, not a syntactic one" {
