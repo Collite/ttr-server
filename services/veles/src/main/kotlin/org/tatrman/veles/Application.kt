@@ -20,6 +20,7 @@ import org.tatrman.ttr.metadata.search.keyword.Tokenizer
 import org.tatrman.ttr.metadata.search.regex.RegexAlgorithm
 import org.tatrman.ttr.metadata.search.substring.SubstringAlgorithm
 import org.tatrman.ttr.metadata.source.ClasspathStorage
+import org.tatrman.ttr.metadata.layout.LayoutIndex
 import org.tatrman.ttr.metadata.refresh.MetadataRefresher
 import org.tatrman.veles.refresh.RefreshScheduler
 import org.tatrman.ttr.metadata.source.BuiltinStockSource
@@ -135,7 +136,9 @@ fun Application.module(config: Config) {
         refresher.recordInitial(snapshots)
         val result = reconciler.reconcile(snapshots)
         val graph = withContext(Dispatchers.Default) { ModelGraph.build(result.model) }
-        registry.swap(result.model, graph, lastWarnings = result.warnings + result.errors)
+        // VL V-37: the layouts of this model, from the same loads, in the same swap (the refresher does likewise)
+        val layouts = LayoutIndex.build(snapshots, result.model)
+        registry.swap(result.model, graph, lastWarnings = result.warnings + result.errors, layouts = layouts)
         log.info(
             "Metadata initial snapshot loaded: version={} objects={} warnings={} errors={}",
             result.model.version.value,

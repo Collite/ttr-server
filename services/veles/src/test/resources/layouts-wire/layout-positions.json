@@ -1,0 +1,34 @@
+{
+  "name": "positions",
+  "schema": "er",
+  "objects": [
+    "hartland.er.entity.item",
+    "hartland.er.entity.store",
+    "hartland.er.entity.store_sales"
+  ],
+  "positions": {
+    "hartland.er.entity.item": {
+      "x": 320,
+      "y": 180
+    },
+    "hartland.er.entity.store": {
+      "x": 580,
+      "y": 180
+    },
+    "hartland.er.entity.store_sales": {
+      "x": 320,
+      "y": 400
+    }
+  },
+  "mode": "manual",
+  "skin": null,
+  "collapsed": [],
+  "missing": [
+    "hartland.er.entity.customer"
+  ],
+  "ambiguous": [],
+  "ignored": [],
+  "positionsFrom": "in-file",
+  "source": "layouts/positions.ttrg",
+  "modelVersion": "hartland-fixture"
+}

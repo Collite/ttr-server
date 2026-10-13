@@ -87,6 +87,8 @@ dependencies {
     // need it at compile time, so it stays a direct dep.
     implementation(libs.apache.commons.compress)
     implementation(libs.kotlinx.coroutines.core)
+    // VL-P2 — the layout routes encode their bodies with kotlinx (LayoutRoutes.kt: encodeDefaults + explicitNulls)
+    implementation(libs.kotlinx.serialization.json)
     implementation(libs.typesafe.config)
     // Prometheus `/metrics` endpoint.
     implementation(libs.micrometer.registry.prometheus)

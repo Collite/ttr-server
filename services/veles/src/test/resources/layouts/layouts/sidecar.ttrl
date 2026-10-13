@@ -1,0 +1,12 @@
+ttrl 1
+
+// the sidecar wins; it also holds a key the graph no longer lists (A-VL-3 a: dropped, a warning)
+canvas sidecar {
+    skin: "er.crow"
+    mode: manual
+    nodes: {
+        "hartland.er.entity.item": { x: 100, y: 120 }
+        "hartland.er.entity.store": { x: 300, y: 120 }
+        "hartland.er.entity.store_returns": { x: 500, y: 120 }
+    }
+}
