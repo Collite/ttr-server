@@ -10,12 +10,14 @@ import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.string.shouldNotBeEmpty
+import org.tatrman.ttr.metadata.layout.LayoutIndex
 import org.tatrman.ttr.metadata.model.ModelDescriptor
 import org.tatrman.ttr.metadata.reconcile.ModelReconciler
 import org.tatrman.ttr.metadata.source.BuiltinStockSource
 import org.tatrman.ttr.metadata.source.SourceSnapshot
 import org.tatrman.veles.grpc.PackageIndex
 import org.tatrman.veles.health.SourceLoadBoard
+import org.tatrman.veles.read.LAYOUT_FIXTURE
 import java.nio.file.Files
 import java.nio.file.Path
 import java.time.Instant
@@ -186,6 +188,24 @@ class VelesSourceConfigSpec :
                     .map { it.toString() }
             served.any { "Customer" in it } shouldBe true
             served.any { "Book" in it } shouldBe true
+        }
+
+        "a configured git source is read for its layouts — the files Veles serves (VL V-37)" {
+            val dir = Files.createTempDirectory("veles-src")
+            val repo = gitRepo(dir.resolve("repo")) { model -> LAYOUT_FIXTURE.toFile().copyRecursively(model.toFile()) }
+            val (_, snapshots) =
+                loadAll(
+                    config(
+                        """
+                        metadata.sources.github-model.remote-uri = "file://$repo"
+                        metadata.sources.github-model.local-checkout-dir = "${dir.resolve("checkout")}"
+                        """.trimIndent(),
+                    ),
+                )
+
+            val model = ModelReconciler(ModelDescriptor(id = "t", name = "t")).reconcile(snapshots).model
+            LayoutIndex.build(snapshots, model).all.map { it.name } shouldBe
+                listOf("tables", "authored", "auto_residue", "main_canvas", "missing", "sidecar")
         }
 
         "the second source reads the first one's token unless it is given its own" {

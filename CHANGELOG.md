@@ -166,10 +166,13 @@ two new read routes (VL contracts §6):
   present, empty ones as `[]`, `{}` or `null`. A name that is not an identifier is `400 {"error":"bad name"}`;
   an unknown one `404 {"error":"not found"}`. Both routes answer `503` until a model is loaded.
 
-A layout file that does not parse, or repeats a name another file already has, is left out and listed in
-`/status` under the new `issues` array (`layout layouts/sales.ttrg: …`); the model loads regardless. Both
-routes are GET-only, like the four read routes before them; committing to the model's repository is how a
-layout is published. Requires the TTR toolchain 0.14.1.
+A layout file that does not parse, or cannot be read, is left out and listed in `/status` under the new
+`issues` array (`layout layouts/sales.ttrg: …`; a sidecar's finding names the `.ttrl`); the model loads
+regardless. Two files that declare the same layout name are both left out, each listed with the other's path —
+which one a viewer gets never depends on file order. A sidecar the viewer opens Veles serves too: what it does
+not use (a `viewport`, an unknown canvas property) is skipped. Both routes are GET-only, like the four read
+routes before them; committing to the model's repository is how a layout is published. Requires the TTR
+toolchain 0.15.0.
 
 ### A date with no year takes the year the conversation is about
 

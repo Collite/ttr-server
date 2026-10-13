@@ -529,7 +529,8 @@ private fun buildSourceFromConfig(
         }
 
     return when (kind) {
-        "ttr" -> FileBasedSource(sourceId = id, priority = priority, storage = storage)
+        // VL V-37: Veles serves the layouts committed next to the model — a source collects them only when asked
+        "ttr" -> FileBasedSource(sourceId = id, priority = priority, storage = storage, layouts = true)
         // Phase 2.1 (fork) — `yaml-legacy` source kind removed: kantheon is TTR-only
         // (`org.tatrman.ttr.*` modeler artifacts, no erp-sql legacy YAML parse path).
         // See docs/implementation/v1/fork/tasks-p2-s2.1-veles.md T2 note.

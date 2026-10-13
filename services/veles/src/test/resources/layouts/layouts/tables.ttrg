@@ -1,0 +1,9 @@
+// a db layout: two tables, the foreign key listed (ignored)
+graph tables {
+  model: db,
+  objects: [
+    hartland.db.dbo.fk_ss_item,
+    hartland.db.dbo.item,
+    hartland.db.dbo.store_sales
+  ]
+}
