@@ -16,6 +16,28 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+### resolver — a compared value names its own object, never the operator („Porovnej tržby z tržiště a z webu“, #207)
+
+„Porovnej tržby z tržiště a z webu v roce 2025“ came back with `webu` → `op:compare` in `Resolution.bindings`
+(`Domain.entity_type_ref`), while the binding's own candidate and the lattice both said web revenue. Without the operator
+word („Tržby z tržiště a z webu v roce 2025“, „Srovnání …“, „Podíl webu na tržbách“) the same binding was named
+`unknown`. The lattice was right throughout; the door was not.
+
+The value binds in a lookup round, which asks the matcher across all categories, and lex-matcher answers such a lookup
+with `category = "unknown"` on every row: it has no category to stamp. The door named a declared binding by the type that
+claims its category, so it named this one `unknown`. An imperative operator word (`Porovnej`, `Srovnej`, `Compare`) is
+confirmed the same cross-category way (#58), and its type was registered for the request under that row's category, so
+the operator claimed `unknown` and every round-bound value in the question was named after it.
+
+- An operator confirmed for a command or count word is registered under its own ref (`op:compare`), which is the
+  matcher's category key for it. The broad pass now asks the word in that category and binds it there; it used to ask `unknown`,
+  which answers nothing, and bind it one lookup round later. The binding is the same; the rung log shows it under the
+  core pass.
+- A declared binding whose category no declared type claims is named by the object it targets (the part of the target
+  ref before `#`), which is what its candidate and the lattice name. A clarification option is named the same way.
+  Broad-pass bindings are named exactly as before: their category is always a declared type's.
+- No wire change.
+
 ### resolver — a year the NER typed a number is a date on its anchor („Store revenue 2025“, „za 2025“, #206)
 
 "Marketplace revenue 2025", "Store revenue 2025" and „Tržby z tržiště 2025“ left the year grounded but unattributed

@@ -260,8 +260,27 @@ object GateSpans {
         if (m.source == SourceTag.MEMBER) {
             memberEntities[m.category] ?: m.category
         } else {
-            vocabularyRefOf(m, entityTypes)
+            declaredRefOf(m, entityTypes)
         }
+
+    /**
+     * A declared row's type: the one whose vocabulary its category is — and, when no declared type
+     * claims the category, the object the row targets.
+     *
+     * ttr-server#207 — a lookup round asks the matcher across all categories, and a row it finds
+     * there carries no category of its own: lex-matcher writes `"unknown"`. Read as a vocabulary key,
+     * that named the round's binding `unknown` on the door while its candidate and the lattice named
+     * the object (`Bindings.refOf` reads the target ref), and `op:compare` when the request's operator
+     * had claimed the placeholder. The target ref is what the row binds, so it is what the door names
+     * — before `#`, the way a resumed pin reads an option with no type. A scoped row's category is a
+     * declared type's, so every broad-pass binding is named exactly as before.
+     */
+    private fun declaredRefOf(
+        m: FuzzyMatch,
+        entityTypes: List<ResolverEntityType>,
+    ): String =
+        entityTypes.firstOrNull { m.category in it.categories }?.ref
+            ?: m.targetRef.substringBefore('#').ifBlank { m.category }
 
     private fun toBinding(
         cand: DomainSpanCandidate,

@@ -1,0 +1,145 @@
+{
+  "language": "en",
+  "languageConfidence": 0.506373776947185,
+  "engineUsed": "stanza",
+  "tokens": [
+    {
+      "text": "Compare",
+      "charEnd": 7,
+      "lemma": "compare",
+      "upos": "VERB",
+      "xpos": "VB",
+      "feats": {
+        "Mood": "Imp",
+        "VerbForm": "Fin"
+      },
+      "depRelation": "root"
+    },
+    {
+      "text": "marketplace",
+      "charStart": 8,
+      "charEnd": 19,
+      "lemma": "marketplace",
+      "upos": "NOUN",
+      "xpos": "NN",
+      "feats": {
+        "Number": "Sing"
+      },
+      "depHead": 1,
+      "depRelation": "obj"
+    },
+    {
+      "text": "and",
+      "charStart": 20,
+      "charEnd": 23,
+      "lemma": "and",
+      "upos": "CCONJ",
+      "xpos": "CC",
+      "depHead": 5,
+      "depRelation": "cc"
+    },
+    {
+      "text": "web",
+      "charStart": 24,
+      "charEnd": 27,
+      "lemma": "web",
+      "upos": "NOUN",
+      "xpos": "NN",
+      "feats": {
+        "Number": "Sing"
+      },
+      "depHead": 5,
+      "depRelation": "compound"
+    },
+    {
+      "text": "revenue",
+      "charStart": 28,
+      "charEnd": 35,
+      "lemma": "revenue",
+      "upos": "NOUN",
+      "xpos": "NN",
+      "feats": {
+        "Number": "Sing"
+      },
+      "depHead": 2,
+      "depRelation": "conj"
+    },
+    {
+      "text": "in",
+      "charStart": 36,
+      "charEnd": 38,
+      "lemma": "in",
+      "upos": "ADP",
+      "xpos": "IN",
+      "depHead": 7,
+      "depRelation": "case"
+    },
+    {
+      "text": "2025",
+      "charStart": 39,
+      "charEnd": 43,
+      "lemma": "2025",
+      "upos": "NUM",
+      "xpos": "CD",
+      "feats": {
+        "NumForm": "Digit",
+        "NumType": "Card"
+      },
+      "depHead": 1,
+      "depRelation": "obl"
+    }
+  ],
+  "sentences": [
+    {
+      "charEnd": 43
+    }
+  ],
+  "entities": [
+    {
+      "text": "2025",
+      "label": "DATE",
+      "charStart": 39,
+      "charEnd": 43,
+      "sourceEngine": "stanza"
+    }
+  ],
+  "detectedLanguage": "en",
+  "used": [
+    {
+      "op": "DETECT_LANGUAGE",
+      "engine": "langid",
+      "model": "lingua",
+      "modelVersion": "lingua-2.0"
+    },
+    {
+      "op": "TOKENIZE",
+      "engine": "stanza",
+      "model": "stanza-cs-en",
+      "modelVersion": "stanza-1.10.0"
+    },
+    {
+      "op": "LEMMATIZE",
+      "engine": "stanza",
+      "model": "stanza-cs-en",
+      "modelVersion": "stanza-1.10.0"
+    },
+    {
+      "op": "POS_TAG",
+      "engine": "stanza",
+      "model": "stanza-cs-en",
+      "modelVersion": "stanza-1.10.0"
+    },
+    {
+      "op": "DEP_PARSE",
+      "engine": "stanza",
+      "model": "stanza-cs-en",
+      "modelVersion": "stanza-1.10.0"
+    },
+    {
+      "op": "NER",
+      "engine": "stanza",
+      "model": "stanza-cs-en",
+      "modelVersion": "stanza-1.10.0"
+    }
+  ]
+}

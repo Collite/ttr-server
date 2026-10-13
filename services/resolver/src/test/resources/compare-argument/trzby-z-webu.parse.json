@@ -1,0 +1,148 @@
+{
+  "language": "cs",
+  "languageConfidence": 0.3526908836782177,
+  "engineUsed": "morphodita",
+  "tokens": [
+    {
+      "text": "Tržby",
+      "charEnd": 5,
+      "lemma": "tržba",
+      "upos": "NOUN",
+      "xpos": "NNFP1-----A----",
+      "feats": {
+        "Case": "Nom",
+        "Gender": "Fem",
+        "Number": "Plur"
+      },
+      "depRelation": "root"
+    },
+    {
+      "text": "z",
+      "charStart": 6,
+      "charEnd": 7,
+      "lemma": "z",
+      "upos": "ADP",
+      "xpos": "RR--2----------",
+      "feats": {
+        "AdpType": "Prep",
+        "Case": "Gen"
+      },
+      "depHead": 3,
+      "depRelation": "case"
+    },
+    {
+      "text": "webu",
+      "charStart": 8,
+      "charEnd": 12,
+      "lemma": "web",
+      "upos": "NOUN",
+      "xpos": "NNIS2-----A----",
+      "feats": {
+        "Animacy": "Inan",
+        "Case": "Gen",
+        "Gender": "Masc",
+        "Number": "Sing"
+      },
+      "depHead": 1,
+      "depRelation": "nmod"
+    },
+    {
+      "text": "v",
+      "charStart": 13,
+      "charEnd": 14,
+      "lemma": "v",
+      "upos": "ADP",
+      "xpos": "RR--6----------",
+      "feats": {
+        "AdpType": "Prep",
+        "Case": "Loc"
+      },
+      "depHead": 5,
+      "depRelation": "case"
+    },
+    {
+      "text": "roce",
+      "charStart": 15,
+      "charEnd": 19,
+      "lemma": "rok",
+      "upos": "NOUN",
+      "xpos": "NNIS6-----A---1",
+      "feats": {
+        "Animacy": "Inan",
+        "Case": "Loc",
+        "Gender": "Masc",
+        "Number": "Sing"
+      },
+      "depHead": 1,
+      "depRelation": "nmod"
+    },
+    {
+      "text": "2025",
+      "charStart": 20,
+      "charEnd": 24,
+      "lemma": "2025",
+      "upos": "NUM",
+      "xpos": "C=-------------",
+      "feats": {
+        "NumForm": "Digit",
+        "NumType": "Card"
+      },
+      "depHead": 5,
+      "depRelation": "nummod"
+    }
+  ],
+  "sentences": [
+    {
+      "charEnd": 24
+    }
+  ],
+  "entities": [
+    {
+      "text": "2025",
+      "label": "DATE",
+      "charStart": 20,
+      "charEnd": 24,
+      "normalizedValue": "cnec:ty",
+      "sourceEngine": "nametag3"
+    }
+  ],
+  "detectedLanguage": "cs",
+  "used": [
+    {
+      "op": "DETECT_LANGUAGE",
+      "engine": "langid",
+      "model": "lingua",
+      "modelVersion": "lingua-2.0"
+    },
+    {
+      "op": "TOKENIZE",
+      "engine": "morphodita",
+      "model": "czech-morfflex2.0-pdtc1.0-220710",
+      "modelVersion": "czech-morfflex2.0-pdtc1.0-220710"
+    },
+    {
+      "op": "LEMMATIZE",
+      "engine": "morphodita",
+      "model": "czech-morfflex2.0-pdtc1.0-220710",
+      "modelVersion": "czech-morfflex2.0-pdtc1.0-220710"
+    },
+    {
+      "op": "POS_TAG",
+      "engine": "morphodita",
+      "model": "czech-morfflex2.0-pdtc1.0-220710",
+      "modelVersion": "czech-morfflex2.0-pdtc1.0-220710"
+    },
+    {
+      "op": "DEP_PARSE",
+      "engine": "stanza",
+      "model": "stanza-cs-en",
+      "modelVersion": "stanza-1.10.0"
+    },
+    {
+      "op": "NER",
+      "engine": "nametag3",
+      "model": "nametag3-czech-cnec2.0-240830",
+      "modelVersion": "nametag3-czech-cnec2.0-240830"
+    }
+  ]
+}
