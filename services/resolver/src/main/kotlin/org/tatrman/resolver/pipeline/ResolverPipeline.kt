@@ -260,6 +260,11 @@ class ResolverPipeline(
         // written. LAST, and folded back onto the mentions' own slots by `merge` before anything reads
         // the response, so every offset below is exactly what it was.
         val lemmaPlan = LemmaLookup.plan(candidates, parse)
+        // ttr-server#204 — and a fifth: each mention as its head, without its determiners and the
+        // adjectives the lexicon does not know (`the marketplace` → `marketplace`), plus one question
+        // per such adjective, whether the lexicon knows it. Read only where the phrase binds nothing.
+        // LAST, and taken off the response before anything positional reads it.
+        val retryPlan = MentionRetry.plan(parse, candidates, ungatedMentions)
         val batchReq =
             GateSpans
                 .buildBatchRequest(
@@ -270,13 +275,13 @@ class ResolverPipeline(
                 .addAllSpans(GroundingTriggers.queries(triggerSpans, resolverRegistry.thresholds.maxOptions))
                 .addAllSpans(PredicateTriggers.queries(predicateWindows, resolverRegistry.thresholds.maxOptions))
                 .addAllSpans(LemmaLookup.queries(lemmaPlan, candidates, resolverRegistry.thresholds.maxOptions))
+                .addAllSpans(MentionRetry.queries(retryPlan, resolverRegistry.thresholds.maxOptions))
                 .build()
-        val batchResp =
-            LemmaLookup.merge(
-                fuzzy.batchMatch(batchReq),
-                lemmaPlan,
-                offset = candidates.size + triggerSpans.size + PredicateTriggers.slotCount(predicateWindows),
-            )
+        val lemmaOffset = candidates.size + triggerSpans.size + PredicateTriggers.slotCount(predicateWindows)
+        val retryOffset = lemmaOffset + lemmaPlan.size
+        val rawBatch = fuzzy.batchMatch(batchReq)
+        val retries = MentionRetry.collect(rawBatch, retryPlan, retryOffset, resolverRegistry.thresholds)
+        val batchResp = LemmaLookup.merge(MentionRetry.strip(rawBatch, retryOffset), lemmaPlan, offset = lemmaOffset)
         val broadPass =
             GateSpans.gate(
                 candidates,
@@ -285,6 +290,7 @@ class ResolverPipeline(
                 resolverRegistry.thresholds,
                 siblings,
                 resolverRegistry.snapshotHash,
+                retries = retries.byCandidate,
             )
         // ✅ UD (ttr-server#118) — the universal/domain seam, decided HERE because this is the first
         // line that knows both readings' answers: the gate has spoken on every dual reading, and
@@ -403,6 +409,7 @@ class ResolverPipeline(
                 entityTypes = resolverRegistry.entityTypes,
                 thresholds = resolverRegistry.thresholds,
                 reassemble = assemble,
+                retries = retries.bySpan,
             )
         // The door moves with the lattice: a round that bound a span the broad pass missed changes
         // BOTH what the core understood and what it decided, and a caller reading `Resolution` is

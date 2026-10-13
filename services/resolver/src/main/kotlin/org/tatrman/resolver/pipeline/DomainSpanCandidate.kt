@@ -51,6 +51,9 @@ package org.tatrman.resolver.pipeline
  *   member that is only part of the name, or the name through its dictionary form.
  * @property nameLemma UD-P3 S2 — a NAMED_MEMBER reading's dictionary form: its words' lemmas, as
  *   the text joins them. "" for every other candidate.
+ * @property declaredPhrase ttr-server#204 — the span is a MULTI-word anchor the estate declared word
+ *   for word (`marketplace revenue`, `tržby z tržiště`). Its words are the estate's, not modifiers, so
+ *   [MentionRetry] never asks it again without some of them. False for every other candidate.
  */
 data class DomainSpanCandidate(
     val text: String,
@@ -72,6 +75,8 @@ data class DomainSpanCandidate(
     // UD-P3 S2 — a NAMED_MEMBER reading's dictionary form, the lemmas of its words („Brně DC“ →
     // „Brno DC“); "" for every other candidate. LAST and defaulted, like the two above.
     val nameLemma: String = "",
+    // ttr-server#204 — LAST and defaulted, like the three above.
+    val declaredPhrase: Boolean = false,
 ) {
     /** UD — whether this candidate is a dual reading at all; see [dualReadingOf]. */
     val dualReading: Boolean get() = dualReadingOf != null

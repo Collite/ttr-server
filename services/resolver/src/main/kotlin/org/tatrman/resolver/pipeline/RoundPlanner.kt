@@ -71,12 +71,19 @@ object RoundPlanner {
          * one, and this is where its anchor comes from.
          */
         val anchorMentionId: String = "",
+        /**
+         * ttr-server#204 — [Tier.UNBOUND_MENTION] only: the mention asked as its head
+         * (`MentionRetry`), not as written. Planned right after the phrase's own query, and its answer
+         * is admitted only if the phrase's was not ([LookupRounds]).
+         */
+        val retry: Boolean = false,
     ) {
         /** What "already asked" means: the same span, scoped the same way, at the same tier. */
         val key: String
-            get() = "$tier|$spanStart-$spanEnd|${categories.sorted()}|${targetClasses.map {
-                it.number
-            }}|$methodOverride"
+            get() =
+                "$tier|$spanStart-$spanEnd|${categories.sorted()}|${targetClasses.map {
+                    it.number
+                }}|$methodOverride" + if (retry) "|retry" else ""
     }
 
     /**
@@ -101,6 +108,9 @@ object RoundPlanner {
         entityTypes: List<ResolverEntityType>,
         asked: Set<String>,
         config: LookupRoundConfig,
+        // ttr-server#204 — what a mention may be asked as when its phrase binds nothing, by span
+        // (`MentionRetry.Answers.bySpan`). Empty: no mention is asked twice.
+        retries: Map<Pair<Int, Int>, String> = emptyMap(),
     ): List<Query> {
         // MV §5.3 — the governed lookup's scope rule, not just the anchor's own categories: a value
         // re-asked "inside the axis the user named" must be asked where that axis's VALUES live,
@@ -116,6 +126,7 @@ object RoundPlanner {
                     quotedQueries(lattice, entityTypes, categoriesByRef, config)
                 } else {
                     gapQueries(tier, lattice, categoriesByRef, mentionsById, valuesById, config)
+                        .let { if (tier == Tier.UNBOUND_MENTION) withRetries(it, retries) else it }
                 }
             val fresh = queries.filter { it.key !in asked }.take(config.maxQueriesPerRound)
             if (fresh.isNotEmpty()) return fresh
@@ -159,6 +170,23 @@ object RoundPlanner {
                 tier = Tier.QUOTED_VALUE,
                 anchorMentionId = value.anchorMentionId,
             )
+        }
+    }
+
+    /**
+     * ttr-server#204 — each unbound mention that has a head to fall back on is asked twice in the same
+     * round: as written, then as its head, in that order and with the same class scope. The order is
+     * what lets [LookupRounds] give the phrase's own answer precedence; the round costs one round trip
+     * either way, because its calls run concurrently.
+     */
+    private fun withRetries(
+        queries: List<Query>,
+        retries: Map<Pair<Int, Int>, String>,
+    ): List<Query> {
+        if (retries.isEmpty()) return queries
+        return queries.flatMap { q ->
+            val core = retries[q.spanStart to q.spanEnd] ?: return@flatMap listOf(q)
+            listOf(q, q.copy(term = core, retry = true))
         }
     }
 

@@ -16,6 +16,33 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+### resolver — an article or an unknown adjective no longer stops a mention binding (#204)
+
+In English, a mention with an article or an adjective in it did not bind, even when its head noun does on its own:
+"the marketplace", "the web", "Total revenue" and "What share" all came back `G1_UNBOUND`, while "marketplace", "web",
+"Revenue" and "share" bind. Span proposal folds a noun's `det` and `amod` dependents into its mention, the matcher was
+asked about the whole phrase, and the estate declares the word, not the phrase. A follow-up like "And on the web?"
+could not read as a change of view, and "What share of …" lost its ratio operator.
+
+- **A mention whose phrase binds nothing is asked again as its head**, without its determiners (with whatever hangs
+  from them) and without its bare adjectives. The mention keeps its span: "Total revenue" binds revenue, and "Total"
+  never becomes a mention, a value or a filter of its own. The binding's `producer.algorithm` ends in `+core`.
+- **A phrase that binds, or is ambiguous, on its own keeps its answer.** The second lookup is read only when the first
+  bound nothing. A phrase the estate declared word for word ("marketplace revenue") is never asked without some of its
+  words.
+- **A modifier the lexicon knows is never dropped.** Each adjective a retry would leave out is asked once, across every
+  category and class; if any row that is not member data answers it at the bind floor (a term, an operator, a grounding
+  trigger), the retry is cancelled and the mention stays as it was ("the largest stores" is not asked as "stores": `largest` is an operator word). A declared
+  modifier ("Monthly") was never folded in the first place. An adjective with words of its own ("How many stores") is
+  kept.
+- **Where it is asked:** an anchored mention in the broad pass, as one more slot of the same `BatchMatch`, scoped to the
+  anchor's categories; any mention still `G1` (including the nouns no anchor proposes, such as "What share") in the
+  lookup round, beside the phrase's own question and in the same round trip.
+- The rule is language-neutral. Czech has no articles, but its demonstratives, possessives and interrogatives are
+  determiners too, and a Czech mention with an adjective the lexicon does not know ("nejvyšší podíl") now binds its
+  head as well.
+- No wire change, no config.
+
 ### A date with no year takes the year the conversation is about
 
 chrono read a month or day that names no year at the reference year, even when the question around it named

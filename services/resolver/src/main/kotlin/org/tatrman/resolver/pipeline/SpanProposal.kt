@@ -490,7 +490,8 @@ object SpanProposal {
                         anchored = true,
                         origin = DomainSpanCandidate.Origin.ANCHOR_PHRASE,
                         headToken = syntacticHead(span, tokens),
-                    )
+                        // ttr-server#204 — the estate's words, every one: never asked again without some.
+                    ).copy(declaredPhrase = true)
                 coveredTokens += span
                 declaredPhraseTokens += span
                 // ✅UD-8 — the phrase governs what its head governs, but only a PLACE is proposed
@@ -689,6 +690,88 @@ object SpanProposal {
             token.featsMap["PronType"]
                 ?.split(',')
                 ?.any { it.trim().equals("Int", ignoreCase = true) } == true
+
+    /**
+     * What a mention is asked as when its phrase, as folded, bound nothing ([retryOf]): [core], the
+     * phrase without the words left out, and [modifiers], the adjectives among those words.
+     */
+    internal data class Retry(
+        val core: List<Int>,
+        val modifiers: List<Int>,
+    )
+
+    /**
+     * ttr-server#204 — the words of a mention a second lookup may leave out.
+     *
+     * Both phrase builders fold the head noun's `det` and `amod` dependents into its mention — this
+     * file's anchor phrase and `MentionLayer`'s leftover — and #98's narrowness control says why they
+     * must: *the account* / *toho účtu* is ONE mention, and a clarification quotes the user's words
+     * back. But the matcher holds the estate's word, not the user's phrase. `marketplace` is declared
+     * and `the marketplace` is not, so an `EXACT` row cannot meet the phrase, and every English
+     * mention with an article in it came back G1 (`the marketplace`, `the web`, `What share`) while
+     * the bare word bound. The span stays as folded; `MentionRetry` asks again with what this returns:
+     *
+     *  - **Every `det*` dependent of [head], with whatever hangs from it, is left out.** An article,
+     *    a demonstrative, a possessive or an interrogative says WHICH one, never what the thing is
+     *    called (#98 took the interrogative out of the anchor phrase outright).
+     *  - **A BARE `amod` dependent — an adjective with no dependent of its own — is left out and
+     *    reported** in [Retry.modifiers]. Whether the lexicon knows the word is the matcher's to say,
+     *    and a known one cancels the retry (`MentionRetry`): `largest` is an operator word, and
+     *    *the largest stores* asked as `stores` would answer a different question. A DECLARED
+     *    modifier never gets this far: an anchor word is nobody's modifier, so `Monthly` in
+     *    *Monthly revenue* is a mention of its own already.
+     *  - **An adjective with words of its own is kept** — *How many stores*, *vyzvednuté na
+     *    prodejně*: what it governs restricts the noun, and the noun alone would be another question.
+     *
+     * Null when nothing would be left out — the second lookup would be the first one again. The head
+     * is never left out: it is what the mention is.
+     */
+    internal fun retryOf(
+        phrase: List<Int>,
+        head: Int,
+        tokens: List<Token>,
+    ): Retry? {
+        if (head !in phrase) return null
+        val inPhrase = phrase.toHashSet()
+        val dependents = HashMap<Int, MutableList<Int>>()
+        tokens.forEachIndexed { i, t ->
+            // dep_head is 1-based; 0 is the root
+            if (t.depHead > 0) dependents.getOrPut(t.depHead - 1) { mutableListOf() } += i
+        }
+        val left = HashSet<Int>()
+        val modifiers = mutableListOf<Int>()
+        for (c in dependents[head].orEmpty()) {
+            if (c !in inPhrase) continue
+            val relation = tokens[c].depRelation
+            when {
+                relation == "det" || relation.startsWith("det:") -> left += subtreeWithin(c, dependents, inPhrase)
+                relation == "amod" && dependents[c].isNullOrEmpty() -> {
+                    left += c
+                    modifiers += c
+                }
+            }
+        }
+        // A parse with a cycle in it could reach the head from below; the head stays whatever happens.
+        left -= head
+        if (left.isEmpty()) return null
+        return Retry(phrase.filter { it !in left }.sorted(), modifiers.sorted())
+    }
+
+    /** [root] and everything below it, inside [scope] — what leaves a phrase with [root]. */
+    private fun subtreeWithin(
+        root: Int,
+        dependents: Map<Int, List<Int>>,
+        scope: Set<Int>,
+    ): Set<Int> {
+        val out = HashSet<Int>()
+        val stack = ArrayDeque(listOf(root))
+        while (stack.isNotEmpty()) {
+            val i = stack.removeLast()
+            if (i !in scope || !out.add(i)) continue
+            dependents[i]?.let { stack.addAll(it) }
+        }
+        return out
+    }
 
     private fun anchorPhraseIndices(
         headIdx: Int,

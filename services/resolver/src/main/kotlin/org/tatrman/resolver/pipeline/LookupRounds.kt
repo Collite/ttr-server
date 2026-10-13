@@ -104,6 +104,9 @@ class LookupRounds(
         entityTypes: List<ResolverEntityType>,
         thresholds: ResolverThresholds,
         reassemble: (List<GatedSpan>, List<GatedSpan>) -> ResolutionState,
+        // ttr-server#204 — what an unbound mention may be asked as besides its own words, by span
+        // (`MentionRetry`). Empty: every mention is asked as written only, as before.
+        retries: Map<Pair<Int, Int>, String> = emptyMap(),
     ): Result {
         if (config.budgetMs <= 0) return Result(gated, ungated, lattice, emptyList())
 
@@ -133,7 +136,7 @@ class LookupRounds(
             // before it — the round is what spends it (see [lookup]).
             val remainingMs = (deadline - nanoTime()) / 1_000_000
             if (remainingMs <= 0) break
-            val queries = RoundPlanner.plan(currentLattice, entityTypes, asked, config)
+            val queries = RoundPlanner.plan(currentLattice, entityTypes, asked, config, retries)
             if (queries.isEmpty()) break
             asked += queries.map { it.key }
             round++
@@ -142,10 +145,15 @@ class LookupRounds(
             val answers = ask(queries, remainingMs)
             var added = 0
             val proposed = mutableListOf<Hypothesis>()
-            for ((query, candidates) in answers) {
+            for ((query, answered) in answers) {
                 // ✅LP-13 — a quoted literal has no span of its own until its lookup admits
                 // something; the rung builds it (see [quotedSpan]) and appends it on success.
                 val existing = spanFor(query, currentGated, currentUngated)
+                // ttr-server#204 — a mention asked as its head speaks only if asking it as written
+                // left it empty. The phrase's query comes first in the round ([RoundPlanner]), and
+                // `existing` is read after its answer was merged, so a phrase that bound wins here.
+                if (query.retry && existing?.contenders?.isNotEmpty() == true) continue
+                val candidates = if (query.retry) answered.map(MentionRetry::stamp) else answered
                 val span = existing ?: quotedSpan(query, currentGated + currentUngated, currentLattice) ?: continue
                 // The same gate the broad pass used. A round is a proposer; this is where its
                 // proposals stop being proposals (RV-7).

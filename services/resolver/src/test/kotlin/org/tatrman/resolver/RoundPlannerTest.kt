@@ -96,6 +96,28 @@ class RoundPlannerTest :
                 )
         }
 
+        "#204 — a G1 with a head to fall back on is asked as written, THEN as its head, same scope" {
+            val retries = mapOf((19 to 35) to "stanic")
+            val plan = RoundPlanner.plan(g1Lattice(), listOf(account), emptySet(), config, retries)
+
+            plan.map { it.term to it.retry } shouldContainExactly listOf("čerpacích stanic" to false, "stanic" to true)
+            plan.map { it.tier }.distinct() shouldContainExactly listOf(RoundPlanner.Tier.UNBOUND_MENTION)
+            plan.map { it.spanStart to it.spanEnd }.distinct() shouldContainExactly listOf(19 to 35)
+            plan.map { it.targetClasses }.distinct().single() shouldContainExactly
+                listOf(FuzzyTargetClass.TARGET_CLASS_MODEL_OBJECT, FuzzyTargetClass.TARGET_CLASS_OPERATOR)
+            // two questions, so two keys: asking one must not mark the other asked
+            plan.map { it.key }.distinct().size shouldBe 2
+            // …and once both are asked, the tier is dry
+            RoundPlanner.plan(g1Lattice(), listOf(account), plan.map { it.key }.toSet(), config, retries) shouldBe
+                emptyList()
+        }
+
+        "#204 — without a retry for its span, a G1 is planned exactly as before" {
+            RoundPlanner
+                .plan(g1Lattice(), listOf(account), emptySet(), config, mapOf((0 to 4) to "other"))
+                .map { it.term to it.retry } shouldContainExactly listOf("čerpacích stanic" to false)
+        }
+
         "a G3 widens, last and bounded — `max_candidates` is the cap that keeps it honest" {
             val plan = RoundPlanner.plan(g3Lattice(), listOf(account), emptySet(), config)
             val query = plan.single()
