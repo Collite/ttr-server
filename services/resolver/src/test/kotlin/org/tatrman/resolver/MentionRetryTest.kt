@@ -174,8 +174,9 @@ class MentionRetryTest :
 
             r.refsOn("revenue") shouldContainExactly listOf(REVENUE)
             r.bindingOn("revenue").producer.algorithm shouldNotEndWith "+core"
-            // nothing was dropped, so nothing was asked about
-            lexicon.batch.map { it.query } shouldNotContain "Monthly"
+            // nothing was dropped, so the lexicon was not asked whether it knows the word (a modifier's
+            // question is the one slot with no categories; `Monthly` may still be asked as a mention)
+            lexicon.batch.filter { it.categoriesCount == 0 }.map { it.query } shouldNotContain "Monthly"
         }
 
         "an adjective with words of its own is kept: `How many stores` is not asked as `stores`" {
