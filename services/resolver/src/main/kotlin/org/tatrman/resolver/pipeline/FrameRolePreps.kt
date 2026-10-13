@@ -4,6 +4,7 @@ package org.tatrman.resolver.pipeline
 import com.typesafe.config.Config
 import com.typesafe.config.ConfigFactory
 import org.slf4j.LoggerFactory
+import org.tatrman.text.Normalization.fold
 import java.io.File
 
 /**
@@ -38,12 +39,40 @@ class FrameRolePreps(
      */
     private val distributivePreps: Map<String, Set<String>> = emptyMap(),
     /**
+     * ttr-server#204 — the words a mention may lose silently when it is asked again as its head
+     * ([isSilent]). Last and defaulted; see `frame-roles.conf` for why an override without the key
+     * keeps the shipped table rather than an empty one.
+     */
+    private val silentModifiers: Map<String, Set<String>> = emptyMap(),
+    /**
      * ttr-server#152 — the calendar adjectives R6" reads as a grain (`monthly`). Last and defaulted,
      * like [countHeads]: a config without the key leaves R6" the NER's signal alone.
      */
     private val grainAdjectives: Map<String, Set<String>> = emptyMap(),
 ) {
     fun grouping(lang: String): Set<String> = table(groupingPreps, lang)
+
+    /**
+     * ttr-server#204 — whether a word left out of a mention's retry restricts nothing in [lang]
+     * (`the`, `total`, `celkové`): matched against its [surface] or its [lemma], case and diacritics
+     * folded, a trailing `*` matching a prefix.
+     */
+    fun isSilent(
+        lang: String,
+        surface: String,
+        lemma: String,
+    ): Boolean {
+        val forms = listOf(fold(surface), fold(lemma)).filter { it.isNotBlank() }
+        return table(silentModifiers, lang).any { entry ->
+            val word = fold(entry)
+            if (word.endsWith("*")) {
+                val prefix = word.dropLast(1)
+                forms.any { it.startsWith(prefix) }
+            } else {
+                word in forms
+            }
+        }
+    }
 
     fun filter(lang: String): Set<String> = table(filterPreps, lang)
 
@@ -67,9 +96,12 @@ class FrameRolePreps(
     companion object {
         private val log = LoggerFactory.getLogger(FrameRolePreps::class.java)
         private const val OVERRIDE_PATH = "resolver.frame-roles.config-path"
+        private const val SILENT_MODIFIERS = "frame-roles.silent-modifiers"
+
+        private fun shippedConfig(): Config = ConfigFactory.parseResources("frame-roles.conf").resolve()
 
         /** The tables packaged with the service. */
-        fun shipped(): FrameRolePreps = from(ConfigFactory.parseResources("frame-roles.conf").resolve())
+        fun shipped(): FrameRolePreps = from(shippedConfig())
 
         /**
          * The tables this deployment runs on: the estate's override when one is configured
@@ -83,14 +115,19 @@ class FrameRolePreps(
                 log.warn("frame-role preposition override {} is not a readable file — using the shipped tables", path)
                 return shipped()
             }
-            return runCatching { from(ConfigFactory.parseFile(file).resolve()) }
+            // ttr-server#204 — an override written before `silent-modifiers` existed keeps the shipped
+            // table: an EMPTY one would surface every article as an unbound word of its own.
+            return runCatching { from(ConfigFactory.parseFile(file).resolve(), silentFallback = shippedConfig()) }
                 .getOrElse {
                     log.warn("frame-role preposition override {} could not be parsed: {}", path, it.message)
                     shipped()
                 }
         }
 
-        private fun from(config: Config): FrameRolePreps =
+        private fun from(
+            config: Config,
+            silentFallback: Config? = null,
+        ): FrameRolePreps =
             FrameRolePreps(
                 groupingPreps = tables(config, "frame-roles.grouping-preps"),
                 filterPreps = tables(config, "frame-roles.filter-preps"),
@@ -106,6 +143,12 @@ class FrameRolePreps(
                 // that predates the key loads unchanged.
                 countHeads = tables(config, "frame-roles.count-heads"),
                 distributivePreps = tables(config, "frame-roles.distributive-preps"),
+                silentModifiers =
+                    if (config.hasPath(SILENT_MODIFIERS) || silentFallback == null) {
+                        tables(config, SILENT_MODIFIERS)
+                    } else {
+                        tables(silentFallback, SILENT_MODIFIERS)
+                    },
                 grainAdjectives = tables(config, "frame-roles.grain-adjectives"),
             )
 

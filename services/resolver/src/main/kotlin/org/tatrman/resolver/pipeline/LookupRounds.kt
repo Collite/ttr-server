@@ -104,6 +104,9 @@ class LookupRounds(
         entityTypes: List<ResolverEntityType>,
         thresholds: ResolverThresholds,
         reassemble: (List<GatedSpan>, List<GatedSpan>) -> ResolutionState,
+        // ttr-server#204 — what an unbound mention may be asked as besides its own words, by span
+        // (`MentionRetry`). Empty: every mention is asked as written only, as before.
+        retries: Map<Pair<Int, Int>, MentionRetry.Retry> = emptyMap(),
     ): Result {
         if (config.budgetMs <= 0) return Result(gated, ungated, lattice, emptyList())
 
@@ -127,25 +130,44 @@ class LookupRounds(
         var currentUngated = ungated
         var currentLattice = lattice
         var round = 0
+        val cores = retries.mapValues { it.value.core }
 
         while (true) {
             // What is LEFT of the budget, and it is handed to the round rather than merely checked
             // before it — the round is what spends it (see [lookup]).
             val remainingMs = (deadline - nanoTime()) / 1_000_000
             if (remainingMs <= 0) break
-            val queries = RoundPlanner.plan(currentLattice, entityTypes, asked, config)
+            val queries = RoundPlanner.plan(currentLattice, entityTypes, asked, config, cores)
             if (queries.isEmpty()) break
             asked += queries.map { it.key }
             round++
 
             val startedAt = nanoTime()
-            val answers = ask(queries, remainingMs)
+            // ttr-server#204 — a head is planned only for a mention its phrase left G1 (RoundPlanner),
+            // so this is the round where the words it leaves out decide something: they are asked
+            // about beside it, in the same round trip, and a word the lexicon knows cancels it.
+            val (answers, known) =
+                coroutineScope {
+                    val words =
+                        queries
+                            .filter { it.retry }
+                            .flatMap { retries[it.spanStart to it.spanEnd]?.asked.orEmpty() }
+                            .distinct()
+                    val known = async { knownWords(words, thresholds, remainingMs) }
+                    ask(queries, remainingMs) to known.await()
+                }
             var added = 0
             val proposed = mutableListOf<Hypothesis>()
-            for ((query, candidates) in answers) {
+            for ((query, answered) in answers) {
                 // ✅LP-13 — a quoted literal has no span of its own until its lookup admits
                 // something; the rung builds it (see [quotedSpan]) and appends it on success.
                 val existing = spanFor(query, currentGated, currentUngated)
+                // ttr-server#204 — a mention asked as its head speaks only if asking it as written
+                // left it empty: its phrase was asked a round earlier, and nothing has bound it since.
+                if (query.retry && existing?.contenders?.isNotEmpty() == true) continue
+                val retry = if (query.retry) retries[query.spanStart to query.spanEnd] else null
+                if (retry != null && retry.asked.any { it in known }) continue
+                val candidates = if (query.retry) answered.map(MentionRetry::stamp) else answered
                 val span = existing ?: quotedSpan(query, currentGated + currentUngated, currentLattice) ?: continue
                 // The same gate the broad pass used. A round is a proposer; this is where its
                 // proposals stop being proposals (RV-7).
@@ -159,7 +181,14 @@ class LookupRounds(
                 proposed += rejects
                 tried.merge(query.spanStart to query.spanEnd, rejects) { a, b -> a + b }
                 if (verdict.admitted.isEmpty()) continue
-                val merged = merge(span, verdict)
+                // ttr-server#204 — a head that bound for its mention binds over its own words when a
+                // word left out must surface, and that word joins the lattice as its own G1.
+                val narrowed = retry?.narrowed
+                val merged = merge(span, verdict).let { if (narrowed != null) it.copy(candidate = narrowed) else it }
+                if (narrowed != null) {
+                    currentUngated =
+                        currentUngated + retry?.residues.orEmpty().map { GatedSpan(it, emptyList(), ambiguous = false) }
+                }
                 added += verdict.admitted.size
                 if (existing == null) {
                     currentGated = currentGated + merged
@@ -185,6 +214,21 @@ class LookupRounds(
                     .build()
         }
         return Result(currentGated, currentUngated, currentLattice, log)
+    }
+
+    /**
+     * ttr-server#204 — which of [words] the lexicon knows ([MentionRetry.known]), within what is left
+     * of the budget. Unanswered is known, and a question the budget cut short is unanswered.
+     */
+    private suspend fun knownWords(
+        words: List<String>,
+        thresholds: ResolverThresholds,
+        remainingMs: Long,
+    ): Set<String> {
+        if (words.isEmpty()) return emptySet()
+        return withTimeoutOrNull(remainingMs) {
+            MentionRetry.known(fuzzy, words, thresholds, thresholds.maxOptions)
+        } ?: words.toSet()
     }
 
     /** One round's questions, concurrently — a round costs one round-trip, not one per span. */

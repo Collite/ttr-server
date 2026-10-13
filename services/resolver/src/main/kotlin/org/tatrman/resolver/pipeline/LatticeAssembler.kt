@@ -328,22 +328,28 @@ object LatticeAssembler {
         val objectKinds = entityTypes.associate { it.ref to it.objectKind }
         val roles =
             FrameRoles.derive(
-                mentionSpans.zip(mentionBuilders).map { (span, mention) ->
-                    FrameRoles.Input(
-                        id = mention.id,
-                        charStart = span.candidate.start,
-                        headToken = span.candidate.headToken,
-                        // The top contender speaks for the mention: a lattice may hold several
-                        // candidates, but a role is a structural fact about the span, and the
-                        // strongest candidate is the one the ask/compose path will act on.
-                        targetClass =
-                            mention.bindingsList.firstOrNull()?.targetClass
-                                ?: TargetClass.TARGET_CLASS_UNSPECIFIED,
-                        objectKind = objectKindOf(span, mention, objectKinds),
-                        anchorsValue = mention.id in anchoring,
-                        charEnd = span.candidate.end,
-                    )
-                },
+                // ttr-server#204 — a residue takes no role: its head's role is the head's, and the gap
+                // on it must read as a word nothing placed (`DomainSpanCandidate.residue`).
+                mentionSpans
+                    .zip(mentionBuilders)
+                    .filterNot { (span, _) ->
+                        span.candidate.residue
+                    }.map { (span, mention) ->
+                        FrameRoles.Input(
+                            id = mention.id,
+                            charStart = span.candidate.start,
+                            headToken = span.candidate.headToken,
+                            // The top contender speaks for the mention: a lattice may hold several
+                            // candidates, but a role is a structural fact about the span, and the
+                            // strongest candidate is the one the ask/compose path will act on.
+                            targetClass =
+                                mention.bindingsList.firstOrNull()?.targetClass
+                                    ?: TargetClass.TARGET_CLASS_UNSPECIFIED,
+                            objectKind = objectKindOf(span, mention, objectKinds),
+                            anchorsValue = mention.id in anchoring,
+                            charEnd = span.candidate.end,
+                        )
+                    },
                 parse,
                 lang,
                 preps,
