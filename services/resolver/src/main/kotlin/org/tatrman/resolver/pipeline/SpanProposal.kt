@@ -693,11 +693,21 @@ object SpanProposal {
 
     /**
      * What a mention is asked as when its phrase, as folded, bound nothing ([retryOf]): [core], the
-     * phrase without the words left out, and [modifiers], the adjectives among those words.
+     * phrase without the words left out, and [dropped], those words, one dependent at a time.
      */
     internal data class Retry(
         val core: List<Int>,
-        val modifiers: List<Int>,
+        val dropped: List<Dropped>,
+    ) {
+        /** The adjectives among the words left out. */
+        val modifiers: List<Int> get() = dropped.filterNot { it.determiner }.map { it.root }
+    }
+
+    /** One dependent a retry leaves out: its own token [root], with [tokens] — it and what hangs from it. */
+    internal data class Dropped(
+        val root: Int,
+        val tokens: List<Int>,
+        val determiner: Boolean,
     )
 
     /**
@@ -709,17 +719,17 @@ object SpanProposal {
      * back. But the matcher holds the estate's word, not the user's phrase. `marketplace` is declared
      * and `the marketplace` is not, so an `EXACT` row cannot meet the phrase, and every English
      * mention with an article in it came back G1 (`the marketplace`, `the web`, `What share`) while
-     * the bare word bound. The span stays as folded; `MentionRetry` asks again with what this returns:
+     * the bare word bound. `MentionRetry` asks again with what this returns, and decides what becomes
+     * of each word left out — silently gone, or surfaced as a word nothing understood:
      *
-     *  - **Every `det*` dependent of [head], with whatever hangs from it, is left out.** An article,
-     *    a demonstrative, a possessive or an interrogative says WHICH one, never what the thing is
-     *    called (#98 took the interrogative out of the anchor phrase outright).
-     *  - **A BARE `amod` dependent — an adjective with no dependent of its own — is left out and
-     *    reported** in [Retry.modifiers]. Whether the lexicon knows the word is the matcher's to say,
-     *    and a known one cancels the retry (`MentionRetry`): `largest` is an operator word, and
-     *    *the largest stores* asked as `stores` would answer a different question. A DECLARED
-     *    modifier never gets this far: an anchor word is nobody's modifier, so `Monthly` in
-     *    *Monthly revenue* is a mention of its own already.
+     *  - **Every `det*` dependent of [head], with whatever hangs from it, is left out.** An article
+     *    or an interrogative says WHICH one (#98 took the interrogative out of the anchor phrase
+     *    outright); `no`, `all`, `these` restrict, and `MentionRetry` surfaces them.
+     *  - **A BARE `amod` dependent — an adjective with no dependent of its own — is left out.**
+     *    Whether the lexicon knows the word is the matcher's to say, and a known one cancels the
+     *    retry: `largest` is an operator word, and *the largest stores* asked as `stores` would
+     *    answer a different question. A DECLARED modifier never gets this far: an anchor word is
+     *    nobody's modifier, so `Monthly` in *Monthly revenue* is a mention of its own already.
      *  - **An adjective with words of its own is kept** — *How many stores*, *vyzvednuté na
      *    prodejně*: what it governs restricts the noun, and the noun alone would be another question.
      *
@@ -738,23 +748,21 @@ object SpanProposal {
             // dep_head is 1-based; 0 is the root
             if (t.depHead > 0) dependents.getOrPut(t.depHead - 1) { mutableListOf() } += i
         }
-        val left = HashSet<Int>()
-        val modifiers = mutableListOf<Int>()
+        val dropped = mutableListOf<Dropped>()
         for (c in dependents[head].orEmpty()) {
-            if (c !in inPhrase) continue
+            if (c !in inPhrase || c == head) continue
             val relation = tokens[c].depRelation
             when {
-                relation == "det" || relation.startsWith("det:") -> left += subtreeWithin(c, dependents, inPhrase)
-                relation == "amod" && dependents[c].isNullOrEmpty() -> {
-                    left += c
-                    modifiers += c
-                }
+                relation == "det" || relation.startsWith("det:") ->
+                    // A parse with a cycle in it could reach the head from below; the head stays.
+                    dropped += Dropped(c, (subtreeWithin(c, dependents, inPhrase) - head).sorted(), determiner = true)
+                relation == "amod" && dependents[c].isNullOrEmpty() ->
+                    dropped += Dropped(c, listOf(c), determiner = false)
             }
         }
-        // A parse with a cycle in it could reach the head from below; the head stays whatever happens.
-        left -= head
-        if (left.isEmpty()) return null
-        return Retry(phrase.filter { it !in left }.sorted(), modifiers.sorted())
+        if (dropped.isEmpty()) return null
+        val left = dropped.flatMap { it.tokens }.toSet()
+        return Retry(phrase.filter { it !in left }.sorted(), dropped.sortedBy { it.root })
     }
 
     /** [root] and everything below it, inside [scope] — what leaves a phrase with [root]. */

@@ -30,6 +30,7 @@ import org.tatrman.nlp.v1.Token
 import org.tatrman.resolver.client.FuzzyClient
 import org.tatrman.resolver.client.NlpClient
 import org.tatrman.resolver.model.ResolverThresholds
+import org.tatrman.resolver.pipeline.FrameRolePreps
 import org.tatrman.resolver.pipeline.ResolverPipeline
 import org.tatrman.resolver.registry.DeclaredVocabulary
 import org.tatrman.resolver.registry.SnapshotRegistry
@@ -54,8 +55,10 @@ import org.tatrman.fuzzy.v1.TargetClass as FuzzyTargetClass
  * Both phrase builders fold a head noun's `det` and `amod` dependents into its mention, and the
  * matcher was then asked about the phrase: `the marketplace`, `the web`, `Total revenue`, `What
  * share`. The estate declares the word, not the phrase, so every one of them came back G1 while
- * `marketplace`, `web` and `Revenue` on their own bound. The mention keeps its words; when they bind
- * nothing it is asked again as its head, and that answer speaks for it.
+ * `marketplace`, `web` and `Revenue` on their own bound. When the phrase binds nothing it is asked
+ * again as its head. A word left out that restricts nothing (a closed list, held as data) vanishes and
+ * the mention keeps its span; any other word left out surfaces as an unbound mention of its own, so a
+ * restriction is reported rather than swallowed.
  *
  * The English trees are Stanza 1.10's (the engine the live probe of 2026-10-12 ran), trimmed to the
  * fields the resolver reads. The Czech ones keep Stanza's tree and take MorphoDiTa's dictionary
@@ -120,12 +123,16 @@ class MentionRetryTest :
             r.gapKinds() shouldNotContain GapKind.GAP_KIND_G1_UNBOUND
         }
 
-        "a3-4 — `the highest share` binds the ratio operator; the distribution center still binds" {
+        "a3-4 — `the highest share`: `share` binds the ratio operator, and `highest` surfaces as its own G1" {
+            // `highest` is no word of the estate and not one that restricts nothing: the head binds
+            // over its own word, and `highest` is reported, not swallowed. `the` vanishes.
             val r = resolve(HIGHEST_SHARE)
 
-            r.refsOn("the highest share") shouldContainExactly listOf(SHARE_OF)
+            r.refsOn("share") shouldContainExactly listOf(SHARE_OF)
+            r.bindingOn("share").producer.algorithm shouldEndWith "+core"
+            r.shouldHaveResidue("highest")
+            r.resolutionState.mentionsList.map { it.span.text } shouldNotContain "the highest share"
             r.refsOn("distribution center") shouldContainExactly listOf(WAREHOUSE)
-            r.gapsOn("the highest share").shouldBeEmpty()
         }
 
         "r2b — `And on the web?` binds the web channel, with no gap left to ask about" {
@@ -214,10 +221,122 @@ class MentionRetryTest :
             r.gapKinds() shouldNotContain GapKind.GAP_KIND_G1_UNBOUND
         }
 
-        "cs — the rule is the language's too: „nejvyšší podíl“ binds the ratio operator" {
+        "cs — the rule is the language's too: „nejvyšší podíl“ binds `podíl` and surfaces `nejvyšší`" {
             val r = resolve(NEJVYSSI_PODIL)
 
-            r.refsOn("nejvyšší podíl") shouldContainExactly listOf(SHARE_OF)
+            r.refsOn("podíl") shouldContainExactly listOf(SHARE_OF)
+            r.shouldHaveResidue("nejvyšší")
+        }
+
+        "cs — „Podíl akčních tržeb“: revenue and the ratio bind, and `akčních` is a G1 of its own" {
+            // The shape the first cut got wrong: `akčních` (promotional) is a restriction. Swallowed
+            // into a bound `akčních tržeb`, nothing downstream would have known the answer must be
+            // the promotional revenue only.
+            val r = resolve(PODIL_AKCNICH_TRZEB)
+
+            r.refsOn("tržeb") shouldContainExactly listOf(REVENUE)
+            r.mentionOn("tržeb").frameRolesList shouldContain FrameRole.FRAME_ROLE_MEASURE
+            r.refsOn("Podíl") shouldContainExactly listOf(SHARE_OF)
+            r.shouldHaveResidue("akčních")
+            r.resolutionState.mentionsList.map { it.span.text } shouldNotContain "akčních tržeb"
+        }
+
+        "cs — „Celkové tržby v roce 2025“: `celkové` is on the silent list, so revenue binds with no gap" {
+            val r = resolve(CELKOVE_TRZBY_V_ROCE)
+
+            r.refsOn("Celkové tržby") shouldContainExactly listOf(REVENUE)
+            r.gapKinds() shouldNotContain GapKind.GAP_KIND_G1_UNBOUND
+        }
+
+        // ── what may vanish and what must surface ────────────────────────────────────────────────
+
+        "`Promotional revenue`: revenue binds over its own word, and `Promotional` surfaces" {
+            val r = resolve(PROMOTIONAL_REVENUE)
+
+            r.refsOn("revenue") shouldContainExactly listOf(REVENUE)
+            r.shouldHaveResidue("Promotional")
+            // a residue is not a filter the door could honour by accident, nor a subject to answer
+            r.resolutionState.mentionsList.map { it.span.text } shouldNotContain "Promotional revenue"
+        }
+
+        "`Stores with no returns`: a determiner off the list surfaces — `no` is a G1, `returns` binds" {
+            val r = resolve(STORES_WITH_NO_RETURNS)
+
+            r.refsOn("returns") shouldContainExactly listOf(RETURNS)
+            r.refsOn("Stores") shouldContainExactly listOf(STORE)
+            r.shouldHaveResidue("no")
+        }
+
+        "a residue takes no frame role, even where it is the only word left to be the subject" {
+            // An elliptic follow-up: `stores` is a FILTER (after `in`), so R9 would hand SUBJECT to the
+            // next candidate — the residue — if it were one. It is not: the gap reads as a word
+            // nothing placed, which is what keeps a consumer from answering around it.
+            val r = resolve(AND_IN_PROMOTIONAL_STORES)
+
+            r.refsOn("stores") shouldContainExactly listOf(STORE)
+            r.shouldHaveResidue("promotional")
+        }
+
+        "the silent list is DATA: without `total` in it, `Total` surfaces instead of vanishing" {
+            val override =
+                kotlin.io.path
+                    .createTempFile("frame-roles", ".conf")
+                    .toFile()
+            try {
+                override.writeText("""frame-roles { silent-modifiers { en = ["the", "a", "an", "what", "which"] } }""")
+                val preps =
+                    FrameRolePreps.load(
+                        com.typesafe.config.ConfigFactory
+                            .parseMap(mapOf("resolver.frame-roles.config-path" to override.absolutePath)),
+                    )
+                val r = resolve(TOTAL_REVENUE, preps = preps)
+
+                r.refsOn("revenue") shouldContainExactly listOf(REVENUE)
+                r.shouldHaveResidue("Total")
+            } finally {
+                override.delete()
+            }
+        }
+
+        "the shipped table holds the closed list, per language, and nothing else" {
+            val shipped = FrameRolePreps.shipped()
+
+            for (word in listOf("the", "A", "an", "What", "which", "Total", "overall", "entire", "whole")) {
+                shipped.isSilent("en", word, word) shouldBe true
+            }
+            for (word in listOf("no", "all", "this", "these", "promotional", "highest", "largest")) {
+                shipped.isSilent("en", word, word) shouldBe false
+            }
+            for (word in listOf("Celkové", "celkových", "úhrnné", "veškeré", "Které", "jaký")) {
+                shipped.isSilent("cs", word, word) shouldBe true
+            }
+            for (word in listOf("akčních", "nejvyšší", "všechny", "ten")) {
+                shipped.isSilent("cs", word, word) shouldBe false
+            }
+            // matched by lemma too, and per language: `the` is no Czech word
+            shipped.isSilent("cs", "celk", "celkový") shouldBe true
+            shipped.isSilent("cs", "the", "the") shouldBe false
+        }
+
+        "an override written before the table existed keeps the shipped one: `the` still vanishes" {
+            val override =
+                kotlin.io.path
+                    .createTempFile("frame-roles", ".conf")
+                    .toFile()
+            try {
+                override.writeText("""frame-roles { grouping-preps { en = ["by"] } }""")
+                val preps =
+                    FrameRolePreps.load(
+                        com.typesafe.config.ConfigFactory
+                            .parseMap(mapOf("resolver.frame-roles.config-path" to override.absolutePath)),
+                    )
+
+                preps.isSilent("en", "the", "the") shouldBe true
+                resolve(REVENUE_FROM_THE_MARKETPLACE, preps = preps).gapKinds() shouldNotContain
+                    GapKind.GAP_KIND_G1_UNBOUND
+            } finally {
+                override.delete()
+            }
         }
     }) {
     private data class Tok(
@@ -346,6 +465,7 @@ class MentionRetryTest :
         const val MARKETPLACE_REVENUE = "er.entity.catalog_sales.ext_sales_price"
         const val WAREHOUSE = "er.entity.warehouse"
         const val STORE = "er.entity.store"
+        const val RETURNS = "er.entity.store_returns"
         const val MONTH = "er.entity.date_dim.month"
         const val SHARE_OF = "op:share-of"
         const val TOP_N = "op:top-n"
@@ -401,6 +521,7 @@ class MentionRetryTest :
                 row("tržby z tržiště", MARKETPLACE_REVENUE),
                 row("distribution center", WAREHOUSE),
                 row("stores", STORE),
+                row("returns", RETURNS),
                 row("monthly", MONTH),
                 row("share", SHARE_OF, FuzzyTargetClass.TARGET_CLASS_OPERATOR),
                 row("podíl", SHARE_OF, FuzzyTargetClass.TARGET_CLASS_OPERATOR),
@@ -435,6 +556,7 @@ class MentionRetryTest :
                     etype(MARKETPLACE_REVENUE, "measure", CATALOG, "marketplace revenue", "tržby z tržiště"),
                 ).addEntityTypes(etype(WAREHOUSE, "entity", "", "distribution center"))
                 .addEntityTypes(etype(STORE, "entity", "", "stores"))
+                .addEntityTypes(etype(RETURNS, "entity", "", "returns"))
                 .addEntityTypes(etype(MONTH, "attribute", "er.entity.date_dim", "monthly"))
                 .addLocales("en")
                 .addLocales("cs")
@@ -444,6 +566,7 @@ class MentionRetryTest :
         fun resolve(
             question: Question,
             lexicon: Lexicon = Lexicon(ROWS),
+            preps: FrameRolePreps = FrameRolePreps.shipped(),
         ): ResolveResponse {
             val pipeline =
                 ResolverPipeline(
@@ -452,6 +575,7 @@ class MentionRetryTest :
                     SnapshotRegistry(StubRegistrySource(DeclaredVocabulary(), ""), ResolverThresholds.LIVE),
                     emptyMap(),
                     ResumeTokenCodec(mapOf("k1" to ByteArray(32) { it.toByte() }), activeKeyId = "k1"),
+                    preps = preps,
                 )
             val request =
                 ResolveRequest
@@ -479,6 +603,21 @@ class MentionRetryTest :
             resolutionState.gapsList.filter { it.span.text == text }.map { it.kind }
 
         fun ResolveResponse.allBindings(): List<Binding> = resolutionState.mentionsList.flatMap { it.bindingsList }
+
+        /**
+         * [text] reached the lattice as a mention of its own that nothing bound, with a G1 over exactly
+         * its words and no frame role — not one inherited from the head it was cut from.
+         */
+        fun ResolveResponse.shouldHaveResidue(text: String) {
+            val residue = mentionOn(text)
+            residue.bindingsList.shouldBeEmpty()
+            residue.frameRolesList.shouldBeEmpty()
+            gapsOn(text) shouldContainExactly listOf(GapKind.GAP_KIND_G1_UNBOUND)
+            resolutionState.gapsList
+                .single { it.span.text == text }
+                .frameRolesList
+                .shouldBeEmpty()
+        }
 
         val ART = mapOf("PronType" to "Art")
         val INT = mapOf("PronType" to "Int")
@@ -676,6 +815,65 @@ class MentionRetryTest :
                 Tok("v", "v", "ADP", 6, "case"),
                 Tok("roce", "rok", "NOUN", 4, "nmod"),
                 Tok("2025", "2025", "NUM", 6, "nummod"),
+            )
+
+        val PROMOTIONAL_REVENUE =
+            Question(
+                "Promotional revenue in 2025",
+                "en",
+                listOf("2025"),
+                Tok("Promotional", "promotional", "ADJ", 2, "amod", mapOf("Degree" to "Pos")),
+                Tok("revenue", "revenue", "NOUN", 0, "root"),
+                Tok("in", "in", "ADP", 4, "case"),
+                Tok("2025", "2025", "NUM", 2, "nmod"),
+            )
+
+        val STORES_WITH_NO_RETURNS =
+            Question(
+                "Stores with no returns in 2025",
+                "en",
+                listOf("2025"),
+                Tok("Stores", "store", "NOUN", 0, "root"),
+                Tok("with", "with", "ADP", 4, "case"),
+                Tok("no", "no", "DET", 4, "det", mapOf("PronType" to "Neg")),
+                Tok("returns", "return", "NOUN", 1, "nmod"),
+                Tok("in", "in", "ADP", 6, "case"),
+                Tok("2025", "2025", "NUM", 4, "nmod"),
+            )
+
+        /** Hand-built in the UD shape the trees above share: no engine was asked for this one. */
+        val AND_IN_PROMOTIONAL_STORES =
+            Question(
+                "And in promotional stores?",
+                "en",
+                emptyList(),
+                Tok("And", "and", "CCONJ", 4, "cc"),
+                Tok("in", "in", "ADP", 4, "case"),
+                Tok("promotional", "promotional", "ADJ", 4, "amod", mapOf("Degree" to "Pos")),
+                Tok("stores", "store", "NOUN", 0, "root"),
+                Tok("?", "?", "PUNCT", 4, "punct"),
+            )
+
+        val PODIL_AKCNICH_TRZEB =
+            Question(
+                "Podíl akčních tržeb",
+                "cs",
+                emptyList(),
+                Tok("Podíl", "podíl", "NOUN", 0, "root"),
+                Tok("akčních", "akční", "ADJ", 3, "amod", mapOf("Degree" to "Pos")),
+                Tok("tržeb", "tržba", "NOUN", 1, "nmod"),
+            )
+
+        val CELKOVE_TRZBY_V_ROCE =
+            Question(
+                "Celkové tržby v roce 2025",
+                "cs",
+                listOf("roce 2025"),
+                Tok("Celkové", "celkový", "ADJ", 2, "amod", mapOf("Degree" to "Pos")),
+                Tok("tržby", "tržba", "NOUN", 0, "root"),
+                Tok("v", "v", "ADP", 4, "case"),
+                Tok("roce", "rok", "NOUN", 2, "nmod"),
+                Tok("2025", "2025", "NUM", 4, "nummod"),
             )
 
         val NEJVYSSI_PODIL =

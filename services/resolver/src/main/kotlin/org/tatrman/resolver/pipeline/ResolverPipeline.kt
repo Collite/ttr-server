@@ -260,11 +260,11 @@ class ResolverPipeline(
         // written. LAST, and folded back onto the mentions' own slots by `merge` before anything reads
         // the response, so every offset below is exactly what it was.
         val lemmaPlan = LemmaLookup.plan(candidates, parse)
-        // ttr-server#204 — and a fifth: each mention as its head, without its determiners and the
-        // adjectives the lexicon does not know (`the marketplace` → `marketplace`), plus one question
-        // per such adjective, whether the lexicon knows it. Read only where the phrase binds nothing.
+        // ttr-server#204 — and a fifth: each mention as its head, without its determiners and bare
+        // adjectives (`the marketplace` → `marketplace`), plus one question per word left out that
+        // could restrict it, whether the lexicon knows it. Read only where the phrase binds nothing.
         // LAST, and taken off the response before anything positional reads it.
-        val retryPlan = MentionRetry.plan(parse, candidates, ungatedMentions)
+        val retryPlan = MentionRetry.plan(parse, candidates, ungatedMentions, preps, assessment.language)
         val batchReq =
             GateSpans
                 .buildBatchRequest(
@@ -392,8 +392,10 @@ class ResolverPipeline(
         // proposed it on its own and asked the user what it means. The mention layer runs before the
         // batch and cannot know which words are forms; this is the first line that does.
         val formTokens = predicates.map { it.headToken }.toHashSet()
+        // ttr-server#204 — and a word a retry left out that restricts its mention is a mention of its
+        // own, unbound: the head bound without it, and nothing downstream may read it as unsaid.
         val ungatedSpans =
-            ungatedMentions
+            (ungatedMentions + MentionRetry.residuesBound(broadPass.gated, retries))
                 .filterNot { it.headToken in formTokens }
                 .filterNot { NamedMembers.claimedBy(spokenNames, it) }
                 .map { GatedSpan(it, emptyList(), ambiguous = false) }

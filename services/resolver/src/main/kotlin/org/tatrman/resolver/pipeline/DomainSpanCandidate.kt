@@ -54,6 +54,10 @@ package org.tatrman.resolver.pipeline
  * @property declaredPhrase ttr-server#204 — the span is a MULTI-word anchor the estate declared word
  *   for word (`marketplace revenue`, `tržby z tržiště`). Its words are the estate's, not modifiers, so
  *   [MentionRetry] never asks it again without some of them. False for every other candidate.
+ * @property residue ttr-server#204 — a word a mention's retry left out that restricts what the
+ *   mention names (`akčních` in *akčních tržeb*, `no` in *no returns*), surfaced as an unbound mention
+ *   of its own once the head bound without it. It takes no frame role: its head's role is the head's,
+ *   and a residue is reported as exactly what it is, a word nothing understood (G1).
  */
 data class DomainSpanCandidate(
     val text: String,
@@ -77,6 +81,7 @@ data class DomainSpanCandidate(
     val nameLemma: String = "",
     // ttr-server#204 — LAST and defaulted, like the three above.
     val declaredPhrase: Boolean = false,
+    val residue: Boolean = false,
 ) {
     /** UD — whether this candidate is a dual reading at all; see [dualReadingOf]. */
     val dualReading: Boolean get() = dualReadingOf != null

@@ -20,6 +20,7 @@ import org.tatrman.resolver.pipeline.Bound
 import org.tatrman.resolver.pipeline.Clarify
 import org.tatrman.resolver.pipeline.DomainSpanCandidate
 import org.tatrman.resolver.pipeline.GateSpans
+import org.tatrman.resolver.pipeline.MentionRetry
 import org.tatrman.resolver.pipeline.Slot
 import org.tatrman.resolver.pipeline.SlotHint
 
@@ -655,12 +656,31 @@ class GateSpansTest :
                     thresholds,
                     emptyMap(),
                     "snap-1",
-                    retries = mapOf(0 to listOf(head)),
+                    retries = mapOf(0 to MentionRetry.Second(listOf(head), cands[0])),
                 )
 
             val b = outcome.shouldBeInstanceOf<Bound>().bindings.single()
             b.targetRef shouldBe "er.channel"
             b.rawText shouldBe "the marketplace"
+        }
+
+        "#204 — the head's answer is recorded on the mention it binds as: its own words, when one surfaces" {
+            val cands = listOf(cand("promotional marketplace", 0, 23, listOf("er.channel")))
+            val narrowed = cands[0].copy(text = "marketplace", start = 12, end = 23)
+            val outcome =
+                GateSpans.gate(
+                    cands,
+                    batch(fmr()),
+                    listOf(channel),
+                    thresholds,
+                    emptyMap(),
+                    "snap-1",
+                    retries = mapOf(0 to MentionRetry.Second(listOf(head), narrowed)),
+                )
+
+            val b = outcome.shouldBeInstanceOf<Bound>().bindings.single()
+            b.rawText shouldBe "marketplace"
+            outcome.gated.single().candidate shouldBe narrowed
         }
 
         "#204 — a phrase that bound keeps its own answer, and its head is never read" {
@@ -674,7 +694,7 @@ class GateSpansTest :
                     thresholds,
                     emptyMap(),
                     "snap-1",
-                    retries = mapOf(0 to listOf(head)),
+                    retries = mapOf(0 to MentionRetry.Second(listOf(head), cands[0])),
                 )
 
             outcome
@@ -701,7 +721,7 @@ class GateSpansTest :
                     thresholds,
                     emptyMap(),
                     "snap-1",
-                    retries = mapOf(0 to listOf(single)),
+                    retries = mapOf(0 to MentionRetry.Second(listOf(single), cands[0])),
                 )
 
             outcome.shouldBeInstanceOf<Clarify>().options shouldHaveSize 2

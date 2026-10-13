@@ -106,7 +106,7 @@ class LookupRounds(
         reassemble: (List<GatedSpan>, List<GatedSpan>) -> ResolutionState,
         // ttr-server#204 — what an unbound mention may be asked as besides its own words, by span
         // (`MentionRetry`). Empty: every mention is asked as written only, as before.
-        retries: Map<Pair<Int, Int>, String> = emptyMap(),
+        retries: Map<Pair<Int, Int>, MentionRetry.Retry> = emptyMap(),
     ): Result {
         if (config.budgetMs <= 0) return Result(gated, ungated, lattice, emptyList())
 
@@ -130,13 +130,14 @@ class LookupRounds(
         var currentUngated = ungated
         var currentLattice = lattice
         var round = 0
+        val cores = retries.mapValues { it.value.core }
 
         while (true) {
             // What is LEFT of the budget, and it is handed to the round rather than merely checked
             // before it — the round is what spends it (see [lookup]).
             val remainingMs = (deadline - nanoTime()) / 1_000_000
             if (remainingMs <= 0) break
-            val queries = RoundPlanner.plan(currentLattice, entityTypes, asked, config, retries)
+            val queries = RoundPlanner.plan(currentLattice, entityTypes, asked, config, cores)
             if (queries.isEmpty()) break
             asked += queries.map { it.key }
             round++
@@ -167,7 +168,15 @@ class LookupRounds(
                 proposed += rejects
                 tried.merge(query.spanStart to query.spanEnd, rejects) { a, b -> a + b }
                 if (verdict.admitted.isEmpty()) continue
-                val merged = merge(span, verdict)
+                // ttr-server#204 — a head that bound for its mention binds over its own words when a
+                // word left out must surface, and that word joins the lattice as its own G1.
+                val retry = if (query.retry) retries[query.spanStart to query.spanEnd] else null
+                val narrowed = retry?.narrowed
+                val merged = merge(span, verdict).let { if (narrowed != null) it.copy(candidate = narrowed) else it }
+                if (narrowed != null) {
+                    currentUngated =
+                        currentUngated + retry?.residues.orEmpty().map { GatedSpan(it, emptyList(), ambiguous = false) }
+                }
                 added += verdict.admitted.size
                 if (existing == null) {
                     currentGated = currentGated + merged
