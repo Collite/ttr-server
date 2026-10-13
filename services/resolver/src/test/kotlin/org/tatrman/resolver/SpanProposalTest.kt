@@ -692,6 +692,122 @@ class SpanProposalTest :
             anchor.text shouldBe "portfolios"
         }
 
+        // ── ttr-server#204 — what a mention's second lookup leaves out ──────────────────────────
+        //
+        // dep_head is 1-BASED (0 = root). The phrase stays as folded (the #98 narrowness control
+        // above still holds); these are the words its retry is asked without.
+
+        fun words(
+            r: SpanProposal.Retry?,
+            tokens: List<Token>,
+        ): Pair<List<String>, List<String>>? =
+            r?.let {
+                it.core.map { i -> tokens[i].text } to
+                    it.modifiers.map { i -> tokens[i].text }
+            }
+
+        "#204 — an article is left out, and reported as no modifier" {
+            // 0 the(det→marketplace) 1 marketplace
+            val tokens =
+                listOf(
+                    tok("the", 0, 3, "the", "DET", 2, "det", mapOf("PronType" to "Art")),
+                    tok("marketplace", 4, 15, "marketplace", "NOUN", 0, "root"),
+                )
+
+            words(SpanProposal.retryOf(listOf(0, 1), 1, tokens), tokens) shouldBe
+                (listOf("marketplace") to emptyList())
+        }
+
+        "#204 — a bare adjective is left out AND reported, so the matcher can be asked whether it is known" {
+            // 0 the(det→share) 1 highest(amod→share) 2 share
+            val tokens =
+                listOf(
+                    tok("the", 0, 3, "the", "DET", 3, "det", mapOf("PronType" to "Art")),
+                    tok("highest", 4, 11, "high", "ADJ", 3, "amod", mapOf("Degree" to "Sup")),
+                    tok("share", 12, 17, "share", "NOUN", 0, "root"),
+                )
+
+            words(SpanProposal.retryOf(listOf(0, 1, 2), 2, tokens), tokens) shouldBe
+                (listOf("share") to listOf("highest"))
+        }
+
+        "#204 — an adjective with a dependent of its own is kept: `How many stores` is not `stores`" {
+            // 0 How(advmod→many) 1 many(amod→stores) 2 stores
+            val tokens =
+                listOf(
+                    tok("How", 0, 3, "how", "ADV", 2, "advmod"),
+                    tok("many", 4, 8, "many", "ADJ", 3, "amod"),
+                    tok("stores", 9, 15, "store", "NOUN", 0, "root"),
+                )
+
+            SpanProposal.retryOf(listOf(1, 2), 2, tokens) shouldBe null
+        }
+
+        "#204 — a compound is the thing's name, not a modifier: `marketplace revenue` asks nothing" {
+            val tokens =
+                listOf(
+                    tok("marketplace", 0, 11, "marketplace", "NOUN", 2, "compound"),
+                    tok("revenue", 12, 19, "revenue", "NOUN", 0, "root"),
+                )
+
+            SpanProposal.retryOf(listOf(0, 1), 1, tokens) shouldBe null
+        }
+
+        "#204 — a Czech demonstrative is a determiner too: `toho účtu` is asked as `účtu`" {
+            val tokens =
+                listOf(
+                    tok("toho", 0, 4, "ten", "DET", 2, "det", mapOf("PronType" to "Dem")),
+                    tok("účtu", 5, 9, "účet", "NOUN", 0, "root"),
+                )
+
+            words(SpanProposal.retryOf(listOf(0, 1), 1, tokens), tokens) shouldBe (listOf("účtu") to emptyList())
+        }
+
+        "#204 — a phrase the estate declared word for word is marked, so it is never asked without some" {
+            val measure =
+                ResolverEntityType(
+                    ref = "er.entity.catalog_sales.ext_sales_price",
+                    categories = listOf("er.entity.catalog_sales.ext_sales_price"),
+                    anchors = listOf("marketplace revenue"),
+                    objectKind = "measure",
+                )
+            val revenue =
+                ResolverEntityType(
+                    ref = "er.entity.channel_sales.ext_sales_price",
+                    categories = listOf("er.entity.channel_sales.ext_sales_price"),
+                    anchors = listOf("revenue"),
+                    objectKind = "measure",
+                )
+            // `marketplace revenue`, declared whole; `Total revenue`, folded around the bare `revenue`
+            val declared =
+                AnalyzeResponse
+                    .newBuilder()
+                    .addAllTokens(
+                        listOf(
+                            tok("marketplace", 0, 11, "marketplace", "NOUN", 2, "compound"),
+                            tok("revenue", 12, 19, "revenue", "NOUN", 0, "root"),
+                        ),
+                    ).build()
+            val folded =
+                AnalyzeResponse
+                    .newBuilder()
+                    .addAllTokens(
+                        listOf(
+                            tok("Total", 0, 5, "total", "ADJ", 2, "amod"),
+                            tok("revenue", 6, 13, "revenue", "NOUN", 0, "root"),
+                        ),
+                    ).build()
+
+            SpanProposal
+                .proposeDomainSpans(declared, listOf(measure, revenue))
+                .single { it.origin == DomainSpanCandidate.Origin.ANCHOR_PHRASE }
+                .declaredPhrase shouldBe true
+            SpanProposal
+                .proposeDomainSpans(folded, listOf(measure, revenue))
+                .single { it.origin == DomainSpanCandidate.Origin.ANCHOR_PHRASE }
+                .let { it.text to it.declaredPhrase } shouldBe ("Total revenue" to false)
+        }
+
         // ── UD-P1 (ttr-server#118, option 1) — the governed argument's dual reading ─────────────
         //
         // A place or person name that a value-bearing anchor governs is read TWICE: as the NER

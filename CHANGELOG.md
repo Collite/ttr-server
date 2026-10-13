@@ -40,6 +40,136 @@ preposition nothing read it.
   table: the kernel reads the year alone, and „do 2025“ is not the year 2025. A bare year the parse hangs off one measure
   while it stands after another (`Revenue and stock on hand 2025`) is ambiguous and stays G3.
 - No wire change.
+### resolver — a misspelt word of a longer member value is not offered as that value (#208)
+
+"Marketplace revenue in 2025 for Allen" asked whether `Allen` meant the warehouse Allentown DC or the product
+"ablen stpriationought": `allen` is one edit from `ablen`, and the product's other word is not in the question at all.
+`fuzzy.match:v2` scores how well the question's words are matched, so a one-word question one edit from any word of any
+name scores 0.85 whatever the rest of the name says, and the two sat in one tie band. Alone in its band, the same kind
+of row bound outright ("for Ablin" became a filter on that product).
+
+A member row is now WEAK, so never bound and never offered, when both hold:
+
+- every word of the question it matched, it matched by a **typo** (no exact and no prefix match), and
+- those words carry **no more than half** of the value's weight: the row's `provenance.coverage` (the IDF-weighted share
+  of the value the question reached) is at most 0.5.
+
+So `Allen` binds Allentown DC (the start of `Allentown`, typed right). Unchanged: one exact word of a name ("Memphis" →
+Memphis DC); a typo on the word that carries most of a name ("Alentown" → Allentown DC: `DC` ends every warehouse name,
+coverage 0.68); a misspelt whole name ("Dalas DC"); a typo next to an exact word ("Voltaic Monitr"); declared terms; and
+rows with no per-word provenance (the v1 engine). No wire change: lex-matcher already sends both fields on every v2 row.
+### resolver — an article no longer stops a mention binding, and an unknown modifier is reported, not swallowed (#204)
+
+In English, a mention with an article or an adjective in it did not bind, even when its head noun does on its own:
+"the marketplace", "the web", "Total revenue" and "What share" all came back `G1_UNBOUND`, while "marketplace", "web",
+"Revenue" and "share" bind. Span proposal folds a noun's `det` and `amod` dependents into its mention, the matcher was
+asked about the whole phrase, and the estate declares the word, not the phrase. A follow-up like "And on the web?"
+could not read as a change of view, and "What share of …" lost its ratio operator.
+
+- **A mention whose phrase binds nothing is asked again as its head**, without its determiners (with whatever hangs
+  from them) and its bare adjectives. A phrase that binds, or is ambiguous, on its own keeps its answer; a phrase the
+  estate declared word for word ("marketplace revenue") is never asked without some of its words. A binding reached
+  this way has a `producer.algorithm` ending in `+core`.
+- **What becomes of the words left out:**
+  - **Silent:** a closed, per-language list of words that restrict nothing may vanish. The mention keeps its span and
+    binds with no gap ("Total revenue", "the marketplace", "What share"). The list is data, `silent-modifiers` in
+    `frame-roles.conf`: en `the`, `a`, `an`, `what`, `which`, `total`, `overall`, `entire`, `whole`; cs `celkov*`,
+    `úhrnn*`, `vešker*`, `kter*`, `jak*` (surface or lemma, case and diacritics folded, `*` a prefix). An override file
+    without the key keeps the shipped table.
+  - **Residue:** every other word left out (a determiner such as `no`, `all`, `these`, or an adjective such as
+    "promotional", „akčních“) surfaces as an unbound mention of its own, `G1_UNBOUND` over its own words, with no frame
+    role. The head then binds over its own words only, so "Podíl akčních tržeb" reads revenue and the ratio bound,
+    „akčních“ not understood: a consumer asks or composes rather than answering the unrestricted number.
+- **A modifier the lexicon knows cancels the retry.** Each left-out adjective, and each left-out determiner that is not
+  silent, is asked across every category and class. If a row that is not member data is that word's whole form at the
+  bind floor (a term, an operator, a grounding trigger), nothing is left out and the mention stays as it was ("the
+  largest stores": `largest` is an operator word). A longer term that only holds the word does not count: under
+  `fuzzy.match:v2` the one-word question "total" scores 1.0 against any longer term containing it, and "Total revenue"
+  still binds. A declared modifier ("Monthly") was never folded in the first place. An adjective with words of its own
+  ("How many stores") is kept.
+- **Asked only when it decides something.** That question reaches every class, member data included, so it is put
+  only for a head about to bind without the word: never for a phrase that bound as written, nor for a head that found
+  nothing.
+- **Where it is asked:** an anchored mention in the broad pass, as one more slot of the same `BatchMatch`, scoped to the
+  anchor's categories (the left-out words are asked about after the gate, for the heads it took); any mention still
+  `G1` (including the nouns no anchor proposes, such as "What share") in the lookup round, as its head only in a round
+  after its phrase missed, and after every other gap's own question in that round.
+- The rule is the same in every language. Czech has no articles, but „Celkové tržby“ now binds with no gap, and
+  „nejvyšší podíl“ binds `podíl` with „nejvyšší“ reported.
+- No wire change. One new config table (`frame-roles.silent-modifiers`).
+### query-mcp — an MCP session nobody uses expires, and a `DELETE` ends one at once
+
+query-mcp kept every MCP session it ever opened. The MCP SDK ends a session only when the client sends `DELETE`
+with the session's `mcp-session-id`. A client that opens a session per call and only closes its connection left
+behind, on every call, the session's transport, a per-session SDK server with its notification job, and the
+session's standalone GET stream, parked on a socket in `CLOSE_WAIT`. The SDK's own close only closes that stream's
+output, which does not end its handler, so even a `DELETE` left the stream behind.
+
+- **`ktor-configurator`** gains `Application.mcpStreamableHttpWithSessionExpiry(path, idleTimeout, sweepInterval,
+  timeSource, block)`. It mounts the SDK's Streamable HTTP transport and returns an `McpSessionRegistry` (open count,
+  `expireIdle()`). A background sweep (every `idleTimeout / 4`, clamped to 1–30 s) closes each session that no POST
+  or DELETE has used for `idleTimeout`: it ends the GET stream, closes the SDK server (cancelling its notification
+  job) and drops the transport. A request still carrying the old id is answered 404, which by the MCP spec tells the
+  client to start a new session. A session with a request in flight is never expired; its clock restarts when the
+  request ends. A `DELETE` takes the session out of the registry before the SDK answers, and the rest is closed
+  after. Each removal logs one INFO line with the reason and the number of sessions still open.
+- **query-mcp** mounts its transport with it. New config **`query-mcp.mcp.session-idle-timeout-seconds`**
+  (`QUERY_MCP_SESSION_IDLE_TIMEOUT_SECONDS`), default **600**, must be positive. New gauge
+  **`query_mcp_open_sessions`**; the startup line names the timeout.
+- **Upgrade:** a client that keeps one session across calls and goes quiet for longer than the timeout gets 404 on
+  its next call and must initialize again, as after a restart. No wire change. The repo's other MCP doors still
+  mount the SDK transport directly.
+### chrono — a span that writes out its year is that year, or nothing (#213)
+
+With the lexicon's `ground:chrono` trigger slice loaded, a span that said both a period word and a year read as a
+period around `reference_datetime`: "the year 2025", "calendar year 2025" and "rok 2025" grounded to the reference
+year, "week 12 of 2025" to the reference week, "the last quarter of 2025" to the quarter before the reference. The
+rules that read a period relative to the reference no longer read a span that writes out its own year.
+
+- **A year-only span is that year:** "the year 2025", "year to date 2025", "v roce 2025", "rok 2025", and with a
+  scope word beside it, "this year 2025" and "minulý rok 2024".
+- **A period *of* a stated year is ungrounded:** "the second quarter of 2025", "the last week of 2025", "week 12 of
+  2025", "the first month of 2025", "the second half of 2025", "druhé pololetí 2025". No rule reads one yet, and
+  the whole year would be a confident wrong number; a date value with no range lets the consumer fall through. Some
+  of these were the whole of 2025 before ("the second half of 2025"); none is now. "Monthly", "quarterly" and the
+  Czech adjectives (*měsíční*, *čtvrtletní*, …) name a grain, not a period, and do not count.
+- **Unchanged:** a rule that reads the period itself still wins ("the month of March 2025", "15.3.2025",
+  "fiscal year 2025"); a span with no year of its own still reads at the reference ("last week", "this month",
+  *minulý měsíc*, a bare "fiscal year" or "quarter").
+### A calendar word inside a grain is the grain, not a date
+
+English NER types the calendar word of a grain phrase a date, and the resolver grounded it as one beside the
+grouping the estate declared. "Marketplace revenue by month in 2025" restricted the question to the current
+month AND 2025; "Store revenue by month" to the current month alone; and "Marketplace revenue by quarter in
+2025", where the NER typed `quarter in 2025` as one span, was grounded as the current quarter, with 2025 lost.
+Where a declared phrase the matcher confirms as a model object shares words with a date, the words are now the
+phrase's: the date keeps only the rest (`2025`), and a date with nothing left is not grounded at all. A word
+that bounds the date stays with it ("by month since 2024" keeps `since 2024`), and the cut date drops the NER's
+normalisation of the wider span. A declared one-word grain the NER typed a date ("Monthly marketplace revenue")
+is proposed and binds like any other declared word, and a calendar adjective naming an attribute is a
+`FRAME_ROLE_GROUPING`: one listed in the new `frame-roles.grain-adjectives` table, or one the NER typed a date
+by itself. Any other adjective naming an attribute keeps the role it had. A phrase the matcher does not confirm
+takes nothing, so a grain the estate never declared reads as before.
+### Veles serves the layouts committed next to the model
+
+A layout — a schema, the cards it shows, where they sit — saved from the Studio Viewer as a `.ttrg` (with its
+`.ttrl` sidecar when there is one) and committed under the model root is now served to every viewer of that
+model. Veles reads the layout files with each model load, resolves their cards against that model, and answers
+two new read routes (VL contracts §6):
+
+- `GET /model/layouts` — every layout, by schema then name: `name`, `schema`, `objectCount`, `missingCount`,
+  `ambiguousCount`, `hasPositions`, `source` (the path under the model root), and the `modelVersion`.
+- `GET /model/layout?name=` — one layout: its cards as full qnames, their positions, `mode`, `skin`,
+  `collapsed`, the references it names that the model lacks (`missing`) or holds more than once
+  (`ambiguous`, with the candidates), relations it lists (`ignored`), where its positions came from
+  (`positionsFrom`: `in-file` | `sidecar` | `null`), `source` and `modelVersion`. Every field is always
+  present, empty ones as `[]`, `{}` or `null`. A name that is not an identifier is `400 {"error":"bad name"}`;
+  an unknown one `404 {"error":"not found"}`. Both routes answer `503` until a model is loaded.
+
+A layout file that does not parse, or repeats a name another file already has, is left out and listed in
+`/status` under the new `issues` array (`layout layouts/sales.ttrg: …`); the model loads regardless. Both
+routes are GET-only, like the four read routes before them; committing to the model's repository is how a
+layout is published. Requires the TTR toolchain 0.14.1.
 
 ### A date with no year takes the year the conversation is about
 

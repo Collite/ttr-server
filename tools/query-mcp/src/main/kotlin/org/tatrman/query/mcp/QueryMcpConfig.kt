@@ -15,7 +15,18 @@ data class QueryMcpConfig(
     val toolTimeoutsMs: Map<String, Long>,
     /** DF-ME02-CACHE — TTL for in-process caching of attribute decorations in GrpcMetadataClient. */
     val metadataDecorationCacheTtlSeconds: Long = 30L,
+    /**
+     * ttr-server#201 — an MCP session no request has used for this long is closed, whatever the
+     * client does. A request in flight is never cut; the clock restarts when it ends.
+     */
+    val sessionIdleTimeoutSeconds: Long = DEFAULT_SESSION_IDLE_TIMEOUT_SECONDS,
 ) {
+    init {
+        require(sessionIdleTimeoutSeconds > 0) {
+            "query-mcp.mcp.session-idle-timeout-seconds must be positive: $sessionIdleTimeoutSeconds"
+        }
+    }
+
     data class GrpcEndpoint(
         val host: String,
         val port: Int,
@@ -48,6 +59,8 @@ data class QueryMcpConfig(
     )
 
     companion object {
+        const val DEFAULT_SESSION_IDLE_TIMEOUT_SECONDS: Long = 600L
+
         fun load(config: Config = ConfigFactory.load()): QueryMcpConfig {
             val root = config.getConfig("query-mcp")
             return QueryMcpConfig(
@@ -92,6 +105,12 @@ data class QueryMcpConfig(
                         root.getLong("upstream.veles.decoration-cache-ttl-seconds")
                     } else {
                         30L
+                    },
+                sessionIdleTimeoutSeconds =
+                    if (root.hasPath("mcp.session-idle-timeout-seconds")) {
+                        root.getLong("mcp.session-idle-timeout-seconds")
+                    } else {
+                        DEFAULT_SESSION_IDLE_TIMEOUT_SECONDS
                     },
             )
         }
