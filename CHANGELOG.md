@@ -23,10 +23,13 @@ grouping the estate declared. "Marketplace revenue by month in 2025" restricted 
 month AND 2025; "Store revenue by month" to the current month alone; and "Marketplace revenue by quarter in
 2025", where the NER typed `quarter in 2025` as one span, was grounded as the current quarter, with 2025 lost.
 Where a declared phrase the matcher confirms as a model object shares words with a date, the words are now the
-phrase's: the date keeps only the rest (`2025`), and a date with nothing left is not grounded at all. A
-declared one-word grain the NER typed a date ("Monthly marketplace revenue") is proposed and binds like any
-other declared word, and an adjective naming an attribute is a `FRAME_ROLE_GROUPING`. A phrase the matcher does
-not confirm takes nothing, so a grain the estate never declared reads as before.
+phrase's: the date keeps only the rest (`2025`), and a date with nothing left is not grounded at all. A word
+that bounds the date stays with it ("by month since 2024" keeps `since 2024`), and the cut date drops the NER's
+normalisation of the wider span. A declared one-word grain the NER typed a date ("Monthly marketplace revenue")
+is proposed and binds like any other declared word, and a calendar adjective naming an attribute is a
+`FRAME_ROLE_GROUPING`: one listed in the new `frame-roles.grain-adjectives` table, or one the NER typed a date
+by itself. Any other adjective naming an attribute keeps the role it had. A phrase the matcher does not confirm
+takes nothing, so a grain the estate never declared reads as before.
 
 ### A date with no year takes the year the conversation is about
 

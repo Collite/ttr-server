@@ -8,6 +8,7 @@ import org.tatrman.nlp.v1.AnalyzeResponse
 import org.tatrman.nlp.v1.Token
 import org.tatrman.resolver.model.Reach
 import org.tatrman.resolver.v1.UniversalEntityType
+import org.tatrman.text.Normalization.fold
 
 /**
  * UD (ttr-server#118) — the seam between a universal NER reading and the member reading proposed
@@ -219,11 +220,23 @@ object UniversalSeam {
         setOf(TargetClass.TARGET_CLASS_MODEL_OBJECT, TargetClass.TARGET_CLASS_UNSPECIFIED)
 
     /**
-     * The words between which a date is cut and which it does not keep at the cut: `in` of
-     * `quarter in 2025`. A determiner is NOT one of them — `this` of `month this year` is the
-     * period's own word.
+     * The words a date is cut between and does not keep at the cut. Punctuation and a conjunction
+     * always go ([ALWAYS_CUT]). An adposition or a subordinator goes only when it says no more than
+     * the date does without it — `in` of `quarter in 2025` ([WITHIN_WORDS]). Any other one bounds
+     * the date (`since`, `until`, `before`, `from`, `od`, `do`, …): it stays, so the kernel reads
+     * the range the user wrote, never the year alone — an unknown one too, since keeping a word
+     * costs a decline at worst and dropping it a confident wrong range. A determiner is not cut
+     * either — `this` of `month this year` is the period's own word.
      */
-    private val CUT_WORDS = setOf("ADP", "CCONJ", "SCONJ", "PUNCT")
+    private fun isCut(t: Token): Boolean =
+        t.upos in ALWAYS_CUT || (t.upos in CUT_IF_WITHIN && fold(t.lemma.ifBlank { t.text }) in WITHIN_WORDS)
+
+    private val ALWAYS_CUT = setOf("CCONJ", "PUNCT")
+
+    private val CUT_IF_WITHIN = setOf("ADP", "SCONJ")
+
+    /** Folded lemmas, both languages: a date's "within", which a bare date already means. */
+    private val WITHIN_WORDS = setOf("in", "during", "within", "for", "of", "at", "on", "v", "ve", "za", "behem")
 
     /**
      * Which of [u]'s words a bound grain takes, or null when it takes none.
@@ -235,8 +248,11 @@ object UniversalSeam {
      * for, so a DATE keeps only the words no bound grain has:
      *
      *  - **none left** — it is superseded, and nothing grounds it;
-     *  - **some left, on one side** — it is cut back to them (minus the [CUT_WORDS] at the cut), and
-     *    the kernel is asked about what the user wrote as a date: `2025`;
+     *  - **some left, on one side** — it is cut back to them (minus the words [isCut] drops at
+     *    the cut), and the kernel is asked about what the user wrote as a date: `2025`, `since
+     *    2024`. The cut date is the user's words only: the NER's normalisation described the wider
+     *    span (`quarter in 2025`), so it does not ride along — what the kernel cannot ground stays
+     *    unnormalised, never the old span's value;
      *  - **some left on both sides** — a grain in the middle of a date is not this rule's to split,
      *    and the date stands as it came.
      *
@@ -262,8 +278,8 @@ object UniversalSeam {
         val rest =
             words
                 .filterNot { inGrain(mid(tokens[it])) }
-                .dropWhile { tokens[it].upos in CUT_WORDS }
-                .dropLastWhile { tokens[it].upos in CUT_WORDS }
+                .dropWhile { isCut(tokens[it]) }
+                .dropLastWhile { isCut(tokens[it]) }
         if (rest.isEmpty()) return GrainClaim.Whole(over.first())
         // a gap inside what is left means the grain sat in the middle
         if (rest.last() - rest.first() + 1 != rest.size) return null
@@ -272,7 +288,7 @@ object UniversalSeam {
         if (start == u.start && end == u.end) return null
         if (start < 0 || end > text.length || start >= end) return null
         val cut = text.substring(start, end)
-        return GrainClaim.Edge(u.copy(start = start, end = end, text = cut, rawText = cut))
+        return GrainClaim.Edge(u.copy(start = start, end = end, text = cut, rawText = cut, normalizedValue = ""))
     }
 
     /**

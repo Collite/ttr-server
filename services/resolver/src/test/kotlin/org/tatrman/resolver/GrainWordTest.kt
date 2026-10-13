@@ -299,6 +299,54 @@ class GrainWordTest :
             r.roles(MONTH) shouldContainExactly listOf(GROUPING)
         }
 
+        // ── en: a cut date is the user's date — its range word, and no one else's normalisation ──
+
+        "`Revenue by month since 2024`, one span across the grain — `since` stays with the date it bounds (built)" {
+            val r =
+                resolve(
+                    "Revenue by month since 2024",
+                    arrayOf(
+                        tok("Revenue", 0, 7, "revenue", "NOUN", 0, "root"),
+                        tok("by", 8, 10, "by", "ADP", 3, "case"),
+                        tok("month", 11, 16, "month", "NOUN", 1, "nmod"),
+                        tok("since", 17, 22, "since", "ADP", 5, "case"),
+                        tok("2024", 23, 27, "2024", "NUM", 1, "obl"),
+                    ),
+                    date("month since 2024", 11, 27),
+                )
+
+            // the kernel is asked about the range the user wrote, never the year alone
+            r.grounded shouldContainExactly listOf("since 2024")
+            r.roles(MONTH) shouldContainExactly listOf(GROUPING)
+        }
+
+        "a cut date carries none of the wider span's normalisation — what the kernel cannot ground stays unnormalised" {
+            // an engine that normalised `quarter in 2025` as the current quarter: the words that
+            // said quarter are the grain's now, so that value describes nothing the date still holds
+            val r =
+                resolve(
+                    "Marketplace revenue by quarter in 2025",
+                    arrayOf(
+                        tok("Marketplace", 0, 11, "marketplace", "NOUN", 2, "compound"),
+                        tok("revenue", 12, 19, "revenue", "NOUN", 0, "root"),
+                        tok("by", 20, 22, "by", "ADP", 4, "case"),
+                        tok("quarter", 23, 30, "quarter", "NOUN", 2, "nmod"),
+                        tok("in", 31, 33, "in", "ADP", 6, "case"),
+                        tok("2025", 34, 38, "2025", "NUM", 2, "nmod"),
+                    ),
+                    date("quarter in 2025", 23, 38, normalizedValue = "2026-Q4"),
+                )
+
+            r.grounded shouldContainExactly listOf("2025")
+            // RecordingKernel answers UNGROUNDABLE: the lattice falls back to the NER's normalisation
+            r.response.resolutionState.valuesList
+                .single()
+                .grounding.normalizedValue shouldBe ""
+            r.response.resolution.bindingsList
+                .single { it.hasUniversal() }
+                .universal.normalizedValue shouldBe ""
+        }
+
         // ── en: the phrasing Stanza does not tag — it was right, and stays right ─────────────────
 
         "`What are the marketplace revenues for 2025 by month?` — no DATE on `month`, the same lattice" {
@@ -512,34 +560,123 @@ class GrainWordTest :
             seam.gated shouldContainExactly listOf(unbound)
         }
 
+        "at the cut, only a word that keeps the date's meaning goes — a range word stays with the date" {
+            fun cut(
+                q: String,
+                tokens: List<Token>,
+                date: UniversalBinding,
+                grain: GatedSpan,
+            ): UniversalBinding =
+                UniversalSeam
+                    .supersede(
+                        listOf(date),
+                        listOf(grain),
+                        AnalyzeResponse.newBuilder().addAllTokens(tokens).build(),
+                        q,
+                    ).universals
+                    .single()
+
+            // "Revenue by quarter until 2025": `until` as Stanza tags it, a subordinator
+            val until =
+                cut(
+                    "Revenue by quarter until 2025",
+                    listOf(
+                        tok("Revenue", 0, 7, "revenue", "NOUN", 0, "root"),
+                        tok("by", 8, 10, "by", "ADP", 3, "case"),
+                        tok("quarter", 11, 18, "quarter", "NOUN", 1, "nmod"),
+                        tok("until", 19, 24, "until", "SCONJ", 5, "mark"),
+                        tok("2025", 25, 29, "2025", "NUM", 1, "obl"),
+                    ),
+                    universal("quarter until 2025", 11),
+                    grain(8, 18),
+                )
+            until.text shouldBe "until 2025"
+            (until.start to until.end) shouldBe (19 to 29)
+
+            // "Revenue by quarter during 2025": `during` adds nothing a year does not say — it goes
+            val during =
+                cut(
+                    "Revenue by quarter during 2025",
+                    listOf(
+                        tok("Revenue", 0, 7, "revenue", "NOUN", 0, "root"),
+                        tok("by", 8, 10, "by", "ADP", 3, "case"),
+                        tok("quarter", 11, 18, "quarter", "NOUN", 1, "nmod"),
+                        tok("during", 19, 25, "during", "ADP", 5, "case"),
+                        tok("2025", 26, 30, "2025", "NUM", 1, "obl"),
+                    ),
+                    universal("quarter during 2025", 11),
+                    grain(8, 18),
+                )
+            during.text shouldBe "2025"
+        }
+
+        "a cut date drops the NER's normalisation of the wider span" {
+            val q = "Marketplace revenue by quarter in 2025"
+            val tokens =
+                listOf(
+                    tok("Marketplace", 0, 11, "marketplace", "NOUN", 2, "compound"),
+                    tok("revenue", 12, 19, "revenue", "NOUN", 0, "root"),
+                    tok("by", 20, 22, "by", "ADP", 4, "case"),
+                    tok("quarter", 23, 30, "quarter", "NOUN", 2, "nmod"),
+                    tok("in", 31, 33, "in", "ADP", 6, "case"),
+                    tok("2025", 34, 38, "2025", "NUM", 2, "nmod"),
+                )
+            val wide = universal("quarter in 2025", 23).copy(normalizedValue = "2026-Q4")
+            val seam =
+                UniversalSeam.supersede(
+                    listOf(wide),
+                    listOf(grain(20, 30)),
+                    AnalyzeResponse.newBuilder().addAllTokens(tokens).build(),
+                    q,
+                )
+
+            val kept = seam.universals.single()
+            kept.text shouldBe "2025"
+            kept.normalizedValue shouldBe ""
+            // the log keeps the original, normalisation and all
+            seam.trimmed.single().first shouldBe wide
+        }
+
         // ── R6" — an adjective naming an attribute is the breakdown ─────────────────────────────
 
+        /**
+         * The roles of [word] (`amod` on a measure) binding [targetClass] / [kind]. [dateTyped]: the
+         * NER typed the word a DATE by itself, as Stanza types `Monthly`.
+         */
         fun amodRoles(
-            targetClass: LatticeTargetClass,
-            kind: String,
-        ): List<FrameRole> =
-            FrameRoles
+            targetClass: LatticeTargetClass = LatticeTargetClass.TARGET_CLASS_MODEL_OBJECT,
+            kind: String = "attribute",
+            word: String = "Monthly",
+            lemma: String = word.lowercase(),
+            lang: String = "en",
+            dateTyped: Boolean = false,
+        ): List<FrameRole> {
+            val end = word.length
+            val parse =
+                AnalyzeResponse
+                    .newBuilder()
+                    .addTokens(tok(word, 0, end, lemma, "ADJ", 2, "amod"))
+                    .addTokens(tok("revenue", end + 1, end + 8, "revenue", "NOUN", 0, "root"))
+            if (dateTyped) parse.addEntities(date(word, 0, end))
+            return FrameRoles
                 .derive(
                     listOf(
-                        FrameRoles.Input("adj", 0, 0, targetClass, kind, anchorsValue = false, charEnd = 7),
+                        FrameRoles.Input("adj", 0, 0, targetClass, kind, anchorsValue = false, charEnd = end),
                         FrameRoles.Input(
                             "rev",
-                            8,
+                            end + 1,
                             1,
                             LatticeTargetClass.TARGET_CLASS_MODEL_OBJECT,
                             "measure",
                             false,
-                            15,
+                            end + 8,
                         ),
                     ),
-                    AnalyzeResponse
-                        .newBuilder()
-                        .addTokens(tok("Monthly", 0, 7, "monthly", "ADJ", 2, "amod"))
-                        .addTokens(tok("revenue", 8, 15, "revenue", "NOUN", 0, "root"))
-                        .build(),
-                    "en",
+                    parse.build(),
+                    lang,
                     FrameRolePreps.shipped(),
                 ).getValue("adj")
+        }
 
         "R6\": `Monthly revenue` — an attribute named by an adjective is the GROUPING" {
             amodRoles(LatticeTargetClass.TARGET_CLASS_MODEL_OBJECT, "attribute") shouldContainExactly listOf(GROUPING)
@@ -549,6 +686,25 @@ class GrainWordTest :
             amodRoles(LatticeTargetClass.TARGET_CLASS_MEMBER, "attribute") shouldContainExactly
                 listOf(FrameRole.FRAME_ROLE_FILTER)
             amodRoles(LatticeTargetClass.TARGET_CLASS_MODEL_OBJECT, "entity") shouldNotContain GROUPING
+        }
+
+        "R6\" is the calendar's: `Promotional revenue` names an attribute, and is no breakdown by it" {
+            // an estate that declares `promotional` for a promotion flag means a restriction, not a
+            // GROUP BY the flag: the adjective keeps the role it had before R6" — none
+            amodRoles(word = "Promotional").shouldBeEmpty()
+        }
+
+        "R6\" knows a grain adjective from the frame-role tables, typed a date or not" {
+            amodRoles(word = "Annual") shouldContainExactly listOf(GROUPING)
+            amodRoles(word = "Monthly", dateTyped = true) shouldContainExactly listOf(GROUPING)
+            amodRoles(word = "Měsíční", lemma = "měsíční", lang = "cs") shouldContainExactly listOf(GROUPING)
+            // a question typed without diacritics, and a lemmatiser that kept them off
+            amodRoles(word = "Mesicni", lemma = "mesicni", lang = "cs") shouldContainExactly listOf(GROUPING)
+        }
+
+        "R6\" takes a word the NER typed a date by itself as a grain, off the tables too" {
+            amodRoles(word = "Fortnightly", dateTyped = true) shouldContainExactly listOf(GROUPING)
+            amodRoles(word = "Fortnightly").shouldBeEmpty()
         }
 
         // ── cs: not affected, and kept that way ─────────────────────────────────────────────────
@@ -642,14 +798,18 @@ class GrainWordTest :
             return b.build()
         }
 
-        /** A Stanza DATE, as the live parse carries it: no CNEC code, `source_engine` stanza. */
+        /**
+         * A Stanza DATE, as the live parse carries it: no CNEC code, `source_engine` stanza.
+         * [normalizedValue] — what an engine that normalises its dates would have said of [text].
+         */
         fun date(
             text: String,
             start: Int,
             end: Int,
+            normalizedValue: String = "",
         ): NerEntity =
             MhMembers
-                .ner(text, start, end, "DATE")
+                .ner(text, start, end, "DATE", normalizedValue)
                 .toBuilder()
                 .setSourceEngine("stanza")
                 .build()
