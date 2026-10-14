@@ -55,6 +55,35 @@ trigger spans. `revenu`, tagged PROPN, took the proper-noun path to the same pla
 - Not in this change: a typo inside a declared multi-word phrase ("marketplace revenu") is still not tried as the
   phrase — span proposal matches declared phrases word for word — so `revenu` binds the all-channel measure on its own.
 - No wire change.
+### logging-config — logging a response can no longer fail the call, and a failed call's status names its exception (#197)
+
+`ResolverService/Resolve` closed `UNKNOWN` with an empty message on some turns: „10 nejprodávanějších produktů na tržišti
+v roce 2025“ every time, and "Marketplace revenue in 2025 for Memphis DC" only in the minutes after a restart. Since #202
+the close line names the cause: `java.lang.StackOverflowError at java.base/java.util.regex.Pattern$Branch.match`.
+- **Why it happened:** both turns ended in a clarification, and the resume token signs every option offered (8 450
+  characters for 20 options).
+  - With `grpc.in` at DEBUG, `IncomingCallLoggingInterceptor` renders each response for its log line and masks secret
+    fields first. The mask walked a quoted value with a regex that recursed once per character, so a long token
+    overflowed the stack of the thread sending the response.
+  - The pipeline had already answered; the log line failed the call. grpc-kotlin closes a thrown call with
+    `Status.fromThrowable`, which is `UNKNOWN` with no description.
+- **Why only sometimes:** the overflow length depends on how warm the JVM is. On a 1 MB stack it was about 1 000
+  characters cold and about 4 100 warm, hence the window after a restart.
+
+- **The mask:** it walks a quoted value with a possessive loop, which `java.util.regex` runs iteratively, so a value of
+  any length is masked. It matches exactly what it matched before.
+- **Rendering:** rendering a payload for a log line never throws into the call. A payload that cannot be rendered is
+  logged as `<unrenderable payload: <exception class>>`.
+- **Status description:** a call that closes with a cause and no description (a handler that threw) now gets one: the
+  exception's class, then the first line of its message with secrets masked and cut at 200 characters. Example:
+  `java.lang.IllegalStateException: …`.
+  - A status that already has a description is passed on unchanged.
+  - The serving side's WARN close line is unchanged: class and throw site only, with the message and stack at DEBUG.
+  - The message does reach the caller's logs: a Kotlin caller's `OutgoingCallLoggingInterceptor` logs the description
+    at WARN, and `query` forwards a downstream failure's message in-band, so query-mcp returns it as the tool's error
+    text. That is intended: what crosses is one line, secrets masked, at most 200 characters.
+- **Scope:** every service that installs `IncomingCallLoggingInterceptor` (chrono, dispatch, geo, money, query, resolver,
+  translate, validate, worker-mssql, worker-postgres). No proto change.
 
 ### resolver — a compared value names its own object, never the operator („Porovnej tržby z tržiště a z webu“, #207)
 
