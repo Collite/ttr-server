@@ -23,15 +23,18 @@ import org.tatrman.resolver.model.ResolverThresholds
  * `What share` were each looked up as written and came back G1, while `marketplace`, `web`, `Revenue`
  * and `share` bind on their own.
  *
- * **What is asked.** [SpanProposal.retryOf] names the dependents a mention may be asked without: its
- * `det` dependents and its bare `amod` dependents. The mention is asked again as what is left.
+ * **What is asked.** [SpanProposal.retryOf] names the dependents a mention may be asked without, by
+ * [SpanProposal.detachable] — the rule `MentionLayer` applies to the words a declared phrase never took:
+ * its `det` dependents and its bare `amod` dependents with their conjuncts. The mention is asked again
+ * as what is left.
  *
  * **What becomes of each word left out — the rule that keeps a restriction from vanishing.**
  *  - **Silent** — a closed, per-language list of words that restrict nothing, held as data
  *    (`frame-roles.conf`, `silent-modifiers`; [FrameRolePreps.isSilent]): articles, `what` / `which`,
- *    and adjectives that only say "all of it" (`total`, `celkové`). These may vanish. When every
- *    word left out is silent the binding keeps the mention's whole span: `Total revenue` is one
- *    mention, bound to revenue, with no gap.
+ *    and adjectives that only say "all of it" (`total`, `celkové`) — and (ttr-server#237) a count word,
+ *    which `SlotHints` has read as the noun's COUNT_HEAD (`many`, `kolik`; [quiet]). These may vanish.
+ *    When every word left out is silent the binding keeps the mention's whole span: `Total revenue` is
+ *    one mention, bound to revenue, with no gap.
  *  - **Residue** — every other determiner (`no`, `all`, `these`) and every other bare adjective
  *    (`promotional`, `akčních`). The head binds over its own words only (the head and the
  *    dependents it kept), and each residue becomes an unbound mention of its own over its own words
@@ -148,7 +151,7 @@ object MentionRetry {
         val tokens = parse.tokensList
         if (tokens.none { it.depHead > 0 }) return Plan.EMPTY
 
-        fun silent(i: Int) = preps.isSilent(lang, tokens[i].text, tokens[i].lemma)
+        fun quiet(d: SpanProposal.Dropped) = quiet(d, tokens, preps, lang)
 
         fun retry(
             mention: DomainSpanCandidate,
@@ -162,8 +165,7 @@ object MentionRetry {
                         tokens[it].charEnd <= mention.end
                 }
             val left = SpanProposal.retryOf(phrase, mention.headToken, tokens) ?: return null
-            // A dependent is silent when its own word is on the list and nothing hangs from it.
-            val (quiet, loud) = left.dropped.partition { it.tokens.size == 1 && silent(it.root) }
+            val (quiet, loud) = left.dropped.partition(::quiet)
             val narrowed =
                 if (loud.isEmpty()) {
                     null
@@ -183,13 +185,28 @@ object MentionRetry {
                         .sorted()
                         .map { tokens[it].text },
                 narrowed = narrowed,
-                residues = loud.map { residueOver(it.tokens, it.root, tokens) },
+                residues = loud.map { residueOver(it.words, it.root, tokens) },
             )
         }
 
         val retries = candidates.mapIndexedNotNull { i, c -> retry(c, i) } + ungated.mapNotNull { retry(it, -1) }
         return Plan(retries)
     }
+
+    /**
+     * ttr-server#204 / #237 — whether a dependent a mention stands without restricts nothing: one word,
+     * nothing hanging from it, and that word restricts nothing ([FrameRolePreps.restrictsNothing] — on
+     * the `silent-modifiers` list, or a count word the slot hint read). The test `MentionLayer` applies
+     * to the words a declared phrase left out, too.
+     */
+    internal fun quiet(
+        dropped: SpanProposal.Dropped,
+        tokens: List<Token>,
+        preps: FrameRolePreps,
+        lang: String,
+    ): Boolean =
+        dropped.words.size == 1 &&
+            preps.restrictsNothing(lang, tokens[dropped.root].text, tokens[dropped.root].lemma)
 
     /** The trailing slots: each gated retry, in its own scope. */
     fun queries(
