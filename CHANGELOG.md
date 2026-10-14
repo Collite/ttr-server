@@ -39,7 +39,10 @@ the close line names the cause: `java.lang.StackOverflowError at java.base/java.
   exception's class, then the first line of its message with secrets masked and cut at 200 characters. Example:
   `java.lang.IllegalStateException: …`.
   - A status that already has a description is passed on unchanged.
-  - The WARN close line is unchanged: class and throw site only, with the message and stack at DEBUG.
+  - The serving side's WARN close line is unchanged: class and throw site only, with the message and stack at DEBUG.
+  - The message does reach the caller's logs: a Kotlin caller's `OutgoingCallLoggingInterceptor` logs the description
+    at WARN, and `query` forwards a downstream failure's message in-band, so query-mcp returns it as the tool's error
+    text. That is intended: what crosses is one line, secrets masked, at most 200 characters.
 - **Scope:** every service that installs `IncomingCallLoggingInterceptor` (chrono, dispatch, geo, money, query, resolver,
   translate, validate, worker-mssql, worker-postgres). No proto change.
 

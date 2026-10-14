@@ -62,7 +62,7 @@ class IncomingCallLoggingTest :
             status.description shouldBe "java.lang.IllegalStateException: span for Memphis DC overlaps"
         }
 
-        "#197 the WARN line still names only the class and the site — the message reaches the caller, not the log" {
+        "#197 the server's WARN line still names only the class and the site — the message goes to the caller" {
             val (_, events) = serve(Level.INFO) { throw IllegalStateException("span for Memphis DC overlaps") }
 
             val warn = events.single { it.level == Level.WARN }.formattedMessage

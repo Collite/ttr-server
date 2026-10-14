@@ -58,7 +58,7 @@ class IncomingCallLoggingInterceptor : ServerInterceptor {
                     if (status.isOk) {
                         log.info("⇣ {} closed OK", method)
                     } else {
-                        // the status as the handler left it: the exception's message stays off WARN
+                        // the status as the handler left it: the exception's message stays off THIS line
                         logFailedClose(log, method, status)
                     }
                     super.close(describedFailure(status), trailers)
@@ -90,7 +90,8 @@ class IncomingCallLoggingInterceptor : ServerInterceptor {
  * one place it can be seen (ttr-server#197: two resolver crashes that logged nothing but
  * `closed UNKNOWN: `). The WARN line names the exception's class and where it was thrown; the
  * message and the stack go to DEBUG, because an exception message can quote the caller's words and
- * those stay off the INFO/WARN lines.
+ * the serving side keeps those off its INFO/WARN lines. The message itself goes back to the caller
+ * ([describedFailure]), and what the caller does with it is the caller's.
  */
 internal fun logFailedClose(
     log: org.slf4j.Logger,
@@ -121,8 +122,15 @@ internal const val FAILURE_MESSAGE_MAX_CHARS = 200
  * `Status.fromThrowable`: `UNKNOWN`, the exception as the `cause`, and no description. The cause
  * never crosses the wire, so the caller read `UNKNOWN: ` and nothing else (ttr-server#197). Such a
  * status is given a description: the exception's class, and the first line of its message with its
- * secrets masked, cut at [FAILURE_MESSAGE_MAX_CHARS]. The message goes back to the caller whose call
- * it was; the WARN line ([logFailedClose]) still names only the class and the throw site.
+ * secrets masked, cut at [FAILURE_MESSAGE_MAX_CHARS]. The WARN line here ([logFailedClose]) still
+ * names only the class and the throw site.
+ *
+ * The message goes back to the caller whose call it was, and from there it travels: a Kotlin caller's
+ * [OutgoingCallLoggingInterceptor] logs the description at WARN, and `query` hands a downstream
+ * failure's message to its own client in-band, so an MCP client reads it as the tool's error text.
+ * That is accepted (ttr-server#197, 2026-10-14): a failure the caller cannot name is the bug this
+ * fixes, and the words it may quote are the caller's own. What crosses is bounded — one line, secrets
+ * masked, 200 characters.
  *
  * A status that already has a description is passed on as it was, and so is one with no cause.
  */
@@ -187,7 +195,9 @@ class OutgoingCallLoggingInterceptor : ClientInterceptor {
                                 if (log.isDebugEnabled) log.debug("✓ {} closed OK", name)
                             } else {
                                 // status != OK is rare enough to surface above DEBUG so an
-                                // operator at INFO sees it without flipping flags.
+                                // operator at INFO sees it without flipping flags. Since #197 the
+                                // description of a call the server threw on names the exception and
+                                // its first line ([describedFailure]).
                                 log.warn("✗ {} closed {}: {}", name, status.code, status.description ?: "")
                             }
                             super.onClose(status, trailers)
