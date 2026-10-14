@@ -117,6 +117,18 @@ object Bindings {
      * `er.entity.date_dim.cal_date` — so the refusal named chrono while chrono was the one part
      * working, and the trigger that ANCHORED that grounding is what killed the turn.
      *
+     * ⛑ **A fourth class joins them: MODEL_OBJECT (ttr-server#227, hartland 2026-10-13).** An
+     * attribution's binding is the MEMBER the literal resolved to (`<attribute_ref>#<id>`,
+     * resolver.proto), and a model object is the attribute (or measure, or entity) itself. *roce* in
+     * „Porovnej tržby z tržiště a z webu v roce 2025“ came back as a value attributed to
+     * `er.entity.date_dim.year` — the column bound as if it were one of its own members — and
+     * "marketplace revenu" put a measure on a value the same way; a consumer that reads values as
+     * restrictions compares the column to its own name. A word whose best reading is a model object
+     * is a MENTION of it, and every value that cannot be one (a code, a quoted literal) loses the reading
+     * and is unattributed — G3/G4 — rather than attributed to it ([ValueReadings.settle], on the spans,
+     * so the door agrees). This is the backstop for what reaches an attribution without passing through
+     * the spans: the re-gate's confirmed hypotheses.
+     *
      * ⚠ The fix belongs HERE, on accept, and not on the request. Scoping the round's
      * `target_classes` is a ruled-out design: a member row carries no class at all, so an
      * allow-list would exclude the very rows that tier exists to reach (contracts §1 addendum,
@@ -141,10 +153,20 @@ object Bindings {
      */
     private val NEVER_ATTRIBUTABLE =
         setOf(
+            TargetClass.TARGET_CLASS_MODEL_OBJECT,
             TargetClass.TARGET_CLASS_OPERATOR,
             TargetClass.TARGET_CLASS_GROUNDING_TRIGGER,
             TargetClass.TARGET_CLASS_STRING_PREDICATE,
         )
+
+    /**
+     * ttr-server#227 — whether a matcher row names a model OBJECT: a declared row whose class says so.
+     * A member row never does, whatever the matcher stamped on it; a row with no class (an archive
+     * that predates classes) is not claimed to be one, the same asymmetry [attributable] keeps.
+     */
+    fun namesModelObject(match: FuzzyMatch): Boolean =
+        match.source != FuzzySourceTag.MEMBER &&
+            match.targetClassValue == FuzzyTargetClass.TARGET_CLASS_MODEL_OBJECT_VALUE
 
     /** The attribute a value is attributed to: its category — the member index is keyed by it. */
     fun attributeRefOf(match: FuzzyMatch): String =

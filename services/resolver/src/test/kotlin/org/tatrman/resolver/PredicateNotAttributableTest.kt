@@ -35,19 +35,20 @@ class PredicateNotAttributableTest :
             Bindings.attributable(binding(TargetClass.TARGET_CLASS_STRING_PREDICATE)) shouldBe false
         }
 
-        "it joins OPERATOR and GROUNDING_TRIGGER — one list, one reason" {
+        "it joins OPERATOR, GROUNDING_TRIGGER and MODEL_OBJECT — one list, one reason" {
             listOf(
+                TargetClass.TARGET_CLASS_MODEL_OBJECT,
                 TargetClass.TARGET_CLASS_OPERATOR,
                 TargetClass.TARGET_CLASS_GROUNDING_TRIGGER,
                 TargetClass.TARGET_CLASS_STRING_PREDICATE,
             ).forEach { Bindings.attributable(binding(it)) shouldBe false }
         }
 
-        "the classes that CAN name an attribute are untouched" {
-            listOf(
-                TargetClass.TARGET_CLASS_MODEL_OBJECT,
-                TargetClass.TARGET_CLASS_MEMBER,
-            ).forEach { Bindings.attributable(binding(it)) shouldBe true }
+        "a MEMBER is what an attribution binds — and since ttr-server#227 the only declared class that is" {
+            // An attribution's binding is the member the literal resolved to (`<attribute_ref>#<id>`).
+            // A MODEL_OBJECT was admitted here until hartland put `er.entity.date_dim.year` on the value
+            // *roce* — the column bound as one of its own members — and is now refused with the rest.
+            Bindings.attributable(binding(TargetClass.TARGET_CLASS_MEMBER)) shouldBe true
         }
 
         "UNSPECIFIED stays attributable — the asymmetry is the point" {
