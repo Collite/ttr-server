@@ -285,6 +285,10 @@ class LexiconVersions(BaseModel):
     overlay_version: str | None = None  # ABSENT until RV-P7 — absence is the contract
 
 
+# ttr-server#231 — the `object_kind` of an option that is a grounding kernel's reading of a date.
+PERIOD_OBJECT_KIND = "period"
+
+
 class SignedOption(BaseModel):
     """One option from the core's `AwaitingClarification` — SIGNED INTO the resume
     token. The `id` is what travels back; the ref is carried only so the ask can be
@@ -299,6 +303,13 @@ class SignedOption(BaseModel):
     ref: str = ""
     entity_type_ref: str = ""
     span: Span | None = None
+    # What the option IS (`Option.object_kind`). `period` (ttr-server#231) is a grounding
+    # kernel's reading of a date, not a model object or a member: it has no ref to gate, and
+    # a pin on it is redeemed by the core itself (`Resolve(resume{…})`), never by the gate.
+    object_kind: str = ""
+
+    def is_period(self) -> bool:
+        return self.object_kind == PERIOD_OBJECT_KIND
 
 
 class Pin(BaseModel):

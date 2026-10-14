@@ -29,8 +29,8 @@ from pydantic_graph import Graph, GraphBuilder, StepContext, TypeExpression
 
 from golem_py.budgets import Budgets
 from golem_py.compose import ComposeRefused, compose_structured_question, operator_refs
-from golem_py.deps import Deps
-from golem_py.errors import GateUnavailable, UnknownOption
+from golem_py.deps import CoreResumePort, Deps
+from golem_py.errors import CoreResumeUnavailable, GateUnavailable, PickRefused, UnknownOption
 from golem_py.gate_client import apply_gate_result
 from golem_py.ladder import DETERMINISTIC_RUNGS
 from golem_py.observability import log_node, log_turn
@@ -39,11 +39,13 @@ from golem_py.query_client import build_envelope
 from golem_py.state import (
     Disposition,
     GapKind,
+    GapRecord,
     Hypothesis,
     ResolutionState,
     RungLogEntry,
     SignedOption,
     Span,
+    ValueKind,
 )
 from golem_py.verdicts import (
     askable_gaps,
@@ -78,6 +80,80 @@ def _options_for(state: ResolutionState, span: Span) -> list[SignedOption]:
         for o in state.signed_options
         if o.span is None or (o.span.start, o.span.end) == (span.start, span.end)
     ]
+
+
+async def _redeem_period(
+    state: ResolutionState, deps: Deps, option: SignedOption, target: GapRecord | None
+) -> None:
+    """ttr-server#231 — a `period` pin, redeemed by the CORE and folded back by span.
+
+    A period option is a grounding kernel's reading of a date, signed into the core's
+    token. It names no ref, so there is nothing for the gate to gate: putting it to the
+    gate would propose a blank ref. The core's own resume re-reads the span exactly as it
+    was asked and answers with ONE value, the picked date, grounded (interval + anchor
+    column). That value is folded into OUR value at the same span, keeping our id, and the
+    gap on it closes.
+
+    Anything else (a refused pick, an answer that is not one grounded date on the asked
+    span) leaves the gap open with the user's answer recorded: the turn is never answered
+    without the period, and the core is never asked to re-ask.
+    """
+    if not isinstance(deps.core, CoreResumePort):
+        raise CoreResumeUnavailable()
+    span = option.span or (target.span if target is not None else None)
+    try:
+        answer: ResolutionState | None = await deps.core.resume(
+            token=state.resume_token,
+            selected_option_id=option.id,
+            conversation_id=state.conversation_id,
+            caller_subject=state.caller_subject,
+        )
+    except PickRefused:
+        answer = None
+    folded = answer is not None and span is not None and _fold_period(state, answer, span)
+    if not folded and target is not None:
+        target.user_answer = option.label or option.id
+    log_node(
+        state,
+        "apply_pin",
+        option=option.id,
+        period=True,
+        outcome="folded" if folded else ("refused" if answer is None else "not-a-period"),
+    )
+
+
+def _fold_period(state: ResolutionState, answer: ResolutionState, span: Span) -> bool:
+    """Fold the core's answer to a period pick into the value at [span]. True when folded.
+
+    Accepted only as the core documents it: exactly one value, on the asked span, GROUNDED,
+    a DATE with an interval and an anchor attribution. Our value keeps its id (gaps and the
+    rung log name it); its `ground:` ref survives when the answer carries none."""
+    at = (span.start, span.end)
+    if len(answer.values) != 1 or (answer.values[0].span.start, answer.values[0].span.end) != at:
+        return False
+    picked = answer.values[0]
+    grounding = picked.grounding
+    if (
+        picked.kind != ValueKind.GROUNDED
+        or grounding is None
+        or grounding.kind != "DATE"
+        or not grounding.normalized_value
+        or not any(a.attribute_ref for a in picked.attributions)
+    ):
+        return False
+    own = next((v for v in state.values if (v.span.start, v.span.end) == at), None)
+    if own is None:
+        return False
+    previous_ref = own.grounding.ref if own.grounding is not None else ""
+    own.kind = picked.kind
+    own.grounding = grounding.model_copy(update={"ref": grounding.ref or previous_ref})
+    own.attributions = [a.model_copy(deep=True) for a in picked.attributions]
+    state.gaps = [
+        g
+        for g in state.gaps
+        if not (g.value_id == own.id or (not g.value_id and (g.span.start, g.span.end) == at))
+    ]
+    return True
 
 
 def _record_ladder_noop(state: ResolutionState, note: str) -> None:
@@ -201,6 +277,9 @@ def build_graph() -> Graph[ResolutionState, Deps, None, TurnOutput]:
             # A pin naming an option the core never signed. Refusing to invent one is
             # the whole point of storing the signed set rather than trusting the caller.
             raise UnknownOption(pin.option_id)
+        if option.is_period():
+            await _redeem_period(ctx.state, ctx.deps, option, target)
+            return
         if ctx.deps.gate is None:
             raise GateUnavailable()
 

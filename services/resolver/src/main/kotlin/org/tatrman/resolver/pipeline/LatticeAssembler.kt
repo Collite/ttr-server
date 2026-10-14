@@ -70,6 +70,13 @@ object LatticeAssembler {
         // archive predates the `pred:` slice — in both cases §2.2's default predicate applies
         // downstream, which is what a question that names no comparison meant.
         predicates: List<VerbatimAttribution.Trigger> = emptyList(),
+        // ttr-server#231 — the spans a grounding kernel ASKED about (`GroundingRung.Asked`). Each is
+        // a G2 on its value, exactly as a span the gate is asking about is: the door is asking, so
+        // the lattice may not report the value settled.
+        asked: Set<Pair<Int, Int>> = emptySet(),
+        // ttr-server#214 — the spans a grounding kernel refused as `no_anchor` (`GroundingRung.Outcome`):
+        // each value there gets a `ground-unanchored` entry below, and is otherwise untouched.
+        unanchored: Set<Pair<Int, Int>> = emptySet(),
     ): ResolutionState {
         val gatedByLayer =
             gate.gated.groupBy { layerOf(it, hasTrigger = (it.candidate.start to it.candidate.end) in triggers) }
@@ -171,33 +178,14 @@ object LatticeAssembler {
             universals.map { universal ->
                 val anchor = triggerAnchorOf(universal, parse, triggerByHead)
                 val kernelResult = grounded[universal.start to universal.end]
-                val grounding =
-                    Grounding
-                        .newBuilder()
-                        // A kernel that answered SPEAKS for the span: `Grounding.kernel` is
-                        // documented as "chrono | money | geo | the NER engine that typed it",
-                        // and the NER engine is the fallback, not the winner.
-                        .setKernel(if (kernelResult != null) CHRONO_KERNEL else universal.sourceEngine)
-                        .setKind(universal.entityType.name)
-                        // The kernel's interval REPLACES the NER engine's normalization when it
-                        // has one. stanza says `2025`; chrono says `2025-01-01/2026-01-01`, which
-                        // is the only one of the two a half-open filter can be built from.
-                        .setNormalizedValue(
-                            kernelResult?.normalizedValue?.ifBlank { null } ?: universal.normalizedValue,
-                        )
-                val builder =
-                    ValueFinding
-                        .newBuilder()
-                        .setSpan(span(universal.start, universal.end, universal.text))
-                        .setKind(ValueKind.VALUE_KIND_GROUNDED)
-                // The anchor column, as an attribution. This is the fact the composer reads to
-                // turn a grounded value into a filter — and the reason it is an ATTRIBUTION and
-                // not a new field is that "this literal could be a value of THAT attribute" is
-                // exactly what an attribution already means. No binding rides with it: the value
-                // is not a member of the attribute, it is a range over it.
-                kernelResult?.anchorAttributeRef?.takeIf { it.isNotBlank() }?.let { ref ->
-                    builder.addAttributions(Attribution.newBuilder().setAttributeRef(ref))
-                }
+                val (builder, grounding) =
+                    groundedValue(
+                        span(universal.start, universal.end, universal.text),
+                        universal.entityType.name,
+                        kernelResult,
+                        nerEngine = universal.sourceEngine,
+                        nerNormalized = universal.normalizedValue,
+                    )
                 // Only when the two independent statements AGREE: the universal layer says what
                 // kind of thing this is, the trigger says which kernel claimed the words beside it.
                 if (anchor != null && GroundingTriggers.kernelOf(universal.entityType) == anchor.kind) {
@@ -372,7 +360,7 @@ object LatticeAssembler {
                     gate.gated
                         .filter { it.ambiguous }
                         .map { it.candidate.start to it.candidate.end }
-                        .toSet(),
+                        .toSet() + asked,
                 parse = parse,
                 degraded = degraded,
             )
@@ -430,7 +418,66 @@ object LatticeAssembler {
                     .addAllValueIds(narrowings[mention.id].orEmpty()),
             )
         }
+        // ttr-server#214 — a period the kernel had nothing to count from: "the previous year" after a
+        // question naming two years. The value is an ungrounded date like any other, and the one
+        // reading a consumer has for an ungrounded period, counting it from today, is the reading the
+        // kernel refused. One entry per such value, so a consumer can ask which period is meant.
+        // Omitted when there is none, so every other lattice is byte-identical to what it was.
+        for (value in values) {
+            if (value.hasGrounding() && (value.span.start to value.span.end) in unanchored) {
+                builder.addRungLog(
+                    RungLogEntry
+                        .newBuilder()
+                        .setRung(CORE_RUNG)
+                        .setAction(GROUND_UNANCHORED_ACTION)
+                        .addValueIds(value.id),
+                )
+            }
+        }
         return builder.build()
+    }
+
+    /**
+     * A grounded value, and what a kernel made of it — the ONE place a kernel's answer is written
+     * onto a value. The fresh lattice uses it for every universal; a resume that grounded a pick
+     * (ttr-server#231) uses it for the value it settled, so a picked period has exactly the shape an
+     * unambiguous one has.
+     *
+     * Returns the two builders so the fresh arm can still add the trigger's `ground:` ref.
+     */
+    internal fun groundedValue(
+        span: Span,
+        kind: String,
+        kernelResult: GroundingRung.Grounded?,
+        nerEngine: String = "",
+        nerNormalized: String = "",
+    ): Pair<ValueFinding.Builder, Grounding.Builder> {
+        val grounding =
+            Grounding
+                .newBuilder()
+                // A kernel that answered SPEAKS for the span: `Grounding.kernel` is
+                // documented as "chrono | money | geo | the NER engine that typed it",
+                // and the NER engine is the fallback, not the winner.
+                .setKernel(if (kernelResult != null) CHRONO_KERNEL else nerEngine)
+                .setKind(kind)
+                // The kernel's interval REPLACES the NER engine's normalization when it
+                // has one. stanza says `2025`; chrono says `2025-01-01/2026-01-01`, which
+                // is the only one of the two a half-open filter can be built from.
+                .setNormalizedValue(kernelResult?.normalizedValue?.ifBlank { null } ?: nerNormalized)
+        val builder =
+            ValueFinding
+                .newBuilder()
+                .setSpan(span)
+                .setKind(ValueKind.VALUE_KIND_GROUNDED)
+        // The anchor column, as an attribution. This is the fact the composer reads to
+        // turn a grounded value into a filter — and the reason it is an ATTRIBUTION and
+        // not a new field is that "this literal could be a value of THAT attribute" is
+        // exactly what an attribution already means. No binding rides with it: the value
+        // is not a member of the attribute, it is a range over it.
+        kernelResult?.anchorAttributeRef?.takeIf { it.isNotBlank() }?.let { ref ->
+            builder.addAttributions(Attribution.newBuilder().setAttributeRef(ref))
+        }
+        return builder to grounding
     }
 
     /** The rung name the core writes for its own deterministic pass (contracts §3 vocabulary). */
@@ -438,6 +485,13 @@ object LatticeAssembler {
 
     /** The action a grounding narrowing is logged under (RV-42) — see the emit site above. */
     const val GROUND_NARROW_ACTION: String = "ground-narrow"
+
+    /**
+     * The action a period the grounding kernel refused as `no_anchor` is logged under (ttr-server#214):
+     * `{round: 0, rung: "core", action: "ground-unanchored", value_ids: [<the DATE value>]}`, one entry
+     * per value. The value stays an ungrounded date; the entry says it must not be counted from today.
+     */
+    const val GROUND_UNANCHORED_ACTION: String = "ground-unanchored"
 
     /** LP §2.4 — the action the core's quoted literals are logged under. */
     const val VERBATIM_ACTION: String = "verbatim"

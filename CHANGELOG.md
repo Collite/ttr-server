@@ -16,6 +16,41 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+### resolver — a grounding kernel's question reaches the user (#231)
+
+chrono answers `AWAITING_CLARIFICATION` when a date has two readings: a bare future month ("Marketplace revenue in
+November" in October is November of this year or of last), and, with #214, the ambiguous „minulý rok / měsíc /
+čtvrtletí“. The resolver dropped that answer as "not grounded", so a caller got a DATE with no range and nothing to ask.
+
+- **Fresh:** the kernel's question becomes the resolver's own `awaiting`, under its own resume token. One option per kernel
+  option: `id` `P:` + the kernel's id (`P:202511`; `@<span start>` is appended only if two spans offer the same id),
+  `label` as the kernel wrote it, `span` the date it answers, `object_kind: "period"`, and the new **`Option.grounding`**
+  (`kernel`, `kind`, and `normalized_value`, the kernel's interval). `target_ref`, `resolved_id`, `entity_type_ref`
+  and `member_of` stay empty. The lattice carries the value as before plus a `G2_AMBIGUOUS` gap on it. The answer is an
+  `awaiting` and not a `resolution`, exactly as when the gate asks.
+- **Order:** when the gate also asks, both questions travel in one `awaiting` under one token. The gate's options come first,
+  where they always were, then each kernel question in span order. A caller asks one span at a time, and the token redeems
+  one pick per span. The MCP door's summary now lists them as successive questions.
+- **Resume:** picking a `P:` option puts the kernel's question back to it with `clarification_answer_id`. The question is the
+  SIGNED one: the same span, question text, earlier questions, reference date, locale and package. The resume request's own
+  context is ignored, because a later reference date or a longer conversation can make the same words name another period.
+  The answer is grounded through the OK path: a DATE binding in `resolution`, and in `resolution_state` exactly one value
+  (GROUNDED, the interval, the anchor column as its attribution, no gaps). A caller folds it into its lattice by span.
+  It never asks again. A pick the kernel will not ground is `FAILED_PRECONDITION`, and a kernel that cannot be reached is
+  `UNAVAILABLE`.
+- **Wire:** additive. `Option.grounding = 9`. The resume token gains `kernelQuestions` and `kernelOptionId`, which are
+  encoded only when present, so a token with no kernel question is byte-for-byte unchanged. A resolver older than this one
+  cannot read a token that carries a kernel question.
+- **A period with nothing to count from is named.** chrono refuses an anaphoric period with no single period of its unit in
+  the conversation ("the previous year" after a question naming two years) as `UNGROUNDABLE`, code `no_anchor` (#214). The
+  value stays an ungrounded DATE, and the lattice now names it with a round-0 rung-log entry
+  `{rung: "core", action: "ground-unanchored", value_ids: [<the value>]}`, one per value. A consumer that would read an
+  ungrounded period against today must not read this one so; it asks which period is meant. Additive: a new rung-log
+  action, no new field, and no entry at all on a lattice without such a value.
+- **golem-py** (the reference golem) keeps an option's `object_kind`, and redeems a `period` pick through the core's
+  `Resolve(resume{token, selected_option_id})`, folding the answered date into its own value by span and closing the G2.
+  It used to put the pick to the gate as a hypothesis with a blank ref. A refused pick (`FAILED_PRECONDITION`) leaves the
+  gap open with the user's answer recorded.
 ### chrono — a relative period reads by its kind: the reference date, the conversation, or ask (#214)
 
 "Marketplace revenue in 2025" → "And the year before?" grounded to the current year, and "And the previous

@@ -221,6 +221,12 @@ message ResolveResponse {
   // keeps working (ResolverCompatTest proves it). The lattice is what RV consumers read:
   // it is the only surface that can express a mention that bound to NOTHING (G1), which
   // is why RV-P4 cannot start before this field ships.
+  //
+  // On a RESUME (ttr-server#231) it is not the whole question: a member pin carries none, and a
+  // period pin carries exactly the one value it settled — GROUNDED, `grounding.kernel` the kernel,
+  // the interval in `normalized_value`, the anchor column as its attribution, no gaps — in the
+  // shape a fresh lattice gives an unambiguous date. A caller folds it into its lattice BY SPAN
+  // (ids are per lattice) and closes the G2 it asked about.
   ResolutionState resolution_state = 7;
 }
 
@@ -296,6 +302,19 @@ enum UniversalEntityType {
   MISC = 5;
 }
 
+// The core's clarification. Every option names its span; the options of one span are ONE question.
+//
+// ttr-server#231 — two sources ask, under the ONE resume token (one HITL protocol per turn):
+//  1. the gate, about a span with several distinct candidates (a G2): member and vocabulary
+//     options, exactly as before and still FIRST;
+//  2. a grounding kernel, about a date with several readings („v listopadu“ in October; „minulý
+//     rok“ after a question about 2025): `object_kind: "period"` options, after the gate's, in
+//     span order, each span's in the kernel's own order.
+// The gate's question goes first because it is about what the question's words ARE in the model
+// (it can be the subject or the measure), while a period only narrows a filter whose meaning is
+// already settled; and because a caller that shows the first span's options keeps asking exactly
+// what it asked before kernels could ask. A caller asks one span at a time. Nothing is lost
+// between them: the token signs every span's options, so the same token redeems one pick per span.
 message AwaitingClarification {
   repeated Option options = 1;
   string resume_token = 2; // HMAC — see §5
@@ -327,6 +346,17 @@ message Option {
   // customer's, or the warehouse's. Since MV-T3 it is the ATTRIBUTE (entity_type_ref names the
   // entity), and it is signed into resume_token: two attributes of one entity can hold one value.
   string member_of = 8;
+  // ttr-server#231 — set on an option a GROUNDING KERNEL asked (`object_kind: "period"`): what
+  // picking it means, in the shape the value's own `Grounding` takes once it is picked —
+  // `kernel` ("chrono"), `kind` ("DATE") and `normalized_value`, the kernel's interval as
+  // "<start>/<end>" (start inclusive, end EXCLUSIVE). Unset on gate options.
+  //
+  // A period option carries no `target_ref`, `resolved_id`, `entity_type_ref` or `member_of`: it
+  // is not a model object or a member, and a caller must never turn it into one (an equality
+  // filter, a re-gate hypothesis). Its `id` is `P:` + the kernel's own option id (`P:2025`,
+  // `P:202511`, `P:2025Q1`), with `@<span start>` appended only if two spans offer the same one.
+  // The anchor column is not here: a kernel names it only when it grounds, so it arrives on resume.
+  Grounding grounding = 9;
 }
 
 // ============================================================================

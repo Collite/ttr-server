@@ -35,6 +35,42 @@ data class ResumeOption(
      */
     @EncodeDefault(EncodeDefault.Mode.NEVER)
     val memberOf: String? = null,
+    /**
+     * ttr-server#231 — set on an option a grounding KERNEL offered: the kernel's own id for the
+     * reading (`2025`, `202511`, `2025Q1`), handed back to it as `clarification_answer_id` when
+     * this option is picked. Which question it answers is the [KernelQuestion] whose `optionIds`
+     * name this option. Never encoded when absent, like [memberOf].
+     */
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val kernelOptionId: String? = null,
+)
+
+/**
+ * ttr-server#231 — a question a grounding kernel asked about one span, signed so a pick can be put
+ * back to it EXACTLY as it was asked.
+ *
+ * The kernel re-reads the span on resume and only then picks the reading the answer names, so the
+ * resume call must carry the same span, question, earlier questions, reference date, locale and
+ * package as the call that asked. They live here, in the signed resume state, and NOT in the resume
+ * request: by then the caller's reference date may be later, and its earlier questions include the
+ * question that was asked — either can make the same words name a different period, or none.
+ */
+@Serializable
+data class KernelQuestion(
+    /** The kernel that asked: `chrono`. */
+    val kernel: String,
+    /** The `grounding.v1.EntityKind` it was asked for, by name (`DATE_TIME`). */
+    val kind: String,
+    val spanStart: Int,
+    val spanEnd: Int,
+    val spanText: String,
+    val questionText: String,
+    val priorQuestions: List<String> = emptyList(),
+    val referenceDatetime: String,
+    val locale: String = "",
+    val pkg: String,
+    /** The resolver's ids of the options that answer this question (`P:202511`, …). */
+    val optionIds: List<String> = emptyList(),
 )
 
 /**
@@ -43,6 +79,7 @@ data class ResumeOption(
  * offered (integrity-bearing under OBO — the agent cannot fabricate "the user
  * chose X", RS-26).
  */
+@OptIn(ExperimentalSerializationApi::class)
 @Serializable
 data class ResumePayload(
     val conversationId: String,
@@ -58,6 +95,13 @@ data class ResumePayload(
      * resumes an empty-subject call.
      */
     val subject: String = "",
+    /**
+     * ttr-server#231 — the grounding kernels' questions among [options], one per asked span. Never
+     * encoded when empty, so a token with no kernel question is byte-for-byte what an older resolver
+     * minted and reads.
+     */
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val kernelQuestions: List<KernelQuestion> = emptyList(),
 )
 
 /** Thrown/returned on any verification failure — always the RG-RES-002 condition. */

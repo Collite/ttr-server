@@ -8,6 +8,7 @@ import io.kotest.matchers.maps.shouldContainKey
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldNotContain
 import kotlinx.coroutines.runBlocking
+import org.tatrman.grounding.v1.ClarificationOption
 import org.tatrman.grounding.v1.DateTimeInterval
 import org.tatrman.grounding.v1.FilterRecipe
 import org.tatrman.grounding.v1.GetStatusResponse
@@ -82,6 +83,18 @@ private fun erColumn(
     // each time the suite passed while hartland refused the question.
     .setNamespace("entity")
     .setName("$entity.$attribute")
+    .build()
+
+private fun month(
+    id: String,
+    label: String,
+    start: String,
+    end: String,
+) = ClarificationOption
+    .newBuilder()
+    .setId(id)
+    .setLabel(label)
+    .setNormalized(Normalized.newBuilder().setInterval(DateTimeInterval.newBuilder().setStart(start).setEnd(end)))
     .build()
 
 private class FakeKernel(
@@ -262,17 +275,55 @@ class GroundingRungTest :
             }.shouldBeEmpty()
         }
 
-        "AWAITING_CLARIFICATION is treated as ungrounded, not surfaced" {
-            // Deliberate: the resolver has its own clarification contract with its own signed
-            // resume token. Splicing a second service's options into it would give one turn two
-            // HITL protocols and two ways to resume it.
+        "AWAITING_CLARIFICATION grounds nothing — it is ASKED, with the question it was asked (ttr-server#231)" {
+            // It used to be dropped as "not grounded", so the caller got a date with no range and
+            // nothing to ask. Now the readings come back as a question the resolver asks under its own
+            // token, and the exact kernel question rides along so a pick can be put back unchanged.
+            val kernel =
+                FakeKernel {
+                    GroundResponse
+                        .newBuilder()
+                        .setStatus(GroundResponse.Status.AWAITING_CLARIFICATION)
+                        .addOptions(month("202605", "May 2026", "2026-05-01", "2026-06-01"))
+                        .addOptions(month("202505", "May 2025", "2025-05-01", "2025-06-01"))
+                        .build()
+                }
+            val out =
+                runBlocking {
+                    GroundingRung.groundAll(
+                        kernel,
+                        listOf(date("May", 11, 14)),
+                        "Revenue in May",
+                        "hartland",
+                        "2026-04-10T00:00:00Z",
+                        "en",
+                        listOf("Revenue in 2025"),
+                    )
+                }
+            out.grounded.shouldBeEmpty()
+            val asked = out.asked.getValue(11 to 14)
+            asked.options.map { it.id } shouldBe listOf("202605", "202505")
+            asked.options.map { it.normalizedValue } shouldBe listOf("2026-05-01/2026-06-01", "2025-05-01/2025-06-01")
+            asked.question.spanText shouldBe "May"
+            asked.question.questionText shouldBe "Revenue in May"
+            asked.question.referenceDatetime shouldBe "2026-04-10T00:00:00Z"
+            asked.question.priorQuestions shouldBe listOf("Revenue in 2025")
+            asked.question.pkg shouldBe "hartland"
+            asked.question.locale shouldBe "en"
+            // …and `ground`, the grounded half alone, is what it always was for such a span.
+            runBlocking {
+                GroundingRung.ground(kernel, listOf(date("May", 11, 14)), "q", "hartland", "")
+            }.shouldBeEmpty()
+        }
+
+        "an AWAITING with no options is no question: the span stays ungrounded" {
             val kernel =
                 FakeKernel {
                     GroundResponse.newBuilder().setStatus(GroundResponse.Status.AWAITING_CLARIFICATION).build()
                 }
-            runBlocking {
-                GroundingRung.ground(kernel, listOf(date("May", 0, 3)), "q", "hartland", "")
-            }.shouldBeEmpty()
+            val out = runBlocking { GroundingRung.groundAll(kernel, listOf(date("May", 0, 3)), "q", "hartland", "x") }
+            out.grounded.shouldBeEmpty()
+            out.asked.shouldBeEmpty()
         }
 
         "⚑ a kernel that THROWS leaves the turn intact — and the other spans still ground" {
