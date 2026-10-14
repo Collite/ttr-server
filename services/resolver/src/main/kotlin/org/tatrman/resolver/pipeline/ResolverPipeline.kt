@@ -357,6 +357,27 @@ class ResolverPipeline(
                 thresholds = resolverRegistry.thresholds,
                 snapshotHash = resolverRegistry.snapshotHash,
             )
+        // ttr-server#227 — a value never carries a model object. A value-shaped word a trigger claims and no
+        // member reads is the kernel's mention („v roce 2025“ under `webu` reads as under `po čtvrtletích`),
+        // one that reads as an object is a mention of it, and any other value loses its object readings.
+        // Settled on the spans, here and after every lookup round, so the lattice, the planner and the door
+        // all read the same thing.
+        val settle = { spans: List<GatedSpan> -> ValueReadings.settle(spans, triggers) }
+        val boundSpans = settle(gatedSpans)
+        for ((proposed, settled) in gatedSpans.zip(boundSpans)) {
+            if (proposed === settled) continue
+            log.info(
+                "value-reading: [{},{}) {} conversation_id={}",
+                proposed.candidate.start,
+                proposed.candidate.end,
+                when {
+                    settled.candidate.origin == proposed.candidate.origin -> "a value without its model-object readings"
+                    settled.contenders.isEmpty() -> "a mention a trigger claims"
+                    else -> "a mention of the model object it reads as"
+                },
+                request.conversationId,
+            )
+        }
         // The predicate slots sit AFTER the grounding ones, so the offset is both of the earlier
         // blocks. Stated as a sum rather than a constant because that is the invariant: each
         // question appends its own slots and reads back from where the previous one ended.
@@ -376,7 +397,7 @@ class ResolverPipeline(
             MistypedYears.find(
                 seam.universals,
                 parse,
-                gatedSpans,
+                boundSpans,
                 resolverRegistry.entityTypes.kindsByRef(),
                 preps.temporal(assessment.language),
             )
@@ -460,13 +481,14 @@ class ResolverPipeline(
         // written against the loop's result and cannot tell the difference.
         val rounds =
             lookupRounds.run(
-                lattice = assemble(gatedSpans, ungatedSpans),
-                gated = gatedSpans,
+                lattice = assemble(boundSpans, ungatedSpans),
+                gated = boundSpans,
                 ungated = ungatedSpans,
                 entityTypes = resolverRegistry.entityTypes,
                 thresholds = resolverRegistry.thresholds,
                 reassemble = assemble,
                 retries = retries.bySpan,
+                settle = settle,
             )
         // The door moves with the lattice: a round that bound a span the broad pass missed changes
         // BOTH what the core understood and what it decided, and a caller reading `Resolution` is

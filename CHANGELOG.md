@@ -16,6 +16,45 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+### resolver — a value's attribution names a member, never a model object („v roce 2025“, „marketplace revenu“, #227)
+
+„Porovnej tržby z tržiště a z webu v roce 2025“ and „10 nejprodávanějších produktů na tržišti v roce 2025“ came back with
+`roce` as a VALUE attributed to `er.entity.date_dim.year` — the column itself, bound as if it were one of its own
+members — and "marketplace revenu in 2025 by month" did the same with the all-channel revenue measure on `revenu`. The
+contract (`resolver.proto`) is that an attribution binds a member (`<attribute_ref>#<id>`); a consumer that reads values
+as restrictions compares the column to its own name. In „Tržby z tržiště po čtvrtletích v roce 2025“ the same `roce` was
+a mention bound to the `ground:chrono` trigger, FILTER, with `2025` narrowed to chrono.
+
+The noun `roce` hangs from decides it. Under a declared multi-word phrase (`po čtvrtletích`) nothing proposes it, so the
+mention layer takes it and asks its trigger. Under a one-word anchor of an entity (`webu`, `produktů`) span proposal
+offers it as that entity's governed value; its open sibling reads it as `date_dim.year` (`za rok`, by the lemma), the
+lattice made every value-origin span a value whatever it read as, and the trigger was never asked — only mentions were
+trigger spans. `revenu`, tagged PROPN, took the proper-noun path to the same place.
+
+- A word proposed as a value (an anchor's governed argument or its open sibling, a proper noun, a NER entity) that no
+  member reads is now a MENTION when:
+  - a grounding trigger claims it, whether the lookup read it as a model object or found nothing. It is exactly the
+    mention the mention layer makes of the same word elsewhere: bound by the trigger alone, and absent from
+    `Resolution.bindings` too. „v roce 2025“ now reads the same under `webu` and `produktů` as under
+    `po čtvrtletích`, on an estate that declares `za rok` and on one that does not: `roce` → `ground:chrono`, FILTER,
+    `2025` narrowed to it;
+  - otherwise, its best reading is a model object: a mention bound to that object, with the evidence it had (`revenu`
+    → `er.entity.channel_sales.ext_sales_price`, `letech` in „v letech 2024 a 2025“ → `er.entity.date_dim.year`).
+- Such a word is now asked about grounding triggers on the broad pass, as the mention it would become (unanchored, so a
+  trigger it matches fuzzily classes the same under any noun): one more slot per value-shaped span on the same
+  `BatchMatch`. A literal run, a quoted literal, a member phrase, a named member, a dual reading and a word with no head
+  are not asked.
+- A value never carries a model object, on the door as in the lattice. Every gated span is settled once its contenders
+  are in — after the broad pass and after every lookup round — before the lattice, the round planner or
+  `Resolution.bindings` reads it. A value no mention can be (a code, a dual reading) loses its model-object readings: one
+  that read only as an object is unattributed (G3/G4) and asked again like any other, rather than bound to the column;
+  a tie only an object made is no tie. `MODEL_OBJECT` also joins the classes that are never an attribution
+  (`OPERATOR`, `GROUNDING_TRIGGER`, `STRING_PREDICATE`), the backstop for the re-gate.
+- Unchanged: a member still binds as a value (`pro Brno DC` → `warehouse_name#Brno DC`); a value-shaped word that found
+  nothing and no trigger claims stays an unattributed value; grounded values; a declared anchor.
+- Not in this change: a typo inside a declared multi-word phrase ("marketplace revenu") is still not tried as the
+  phrase — span proposal matches declared phrases word for word — so `revenu` binds the all-channel measure on its own.
+- No wire change.
 ### logging-config — logging a response can no longer fail the call, and a failed call's status names its exception (#197)
 
 `ResolverService/Resolve` closed `UNKNOWN` with an empty message on some turns: „10 nejprodávanějších produktů na tržišti

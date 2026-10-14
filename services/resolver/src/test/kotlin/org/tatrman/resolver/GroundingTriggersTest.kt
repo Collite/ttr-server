@@ -14,6 +14,7 @@ import org.tatrman.fuzzy.v1.TargetClass
 import org.tatrman.resolver.model.ResolverThresholds
 import org.tatrman.resolver.pipeline.DomainSpanCandidate
 import org.tatrman.resolver.pipeline.GroundingTriggers
+import org.tatrman.resolver.v1.EvidenceClass
 import org.tatrman.resolver.v1.MatchMethod
 import org.tatrman.resolver.v1.UniversalEntityType
 import org.tatrman.ttr.lexicon.LexiconValidator
@@ -44,7 +45,7 @@ class GroundingTriggersTest :
             GroundingTriggers.CATEGORIES.all { it.startsWith(LexiconValidator.GROUND_PREFIX) } shouldBe true
         }
 
-        "only the mention layer is asked, once per span" {
+        "the mention layer is asked, once per span, and a literal is not" {
             val ucet = mention("účtu", 15, 19, head = 2)
             // the SAME span reached through a second entity type — one anchor word may be owned by
             // two model objects, and a trigger is about the surface, not about who scoped it
@@ -55,6 +56,73 @@ class GroundingTriggersTest :
             val spans = GroundingTriggers.spansOf(listOf(ucet, ucetAgain, code), listOf(leftover))
 
             spans.map { it.text } shouldContainExactly listOf("účtu", "stanic")
+        }
+
+        "ttr-server#227 — a word proposed as a value is asked too; a code, a quoted string and a member name are not" {
+            // *roce* under `webu` is proposed as web's governed value, and whether it IS a value is the
+            // gate's answer on this same batch — so its trigger has to be asked on it too, or a word that
+            // turns out to be a mention arrives without the trigger it carries everywhere else.
+            fun proposed(
+                text: String,
+                start: Int,
+                origin: DomainSpanCandidate.Origin,
+            ) = mention(text, start, start + text.length, head = 3).copy(origin = origin, anchored = false)
+
+            val governed = proposed("roce", 29, DomainSpanCandidate.Origin.GOVERNED_VALUE)
+            val open = governed.copy(origin = DomainSpanCandidate.Origin.OPEN_VALUE)
+            val properNoun = proposed("revenu", 40, DomainSpanCandidate.Origin.PROPER_NOUN)
+            val ner = proposed("Octavie", 50, DomainSpanCandidate.Origin.NER_ENTITY)
+            val code = literal("501001", 60, 66)
+            val quoted = proposed("Pelex", 70, DomainSpanCandidate.Origin.QUOTED_LITERAL)
+            val phrase = proposed("Nedorazilo včas", 80, DomainSpanCandidate.Origin.MEMBER_PHRASE)
+            val named = proposed("Brno DC", 100, DomainSpanCandidate.Origin.NAMED_MEMBER)
+            // a place an anchor governs: the seam decides it, and a member reading is all it can be
+            val dual = proposed("TN", 110, DomainSpanCandidate.Origin.GOVERNED_VALUE).copy(dualReadingOf = 110 to 112)
+
+            GroundingTriggers
+                .spansOf(listOf(governed, open, properNoun, ner, code, quoted, phrase, named, dual), emptyList())
+                .map { it.text } shouldContainExactly listOf("roce", "revenu", "Octavie")
+        }
+
+        "ttr-server#227 — a value-shaped word is asked as the mention it would become, so a fuzzy hit classes alike" {
+            // SpanProposal proposes the governed value ANCHORED (the anchor scoped its value lookup) and its
+            // open sibling not; the dedup keeps the first. A trigger met through a fuzzy profile then classed
+            // ANCHORED under `webu` and UNANCHORED as the leftover mention under `po čtvrtletích`, while the
+            // kernel's mention it ends up on is unanchored in both.
+            val leftover = mention("roce", 29, 33, head = 8).copy(anchored = false)
+            val governed = leftover.copy(origin = DomainSpanCandidate.Origin.GOVERNED_VALUE, anchored = true)
+            val open = leftover.copy(origin = DomainSpanCandidate.Origin.OPEN_VALUE)
+            val typo =
+                declaredTrigger("ground:chrono", 0.95)
+                    .toBuilder()
+                    .setProvenance(
+                        Provenance
+                            .newBuilder()
+                            .setProducer("lex-matcher")
+                            .setMethod("TATRMAN_V2")
+                            .setNorm("canonical")
+                            .setAlgorithm("typos"),
+                    ).build()
+            val response = BatchMatchResponse.newBuilder().addResults(matches(typo)).build()
+
+            val asked = GroundingTriggers.spansOf(listOf(governed, open), emptyList())
+            asked.single().anchored shouldBe false
+            asked.single().origin shouldBe DomainSpanCandidate.Origin.ANCHOR_PHRASE
+
+            fun classOn(spans: List<DomainSpanCandidate>) =
+                GroundingTriggers
+                    .collect(spans, response, 0, thresholds, "snap-1")
+                    .getValue(29 to 33)
+                    .single()
+                    .evidenceClass
+            classOn(asked) shouldBe classOn(listOf(leftover))
+            classOn(asked) shouldBe EvidenceClass.EVIDENCE_CLASS_UNANCHORED_FUZZY_STRONG
+        }
+
+        "a value-shaped word with no head is not asked: no mention could be built on it" {
+            val ner = mention("Octavie", 50, 57).copy(origin = DomainSpanCandidate.Origin.NER_ENTITY, anchored = false)
+            val headless = ner.copy(headToken = -1)
+            GroundingTriggers.spansOf(listOf(headless), emptyList()).shouldBeEmpty()
         }
 
         "a floor guess is still asked: a trigger is a lexicon fact, not a syntactic one" {

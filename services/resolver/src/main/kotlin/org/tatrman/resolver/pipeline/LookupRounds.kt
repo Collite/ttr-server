@@ -107,6 +107,10 @@ class LookupRounds(
         // ttr-server#204 — what an unbound mention may be asked as besides its own words, by span
         // (`MentionRetry`). Empty: every mention is asked as written only, as before.
         retries: Map<Pair<Int, Int>, MentionRetry.Retry> = emptyMap(),
+        // ttr-server#227 — what the broad pass's spans went through ([ValueReadings.settle]), applied to a
+        // round's spans before anything reads them: a round admits contenders exactly as the gate does, so
+        // an object it admits onto a value is settled the same way. Identity: the spans as merged.
+        settle: (List<GatedSpan>) -> List<GatedSpan> = { it },
     ): Result {
         if (config.budgetMs <= 0) return Result(gated, ungated, lattice, emptyList())
 
@@ -198,6 +202,7 @@ class LookupRounds(
                 currentUngated = replace(currentUngated, span, merged)
             }
 
+            currentGated = settle(currentGated)
             currentLattice = withHypotheses(reassemble(currentGated, currentUngated), tried)
             log +=
                 RungLogEntry

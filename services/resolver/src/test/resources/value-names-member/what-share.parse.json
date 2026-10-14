@@ -1,0 +1,208 @@
+{
+  "language": "en",
+  "languageConfidence": 0.7659691608806778,
+  "engineUsed": "stanza",
+  "tokens": [
+    {
+      "text": "What",
+      "charEnd": 4,
+      "lemma": "what",
+      "upos": "DET",
+      "xpos": "WDT",
+      "feats": {
+        "PronType": "Int"
+      },
+      "depHead": 2,
+      "depRelation": "det"
+    },
+    {
+      "text": "share",
+      "charStart": 5,
+      "charEnd": 10,
+      "lemma": "share",
+      "upos": "NOUN",
+      "xpos": "NN",
+      "feats": {
+        "Number": "Sing"
+      },
+      "depHead": 6,
+      "depRelation": "nsubj"
+    },
+    {
+      "text": "of",
+      "charStart": 11,
+      "charEnd": 13,
+      "lemma": "of",
+      "upos": "ADP",
+      "xpos": "IN",
+      "depHead": 5,
+      "depRelation": "case"
+    },
+    {
+      "text": "total",
+      "charStart": 14,
+      "charEnd": 19,
+      "lemma": "total",
+      "upos": "ADJ",
+      "xpos": "JJ",
+      "feats": {
+        "Degree": "Pos"
+      },
+      "depHead": 5,
+      "depRelation": "amod"
+    },
+    {
+      "text": "revenue",
+      "charStart": 20,
+      "charEnd": 27,
+      "lemma": "revenue",
+      "upos": "NOUN",
+      "xpos": "NN",
+      "feats": {
+        "Number": "Sing"
+      },
+      "depHead": 2,
+      "depRelation": "nmod"
+    },
+    {
+      "text": "came",
+      "charStart": 28,
+      "charEnd": 32,
+      "lemma": "come",
+      "upos": "VERB",
+      "xpos": "VBD",
+      "feats": {
+        "Mood": "Ind",
+        "Number": "Sing",
+        "Person": "3",
+        "Tense": "Past",
+        "VerbForm": "Fin"
+      },
+      "depRelation": "root"
+    },
+    {
+      "text": "from",
+      "charStart": 33,
+      "charEnd": 37,
+      "lemma": "from",
+      "upos": "ADP",
+      "xpos": "IN",
+      "depHead": 9,
+      "depRelation": "case"
+    },
+    {
+      "text": "the",
+      "charStart": 38,
+      "charEnd": 41,
+      "lemma": "the",
+      "upos": "DET",
+      "xpos": "DT",
+      "feats": {
+        "Definite": "Def",
+        "PronType": "Art"
+      },
+      "depHead": 9,
+      "depRelation": "det"
+    },
+    {
+      "text": "marketplace",
+      "charStart": 42,
+      "charEnd": 53,
+      "lemma": "marketplace",
+      "upos": "NOUN",
+      "xpos": "NN",
+      "feats": {
+        "Number": "Sing"
+      },
+      "depHead": 6,
+      "depRelation": "obl"
+    },
+    {
+      "text": "in",
+      "charStart": 54,
+      "charEnd": 56,
+      "lemma": "in",
+      "upos": "ADP",
+      "xpos": "IN",
+      "depHead": 11,
+      "depRelation": "case"
+    },
+    {
+      "text": "2025",
+      "charStart": 57,
+      "charEnd": 61,
+      "lemma": "2025",
+      "upos": "NUM",
+      "xpos": "CD",
+      "feats": {
+        "NumForm": "Digit",
+        "NumType": "Card"
+      },
+      "depHead": 6,
+      "depRelation": "obl"
+    },
+    {
+      "text": "?",
+      "charStart": 61,
+      "charEnd": 62,
+      "lemma": "?",
+      "upos": "PUNCT",
+      "xpos": ".",
+      "depHead": 6,
+      "depRelation": "punct"
+    }
+  ],
+  "sentences": [
+    {
+      "charEnd": 62
+    }
+  ],
+  "entities": [
+    {
+      "text": "2025",
+      "label": "DATE",
+      "charStart": 57,
+      "charEnd": 61,
+      "sourceEngine": "stanza"
+    }
+  ],
+  "detectedLanguage": "en",
+  "used": [
+    {
+      "op": "DETECT_LANGUAGE",
+      "engine": "langid",
+      "model": "lingua",
+      "modelVersion": "lingua-2.0"
+    },
+    {
+      "op": "TOKENIZE",
+      "engine": "stanza",
+      "model": "stanza-cs-en",
+      "modelVersion": "stanza-1.10.0"
+    },
+    {
+      "op": "LEMMATIZE",
+      "engine": "stanza",
+      "model": "stanza-cs-en",
+      "modelVersion": "stanza-1.10.0"
+    },
+    {
+      "op": "POS_TAG",
+      "engine": "stanza",
+      "model": "stanza-cs-en",
+      "modelVersion": "stanza-1.10.0"
+    },
+    {
+      "op": "DEP_PARSE",
+      "engine": "stanza",
+      "model": "stanza-cs-en",
+      "modelVersion": "stanza-1.10.0"
+    },
+    {
+      "op": "NER",
+      "engine": "stanza",
+      "model": "stanza-cs-en",
+      "modelVersion": "stanza-1.10.0"
+    }
+  ]
+}
