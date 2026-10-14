@@ -69,7 +69,7 @@ the RV-P4 conversation tier that sits above them:
    [`conversations/SCHEMA.md`](conversations/SCHEMA.md). Hash-pinned like every other
    corpus here.
 6. **Grounding hermetic** — `eval/grounding/tests/` (`test_corpus_valid.py` + `test_report.py`,
-   18 checks): corpus-validity of the 109-case bulk + 21-case e2e corpora, and the pure `report.py`
+   21 checks): corpus-validity of the 121-case bulk + 21-case e2e corpora, and the pure `report.py`
    scoring logic. The **live** run (`run_eval.py` → grounding-mcp + Golem) is the extended tier, NOT here.
 
 ### Corpus provenance (hashes — ENFORCED; bump on any deliberate change)
@@ -79,7 +79,7 @@ semantic test would miss — fails the gate (RG-P6 review I). Keep the two lists
 ```
 entities_only.jsonl             ccda5f2a891a16789b3b6cb752b3baab9b9a8b8fe96e2f01fd41a8d7444352a7
 match-quality-corpus.jsonl      f994789391af7773bb1061f1d7953a2aa870fd5233877574547cca284a5c2a3d
-grounding-cases.json            a54491aa20ee4eac37b68c9b12a74658ed9b88e03051533289ce506e63590100
+grounding-cases.json            30f89a9664f49fbe52ca1fca03e6c62e385fd4635e304b0b6e87f28a97fcb45c
 e2e-cases.json                  0034ed387f31c1dca8ba1a56b22b72f968193ee5f1aacb0f20aa7336facf77f7
 hartland-cz/aliases.lex.yaml    78577f1f142fdb6b9bca261e559b69335885358bcd4ba9ed6fb2bd75d45b2208
 hartland-cz/skills/trend.md     3db553d63ab7dcbecd021326dbb13f9cab72b71ee9d7d571c663f65349208bc2

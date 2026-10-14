@@ -29,12 +29,17 @@ default `2026-05-15T12:00:00+02:00` (Europe/Prague noon), matching the Kotlin co
   "model": "accounting-period",     // model fixture id (see §Models); the deployed stack
                                      // must serve a compatible metadata model for the case
   "here": null,                     // geo "here" place (→ GroundingContext.herePlaceRef), else null
+  "question_text": "And the previous year?",            // optional: GroundRequest.questionText (default: the span)
+  "prior_questions": ["Marketplace revenue in 2025"],   // optional: GroundingContext.priorQuestions, newest first
+  "clarification_answer_id": "2024",                    // optional: resume a clarification with this option id
   "expect": {
     "status": "OK",                 // OK | AWAITING_CLARIFICATION | UNGROUNDABLE
     "application": "FILTER",         // FILTER | JOIN | VALUES  (only when status == OK)
     "source": "RULES",               // RULES | LLM | NONE      (optional)
     "period_code": "202605",         // chrono `p` param value (optional)
-    "sql_contains": ["t.\"date\" >= {start}"]  // fragments that must appear in sql_preview
+    "sql_contains": ["t.\"date\" >= {start}"],  // fragments that must appear in sql_preview
+    "interval_start": "2024-01-01",  // the date the normalized interval starts on (optional, OK only)
+    "option_ids": ["2025", "2024"]   // the clarification's option ids, in order (optional, AWAITING only)
   }
 }
 ```
@@ -42,6 +47,11 @@ default `2026-05-15T12:00:00+02:00` (Europe/Prague noon), matching the Kotlin co
 `expect.sql_contains` matches against `GroundingResult.sql_preview` (the recipe render, params
 still as `{name}` placeholders) — **not** executed SQL. Only `status` is mandatory; the rest are
 present where the source corpus pinned them.
+
+The three conversation fields carry a span that is read against the conversation it is asked in:
+"the previous year" after "Marketplace revenue in 2025" is 2024, and „minulý rok“ after „… v roce 2025“
+asks between 2025 and 2024 (ttr-server#214). A clarification's option ids are period codes (`yyyy`,
+`yyyyMM`, `yyyyQn`); a case with `clarification_answer_id` resumes with one of them.
 
 ## E2E case (`e2e-cases.json`)
 

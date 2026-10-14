@@ -8,6 +8,7 @@ import org.tatrman.grounding.v1.GroundingResult
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
+import io.kotest.matchers.string.shouldStartWith
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import org.tatrman.chrono.grpc.ChronoGroundingService
@@ -56,6 +57,10 @@ class ChronoCorpusSpec :
                     case.expect.source?.let { result.source.name shouldBe it }
                     case.expect.periodCode?.let { paramValue(result, "p") shouldBe it }
                     case.expect.sqlContains.forEach { result.sqlPreview shouldContain it }
+                    case.expect.intervalStart?.let { result.normalized.interval.start shouldStartWith it }
+                }
+                if (case.expect.optionIds.isNotEmpty()) {
+                    response.optionsList.map { it.id } shouldBe case.expect.optionIds
                 }
             }
         }
@@ -71,13 +76,17 @@ private fun request(case: CorpusCase): GroundRequest {
     return GroundRequest
         .newBuilder()
         .setSpanText(case.span)
+        .setQuestionText(case.question)
         .setKind(EntityKind.DATE_TIME)
         .setPackage(case.pkg)
+        .setClarificationAnswerId(case.answerId)
         .setContext(
             GroundingContext
                 .newBuilder()
                 .setReferenceDatetime(refIso)
-                .setTimezone(case.timezone),
+                .setTimezone(case.timezone)
+                .setLocale(case.locale)
+                .addAllPriorQuestions(case.priorQuestions),
         ).build()
 }
 
@@ -108,6 +117,11 @@ private data class CorpusCase(
     val timezone: String = "Europe/Prague",
     val pkg: String = "cnc",
     val periodTable: Boolean = true,
+    // #214: the conversation the span is asked in, and a clarification answer to resume with.
+    val question: String = "",
+    val priorQuestions: List<String> = emptyList(),
+    val answerId: String = "",
+    val locale: String = "",
     val expect: Expect,
 )
 
@@ -118,4 +132,8 @@ private data class Expect(
     val source: String? = null,
     val periodCode: String? = null,
     val sqlContains: List<String> = emptyList(),
+    /** The date (YYYY-MM-DD) the grounded interval starts on. */
+    val intervalStart: String? = null,
+    /** The ids of a clarification's options, in order. */
+    val optionIds: List<String> = emptyList(),
 )

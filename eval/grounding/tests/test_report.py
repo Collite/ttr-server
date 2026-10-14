@@ -146,3 +146,28 @@ def test_summarize_skips_model_unavailable() -> None:
     assert s["bulk"]["scored"] == 1 and s["bulk"]["skipped"] == 1
     assert s["bulk"]["pass_rate"] == 1.0
     assert s["e2e"]["pass_rate"] == 0.5
+
+
+# ----- #214: a conversation case, the period it lands on, and the options it asks between -----
+
+
+def test_bulk_interval_start_checked() -> None:
+    case = _case(expect={"status": "OK", "interval_start": "2024-01-01"})
+    actual = _ok_actual()
+    actual["result"]["normalized"] = {"interval": {"start": "2024-01-01T00:00:00+01:00", "end": "2025-01-01T00:00:00+01:00"}}
+    assert report.evaluate_bulk_case(case, actual)["passed"]
+    actual["result"]["normalized"]["interval"]["start"] = "2025-01-01T00:00:00+01:00"
+    r = report.evaluate_bulk_case(case, actual)
+    assert not r["passed"]
+    assert any("interval_start" in f for f in r["failures"])
+
+
+def test_bulk_option_ids_checked() -> None:
+    case = _case(expect={"status": "AWAITING_CLARIFICATION", "option_ids": ["2025", "2024"]})
+    actual = {"ok": True, "status": "AWAITING_CLARIFICATION", "result": None,
+              "options": [{"id": "2025", "label": "2025"}, {"id": "2024", "label": "2024"}]}
+    assert report.evaluate_bulk_case(case, actual)["passed"]
+    actual["options"] = [{"id": "", "label": "x"}, {"id": "", "label": "y"}]
+    r = report.evaluate_bulk_case(case, actual)
+    assert not r["passed"]
+    assert any("option_ids" in f for f in r["failures"])
