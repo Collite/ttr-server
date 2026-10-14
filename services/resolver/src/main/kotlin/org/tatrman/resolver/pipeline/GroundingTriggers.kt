@@ -3,6 +3,7 @@ package org.tatrman.resolver.pipeline
 
 import org.tatrman.fuzzy.v1.BatchMatchResponse
 import org.tatrman.fuzzy.v1.SpanQuery
+import org.tatrman.nlp.v1.AnalyzeResponse
 import org.tatrman.resolver.model.ResolverThresholds
 import org.tatrman.resolver.v1.Binding
 import org.tatrman.resolver.v1.EvidenceClass
@@ -77,12 +78,29 @@ object GroundingTriggers {
      *
      * Two mentions of the same span (one anchor word owned by two entity types) ask once: a
      * trigger is about the surface, not about which model object scoped the lookup.
+     *
+     * ttr-server#237 — **a calendar adjective is never asked.** `čtvrtletní` is one edit from the
+     * chrono trigger `čtvrtletí`, `pololetní` from `pololetí`, and a trigger row would read the word
+     * as a period with nothing to ground — once it binds the quarter attribute as well, the mention
+     * carries `[quarter, ground:chrono]`, and the question asks for one quarter as much as for the
+     * breakdown by quarters. A word in an adjective's place ([FrameRoles.isAdjectival]) that is on the
+     * language's `grain-adjectives` list ([FrameRolePreps.isGrainAdjective]) names the unit of a
+     * breakdown, never a period. Without a [parse] nothing is held back.
      */
     fun spansOf(
         candidates: List<DomainSpanCandidate>,
         ungatedMentions: List<DomainSpanCandidate>,
-    ): List<DomainSpanCandidate> =
-        (
+        parse: AnalyzeResponse? = null,
+        preps: FrameRolePreps? = null,
+    ): List<DomainSpanCandidate> {
+        val tokens = parse?.tokensList.orEmpty()
+
+        fun grainAdjective(span: DomainSpanCandidate): Boolean {
+            if (preps == null || !FrameRoles.isAdjectival(tokens, span.headToken)) return false
+            val word = tokens[span.headToken]
+            return preps.isGrainAdjective(MentionLayer.languageOf(parse ?: return false), word.text, word.lemma)
+        }
+        return (
             candidates.mapNotNull {
                 when {
                     it.origin in MENTION_ORIGINS -> it
@@ -91,6 +109,8 @@ object GroundingTriggers {
                 }
             } + ungatedMentions
         ).distinctBy { it.start to it.end }
+            .filterNot(::grainAdjective)
+    }
 
     /** One class-scoped query per span, in the same order — the trailing slots of the batch. */
     fun queries(
