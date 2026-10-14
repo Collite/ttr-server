@@ -52,6 +52,76 @@ November" in October is November of this year or of last), and, with #214, the a
   It used to put the pick to the gate as a hypothesis with a blank ref. A refused pick (`FAILED_PRECONDITION`) leaves the
   gap open with the user's answer recorded.
 
+### resolver — a value's attribution names a member, never a model object („v roce 2025“, „marketplace revenu“, #227)
+
+„Porovnej tržby z tržiště a z webu v roce 2025“ and „10 nejprodávanějších produktů na tržišti v roce 2025“ came back with
+`roce` as a VALUE attributed to `er.entity.date_dim.year` — the column itself, bound as if it were one of its own
+members — and "marketplace revenu in 2025 by month" did the same with the all-channel revenue measure on `revenu`. The
+contract (`resolver.proto`) is that an attribution binds a member (`<attribute_ref>#<id>`); a consumer that reads values
+as restrictions compares the column to its own name. In „Tržby z tržiště po čtvrtletích v roce 2025“ the same `roce` was
+a mention bound to the `ground:chrono` trigger, FILTER, with `2025` narrowed to chrono.
+
+The noun `roce` hangs from decides it. Under a declared multi-word phrase (`po čtvrtletích`) nothing proposes it, so the
+mention layer takes it and asks its trigger. Under a one-word anchor of an entity (`webu`, `produktů`) span proposal
+offers it as that entity's governed value; its open sibling reads it as `date_dim.year` (`za rok`, by the lemma), the
+lattice made every value-origin span a value whatever it read as, and the trigger was never asked — only mentions were
+trigger spans. `revenu`, tagged PROPN, took the proper-noun path to the same place.
+
+- A word proposed as a value (an anchor's governed argument or its open sibling, a proper noun, a NER entity) that no
+  member reads is now a MENTION when:
+  - a grounding trigger claims it, whether the lookup read it as a model object or found nothing. It is exactly the
+    mention the mention layer makes of the same word elsewhere: bound by the trigger alone, and absent from
+    `Resolution.bindings` too. „v roce 2025“ now reads the same under `webu` and `produktů` as under
+    `po čtvrtletích`, on an estate that declares `za rok` and on one that does not: `roce` → `ground:chrono`, FILTER,
+    `2025` narrowed to it;
+  - otherwise, its best reading is a model object: a mention bound to that object, with the evidence it had (`revenu`
+    → `er.entity.channel_sales.ext_sales_price`, `letech` in „v letech 2024 a 2025“ → `er.entity.date_dim.year`).
+- Such a word is now asked about grounding triggers on the broad pass, as the mention it would become (unanchored, so a
+  trigger it matches fuzzily classes the same under any noun): one more slot per value-shaped span on the same
+  `BatchMatch`. A literal run, a quoted literal, a member phrase, a named member, a dual reading and a word with no head
+  are not asked.
+- A value never carries a model object, on the door as in the lattice. Every gated span is settled once its contenders
+  are in — after the broad pass and after every lookup round — before the lattice, the round planner or
+  `Resolution.bindings` reads it. A value no mention can be (a code, a dual reading) loses its model-object readings: one
+  that read only as an object is unattributed (G3/G4) and asked again like any other, rather than bound to the column;
+  a tie only an object made is no tie. `MODEL_OBJECT` also joins the classes that are never an attribution
+  (`OPERATOR`, `GROUNDING_TRIGGER`, `STRING_PREDICATE`), the backstop for the re-gate.
+- Unchanged: a member still binds as a value (`pro Brno DC` → `warehouse_name#Brno DC`); a value-shaped word that found
+  nothing and no trigger claims stays an unattributed value; grounded values; a declared anchor.
+- Not in this change: a typo inside a declared multi-word phrase ("marketplace revenu") is still not tried as the
+  phrase — span proposal matches declared phrases word for word — so `revenu` binds the all-channel measure on its own.
+- No wire change.
+
+### logging-config — logging a response can no longer fail the call, and a failed call's status names its exception (#197)
+
+`ResolverService/Resolve` closed `UNKNOWN` with an empty message on some turns: „10 nejprodávanějších produktů na tržišti
+v roce 2025“ every time, and "Marketplace revenue in 2025 for Memphis DC" only in the minutes after a restart. Since #202
+the close line names the cause: `java.lang.StackOverflowError at java.base/java.util.regex.Pattern$Branch.match`.
+- **Why it happened:** both turns ended in a clarification, and the resume token signs every option offered (8 450
+  characters for 20 options).
+  - With `grpc.in` at DEBUG, `IncomingCallLoggingInterceptor` renders each response for its log line and masks secret
+    fields first. The mask walked a quoted value with a regex that recursed once per character, so a long token
+    overflowed the stack of the thread sending the response.
+  - The pipeline had already answered; the log line failed the call. grpc-kotlin closes a thrown call with
+    `Status.fromThrowable`, which is `UNKNOWN` with no description.
+- **Why only sometimes:** the overflow length depends on how warm the JVM is. On a 1 MB stack it was about 1 000
+  characters cold and about 4 100 warm, hence the window after a restart.
+
+- **The mask:** it walks a quoted value with a possessive loop, which `java.util.regex` runs iteratively, so a value of
+  any length is masked. It matches exactly what it matched before.
+- **Rendering:** rendering a payload for a log line never throws into the call. A payload that cannot be rendered is
+  logged as `<unrenderable payload: <exception class>>`.
+- **Status description:** a call that closes with a cause and no description (a handler that threw) now gets one: the
+  exception's class, then the first line of its message with secrets masked and cut at 200 characters. Example:
+  `java.lang.IllegalStateException: …`.
+  - A status that already has a description is passed on unchanged.
+  - The serving side's WARN close line is unchanged: class and throw site only, with the message and stack at DEBUG.
+  - The message does reach the caller's logs: a Kotlin caller's `OutgoingCallLoggingInterceptor` logs the description
+    at WARN, and `query` forwards a downstream failure's message in-band, so query-mcp returns it as the tool's error
+    text. That is intended: what crosses is one line, secrets masked, at most 200 characters.
+- **Scope:** every service that installs `IncomingCallLoggingInterceptor` (chrono, dispatch, geo, money, query, resolver,
+  translate, validate, worker-mssql, worker-postgres). No proto change.
+
 ### resolver — a compared value names its own object, never the operator („Porovnej tržby z tržiště a z webu“, #207)
 
 „Porovnej tržby z tržiště a z webu v roce 2025“ came back with `webu` → `op:compare` in `Resolution.bindings`

@@ -58,9 +58,10 @@ class IncomingCallLoggingInterceptor : ServerInterceptor {
                     if (status.isOk) {
                         log.info("⇣ {} closed OK", method)
                     } else {
+                        // the status as the handler left it: the exception's message stays off THIS line
                         logFailedClose(log, method, status)
                     }
-                    super.close(status, trailers)
+                    super.close(describedFailure(status), trailers)
                 }
             }
 
@@ -89,7 +90,8 @@ class IncomingCallLoggingInterceptor : ServerInterceptor {
  * one place it can be seen (ttr-server#197: two resolver crashes that logged nothing but
  * `closed UNKNOWN: `). The WARN line names the exception's class and where it was thrown; the
  * message and the stack go to DEBUG, because an exception message can quote the caller's words and
- * those stay off the INFO/WARN lines.
+ * the serving side keeps those off its INFO/WARN lines. The message itself goes back to the caller
+ * ([describedFailure]), and what the caller does with it is the caller's.
  */
 internal fun logFailedClose(
     log: org.slf4j.Logger,
@@ -110,6 +112,41 @@ internal fun logFailedClose(
         cause.stackTrace.firstOrNull() ?: "<no frame>",
     )
     if (log.isDebugEnabled) log.debug("⇣ {} failed", method, cause)
+}
+
+/** How much of a failure's message a status description carries (ttr-server#197). */
+internal const val FAILURE_MESSAGE_MAX_CHARS = 200
+
+/**
+ * The status a failed call closes with, as the caller reads it. A handler that THROWS closes with
+ * `Status.fromThrowable`: `UNKNOWN`, the exception as the `cause`, and no description. The cause
+ * never crosses the wire, so the caller read `UNKNOWN: ` and nothing else (ttr-server#197). Such a
+ * status is given a description: the exception's class, and the first line of its message with its
+ * secrets masked, cut at [FAILURE_MESSAGE_MAX_CHARS]. The WARN line here ([logFailedClose]) still
+ * names only the class and the throw site.
+ *
+ * The message goes back to the caller whose call it was, and from there it travels: a Kotlin caller's
+ * [OutgoingCallLoggingInterceptor] logs the description at WARN, and `query` hands a downstream
+ * failure's message to its own client in-band, so an MCP client reads it as the tool's error text.
+ * That is accepted (ttr-server#197, 2026-10-14): a failure the caller cannot name is the bug this
+ * fixes, and the words it may quote are the caller's own. What crosses is bounded — one line, secrets
+ * masked, 200 characters.
+ *
+ * A status that already has a description is passed on as it was, and so is one with no cause.
+ */
+internal fun describedFailure(status: Status): Status {
+    if (status.isOk || !status.description.isNullOrBlank()) return status
+    val cause = status.cause ?: return status
+    val message =
+        cause.message
+            ?.lineSequence()
+            ?.firstOrNull()
+            ?.trim()
+            .orEmpty()
+    if (message.isEmpty()) return status.withDescription(cause.javaClass.name)
+    val masked = redactSecrets(message)
+    val short = if (masked.length > FAILURE_MESSAGE_MAX_CHARS) masked.take(FAILURE_MESSAGE_MAX_CHARS) + "…" else masked
+    return status.withDescription("${cause.javaClass.name}: $short")
 }
 
 /**
@@ -158,7 +195,9 @@ class OutgoingCallLoggingInterceptor : ClientInterceptor {
                                 if (log.isDebugEnabled) log.debug("✓ {} closed OK", name)
                             } else {
                                 // status != OK is rare enough to surface above DEBUG so an
-                                // operator at INFO sees it without flipping flags.
+                                // operator at INFO sees it without flipping flags. Since #197 the
+                                // description of a call the server threw on names the exception and
+                                // its first line ([describedFailure]).
                                 log.warn("✗ {} closed {}: {}", name, status.code, status.description ?: "")
                             }
                             super.onClose(status, trailers)
@@ -208,8 +247,17 @@ private val MAX_PAYLOAD_CHARS: Int = payloadCapFrom(System.getenv("GRPC_LOG_PAYL
  */
 private val SECRET_FIELD_NAMES =
     listOf("token", "resume_token", "authorization", "api_key", "apikey", "secret", "password")
+
+/**
+ * ⚠ The quoted value is walked with a POSSESSIVE loop (`*+`), which `java.util.regex` runs
+ * iteratively. The greedy `(?:\\.|[^"\\])*` it replaces recursed once per character, so a long value
+ * overflowed the stack of the thread logging it (ttr-server#197). A resolver clarification's resume
+ * token runs to kilobytes: 20 options came to 8 450 characters, and on a 1 MB thread stack the old
+ * walk died past ~1 000 characters while the JVM was cold and past ~4 100 once it was warm. The two
+ * alternatives cannot both match at one position, so giving up backtracking changes no match.
+ */
 private val SECRET_FIELD_REGEX =
-    Regex("(?i)\\b(${SECRET_FIELD_NAMES.joinToString("|")})\\b(\\s*:\\s*)\"(?:\\\\.|[^\"\\\\])*\"")
+    Regex("(?i)\\b(${SECRET_FIELD_NAMES.joinToString("|")})\\b(\\s*:\\s*)\"(?:[^\"\\\\]|\\\\.)*+\"")
 
 /**
  * `ttrk-` virtual-gateway keys (LG-P4·S1, D-1) are masked by VALUE, not field name: a leaked key can
@@ -227,12 +275,24 @@ internal fun redactSecrets(rendered: String): String {
     return TTRK_KEY_REGEX.replace(fieldsMasked) { "ttrk-<redacted>" }
 }
 
-private fun formatPayload(message: Any?): String {
+/**
+ * A payload as its log line shows it. Rendering runs inside the call (`sendMessage`, `onMessage`), so
+ * it must never throw: whatever it throws would fail a call whose handler had already answered, which
+ * is how ttr-server#197 closed `Resolve` as `UNKNOWN`. A payload that cannot be rendered is logged as
+ * such.
+ */
+internal fun formatPayload(message: Any?): String {
     val rendered =
-        when (message) {
-            null -> "<null>"
-            is MessageOrBuilder -> redactSecrets(TextFormat.shortDebugString(message))
-            else -> redactSecrets(message.toString())
+        try {
+            when (message) {
+                null -> "<null>"
+                is MessageOrBuilder -> redactSecrets(TextFormat.shortDebugString(message))
+                else -> redactSecrets(message.toString())
+            }
+        } catch (e: RuntimeException) {
+            return "<unrenderable payload: ${e.javaClass.name}>"
+        } catch (e: StackOverflowError) {
+            return "<unrenderable payload: ${e.javaClass.name}>"
         }
     return if (rendered.length > MAX_PAYLOAD_CHARS) {
         rendered.take(MAX_PAYLOAD_CHARS) + "…(+${rendered.length - MAX_PAYLOAD_CHARS} chars truncated)"

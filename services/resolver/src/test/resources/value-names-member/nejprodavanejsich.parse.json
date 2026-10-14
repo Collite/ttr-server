@@ -1,0 +1,187 @@
+{
+  "language": "cs",
+  "languageConfidence": 0.9923573347330161,
+  "engineUsed": "morphodita",
+  "tokens": [
+    {
+      "text": "10",
+      "charEnd": 2,
+      "lemma": "10",
+      "upos": "NUM",
+      "xpos": "C=-------------",
+      "feats": {
+        "NumForm": "Digit",
+        "NumType": "Card"
+      },
+      "depHead": 3,
+      "depRelation": "nummod:gov"
+    },
+    {
+      "text": "nejprodávanějších",
+      "charStart": 3,
+      "charEnd": 20,
+      "lemma": "prodávaný",
+      "upos": "ADJ",
+      "xpos": "AAIP2----3A----",
+      "feats": {
+        "Animacy": "Inan",
+        "Case": "Gen",
+        "Degree": "Sup",
+        "Gender": "Masc",
+        "Number": "Plur",
+        "Polarity": "Pos"
+      },
+      "depHead": 3,
+      "depRelation": "amod"
+    },
+    {
+      "text": "produktů",
+      "charStart": 21,
+      "charEnd": 29,
+      "lemma": "produkt",
+      "upos": "NOUN",
+      "xpos": "NNIP2-----A----",
+      "feats": {
+        "Animacy": "Inan",
+        "Case": "Gen",
+        "Gender": "Masc",
+        "Number": "Plur"
+      },
+      "depRelation": "root"
+    },
+    {
+      "text": "na",
+      "charStart": 30,
+      "charEnd": 32,
+      "lemma": "na",
+      "upos": "ADP",
+      "xpos": "RR--6----------",
+      "feats": {
+        "AdpType": "Prep",
+        "Case": "Loc"
+      },
+      "depHead": 5,
+      "depRelation": "case"
+    },
+    {
+      "text": "tržišti",
+      "charStart": 33,
+      "charEnd": 40,
+      "lemma": "tržiště",
+      "upos": "NOUN",
+      "xpos": "NNNS6-----A----",
+      "feats": {
+        "Case": "Loc",
+        "Gender": "Neut",
+        "Number": "Sing"
+      },
+      "depHead": 3,
+      "depRelation": "nmod"
+    },
+    {
+      "text": "v",
+      "charStart": 41,
+      "charEnd": 42,
+      "lemma": "v",
+      "upos": "ADP",
+      "xpos": "RR--6----------",
+      "feats": {
+        "AdpType": "Prep",
+        "Case": "Loc"
+      },
+      "depHead": 7,
+      "depRelation": "case"
+    },
+    {
+      "text": "roce",
+      "charStart": 43,
+      "charEnd": 47,
+      "lemma": "rok",
+      "upos": "NOUN",
+      "xpos": "NNIS6-----A---1",
+      "feats": {
+        "Animacy": "Inan",
+        "Case": "Loc",
+        "Gender": "Masc",
+        "Number": "Sing"
+      },
+      "depHead": 3,
+      "depRelation": "nmod"
+    },
+    {
+      "text": "2025",
+      "charStart": 48,
+      "charEnd": 52,
+      "lemma": "2025",
+      "upos": "NUM",
+      "xpos": "C=-------------",
+      "feats": {
+        "NumForm": "Digit",
+        "NumType": "Card"
+      },
+      "depHead": 7,
+      "depRelation": "nummod"
+    }
+  ],
+  "sentences": [
+    {
+      "charEnd": 52
+    }
+  ],
+  "entities": [
+    {
+      "text": "10",
+      "label": "MISC",
+      "charEnd": 2,
+      "normalizedValue": "cnec:nc",
+      "sourceEngine": "nametag3"
+    },
+    {
+      "text": "2025",
+      "label": "DATE",
+      "charStart": 48,
+      "charEnd": 52,
+      "normalizedValue": "cnec:ty",
+      "sourceEngine": "nametag3"
+    }
+  ],
+  "detectedLanguage": "cs",
+  "used": [
+    {
+      "op": "DETECT_LANGUAGE",
+      "engine": "langid",
+      "model": "lingua",
+      "modelVersion": "lingua-2.0"
+    },
+    {
+      "op": "TOKENIZE",
+      "engine": "morphodita",
+      "model": "czech-morfflex2.0-pdtc1.0-220710",
+      "modelVersion": "czech-morfflex2.0-pdtc1.0-220710"
+    },
+    {
+      "op": "LEMMATIZE",
+      "engine": "morphodita",
+      "model": "czech-morfflex2.0-pdtc1.0-220710",
+      "modelVersion": "czech-morfflex2.0-pdtc1.0-220710"
+    },
+    {
+      "op": "POS_TAG",
+      "engine": "morphodita",
+      "model": "czech-morfflex2.0-pdtc1.0-220710",
+      "modelVersion": "czech-morfflex2.0-pdtc1.0-220710"
+    },
+    {
+      "op": "DEP_PARSE",
+      "engine": "stanza",
+      "model": "stanza-cs-en",
+      "modelVersion": "stanza-1.10.0"
+    },
+    {
+      "op": "NER",
+      "engine": "nametag3",
+      "model": "nametag3-czech-cnec2.0-240830",
+      "modelVersion": "nametag3-czech-cnec2.0-240830"
+    }
+  ]
+}
