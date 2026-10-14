@@ -45,6 +45,7 @@ dependencies {
     testImplementation(libs.wiremock)
     testImplementation(libs.mockk)
     testImplementation(libs.grpc.kotlin.stub)
+    testImplementation(libs.grpc.inprocess)
     testImplementation(libs.protobuf.java)
     testImplementation(libs.opentelemetry.extension.kotlin)
     testImplementation(libs.opentelemetry.sdk)

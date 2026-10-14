@@ -6,8 +6,10 @@ import io.grpc.Status
 import io.grpc.StatusException
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.booleans.shouldBeTrue
+import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
+import io.kotest.matchers.collections.shouldNotContain
 import io.kotest.matchers.longs.shouldBeLessThan
 import io.kotest.matchers.shouldBe
 import kotlin.system.measureTimeMillis
@@ -47,6 +49,7 @@ import org.tatrman.resolver.v1.GapKind
 import org.tatrman.resolver.v1.Registry
 import org.tatrman.resolver.v1.ResolutionState
 import org.tatrman.resolver.v1.ResolveRequest
+import org.tatrman.resolver.v1.ResolveResponse
 import org.tatrman.fuzzy.v1.TargetClass as FuzzyTargetClass
 
 /**
@@ -167,6 +170,31 @@ class LookupRoundsTest :
             state.gapsList.single().kind shouldBe GapKind.GAP_KIND_G4_METHOD_MISS
         }
 
+        "ttr-server#227 — a round that reads the code as a model object leaves it unattributed, on the door too" {
+            // A round admits contenders exactly as the gate does, and the column is not a reading a value can
+            // take. The first cut refused it only where the lattice writes attributions, so the lattice said
+            // G4 while `Resolution.bindings` bound `501001` to the column.
+            val code = "md.dimension.Account.code"
+            val fuzzy =
+                RoundFuzzy(
+                    broadMisses = setOf("501001"),
+                    answers = mapOf("501001" to listOf(declared(code, code))),
+                )
+            val response = respond(fuzzy)
+            val state = response.resolutionState
+
+            fuzzy.lookups.map { it.term } shouldContainExactly listOf("501001")
+            val value = state.valuesList.single { it.span.text == "501001" }
+            value.attributionsList shouldBe emptyList()
+            state.gapsList.single { it.valueId == value.id }.kind shouldBe GapKind.GAP_KIND_G4_METHOD_MISS
+            val door =
+                response.resolution.bindingsList
+                    .filter { it.hasDomain() }
+                    .map { it.span.text }
+            door shouldContain "účtu"
+            door shouldNotContain "501001"
+        }
+
         "a question the broad pass already resolved costs ZERO rounds — no gaps, nothing to ask" {
             val fuzzy = RoundFuzzy(broadMisses = emptySet())
             val state = resolve(fuzzy)
@@ -225,7 +253,12 @@ class LookupRoundsTest :
         private fun resolve(
             fuzzy: FuzzyClient,
             config: LookupRoundConfig = LookupRoundConfig.DEFAULT,
-        ): ResolutionState {
+        ): ResolutionState = respond(fuzzy, config).resolutionState
+
+        private fun respond(
+            fuzzy: FuzzyClient,
+            config: LookupRoundConfig = LookupRoundConfig.DEFAULT,
+        ): ResolveResponse {
             val pipeline =
                 ResolverPipeline(
                     FakeNlp(
@@ -251,7 +284,7 @@ class LookupRoundsTest :
                             .setLocale(CASE["locale"]!!.jsonPrimitive.content),
                     ).setRegistry(merge(CASE["registry"]!!.jsonObject, Registry.newBuilder()).build())
                     .build()
-            return runBlocking { pipeline.resolve(request) }.resolutionState
+            return runBlocking { pipeline.resolve(request) }
         }
 
         private fun declared(

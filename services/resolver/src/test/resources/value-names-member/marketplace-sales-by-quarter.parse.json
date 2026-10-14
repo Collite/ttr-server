@@ -1,0 +1,133 @@
+{
+  "language": "en",
+  "languageConfidence": 0.40276967565071586,
+  "engineUsed": "stanza",
+  "tokens": [
+    {
+      "text": "Marketplace",
+      "charEnd": 11,
+      "lemma": "marketplace",
+      "upos": "NOUN",
+      "xpos": "NN",
+      "feats": {
+        "Number": "Sing"
+      },
+      "depHead": 2,
+      "depRelation": "compound"
+    },
+    {
+      "text": "sales",
+      "charStart": 12,
+      "charEnd": 17,
+      "lemma": "sale",
+      "upos": "NOUN",
+      "xpos": "NNS",
+      "feats": {
+        "Number": "Plur"
+      },
+      "depRelation": "root"
+    },
+    {
+      "text": "by",
+      "charStart": 18,
+      "charEnd": 20,
+      "lemma": "by",
+      "upos": "ADP",
+      "xpos": "IN",
+      "depHead": 4,
+      "depRelation": "case"
+    },
+    {
+      "text": "quarter",
+      "charStart": 21,
+      "charEnd": 28,
+      "lemma": "quarter",
+      "upos": "NOUN",
+      "xpos": "NN",
+      "feats": {
+        "NumForm": "Word",
+        "NumType": "Frac",
+        "Number": "Sing"
+      },
+      "depHead": 2,
+      "depRelation": "nmod"
+    },
+    {
+      "text": "in",
+      "charStart": 29,
+      "charEnd": 31,
+      "lemma": "in",
+      "upos": "ADP",
+      "xpos": "IN",
+      "depHead": 6,
+      "depRelation": "case"
+    },
+    {
+      "text": "2025",
+      "charStart": 32,
+      "charEnd": 36,
+      "lemma": "2025",
+      "upos": "NUM",
+      "xpos": "CD",
+      "feats": {
+        "NumForm": "Digit",
+        "NumType": "Card"
+      },
+      "depHead": 2,
+      "depRelation": "nmod"
+    }
+  ],
+  "sentences": [
+    {
+      "charEnd": 36
+    }
+  ],
+  "entities": [
+    {
+      "text": "quarter in 2025",
+      "label": "DATE",
+      "charStart": 21,
+      "charEnd": 36,
+      "sourceEngine": "stanza"
+    }
+  ],
+  "detectedLanguage": "en",
+  "used": [
+    {
+      "op": "DETECT_LANGUAGE",
+      "engine": "langid",
+      "model": "lingua",
+      "modelVersion": "lingua-2.0"
+    },
+    {
+      "op": "TOKENIZE",
+      "engine": "stanza",
+      "model": "stanza-cs-en",
+      "modelVersion": "stanza-1.10.0"
+    },
+    {
+      "op": "LEMMATIZE",
+      "engine": "stanza",
+      "model": "stanza-cs-en",
+      "modelVersion": "stanza-1.10.0"
+    },
+    {
+      "op": "POS_TAG",
+      "engine": "stanza",
+      "model": "stanza-cs-en",
+      "modelVersion": "stanza-1.10.0"
+    },
+    {
+      "op": "DEP_PARSE",
+      "engine": "stanza",
+      "model": "stanza-cs-en",
+      "modelVersion": "stanza-1.10.0"
+    },
+    {
+      "op": "NER",
+      "engine": "stanza",
+      "model": "stanza-cs-en",
+      "modelVersion": "stanza-1.10.0"
+    }
+  ]
+}
