@@ -173,6 +173,84 @@ class StoreWordRoleTest :
                 )
         }
 
+        // ── coordination (ruled 2026-10-14): the reading where the two mentions intersect ──────────
+        //
+        // Two mentions joined by „a“ / „nebo“ / "and" / "or", one with two readings and the other with
+        // one: the ambiguous one takes the reading they share, and nothing is asked. A filter does not
+        // override it — coordination is read first.
+
+        "coordination — \"Revenue of stores and/or web in 2025\": the store word takes the channel, no ask" {
+            for (question in listOf(REVENUE_OF_STORES_AND_WEB, REVENUE_OF_STORES_OR_WEB)) {
+                withClue(question.text) {
+                    val turn = resolve(question)
+                    turn.lattice.summary() shouldContainExactly
+                        listOf(
+                            "M Revenue → $REVENUE [SUBJECT, MEASURE]",
+                            "M stores → $STORE_SALES []",
+                            "M web → $WEB_SALES []",
+                            "V 2025 GROUNDED → $CAL_DATE",
+                        )
+                    turn.answers()
+                }
+            }
+        }
+
+        "coordination — „Tržby prodejen a/nebo webu v roce 2025“: the store word takes the channel" {
+            // `webu` itself binds nothing on this archive (G1): the genitive is not declared, and the
+            // lemma lookup ties the web revenue and the web returns phrases. That is the lexicon's to
+            // fix; what this rule decides is the store word, which is not asked about.
+            for (question in listOf(TRZBY_PRODEJEN_A_WEBU, TRZBY_PRODEJEN_NEBO_WEBU)) {
+                withClue(question.text) {
+                    val turn = resolve(question)
+                    turn.lattice
+                        .mentionsList
+                        .single { it.span.text == "prodejen" }
+                        .bindingsList
+                        .map { it.ref } shouldContainExactly listOf(STORE_SALES)
+                    turn.lattice.gapsList.map { it.kind to it.span.text } shouldContainExactly
+                        listOf(GapKind.GAP_KIND_G1_UNBOUND to "webu")
+                }
+            }
+        }
+
+        "coordination — \"Compare stores and web\", „Srovnej prodejny nebo web“: channel with channel, no ask" {
+            resolve(COMPARE_STORES_AND_WEB).also { it.answers() }.lattice.summary() shouldContainExactly
+                listOf(
+                    "M Compare → op:compare []",
+                    "M stores → $STORE_SALES [SUBJECT]",
+                    "M web → $WEB_SALES []",
+                )
+            resolve(SROVNEJ_NEBO).also { it.answers() }.lattice.summary() shouldContainExactly
+                listOf(
+                    "M Srovnej → op:compare []",
+                    "M prodejny → $STORE_SALES [SUBJECT]",
+                    "M web → $WEB_SALES []",
+                )
+        }
+
+        "coordination — „Srovnej prodejny a sklady“: a dimension sibling makes the store word the DIMENSION" {
+            // `sklady`'s one declared reading is the warehouse dimension, so the store word reads the
+            // store dimension. (`sklady` itself then binds the stock measure through a token of „není
+            // skladem“ — the matcher's business, not this rule's.)
+            resolve(SROVNEJ_SKLADY)
+                .lattice
+                .mentionsList
+                .single { it.span.text == "prodejny" }
+                .bindingsList
+                .map { it.ref } shouldContainExactly listOf(STORE)
+        }
+
+        "coordination — \"Compare stores and warehouses\": a sibling that is no mention decides nothing, so it asks" {
+            // `warehouses` has no reading in this lexicon, so there is nothing to intersect with; and
+            // a coordinated noun is not a value the store word governs.
+            resolve(COMPARE_STORES_AND_WAREHOUSES).let { turn ->
+                turn.response.hasAwaiting() shouldBe true
+                turn.response.awaiting.optionsList
+                    .map { it.targetRef } shouldContainExactlyInAnyOrder
+                    listOf(STORE, STORE_SALES)
+            }
+        }
+
         "count and compare keep their reading; the bare word still asks" {
             resolve(KOLIK).also { it.answers() }.lattice.summary() shouldContainExactly
                 listOf("M prodejen → $STORE [SUBJECT]")
@@ -180,7 +258,7 @@ class StoreWordRoleTest :
                 listOf(
                     "M Srovnej → op:compare []",
                     "M prodejny → $STORE_SALES [SUBJECT]",
-                    "M web → er.entity.web_sales []",
+                    "M web → $WEB_SALES []",
                 )
             resolve(PRODEJNY).asks("Prodejny")
         }
@@ -332,6 +410,7 @@ class StoreWordRoleTest :
         const val STORE = "er.entity.store"
         const val STORE_SALES = "er.entity.store_sales"
         const val STORE_NAME = "er.entity.store.store_name"
+        const val WEB_SALES = "er.entity.web_sales"
         const val STORE_CHANNEL_REVENUE = "er.entity.store_sales.ext_sales_price"
         const val REVENUE = "er.entity.channel_sales.ext_sales_price"
         const val CAL_DATE = "er.entity.date_dim.cal_date"
@@ -352,6 +431,16 @@ class StoreWordRoleTest :
         val KOLIK = Question("Kolik máme prodejen?", "cs", "kolik-prodejen")
         val SROVNEJ = Question("Srovnej prodejny a web", "cs", "srovnej")
         val PRODEJNY = Question("Prodejny", "cs", "prodejny")
+        val REVENUE_OF_STORES_AND_WEB =
+            Question("Revenue of stores and web in 2025", "en", "coord-revenue-stores-and-web")
+        val REVENUE_OF_STORES_OR_WEB = Question("Revenue of stores or web in 2025", "en", "coord-revenue-stores-or-web")
+        val TRZBY_PRODEJEN_A_WEBU = Question("Tržby prodejen a webu v roce 2025", "cs", "coord-trzby-a-webu")
+        val TRZBY_PRODEJEN_NEBO_WEBU = Question("Tržby prodejen nebo webu v roce 2025", "cs", "coord-trzby-nebo-webu")
+        val COMPARE_STORES_AND_WEB = Question("Compare stores and web", "en", "coord-compare-stores-and-web")
+        val SROVNEJ_NEBO = Question("Srovnej prodejny nebo web", "cs", "coord-srovnej-nebo")
+        val SROVNEJ_SKLADY = Question("Srovnej prodejny a sklady", "cs", "coord-srovnej-sklady")
+        val COMPARE_STORES_AND_WAREHOUSES =
+            Question("Compare stores and warehouses", "en", "coord-stores-and-warehouses")
 
         val REGISTRY: Registry =
             Registry.newBuilder().also { JsonFormat.parser().merge(resourceText("registry.json"), it) }.build()

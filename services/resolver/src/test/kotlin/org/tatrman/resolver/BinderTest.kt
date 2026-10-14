@@ -405,6 +405,36 @@ class BinderTest :
                 .winner.match.targetRef shouldBe storeSales
         }
 
+        // ttr-demo#62, the coordination ruling (2026-10-14): the reading where the two mentions intersect.
+
+        "coordination: a dimension sibling picks the DIMENSION — stores and warehouses" {
+            val bind =
+                decideMh(slot = SlotHint(Slot.COORD_WITH, coordSiblingKinds = setOf("entity")))
+                    .shouldBeInstanceOf<Binder.Bind>()
+            bind.winner.match.targetRef shouldBe store
+            bind.rejected.map { it.match.targetRef } shouldContainExactly listOf(storeSales)
+        }
+
+        "coordination: a sibling whose one kind BOTH readings share decides nothing — it asks" {
+            val region = "er.entity.region"
+            decideMh(
+                listOf(
+                    declared(store, 1.0, EvidenceClass.EVIDENCE_CLASS_EXACT),
+                    declared(region, 1.0, EvidenceClass.EVIDENCE_CLASS_EXACT),
+                ),
+                slot = SlotHint(Slot.COORD_WITH, coordSiblingKinds = setOf("entity")),
+                kindsMap = kinds + (region to "entity"),
+            ).shouldBeInstanceOf<Binder.Ambiguous>()
+                .admitted
+                .map { it.match.targetRef } shouldContainExactlyInAnyOrder listOf(store, region)
+        }
+
+        "coordination: a sibling of a third kind intersects neither reading — it asks" {
+            decideMh(slot = SlotHint(Slot.COORD_WITH, coordSiblingKinds = setOf("attribute")))
+                .shouldBeInstanceOf<Binder.Ambiguous>()
+                .admitted.size shouldBe 2
+        }
+
         "mh-b8: NONE is byte-identical to today — a bare word still asks" {
             decideMh(slot = SlotHint.NONE).shouldBeInstanceOf<Binder.Ambiguous>().admitted.size shouldBe 2
         }

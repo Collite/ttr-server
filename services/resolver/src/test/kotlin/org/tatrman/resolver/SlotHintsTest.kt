@@ -198,8 +198,61 @@ class SlotHintsTest :
             stamped[0].slot shouldBe
                 SlotHint(Slot.COORD_WITH, coordSiblingKinds = setOf("entity_with_measures"))
             // The other direction: `web` is the conj CHILD, so it finds its sibling by walking up.
-            stamped[1].slot shouldBe
-                SlotHint(Slot.COORD_WITH, coordSiblingKinds = setOf("entity", "entity_with_measures"))
+            // Its sibling `prodejny` has two readings, so it lends no kind (ttr-demo#62, the
+            // coordination ruling: only an UNAMBIGUOUS sibling decides) — `web` has one reading anyway.
+            stamped[1].slot shouldBe SlotHint(Slot.COORD_WITH, coordSiblingKinds = emptySet())
+        }
+
+        // ---- ttr-demo#62 — the coordination ruling (Bora, 2026-10-14) ----------------------------
+        //
+        // Two mentions joined by „a“/„nebo“/"and"/"or", one with two readings and the other with one:
+        // the ambiguous one takes the reading where the two intersect, and nothing is asked. So the
+        // sibling decides only when it has ONE reading; a sibling with two readings itself decides
+        // nothing, whatever their kinds.
+
+        "coordination — a sibling with two readings of ONE kind lends nothing" {
+            val p =
+                parse(
+                    "cs",
+                    tok("Srovnej", 0, 7, "srovnat", "VERB", 0, "root"),
+                    tok("prodejny", 8, 16, "prodejna", "NOUN", 1, "obj"),
+                    tok("a", 17, 18, "a", "CCONJ", 4, "cc"),
+                    tok("kanály", 19, 25, "kanál", "NOUN", 2, "conj"),
+                )
+            val candidates =
+                listOf(
+                    anchor("prodejny", 1, listOf(store, storeSales), lemma = "prodejna"),
+                    // a word two facts declare: two readings, both `entity_with_measures`
+                    anchor("kanály", 3, listOf(webSales, storeSales), lemma = "kanál"),
+                )
+            stamp(p, candidates)[0].slot shouldBe SlotHint(Slot.COORD_WITH, coordSiblingKinds = emptySet())
+        }
+
+        "coordination — an entity and its OWN measure are one reading, so the sibling still decides" {
+            val channelSales = "er.entity.channel_sales"
+            val revenue = "er.entity.channel_sales.ext_sales_price"
+            val p =
+                parse(
+                    "cs",
+                    tok("Srovnej", 0, 7, "srovnat", "VERB", 0, "root"),
+                    tok("prodejny", 8, 16, "prodejna", "NOUN", 1, "obj"),
+                    tok("a", 17, 18, "a", "CCONJ", 4, "cc"),
+                    tok("tržby", 19, 24, "tržba", "NOUN", 2, "conj"),
+                )
+            val stamped =
+                SlotHints.stamp(
+                    p,
+                    listOf(
+                        anchor("prodejny", 1, listOf(store, storeSales), lemma = "prodejna"),
+                        anchor("tržby", 3, listOf(channelSales, revenue), lemma = "tržba"),
+                    ),
+                    kinds + mapOf(channelSales to "entity_with_measures", revenue to "measure"),
+                    mapOf(revenue to channelSales),
+                    "cs",
+                    preps,
+                )
+            stamped[0].slot shouldBe
+                SlotHint(Slot.COORD_WITH, coordSiblingKinds = setOf("entity_with_measures", "measure"))
         }
 
         // ---- E6: Vratky z prodejen — the head is the WRONG fact for the channel term -----------
@@ -464,6 +517,26 @@ class SlotHintsTest :
                 .single { it.origin == DomainSpanCandidate.Origin.ANCHOR_PHRASE && it.text == "prodejen" }
                 .slot shouldBe
                 SlotHint(Slot.FILTER, headRefs = listOf("er.entity.channel_sales"), headMeasureCapable = true)
+        }
+
+        "coordination — a conj noun that is no mention is a sibling, not a governed VALUE" {
+            // "Compare stores and warehouses" (hartland's parse): `warehouses` is no anchor, so it is
+            // no coordination sibling either — but span proposal offers a `conj` dependent as a governed
+            // value, and rule 4 must not read a coordinated noun as a value of the store word.
+            val p =
+                parse(
+                    "en",
+                    tok("Compare", 0, 7, "compare", "VERB", 0, "root"),
+                    tok("stores", 8, 14, "store", "NOUN", 1, "obj"),
+                    tok("and", 15, 18, "and", "CCONJ", 4, "cc"),
+                    tok("warehouses", 19, 29, "warehouse", "NOUN", 2, "conj"),
+                )
+            val stamped = stampProposed(p)
+            stamped.any { it.origin == DomainSpanCandidate.Origin.GOVERNED_VALUE && it.text == "warehouses" } shouldBe
+                true
+            stamped
+                .single { it.origin == DomainSpanCandidate.Origin.ANCHOR_PHRASE && it.text == "stores" }
+                .slot shouldBe SlotHint.NONE
         }
 
         "coordination outranks a count head — 'kolik prodejen a webů' is still a comparison" {

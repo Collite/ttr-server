@@ -33,7 +33,13 @@ chose like with like. Two places did not follow the ruling:
   `anchorHeadToken`, which span proposal never sets on a governed value, so it never fired. It now reads the parse: a
   governed value whose head hangs from the span's head. „Tržby prodejny Praha v roce 2025“, "Revenue of stores in Praha"
   and "Stores in TN" bind the store dimension (the name or state binds its member as before), where the first two bound
-  the channel and the last asked between the two readings.
+  the channel and the last asked between the two readings. A noun hanging by `conj` is the word's sibling, not
+  its value, and does not count ("Compare stores and warehouses").
+- **Coordination: only an unambiguous sibling decides** (ruled 2026-10-14). Of two mentions joined by „a“ / „nebo“
+  / "and" / "or", the one with two readings takes the reading they share („Srovnej prodejny a web“, "Revenue of
+  stores or web": the channel; „Srovnej prodejny a sklady“: the dimension), as before. A sibling with two readings
+  of its own (an entity with its own measure counts as one) now lends no kind, so nothing is preferred and the
+  question asks; before, a sibling whose two readings shared a kind still decided.
 - No wire change.
 
 ### resolver — a compared value names its own object, never the operator („Porovnej tržby z tržiště a z webu“, #207)
