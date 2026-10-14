@@ -29,6 +29,7 @@ if str(_GENERATED) not in sys.path:  # pragma: no cover - import bootstrap
 import grpc  # noqa: E402
 from org.tatrman.resolver.v1 import resolver_pb2, resolver_pb2_grpc  # noqa: E402
 
+from golem_py.errors import PickRefused  # noqa: E402
 from golem_py.state import (  # noqa: E402
     Attribution,
     Binding,
@@ -259,6 +260,9 @@ def response_to_state(resp: Any, *, question: str = "") -> ResolutionState:
                 ref=o.target_ref or o.resolved_id,
                 entity_type_ref=o.entity_type_ref,
                 span=_span(o.span) if o.HasField("span") else None,
+                # A `period` option carries no ref at all, and must not be read as a blank
+                # one: it is redeemed by the core's resume, never put to the gate.
+                object_kind=o.object_kind,
             )
             for o in resp.awaiting.options
         ]
@@ -276,6 +280,7 @@ def options_from_response(resp: Any) -> list[dict[str, str]]:
             "label": o.label,
             "ref": o.target_ref or o.resolved_id,
             "entity_type_ref": o.entity_type_ref,
+            "object_kind": o.object_kind,
         }
         for o in resp.awaiting.options
     ]
@@ -319,7 +324,10 @@ class LiveCore:
     ) -> ResolutionState:
         """The core's own resume (`ResumeAnswer`). Distinct from OUR resume, which
         rejoins `assess_gaps` — this one hands the core back its signed pin so it can
-        re-check the subject and rebuild the binding itself."""
+        re-check the subject and rebuild the binding itself.
+
+        A pick the core will not ground is `FAILED_PRECONDITION` (ttr-server#231) and is
+        raised as `PickRefused`; an unreachable core or kernel (`UNAVAILABLE`) propagates."""
         req = resolver_pb2.ResolveRequest(
             conversation_id=conversation_id,
             resume=resolver_pb2.ResumeAnswer(
@@ -329,8 +337,13 @@ class LiveCore:
             ),
             caller_subject=caller_subject,
         )
-        async with grpc.aio.insecure_channel(self.target) as channel:
-            stub = resolver_pb2_grpc.ResolverServiceStub(channel)
-            resp = await stub.Resolve(req, timeout=self.timeout_s)
+        try:
+            async with grpc.aio.insecure_channel(self.target) as channel:
+                stub = resolver_pb2_grpc.ResolverServiceStub(channel)
+                resp = await stub.Resolve(req, timeout=self.timeout_s)
+        except grpc.aio.AioRpcError as exc:
+            if exc.code() == grpc.StatusCode.FAILED_PRECONDITION:
+                raise PickRefused(selected_option_id, exc.details() or "") from exc
+            raise
         self.last_response = resp
         return response_to_state(resp)

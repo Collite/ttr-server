@@ -47,6 +47,10 @@ November" in October is November of this year or of last), and, with #214, the a
   `{rung: "core", action: "ground-unanchored", value_ids: [<the value>]}`, one per value. A consumer that would read an
   ungrounded period against today must not read this one so; it asks which period is meant. Additive: a new rung-log
   action, no new field, and no entry at all on a lattice without such a value.
+- **golem-py** (the reference golem) keeps an option's `object_kind`, and redeems a `period` pick through the core's
+  `Resolve(resume{token, selected_option_id})`, folding the answered date into its own value by span and closing the G2.
+  It used to put the pick to the gate as a hypothesis with a blank ref. A refused pick (`FAILED_PRECONDITION`) leaves the
+  gap open with the user's answer recorded.
 
 ### resolver — a compared value names its own object, never the operator („Porovnej tržby z tržiště a z webu“, #207)
 
