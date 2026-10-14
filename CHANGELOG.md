@@ -40,6 +40,11 @@ quarter is read against.
   asked about, an anaphoric word — and the anaphoric half of „minulý …“ — is `UNGROUNDABLE` with the new
   message code `no_anchor`, which says why. It is never read against the reference date, and never handed to the
   LLM fallback.
+- **A year chrono asked about is no year to lean on:** a month or quarter in it („A v březnu minulého roku?“, which
+  asked) is no anchor for the next anaphoric word („A předchozí měsíc?“ is `no_anchor`, not February of the
+  reference year), and a date that names no year after it („A minulý rok?“, then „A v září?“) is `no_anchor` too,
+  not the reference year's September — both readings of the asked year differ from the reference year. A question
+  naming several years still leans a yearless date on neither: the reference year, as before.
 - **„minulý …“ asks only when its readings differ:** `AWAITING_CLARIFICATION` with the deictic reading first and
   the anaphoric one second. With no period of that unit in the conversation, or with the current one, it grounds
   without asking. A month in an ambiguous year („v březnu minulého roku“) asks between the two Marches.

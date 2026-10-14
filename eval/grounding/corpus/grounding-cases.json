@@ -831,6 +831,26 @@
     }
   },
   {
+    "id": "chrono/period-kinds-month-in-asked-year-cs",
+    "tool": "ground_time",
+    "kind": "DATE",
+    "span": "předchozí měsíc",
+    "locale": "cs-CZ",
+    "reference_datetime": "2026-10-14T12:00:00+02:00",
+    "timezone": "Europe/Prague",
+    "package": "cnc",
+    "model": "accounting-period",
+    "here": null,
+    "question_text": "A předchozí měsíc?",
+    "prior_questions": [
+      "A v březnu minulého roku?",
+      "Tržby z tržiště v roce 2025"
+    ],
+    "expect": {
+      "status": "UNGROUNDABLE"
+    }
+  },
+  {
     "id": "chrono/period-kinds-no-anchor",
     "tool": "ground_time",
     "kind": "DATE",
@@ -844,6 +864,26 @@
     "question_text": "And the previous year?",
     "prior_questions": [
       "Marketplace revenue in 2024 and in 2025"
+    ],
+    "expect": {
+      "status": "UNGROUNDABLE"
+    }
+  },
+  {
+    "id": "chrono/period-kinds-yearless-after-ask-cs",
+    "tool": "ground_time",
+    "kind": "DATE",
+    "span": "v září",
+    "locale": "cs-CZ",
+    "reference_datetime": "2026-10-14T12:00:00+02:00",
+    "timezone": "Europe/Prague",
+    "package": "cnc",
+    "model": "accounting-period",
+    "here": null,
+    "question_text": "A v září?",
+    "prior_questions": [
+      "A minulý rok?",
+      "Tržby z tržiště v roce 2023"
     ],
     "expect": {
       "status": "UNGROUNDABLE"

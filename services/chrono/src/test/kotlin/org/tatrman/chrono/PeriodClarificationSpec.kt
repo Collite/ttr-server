@@ -165,6 +165,18 @@ class PeriodClarificationSpec :
             message.humanMessage shouldContain "2025"
             gateway.called.shouldBeNull()
         }
+
+        "a month in a year chrono asked about is no anchor for the month after it — never the reference year's" {
+            // „A v březnu minulého roku?“ asked March 2025 or March 2024; the answer is not in the conversation.
+            val gateway = RecordingGateway()
+            val r =
+                service(gateway).ground(
+                    request("předchozí měsíc", "A předchozí měsíc?", "A v březnu minulého roku?", year[1]),
+                )
+            r.status shouldBe GroundResponse.Status.UNGROUNDABLE
+            r.messagesList.single().code shouldBe "no_anchor"
+            gateway.called.shouldBeNull()
+        }
     })
 
 private class RecordingGateway : LlmGatewayClient {

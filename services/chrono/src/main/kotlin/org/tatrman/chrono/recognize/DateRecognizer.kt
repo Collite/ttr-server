@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package org.tatrman.chrono.recognize
 
+import org.tatrman.chrono.recognize.ConversationPeriods.LeanedYear
 import org.tatrman.grounding.lexicon.GroundingSlice
 import org.tatrman.text.Normalization
 import java.time.DayOfWeek
@@ -48,7 +49,9 @@ class DateRecognizer {
      * @param context the conversation, nearest first: the question the span is in, then the user's
      *   earlier questions, newest first. Two readings lean on it ([ConversationPeriods]):
      *   - a date with no year of its own takes the year of the first text that names one — "po celý měsíc
-     *     říjen" after "v říjnu 2025" is October 2025, not the reference's October;
+     *     říjen" after "v říjnu 2025" is October 2025, not the reference's October. When that year is one
+     *     nobody settled (a „minulý rok“ chrono asked about), the date is in neither the reference's year nor
+     *     any other it could name: it is left ungrounded, like an anaphoric word with no anchor;
      *   - an anaphoric period word reads against the period of its unit the conversation is about —
      *     "the previous year" after "Marketplace revenue in 2025" is 2024 (#214).
      *   Empty reads both against the reference date, as before.
@@ -128,7 +131,7 @@ class DateRecognizer {
      */
     private data class Years(
         val stated: SpanYear = SpanYear.None,
-        val leaned: Int? = null,
+        val leaned: LeanedYear = LeanedYear.None,
     )
 
     /** The year a span says in words or digits ([spanYear]). */
@@ -298,7 +301,12 @@ class DateRecognizer {
             is SpanYear.One -> on(stated.year)?.let(::Hit)
             is SpanYear.Two -> twoReadings(on(stated.deictic), on(stated.anaphoric))
             is SpanYear.Unanchored -> NoAnchor(PeriodUnit.YEAR, stated.why)
-            SpanYear.None -> on(years.leaned ?: reference.year)?.let(::Hit)
+            SpanYear.None ->
+                when (val leaned = years.leaned) {
+                    is LeanedYear.One -> on(leaned.year)?.let(::Hit)
+                    is LeanedYear.Unclear -> NoAnchor(PeriodUnit.YEAR, leaned.why)
+                    LeanedYear.None -> on(reference.year)?.let(::Hit)
+                }
         }
     }
 
@@ -360,8 +368,14 @@ class DateRecognizer {
         }
         val stated = written ?: (years.stated as? SpanYear.One)?.year
         // A year the span does not name comes from the question or the conversation before it falls
-        // back to the reference — and a month that has one is never the ambiguous bare future month.
-        val year = stated ?: years.leaned
+        // back to the reference — and a month that has one is never the ambiguous bare future month. A
+        // year the conversation names but nobody settled is no year to fall back from (#214).
+        val year =
+            stated ?: when (val leaned = years.leaned) {
+                is LeanedYear.One -> leaned.year
+                is LeanedYear.Unclear -> return NoAnchor(PeriodUnit.YEAR, leaned.why)
+                LeanedYear.None -> null
+            }
         return Hit(
             if (day != null) {
                 dayIn(year ?: reference.year, if (stated != null) 0.95 else 0.85) ?: return null

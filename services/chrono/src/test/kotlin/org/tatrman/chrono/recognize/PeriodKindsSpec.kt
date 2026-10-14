@@ -302,6 +302,37 @@ class PeriodKindsSpec :
             )
         }
 
+        // ---- a month or a quarter in a year nobody settled ----
+        // „A v březnu minulého roku?“ after 2025 asked: March 2025 or March 2024. That March is in one of the
+        // two years, never the reference year's, so it is no month an anaphoric word can be read against.
+
+        "a month in a year chrono asked about leaves the next anaphoric month with no anchor" {
+            unanchored("předchozí měsíc", "A předchozí měsíc?", "A v březnu minulého roku?", cs2025)
+            unanchored(
+                "the month before",
+                "And the month before?",
+                "And in March of the previous year?",
+                "Marketplace revenue in 2024 and in 2025",
+            )
+        }
+        "a quarter in a year chrono asked about leaves the next anaphoric quarter with no anchor" {
+            unanchored("předchozí čtvrtletí", "A předchozí čtvrtletí?", "A ve 2. čtvrtletí minulého roku?", cs2025)
+        }
+        "„minulý měsíc“ after a month in an unsettled year has no anaphoric reading — so no reference-year one" {
+            unanchored("minulý měsíc", "A minulý měsíc?", "A v březnu minulého roku?", cs2025)
+        }
+        "a month in a year the chain settled is still an anchor" {
+            code("předchozí měsíc", "A předchozí měsíc?", "A v březnu předchozího roku?", cs2025) shouldBe "202402"
+        }
+        "a date with no year, after a question whose year nobody settled, is not in the reference year" {
+            // „A minulý rok?“ after 2023 asked 2025 or 2022: September is in one of those, never in 2026.
+            val asked = arrayOf("A minulý rok?", "Tržby z tržiště v roce 2023")
+            unanchored("v září", "A v září?", *asked)
+            unanchored("15. září", "A 15. září?", *asked)
+            unanchored("15. 9.", "A 15. 9.?", *asked)
+            unanchored("v listopadu", "A v listopadu?", *asked)
+        }
+
         // ---- ambiguous: ask only when the two readings differ ----
 
         "„minulý rok“ asks in every case form" {

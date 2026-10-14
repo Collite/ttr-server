@@ -93,17 +93,44 @@ class ConversationPeriods(
                 ?: Anchor.None
         }
 
+    /** The year a date that names none leans on ([leanedYear]). */
+    sealed interface LeanedYear {
+        /**
+         * Nothing to lean on: no text names a year, or the first that does names several. A date leans on
+         * neither of several, and an older text does not settle them; it reads against the reference date.
+         */
+        data object None : LeanedYear
+
+        /** The first text that names a year names this one. */
+        data class One(
+            val year: Int,
+        ) : LeanedYear
+
+        /**
+         * The first text that names a year names one nobody can say: a „minulý rok“ chrono asked about, or an
+         * anaphoric year with no anchor. A date in it is in a year nobody knows, and never the reference year:
+         * both readings of an asked „minulý rok“ differ from it.
+         */
+        data class Unclear(
+            val why: String,
+        ) : LeanedYear
+    }
+
     /**
      * The year a date that names none leans on: the year of the first text that names one, from [from] on.
-     * Null when none does, or when the first that does names several, or one nobody settled. Unlike [anchor],
-     * a bare four-digit number is no year here and no obstacle: a yearless month never leaned on one.
+     * Unlike [anchor], a bare four-digit number is no year here and no obstacle: a yearless month never
+     * leaned on one.
      */
-    fun leanedYear(from: Int = 0): Int? =
-        (from until texts.size)
-            .asSequence()
-            .map { mentions(PeriodUnit.YEAR, it) }
-            .firstOrNull { it.periods.isNotEmpty() || it.unclear != null }
-            ?.let { if (it.unclear == null) it.periods.singleOrNull() else null }
+    fun leanedYear(from: Int = 0): LeanedYear {
+        val first =
+            (from until texts.size)
+                .asSequence()
+                .map { mentions(PeriodUnit.YEAR, it) }
+                .firstOrNull { it.periods.isNotEmpty() || it.unclear != null }
+                ?: return LeanedYear.None
+        first.unclear?.let { return LeanedYear.Unclear(it) }
+        return first.periods.singleOrNull()?.let { LeanedYear.One(it) } ?: LeanedYear.None
+    }
 
     /** The years text [i] names — written, said, or read from its relative words. */
     fun yearsIn(i: Int): Set<Int> = mentions(PeriodUnit.YEAR, i).periods
@@ -239,10 +266,18 @@ class ConversationPeriods(
             if (taken.any { it.overlaps(m.range) }) continue
             val month = Months.ofWord(m.value, withYear = false) ?: continue
             if (m.value in VERB_MONTHS && !prepositionBeforeRe.containsMatchIn(n.substring(0, m.range.first))) continue
-            // A month with no year is in the year chrono leaned it on; a future one with none, chrono asked about.
+            // A month with no year is in the year chrono leaned it on; a future one with none, chrono asked about;
+            // one in a year nobody settled is in a year nobody knows.
             val year =
-                leanedYear(i)
-                    ?: reference.year.takeIf { month <= reference.monthValue }
+                when (val leaned = leanedYear(i)) {
+                    is LeanedYear.One -> leaned.year
+                    is LeanedYear.Unclear -> {
+                        unclear = unclear ?: "the nearest question that names a month names ${m.value} in a year " +
+                            "nobody can say (${leaned.why})"
+                        continue
+                    }
+                    LeanedYear.None -> reference.year.takeIf { month <= reference.monthValue }
+                }
             if (year == null) {
                 unclear = unclear ?: "the nearest question that names a month names ${m.value} with no year"
             } else {
@@ -279,8 +314,15 @@ class ConversationPeriods(
                 val q = quarterOf(m.groupValues[1]) ?: continue
                 taken += m.range
                 val year =
-                    leanedYear(i)
-                        ?: reference.year.takeIf { q <= PeriodUnit.QUARTER.indexOf(reference) % 4 + 1 }
+                    when (val leaned = leanedYear(i)) {
+                        is LeanedYear.One -> leaned.year
+                        is LeanedYear.Unclear -> {
+                            unclear = unclear ?: "the nearest question that names a quarter names Q$q in a year " +
+                                "nobody can say (${leaned.why})"
+                            continue
+                        }
+                        LeanedYear.None -> reference.year.takeIf { q <= PeriodUnit.QUARTER.indexOf(reference) % 4 + 1 }
+                    }
                 if (year == null) {
                     unclear = unclear ?: "the nearest question that names a quarter names Q$q with no year"
                 } else {

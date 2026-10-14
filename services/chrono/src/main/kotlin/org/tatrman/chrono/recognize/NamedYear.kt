@@ -109,12 +109,12 @@ object NamedYear {
 
     /**
      * The year of the first of [texts] that names any — null when none does, or when the first that
-     * does names several. Nearest first: a question that names its own year is not overruled by
-     * the one before it, and a question that names two is not settled by an older one. A relative year in
-     * an earlier text is read against the texts after it, the way chrono read it then (#214).
+     * does names several, or one nobody settled. Nearest first: a question that names its own year is not
+     * overruled by the one before it, and a question that names two is not settled by an older one. A
+     * relative year in an earlier text is read against the texts after it, the way chrono read it then (#214).
      */
     fun firstOf(
         texts: List<String>,
         reference: LocalDate,
-    ): Int? = ConversationPeriods(texts, reference).leanedYear()
+    ): Int? = (ConversationPeriods(texts, reference).leanedYear() as? ConversationPeriods.LeanedYear.One)?.year
 }
