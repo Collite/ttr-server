@@ -19,6 +19,7 @@ import org.tatrman.resolver.model.ownersByRef
 import org.tatrman.resolver.model.ResolverRegistry
 import org.tatrman.resolver.model.ResolverThresholds
 import org.tatrman.resolver.registry.SnapshotRegistry
+import org.tatrman.resolver.token.KernelQuestion
 import org.tatrman.resolver.token.ResumeOption
 import org.tatrman.resolver.token.ResumePayload
 import org.tatrman.resolver.token.ResumeTokenCodec
@@ -31,13 +32,16 @@ import org.tatrman.resolver.v1.Domain
 import org.tatrman.resolver.v1.GateRequest
 import org.tatrman.resolver.v1.GateResponse
 import org.tatrman.resolver.v1.EntityBinding
+import org.tatrman.resolver.v1.Grounding
 import org.tatrman.resolver.v1.Option
 import org.tatrman.resolver.v1.Registry
 import org.tatrman.resolver.v1.ResolveRequest
 import org.tatrman.resolver.v1.ResolveResponse
 import org.tatrman.resolver.v1.Resolution
+import org.tatrman.resolver.v1.ResolutionState
 import org.tatrman.resolver.v1.Span
 import org.tatrman.resolver.v1.Universal
+import org.tatrman.resolver.v1.UniversalEntityType
 
 /**
  * The deterministic resolver pipeline (RG-P5): parse → extractUniversal →
@@ -384,10 +388,12 @@ class ResolverPipeline(
         // reuse the result across every re-assembly the lookup loop performs below. Doing it here
         // rather than inside LatticeAssembler keeps that object pure and keeps the RPC count at
         // "once per resolve" instead of "once per narrowing round".
-        val groundedSpans =
+        // ttr-server#231 — and keep what the kernel ASKED: a date with several readings is asked about
+        // under this service's own token below, not dropped as "not grounded".
+        val groundings =
             grounding
                 ?.let {
-                    GroundingRung.ground(
+                    GroundingRung.groundAll(
                         client = it,
                         universals = MistypedYears.asDates(seam.universals, mistypedYears),
                         questionText = fresh.text,
@@ -397,11 +403,29 @@ class ResolverPipeline(
                         locale = locale,
                         priorQuestions = request.context.priorQuestionsList,
                     )
-                }.orEmpty()
+                } ?: GroundingRung.Outcome()
         // A year the kernel anchored is a date from here on; any other goes back to the number the
         // NER said it was, interval and all. Everything below reads `settled`, never the seam's list,
         // so the lattice and the resolution tell the same story.
-        val settled = MistypedYears.settle(seam.universals, mistypedYears, groundedSpans)
+        val settled = MistypedYears.settle(seam.universals, mistypedYears, groundings.grounded)
+        // …and so does the question: only a span that is still a date can be asked about as one (a
+        // year the kernel asked about rather than anchored went back to being a number).
+        val dates =
+            settled.universals
+                .filter { it.entityType == UniversalEntityType.DATE }
+                .map { it.start to it.end }
+                .toSet()
+        val kernelAsks = groundings.asked.filterKeys { it in dates }
+        for ((span, ask) in kernelAsks) {
+            log.info(
+                "grounding: {} asked about [{},{}) with {} options — asked under the resolver's token conversation_id={}",
+                ask.question.kernel,
+                span.first,
+                span.second,
+                ask.options.size,
+                request.conversationId,
+            )
+        }
         for (year in mistypedYears) {
             log.info(
                 "mistyped-year: [{},{}) {} conversation_id={}",
@@ -438,6 +462,7 @@ class ResolverPipeline(
                 grounded = settled.grounded,
                 literals = literals,
                 predicates = predicates,
+                asked = kernelAsks.keys,
             )
         }
 
@@ -494,17 +519,28 @@ class ResolverPipeline(
                 .setCapabilities(capabilities(assessment))
                 .setResolutionState(lattice)
 
-        when (outcome) {
-            is Clarify ->
-                builder.awaiting = awaitingOf(outcome, request.conversationId, parse.traceId, request.callerSubject)
-            is Bound -> builder.resolution = resolutionOf(settled.universals, outcome, parse, assessment.degradedFloor)
+        // ttr-server#231 — a kernel's question is asked like the gate's: one `awaiting`, one token. The
+        // gate's options keep their place at the front (see `AwaitingClarification` in resolver.proto
+        // for why it goes first); the kernel's follow, span by span.
+        val gateOptions = (outcome as? Clarify)?.options.orEmpty()
+        if (gateOptions.isNotEmpty() || kernelAsks.isNotEmpty()) {
+            builder.awaiting =
+                awaitingOf(
+                    gateOptions,
+                    kernelAsks.values.sortedBy { it.start },
+                    request.conversationId,
+                    parse.traceId,
+                    request.callerSubject,
+                )
+        } else if (outcome is Bound) {
+            builder.resolution = resolutionOf(settled.universals, outcome, parse, assessment.degradedFloor)
         }
         return builder.build()
     }
 
     // --- resume path (RS-26) ------------------------------------------------
 
-    private fun resumeResolve(request: ResolveRequest): ResolveResponse {
+    private suspend fun resumeResolve(request: ResolveRequest): ResolveResponse {
         val resume = request.resume
         // A bad token is RG-RES-002 — refuse over guess; the gRPC layer maps the throw.
         val payload = tokenCodec.verify(resume.token).getOrThrow()
@@ -523,6 +559,9 @@ class ResolverPipeline(
                     "selected_option_id '${resume.selectedOptionId}' is not in the signed option set",
                 )
 
+        // ttr-server#231 — a period a grounding kernel offered is grounded by that kernel, not pinned.
+        option.kernelOptionId?.let { return kernelPick(payload, option, it) }
+
         // A signed pin binds at confidence 1.0 with NO re-fuzzy (fuzzy is not called).
         val binding = pinnedBinding(option)
         return ResolveResponse
@@ -534,6 +573,98 @@ class ResolverPipeline(
                     .addBindings(binding)
                     .setConfidence(1.0)
                     .setRationale("resumed via signed pin (${option.id})"),
+            ).setCapabilities(Capabilities.newBuilder().setFuzzyReady(true))
+            .build()
+    }
+
+    /**
+     * ttr-server#231 — a pick of a kernel's option: put back to the kernel with the answer, and
+     * grounded through the same path an unambiguous date takes.
+     *
+     * The kernel is asked the SIGNED question ([KernelQuestion]) — never the resume request's
+     * context, which may carry a later reference date and earlier questions that now include the
+     * one asked. Its OK answer becomes the value's interval and anchor attribution
+     * ([LatticeAssembler.groundedValue]), so nothing is asked about the span again.
+     *
+     * The response settles that one value: the DATE binding in `resolution`, and the value itself in
+     * `resolution_state` — the only place an anchor attribution can travel. A caller folds it into
+     * its own lattice by span. A kernel that will not ground the pick is a [KernelPickException],
+     * not a second question (it would loop) and not a resolution without the period (it would
+     * answer a wider question than the user asked).
+     */
+    private suspend fun kernelPick(
+        payload: ResumePayload,
+        option: ResumeOption,
+        kernelOptionId: String,
+    ): ResolveResponse {
+        val question =
+            payload.kernelQuestions.firstOrNull { option.id in it.optionIds }
+                ?: throw ResumeTokenException("option '${option.id}' answers no question the token carries")
+        val kernel =
+            grounding
+                ?: throw KernelPickException(
+                    retryable = false,
+                    "„${question.spanText}“: no grounding kernel is configured to ground '${option.id}'",
+                )
+        val grounded =
+            when (val pick = GroundingRung.groundPick(kernel, question, kernelOptionId)) {
+                is GroundingRung.Pick.Done -> pick.grounded
+                is GroundingRung.Pick.Refused ->
+                    throw KernelPickException(
+                        retryable = false,
+                        "„${question.spanText}“: ${question.kernel} did not ground '${option.id}' — ${pick.reason}",
+                    )
+                is GroundingRung.Pick.Failed ->
+                    throw KernelPickException(
+                        retryable = true,
+                        "„${question.spanText}“: ${question.kernel} could not be asked to ground '${option.id}' — ${pick.cause}",
+                    )
+            }
+        log.info(
+            "resume: {} grounded [{},{}) to {} ({}) conversation_id={}",
+            question.kernel,
+            question.spanStart,
+            question.spanEnd,
+            option.id,
+            if (grounded.anchorAttributeRef.isBlank()) "no anchor column" else "anchored",
+            payload.conversationId,
+        )
+        val at = span(question.spanStart, question.spanEnd, question.spanText)
+        val kind = GroundingRung.universalKindOf(question)
+        val (value, valueGrounding) = LatticeAssembler.groundedValue(at, kind, grounded)
+        val binding =
+            EntityBinding
+                .newBuilder()
+                .setSpan(at)
+                .setUniversal(
+                    Universal
+                        .newBuilder()
+                        .setEntityType(
+                            enumValues<UniversalEntityType>().firstOrNull { it.name == kind }
+                                ?: UniversalEntityType.DATE,
+                        ).setRawText(question.spanText)
+                        .setNormalizedValue(grounded.normalizedValue)
+                        .setSourceEngine(question.kernel),
+                ).setProvenance(
+                    BindingProvenance
+                        .newBuilder()
+                        .setVocabularySource("universal:${question.kernel}")
+                        .setAlgorithm("hmac-pin")
+                        .setScore(1.0),
+                ).build()
+        return ResolveResponse
+            .newBuilder()
+            .setTraceId(payload.conversationId)
+            .setResolution(
+                Resolution
+                    .newBuilder()
+                    .addBindings(binding)
+                    .setConfidence(1.0)
+                    .setRationale("resumed via signed pin (${option.id}), grounded by ${question.kernel}"),
+            ).setResolutionState(
+                ResolutionState
+                    .newBuilder()
+                    .addValues(value.setId("v1").setGrounding(valueGrounding)),
             ).setCapabilities(Capabilities.newBuilder().setFuzzyReady(true))
             .build()
     }
@@ -716,14 +847,15 @@ class ResolverPipeline(
     }
 
     private fun awaitingOf(
-        clarify: Clarify,
+        gateOptions: List<ClarificationOption>,
+        kernelAsks: List<GroundingRung.Asked>,
         conversationId: String,
         parseRef: String,
         subject: String,
     ): AwaitingClarification {
         val builder = AwaitingClarification.newBuilder()
         val signedOptions = mutableListOf<ResumeOption>()
-        for (o in clarify.options) {
+        for (o in gateOptions) {
             val opt = Option.newBuilder().setId(o.id).setLabel(o.label)
             if (o.resolvedId != null) opt.resolvedId = o.resolvedId
             if (o.targetRef != null) opt.targetRef = o.targetRef
@@ -749,6 +881,37 @@ class ResolverPipeline(
                     memberOf = o.memberOf.takeIf { it.isNotBlank() },
                 )
         }
+        // ttr-server#231 — then each kernel question, span by span, its options in the kernel's order.
+        // A period is not a member or a model object, so none of the fields a member pick is rebuilt
+        // from is set: `object_kind` says what it is, and `grounding` what picking it means.
+        val taken = signedOptions.map { it.id }.toMutableSet()
+        val kernelQuestions = mutableListOf<KernelQuestion>()
+        for (ask in kernelAsks) {
+            val ids = mutableListOf<String>()
+            for (k in ask.options) {
+                // `P:` + the kernel's own id; the span start only when another span already offered it.
+                val id = "$PERIOD_PREFIX${k.id}".let { if (it in taken) "$it@${ask.start}" else it }
+                taken += id
+                ids += id
+                builder.addOptions(
+                    Option
+                        .newBuilder()
+                        .setId(id)
+                        .setLabel(k.label)
+                        .setSpan(span(ask.start, ask.end, ask.text))
+                        .setObjectKind(PERIOD_KIND)
+                        .setGrounding(
+                            Grounding
+                                .newBuilder()
+                                .setKernel(ask.question.kernel)
+                                .setKind(GroundingRung.universalKindOf(ask.question))
+                                .setNormalizedValue(k.normalizedValue),
+                        ),
+                )
+                signedOptions += ResumeOption(id, k.label, kernelOptionId = k.id)
+            }
+            kernelQuestions += ask.question.copy(optionIds = ids)
+        }
         // Sign the EXACT offered set (so a resume can only pick from it, RS-26) AND the
         // OBO subject it was issued to (so a leaked token can't be replayed by another
         // principal, RG-P6 review C).
@@ -760,6 +923,7 @@ class ResolverPipeline(
                 issuedAt = System.currentTimeMillis() / 1000,
                 keyId = tokenCodec.activeKeyId,
                 subject = subject,
+                kernelQuestions = kernelQuestions,
             )
         builder.resumeToken = tokenCodec.sign(payload)
         return builder.build()
@@ -778,6 +942,12 @@ class ResolverPipeline(
             .build()
 
     companion object {
+        /** ttr-server#231 — the id namespace of a kernel's option (`P:202511`), beside the gate's `M:` / `V:`. */
+        const val PERIOD_PREFIX: String = "P:"
+
+        /** ttr-server#231 — `Option.object_kind` of a kernel's option. */
+        const val PERIOD_KIND: String = "period"
+
         /** Map the caller-supplied `Registry` proto override into the internal model (RS-24). */
         fun fromProto(
             reg: Registry,

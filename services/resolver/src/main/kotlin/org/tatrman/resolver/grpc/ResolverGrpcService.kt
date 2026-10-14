@@ -8,6 +8,7 @@ import io.opentelemetry.api.trace.SpanKind
 import io.opentelemetry.api.trace.Tracer
 import org.slf4j.LoggerFactory
 import shared.otel.withSpan
+import org.tatrman.resolver.pipeline.KernelPickException
 import org.tatrman.resolver.pipeline.ResolverPipeline
 import org.tatrman.resolver.token.ResumeTokenException
 import org.tatrman.resolver.v1.GateRequest
@@ -65,6 +66,13 @@ class ResolverGrpcService(
             } catch (e: ResumeTokenException) {
                 log.info("resume token rejected conversation_id={}: {}", request.conversationId, e.reason)
                 throw StatusException(Status.UNAUTHENTICATED.withDescription(e.message).withCause(e))
+            } catch (e: KernelPickException) {
+                // ttr-server#231 — a pick of a kernel's option the kernel did not ground. Not a caller
+                // error and not an opaque UNKNOWN: UNAVAILABLE when the kernel could not be reached (a
+                // retry may work), FAILED_PRECONDITION when it answered and will not ground it.
+                log.warn("resume pick not grounded conversation_id={}: {}", request.conversationId, e.reason)
+                val status = if (e.retryable) Status.UNAVAILABLE else Status.FAILED_PRECONDITION
+                throw StatusException(status.withDescription(e.reason).withCause(e))
             }
         }
 

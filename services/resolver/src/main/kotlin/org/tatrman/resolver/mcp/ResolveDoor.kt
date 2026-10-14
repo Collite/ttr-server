@@ -14,6 +14,7 @@ import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonObject
 import kotlinx.serialization.json.Json
 import org.tatrman.resolver.v1.FreshQuestion
+import org.tatrman.resolver.v1.Option
 import org.tatrman.resolver.v1.ResolveContext
 import org.tatrman.resolver.v1.ResolveRequest
 import org.tatrman.resolver.v1.ResolveResponse
@@ -126,9 +127,7 @@ class ResolveDoor(
 
     private fun summary(response: ResolveResponse): String =
         when {
-            response.hasAwaiting() ->
-                "Needs clarification — pick one:\n" +
-                    response.awaiting.optionsList.joinToString("\n") { "- [${it.id}] ${it.label}" }
+            response.hasAwaiting() -> askSummary(response.awaiting.optionsList)
             response.hasResolution() -> {
                 val r = response.resolution
                 val head = "Resolved ${r.bindingsCount} binding(s) (confidence ${r.confidence})."
@@ -136,6 +135,30 @@ class ResolveDoor(
             }
             else -> "No resolution."
         }
+
+    /**
+     * The options of one span are one question. With one span the summary is what it always was. With
+     * several (ttr-server#231: the gate asks about a member and a grounding kernel about a period) it
+     * asks them one at a time, in the order the core put them, and says the same token redeems each —
+     * a flat "pick one" over both would invite one pick for two questions and lose the other.
+     */
+    private fun askSummary(options: List<Option>): String {
+        val questions = options.groupBy { it.span.start to it.span.end }.values.toList()
+        if (questions.size <= 1) {
+            return "Needs clarification — pick one:\n" + options.joinToString("\n") { "- [${it.id}] ${it.label}" }
+        }
+        return questions
+            .mapIndexed { i, question ->
+                val words = question.first().span.text
+                val head =
+                    if (i == 0) {
+                        "Needs clarification, one question at a time. Pick one for „$words“:"
+                    } else {
+                        "Then pick one for „$words“ (resume again with the same resume_token):"
+                    }
+                head + "\n" + question.joinToString("\n") { "- [${it.id}] ${it.label}" }
+            }.joinToString("\n")
+    }
 
     private fun argError(message: String): CallToolResult =
         CallToolResult(
