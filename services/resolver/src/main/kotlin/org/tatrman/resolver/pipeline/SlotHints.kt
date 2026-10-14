@@ -13,7 +13,8 @@ import org.tatrman.nlp.v1.AnalyzeResponse
  * refuses. But the sentence already says which one is wanted: you *count* things, you *group by*
  * things, and you *restrict a measure* by the thing being measured. Since MS the two candidates
  * differ in `objectKind`, so the slot's kind preference can break the tie
- * (`Binder.decide`, contracts §7.3).
+ * (`Binder.decide`, contracts §7.3). ⚑ ttr-demo#62 (ruled 2026-10-12): a FILTER is the one slot
+ * that does not break THIS tie — "revenue of stores" may mean either, and the user is asked.
  *
  * **Why the slot is computed here and not in the Binder** (architecture A3): `GateSpans.gate`
  * never sees the parse — `ResolverPipeline` hands it candidates only — and `ReGate` synthesises
@@ -87,6 +88,8 @@ object SlotHints {
 
         fun governorOf(token: Int): Int = if (token in tokens.indices) headIndexOf(tokens[token].depHead) else -1
 
+        fun isConj(token: Int): Boolean = token in tokens.indices && tokens[token].depRelation == "conj"
+
         /** The `case` child's lemma, exactly as `FrameRoles.prepositionOf` reads it. */
         fun prepOf(head: Int): String? =
             tokens
@@ -128,11 +131,51 @@ object SlotHints {
             return null
         }
 
-        /** True iff some GOVERNED_VALUE candidate names this span as its scoping mention. */
+        /**
+         * True iff some GOVERNED_VALUE candidate hangs from this span: its head token is a
+         * dependent of [head], which is exactly where span proposal looked for it
+         * (`SpanProposal.governedValues` walks the anchor head's children).
+         *
+         * ⛑ ttr-demo#62 — this used to read `anchorHeadToken == head` alone, and span proposal never
+         * sets that field on a governed value: it belongs to the literal path (RV-P2.1), where it
+         * becomes the lattice's `anchor_mention_id`. So rule 4 never fired on a real question, and
+         * „Tržby prodejny Praha“ / "Stores in Nashville" read their store word by the filter or
+         * subject rule instead. The parse already says which word governs the value; read it here
+         * rather than widening a field the lattice publishes.
+         *
+         * A value hanging by `conj` is not counted: span proposal offers a coordinated noun as a
+         * governed value („Compare stores and warehouses“), but it is the span's SIBLING, and
+         * coordination is rule 1's to read — a sibling that is no mention decides nothing.
+         */
         fun hasGovernedValue(head: Int): Boolean =
             candidates.any {
-                it.origin == DomainSpanCandidate.Origin.GOVERNED_VALUE && it.anchorHeadToken == head
+                it.origin == DomainSpanCandidate.Origin.GOVERNED_VALUE &&
+                    (it.anchorHeadToken == head || (governorOf(it.headToken) == head && !isConj(it.headToken)))
             }
+
+        /**
+         * ttr-demo#62 — the coordination ruling (Bora, 2026-10-14): of two mentions joined by
+         * „a“/„nebo“/"and"/"or", the one with two readings takes the reading where they intersect —
+         * so the sibling decides only when it has ONE reading. Its kinds when it does; nothing when it
+         * has two readings itself, whatever their kinds („Srovnej prodejny a prodejny“ still asks).
+         *
+         * One reading is counted the way the Binder's containment collapse counts it: an entity
+         * declared beside its own attribute or measure is one answer at two granularities, not two.
+         */
+        fun coordKinds(sibling: DomainSpanCandidate): Set<String> {
+            val refs = sibling.gatedEntityRefs.distinct()
+            val owners = refs.mapNotNull { ownersByRef[it]?.takeIf { o -> o.isNotBlank() } }.toSet()
+            if (refs.count { it !in owners } != 1) return emptySet()
+            // …and in coordination a measure stands for its fact: a sibling that is a channel's
+            // revenue lends the channel's kind too (the Binder reads a candidate measure the same way).
+            return refs
+                .flatMap { ref ->
+                    val kind = kindsByRef[ref]
+                    val family = if (kind == KIND_MEASURE) ownersByRef[ref]?.let { kindsByRef[it] } else null
+                    listOfNotNull(kind, family)
+                }.filter { it.isNotBlank() }
+                .toSet()
+        }
 
         /** Walk up to [MAX_HEAD_HOPS] governors for the candidate this span attaches to. */
         fun headCandidate(head: Int): DomainSpanCandidate? {
@@ -198,16 +241,10 @@ object SlotHints {
                     // 1 — coordination first: "srovnej prodejny a web" is a comparison of
                     // channels, and the sibling's KIND is the only thing that says so. It wins
                     // over a count head because "kolik prodejen a webů" is still a comparison.
+                    // Only a sibling with ONE reading lends its kind (`coordKinds`, ttr-demo#62).
                     conjSibling(head) != null -> {
                         val sibling = conjSibling(head)!!
-                        SlotHint(
-                            slot = Slot.COORD_WITH,
-                            coordSiblingKinds =
-                                sibling.gatedEntityRefs
-                                    .mapNotNull { kindsByRef[it] }
-                                    .filter { it.isNotBlank() }
-                                    .toSet(),
-                        )
+                        SlotHint(slot = Slot.COORD_WITH, coordSiblingKinds = coordKinds(sibling))
                     }
                     // 2 — you count THINGS.
                     hasCountWord(head) -> SlotHint(slot = Slot.COUNT_HEAD)
@@ -273,7 +310,9 @@ enum class Slot {
  *   entity head ("vratky z prodejen" before returns declare measures) still carries [headRefs],
  *   which is what lets the reachability rule fix the slot rule's mis-bind (design.md T2 §4, E6).
  * @property coordSiblingKinds the kinds of the `conj` sibling's refs — "compare X and Y" wants
- *   both sides on the same axis, so the sibling's species is the preference.
+ *   both sides on the same axis, so the sibling's species is the preference. A measure lends its
+ *   fact's kind as well. Empty when the sibling has two readings itself: only an unambiguous
+ *   sibling decides (ttr-demo#62, coordination).
  */
 data class SlotHint(
     val slot: Slot = Slot.NONE,

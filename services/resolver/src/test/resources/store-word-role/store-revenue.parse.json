@@ -1,0 +1,92 @@
+{
+  "language": "en",
+  "languageConfidence": 0.21384871131751476,
+  "engineUsed": "stanza",
+  "tokens": [{
+    "text": "Store",
+    "charEnd": 5,
+    "lemma": "store",
+    "upos": "NOUN",
+    "xpos": "NN",
+    "feats": {
+      "Number": "Sing"
+    },
+    "depHead": 2,
+    "depRelation": "compound"
+  }, {
+    "text": "revenue",
+    "charStart": 6,
+    "charEnd": 13,
+    "lemma": "revenue",
+    "upos": "NOUN",
+    "xpos": "NN",
+    "feats": {
+      "Number": "Sing"
+    },
+    "depRelation": "root"
+  }, {
+    "text": "in",
+    "charStart": 14,
+    "charEnd": 16,
+    "lemma": "in",
+    "upos": "ADP",
+    "xpos": "IN",
+    "depHead": 4,
+    "depRelation": "case"
+  }, {
+    "text": "2025",
+    "charStart": 17,
+    "charEnd": 21,
+    "lemma": "2025",
+    "upos": "NUM",
+    "xpos": "CD",
+    "feats": {
+      "NumType": "Card",
+      "NumForm": "Digit"
+    },
+    "depHead": 2,
+    "depRelation": "nmod"
+  }],
+  "sentences": [{
+    "charEnd": 21
+  }],
+  "entities": [{
+    "text": "2025",
+    "label": "DATE",
+    "charStart": 17,
+    "charEnd": 21,
+    "sourceEngine": "stanza"
+  }],
+  "detectedLanguage": "en",
+  "used": [{
+    "op": "DETECT_LANGUAGE",
+    "engine": "langid",
+    "model": "lingua",
+    "modelVersion": "lingua-2.0"
+  }, {
+    "op": "POS_TAG",
+    "engine": "stanza",
+    "model": "stanza-cs-en",
+    "modelVersion": "stanza-1.10.0"
+  }, {
+    "op": "NER",
+    "engine": "stanza",
+    "model": "stanza-cs-en",
+    "modelVersion": "stanza-1.10.0"
+  }, {
+    "op": "LEMMATIZE",
+    "engine": "stanza",
+    "model": "stanza-cs-en",
+    "modelVersion": "stanza-1.10.0"
+  }, {
+    "op": "TOKENIZE",
+    "engine": "stanza",
+    "model": "stanza-cs-en",
+    "modelVersion": "stanza-1.10.0"
+  }, {
+    "op": "DEP_PARSE",
+    "engine": "stanza",
+    "model": "stanza-cs-en",
+    "modelVersion": "stanza-1.10.0"
+  }]
+}

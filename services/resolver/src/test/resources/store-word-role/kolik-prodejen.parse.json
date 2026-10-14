@@ -1,0 +1,95 @@
+{
+  "language": "cs",
+  "languageConfidence": 0.8162237611291239,
+  "engineUsed": "morphodita",
+  "tokens": [{
+    "text": "Kolik",
+    "charEnd": 5,
+    "lemma": "kolik",
+    "upos": "DET",
+    "xpos": "Ca--4----------",
+    "feats": {
+      "Case": "Acc",
+      "NumType": "Card",
+      "PronType": "Int,Rel"
+    },
+    "depHead": 3,
+    "depRelation": "det:numgov"
+  }, {
+    "text": "máme",
+    "charStart": 6,
+    "charEnd": 10,
+    "lemma": "mít",
+    "upos": "VERB",
+    "xpos": "VB-P---1P-AAI--",
+    "feats": {
+      "Voice": "Act",
+      "VerbForm": "Fin",
+      "Aspect": "Imp",
+      "Polarity": "Pos",
+      "Mood": "Ind",
+      "Number": "Plur",
+      "Person": "1",
+      "Tense": "Pres"
+    },
+    "depRelation": "root"
+  }, {
+    "text": "prodejen",
+    "charStart": 11,
+    "charEnd": 19,
+    "lemma": "prodejna",
+    "upos": "NOUN",
+    "xpos": "NNFP2-----A----",
+    "feats": {
+      "Case": "Gen",
+      "Gender": "Fem",
+      "Number": "Plur"
+    },
+    "depHead": 2,
+    "depRelation": "obj"
+  }, {
+    "text": "?",
+    "charStart": 19,
+    "charEnd": 20,
+    "lemma": "?",
+    "upos": "PUNCT",
+    "xpos": "Z:-------------",
+    "depHead": 2,
+    "depRelation": "punct"
+  }],
+  "sentences": [{
+    "charEnd": 20
+  }],
+  "detectedLanguage": "cs",
+  "used": [{
+    "op": "DETECT_LANGUAGE",
+    "engine": "langid",
+    "model": "lingua",
+    "modelVersion": "lingua-2.0"
+  }, {
+    "op": "POS_TAG",
+    "engine": "morphodita",
+    "model": "czech-morfflex2.0-pdtc1.0-220710",
+    "modelVersion": "czech-morfflex2.0-pdtc1.0-220710"
+  }, {
+    "op": "NER",
+    "engine": "nametag3",
+    "model": "nametag3-czech-cnec2.0-240830",
+    "modelVersion": "nametag3-czech-cnec2.0-240830"
+  }, {
+    "op": "LEMMATIZE",
+    "engine": "morphodita",
+    "model": "czech-morfflex2.0-pdtc1.0-220710",
+    "modelVersion": "czech-morfflex2.0-pdtc1.0-220710"
+  }, {
+    "op": "TOKENIZE",
+    "engine": "morphodita",
+    "model": "czech-morfflex2.0-pdtc1.0-220710",
+    "modelVersion": "czech-morfflex2.0-pdtc1.0-220710"
+  }, {
+    "op": "DEP_PARSE",
+    "engine": "stanza",
+    "model": "stanza-cs-en",
+    "modelVersion": "stanza-1.10.0"
+  }]
+}

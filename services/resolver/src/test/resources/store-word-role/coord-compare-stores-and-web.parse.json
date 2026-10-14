@@ -1,0 +1,85 @@
+{
+  "language": "en",
+  "languageConfidence": 0.10859136682994781,
+  "engineUsed": "stanza",
+  "tokens": [{
+    "text": "Compare",
+    "charEnd": 7,
+    "lemma": "compare",
+    "upos": "VERB",
+    "xpos": "VB",
+    "feats": {
+      "Mood": "Imp",
+      "VerbForm": "Fin"
+    },
+    "depRelation": "root"
+  }, {
+    "text": "stores",
+    "charStart": 8,
+    "charEnd": 14,
+    "lemma": "store",
+    "upos": "NOUN",
+    "xpos": "NNS",
+    "feats": {
+      "Number": "Plur"
+    },
+    "depHead": 1,
+    "depRelation": "obj"
+  }, {
+    "text": "and",
+    "charStart": 15,
+    "charEnd": 18,
+    "lemma": "and",
+    "upos": "CCONJ",
+    "xpos": "CC",
+    "depHead": 4,
+    "depRelation": "cc"
+  }, {
+    "text": "web",
+    "charStart": 19,
+    "charEnd": 22,
+    "lemma": "web",
+    "upos": "NOUN",
+    "xpos": "NN",
+    "feats": {
+      "Number": "Sing"
+    },
+    "depHead": 2,
+    "depRelation": "conj"
+  }],
+  "sentences": [{
+    "charEnd": 22
+  }],
+  "detectedLanguage": "en",
+  "used": [{
+    "op": "DETECT_LANGUAGE",
+    "engine": "langid",
+    "model": "lingua",
+    "modelVersion": "lingua-2.0"
+  }, {
+    "op": "POS_TAG",
+    "engine": "stanza",
+    "model": "stanza-cs-en",
+    "modelVersion": "stanza-1.10.0"
+  }, {
+    "op": "NER",
+    "engine": "stanza",
+    "model": "stanza-cs-en",
+    "modelVersion": "stanza-1.10.0"
+  }, {
+    "op": "LEMMATIZE",
+    "engine": "stanza",
+    "model": "stanza-cs-en",
+    "modelVersion": "stanza-1.10.0"
+  }, {
+    "op": "TOKENIZE",
+    "engine": "stanza",
+    "model": "stanza-cs-en",
+    "modelVersion": "stanza-1.10.0"
+  }, {
+    "op": "DEP_PARSE",
+    "engine": "stanza",
+    "model": "stanza-cs-en",
+    "modelVersion": "stanza-1.10.0"
+  }]
+}

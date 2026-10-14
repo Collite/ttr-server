@@ -16,6 +16,37 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+### resolver — a store word reads by its role: a filter asks, a word that governs a store name is the dimension (ttr-demo#62)
+
+Where the lexicon gives one word two readings — a dimension (`er.entity.store`) and a fact a channel term is pinned to
+(`er.entity.store_sales`) — the sentence's slot decides. Counting and grouping already chose the dimension and comparing
+chose like with like. Two places did not follow the ruling:
+
+- **A filter now asks.** „Tržby prodejen v roce 2025“ / "Revenue of stores in 2025" bound the channel without a question,
+  because a filter under a measure head preferred the fact. A filter no longer decides a dimension-vs-fact tie (the fact
+  itself or one of its measures): the mention keeps both readings, a `GAP_KIND_G2_AMBIGUOUS`, and the clarification
+  offers both, each with its `object_kind`. The reachability rule still runs, so a reach the model declares can still
+  prove the readings equal (collapse to the dimension, `equivalents`) or the fact the wrong one. A filter tie with no
+  dimension in it (an attribute and a measure) is decided as before. Declared phrases („tržby z prodejen“, "store
+  revenue") never reach the tie: the phrase is one candidate with one target.
+- **A word that governs a value names the object with members.** That slot rule looked for the value's
+  `anchorHeadToken`, which span proposal never sets on a governed value, so it never fired. It now reads the parse: a
+  governed value whose head hangs from the span's head. „Tržby prodejny Praha v roce 2025“, "Revenue of stores in Praha"
+  and "Stores in TN" bind the store dimension (the name or state binds its member as before), where the first two bound
+  the channel and the last asked between the two readings. A noun hanging by `conj` is the word's sibling, not
+  its value, and does not count ("Compare stores and warehouses").
+- **Coordination: only an unambiguous sibling decides** (ruled 2026-10-14). Of two mentions joined by „a“ / „nebo“
+  / "and" / "or", the one with two readings takes the reading they share („Srovnej prodejny a web“, "Revenue of
+  stores or web": the channel; „Srovnej prodejny a sklady“: the dimension), as before. A sibling with two readings
+  of its own (an entity with its own measure counts as one) now lends no kind, so nothing is preferred and the
+  question asks; before, a sibling whose two readings shared a kind still decided.
+- **In coordination a measure stands for its fact.** Where the store word's channel reading is the store-channel
+  revenue (a `measure` of `store_sales`) and its sibling is a channel fact (`web`, `tržiště`: `entity_with_measures`),
+  the two intersect on the channel: „Srovnej prodejny a web“, „Tržby prodejen a webu / webu a prodejen / prodejen
+  a tržiště v roce 2025“ bind the store revenue instead of asking. A sibling that is a measure lends its fact's kind
+  the same way. Two readings that both belong to the sibling's family still tie, and the tie asks. Only the
+  coordination slot reads a measure this way.
+- No wire change.
 ### resolver — a grounding kernel's question reaches the user (#231)
 
 chrono answers `AWAITING_CLARIFICATION` when a date has two readings: a bare future month ("Marketplace revenue in

@@ -267,10 +267,10 @@ class MhPipelineTest :
         }
 
         "E11 — with the anchor's own homonymy resolved, the whole question resolves clean" {
-            // `Stores in TN` still CLARIFIES, but over the anchor: `stores` names the dimension
-            // AND the fact the channel term is pinned to, and a root noun carries no slot, so
-            // MH T2 has nothing to prefer and refusing is correct. Put the anchor in a count
-            // slot and both homonymies fall: T2 picks the dimension, tier M picks its member.
+            // `stores` names the dimension AND the fact the channel term is pinned to. Put the
+            // anchor in a count slot and both homonymies fall: T2 picks the dimension, tier M
+            // picks its member. (Since ttr-demo#62 the governed value does the same for a bare
+            // `Stores in TN` — see the next case.)
             val response = MhMembers.resolve("How many stores in TN", MhMembers.e11Count())
 
             response.hasAwaiting() shouldBe false
@@ -286,6 +286,34 @@ class MhPipelineTest :
                 .attributionsList
                 .single()
                 .binding.ref shouldBe "${MhMembers.STORE_STATE}#TN"
+        }
+
+        "ttr-demo#62 — `Stores in TN`: a store word that governs a value reads the DIMENSION, no ask" {
+            // SlotHints rule 4 — "a span that governs a value names an object with members". It
+            // used to look for the value's `anchorHeadToken`, which span proposal never sets on a
+            // governed value, so the root `Stores` carried no slot and the anchor asked between
+            // the dimension and the channel on top of an already-bound member.
+            val questions =
+                listOf(
+                    Triple("Stores in TN", MhMembers.e11En(), "en"),
+                    Triple("Prodejny v TN", MhMembers.e11Cs(), "cs"),
+                )
+            for ((question, parse, lang) in questions) {
+                val response = MhMembers.resolve(question, parse, lang = lang)
+
+                response.hasAwaiting() shouldBe false
+                val state = response.resolutionState
+                state.mentionsList
+                    .single { it.span.text == question.substringBefore(' ') }
+                    .bindingsList
+                    .map { it.ref } shouldContainExactly listOf(MhMembers.STORE)
+                state.gapsList.map { it.kind.name } shouldBe emptyList()
+                state.valuesList
+                    .single { it.span.text == "TN" }
+                    .attributionsList
+                    .single()
+                    .binding.ref shouldBe "${MhMembers.STORE_STATE}#TN"
+            }
         }
 
         "E12-en — `Sales in TN` asks, and every option names its OWNER" {

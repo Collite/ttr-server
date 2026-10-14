@@ -405,6 +405,105 @@ class BinderTest :
                 .winner.match.targetRef shouldBe storeSales
         }
 
+        // ttr-demo#62, the coordination ruling (2026-10-14): the reading where the two mentions intersect.
+
+        "coordination: a dimension sibling picks the DIMENSION — stores and warehouses" {
+            val bind =
+                decideMh(slot = SlotHint(Slot.COORD_WITH, coordSiblingKinds = setOf("entity")))
+                    .shouldBeInstanceOf<Binder.Bind>()
+            bind.winner.match.targetRef shouldBe store
+            bind.rejected.map { it.match.targetRef } shouldContainExactly listOf(storeSales)
+        }
+
+        "coordination: a sibling whose one kind BOTH readings share decides nothing — it asks" {
+            val region = "er.entity.region"
+            decideMh(
+                listOf(
+                    declared(store, 1.0, EvidenceClass.EVIDENCE_CLASS_EXACT),
+                    declared(region, 1.0, EvidenceClass.EVIDENCE_CLASS_EXACT),
+                ),
+                slot = SlotHint(Slot.COORD_WITH, coordSiblingKinds = setOf("entity")),
+                kindsMap = kinds + (region to "entity"),
+            ).shouldBeInstanceOf<Binder.Ambiguous>()
+                .admitted
+                .map { it.match.targetRef } shouldContainExactlyInAnyOrder listOf(store, region)
+        }
+
+        // In coordination a MEASURE stands for its fact: „Srovnej prodejny a web“ — the store word reads
+        // the store dimension or the store-channel revenue (a measure of `store_sales`), and `web` is the
+        // web channel (`web_sales`, entity_with_measures). They intersect on the channel family.
+        val storeRevenue = "er.entity.store_sales.ext_sales_price"
+        val familyKinds = kinds + (storeRevenue to "measure")
+        val familyOwners = mapOf(storeRevenue to storeSales)
+        val storeOrRevenue =
+            listOf(
+                declared(store, 1.0, EvidenceClass.EVIDENCE_CLASS_EXACT),
+                declared(storeRevenue, 1.0, EvidenceClass.EVIDENCE_CLASS_EXACT),
+            )
+
+        "coordination: a channel sibling picks the channel MEASURE — a measure stands for its fact" {
+            val bind =
+                decideMh(
+                    storeOrRevenue,
+                    slot = SlotHint(Slot.COORD_WITH, coordSiblingKinds = setOf("entity_with_measures")),
+                    kindsMap = familyKinds,
+                    ownersMap = familyOwners,
+                ).shouldBeInstanceOf<Binder.Bind>()
+            bind.winner.match.targetRef shouldBe storeRevenue
+            bind.rejected.map { it.match.targetRef } shouldContainExactly listOf(store)
+        }
+
+        "coordination: a dimension sibling still picks the dimension over the channel measure" {
+            decideMh(
+                storeOrRevenue,
+                slot = SlotHint(Slot.COORD_WITH, coordSiblingKinds = setOf("entity")),
+                kindsMap = familyKinds,
+                ownersMap = familyOwners,
+            ).shouldBeInstanceOf<Binder.Bind>()
+                .winner.match.targetRef shouldBe store
+        }
+
+        "coordination: two readings of the sibling's family both intersect — it asks" {
+            // the store-channel revenue (a measure of a channel fact) and the web channel itself: both
+            // are the channel family the sibling names, so the sibling cannot choose between them
+            val ambiguous =
+                decideMh(
+                    listOf(
+                        declared(storeRevenue, 1.0, EvidenceClass.EVIDENCE_CLASS_EXACT),
+                        declared(webSales, 1.0, EvidenceClass.EVIDENCE_CLASS_EXACT),
+                    ),
+                    slot = SlotHint(Slot.COORD_WITH, coordSiblingKinds = setOf("entity_with_measures")),
+                    kindsMap = familyKinds,
+                    ownersMap = familyOwners,
+                ).shouldBeInstanceOf<Binder.Ambiguous>()
+            ambiguous.admitted.map { it.match.targetRef } shouldContainExactlyInAnyOrder listOf(storeRevenue, webSales)
+        }
+
+        "coordination only: a measure is not its fact's kind in any other slot" {
+            // a filter prefers nothing between a dimension and a fact (ttr-demo#62), and a group-by still
+            // wants the dimension — the family reading is the coordination rule's alone
+            decideMh(
+                storeOrRevenue,
+                slot = SlotHint(Slot.GROUP_BY),
+                kindsMap = familyKinds,
+                ownersMap = familyOwners,
+            ).shouldBeInstanceOf<Binder.Bind>()
+                .winner.match.targetRef shouldBe store
+            decideMh(
+                storeOrRevenue,
+                slot = SlotHint(Slot.FILTER, headRefs = listOf("er.entity.channel_sales"), headMeasureCapable = true),
+                kindsMap = familyKinds,
+                ownersMap = familyOwners,
+            ).shouldBeInstanceOf<Binder.Ambiguous>()
+                .admitted.size shouldBe 2
+        }
+
+        "coordination: a sibling of a third kind intersects neither reading — it asks" {
+            decideMh(slot = SlotHint(Slot.COORD_WITH, coordSiblingKinds = setOf("attribute")))
+                .shouldBeInstanceOf<Binder.Ambiguous>()
+                .admitted.size shouldBe 2
+        }
+
         "mh-b8: NONE is byte-identical to today — a bare word still asks" {
             decideMh(slot = SlotHint.NONE).shouldBeInstanceOf<Binder.Ambiguous>().admitted.size shouldBe 2
         }
@@ -506,7 +605,9 @@ class BinderTest :
         "MH: the MS containment collapse runs FIRST, and the slot rule sees its result" {
             // `sales` + its own measure `amount_czk` + an unrelated homonym `store`, under a
             // filter with a measure-capable head. Containment collapses the entity into its
-            // measure; THEN the slot keeps the measure-ish row and drops the dimension.
+            // measure; THEN the slot sees a measure and a dimension. Since ttr-demo#62 a filter
+            // does not decide that pair, so the question offers TWO readings, not three: the
+            // entity the containment collapsed is in the rung log, not in the question.
             val verdict =
                 decideMh(
                     listOf(
@@ -523,9 +624,81 @@ class BinderTest :
                         ),
                     ownersMap = owners,
                 )
-            val bind = verdict.shouldBeInstanceOf<Binder.Bind>()
-            bind.winner.match.targetRef shouldBe amount
-            bind.rejected.map { it.match.targetRef } shouldContainExactlyInAnyOrder listOf(sales, store)
+            val ambiguous = verdict.shouldBeInstanceOf<Binder.Ambiguous>()
+            ambiguous.admitted.map { it.match.targetRef } shouldContainExactlyInAnyOrder listOf(amount, store)
+            ambiguous.rejected.map { it.match.targetRef } shouldContainExactly listOf(sales)
+        }
+
+        // --- ttr-demo#62 (ruled 2026-10-12) — a filter ASKS between a dimension and a fact -------
+        //
+        // A bare store word reads by its role. Counting and grouping want the dimension, and the
+        // slot rule already says so. In a FILTER the two readings are two different questions —
+        // "revenue of the stores" (the store dimension) and "revenue of the Stores channel" (the
+        // fact the channel term is pinned to) — and the sentence does not say which, so the slot
+        // no longer picks the fact. Declared phrases ("store revenue", „tržby z prodejen“) never
+        // reach this tie: the phrase is one candidate with one target.
+
+        "ttr-demo#62: a FILTER under a measure head asks — the dimension or the channel" {
+            // „Tržby prodejen v roce 2025“ / "Revenue of stores in 2025" on hartland: the head is the
+            // all-channel revenue, whose fact no relation ties to `store` (rule 1), so the
+            // reachability rule says nothing either, and both readings are offered.
+            val channelSales = "er.entity.channel_sales"
+            val ambiguous =
+                decideMh(
+                    slot = SlotHint(Slot.FILTER, headRefs = listOf(channelSales), headMeasureCapable = true),
+                    reachMap = reach,
+                ).shouldBeInstanceOf<Binder.Ambiguous>()
+            ambiguous.admitted.map { it.match.targetRef } shouldContainExactlyInAnyOrder listOf(store, storeSales)
+            ambiguous.rejected.shouldBeEmpty()
+        }
+
+        "ttr-demo#62: the channel read as its MEASURE is the same question" {
+            val measureRef = "er.entity.store_sales.ext_sales_price"
+            decideMh(
+                listOf(
+                    declared(store, 1.0, EvidenceClass.EVIDENCE_CLASS_EXACT),
+                    declared(measureRef, 1.0, EvidenceClass.EVIDENCE_CLASS_EXACT),
+                ),
+                slot = SlotHint(Slot.FILTER, headRefs = listOf("er.entity.channel_sales"), headMeasureCapable = true),
+                kindsMap = kinds + (measureRef to "measure"),
+                ownersMap = mapOf(measureRef to storeSales),
+            ).shouldBeInstanceOf<Binder.Ambiguous>()
+                .admitted
+                .map { it.match.targetRef } shouldContainExactlyInAnyOrder listOf(store, measureRef)
+        }
+
+        "ttr-demo#62: the FILTER preference still decides a tie with no dimension in it" {
+            // An attribute and a measure sharing a word is not the ruled homonymy: the measure head
+            // still prefers the measure-ish reading, exactly as before.
+            val price = "er.entity.item.current_price"
+            val salesPrice = "er.entity.store_sales.sales_price"
+            val bind =
+                decideMh(
+                    listOf(
+                        declared(price, 1.0, EvidenceClass.EVIDENCE_CLASS_EXACT),
+                        declared(salesPrice, 1.0, EvidenceClass.EVIDENCE_CLASS_EXACT),
+                    ),
+                    slot = SlotHint(Slot.FILTER, headRefs = listOf(storeSales), headMeasureCapable = true),
+                    kindsMap = mapOf(price to "attribute", salesPrice to "measure"),
+                ).shouldBeInstanceOf<Binder.Bind>()
+            bind.winner.match.targetRef shouldBe salesPrice
+            bind.rejected.map { it.match.targetRef } shouldContainExactly listOf(price)
+        }
+
+        "ttr-demo#62: the other slots keep their pick — count and group by the dimension, compare like with like" {
+            val channelSales = "er.entity.channel_sales"
+            val picks =
+                listOf(
+                    SlotHint(Slot.COUNT_HEAD) to store,
+                    SlotHint(Slot.GROUP_BY, headRefs = listOf(channelSales), headMeasureCapable = true) to store,
+                    SlotHint(Slot.GOVERNED_VALUE) to store,
+                    SlotHint(Slot.COORD_WITH, coordSiblingKinds = setOf("entity_with_measures")) to storeSales,
+                )
+            for ((slot, picked) in picks) {
+                decideMh(slot = slot)
+                    .shouldBeInstanceOf<Binder.Bind>()
+                    .winner.match.targetRef shouldBe picked
+            }
         }
 
         "MH: a preference that matches NOTHING leaves the band alone" {
@@ -605,19 +778,18 @@ class BinderTest :
             bind.equivalents shouldBe emptyList()
         }
 
-        "mh-b5: a head OUTSIDE the dimension's reach leaves T2's pick standing (rule 1)" {
+        "mh-b5: a head OUTSIDE the dimension's reach leaves the tie standing (rule 1)" {
             // "Tržby webu ... na prodejně" — H is web_sales, which no relation ties to `store`
             // on this model, and H is not the channel's fact either. Neither reading is proven
-            // about this clause, so T3 says nothing and the slot's guess stands. That guess is
-            // the E7-shaped risk design.md accepts for T2 alone; mh-b6 is what turns it into a
-            // question once the estate DECLARES the nullable reach.
-            val bind =
+            // about this clause, so T3 says nothing. Before ttr-demo#62 the slot's guess (the
+            // channel) stood — the E7-shaped risk design.md accepted for T2 alone; the ruling
+            // turned that guess into the question.
+            val ambiguous =
                 decideMh(
                     slot = SlotHint(Slot.FILTER, headRefs = listOf(webSales), headMeasureCapable = true),
                     reachMap = reach,
-                ).shouldBeInstanceOf<Binder.Bind>()
-            bind.winner.match.targetRef shouldBe storeSales
-            bind.equivalents shouldBe emptyList()
+                ).shouldBeInstanceOf<Binder.Ambiguous>()
+            ambiguous.admitted.map { it.match.targetRef } shouldContainExactlyInAnyOrder listOf(store, storeSales)
         }
 
         "mh-b6: a NULLABLE reach makes the readings differ — refuse, and admit both (rule 4)" {
@@ -649,9 +821,10 @@ class BinderTest :
         }
 
         "MH: with no reach the T3 rules are a no-op — every mh case keeps its S3 verdict" {
+            // (ttr-demo#62: the S3 verdict of a FILTER over the dimension/channel pair is the question.)
             decideMh(slot = SlotHint(Slot.FILTER, headRefs = listOf(storeSales), headMeasureCapable = true))
-                .shouldBeInstanceOf<Binder.Bind>()
-                .winner.match.targetRef shouldBe storeSales
+                .shouldBeInstanceOf<Binder.Ambiguous>()
+                .admitted.size shouldBe 2
             decideMh(slot = SlotHint(Slot.COUNT_HEAD))
                 .shouldBeInstanceOf<Binder.Bind>()
                 .winner.match.targetRef shouldBe store

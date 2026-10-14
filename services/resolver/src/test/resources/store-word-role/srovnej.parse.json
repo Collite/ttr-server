@@ -1,0 +1,94 @@
+{
+  "language": "cs",
+  "languageConfidence": 0.5348667870371374,
+  "engineUsed": "morphodita",
+  "tokens": [{
+    "text": "Srovnej",
+    "charEnd": 7,
+    "lemma": "srovnat",
+    "upos": "VERB",
+    "xpos": "Vi-S---2--A-P--",
+    "feats": {
+      "Aspect": "Perf",
+      "Polarity": "Pos",
+      "VerbForm": "Fin",
+      "Mood": "Imp",
+      "Number": "Sing",
+      "Person": "2"
+    },
+    "depRelation": "root"
+  }, {
+    "text": "prodejny",
+    "charStart": 8,
+    "charEnd": 16,
+    "lemma": "prodejna",
+    "upos": "NOUN",
+    "xpos": "NNFP4-----A----",
+    "feats": {
+      "Case": "Acc",
+      "Gender": "Fem",
+      "Number": "Plur"
+    },
+    "depHead": 1,
+    "depRelation": "obj"
+  }, {
+    "text": "a",
+    "charStart": 17,
+    "charEnd": 18,
+    "lemma": "a",
+    "upos": "CCONJ",
+    "xpos": "J^-------------",
+    "depHead": 4,
+    "depRelation": "cc"
+  }, {
+    "text": "web",
+    "charStart": 19,
+    "charEnd": 22,
+    "lemma": "web",
+    "upos": "NOUN",
+    "xpos": "NNIS4-----A----",
+    "feats": {
+      "Animacy": "Inan",
+      "Gender": "Masc",
+      "Number": "Sing",
+      "Case": "Acc"
+    },
+    "depHead": 2,
+    "depRelation": "conj"
+  }],
+  "sentences": [{
+    "charEnd": 22
+  }],
+  "detectedLanguage": "cs",
+  "used": [{
+    "op": "DETECT_LANGUAGE",
+    "engine": "langid",
+    "model": "lingua",
+    "modelVersion": "lingua-2.0"
+  }, {
+    "op": "POS_TAG",
+    "engine": "morphodita",
+    "model": "czech-morfflex2.0-pdtc1.0-220710",
+    "modelVersion": "czech-morfflex2.0-pdtc1.0-220710"
+  }, {
+    "op": "NER",
+    "engine": "nametag3",
+    "model": "nametag3-czech-cnec2.0-240830",
+    "modelVersion": "nametag3-czech-cnec2.0-240830"
+  }, {
+    "op": "LEMMATIZE",
+    "engine": "morphodita",
+    "model": "czech-morfflex2.0-pdtc1.0-220710",
+    "modelVersion": "czech-morfflex2.0-pdtc1.0-220710"
+  }, {
+    "op": "TOKENIZE",
+    "engine": "morphodita",
+    "model": "czech-morfflex2.0-pdtc1.0-220710",
+    "modelVersion": "czech-morfflex2.0-pdtc1.0-220710"
+  }, {
+    "op": "DEP_PARSE",
+    "engine": "stanza",
+    "model": "stanza-cs-en",
+    "modelVersion": "stanza-1.10.0"
+  }]
+}
