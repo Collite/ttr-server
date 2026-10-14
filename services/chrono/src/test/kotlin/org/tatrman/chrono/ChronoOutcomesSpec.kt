@@ -48,7 +48,8 @@ class ChronoOutcomesSpec :
             val r = svc.ground(request("December"))
             r.status shouldBe GroundResponse.Status.AWAITING_CLARIFICATION
             r.optionsList.map { it.id } shouldBe listOf("202612", "202512")
-            r.optionsList[0].label shouldBe "December 2026 (202612)"
+            // #214: the label names the period; the id carries the code.
+            r.optionsList.map { it.label } shouldBe listOf("December 2026", "December 2025")
             r.optionsList[1]
                 .normalized.interval.start
                 .startsWith("2025-12-01") shouldBe true

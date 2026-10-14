@@ -21,6 +21,7 @@ import org.tatrman.chrono.client.LlmGatewayClient
 import org.tatrman.chrono.discover.SemanticDiscovery
 import org.tatrman.chrono.obs.ChronoMetrics
 import org.tatrman.chrono.recipe.RecipeBuilder
+import org.tatrman.chrono.recognize.ChronoReading
 import org.tatrman.chrono.recognize.ChronoRecognition
 import org.tatrman.chrono.recognize.DateRecognizer
 import java.time.LocalDate
@@ -83,18 +84,27 @@ class ChronoGroundingService(
             parseReference(request.context)
                 ?: return ungroundable("reference_datetime is required (chrono never reads a clock)")
 
-        val recognition =
+        val reading =
             // RV-P1.6: the slice is narrowed to the request's language — a term carries the
             // `lang` its author declared, and an English trigger has no business firing on a
             // Czech question. A blank locale narrows nothing.
-            recognizer.recognize(
+            recognizer.read(
                 request.spanText,
                 reference,
                 triggers.current().forLang(request.context.locale),
                 // A date that names no year leans on the question it is in, then on the user's
-                // earlier questions — "po celý měsíc říjen" after "v říjnu 2025" is October 2025.
+                // earlier questions — "po celý měsíc říjen" after "v říjnu 2025" is October 2025 —
+                // and an anaphoric period word reads against them — "the previous year" after
+                // "Marketplace revenue in 2025" is 2024 (#214).
                 context = listOf(request.questionText) + request.context.priorQuestionsList,
             ) ?: return fallback(request, "could not recognize a time expression in '${request.spanText}'")
+        val recognition =
+            when (reading) {
+                is ChronoReading.Recognized -> reading.recognition
+                // Not the LLM fallback: it reads the same conversation and could read the word against
+                // the reference date, which is exactly what an unanchored word must not be (#214).
+                is ChronoReading.Unanchored -> return ungroundable(reading.reason, code = "no_anchor")
+            }
 
         val resolved: ChronoRecognition =
             when {
@@ -104,7 +114,7 @@ class ChronoGroundingService(
                         ?: return ungroundable("unknown clarification_answer_id '${request.clarificationAnswerId}'")
                 // Ambiguous span → ask, don't guess.
                 recognition.alternatives.isNotEmpty() ->
-                    return awaitingClarification(recognition, request.context.timezone)
+                    return awaitingClarification(recognition, request.context.timezone, request.context.locale)
                 else -> recognition
             }
 
@@ -151,14 +161,15 @@ class ChronoGroundingService(
     private fun awaitingClarification(
         recognition: ChronoRecognition,
         timezone: String,
+        locale: String,
     ): GroundResponse {
         val zone = zoneOf(timezone)
         val options =
             (listOf(recognition) + recognition.alternatives).map { candidate ->
                 ClarificationOption
                     .newBuilder()
-                    .setId(candidate.periodCode.orEmpty())
-                    .setLabel(labelFor(candidate))
+                    .setId(codeOf(candidate))
+                    .setLabel(labelFor(candidate, locale))
                     .setNormalized(normalized(candidate, zone))
                     .build()
             }
@@ -175,13 +186,58 @@ class ChronoGroundingService(
         answerId: String,
     ): ChronoRecognition? =
         (listOf(recognition) + recognition.alternatives)
-            .firstOrNull { it.periodCode == answerId }
+            .firstOrNull { codeOf(it) == answerId }
             ?.copy(alternatives = emptyList())
 
-    private fun labelFor(c: ChronoRecognition): String {
-        val monthName = Month.of(c.startInclusive.monthValue).getDisplayName(TextStyle.FULL, Locale.ENGLISH)
-        return "$monthName ${c.startInclusive.year} (${c.periodCode})"
+    /**
+     * A clarification option's id: the candidate's period code — `yyyyMM` for a month, `yyyyQn` for a
+     * quarter — or, for a candidate that carries none, the code of the calendar span it covers: `yyyy` for a
+     * whole year, `yyyyMMdd` for a day (#214). A year interval carries no period code on purpose (it must not
+     * route through a period table), so the id is made here, not on the recognition.
+     */
+    private fun codeOf(c: ChronoRecognition): String {
+        c.periodCode?.let { return it }
+        val start = c.startInclusive
+        return when {
+            start.dayOfYear == 1 && c.endExclusive == start.plusYears(1) -> "%04d".format(start.year)
+            c.endExclusive == start.plusDays(1) -> "%04d%02d%02d".format(start.year, start.monthValue, start.dayOfMonth)
+            else -> ""
+        }
     }
+
+    /**
+     * A clarification option's label: the period it names, in the request's language (#214) — "2025",
+     * "February 2025", "Q1 2025", "March 15, 2025"; in Czech „2025“, „únor 2025“, „1. čtvrtletí 2025“,
+     * „15. 3. 2025“. The id carries the code; the label is for the person asked.
+     */
+    private fun labelFor(
+        c: ChronoRecognition,
+        locale: String,
+    ): String {
+        val czech = locale.trim().lowercase().startsWith("cs")
+        val code = codeOf(c)
+        val start = c.startInclusive
+        return when {
+            YEAR_CODE.matches(code) -> code
+            QUARTER_CODE.matches(code) -> {
+                val q = code.last()
+                if (czech) "$q. čtvrtletí ${start.year}" else "Q$q ${start.year}"
+            }
+            MONTH_CODE.matches(code) -> "${monthName(start.monthValue, czech)} ${start.year}"
+            DAY_CODE.matches(code) ->
+                if (czech) {
+                    "${start.dayOfMonth}. ${start.monthValue}. ${start.year}"
+                } else {
+                    "${monthName(start.monthValue, czech = false)} ${start.dayOfMonth}, ${start.year}"
+                }
+            else -> "${c.startIso} – ${c.endIso}"
+        }
+    }
+
+    private fun monthName(
+        month: Int,
+        czech: Boolean,
+    ): String = if (czech) CZECH_MONTHS[month - 1] else Month.of(month).getDisplayName(TextStyle.FULL, Locale.ENGLISH)
 
     private fun normalized(
         c: ChronoRecognition,
@@ -277,7 +333,10 @@ class ChronoGroundingService(
         zone: ZoneId,
     ): String = date.atStartOfDay(zone).format(DateTimeFormatter.ISO_OFFSET_DATE_TIME)
 
-    private fun ungroundable(message: String): GroundResponse =
+    private fun ungroundable(
+        message: String,
+        code: String = "ungroundable",
+    ): GroundResponse =
         GroundResponse
             .newBuilder()
             .setStatus(GroundResponse.Status.UNGROUNDABLE)
@@ -285,11 +344,33 @@ class ChronoGroundingService(
                 ResponseMessage
                     .newBuilder()
                     .setSeverity(Severity.INFO)
-                    .setCode("ungroundable")
+                    .setCode(code)
                     .setHumanMessage(message),
             ).build()
 
     private companion object {
+        val YEAR_CODE = Regex("""\d{4}""")
+        val QUARTER_CODE = Regex("""\d{4}Q[1-4]""")
+        val MONTH_CODE = Regex("""\d{6}""")
+        val DAY_CODE = Regex("""\d{8}""")
+
+        /** The Czech month names, nominative, as a label names a month on its own („únor 2025“). */
+        val CZECH_MONTHS =
+            listOf(
+                "leden",
+                "únor",
+                "březen",
+                "duben",
+                "květen",
+                "červen",
+                "červenec",
+                "srpen",
+                "září",
+                "říjen",
+                "listopad",
+                "prosinec",
+            )
+
         const val LLM_SYSTEM_PROMPT =
             "You ground a time expression to a JSON GroundingResult (org.tatrman.grounding.v1). " +
                 "Return ONLY the JSON object: a `normalized.interval` {start,end} (ISO-8601, end EXCLUSIVE), " +

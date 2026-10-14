@@ -553,9 +553,12 @@ class DateRecognizerSpec :
             rec.recognize("last week", ref).shouldNotBeNull().startInclusive shouldBe day(2026, 5, 4)
             rec.recognize("this month", ref).shouldNotBeNull().periodCode shouldBe "202605"
             rec.recognize("minulý měsíc", ref).shouldNotBeNull().periodCode shouldBe "202604"
-            // Pinned as untouched by #213, not as right: the month arm reads "po měsících" (by month)
-            // as the current month.
-            rec.recognize("letos po měsících", ref).shouldNotBeNull().periodCode shouldBe "202605"
+            // #214: a scope word reads with the noun it qualifies, so "po měsících" (by month) is a grain and
+            // „letos“ is the year. Until #214 the month arm read the whole span as the current month.
+            rec.recognize("letos po měsících", ref).shouldNotBeNull().let {
+                it.startInclusive shouldBe day(2026, 1, 1)
+                it.endExclusive shouldBe day(2027, 1, 1)
+            }
             rec.recognize("last fiscal quarter", ref).shouldNotBeNull().periodCode shouldBe "2026Q1"
         }
         "a year-only span is still that year" {

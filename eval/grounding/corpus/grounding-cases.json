@@ -11,7 +11,11 @@
     "model": "accounting-period",
     "here": null,
     "expect": {
-      "status": "AWAITING_CLARIFICATION"
+      "status": "AWAITING_CLARIFICATION",
+      "option_ids": [
+        "202612",
+        "202512"
+      ]
     }
   },
   {
@@ -593,6 +597,296 @@
       "status": "OK",
       "application": "JOIN",
       "period_code": "202605"
+    }
+  },
+  {
+    "id": "chrono/period-kinds-ambiguous-month-cs",
+    "tool": "ground_time",
+    "kind": "DATE",
+    "span": "minulý měsíc",
+    "locale": "cs-CZ",
+    "reference_datetime": "2026-10-14T12:00:00+02:00",
+    "timezone": "Europe/Prague",
+    "package": "cnc",
+    "model": "accounting-period",
+    "here": null,
+    "question_text": "A minulý měsíc?",
+    "prior_questions": [
+      "Tržby z tržiště v březnu 2025"
+    ],
+    "expect": {
+      "status": "AWAITING_CLARIFICATION",
+      "option_ids": [
+        "202609",
+        "202502"
+      ]
+    }
+  },
+  {
+    "id": "chrono/period-kinds-ambiguous-quarter-cs",
+    "tool": "ground_time",
+    "kind": "DATE",
+    "span": "minulé čtvrtletí",
+    "locale": "cs-CZ",
+    "reference_datetime": "2026-10-14T12:00:00+02:00",
+    "timezone": "Europe/Prague",
+    "package": "cnc",
+    "model": "calendar",
+    "here": null,
+    "question_text": "A minulé čtvrtletí?",
+    "prior_questions": [
+      "Tržby z tržiště ve 2. čtvrtletí 2025"
+    ],
+    "expect": {
+      "status": "AWAITING_CLARIFICATION",
+      "option_ids": [
+        "2026Q3",
+        "2025Q1"
+      ]
+    }
+  },
+  {
+    "id": "chrono/period-kinds-ambiguous-year-agree",
+    "tool": "ground_time",
+    "kind": "DATE",
+    "span": "minulý rok",
+    "locale": "cs-CZ",
+    "reference_datetime": "2026-10-14T12:00:00+02:00",
+    "timezone": "Europe/Prague",
+    "package": "cnc",
+    "model": "accounting-period",
+    "here": null,
+    "question_text": "Tržby z tržiště za minulý rok",
+    "expect": {
+      "status": "OK",
+      "interval_start": "2025-01-01"
+    }
+  },
+  {
+    "id": "chrono/period-kinds-ambiguous-year-cs",
+    "tool": "ground_time",
+    "kind": "DATE",
+    "span": "minulý rok",
+    "locale": "cs-CZ",
+    "reference_datetime": "2026-10-14T12:00:00+02:00",
+    "timezone": "Europe/Prague",
+    "package": "cnc",
+    "model": "accounting-period",
+    "here": null,
+    "question_text": "A minulý rok?",
+    "prior_questions": [
+      "Tržby z tržiště v roce 2025"
+    ],
+    "expect": {
+      "status": "AWAITING_CLARIFICATION",
+      "option_ids": [
+        "2025",
+        "2024"
+      ]
+    }
+  },
+  {
+    "id": "chrono/period-kinds-ambiguous-year-pick",
+    "tool": "ground_time",
+    "kind": "DATE",
+    "span": "minulý rok",
+    "locale": "cs-CZ",
+    "reference_datetime": "2026-10-14T12:00:00+02:00",
+    "timezone": "Europe/Prague",
+    "package": "cnc",
+    "model": "accounting-period",
+    "here": null,
+    "question_text": "A minulý rok?",
+    "prior_questions": [
+      "Tržby z tržiště v roce 2025"
+    ],
+    "clarification_answer_id": "2024",
+    "expect": {
+      "status": "OK",
+      "interval_start": "2024-01-01"
+    }
+  },
+  {
+    "id": "chrono/period-kinds-anaphoric-month",
+    "tool": "ground_time",
+    "kind": "DATE",
+    "span": "the month before",
+    "locale": "en-US",
+    "reference_datetime": "2026-10-14T12:00:00+02:00",
+    "timezone": "Europe/Prague",
+    "package": "cnc",
+    "model": "accounting-period",
+    "here": null,
+    "question_text": "And the month before?",
+    "prior_questions": [
+      "Marketplace revenue in March 2025"
+    ],
+    "expect": {
+      "status": "OK",
+      "application": "FILTER",
+      "interval_start": "2025-02-01"
+    }
+  },
+  {
+    "id": "chrono/period-kinds-anaphoric-quarter",
+    "tool": "ground_time",
+    "kind": "DATE",
+    "span": "the previous quarter",
+    "locale": "en-US",
+    "reference_datetime": "2026-10-14T12:00:00+02:00",
+    "timezone": "Europe/Prague",
+    "package": "cnc",
+    "model": "calendar",
+    "here": null,
+    "question_text": "And the previous quarter?",
+    "prior_questions": [
+      "Marketplace revenue in Q2 2025"
+    ],
+    "expect": {
+      "status": "OK",
+      "application": "FILTER",
+      "interval_start": "2025-01-01"
+    }
+  },
+  {
+    "id": "chrono/period-kinds-anaphoric-year",
+    "tool": "ground_time",
+    "kind": "DATE",
+    "span": "the previous year",
+    "locale": "en-US",
+    "reference_datetime": "2026-10-14T12:00:00+02:00",
+    "timezone": "Europe/Prague",
+    "package": "cnc",
+    "model": "accounting-period",
+    "here": null,
+    "question_text": "And the previous year?",
+    "prior_questions": [
+      "Marketplace revenue in 2025"
+    ],
+    "expect": {
+      "status": "OK",
+      "application": "FILTER",
+      "interval_start": "2024-01-01"
+    }
+  },
+  {
+    "id": "chrono/period-kinds-anaphoric-year-chain",
+    "tool": "ground_time",
+    "kind": "DATE",
+    "span": "the previous year",
+    "locale": "en-US",
+    "reference_datetime": "2026-10-14T12:00:00+02:00",
+    "timezone": "Europe/Prague",
+    "package": "cnc",
+    "model": "accounting-period",
+    "here": null,
+    "question_text": "And the previous year?",
+    "prior_questions": [
+      "And the previous year?",
+      "Marketplace revenue in 2025"
+    ],
+    "expect": {
+      "status": "OK",
+      "interval_start": "2023-01-01"
+    }
+  },
+  {
+    "id": "chrono/period-kinds-deictic-month",
+    "tool": "ground_time",
+    "kind": "DATE",
+    "span": "last month",
+    "locale": "en-US",
+    "reference_datetime": "2026-10-14T12:00:00+02:00",
+    "timezone": "Europe/Prague",
+    "package": "cnc",
+    "model": "accounting-period",
+    "here": null,
+    "question_text": "And last month?",
+    "prior_questions": [
+      "Marketplace revenue in March 2025"
+    ],
+    "expect": {
+      "status": "OK",
+      "interval_start": "2026-09-01"
+    }
+  },
+  {
+    "id": "chrono/period-kinds-deictic-year-cs",
+    "tool": "ground_time",
+    "kind": "DATE",
+    "span": "loni",
+    "locale": "cs-CZ",
+    "reference_datetime": "2026-10-14T12:00:00+02:00",
+    "timezone": "Europe/Prague",
+    "package": "cnc",
+    "model": "accounting-period",
+    "here": null,
+    "question_text": "A loni?",
+    "prior_questions": [
+      "Tržby z tržiště v roce 2025"
+    ],
+    "expect": {
+      "status": "OK",
+      "interval_start": "2025-01-01"
+    }
+  },
+  {
+    "id": "chrono/period-kinds-month-in-asked-year-cs",
+    "tool": "ground_time",
+    "kind": "DATE",
+    "span": "předchozí měsíc",
+    "locale": "cs-CZ",
+    "reference_datetime": "2026-10-14T12:00:00+02:00",
+    "timezone": "Europe/Prague",
+    "package": "cnc",
+    "model": "accounting-period",
+    "here": null,
+    "question_text": "A předchozí měsíc?",
+    "prior_questions": [
+      "A v březnu minulého roku?",
+      "Tržby z tržiště v roce 2025"
+    ],
+    "expect": {
+      "status": "UNGROUNDABLE"
+    }
+  },
+  {
+    "id": "chrono/period-kinds-no-anchor",
+    "tool": "ground_time",
+    "kind": "DATE",
+    "span": "the previous year",
+    "locale": "en-US",
+    "reference_datetime": "2026-10-14T12:00:00+02:00",
+    "timezone": "Europe/Prague",
+    "package": "cnc",
+    "model": "accounting-period",
+    "here": null,
+    "question_text": "And the previous year?",
+    "prior_questions": [
+      "Marketplace revenue in 2024 and in 2025"
+    ],
+    "expect": {
+      "status": "UNGROUNDABLE"
+    }
+  },
+  {
+    "id": "chrono/period-kinds-yearless-after-ask-cs",
+    "tool": "ground_time",
+    "kind": "DATE",
+    "span": "v září",
+    "locale": "cs-CZ",
+    "reference_datetime": "2026-10-14T12:00:00+02:00",
+    "timezone": "Europe/Prague",
+    "package": "cnc",
+    "model": "accounting-period",
+    "here": null,
+    "question_text": "A v září?",
+    "prior_questions": [
+      "A minulý rok?",
+      "Tržby z tržiště v roce 2023"
+    ],
+    "expect": {
+      "status": "UNGROUNDABLE"
     }
   },
   {

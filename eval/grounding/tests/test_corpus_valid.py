@@ -14,6 +14,7 @@ import build_corpus
 
 _CORPUS = Path(__file__).resolve().parent.parent / "corpus"
 _ISO_OFFSET = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}$")
+_ISO_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 _TOOL_KIND = {"ground_time": "DATE", "ground_geo": "LOCATION", "ground_money": "MONEY"}
 _STATUSES = {"OK", "AWAITING_CLARIFICATION", "UNGROUNDABLE"}
@@ -58,9 +59,30 @@ def test_bulk_cases_well_formed() -> None:
         if exp["status"] == "OK":
             if "application" in exp:
                 assert exp["application"] in _APPLICATIONS
+            if "interval_start" in exp:
+                assert _ISO_DATE.match(exp["interval_start"]), f"{c['id']}: interval_start is not YYYY-MM-DD"
         else:
             # a non-OK case must not assert recipe facets
-            assert not any(k in exp for k in ("application", "source", "period_code", "sql_contains")), c["id"]
+            assert not any(
+                k in exp for k in ("application", "source", "period_code", "sql_contains", "interval_start")
+            ), c["id"]
+        # only a clarification has options to name
+        if "option_ids" in exp:
+            assert exp["status"] == "AWAITING_CLARIFICATION", c["id"]
+            assert len(exp["option_ids"]) >= 2 and len(set(exp["option_ids"])) == len(exp["option_ids"]), c["id"]
+        # the conversation a case is asked in (#214)
+        assert isinstance(c.get("question_text", ""), str), c["id"]
+        prior = c.get("prior_questions", [])
+        assert isinstance(prior, list) and all(isinstance(q, str) and q for q in prior), c["id"]
+        assert isinstance(c.get("clarification_answer_id", ""), str), c["id"]
+
+
+def test_conversation_cases_present() -> None:
+    """#214: relative periods by kind need cases asked inside a conversation, a clarification and a resume."""
+    chrono = [c for c in _bulk() if c["tool"] == "ground_time"]
+    assert any(c.get("prior_questions") for c in chrono)
+    assert any(c["expect"].get("option_ids") for c in chrono)
+    assert any(c.get("clarification_answer_id") for c in chrono)
 
 
 def test_status_coverage() -> None:
