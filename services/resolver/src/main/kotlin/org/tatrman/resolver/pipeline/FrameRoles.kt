@@ -6,7 +6,6 @@ import org.tatrman.nlp.v1.Token
 import org.tatrman.resolver.v1.FrameRole
 import org.tatrman.resolver.v1.TargetClass
 import org.tatrman.resolver.v1.UniversalEntityType
-import org.tatrman.text.Normalization.fold
 
 /**
  * RV-P2.1.T5 — frame-role derivation (RV-21, Q-15 **RULED rule-based, no LLM assist**:
@@ -31,7 +30,7 @@ import org.tatrman.text.Normalization.fold
  * R5  no prep, deprel == compound, not capable      -> +FILTER     # "WEB revenue"
  * R6  no prep, deprel starts "obl", not capable     -> +FILTER     # "minulý TÝDEN"
  * R6' no prep, deprel == advmod, binds an attribute -> +FILTER     # "LONI" (spike F-1)
- * R6" no prep, deprel == amod, a model attribute, a grain word -> +GROUPING  # "MONTHLY revenue" (#152)
+ * R6" no prep, amod (or its conjunct), an attribute, a grain word -> +GROUPING  # "MONTHLY revenue" (#152)
  * R7  deprel == conj  -> inherit the head mention's FILTER / GROUPING
  * R8  m anchors a value and deprel not nsubj        -> +FILTER     # "účtu 501001"
  * R9  residue: the nsubj candidate, else the shallowest+leftmost   -> +SUBJECT (AT MOST ONE)
@@ -104,7 +103,6 @@ object FrameRoles {
         val grouping = preps.grouping(lang)
         val filter = preps.filter(lang)
         val distributive = preps.distributive(lang)
-        val grainAdjectives = preps.grainAdjectives(lang).map(::fold).toSet()
         val byHead = mentions.filter { it.headToken >= 0 }.associateBy { it.headToken }
 
         // -- R0 operators carry no frame role, ever (RV-35) --------------------
@@ -151,7 +149,7 @@ object FrameRoles {
                         // report's one-line fix reads "advmod + Calendar binding"; the rules may
                         // not match a ref string, so the model fact used is the object KIND —
                         // an adverb that binds an attribute is restricting by it.
-                        relation == "advmod" && m.objectKind.equals("attribute", ignoreCase = true) ->
+                        relation == "advmod" && m.objectKind.equals(Binder.KIND_ATTRIBUTE, ignoreCase = true) ->
                             roles.getValue(m.id) += FrameRole.FRAME_ROLE_FILTER
                         // ttr-server#152: a calendar adjective that names an ATTRIBUTE — the model
                         // object, not one of its values (a member is R1's FILTER) — asks for the
@@ -160,10 +158,16 @@ object FrameRoles {
                         // with no rule for it the declared grain bound and was then read as nothing.
                         // A GRAIN only ([isGrainWord]): *promotional revenue*, with `promotional`
                         // declared for a promotion flag, restricts by the flag — it is no GROUP BY.
-                        relation == "amod" &&
+                        // ttr-server#237 — in an adjective's place: `amod`, or a conjunct of one (*Měsíční
+                        // a ČTVRTLETNÍ tržby*, R7 has nothing to inherit when the first conjunct binds
+                        // nothing). And on an object whose kind the registry did not declare, too: the
+                        // word is the calendar unit whatever the archive failed to say, and a registry
+                        // silent about kinds would otherwise turn every grain into a mention with no
+                        // role. A kind it DID declare other than attribute still keeps the rule off.
+                        isAdjectival(tokens, m.headToken) &&
                             m.targetClass == TargetClass.TARGET_CLASS_MODEL_OBJECT &&
-                            m.objectKind.equals("attribute", ignoreCase = true) &&
-                            isGrainWord(parse, m.headToken, grainAdjectives) ->
+                            (m.objectKind.isBlank() || m.objectKind.equals(Binder.KIND_ATTRIBUTE, ignoreCase = true)) &&
+                            isGrainWord(parse, m.headToken, preps, lang) ->
                             roles.getValue(m.id) += FrameRole.FRAME_ROLE_GROUPING
                     }
             }
@@ -311,10 +315,27 @@ object FrameRoles {
     }
 
     /**
+     * ttr-server#237 — whether the word at [i] stands in an adjective's place: an `amod`, or a `conj`
+     * of one (*Měsíční a čtvrtletní tržby*: `čtvrtletní` hangs from `Měsíční`). The one position R6"
+     * reads and `GroundingTriggers` keeps a calendar adjective out of the trigger annotation by.
+     */
+    internal fun isAdjectival(
+        tokens: List<Token>,
+        i: Int,
+    ): Boolean {
+        val relation = tokens.getOrNull(i)?.depRelation?.substringBefore(':') ?: return false
+        if (relation == "amod") return true
+        if (relation != "conj") return false
+        return tokens.getOrNull(headIndexOf(tokens[i].depHead))?.depRelation?.substringBefore(':') == "amod"
+    }
+
+    /**
      * **R6"'s grain test — is the word at [headToken] a calendar unit?** Two signals, either enough:
      *
-     *  - **the table:** its lemma, folded, is one of the language's [grainAdjectives]
-     *    (`frame-roles.conf`), so `Monthly` is a grain whether or not the NER typed it;
+     *  - **the table:** its surface or its lemma is on the language's `grain-adjectives` list
+     *    ([FrameRolePreps.isGrainAdjective], `frame-roles.conf`), so `Monthly` is a grain whether or not
+     *    the NER typed it, and an inflected Czech form is one whether or not the analyser restored its
+     *    lemma (`mesicnich`: the list holds stems);
      *  - **the NER:** a DATE covers this word and no other — Stanza types `Monthly` a date by
      *    itself. The same evidence `SpanProposal` and `UniversalSeam` take a declared word over a
      *    date on, so a grain those two let bind is a grain here too.
@@ -324,11 +345,12 @@ object FrameRoles {
     private fun isGrainWord(
         parse: AnalyzeResponse,
         headToken: Int,
-        grainAdjectives: Set<String>,
+        preps: FrameRolePreps,
+        lang: String,
     ): Boolean {
         val tokens = parse.tokensList
         val word = tokens[headToken]
-        if (fold(word.lemma.ifBlank { word.text }) in grainAdjectives) return true
+        if (preps.isGrainAdjective(lang, word.text, word.lemma)) return true
         return parse.entitiesList.any { e ->
             UniversalClassifier.classify(e.label, e.normalizedValue, e.text) == UniversalEntityType.DATE &&
                 tokens.indices.filter { mid(tokens[it]) in e.charStart until e.charEnd } == listOf(headToken)

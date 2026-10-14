@@ -743,6 +743,20 @@ class SpanProposalTest :
             SpanProposal.retryOf(listOf(1, 2), 2, tokens) shouldBe null
         }
 
+        "#237 — coordinated bare adjectives are no words of their own: each leaves, and so does their `and`" {
+            // 0 promotional(amod→stores) 1 and(cc→seasonal) 2 seasonal(conj→promotional) 3 stores
+            val tokens =
+                listOf(
+                    tok("promotional", 0, 11, "promotional", "ADJ", 4, "amod"),
+                    tok("and", 12, 15, "and", "CCONJ", 3, "cc"),
+                    tok("seasonal", 16, 24, "seasonal", "ADJ", 1, "conj"),
+                    tok("stores", 25, 31, "store", "NOUN", 0, "root"),
+                )
+
+            words(SpanProposal.retryOf(listOf(0, 1, 2, 3), 3, tokens), tokens) shouldBe
+                (listOf("stores") to listOf("promotional", "seasonal"))
+        }
+
         "#204 — a compound is the thing's name, not a modifier: `marketplace revenue` asks nothing" {
             val tokens =
                 listOf(
