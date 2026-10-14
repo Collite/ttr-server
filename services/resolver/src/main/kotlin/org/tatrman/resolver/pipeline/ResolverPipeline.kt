@@ -416,6 +416,8 @@ class ResolverPipeline(
                 .map { it.start to it.end }
                 .toSet()
         val kernelAsks = groundings.asked.filterKeys { it in dates }
+        // ttr-server#214 — a period the kernel refused as `no_anchor` is named on the lattice, by the same rule.
+        val unanchored = groundings.unanchored.filterTo(mutableSetOf()) { it in dates }
         for ((span, ask) in kernelAsks) {
             log.info(
                 "grounding: {} asked about [{},{}) with {} options — asked under the resolver's token conversation_id={}",
@@ -463,6 +465,7 @@ class ResolverPipeline(
                 literals = literals,
                 predicates = predicates,
                 asked = kernelAsks.keys,
+                unanchored = unanchored,
             )
         }
 

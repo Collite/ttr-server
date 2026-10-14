@@ -69,6 +69,9 @@ object LatticeAssembler {
         // a G2 on its value, exactly as a span the gate is asking about is: the door is asking, so
         // the lattice may not report the value settled.
         asked: Set<Pair<Int, Int>> = emptySet(),
+        // ttr-server#214 — the spans a grounding kernel refused as `no_anchor` (`GroundingRung.Outcome`):
+        // each value there gets a `ground-unanchored` entry below, and is otherwise untouched.
+        unanchored: Set<Pair<Int, Int>> = emptySet(),
     ): ResolutionState {
         val gatedByLayer =
             gate.gated.groupBy { layerOf(it, hasTrigger = (it.candidate.start to it.candidate.end) in triggers) }
@@ -409,6 +412,22 @@ object LatticeAssembler {
                     .addAllValueIds(narrowings[mention.id].orEmpty()),
             )
         }
+        // ttr-server#214 — a period the kernel had nothing to count from: "the previous year" after a
+        // question naming two years. The value is an ungrounded date like any other, and the one
+        // reading a consumer has for an ungrounded period, counting it from today, is the reading the
+        // kernel refused. One entry per such value, so a consumer can ask which period is meant.
+        // Omitted when there is none, so every other lattice is byte-identical to what it was.
+        for (value in values) {
+            if (value.hasGrounding() && (value.span.start to value.span.end) in unanchored) {
+                builder.addRungLog(
+                    RungLogEntry
+                        .newBuilder()
+                        .setRung(CORE_RUNG)
+                        .setAction(GROUND_UNANCHORED_ACTION)
+                        .addValueIds(value.id),
+                )
+            }
+        }
         return builder.build()
     }
 
@@ -460,6 +479,13 @@ object LatticeAssembler {
 
     /** The action a grounding narrowing is logged under (RV-42) — see the emit site above. */
     const val GROUND_NARROW_ACTION: String = "ground-narrow"
+
+    /**
+     * The action a period the grounding kernel refused as `no_anchor` is logged under (ttr-server#214):
+     * `{round: 0, rung: "core", action: "ground-unanchored", value_ids: [<the DATE value>]}`, one entry
+     * per value. The value stays an ungrounded date; the entry says it must not be counted from today.
+     */
+    const val GROUND_UNANCHORED_ACTION: String = "ground-unanchored"
 
     /** LP §2.4 — the action the core's quoted literals are logged under. */
     const val VERBATIM_ACTION: String = "verbatim"

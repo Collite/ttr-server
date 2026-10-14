@@ -122,10 +122,18 @@ object GroundingRung {
             get() = "$intervalStart/$intervalEndExclusive".takeIf { it != "/" }.orEmpty()
     }
 
-    /** Every span the kernel answered: grounded, or asked about. A span in neither stays as the NER typed it. */
+    /**
+     * Every span the kernel answered: grounded, or asked about. A span in neither stays as the NER typed it.
+     *
+     * [unanchored] are the spans of that last kind the kernel refused as `no_anchor`: a period counted
+     * from another period, with no single one in the conversation to count from. They stay ungrounded
+     * too; the lattice names them (`LatticeAssembler.GROUND_UNANCHORED_ACTION`) so a consumer does not
+     * read them against today.
+     */
     data class Outcome(
         val grounded: Map<Pair<Int, Int>, Grounded> = emptyMap(),
         val asked: Map<Pair<Int, Int>, Asked> = emptyMap(),
+        val unanchored: Set<Pair<Int, Int>> = emptySet(),
     )
 
     /** What putting a user's pick back to the kernel produced ([groundPick]). */
@@ -151,8 +159,10 @@ object GroundingRung {
 
     /**
      * chrono's message code (ttr-server#214) for an anaphoric period with nothing to be read
-     * against: "the previous year" after a question naming two years. Logged, so the reason a date
-     * stayed ungrounded is visible; it is not surfaced on the wire yet.
+     * against: "the previous year" after a question naming two years. The date stays ungrounded,
+     * and the span is carried out in [Outcome.unanchored]: the lattice names its value with a
+     * `ground-unanchored` rung-log entry, because the one reading left to a consumer that sees only
+     * an ungrounded date (count it from today) is the reading the kernel refused.
      */
     private const val NO_ANCHOR = "no_anchor"
 
@@ -205,6 +215,7 @@ object GroundingRung {
         }
         val grounded = mutableMapOf<Pair<Int, Int>, Grounded>()
         val asked = mutableMapOf<Pair<Int, Int>, Asked>()
+        val unanchored = mutableSetOf<Pair<Int, Int>>()
         for (u in universals) {
             val kind = kindOf(u.entityType) ?: continue
             val question =
@@ -235,6 +246,7 @@ object GroundingRung {
                     askedOf(response, u, question)?.let { asked[u.start to u.end] = it }
                 else -> {
                     if (response.messagesList.any { it.code == NO_ANCHOR }) {
+                        unanchored += u.start to u.end
                         log.info(
                             "grounding: [{},{}) names a period with nothing to read it against ({}) — left ungrounded",
                             u.start,
@@ -247,7 +259,7 @@ object GroundingRung {
                 }
             }
         }
-        return Outcome(grounded, asked)
+        return Outcome(grounded, asked, unanchored)
     }
 
     /**

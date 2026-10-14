@@ -41,7 +41,12 @@ November" in October is November of this year or of last), and, with #214, the a
 - **Wire:** additive. `Option.grounding = 9`. The resume token gains `kernelQuestions` and `kernelOptionId`, which are
   encoded only when present, so a token with no kernel question is byte-for-byte unchanged. A resolver older than this one
   cannot read a token that carries a kernel question.
-- chrono's `no_anchor` (#214) is logged at INFO when it arrives; it is not on the wire yet.
+- **A period with nothing to count from is named.** chrono refuses an anaphoric period with no single period of its unit in
+  the conversation ("the previous year" after a question naming two years) as `UNGROUNDABLE`, code `no_anchor` (#214). The
+  value stays an ungrounded DATE, and the lattice now names it with a round-0 rung-log entry
+  `{rung: "core", action: "ground-unanchored", value_ids: [<the value>]}`, one per value. A consumer that would read an
+  ungrounded period against today must not read this one so; it asks which period is meant. Additive: a new rung-log
+  action, no new field, and no entry at all on a lattice without such a value.
 
 ### resolver — a compared value names its own object, never the operator („Porovnej tržby z tržiště a z webu“, #207)
 

@@ -15,6 +15,7 @@ import io.modelcontextprotocol.kotlin.sdk.types.TextContent
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
+import org.tatrman.common.v1.ResponseMessage
 import org.tatrman.fuzzy.v1.BatchMatchRequest
 import org.tatrman.fuzzy.v1.BatchMatchResponse
 import org.tatrman.fuzzy.v1.FuzzyMatch
@@ -305,6 +306,34 @@ class KernelAskTest :
             json shouldNotContain "kernel"
         }
 
+        "a period the kernel had nothing to read against is named on the lattice, and nothing else changes" {
+            // chrono (ttr-server#214) refuses an anaphoric period with no single period of its unit in the
+            // conversation — "the previous year" after a question naming two years — with the message code
+            // `no_anchor`. The value stays an ungrounded date, but a consumer must not read it against today,
+            // so the core names it: one round-0 `ground-unanchored` entry per such value.
+            val response = resolveFresh(pipeline(refusing("no_anchor")), MONTH_Q)
+            val lattice = response.resolutionState
+            val value = lattice.valuesList.single { it.span.text == "listopadu" }
+            val entries = lattice.rungLogList.filter { it.action == "ground-unanchored" }
+            entries.size shouldBe 1
+            val entry = entries.single()
+            entry.round shouldBe 0
+            entry.rung shouldBe "core"
+            entry.valueIdsList shouldContainExactly listOf(value.id)
+            entry.mentionIdsList.shouldBeEmpty()
+            withClue("the value itself is what it was: a date with no range, and no gap of its own") {
+                value.kind shouldBe ValueKind.VALUE_KIND_GROUNDED
+                value.grounding.normalizedValue shouldNotContain "/"
+                lattice.gapsList.filter { it.valueId == value.id }.shouldBeEmpty()
+                response.hasAwaiting() shouldBe false
+            }
+        }
+
+        "a period the kernel refused for any other reason is not named" {
+            val lattice = resolveFresh(pipeline(refusing("ungroundable")), MONTH_Q).resolutionState
+            lattice.rungLogList.filter { it.action == "ground-unanchored" }.shouldBeEmpty()
+        }
+
         "an AWAITING with fewer than two options the resolver could hand back is not a question" {
             // An option with no id cannot be resumed (chrono matches the answer by id), and a
             // question with one answer is not a question. Both stay exactly what they were before:
@@ -427,6 +456,19 @@ class KernelAskTest :
                 .setLabel(label)
                 .setSpan(span)
                 .build()
+
+        /** A kernel that refuses every span `UNGROUNDABLE`, with one message carrying [code]. */
+        fun refusing(code: String): GroundingClient =
+            object : GroundingClient {
+                override suspend fun ground(request: GroundRequest): GroundResponse =
+                    GroundResponse
+                        .newBuilder()
+                        .setStatus(GroundResponse.Status.UNGROUNDABLE)
+                        .addMessages(ResponseMessage.newBuilder().setCode(code).setHumanMessage("refused"))
+                        .build()
+
+                override suspend fun getStatus(): GetStatusResponse = GetStatusResponse.getDefaultInstance()
+            }
 
         fun kernelOption(
             id: String,
