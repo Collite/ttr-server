@@ -27,6 +27,7 @@ import org.tatrman.resolver.pipeline.FrameRolePreps
 import org.tatrman.resolver.pipeline.GatedSpan
 import org.tatrman.resolver.pipeline.LatticeAssembler
 import org.tatrman.resolver.pipeline.UniversalBinding
+import org.tatrman.resolver.pipeline.ValueReadings
 import org.tatrman.resolver.v1.EvidenceClass
 import org.tatrman.resolver.v1.FrameRole
 import org.tatrman.resolver.v1.MatchMethod
@@ -356,7 +357,9 @@ class LatticeAssemblerTest :
             state.valuesList.single().attributionsList shouldBe emptyList()
         }
 
-        "ttr-server#227 — a word proposed as a value that reads as a model object is a mention of that object" {
+        "ttr-server#227 — settled spans: a word proposed as a value that reads as a model object is a mention of it" {
+            // The assembler reads spans as `ValueReadings.settle` left them — the pipeline settles every span
+            // before anything reads it — so this goes through the same step.
             fun proposed(
                 text: String,
                 start: Int,
@@ -382,26 +385,29 @@ class LatticeAssemblerTest :
                         Bound(
                             emptyList(),
                             0.0,
-                            listOf(
-                                // the object reading: a mention, bound as it read
-                                gatedSpan(
-                                    proposed("roce", 36, DomainSpanCandidate.Origin.OPEN_VALUE, head = 8),
-                                    listOf(declared(year, year)),
-                                    ambiguous = false,
+                            ValueReadings.settle(
+                                listOf(
+                                    // the object reading: a mention, bound as it read
+                                    gatedSpan(
+                                        proposed("roce", 36, DomainSpanCandidate.Origin.OPEN_VALUE, head = 8),
+                                        listOf(declared(year, year)),
+                                        ambiguous = false,
+                                    ),
+                                    // the member reading: a value, as always
+                                    gatedSpan(
+                                        proposed("Brno DC", 44, DomainSpanCandidate.Origin.OPEN_VALUE, head = 10),
+                                        listOf(member("Brno DC", warehouse, 1.06)),
+                                        ambiguous = false,
+                                    ),
+                                    // a dual reading is the seam's: still a value, attributed to its member only
+                                    gatedSpan(
+                                        proposed("TN", 60, DomainSpanCandidate.Origin.GOVERNED_VALUE, head = 12)
+                                            .copy(dualReadingOf = 60 to 62),
+                                        listOf(declared(year, year), member("TN", "er.entity.store.state", 1.0)),
+                                        ambiguous = true,
+                                    ),
                                 ),
-                                // the member reading: a value, as always
-                                gatedSpan(
-                                    proposed("Brno DC", 44, DomainSpanCandidate.Origin.OPEN_VALUE, head = 10),
-                                    listOf(member("Brno DC", warehouse, 1.06)),
-                                    ambiguous = false,
-                                ),
-                                // a dual reading is the seam's: still a value, attributed to its member only
-                                gatedSpan(
-                                    proposed("TN", 60, DomainSpanCandidate.Origin.GOVERNED_VALUE, head = 12)
-                                        .copy(dualReadingOf = 60 to 62),
-                                    listOf(declared(year, year), member("TN", "er.entity.store.state", 1.0)),
-                                    ambiguous = true,
-                                ),
+                                triggers = emptyMap(),
                             ),
                         ),
                     ungatedMentions = emptyList(),

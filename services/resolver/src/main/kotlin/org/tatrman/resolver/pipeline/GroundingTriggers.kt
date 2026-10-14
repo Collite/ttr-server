@@ -66,11 +66,14 @@ object GroundingTriggers {
      * the kernel cannot do from its own side is decide *which* kernel gets the span, and that is a
      * fact about the mention: "the user said *roce*, so the year beside it is chrono's".
      *
-     * ttr-server#227 — a word span proposal offered as a VALUE ([ValueReadings.MENTION_SHAPED]: the
-     * argument of an anchor, a proper noun) is asked too, because whether it is a value is the gate's
-     * answer, and that answer arrives on the same batch. *roce* under `webu` was proposed as web's
-     * value, read as the year attribute, and — never asked — lost the trigger it carries everywhere
-     * else. A value-shaped span the gate reads as a member keeps no trigger: only a mention carries one.
+     * ttr-server#227 — a word span proposal offered as a VALUE that a mention could be
+     * ([ValueReadings.mentionable]: the argument of an anchor, a proper noun) is asked too, because
+     * whether it is a value is the gate's answer, and that answer arrives on the same batch. *roce*
+     * under `webu` was proposed as web's value, read as the year attribute, and — never asked — lost the
+     * trigger it carries everywhere else. It is asked AS the mention it would become
+     * ([ValueReadings.asMention]), unanchored: the anchor scoped its value lookup, not the word, and a
+     * trigger it fuzzily matched must class the same under `webu` as under `po čtvrtletích`. A
+     * value-shaped span a member reads keeps no trigger: only a mention carries one.
      *
      * Two mentions of the same span (one anchor word owned by two entity types) ask once: a
      * trigger is about the surface, not about which model object scoped the lookup.
@@ -80,8 +83,12 @@ object GroundingTriggers {
         ungatedMentions: List<DomainSpanCandidate>,
     ): List<DomainSpanCandidate> =
         (
-            candidates.filter {
-                it.origin in MENTION_ORIGINS || (it.origin in ValueReadings.MENTION_SHAPED && !it.dualReading)
+            candidates.mapNotNull {
+                when {
+                    it.origin in MENTION_ORIGINS -> it
+                    ValueReadings.mentionable(it) -> ValueReadings.asMention(it)
+                    else -> null
+                }
             } + ungatedMentions
         ).distinctBy { it.start to it.end }
 

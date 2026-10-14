@@ -151,6 +151,24 @@ class ValueNamesMemberTest :
             }
         }
 
+        "#227 no `za rok` in the estate: the trigger alone makes `roce` the kernel's mention" {
+            // The first cut gave the word to the kernel only when the value lookup happened to read it as a
+            // model object. Without that row it stayed an unattributed value, and `2025` lost its narrowing.
+            val noZaRok = WireMatcher(absent = { it.candidateId == "lex:$YEAR:cs:za rok" })
+            for (question in listOf(POROVNEJ, TOP_10)) {
+                withClue(question.text) {
+                    val turn = resolve(question, noZaRok)
+
+                    turn.lattice.summary() shouldContain "M roce → $CHRONO [FILTER]"
+                    turn.narrowed("roce", "2025")
+                    turn.lattice.mention("roce").essence() shouldBe
+                        resolve(PO_CTVRTLETICH).lattice.mention("roce").essence()
+                    turn.doorSpans().contains("roce") shouldBe false
+                    turn.valuesNameOnlyMembers()
+                }
+            }
+        }
+
         "#227 \"marketplace revenu in 2025 by month\" — a word whose reading is a measure is a mention of it" {
             val turn = resolve(REVENU)
 
@@ -334,7 +352,10 @@ class ValueNamesMemberTest :
      * that way carries `unknown`, the category lex-matcher stamps on a row it has no category for. A class
      * filter keeps the rows of those classes — a member row carries none, so it is never among them.
      */
-    private class WireMatcher : FuzzyClient {
+    private class WireMatcher(
+        /** A row the estate does not have: never answered, to any question. */
+        private val absent: (FuzzyMatch) -> Boolean = { false },
+    ) : FuzzyClient {
         val batches = mutableListOf<BatchMatchRequest>()
         val lookups = mutableListOf<LookupRequest>()
 
@@ -370,6 +391,7 @@ class ValueNamesMemberTest :
         ): List<FuzzyMatch> =
             ROWS[fold(query)]
                 .orEmpty()
+                .filterNot(absent)
                 .filter { categories.isEmpty() || it.category in categories }
                 .filter { classes.isEmpty() || it.targetClass in classes }
                 .map {

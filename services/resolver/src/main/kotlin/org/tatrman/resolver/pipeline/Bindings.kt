@@ -124,8 +124,10 @@ object Bindings {
      * `er.entity.date_dim.year` — the column bound as if it were one of its own members — and
      * "marketplace revenu" put a measure on a value the same way; a consumer that reads values as
      * restrictions compares the column to its own name. A word whose best reading is a model object
-     * is a MENTION of it ([ValueReadings]); this is the backstop for every value that cannot be one
-     * (a code, a quoted literal), which is then unattributed — G3/G4 — rather than attributed to it.
+     * is a MENTION of it, and every value that cannot be one (a code, a quoted literal) loses the reading
+     * and is unattributed — G3/G4 — rather than attributed to it ([ValueReadings.settle], on the spans,
+     * so the door agrees). This is the backstop for what reaches an attribution without passing through
+     * the spans: the re-gate's confirmed hypotheses.
      *
      * ⚠ The fix belongs HERE, on accept, and not on the request. Scoping the round's
      * `target_classes` is a ruled-out design: a member row carries no class at all, so an

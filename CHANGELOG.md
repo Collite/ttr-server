@@ -31,21 +31,27 @@ offers it as that entity's governed value; its open sibling reads it as `date_di
 lattice made every value-origin span a value whatever it read as, and the trigger was never asked — only mentions were
 trigger spans. `revenu`, tagged PROPN, took the proper-noun path to the same place.
 
-- A word proposed as a value (an anchor's governed argument or its open sibling, a proper noun, a NER entity) whose best
-  reading is a model object is now a MENTION:
-  - when a grounding trigger claims it, exactly the mention the mention layer makes of the same word elsewhere: bound
-    by the trigger alone, ungated, and dropped from `Resolution.bindings` too. „v roce 2025“ now reads the same under
-    `webu` and `produktů` as under `po čtvrtletích`: `roce` → `ground:chrono`, FILTER, `2025` narrowed to it;
-  - otherwise a mention bound to the object it read as, with the evidence it had (`revenu` →
-    `er.entity.channel_sales.ext_sales_price`, `letech` in „v letech 2024 a 2025“ → `er.entity.date_dim.year`).
-- Such a word is now asked about grounding triggers on the broad pass, as a mention is: one more slot per value-shaped
-  span on the same `BatchMatch`. A literal run, a quoted literal, a member phrase, a named member and a dual reading are
-  not asked.
-- `MODEL_OBJECT` joins the classes that are never an attribution (`OPERATOR`, `GROUNDING_TRIGGER`, `STRING_PREDICATE`),
-  on the core pass, the lookup rounds and the re-gate alike. A value no mention can be (a code) that reads only as an
-  object is now unattributed — G3/G4 — rather than attributed to the object.
+- A word proposed as a value (an anchor's governed argument or its open sibling, a proper noun, a NER entity) that no
+  member reads is now a MENTION when:
+  - a grounding trigger claims it, whether the lookup read it as a model object or found nothing. It is exactly the
+    mention the mention layer makes of the same word elsewhere: bound by the trigger alone, and absent from
+    `Resolution.bindings` too. „v roce 2025“ now reads the same under `webu` and `produktů` as under
+    `po čtvrtletích`, on an estate that declares `za rok` and on one that does not: `roce` → `ground:chrono`, FILTER,
+    `2025` narrowed to it;
+  - otherwise, its best reading is a model object: a mention bound to that object, with the evidence it had (`revenu`
+    → `er.entity.channel_sales.ext_sales_price`, `letech` in „v letech 2024 a 2025“ → `er.entity.date_dim.year`).
+- Such a word is now asked about grounding triggers on the broad pass, as the mention it would become (unanchored, so a
+  trigger it matches fuzzily classes the same under any noun): one more slot per value-shaped span on the same
+  `BatchMatch`. A literal run, a quoted literal, a member phrase, a named member, a dual reading and a word with no head
+  are not asked.
+- A value never carries a model object, on the door as in the lattice. Every gated span is settled once its contenders
+  are in — after the broad pass and after every lookup round — before the lattice, the round planner or
+  `Resolution.bindings` reads it. A value no mention can be (a code, a dual reading) loses its model-object readings: one
+  that read only as an object is unattributed (G3/G4) and asked again like any other, rather than bound to the column;
+  a tie only an object made is no tie. `MODEL_OBJECT` also joins the classes that are never an attribution
+  (`OPERATOR`, `GROUNDING_TRIGGER`, `STRING_PREDICATE`), the backstop for the re-gate.
 - Unchanged: a member still binds as a value (`pro Brno DC` → `warehouse_name#Brno DC`); a value-shaped word that found
-  nothing stays an unattributed value; grounded values; a dual reading (the seam decides it); a declared anchor.
+  nothing and no trigger claims stays an unattributed value; grounded values; a declared anchor.
 - Not in this change: a typo inside a declared multi-word phrase ("marketplace revenu") is still not tried as the
   phrase — span proposal matches declared phrases word for word — so `revenu` binds the all-channel measure on its own.
 - No wire change.

@@ -357,17 +357,24 @@ class ResolverPipeline(
                 thresholds = resolverRegistry.thresholds,
                 snapshotHash = resolverRegistry.snapshotHash,
             )
-        // ttr-server#227 — a word proposed as a value that reads as a model object, and that a grounding
-        // trigger claims, is the kernel's: the mention the mention layer makes of the same word where no
-        // anchor governs it („v roce 2025“ under `webu` reads as under `po čtvrtletích`). It leaves the
-        // gated spans — so the door does not bind the object either — and joins the ungated mentions.
-        val kernelWords = ValueReadings.ownedByKernel(gatedSpans, triggers)
-        val boundSpans = if (kernelWords.isEmpty()) gatedSpans else gatedSpans.filterNot { it in kernelWords }
-        for (word in kernelWords) {
+        // ttr-server#227 — a value never carries a model object. A value-shaped word a trigger claims and no
+        // member reads is the kernel's mention („v roce 2025“ under `webu` reads as under `po čtvrtletích`),
+        // one that reads as an object is a mention of it, and any other value loses its object readings.
+        // Settled on the spans, here and after every lookup round, so the lattice, the planner and the door
+        // all read the same thing.
+        val settle = { spans: List<GatedSpan> -> ValueReadings.settle(spans, triggers) }
+        val boundSpans = settle(gatedSpans)
+        for ((proposed, settled) in gatedSpans.zip(boundSpans)) {
+            if (proposed === settled) continue
             log.info(
-                "value-reading: [{},{}) reads as a model object and a trigger claims it — a mention conversation_id={}",
-                word.candidate.start,
-                word.candidate.end,
+                "value-reading: [{},{}) {} conversation_id={}",
+                proposed.candidate.start,
+                proposed.candidate.end,
+                when {
+                    settled.candidate.origin == proposed.candidate.origin -> "a value without its model-object readings"
+                    settled.contenders.isEmpty() -> "a mention a trigger claims"
+                    else -> "a mention of the model object it reads as"
+                },
                 request.conversationId,
             )
         }
@@ -464,11 +471,8 @@ class ResolverPipeline(
         // ttr-server#204 — and a word a retry left out that restricts its mention is a mention of its
         // own, unbound: the head bound without it, and nothing downstream may read it as unsaid.
         val ungatedSpans =
-            (
-                ungatedMentions +
-                    MentionRetry.residuesBound(broadPass.gated, retries) +
-                    kernelWords.map { ValueReadings.asMention(it.candidate) }
-            ).filterNot { it.headToken in formTokens }
+            (ungatedMentions + MentionRetry.residuesBound(broadPass.gated, retries))
+                .filterNot { it.headToken in formTokens }
                 .filterNot { NamedMembers.claimedBy(spokenNames, it) }
                 .map { GatedSpan(it, emptyList(), ambiguous = false) }
         // RV-P2.3 — the narrowing loop, between the broad pass and emit. It re-enters through the
@@ -484,6 +488,7 @@ class ResolverPipeline(
                 thresholds = resolverRegistry.thresholds,
                 reassemble = assemble,
                 retries = retries.bySpan,
+                settle = settle,
             )
         // The door moves with the lattice: a round that bound a span the broad pass missed changes
         // BOTH what the core understood and what it decided, and a caller reading `Resolution` is

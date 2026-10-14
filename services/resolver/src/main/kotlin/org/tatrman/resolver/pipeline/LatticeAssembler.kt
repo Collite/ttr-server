@@ -31,9 +31,10 @@ import org.tatrman.ttr.lexicon.LexiconValidator
  * deterministic source proposed it — never by what happened to match, so a mention that binds
  * nothing is still a mention, and that is what makes G1 expressible at all.
  *
- * One exception runs the other way (ttr-server#227): a word proposed as a VALUE whose best reading is
- * a model object is a mention of that object ([ValueReadings]). A value's attribution binds a member;
- * the object itself is what a mention binds.
+ * ttr-server#227 — the spans arrive settled ([ValueReadings.settle]): a word proposed as a VALUE whose
+ * best reading is a model object, or that a grounding trigger claims, was re-proposed as the mention it
+ * is before anything read it, so the rule above holds here unchanged. A value's attribution binds a
+ * member; the object itself is what a mention binds.
  */
 object LatticeAssembler {
     /** The only kernel the rung is wired to today; see [GroundingRung]. */
@@ -70,12 +71,8 @@ object LatticeAssembler {
         // downstream, which is what a question that names no comparison meant.
         predicates: List<VerbatimAttribution.Trigger> = emptyList(),
     ): ResolutionState {
-        // ttr-server#227 — a word proposed as a value whose best reading is a model object is a mention
-        // of that object: a value's attribution binds a member, never the object itself.
         val gatedByLayer =
-            gate.gated
-                .map(ValueReadings::mentionOf)
-                .groupBy { layerOf(it, hasTrigger = (it.candidate.start to it.candidate.end) in triggers) }
+            gate.gated.groupBy { layerOf(it, hasTrigger = (it.candidate.start to it.candidate.end) in triggers) }
         val mentionSpans =
             (gatedByLayer[Layer.MENTION].orEmpty() + ungatedMentions)
                 .sortedWith(compareBy({ it.candidate.start }, { it.candidate.end }))
