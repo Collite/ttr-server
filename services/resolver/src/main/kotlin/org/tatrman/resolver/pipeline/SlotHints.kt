@@ -13,7 +13,8 @@ import org.tatrman.nlp.v1.AnalyzeResponse
  * refuses. But the sentence already says which one is wanted: you *count* things, you *group by*
  * things, and you *restrict a measure* by the thing being measured. Since MS the two candidates
  * differ in `objectKind`, so the slot's kind preference can break the tie
- * (`Binder.decide`, contracts §7.3).
+ * (`Binder.decide`, contracts §7.3). ⚑ ttr-demo#62 (ruled 2026-10-12): a FILTER is the one slot
+ * that does not break THIS tie — "revenue of stores" may mean either, and the user is asked.
  *
  * **Why the slot is computed here and not in the Binder** (architecture A3): `GateSpans.gate`
  * never sees the parse — `ResolverPipeline` hands it candidates only — and `ReGate` synthesises
@@ -128,10 +129,22 @@ object SlotHints {
             return null
         }
 
-        /** True iff some GOVERNED_VALUE candidate names this span as its scoping mention. */
+        /**
+         * True iff some GOVERNED_VALUE candidate hangs from this span: its head token is a
+         * dependent of [head], which is exactly where span proposal looked for it
+         * (`SpanProposal.governedValues` walks the anchor head's children).
+         *
+         * ⛑ ttr-demo#62 — this used to read `anchorHeadToken == head` alone, and span proposal never
+         * sets that field on a governed value: it belongs to the literal path (RV-P2.1), where it
+         * becomes the lattice's `anchor_mention_id`. So rule 4 never fired on a real question, and
+         * „Tržby prodejny Praha“ / "Stores in Nashville" read their store word by the filter or
+         * subject rule instead. The parse already says which word governs the value; read it here
+         * rather than widening a field the lattice publishes.
+         */
         fun hasGovernedValue(head: Int): Boolean =
             candidates.any {
-                it.origin == DomainSpanCandidate.Origin.GOVERNED_VALUE && it.anchorHeadToken == head
+                it.origin == DomainSpanCandidate.Origin.GOVERNED_VALUE &&
+                    (it.anchorHeadToken == head || (it.headToken >= 0 && governorOf(it.headToken) == head))
             }
 
         /** Walk up to [MAX_HEAD_HOPS] governors for the candidate this span attaches to. */

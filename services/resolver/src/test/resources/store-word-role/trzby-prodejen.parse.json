@@ -1,0 +1,116 @@
+{
+  "language": "cs",
+  "languageConfidence": 0.7525428045920709,
+  "engineUsed": "morphodita",
+  "tokens": [{
+    "text": "Tržby",
+    "charEnd": 5,
+    "lemma": "tržba",
+    "upos": "NOUN",
+    "xpos": "NNFP1-----A----",
+    "feats": {
+      "Case": "Nom",
+      "Gender": "Fem",
+      "Number": "Plur"
+    },
+    "depRelation": "root"
+  }, {
+    "text": "prodejen",
+    "charStart": 6,
+    "charEnd": 14,
+    "lemma": "prodejna",
+    "upos": "NOUN",
+    "xpos": "NNFP2-----A----",
+    "feats": {
+      "Case": "Gen",
+      "Gender": "Fem",
+      "Number": "Plur"
+    },
+    "depHead": 1,
+    "depRelation": "nmod"
+  }, {
+    "text": "v",
+    "charStart": 15,
+    "charEnd": 16,
+    "lemma": "v",
+    "upos": "ADP",
+    "xpos": "RR--6----------",
+    "feats": {
+      "Case": "Loc",
+      "AdpType": "Prep"
+    },
+    "depHead": 4,
+    "depRelation": "case"
+  }, {
+    "text": "roce",
+    "charStart": 17,
+    "charEnd": 21,
+    "lemma": "rok",
+    "upos": "NOUN",
+    "xpos": "NNIS6-----A---1",
+    "feats": {
+      "Animacy": "Inan",
+      "Gender": "Masc",
+      "Number": "Sing",
+      "Case": "Loc"
+    },
+    "depHead": 1,
+    "depRelation": "nmod"
+  }, {
+    "text": "2025",
+    "charStart": 22,
+    "charEnd": 26,
+    "lemma": "2025",
+    "upos": "NUM",
+    "xpos": "C\u003d-------------",
+    "feats": {
+      "NumType": "Card",
+      "NumForm": "Digit"
+    },
+    "depHead": 4,
+    "depRelation": "nummod"
+  }],
+  "sentences": [{
+    "charEnd": 26
+  }],
+  "entities": [{
+    "text": "2025",
+    "label": "DATE",
+    "charStart": 22,
+    "charEnd": 26,
+    "normalizedValue": "cnec:ty",
+    "sourceEngine": "nametag3"
+  }],
+  "detectedLanguage": "cs",
+  "used": [{
+    "op": "DETECT_LANGUAGE",
+    "engine": "langid",
+    "model": "lingua",
+    "modelVersion": "lingua-2.0"
+  }, {
+    "op": "POS_TAG",
+    "engine": "morphodita",
+    "model": "czech-morfflex2.0-pdtc1.0-220710",
+    "modelVersion": "czech-morfflex2.0-pdtc1.0-220710"
+  }, {
+    "op": "NER",
+    "engine": "nametag3",
+    "model": "nametag3-czech-cnec2.0-240830",
+    "modelVersion": "nametag3-czech-cnec2.0-240830"
+  }, {
+    "op": "LEMMATIZE",
+    "engine": "morphodita",
+    "model": "czech-morfflex2.0-pdtc1.0-220710",
+    "modelVersion": "czech-morfflex2.0-pdtc1.0-220710"
+  }, {
+    "op": "TOKENIZE",
+    "engine": "morphodita",
+    "model": "czech-morfflex2.0-pdtc1.0-220710",
+    "modelVersion": "czech-morfflex2.0-pdtc1.0-220710"
+  }, {
+    "op": "DEP_PARSE",
+    "engine": "stanza",
+    "model": "stanza-cs-en",
+    "modelVersion": "stanza-1.10.0"
+  }]
+}

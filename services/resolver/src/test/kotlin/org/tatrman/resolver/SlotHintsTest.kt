@@ -4,6 +4,7 @@ package org.tatrman.resolver
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 import org.tatrman.nlp.v1.AnalyzeResponse
+import org.tatrman.nlp.v1.NerEntity
 import org.tatrman.nlp.v1.Token
 import org.tatrman.resolver.pipeline.DomainSpanCandidate
 import org.tatrman.resolver.pipeline.FrameRolePreps
@@ -11,6 +12,7 @@ import org.tatrman.resolver.pipeline.Slot
 import org.tatrman.resolver.pipeline.SlotHint
 import org.tatrman.resolver.pipeline.SlotHints
 import org.tatrman.resolver.pipeline.SpanProposal
+import org.tatrman.resolver.model.ResolverEntityType
 import org.tatrman.resolver.model.kindsByRef
 import org.tatrman.resolver.model.ownersByRef
 
@@ -343,6 +345,125 @@ class SlotHintsTest :
                     ),
                 )
             stamp(p, candidates)[1].slot shouldBe SlotHint(Slot.GOVERNED_VALUE)
+        }
+
+        // ---- ttr-demo#62 — the governed value as SPAN PROPOSAL emits it ------------------------
+        //
+        // The case above hands the stamp a governed value carrying `anchorHeadToken`, but span
+        // proposal never sets that field on one: it belongs to the literal path (RV-P2.1), where
+        // it becomes the lattice's `anchor_mention_id`. So rule 4 never fired on a real question,
+        // and a store word that governs a store name read as a FILTER. These run the producer.
+
+        val storeFamily =
+            listOf(
+                ResolverEntityType(store, listOf(store), listOf("prodejna", "prodejny", "stores"), "entity"),
+                ResolverEntityType(
+                    storeSales,
+                    listOf(storeSales),
+                    listOf("prodejna", "prodejny", "stores"),
+                    "entity_with_measures",
+                ),
+                ResolverEntityType(
+                    "er.entity.channel_sales.ext_sales_price",
+                    listOf("er.entity.channel_sales.ext_sales_price"),
+                    listOf("tržba", "tržby", "revenue"),
+                    "measure",
+                    ownerRef = "er.entity.channel_sales",
+                ),
+                ResolverEntityType(
+                    "$store.store_name",
+                    listOf("$store.store_name"),
+                    emptyList(),
+                    "attribute",
+                    ownerRef = store,
+                    memberVocabulary = true,
+                ),
+            )
+
+        fun ner(
+            text: String,
+            start: Int,
+            end: Int,
+            label: String,
+        ): NerEntity =
+            NerEntity
+                .newBuilder()
+                .setText(text)
+                .setCharStart(start)
+                .setCharEnd(end)
+                .setLabel(label)
+                .build()
+
+        fun stampProposed(p: AnalyzeResponse): List<DomainSpanCandidate> =
+            SlotHints.stamp(
+                p,
+                SpanProposal.proposeDomainSpans(p, storeFamily),
+                storeFamily.kindsByRef(),
+                storeFamily.ownersByRef(),
+                p.language,
+                preps,
+            )
+
+        "ttr-demo#62 — „Tržby prodejny Praha“: the store word governs the name, so it is GOVERNED_VALUE" {
+            // hartland's parse, 2026-10-14 (MorphoDiTa tokens, Stanza tree, NameTag entities).
+            val p =
+                parse(
+                    "cs",
+                    tok("Tržby", 0, 5, "tržba", "NOUN", 0, "root"),
+                    tok("prodejny", 6, 14, "prodejna", "NOUN", 1, "nmod"),
+                    tok("Praha", 15, 20, "Praha", "PROPN", 2, "nmod"),
+                    tok("v", 21, 22, "v", "ADP", 5, "case"),
+                    tok("roce", 23, 27, "rok", "NOUN", 1, "dep"),
+                    tok("2025", 28, 32, "2025", "NUM", 5, "nummod"),
+                ).toBuilder()
+                    .addEntities(ner("Praha", 15, 20, "LOCATION"))
+                    .addEntities(ner("2025", 28, 32, "DATE"))
+                    .build()
+
+            val stamped = stampProposed(p)
+            // the governed value exactly as the producer emits it: no anchorHeadToken
+            stamped
+                .single { it.origin == DomainSpanCandidate.Origin.GOVERNED_VALUE }
+                .let { it.text to it.anchorHeadToken } shouldBe ("Praha" to -1)
+            stamped
+                .single { it.origin == DomainSpanCandidate.Origin.ANCHOR_PHRASE && it.text == "prodejny" }
+                .slot shouldBe SlotHint(Slot.GOVERNED_VALUE)
+        }
+
+        "ttr-demo#62 — \"Stores in Nashville\": the root store word governs the name, so it is GOVERNED_VALUE" {
+            val p =
+                parse(
+                    "en",
+                    tok("Stores", 0, 6, "store", "NOUN", 0, "root"),
+                    tok("in", 7, 9, "in", "ADP", 3, "case"),
+                    tok("Nashville", 10, 19, "Nashville", "PROPN", 1, "nmod"),
+                ).toBuilder()
+                    .addEntities(ner("Nashville", 10, 19, "GPE"))
+                    .build()
+
+            stampProposed(p)
+                .single { it.origin == DomainSpanCandidate.Origin.ANCHOR_PHRASE && it.text == "Stores" }
+                .slot shouldBe SlotHint(Slot.GOVERNED_VALUE)
+        }
+
+        "ttr-demo#62 — „Tržby prodejen v roce 2025“: a store word that governs nothing stays a FILTER" {
+            // `roce` hangs from the head noun, not from `prodejen`: no governed value, no rule 4.
+            val p =
+                parse(
+                    "cs",
+                    tok("Tržby", 0, 5, "tržba", "NOUN", 0, "root"),
+                    tok("prodejen", 6, 14, "prodejna", "NOUN", 1, "nmod"),
+                    tok("v", 15, 16, "v", "ADP", 4, "case"),
+                    tok("roce", 17, 21, "rok", "NOUN", 1, "nmod"),
+                    tok("2025", 22, 26, "2025", "NUM", 4, "nummod"),
+                ).toBuilder()
+                    .addEntities(ner("2025", 22, 26, "DATE"))
+                    .build()
+
+            stampProposed(p)
+                .single { it.origin == DomainSpanCandidate.Origin.ANCHOR_PHRASE && it.text == "prodejen" }
+                .slot shouldBe
+                SlotHint(Slot.FILTER, headRefs = listOf("er.entity.channel_sales"), headMeasureCapable = true)
         }
 
         "coordination outranks a count head — 'kolik prodejen a webů' is still a comparison" {

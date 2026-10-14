@@ -43,7 +43,8 @@ import org.tatrman.resolver.v1.EvidenceClass
  *    used to be a G2 on kinds alone. The sentence already says which kind it wants — you count
  *    things, you group by things, you restrict a measure by what is measured — so the slot's
  *    preferred kinds survive. Two objects of the SAME kind sharing a word is genuine homonymy
- *    and still refuses: that is the definition, not a gap.
+ *    and still refuses: that is the definition, not a gap. ⚑ ttr-demo#62: a FILTER does not
+ *    decide a dimension-vs-fact tie — "revenue of stores" asks which one is meant.
  *  - **two readings proven EQUAL by declared relations collapse to the dimension; a nullable
  *    reach is a real question.** When every row of the fact the clause is about carries the
  *    dimension, *"restrict to the Stores channel"* and *"join to the store dimension"* select
@@ -227,7 +228,8 @@ object Binder {
         // pinned to — and neither owns the other, so the collapse above does not apply and this
         // band is a genuine G2 on kinds alone. But since MS the two DIFFER in kind, and the
         // sentence says which kind it wants: you count things, you group by things, you restrict
-        // a measure by what is being measured. So the slot's preferred kinds survive.
+        // a measure by what is being measured. So the slot's preferred kinds survive — except a
+        // dimension-vs-fact tie in a FILTER, which asks (ttr-demo#62, see `slotPreference`).
         //
         // A PREFERENCE, deliberately: it removes the dis-preferred kinds only when at least one
         // preferred candidate remains. It never empties the band, never promotes anything from
@@ -475,6 +477,15 @@ object Binder {
 
         val preferred = preferredKinds(slot)
         if (preferred.isEmpty()) return admitted0
+        // ttr-demo#62 (ruled 2026-10-12) — a FILTER does not decide between a DIMENSION and a FACT.
+        // "Revenue of stores" restricted to the store dimension and "revenue of the Stores channel"
+        // are two questions, and a filter position does not say which one the user asked: the
+        // ruling is to ask, offering both. (Counting and grouping DO say — you count things and
+        // group by things — so those slots keep their pick; and a declared phrase like „tržby z
+        // prodejen“ / "store revenue" never reaches this tie, being one candidate with one
+        // target.) The reachability rule below still runs: a reach the model DECLARES can still
+        // prove the two readings equal, or prove the fact the wrong one.
+        if (slot.slot == Slot.FILTER && isDimensionVsFact(objects, kinds)) return admitted0
         val keep = objects.filter { kindOf(it, kinds) in preferred }
         if (keep.isEmpty()) return admitted0
 
@@ -492,12 +503,25 @@ object Binder {
     }
 
     /**
+     * ttr-demo#62 — the band holds a dimension (`entity`) AND a fact-side reading (the fact itself,
+     * `entity_with_measures`, or one of its measures): the store word's two readings.
+     */
+    private fun isDimensionVsFact(
+        objects: List<ClassedMatch>,
+        kinds: Map<String, String>,
+    ): Boolean {
+        val present = objects.map { kindOf(it, kinds) }.toSet()
+        return KIND_ENTITY in present && (KIND_ENTITY_WITH_MEASURES in present || KIND_MEASURE in present)
+    }
+
+    /**
      * What each slot asks for (contracts §7.3). Empty = no preference, and the band is untouched.
      *
-     * `FILTER` splits on whether the clause head is measure-capable: *"tržby z prodejen"* under a
-     * measure head is naming what is being measured (the channel/fact reading), but *"vratky z
-     * prodejen"* under a plain entity head is not — there the fact reading would be the WRONG
-     * fact, so nothing is preferred and the reachability rule decides instead.
+     * `FILTER` splits on whether the clause head is measure-capable: under a measure head a
+     * restriction prefers the measure-ish reading, but *"vratky z prodejen"* under a plain entity
+     * head does not — there the fact reading would be the WRONG fact, so nothing is preferred and
+     * the reachability rule decides instead. ⚑ ttr-demo#62: the measure-head preference is NOT
+     * applied to a dimension-vs-fact tie (see [slotPreference]) — *"tržby prodejen"* asks.
      */
     private fun preferredKinds(slot: SlotHint): Set<String> =
         when (slot.slot) {

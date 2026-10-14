@@ -16,6 +16,26 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+### resolver — a store word reads by its role: a filter asks, a word that governs a store name is the dimension (ttr-demo#62)
+
+Where the lexicon gives one word two readings — a dimension (`er.entity.store`) and a fact a channel term is pinned to
+(`er.entity.store_sales`) — the sentence's slot decides. Counting and grouping already chose the dimension and comparing
+chose like with like. Two places did not follow the ruling:
+
+- **A filter now asks.** „Tržby prodejen v roce 2025“ / "Revenue of stores in 2025" bound the channel without a question,
+  because a filter under a measure head preferred the fact. A filter no longer decides a dimension-vs-fact tie (the fact
+  itself or one of its measures): the mention keeps both readings, a `GAP_KIND_G2_AMBIGUOUS`, and the clarification
+  offers both, each with its `object_kind`. The reachability rule still runs, so a reach the model declares can still
+  prove the readings equal (collapse to the dimension, `equivalents`) or the fact the wrong one. A filter tie with no
+  dimension in it (an attribute and a measure) is decided as before. Declared phrases („tržby z prodejen“, "store
+  revenue") never reach the tie: the phrase is one candidate with one target.
+- **A word that governs a value names the object with members.** That slot rule looked for the value's
+  `anchorHeadToken`, which span proposal never sets on a governed value, so it never fired. It now reads the parse: a
+  governed value whose head hangs from the span's head. „Tržby prodejny Praha v roce 2025“, "Revenue of stores in Praha"
+  and "Stores in TN" bind the store dimension (the name or state binds its member as before), where the first two bound
+  the channel and the last asked between the two readings.
+- No wire change.
+
 ### resolver — a compared value names its own object, never the operator („Porovnej tržby z tržiště a z webu“, #207)
 
 „Porovnej tržby z tržiště a z webu v roce 2025“ came back with `webu` → `op:compare` in `Resolution.bindings`
