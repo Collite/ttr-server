@@ -47,6 +47,84 @@ chose like with like. Two places did not follow the ruling:
   the same way. Two readings that both belong to the sibling's family still tie, and the tie asks. Only the
   coordination slot reads a measure this way.
 - No wire change.
+### resolver — a grounding kernel's question reaches the user (#231)
+
+chrono answers `AWAITING_CLARIFICATION` when a date has two readings: a bare future month ("Marketplace revenue in
+November" in October is November of this year or of last), and, with #214, the ambiguous „minulý rok / měsíc /
+čtvrtletí“. The resolver dropped that answer as "not grounded", so a caller got a DATE with no range and nothing to ask.
+
+- **Fresh:** the kernel's question becomes the resolver's own `awaiting`, under its own resume token. One option per kernel
+  option: `id` `P:` + the kernel's id (`P:202511`; `@<span start>` is appended only if two spans offer the same id),
+  `label` as the kernel wrote it, `span` the date it answers, `object_kind: "period"`, and the new **`Option.grounding`**
+  (`kernel`, `kind`, and `normalized_value`, the kernel's interval). `target_ref`, `resolved_id`, `entity_type_ref`
+  and `member_of` stay empty. The lattice carries the value as before plus a `G2_AMBIGUOUS` gap on it. The answer is an
+  `awaiting` and not a `resolution`, exactly as when the gate asks.
+- **Order:** when the gate also asks, both questions travel in one `awaiting` under one token. The gate's options come first,
+  where they always were, then each kernel question in span order. A caller asks one span at a time, and the token redeems
+  one pick per span. The MCP door's summary now lists them as successive questions.
+- **Resume:** picking a `P:` option puts the kernel's question back to it with `clarification_answer_id`. The question is the
+  SIGNED one: the same span, question text, earlier questions, reference date, locale and package. The resume request's own
+  context is ignored, because a later reference date or a longer conversation can make the same words name another period.
+  The answer is grounded through the OK path: a DATE binding in `resolution`, and in `resolution_state` exactly one value
+  (GROUNDED, the interval, the anchor column as its attribution, no gaps). A caller folds it into its lattice by span.
+  It never asks again. A pick the kernel will not ground is `FAILED_PRECONDITION`, and a kernel that cannot be reached is
+  `UNAVAILABLE`.
+- **Wire:** additive. `Option.grounding = 9`. The resume token gains `kernelQuestions` and `kernelOptionId`, which are
+  encoded only when present, so a token with no kernel question is byte-for-byte unchanged. A resolver older than this one
+  cannot read a token that carries a kernel question.
+- **A period with nothing to count from is named.** chrono refuses an anaphoric period with no single period of its unit in
+  the conversation ("the previous year" after a question naming two years) as `UNGROUNDABLE`, code `no_anchor` (#214). The
+  value stays an ungrounded DATE, and the lattice now names it with a round-0 rung-log entry
+  `{rung: "core", action: "ground-unanchored", value_ids: [<the value>]}`, one per value. A consumer that would read an
+  ungrounded period against today must not read this one so; it asks which period is meant. Additive: a new rung-log
+  action, no new field, and no entry at all on a lattice without such a value.
+- **golem-py** (the reference golem) keeps an option's `object_kind`, and redeems a `period` pick through the core's
+  `Resolve(resume{token, selected_option_id})`, folding the answered date into its own value by span and closing the G2.
+  It used to put the pick to the gate as a hypothesis with a blank ref. A refused pick (`FAILED_PRECONDITION`) leaves the
+  gap open with the user's answer recorded.
+### chrono — a relative period reads by its kind: the reference date, the conversation, or ask (#214)
+
+"Marketplace revenue in 2025" → "And the year before?" grounded to the current year, and "And the previous
+year?" to the year before the reference: every relative year, month and quarter read against
+`reference_datetime`, whatever the conversation was about. The scope word now decides what a year, month or
+quarter is read against.
+
+| Kind | Read against | Year | Month | Quarter |
+|---|---|---|---|---|
+| deictic | the reference date | this year, last year, the year before last; letos, letošní, tohoroční, loni, vloni, loňský, minuloroční, předloni, předloňský | this month, last month, the month before last; tento měsíc, předminulý měsíc | this quarter, last quarter, past quarter, the quarter before last; toto čtvrtletí, poslední čtvrtletí, předminulé čtvrtletí |
+| anaphoric | the period of that unit the conversation is about; the reference date when it names none | the previous year, the prior year, the year before; předchozí rok, předešlý rok | the previous month, the prior month, the month before; předchozí měsíc, předešlý měsíc | the previous quarter, the prior quarter, the quarter before; předchozí čtvrtletí, předešlé čtvrtletí |
+| ambiguous | ask when the two readings differ | minulý rok (every case form) | minulý měsíc | minulé čtvrtletí |
+
+- **The conversation's period** of a unit is the one the nearest question naming a period of that unit names:
+  `GroundRequest.question_text` first, then `GroundingContext.prior_questions`, newest first. A year is named by
+  a written year ("in 2025", „v roce 2025“, "March 2025", "Q2 2025"), a month by a month with its year or a
+  yearless month in a question whose year is known, a quarter by "Q2 2025", "2025Q2", „2. čtvrtletí 2025“ or
+  "the second quarter of 2025". An earlier question's own relative word is read the way chrono read it then,
+  so the words chain: 2025 → "And the previous year?" (2024) → "And the previous year?" (2023).
+- **No anchor, no fallback:** when the nearest question naming the unit names several periods ("in 2024 and in
+  2025"), a four-digit number it does not say is a year ("Marketplace revenue 2024 vs 2025"), or a period chrono
+  asked about, an anaphoric word — and the anaphoric half of „minulý …“ — is `UNGROUNDABLE` with the new
+  message code `no_anchor`, which says why. It is never read against the reference date, and never handed to the
+  LLM fallback.
+- **A year chrono asked about is no year to lean on:** a month or quarter in it („A v březnu minulého roku?“, which
+  asked) is no anchor for the next anaphoric word („A předchozí měsíc?“ is `no_anchor`, not February of the
+  reference year), and a date that names no year after it („A minulý rok?“, then „A v září?“) is `no_anchor` too,
+  not the reference year's September — both readings of the asked year differ from the reference year. A question
+  naming several years still leans a yearless date on neither: the reference year, as before.
+- **„minulý …“ asks only when its readings differ:** `AWAITING_CLARIFICATION` with the deictic reading first and
+  the anaphoric one second. With no period of that unit in the conversation, or with the current one, it grounds
+  without asking. A month in an ambiguous year („v březnu minulého roku“) asks between the two Marches.
+- **Clarification options:** an option's `id` is its period code — `yyyy` for a year (a year interval still
+  carries no `period_code`; the id is made from its span), `yyyyMM`, `yyyyQn`, `yyyyMMdd` for a day — and
+  `clarification_answer_id` resumes to it. The resume re-reads the span, so it must carry the same
+  `question_text` and `prior_questions` as the request that asked. The `label` names the period in the request's
+  language: "2025", "February 2025", "Q1 2025"; for a `cs` locale „únor 2025“, „1. čtvrtletí 2025“. It no longer
+  carries the code (the bare future month was "December 2026 (202612)", now "December 2026").
+- **Unchanged:** weeks keep reading against the reference date; a rolling window ("last 3 months", „posledních
+  30 dní“) is not a period word; a span that writes out its year is that year (#213); „poslední“ is a scope word
+  for a quarter only. „letos po měsících“ is now the year; it was the current month.
+- The resolver still drops a kernel's `AWAITING_CLARIFICATION` (#231), so until it carries the question to the
+  user, a „minulý …“ that asks reaches the consumer as an ungrounded date.
 
 ### resolver — a value's attribution names a member, never a model object („v roce 2025“, „marketplace revenu“, #227)
 
@@ -87,6 +165,7 @@ trigger spans. `revenu`, tagged PROPN, took the proper-noun path to the same pla
 - Not in this change: a typo inside a declared multi-word phrase ("marketplace revenu") is still not tried as the
   phrase — span proposal matches declared phrases word for word — so `revenu` binds the all-channel measure on its own.
 - No wire change.
+
 ### logging-config — logging a response can no longer fail the call, and a failed call's status names its exception (#197)
 
 `ResolverService/Resolve` closed `UNKNOWN` with an empty message on some turns: „10 nejprodávanějších produktů na tržišti

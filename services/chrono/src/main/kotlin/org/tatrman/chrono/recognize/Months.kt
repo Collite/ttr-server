@@ -96,6 +96,53 @@ object Months {
         )
 
     /**
+     * Every form of a month a question writes as a word of its own, folded: the English names and the Czech
+     * noun in each case. Exact words, not stems — [find] looks for a stem anywhere, which is right for a
+     * span that is a date but would read *zařízení* (a device) as September and *červená* (red) as June in a
+     * whole question.
+     */
+    private val wordForms: Map<String, Int> =
+        buildMap {
+            listOf(
+                "january",
+                "february",
+                "march",
+                "april",
+                "may",
+                "june",
+                "july",
+                "august",
+                "september",
+                "october",
+                "november",
+                "december",
+            ).forEachIndexed { i, name -> put(name, i + 1) }
+            listOf(
+                "leden ledna lednu lednem",
+                "unor unora unoru unorem",
+                "brezen brezna breznu breznem",
+                "duben dubna dubnu dubnem",
+                "kveten kvetna kvetnu kvetnem",
+                "cerven cervna cervnu cervnem",
+                "cervenec cervence cervenci cervencem",
+                "srpen srpna srpnu srpnem",
+                "zari",
+                "rijen rijna rijnu rijnem",
+                "listopad listopadu listopadem",
+                "prosinec prosince prosinci prosincem",
+            ).forEachIndexed { i, forms -> forms.split(' ').forEach { put(it, i + 1) } }
+        }
+
+    /**
+     * The month a single folded [word] is, read strictly ([wordForms]). The English abbreviations ("jan",
+     * "mar", "dec") count only [withYear] — after them a year makes them a month; alone, "Jan" is a name.
+     */
+    fun ofWord(
+        word: String,
+        withYear: Boolean,
+    ): Int? = wordForms[word] ?: if (withYear) enAbbrev[word] else null
+
+    /**
      * Recognize the month named anywhere in [text] (a span or token). Returns the month number
      * 1..12, or null. Diacritics are stripped first; "may"/"máj"/"květen" all resolve to 5.
      */

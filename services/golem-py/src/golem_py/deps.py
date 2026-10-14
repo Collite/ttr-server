@@ -34,6 +34,24 @@ class CorePort(Protocol):
     ) -> ResolutionState: ...
 
 
+@runtime_checkable
+class CoreResumePort(Protocol):
+    """`Resolve(resume{token, selected_option_id})` — the core redeeming an option it signed.
+
+    Only a `period` pin needs it (ttr-server#231): the answer is a lattice holding exactly one
+    value, the picked date, grounded. A refused pick raises `PickRefused`."""
+
+    async def resume(
+        self,
+        *,
+        token: str,
+        selected_option_id: str = "",
+        free_text_answer: str = "",
+        conversation_id: str = "",
+        caller_subject: str = "",
+    ) -> ResolutionState: ...
+
+
 @dataclass
 class GateResult:
     """What `resolve.gate:v1` gave back. `outcomes` is per-hypothesis, because a

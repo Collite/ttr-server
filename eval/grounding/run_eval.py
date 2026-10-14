@@ -59,16 +59,22 @@ def _context(case: dict[str, Any]) -> dict[str, Any]:
     }
     if case.get("here"):
         ctx["herePlaceRef"] = case["here"]
+    if case.get("prior_questions"):
+        # The user's earlier questions, newest first — what an anaphoric period word reads against (#214).
+        ctx["priorQuestions"] = list(case["prior_questions"])
     return ctx
 
 
 def _tool_args(case: dict[str, Any]) -> dict[str, Any]:
-    return {
+    args: dict[str, Any] = {
         "spanText": case["span"],
-        "questionText": case["span"],
+        "questionText": case.get("question_text") or case["span"],
         "package": case.get("package", "cnc"),
         "context": _context(case),
     }
+    if case.get("clarification_answer_id"):
+        args["clarificationAnswerId"] = case["clarification_answer_id"]
+    return args
 
 
 # ---------------------------------------------------------------------------

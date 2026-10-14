@@ -80,3 +80,16 @@ data class ChronoRecognition(
     /** ISO-8601 end (exclusive), for Normalized.DateTimeInterval. */
     val endIso: String get() = endExclusive.toString()
 }
+
+/** What [DateRecognizer.read] made of a span. */
+sealed interface ChronoReading {
+    /** The span is a period: its interval, and the other readings to ask between when it is ambiguous. */
+    data class Recognized(
+        val recognition: ChronoRecognition,
+    ) : ChronoReading
+
+    /** The span is a period read against the conversation, and the conversation gives it nothing to read against. */
+    data class Unanchored(
+        val reason: String,
+    ) : ChronoReading
+}

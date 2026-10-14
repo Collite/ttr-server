@@ -82,5 +82,31 @@ class GateUnavailable(GolemError):
         )
 
 
+class CoreResumeUnavailable(GolemError):
+    """A period pin arrived and the configured core cannot redeem one.
+
+    A `period` option (ttr-server#231) is a grounding kernel's reading, signed into the core's
+    token: only the core's own resume can ground it, and the gate has nothing to gate (the
+    option carries no ref). With no resume there is no honest way to honour the pin.
+    """
+
+    def __init__(self) -> None:
+        super().__init__(
+            "a period pin is redeemed by the core's own resume (ttr-server#231) and the "
+            "configured core has none"
+        )
+
+
+class PickRefused(GolemError):
+    """The core would not ground a signed period pick (`FAILED_PRECONDITION`): the kernel
+    refused the id on re-reading the span. Not retryable, and not a re-ask."""
+
+    def __init__(self, option_id: str, detail: str = ""):
+        self.option_id = option_id
+        super().__init__(
+            f"the core refused the pick {option_id!r}" + (f": {detail}" if detail else "")
+        )
+
+
 class ConfigInvalid(GolemError):
     """A configuration that must fail at startup rather than mid-conversation."""
