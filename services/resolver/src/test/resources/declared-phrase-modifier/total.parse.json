@@ -1,0 +1,104 @@
+{
+  "language": "en",
+  "languageConfidence": 0.4712198169913588,
+  "engineUsed": "stanza",
+  "tokens": [{
+    "text": "Total",
+    "charEnd": 5,
+    "lemma": "total",
+    "upos": "ADJ",
+    "xpos": "JJ",
+    "feats": {
+      "Degree": "Pos"
+    },
+    "depHead": 3,
+    "depRelation": "amod"
+  }, {
+    "text": "marketplace",
+    "charStart": 6,
+    "charEnd": 17,
+    "lemma": "marketplace",
+    "upos": "NOUN",
+    "xpos": "NN",
+    "feats": {
+      "Number": "Sing"
+    },
+    "depHead": 3,
+    "depRelation": "compound"
+  }, {
+    "text": "revenue",
+    "charStart": 18,
+    "charEnd": 25,
+    "lemma": "revenue",
+    "upos": "NOUN",
+    "xpos": "NN",
+    "feats": {
+      "Number": "Sing"
+    },
+    "depRelation": "root"
+  }, {
+    "text": "in",
+    "charStart": 26,
+    "charEnd": 28,
+    "lemma": "in",
+    "upos": "ADP",
+    "xpos": "IN",
+    "depHead": 5,
+    "depRelation": "case"
+  }, {
+    "text": "2025",
+    "charStart": 29,
+    "charEnd": 33,
+    "lemma": "2025",
+    "upos": "NUM",
+    "xpos": "CD",
+    "feats": {
+      "NumType": "Card",
+      "NumForm": "Digit"
+    },
+    "depHead": 3,
+    "depRelation": "nmod"
+  }],
+  "sentences": [{
+    "charEnd": 33
+  }],
+  "entities": [{
+    "text": "2025",
+    "label": "DATE",
+    "charStart": 29,
+    "charEnd": 33,
+    "sourceEngine": "stanza"
+  }],
+  "detectedLanguage": "en",
+  "used": [{
+    "op": "DETECT_LANGUAGE",
+    "engine": "langid",
+    "model": "lingua",
+    "modelVersion": "lingua-2.0"
+  }, {
+    "op": "POS_TAG",
+    "engine": "stanza",
+    "model": "stanza-cs-en",
+    "modelVersion": "stanza-1.10.0"
+  }, {
+    "op": "NER",
+    "engine": "stanza",
+    "model": "stanza-cs-en",
+    "modelVersion": "stanza-1.10.0"
+  }, {
+    "op": "LEMMATIZE",
+    "engine": "stanza",
+    "model": "stanza-cs-en",
+    "modelVersion": "stanza-1.10.0"
+  }, {
+    "op": "TOKENIZE",
+    "engine": "stanza",
+    "model": "stanza-cs-en",
+    "modelVersion": "stanza-1.10.0"
+  }, {
+    "op": "DEP_PARSE",
+    "engine": "stanza",
+    "model": "stanza-cs-en",
+    "modelVersion": "stanza-1.10.0"
+  }]
+}

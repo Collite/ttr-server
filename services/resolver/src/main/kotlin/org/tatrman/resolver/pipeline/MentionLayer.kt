@@ -19,6 +19,10 @@ import org.tatrman.nlp.v1.Token
  * Everything already proposed for gating keeps its span; this only adds the leftovers. Values
  * are not mentions: literals, universal-typed spans (a date, a person) and proper nouns are the
  * other layer of RV-2's two-layer model, and are excluded here.
+ *
+ * **…and the adjectives no span took (ttr-server#237, [leftOutModifiers]).** The leftovers are headed
+ * by nouns, so an adjective is a mention only inside its noun's phrase — and a gated span can take the
+ * noun without it.
  */
 object MentionLayer {
     /** Modifier relations that belong to a nominal phrase. Numerals do not: they are values. */
@@ -119,6 +123,94 @@ object MentionLayer {
                 )
         }
         return out.sortedWith(compareBy({ it.start }, { it.end }))
+    }
+
+    /**
+     * ttr-server#237 — **an adjective a gated span left out of its noun's phrase is a mention of its own.**
+     *
+     * Every word the user wrote is in some span or reported as a gap; an adjective must not vanish
+     * because the noun it modifies was matched without it. That happened in front of every DECLARED
+     * phrase: a multi-word anchor names its own extent (`SpanProposal`), so in *Měsíční tržby z
+     * tržiště* the span is `tržby z tržiště`, [propose] heads its leftovers at nouns only, and
+     * „Měsíční“ was in nothing — no mention, no gap. The question asked for a monthly breakdown, the
+     * lattice held the measure and the year, and the caller answered one total. *Akční tržby z
+     * tržiště* and *Promotional marketplace revenue* lost their restriction the same way. A governed
+     * value or a proper-noun run takes nominals only, so an adjective under one was lost too.
+     *
+     * **What qualifies:** an `amod` dependent that no gated span and no leftover in [mentions] covers,
+     * hanging from a word a gated span in [gated] DOES cover. That is the gap and nothing wider: an
+     * adjective of a leftover noun is in the noun's phrase already, and one beside a date is the date's.
+     *
+     * **What it becomes:** a one-word mention, unbound, like the leftovers, flagged
+     * [DomainSpanCandidate.leftOut]. The lookup round asks it as it asks them (`RoundPlanner`, the model
+     * objects and the operators): the calendar attributes answer „Měsíční“ and „Roční“, and R6"
+     * (`FrameRoles`) makes a grain adjective that binds an attribute the GROUPING, as it makes `Monthly`.
+     * A word nothing binds stays a G1, so no fast path answers the question without it. It is never the
+     * SUBJECT (R9): it modifies what the question is about. The caller keeps it out of the
+     * grounding-trigger annotation: a word the NER (or `RelativePeriods`) did not type a date is no
+     * period of its own, and a trigger row that only reads like it (`Čtvrtletní` / `čtvrtletí`) would
+     * bind it — no gap — with nothing to ground.
+     *
+     * **What stays silent:** a word on the language's `silent-modifiers` list (`celkové`, `total`:
+     * [FrameRolePreps.isSilent], the rule `MentionRetry` applies to a phrase's own modifiers); a word in
+     * an operator slot, which `OperatorWords` asked the operator class about and which leaves no trace
+     * when it is none (ttr-server#58: `dalších 10 prodejen`); a word a quoted literal hangs from, which is
+     * the literal's predicate (`PredicateTriggers`); and a code, a universal-typed word or a quoted one,
+     * which are values.
+     */
+    fun leftOutModifiers(
+        parse: AnalyzeResponse,
+        gated: List<DomainSpanCandidate>,
+        mentions: List<DomainSpanCandidate>,
+        literals: Literals,
+        preps: FrameRolePreps,
+        lang: String,
+    ): List<DomainSpanCandidate> {
+        val tokens = parse.tokensList
+        if (tokens.none { it.depHead > 0 }) return emptyList()
+        val universal =
+            parse.entitiesList
+                .filter { UniversalClassifier.isUniversal(it.label, it.normalizedValue, it.text) }
+                .map { it.charStart until it.charEnd }
+        val governors = SpanProposal.literalGovernors(tokens, literals.tokens)
+        val slots = OperatorWords.slots(parse, literals).map { it.first }.toSet()
+
+        fun covered(
+            i: Int,
+            spans: List<DomainSpanCandidate>,
+        ) = spans.any { it.start <= tokens[i].charStart && it.end >= tokens[i].charEnd }
+
+        return tokens.indices.mapNotNull { i ->
+            val token = tokens[i]
+            val head = token.depHead - 1 // dep_head is 1-based; 0 is the root
+            val qualifies =
+                token.depRelation.substringBefore(':') == "amod" &&
+                    head in tokens.indices &&
+                    head != i &&
+                    head !in literals.tokens &&
+                    covered(head, gated) &&
+                    i !in literals.tokens &&
+                    i !in governors &&
+                    i !in slots &&
+                    !covered(i, gated) &&
+                    !covered(i, mentions) &&
+                    !isUniversal(token, universal) &&
+                    token.text.none { it.isDigit() } &&
+                    !preps.isSilent(lang, token.text, token.lemma)
+            if (!qualifies) return@mapNotNull null
+            DomainSpanCandidate(
+                text = token.text,
+                start = token.charStart,
+                end = token.charEnd,
+                gatedEntityRefs = emptyList(),
+                categories = emptyList(),
+                anchored = false,
+                origin = DomainSpanCandidate.Origin.ANCHOR_PHRASE,
+                headToken = i,
+                lemma = token.lemma.ifBlank { token.text },
+                leftOut = true,
+            )
+        }
     }
 
     private fun phraseIndices(

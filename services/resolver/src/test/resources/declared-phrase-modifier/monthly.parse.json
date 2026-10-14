@@ -1,0 +1,109 @@
+{
+  "language": "en",
+  "languageConfidence": 0.778582421259289,
+  "engineUsed": "stanza",
+  "tokens": [{
+    "text": "Monthly",
+    "charEnd": 7,
+    "lemma": "monthly",
+    "upos": "ADJ",
+    "xpos": "JJ",
+    "feats": {
+      "Degree": "Pos"
+    },
+    "depHead": 3,
+    "depRelation": "amod"
+  }, {
+    "text": "marketplace",
+    "charStart": 8,
+    "charEnd": 19,
+    "lemma": "marketplace",
+    "upos": "NOUN",
+    "xpos": "NN",
+    "feats": {
+      "Number": "Sing"
+    },
+    "depHead": 3,
+    "depRelation": "compound"
+  }, {
+    "text": "revenue",
+    "charStart": 20,
+    "charEnd": 27,
+    "lemma": "revenue",
+    "upos": "NOUN",
+    "xpos": "NN",
+    "feats": {
+      "Number": "Sing"
+    },
+    "depRelation": "root"
+  }, {
+    "text": "in",
+    "charStart": 28,
+    "charEnd": 30,
+    "lemma": "in",
+    "upos": "ADP",
+    "xpos": "IN",
+    "depHead": 5,
+    "depRelation": "case"
+  }, {
+    "text": "2025",
+    "charStart": 31,
+    "charEnd": 35,
+    "lemma": "2025",
+    "upos": "NUM",
+    "xpos": "CD",
+    "feats": {
+      "NumType": "Card",
+      "NumForm": "Digit"
+    },
+    "depHead": 3,
+    "depRelation": "nmod"
+  }],
+  "sentences": [{
+    "charEnd": 35
+  }],
+  "entities": [{
+    "text": "Monthly",
+    "label": "DATE",
+    "charEnd": 7,
+    "sourceEngine": "stanza"
+  }, {
+    "text": "2025",
+    "label": "DATE",
+    "charStart": 31,
+    "charEnd": 35,
+    "sourceEngine": "stanza"
+  }],
+  "detectedLanguage": "en",
+  "used": [{
+    "op": "DETECT_LANGUAGE",
+    "engine": "langid",
+    "model": "lingua",
+    "modelVersion": "lingua-2.0"
+  }, {
+    "op": "POS_TAG",
+    "engine": "stanza",
+    "model": "stanza-cs-en",
+    "modelVersion": "stanza-1.10.0"
+  }, {
+    "op": "NER",
+    "engine": "stanza",
+    "model": "stanza-cs-en",
+    "modelVersion": "stanza-1.10.0"
+  }, {
+    "op": "LEMMATIZE",
+    "engine": "stanza",
+    "model": "stanza-cs-en",
+    "modelVersion": "stanza-1.10.0"
+  }, {
+    "op": "TOKENIZE",
+    "engine": "stanza",
+    "model": "stanza-cs-en",
+    "modelVersion": "stanza-1.10.0"
+  }, {
+    "op": "DEP_PARSE",
+    "engine": "stanza",
+    "model": "stanza-cs-en",
+    "modelVersion": "stanza-1.10.0"
+  }]
+}
