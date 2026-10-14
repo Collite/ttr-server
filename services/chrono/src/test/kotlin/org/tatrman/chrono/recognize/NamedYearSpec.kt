@@ -128,6 +128,27 @@ class NamedYearSpec :
         "a text naming several stops the search — an older one does not settle it" {
             NamedYear.firstOf(listOf("Porovnej říjen 2024 s říjnem 2025", "Tržby v roce 2023"), ref).shouldBeNull()
         }
+        // ---- #214: a quarter names its year; an earlier relative year is read the way chrono read it ----
+        "a quarter with its year names the year" {
+            years("Marketplace revenue in Q2 2025") shouldBe setOf(2025)
+            years("Revenue 2025Q2") shouldBe setOf(2025)
+            years("Tržby ve 2. čtvrtletí 2025") shouldBe setOf(2025)
+            years("Revenue in the second quarter of 2025") shouldBe setOf(2025)
+        }
+        "an earlier anaphoric year is read against the texts before it" {
+            NamedYear.firstOf(listOf("a v září?", "A předchozí rok?", "Tržby v roce 2023"), ref) shouldBe 2022
+            NamedYear.firstOf(
+                listOf("a v září?", "And the previous year?", "And the previous year?", "Sales in 2025"),
+                ref,
+            ) shouldBe
+                2023
+        }
+        "an earlier „minulý rok“ that asked names a year nobody settled — no year" {
+            NamedYear.firstOf(listOf("a v září?", "A minulý rok?", "Tržby v roce 2023"), ref).shouldBeNull()
+        }
+        "an earlier „minulý rok“ whose readings agreed names that year" {
+            NamedYear.firstOf(listOf("a v září?", "A minulý rok?", "Kolik máme prodejen?"), ref) shouldBe 2025
+        }
         "no text naming a year — no year" {
             NamedYear.firstOf(listOf("a v září?", "Kolik máme prodejen?"), ref).shouldBeNull()
             NamedYear.firstOf(emptyList(), ref).shouldBeNull()

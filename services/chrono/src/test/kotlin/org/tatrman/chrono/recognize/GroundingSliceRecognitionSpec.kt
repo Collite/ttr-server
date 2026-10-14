@@ -231,7 +231,9 @@ class GroundingSliceRecognitionSpec :
             recognizer.recognize("last week", reference, withEnglish)!!.startInclusive shouldBe LocalDate.of(2026, 5, 4)
             recognizer.recognize("this month", reference, withEnglish)!!.periodCode shouldBe "202605"
             recognizer.recognize("minulý měsíc", reference, withEnglish)!!.periodCode shouldBe "202604"
-            recognizer.recognize("letos po měsících", reference, withEnglish)!!.periodCode shouldBe "202605"
+            // #214: „letos“ is the year; "po měsících" (by month) is a grain, not the current month.
+            recognizer.recognize("letos po měsících", reference, withEnglish)!!.startInclusive shouldBe
+                LocalDate.of(2026, 1, 1)
         }
 
         "a bare mention with no year of its own still reads at the reference" {

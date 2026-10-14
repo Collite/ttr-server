@@ -60,11 +60,26 @@ def _expect(raw: dict[str, Any]) -> dict[str, Any]:
         ("application", "application"),
         ("source", "source"),
         ("periodCode", "period_code"),
+        ("intervalStart", "interval_start"),
     ):
         if exp.get(src) is not None:
             out[dst] = exp[src]
     if exp.get("sqlContains"):
         out["sql_contains"] = list(exp["sqlContains"])
+    if exp.get("optionIds"):
+        out["option_ids"] = list(exp["optionIds"])
+    return out
+
+
+def _conversation(raw: dict[str, Any]) -> dict[str, Any]:
+    """The question a span is asked in, the earlier questions, and a clarification answer — only when set (#214)."""
+    out: dict[str, Any] = {}
+    if raw.get("question"):
+        out["question_text"] = raw["question"]
+    if raw.get("priorQuestions"):
+        out["prior_questions"] = list(raw["priorQuestions"])
+    if raw.get("answerId"):
+        out["clarification_answer_id"] = raw["answerId"]
     return out
 
 
@@ -81,6 +96,7 @@ def _chrono(raw: dict[str, Any]) -> dict[str, Any]:
         "package": raw.get("pkg", "cnc"),
         "model": "accounting-period" if raw.get("periodTable", True) else "calendar",
         "here": None,
+        **_conversation(raw),
         "expect": _expect(raw),
     }
 
