@@ -19,6 +19,7 @@ import org.tatrman.resolver.v1.Hypothesis
 import org.tatrman.resolver.v1.ResolutionState
 import org.tatrman.resolver.v1.RungLogEntry
 import org.tatrman.resolver.v1.Span
+import org.tatrman.fuzzy.v1.TargetClass as FuzzyTargetClass
 
 /**
  * The wall-clock budget and fan-out bounds of the `lookup` rung (RV-P2.3.T4).
@@ -86,6 +87,9 @@ class LookupRounds(
     /** The rung name a round writes into the log (contracts §3 vocabulary). */
     companion object {
         const val RUNG: String = "lookup"
+
+        /** The object kind a left-out adjective may name ([modifierReading]). */
+        private const val ATTRIBUTE_KIND = "attribute"
 
         private val log = LoggerFactory.getLogger(LookupRounds::class.java)
     }
@@ -171,7 +175,20 @@ class LookupRounds(
                 if (query.retry && existing?.contenders?.isNotEmpty() == true) continue
                 val retry = if (query.retry) retries[query.spanStart to query.spanEnd] else null
                 if (retry != null && retry.asked.any { it in known }) continue
-                val candidates = if (query.retry) answered.map(MentionRetry::stamp) else answered
+                val stamped = if (query.retry) answered.map(MentionRetry::stamp) else answered
+                // ttr-server#237 — a left-out adjective names a property of what it modifies or an
+                // operator over it, never a second object: see [modifierReading].
+                val (candidates, notModifiers) =
+                    if (existing?.candidate?.leftOut == true) {
+                        stamped.partition { modifierReading(it, kinds) }
+                    } else {
+                        stamped to emptyList()
+                    }
+                if (notModifiers.isNotEmpty()) {
+                    val refused = notModifiers.map { hypothesisOf(query, it) }
+                    proposed += refused
+                    tried.merge(query.spanStart to query.spanEnd, refused) { a, b -> a + b }
+                }
                 val span = existing ?: quotedSpan(query, currentGated + currentUngated, currentLattice) ?: continue
                 // The same gate the broad pass used. A round is a proposer; this is where its
                 // proposals stop being proposals (RV-7).
@@ -379,6 +396,11 @@ class LookupRounds(
     private fun hypothesisOf(
         query: RoundPlanner.Query,
         rejected: Binder.ClassedMatch,
+    ): Hypothesis = hypothesisOf(query, rejected.match)
+
+    private fun hypothesisOf(
+        query: RoundPlanner.Query,
+        rejected: FuzzyMatch,
     ): Hypothesis =
         Hypothesis
             .newBuilder()
@@ -388,9 +410,28 @@ class LookupRounds(
                     .setStart(query.spanStart)
                     .setEnd(query.spanEnd)
                     .setText(query.term),
-            ).setRef(Binder.identityKey(rejected.match))
+            ).setRef(Binder.identityKey(rejected))
             .setProposingRung(RUNG)
             .build()
+
+    /**
+     * ttr-server#237 — what a left-out adjective ([DomainSpanCandidate.leftOut]) may be read as: an
+     * ATTRIBUTE (`Měsíční` → the month, the grain R6" groups by; a flag an estate declares) or an
+     * OPERATOR (`průměrné` → an average). The noun it modifies already has its span; the adjective
+     * names a property of it or a way to aggregate it, never another object. A row that reads it as an
+     * entity or a measure matched part of some longer term (`Dnešní` ~ `není skladem`, the stock
+     * measure), and binding it would put a second measure into the question. Such a row is refused and
+     * logged as a hypothesis; with nothing else, the adjective stays a G1.
+     */
+    private fun modifierReading(
+        row: FuzzyMatch,
+        kinds: Map<String, String>,
+    ): Boolean =
+        row.targetClass == FuzzyTargetClass.TARGET_CLASS_OPERATOR ||
+            (
+                row.targetClass == FuzzyTargetClass.TARGET_CLASS_MODEL_OBJECT &&
+                    kinds[row.targetRef].equals(ATTRIBUTE_KIND, ignoreCase = true)
+            )
 
     /**
      * Re-attach what has been tried to the gaps that are still open — discharging the ⚑ P2.1.T6

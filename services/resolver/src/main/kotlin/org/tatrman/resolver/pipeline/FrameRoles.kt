@@ -35,6 +35,7 @@ import org.tatrman.text.Normalization.fold
  * R7  deprel == conj  -> inherit the head mention's FILTER / GROUPING
  * R8  m anchors a value and deprel not nsubj        -> +FILTER     # "účtu 501001"
  * R9  residue: the nsubj candidate, else the shallowest+leftmost   -> +SUBJECT (AT MOST ONE)
+ *     — never a left-out modifier (`Input.subject`, ttr-server#237)
  * ```
  *
  * Three of these carry most of the weight:
@@ -84,6 +85,12 @@ object FrameRoles {
          * signal A then stays silent.
          */
         val charEnd: Int = -1,
+        /**
+         * ttr-server#237 — false for an adjective a gated span left out of its noun's phrase
+         * ([DomainSpanCandidate.leftOut]): it takes the roles its binding earns, but R9 never makes it
+         * the SUBJECT — it modifies what the question is about. Defaulted and last, like [charEnd].
+         */
+        val subject: Boolean = true,
     )
 
     fun derive(
@@ -186,7 +193,8 @@ object FrameRoles {
         // -- R9 SUBJECT, last, from the residue ---------------------------------
         val candidates =
             scoreable.filter {
-                FrameRole.FRAME_ROLE_FILTER !in roles.getValue(it.id) &&
+                it.subject &&
+                    FrameRole.FRAME_ROLE_FILTER !in roles.getValue(it.id) &&
                     FrameRole.FRAME_ROLE_GROUPING !in roles.getValue(it.id)
             }
         val pick =

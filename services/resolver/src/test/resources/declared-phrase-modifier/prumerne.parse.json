@@ -1,0 +1,145 @@
+{
+  "language": "cs",
+  "languageConfidence": 0.9162869738833711,
+  "engineUsed": "morphodita",
+  "tokens": [{
+    "text": "Průměrné",
+    "charEnd": 8,
+    "lemma": "průměrný",
+    "upos": "ADJ",
+    "xpos": "AAFP1----1A----",
+    "feats": {
+      "Case": "Nom",
+      "Polarity": "Pos",
+      "Gender": "Fem",
+      "Number": "Plur",
+      "Degree": "Pos"
+    },
+    "depHead": 2,
+    "depRelation": "amod"
+  }, {
+    "text": "tržby",
+    "charStart": 9,
+    "charEnd": 14,
+    "lemma": "tržba",
+    "upos": "NOUN",
+    "xpos": "NNFP1-----A----",
+    "feats": {
+      "Case": "Nom",
+      "Gender": "Fem",
+      "Number": "Plur"
+    },
+    "depRelation": "root"
+  }, {
+    "text": "z",
+    "charStart": 15,
+    "charEnd": 16,
+    "lemma": "z",
+    "upos": "ADP",
+    "xpos": "RR--2----------",
+    "feats": {
+      "Case": "Gen",
+      "AdpType": "Prep"
+    },
+    "depHead": 4,
+    "depRelation": "case"
+  }, {
+    "text": "tržiště",
+    "charStart": 17,
+    "charEnd": 24,
+    "lemma": "tržiště",
+    "upos": "NOUN",
+    "xpos": "NNNS2-----A----",
+    "feats": {
+      "Case": "Gen",
+      "Gender": "Neut",
+      "Number": "Sing"
+    },
+    "depHead": 2,
+    "depRelation": "nmod"
+  }, {
+    "text": "v",
+    "charStart": 25,
+    "charEnd": 26,
+    "lemma": "v",
+    "upos": "ADP",
+    "xpos": "RR--6----------",
+    "feats": {
+      "Case": "Loc",
+      "AdpType": "Prep"
+    },
+    "depHead": 6,
+    "depRelation": "case"
+  }, {
+    "text": "roce",
+    "charStart": 27,
+    "charEnd": 31,
+    "lemma": "rok",
+    "upos": "NOUN",
+    "xpos": "NNIS6-----A---1",
+    "feats": {
+      "Animacy": "Inan",
+      "Gender": "Masc",
+      "Number": "Sing",
+      "Case": "Loc"
+    },
+    "depHead": 2,
+    "depRelation": "nmod"
+  }, {
+    "text": "2025",
+    "charStart": 32,
+    "charEnd": 36,
+    "lemma": "2025",
+    "upos": "NUM",
+    "xpos": "C\u003d-------------",
+    "feats": {
+      "NumType": "Card",
+      "NumForm": "Digit"
+    },
+    "depHead": 6,
+    "depRelation": "nummod"
+  }],
+  "sentences": [{
+    "charEnd": 36
+  }],
+  "entities": [{
+    "text": "2025",
+    "label": "DATE",
+    "charStart": 32,
+    "charEnd": 36,
+    "normalizedValue": "cnec:ty",
+    "sourceEngine": "nametag3"
+  }],
+  "detectedLanguage": "cs",
+  "used": [{
+    "op": "DETECT_LANGUAGE",
+    "engine": "langid",
+    "model": "lingua",
+    "modelVersion": "lingua-2.0"
+  }, {
+    "op": "POS_TAG",
+    "engine": "morphodita",
+    "model": "czech-morfflex2.0-pdtc1.0-220710",
+    "modelVersion": "czech-morfflex2.0-pdtc1.0-220710"
+  }, {
+    "op": "NER",
+    "engine": "nametag3",
+    "model": "nametag3-czech-cnec2.0-240830",
+    "modelVersion": "nametag3-czech-cnec2.0-240830"
+  }, {
+    "op": "LEMMATIZE",
+    "engine": "morphodita",
+    "model": "czech-morfflex2.0-pdtc1.0-220710",
+    "modelVersion": "czech-morfflex2.0-pdtc1.0-220710"
+  }, {
+    "op": "TOKENIZE",
+    "engine": "morphodita",
+    "model": "czech-morfflex2.0-pdtc1.0-220710",
+    "modelVersion": "czech-morfflex2.0-pdtc1.0-220710"
+  }, {
+    "op": "DEP_PARSE",
+    "engine": "stanza",
+    "model": "stanza-cs-en",
+    "modelVersion": "stanza-1.10.0"
+  }]
+}

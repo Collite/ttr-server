@@ -58,6 +58,11 @@ package org.tatrman.resolver.pipeline
  *   mention names (`akčních` in *akčních tržeb*, `no` in *no returns*), surfaced as an unbound mention
  *   of its own once the head bound without it. It takes no frame role: its head's role is the head's,
  *   and a residue is reported as exactly what it is, a word nothing understood (G1).
+ * @property leftOut ttr-server#237 — an adjective a gated span left out of its noun's phrase
+ *   (`MentionLayer.leftOutModifiers`): „Měsíční“ in front of the declared `tržby z tržiště`. A mention
+ *   of its own, which a lookup round may bind and which takes the frame roles its binding earns (R6"
+ *   makes a calendar adjective that binds an attribute the GROUPING) — but never the SUBJECT: it
+ *   modifies what the question is about, it is not that.
  */
 data class DomainSpanCandidate(
     val text: String,
@@ -82,6 +87,8 @@ data class DomainSpanCandidate(
     // ttr-server#204 — LAST and defaulted, like the three above.
     val declaredPhrase: Boolean = false,
     val residue: Boolean = false,
+    // ttr-server#237 — LAST and defaulted, like the four above.
+    val leftOut: Boolean = false,
 ) {
     /** UD — whether this candidate is a dual reading at all; see [dualReadingOf]. */
     val dualReading: Boolean get() = dualReadingOf != null

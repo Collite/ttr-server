@@ -335,6 +335,31 @@ No other rule produces both roles on one mention, so the pair is a signal: the r
 guess, and a consumer should hand the sentence to a reader that can weigh it. A grounding trigger
 under `po` (*"po roce 2020"* binds the time kernel) keeps FILTER.
 
+**An adjective in front of a declared phrase is a mention of its own (ttr-server#237).** A declared
+phrase names its own extent, so the adjective before it is in no span: in *„Měsíční tržby z tržiště
+v roce 2025“* the phrase is `tržby z tržiště`, and the mention layer heads its leftovers at nouns.
+„Měsíční“ used to vanish, with no mention and no gap, and a question asking for months was answered
+as one total. Now an `amod` dependent that no span covers, hanging from a word a gated span does
+cover, is proposed alone as an unbound mention (`MentionLayer.leftOutModifiers`). That also covers an
+adjective under a governed value or a proper-noun run, which take nominals only.
+
+- The lookup round asks it like any leftover, in the model-object and operator classes. Only an
+  ATTRIBUTE or an OPERATOR may bind it: the noun it modifies already has its span, so a row that reads
+  the adjective as an entity or a measure matched part of a longer term (*Dnešní* ~ `není skladem`) and
+  is refused. A grain adjective that binds a calendar attribute is the GROUPING (R6"), as *Monthly*
+  is. On hartland the estate's own grain words reach the Czech adjectives (`měsíčně`, `po měsících` →
+  *Měsíční*, *měsíčních*; `po čtvrtletích` → *Čtvrtletní*; `ročně` → *Roční*; `po týdnech` →
+  *Týdenní*).
+- A word nothing binds is a G1, so no fast path answers the question without it: *Denní*,
+  *Pololetní* (no day or half-year grain declared), *Akční*, *Promotional*.
+- It is never the SUBJECT (R9), and it is not offered to the grounding triggers: a word the NER did
+  not type a date has nothing to ground, and a trigger row that only reads like it (*Čtvrtletní* /
+  `čtvrtletí`) would bind it with no gap.
+- Unchanged: the `silent-modifiers` (`celkové`, `total`); a word in an operator slot, which leaves no
+  trace when it is no operator (`dalších 10 prodejen`, above); a word a quoted literal hangs from; a
+  universal-typed word (*Last year's*, *Letošní*); a declared adjective (*Monthly*), which is an
+  anchor of its own.
+
 ## A mention is also looked up by its dictionary form
 
 The paragraph above is the anchor half of the asymmetry; this is the matcher half. The broad pass

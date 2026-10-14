@@ -248,12 +248,13 @@ class ResolverPipeline(
         //
         // UD-P3 — derived WITHOUT the named-member readings: whether one of them takes its words is
         // known only after the gate, and one that is withdrawn must leave the mentions as they were.
-        val ungatedMentions =
-            MentionLayer.propose(
-                parse,
-                candidates.filterNot { it.origin == DomainSpanCandidate.Origin.NAMED_MEMBER },
-                literals,
-            )
+        val mentionable = candidates.filterNot { it.origin == DomainSpanCandidate.Origin.NAMED_MEMBER }
+        val ungatedMentions = MentionLayer.propose(parse, mentionable, literals)
+        // ttr-server#237 — and the adjectives a gated span left out of its noun's phrase („Měsíční“ in
+        // front of the declared `tržby z tržiště`): mentions of their own, for the lattice and the lookup
+        // round. Not offered as grounding triggers — see `MentionLayer.leftOutModifiers`.
+        val leftOut =
+            MentionLayer.leftOutModifiers(parse, mentionable, ungatedMentions, literals, preps, assessment.language)
         val triggerSpans = GroundingTriggers.spansOf(candidates, ungatedMentions)
         // LP §3 — and the third question on the same pass: which words say HOW a quoted literal
         // restricts its attribute. Anchored on the LITERAL rather than on the mentions, because
@@ -499,7 +500,7 @@ class ResolverPipeline(
         // ttr-server#204 — and a word a retry left out that restricts its mention is a mention of its
         // own, unbound: the head bound without it, and nothing downstream may read it as unsaid.
         val ungatedSpans =
-            (ungatedMentions + MentionRetry.residuesBound(broadPass.gated, retries))
+            (ungatedMentions + leftOut + MentionRetry.residuesBound(broadPass.gated, retries))
                 .filterNot { it.headToken in formTokens }
                 .filterNot { NamedMembers.claimedBy(spokenNames, it) }
                 .map { GatedSpan(it, emptyList(), ambiguous = false) }

@@ -16,6 +16,31 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+### resolver — an adjective in front of a declared phrase is a mention of its own: „Měsíční“ is the month, never dropped (#237)
+
+„Měsíční tržby z tržiště v roce 2025“ came back with `tržby z tržiště` (the marketplace revenue measure), `roce` and
+`2025` — and nothing for „Měsíční“: no mention, no gap. A caller reading the lattice answered one total for a question
+asking for months. A declared multi-word phrase names its own extent, so the adjective in front of it was in no span,
+and the mention layer headed its leftovers at nouns only. „Akční tržby z tržiště“ and "Promotional marketplace revenue"
+lost their restriction the same way, and so did an adjective under a governed value or a proper-noun run.
+
+- An `amod` dependent that no span covers, hanging from a word a gated span does cover, is now proposed alone as an
+  unbound mention, flagged `DomainSpanCandidate.leftOut`.
+- The lookup round asks it like any leftover mention. Only an ATTRIBUTE or an OPERATOR may bind it: a row reading it as
+  an entity or a measure matched part of a longer term („Dnešní“ ~ `není skladem`, the stock measure). Such a row is
+  refused and recorded on the gap as a hypothesis tried.
+- A Czech grain adjective that binds a calendar attribute is the GROUPING (R6"), as "Monthly" is. On the Hartland demo
+  estate the estate's own grain words reach it: „Měsíční“ / „měsíčních“ → `date_dim.month`, „Čtvrtletní“ → `quarter`,
+  „Roční“ → `year`, „Týdenní“ → `week_seq`.
+- A word nothing binds is a G1: „Denní“ and „Pololetní“ (no day or half-year grain declared), „Akční“, "Promotional",
+  „Průměrné“ (no average operator declared).
+- Such a mention is never the SUBJECT (R9: `FrameRoles.Input.subject`), and it is not offered to the grounding
+  triggers: a word the NER did not type a date has nothing to ground, and a trigger row that only reads like it
+  („Čtvrtletní“ / `čtvrtletí`) would bind it with no gap.
+- Unchanged: the `silent-modifiers` list („Celkové“, "Total"); a word in an operator slot that is no operator
+  (`dalších 10 prodejen`, #58); a word a quoted literal hangs from; a universal-typed word („Letošní“, "Last year's"); a
+  declared adjective ("Monthly"); an adjective inside a one-word anchor's own phrase („Měsíční tržby“).
+- No wire change.
 ### resolver — a store word reads by its role: a filter asks, a word that governs a store name is the dimension (ttr-demo#62)
 
 Where the lexicon gives one word two readings — a dimension (`er.entity.store`) and a fact a channel term is pinned to
