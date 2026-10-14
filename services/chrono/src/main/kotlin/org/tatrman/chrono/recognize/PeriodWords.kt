@@ -43,7 +43,7 @@ enum class PeriodUnit {
 }
 
 /**
- * What a relative period word is read against (#214, Bora's ruling of 2026-10-14).
+ * What a relative period word is read against (#214, as ruled on the issue on 2026-10-14).
  */
 enum class PeriodWordKind {
     /** The reference date: "this year", "last month", „loni“, „poslední čtvrtletí“. */
