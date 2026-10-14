@@ -166,7 +166,15 @@ object SlotHints {
             val refs = sibling.gatedEntityRefs.distinct()
             val owners = refs.mapNotNull { ownersByRef[it]?.takeIf { o -> o.isNotBlank() } }.toSet()
             if (refs.count { it !in owners } != 1) return emptySet()
-            return refs.mapNotNull { kindsByRef[it] }.filter { it.isNotBlank() }.toSet()
+            // …and in coordination a measure stands for its fact: a sibling that is a channel's
+            // revenue lends the channel's kind too (the Binder reads a candidate measure the same way).
+            return refs
+                .flatMap { ref ->
+                    val kind = kindsByRef[ref]
+                    val family = if (kind == KIND_MEASURE) ownersByRef[ref]?.let { kindsByRef[it] } else null
+                    listOfNotNull(kind, family)
+                }.filter { it.isNotBlank() }
+                .toSet()
         }
 
         /** Walk up to [MAX_HEAD_HOPS] governors for the candidate this span attaches to. */
@@ -302,8 +310,9 @@ enum class Slot {
  *   entity head ("vratky z prodejen" before returns declare measures) still carries [headRefs],
  *   which is what lets the reachability rule fix the slot rule's mis-bind (design.md T2 §4, E6).
  * @property coordSiblingKinds the kinds of the `conj` sibling's refs — "compare X and Y" wants
- *   both sides on the same axis, so the sibling's species is the preference. Empty when the sibling
- *   has two readings itself: only an unambiguous sibling decides (ttr-demo#62, coordination).
+ *   both sides on the same axis, so the sibling's species is the preference. A measure lends its
+ *   fact's kind as well. Empty when the sibling has two readings itself: only an unambiguous
+ *   sibling decides (ttr-demo#62, coordination).
  */
 data class SlotHint(
     val slot: Slot = Slot.NONE,

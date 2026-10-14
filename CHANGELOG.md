@@ -40,6 +40,12 @@ chose like with like. Two places did not follow the ruling:
   stores or web": the channel; „Srovnej prodejny a sklady“: the dimension), as before. A sibling with two readings
   of its own (an entity with its own measure counts as one) now lends no kind, so nothing is preferred and the
   question asks; before, a sibling whose two readings shared a kind still decided.
+- **In coordination a measure stands for its fact.** Where the store word's channel reading is the store-channel
+  revenue (a `measure` of `store_sales`) and its sibling is a channel fact (`web`, `tržiště`: `entity_with_measures`),
+  the two intersect on the channel: „Srovnej prodejny a web“, „Tržby prodejen a webu / webu a prodejen / prodejen
+  a tržiště v roce 2025“ bind the store revenue instead of asking. A sibling that is a measure lends its fact's kind
+  the same way. Two readings that both belong to the sibling's family still tie, and the tie asks. Only the
+  coordination slot reads a measure this way.
 - No wire change.
 
 ### resolver — a value's attribution names a member, never a model object („v roce 2025“, „marketplace revenu“, #227)

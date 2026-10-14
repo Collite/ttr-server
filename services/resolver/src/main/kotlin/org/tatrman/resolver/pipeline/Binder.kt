@@ -235,7 +235,7 @@ object Binder {
         // preferred candidate remains. It never empties the band, never promotes anything from
         // below it, and never touches an `M:` row — a data value is a different species, and the
         // question "which OBJECT does this word name" is not asked of it.
-        val admitted1 = slotPreference(admitted0, slot, kinds, rejected)
+        val admitted1 = slotPreference(admitted0, slot, kinds, owners, rejected)
 
         // MH T3 — the reachability collapse (contracts §7.3, ✅MH-D3 the equivalent is CARRIED).
         //
@@ -470,6 +470,7 @@ object Binder {
         admitted0: List<ClassedMatch>,
         slot: SlotHint,
         kinds: Map<String, String>,
+        owners: Map<String, String>,
         rejected: MutableList<ClassedMatch>,
     ): List<ClassedMatch> {
         val objects = admitted0.filter { isModelObject(it) }
@@ -486,7 +487,17 @@ object Binder {
         // target.) The reachability rule below still runs: a reach the model DECLARES can still
         // prove the two readings equal, or prove the fact the wrong one.
         if (slot.slot == Slot.FILTER && isDimensionVsFact(objects, kinds)) return admitted0
-        val keep = objects.filter { kindOf(it, kinds) in preferred }
+
+        // ttr-demo#62, the coordination ruling (2026-10-14) — of two mentions joined by „a“/„nebo“,
+        // the ambiguous one takes the reading where the two INTERSECT, and in coordination a measure
+        // stands for its fact: „Srovnej prodejny a web“ compares the store channel with the web
+        // channel, whether the store word's channel reading is the fact or its revenue. So a measure
+        // also answers to its fact's kind here. A sibling lends its own family the same way
+        // (`SlotHints`); two readings that both answer to it still tie, and the tie asks.
+        fun prefers(c: ClassedMatch): Boolean =
+            kindOf(c, kinds) in preferred ||
+                (slot.slot == Slot.COORD_WITH && familyKindOf(c, kinds, owners) in preferred)
+        val keep = objects.filter(::prefers)
         if (keep.isEmpty()) return admitted0
 
         // ⛔ SILENCE IS NOT A SPECIES (review-087 F1). Only a row whose kind is KNOWN and
@@ -496,10 +507,25 @@ object Binder {
         // schema — and dropping it would make a PARTIALLY described registry bind where a fully
         // undeclared one asks. A registry that says less must degrade toward asking, never
         // toward binding.
-        val dropped = objects.filter { kindOf(it, kinds).isNotBlank() && kindOf(it, kinds) !in preferred }
+        val dropped = objects.filter { kindOf(it, kinds).isNotBlank() && !prefers(it) }
         if (dropped.isEmpty()) return admitted0
         rejected += dropped
         return admitted0 - dropped.toSet()
+    }
+
+    /**
+     * ttr-demo#62 — a reading's FAMILY for coordination: a measure's is its fact's kind (the declared
+     * owner's, `entity_with_measures` on a channel), everything else's is its own kind. A measure whose
+     * owner the registry does not declare keeps its own kind.
+     */
+    private fun familyKindOf(
+        c: ClassedMatch,
+        kinds: Map<String, String>,
+        owners: Map<String, String>,
+    ): String {
+        val kind = kindOf(c, kinds)
+        if (kind != KIND_MEASURE) return kind
+        return owners[c.match.targetRef]?.let { kinds[it] }?.takeIf { it.isNotBlank() } ?: kind
     }
 
     /**

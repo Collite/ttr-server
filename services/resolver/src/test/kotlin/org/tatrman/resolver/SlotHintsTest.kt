@@ -228,6 +228,35 @@ class SlotHintsTest :
             stamp(p, candidates)[0].slot shouldBe SlotHint(Slot.COORD_WITH, coordSiblingKinds = emptySet())
         }
 
+        "coordination — a MEASURE sibling lends its fact's kind too: it stands for its channel" {
+            // „Srovnej prodejny a tržby z webu“: the sibling's one reading is the web revenue, a measure
+            // of the web channel fact — so it intersects a channel reading of the store word whether that
+            // reading is the channel itself or its revenue.
+            val webRevenue = "er.entity.web_sales.ext_sales_price"
+            val p =
+                parse(
+                    "cs",
+                    tok("Srovnej", 0, 7, "srovnat", "VERB", 0, "root"),
+                    tok("prodejny", 8, 16, "prodejna", "NOUN", 1, "obj"),
+                    tok("a", 17, 18, "a", "CCONJ", 4, "cc"),
+                    tok("tržby", 19, 24, "tržba", "NOUN", 2, "conj"),
+                )
+            val stamped =
+                SlotHints.stamp(
+                    p,
+                    listOf(
+                        anchor("prodejny", 1, listOf(store, storeSales), lemma = "prodejna"),
+                        anchor("tržby", 3, listOf(webRevenue), lemma = "tržba"),
+                    ),
+                    kinds + (webRevenue to "measure"),
+                    mapOf(webRevenue to webSales),
+                    "cs",
+                    preps,
+                )
+            stamped[0].slot shouldBe
+                SlotHint(Slot.COORD_WITH, coordSiblingKinds = setOf("measure", "entity_with_measures"))
+        }
+
         "coordination — an entity and its OWN measure are one reading, so the sibling still decides" {
             val channelSales = "er.entity.channel_sales"
             val revenue = "er.entity.channel_sales.ext_sales_price"

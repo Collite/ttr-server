@@ -429,6 +429,75 @@ class BinderTest :
                 .map { it.match.targetRef } shouldContainExactlyInAnyOrder listOf(store, region)
         }
 
+        // In coordination a MEASURE stands for its fact: „Srovnej prodejny a web“ — the store word reads
+        // the store dimension or the store-channel revenue (a measure of `store_sales`), and `web` is the
+        // web channel (`web_sales`, entity_with_measures). They intersect on the channel family.
+        val storeRevenue = "er.entity.store_sales.ext_sales_price"
+        val familyKinds = kinds + (storeRevenue to "measure")
+        val familyOwners = mapOf(storeRevenue to storeSales)
+        val storeOrRevenue =
+            listOf(
+                declared(store, 1.0, EvidenceClass.EVIDENCE_CLASS_EXACT),
+                declared(storeRevenue, 1.0, EvidenceClass.EVIDENCE_CLASS_EXACT),
+            )
+
+        "coordination: a channel sibling picks the channel MEASURE — a measure stands for its fact" {
+            val bind =
+                decideMh(
+                    storeOrRevenue,
+                    slot = SlotHint(Slot.COORD_WITH, coordSiblingKinds = setOf("entity_with_measures")),
+                    kindsMap = familyKinds,
+                    ownersMap = familyOwners,
+                ).shouldBeInstanceOf<Binder.Bind>()
+            bind.winner.match.targetRef shouldBe storeRevenue
+            bind.rejected.map { it.match.targetRef } shouldContainExactly listOf(store)
+        }
+
+        "coordination: a dimension sibling still picks the dimension over the channel measure" {
+            decideMh(
+                storeOrRevenue,
+                slot = SlotHint(Slot.COORD_WITH, coordSiblingKinds = setOf("entity")),
+                kindsMap = familyKinds,
+                ownersMap = familyOwners,
+            ).shouldBeInstanceOf<Binder.Bind>()
+                .winner.match.targetRef shouldBe store
+        }
+
+        "coordination: two readings of the sibling's family both intersect — it asks" {
+            // the store-channel revenue (a measure of a channel fact) and the web channel itself: both
+            // are the channel family the sibling names, so the sibling cannot choose between them
+            val ambiguous =
+                decideMh(
+                    listOf(
+                        declared(storeRevenue, 1.0, EvidenceClass.EVIDENCE_CLASS_EXACT),
+                        declared(webSales, 1.0, EvidenceClass.EVIDENCE_CLASS_EXACT),
+                    ),
+                    slot = SlotHint(Slot.COORD_WITH, coordSiblingKinds = setOf("entity_with_measures")),
+                    kindsMap = familyKinds,
+                    ownersMap = familyOwners,
+                ).shouldBeInstanceOf<Binder.Ambiguous>()
+            ambiguous.admitted.map { it.match.targetRef } shouldContainExactlyInAnyOrder listOf(storeRevenue, webSales)
+        }
+
+        "coordination only: a measure is not its fact's kind in any other slot" {
+            // a filter prefers nothing between a dimension and a fact (ttr-demo#62), and a group-by still
+            // wants the dimension — the family reading is the coordination rule's alone
+            decideMh(
+                storeOrRevenue,
+                slot = SlotHint(Slot.GROUP_BY),
+                kindsMap = familyKinds,
+                ownersMap = familyOwners,
+            ).shouldBeInstanceOf<Binder.Bind>()
+                .winner.match.targetRef shouldBe store
+            decideMh(
+                storeOrRevenue,
+                slot = SlotHint(Slot.FILTER, headRefs = listOf("er.entity.channel_sales"), headMeasureCapable = true),
+                kindsMap = familyKinds,
+                ownersMap = familyOwners,
+            ).shouldBeInstanceOf<Binder.Ambiguous>()
+                .admitted.size shouldBe 2
+        }
+
         "coordination: a sibling of a third kind intersects neither reading — it asks" {
             decideMh(slot = SlotHint(Slot.COORD_WITH, coordSiblingKinds = setOf("attribute")))
                 .shouldBeInstanceOf<Binder.Ambiguous>()

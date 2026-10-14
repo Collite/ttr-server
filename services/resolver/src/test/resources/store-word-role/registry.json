@@ -340,12 +340,12 @@
   }, {
     "ref": "er.entity.store_sales",
     "categories": ["er.entity.store_sales"],
-    "anchors": ["brick and mortar", "kamenná prodejna", "obchod", "prodeje v prodejnách", "prodejen", "prodejna", "prodejnami", "prodejnou", "prodejnu", "prodejny", "prodejnách", "prodejnám", "prodejně", "retail stores", "store sales", "stores", "tn stores"],
+    "anchors": ["brick and mortar", "kamenná prodejna", "obchod", "prodeje v prodejnách", "prodejna", "retail stores", "store sales", "stores", "tn stores"],
     "objectKind": "entity_with_measures"
   }, {
     "ref": "er.entity.store_sales.ext_sales_price",
     "categories": ["er.entity.store_sales.ext_sales_price"],
-    "anchors": ["obrat z prodejen", "obratu z prodejen", "retail revenue", "store revenue", "tržba z prodejen", "tržby z prodejen", "tržeb z prodejen"],
+    "anchors": ["obrat z prodejen", "obratu z prodejen", "prodejen", "prodejna", "prodejnami", "prodejnou", "prodejnu", "prodejny", "prodejnách", "prodejnám", "prodejně", "retail revenue", "store revenue", "tržba z prodejen", "tržby z prodejen", "tržeb z prodejen"],
     "objectKind": "measure",
     "ownerRef": "er.entity.store_sales"
   }, {

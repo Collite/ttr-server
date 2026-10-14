@@ -4,6 +4,7 @@ package org.tatrman.resolver
 import com.google.protobuf.util.JsonFormat
 import io.kotest.assertions.withClue
 import io.kotest.core.spec.style.StringSpec
+import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
 import io.kotest.matchers.shouldBe
@@ -56,8 +57,8 @@ import org.tatrman.fuzzy.v1.TargetClass as FuzzyTargetClass
  * by its ROLE, through the whole pipeline.
  *
  * Hartland's lexicon gives the bare word two readings in one tie band: the store DIMENSION
- * (`er.entity.store`) and the Stores CHANNEL (`er.entity.store_sales`, the fact its channel term is
- * pinned to). The ruling:
+ * (`er.entity.store`) and the Stores CHANNEL — in cs its revenue (`er.entity.store_sales.ext_sales_price`,
+ * a measure), in en the channel fact (`er.entity.store_sales`). The ruling:
  *
  *  - **grouping** („podle prodejen“, "by stores") → the dimension, no ask;
  *  - **filter** („Tržby prodejen v roce 2025“, "Revenue of stores in 2025") → ASK, offering both readings.
@@ -68,15 +69,19 @@ import org.tatrman.fuzzy.v1.TargetClass as FuzzyTargetClass
  *    looked for an `anchorHeadToken` span proposal does not set on a governed value), so the filter rule
  *    read these too, and would have started asking once the filter asked.
  *
- * Counting („Kolik máme prodejen?“) and comparing („Srovnej prodejny a web“) keep their slot's reading,
- * and the bare word alone („Prodejny“) still asks.
+ * Counting („Kolik máme prodejen?“) keeps the dimension, and the bare word alone („Prodejny“) still asks.
+ * Coordination (ruled 2026-10-14): joined by „a“ / „nebo“ / "and" / "or" to a mention with ONE reading,
+ * the store word takes the reading the two share — the channel beside `web` / `tržiště` (a measure
+ * standing for its fact), the dimension beside `sklady` — and nothing is asked.
  *
  * **Provenance (2026-10-14).**
  *  - Parses (`store-word-role/<question>.parse.json`): hartland's nlp, as returned (`traceId` and
  *    `elapsedMs` dropped). cs: MorphoDiTa `czech-morfflex2.0-pdtc1.0-220710` tokens, lemmas and tags,
  *    Stanza 1.10.0 dependencies, NameTag 3 `nametag3-czech-cnec2.0-240830` entities. en: Stanza 1.10.0.
  *  - Registry (`store-word-role/registry.json`): the projection `LexiconArchiveRegistrySource` builds from
- *    the hartland lexicon archive that gives the bare store word both readings (ttr-demo#73, `sha256:54dae6c3…`).
+ *    the hartland lexicon archive that gives the bare store word both readings (ttr-demo#73 at `5842901`,
+ *    `sha256:cbd74704…`): in cs the store dimension and the store-channel revenue, in en the dimension and the
+ *    Stores channel fact.
  *  - Matcher rows (`store-word-role/matcher.json`): every row lex-matcher 0.11.3 answered to these
  *    questions, keyed by the folded query — the declared rows from a matcher over that archive, the
  *    member rows (`Praha`) from hartland's live member index, which the archive does not carry. Each
@@ -88,20 +93,20 @@ class StoreWordRoleTest :
 
         // ── filter: ask ─────────────────────────────────────────────────────────────────────────
 
-        "„Tržby prodejen v roce 2025“ — a store word in a filter ASKS: the store dimension or the store channel" {
+        "„Tržby prodejen v roce 2025“ — a store word in a filter ASKS: the store dimension or the store revenue" {
             val turn = resolve(TRZBY_PRODEJEN)
 
             turn.lattice.summary() shouldContainExactly
                 listOf(
                     "M Tržby → $REVENUE [SUBJECT, MEASURE]",
-                    "M prodejen → $STORE, $STORE_SALES []",
+                    "M prodejen → $STORE, $STORE_CHANNEL_REVENUE []",
                     "M roce → $CHRONO [FILTER]",
                     "V 2025 GROUNDED → $CAL_DATE ⟵ $CHRONO",
                 )
-            turn.asks("prodejen")
+            turn.asks("prodejen", STORE_CHANNEL_REVENUE to "measure")
         }
 
-        "\"Revenue of stores in 2025\" — the same question in English" {
+        "\"Revenue of stores in 2025\" — the same question in English (its channel reading is the fact)" {
             val turn = resolve(REVENUE_OF_STORES)
 
             turn.lattice.summary() shouldContainExactly
@@ -110,7 +115,7 @@ class StoreWordRoleTest :
                     "M stores → $STORE, $STORE_SALES [FILTER]",
                     "V 2025 GROUNDED → $CAL_DATE",
                 )
-            turn.asks("stores")
+            turn.asks("stores", STORE_SALES to "entity_with_measures")
         }
 
         // ── a governed store name: the dimension and its member, no ask ────────────────────────
@@ -173,58 +178,93 @@ class StoreWordRoleTest :
                 )
         }
 
+        "count keeps the dimension; the bare word still asks" {
+            resolve(KOLIK).also { it.answers() }.lattice.summary() shouldContainExactly
+                listOf("M prodejen → $STORE [SUBJECT]")
+            resolve(PRODEJNY).asks("Prodejny", STORE_CHANNEL_REVENUE to "measure")
+        }
+
         // ── coordination (ruled 2026-10-14): the reading where the two mentions intersect ──────────
         //
         // Two mentions joined by „a“ / „nebo“ / "and" / "or", one with two readings and the other with
         // one: the ambiguous one takes the reading they share, and nothing is asked. A filter does not
-        // override it — coordination is read first.
+        // override it — coordination is read first. In coordination a measure stands for its fact, so
+        // the cs store word's revenue reading meets `web` / `tržiště`, which are channel facts.
 
-        "coordination — \"Revenue of stores and/or web in 2025\": the store word takes the channel, no ask" {
-            for (question in listOf(REVENUE_OF_STORES_AND_WEB, REVENUE_OF_STORES_OR_WEB)) {
+        "coordination — „Tržby prodejen a/nebo webu / tržiště v roce 2025“, either order: the store revenue, no ask" {
+            for ((question, sibling) in listOf(
+                TRZBY_PRODEJEN_A_WEBU to "M webu → $WEB_REVENUE [MEASURE]",
+                TRZBY_PRODEJEN_NEBO_WEBU to "M webu → $WEB_REVENUE [MEASURE]",
+                TRZBY_PRODEJEN_A_TRZISTE to "M tržiště → $CATALOG_SALES []",
+            )) {
                 withClue(question.text) {
                     val turn = resolve(question)
                     turn.lattice.summary() shouldContainExactly
                         listOf(
-                            "M Revenue → $REVENUE [SUBJECT, MEASURE]",
-                            "M stores → $STORE_SALES []",
-                            "M web → $WEB_SALES []",
-                            "V 2025 GROUNDED → $CAL_DATE",
+                            "M Tržby → $REVENUE [SUBJECT, MEASURE]",
+                            "M prodejen → $STORE_CHANNEL_REVENUE [MEASURE]",
+                            sibling,
+                            "M roce → $CHRONO [FILTER]",
+                            "V 2025 GROUNDED → $CAL_DATE ⟵ $CHRONO",
+                        )
+                    turn.answers()
+                }
+            }
+            val reversed = resolve(TRZBY_WEBU_A_PRODEJEN)
+            reversed.lattice.summary() shouldContainExactly
+                listOf(
+                    "M Tržby → $REVENUE [SUBJECT, MEASURE]",
+                    "M webu → $WEB_REVENUE [MEASURE]",
+                    "M prodejen → $STORE_CHANNEL_REVENUE [MEASURE]",
+                    "M roce → $CHRONO [FILTER]",
+                    "V 2025 GROUNDED → $CAL_DATE ⟵ $CHRONO",
+                )
+            reversed.answers()
+        }
+
+        "coordination — „Srovnej prodejny a/nebo web“, „Srovnej prodejny a tržiště“: the store revenue, no ask" {
+            for ((question, sibling) in listOf(
+                SROVNEJ to "M web → $WEB_SALES []",
+                SROVNEJ_NEBO to "M web → $WEB_SALES []",
+                SROVNEJ_TRZISTE to "M tržiště → $CATALOG_SALES []",
+            )) {
+                withClue(question.text) {
+                    val turn = resolve(question)
+                    turn.lattice.summary() shouldContainExactly
+                        listOf(
+                            "M Srovnej → op:compare []",
+                            "M prodejny → $STORE_CHANNEL_REVENUE [SUBJECT, MEASURE]",
+                            sibling,
                         )
                     turn.answers()
                 }
             }
         }
 
-        "coordination — „Tržby prodejen a/nebo webu v roce 2025“: the store word takes the channel" {
-            // `webu` itself binds nothing on this archive (G1): the genitive is not declared, and the
-            // lemma lookup ties the web revenue and the web returns phrases. That is the lexicon's to
-            // fix; what this rule decides is the store word, which is not asked about.
-            for (question in listOf(TRZBY_PRODEJEN_A_WEBU, TRZBY_PRODEJEN_NEBO_WEBU)) {
+        "coordination — \"Revenue of stores and/or web\", either order: the store channel, no ask" {
+            for (question in listOf(REVENUE_OF_STORES_AND_WEB, REVENUE_OF_STORES_OR_WEB, REVENUE_OF_WEB_AND_STORES)) {
                 withClue(question.text) {
                     val turn = resolve(question)
-                    turn.lattice
-                        .mentionsList
-                        .single { it.span.text == "prodejen" }
-                        .bindingsList
-                        .map { it.ref } shouldContainExactly listOf(STORE_SALES)
-                    turn.lattice.gapsList.map { it.kind to it.span.text } shouldContainExactly
-                        listOf(GapKind.GAP_KIND_G1_UNBOUND to "webu")
+                    turn.lattice.summary().filter { it.startsWith("M stores") } shouldContainExactly
+                        listOf("M stores → $STORE_SALES []")
+                    turn.lattice.summary() shouldContain "M web → $WEB_SALES []"
+                    turn.answers()
                 }
             }
         }
 
-        "coordination — \"Compare stores and web\", „Srovnej prodejny nebo web“: channel with channel, no ask" {
+        "coordination — \"Compare stores and web / the marketplace\": channel with channel, no ask" {
             resolve(COMPARE_STORES_AND_WEB).also { it.answers() }.lattice.summary() shouldContainExactly
                 listOf(
                     "M Compare → op:compare []",
                     "M stores → $STORE_SALES [SUBJECT]",
                     "M web → $WEB_SALES []",
                 )
-            resolve(SROVNEJ_NEBO).also { it.answers() }.lattice.summary() shouldContainExactly
+            resolve(COMPARE_STORES_AND_MARKETPLACE).also { it.answers() }.lattice.summary() shouldContainExactly
                 listOf(
-                    "M Srovnej → op:compare []",
-                    "M prodejny → $STORE_SALES [SUBJECT]",
-                    "M web → $WEB_SALES []",
+                    "M Compare → op:compare []",
+                    "M stores → $STORE_SALES [SUBJECT]",
+                    "M the marketplace → $CATALOG_SALES []",
                 )
         }
 
@@ -240,27 +280,18 @@ class StoreWordRoleTest :
                 .map { it.ref } shouldContainExactly listOf(STORE)
         }
 
-        "coordination — \"Compare stores and warehouses\": a sibling that is no mention decides nothing, so it asks" {
-            // `warehouses` has no reading in this lexicon, so there is nothing to intersect with; and
-            // a coordinated noun is not a value the store word governs.
+        "coordination — a sibling that is no mention, or is ambiguous itself, decides nothing: it asks" {
+            // "Compare stores and warehouses": `warehouses` has no reading in this lexicon, and a
+            // coordinated noun is not a value the store word governs.
             resolve(COMPARE_STORES_AND_WAREHOUSES).let { turn ->
                 turn.response.hasAwaiting() shouldBe true
                 turn.response.awaiting.optionsList
                     .map { it.targetRef } shouldContainExactlyInAnyOrder
                     listOf(STORE, STORE_SALES)
             }
-        }
-
-        "count and compare keep their reading; the bare word still asks" {
-            resolve(KOLIK).also { it.answers() }.lattice.summary() shouldContainExactly
-                listOf("M prodejen → $STORE [SUBJECT]")
-            resolve(SROVNEJ).also { it.answers() }.lattice.summary() shouldContainExactly
-                listOf(
-                    "M Srovnej → op:compare []",
-                    "M prodejny → $STORE_SALES [SUBJECT]",
-                    "M web → $WEB_SALES []",
-                )
-            resolve(PRODEJNY).asks("Prodejny")
+            // „Srovnej prodejny a prodejny“: each side has two readings, so neither lends one.
+            resolve(SROVNEJ_PRODEJNY_A_PRODEJNY).lattice.gapsList.map { it.kind } shouldContainExactly
+                listOf(GapKind.GAP_KIND_G2_AMBIGUOUS, GapKind.GAP_KIND_G2_AMBIGUOUS)
         }
     }) {
     private class Question(
@@ -285,14 +316,17 @@ class StoreWordRoleTest :
     ) {
         val lattice: ResolutionState get() = response.resolutionState
 
-        /** The question is asked: one G2 over [span], offering exactly the dimension and the channel. */
-        fun asks(span: String) {
+        /** The question is asked: one G2 over [span], offering exactly the dimension and [channel] (ref to kind). */
+        fun asks(
+            span: String,
+            channel: Pair<String, String>,
+        ) {
             lattice.gapsList.map { it.kind to it.span.text } shouldContainExactly
                 listOf(GapKind.GAP_KIND_G2_AMBIGUOUS to span)
             response.hasAwaiting() shouldBe true
             val options = response.awaiting.optionsList
             options.map { it.targetRef to it.objectKind } shouldContainExactlyInAnyOrder
-                listOf(STORE to "entity", STORE_SALES to "entity_with_measures")
+                listOf(STORE to "entity", channel)
             options.map { it.span.text }.distinct() shouldContainExactly listOf(span)
         }
 
@@ -411,6 +445,8 @@ class StoreWordRoleTest :
         const val STORE_SALES = "er.entity.store_sales"
         const val STORE_NAME = "er.entity.store.store_name"
         const val WEB_SALES = "er.entity.web_sales"
+        const val WEB_REVENUE = "er.entity.web_sales.ext_sales_price"
+        const val CATALOG_SALES = "er.entity.catalog_sales"
         const val STORE_CHANNEL_REVENUE = "er.entity.store_sales.ext_sales_price"
         const val REVENUE = "er.entity.channel_sales.ext_sales_price"
         const val CAL_DATE = "er.entity.date_dim.cal_date"
@@ -439,6 +475,15 @@ class StoreWordRoleTest :
         val COMPARE_STORES_AND_WEB = Question("Compare stores and web", "en", "coord-compare-stores-and-web")
         val SROVNEJ_NEBO = Question("Srovnej prodejny nebo web", "cs", "coord-srovnej-nebo")
         val SROVNEJ_SKLADY = Question("Srovnej prodejny a sklady", "cs", "coord-srovnej-sklady")
+        val SROVNEJ_TRZISTE = Question("Srovnej prodejny a tržiště", "cs", "coord-srovnej-trziste")
+        val SROVNEJ_PRODEJNY_A_PRODEJNY =
+            Question("Srovnej prodejny a prodejny", "cs", "coord-srovnej-prodejny-a-prodejny")
+        val TRZBY_WEBU_A_PRODEJEN = Question("Tržby webu a prodejen v roce 2025", "cs", "coord-trzby-webu-a-prodejen")
+        val TRZBY_PRODEJEN_A_TRZISTE = Question("Tržby prodejen a tržiště v roce 2025", "cs", "coord-trzby-a-trziste")
+        val REVENUE_OF_WEB_AND_STORES =
+            Question("Revenue of web and stores in 2025", "en", "coord-revenue-web-and-stores")
+        val COMPARE_STORES_AND_MARKETPLACE =
+            Question("Compare stores and the marketplace", "en", "coord-compare-stores-and-marketplace")
         val COMPARE_STORES_AND_WAREHOUSES =
             Question("Compare stores and warehouses", "en", "coord-stores-and-warehouses")
 
