@@ -72,6 +72,16 @@ data class LoaderSourceConfig(
 data class LexiconConfig(
     val archivePath: String = "",
     /**
+     * ttr-server#209 — SEVERAL compiled archives, one per source the estate's packages come from,
+     * loaded as ONE declared layer ([org.tatrman.fuzzy.loader.LexiconArchiveSource]). When set it is
+     * the whole list and [archivePath] is not added to it: the chart renders both, the singular key
+     * naming the FIRST archive, so an image older than this key still boots on that archive during
+     * a rolling deploy — and this one must not then read it twice. See [archives].
+     *
+     * ⛔ Not the learned layer: [overlayArchivePath] stays its own source on its own clock.
+     */
+    val archivePaths: List<String> = emptyList(),
+    /**
      * RV-32 (T4) — the uniqueness floor a TOKENS match must clear to be auto-bindable. Lives here
      * rather than under `token-based` because it is an authoring rule, not an engine tuning knob:
      * `token-based` shapes how things score, this decides what a score is allowed to mean.
@@ -99,7 +109,13 @@ data class LexiconConfig(
      * a layer would be a dependency the licence boundary does not allow.
      */
     val overlayArchivePath: String = "",
-)
+) {
+    /** The archives the declared layer reads: [archivePaths] when set, else [archivePath] as a one-element list. */
+    fun archives(): List<String> =
+        archivePaths.map { it.trim() }.filter { it.isNotEmpty() }.distinct().ifEmpty {
+            listOf(archivePath.trim()).filter { it.isNotEmpty() }
+        }
+}
 
 data class MetadataConfig(
     val host: String = "veles",
@@ -312,6 +328,16 @@ object ConfigLoader {
      */
     fun startupWarnings(config: AppConfig): List<String> =
         buildList {
+            // #209 — the two lexicon keys disagree: the list wins, and the singular archive is not read.
+            val lexicon = config.lexicon
+            val single = lexicon.archivePath.trim()
+            if (lexicon.archivePaths.isNotEmpty() && single.isNotEmpty() && single !in lexicon.archives()) {
+                add(
+                    "fuzzy.lexicon.archive-path ('$single') is not in fuzzy.lexicon.archive-paths " +
+                        "(${lexicon.archives()}) — the list wins and '$single' is NOT read. Name every " +
+                        "archive in the list (ttr-server#209).",
+                )
+            }
             val tokenBased = config.tokenBasedConfig
             if (tokenBased.matchVersion == MatchVersion.V2 && !tokenBased.idfEnabled) {
                 add(
@@ -438,6 +464,7 @@ object ConfigLoader {
             LexiconConfig(
                 archivePath =
                     if (lexicon.hasPath("archive-path")) lexicon.getString("archive-path") else defaults.archivePath,
+                archivePaths = lexicon.pathList("archive-paths"),
                 uniquenessMarginFloor =
                     if (lexicon.hasPath("uniqueness-margin-floor")) {
                         lexicon.getDouble("uniqueness-margin-floor")
@@ -460,6 +487,20 @@ object ConfigLoader {
         } catch (e: com.typesafe.config.ConfigException) {
             LexiconConfig()
         }
+
+    /**
+     * #209 — a HOCON list, or a comma-separated string (how a list arrives from the environment, the
+     * same shape as `security.api-keys`). Blanks dropped, so an unset `${?VAR}` reads as empty.
+     */
+    private fun com.typesafe.config.Config.pathList(path: String): List<String> {
+        if (!hasPath(path)) return emptyList()
+        val raw =
+            when (getValue(path).valueType()) {
+                com.typesafe.config.ConfigValueType.LIST -> getStringList(path)
+                else -> getString(path).split(',')
+            }
+        return raw.map { it.trim() }.filter { it.isNotEmpty() }
+    }
 
     private fun loadMetadataConfig(fuzzyConfig: com.typesafe.config.Config): MetadataConfig =
         try {

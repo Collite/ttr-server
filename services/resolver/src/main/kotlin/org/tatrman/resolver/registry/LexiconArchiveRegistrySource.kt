@@ -57,11 +57,34 @@ import kotlin.io.path.readBytes
  * **Missing or unreadable is not fatal**, exactly as on the lex-matcher side: an estate that has
  * authored no lexicon is a supported deployment, and this reader then reports the same empty
  * vocabulary the stub did — but loudly, which is the whole point of the change.
+ *
+ * ## Several archives, one layer (ttr-server#209)
+ *
+ * [archivePaths] may name several archives — one per source the estate's packages come from — and
+ * they load as ONE declared layer ([DeclaredLayer]): exactly what one build over all of those
+ * packages would have packed, so a form two packages declare gets both readings and the stdlib
+ * rows every archive embeds are served once. One path is the pre-#209 reader, byte for byte: same
+ * hash, same vocabulary, no merge.
+ *
+ * ⛔ **All or none.** The archives are read as a SET: if any one is absent, unreadable, not a
+ * lexicon, undecodable, or declares a different `schemaVersion` from the others, the set is
+ * refused — WARNed once, naming the archive — and the layer keeps what it had loaded (nothing, at
+ * boot). Serving the readable half would make the other source's vocabulary vanish with nothing
+ * but a log line to say so, which is the exact failure #209 exists to end.
  */
 class LexiconArchiveRegistrySource(
-    private val archivePath: Path,
+    private val archivePaths: List<Path>,
 ) : RegistrySource {
+    constructor(archivePath: Path) : this(listOf(archivePath))
+
+    init {
+        require(archivePaths.isNotEmpty()) { "LexiconArchiveRegistrySource needs at least one archive path" }
+    }
+
     private val logger = LoggerFactory.getLogger(LexiconArchiveRegistrySource::class.java)
+
+    /** How the archives are named in a log line: the path, or the list of them. */
+    private val named: String = archivePaths.singleOrNull()?.toString() ?: archivePaths.joinToString(", ", "[", "]")
 
     @Volatile
     private var cached: Loaded? = null
@@ -80,6 +103,9 @@ class LexiconArchiveRegistrySource(
      * The **archive** id — what the snapshot cache in [SnapshotRegistry] compares. Deliberately
      * the file's content id and not [CompiledLexicon.contentHash]: this answers *"is the file on
      * disk a different file?"*, and it must move when anything in the archive moves.
+     *
+     * With several archives it is [DeclaredLayer.layerId] over all of their ids, so a change to
+     * ANY one of them is a new snapshot (#209); with one it is that archive's id, unchanged.
      *
      * Empty string when there is no readable archive — a stable value, so an absent lexicon does
      * not make the registry re-project on every call.
@@ -166,7 +192,7 @@ class LexiconArchiveRegistrySource(
         logger.info(
             "declared vocabulary from {}: {} entity type(s) ({} member vocabularies), {} anchor(s), " +
                 "from {} archive entries ({} non-object rows excluded)",
-            archivePath,
+            named,
             entries.size,
             entries.count { it.memberVocabulary },
             entries.sumOf { it.values.size },
@@ -186,35 +212,86 @@ class LexiconArchiveRegistrySource(
      * Returns null — never throws — for absent, unreadable, wrong-kind or malformed archives, each
      * logged once per distinct cause. A broken lexicon should be loud in the log and invisible to
      * a query, not the reverse.
+     *
+     * #209: every archive is read on every call (the same per-file read the single reader always
+     * did), and the set is the unit — one bad archive keeps the previously loaded layer whole.
      */
     private fun load(): Loaded? {
-        if (!archivePath.exists()) {
-            warnOnce("absent", "no compiled lexicon at {} — the declared vocabulary is EMPTY", archivePath)
+        val reads = archivePaths.map { path -> read(path) ?: return cached }
+
+        val id = DeclaredLayer.layerId(reads.map { it.second })
+        cached?.let { if (it.archiveId == id) return it }
+
+        val lexicons = reads.map { (path, _, bytes) -> decode(path, bytes) ?: return cached }
+
+        // #209 — one layer is one schema. The archives' sources are built with ONE pinned toolchain
+        // for exactly this reason; two versions mean one source was rebuilt and the other not, and
+        // merging them would serve a layer whose rows disagree about which fields exist.
+        val schemas = archivePaths.zip(lexicons).groupBy({ it.second.header.schemaVersion }, { it.first })
+        if (schemas.size > 1) {
+            warnOnce(
+                "schema-mixed",
+                "lexicon archives {} declare different schemas ({}) — refusing the set; the declared " +
+                    "layer keeps what it had loaded. Rebuild every source's archive with the same " +
+                    "toolchain (ttr-server#209).",
+                named,
+                schemas.entries.joinToString("; ") { (schema, paths) -> "$schema: ${paths.joinToString()}" },
+            )
             return cached
         }
 
+        val merged = DeclaredLayer.merge(lexicons)
+        return Loaded(id, merged.lexicon).also {
+            cached = it
+            // Cleared BEFORE the version check, not after: `warnOnce` dedups by cause, and
+            // clearing afterwards would drop the very key just recorded — so a file that
+            // never changes would re-warn on every reload.
+            reported.clear()
+            checkSchemaVersion(it.lexicon)
+            reportConflicts(merged)
+        }
+    }
+
+    /** One archive's bytes and content id, or null (WARNed once) when it cannot be read. */
+    private fun read(path: Path): Triple<Path, String, ByteArray>? {
+        if (!path.exists()) {
+            warnOnce(
+                "absent:$path",
+                if (archivePaths.size == 1) {
+                    "no compiled lexicon at {} — the declared vocabulary is EMPTY"
+                } else {
+                    "no compiled lexicon at {} — refusing the archive set; the declared layer keeps what it had loaded"
+                },
+                path,
+            )
+            return null
+        }
         val bytes =
             try {
-                archivePath.readBytes()
+                path.readBytes()
             } catch (e: Exception) {
-                warnOnce("unreadable", "compiled lexicon at {} is unreadable: {}", archivePath, e.message)
-                return cached
+                warnOnce("unreadable:$path", "compiled lexicon at {} is unreadable: {}", path, e.message)
+                return null
             }
+        return Triple(path, SnapshotId.of(bytes), bytes)
+    }
 
-        val id = SnapshotId.of(bytes)
-        cached?.let { if (it.archiveId == id) return it }
-
+    /** One archive's lexicon, or null (WARNed once) when it is not a readable lexicon archive. */
+    private fun decode(
+        path: Path,
+        bytes: ByteArray,
+    ): CompiledLexicon? {
         val contents =
             when (val read = SnapshotReader.read(bytes)) {
                 is SnapshotReadResult.Ok -> read.contents
                 is SnapshotReadResult.Failure -> {
                     warnOnce(
-                        "unarchivable",
+                        "unarchivable:$path",
                         "compiled lexicon at {} is not a readable archive: {}",
-                        archivePath,
+                        path,
                         read.reason,
                     )
-                    return cached
+                    return null
                 }
             }
 
@@ -223,39 +300,58 @@ class LexiconArchiveRegistrySource(
             // vocabulary and read as "the estate authored nothing" — the exact failure mode this
             // whole change exists to end.
             warnOnce(
-                "wrong-kind",
+                "wrong-kind:$path",
                 "archive at {} is kind='{}', expected '{}' — not a lexicon archive",
-                archivePath,
+                path,
                 contents.manifest.kind,
                 LexiconArchive.KIND,
             )
-            return cached
+            return null
         }
 
         val json =
             contents.docs[LexiconArchive.LEXICON] ?: run {
-                warnOnce("no-doc", "lexicon archive at {} has no {}", archivePath, LexiconArchive.LEXICON)
-                return cached
+                warnOnce("no-doc:$path", "lexicon archive at {} has no {}", path, LexiconArchive.LEXICON)
+                return null
             }
 
         return try {
-            Loaded(id, CompiledLexicon.fromJson(json)).also {
-                cached = it
-                // Cleared BEFORE the version check, not after: `warnOnce` dedups by cause, and
-                // clearing afterwards would drop the very key just recorded — so a file that
-                // never changes would re-warn on every reload.
-                reported.clear()
-                checkSchemaVersion(it.lexicon)
-            }
+            CompiledLexicon.fromJson(json)
         } catch (e: Exception) {
             warnOnce(
-                "undecodable",
+                "undecodable:$path",
                 "lexicon archive at {} has an undecodable {}: {}",
-                archivePath,
+                path,
                 LexiconArchive.LEXICON,
                 e.message,
             )
-            cached
+            null
+        }
+    }
+
+    /**
+     * #209 — what the merge had to decide, said once per load. Both are the compiler's own
+     * conflicts (`RG-LEXC-002`, a per-ref fact two builds disagree on), met across archives
+     * instead of inside one; the merge resolved them exactly as one build would have.
+     */
+    private fun reportConflicts(merged: DeclaredLayer.Merged) {
+        if (merged.methodConflicts.isNotEmpty()) {
+            warnOnce(
+                "merge-methods",
+                "lexicon archives {} match {} term(s) two ways; kept the compiler's choice: {}",
+                named,
+                merged.methodConflicts.size,
+                merged.methodConflicts.take(MAX_LISTED).joinToString("; "),
+            )
+        }
+        if (merged.factConflicts.isNotEmpty()) {
+            warnOnce(
+                "merge-facts",
+                "lexicon archives {} disagree on {} per-ref fact(s); kept the first archive's: {}",
+                named,
+                merged.factConflicts.size,
+                merged.factConflicts.take(MAX_LISTED).joinToString("; "),
+            )
         }
     }
 
@@ -280,10 +376,15 @@ class LexiconArchiveRegistrySource(
                 "Reading it anyway — unknown fields are ignored — but a field this reader needs " +
                 "may be absent, and an OLDER reader than the producer cannot be fixed by config: " +
                 "roll the readers first (MS contracts §6, readers before producers).",
-            archivePath,
+            named,
             found,
             CompiledLexiconHeader.SCHEMA_VERSION,
         )
+    }
+
+    private companion object {
+        /** How many merge conflicts a WARN spells out; the count always covers all of them. */
+        const val MAX_LISTED = 5
     }
 
     private fun warnOnce(

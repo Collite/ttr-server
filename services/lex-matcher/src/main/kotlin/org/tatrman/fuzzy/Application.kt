@@ -173,14 +173,18 @@ fun Application.module(serverConfig: KtorServerConfig) {
 
     // RV-P1.4 T3 — the declared layer, when an archive is configured. Null otherwise, which is
     // exactly the pre-RV wiring: StringRepository treats a null source as "member data only".
+    // ttr-server#209 — one archive per source the estate's packages come from, read as one layer.
     val lexiconSource =
-        config.lexicon.archivePath
-            .takeIf { it.isNotBlank() }
-            ?.let { path ->
-                log.info("Compiled lexicon layer enabled: {}", path)
+        config.lexicon
+            .archives()
+            .takeIf { it.isNotEmpty() }
+            ?.let { paths ->
+                log.info("Compiled lexicon layer enabled: {} archive(s) {}", paths.size, paths)
                 LexiconArchiveSource(
-                    java.nio.file.Path
-                        .of(path),
+                    paths.map {
+                        java.nio.file.Path
+                            .of(it)
+                    },
                 )
             }
     // RV-P7.3 T3 — the LEARNED layer, when the estate's Golem is exporting one. `NoopOverlayStore`

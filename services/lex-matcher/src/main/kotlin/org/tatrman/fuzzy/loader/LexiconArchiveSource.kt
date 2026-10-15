@@ -38,11 +38,36 @@ import org.tatrman.ttr.lexicon.TargetClass as ArtifactTargetClass
  * **Missing or unreadable is not fatal.** A lex-matcher with no lexicon archive is the pre-RV
  * service: member vocabulary only, no declared layer. Failing startup because an optional layer
  * is absent would take down matching for estates that have not authored a lexicon yet.
+ *
+ * ## Several archives, one layer (ttr-server#209)
+ *
+ * [archivePaths] may name several archives — one per source the estate's packages come from — and
+ * they load as ONE declared layer ([DeclaredLayer]): exactly what one build over all of those
+ * packages would have packed. A form two packages declare gets both readings; the stdlib rows every
+ * archive embeds are served once, so they neither double a candidate nor move a score; and the
+ * entry-table hash ([artifactHash]) is the one that single build would report. One path is the
+ * pre-#209 reader, byte for byte.
+ *
+ * ⛔ **All or none.** The archives are read as a SET on every refresh tick: if any one is absent,
+ * unreadable, not a lexicon, undecodable, or declares a different `schemaVersion` from the others,
+ * the set is refused with a WARN naming the archive and the layer keeps what it had loaded.
+ * Serving the readable half would make one source's vocabulary vanish with only a log line to say
+ * so. This is NOT the learned layer: `overlay-archive-path` stays a separate source on its own
+ * clock ([OverlayArchiveSource]).
  */
 class LexiconArchiveSource(
-    private val archivePath: Path,
+    private val archivePaths: List<Path>,
 ) : SnapshotVocabularySource {
+    constructor(archivePath: Path) : this(listOf(archivePath))
+
+    init {
+        require(archivePaths.isNotEmpty()) { "LexiconArchiveSource needs at least one archive path" }
+    }
+
     private val logger = LoggerFactory.getLogger(LexiconArchiveSource::class.java)
+
+    /** How the archives are named in a log line: the path, or the list of them. */
+    private val named: String = archivePaths.singleOrNull()?.toString() ?: archivePaths.joinToString(", ", "[", "]")
 
     /** Last successfully read archive, keyed by its content id so a re-read is not a re-parse. */
     @Volatile
@@ -60,6 +85,9 @@ class LexiconArchiveSource(
      *
      * Empty string when there is no readable archive, which is a stable value — so an absent
      * lexicon does not make the refresh loop reload on every tick.
+     *
+     * With several archives it is [DeclaredLayer.layerId] over all of their ids, so the refresh
+     * reloads when ANY one of them changes (#209); with one it is that archive's id, unchanged.
      */
     override fun hash(): String = load()?.archiveId ?: ""
 
@@ -102,9 +130,10 @@ class LexiconArchiveSource(
                 }.sortedBy { it.category }
 
         logger.info(
-            "Compiled lexicon loaded: {} entries over {} targets (artifact={})",
+            "Compiled lexicon loaded: {} entries over {} targets from {} archive(s) (artifact={})",
             lexicon.entries.size,
             entries.size,
+            archivePaths.size,
             lexicon.contentHash,
         )
         reportUnrecognisedMethods(entries)
@@ -137,7 +166,7 @@ class LexiconArchiveSource(
         logger.warn(
             "Compiled lexicon at {} carries {} unrecognised match method(s) — those rows serve as " +
                 "unauthored (no EXACT/TYPOS gate, no RV-32 margin): {}",
-            archivePath,
+            named,
             unrecognised.values.sum(),
             unrecognised.entries.joinToString(", ") { "${it.key} x${it.value}" },
         )
@@ -197,32 +226,71 @@ class LexiconArchiveSource(
      * Reads and parses, reusing the cache when the bytes hash to what is already loaded.
      *
      * Returns null — never throws — for absent, unreadable, wrong-kind or malformed archives. Each
-     * is logged once per distinct cause at WARN: a broken lexicon should be loud in the log and
-     * invisible to a query, not the reverse.
+     * is logged at WARN: a broken lexicon should be loud in the log and invisible to a query, not
+     * the reverse.
+     *
+     * #209: every archive is read on every call, and the set is the unit — one bad archive keeps
+     * the previously loaded layer whole.
      */
     private fun load(): Loaded? {
-        if (!archivePath.exists()) {
-            cached?.let { logger.warn("Compiled lexicon disappeared from {} — keeping the loaded one", archivePath) }
+        val reads = archivePaths.map { path -> read(path) ?: return cached }
+
+        val id = DeclaredLayer.layerId(reads.map { it.second })
+        cached?.let { if (it.archiveId == id) return it }
+
+        val lexicons = reads.map { (path, _, bytes) -> decode(path, bytes) ?: return cached }
+
+        // #209 — one layer is one schema. Every source's archive is built with ONE pinned toolchain
+        // for exactly this reason; two versions mean one source was rebuilt and the other not.
+        val schemas = archivePaths.zip(lexicons).groupBy({ it.second.header.schemaVersion }, { it.first })
+        if (schemas.size > 1) {
+            logger.warn(
+                "Lexicon archives {} declare different schemas ({}) — refusing the set; keeping the " +
+                    "loaded layer. Rebuild every source's archive with the same toolchain (ttr-server#209).",
+                named,
+                schemas.entries.joinToString("; ") { (schema, paths) -> "$schema: ${paths.joinToString()}" },
+            )
             return cached
         }
 
+        val merged = DeclaredLayer.merge(lexicons)
+        return Loaded(id, merged.lexicon).also {
+            checkSchemaVersion(it.lexicon)
+            reportConflicts(merged)
+            cached = it
+        }
+    }
+
+    /** One archive's bytes and content id, or null (WARNed) when it cannot be read. */
+    private fun read(path: Path): Triple<Path, String, ByteArray>? {
+        if (!path.exists()) {
+            when {
+                cached != null -> logger.warn("Compiled lexicon disappeared from {} — keeping the loaded one", path)
+                archivePaths.size > 1 -> logger.warn("No compiled lexicon at {} — refusing the archive set", path)
+            }
+            return null
+        }
         val bytes =
             try {
-                archivePath.readBytes()
+                path.readBytes()
             } catch (e: Exception) {
-                logger.warn("Compiled lexicon at {} is unreadable: {}", archivePath, e.message)
-                return cached
+                logger.warn("Compiled lexicon at {} is unreadable: {}", path, e.message)
+                return null
             }
+        return Triple(path, SnapshotId.of(bytes), bytes)
+    }
 
-        val id = SnapshotId.of(bytes)
-        cached?.let { if (it.archiveId == id) return it }
-
+    /** One archive's lexicon, or null (WARNed) when it is not a readable lexicon archive. */
+    private fun decode(
+        path: Path,
+        bytes: ByteArray,
+    ): CompiledLexicon? {
         val contents =
             when (val read = SnapshotReader.read(bytes)) {
                 is SnapshotReadResult.Ok -> read.contents
                 is SnapshotReadResult.Failure -> {
-                    logger.warn("Compiled lexicon at {} is not a readable archive: {}", archivePath, read.reason)
-                    return cached
+                    logger.warn("Compiled lexicon at {} is not a readable archive: {}", path, read.reason)
+                    return null
                 }
             }
 
@@ -231,32 +299,53 @@ class LexiconArchiveSource(
             // vocabulary and look like "the estate authored nothing".
             logger.warn(
                 "Archive at {} is kind='{}', expected '{}' — not a lexicon archive",
-                archivePath,
+                path,
                 contents.manifest.kind,
                 LexiconArchive.KIND,
             )
-            return cached
+            return null
         }
 
         val json =
             contents.docs[LexiconArchive.LEXICON] ?: run {
-                logger.warn("Lexicon archive at {} has no {}", archivePath, LexiconArchive.LEXICON)
-                return cached
+                logger.warn("Lexicon archive at {} has no {}", path, LexiconArchive.LEXICON)
+                return null
             }
 
         return try {
-            Loaded(id, CompiledLexicon.fromJson(json)).also {
-                checkSchemaVersion(it.lexicon)
-                cached = it
-            }
+            CompiledLexicon.fromJson(json)
         } catch (e: Exception) {
             logger.warn(
                 "Lexicon archive at {} has an undecodable {}: {}",
-                archivePath,
+                path,
                 LexiconArchive.LEXICON,
                 e.message,
             )
-            cached
+            null
+        }
+    }
+
+    /**
+     * #209 — what the merge had to decide, said once per load: the compiler's own conflicts
+     * (`RG-LEXC-002`, a per-ref fact two builds disagree on), met across archives instead of inside
+     * one, and resolved exactly as one build would have resolved them.
+     */
+    private fun reportConflicts(merged: DeclaredLayer.Merged) {
+        if (merged.methodConflicts.isNotEmpty()) {
+            logger.warn(
+                "Lexicon archives {} match {} term(s) two ways; kept the compiler's choice: {}",
+                named,
+                merged.methodConflicts.size,
+                merged.methodConflicts.take(MAX_LISTED).joinToString("; "),
+            )
+        }
+        if (merged.factConflicts.isNotEmpty()) {
+            logger.warn(
+                "Lexicon archives {} disagree on {} per-ref fact(s); kept the first archive's: {}",
+                named,
+                merged.factConflicts.size,
+                merged.factConflicts.take(MAX_LISTED).joinToString("; "),
+            )
         }
     }
 
@@ -279,9 +368,14 @@ class LexiconArchiveSource(
                 "Reading it anyway — unknown fields are ignored — but a field this reader needs " +
                 "may be absent, and an OLDER reader than the producer cannot be fixed by config: " +
                 "roll the readers first (MS contracts §6, readers before producers).",
-            archivePath,
+            named,
             found,
             CompiledLexiconHeader.SCHEMA_VERSION,
         )
+    }
+
+    private companion object {
+        /** How many merge conflicts a WARN spells out; the count always covers all of them. */
+        const val MAX_LISTED = 5
     }
 }

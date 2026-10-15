@@ -90,8 +90,19 @@ secretEnv: []
 # lex-matcher category-scoped questions instead of open ones, and wakes `SpanProposal`'s anchored
 # path. That is the precision path Q-20 built and it is the point of feeding it — but an estate
 # should adopt it deliberately, watching its own corpus, rather than inherit it from a chart bump.
+#
+# ttr-server#209 — SEVERAL archives, one per source the estate's packages come from (e.g. a second
+# git source Veles serves through `METADATA_GIT2_*`). List the extra ConfigMaps in `configMapNames`;
+# `configMapName` stays the first (and may be left as it is). Each extra one is mounted beside the
+# first at `<mountPath>.d/<configMapName>/<key>`, and the env then carries BOTH the singular var
+# (the FIRST archive — an image older than the list key boots on it) and the list var (every
+# archive, comma-separated), which the service loads as ONE declared layer. A single archive renders
+# exactly as before. ⚠ Every named ConfigMap must exist: a missing one holds the pod in
+# ContainerCreating (the volume is not optional), which keeps the old pods serving — deliberately,
+# since a reader given half the archives would serve half the vocabulary.
 lexicon:
   configMapName: ""
+  configMapNames: []
   key: lexicon.tar.zst
   mountPath: /etc/tatrman/lexicon
 
