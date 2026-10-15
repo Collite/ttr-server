@@ -3,6 +3,7 @@ package org.tatrman.resolver
 
 import com.google.protobuf.util.JsonFormat
 import io.kotest.core.spec.style.StringSpec
+import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
 import io.kotest.matchers.maps.shouldBeEmpty
@@ -72,6 +73,18 @@ class CoordinatedValuesTest :
                 .proposeDomainSpans(untyped, TYPES)
                 .filter { it.text == "Liberec" }
                 .map { it.origin } shouldContainExactly listOf(Origin.PROPER_NOUN)
+        }
+
+        "proposal — a conjunct of a word the anchor does not take is not the anchor's: „Tržby za elektroniku a Brno“" {
+            // `elektroniku` hangs on `Tržby`, but a measure takes no ordinary value, so it is no governed value
+            // of `Tržby`, and neither is its conjunct: `Brno` stays the bare place it was (a G3, or a named
+            // member where a profile offers one), not the measure's governed place scoped to its fact.
+            for (question in listOf("trzby-za-elektroniku-a-brno", "revenue-for-electronics-and-brno")) {
+                SpanProposal
+                    .proposeDomainSpans(parse(question), TYPES)
+                    .filter { it.text == "Brno" && it.origin in setOf(Origin.GOVERNED_VALUE, Origin.OPEN_VALUE) }
+                    .shouldBeEmpty()
+            }
         }
 
         "proposal — a lone place proposes exactly what it did" {

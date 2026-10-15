@@ -229,6 +229,29 @@ class CoordinatedPlacesTest :
             ROWS.getValue(SCOPED).getValue("liberci") shouldBe emptyList()
         }
 
+        // ── a place coordinated with a word the anchor does not take ─────────────────────────────
+
+        "„Tržby za elektroniku a Brno“ — a conjunct of a word `Tržby` does not take: a bare place, as before" {
+            // `elektroniku` hangs on `Tržby`, but a measure governs no ordinary value, so it is proposed as no
+            // value of `Tržby`, and its conjunct is none either: `Brno` stays the bare place (a G3) it always
+            // was. It is not the measure's governed place, so it is not read "Brno DC" by the measure's scope.
+            // With the named-member profile on, the bare place is the profile's to read, as before (by the
+            // question's fact: "Brno DC").
+            val questions = listOf(ELEKTRONIKU_A_BRNO to "elektroniku", ELECTRONICS_AND_BRNO to "electronics")
+            for ((question, word) in questions) {
+                withClue(question.text) {
+                    val plain = resolve(question).lattice
+                    plain.summary().filter { it.startsWith("V ") } shouldContainExactly listOf("V Brno GROUNDED → ")
+                    plain.gapsList.map { it.kind to it.span.text } shouldContainExactly
+                        listOf(GapKind.GAP_KIND_G1_UNBOUND to word, GapKind.GAP_KIND_G3_UNATTRIBUTED to "Brno")
+
+                    val named = resolve(question, named = true).lattice
+                    named.summary().filter { it.startsWith("V ") } shouldContainExactly
+                        listOf("V Brno LITERAL → $WAREHOUSE_NAME#Brno DC")
+                }
+            }
+        }
+
         // ── with a named-member profile (store and warehouse names are places) ───────────────────
 
         "with lex-matcher's named-member profile on, every question reads as without it" {
@@ -399,6 +422,9 @@ class CoordinatedPlacesTest :
         val PRODEJEN_BRNO_A_LIBEREC =
             Question("Tržby prodejen Brno a Liberec v roce 2025", "cs", "trzby-prodejen-brno-a-liberec")
         val BRNO_NEBO_LIBEREC = Question("Tržby pro Brno nebo Liberec v roce 2025", "cs", "trzby-pro-brno-nebo-liberec")
+        val ELEKTRONIKU_A_BRNO = Question("Tržby za elektroniku a Brno", "cs", "trzby-za-elektroniku-a-brno")
+        val ELECTRONICS_AND_BRNO =
+            Question("Revenue for electronics and Brno", "en", "revenue-for-electronics-and-brno")
 
         val ALL =
             listOf(

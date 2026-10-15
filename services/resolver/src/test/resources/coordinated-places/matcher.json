@@ -8,6 +8,12 @@
       {"candidateId":"Brno","candidate":"Brno","score":1.01,"category":"er.entity.store.store_name","provenance":{"producer":"fuzzy","method":"TATRMAN_V2","rawScore":1.01,"tokenHits":[{"queryToken":"brno","candidateToken":"brno","kind":"exact"}],"coverage":1.0},"matchMethod":"TYPOS(1)"},
       {"candidateId":"Brno DC","candidate":"Brno DC","score":1.006772748873239,"category":"er.entity.warehouse.warehouse_name","provenance":{"producer":"fuzzy","method":"TATRMAN_V2","rawScore":1.006772748873239,"tokenHits":[{"queryToken":"brno","candidateToken":"brno","kind":"exact"}],"coverage":0.6772748873238883},"matchMethod":"TOKENS"}
     ],
+    "electronics": [
+
+    ],
+    "elektroniku": [
+
+    ],
     "liberci": [
 
     ],
@@ -120,6 +126,12 @@
     "brno": [
       {"candidateId":"Brno","candidate":"Brno","score":1.01,"category":"er.entity.store.store_name","provenance":{"producer":"fuzzy","method":"TATRMAN_V2","rawScore":1.01,"tokenHits":[{"queryToken":"brno","candidateToken":"brno","kind":"exact"}],"coverage":1.0},"matchMethod":"TYPOS(1)"},
       {"candidateId":"Brno DC","candidate":"Brno DC","score":1.0053960124661458,"category":"er.entity.warehouse.warehouse_name","provenance":{"producer":"fuzzy","method":"TATRMAN_V2","rawScore":1.0053960124661458,"tokenHits":[{"queryToken":"brno","candidateToken":"brno","kind":"exact"}],"coverage":0.5396012466145746},"matchMethod":"TOKENS"}
+    ],
+    "electronics": [
+
+    ],
+    "elektroniku": [
+
     ],
     "liberci": [
 

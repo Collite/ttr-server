@@ -395,6 +395,10 @@ object SpanProposal {
              * place argument of this anchor is — the governed pair, gated to [placeOwners]. A conjunct
              * the NER did not type keeps the path it always had (it lies inside its first conjunct's
              * subtree, or is a proper noun of its own), and an anchor word is never a conjunct value.
+             *
+             * Only a value this anchor TAKES lends its governor to its conjuncts (see the loop below):
+             * in „Tržby za elektroniku a Brno“ a measure takes no `elektroniku` (it governs no ordinary
+             * value), so `Brno`, its conjunct, is no value of `Tržby` either and stays a bare place.
              */
             fun placeConjuncts(first: Int): List<Int> {
                 if (placeOwners.isEmpty()) return emptyList()
@@ -411,15 +415,8 @@ object SpanProposal {
                 return out.filter { dualReadingEntity(it, tokens, parse.entitiesList) != null }
             }
 
-            val values =
-                children[head + 1].orEmpty().flatMap { childIdx ->
-                    val child = tokens[childIdx]
-                    if (child.depRelation !in GOVERNED_VALUE_RELATIONS) return@flatMap emptyList()
-                    if (child.upos.uppercase() !in NOMINAL_UPOS) return@flatMap emptyList()
-                    if (childIdx in anchorTokens) return@flatMap emptyList()
-                    listOf(childIdx) + placeConjuncts(childIdx)
-                }
-            for (childIdx in values.distinct()) {
+            /** Propose [childIdx] as this anchor's governed value — the pair, or nothing. True iff proposed. */
+            fun proposeValue(childIdx: Int): Boolean {
                 // ✅ UD (ttr-server#118, option 1) — the DUAL READING. A place or a person name
                 // the NER typed universal is excluded from every domain path below, and until
                 // UD from this one too: `subtreeIndices` refuses a universal root, so `Stores in
@@ -440,8 +437,8 @@ object SpanProposal {
                 // inside the name is dropped below, and an engine's offsets can disagree with
                 // the parse (review-108 F1). The seam pairs the two readings by that record.
                 val dual = dualReadingEntity(childIdx, tokens, parse.entitiesList)
-                if (dual == null && refs.isEmpty()) continue
-                if (dual != null && placeOwners.isEmpty()) continue
+                if (dual == null && refs.isEmpty()) return false
+                if (dual != null && placeOwners.isEmpty()) return false
                 val governedRefs = if (dual != null) placeOwners else refs
                 val valueIdx =
                     if (dual != null) {
@@ -454,7 +451,7 @@ object SpanProposal {
                     } else {
                         subtreeIndices(childIdx, children, tokens, universal, anchorTokens, literals.tokens)
                     }
-                if (valueIdx.isEmpty()) continue
+                if (valueIdx.isEmpty()) return false
                 out +=
                     candidate(
                         valueIdx,
@@ -496,6 +493,19 @@ object SpanProposal {
                         dualReadingScope = if (dual != null) governedRefs else emptyList(),
                     )
                 coveredTokens += valueIdx
+                return true
+            }
+
+            val seen = HashSet<Int>()
+            for (childIdx in children[head + 1].orEmpty()) {
+                val child = tokens[childIdx]
+                if (child.depRelation !in GOVERNED_VALUE_RELATIONS) continue
+                if (child.upos.uppercase() !in NOMINAL_UPOS) continue
+                if (childIdx in anchorTokens) continue
+                if (!seen.add(childIdx) || !proposeValue(childIdx)) continue
+                // ttr-demo#62 — a conjunct is governed by what governs the value it is coordinated with, so
+                // only when that value was proposed (`placeConjuncts`).
+                for (conjunct in placeConjuncts(childIdx)) if (seen.add(conjunct)) proposeValue(conjunct)
             }
         }
 
