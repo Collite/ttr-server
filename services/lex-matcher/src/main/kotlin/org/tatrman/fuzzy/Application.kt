@@ -185,7 +185,7 @@ fun Application.module(serverConfig: KtorServerConfig) {
                         java.nio.file.Path
                             .of(it)
                     },
-                )
+                ).also { source -> telemetry.registerLexiconArchivesSkipped(source::skippedArchives) }
             }
     // RV-P7.3 T3 — the LEARNED layer, when the estate's Golem is exporting one. `NoopOverlayStore`
     // otherwise, which is the pre-P7 service exactly: no version in the tuple, nothing loaded,

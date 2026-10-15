@@ -316,61 +316,157 @@ class MultiArchiveLayerTest :
             rows(repo, "holdings").first { it[0] == "holdings" }[1] shouldBe "er.entity.portfolio"
         }
 
-        // ---- all or none --------------------------------------------------------------------------
+        // ---- the primary, and additive archives that degrade alone ----------------------------------
 
-        "archives with DIFFERENT schema versions are refused as a set — WARN, keep the loaded layer, never half" {
-            val dir = Files.createTempDirectory("lex-multi")
-            val (a, b, _) = estate(dir)
-            val foreign =
-                write(
-                    dir.resolve("foreign.tar.zst"),
-                    compile(investmentFile).let { r ->
-                        r.copy(
-                            lexicon =
-                                r.lexicon.copy(
-                                    header = r.lexicon.header.copy(schemaVersion = "ttr-lexicon-compiled/v9"),
-                                ),
-                        )
-                    },
-                )
-
-            // At boot there is nothing to keep, so the layer is EMPTY — not the first archive alone.
-            val fresh = LexiconArchiveSource(listOf(a, foreign))
-            val bootWarns = warnsFrom { fresh.hash() shouldBe "" }
-            runBlocking { fresh.fetch().entries.shouldBeEmpty() }
-            val warn = bootWarns.single { it.contains("different schemas") }
-            warn shouldContainText "ttr-lexicon-compiled/v9"
-            warn shouldContainText CompiledLexiconHeader.SCHEMA_VERSION
-            warn shouldContainText foreign.toString()
-
-            // Loaded, then one archive is replaced by a foreign-schema build: the loaded layer stays
-            // whole — both packages' words — rather than shrinking to the compatible half.
-            val source = LexiconArchiveSource(listOf(a, b))
-            val loaded = source.hash()
-            Files.copy(foreign, b, java.nio.file.StandardCopyOption.REPLACE_EXISTING)
-            source.hash() shouldBe loaded
-            runBlocking {
-                source.fetch().entries.map { it.targetRef } shouldContain "er.entity.portfolio"
+        /** Every WARN and ERROR the reader logs while [body] runs, as `LEVEL message`. */
+        fun logsFrom(body: () -> Unit): List<String> {
+            val logger =
+                (org.slf4j.LoggerFactory.getILoggerFactory() as LoggerContext)
+                    .getLogger(LexiconArchiveSource::class.java.name)
+            val appender = ListAppender<ILoggingEvent>().apply { start() }
+            logger.addAppender(appender)
+            return try {
+                body()
+                appender.list
+                    .filter { it.level == Level.WARN || it.level == Level.ERROR }
+                    .map { "${it.level} ${it.formattedMessage}" }
+            } finally {
+                logger.detachAppender(appender)
+                appender.stop()
             }
         }
 
-        "an absent or broken archive refuses the set — the loaded layer stays whole" {
+        /** Package B's archive, rebuilt on a schema no primary here declares. */
+        fun foreignSchema(path: Path): Path =
+            write(
+                path,
+                compile(investmentFile).let { r ->
+                    r.copy(
+                        lexicon =
+                            r.lexicon.copy(
+                                header = r.lexicon.header.copy(schemaVersion = "ttr-lexicon-compiled/v9"),
+                            ),
+                    )
+                },
+            )
+
+        "a bad ADDITIVE archive is skipped with an ERROR — the primary is served alone, under its own id" {
+            val dir = Files.createTempDirectory("lex-multi")
+            val (a, _, _) = estate(dir)
+            val primaryAlone = LexiconArchiveSource(a)
+            val bad =
+                mapOf(
+                    "absent" to dir.resolve("absent.tar.zst"),
+                    "not a readable archive" to
+                        dir.resolve("junk.tar.zst").also { it.writeBytes("not an archive".toByteArray()) },
+                    "declares schema 'ttr-lexicon-compiled/v9'" to foreignSchema(dir.resolve("foreign.tar.zst")),
+                )
+            for ((reason, additive) in bad) {
+                withClue(reason) {
+                    val source = LexiconArchiveSource(listOf(a, additive))
+                    val logs = logsFrom { source.hash() }
+
+                    // The estate's words stay served, exactly as with the primary alone — and the hash
+                    // says so: one served archive is that archive's own id.
+                    source.hash() shouldBe SnapshotId.of(a.readBytes())
+                    source.hash() shouldBe primaryAlone.hash()
+                    runBlocking { source.fetch() shouldBe primaryAlone.fetch() }
+                    source.skippedArchives() shouldBe 1
+
+                    val error = logs.single { it.startsWith("ERROR") }
+                    error shouldContainText additive.toString()
+                    error shouldContainText reason
+                    logs.single { it.contains("serving 1 of 2 lexicon archives") } shouldContainText "skipped"
+                }
+            }
+        }
+
+        "a skipped additive archive is served as soon as it reads — the hash moves to the layer id" {
+            val dir = Files.createTempDirectory("lex-multi")
+            val (a, b, _) = estate(dir)
+            val additive = dir.resolve("late.tar.zst")
+            val source = LexiconArchiveSource(listOf(a, additive))
+            source.hash() shouldBe SnapshotId.of(a.readBytes())
+
+            Files.copy(b, additive)
+            source.hash() shouldBe LexiconArchiveSource(listOf(a, b)).hash()
+            source.skippedArchives() shouldBe 0
+            runBlocking { source.fetch().entries.map { it.targetRef } shouldContain "er.entity.portfolio" }
+        }
+
+        "a bad PRIMARY keeps the single-archive posture: empty at boot, the loaded layer kept after" {
             val dir = Files.createTempDirectory("lex-multi")
             val (a, b, _) = estate(dir)
 
-            // At boot: empty, never the half that happens to be readable.
-            val missing = LexiconArchiveSource(listOf(a, dir.resolve("absent.tar.zst")))
-            missing.hash() shouldBe ""
-            runBlocking { missing.fetch().entries.shouldBeEmpty() }
+            // At boot there is nothing to keep — and an additive archive is never served on its own.
+            val noPrimary = LexiconArchiveSource(listOf(dir.resolve("absent.tar.zst"), b))
+            noPrimary.hash() shouldBe ""
+            runBlocking { noPrimary.fetch().entries.shouldBeEmpty() }
 
+            // Loaded, then the primary breaks: the whole loaded layer stays, both packages' words.
             val source = LexiconArchiveSource(listOf(a, b))
             val loaded = source.hash()
-            Files.write(b, "not an archive".toByteArray())
+            Files.write(a, "not an archive".toByteArray())
             source.hash() shouldBe loaded
-            Files.delete(b)
+            Files.delete(a)
             source.hash() shouldBe loaded
             runBlocking {
                 source.fetch().entries.map { it.targetRef } shouldContain "er.entity.portfolio"
+                source.fetch().entries.map { it.targetRef } shouldContain "er.entity.order"
+            }
+        }
+
+        "an additive archive that turns bad on refresh keeps its LAST GOOD copy — no served word is dropped" {
+            val dir = Files.createTempDirectory("lex-multi")
+            val (a, b, _) = estate(dir)
+            val source = LexiconArchiveSource(listOf(a, b))
+            val repo = repository(source)
+            val loaded = source.hash()
+            rows(repo, "portfolios").first { it[0] == "portfolios" }[1] shouldBe "er.entity.portfolio"
+
+            // A torn write, a foreign-schema rebuild, a vanished mount — each a failed tick.
+            for (turn in listOf<(Path) -> Unit>(
+                { Files.write(it, "not an archive".toByteArray()) },
+                { foreignSchema(it) },
+                { Files.delete(it) },
+            )) {
+                turn(b)
+                val logs = logsFrom { runBlocking { repo.forceRefresh() } }
+                source.hash() shouldBe loaded
+                source.skippedArchives() shouldBe 0
+                rows(repo, "portfolios").first { it[0] == "portfolios" }[1] shouldBe "er.entity.portfolio"
+                logs.single { it.contains("last good copy") } shouldContainText b.toString()
+                logs.none { it.startsWith("ERROR") } shouldBe true
+            }
+        }
+
+        "a primary that moves to another schema drops an additive archive's last good copy" {
+            // The last good copy is only good AGAINST the primary it was served with: once the primary
+            // is rebuilt on a new schema, an additive archive still on the old one is skipped, not served.
+            val dir = Files.createTempDirectory("lex-multi")
+            val (a, b, _) = estate(dir)
+            val source = LexiconArchiveSource(listOf(a, b))
+            source.hash()
+
+            write(
+                a,
+                compile(retailFile).let { r ->
+                    r.copy(
+                        lexicon =
+                            r.lexicon.copy(
+                                header = r.lexicon.header.copy(schemaVersion = "ttr-lexicon-compiled/v9"),
+                            ),
+                    )
+                },
+            )
+            source.hash() shouldBe SnapshotId.of(a.readBytes())
+            source.skippedArchives() shouldBe 1
+            runBlocking {
+                source
+                    .fetch()
+                    .entries
+                    .map { it.targetRef }
+                    .contains("er.entity.portfolio") shouldBe false
             }
         }
 

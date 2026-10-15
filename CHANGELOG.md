@@ -34,12 +34,17 @@ refusing it as another area's question.
   packages declare for two objects gets both readings. The stdlib rows every archive embeds (operator words, grounding
   and predicate triggers) are served once, so they add no duplicate candidate and move no score. Per-ref facts
   (`targets`) are copied; a ref in two archives takes the union of its `reachedFrom`.
-- **The snapshot hash covers every archive.** With several archives the archive hash (the resolver's registry
-  `snapshot_hash`, lex-matcher's reload clock) is a hash over all of their ids, so a change to any one is a new snapshot
-  and lex-matcher's refresh picks it up. With one archive it is that archive's id, unchanged.
-- **All or none.** If any archive is absent, unreadable, not a lexicon, or declares a different `schemaVersion` from the
-  others, the set is refused with a WARN naming it and the layer keeps what it had loaded (nothing, at boot). Every
-  source's archive must be built with the same toolchain.
+- **The snapshot hash covers the archives served.** With several archives the archive hash (the resolver's registry
+  `snapshot_hash`, lex-matcher's reload clock) is a hash over the ids of the archives actually served, in declared
+  order, so a change to any one is a new snapshot and lex-matcher's refresh picks it up. One served archive keeps its
+  own id, as with one archive configured.
+- **The first archive is the primary; the others degrade alone.** The primary keeps the single-archive posture: absent,
+  unreadable or not a lexicon, it is WARNed and the layer keeps what it had loaded (nothing, at boot). An additional
+  archive that is absent, unreadable, not a lexicon, undecodable, or declares a different `schemaVersion` from the
+  primary's is served from its last good copy when it has one (WARN — a transient failure drops no served word), and
+  otherwise skipped with an ERROR naming it and the reason. A broken or drifted additional archive costs only its own
+  words. Each new layer logs `serving N of M lexicon archives` (with `skipped: …` when degraded), and lex-matcher
+  exports the gauge `fuzzy_lexicon_archives_skipped`.
 - **Charts.** The `tatrman-service` library mounts `lexicon.configMapNames` beside `lexicon.configMapName`: the first
   ConfigMap where it always was, each further one at `<mountPath>.d/<configMapName>`. The resolver and lex-matcher charts
   then render the singular env var naming the FIRST archive — so an image older than this change still boots on it

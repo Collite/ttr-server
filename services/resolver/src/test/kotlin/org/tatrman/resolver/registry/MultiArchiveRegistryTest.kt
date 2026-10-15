@@ -16,7 +16,6 @@ import io.kotest.matchers.string.shouldContain as shouldContainText
 import io.kotest.matchers.types.shouldBeInstanceOf
 import kotlinx.coroutines.runBlocking
 import org.tatrman.resolver.model.ResolverThresholds
-import org.tatrman.ttr.lexicon.CompiledLexiconHeader
 import org.tatrman.ttr.lexicon.LexiconArea
 import org.tatrman.ttr.lexicon.LexiconDataFile
 import org.tatrman.ttr.lexicon.LexiconLoad
@@ -31,7 +30,6 @@ import org.tatrman.ttr.lexicon.compile.ModelRefIndex
 import org.tatrman.ttr.snapshot.SnapshotId
 import java.nio.file.Files
 import java.nio.file.Path
-import java.nio.file.StandardCopyOption
 import kotlin.io.path.readBytes
 import kotlin.io.path.writeBytes
 
@@ -121,7 +119,8 @@ class MultiArchiveRegistryTest :
                 SnapshotRegistry(LexiconArchiveRegistrySource(paths.toList()), ResolverThresholds.LIVE).current()
             }
 
-        fun warnsFrom(body: () -> Unit): List<String> {
+        /** Every WARN and ERROR the reader logs while [body] runs, as `LEVEL message`. */
+        fun logsFrom(body: () -> Unit): List<String> {
             val logger =
                 (org.slf4j.LoggerFactory.getILoggerFactory() as LoggerContext)
                     .getLogger(LexiconArchiveRegistrySource::class.java.name)
@@ -129,12 +128,28 @@ class MultiArchiveRegistryTest :
             logger.addAppender(appender)
             return try {
                 body()
-                appender.list.filter { it.level == Level.WARN }.map { it.formattedMessage }
+                appender.list
+                    .filter { it.level == Level.WARN || it.level == Level.ERROR }
+                    .map { "${it.level} ${it.formattedMessage}" }
             } finally {
                 logger.detachAppender(appender)
                 appender.stop()
             }
         }
+
+        /** Package B's archive, rebuilt on a schema no primary here declares. */
+        fun foreignSchema(path: Path): Path =
+            write(
+                path,
+                compile(investmentFile).let { r ->
+                    r.copy(
+                        lexicon =
+                            r.lexicon.copy(
+                                header = r.lexicon.header.copy(schemaVersion = "ttr-lexicon-compiled/v9"),
+                            ),
+                    )
+                },
+            )
 
         // ---- one layer, exactly as one build ------------------------------------------------------
 
@@ -204,56 +219,80 @@ class MultiArchiveRegistryTest :
             types.single { it.ref == "er.entity.order" }.anchors shouldContain "purchases"
         }
 
-        // ---- all or none --------------------------------------------------------------------------
+        // ---- the primary, and additive archives that degrade alone ----------------------------------
 
-        "archives with DIFFERENT schema versions are refused as a set — WARN, keep the loaded layer, never half" {
+        "a bad ADDITIVE archive is skipped with an ERROR — the primary is served alone, under its own id" {
             val dir = Files.createTempDirectory("resolver-multi")
-            val (a, b, _) = estate(dir)
-            val foreign =
-                write(
-                    dir.resolve("foreign.tar.zst"),
-                    compile(investmentFile).let { r ->
-                        r.copy(
-                            lexicon =
-                                r.lexicon.copy(
-                                    header = r.lexicon.header.copy(schemaVersion = "ttr-lexicon-compiled/v9"),
-                                ),
-                        )
-                    },
+            val (a, _, _) = estate(dir)
+            val bad =
+                mapOf(
+                    "absent" to dir.resolve("absent.tar.zst"),
+                    "not a readable archive" to
+                        dir.resolve("junk.tar.zst").also { it.writeBytes(byteArrayOf(1, 2, 3, 4)) },
+                    "declares schema 'ttr-lexicon-compiled/v9'" to foreignSchema(dir.resolve("foreign.tar.zst")),
                 )
+            for ((reason, additive) in bad) {
+                io.kotest.assertions.withClue(reason) {
+                    val source = LexiconArchiveRegistrySource(listOf(a, additive))
+                    val logs = logsFrom { source.hash() }
 
-            // Boot: nothing to keep, so EMPTY — never the retail half alone.
-            val fresh = LexiconArchiveRegistrySource(listOf(a, foreign))
-            val warns = warnsFrom { fresh.hash() shouldBe "" }
-            runBlocking { fresh.fetch().entries.shouldBeEmpty() }
-            val warn = warns.single { it.contains("different schemas") }
-            warn shouldContainText "ttr-lexicon-compiled/v9"
-            warn shouldContainText CompiledLexiconHeader.SCHEMA_VERSION
-            warn shouldContainText foreign.toString()
+                    // The estate's anchors stay, exactly as with the primary alone — and the snapshot
+                    // says so: one served archive is that archive's own id, the hash every binding carries.
+                    source.hash() shouldBe SnapshotId.of(a.readBytes())
+                    registry(a, additive).entityTypes shouldBe registry(a).entityTypes
+                    registry(a, additive).snapshotHash shouldBe registry(a).snapshotHash
 
-            // Loaded, then one source ships a foreign-schema build: the loaded layer stays whole.
-            val source = LexiconArchiveRegistrySource(listOf(a, b))
-            val loaded = source.hash()
-            Files.copy(foreign, b, StandardCopyOption.REPLACE_EXISTING)
-            source.hash() shouldBe loaded
-            runBlocking { source.fetch().entries.map { it.targetRef } shouldContain "er.entity.portfolio" }
+                    val error = logs.single { it.startsWith("ERROR") }
+                    error shouldContainText additive.toString()
+                    error shouldContainText reason
+                    logs.single { it.contains("serving 1 of 2 lexicon archives") } shouldContainText "skipped"
+                    // Said once, not on every resolve: hash() runs per request.
+                    logsFrom { repeat(3) { source.hash() } }.shouldBeEmpty()
+                }
+            }
         }
 
-        "an absent or broken archive refuses the set — the loaded layer stays whole" {
+        "a bad PRIMARY keeps the single-archive posture: empty at boot, the loaded layer kept after" {
             val dir = Files.createTempDirectory("resolver-multi")
             val (a, b, _) = estate(dir)
 
-            val missing = LexiconArchiveRegistrySource(listOf(a, dir.resolve("absent.tar.zst")))
-            missing.hash() shouldBe ""
-            runBlocking { missing.fetch().entries.shouldBeEmpty() }
+            // At boot there is nothing to keep — and an additive archive is never served on its own.
+            val noPrimary = LexiconArchiveRegistrySource(listOf(dir.resolve("absent.tar.zst"), b))
+            noPrimary.hash() shouldBe ""
+            runBlocking { noPrimary.fetch().entries.shouldBeEmpty() }
 
+            // Loaded, then the primary breaks: the whole loaded layer stays, both packages' anchors.
             val source = LexiconArchiveRegistrySource(listOf(a, b))
             val loaded = source.hash()
-            Files.write(b, byteArrayOf(1, 2, 3, 4))
+            Files.write(a, byteArrayOf(1, 2, 3, 4))
             source.hash() shouldBe loaded
-            Files.delete(b)
+            Files.delete(a)
             source.hash() shouldBe loaded
-            runBlocking { source.fetch().entries.map { it.targetRef } shouldContain "er.entity.portfolio" }
+            runBlocking {
+                source.fetch().entries.map { it.targetRef } shouldContain "er.entity.portfolio"
+                source.fetch().entries.map { it.targetRef } shouldContain "er.entity.order"
+            }
+        }
+
+        "an additive archive that turns bad keeps its LAST GOOD copy — no served anchor is dropped" {
+            val dir = Files.createTempDirectory("resolver-multi")
+            val (a, b, _) = estate(dir)
+            val source = LexiconArchiveRegistrySource(listOf(a, b))
+            val registry = SnapshotRegistry(source, ResolverThresholds.LIVE)
+            val loaded = runBlocking { registry.current() }
+
+            for (turn in listOf<(Path) -> Unit>(
+                { Files.write(it, byteArrayOf(1, 2, 3, 4)) },
+                { foreignSchema(it) },
+                { Files.delete(it) },
+            )) {
+                turn(b)
+                val logs = logsFrom { runBlocking { registry.current() } }
+                runBlocking { registry.current() } shouldBe loaded
+                logs.none { it.startsWith("ERROR") } shouldBe true
+                logs.single { it.contains("last good copy") } shouldContainText b.toString()
+            }
+            loaded.entityTypes.single { it.ref == "er.entity.portfolio" }.anchors shouldContain "portfolios"
         }
 
         // ---- the keys -----------------------------------------------------------------------------

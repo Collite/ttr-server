@@ -6,14 +6,8 @@ import org.slf4j.LoggerFactory
 import org.tatrman.ttr.lexicon.CompiledEntry
 import org.tatrman.ttr.lexicon.CompiledLexicon
 import org.tatrman.ttr.lexicon.CompiledLexiconHeader
-import org.tatrman.ttr.lexicon.LexiconArchive
 import org.tatrman.ttr.lexicon.TargetClass
-import org.tatrman.ttr.snapshot.SnapshotId
-import org.tatrman.ttr.snapshot.SnapshotReadResult
-import org.tatrman.ttr.snapshot.SnapshotReader
 import java.nio.file.Path
-import kotlin.io.path.exists
-import kotlin.io.path.readBytes
 
 /**
  * ✅ **Q-7 (Bora, 2026-08-14): the declared-vocabulary channel is the compiled lexicon archive.**
@@ -66,11 +60,14 @@ import kotlin.io.path.readBytes
  * rows every archive embeds are served once. One path is the pre-#209 reader, byte for byte: same
  * hash, same vocabulary, no merge.
  *
- * ⛔ **All or none.** The archives are read as a SET: if any one is absent, unreadable, not a
- * lexicon, undecodable, or declares a different `schemaVersion` from the others, the set is
- * refused — WARNed once, naming the archive — and the layer keeps what it had loaded (nothing, at
- * boot). Serving the readable half would make the other source's vocabulary vanish with nothing
- * but a log line to say so, which is the exact failure #209 exists to end.
+ * ⚑ **The first archive is the primary; the others degrade alone** ([DeclaredLayer.ArchiveSet]).
+ * The primary — the estate's own archive — keeps the single-archive posture: absent, unreadable or
+ * not a lexicon, it is WARNed once and the layer keeps what it had loaded (nothing, at boot). An
+ * additive archive that is absent, unreadable, not a lexicon, undecodable, or declares a different
+ * `schemaVersion` from the primary's is served from its last good copy when it has one (WARN), and
+ * is otherwise SKIPPED with an ERROR naming it and the reason — so a broken or drifted side archive
+ * costs its own words, never the estate's vocabulary. The snapshot hash covers exactly the archives
+ * served, and each new layer is logged as `serving N of M lexicon archives`.
  */
 class LexiconArchiveRegistrySource(
     private val archivePaths: List<Path>,
@@ -83,13 +80,15 @@ class LexiconArchiveRegistrySource(
 
     private val logger = LoggerFactory.getLogger(LexiconArchiveRegistrySource::class.java)
 
+    private val archives = DeclaredLayer.ArchiveSet(archivePaths)
+
     /** How the archives are named in a log line: the path, or the list of them. */
     private val named: String = archivePaths.singleOrNull()?.toString() ?: archivePaths.joinToString(", ", "[", "]")
 
     @Volatile
     private var cached: Loaded? = null
 
-    /** Distinct WARN causes already reported, so a broken archive logs once and not per tick. */
+    /** Distinct WARN/ERROR causes already reported, so a broken archive logs once and not per call. */
     private val reported =
         java.util.concurrent.ConcurrentHashMap
             .newKeySet<String>()
@@ -104,8 +103,9 @@ class LexiconArchiveRegistrySource(
      * the file's content id and not [CompiledLexicon.contentHash]: this answers *"is the file on
      * disk a different file?"*, and it must move when anything in the archive moves.
      *
-     * With several archives it is [DeclaredLayer.layerId] over all of their ids, so a change to
-     * ANY one of them is a new snapshot (#209); with one it is that archive's id, unchanged.
+     * With several archives it is [DeclaredLayer.layerId] over the ids of the archives SERVED, so a
+     * change to any one of them is a new snapshot (#209), and a skipped additive archive shows in it:
+     * with only the primary served it is the primary's own id, exactly as with one archive.
      *
      * Empty string when there is no readable archive — a stable value, so an absent lexicon does
      * not make the registry re-project on every call.
@@ -207,125 +207,78 @@ class LexiconArchiveRegistrySource(
         DeclaredValue(id = "lex:$targetRef:$lang:$termNormalized", value = termNormalized)
 
     /**
-     * Reads and parses, reusing the cache when the bytes hash to what is already loaded.
+     * Reads every archive and assembles the layer, reusing the cache when the archives served hash
+     * to what is already loaded.
      *
-     * Returns null — never throws — for absent, unreadable, wrong-kind or malformed archives, each
-     * logged once per distinct cause. A broken lexicon should be loud in the log and invisible to
-     * a query, not the reverse.
-     *
-     * #209: every archive is read on every call (the same per-file read the single reader always
-     * did), and the set is the unit — one bad archive keeps the previously loaded layer whole.
+     * Returns the loaded layer — never throws. A primary that cannot be read keeps what was loaded
+     * (null at boot); an additive one degrades alone (see the class KDoc). Each cause is logged once
+     * until it goes away. A broken lexicon should be loud in the log and invisible to a query.
      */
     private fun load(): Loaded? {
-        val reads = archivePaths.map { path -> read(path) ?: return cached }
-
-        val id = DeclaredLayer.layerId(reads.map { it.second })
-        cached?.let { if (it.archiveId == id) return it }
-
-        val lexicons = reads.map { (path, _, bytes) -> decode(path, bytes) ?: return cached }
-
-        // #209 — one layer is one schema. The archives' sources are built with ONE pinned toolchain
-        // for exactly this reason; two versions mean one source was rebuilt and the other not, and
-        // merging them would serve a layer whose rows disagree about which fields exist.
-        val schemas = archivePaths.zip(lexicons).groupBy({ it.second.header.schemaVersion }, { it.first })
-        if (schemas.size > 1) {
-            warnOnce(
-                "schema-mixed",
-                "lexicon archives {} declare different schemas ({}) — refusing the set; the declared " +
-                    "layer keeps what it had loaded. Rebuild every source's archive with the same " +
-                    "toolchain (ttr-server#209).",
-                named,
-                schemas.entries.joinToString("; ") { (schema, paths) -> "$schema: ${paths.joinToString()}" },
-            )
-            return cached
+        val pass =
+            when (val p = archives.pass()) {
+                is DeclaredLayer.Pass.PrimaryFailed -> {
+                    val f = p.failure
+                    warnOnce(
+                        "primary:${f.path}:${f.reason}",
+                        if (cached == null) {
+                            "compiled lexicon at {} — {}: the declared vocabulary is EMPTY"
+                        } else {
+                            "compiled lexicon at {} — {}: keeping the loaded declared vocabulary"
+                        },
+                        f.path,
+                        f.reason,
+                    )
+                    return cached
+                }
+                is DeclaredLayer.Pass.Served -> p
+            }
+        val causes = mutableSetOf<String>()
+        for (f in pass.fallbacks) {
+            causes +=
+                warnOnce(
+                    "fallback:${f.path}:${f.reason}",
+                    "lexicon archive at {} — {}: serving its last good copy (ttr-server#209)",
+                    f.path,
+                    f.reason,
+                )
+        }
+        for (f in pass.skipped) {
+            causes +=
+                errorOnce(
+                    "skip:${f.path}:${f.reason}",
+                    "lexicon archive at {} SKIPPED — {}: its words are not served; the rest of the layer is (ttr-server#209)",
+                    f.path,
+                    f.reason,
+                )
         }
 
-        val merged = DeclaredLayer.merge(lexicons)
+        val id = pass.layerId
+        cached?.let { if (it.archiveId == id) return it }
+
+        val merged = DeclaredLayer.merge(pass.archives.map { it.lexicon })
         return Loaded(id, merged.lexicon).also {
             cached = it
-            // Cleared BEFORE the version check, not after: `warnOnce` dedups by cause, and
-            // clearing afterwards would drop the very key just recorded — so a file that
-            // never changes would re-warn on every reload.
-            reported.clear()
+            // Forget every cause that no longer holds, BEFORE the checks below record theirs: a cause
+            // that recurs later is then said again, one that persists is said once.
+            reported.retainAll(causes)
+            if (archivePaths.size > 1) reportServed(pass)
             checkSchemaVersion(it.lexicon)
             reportConflicts(merged)
         }
     }
 
-    /** One archive's bytes and content id, or null (WARNed once) when it cannot be read. */
-    private fun read(path: Path): Triple<Path, String, ByteArray>? {
-        if (!path.exists()) {
-            warnOnce(
-                "absent:$path",
-                if (archivePaths.size == 1) {
-                    "no compiled lexicon at {} — the declared vocabulary is EMPTY"
-                } else {
-                    "no compiled lexicon at {} — refusing the archive set; the declared layer keeps what it had loaded"
-                },
-                path,
-            )
-            return null
-        }
-        val bytes =
-            try {
-                path.readBytes()
-            } catch (e: Exception) {
-                warnOnce("unreadable:$path", "compiled lexicon at {} is unreadable: {}", path, e.message)
-                return null
-            }
-        return Triple(path, SnapshotId.of(bytes), bytes)
-    }
-
-    /** One archive's lexicon, or null (WARNed once) when it is not a readable lexicon archive. */
-    private fun decode(
-        path: Path,
-        bytes: ByteArray,
-    ): CompiledLexicon? {
-        val contents =
-            when (val read = SnapshotReader.read(bytes)) {
-                is SnapshotReadResult.Ok -> read.contents
-                is SnapshotReadResult.Failure -> {
-                    warnOnce(
-                        "unarchivable:$path",
-                        "compiled lexicon at {} is not a readable archive: {}",
-                        path,
-                        read.reason,
-                    )
-                    return null
-                }
-            }
-
-        if (contents.manifest.kind != LexiconArchive.KIND) {
-            // A model snapshot pointed at the lexicon slot would otherwise load as an empty
-            // vocabulary and read as "the estate authored nothing" — the exact failure mode this
-            // whole change exists to end.
-            warnOnce(
-                "wrong-kind:$path",
-                "archive at {} is kind='{}', expected '{}' — not a lexicon archive",
-                path,
-                contents.manifest.kind,
-                LexiconArchive.KIND,
-            )
-            return null
-        }
-
-        val json =
-            contents.docs[LexiconArchive.LEXICON] ?: run {
-                warnOnce("no-doc:$path", "lexicon archive at {} has no {}", path, LexiconArchive.LEXICON)
-                return null
-            }
-
-        return try {
-            CompiledLexicon.fromJson(json)
-        } catch (e: Exception) {
-            warnOnce(
-                "undecodable:$path",
-                "lexicon archive at {} has an undecodable {}: {}",
-                path,
-                LexiconArchive.LEXICON,
-                e.message,
-            )
-            null
+    /** #209 — the degraded state in one line: which archives the new layer serves, and which not. */
+    private fun reportServed(pass: DeclaredLayer.Pass.Served) {
+        val message =
+            "declared layer: serving {} of {} lexicon archives {}" +
+                if (pass.skipped.isEmpty()) "" else "; skipped: {}"
+        val skipped = pass.skipped.joinToString("; ") { "${it.path} (${it.reason})" }
+        val served = pass.archives.map { it.path }
+        if (pass.skipped.isEmpty()) {
+            logger.info(message, pass.archives.size, pass.configured, served)
+        } else {
+            logger.warn(message, pass.archives.size, pass.configured, served, skipped)
         }
     }
 
@@ -387,11 +340,22 @@ class LexiconArchiveRegistrySource(
         const val MAX_LISTED = 5
     }
 
+    /** Logs [message] the first time [cause] is seen since it last went away; returns [cause]. */
     private fun warnOnce(
         cause: String,
         message: String,
         vararg args: Any?,
-    ) {
+    ): String {
         if (reported.add(cause)) logger.warn(message, *args)
+        return cause
+    }
+
+    private fun errorOnce(
+        cause: String,
+        message: String,
+        vararg args: Any?,
+    ): String {
+        if (reported.add(cause)) logger.error(message, *args)
+        return cause
     }
 }

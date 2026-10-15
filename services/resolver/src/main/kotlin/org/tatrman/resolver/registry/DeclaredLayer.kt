@@ -3,10 +3,18 @@ package org.tatrman.resolver.registry
 
 import org.tatrman.ttr.lexicon.CompiledEntry
 import org.tatrman.ttr.lexicon.CompiledLexicon
+import org.tatrman.ttr.lexicon.LexiconArchive
 import org.tatrman.ttr.lexicon.MatchMethod
 import org.tatrman.ttr.lexicon.SourceTag
 import org.tatrman.ttr.lexicon.TargetFacts
 import org.tatrman.ttr.lexicon.sha256
+import org.tatrman.ttr.snapshot.SnapshotId
+import org.tatrman.ttr.snapshot.SnapshotReadResult
+import org.tatrman.ttr.snapshot.SnapshotReader
+import java.nio.file.Path
+import java.util.concurrent.ConcurrentHashMap
+import kotlin.io.path.exists
+import kotlin.io.path.readBytes
 
 /**
  * ttr-server#209 — several compiled lexicon archives, served as ONE declared layer.
@@ -43,6 +51,18 @@ import org.tatrman.ttr.lexicon.sha256
  * — a build over both models would see every relation that reaches the ref — and `memberVocabulary`
  * if either says so. A scalar the archives disagree on is reported in [Merged.factConflicts].
  *
+ * ## Which archives are served: the primary, and additive ones that degrade alone
+ *
+ * [ArchiveSet] reads the configured archives on every pass. The FIRST is the **primary** — the
+ * estate's own archive — and keeps the single-archive posture: if it cannot be read, the pass says
+ * so ([Pass.PrimaryFailed]) and the reader keeps the layer it had loaded (nothing, at boot). Every
+ * later archive is **additive**: one that is absent, unreadable, not a lexicon, undecodable, or
+ * declares a different `schemaVersion` from the primary's is served from its LAST GOOD copy when it
+ * has one (a transient failure never drops words that were being served), and otherwise skipped —
+ * so a broken or drifted side archive costs its own words, never the estate's. [Pass.Served.layerId]
+ * covers exactly the archives served, in declared order, so the served version shows the degraded
+ * state.
+ *
  * ## Twin
  *
  * `services/lex-matcher/.../loader/DeclaredLayer.kt` is the same code. RS-24 keeps the two archive
@@ -50,6 +70,146 @@ import org.tatrman.ttr.lexicon.sha256
  * PRODUCER by the same test: two archives merged must equal one archive compiled over both.
  */
 internal object DeclaredLayer {
+    /** One archive's read: decoded, or why not. */
+    sealed interface Read
+
+    /** One archive as read: its path, the content id of its bytes, and its decoded lexicon. */
+    data class Archive(
+        val path: Path,
+        val id: String,
+        val lexicon: CompiledLexicon,
+    ) : Read {
+        val schema: String get() = lexicon.header.schemaVersion
+    }
+
+    /** An archive that could not be served this pass, and why. */
+    data class Failure(
+        val path: Path,
+        val reason: String,
+    ) : Read
+
+    /** What one pass over the configured archives decided. */
+    sealed interface Pass {
+        /** The primary could not be read: keep what was loaded. */
+        data class PrimaryFailed(
+            val failure: Failure,
+        ) : Pass
+
+        data class Served(
+            /** Primary first, then every additive archive served, in declared order. */
+            val archives: List<Archive>,
+            /** Additive archives served from their last good copy, with why the fresh read failed. */
+            val fallbacks: List<Failure>,
+            /** Additive archives not served at all — no last good copy to fall back to. */
+            val skipped: List<Failure>,
+            /** How many archives are configured. */
+            val configured: Int,
+        ) : Pass {
+            val layerId: String get() = layerId(archives.map { it.id })
+        }
+    }
+
+    /**
+     * The configured archives and what each last read as. Thread-safe: a concurrent pass re-reads
+     * the same files and reaches the same answer.
+     */
+    class ArchiveSet(
+        val paths: List<Path>,
+    ) {
+        init {
+            require(paths.isNotEmpty()) { "a declared layer needs at least one archive path" }
+        }
+
+        /** The last copy of each additive archive that was SERVED — what a failed pass falls back to. */
+        private val lastGood = ConcurrentHashMap<Path, Archive>()
+
+        /** The last decode of each path, so unchanged bytes are never parsed twice. */
+        private val decoded = ConcurrentHashMap<Path, Archive>()
+
+        /** The last failure of each path by content id, so a broken file is not re-parsed per call. */
+        private val failed = ConcurrentHashMap<Path, Pair<String, String>>()
+
+        fun pass(): Pass {
+            val primary =
+                when (val read = read(paths.first())) {
+                    is Archive -> read
+                    is Failure -> return Pass.PrimaryFailed(read)
+                }
+            val served = mutableListOf(primary)
+            val fallbacks = mutableListOf<Failure>()
+            val skipped = mutableListOf<Failure>()
+            for (path in paths.drop(1)) {
+                val failure =
+                    when (val read = read(path)) {
+                        is Failure -> read
+                        is Archive ->
+                            if (read.schema == primary.schema) {
+                                lastGood[path] = read
+                                served += read
+                                null
+                            } else {
+                                Failure(
+                                    path,
+                                    "declares schema '${read.schema}', the primary declares '${primary.schema}'",
+                                )
+                            }
+                    } ?: continue
+                val last = lastGood[path]?.takeIf { it.schema == primary.schema }
+                if (last != null) {
+                    served += last
+                    fallbacks += failure
+                } else {
+                    skipped += failure
+                }
+            }
+            return Pass.Served(served, fallbacks, skipped, paths.size)
+        }
+
+        /** One archive, decoded — or why not. Never throws. */
+        private fun read(path: Path): Read {
+            if (!path.exists()) return Failure(path, "absent")
+            val bytes =
+                try {
+                    path.readBytes()
+                } catch (e: Exception) {
+                    return Failure(path, "unreadable: ${e.message}")
+                }
+            val id = SnapshotId.of(bytes)
+            decoded[path]?.let { if (it.id == id) return it }
+            failed[path]?.let { (failedId, reason) -> if (failedId == id) return Failure(path, reason) }
+            return when (val outcome = decode(path, id, bytes)) {
+                is Archive -> outcome.also { decoded[path] = it }
+                is Failure -> outcome.also { failed[path] = id to it.reason }
+            }
+        }
+
+        private fun decode(
+            path: Path,
+            id: String,
+            bytes: ByteArray,
+        ): Read {
+            val contents =
+                when (val read = SnapshotReader.read(bytes)) {
+                    is SnapshotReadResult.Ok -> read.contents
+                    is SnapshotReadResult.Failure -> return Failure(path, "not a readable archive: ${read.reason}")
+                }
+            // A model snapshot pointed at the lexicon slot would otherwise load as an empty
+            // vocabulary and read as "the estate authored nothing".
+            if (contents.manifest.kind != LexiconArchive.KIND) {
+                return Failure(
+                    path,
+                    "kind='${contents.manifest.kind}', expected '${LexiconArchive.KIND}' — not a lexicon archive",
+                )
+            }
+            val json = contents.docs[LexiconArchive.LEXICON] ?: return Failure(path, "no ${LexiconArchive.LEXICON}")
+            return try {
+                Archive(path, id, CompiledLexicon.fromJson(json))
+            } catch (e: Exception) {
+                Failure(path, "undecodable ${LexiconArchive.LEXICON}: ${e.message}")
+            }
+        }
+    }
+
     /** What a merge produced, plus everything the reader should say out loud. */
     data class Merged(
         val lexicon: CompiledLexicon,
