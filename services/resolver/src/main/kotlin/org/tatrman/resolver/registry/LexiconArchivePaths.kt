@@ -2,7 +2,6 @@
 package org.tatrman.resolver.registry
 
 import com.typesafe.config.Config
-import com.typesafe.config.ConfigValueType
 
 /**
  * ttr-server#209 — which compiled lexicon archives the declared layer reads.
@@ -27,7 +26,7 @@ object LexiconArchivePaths {
         config: Config,
         warn: (String) -> Unit = {},
     ): List<String> {
-        val list = strings(config, LIST_KEY).distinct()
+        val list = DeclaredLayer.pathList(config, LIST_KEY).distinct()
         val single = if (config.hasPath(SINGLE_KEY)) config.getString(SINGLE_KEY).trim().ifEmpty { null } else null
         if (list.isEmpty()) return listOfNotNull(single)
         if (single != null && single !in list) {
@@ -37,19 +36,5 @@ object LexiconArchivePaths {
             )
         }
         return list
-    }
-
-    /** A list, or a comma-separated string; blanks dropped, so an unset `${?VAR}` reads as empty. */
-    private fun strings(
-        config: Config,
-        key: String,
-    ): List<String> {
-        if (!config.hasPath(key)) return emptyList()
-        val raw =
-            when (config.getValue(key).valueType()) {
-                ConfigValueType.LIST -> config.getStringList(key)
-                else -> config.getString(key).split(',')
-            }
-        return raw.map { it.trim() }.filter { it.isNotEmpty() }
     }
 }

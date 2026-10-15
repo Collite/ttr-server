@@ -68,6 +68,10 @@ import java.nio.file.Path
  * is otherwise SKIPPED with an ERROR naming it and the reason — so a broken or drifted side archive
  * costs its own words, never the estate's vocabulary. The snapshot hash covers exactly the archives
  * served, and each new layer is logged as `serving N of M lexicon archives`.
+ *
+ * With additive archives configured, a primary that cannot be read at boot is an ERROR naming it
+ * and every additive archive it leaves unserved: an additive archive is never served on its own,
+ * and a configured list is never the "estate with no lexicon" case.
  */
 class LexiconArchiveRegistrySource(
     private val archivePaths: List<Path>,
@@ -96,6 +100,10 @@ class LexiconArchiveRegistrySource(
     private data class Loaded(
         val archiveId: String,
         val lexicon: CompiledLexicon,
+        /** The archives this layer merged, primary first. */
+        val served: List<Path>,
+        /** The additive archives the latest pass did not serve, with why. */
+        val skipped: List<DeclaredLayer.Failure>,
     )
 
     /**
@@ -149,7 +157,8 @@ class LexiconArchiveRegistrySource(
      * path, and even the open lookup never asked for it (MV-T3 T1 measured both).
      */
     override suspend fun fetch(): DeclaredVocabulary {
-        val lexicon = load()?.lexicon ?: return DeclaredVocabulary()
+        val loaded = load() ?: return DeclaredVocabulary()
+        val lexicon = loaded.lexicon
 
         val rowsByRef =
             lexicon.entries
@@ -189,16 +198,32 @@ class LexiconArchiveRegistrySource(
 
         // ⛑ The line whose absence is the whole issue: an empty vocabulary looks exactly like a
         // small one, so the size is stated every time it is projected rather than inferred.
-        logger.info(
+        // #209 — and it names the archives SERVED, never merely the configured ones: a skipped
+        // additive archive must not read as served in the very line a post-deploy check greps.
+        val source =
+            if (archivePaths.size == 1) {
+                archivePaths.single().toString()
+            } else {
+                "${loaded.served.size} of ${archivePaths.size} lexicon archive(s) ${loaded.served}"
+            }
+        val message =
             "declared vocabulary from {}: {} entity type(s) ({} member vocabularies), {} anchor(s), " +
-                "from {} archive entries ({} non-object rows excluded)",
-            named,
-            entries.size,
-            entries.count { it.memberVocabulary },
-            entries.sumOf { it.values.size },
-            lexicon.entries.size,
-            lexicon.entries.count { it.targetClass != TargetClass.MODEL_OBJECT },
-        )
+                "from {} archive entries ({} non-object rows excluded)" +
+                if (loaded.skipped.isEmpty()) "" else "; skipped: {}"
+        val args =
+            listOf<Any>(
+                source,
+                entries.size,
+                entries.count { it.memberVocabulary },
+                entries.sumOf { it.values.size },
+                lexicon.entries.size,
+                lexicon.entries.count { it.targetClass != TargetClass.MODEL_OBJECT },
+            )
+        if (loaded.skipped.isEmpty()) {
+            logger.info(message, *args.toTypedArray())
+        } else {
+            logger.warn(message, *(args + DeclaredLayer.describe(loaded.skipped)).toTypedArray())
+        }
         return DeclaredVocabulary(entries)
     }
 
@@ -219,16 +244,30 @@ class LexiconArchiveRegistrySource(
             when (val p = archives.pass()) {
                 is DeclaredLayer.Pass.PrimaryFailed -> {
                     val f = p.failure
-                    warnOnce(
-                        "primary:${f.path}:${f.reason}",
-                        if (cached == null) {
-                            "compiled lexicon at {} — {}: the declared vocabulary is EMPTY"
-                        } else {
-                            "compiled lexicon at {} — {}: keeping the loaded declared vocabulary"
-                        },
-                        f.path,
-                        f.reason,
-                    )
+                    if (cached == null && archives.additive.isNotEmpty()) {
+                        // #244 review — with additive archives configured, an unreadable primary is a
+                        // misconfiguration, never the estate with no lexicon: say what it costs.
+                        errorOnce(
+                            "primary:${f.path}:${f.reason}",
+                            "compiled lexicon PRIMARY at {} — {}: the declared vocabulary is EMPTY, and the " +
+                                "additive archive(s) {} are NOT served — an additive archive is never served " +
+                                "without the primary (ttr-server#209)",
+                            f.path,
+                            f.reason,
+                            archives.additive,
+                        )
+                    } else {
+                        warnOnce(
+                            "primary:${f.path}:${f.reason}",
+                            if (cached == null) {
+                                "compiled lexicon at {} — {}: the declared vocabulary is EMPTY"
+                            } else {
+                                "compiled lexicon at {} — {}: keeping the loaded declared vocabulary"
+                            },
+                            f.path,
+                            f.reason,
+                        )
+                    }
                     return cached
                 }
                 is DeclaredLayer.Pass.Served -> p
@@ -254,10 +293,15 @@ class LexiconArchiveRegistrySource(
         }
 
         val id = pass.layerId
-        cached?.let { if (it.archiveId == id) return it }
+        cached?.let {
+            if (it.archiveId == id) {
+                // The same layer; only WHY an additive archive is skipped may have moved.
+                return if (it.skipped == pass.skipped) it else it.copy(skipped = pass.skipped).also { c -> cached = c }
+            }
+        }
 
         val merged = DeclaredLayer.merge(pass.archives.map { it.lexicon })
-        return Loaded(id, merged.lexicon).also {
+        return Loaded(id, merged.lexicon, pass.archives.map { it.path }, pass.skipped).also {
             cached = it
             // Forget every cause that no longer holds, BEFORE the checks below record theirs: a cause
             // that recurs later is then said again, one that persists is said once.
@@ -273,7 +317,7 @@ class LexiconArchiveRegistrySource(
         val message =
             "declared layer: serving {} of {} lexicon archives {}" +
                 if (pass.skipped.isEmpty()) "" else "; skipped: {}"
-        val skipped = pass.skipped.joinToString("; ") { "${it.path} (${it.reason})" }
+        val skipped = DeclaredLayer.describe(pass.skipped)
         val served = pass.archives.map { it.path }
         if (pass.skipped.isEmpty()) {
             logger.info(message, pass.archives.size, pass.configured, served)

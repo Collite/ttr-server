@@ -33,7 +33,9 @@ refusing it as another area's question.
   one build over all of the packages would write, with the same entry-table hash (`lexicon_artifact_hash`). A form two
   packages declare for two objects gets both readings. The stdlib rows every archive embeds (operator words, grounding
   and predicate triggers) are served once, so they add no duplicate candidate and move no score. Per-ref facts
-  (`targets`) are copied; a ref in two archives takes the union of its `reachedFrom`.
+  (`targets`) are copied; a ref in two archives takes the union of its `reachedFrom`. A fact the archives disagree on
+  is WARNed and the first archive's value is kept. That includes a `reachedFrom` entry's `mandatory`, which the
+  Binder's T3 rule decides on.
 - **The snapshot hash covers the archives served.** With several archives the archive hash (the resolver's registry
   `snapshot_hash`, lex-matcher's reload clock) is a hash over the ids of the archives actually served, in declared
   order, so a change to any one is a new snapshot and lex-matcher's refresh picks it up. One served archive keeps its
@@ -44,7 +46,15 @@ refusing it as another area's question.
   primary's is served from its last good copy when it has one (WARN — a transient failure drops no served word), and
   otherwise skipped with an ERROR naming it and the reason. A broken or drifted additional archive costs only its own
   words. Each new layer logs `serving N of M lexicon archives` (with `skipped: …` when degraded), and lex-matcher
-  exports the gauge `fuzzy_lexicon_archives_skipped`.
+  exports the gauge `fuzzy_lexicon_archives_skipped`. With additional archives configured, a primary that cannot be read
+  at boot is an ERROR naming it and every additional archive it leaves unserved (none is served without it), and the
+  gauge counts those. The load lines count and name the archives merged, never just the configured ones:
+  lex-matcher's `Compiled lexicon loaded: … from N of M archive(s)` and the resolver's
+  `declared vocabulary from N of M lexicon archive(s) [...]`, each with `; skipped: …` when degraded.
+- **One merge, in two services.** The merge lives in each reader as the same file (RS-24: no service-to-service
+  import). The resolver's `verifyDeclaredLayerTwin` task, part of `check`, fails the build when the two copies differ
+  in anything but their `package` line. Collite/ttr-core#190 asks for the merge in `ttr-lexicon` itself, beside the
+  compiler's precedence rule.
 - **Charts.** The `tatrman-service` library mounts `lexicon.configMapNames` beside `lexicon.configMapName`: the first
   ConfigMap where it always was, each further one at `<mountPath>.d/<configMapName>`. The resolver and lex-matcher charts
   then render the singular env var naming the FIRST archive — so an image older than this change still boots on it

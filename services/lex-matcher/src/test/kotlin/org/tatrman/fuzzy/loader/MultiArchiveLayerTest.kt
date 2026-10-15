@@ -552,6 +552,156 @@ class MultiArchiveLayerTest :
             classes shouldContain CoreTargetClass.GROUNDING_TRIGGER
             classes shouldContain CoreTargetClass.STRING_PREDICATE
         }
+
+        // ---- review of #244 -------------------------------------------------------------------------
+
+        /** Every line the reader logs at INFO or above while [body] runs, as `LEVEL message`. */
+        fun linesFrom(body: () -> Unit): List<String> {
+            val logger =
+                (org.slf4j.LoggerFactory.getILoggerFactory() as LoggerContext)
+                    .getLogger(LexiconArchiveSource::class.java.name)
+            val level = logger.level
+            logger.level = Level.INFO
+            val appender = ListAppender<ILoggingEvent>().apply { start() }
+            logger.addAppender(appender)
+            return try {
+                body()
+                appender.list.map { "${it.level} ${it.formattedMessage}" }
+            } finally {
+                logger.detachAppender(appender)
+                appender.stop()
+                logger.level = level
+            }
+        }
+
+        /** [file]'s archive, with `er.entity.customer` reached from `er.entity.order` at [mandatory]. */
+        fun reaching(
+            path: Path,
+            file: LexiconDataFile,
+            mandatory: Boolean,
+        ): Path =
+            write(
+                path,
+                compile(file).let { r ->
+                    r.copy(
+                        lexicon =
+                            r.lexicon.copy(
+                                targets =
+                                    r.lexicon.targets +
+                                        (
+                                            "er.entity.customer" to
+                                                TargetFacts(
+                                                    objectKind = "entity",
+                                                    reachedFrom = listOf(Reach("er.entity.order", mandatory)),
+                                                )
+                                        ),
+                            ),
+                    )
+                },
+            )
+
+        "per-ref facts: a reachedFrom `mandatory` the archives disagree on is a conflict; the first is kept" {
+            // `mandatory` is what the Binder's T3 rule collapses on, so a disagreement about it is a
+            // disagreement about the SAME relation — said like every other per-ref fact, never dropped.
+            fun lexicon(mandatory: Boolean) =
+                CompiledLexicon(
+                    header =
+                        CompiledLexiconHeader(
+                            modelSnapshotHash = modelHash,
+                            sourceHashes = SourceHashes("d", "m"),
+                            builtAt = "t",
+                        ),
+                    entries = emptyList(),
+                    targets =
+                        mapOf(
+                            "er.entity.customer" to
+                                TargetFacts(
+                                    objectKind = "entity",
+                                    reachedFrom =
+                                        listOf(Reach("er.entity.order", mandatory), Reach("er.entity.store", true)),
+                                ),
+                        ),
+                )
+            for (first in listOf(true, false)) {
+                withClue("first archive says mandatory=$first") {
+                    val merged = DeclaredLayer.merge(listOf(lexicon(first), lexicon(!first)))
+                    merged.lexicon.targets
+                        .getValue("er.entity.customer")
+                        .reachedFrom shouldBe
+                        listOf(Reach("er.entity.order", first), Reach("er.entity.store", true))
+                    val conflict = merged.factConflicts.single()
+                    conflict shouldContainText "er.entity.customer.reachedFrom[er.entity.order].mandatory"
+                    conflict shouldContainText "kept '$first'"
+                }
+            }
+            DeclaredLayer.merge(listOf(lexicon(true), lexicon(true))).factConflicts.shouldBeEmpty()
+        }
+
+        "a reachedFrom `mandatory` disagreement across served archives is WARNed by the reader" {
+            val dir = Files.createTempDirectory("lex-multi")
+            val a = reaching(dir.resolve("a.tar.zst"), retailFile, mandatory = true)
+            val b = reaching(dir.resolve("b.tar.zst"), investmentFile, mandatory = false)
+            val warns = warnsFrom { runBlocking { LexiconArchiveSource(listOf(a, b)).fetch() } }
+            warns.single { it.contains("per-ref fact") } shouldContainText
+                "er.entity.customer.reachedFrom[er.entity.order].mandatory"
+        }
+
+        "a missing PRIMARY beside additive archives is an ERROR naming both; the gauge counts them" {
+            // With additive archives configured, an absent primary is a misconfiguration — never the
+            // pre-RV estate with no lexicon, which configures no list at all.
+            val dir = Files.createTempDirectory("lex-multi")
+            val (a, b, _) = estate(dir)
+            val primary = dir.resolve("primary.tar.zst")
+            val bad =
+                mapOf(
+                    "absent" to { _: Path -> },
+                    "not a readable archive" to { p: Path -> p.writeBytes("not an archive".toByteArray()) },
+                )
+            for ((reason, make) in bad) {
+                withClue(reason) {
+                    Files.deleteIfExists(primary)
+                    make(primary)
+                    val source = LexiconArchiveSource(listOf(primary, b))
+                    val logs = logsFrom { source.hash() }
+
+                    source.hash() shouldBe ""
+                    source.skippedArchives() shouldBe 1
+                    val error = logs.single { it.startsWith("ERROR") }
+                    error shouldContainText primary.toString()
+                    error shouldContainText reason
+                    error shouldContainText b.toString()
+                    error shouldContainText "NOT served"
+
+                    // …and the moment the primary reads, both are served and the gauge drops.
+                    Files.copy(a, primary, java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+                    source.hash() shouldBe LexiconArchiveSource(listOf(a, b)).hash()
+                    source.skippedArchives() shouldBe 0
+                }
+            }
+
+            // ONE archive, absent at boot, is still the pre-RV estate: silent, nothing skipped.
+            val alone = LexiconArchiveSource(dir.resolve("never.tar.zst"))
+            logsFrom { alone.hash() }.shouldBeEmpty()
+            alone.skippedArchives() shouldBe 0
+        }
+
+        "the load line counts the archives MERGED, not the configured ones, and names a skipped one" {
+            val dir = Files.createTempDirectory("lex-multi")
+            val (a, b, _) = estate(dir)
+            val absent = dir.resolve("absent.tar.zst")
+
+            val degraded = linesFrom { runBlocking { LexiconArchiveSource(listOf(a, absent)).fetch() } }
+            val line = degraded.single { it.contains("Compiled lexicon loaded") }
+            line shouldContainText "from 1 of 2 archive(s)"
+            line shouldContainText "skipped: $absent (absent)"
+
+            val whole = linesFrom { runBlocking { LexiconArchiveSource(listOf(a, b)).fetch() } }
+            whole.single { it.contains("Compiled lexicon loaded") }.let {
+                it shouldContainText "from 2 of 2 archive(s)"
+                it.contains("skipped") shouldBe false
+                it.startsWith("INFO") shouldBe true
+            }
+        }
     })
 
 private fun withClue(

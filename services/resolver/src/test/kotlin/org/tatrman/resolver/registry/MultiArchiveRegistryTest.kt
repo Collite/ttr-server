@@ -21,6 +21,7 @@ import org.tatrman.ttr.lexicon.LexiconDataFile
 import org.tatrman.ttr.lexicon.LexiconLoad
 import org.tatrman.ttr.lexicon.LexiconValidator
 import org.tatrman.ttr.lexicon.TargetClass
+import org.tatrman.ttr.lexicon.TargetFacts
 import org.tatrman.ttr.lexicon.compile.CompileResult
 import org.tatrman.ttr.lexicon.compile.LexiconCompiler
 import org.tatrman.ttr.lexicon.compile.LexiconPacker
@@ -32,6 +33,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.io.path.readBytes
 import kotlin.io.path.writeBytes
+import org.tatrman.ttr.lexicon.Reach as LexiconReach
 
 /**
  * ttr-server#209 — the registry fed from SEVERAL lexicon archives, one per source the estate's
@@ -349,5 +351,141 @@ class MultiArchiveRegistryTest :
                 "RESOLVER_LEXICON_ARCHIVE_PATH" to "/a/l.tar.zst",
                 "RESOLVER_LEXICON_ARCHIVE_PATHS" to "/a/l.tar.zst,/b/l.tar.zst",
             ) shouldBe listOf("/a/l.tar.zst", "/b/l.tar.zst")
+        }
+
+        // ---- review of #244 -------------------------------------------------------------------------
+
+        /** Every line the reader logs at INFO or above while [body] runs, as `LEVEL message`. */
+        fun linesFrom(body: () -> Unit): List<String> {
+            val logger =
+                (org.slf4j.LoggerFactory.getILoggerFactory() as LoggerContext)
+                    .getLogger(LexiconArchiveRegistrySource::class.java.name)
+            val level = logger.level
+            logger.level = Level.INFO
+            val appender = ListAppender<ILoggingEvent>().apply { start() }
+            logger.addAppender(appender)
+            return try {
+                body()
+                appender.list.map { "${it.level} ${it.formattedMessage}" }
+            } finally {
+                logger.detachAppender(appender)
+                appender.stop()
+                logger.level = level
+            }
+        }
+
+        /** [file]'s archive, with `er.entity.customer` reached from `er.entity.order` at [mandatory]. */
+        fun reaching(
+            path: Path,
+            file: org.tatrman.ttr.lexicon.LexiconDataFile,
+            mandatory: Boolean,
+        ): Path =
+            write(
+                path,
+                compile(file).let { r ->
+                    r.copy(
+                        lexicon =
+                            r.lexicon.copy(
+                                targets =
+                                    r.lexicon.targets +
+                                        (
+                                            "er.entity.customer" to
+                                                TargetFacts(
+                                                    objectKind = "entity",
+                                                    reachedFrom = listOf(LexiconReach("er.entity.order", mandatory)),
+                                                )
+                                        ),
+                            ),
+                    )
+                },
+            )
+
+        "a reachedFrom `mandatory` two archives disagree on is a conflict; the first archive's reaches the Binder" {
+            // `mandatory` is what the Binder's T3 rule collapses on: a disagreement about it is a
+            // disagreement about the SAME relation, said like every other per-ref fact, never dropped.
+            for (first in listOf(true, false)) {
+                io.kotest.assertions.withClue("first archive says mandatory=$first") {
+                    val dir = Files.createTempDirectory("resolver-multi")
+                    val a = reaching(dir.resolve("a.tar.zst"), retailFile, mandatory = first)
+                    val b = reaching(dir.resolve("b.tar.zst"), investmentFile, mandatory = !first)
+
+                    val merged =
+                        DeclaredLayer.merge(
+                            listOf(a, b).map { p ->
+                                (DeclaredLayer.ArchiveSet(listOf(p)).pass() as DeclaredLayer.Pass.Served)
+                                    .archives
+                                    .single()
+                                    .lexicon
+                            },
+                        )
+                    merged.factConflicts.single() shouldContainText
+                        "er.entity.customer.reachedFrom[er.entity.order].mandatory"
+                    merged.factConflicts.single() shouldContainText "kept '$first'"
+
+                    val logs = logsFrom { registry(a, b) }
+                    registry(a, b).entityTypes.single { it.ref == "er.entity.customer" }.reachedFrom shouldBe
+                        listOf(
+                            org.tatrman.resolver.model
+                                .Reach("er.entity.order", first),
+                        )
+                    logs.single { it.contains("per-ref fact") } shouldContainText
+                        "er.entity.customer.reachedFrom[er.entity.order].mandatory"
+                }
+            }
+        }
+
+        "a missing PRIMARY beside additive archives is an ERROR naming it and the archives not served — once" {
+            // With additive archives configured, an absent primary is a misconfiguration — never the
+            // pre-RV estate with no lexicon, which configures no list at all.
+            val dir = Files.createTempDirectory("resolver-multi")
+            val (a, b, _) = estate(dir)
+            val primary = dir.resolve("primary.tar.zst")
+            val bad =
+                mapOf(
+                    "absent" to { _: Path -> },
+                    "not a readable archive" to { p: Path -> p.writeBytes(byteArrayOf(1, 2, 3, 4)) },
+                )
+            for ((reason, make) in bad) {
+                io.kotest.assertions.withClue(reason) {
+                    Files.deleteIfExists(primary)
+                    make(primary)
+                    val source = LexiconArchiveRegistrySource(listOf(primary, b))
+                    val logs = logsFrom { source.hash() }
+
+                    source.hash() shouldBe ""
+                    val error = logs.single { it.startsWith("ERROR") }
+                    error shouldContainText primary.toString()
+                    error shouldContainText reason
+                    error shouldContainText b.toString()
+                    error shouldContainText "NOT served"
+                    // Said once, not on every resolve: hash() runs per request.
+                    logsFrom { repeat(3) { source.hash() } }.shouldBeEmpty()
+
+                    Files.copy(a, primary, java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+                    source.hash() shouldBe LexiconArchiveRegistrySource(listOf(a, b)).hash()
+                }
+            }
+        }
+
+        "the vocabulary line names the archives SERVED, not the configured ones, and a skipped one" {
+            val dir = Files.createTempDirectory("resolver-multi")
+            val (a, b, _) = estate(dir)
+            val absent = dir.resolve("absent.tar.zst")
+
+            val degraded = linesFrom { runBlocking { LexiconArchiveRegistrySource(listOf(a, absent)).fetch() } }
+            val line = degraded.single { it.contains("declared vocabulary from") }
+            line shouldContainText "from 1 of 2 lexicon archive(s) [$a]"
+            line shouldContainText "skipped: $absent (absent)"
+
+            val whole = linesFrom { runBlocking { LexiconArchiveRegistrySource(listOf(a, b)).fetch() } }
+            whole.single { it.contains("declared vocabulary from") }.let {
+                it shouldContainText "from 2 of 2 lexicon archive(s) [$a, $b]"
+                it.contains("skipped") shouldBe false
+                it.startsWith("INFO") shouldBe true
+            }
+
+            // One archive: the line is the pre-#209 one, naming the path alone.
+            linesFrom { runBlocking { LexiconArchiveRegistrySource(a).fetch() } }
+                .single { it.contains("declared vocabulary from") } shouldContainText "declared vocabulary from $a:"
         }
     })

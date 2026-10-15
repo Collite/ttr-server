@@ -51,8 +51,11 @@ import org.tatrman.ttr.lexicon.TargetClass as ArtifactTargetClass
  * otherwise SKIPPED with an ERROR naming it and the reason: a broken or drifted side archive costs
  * its own words, never the estate's. [hash] covers exactly the archives served, each new layer is
  * logged as `serving N of M lexicon archives`, and [skippedArchives] feeds the
- * `fuzzy_lexicon_archives_skipped` gauge. This is NOT the learned layer: `overlay-archive-path`
- * stays a separate source on its own clock ([OverlayArchiveSource]).
+ * `fuzzy_lexicon_archives_skipped` gauge. With additive archives configured, a primary that cannot
+ * be read at boot is an ERROR naming it and every additive archive it leaves unserved (an additive
+ * archive is never served on its own, and a configured list is never the "estate with no lexicon"
+ * case), and the gauge counts those archives. This is NOT the learned layer:
+ * `overlay-archive-path` stays a separate source on its own clock ([OverlayArchiveSource]).
  */
 class LexiconArchiveSource(
     private val archivePaths: List<Path>,
@@ -72,8 +75,10 @@ class LexiconArchiveSource(
     private var skipped: Int = 0
 
     /**
-     * #209 — configured archives the last refresh did NOT serve (0 when all are, or when there is
-     * only the primary). A pure accessor, like [artifactHash]: it reports what the last read decided.
+     * #209 — configured ADDITIVE archives the last refresh did NOT serve: 0 when all are, or when
+     * there is only the primary; every additive archive when the primary is unreadable at boot,
+     * because none of them is served without it. A pure accessor, like [artifactHash]: it reports
+     * what the last read decided.
      */
     fun skippedArchives(): Int = skipped
 
@@ -87,6 +92,10 @@ class LexiconArchiveSource(
     private data class Loaded(
         val archiveId: String,
         val lexicon: CompiledLexicon,
+        /** The archives this layer merged, primary first. */
+        val served: List<Path>,
+        /** The additive archives the latest pass did not serve, with why. */
+        val skipped: List<DeclaredLayer.Failure>,
     )
 
     /**
@@ -128,7 +137,8 @@ class LexiconArchiveSource(
      * the author never made.
      */
     override suspend fun fetch(): DeclaredVocabulary {
-        val lexicon = load()?.lexicon ?: return DeclaredVocabulary()
+        val loaded = load() ?: return DeclaredVocabulary()
+        val lexicon = loaded.lexicon
 
         val entries =
             lexicon.entries
@@ -141,13 +151,18 @@ class LexiconArchiveSource(
                     )
                 }.sortedBy { it.category }
 
-        logger.info(
-            "Compiled lexicon loaded: {} entries over {} targets from {} archive(s) (artifact={})",
-            lexicon.entries.size,
-            entries.size,
-            archivePaths.size,
-            lexicon.contentHash,
-        )
+        // #209 — the archives MERGED, never merely the configured ones: a skipped additive archive
+        // must not read as served in the very line a post-deploy check greps.
+        val message =
+            "Compiled lexicon loaded: {} entries over {} targets from {} of {} archive(s) (artifact={})" +
+                if (loaded.skipped.isEmpty()) "" else "; skipped: {}"
+        val args =
+            listOf<Any>(lexicon.entries.size, entries.size, loaded.served.size, archivePaths.size, lexicon.contentHash)
+        if (loaded.skipped.isEmpty()) {
+            logger.info(message, *args.toTypedArray())
+        } else {
+            logger.warn(message, *(args + DeclaredLayer.describe(loaded.skipped)).toTypedArray())
+        }
         reportUnrecognisedMethods(entries)
         return DeclaredVocabulary(entries)
     }
@@ -251,6 +266,19 @@ class LexiconArchiveSource(
                     when {
                         cached != null ->
                             logger.warn("Compiled lexicon at {} — {}: keeping the loaded one", f.path, f.reason)
+                        // #244 review — with additive archives configured, an unreadable primary is a
+                        // misconfiguration, never the pre-RV estate with no lexicon: say what it costs.
+                        archives.additive.isNotEmpty() -> {
+                            skipped = archives.additive.size
+                            logger.error(
+                                "Compiled lexicon PRIMARY at {} — {}: the declared layer is EMPTY, and the " +
+                                    "additive archive(s) {} are NOT served — an additive archive is never served " +
+                                    "without the primary (ttr-server#209)",
+                                f.path,
+                                f.reason,
+                                archives.additive,
+                            )
+                        }
                         // Absent at boot is the pre-RV estate with no lexicon: say nothing, as before.
                         f.reason != "absent" -> logger.warn("Compiled lexicon at {} — {}", f.path, f.reason)
                     }
@@ -271,10 +299,15 @@ class LexiconArchiveSource(
         skipped = pass.skipped.size
 
         val id = pass.layerId
-        cached?.let { if (it.archiveId == id) return it }
+        cached?.let {
+            if (it.archiveId == id) {
+                // The same layer; only WHY an additive archive is skipped may have moved.
+                return if (it.skipped == pass.skipped) it else it.copy(skipped = pass.skipped).also { c -> cached = c }
+            }
+        }
 
         val merged = DeclaredLayer.merge(pass.archives.map { it.lexicon })
-        return Loaded(id, merged.lexicon).also {
+        return Loaded(id, merged.lexicon, pass.archives.map { it.path }, pass.skipped).also {
             if (archivePaths.size > 1) reportServed(pass)
             checkSchemaVersion(it.lexicon)
             reportConflicts(merged)
@@ -293,7 +326,7 @@ class LexiconArchiveSource(
                 served.size,
                 pass.configured,
                 served,
-                pass.skipped.joinToString("; ") { "${it.path} (${it.reason})" },
+                DeclaredLayer.describe(pass.skipped),
             )
         }
     }

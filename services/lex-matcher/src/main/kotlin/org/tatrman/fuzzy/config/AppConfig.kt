@@ -9,6 +9,7 @@ import org.tatrman.fuzzy.core.ProfileScorer
 import org.tatrman.fuzzy.core.RetrievalMode
 import org.tatrman.fuzzy.core.TokenBasedMatcherV2
 import org.tatrman.fuzzy.core.V2Normalization
+import org.tatrman.fuzzy.loader.DeclaredLayer
 
 data class AppConfig(
     val serverPort: Int,
@@ -464,7 +465,7 @@ object ConfigLoader {
             LexiconConfig(
                 archivePath =
                     if (lexicon.hasPath("archive-path")) lexicon.getString("archive-path") else defaults.archivePath,
-                archivePaths = lexicon.pathList("archive-paths"),
+                archivePaths = DeclaredLayer.pathList(lexicon, "archive-paths"),
                 uniquenessMarginFloor =
                     if (lexicon.hasPath("uniqueness-margin-floor")) {
                         lexicon.getDouble("uniqueness-margin-floor")
@@ -487,20 +488,6 @@ object ConfigLoader {
         } catch (e: com.typesafe.config.ConfigException) {
             LexiconConfig()
         }
-
-    /**
-     * #209 — a HOCON list, or a comma-separated string (how a list arrives from the environment, the
-     * same shape as `security.api-keys`). Blanks dropped, so an unset `${?VAR}` reads as empty.
-     */
-    private fun com.typesafe.config.Config.pathList(path: String): List<String> {
-        if (!hasPath(path)) return emptyList()
-        val raw =
-            when (getValue(path).valueType()) {
-                com.typesafe.config.ConfigValueType.LIST -> getStringList(path)
-                else -> getString(path).split(',')
-            }
-        return raw.map { it.trim() }.filter { it.isNotEmpty() }
-    }
 
     private fun loadMetadataConfig(fuzzyConfig: com.typesafe.config.Config): MetadataConfig =
         try {

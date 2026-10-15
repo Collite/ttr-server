@@ -1,10 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 package org.tatrman.resolver.registry
 
+import com.typesafe.config.Config
+import com.typesafe.config.ConfigValueType
 import org.tatrman.ttr.lexicon.CompiledEntry
 import org.tatrman.ttr.lexicon.CompiledLexicon
 import org.tatrman.ttr.lexicon.LexiconArchive
 import org.tatrman.ttr.lexicon.MatchMethod
+import org.tatrman.ttr.lexicon.Reach
 import org.tatrman.ttr.lexicon.SourceTag
 import org.tatrman.ttr.lexicon.TargetFacts
 import org.tatrman.ttr.lexicon.sha256
@@ -49,7 +52,15 @@ import kotlin.io.path.readBytes
  * `targets` is keyed by ref. A ref present in one archive is copied. A ref in two (a package both
  * sources build against) keeps the first archive's scalar facts and takes the UNION of `reachedFrom`
  * — a build over both models would see every relation that reaches the ref — and `memberVocabulary`
- * if either says so. A scalar the archives disagree on is reported in [Merged.factConflicts].
+ * if either says so.
+ *
+ * **One winner rule for every per-ref fact: the first archive that states it** — the primary, then
+ * the additive archives in declared order — and every disagreement is reported in
+ * [Merged.factConflicts]. That includes a `reachedFrom` entry both archives carry for the same
+ * `factRef` with a different `mandatory`: it is a disagreement about the SAME relation, and
+ * `mandatory` is what the Binder's T3 reachability collapse decides on, so it must never be dropped
+ * silently. (Inside one build the compiler keeps the first relation per `factRef`; across archives
+ * the first archive's is kept, and the loss is said out loud.)
  *
  * ## Which archives are served: the primary, and additive ones that degrade alone
  *
@@ -65,9 +76,19 @@ import kotlin.io.path.readBytes
  *
  * ## Twin
  *
- * `services/lex-matcher/.../loader/DeclaredLayer.kt` is the same code. RS-24 keeps the two archive
- * readers conformant by contract until the RO-13 shared lib exists, and both copies are held to the
- * PRODUCER by the same test: two archives merged must equal one archive compiled over both.
+ * This file exists twice, as the SAME code: `services/resolver/.../registry/DeclaredLayer.kt` and
+ * `services/lex-matcher/.../loader/DeclaredLayer.kt`. RS-24 keeps the two archive readers conformant
+ * by contract (no service→service import) until the RO-13 shared lib exists. Two things hold them:
+ *
+ *  - both copies are held to the PRODUCER by the same test: two archives merged must equal one
+ *    archive compiled over both;
+ *  - the resolver's `verifyDeclaredLayerTwin` task (part of `check`) fails the build when the two
+ *    files differ in anything but their `package` line. Edit one, copy it to the other.
+ *
+ * [PRECEDENCE], [breadth] and [ENTRY_ORDER] restate `LexiconCompiler`'s private rule, read off the
+ * wire. The producer-side home for this merge — a public `CompiledLexicon.merge` next to the
+ * compiler's precedence, so a serving merge cannot drift from a single build — is asked for in
+ * Collite/ttr-core#190.
  */
 internal object DeclaredLayer {
     /** One archive's read: decoded, or why not. */
@@ -165,6 +186,9 @@ internal object DeclaredLayer {
             return Pass.Served(served, fallbacks, skipped, paths.size)
         }
 
+        /** The additive archives — every configured one after the primary. */
+        val additive: List<Path> get() = paths.drop(1)
+
         /** One archive, decoded — or why not. Never throws. */
         private fun read(path: Path): Read {
             if (!path.exists()) return Failure(path, "absent")
@@ -208,6 +232,27 @@ internal object DeclaredLayer {
                 Failure(path, "undecodable ${LexiconArchive.LEXICON}: ${e.message}")
             }
         }
+    }
+
+    /** Failures as one log fragment: `<path> (<reason>); …`. */
+    fun describe(failures: List<Failure>): String = failures.joinToString("; ") { "${it.path} (${it.reason})" }
+
+    /**
+     * A list of archive paths from config: a HOCON list, or a comma-separated string (how a list
+     * arrives from the environment). Blanks dropped, so an unset `${?VAR}` reads as empty. Both
+     * readers parse their `…archive-paths` key with this one function.
+     */
+    fun pathList(
+        config: Config,
+        key: String,
+    ): List<String> {
+        if (!config.hasPath(key)) return emptyList()
+        val raw =
+            when (config.getValue(key).valueType()) {
+                ConfigValueType.LIST -> config.getStringList(key)
+                else -> config.getString(key).split(',')
+            }
+        return raw.map { it.trim() }.filter { it.isNotEmpty() }
     }
 
     /** What a merge produced, plus everything the reader should say out loud. */
@@ -283,7 +328,8 @@ internal object DeclaredLayer {
         if (a == b) return a
 
         // The first archive's value wins; a blank one is filled from the second. Two different
-        // non-blank values are a disagreement about the SAME model object, said out loud.
+        // non-blank values are a disagreement about the SAME model object, said out loud. One rule
+        // for every per-ref fact, `reachedFrom[*].mandatory` included (see the class KDoc).
         fun pick(
             field: String,
             x: String?,
@@ -295,12 +341,36 @@ internal object DeclaredLayer {
         return TargetFacts(
             objectKind = pick("objectKind", a.objectKind, b.objectKind).orEmpty(),
             ownerRef = pick("ownerRef", a.ownerRef, b.ownerRef),
-            reachedFrom = (a.reachedFrom + b.reachedFrom).distinctBy { it.factRef }.sortedBy { it.factRef },
+            reachedFrom = reach(ref, a.reachedFrom, b.reachedFrom, conflicts),
             nameRef = pick("nameRef", a.nameRef, b.nameRef),
             codeRef = pick("codeRef", a.codeRef, b.codeRef),
             codeFormat = pick("codeFormat", a.codeFormat, b.codeFormat),
             memberVocabulary = a.memberVocabulary || b.memberVocabulary,
         )
+    }
+
+    /**
+     * The union of two `reachedFrom` lists by `factRef`, sorted as the compiler sorts it. A `factRef`
+     * both carry keeps [a]'s `mandatory` (the first archive's), and a different value in [b] is a
+     * conflict like any other per-ref fact.
+     */
+    private fun reach(
+        ref: String,
+        a: List<Reach>,
+        b: List<Reach>,
+        conflicts: MutableList<String>,
+    ): List<Reach> {
+        val byFact = LinkedHashMap<String, Reach>()
+        for (r in a) byFact.putIfAbsent(r.factRef, r)
+        for (r in b) {
+            val kept = byFact.putIfAbsent(r.factRef, r) ?: continue
+            if (kept.mandatory != r.mandatory) {
+                conflicts +=
+                    "$ref.reachedFrom[${r.factRef}].mandatory: '${kept.mandatory}' vs '${r.mandatory}'; " +
+                    "kept '${kept.mandatory}'"
+            }
+        }
+        return byFact.values.sortedBy { it.factRef }
     }
 
     /** How much a method admits — `LexiconCompiler.breadth`, read off the wire. Unknown ranks last. */

@@ -228,4 +228,40 @@ val verifyNoKindDerivation by tasks.registering {
     }
 }
 
-tasks.named("check") { dependsOn(verifyNoLlmDependency, verifyNoKindDerivation) }
+// ttr-server#209 (review of #244) — structural DECLARED-LAYER TWIN guard. Fail the build if the two
+// copies of `DeclaredLayer.kt` differ in anything but their `package` line.
+//
+// The resolver and lex-matcher both serve the declared lexicon layer, and RS-24 forbids either from
+// importing the other until the RO-13 shared lib exists — so the multi-archive merge (the compiler's
+// precedence restated, the per-ref fact union, which archives are served) lives in each service as a
+// verbatim copy. Two copies kept aligned by prose is exactly how the two readers drifted before
+// (the empty-vocabulary defect), so the alignment is checked here, on every `check`. Edit one copy,
+// copy it to the other. The producer-side fix — one public merge in ttr-lexicon — is asked for in
+// Collite/ttr-core#190.
+val declaredLayerTwins =
+    listOf(
+        file("src/main/kotlin/org/tatrman/resolver/registry/DeclaredLayer.kt"),
+        rootProject.file("services/lex-matcher/src/main/kotlin/org/tatrman/fuzzy/loader/DeclaredLayer.kt"),
+    )
+
+val verifyDeclaredLayerTwin by tasks.registering {
+    val twins = declaredLayerTwins
+    val root = rootDir
+    inputs.files(twins).withPathSensitivity(PathSensitivity.RELATIVE)
+    doLast {
+        val packageLine = Regex("""(?m)^package [\w.]+$""")
+        val (ours, theirs) = twins.map { it.readText().replaceFirst(packageLine, "package <twin>").lines() }
+        val at = (0 until maxOf(ours.size, theirs.size)).firstOrNull { ours.getOrNull(it) != theirs.getOrNull(it) }
+        if (at != null) {
+            throw GradleException(
+                "DECLARED-LAYER TWIN drift (RS-24, ttr-server#209): ${twins.map { it.relativeTo(root).path }} " +
+                    "differ at line ${at + 1}:\n" +
+                    "  resolver:    ${ours.getOrNull(at) ?: "<end of file>"}\n" +
+                    "  lex-matcher: ${theirs.getOrNull(at) ?: "<end of file>"}\n" +
+                    "The two copies must be the SAME code but for their `package` line: edit one, copy it to the other.",
+            )
+        }
+    }
+}
+
+tasks.named("check") { dependsOn(verifyNoLlmDependency, verifyNoKindDerivation, verifyDeclaredLayerTwin) }
