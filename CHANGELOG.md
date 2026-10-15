@@ -16,6 +16,30 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+### resolver — coordinated places take the reading they share: „Tržby pro Brno a Liberec“ is two stores (ttr-demo#62)
+
+The coordination ruling — of two mentions joined by „a“ / „nebo“ / "and" / "or", the ambiguous one takes the reading
+where they intersect, and nothing is asked — covered mentions of model objects only. On the Hartland demo's Czech world
+„Tržby pro Brno a Liberec v roce 2025“ read `Brno` as the distribution centre "Brno DC" (the all-channel revenue's fact
+reaches the warehouse, not the store) and left `Liberec` a bare place with a G3: the question could be answered as Brno
+DC's revenue alone.
+
+- **A place coordinated with a governed place is governed by the same anchor.** `Liberec` hangs on `Brno` by `conj`,
+  not on `Tržby`, so it was nobody's governed value. A conjunct the NER typed a place or a person is now proposed as the
+  anchor's governed pair, with the same scope, exactly like the place it is coordinated with.
+- **The conjuncts meet where their readings intersect.** A conjunct's readings are the entities owning the member rows
+  the gate admits for it with no scope applied. When one conjunct has one reading, another has several, and the one is
+  among the several, both keep that entity's members in place of their scope: `Brno` and `Liberec` bind
+  `store.store_name`. Otherwise nothing changes — both ambiguous with the same readings („Brno a Plzeň“: each a store
+  and a DC), both unambiguous, an empty intersection, a conjunct with no member reading — and the scope reads each
+  conjunct as before (the Binder asks where it still ties).
+- **An entity governor keeps its own scope.** The rule overrides only a scope the sentence did not name (a measure's
+  fact); „Tržby prodejen Brno a Liberec“ reads both by the store word, as before, and now binds `Liberec` too.
+- Unchanged: a lone place („Tržby pro Brno“ → "Brno DC"). „Tržby v Brně a Liberci“ still reads "Brno DC" and leaves
+  „Liberci“ a place: the store names are matched `TYPOS(1)` on the written form, and „Liberci“ is two edits from
+  "Liberec", so no member row reaches it and there is nothing to intersect.
+- No wire change.
+
 ### resolver — an adjective in front of a declared phrase is a mention of its own: „Měsíční“ is the month, never dropped (#237)
 
 „Měsíční tržby z tržiště v roce 2025“ came back with `tržby z tržiště` (the marketplace revenue measure), `roce` and

@@ -1,0 +1,191 @@
+{
+  "language": "cs",
+  "languageConfidence": 0.5582310253581441,
+  "engineUsed": "morphodita",
+  "tokens": [
+    {
+      "text": "Tržby",
+      "charEnd": 5,
+      "lemma": "tržba",
+      "upos": "NOUN",
+      "xpos": "NNFP1-----A----",
+      "feats": {
+        "Case": "Nom",
+        "Gender": "Fem",
+        "Number": "Plur"
+      },
+      "depRelation": "root"
+    },
+    {
+      "text": "pro",
+      "charStart": 6,
+      "charEnd": 9,
+      "lemma": "pro",
+      "upos": "ADP",
+      "xpos": "RR--4----------",
+      "feats": {
+        "AdpType": "Prep",
+        "Case": "Acc"
+      },
+      "depHead": 3,
+      "depRelation": "case"
+    },
+    {
+      "text": "Brno",
+      "charStart": 10,
+      "charEnd": 14,
+      "lemma": "Brno",
+      "upos": "PROPN",
+      "xpos": "NNNS4-----A----",
+      "feats": {
+        "Case": "Acc",
+        "Gender": "Neut",
+        "NameType": "Geo",
+        "Number": "Sing"
+      },
+      "depHead": 1,
+      "depRelation": "nmod"
+    },
+    {
+      "text": "a",
+      "charStart": 15,
+      "charEnd": 16,
+      "lemma": "a",
+      "upos": "CCONJ",
+      "xpos": "J^-------------",
+      "depHead": 5,
+      "depRelation": "cc"
+    },
+    {
+      "text": "Liberec",
+      "charStart": 17,
+      "charEnd": 24,
+      "lemma": "Liberec",
+      "upos": "PROPN",
+      "xpos": "NNIS1-----A----",
+      "feats": {
+        "Animacy": "Inan",
+        "Case": "Nom",
+        "Gender": "Masc",
+        "NameType": "Geo",
+        "Number": "Sing"
+      },
+      "depHead": 3,
+      "depRelation": "conj"
+    },
+    {
+      "text": "v",
+      "charStart": 25,
+      "charEnd": 26,
+      "lemma": "v",
+      "upos": "ADP",
+      "xpos": "RR--6----------",
+      "feats": {
+        "AdpType": "Prep",
+        "Case": "Loc"
+      },
+      "depHead": 7,
+      "depRelation": "case"
+    },
+    {
+      "text": "roce",
+      "charStart": 27,
+      "charEnd": 31,
+      "lemma": "rok",
+      "upos": "NOUN",
+      "xpos": "NNIS6-----A---1",
+      "feats": {
+        "Animacy": "Inan",
+        "Case": "Loc",
+        "Gender": "Masc",
+        "Number": "Sing"
+      },
+      "depHead": 1,
+      "depRelation": "dep"
+    },
+    {
+      "text": "2025",
+      "charStart": 32,
+      "charEnd": 36,
+      "lemma": "2025",
+      "upos": "NUM",
+      "xpos": "C=-------------",
+      "feats": {
+        "NumForm": "Digit",
+        "NumType": "Card"
+      },
+      "depHead": 7,
+      "depRelation": "nummod"
+    }
+  ],
+  "sentences": [
+    {
+      "charEnd": 36
+    }
+  ],
+  "entities": [
+    {
+      "text": "Brno",
+      "label": "LOCATION",
+      "charStart": 10,
+      "charEnd": 14,
+      "normalizedValue": "cnec:gu",
+      "sourceEngine": "nametag3"
+    },
+    {
+      "text": "Liberec",
+      "label": "LOCATION",
+      "charStart": 17,
+      "charEnd": 24,
+      "normalizedValue": "cnec:gu",
+      "sourceEngine": "nametag3"
+    },
+    {
+      "text": "2025",
+      "label": "DATE",
+      "charStart": 32,
+      "charEnd": 36,
+      "normalizedValue": "cnec:ty",
+      "sourceEngine": "nametag3"
+    }
+  ],
+  "detectedLanguage": "cs",
+  "used": [
+    {
+      "op": "DETECT_LANGUAGE",
+      "engine": "langid",
+      "model": "lingua",
+      "modelVersion": "lingua-2.0"
+    },
+    {
+      "op": "POS_TAG",
+      "engine": "morphodita",
+      "model": "czech-morfflex2.0-pdtc1.0-220710",
+      "modelVersion": "czech-morfflex2.0-pdtc1.0-220710"
+    },
+    {
+      "op": "NER",
+      "engine": "nametag3",
+      "model": "nametag3-czech-cnec2.0-240830",
+      "modelVersion": "nametag3-czech-cnec2.0-240830"
+    },
+    {
+      "op": "LEMMATIZE",
+      "engine": "morphodita",
+      "model": "czech-morfflex2.0-pdtc1.0-220710",
+      "modelVersion": "czech-morfflex2.0-pdtc1.0-220710"
+    },
+    {
+      "op": "TOKENIZE",
+      "engine": "morphodita",
+      "model": "czech-morfflex2.0-pdtc1.0-220710",
+      "modelVersion": "czech-morfflex2.0-pdtc1.0-220710"
+    },
+    {
+      "op": "DEP_PARSE",
+      "engine": "stanza",
+      "model": "stanza-cs-en",
+      "modelVersion": "stanza-1.10.0"
+    }
+  ]
+}

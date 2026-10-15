@@ -60,8 +60,10 @@ object SlotHints {
      * only `slot` is filled, so this cannot change which spans are proposed.
      *
      * Value-origin candidates (`GOVERNED_VALUE`, `PROPER_NOUN`, `NER_ENTITY`, `LITERAL`,
-     * `NGRAM_FLOOR`) keep [SlotHint.NONE]: they are literals, not mentions of model objects, and
-     * the Binder's kind rules are about which OBJECT a word names.
+     * `NGRAM_FLOOR`) keep [Slot.NONE]: they are literals, not mentions of model objects, and
+     * the Binder's kind rules are about which OBJECT a word names. A governed value carries only its
+     * governor ([SlotHint.governorRef]) and, when it is a conjunct, its coordination
+     * ([SlotHint.coordGroup]).
      */
     fun stamp(
         parse: AnalyzeResponse,
@@ -226,10 +228,43 @@ object SlotHints {
             return governing.singleOrNull().orEmpty()
         }
 
+        // ttr-demo#62, the coordination ruling (2026-10-14), over VALUES — which governed values are
+        // conjuncts of one coordination („Tržby pro Brno a Liberec“). UD hangs every conjunct on the
+        // first by `conj`, so a value's coordination is named by its FIRST conjunct's head token: climb
+        // `conj` while the governor is itself a value's head. A group needs two heads (the governed and
+        // open halves of one span share theirs); a value in no coordination gets -1. What the group
+        // decides is `CoordinatedValues`'s.
+        val valueHeads =
+            candidates
+                .filter { it.origin in VALUE_ORIGINS && it.headToken >= 0 }
+                .map { it.headToken }
+                .toSet()
+
+        fun coordRoot(head: Int): Int {
+            var at = head
+            var hops = 0
+            while (isConj(at) && governorOf(at) in valueHeads && hops++ < tokens.size) at = governorOf(at)
+            return at
+        }
+        val rootByHead = valueHeads.associateWith(::coordRoot)
+        val coordinated =
+            rootByHead.values
+                .groupingBy { it }
+                .eachCount()
+                .filterValues { it >= 2 }
+                .keys
+
+        fun coordGroupOf(c: DomainSpanCandidate): Int = rootByHead[c.headToken]?.takeIf { it in coordinated } ?: -1
+
         return candidates.map { c ->
             if (c.origin in VALUE_ORIGINS) {
                 val governor = governorOfValue(c)
-                return@map if (governor.isBlank()) c else c.copy(slot = SlotHint(governorRef = governor))
+                val group = coordGroupOf(c)
+                return@map if (governor.isBlank() && group < 0) {
+                    c
+                } else {
+                    c.copy(slot = SlotHint(governorRef = governor, coordGroup = group))
+                }
             }
             if (c.origin != DomainSpanCandidate.Origin.ANCHOR_PHRASE || c.headToken < 0) return@map c
             val head = c.headToken
@@ -330,6 +365,13 @@ data class SlotHint(
      * the member-governance rule reads it.
      */
     val governorRef: String = "",
+    /**
+     * ttr-demo#62 (coordination, 2026-10-14) — for a VALUE span that is a conjunct of a coordination
+     * of values („Brno a Liberec“), the head token of the coordination's FIRST conjunct, shared by every
+     * conjunct of it; -1 for a value in no coordination and for every non-value span. Read only by
+     * `CoordinatedValues`, which decides the reading the conjuncts share.
+     */
+    val coordGroup: Int = -1,
 ) {
     companion object {
         /** No slot: a bare word, a fragment, a re-gate, a parse with no tree. Both rules no-op. */

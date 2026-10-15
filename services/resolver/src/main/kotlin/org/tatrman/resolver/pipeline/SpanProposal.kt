@@ -46,7 +46,8 @@ import org.tatrman.text.Normalization.fold
  * measure governs a place for its fact, and a multi-word anchor governs one too (✅UD-8:
  * `Marketplace revenue for Memphis DC`). Every other path — (b), (c), (e), the floor, the phrase
  * hull — still refuses universal characters, so a bare, an unanchored or a pre-modifier place
- * stays a place (UD contracts §3).
+ * stays a place (UD contracts §3). A place COORDINATED with a governed one (`Tržby pro Brno a Liberec`,
+ * `Liberec` the `conj` of `Brno`) is governed by the same anchor (ttr-demo#62), and proposed the same way.
  *
  * **…and a declared word the NER typed a date by itself (ttr-server#152).** Stanza types the grain
  * adjective of *Monthly revenue* a DATE, and the declared `monthly` never bound. A one-word anchor
@@ -383,11 +384,42 @@ object SpanProposal {
             // A fact the registry does not declare lends its ref, which no vocabulary is keyed by:
             // the governed half then finds nothing and the open half carries the reading.
             val placeCategories = placeOwners.flatMap { valueCategories[it] ?: listOf(it) }.distinct()
-            for (childIdx in children[head + 1].orEmpty()) {
-                val child = tokens[childIdx]
-                if (child.depRelation !in GOVERNED_VALUE_RELATIONS) continue
-                if (child.upos.uppercase() !in NOMINAL_UPOS) continue
-                if (childIdx in anchorTokens) continue
+
+            /**
+             * ttr-demo#62 (coordination, 2026-10-14) — the places coordinated with the value argument
+             * [first]: its `conj` dependents, transitively (UD hangs every conjunct on the first), that
+             * the NER typed a place or a person. In „Tržby pro Brno a Liberec“ the parse hangs `Liberec`
+             * on `Brno`, not on `Tržby`, so before this it was nobody's governed value: it stood as a
+             * bare place with no scope of its own (G3), while `Brno` was read under `Tržby`. A
+             * conjunct is governed by what governs the coordination, so it is proposed exactly as a
+             * place argument of this anchor is — the governed pair, gated to [placeOwners]. A conjunct
+             * the NER did not type keeps the path it always had (it lies inside its first conjunct's
+             * subtree, or is a proper noun of its own), and an anchor word is never a conjunct value.
+             */
+            fun placeConjuncts(first: Int): List<Int> {
+                if (placeOwners.isEmpty()) return emptyList()
+                val out = mutableListOf<Int>()
+                val stack = ArrayDeque(listOf(first))
+                while (stack.isNotEmpty()) {
+                    for (c in children[stack.removeLast() + 1].orEmpty()) {
+                        if (tokens[c].depRelation != "conj" || c in out) continue
+                        if (tokens[c].upos.uppercase() !in NOMINAL_UPOS || c in anchorTokens) continue
+                        out += c
+                        stack.addLast(c)
+                    }
+                }
+                return out.filter { dualReadingEntity(it, tokens, parse.entitiesList) != null }
+            }
+
+            val values =
+                children[head + 1].orEmpty().flatMap { childIdx ->
+                    val child = tokens[childIdx]
+                    if (child.depRelation !in GOVERNED_VALUE_RELATIONS) return@flatMap emptyList()
+                    if (child.upos.uppercase() !in NOMINAL_UPOS) return@flatMap emptyList()
+                    if (childIdx in anchorTokens) return@flatMap emptyList()
+                    listOf(childIdx) + placeConjuncts(childIdx)
+                }
+            for (childIdx in values.distinct()) {
                 // ✅ UD (ttr-server#118, option 1) — the DUAL READING. A place or a person name
                 // the NER typed universal is excluded from every domain path below, and until
                 // UD from this one too: `subtreeIndices` refuses a universal root, so `Stores in

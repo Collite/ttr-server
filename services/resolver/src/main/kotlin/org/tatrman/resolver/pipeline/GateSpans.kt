@@ -77,15 +77,28 @@ object GateSpans {
                 // MV §5.3 — category → the ENTITY a member row belongs to. The same map
                 // `entityRefOf` reads below, so the Binder and the door name one owner.
                 val memberOwners = entityTypes.memberEntityByCategory()
+
+                fun rowsOf(i: Int): List<FuzzyMatch> =
+                    response.resultsList
+                        .getOrNull(i)
+                        ?.matchesList
+                        .orEmpty()
+
+                // ttr-demo#62 (coordination, 2026-10-14) — the conjuncts of a coordination of values
+                // that intersect at one entity keep that entity's members, in place of their scope.
+                val coordinated =
+                    CoordinatedValues.intersect(candidates, ::rowsOf, thresholds, owners, kinds, reach, memberOwners)
                 candidates
                     .mapIndexed { i, cand ->
                         // The ONE decision, made in the one place that makes it (RV-P2.2). Note what is NOT
                         // filtered before the call: the bind floor is the binder's too, because a candidate
                         // the gate refused is still something the rung log should be able to name.
-                        // ✅UD-7 — a dual reading answers only with the members its anchor reaches.
+                        // ✅UD-7 — a dual reading answers only with the members its anchor reaches — or, as a
+                        // conjunct whose coordination intersects, with the members of that entity.
                         fun decide(rows: List<FuzzyMatch>): Binder.Verdict =
                             Binder.gate(
-                                UniversalSeam.inScope(rows, cand, owners, reach, memberOwners),
+                                coordinated[i]?.let { CoordinatedValues.keep(rows, it, owners, memberOwners) }
+                                    ?: UniversalSeam.inScope(rows, cand, owners, reach, memberOwners),
                                 cand,
                                 thresholds,
                                 owners,
@@ -93,13 +106,7 @@ object GateSpans {
                                 reach,
                                 memberOwners,
                             )
-                        val first =
-                            decide(
-                                response.resultsList
-                                    .getOrNull(i)
-                                    ?.matchesList
-                                    .orEmpty(),
-                            )
+                        val first = decide(rowsOf(i))
                         // ttr-server#204 — the phrase as folded bound nothing (`the marketplace`), so
                         // its head speaks for it, decided by the same call. A phrase that bound, or that
                         // is ambiguous on its own, keeps its answer: the second rows are never read.
