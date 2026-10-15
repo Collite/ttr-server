@@ -84,27 +84,36 @@ object GateSpans {
                         ?.matchesList
                         .orEmpty()
 
+                // The ONE decision, made in the one place that makes it (RV-P2.2). Note what is NOT
+                // filtered before the call: the bind floor is the binder's too, because a candidate
+                // the gate refused is still something the rung log should be able to name.
+                fun gate(
+                    cand: DomainSpanCandidate,
+                    rows: List<FuzzyMatch>,
+                ): Binder.Verdict = Binder.gate(rows, cand, thresholds, owners, kinds, reach, memberOwners)
+
                 // ttr-demo#62 (coordination, 2026-10-14) — the conjuncts of a coordination of values
-                // that intersect at one entity keep that entity's members, in place of their scope.
+                // that intersect at one entity keep that entity's members, in place of their scope. Their
+                // readings are this same gate over each half's own rows, with no scope.
                 val coordinated =
-                    CoordinatedValues.intersect(candidates, ::rowsOf, thresholds, owners, kinds, reach, memberOwners)
+                    CoordinatedValues.intersect(
+                        candidates,
+                        { i -> gate(candidates[i], rowsOf(i)) },
+                        owners,
+                        memberOwners,
+                    )
                 candidates
                     .mapIndexed { i, cand ->
-                        // The ONE decision, made in the one place that makes it (RV-P2.2). Note what is NOT
-                        // filtered before the call: the bind floor is the binder's too, because a candidate
-                        // the gate refused is still something the rung log should be able to name.
                         // ✅UD-7 — a dual reading answers only with the members its anchor reaches — or, as a
-                        // conjunct whose coordination intersects, with the members of that entity.
+                        // conjunct whose coordination intersects, with the members of that entity. That
+                        // replaces the reach check on purpose (two stores under the all-channel revenue,
+                        // whose fact has no relation to the store): the query door refuses the join and
+                        // the composer answers, never the fast path (`CoordinatedValues.keep`).
                         fun decide(rows: List<FuzzyMatch>): Binder.Verdict =
-                            Binder.gate(
+                            gate(
+                                cand,
                                 coordinated[i]?.let { CoordinatedValues.keep(rows, it, owners, memberOwners) }
                                     ?: UniversalSeam.inScope(rows, cand, owners, reach, memberOwners),
-                                cand,
-                                thresholds,
-                                owners,
-                                kinds,
-                                reach,
-                                memberOwners,
                             )
                         val first = decide(rowsOf(i))
                         // ttr-server#204 — the phrase as folded bound nothing (`the marketplace`), so
@@ -208,12 +217,15 @@ object GateSpans {
      *
      * Paired strictly by origin, so no other candidate on any other path is affected.
      *
+     * ttr-demo#62 — `CoordinatedValues` reads a conjunct's span through this same rule (its halves gated
+     * without the scope), so the coordination counts the readings this function would keep.
+     *
      * ✅UD-6 (A-UD-4) — for a DUAL READING (a pair proposed over a place or a person name) "spoke"
      * means "found a member" ([UniversalSeam.speaks]): a declared-only hit on the governed half is
      * not the member reading that could take the span from the place, so it must not silence an
      * open half that found one. Every other pair is decided exactly as before.
      */
-    private fun resolveOpenSiblings(gated: List<GatedSpan>): List<GatedSpan> {
+    internal fun resolveOpenSiblings(gated: List<GatedSpan>): List<GatedSpan> {
         if (gated.none { it.candidate.origin == DomainSpanCandidate.Origin.OPEN_VALUE }) return gated
 
         fun spanOf(g: GatedSpan) = g.candidate.start to g.candidate.end

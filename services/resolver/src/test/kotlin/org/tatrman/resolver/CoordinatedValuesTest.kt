@@ -13,11 +13,13 @@ import org.tatrman.fuzzy.v1.Provenance
 import org.tatrman.fuzzy.v1.SourceTag
 import org.tatrman.fuzzy.v1.TokenHit
 import org.tatrman.nlp.v1.AnalyzeResponse
+import org.tatrman.resolver.model.ResolverEntityType
 import org.tatrman.resolver.model.ResolverThresholds
 import org.tatrman.resolver.model.kindsByRef
 import org.tatrman.resolver.model.memberEntityByCategory
 import org.tatrman.resolver.model.ownersByRef
 import org.tatrman.resolver.model.reachByRef
+import org.tatrman.resolver.pipeline.Binder
 import org.tatrman.resolver.pipeline.CoordinatedValues
 import org.tatrman.resolver.pipeline.DomainSpanCandidate
 import org.tatrman.resolver.pipeline.DomainSpanCandidate.Origin
@@ -115,8 +117,8 @@ class CoordinatedValuesTest :
                 .filter { it.origin == Origin.GOVERNED_VALUE }
                 .map { it.text to it.slot } shouldContainExactlyInAnyOrder
                 listOf(
-                    "Brno" to SlotHint(governorRef = STORE, coordGroup = 2),
-                    "Liberec" to SlotHint(governorRef = STORE, coordGroup = 2),
+                    "Brno" to SlotHint(governorRef = STORE, coordGroup = 2, entityGoverned = true),
+                    "Liberec" to SlotHint(governorRef = STORE, coordGroup = 2, entityGoverned = true),
                 )
         }
 
@@ -196,6 +198,50 @@ class CoordinatedValuesTest :
             decide(Coord(loose.candidates.map { it.copy(slot = SlotHint.NONE) }, loose.rows)).shouldBeEmpty()
         }
 
+        "rule — each half is gated on its own rows: a scoped row inside a global row's band is no tie" {
+            // The governed half asks the governor's own vocabularies, the open half every vocabulary: two
+            // requests, two scales. Here the governed half finds "Brno DC" (0.95 on its scale) and the open half
+            // the store (0.99) with "Brno DC" far below it (0.85). Pooled, the scoped 0.95 lies inside the global
+            // 0.99's band, a tie neither half makes. Gated as GateSpans gates them, the governed half speaks
+            // for the span: `Brno` reads "Brno DC" alone, `Liberec` the store, and nothing is decided.
+            val brno =
+                Place(
+                    "Brno",
+                    member("Brno", STORE_NAME_CAT, 0.99),
+                    member("Brno DC", WAREHOUSE_NAME_CAT, 0.85),
+                    governed = listOf(member("Brno DC", WAREHOUSE_NAME_CAT, 0.95)),
+                )
+            decide(coordination(brno, LIBEREC)).shouldBeEmpty()
+        }
+
+        "rule — an anchor word with two ENTITY owners governs too: the coordination never reads past it" {
+            // „prodejen“ declared for the warehouse as well as the store: SlotHints names no one governor
+            // (the Binder must not settle the anchor's own ambiguity by a value), but an entity governs all
+            // the same, and „Brno a Liberec“ under it keeps the scope the sentence named.
+            val stamped = stamp("trzby-prodejen-brno-a-liberec", TWO_OWNER_TYPES)
+            stamped
+                .filter { it.origin == Origin.GOVERNED_VALUE }
+                .map { it.text to it.slot } shouldContainExactlyInAnyOrder
+                listOf(
+                    "Brno" to SlotHint(coordGroup = 2, entityGoverned = true),
+                    "Liberec" to SlotHint(coordGroup = 2, entityGoverned = true),
+                )
+
+            val rows = mapOf("Brno" to BRNO.rows, "Liberec" to LIBEREC.rows)
+            decide(stamped, { rows[stamped[it].text].orEmpty() }, TWO_OWNER_TYPES).shouldBeEmpty()
+        }
+
+        "rule — a conjunct whose band holds a model object is ambiguous: it never forces its member's entity" {
+            // `Brno` ties the store "Brno" with an object the estate declared under the same word, so its own
+            // verdict asks. Read by its member rows alone it had ONE reading, the store, and forced it on
+            // `Plzeň` (a store and a DC) while still asking itself.
+            val brno = Place("Brno", member("Brno", STORE_NAME_CAT), declared("Brno", CALL_CENTER))
+            decide(coordination(brno, PLZEN)).shouldBeEmpty()
+            // …it may still TAKE what the others share: `keep` narrows its member rows to that entity and
+            // leaves the object to its own verdict, which then asks between the store "Brno" and the object.
+            decide(coordination(brno, LIBEREC)).values.toSet() shouldBe setOf(STORE)
+        }
+
         "keep — drops the member rows of every other entity and nothing else" {
             val declared =
                 FuzzyMatch
@@ -212,10 +258,14 @@ class CoordinatedValuesTest :
                 listOf("Brno", "lex:brno")
         }
     }) {
-    /** A place and the member rows the matcher answers for it over every vocabulary. */
+    /**
+     * A place and the member rows the matcher answers for it over every vocabulary (the open half's
+     * request), and — when they differ — what its governed half's own request answers ([governed]).
+     */
     private class Place(
         val text: String,
         vararg rows: FuzzyMatch,
+        val governed: List<FuzzyMatch>? = null,
     ) {
         val rows: List<FuzzyMatch> = rows.toList()
     }
@@ -234,6 +284,7 @@ class CoordinatedValuesTest :
         const val STORE_NAME_CAT = "er.entity.store.store_name"
         const val WAREHOUSE_NAME_CAT = "er.entity.warehouse.warehouse_name"
         const val REASON_CAT = "er.entity.reason.reason_desc"
+        const val CALL_CENTER = "er.entity.call_center"
 
         val REGISTRY: Registry =
             Registry
@@ -242,9 +293,20 @@ class CoordinatedValuesTest :
                 .build()
         val TYPES = ResolverPipeline.fromProto(REGISTRY, ResolverThresholds.LIVE).entityTypes
         val OWNERS = TYPES.ownersByRef()
-        val KINDS = TYPES.kindsByRef()
-        val REACH = TYPES.reachByRef()
         val MEMBER_OWNERS = TYPES.memberEntityByCategory()
+
+        /** The same registry with „prodejen“ declared for the warehouse too: an anchor word with two ENTITY owners. */
+        val TWO_OWNER_TYPES =
+            ResolverPipeline
+                .fromProto(
+                    REGISTRY
+                        .toBuilder()
+                        .apply {
+                            val at = entityTypesList.indexOfFirst { it.ref == WAREHOUSE }
+                            setEntityTypes(at, getEntityTypes(at).toBuilder().addAnchors("prodejen"))
+                        }.build(),
+                    ResolverThresholds.LIVE,
+                ).entityTypes
 
         /** A member row as v2 lex-matcher writes one: [kind] is every token hit's kind. */
         fun member(
@@ -279,6 +341,22 @@ class CoordinatedValuesTest :
                 ).build()
         }
 
+        /** A declared row: the estate's own word for [ref], matched exactly. */
+        fun declared(
+            word: String,
+            ref: String,
+        ): FuzzyMatch =
+            FuzzyMatch
+                .newBuilder()
+                .setCandidateId("lex:${word.lowercase()}")
+                .setCandidate(word)
+                .setCategory(ref)
+                .setTargetRef(ref)
+                .setSource(SourceTag.DECLARED)
+                .setMatchMethod("EXACT")
+                .setScore(1.0)
+                .build()
+
         // the rows hartland's matcher answers (CoordinatedPlacesTest's matcher.json)
         val BRNO =
             Place("Brno", member("Brno", STORE_NAME_CAT), member("Brno DC", WAREHOUSE_NAME_CAT, 1.006772748873239))
@@ -311,23 +389,40 @@ class CoordinatedValuesTest :
                             slot = SlotHint(governorRef = governor, coordGroup = 2),
                             dualReadingOf = start to start + p.text.length,
                             dualReadingScope = listOf(CHANNEL_SALES),
-                        ) to p.rows
+                        ) to (if (governed) p.governed ?: p.rows else p.rows)
                     }
                 }
             return Coord(pairs.map { it.first }, pairs.map { it.second })
         }
 
-        /** The rule over [coord]'s candidates, each answered with its place's rows (both halves alike). */
-        fun decide(coord: Coord): Map<Int, String> =
-            CoordinatedValues.intersect(
-                coord.candidates,
-                { coord.rows[it] },
-                ResolverThresholds.LIVE,
-                OWNERS,
-                KINDS,
-                REACH,
-                MEMBER_OWNERS,
+        /** The rule over [coord]'s candidates, each half answered with its own rows. */
+        fun decide(coord: Coord): Map<Int, String> = decide(coord.candidates, { coord.rows[it] })
+
+        /** The rule over [candidates], each gated on [rowsOf] as the broad pass gates it, with no scope. */
+        fun decide(
+            candidates: List<DomainSpanCandidate>,
+            rowsOf: (Int) -> List<FuzzyMatch>,
+            types: List<ResolverEntityType> = TYPES,
+        ): Map<Int, String> {
+            val owners = types.ownersByRef()
+            val memberOwners = types.memberEntityByCategory()
+            return CoordinatedValues.intersect(
+                candidates,
+                { i ->
+                    Binder.gate(
+                        rowsOf(i),
+                        candidates[i],
+                        ResolverThresholds.LIVE,
+                        owners,
+                        types.kindsByRef(),
+                        types.reachByRef(),
+                        memberOwners,
+                    )
+                },
+                owners,
+                memberOwners,
             )
+        }
 
         fun resource(name: String): String =
             checkNotNull(CoordinatedValuesTest::class.java.getResource("/coordinated-places/$name")) {
@@ -340,13 +435,16 @@ class CoordinatedValuesTest :
                 .also { JsonFormat.parser().merge(resource("$name.parse.json"), it) }
                 .build()
 
-        fun stamp(name: String): List<DomainSpanCandidate> {
+        fun stamp(
+            name: String,
+            types: List<ResolverEntityType> = TYPES,
+        ): List<DomainSpanCandidate> {
             val p = parse(name)
             return SlotHints.stamp(
                 p,
-                SpanProposal.proposeDomainSpans(p, TYPES),
-                KINDS,
-                OWNERS,
+                SpanProposal.proposeDomainSpans(p, types),
+                types.kindsByRef(),
+                types.ownersByRef(),
                 p.language,
                 FrameRolePreps.shipped(),
             )

@@ -222,11 +222,13 @@ object SlotHints {
                 .filter { it.origin == DomainSpanCandidate.Origin.GOVERNED_VALUE }
                 .associate { (it.start to it.end) to it.gatedEntityRefs }
 
-        fun governorOfValue(c: DomainSpanCandidate): String {
-            val refs = governedRefsBySpan[c.start to c.end] ?: return ""
-            val governing = refs.filter { kindsByRef[it] in GOVERNING_KINDS }
-            return governing.singleOrNull().orEmpty()
-        }
+        /**
+         * The value's governing owners: the anchor's entities and attributes, as the GOVERNED_VALUE
+         * candidate over the same characters is gated to them. One is its governor; two leave it none
+         * ([governorRef] blank) but still say that an entity governs ([SlotHint.entityGoverned]).
+         */
+        fun governingOfValue(c: DomainSpanCandidate): List<String> =
+            governedRefsBySpan[c.start to c.end].orEmpty().filter { kindsByRef[it] in GOVERNING_KINDS }
 
         // ttr-demo#62, the coordination ruling (2026-10-14), over VALUES — which governed values are
         // conjuncts of one coordination („Tržby pro Brno a Liberec“). UD hangs every conjunct on the
@@ -258,12 +260,19 @@ object SlotHints {
 
         return candidates.map { c ->
             if (c.origin in VALUE_ORIGINS) {
-                val governor = governorOfValue(c)
+                val governing = governingOfValue(c)
                 val group = coordGroupOf(c)
-                return@map if (governor.isBlank() && group < 0) {
+                return@map if (governing.isEmpty() && group < 0) {
                     c
                 } else {
-                    c.copy(slot = SlotHint(governorRef = governor, coordGroup = group))
+                    c.copy(
+                        slot =
+                            SlotHint(
+                                governorRef = governing.singleOrNull().orEmpty(),
+                                coordGroup = group,
+                                entityGoverned = governing.isNotEmpty(),
+                            ),
+                    )
                 }
             }
             if (c.origin != DomainSpanCandidate.Origin.ANCHOR_PHRASE || c.headToken < 0) return@map c
@@ -372,6 +381,14 @@ data class SlotHint(
      * `CoordinatedValues`, which decides the reading the conjuncts share.
      */
     val coordGroup: Int = -1,
+    /**
+     * ttr-demo#62 (coordination) — for a VALUE span, true when an ENTITY or an ATTRIBUTE governs it:
+     * one ([governorRef] names it) or several (an anchor word declared for two entities, where
+     * [governorRef] stays blank, because the Binder must not settle the anchor's own ambiguity by a
+     * value). False with no governor and under a fact. Read only by `CoordinatedValues`: a
+     * coordination an entity governs keeps the scope the sentence named.
+     */
+    val entityGoverned: Boolean = false,
 ) {
     companion object {
         /** No slot: a bare word, a fragment, a re-gate, a parse with no tree. Both rules no-op. */

@@ -4,8 +4,6 @@ package org.tatrman.resolver.pipeline
 import org.slf4j.LoggerFactory
 import org.tatrman.fuzzy.v1.FuzzyMatch
 import org.tatrman.fuzzy.v1.SourceTag
-import org.tatrman.resolver.model.Reach
-import org.tatrman.resolver.model.ResolverThresholds
 
 /**
  * ttr-demo#62, the coordination ruling (Bora, 2026-10-14), over MEMBER VALUES: of two values joined by
@@ -22,25 +20,35 @@ import org.tatrman.resolver.model.ResolverThresholds
  *
  * **The rule.** For each coordination of governed values ([SlotHint.coordGroup]):
  *
- *  1. A conjunct's READINGS are the entities owning the member rows the gate admits for it with NO scope
- *     applied — its lookup's rows over every vocabulary (the open half asked them all), through the one
- *     [Binder], so WEAK rows and rows outside the tie band are no readings. Before the scope, because the
- *     scope is exactly what read `Brno` one-sidedly: under a measure it is the measure's fact, and a fact
- *     never selects among member owners (`Binder.memberGovernance`'s posture, design §2a).
- *  2. A conjunct with one reading is UNAMBIGUOUS, one with several AMBIGUOUS; one with none takes no part.
- *  3. When every unambiguous conjunct has the same reading E, and E is among the readings of some
+ *  1. A conjunct's READINGS are what its span's own verdict admits, made exactly as `GateSpans` makes it
+ *     but with NO scope applied: each half (the governed and the open candidate) gated on its OWN rows by
+ *     its own candidate, through the one [Binder], and the governed half speaking for the span where it
+ *     found a member (`GateSpans.resolveOpenSiblings`). So WEAK rows and rows outside a half's tie band
+ *     are no readings, and the two halves are never pooled into one band: they come from two requests
+ *     (the governor's vocabularies, and every vocabulary), and a score compares only within one class of
+ *     one request. Before the scope, because the scope is exactly what read `Brno` one-sidedly: under a
+ *     measure it is the measure's fact, and a fact never selects among member owners
+ *     (`Binder.memberGovernance`'s posture, design §2a).
+ *  2. A conjunct whose verdict admits the members of ONE entity and nothing else is UNAMBIGUOUS; one
+ *     that admits the members of several, or a model object beside a member (a declared word that ties
+ *     with the value), is AMBIGUOUS — so it never forces its entity on the others; one that admits no
+ *     member takes no part.
+ *  3. When every unambiguous conjunct has the same reading E, and E is among the member readings of some
  *     ambiguous conjunct, the coordination intersects at E: those conjuncts, and the unambiguous ones,
- *     keep E's member rows only ([keep]) instead of the scope's. Each then binds its member of E.
+ *     keep E's member rows only ([keep]) instead of the scope's. Each then binds its member of E — or,
+ *     where a model object tied with the value, asks between E's member and that object: [keep] narrows
+ *     members only, and which OBJECT a word names is not a question about values.
  *  4. Otherwise nothing changes, and the scope decides as before (and the Binder asks where it still
  *     ties): no unambiguous conjunct (`Brno a Plzeň` — both a store and a DC), no ambiguous one (every
  *     conjunct already has one reading, which is not what the ruling is about), unambiguous conjuncts
  *     that disagree, or an intersection that is empty.
  *
  * **Only where no entity governs.** A coordination whose governor names an ENTITY (`prodejen`, `sklady`,
- * "stores" — [SlotHint.governorRef]) is not decided here: the sentence named the axis, and its scope has
- * already read every conjunct by it („Tržby prodejen Brno a Liberec“ → both stores). The coordination
- * overrides only a scope the sentence did not name — a measure's fact — so „sklady Brno a Liberec“ can
- * never become two stores.
+ * "stores" — [SlotHint.entityGoverned]) is not decided here: the sentence named the axis, and its scope has
+ * already read every conjunct by it („Tržby prodejen Brno a Liberec“ → both stores). That holds for an
+ * anchor word declared for SEVERAL entities too, which leaves [SlotHint.governorRef] blank: it named an
+ * axis, only an ambiguous one. The coordination overrides only a scope the sentence did not name — a
+ * measure's fact — so „sklady Brno a Liberec“ can never become two stores.
  *
  * Pure: the gate calls it once per pass over the batch it already has, before deciding any span.
  */
@@ -54,15 +62,13 @@ object CoordinatedValues {
      * Candidate index → the entity whose member rows that candidate keeps, for every candidate whose
      * reading a coordination decides; empty when none does.
      *
-     * @param rowsOf the batch's rows for the candidate at an index, as the matcher answered them
+     * @param verdictOf the Binder's verdict for the candidate at an index over its own batch rows with NO
+     *   scope applied — the broad pass's own gate call (`GateSpans` passes it), minus `UniversalSeam.inScope`
      */
     fun intersect(
         candidates: List<DomainSpanCandidate>,
-        rowsOf: (Int) -> List<FuzzyMatch>,
-        thresholds: ResolverThresholds,
+        verdictOf: (Int) -> Binder.Verdict,
         owners: Map<String, String>,
-        kinds: Map<String, String>,
-        reach: Map<String, List<Reach>>,
         memberOwners: Map<String, String>,
     ): Map<Int, String> {
         val groups =
@@ -73,34 +79,24 @@ object CoordinatedValues {
 
         val decided = HashMap<Int, String>()
         for ((_, members) in groups) {
-            // An entity governs ⇒ its scope has read the conjuncts already (see the class doc).
-            if (members.any { candidates[it].slot.governorRef.isNotBlank() }) continue
+            // An entity governs — one, or several — ⇒ its scope has read the conjuncts already (class doc).
+            if (members.any { entityGoverns(candidates[it].slot) }) continue
             val bySpan = members.groupBy { candidates[it].start to candidates[it].end }
             if (bySpan.size < 2) continue
 
             val readings =
-                bySpan.mapValues { (_, at) ->
-                    // The open half asked every vocabulary; a span proposed without one answers by its
-                    // own rows. Either way the rows of the whole span, once each.
-                    val asker =
-                        at.firstOrNull { candidates[it].origin == DomainSpanCandidate.Origin.OPEN_VALUE } ?: at.first()
-                    val rows = at.flatMap(rowsOf).distinctBy { "${it.category}|${it.candidateId}|${it.targetRef}" }
-                    Binder
-                        .gate(rows, candidates[asker], thresholds, owners, kinds, reach, memberOwners)
-                        .admitted
-                        .filter { it.match.source == SourceTag.MEMBER }
-                        .map { entityOf(it.match, owners, memberOwners) }
-                        .toSet()
-                }
-            val unambiguous = readings.filterValues { it.size == 1 }
-            val ambiguous = readings.filterValues { it.size > 1 }
+                bySpan
+                    .mapValues { (_, at) -> readingsOf(at, candidates, verdictOf, owners, memberOwners) }
+                    .filterValues { it.entities.isNotEmpty() }
+            val unambiguous = readings.filterValues { it.entities.size == 1 && !it.objects }
+            val ambiguous = readings - unambiguous.keys
             if (unambiguous.isEmpty() || ambiguous.isEmpty()) continue
             val shared =
                 unambiguous.values
-                    .flatten()
+                    .flatMap { it.entities }
                     .toSet()
                     .singleOrNull() ?: continue
-            val takers = ambiguous.filterValues { shared in it }.keys
+            val takers = ambiguous.filterValues { shared in it.entities }.keys
             if (takers.isEmpty()) continue
 
             for (span in takers + unambiguous.keys) {
@@ -117,7 +113,55 @@ object CoordinatedValues {
         return decided
     }
 
-    /** [matches] with the member rows of any entity but [entity] removed; every other row stays. */
+    /** An entity governs the value: one ([SlotHint.governorRef]), or several (see the class doc). */
+    private fun entityGoverns(slot: SlotHint): Boolean = slot.entityGoverned || slot.governorRef.isNotBlank()
+
+    /**
+     * One conjunct's readings (rule 1–2): the entities owning the member rows its verdict admits, and
+     * whether that verdict admits a model object beside them.
+     */
+    private data class Readings(
+        val entities: Set<String>,
+        val objects: Boolean,
+    )
+
+    /**
+     * The readings of the conjunct whose halves are [at]: each half's own verdict ([verdictOf]), the
+     * halves kept as `GateSpans` keeps them (rule 1).
+     */
+    private fun readingsOf(
+        at: List<Int>,
+        candidates: List<DomainSpanCandidate>,
+        verdictOf: (Int) -> Binder.Verdict,
+        owners: Map<String, String>,
+        memberOwners: Map<String, String>,
+    ): Readings {
+        val halves =
+            at.map { i ->
+                val verdict = verdictOf(i)
+                GatedSpan(candidates[i], verdict.admitted, ambiguous = verdict is Binder.Ambiguous)
+            }
+        val admitted = GateSpans.resolveOpenSiblings(halves).flatMap { it.contenders }
+        return Readings(
+            entities =
+                admitted
+                    .filter { it.match.source == SourceTag.MEMBER }
+                    .map { entityOf(it.match, owners, memberOwners) }
+                    .toSet(),
+            objects = admitted.any { it.match.source != SourceTag.MEMBER },
+        )
+    }
+
+    /**
+     * [matches] with the member rows of any entity but [entity] removed; every other row stays.
+     *
+     * `GateSpans` calls this IN PLACE of `UniversalSeam.inScope` for a conjunct the coordination decided,
+     * so the reach check is not made for it, on purpose: „Tržby pro Brno a Liberec“ binds two
+     * `store.store_name` members under the all-channel revenue, whose fact has no relation to the store.
+     * Reinstating the check would undo the ruling. What makes that safe is downstream: the query door
+     * (golem's door shaper) finds no relation from the measure's fact to the members' entity and hands
+     * the question to the composer (the LLM lane), so it is never answered as a fast-path number.
+     */
     fun keep(
         matches: List<FuzzyMatch>,
         entity: String,
