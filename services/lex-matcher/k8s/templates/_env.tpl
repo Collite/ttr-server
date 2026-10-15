@@ -25,8 +25,17 @@
       {{- end }}
 {{- end }}
 {{- if include "tatrman-service.lexiconEnabled" . }}
+{{- /*
+  ttr-server#209 — the singular var ALWAYS names the FIRST archive, so an image older than the list
+  key still boots on it during a rolling deploy; the list var names every archive and is rendered
+  only when there is more than one, so a single-archive render is byte-identical to before.
+*/}}
 - name: FUZZY_LEXICON_ARCHIVE_PATH
   value: {{ include "tatrman-service.lexiconPath" . | quote }}
+{{- if gt (int (include "tatrman-service.lexiconCount" .)) 1 }}
+- name: FUZZY_LEXICON_ARCHIVE_PATHS
+  value: {{ include "tatrman-service.lexiconPaths" . | quote }}
+{{- end }}
 {{- end }}
 {{- with .Values.extraEnv }}
 {{- toYaml . | nindent 0 }}

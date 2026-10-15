@@ -41,8 +41,21 @@ secretEnv: []
 # created by the DEPLOYING context (olymp, from the estate repo's `generated/lexicon.tar.zst` via
 # a kustomize configMapGenerator), never templated here: its content is one estate's vocabulary,
 # and it must move with the model ref the metadata service is serving, not with a chart release.
+#
+# ttr-server#209 — SEVERAL archives, one per source the estate's packages come from (e.g. a second
+# git source Veles serves through `METADATA_GIT2_*`). List the extra ConfigMaps in `configMapNames`;
+# `configMapName` stays the first (and may be left as it is). Each extra one is mounted beside the
+# first at `<mountPath>.d/<configMapName>/<key>`, and the env then carries BOTH the singular var
+# (the FIRST archive — an image older than the list key boots on it) and the list var (every
+# archive, comma-separated), which the service loads as ONE declared layer. A single archive renders
+# exactly as before. The FIRST archive is the primary; a later one that is broken, absent or on
+# another schema than the primary's is skipped by the service (or served from its last good copy)
+# and costs only its own words. ⚠ Every named ConfigMap must still EXIST: a missing one holds the pod
+# in ContainerCreating (the volume is not optional), which keeps the old pods serving and makes the
+# deploy error visible instead of quietly serving fewer words.
 lexicon:
   configMapName: ""
+  configMapNames: []
   key: lexicon.tar.zst
   mountPath: /etc/tatrman/lexicon
 

@@ -1,0 +1,30 @@
+# Golden fixture: SEVERAL LEXICON ARCHIVES (ttr-server#209). An estate whose packages come from two
+# sources — here the demo estate's own repo and a second repo holding an investment package — builds
+# one archive per source and mounts both into the two readers that load a LIST as one declared
+# layer: lex-matcher (`fuzzy`) and the resolver.
+#
+# What the golden pins, per reader:
+#   - the FIRST ConfigMap exactly as `values-lexicon.yaml` renders it: volume `lexicon`, mounted at
+#     `lexicon.mountPath`, and the singular `*_LEXICON_ARCHIVE_PATH` naming it — which is what an
+#     image older than the list key reads, so a rolling deploy boots on the first archive;
+#   - each further ConfigMap as volume `lexicon-<n>`, mounted BESIDE the first at
+#     `<mountPath>.d/<configMapName>` (a mount point cannot be created inside a read-only ConfigMap
+#     volume), read-only;
+#   - the list var `*_LEXICON_ARCHIVE_PATHS` naming every archive in mount order.
+# `configMapName` repeated in `configMapNames` is mounted once (the resolver below names it twice).
+#
+# chrono stays on ONE archive: the grounding kernels read only the `ground:` slice, which every
+# archive embeds from the stdlib, and a second source that authors no grounding triggers adds none.
+# The single-archive fixtures (`values-lexicon.yaml` and the rest) must stay byte-identical — that is
+# the other half of this test.
+fuzzy:
+  lexicon:
+    configMapName: hartland-lexicon
+    configMapNames: [investment-lexicon]
+resolver:
+  lexicon:
+    configMapName: hartland-lexicon
+    configMapNames: [hartland-lexicon, investment-lexicon]
+chrono:
+  lexicon:
+    configMapName: hartland-lexicon
