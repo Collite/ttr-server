@@ -33,15 +33,18 @@ import org.tatrman.fuzzy.v1.SourceTag
  *     that admits the members of several, or a model object beside a member (a declared word that ties
  *     with the value), is AMBIGUOUS — so it never forces its entity on the others; one that admits no
  *     member takes no part.
- *  3. When every unambiguous conjunct has the same reading E, and E is among the member readings of some
- *     ambiguous conjunct, the coordination intersects at E: those conjuncts, and the unambiguous ones,
- *     keep E's member rows only ([keep]) instead of the scope's. Each then binds its member of E — or,
- *     where a model object tied with the value, asks between E's member and that object: [keep] narrows
- *     members only, and which OBJECT a word names is not a question about values.
+ *  3. When every unambiguous conjunct has the same reading E, the coordination reads as E:
+ *      - and E is among the member readings of some ambiguous conjunct — those conjuncts take it;
+ *      - or there is no ambiguous conjunct and at least two unambiguous ones agree on E („Tržby pro
+ *        Liberec a Olomouc“, both only stores — ruled 2026-10-16, consistent with „Brno a Liberec“).
+ *     Then those conjuncts, and the unambiguous ones, keep E's member rows only ([keep]) instead of the
+ *     scope's, even where the scope does not reach E. Each binds its member of E — or, where a model
+ *     object tied with the value, asks between E's member and that object: [keep] narrows members only,
+ *     and which OBJECT a word names is not a question about values.
  *  4. Otherwise nothing changes, and the scope decides as before (and the Binder asks where it still
- *     ties): no unambiguous conjunct (`Brno a Plzeň` — both a store and a DC), no ambiguous one (every
- *     conjunct already has one reading, which is not what the ruling is about), unambiguous conjuncts
- *     that disagree, or an intersection that is empty.
+ *     ties): no unambiguous conjunct (`Brno a Plzeň` — both a store and a DC), unambiguous conjuncts
+ *     that disagree, a single conjunct with a reading, or ambiguous conjuncts none of which includes E
+ *     (the intersection is empty).
  *
  * **Only where no entity governs.** A coordination whose governor names an ENTITY (`prodejen`, `sklady`,
  * "stores" — [SlotHint.entityGoverned]) is not decided here: the sentence named the axis, and its scope has
@@ -90,14 +93,16 @@ object CoordinatedValues {
                     .filterValues { it.entities.isNotEmpty() }
             val unambiguous = readings.filterValues { it.entities.size == 1 && !it.objects }
             val ambiguous = readings - unambiguous.keys
-            if (unambiguous.isEmpty() || ambiguous.isEmpty()) continue
+            if (unambiguous.isEmpty()) continue
             val shared =
                 unambiguous.values
                     .flatMap { it.entities }
                     .toSet()
                     .singleOrNull() ?: continue
             val takers = ambiguous.filterValues { shared in it.entities }.keys
-            if (takers.isEmpty()) continue
+            // Ambiguous conjuncts present: the ones that include E take it, or nothing does (rule 3, 4). None
+            // present: two unambiguous conjuncts that agree are one reading, already (ruled 2026-10-16).
+            if (if (ambiguous.isEmpty()) unambiguous.size < 2 else takers.isEmpty()) continue
 
             for (span in takers + unambiguous.keys) {
                 for (i in bySpan.getValue(span)) decided[i] = shared

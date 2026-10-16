@@ -39,6 +39,9 @@
       {"candidateId":"Marrowgate Koberec MX-TMP","candidate":"Marrowgate Koberec MX-TMP","score":0.7031693356777271,"category":"er.entity.item.product_name","provenance":{"producer":"fuzzy","method":"TATRMAN_V2","rawScore":0.7031693356777271,"tokenHits":[{"queryToken":"liberec","candidateToken":"koberec","kind":"typo","distance":2,"candidatePos":1}],"coverage":0.316933567772712},"matchMethod":"TOKENS"},
       {"candidateId":"Marrowgate Koberec MX-V9C","candidate":"Marrowgate Koberec MX-V9C","score":0.7031693356777271,"category":"er.entity.item.product_name","provenance":{"producer":"fuzzy","method":"TATRMAN_V2","rawScore":0.7031693356777271,"tokenHits":[{"queryToken":"liberec","candidateToken":"koberec","kind":"typo","distance":2,"candidatePos":1}],"coverage":0.316933567772712},"matchMethod":"TOKENS"}
     ],
+    "olomouc": [
+      {"candidateId":"Olomouc","candidate":"Olomouc","score":1.01,"category":"er.entity.store.store_name","provenance":{"producer":"fuzzy","method":"TATRMAN_V2","rawScore":1.01,"tokenHits":[{"queryToken":"olomouc","candidateToken":"olomouc","kind":"exact"}],"coverage":1.0},"matchMethod":"TYPOS(1)"}
+    ],
     "plzen": [
       {"candidateId":"Plzeň","candidate":"Plzeň","score":1.01,"category":"er.entity.store.store_name","provenance":{"producer":"fuzzy","method":"TATRMAN_V2","rawScore":1.01,"tokenHits":[{"queryToken":"plzen","candidateToken":"plzen","kind":"exact"}],"coverage":1.0},"matchMethod":"TYPOS(1)"},
       {"candidateId":"Plzeň DC","candidate":"Plzeň DC","score":1.006772748873239,"category":"er.entity.warehouse.warehouse_name","provenance":{"producer":"fuzzy","method":"TATRMAN_V2","rawScore":1.006772748873239,"tokenHits":[{"queryToken":"plzen","candidateToken":"plzen","kind":"exact"}],"coverage":0.6772748873238883},"matchMethod":"TOKENS"}
@@ -138,6 +141,9 @@
     ],
     "liberec": [
       {"candidateId":"Liberec","candidate":"Liberec","score":1.01,"category":"er.entity.store.store_name","provenance":{"producer":"fuzzy","method":"TATRMAN_V2","rawScore":1.01,"tokenHits":[{"queryToken":"liberec","candidateToken":"liberec","kind":"exact"}],"coverage":1.0},"matchMethod":"TYPOS(1)"}
+    ],
+    "olomouc": [
+      {"candidateId":"Olomouc","candidate":"Olomouc","score":1.01,"category":"er.entity.store.store_name","provenance":{"producer":"fuzzy","method":"TATRMAN_V2","rawScore":1.01,"tokenHits":[{"queryToken":"olomouc","candidateToken":"olomouc","kind":"exact"}],"coverage":1.0},"matchMethod":"TYPOS(1)"}
     ],
     "plzen": [
       {"candidateId":"Plzeň","candidate":"Plzeň","score":1.01,"category":"er.entity.store.store_name","provenance":{"producer":"fuzzy","method":"TATRMAN_V2","rawScore":1.01,"tokenHits":[{"queryToken":"plzen","candidateToken":"plzen","kind":"exact"}],"coverage":1.0},"matchMethod":"TYPOS(1)"},

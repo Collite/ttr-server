@@ -156,6 +156,23 @@ class CoordinatedPlacesTest :
             turn.answers()
         }
 
+        "„Tržby pro Liberec a Olomouc v roce 2025“ — two stores and nothing else: both stores (ruled 2026-10-16)" {
+            // Neither conjunct is ambiguous, and neither is in the measure's scope (the all-channel fact does not
+            // reach the store). They agree on one entity, and a coordination that reads as one entity takes it,
+            // exactly as „Brno a Liberec“ meets at the store.
+            val turn = resolve(LIBEREC_A_OLOMOUC)
+
+            turn.lattice.summary() shouldContainExactly
+                listOf(
+                    "M Tržby → $REVENUE [SUBJECT, MEASURE]",
+                    "M roce → $CHRONO [FILTER]",
+                    "V Liberec LITERAL → $STORE_NAME#Liberec",
+                    "V Olomouc LITERAL → $STORE_NAME#Olomouc",
+                    "V 2025 GROUNDED → $CAL_DATE ⟵ $CHRONO",
+                )
+            turn.answers()
+        }
+
         // ── a governor that names the entity: its scope reads both conjuncts, as before ───────────
 
         "„Tržby prodejen Brno a Liberec v roce 2025“ — the store word governs both: the dimension, two store members" {
@@ -422,6 +439,7 @@ class CoordinatedPlacesTest :
         val PRODEJEN_BRNO_A_LIBEREC =
             Question("Tržby prodejen Brno a Liberec v roce 2025", "cs", "trzby-prodejen-brno-a-liberec")
         val BRNO_NEBO_LIBEREC = Question("Tržby pro Brno nebo Liberec v roce 2025", "cs", "trzby-pro-brno-nebo-liberec")
+        val LIBEREC_A_OLOMOUC = Question("Tržby pro Liberec a Olomouc v roce 2025", "cs", "trzby-pro-liberec-a-olomouc")
         val ELEKTRONIKU_A_BRNO = Question("Tržby za elektroniku a Brno", "cs", "trzby-za-elektroniku-a-brno")
         val ELECTRONICS_AND_BRNO =
             Question("Revenue for electronics and Brno", "en", "revenue-for-electronics-and-brno")
@@ -436,6 +454,7 @@ class CoordinatedPlacesTest :
                 REVENUE_BRNO_AND_LIBEREC,
                 PRODEJEN_BRNO_A_LIBEREC,
                 BRNO_NEBO_LIBEREC,
+                LIBEREC_A_OLOMOUC,
             )
 
         val REGISTRY: Registry =

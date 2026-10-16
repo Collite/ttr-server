@@ -147,8 +147,20 @@ class CoordinatedValuesTest :
             decide(coordination(BRNO, storeOrReason)).shouldBeEmpty()
         }
 
-        "rule — both unambiguous: nothing to resolve, even where they agree" {
-            decide(coordination(LIBEREC, Place("Olomouc", member("Olomouc", STORE_NAME_CAT)))).shouldBeEmpty()
+        "rule — two unambiguous conjuncts that agree take their entity, even outside the scope (ruled 2026-10-16)" {
+            // „Tržby pro Liberec a Olomouc“: each is a store and nothing else, and the measure's fact does not
+            // reach the store. They read as one entity, so both keep the store's members, as „Brno a Liberec“ does.
+            val both = coordination(LIBEREC, OLOMOUC)
+            decide(both) shouldBe both.candidates.indices.associateWith { STORE }
+        }
+
+        "rule — two unambiguous conjuncts that disagree decide nothing" {
+            val dcOnly = Place("Hradec Králové", member("Hradec Králové DC", WAREHOUSE_NAME_CAT))
+            decide(coordination(LIBEREC, dcOnly)).shouldBeEmpty()
+        }
+
+        "rule — one unambiguous conjunct beside one with no reading is no coordination to decide" {
+            decide(coordination(LIBEREC, Place("Liberci"))).shouldBeEmpty()
         }
 
         "rule — the intersection may be the reading the scope would have taken anyway" {
@@ -175,14 +187,18 @@ class CoordinatedValuesTest :
         }
 
         "rule — a reading the gate would not admit is no reading: WEAK and out-of-band rows do not count" {
-            // the DC row below the class floor (WEAK) → `Brno` has one reading, so both are unambiguous
+            // Beside a DC-only conjunct: were the DC row a reading, `Brno` (store or DC) would take the DC from it.
+            val dcOnly = Place("Hradec Králové", member("Hradec Králové DC", WAREHOUSE_NAME_CAT))
+            // the DC row below the class floor (WEAK) → `Brno` is the store alone, and disagrees with the DC
             val weakDc =
                 Place("Brno", member("Brno", STORE_NAME_CAT), member("Brno DC", WAREHOUSE_NAME_CAT, 0.6, "typo"))
-            decide(coordination(weakDc, LIBEREC)).shouldBeEmpty()
+            decide(coordination(weakDc, dcOnly)).shouldBeEmpty()
             // the DC row a class below the store's → the same
             val lowerDc =
                 Place("Brno", member("Brno", STORE_NAME_CAT), member("Brno DC", WAREHOUSE_NAME_CAT, 0.9, "typo"))
-            decide(coordination(lowerDc, LIBEREC)).shouldBeEmpty()
+            decide(coordination(lowerDc, dcOnly)).shouldBeEmpty()
+            // …and the control: a DC row inside the band IS a reading, and `Brno` takes the DC
+            decide(coordination(BRNO, dcOnly)).values.toSet() shouldBe setOf(WAREHOUSE)
         }
 
         "rule — a conjunct with no member reading takes no part" {
@@ -191,6 +207,7 @@ class CoordinatedValuesTest :
 
         "rule — an ENTITY governor decides by its own scope: the coordination never overrides it" {
             decide(coordination(BRNO, LIBEREC, governor = WAREHOUSE)).shouldBeEmpty()
+            decide(coordination(LIBEREC, OLOMOUC, governor = WAREHOUSE)).shouldBeEmpty()
         }
 
         "rule — values in no coordination are not touched" {
@@ -361,6 +378,7 @@ class CoordinatedValuesTest :
         val BRNO =
             Place("Brno", member("Brno", STORE_NAME_CAT), member("Brno DC", WAREHOUSE_NAME_CAT, 1.006772748873239))
         val LIBEREC = Place("Liberec", member("Liberec", STORE_NAME_CAT))
+        val OLOMOUC = Place("Olomouc", member("Olomouc", STORE_NAME_CAT))
         val PLZEN =
             Place("Plzeň", member("Plzeň", STORE_NAME_CAT), member("Plzeň DC", WAREHOUSE_NAME_CAT, 1.006772748873239))
 
