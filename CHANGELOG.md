@@ -34,15 +34,23 @@ DC's revenue alone.
   lookups' scores). One member entity and nothing else is one reading; several entities, or a declared model object
   tied with the value, make the conjunct ambiguous, and an ambiguous conjunct never imposes its entity on the others.
   When one conjunct has one reading, another has several, and the one is among the several, both keep that entity's
-  members in place of their scope: `Brno` and `Liberec` bind `store.store_name`. Otherwise nothing changes — both
-  ambiguous with the same readings („Brno a Plzeň“: each a store and a DC), both unambiguous, an empty intersection, a
-  conjunct with no member reading — and the scope reads each conjunct as before (the Binder asks where it still ties).
+  members in place of their scope: `Brno` and `Liberec` bind `store.store_name`.
+- **Conjuncts that already agree take their entity too** (ruled 2026-10-16). Two or more conjuncts with the same one
+  reading keep its members even where the measure's scope does not reach it: „Tržby pro Liberec a Olomouc v roce 2025“
+  (both only stores) binds two stores, where it was two G3s.
+- Otherwise nothing changes — both ambiguous with the same readings („Brno a Plzeň“: each a store and a DC, read as
+  two DCs by the measure's scope), unambiguous conjuncts that disagree, an empty intersection, a conjunct with no member
+  reading — and the scope reads each conjunct as before (the Binder asks where it still ties).
 - **An entity governor keeps its own scope.** The rule overrides only a scope the sentence did not name (a measure's
   fact); „Tržby prodejen Brno a Liberec“ reads both by the store word, as before, and now binds `Liberec` too. An anchor
   word declared for several entities governs too: it named an axis, only an ambiguous one.
 - **Downstream.** Two `store.store_name` members under the all-channel revenue, whose fact has no relation to the
   store, is the intended reading: the query door finds no such relation and the question goes to the composer, never to
   a fast-path number.
+- **Deploy with the query door's fix for several members of one attribute.** A coordination now often binds two
+  members of the same attribute in one gap-free lattice („Tržby z prodejen pro Brno a Liberec“: two `store.store_name`
+  under the store channel's revenue). The consumer's fast path must read them as one restriction (`IN`, one row per
+  member), not as two equalities joined by `AND`, which match no row. Do not deploy this resolver ahead of that fix.
 - Unchanged: a lone place („Tržby pro Brno“ → "Brno DC"). „Tržby v Brně a Liberci“ still reads "Brno DC" and leaves
   „Liberci“ a place: the store names are matched `TYPOS(1)` on the written form, and „Liberci“ is two edits from
   "Liberec", so no member row reaches it and there is nothing to intersect.
