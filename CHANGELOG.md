@@ -16,6 +16,46 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+### resolver — coordinated places take the reading they share: „Tržby pro Brno a Liberec“ is two stores (ttr-demo#62)
+
+The coordination ruling — of two mentions joined by „a“ / „nebo“ / "and" / "or", the ambiguous one takes the reading
+where they intersect, and nothing is asked — covered mentions of model objects only. On the Hartland demo's Czech world
+„Tržby pro Brno a Liberec v roce 2025“ read `Brno` as the distribution centre "Brno DC" (the all-channel revenue's fact
+reaches the warehouse, not the store) and left `Liberec` a bare place with a G3: the question could be answered as Brno
+DC's revenue alone.
+
+- **A place coordinated with a governed place is governed by the same anchor.** `Liberec` hangs on `Brno` by `conj`,
+  not on `Tržby`, so it was nobody's governed value. A conjunct the NER typed a place or a person is now proposed as the
+  anchor's governed pair, with the same scope, exactly like the place it is coordinated with — when the anchor took the
+  value it is coordinated with. In „Tržby za elektroniku a Brno“ a measure takes no `elektroniku`, so `Brno` stays the
+  bare place it was (a G3, or what a named-member profile reads it as).
+- **The conjuncts meet where their readings intersect.** A conjunct's readings are what its own verdict admits with no
+  scope applied: each half of its span gated on its own rows, as the broad pass gates it (never one tie band over two
+  lookups' scores). One member entity and nothing else is one reading; several entities, or a declared model object
+  tied with the value, make the conjunct ambiguous, and an ambiguous conjunct never imposes its entity on the others.
+  When one conjunct has one reading, another has several, and the one is among the several, both keep that entity's
+  members in place of their scope: `Brno` and `Liberec` bind `store.store_name`.
+- **Conjuncts that already agree take their entity too** (ruled 2026-10-16). Two or more conjuncts with the same one
+  reading keep its members even where the measure's scope does not reach it: „Tržby pro Liberec a Olomouc v roce 2025“
+  (both only stores) binds two stores, where it was two G3s.
+- Otherwise nothing changes — both ambiguous with the same readings („Brno a Plzeň“: each a store and a DC, read as
+  two DCs by the measure's scope), unambiguous conjuncts that disagree, an empty intersection, a conjunct with no member
+  reading — and the scope reads each conjunct as before (the Binder asks where it still ties).
+- **An entity governor keeps its own scope.** The rule overrides only a scope the sentence did not name (a measure's
+  fact); „Tržby prodejen Brno a Liberec“ reads both by the store word, as before, and now binds `Liberec` too. An anchor
+  word declared for several entities governs too: it named an axis, only an ambiguous one.
+- **Downstream.** Two `store.store_name` members under the all-channel revenue, whose fact has no relation to the
+  store, is the intended reading: the query door finds no such relation and the question goes to the composer, never to
+  a fast-path number.
+- **Deploy with the query door's fix for several members of one attribute.** A coordination now often binds two
+  members of the same attribute in one gap-free lattice („Tržby z prodejen pro Brno a Liberec“: two `store.store_name`
+  under the store channel's revenue). The consumer's fast path must read them as one restriction (`IN`, one row per
+  member), not as two equalities joined by `AND`, which match no row. Do not deploy this resolver ahead of that fix.
+- Unchanged: a lone place („Tržby pro Brno“ → "Brno DC"). „Tržby v Brně a Liberci“ still reads "Brno DC" and leaves
+  „Liberci“ a place: the store names are matched `TYPOS(1)` on the written form, and „Liberci“ is two edits from
+  "Liberec", so no member row reaches it and there is nothing to intersect.
+- No wire change.
+
 ### resolver — an adjective in front of a declared phrase is a mention of its own: „Měsíční“ is the month, never dropped (#237)
 
 „Měsíční tržby z tržiště v roce 2025“ came back with `tržby z tržiště` (the marketplace revenue measure), `roce` and
