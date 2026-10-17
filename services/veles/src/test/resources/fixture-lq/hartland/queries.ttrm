@@ -1,0 +1,20 @@
+model query
+
+// Db-lane saved queries (`model query`, as the Hartland model declares them). One reads tables, as a db query
+// must; one reads entities — declared in the wrong lane, refused (contract L-2).
+
+def query store_revenue {
+    description: "Net paid per sales ticket",
+    sourceText: """sql
+SELECT ss_ticket_number, SUM(ss_net_paid) AS revenue FROM store_sales GROUP BY ss_ticket_number
+"""
+}
+
+def query shopper_revenue_db {
+    description: "The logical query's body, declared in the db lane",
+    sourceText: """sql
+SELECT shopper.shopper_id, SUM(sale.revenue) AS revenue
+FROM sale JOIN shopper
+GROUP BY shopper.shopper_id
+"""
+}

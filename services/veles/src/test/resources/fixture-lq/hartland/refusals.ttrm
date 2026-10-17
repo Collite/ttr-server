@@ -1,0 +1,34 @@
+model er
+
+// LQ (contracts L-2, L-4) — logical queries the parse worker refuses, and an entity stacked on a query
+// whose body lacks a column the entity binds. Each is a shape `QueryParseWorkerSpec` pins.
+
+// Mixed lanes: an entity and a table in one body.
+def query sale_paid_mixed {
+    description: "Reads the sale entity and the store_sales table together",
+    sourceText: """sql
+SELECT sale.ticket_number, store_sales.ss_net_paid
+FROM sale JOIN store_sales ON sale.ticket_number = store_sales.ss_ticket_number
+"""
+}
+
+// A logical query with a parameter (ruling LQ-5: a parametrized query stays a db query).
+def query shopper_revenue_over {
+    description: "Shoppers whose revenue is over a threshold",
+    sourceText: """sql
+SELECT shopper.shopper_id, SUM(sale.revenue) AS revenue
+FROM sale JOIN shopper
+GROUP BY shopper.shopper_id
+HAVING SUM(sale.revenue) > {threshold}
+""",
+    parameters: [ { name: threshold, type: decimal, label: "Threshold" } ]
+}
+
+// An entity stacked on shopper_revenue that binds an attribute to a column the body does not output.
+def entity shopper_spend { description: "A shopper with a spend the query does not compute",
+    binding: { target: { query: er.query.shopper_revenue } },
+    attributes: [
+        def attribute shopper_id { type: int, isKey: true, description: "Shopper key" },
+        def attribute spend { type: decimal, optional: true, binding: spend_total, description: "Not in the query's output" }
+    ]
+}

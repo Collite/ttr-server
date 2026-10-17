@@ -128,10 +128,10 @@ import org.tatrman.ttr.semantics.semanticsblock.ResolvedEntitySemantics
  *
  * Implements: GetModel, ListObjects, GetObject / GetSnapshot (per-kind detail for db
  * tables/views/columns/FKs, er2db mappings, queries, entities/attributes, roles, er2cnc
- * mappings — DbProcedure / Relation stay descriptor-only), GetStatus, Search, ListQueries,
+ * mappings, relations — DbProcedure stays descriptor-only), GetStatus, Search, ListQueries,
  * GetQuery, ListRoles, GetRolesForEntity, ValidateModel, TraverseEdges, Refresh — all `List*`
- * RPCs use AIP-158 sort-key page tokens via [PageTokenCodec]. Still pending: DbProcedureDetail /
- * RelationDetail (v1 gap closure Phase 07).
+ * RPCs use AIP-158 sort-key page tokens via [PageTokenCodec]. Still pending: DbProcedureDetail
+ * (v1 gap closure Phase 07).
  *
  * When a [QueryParseState] is supplied, `parse_status` / `parse_error_*` for queries are read
  * live from the background [org.tatrman.veles.parse.QueryParseWorker]; otherwise they reflect the
@@ -460,10 +460,11 @@ class MetadataServiceImpl(
             is Er2DbEntityMapping -> builder.er2DbEntityMapping = obj.toEr2DbEntityMappingDetail()
             is Er2DbAttributeMapping -> builder.er2DbAttributeMapping = obj.toEr2DbAttributeMappingDetail()
             is Er2DbRelationMapping -> builder.er2DbRelationMapping = obj.toEr2DbRelationMappingDetail()
+            is Relation -> builder.relation = obj.toRelationDetail()
             is Role -> builder.role = obj.toRoleDetail()
             is Er2CncRoleMapping -> builder.er2CncRoleMapping = obj.toEr2CncRoleMappingDetail()
             // GetObjectResponse has no `query` field — query detail is served by GetQuery (and via
-            // GetSnapshot's ObjectEntry). DbProcedure / Relation remain descriptor-only for now.
+            // GetSnapshot's ObjectEntry). DbProcedure remains descriptor-only for now.
             else -> Unit
         }
         return builder.build()
@@ -510,38 +511,12 @@ class MetadataServiceImpl(
      */
     private fun buildModelSnapshot(
         snap: org.tatrman.ttr.metadata.registry.RegistrySnapshot,
-    ): org.tatrman.meta.v1.ModelSnapshot {
-        val descriptor = snap.toProtoDescriptor()
-        val snapshotBuilder =
-            org.tatrman.meta.v1.ModelSnapshot
-                .newBuilder()
-                .setModel(descriptor)
-        val byQname = snap.model.objectByQname()
-        byQname.values.forEach { obj ->
-            val entryBuilder =
-                ObjectEntry
-                    .newBuilder()
-                    .setObjectDescriptor(obj.toObjectDescriptor(packageIndex::packageOf))
-            // Same per-kind detail population as GetObject (a few kinds — DbProcedure / Relation — stay descriptor-only).
-            when (obj) {
-                is DbTable -> entryBuilder.table = obj.toDbTableDetail()
-                is DbView -> entryBuilder.view = obj.toDbViewDetail()
-                is DbColumn -> entryBuilder.column = obj.toDbColumnDetail(byQname.mentionOf(obj.table))
-                is DbForeignKey -> entryBuilder.foreignKey = obj.toDbForeignKeyDetail()
-                is Entity -> entryBuilder.entity = obj.toEntityDetail()
-                is Attribute -> entryBuilder.attribute = obj.toAttributeDetail(byQname.mentionOf(obj.entity))
-                is Er2DbEntityMapping -> entryBuilder.er2DbEntityMapping = obj.toEr2DbEntityMappingDetail()
-                is Er2DbAttributeMapping -> entryBuilder.er2DbAttributeMapping = obj.toEr2DbAttributeMappingDetail()
-                is Er2DbRelationMapping -> entryBuilder.er2DbRelationMapping = obj.toEr2DbRelationMappingDetail()
-                is Query -> entryBuilder.query = obj.toQueryDetail(liveParseStatus(obj, snap))
-                is Role -> entryBuilder.role = obj.toRoleDetail()
-                is Er2CncRoleMapping -> entryBuilder.er2CncRoleMapping = obj.toEr2CncRoleMappingDetail()
-                else -> Unit
-            }
-            snapshotBuilder.addObjects(entryBuilder.build())
-        }
-        return snapshotBuilder.build()
-    }
+    ): org.tatrman.meta.v1.ModelSnapshot =
+        org.tatrman.meta.v1.ModelSnapshot
+            .newBuilder()
+            .setModel(snap.toProtoDescriptor())
+            .addAllObjects(snapshotObjects(snap.model, packageIndex::packageOf) { liveParseStatus(it, snap) })
+            .build()
 
     // ----- MV-T1 — ListMemberVocabularies (member-vocabulary contracts §3) -----
 
@@ -1701,6 +1676,46 @@ private fun Er2DbAttributeMapping.toEr2DbAttributeMappingDetail(): Er2DbAttribut
                 is AttributeMappingTarget.Expression -> Unit
             }
         }.build()
+
+/**
+ * The objects of a model snapshot (GetSnapshot's `objects`): every object of [model] with its per-kind detail, as
+ * GetObject serves it (DbProcedure stays descriptor-only). [parseStatusOf] gives each query the status its
+ * canonical form is read from.
+ */
+internal fun snapshotObjects(
+    model: Model,
+    packageOf: (String) -> String?,
+    parseStatusOf: (Query) -> DomainParseStatus,
+): List<ObjectEntry> {
+    val byQname = model.objectByQname()
+    return byQname.values.map { obj ->
+        val entryBuilder =
+            ObjectEntry
+                .newBuilder()
+                .setObjectDescriptor(obj.toObjectDescriptor(packageOf))
+        when (obj) {
+            is DbTable -> entryBuilder.table = obj.toDbTableDetail()
+            is DbView -> entryBuilder.view = obj.toDbViewDetail()
+            is DbColumn -> entryBuilder.column = obj.toDbColumnDetail(byQname.mentionOf(obj.table))
+            is DbForeignKey -> entryBuilder.foreignKey = obj.toDbForeignKeyDetail()
+            is Entity -> entryBuilder.entity = obj.toEntityDetail()
+            is Attribute -> entryBuilder.attribute = obj.toAttributeDetail(byQname.mentionOf(obj.entity))
+            is Er2DbEntityMapping -> entryBuilder.er2DbEntityMapping = obj.toEr2DbEntityMappingDetail()
+            is Er2DbAttributeMapping -> entryBuilder.er2DbAttributeMapping = obj.toEr2DbAttributeMappingDetail()
+            is Er2DbRelationMapping -> entryBuilder.er2DbRelationMapping = obj.toEr2DbRelationMappingDetail()
+            // LQ — the relation with its join pairs. The translator conditions a bare entity JOIN from the
+            // relations it is handed (`SnapshotModelHandle.relations()`); served descriptor-only, the list
+            // was empty and every bare join fell through to the FKs MAP_TO_PHYSICAL finds — and an entity
+            // stacked on a query has no FK, only the `join:` pairs of its relation.
+            is Relation -> entryBuilder.relation = obj.toRelationDetail()
+            is Query -> entryBuilder.query = obj.toQueryDetail(parseStatusOf(obj))
+            is Role -> entryBuilder.role = obj.toRoleDetail()
+            is Er2CncRoleMapping -> entryBuilder.er2CncRoleMapping = obj.toEr2CncRoleMappingDetail()
+            else -> Unit
+        }
+        entryBuilder.build()
+    }
+}
 
 private fun Er2DbRelationMapping.toEr2DbRelationMappingDetail(): Er2DbRelationMappingDetail =
     Er2DbRelationMappingDetail
