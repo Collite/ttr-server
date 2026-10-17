@@ -106,7 +106,7 @@ class LogicalQueryParseWorkerSpec :
             checkNotNull(firstJoin(plan)).join.hasCondition() shouldBe true
         }
 
-        "a db-lane query stores exactly the plan the lenient parse stores (the worker before LQ)" {
+        "a db-lane query stores exactly the plan a lenient parse of its body stores" {
             val q = dbQuery("store_revenue")
             val ok = status(q).shouldBeInstanceOf<ParseStatus.ParseSuccess>()
             val today =
@@ -159,12 +159,24 @@ class LogicalQueryParseWorkerSpec :
                 .shouldBeEmpty()
         }
 
+        "L-4 — an entity stacked on a db-lane query is checked the same way (renamed and unbound attributes alike)" {
+            val mismatches = checkNotNull(parsed.mappingMismatches(model.version.value))
+            val message = mismatches.getValue(er("entity", "ticket_revenue"))
+            message shouldContain "attribute 'margin' to column 'margin'"
+            message.contains("'ticket'") shouldBe false
+            message.contains("'revenue'") shouldBe false
+            message shouldContain "query 'query.store_revenue'"
+            message shouldContain "its columns: ss_ticket_number, revenue"
+        }
+
         "GetStatus reports each mismatched mapping as a warning" {
             val registry = MetadataRegistry().also { it.swap(model, ModelGraph.build(model)) }
             val response =
                 MetadataServiceImpl(registry = registry, parseState = parsed, packageIndex = PackageIndex())
                     .getStatus(GetStatusRequest.getDefaultInstance())
-            val warning = response.messagesList.single { it.code == "entity_query_output_mismatch" }
-            warning.humanMessage shouldContain "er.entity.shopper_spend"
+            val warnings = response.messagesList.filter { it.code == "entity_query_output_mismatch" }
+            warnings.map { it.severity }.toSet() shouldBe setOf(org.tatrman.common.v1.Severity.WARNING)
+            warnings.map { it.humanMessage.substringAfter("entity '").substringBefore("'") } shouldBe
+                listOf("er.entity.shopper_spend", "er.entity.ticket_revenue")
         }
     })

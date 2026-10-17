@@ -62,6 +62,16 @@ internal object PlanWalker {
         }
 
     /**
+     * [nodes] with every stamped boundary (LQ) as a leaf: the boundary itself, not the logical query's body under
+     * it — the plan as it reads with the bodies unexpanded, where the stacked entity was a scan. What column rules
+     * read: they keep the ground they had before the expansion.
+     */
+    fun nodesOutsideBoundaries(plan: PlanNode): List<PlanNode> =
+        buildList {
+            walk(plan, onNode = { add(it) }, intoBoundaries = false) { it }
+        }
+
+    /**
      * The table or entity [node] reads, or null when it reads none itself: a scan, or — LQ (contract L-13) — the
      * boundary Project of an entity stacked on a logical query, stamped `expanded_from` when the translator expanded
      * the query's body in place of the entity's scan. The boundary reads the stacked entity; the scans inside the
@@ -118,13 +128,15 @@ internal object PlanWalker {
         plan: PlanNode,
         onNode: (PlanNode) -> Unit = {},
         onBoundary: (PlanNode) -> PlanNode = { it },
+        intoBoundaries: Boolean = true,
         onLeaf: (PlanNode) -> PlanNode,
     ): PlanNode {
         onNode(plan)
+        if (!intoBoundaries && plan.nodeCase == PlanNode.NodeCase.PROJECT && plan.project.hasExpandedFrom()) return plan
 
-        fun node(n: PlanNode): PlanNode = walk(n, onNode, onBoundary, onLeaf)
+        fun node(n: PlanNode): PlanNode = walk(n, onNode, onBoundary, intoBoundaries, onLeaf)
 
-        fun expr(e: Expression): Expression = walkExpr(e, onNode, onBoundary, onLeaf)
+        fun expr(e: Expression): Expression = walkExpr(e, onNode, onBoundary, intoBoundaries, onLeaf)
         return when (plan.nodeCase) {
             PlanNode.NodeCase.TABLE_SCAN,
             PlanNode.NodeCase.SCAN,
@@ -233,13 +245,15 @@ internal object PlanWalker {
         e: Expression,
         onNode: (PlanNode) -> Unit,
         onBoundary: (PlanNode) -> PlanNode,
+        intoBoundaries: Boolean,
         onLeaf: (PlanNode) -> PlanNode,
     ): Expression {
-        fun expr(x: Expression): Expression = walkExpr(x, onNode, onBoundary, onLeaf)
+        fun expr(x: Expression): Expression = walkExpr(x, onNode, onBoundary, intoBoundaries, onLeaf)
         return when (e.exprCase) {
             Expression.ExprCase.SUBQUERY -> {
                 val sq = e.subquery
-                val inner = if (sq.hasSubquery()) walk(sq.subquery, onNode, onBoundary, onLeaf) else sq.subquery
+                val inner =
+                    if (sq.hasSubquery()) walk(sq.subquery, onNode, onBoundary, intoBoundaries, onLeaf) else sq.subquery
                 val operands = sq.operandsList.map(::expr)
                 if (inner === sq.subquery && operands.sameAs(sq.operandsList)) {
                     e
@@ -437,16 +451,22 @@ internal object MixedLayerDetector {
  */
 internal object ColumnUsage {
     /**
-     * The tables and entities a plan reads ([PlanWalker.scannedTables]: DB and ER scans, UNION branches,
-     * subqueries) and the tables it writes. A DENY rule fires on either surface: conservative
-     * (deny-leaning) posture.
+     * The tables and entities a plan reads (DB and ER scans, UNION branches, subqueries) and the tables it writes.
+     * A DENY rule fires on either surface: conservative (deny-leaning) posture.
+     *
+     * LQ — a stacked entity's stamped boundary counts as a read of the stacked entity, and the logical query's body
+     * under it is not read here ([PlanWalker.nodesOutsideBoundaries]): column rules keep the ground they had with
+     * the body unexpanded, where the stacked entity was a scan. (Row policies do reach into the body — L-13.) A rule
+     * on an entity the body reads therefore does not reach through the stacked entity, as before the expansion.
      */
-    fun tableQnames(plan: PlanNode): Set<QualifiedName> = PlanWalker.scannedTables(plan) + PlanWalker.writeTargets(plan)
+    fun tableQnames(plan: PlanNode): Set<QualifiedName> =
+        PlanWalker.nodesOutsideBoundaries(plan).mapNotNullTo(LinkedHashSet(), PlanWalker::scannedTable) +
+            PlanWalker.writeTargets(plan)
 
     /** Every column name the plan's nodes touch, on the same ground as [tableQnames]. */
     fun columnNames(plan: PlanNode): Set<String> =
         buildSet {
-            PlanWalker.nodes(plan).forEach { node -> collectColumns(node, this) }
+            PlanWalker.nodesOutsideBoundaries(plan).forEach { node -> collectColumns(node, this) }
         }
 
     /** The columns ONE node names; its inputs and its subqueries' plans are nodes of their own. */
@@ -457,17 +477,14 @@ internal object ColumnUsage {
         when (plan.nodeCase) {
             PlanNode.NodeCase.TABLE_SCAN -> plan.tableScan.outputColumnsList.forEach { acc.add(it.name) }
             PlanNode.NodeCase.SCAN -> plan.scan.outputColumnsList.forEach { acc.add(it.name) }
-            PlanNode.NodeCase.PROJECT -> {
-                plan.project.expressionsList.forEach {
-                    collectColumnsInExpr(
-                        it.expression,
-                        acc,
-                    )
+            PlanNode.NodeCase.PROJECT ->
+                if (plan.project.hasExpandedFrom()) {
+                    // LQ — a stacked entity's boundary stands where its scan stood: the attributes it exposes are
+                    // the columns the scan's `output_columns` named (its expressions name the body's columns).
+                    plan.project.expressionsList.forEach { acc.add(it.alias) }
+                } else {
+                    plan.project.expressionsList.forEach { collectColumnsInExpr(it.expression, acc) }
                 }
-                // LQ — a stacked entity's boundary stands where its scan stood: the attributes it exposes are
-                // the columns the scan's `output_columns` named.
-                if (plan.project.hasExpandedFrom()) plan.project.expressionsList.forEach { acc.add(it.alias) }
-            }
             PlanNode.NodeCase.FILTER -> collectColumnsInExpr(plan.filter.condition, acc)
             PlanNode.NodeCase.JOIN -> collectColumnsInExpr(plan.join.condition, acc)
             PlanNode.NodeCase.AGGREGATE -> {
@@ -530,27 +547,34 @@ internal object ExpressionRewriter {
             PlanNode.NodeCase.VALUES, PlanNode.NodeCase.NODE_NOT_SET,
             -> plan
             PlanNode.NodeCase.PROJECT ->
-                PlanNode
-                    .newBuilder()
-                    .setProject(
-                        plan.project
-                            .toBuilder()
-                            .clearExpressions()
-                            .addAllExpressions(
-                                plan.project.expressionsList.map { ne ->
-                                    val rewritten = rewriteExpression(ne.expression, transform)
-                                    if (rewritten === ne.expression) {
-                                        ne
-                                    } else {
-                                        NamedExpression
-                                            .newBuilder()
-                                            .setExpression(rewritten)
-                                            .setAlias(ne.alias)
-                                            .build()
-                                    }
-                                },
-                            ).setInput(rewriteColumnRefs(plan.project.input, transform)),
-                    ).build()
+                // LQ — a stacked entity's stamped boundary is a leaf here, as the scan it replaced was: a mask rewrites the
+                // consumers above it, never the boundary (its `x AS x` is what a row policy placed above it reads) nor
+                // the logical query's body under it.
+                if (plan.project.hasExpandedFrom()) {
+                    plan
+                } else {
+                    PlanNode
+                        .newBuilder()
+                        .setProject(
+                            plan.project
+                                .toBuilder()
+                                .clearExpressions()
+                                .addAllExpressions(
+                                    plan.project.expressionsList.map { ne ->
+                                        val rewritten = rewriteExpression(ne.expression, transform)
+                                        if (rewritten === ne.expression) {
+                                            ne
+                                        } else {
+                                            NamedExpression
+                                                .newBuilder()
+                                                .setExpression(rewritten)
+                                                .setAlias(ne.alias)
+                                                .build()
+                                        }
+                                    },
+                                ).setInput(rewriteColumnRefs(plan.project.input, transform)),
+                        ).build()
+                }
             PlanNode.NodeCase.FILTER ->
                 PlanNode
                     .newBuilder()

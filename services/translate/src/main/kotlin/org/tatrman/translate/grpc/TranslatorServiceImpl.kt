@@ -359,6 +359,16 @@ class TranslatorServiceImpl(
         getQuery: suspend (GetQueryRequest) -> GetQueryResponse,
     ): PlanNode {
         val qname = parseQueryRefQname(ref)
+        // LQ (ruling LQ-6) — a logical query is read only through the entity stacked on it: its stored plan is at the
+        // ER level, and nothing on the TransDSL path maps it to tables, so it would fail late (an unparse of a
+        // pre-physical plan, or a mixed-layer refusal). Say so up front.
+        if (qname.schemaCode == org.tatrman.plan.v1.SchemaCode.ER) {
+            throw QueryRefResolutionException(
+                "query_ref_logical_query",
+                "query_ref '$ref' names a logical query (a saved query over entities); query the entity stacked on " +
+                    "it instead",
+            )
+        }
         val resp =
             try {
                 getQuery(

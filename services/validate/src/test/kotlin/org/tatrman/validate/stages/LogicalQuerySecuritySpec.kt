@@ -134,7 +134,9 @@ class LogicalQuerySecuritySpec :
                 .policyFilters(applied.plan, "shopper_id")
                 .single()
                 .filter.input.project.expandedFrom shouldBe stacked
-            Stack.toDb(applied.plan)
+            val db = Stack.toDb(applied.plan)
+            Lq.policyFilters(db, "store_id").size shouldBe 1
+            Lq.policyFilters(db, "shopper_id").size shouldBe 1
         }
 
         "C-2g — an entity read inside the body AND at top level: two nodes, each wrapped once (L-13)" {
@@ -149,7 +151,7 @@ class LogicalQuerySecuritySpec :
                         .getObject() == shopper
             } shouldBe true
             applied.applied.map { it.ruleId } shouldBe listOf("p_shopper")
-            Stack.toDb(applied.plan)
+            Lq.policyFilters(Stack.toDb(applied.plan), "shopper_id").size shouldBe 2
         }
 
         "C-2h — a two-level stack: a policy on each stacked entity wraps its own boundary once" {
@@ -167,7 +169,7 @@ class LogicalQuerySecuritySpec :
                 listOf(outer, inner)
             applied.applied.map { it.table } shouldContainExactlyInAnyOrder
                 listOf("er.entity.big_spender", "er.entity.shopper_revenue")
-            Stack.toDb(applied.plan, model)
+            Lq.policyFilters(Stack.toDb(applied.plan, model), "shopper_id").size shouldBe 2
         }
 
         "the option off keeps today's ER plan: the stacked entity is a scan, matched by its own key only" {

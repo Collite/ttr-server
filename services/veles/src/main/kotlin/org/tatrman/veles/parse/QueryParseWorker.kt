@@ -184,6 +184,6 @@ class QueryParseWorker(
                 }.groupBy({ it.first }, { it.second })
 
         private fun ProtoQualifiedName.dotted(): String =
-            "${schemaCodeToToken(schemaCode).ifEmpty { namespace }}.$namespace.$name"
+            listOf(schemaCodeToToken(schemaCode), namespace, name).filter { it.isNotEmpty() }.joinToString(".")
     }
 }

@@ -1,7 +1,7 @@
 model er
 
 // LQ (contracts L-2, L-4) — logical queries the parse worker refuses, and an entity stacked on a query
-// whose body lacks a column the entity binds. Each is a shape `QueryParseWorkerSpec` pins.
+// whose body lacks a column the entity binds. Each is a shape `LogicalQueryParseWorkerSpec` pins.
 
 // Mixed lanes: an entity and a table in one body.
 def query sale_paid_mixed {
@@ -30,5 +30,15 @@ def entity shopper_spend { description: "A shopper with a spend the query does n
     attributes: [
         def attribute shopper_id { type: int, isKey: true, description: "Shopper key" },
         def attribute spend { type: decimal, optional: true, binding: spend_total, description: "Not in the query's output" }
+    ]
+}
+
+// An entity stacked on a db-lane query (L-4: either lane), one attribute bound to a column it does not output.
+def entity ticket_revenue { description: "Net paid per ticket, with a column the query does not compute",
+    binding: { target: { query: store_revenue } },
+    attributes: [
+        def attribute ticket { type: int, isKey: true, binding: ss_ticket_number, description: "Sales ticket" },
+        def attribute revenue { type: decimal, optional: true, description: "Net paid" },
+        def attribute margin { type: decimal, optional: true, description: "Not in the query's output" }
     ]
 }

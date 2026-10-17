@@ -109,6 +109,7 @@ class LogicalQueryExpansionE2ESpec :
 
         class Harness(
             detected: SchemaCode = SchemaCode.ER,
+            erPlan: PlanNode = expandedEr,
         ) {
             val parses = mutableListOf<ParseRequest>()
             val validated = mutableListOf<PlanNode>()
@@ -118,7 +119,7 @@ class LogicalQueryExpansionE2ESpec :
                         synchronized(parses) { parses += req }
                         ParseResponse
                             .newBuilder()
-                            .setPlan(if (req.targetSchema == SchemaCode.ER) expandedEr else physical)
+                            .setPlan(if (req.targetSchema == SchemaCode.ER) erPlan else physical)
                             .setContext(req.context)
                             .build()
                     },
@@ -166,12 +167,20 @@ class LogicalQueryExpansionE2ESpec :
             h.validated.first() shouldBe expandedEr
         }
 
-        "Run — a cache hit re-uses the expanded ER plan (no second ER parse)" {
+        "Run — an expanded ER plan is not cached: its body would freeze in it; each run recompiles" {
             val h = Harness()
             h.service.run(request).toList()
             h.service.run(request).toList()
-            h.parses.count { it.targetSchema == SchemaCode.ER } shouldBe 1
+            h.parses.count { it.targetSchema == SchemaCode.ER } shouldBe 2
             h.validated.filter { it.hasProject() && it.project.hasExpandedFrom() }.size shouldBe 2
+        }
+
+        "Run — a plan with no stacked entity is cached as before" {
+            val plain = expandedEr.project.input
+            val h = Harness(erPlan = plain)
+            h.service.run(request).toList()
+            h.service.run(request).toList()
+            h.parses.count { it.targetSchema == SchemaCode.ER } shouldBe 1
         }
 
         "the DB-source path (pass 2 only) is unchanged: one DB parse, no expansion" {

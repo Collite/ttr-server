@@ -375,7 +375,7 @@ class QueryServiceImpl(
                 predictedSchemaFingerprint = "",
                 cachedAt = Instant.now(),
             )
-        cache.record(key, cached)
+        recordErPlan(key, cached)
         return erParsed.plan
     }
 
@@ -779,7 +779,7 @@ class QueryServiceImpl(
                             effectiveSchema = SchemaCode.ER,
                             detectionMessages = resolution.detectionMessages,
                         )
-                    cache.record(key, cachedPlan)
+                    recordErPlan(key, cachedPlan)
 
                     return CompileResponse
                         .newBuilder()
@@ -900,7 +900,7 @@ class QueryServiceImpl(
         }
 
         val requiredParameters = erParsed.context.parametersList.toList()
-        cache.record(
+        recordErPlan(
             key,
             CachedPlan(
                 erPlan = erParsed.plan,
@@ -912,6 +912,19 @@ class QueryServiceImpl(
             ),
         )
         return erParsed
+    }
+
+    /**
+     * Cache an ER plan — unless it carries an expanded logical-query body (LQ, contract L-8). Unexpanded, the
+     * cached plan scans the stacked entity and every run's DB re-entry inlines the body from the live model;
+     * expanded, the body would be frozen in the cache, and the key's model version (the caller's, often unset)
+     * does not move with a model swap. Such a plan is recompiled on every run instead.
+     */
+    private fun recordErPlan(
+        key: CacheKey,
+        plan: CachedPlan,
+    ) {
+        if (!carriesExpandedBody(plan.erPlan)) cache.record(key, plan)
     }
 
     /**
@@ -1218,6 +1231,21 @@ class QueryServiceImpl(
     )
 
     companion object {
+        /** LQ — whether [m] holds, anywhere, a boundary Project stamped `expanded_from` (an expanded logical query). */
+        internal fun carriesExpandedBody(m: com.google.protobuf.Message): Boolean =
+            (m is org.tatrman.plan.v1.ProjectNode && m.hasExpandedFrom()) ||
+                m.allFields.any { (field, value) ->
+                    when {
+                        field.isRepeated ->
+                            (value as List<*>).any {
+                                it is com.google.protobuf.Message &&
+                                    carriesExpandedBody(it)
+                            }
+                        value is com.google.protobuf.Message -> carriesExpandedBody(value)
+                        else -> false
+                    }
+                }
+
         private val log = LoggerFactory.getLogger(QueryServiceImpl::class.java)
 
         /** validate's `RuleEnforcer.TOP_N_APPLIED` — spelled here because query does not depend on validate. */

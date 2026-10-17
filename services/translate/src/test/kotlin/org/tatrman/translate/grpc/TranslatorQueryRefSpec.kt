@@ -111,6 +111,26 @@ class TranslatorQueryRefSpec :
             resp.messagesList[0].code shouldBe "query_ref_not_found"
         }
 
+        "TransDSL query_ref to a logical query (er.query.*) → query_ref_logical_query, without asking metadata" {
+            var asked = false
+            val svc =
+                TranslatorServiceImpl(StaticModelHandleProvider(BootFixtureModel.handle()), getQuery = {
+                    asked = true
+                    GetQueryResponse.getDefaultInstance()
+                })
+            val resp =
+                svc.parseToRelNode(
+                    ParseRequest
+                        .newBuilder()
+                        .setSource("""{"core":[{"queryRef":"er.query.shopper_revenue","alias":"sr"}]}""")
+                        .setSourceLanguage(Language.TRANSFORMATION_DSL)
+                        .build(),
+                )
+            resp.hasPlan() shouldBe false
+            resp.messagesList[0].code shouldBe "query_ref_logical_query"
+            asked shouldBe false
+        }
+
         "without a metadata client, query_ref falls back to the placeholder subquery (no error)" {
             val svc = TranslatorServiceImpl(StaticModelHandleProvider(BootFixtureModel.handle())) // getQuery = null
             val resp = parseTransDsl(svc)

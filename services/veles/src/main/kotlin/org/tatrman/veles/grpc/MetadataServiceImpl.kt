@@ -500,9 +500,15 @@ class MetadataServiceImpl(
     /**
      * GetSnapshot's ETag for [snap] — and the key [listMemberVocabularies] caches its rendering under,
      * since both are functions of the same content (the model + the live parse state, #112).
+     *
+     * With a live parse state it also names this process ([SNAPSHOT_EPOCH]): a restarted server reaches the same
+     * version and the same settled generation, so without it a consumer holding the snapshot of the previous
+     * process — a previous release, whose snapshot may carry less (relation detail, logical-query plans) — would be
+     * told "not modified" and keep it.
      */
     private fun snapshotEtag(snap: org.tatrman.ttr.metadata.registry.RegistrySnapshot): String =
-        parseState?.let { "${snap.model.version.value}.q${it.generation()}" } ?: snap.model.version.value
+        parseState?.let { "${snap.model.version.value}.q${it.generation()}.$SNAPSHOT_EPOCH" }
+            ?: snap.model.version.value
 
     /**
      * The whole-model snapshot GetSnapshot serves — and the one [listMemberVocabularies] renders
@@ -860,6 +866,9 @@ class MetadataServiceImpl(
     }
 
     private companion object {
+        /** This process, in [snapshotEtag]: a restart is a new snapshot, whatever version and generation it reaches. */
+        val SNAPSHOT_EPOCH: String = java.lang.Long.toString(System.currentTimeMillis(), 36)
+
         const val DEFAULT_SEARCH_ALGORITHM = "all"
         const val MAX_COMPILE_ERRORS_SURFACED = 50
 

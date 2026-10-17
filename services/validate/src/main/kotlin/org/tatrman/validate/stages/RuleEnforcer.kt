@@ -192,7 +192,10 @@ class RuleEnforcer(
             PlanNode.NodeCase.SORT ->
                 plan.sort.sortKeysList.any { it.column.name == column } ||
                     bareColumnRefExistsFor(plan.sort.input, column)
-            PlanNode.NodeCase.PROJECT -> bareColumnRefExistsFor(plan.project.input, column)
+            // LQ — a stacked entity's boundary is a leaf for column rules (ExpressionRewriter): the body under it is
+            // not masked, so its group-by keys are no skipped occurrence.
+            PlanNode.NodeCase.PROJECT ->
+                !plan.project.hasExpandedFrom() && bareColumnRefExistsFor(plan.project.input, column)
             PlanNode.NodeCase.FILTER -> bareColumnRefExistsFor(plan.filter.input, column)
             PlanNode.NodeCase.JOIN ->
                 bareColumnRefExistsFor(plan.join.left, column) || bareColumnRefExistsFor(plan.join.right, column)
