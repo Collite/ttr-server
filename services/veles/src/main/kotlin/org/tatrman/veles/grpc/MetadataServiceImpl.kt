@@ -728,6 +728,19 @@ class MetadataServiceImpl(
             .setOverallStatus(OverallStatus.OK)
             .addAllSupportedSearchAlgorithms(supportedAlgos)
             .setDefaultSearchAlgorithm(DEFAULT_SEARCH_ALGORITHM)
+        // LQ (L-4) — an entity stacked on a query whose bindings name columns the body does not output. The query is
+        // PARSED; the entity is what is wrong, and a query over it fails at translation.
+        val mismatchCode = org.tatrman.translator.orchestrator.Translator.ENTITY_QUERY_OUTPUT_MISMATCH
+        val mismatches = parseState?.mappingMismatches(snap.model.version.value).orEmpty()
+        for ((_, message) in mismatches.entries.sortedBy { it.key.toString() }) {
+            builder.addMessages(
+                ResponseMessage
+                    .newBuilder()
+                    .setSeverity(Severity.WARNING)
+                    .setCode(mismatchCode)
+                    .setHumanMessage(message.removePrefix("$mismatchCode: ")),
+            )
+        }
         searchIndexHolder?.stats()?.let { stats ->
             builder
                 .setSearchIndexObjects(stats.objectCount)
@@ -1680,7 +1693,9 @@ private fun Er2DbAttributeMapping.toEr2DbAttributeMappingDetail(): Er2DbAttribut
 /**
  * The objects of a model snapshot (GetSnapshot's `objects`): every object of [model] with its per-kind detail, as
  * GetObject serves it (DbProcedure stays descriptor-only). [parseStatusOf] gives each query the status its
- * canonical form is read from.
+ * canonical form is read from. Also what the query-parse worker reads the model through
+ * ([org.tatrman.veles.parse.queryPathHandle]), so a saved query parses against the model exactly as the
+ * translate service sees it.
  */
 internal fun snapshotObjects(
     model: Model,
