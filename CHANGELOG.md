@@ -16,6 +16,42 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+### metadata / query / validate — logical queries: saved queries over entities, entities stacked on them
+
+A saved query declared in a `model er` file is a **logical query** (`er.query.<name>`): written over entities —
+entity and attribute names, a bare `JOIN` conditioned from the relations — and usable through an entity stacked on it
+(`binding: { target: { query: er.query.<name> } }`), whose attributes bind the query's output columns. Pins
+`ttr-translator` / `ttr-plan-proto` **0.12.0** and the grammar bundle (`ttr-metadata`, …) **0.15.2**, where the
+lane, the strict parse and the expansion live.
+
+- **metadata (`veles`) — each saved query parses in the lane it is declared in.** A logical query is stored at the
+  ER level (entity scans kept, bare joins conditioned); every other query in the db lane, as before. Both parse
+  strictly, so a body that reads the other lane, or both, fails by name: `lane_mismatch` (a db query reading
+  entities), `mixed_lanes` (entities and tables in one body), `logical_query_parameters` (a logical query takes
+  no parameters). The codes land in `GetQuery` / `ListQueries`' `parse_error_message`. The worker reads the
+  model through the query path's own adapter (`SnapshotModelHandle` over the model's snapshot), so a query parses
+  against what the translate service sees. A db-lane query stores the same plan as before.
+- **metadata — an entity stacked on a query is checked against the query's output.** Each attribute's bound column
+  (or its own name, when unbound) must be an output column of the stored body; one that is not is reported by
+  `GetStatus` as a WARNING `entity_query_output_mismatch` naming the entity, the attribute, the column and the
+  body's columns. The query itself stays PARSED.
+- **metadata — `GetSnapshot` and `GetObject` serve relations with their detail** (`RelationDetail`: the entities and
+  the `join:` pairs); they were descriptor-only. The translator conditions a bare entity `JOIN` from these, so a
+  join onto a stacked entity — which has no foreign key, only `join:` pairs — is conditioned. A relation bound to
+  a foreign key carries no pairs and its joins are conditioned from the key as before.
+- **translate — `ParseRequest.expand_logical_bodies = 6`, `TranslateRequest.expand_logical_bodies = 8`** (wire,
+  additive). Set on a `target_schema = ER` parse, the ER half expands every entity stacked on a logical query in
+  place: a boundary Project stamped `expanded_from = <entity>` over the query's body. A no-op for a DB target.
+- **query — the ER half of the two-pass path asks for the expansion** (`Run`, `Compile`); the cached ER plan is
+  the expanded one. The DB re-entry closes the boundary itself: the physical plan is the one the unexpanded path
+  produces. The one-pass DB path and query-mcp's `compile` are unchanged.
+- **validate — pass 1 secures a stacked entity and the entities its body reads.** A policy keyed on
+  `er.entity.<x>` matches a scan of `x` and a boundary stamped `expanded_from = x`; its Filter goes directly above
+  the matched node, and a node is wrapped once (an entity read inside a body and at top level is two nodes). The
+  receipt (`security_applied`) names the policy's own key — the stacked entity for a boundary match. Column rules
+  and `used_objects` read a boundary as a read of its entity. The mixed-layer check is unchanged: an expanded body
+  is pure ER.
+
 ### resolver — an adjective in front of a declared phrase is a mention of its own: „Měsíční“ is the month, never dropped (#237)
 
 „Měsíční tržby z tržiště v roce 2025“ came back with `tržby z tržiště` (the marketplace revenue measure), `roce` and

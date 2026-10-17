@@ -78,6 +78,7 @@ class TranslatorServiceImpl(
                 queryRefs = queryRefs,
                 sourceSchema = request.sourceSchema,
                 parameters = toSqlParams(request.context),
+                expandLogicalBodies = request.expandLogicalBodies,
             )
         return when (result) {
             is ParseResult.Success -> builder.setPlan(result.plan).build()
@@ -177,6 +178,7 @@ class TranslatorServiceImpl(
                 queryRefs = queryRefs,
                 sourceSchema = request.sourceSchema,
                 parameters = toSqlParams(request.context),
+                expandLogicalBodies = request.expandLogicalBodies,
             )
         return when (result) {
             is TranslateResult.Success -> builder.setOutput(result.output).build()

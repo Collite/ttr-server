@@ -61,11 +61,17 @@ internal object PlanWalker {
             walk(plan, onNode = { add(it) }) { it }
         }
 
-    /** The table or entity [node] scans, or null when it is not a scan. */
+    /**
+     * The table or entity [node] reads, or null when it reads none itself: a scan, or — LQ (contract L-13) — the
+     * boundary Project of an entity stacked on a logical query, stamped `expanded_from` when the translator expanded
+     * the query's body in place of the entity's scan. The boundary reads the stacked entity; the scans inside the
+     * body are nodes of their own.
+     */
     fun scannedTable(node: PlanNode): QualifiedName? =
         when (node.nodeCase) {
             PlanNode.NodeCase.TABLE_SCAN -> node.tableScan.table
             PlanNode.NodeCase.SCAN -> node.scan.getObject()
+            PlanNode.NodeCase.PROJECT -> if (node.project.hasExpandedFrom()) node.project.expandedFrom else null
             else -> null
         }
 
@@ -77,11 +83,23 @@ internal object PlanWalker {
      * The FilterNode goes directly above the scan, so the security predicate runs on raw rows and
      * every operator above the scan is preserved. The predicate is written in the leaf's own name
      * space (attribute names for ER scans, column names for DB tables).
+     *
+     * LQ (L-13) — a stacked entity's stamped boundary Project is wrapped the same way, directly above the
+     * boundary: it outputs the entity's attribute names, the predicate's name space. The body under it is walked
+     * first, so a scan inside the body is wrapped by its own key and the boundary by the stacked entity's — each
+     * node once.
      */
     fun wrapScans(
         plan: PlanNode,
         predicateFor: (QualifiedName) -> Expression?,
-    ): PlanNode = walk(plan) { leaf -> scannedTable(leaf)?.let(predicateFor)?.let { wrapInFilter(leaf, it) } ?: leaf }
+    ): PlanNode =
+        walk(
+            plan,
+            onBoundary = { boundary ->
+                scannedTable(boundary)?.let(predicateFor)?.let { filterOver(boundary, it) }
+                    ?: boundary
+            },
+        ) { leaf -> scannedTable(leaf)?.let(predicateFor)?.let { wrapInFilter(leaf, it) } ?: leaf }
 
     /** [wrapScans] with one [predicate] for every scan whose qname satisfies [isMatch]. */
     fun wrapScans(
@@ -92,19 +110,21 @@ internal object PlanWalker {
 
     /**
      * The one walk. [onNode] sees every node, pre-order; [onLeaf] sees every leaf — a scan, a
-     * workspace ref, VALUES — and its result replaces the leaf. A node none of whose parts changed is
-     * returned as it is, so a read-only walk builds nothing.
+     * workspace ref, VALUES — and its result replaces the leaf; [onBoundary] sees a stamped boundary
+     * Project (LQ) after its own parts were walked, and its result replaces it. A node none of whose
+     * parts changed is returned as it is, so a read-only walk builds nothing.
      */
     private fun walk(
         plan: PlanNode,
         onNode: (PlanNode) -> Unit = {},
+        onBoundary: (PlanNode) -> PlanNode = { it },
         onLeaf: (PlanNode) -> PlanNode,
     ): PlanNode {
         onNode(plan)
 
-        fun node(n: PlanNode): PlanNode = walk(n, onNode, onLeaf)
+        fun node(n: PlanNode): PlanNode = walk(n, onNode, onBoundary, onLeaf)
 
-        fun expr(e: Expression): Expression = walkExpr(e, onNode, onLeaf)
+        fun expr(e: Expression): Expression = walkExpr(e, onNode, onBoundary, onLeaf)
         return when (plan.nodeCase) {
             PlanNode.NodeCase.TABLE_SCAN,
             PlanNode.NodeCase.SCAN,
@@ -116,13 +136,15 @@ internal object PlanWalker {
                 val p = plan.project
                 val input = if (p.hasInput()) node(p.input) else p.input
                 val exprs = p.expressionsList.map { ne -> ne.mapExpression(::expr) }
-                if (input === p.input && exprs.sameAs(p.expressionsList)) {
-                    plan
-                } else {
-                    val b = p.toBuilder().clearExpressions().addAllExpressions(exprs)
-                    if (p.hasInput()) b.input = input
-                    plan.toBuilder().setProject(b).build()
-                }
+                val walked =
+                    if (input === p.input && exprs.sameAs(p.expressionsList)) {
+                        plan
+                    } else {
+                        val b = p.toBuilder().clearExpressions().addAllExpressions(exprs)
+                        if (p.hasInput()) b.input = input
+                        plan.toBuilder().setProject(b).build()
+                    }
+                if (p.hasExpandedFrom()) onBoundary(walked) else walked
             }
             PlanNode.NodeCase.FILTER -> {
                 val f = plan.filter
@@ -210,13 +232,14 @@ internal object PlanWalker {
     private fun walkExpr(
         e: Expression,
         onNode: (PlanNode) -> Unit,
+        onBoundary: (PlanNode) -> PlanNode,
         onLeaf: (PlanNode) -> PlanNode,
     ): Expression {
-        fun expr(x: Expression): Expression = walkExpr(x, onNode, onLeaf)
+        fun expr(x: Expression): Expression = walkExpr(x, onNode, onBoundary, onLeaf)
         return when (e.exprCase) {
             Expression.ExprCase.SUBQUERY -> {
                 val sq = e.subquery
-                val inner = if (sq.hasSubquery()) walk(sq.subquery, onNode, onLeaf) else sq.subquery
+                val inner = if (sq.hasSubquery()) walk(sq.subquery, onNode, onBoundary, onLeaf) else sq.subquery
                 val operands = sq.operandsList.map(::expr)
                 if (inner === sq.subquery && operands.sameAs(sq.operandsList)) {
                     e
@@ -383,7 +406,9 @@ internal object MixedLayerDetector {
 
     /**
      * §62 — collects all model object qnames (ER entities, DB tables) referenced by leaf scans
-     * in the plan. Used to populate `PipelineContext.used_objects` for audit and lineage tracking.
+     * in the plan — and by the stamped boundary of an entity stacked on a logical query (LQ), so the
+     * stacked entity is listed beside the entities its body reads. Used to populate
+     * `PipelineContext.used_objects` for audit and lineage tracking.
      */
     fun collectUsedObjects(plan: PlanNode): List<org.tatrman.plan.v1.ObjectRef> =
         PlanWalker.nodes(plan).mapNotNull { node ->
@@ -432,13 +457,17 @@ internal object ColumnUsage {
         when (plan.nodeCase) {
             PlanNode.NodeCase.TABLE_SCAN -> plan.tableScan.outputColumnsList.forEach { acc.add(it.name) }
             PlanNode.NodeCase.SCAN -> plan.scan.outputColumnsList.forEach { acc.add(it.name) }
-            PlanNode.NodeCase.PROJECT ->
+            PlanNode.NodeCase.PROJECT -> {
                 plan.project.expressionsList.forEach {
                     collectColumnsInExpr(
                         it.expression,
                         acc,
                     )
                 }
+                // LQ — a stacked entity's boundary stands where its scan stood: the attributes it exposes are
+                // the columns the scan's `output_columns` named.
+                if (plan.project.hasExpandedFrom()) plan.project.expressionsList.forEach { acc.add(it.alias) }
+            }
             PlanNode.NodeCase.FILTER -> collectColumnsInExpr(plan.filter.condition, acc)
             PlanNode.NodeCase.JOIN -> collectColumnsInExpr(plan.join.condition, acc)
             PlanNode.NodeCase.AGGREGATE -> {

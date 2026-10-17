@@ -347,15 +347,7 @@ class QueryServiceImpl(
         // Step 1: Parse to ER tree.
         val erParseResult =
             retry.execute("translator.parse_to_rel.target_er") {
-                translator.parse(
-                    ParseRequest
-                        .newBuilder()
-                        .setSource(request.source)
-                        .setSourceLanguage(request.sourceLanguage)
-                        .setTargetSchema(SchemaCode.ER)
-                        .setContext(context)
-                        .build(),
-                )
+                translator.parse(erParseRequest(request, context))
             }
         val erParsed =
             when (erParseResult) {
@@ -896,15 +888,7 @@ class QueryServiceImpl(
     ): ParseResponse? {
         val erParseResult =
             retry.execute("translator.parse_to_rel.target_er") {
-                translator.parse(
-                    ParseRequest
-                        .newBuilder()
-                        .setSource(request.source)
-                        .setSourceLanguage(request.sourceLanguage)
-                        .setTargetSchema(SchemaCode.ER)
-                        .setContext(context)
-                        .build(),
-                )
+                translator.parse(erParseRequest(request, context))
             }
         val erParsed =
             when (erParseResult) {
@@ -929,6 +913,26 @@ class QueryServiceImpl(
         )
         return erParsed
     }
+
+    /**
+     * The first call of the two-pass parse: the ER half (target ER). LQ (contract L-8) — with
+     * `expand_logical_bodies`, an entity stacked on a logical query is expanded in place under a stamped
+     * boundary, so Validator pass 1 secures the entities its body reads as well as the stacked entity
+     * itself; the DB re-entry then closes the boundary (same physical plan as without the option). The
+     * cached ER plan is this expanded one.
+     */
+    private fun erParseRequest(
+        request: RunRequest,
+        context: PipelineContext,
+    ): ParseRequest =
+        ParseRequest
+            .newBuilder()
+            .setSource(request.source)
+            .setSourceLanguage(request.sourceLanguage)
+            .setTargetSchema(SchemaCode.ER)
+            .setExpandLogicalBodies(true)
+            .setContext(context)
+            .build()
 
     override suspend fun translate(request: TranslateRequest): TranslateResponse =
         translatorTranslate.translate(request)
