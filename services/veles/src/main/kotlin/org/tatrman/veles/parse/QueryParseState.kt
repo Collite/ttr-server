@@ -3,6 +3,7 @@ package org.tatrman.veles.parse
 
 import org.tatrman.ttr.metadata.model.ParseStatus
 import org.tatrman.ttr.metadata.model.QualifiedName
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
 
@@ -28,6 +29,8 @@ class QueryParseState {
     private class Epoch(
         val modelVersion: String?,
         val byQname: Map<QualifiedName, AtomicReference<ParseStatus>>,
+        // LQ (L-4) — entities stacked on a query whose bindings name columns its body does not output, by entity.
+        val mappingMismatches: MutableMap<QualifiedName, String> = ConcurrentHashMap(),
     )
 
     private val current = AtomicReference(Epoch(modelVersion = null, byQname = emptyMap()))
@@ -86,6 +89,28 @@ class QueryParseState {
     ): ParseStatus? {
         val epoch = current.get()
         return if (epoch.modelVersion == modelVersion) epoch.byQname[qname]?.get() else null
+    }
+
+    /**
+     * LQ (contract L-4) — record that entity [entity], stacked on a query of model [modelVersion], binds attributes to
+     * columns the query's body does not output: [message] (`entity_query_output_mismatch: …`). The query itself keeps
+     * its own status. No-op if that is not the tracked model. A mapping check does not change what GetSnapshot
+     * serves, so it does not advance the [generation].
+     */
+    fun setMappingMismatch(
+        modelVersion: String,
+        entity: QualifiedName,
+        message: String,
+    ) {
+        val epoch = current.get()
+        if (epoch.modelVersion != modelVersion) return
+        epoch.mappingMismatches[entity] = message
+    }
+
+    /** The mismatched mappings of model [modelVersion] by entity, or null if that model is not the tracked one (yet). */
+    fun mappingMismatches(modelVersion: String): Map<QualifiedName, String>? {
+        val epoch = current.get()
+        return if (epoch.modelVersion == modelVersion) epoch.mappingMismatches.toMap() else null
     }
 
     data class Counts(

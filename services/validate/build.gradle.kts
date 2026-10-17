@@ -95,6 +95,8 @@ dependencies {
     testImplementation(libs.bundles.kotest)
     testImplementation(libs.mockk)
     testImplementation(libs.wiremock)
+    // LQ C-2 — the translator (and its HartlandJoinModel fixture) produces the plan the security stage wraps.
+    testImplementation(testFixtures(libs.tatrman.ttr.translator))
 
     // Component tier (WS-C1 T3) — proves Validate's tenant-isolation policy decision **enforces** on a
     // real Postgres: the predicate the PolicyEngine emits, applied as a WHERE clause, denies

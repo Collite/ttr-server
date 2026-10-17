@@ -461,6 +461,16 @@ class CompileToolSpec :
             captured[0].targetSchema shouldBe SchemaCode.DB
         }
 
+        // LQ (contract L-8) — compile is the single-pass path: target DB, one Validate on the physical plan.
+        // EXPAND_LOGICAL_BODIES is an ER-half option (a no-op for a DB target), so compile never asks for it.
+        "LQ — compile over entities never asks for the logical-body expansion" {
+            val captured = mutableListOf<ParseRequest>()
+            val tool = CompileTool(cfg, capturingTranslator(captured), fakeValidator { req -> validated(req) })
+            runBlocking { tool.execute(compileRequest(sourceSchema = "er"), identity = null) }.isError shouldBe false
+            captured.single().targetSchema shouldBe SchemaCode.DB
+            captured.single().expandLogicalBodies shouldBe false
+        }
+
         // Absent must not mean "db": without the argument the request is the one compile has
         // always sent, so the translator still decides which catalog the source reads. A blank
         // value is read as absent.

@@ -1,0 +1,43 @@
+model er
+
+// The entities a logical query is written over. Relations carry `join:` pairs — the bare
+// `JOIN` of a query over entities is conditioned from them.
+
+def entity sale { description: "A store sale",
+    binding: { target: { table: db.dbo.table.store_sales } },
+    attributes: [
+        def attribute ticket_number { type: int, isKey: true, binding: ss_ticket_number, description: "Sales ticket" },
+        def attribute shopper_id { type: int, optional: true, binding: ss_customer_sk, description: "The shopper who bought" },
+        def attribute revenue { type: decimal, optional: true, binding: ss_net_paid, description: "Net amount paid" }
+    ]
+}
+
+def entity shopper { description: "A shopper",
+    semantics { name: last_name },
+    binding: { target: { table: db.dbo.table.customer } },
+    attributes: [
+        def attribute shopper_id { type: int, isKey: true, binding: c_customer_sk, description: "Shopper key" },
+        def attribute last_name { type: text, optional: true, binding: c_last_name, description: "Last name" },
+        def attribute current_household { type: int, optional: true, binding: c_current_hdemo_sk, description: "Current household" }
+    ]
+}
+
+def entity household { description: "A household and its demographics",
+    binding: { target: { table: db.dbo.table.household_demographics } },
+    attributes: [
+        def attribute household_id { type: int, isKey: true, binding: hd_demo_sk, description: "Household key" },
+        def attribute buy_potential { type: text, optional: true, binding: hd_buy_potential, description: "Buy potential band" }
+    ]
+}
+
+def relation sale_shopper { description: "A sale is made by a shopper",
+    from: er.entity.sale, to: er.entity.shopper,
+    cardinality: { from: "0..*", to: "1" },
+    join: [{ from: er.entity.sale.shopper_id, to: er.entity.shopper.shopper_id }]
+}
+
+def relation shopper_household { description: "A shopper lives in a household",
+    from: er.entity.shopper, to: er.entity.household,
+    cardinality: { from: "0..*", to: "0..1" },
+    join: [{ from: er.entity.shopper.current_household, to: er.entity.household.household_id }]
+}
