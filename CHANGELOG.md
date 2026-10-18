@@ -16,14 +16,15 @@ outside this repo could notice is in.
 
 ## Unreleased
 
-- **metadata (veles)** — a saved query whose bare `JOIN` the model cannot condition is refused:
+- **metadata (veles)** — a logical query whose bare `JOIN` the model cannot condition is refused:
   `logical_query_join_unresolved`, carrying the translator's joiner text (`JOIN_NO_RELATION`,
   `JOIN_AMBIGUOUS_RELATIONS`, `JOIN_KEY_NAME_COLLISION`). The translator leaves such a join unconditioned and warns;
   the worker stored the plan anyway, so an entity stacked on the query answered every reader with the Cartesian
   product, and nobody was told. An FK-only relation (`JOIN_RELATION_WITHOUT_PAIRS`, INFO) is conditioned from its
   foreign key at MAP_TO_PHYSICAL, so a logical query's body is also taken to the physical level once at parse time:
-  one foreign key between the tables parses; two (`JOIN_AMBIGUOUS_RELATIONS` there) are refused the same way. Found by
-  the independent review of the logical-queries adoption.
+  one foreign key between the tables parses; two (`JOIN_AMBIGUOUS_RELATIONS` there) are refused the same way. A db
+  query is not checked: its joins are its author's SQL (a comma join conditioned in WHERE, a deliberate CROSS JOIN),
+  which model joins do not touch. Found by the independent review of the logical-queries adoption.
 
 ### metadata / query / validate — logical queries: saved queries over entities, entities stacked on them
 

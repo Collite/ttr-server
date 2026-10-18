@@ -102,17 +102,13 @@ class QueryParseWorker(
                     )
                 when (result) {
                     is ParseResult.Success ->
-                        unconditionedJoins(result)
-                            ?: (
-                                if (lane ==
-                                    ProtoSchemaCode.ER
-                                ) {
-                                    physicalJoins(translator, query.sourceText, lang, params)
-                                } else {
-                                    null
-                                }
-                            )
-                            ?: ParseStatus.ParseSuccess(result.plan.toByteArray())
+                        (
+                            if (lane == ProtoSchemaCode.ER) {
+                                unconditionedJoins(result) ?: physicalJoins(translator, query.sourceText, lang, params)
+                            } else {
+                                null
+                            }
+                        ) ?: ParseStatus.ParseSuccess(result.plan.toByteArray())
                     is ParseResult.Failure -> ParseStatus.ParseFailure(message = "${result.code}: ${result.message}")
                 }
             }
@@ -128,11 +124,15 @@ class QueryParseWorker(
         }
 
     /**
-     * LQ (L-3) — a saved query's bare JOIN that the model cannot condition is refused. The translator leaves such a
+     * LQ (L-3) — a logical query's bare JOIN that the model cannot condition is refused. The translator leaves such a
      * join unconditioned and warns (`JOIN_NO_RELATION`, `JOIN_AMBIGUOUS_RELATIONS`, `JOIN_KEY_NAME_COLLISION` — the
      * WARNING-severity joiner results); a question can carry that warning to its asker, but a stored body would
      * answer every reader with the Cartesian product, silently. An FK-only relation (`JOIN_RELATION_WITHOUT_PAIRS`,
      * INFO) is conditioned from its foreign key after MAP_TO_PHYSICAL and stays PARSED.
+     *
+     * The logical lane only: a db query's joins are its author's SQL — model joins do not apply in the db catalog —
+     * so a joiner warning there (a comma join conditioned in WHERE, or a deliberate CROSS JOIN, between tables no
+     * foreign key connects: "Cartesian product preserved") changes nothing and is not refused.
      */
     private fun unconditionedJoins(result: ParseResult.Success): ParseStatus.ParseFailure? {
         val unresolved = result.warnings.filter { JoinerMessages.severity(it) == JoinerMessages.Severity.WARNING }
