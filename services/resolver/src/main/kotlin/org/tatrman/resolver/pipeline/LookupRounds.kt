@@ -19,7 +19,6 @@ import org.tatrman.resolver.v1.Hypothesis
 import org.tatrman.resolver.v1.ResolutionState
 import org.tatrman.resolver.v1.RungLogEntry
 import org.tatrman.resolver.v1.Span
-import org.tatrman.fuzzy.v1.TargetClass as FuzzyTargetClass
 
 /**
  * The wall-clock budget and fan-out bounds of the `lookup` rung (RV-P2.3.T4).
@@ -88,9 +87,6 @@ class LookupRounds(
     companion object {
         const val RUNG: String = "lookup"
 
-        /** The object kind a left-out adjective may name ([modifierReading]). */
-        private const val ATTRIBUTE_KIND = "attribute"
-
         private val log = LoggerFactory.getLogger(LookupRounds::class.java)
     }
 
@@ -115,6 +111,9 @@ class LookupRounds(
         // round's spans before anything reads them: a round admits contenders exactly as the gate does, so
         // an object it admits onto a value is settled the same way. Identity: the spans as merged.
         settle: (List<GatedSpan>) -> List<GatedSpan> = { it },
+        // ttr-server#237 — the word lists `MentionLayer.bindsModifier` reads (the calendar adjectives) to
+        // say what a left-out word may bind. The shipped tables when the caller has none of its own.
+        preps: FrameRolePreps = FrameRolePreps.shipped(),
     ): Result {
         if (config.budgetMs <= 0) return Result(gated, ungated, lattice, emptyList())
 
@@ -176,19 +175,16 @@ class LookupRounds(
                 val retry = if (query.retry) retries[query.spanStart to query.spanEnd] else null
                 if (retry != null && retry.asked.any { it in known }) continue
                 val stamped = if (query.retry) answered.map(MentionRetry::stamp) else answered
-                // ttr-server#237 — a left-out adjective names a property of what it modifies or an
-                // operator over it, never a second object: see [modifierReading].
-                val (candidates, notModifiers) =
-                    if (existing?.candidate?.leftOut == true) {
-                        stamped.partition { modifierReading(it, kinds) }
+                // ttr-server#237 — a left-out word names a property of what it modifies or an operator
+                // over it, never a second object (`MentionLayer.bindsModifier`); a row it may not bind
+                // is refused here, before the gate, and logged with the gate's own refusals below.
+                val leftOut = existing?.candidate?.takeIf { it.leftOut }
+                val (candidates, refused) =
+                    if (leftOut != null) {
+                        stamped.partition { modifierReading(it, leftOut, currentLattice, kinds, preps) }
                     } else {
                         stamped to emptyList()
                     }
-                if (notModifiers.isNotEmpty()) {
-                    val refused = notModifiers.map { hypothesisOf(query, it) }
-                    proposed += refused
-                    tried.merge(query.spanStart to query.spanEnd, refused) { a, b -> a + b }
-                }
                 val span = existing ?: quotedSpan(query, currentGated + currentUngated, currentLattice) ?: continue
                 // The same gate the broad pass used. A round is a proposer; this is where its
                 // proposals stop being proposals (RV-7).
@@ -198,7 +194,7 @@ class LookupRounds(
                 // exactly that: something the round offered and the binder declined. It goes in the
                 // log, never in the lattice (T5) — a lattice that carried its own rejects would be
                 // inviting a reader to overrule the gate.
-                val rejects = verdict.rejected.map { hypothesisOf(query, it) }
+                val rejects = refused.map { hypothesisOf(query, it) } + verdict.rejected.map { hypothesisOf(query, it) }
                 proposed += rejects
                 tried.merge(query.spanStart to query.spanEnd, rejects) { a, b -> a + b }
                 if (verdict.admitted.isEmpty()) continue
@@ -415,23 +411,26 @@ class LookupRounds(
             .build()
 
     /**
-     * ttr-server#237 — what a left-out adjective ([DomainSpanCandidate.leftOut]) may be read as: an
-     * ATTRIBUTE (`Měsíční` → the month, the grain R6" groups by; a flag an estate declares) or an
-     * OPERATOR (`průměrné` → an average). The noun it modifies already has its span; the adjective
-     * names a property of it or a way to aggregate it, never another object. A row that reads it as an
-     * entity or a measure matched part of some longer term (`Dnešní` ~ `není skladem`, the stock
-     * measure), and binding it would put a second measure into the question. Such a row is refused and
-     * logged as a hypothesis; with nothing else, the adjective stays a G1.
+     * ttr-server#237 — whether a left-out word ([DomainSpanCandidate.leftOut]) may bind [row]: the one
+     * rule, `MentionLayer.bindsModifier`, over the word's own token and its width in [lattice]'s parse.
      */
     private fun modifierReading(
         row: FuzzyMatch,
+        word: DomainSpanCandidate,
+        lattice: ResolutionState,
         kinds: Map<String, String>,
-    ): Boolean =
-        row.targetClass == FuzzyTargetClass.TARGET_CLASS_OPERATOR ||
-            (
-                row.targetClass == FuzzyTargetClass.TARGET_CLASS_MODEL_OBJECT &&
-                    kinds[row.targetRef].equals(ATTRIBUTE_KIND, ignoreCase = true)
-            )
+        preps: FrameRolePreps,
+    ): Boolean {
+        val tokens = lattice.parse.tokensList
+        return MentionLayer.bindsModifier(
+            row,
+            tokens.getOrNull(word.headToken),
+            tokens.count { it.charStart >= word.start && it.charEnd <= word.end }.coerceAtLeast(1),
+            kinds,
+            preps,
+            MentionLayer.languageOf(lattice.parse),
+        )
+    }
 
     /**
      * Re-attach what has been tried to the gaps that are still open — discharging the ⚑ P2.1.T6

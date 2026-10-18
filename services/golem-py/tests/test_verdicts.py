@@ -98,6 +98,45 @@ def test_a_load_bearing_g3_is_asked_about() -> None:
     assert assess(state, ladder, _budgets(state, ladder)) == Verdict.ASK
 
 
+def test_an_ambiguous_mention_asks_whatever_its_role() -> None:
+    """ttr-server#236: a bare store word in FILTER position ("Revenue of stores in 2025") is a
+    G2 between two model objects — the store dimension and the Stores channel. The role says
+    where the word sits, not whether it is decided: carried, compose reads every candidate into
+    that role (one restriction per reading with nothing to restrict by, a breakdown by each, a
+    sum of each). The Kotlin Golem asks; so does this one."""
+    ladder = load_default()
+    for role in (FrameRole.FILTER, FrameRole.GROUPING, FrameRole.MEASURE):
+        gap = GapRecord(
+            span=Span(start=11, end=17, text="stores"),
+            kind=GapKind.G2_AMBIGUOUS,
+            frame_roles=[role],
+            mention_id="m1",
+        )
+        state = _state(gap)
+
+        assert gap.is_load_bearing(), role
+        assert assess(state, ladder, _budgets(state, ladder)) == Verdict.ASK, role
+        assert carryable_gaps(state, ladder) == [], role
+
+
+def test_an_ambiguous_value_asks_whatever_its_role() -> None:
+    """The same question on the value layer: several candidate members on one value, none
+    dominant. Carried, each member would become an equality filter, AND-ed — empty on one
+    attribute, silently narrower on two. Asked, as the Kotlin Golem asks it."""
+    ladder = load_default()
+    for roles in ([], [FrameRole.FILTER]):
+        gap = GapRecord(
+            span=Span(start=31, end=33, text="DC"),
+            kind=GapKind.G2_AMBIGUOUS,
+            frame_roles=list(roles),
+            value_id="v2",
+        )
+        state = _state(gap)
+
+        assert gap.is_load_bearing(), roles
+        assert assess(state, ladder, _budgets(state, ladder)) == Verdict.ASK, roles
+
+
 def test_a_closed_gap_stops_driving_the_loop() -> None:
     ladder = load_default()
     gap = _gap(GapKind.G1_UNBOUND, FrameRole.SUBJECT)

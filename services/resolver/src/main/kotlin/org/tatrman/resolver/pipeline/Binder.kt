@@ -565,7 +565,10 @@ object Binder {
     ): String = kinds[c.match.targetRef] ?: ""
 
     private const val KIND_ENTITY = "entity"
-    private const val KIND_ATTRIBUTE = "attribute"
+
+    /** The object kind of an attribute — the one spelling the gate, the frame roles and the mention layer read. */
+    internal const val KIND_ATTRIBUTE = "attribute"
+
     private const val KIND_MEASURE = "measure"
     private const val KIND_ENTITY_WITH_MEASURES = "entity_with_measures"
 

@@ -1,0 +1,155 @@
+{
+  "language": "en",
+  "languageConfidence": 0.15743685899558651,
+  "engineUsed": "stanza",
+  "tokens": [
+    {
+      "text": "Revenue",
+      "charEnd": 7,
+      "lemma": "revenue",
+      "upos": "NOUN",
+      "xpos": "NN",
+      "feats": {
+        "Number": "Sing"
+      },
+      "depRelation": "root"
+    },
+    {
+      "text": "for",
+      "charStart": 8,
+      "charEnd": 11,
+      "lemma": "for",
+      "upos": "ADP",
+      "xpos": "IN",
+      "depHead": 3,
+      "depRelation": "case"
+    },
+    {
+      "text": "Brno",
+      "charStart": 12,
+      "charEnd": 16,
+      "lemma": "Brno",
+      "upos": "PROPN",
+      "xpos": "NNP",
+      "feats": {
+        "Number": "Sing"
+      },
+      "depHead": 1,
+      "depRelation": "nmod"
+    },
+    {
+      "text": "and",
+      "charStart": 17,
+      "charEnd": 20,
+      "lemma": "and",
+      "upos": "CCONJ",
+      "xpos": "CC",
+      "depHead": 5,
+      "depRelation": "cc"
+    },
+    {
+      "text": "Liberec",
+      "charStart": 21,
+      "charEnd": 28,
+      "lemma": "Liberec",
+      "upos": "PROPN",
+      "xpos": "NNP",
+      "feats": {
+        "Number": "Sing"
+      },
+      "depHead": 3,
+      "depRelation": "conj"
+    },
+    {
+      "text": "in",
+      "charStart": 29,
+      "charEnd": 31,
+      "lemma": "in",
+      "upos": "ADP",
+      "xpos": "IN",
+      "depHead": 7,
+      "depRelation": "case"
+    },
+    {
+      "text": "2025",
+      "charStart": 32,
+      "charEnd": 36,
+      "lemma": "2025",
+      "upos": "NUM",
+      "xpos": "CD",
+      "feats": {
+        "NumForm": "Digit",
+        "NumType": "Card"
+      },
+      "depHead": 1,
+      "depRelation": "nmod"
+    }
+  ],
+  "sentences": [
+    {
+      "charEnd": 36
+    }
+  ],
+  "entities": [
+    {
+      "text": "Brno",
+      "label": "GPE",
+      "charStart": 12,
+      "charEnd": 16,
+      "sourceEngine": "stanza"
+    },
+    {
+      "text": "Liberec",
+      "label": "GPE",
+      "charStart": 21,
+      "charEnd": 28,
+      "sourceEngine": "stanza"
+    },
+    {
+      "text": "2025",
+      "label": "DATE",
+      "charStart": 32,
+      "charEnd": 36,
+      "sourceEngine": "stanza"
+    }
+  ],
+  "detectedLanguage": "en",
+  "used": [
+    {
+      "op": "DETECT_LANGUAGE",
+      "engine": "langid",
+      "model": "lingua",
+      "modelVersion": "lingua-2.0"
+    },
+    {
+      "op": "POS_TAG",
+      "engine": "stanza",
+      "model": "stanza-cs-en",
+      "modelVersion": "stanza-1.10.0"
+    },
+    {
+      "op": "NER",
+      "engine": "stanza",
+      "model": "stanza-cs-en",
+      "modelVersion": "stanza-1.10.0"
+    },
+    {
+      "op": "LEMMATIZE",
+      "engine": "stanza",
+      "model": "stanza-cs-en",
+      "modelVersion": "stanza-1.10.0"
+    },
+    {
+      "op": "TOKENIZE",
+      "engine": "stanza",
+      "model": "stanza-cs-en",
+      "modelVersion": "stanza-1.10.0"
+    },
+    {
+      "op": "DEP_PARSE",
+      "engine": "stanza",
+      "model": "stanza-cs-en",
+      "modelVersion": "stanza-1.10.0"
+    }
+  ]
+}

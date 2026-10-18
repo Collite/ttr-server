@@ -23,6 +23,12 @@
     "anchors": ["marketplace returns", "reklamace z tržiště"],
     "objectKind": "entity_with_measures"
   }, {
+    "ref": "er.entity.catalog_returns.return_amt",
+    "categories": ["er.entity.catalog_returns.return_amt"],
+    "anchors": ["vratek z tržiště", "vratka z tržiště", "vratky z tržiště"],
+    "objectKind": "measure",
+    "ownerRef": "er.entity.catalog_returns"
+  }, {
     "ref": "er.entity.catalog_sales",
     "categories": ["er.entity.catalog_sales"],
     "anchors": ["3p", "e\u003dmarket", "market", "marketplace", "marketplace orders", "marketplace sellers", "objednávky z tržiště", "sellers", "third-party", "tržiště"],
@@ -156,25 +162,25 @@
   }, {
     "ref": "er.entity.date_dim.month",
     "categories": ["er.entity.date_dim.month"],
-    "anchors": ["by month", "month by month", "monthly", "měsíčně", "po měsících"],
+    "anchors": ["by month", "month by month", "monthly", "měsíční", "měsíčních", "měsíčního", "měsíčním", "měsíčními", "měsíčnímu", "měsíčně", "po měsících"],
     "objectKind": "attribute",
     "ownerRef": "er.entity.date_dim"
   }, {
     "ref": "er.entity.date_dim.quarter",
     "categories": ["er.entity.date_dim.quarter"],
-    "anchors": ["by quarter", "po čtvrtletích", "quarterly", "čtvrtletně"],
+    "anchors": ["by quarter", "po čtvrtletích", "quarterly", "čtvrtletní", "čtvrtletních", "čtvrtletního", "čtvrtletním", "čtvrtletními", "čtvrtletnímu", "čtvrtletně"],
     "objectKind": "attribute",
     "ownerRef": "er.entity.date_dim"
   }, {
     "ref": "er.entity.date_dim.week_seq",
     "categories": ["er.entity.date_dim.week_seq"],
-    "anchors": ["by week", "po týdnech", "týdně", "weekly"],
+    "anchors": ["by week", "po týdnech", "týdenní", "týdenních", "týdenního", "týdenním", "týdenními", "týdennímu", "týdně", "weekly"],
     "objectKind": "attribute",
     "ownerRef": "er.entity.date_dim"
   }, {
     "ref": "er.entity.date_dim.year",
     "categories": ["er.entity.date_dim.year"],
-    "anchors": ["annual", "by year", "po letech", "ročně", "yearly", "za rok"],
+    "anchors": ["annual", "by year", "po letech", "roční", "ročních", "ročního", "ročním", "ročními", "ročnímu", "ročně", "yearly", "za rok"],
     "objectKind": "attribute",
     "ownerRef": "er.entity.date_dim"
   }, {
@@ -296,7 +302,7 @@
   }, {
     "ref": "er.entity.store",
     "categories": ["er.entity.store"],
-    "anchors": ["prodejna", "store", "stores"],
+    "anchors": ["prodejen", "prodejna", "prodejnami", "prodejnou", "prodejnu", "prodejny", "prodejnách", "prodejnám", "prodejně", "store", "stores"],
     "objectKind": "entity",
     "reachedFrom": [{
       "factRef": "er.entity.store_returns",
@@ -326,14 +332,20 @@
     "anchors": ["reklamace z prodejen", "store returns"],
     "objectKind": "entity_with_measures"
   }, {
+    "ref": "er.entity.store_returns.return_amt",
+    "categories": ["er.entity.store_returns.return_amt"],
+    "anchors": ["vratek z prodejen", "vratka z prodejen", "vratky z prodejen"],
+    "objectKind": "measure",
+    "ownerRef": "er.entity.store_returns"
+  }, {
     "ref": "er.entity.store_sales",
     "categories": ["er.entity.store_sales"],
-    "anchors": ["brick and mortar", "kamenná prodejna", "obchod", "prodejna", "retail stores", "store sales", "stores", "tn stores", "tržby z prodejen"],
+    "anchors": ["brick and mortar", "kamenná prodejna", "obchod", "prodeje v prodejnách", "prodejna", "retail stores", "store sales", "stores", "tn stores"],
     "objectKind": "entity_with_measures"
   }, {
     "ref": "er.entity.store_sales.ext_sales_price",
     "categories": ["er.entity.store_sales.ext_sales_price"],
-    "anchors": ["obrat z prodejen", "obratu z prodejen", "retail revenue", "store revenue", "tržba z prodejen"],
+    "anchors": ["obrat z prodejen", "obratu z prodejen", "prodejen", "prodejna", "prodejnami", "prodejnou", "prodejnu", "prodejny", "prodejnách", "prodejnám", "prodejně", "retail revenue", "store revenue", "tržba z prodejen", "tržby z prodejen", "tržeb z prodejen"],
     "objectKind": "measure",
     "ownerRef": "er.entity.store_sales"
   }, {
@@ -376,6 +388,12 @@
     "categories": ["er.entity.web_returns"],
     "anchors": ["reklamace z webu", "web returns"],
     "objectKind": "entity_with_measures"
+  }, {
+    "ref": "er.entity.web_returns.return_amt",
+    "categories": ["er.entity.web_returns.return_amt"],
+    "anchors": ["vratek z webu", "vratka z webu", "vratky z webu"],
+    "objectKind": "measure",
+    "ownerRef": "er.entity.web_returns"
   }, {
     "ref": "er.entity.web_sales",
     "categories": ["er.entity.web_sales"],

@@ -67,9 +67,55 @@ class FrameRolePreps(
         lang: String,
         surface: String,
         lemma: String,
+    ): Boolean = listed(silentModifiers, lang, surface, lemma)
+
+    /**
+     * MH / ttr-server#237 — whether a word is a count quantifier in [lang] (`many`, `kolik`): its surface
+     * or lemma on the `count-heads` table, matched as [isSilent] matches. `SlotHints` reads the word as
+     * the counted noun's COUNT_HEAD, so a mention never surfaces it as a word of its own.
+     */
+    fun isCountHead(
+        lang: String,
+        surface: String,
+        lemma: String,
+    ): Boolean = listed(countHeads, lang, surface, lemma)
+
+    /**
+     * ttr-server#204 / #237 — whether a word a mention stands without restricts nothing: a silent
+     * modifier ([isSilent]) or a count quantifier ([isCountHead]), which the slot hint has already read.
+     * THE test both `MentionRetry` (a phrase asked again as its head) and `MentionLayer` (the words a
+     * declared phrase never took) apply to the dependents [SpanProposal.detachable] names.
+     */
+    fun restrictsNothing(
+        lang: String,
+        surface: String,
+        lemma: String,
+    ): Boolean = isSilent(lang, surface, lemma) || isCountHead(lang, surface, lemma)
+
+    /**
+     * ttr-server#152 / #237 — whether a word is a calendar adjective in [lang] (`monthly`, `měsíčních`):
+     * its surface or lemma on the `grain-adjectives` table, matched as [isSilent] matches, so a trailing
+     * `*` reaches every case form — a parse that left the lemma blank or unrestored (`mesicnich`) still
+     * reads as the grain its surface is.
+     */
+    fun isGrainAdjective(
+        lang: String,
+        surface: String,
+        lemma: String,
+    ): Boolean = listed(grainAdjectives, lang, surface, lemma)
+
+    /**
+     * Whether [surface] or [lemma] is on [tables]' list for [lang]: case and diacritics folded, a trailing
+     * `*` matching a prefix. One matcher for every word list in `frame-roles.conf`.
+     */
+    private fun listed(
+        tables: Map<String, Set<String>>,
+        lang: String,
+        surface: String,
+        lemma: String,
     ): Boolean {
         val forms = listOf(fold(surface), fold(lemma)).filter { it.isNotBlank() }
-        return table(silentModifiers, lang).any { entry ->
+        return table(tables, lang).any { entry ->
             val word = fold(entry)
             if (word.endsWith("*")) {
                 val prefix = word.dropLast(1)
@@ -90,9 +136,6 @@ class FrameRolePreps(
 
     /** ttr-server#206 — the prepositions after which a four-digit number is a year; see `frame-roles.conf`. */
     fun temporal(lang: String): Set<String> = table(temporalPreps, lang)
-
-    /** ttr-server#152 — the calendar adjectives' lemmas, as written in the config; see `frame-roles.conf`. */
-    fun grainAdjectives(lang: String): Set<String> = table(grainAdjectives, lang)
 
     private fun table(
         tables: Map<String, Set<String>>,

@@ -1,0 +1,192 @@
+{
+  "language": "cs",
+  "languageConfidence": 0.846723971342526,
+  "engineUsed": "morphodita",
+  "tokens": [
+    {
+      "text": "Tržby",
+      "charEnd": 5,
+      "lemma": "tržba",
+      "upos": "NOUN",
+      "xpos": "NNFP1-----A----",
+      "feats": {
+        "Case": "Nom",
+        "Gender": "Fem",
+        "Number": "Plur"
+      },
+      "depRelation": "root"
+    },
+    {
+      "text": "prodejen",
+      "charStart": 6,
+      "charEnd": 14,
+      "lemma": "prodejna",
+      "upos": "NOUN",
+      "xpos": "NNFP2-----A----",
+      "feats": {
+        "Case": "Gen",
+        "Gender": "Fem",
+        "Number": "Plur"
+      },
+      "depHead": 1,
+      "depRelation": "nmod"
+    },
+    {
+      "text": "Brno",
+      "charStart": 15,
+      "charEnd": 19,
+      "lemma": "Brno",
+      "upos": "PROPN",
+      "xpos": "NNNS1-----A----",
+      "feats": {
+        "Case": "Nom",
+        "Gender": "Neut",
+        "NameType": "Geo",
+        "Number": "Sing"
+      },
+      "depHead": 2,
+      "depRelation": "nmod"
+    },
+    {
+      "text": "a",
+      "charStart": 20,
+      "charEnd": 21,
+      "lemma": "a",
+      "upos": "CCONJ",
+      "xpos": "J^-------------",
+      "depHead": 5,
+      "depRelation": "cc"
+    },
+    {
+      "text": "Liberec",
+      "charStart": 22,
+      "charEnd": 29,
+      "lemma": "Liberec",
+      "upos": "PROPN",
+      "xpos": "NNIS1-----A----",
+      "feats": {
+        "Animacy": "Inan",
+        "Case": "Nom",
+        "Gender": "Masc",
+        "NameType": "Geo",
+        "Number": "Sing"
+      },
+      "depHead": 3,
+      "depRelation": "conj"
+    },
+    {
+      "text": "v",
+      "charStart": 30,
+      "charEnd": 31,
+      "lemma": "v",
+      "upos": "ADP",
+      "xpos": "RR--6----------",
+      "feats": {
+        "AdpType": "Prep",
+        "Case": "Loc"
+      },
+      "depHead": 7,
+      "depRelation": "case"
+    },
+    {
+      "text": "roce",
+      "charStart": 32,
+      "charEnd": 36,
+      "lemma": "rok",
+      "upos": "NOUN",
+      "xpos": "NNIS6-----A---1",
+      "feats": {
+        "Animacy": "Inan",
+        "Case": "Loc",
+        "Gender": "Masc",
+        "Number": "Sing"
+      },
+      "depHead": 1,
+      "depRelation": "dep"
+    },
+    {
+      "text": "2025",
+      "charStart": 37,
+      "charEnd": 41,
+      "lemma": "2025",
+      "upos": "NUM",
+      "xpos": "C=-------------",
+      "feats": {
+        "NumForm": "Digit",
+        "NumType": "Card"
+      },
+      "depHead": 7,
+      "depRelation": "nummod"
+    }
+  ],
+  "sentences": [
+    {
+      "charEnd": 41
+    }
+  ],
+  "entities": [
+    {
+      "text": "Brno",
+      "label": "LOCATION",
+      "charStart": 15,
+      "charEnd": 19,
+      "normalizedValue": "cnec:gu",
+      "sourceEngine": "nametag3"
+    },
+    {
+      "text": "Liberec",
+      "label": "LOCATION",
+      "charStart": 22,
+      "charEnd": 29,
+      "normalizedValue": "cnec:gu",
+      "sourceEngine": "nametag3"
+    },
+    {
+      "text": "2025",
+      "label": "DATE",
+      "charStart": 37,
+      "charEnd": 41,
+      "normalizedValue": "cnec:ty",
+      "sourceEngine": "nametag3"
+    }
+  ],
+  "detectedLanguage": "cs",
+  "used": [
+    {
+      "op": "DETECT_LANGUAGE",
+      "engine": "langid",
+      "model": "lingua",
+      "modelVersion": "lingua-2.0"
+    },
+    {
+      "op": "POS_TAG",
+      "engine": "morphodita",
+      "model": "czech-morfflex2.0-pdtc1.0-220710",
+      "modelVersion": "czech-morfflex2.0-pdtc1.0-220710"
+    },
+    {
+      "op": "NER",
+      "engine": "nametag3",
+      "model": "nametag3-czech-cnec2.0-240830",
+      "modelVersion": "nametag3-czech-cnec2.0-240830"
+    },
+    {
+      "op": "LEMMATIZE",
+      "engine": "morphodita",
+      "model": "czech-morfflex2.0-pdtc1.0-220710",
+      "modelVersion": "czech-morfflex2.0-pdtc1.0-220710"
+    },
+    {
+      "op": "TOKENIZE",
+      "engine": "morphodita",
+      "model": "czech-morfflex2.0-pdtc1.0-220710",
+      "modelVersion": "czech-morfflex2.0-pdtc1.0-220710"
+    },
+    {
+      "op": "DEP_PARSE",
+      "engine": "stanza",
+      "model": "stanza-cs-en",
+      "modelVersion": "stanza-1.10.0"
+    }
+  ]
+}

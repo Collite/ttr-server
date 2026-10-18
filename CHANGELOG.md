@@ -67,32 +67,136 @@ lane, the strict parse and the expansion live.
   under it is neither read nor rewritten by them: a MASK on a stacked attribute masks the consumers above the
   boundary (so a row policy placed above it still filters on the real value), and a rule on an entity the body
   reads does not reach through the stacked entity.
+### resolver + lex-matcher — several declared lexicon archives, loaded as one layer (#209)
+
+An estate whose packages come from two sources (Veles' `METADATA_GIT2_*`) got a lexicon for only one of them: both
+services read ONE compiled archive, so the second source's words bound nothing. A word every reading of which lies in
+another area's package then looked exactly like an unknown word, and an agent asked the user what it meant instead of
+refusing it as another area's question.
+
+- **A list of archives.** The resolver takes `resolver.lexicon-archive-paths` (`RESOLVER_LEXICON_ARCHIVE_PATHS`) and
+  lex-matcher `fuzzy.lexicon.archive-paths` (`FUZZY_LEXICON_ARCHIVE_PATHS`): comma-separated from the environment, or a
+  HOCON list. The singular keys (`RESOLVER_LEXICON_ARCHIVE_PATH`, `FUZZY_LEXICON_ARCHIVE_PATH`) keep working as a
+  one-element list. When the list is set it is the whole answer; a singular path it does not name is reported at
+  startup and not read.
+- **One declared layer, exactly as one build.** The archives merge by the compiler's own rule: one row per (normalized
+  term, lang, target ref), DECLARED over METADATA, then the widest method, then the earliest provenance — the same table
+  one build over all of the packages would write, with the same entry-table hash (`lexicon_artifact_hash`). A form two
+  packages declare for two objects gets both readings. The stdlib rows every archive embeds (operator words, grounding
+  and predicate triggers) are served once, so they add no duplicate candidate and move no score. Per-ref facts
+  (`targets`) are copied; a ref in two archives takes the union of its `reachedFrom`. A fact the archives disagree on
+  is WARNed and the first archive's value is kept. That includes a `reachedFrom` entry's `mandatory`, which the
+  Binder's T3 rule decides on.
+- **The snapshot hash covers the archives served.** With several archives the archive hash (the resolver's registry
+  `snapshot_hash`, lex-matcher's reload clock) is a hash over the ids of the archives actually served, in declared
+  order, so a change to any one is a new snapshot and lex-matcher's refresh picks it up. One served archive keeps its
+  own id, as with one archive configured.
+- **The first archive is the primary; the others degrade alone.** The primary keeps the single-archive posture: absent,
+  unreadable or not a lexicon, it is WARNed and the layer keeps what it had loaded (nothing, at boot). An additional
+  archive that is absent, unreadable, not a lexicon, undecodable, or declares a different `schemaVersion` from the
+  primary's is served from its last good copy when it has one (WARN — a transient failure drops no served word), and
+  otherwise skipped with an ERROR naming it and the reason. A broken or drifted additional archive costs only its own
+  words. Each new layer logs `serving N of M lexicon archives` (with `skipped: …` when degraded), and lex-matcher
+  exports the gauge `fuzzy_lexicon_archives_skipped`. With additional archives configured, a primary that cannot be read
+  at boot is an ERROR naming it and every additional archive it leaves unserved (none is served without it), and the
+  gauge counts those. The load lines count and name the archives merged, never just the configured ones:
+  lex-matcher's `Compiled lexicon loaded: … from N of M archive(s)` and the resolver's
+  `declared vocabulary from N of M lexicon archive(s) [...]`, each with `; skipped: …` when degraded.
+- **One merge, in two services.** The merge lives in each reader as the same file (RS-24: no service-to-service
+  import). The resolver's `verifyDeclaredLayerTwin` task, part of `check`, fails the build when the two copies differ
+  in anything but their `package` line. Collite/ttr-core#190 asks for the merge in `ttr-lexicon` itself, beside the
+  compiler's precedence rule.
+- **Charts.** The `tatrman-service` library mounts `lexicon.configMapNames` beside `lexicon.configMapName`: the first
+  ConfigMap where it always was, each further one at `<mountPath>.d/<configMapName>`. The resolver and lex-matcher charts
+  then render the singular env var naming the FIRST archive — so an image older than this change still boots on it
+  during a rolling deploy — and the list var naming all of them. A single-ConfigMap render is byte-identical to before.
+- Unchanged: lex-matcher's `overlay-archive-path` (the LEARNED layer) stays its own source. The grounding kernels
+  (chrono, money, geo) still read one archive: they read only the `ground:` slice, which every archive embeds from the
+  stdlib.
+### resolver — coordinated places take the reading they share: „Tržby pro Brno a Liberec“ is two stores (ttr-demo#62)
+
+The coordination ruling — of two mentions joined by „a“ / „nebo“ / "and" / "or", the ambiguous one takes the reading
+where they intersect, and nothing is asked — covered mentions of model objects only. On the Hartland demo's Czech world
+„Tržby pro Brno a Liberec v roce 2025“ read `Brno` as the distribution centre "Brno DC" (the all-channel revenue's fact
+reaches the warehouse, not the store) and left `Liberec` a bare place with a G3: the question could be answered as Brno
+DC's revenue alone.
+
+- **A place coordinated with a governed place is governed by the same anchor.** `Liberec` hangs on `Brno` by `conj`,
+  not on `Tržby`, so it was nobody's governed value. A conjunct the NER typed a place or a person is now proposed as the
+  anchor's governed pair, with the same scope, exactly like the place it is coordinated with — when the anchor took the
+  value it is coordinated with. In „Tržby za elektroniku a Brno“ a measure takes no `elektroniku`, so `Brno` stays the
+  bare place it was (a G3, or what a named-member profile reads it as).
+- **The conjuncts meet where their readings intersect.** A conjunct's readings are what its own verdict admits with no
+  scope applied: each half of its span gated on its own rows, as the broad pass gates it (never one tie band over two
+  lookups' scores). One member entity and nothing else is one reading; several entities, or a declared model object
+  tied with the value, make the conjunct ambiguous, and an ambiguous conjunct never imposes its entity on the others.
+  When one conjunct has one reading, another has several, and the one is among the several, both keep that entity's
+  members in place of their scope: `Brno` and `Liberec` bind `store.store_name`.
+- **Conjuncts that already agree take their entity too** (ruled 2026-10-16). Two or more conjuncts with the same one
+  reading keep its members even where the measure's scope does not reach it: „Tržby pro Liberec a Olomouc v roce 2025“
+  (both only stores) binds two stores, where it was two G3s.
+- Otherwise nothing changes — both ambiguous with the same readings („Brno a Plzeň“: each a store and a DC, read as
+  two DCs by the measure's scope), unambiguous conjuncts that disagree, an empty intersection, a conjunct with no member
+  reading — and the scope reads each conjunct as before (the Binder asks where it still ties).
+- **An entity governor keeps its own scope.** The rule overrides only a scope the sentence did not name (a measure's
+  fact); „Tržby prodejen Brno a Liberec“ reads both by the store word, as before, and now binds `Liberec` too. An anchor
+  word declared for several entities governs too: it named an axis, only an ambiguous one.
+- **Downstream.** Two `store.store_name` members under the all-channel revenue, whose fact has no relation to the
+  store, is the intended reading: the query door finds no such relation and the question goes to the composer, never to
+  a fast-path number.
+- **Deploy with the query door's fix for several members of one attribute.** A coordination now often binds two
+  members of the same attribute in one gap-free lattice („Tržby z prodejen pro Brno a Liberec“: two `store.store_name`
+  under the store channel's revenue). The consumer's fast path must read them as one restriction (`IN`, one row per
+  member), not as two equalities joined by `AND`, which match no row. Do not deploy this resolver ahead of that fix.
+- Unchanged: a lone place („Tržby pro Brno“ → "Brno DC"). „Tržby v Brně a Liberci“ still reads "Brno DC" and leaves
+  „Liberci“ a place: the store names are matched `TYPOS(1)` on the written form, and „Liberci“ is two edits from
+  "Liberec", so no member row reaches it and there is nothing to intersect.
+- No wire change.
 
 ### resolver — an adjective in front of a declared phrase is a mention of its own: „Měsíční“ is the month, never dropped (#237)
+### resolver — a word in front of a declared phrase is a mention of its own: „Měsíční“ is the month, never dropped (#237)
 
 „Měsíční tržby z tržiště v roce 2025“ came back with `tržby z tržiště` (the marketplace revenue measure), `roce` and
 `2025` — and nothing for „Měsíční“: no mention, no gap. A caller reading the lattice answered one total for a question
 asking for months. A declared multi-word phrase names its own extent, so the adjective in front of it was in no span,
-and the mention layer headed its leftovers at nouns only. „Akční tržby z tržiště“ and "Promotional marketplace revenue"
-lost their restriction the same way, and so did an adjective under a governed value or a proper-noun run.
+and the mention layer headed its leftovers at nouns only. „Akční tržby z tržiště“, "Promotional marketplace revenue"
+and "Stores with no marketplace revenue" lost their restriction the same way, and so did a modifier under a governed
+value or a proper-noun run.
 
-- An `amod` dependent that no span covers, hanging from a word a gated span does cover, is now proposed alone as an
-  unbound mention, flagged `DomainSpanCandidate.leftOut`.
-- The lookup round asks it like any leftover mention. Only an ATTRIBUTE or an OPERATOR may bind it: a row reading it as
-  an entity or a measure matched part of a longer term („Dnešní“ ~ `není skladem`, the stock measure). Such a row is
-  refused and recorded on the gap as a hypothesis tried.
-- A Czech grain adjective that binds a calendar attribute is the GROUPING (R6"), as "Monthly" is. On the Hartland demo
-  estate the estate's own grain words reach it: „Měsíční“ / „měsíčních“ → `date_dim.month`, „Čtvrtletní“ → `quarter`,
-  „Roční“ → `year`, „Týdenní“ → `week_seq`.
-- A word nothing binds is a G1: „Denní“ and „Pololetní“ (no day or half-year grain declared), „Akční“, "Promotional",
-  „Průměrné“ (no average operator declared).
-- Such a mention is never the SUBJECT (R9: `FrameRoles.Input.subject`), and it is not offered to the grounding
-  triggers: a word the NER did not type a date has nothing to ground, and a trigger row that only reads like it
-  („Čtvrtletní“ / `čtvrtletí`) would bind it with no gap.
-- Unchanged: the `silent-modifiers` list („Celkové“, "Total"); a word in an operator slot that is no operator
-  (`dalších 10 prodejen`, #58); a word a quoted literal hangs from; a universal-typed word („Letošní“, "Last year's"); a
-  declared adjective ("Monthly"); an adjective inside a one-word anchor's own phrase („Měsíční tržby“).
-- No wire change.
+- **One rule for the words a mention stands without** (`SpanProposal.detachable`), read by the retry (#204) and by
+  the new path alike: a head's determiners, its BARE adjectives and their conjuncts („Měsíční a čtvrtletní“). An
+  adjective with words of its own stays: what it governs is a mention or a value of its own, and "How many" / "How
+  much" is the count the slot hint reads. A word that restricts nothing vanishes by one test too
+  (`FrameRolePreps.restrictsNothing`): the `silent-modifiers` list, and now the `count-heads` (`many`, `kolik`).
+- Such a word in front of a declared phrase — in no span, hanging from a word a gated span covers — is proposed as an
+  unbound mention over its own words, flagged `DomainSpanCandidate.leftOut`; the lookup round asks it like any leftover.
+- **What it may bind is one rule too** (`MentionLayer.bindsModifier`), applied by the lookup round and by the re-gate
+  (`resolve.gate:v1`): an OPERATOR („Průměrné“ → `op:avg`), or — for a calendar adjective — an ATTRIBUTE, declared so
+  or of no declared kind, which R6" makes the GROUPING. Only a row that is the word's whole form: a partial match of a
+  longer term („Dnešní“ ~ `není skladem`, the stock measure; „měsíčních“ ~ `po měsících`) is no reading of it. An
+  adjective that reads as any other attribute stays a G1: no frame rule places it, and a bound mention with no role is
+  one no consumer reads. A refused row is recorded on the gap as a hypothesis tried.
+- R6" reads the calendar adjective in an adjective's place (`amod`, or a conjunct of one), by its surface as well as its
+  lemma, against a `grain-adjectives` table that now holds Czech stems (`měsíčn*`): an inflected form whose lemma the
+  analyser left blank still groups. It also fires on an attribute whose kind the registry did not declare.
+- A calendar adjective is never offered to the grounding triggers, declared word or left out: „Čtvrtletní“ is one edit
+  from the chrono trigger `čtvrtletí`, „Pololetní“ from `pololetí`, and neither names a period.
+- A left-out mention is never the SUBJECT (R9: `FrameRoles.Input.subject`). The lattice names the left-out mentions in
+  one rung-log entry, `{rung: "core", action: "left-out-modifier", mention_ids: [...]}`, which is what the re-gate reads.
+- First-person possessives join `silent-modifiers` (cs `naše` and its forms, en `our`): with determiners left out
+  too, „naše tržby z tržiště“ would otherwise ask what `naše` means.
+- On the Hartland demo estate as of ttr-demo#74, which declares the Czech grain adjectives in every case form,
+  „Měsíční“ binds `date_dim.month` as a declared word; on an estate that declares the grains only as adverbs, the
+  lookup round binds it through `měsíčně`. „Denní“ and „Pololetní“ (no day or half-year grain) and „Akční“ /
+  "Promotional" are G1s.
+- Unchanged: a word in an operator slot that is no operator (`dalších 10 prodejen`, #58); a word a quoted literal hangs
+  from; a universal-typed word („Letošní“, "Last year's"); an adjective inside a one-word anchor's own phrase.
+- Known limits: `Resolution` (the pre-lattice outcome) carries no binding a lookup round makes for an unbound mention —
+  a leftover or a left-out word; the lattice does. No consumer in this repository reads `Resolution.bindings` (golem-py
+  reads `resolution_state` and `awaiting`). An adjective whose only words of its own are adverbs ("very large") is not
+  proposed.
+- No wire change: the rung-log action is a new value of an existing string field.
+
 ### resolver — a store word reads by its role: a filter asks, a word that governs a store name is the dimension (ttr-demo#62)
 
 Where the lexicon gives one word two readings — a dimension (`er.entity.store`) and a fact a channel term is pinned to

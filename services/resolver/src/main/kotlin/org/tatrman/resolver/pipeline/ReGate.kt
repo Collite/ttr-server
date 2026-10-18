@@ -101,6 +101,15 @@ object ReGate {
          * allowed to win, and telling it "no such term" would be a lie about the estate.
          */
         const val VERBATIM_SPAN = "E_VERBATIM_SPAN"
+
+        /**
+         * ttr-server#237 — the span is a word a declared phrase left out (the lattice's
+         * `left-out-modifier` entry), and nothing the lexicon answered is what such a word may bind
+         * (`MentionLayer.bindsModifier`): an operator, or a calendar adjective's attribute. The same
+         * rule the lookup round applies, so a rung cannot bind `Dnešní` to the stock measure that the
+         * round refused.
+         */
+        const val NOT_A_MODIFIER = "NOT_A_MODIFIER"
     }
 
     /**
@@ -133,8 +142,19 @@ object ReGate {
         snapshotHash: String,
         maxCandidates: Int,
         maxConcurrentLookups: Int,
+        // ttr-server#237 — the word lists `MentionLayer.bindsModifier` reads; the shipped ones by default.
+        preps: FrameRolePreps = FrameRolePreps.shipped(),
     ): GateResponse {
         val lattice = request.lattice
+        // ttr-server#237 — the mentions the core made of words a declared phrase left out, as the
+        // lattice names them; a hypothesis about one is held to the lookup round's rule.
+        val leftOut =
+            lattice.rungLogList
+                .filter { it.rung == LatticeAssembler.CORE_RUNG && it.action == LatticeAssembler.LEFT_OUT_ACTION }
+                .flatMap { it.mentionIdsList }
+                .toSet()
+        val tokens = lattice.parse.tokensList
+        val lang = MentionLayer.languageOf(lattice.parse)
         // Keyed by span offsets, and a MENTION wins a collision — the same precedence the gating
         // loop below uses when it decides which layer a surviving binding lands on. Stated once
         // here rather than implied twice.
@@ -237,6 +257,27 @@ object ReGate {
                 outcomes += outcome(hypothesis, Reason.NO_CANDIDATE)
                 continue
             }
+            val modifiers =
+                if (mention != null && mention.id in leftOut) {
+                    val words = tokens.filter { it.charStart >= key.first && it.charEnd <= key.second }
+                    val width = words.size.coerceAtLeast(1)
+                    candidates.filter {
+                        MentionLayer.bindsModifier(
+                            it,
+                            words.singleOrNull(),
+                            width,
+                            kinds,
+                            preps,
+                            lang,
+                        )
+                    }
+                } else {
+                    candidates
+                }
+            if (modifiers.isEmpty()) {
+                outcomes += outcome(hypothesis, Reason.NOT_A_MODIFIER)
+                continue
+            }
 
             // A mention is its own anchor phrase; a value is anchored exactly when the lattice
             // already said so. The hypothesis' own confidence is NOT evidence of anchoring — a
@@ -244,7 +285,7 @@ object ReGate {
             val anchored = mention != null || (value?.anchorMentionId?.isNotBlank() == true)
             val verdict =
                 Binder.gate(
-                    candidates,
+                    modifiers,
                     anchorCandidate(hypothesis, anchored),
                     thresholds,
                     owners,

@@ -140,4 +140,61 @@ class ConfigLoaderSpec :
             val shipped = ConfigFactory.parseResources("application.conf").resolve().getConfig("fuzzy")
             ConfigLoader.loadLexiconConfig(shipped).uniquenessMarginFloor shouldBe 0.05
         }
+
+        // ---- ttr-server#209 — several declared archives ----------------------------------------------
+
+        "#209 — archive-path alone is a one-element list: every existing deployment is unchanged" {
+            ConfigLoader.loadLexiconConfig(fuzzy("lexicon.archive-path = /etc/a/lexicon.tar.zst")).archives() shouldBe
+                listOf("/etc/a/lexicon.tar.zst")
+            ConfigLoader.loadLexiconConfig(fuzzy("")).archives().shouldBeEmpty()
+            ConfigLoader.loadLexiconConfig(fuzzy("lexicon.archive-path = \"\"")).archives().shouldBeEmpty()
+        }
+
+        "#209 — archive-paths takes a comma-separated string (the env shape) or a HOCON list" {
+            ConfigLoader
+                .loadLexiconConfig(fuzzy("lexicon.archive-paths = \" /a/l.tar.zst , /b/l.tar.zst,, \""))
+                .archives() shouldBe listOf("/a/l.tar.zst", "/b/l.tar.zst")
+            ConfigLoader
+                .loadLexiconConfig(fuzzy("lexicon.archive-paths = [\"/a/l.tar.zst\", \"/b/l.tar.zst\"]"))
+                .archives() shouldBe listOf("/a/l.tar.zst", "/b/l.tar.zst")
+        }
+
+        "#209 — the list wins over archive-path, and the chart's FIRST-archive singular is not read twice" {
+            // The chart renders both: the singular naming the first archive, for an older image.
+            val chart =
+                ConfigLoader.loadLexiconConfig(
+                    fuzzy("lexicon { archive-path = /a/l.tar.zst, archive-paths = \"/a/l.tar.zst,/b/l.tar.zst\" }"),
+                )
+            chart.archives() shouldBe listOf("/a/l.tar.zst", "/b/l.tar.zst")
+            ConfigLoader.startupWarnings(app(TokenBasedConfig()).copy(lexicon = chart)).shouldBeEmpty()
+
+            // A singular path the list does not name is a disagreement, and it is said at startup.
+            val disagreeing =
+                ConfigLoader.loadLexiconConfig(
+                    fuzzy("lexicon { archive-path = /x/l.tar.zst, archive-paths = \"/a/l.tar.zst\" }"),
+                )
+            disagreeing.archives() shouldBe listOf("/a/l.tar.zst")
+            ConfigLoader.startupWarnings(app(TokenBasedConfig()).copy(lexicon = disagreeing)).single() shouldContain
+                "/x/l.tar.zst"
+        }
+
+        "#209 — the shipped application.conf reads FUZZY_LEXICON_ARCHIVE_PATH(S)" {
+            fun shipped(vararg env: Pair<String, String>) =
+                ConfigLoader.loadLexiconConfig(
+                    // The env vars as ROOT keys: a `${?VAR}` substitution looks there before the environment.
+                    ConfigFactory
+                        .parseResources("application.conf")
+                        .withFallback(ConfigFactory.parseMap(env.toMap()))
+                        .resolve()
+                        .getConfig("fuzzy"),
+                )
+            shipped().archives().shouldBeEmpty()
+            shipped("FUZZY_LEXICON_ARCHIVE_PATH" to "/a/l.tar.zst").archives() shouldBe listOf("/a/l.tar.zst")
+            shipped(
+                "FUZZY_LEXICON_ARCHIVE_PATH" to "/a/l.tar.zst",
+                "FUZZY_LEXICON_ARCHIVE_PATHS" to "/a/l.tar.zst,/b/l.tar.zst",
+            ).archives() shouldBe listOf("/a/l.tar.zst", "/b/l.tar.zst")
+            // ⛔ Not the learned layer: the overlay keeps its own key.
+            shipped("FUZZY_LEXICON_ARCHIVE_PATHS" to "/a/l.tar.zst,/b/l.tar.zst").overlayArchivePath shouldBe ""
+        }
     })
