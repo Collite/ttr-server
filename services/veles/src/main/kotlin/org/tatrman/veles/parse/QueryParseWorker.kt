@@ -20,6 +20,7 @@ import org.tatrman.plan.v1.PlanNode
 import org.tatrman.plan.v1.schemaCodeToToken
 import org.tatrman.translator.framework.EntityMapping
 import org.tatrman.translator.framework.ModelHandle
+import org.tatrman.translator.joiner.JoinerMessages
 import org.tatrman.translator.orchestrator.ParseResult
 import org.tatrman.translator.orchestrator.Translator
 import org.tatrman.translator.params.SqlParam
@@ -100,7 +101,9 @@ class QueryParseWorker(
                         strictLane = true,
                     )
                 when (result) {
-                    is ParseResult.Success -> ParseStatus.ParseSuccess(result.plan.toByteArray())
+                    is ParseResult.Success ->
+                        unconditionedJoins(result)
+                            ?: ParseStatus.ParseSuccess(result.plan.toByteArray())
                     is ParseResult.Failure -> ParseStatus.ParseFailure(message = "${result.code}: ${result.message}")
                 }
             }
@@ -114,6 +117,23 @@ class QueryParseWorker(
             )
             ParseStatus.ParseFailure("parse_exception: ${e.message}")
         }
+
+    /**
+     * LQ (L-3) — a saved query's bare JOIN that the model cannot condition is refused. The translator leaves such a
+     * join unconditioned and warns (`JOIN_NO_RELATION`, `JOIN_AMBIGUOUS_RELATIONS`, `JOIN_KEY_NAME_COLLISION` — the
+     * WARNING-severity joiner results); a question can carry that warning to its asker, but a stored body would
+     * answer every reader with the Cartesian product, silently. An FK-only relation (`JOIN_RELATION_WITHOUT_PAIRS`,
+     * INFO) is conditioned from its foreign key after MAP_TO_PHYSICAL and stays PARSED.
+     */
+    private fun unconditionedJoins(result: ParseResult.Success): ParseStatus.ParseFailure? {
+        val unresolved = result.warnings.filter { JoinerMessages.severity(it) == JoinerMessages.Severity.WARNING }
+        if (unresolved.isEmpty()) return null
+        val reasons = unresolved.joinToString("; ") { "${JoinerMessages.code(it)}: ${JoinerMessages.text(it)}" }
+        return ParseStatus.ParseFailure(
+            "$LOGICAL_QUERY_JOIN_UNRESOLVED: $reasons — a saved query's joins must be conditioned: join entities " +
+                "that one relation connects, or write the ON",
+        )
+    }
 
     /**
      * LQ (L-4) — for every entity stacked on [query] (mapped `ToQuery` onto it): each attribute must bind a column the
@@ -152,6 +172,9 @@ class QueryParseWorker(
     }
 
     private companion object {
+        /** LQ (L-3) — a saved query's bare JOIN the model cannot condition (see [unconditionedJoins]). */
+        const val LOGICAL_QUERY_JOIN_UNRESOLVED = "logical_query_join_unresolved"
+
         private fun translatorLanguage(s: String): TranslatorLanguage? =
             when (s.uppercase().replace("-", "_")) {
                 "SQL" -> TranslatorLanguage.SQL
