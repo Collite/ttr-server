@@ -12,6 +12,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
@@ -56,16 +57,36 @@ class QueryParseWorker(
         scope.launch {
             if (model.queries.isEmpty()) return@launch
             val handle = queryPathHandle(model)
-            val translator = Translator(handle)
             val stacked = stackedEntities(handle, model.queries.keys.mapTo(HashSet()) { it.toProto() })
             val version = model.version.value
-            for (query in model.queries.values) {
-                launch {
-                    gate.withPermit {
-                        val status = parseOne(translator, query)
-                        state.set(version, query.qname, status)
-                        if (status is ParseStatus.ParseSuccess) {
-                            checkStackedEntities(handle, query.qname.toProto(), status, stacked, version, state)
+            // LQ §8 (L-21) — a query that reads other saved queries parses in a later wave than they do, against a
+            // handle serving the earlier waves' stored plans under their obj names; without such reads, one wave.
+            val order = SavedQueryOrder.of(model.queries.values) { translatorLanguage(it.sourceLanguage) }
+            for ((qname, refusal) in order.refused) state.set(version, qname, refusal)
+            order.waves.forEachIndexed { index, wave ->
+                val waveHandle =
+                    if (index == 0) {
+                        handle
+                    } else {
+                        queryPathHandle(
+                            model,
+                            { q -> state.get(version, q.qname) ?: q.parseStatus },
+                            savedQueriesAsObj = true,
+                        )
+                    }
+                val translator = Translator(waveHandle)
+                coroutineScope {
+                    for (query in wave) {
+                        launch {
+                            gate.withPermit {
+                                val status =
+                                    order.failedDependency(query) { state.get(version, it) }
+                                        ?: parseOne(translator, query)
+                                state.set(version, query.qname, status)
+                                if (status is ParseStatus.ParseSuccess) {
+                                    checkStackedEntities(handle, query.qname.toProto(), status, stacked, version, state)
+                                }
+                            }
                         }
                     }
                 }

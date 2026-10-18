@@ -15,14 +15,22 @@ import java.nio.file.Path
  * file, the way the Hartland model declares its saved queries (`queries.ttrm`).
  */
 internal object LogicalQueryFixture {
-    fun model(): Model {
-        val sample = checkNotNull(LogicalQueryFixture::class.java.classLoader.getResource("fixture-lq/hartland"))
+    fun model(): Model = load("fixture-lq")
+
+    /**
+     * LQ §8 — `fixture-lq-refs/`: the same sample plus saved queries that read other saved queries as
+     * `obj.query.<name>` (`refs.ttrm`, logical; `queries.ttrm`, `model query`) and the shapes the worker refuses.
+     */
+    fun refsModel(): Model = load("fixture-lq-refs")
+
+    private fun load(dir: String): Model {
+        val sample = checkNotNull(LogicalQueryFixture::class.java.classLoader.getResource("$dir/hartland"))
         val root = Path.of(sample.toURI()).parent
         val source =
             FileBasedSource(
-                sourceId = "fixture-lq",
+                sourceId = dir,
                 priority = 100,
-                storage = LocalFsStorage(id = "fixture-lq", rootPath = root),
+                storage = LocalFsStorage(id = dir, rootPath = root),
             )
         return ModelReconciler(ModelDescriptor(id = "lq", name = "lq", description = "logical-query fixture"))
             .reconcile(listOf(source.load()))
