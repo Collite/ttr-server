@@ -105,6 +105,18 @@ class FuzzyTelemetry {
         )
     }
 
+    /**
+     * ttr-server#209 — configured lexicon archives the declared layer is NOT serving (an additive
+     * archive skipped as absent, broken, or on another schema than the primary's). 0 when every
+     * archive is served. Pull-based: [skipped] is read at scrape time and never touches the disk.
+     */
+    fun registerLexiconArchivesSkipped(skipped: () -> Int) {
+        Gauge
+            .builder("fuzzy_lexicon_archives_skipped") { skipped().toDouble() }
+            .description("Configured lexicon archives the declared layer does not serve (ttr-server#209)")
+            .register(meterRegistry)
+    }
+
     /** Read-only accessor for tests — distinct categories from the last refresh. */
     fun categoriesLoadedSnapshot(): Int = categoriesLoaded.get()
 }

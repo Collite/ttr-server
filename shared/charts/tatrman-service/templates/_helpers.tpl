@@ -82,8 +82,22 @@ library emits the key at the right depth and interpolates the items verbatim.
 */}}
 {{- define "tatrman-service.extraVolumes" -}}{{- end -}}
 {{- define "tatrman-service.extraVolumeMounts" -}}{{- end -}}
+{{/*
+ttr-server#209 — the lexicon ConfigMaps, in mount order: `lexicon.configMapName` first (the
+pre-#209 key, unchanged), then every `lexicon.configMapNames` entry not already named. One per
+source the estate's packages come from; the readers that take a list (resolver, lex-matcher) load
+them as ONE declared layer. Emitted as a JSON array — `include` can only return a string.
+*/}}
+{{- define "tatrman-service.lexiconConfigMaps" -}}
+{{- $names := list -}}
+{{- with .Values.lexicon -}}
+{{- if .configMapName }}{{ $names = append $names .configMapName }}{{ end -}}
+{{- range (.configMapNames | default list) }}{{ if and . (not (has . $names)) }}{{ $names = append $names . }}{{ end }}{{ end -}}
+{{- end -}}
+{{- toJson $names -}}
+{{- end -}}
 {{- define "tatrman-service.lexiconEnabled" -}}
-{{- if and .Values.lexicon .Values.lexicon.configMapName }}true{{- end -}}
+{{- if include "tatrman-service.lexiconConfigMaps" . | fromJsonArray }}true{{- end -}}
 {{- end -}}
 {{/*
 NLS-P3.2 — rule-pack and gazetteer-list mounts, contributed here for exactly the
@@ -180,14 +194,48 @@ data:
 {{- define "tatrman-service.lexiconPath" -}}
 {{- printf "%s/%s" (.Values.lexicon.mountPath | trimSuffix "/") .Values.lexicon.key -}}
 {{- end -}}
+{{/*
+ttr-server#209 — where the Nth lexicon ConfigMap is mounted. The FIRST keeps `lexicon.mountPath`
+exactly (so `lexiconPath` above, and every reader's singular env var, still names it); each further
+one gets its own directory BESIDE it, `<mountPath>.d/<configMapName>`, never inside it — a mount
+point cannot be created inside a read-only ConfigMap volume. Directory mounts, not subPath, so a
+ConfigMap update reaches the file and the readers' refresh picks it up.
+*/}}
+{{- define "tatrman-service.lexiconMountPath" -}}
+{{- $root := .root -}}
+{{- if eq (int .index) 0 -}}
+{{- $root.Values.lexicon.mountPath -}}
+{{- else -}}
+{{- printf "%s.d/%s" ($root.Values.lexicon.mountPath | trimSuffix "/") .name -}}
+{{- end -}}
+{{- end -}}
+{{/*
+ttr-server#209 — every mounted archive's in-container path, comma-separated, in mount order: the
+value of the list env vars (`RESOLVER_LEXICON_ARCHIVE_PATHS`, `FUZZY_LEXICON_ARCHIVE_PATHS`). Its
+first element is always `lexiconPath`.
+*/}}
+{{- define "tatrman-service.lexiconPaths" -}}
+{{- $root := . -}}
+{{- $paths := list -}}
+{{- range $i, $name := (include "tatrman-service.lexiconConfigMaps" . | fromJsonArray) -}}
+{{- $dir := include "tatrman-service.lexiconMountPath" (dict "root" $root "index" $i "name" $name) -}}
+{{- $paths = append $paths (printf "%s/%s" ($dir | trimSuffix "/") $root.Values.lexicon.key) -}}
+{{- end -}}
+{{- join "," $paths -}}
+{{- end -}}
+{{/* How many lexicon ConfigMaps are mounted — the list env var is rendered only when it is more than one. */}}
+{{- define "tatrman-service.lexiconCount" -}}
+{{- len (include "tatrman-service.lexiconConfigMaps" . | fromJsonArray) -}}
+{{- end -}}
 {{- define "tatrman-service.volumeMounts" -}}
 {{- $extra := include "tatrman-service.extraVolumeMounts" . }}
 {{- $any := or (include "tatrman-service.lexiconEnabled" .) (include "tatrman-service.packsEnabled" .) (include "tatrman-service.listsEnabled" .) (include "tatrman-service.configFragmentEnabled" .) }}
 {{- if or $any (trim $extra) }}
           volumeMounts:
-{{- if include "tatrman-service.lexiconEnabled" . }}
-            - name: lexicon
-              mountPath: {{ .Values.lexicon.mountPath }}
+{{- $lexRoot := . }}
+{{- range $i, $name := (include "tatrman-service.lexiconConfigMaps" . | fromJsonArray) }}
+            - name: {{ if eq $i 0 }}lexicon{{ else }}lexicon-{{ $i }}{{ end }}
+              mountPath: {{ include "tatrman-service.lexiconMountPath" (dict "root" $lexRoot "index" $i "name" $name) }}
               readOnly: true
 {{- end }}
 {{- if include "tatrman-service.packsEnabled" . }}
@@ -213,10 +261,10 @@ data:
 {{- $any := or (include "tatrman-service.lexiconEnabled" .) (include "tatrman-service.packsEnabled" .) (include "tatrman-service.listsEnabled" .) (include "tatrman-service.configFragmentEnabled" .) }}
 {{- if or $any (trim $extra) }}
       volumes:
-{{- if include "tatrman-service.lexiconEnabled" . }}
-        - name: lexicon
+{{- range $i, $name := (include "tatrman-service.lexiconConfigMaps" . | fromJsonArray) }}
+        - name: {{ if eq $i 0 }}lexicon{{ else }}lexicon-{{ $i }}{{ end }}
           configMap:
-            name: {{ .Values.lexicon.configMapName }}
+            name: {{ $name }}
 {{- end }}
 {{- if include "tatrman-service.packsEnabled" . }}
         - name: packs

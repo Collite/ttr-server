@@ -35,6 +35,7 @@ import org.tatrman.resolver.pipeline.LookupRounds
 import org.tatrman.resolver.pipeline.FrameRolePreps
 import org.tatrman.resolver.pipeline.ResolverPipeline
 import org.tatrman.resolver.registry.LiveMetadataRegistryAdapter
+import org.tatrman.resolver.registry.LexiconArchivePaths
 import org.tatrman.resolver.registry.LexiconArchiveRegistrySource
 import org.tatrman.resolver.registry.SnapshotRegistry
 import org.tatrman.resolver.token.ResumeTokenCodec
@@ -148,20 +149,26 @@ fun Application.module(config: Config) {
     // was the silent default for every deployment until now, and its whole problem was that it
     // looked exactly like an estate that had declared nothing. It is still the default — the
     // narrowing that a fed registry causes is an estate's decision — but it is no longer silent.
-    val archivePath = config.getString("resolver.lexicon-archive-path").trim()
+    //
+    // ttr-server#209 — a LIST of archives (one per source the estate's packages come from), read as
+    // one declared layer. The singular key still works, as a one-element list.
+    val archivePaths = LexiconArchivePaths.read(config) { log.warn(it) }
     val registrySource =
-        if (archivePath.isEmpty()) {
+        if (archivePaths.isEmpty()) {
             log.warn(
-                "resolver.lexicon-archive-path is unset — the declared vocabulary is EMPTY, so the " +
+                "resolver.lexicon-archive-path(s) is unset — the declared vocabulary is EMPTY, so the " +
                     "anchored span-proposal path cannot fire and every binding will carry the stub's " +
-                    "snapshot hash. Set RESOLVER_LEXICON_ARCHIVE_PATH to the mounted lexicon archive " +
-                    "(the same one lex-matcher reads) to feed it.",
+                    "snapshot hash. Set RESOLVER_LEXICON_ARCHIVE_PATH (or RESOLVER_LEXICON_ARCHIVE_PATHS, " +
+                    "comma-separated) to the mounted lexicon archive(s) — the same ones lex-matcher reads.",
             )
             LiveMetadataRegistryAdapter()
         } else {
+            log.info("declared vocabulary channel: {} lexicon archive(s) {}", archivePaths.size, archivePaths)
             LexiconArchiveRegistrySource(
-                java.nio.file.Path
-                    .of(archivePath),
+                archivePaths.map {
+                    java.nio.file.Path
+                        .of(it)
+                },
             )
         }
     val registry = SnapshotRegistry(registrySource, defaultThresholds)

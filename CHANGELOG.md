@@ -16,6 +16,52 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+### resolver + lex-matcher — several declared lexicon archives, loaded as one layer (#209)
+
+An estate whose packages come from two sources (Veles' `METADATA_GIT2_*`) got a lexicon for only one of them: both
+services read ONE compiled archive, so the second source's words bound nothing. A word every reading of which lies in
+another area's package then looked exactly like an unknown word, and an agent asked the user what it meant instead of
+refusing it as another area's question.
+
+- **A list of archives.** The resolver takes `resolver.lexicon-archive-paths` (`RESOLVER_LEXICON_ARCHIVE_PATHS`) and
+  lex-matcher `fuzzy.lexicon.archive-paths` (`FUZZY_LEXICON_ARCHIVE_PATHS`): comma-separated from the environment, or a
+  HOCON list. The singular keys (`RESOLVER_LEXICON_ARCHIVE_PATH`, `FUZZY_LEXICON_ARCHIVE_PATH`) keep working as a
+  one-element list. When the list is set it is the whole answer; a singular path it does not name is reported at
+  startup and not read.
+- **One declared layer, exactly as one build.** The archives merge by the compiler's own rule: one row per (normalized
+  term, lang, target ref), DECLARED over METADATA, then the widest method, then the earliest provenance — the same table
+  one build over all of the packages would write, with the same entry-table hash (`lexicon_artifact_hash`). A form two
+  packages declare for two objects gets both readings. The stdlib rows every archive embeds (operator words, grounding
+  and predicate triggers) are served once, so they add no duplicate candidate and move no score. Per-ref facts
+  (`targets`) are copied; a ref in two archives takes the union of its `reachedFrom`. A fact the archives disagree on
+  is WARNed and the first archive's value is kept. That includes a `reachedFrom` entry's `mandatory`, which the
+  Binder's T3 rule decides on.
+- **The snapshot hash covers the archives served.** With several archives the archive hash (the resolver's registry
+  `snapshot_hash`, lex-matcher's reload clock) is a hash over the ids of the archives actually served, in declared
+  order, so a change to any one is a new snapshot and lex-matcher's refresh picks it up. One served archive keeps its
+  own id, as with one archive configured.
+- **The first archive is the primary; the others degrade alone.** The primary keeps the single-archive posture: absent,
+  unreadable or not a lexicon, it is WARNed and the layer keeps what it had loaded (nothing, at boot). An additional
+  archive that is absent, unreadable, not a lexicon, undecodable, or declares a different `schemaVersion` from the
+  primary's is served from its last good copy when it has one (WARN — a transient failure drops no served word), and
+  otherwise skipped with an ERROR naming it and the reason. A broken or drifted additional archive costs only its own
+  words. Each new layer logs `serving N of M lexicon archives` (with `skipped: …` when degraded), and lex-matcher
+  exports the gauge `fuzzy_lexicon_archives_skipped`. With additional archives configured, a primary that cannot be read
+  at boot is an ERROR naming it and every additional archive it leaves unserved (none is served without it), and the
+  gauge counts those. The load lines count and name the archives merged, never just the configured ones:
+  lex-matcher's `Compiled lexicon loaded: … from N of M archive(s)` and the resolver's
+  `declared vocabulary from N of M lexicon archive(s) [...]`, each with `; skipped: …` when degraded.
+- **One merge, in two services.** The merge lives in each reader as the same file (RS-24: no service-to-service
+  import). The resolver's `verifyDeclaredLayerTwin` task, part of `check`, fails the build when the two copies differ
+  in anything but their `package` line. Collite/ttr-core#190 asks for the merge in `ttr-lexicon` itself, beside the
+  compiler's precedence rule.
+- **Charts.** The `tatrman-service` library mounts `lexicon.configMapNames` beside `lexicon.configMapName`: the first
+  ConfigMap where it always was, each further one at `<mountPath>.d/<configMapName>`. The resolver and lex-matcher charts
+  then render the singular env var naming the FIRST archive — so an image older than this change still boots on it
+  during a rolling deploy — and the list var naming all of them. A single-ConfigMap render is byte-identical to before.
+- Unchanged: lex-matcher's `overlay-archive-path` (the LEARNED layer) stays its own source. The grounding kernels
+  (chrono, money, geo) still read one archive: they read only the `ground:` slice, which every archive embeds from the
+  stdlib.
 ### resolver — coordinated places take the reading they share: „Tržby pro Brno a Liberec“ is two stores (ttr-demo#62)
 
 The coordination ruling — of two mentions joined by „a“ / „nebo“ / "and" / "or", the ambiguous one takes the reading
