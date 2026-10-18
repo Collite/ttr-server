@@ -113,6 +113,10 @@ object UniversalSeam {
      *
      * The entity of a member row is the one `Binder`'s M3 names: [memberOwners] maps its category to
      * the owning entity, [owners] lifts an attribute to its entity.
+     *
+     * ttr-demo#62 — a conjunct of a coordination of places whose readings intersect at one entity is
+     * decided on that entity's members INSTEAD of this scope (`CoordinatedValues`, chosen in `GateSpans`):
+     * „Tržby pro Brno a Liberec“ is two stores, although the measure's fact reaches only the warehouse.
      */
     fun inScope(
         matches: List<FuzzyMatch>,

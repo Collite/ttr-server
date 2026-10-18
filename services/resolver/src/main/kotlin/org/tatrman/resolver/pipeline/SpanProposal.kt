@@ -46,7 +46,8 @@ import org.tatrman.text.Normalization.fold
  * measure governs a place for its fact, and a multi-word anchor governs one too (✅UD-8:
  * `Marketplace revenue for Memphis DC`). Every other path — (b), (c), (e), the floor, the phrase
  * hull — still refuses universal characters, so a bare, an unanchored or a pre-modifier place
- * stays a place (UD contracts §3).
+ * stays a place (UD contracts §3). A place COORDINATED with a governed one (`Tržby pro Brno a Liberec`,
+ * `Liberec` the `conj` of `Brno`) is governed by the same anchor (ttr-demo#62), and proposed the same way.
  *
  * **…and a declared word the NER typed a date by itself (ttr-server#152).** Stanza types the grain
  * adjective of *Monthly revenue* a DATE, and the declared `monthly` never bound. A one-word anchor
@@ -383,11 +384,39 @@ object SpanProposal {
             // A fact the registry does not declare lends its ref, which no vocabulary is keyed by:
             // the governed half then finds nothing and the open half carries the reading.
             val placeCategories = placeOwners.flatMap { valueCategories[it] ?: listOf(it) }.distinct()
-            for (childIdx in children[head + 1].orEmpty()) {
-                val child = tokens[childIdx]
-                if (child.depRelation !in GOVERNED_VALUE_RELATIONS) continue
-                if (child.upos.uppercase() !in NOMINAL_UPOS) continue
-                if (childIdx in anchorTokens) continue
+
+            /**
+             * ttr-demo#62 (coordination, 2026-10-14) — the places coordinated with the value argument
+             * [first]: its `conj` dependents, transitively (UD hangs every conjunct on the first), that
+             * the NER typed a place or a person. In „Tržby pro Brno a Liberec“ the parse hangs `Liberec`
+             * on `Brno`, not on `Tržby`, so before this it was nobody's governed value: it stood as a
+             * bare place with no scope of its own (G3), while `Brno` was read under `Tržby`. A
+             * conjunct is governed by what governs the coordination, so it is proposed exactly as a
+             * place argument of this anchor is — the governed pair, gated to [placeOwners]. A conjunct
+             * the NER did not type keeps the path it always had (it lies inside its first conjunct's
+             * subtree, or is a proper noun of its own), and an anchor word is never a conjunct value.
+             *
+             * Only a value this anchor TAKES lends its governor to its conjuncts (see the loop below):
+             * in „Tržby za elektroniku a Brno“ a measure takes no `elektroniku` (it governs no ordinary
+             * value), so `Brno`, its conjunct, is no value of `Tržby` either and stays a bare place.
+             */
+            fun placeConjuncts(first: Int): List<Int> {
+                if (placeOwners.isEmpty()) return emptyList()
+                val out = mutableListOf<Int>()
+                val stack = ArrayDeque(listOf(first))
+                while (stack.isNotEmpty()) {
+                    for (c in children[stack.removeLast() + 1].orEmpty()) {
+                        if (tokens[c].depRelation != "conj" || c in out) continue
+                        if (tokens[c].upos.uppercase() !in NOMINAL_UPOS || c in anchorTokens) continue
+                        out += c
+                        stack.addLast(c)
+                    }
+                }
+                return out.filter { dualReadingEntity(it, tokens, parse.entitiesList) != null }
+            }
+
+            /** Propose [childIdx] as this anchor's governed value — the pair, or nothing. True iff proposed. */
+            fun proposeValue(childIdx: Int): Boolean {
                 // ✅ UD (ttr-server#118, option 1) — the DUAL READING. A place or a person name
                 // the NER typed universal is excluded from every domain path below, and until
                 // UD from this one too: `subtreeIndices` refuses a universal root, so `Stores in
@@ -408,8 +437,8 @@ object SpanProposal {
                 // inside the name is dropped below, and an engine's offsets can disagree with
                 // the parse (review-108 F1). The seam pairs the two readings by that record.
                 val dual = dualReadingEntity(childIdx, tokens, parse.entitiesList)
-                if (dual == null && refs.isEmpty()) continue
-                if (dual != null && placeOwners.isEmpty()) continue
+                if (dual == null && refs.isEmpty()) return false
+                if (dual != null && placeOwners.isEmpty()) return false
                 val governedRefs = if (dual != null) placeOwners else refs
                 val valueIdx =
                     if (dual != null) {
@@ -422,7 +451,7 @@ object SpanProposal {
                     } else {
                         subtreeIndices(childIdx, children, tokens, universal, anchorTokens, literals.tokens)
                     }
-                if (valueIdx.isEmpty()) continue
+                if (valueIdx.isEmpty()) return false
                 out +=
                     candidate(
                         valueIdx,
@@ -464,6 +493,19 @@ object SpanProposal {
                         dualReadingScope = if (dual != null) governedRefs else emptyList(),
                     )
                 coveredTokens += valueIdx
+                return true
+            }
+
+            val seen = HashSet<Int>()
+            for (childIdx in children[head + 1].orEmpty()) {
+                val child = tokens[childIdx]
+                if (child.depRelation !in GOVERNED_VALUE_RELATIONS) continue
+                if (child.upos.uppercase() !in NOMINAL_UPOS) continue
+                if (childIdx in anchorTokens) continue
+                if (!seen.add(childIdx) || !proposeValue(childIdx)) continue
+                // ttr-demo#62 — a conjunct is governed by what governs the value it is coordinated with, so
+                // only when that value was proposed (`placeConjuncts`).
+                for (conjunct in placeConjuncts(childIdx)) if (seen.add(conjunct)) proposeValue(conjunct)
             }
         }
 
@@ -732,11 +774,16 @@ object SpanProposal {
         val modifiers: List<Int> get() = dropped.filterNot { it.determiner }.map { it.root }
     }
 
-    /** One dependent a retry leaves out: its own token [root], with [tokens] — it and what hangs from it. */
+    /**
+     * One dependent a mention may stand without ([detachable]): its own token [root]; [tokens], what
+     * leaves the phrase with it (it, what hangs from it, and for a conjunct its `and` / comma); and
+     * [words], what it is as a mention of its own — a determiner's whole subtree, an adjective's one word.
+     */
     internal data class Dropped(
         val root: Int,
         val tokens: List<Int>,
         val determiner: Boolean,
+        val words: List<Int> = tokens,
     )
 
     /**
@@ -749,18 +796,13 @@ object SpanProposal {
      * and `the marketplace` is not, so an `EXACT` row cannot meet the phrase, and every English
      * mention with an article in it came back G1 (`the marketplace`, `the web`, `What share`) while
      * the bare word bound. `MentionRetry` asks again with what this returns, and decides what becomes
-     * of each word left out — silently gone, or surfaced as a word nothing understood:
+     * of each word left out — silently gone, or surfaced as a word nothing understood.
      *
-     *  - **Every `det*` dependent of [head], with whatever hangs from it, is left out.** An article
-     *    or an interrogative says WHICH one (#98 took the interrogative out of the anchor phrase
-     *    outright); `no`, `all`, `these` restrict, and `MentionRetry` surfaces them.
-     *  - **A BARE `amod` dependent — an adjective with no dependent of its own — is left out.**
-     *    Whether the lexicon knows the word is the matcher's to say, and a known one cancels the
-     *    retry: `largest` is an operator word, and *the largest stores* asked as `stores` would
-     *    answer a different question. A DECLARED modifier never gets this far: an anchor word is
-     *    nobody's modifier, so `Monthly` in *Monthly revenue* is a mention of its own already.
-     *  - **An adjective with words of its own is kept** — *How many stores*, *vyzvednuté na
-     *    prodejně*: what it governs restricts the noun, and the noun alone would be another question.
+     * Which words may leave is [detachable]'s rule, over the phrase's own words. A known word cancels
+     * the retry: whether the lexicon knows the word is the matcher's to say, and `largest` is an
+     * operator word — *the largest stores* asked as `stores` would answer a different question. A
+     * DECLARED modifier never gets this far: an anchor word is nobody's modifier, so `Monthly` in
+     * *Monthly revenue* is a mention of its own already.
      *
      * Null when nothing would be left out — the second lookup would be the first one again. The head
      * is never left out: it is what the mention is.
@@ -772,26 +814,96 @@ object SpanProposal {
     ): Retry? {
         if (head !in phrase) return null
         val inPhrase = phrase.toHashSet()
-        val dependents = HashMap<Int, MutableList<Int>>()
-        tokens.forEachIndexed { i, t ->
-            // dep_head is 1-based; 0 is the root
-            if (t.depHead > 0) dependents.getOrPut(t.depHead - 1) { mutableListOf() } += i
-        }
-        val dropped = mutableListOf<Dropped>()
-        for (c in dependents[head].orEmpty()) {
-            if (c !in inPhrase || c == head) continue
-            val relation = tokens[c].depRelation
-            when {
-                relation == "det" || relation.startsWith("det:") ->
-                    // A parse with a cycle in it could reach the head from below; the head stays.
-                    dropped += Dropped(c, (subtreeWithin(c, dependents, inPhrase) - head).sorted(), determiner = true)
-                relation == "amod" && dependents[c].isNullOrEmpty() ->
-                    dropped += Dropped(c, listOf(c), determiner = false)
-            }
-        }
+        val dropped = detachable(head, tokens, dependentsOf(tokens), inPhrase)
         if (dropped.isEmpty()) return null
         val left = dropped.flatMap { it.tokens }.toSet()
         return Retry(phrase.filter { it !in left }.sorted(), dropped.sortedBy { it.root })
+    }
+
+    /**
+     * ttr-server#204 / #237 — **the dependents of [head] a mention may stand without: ONE rule, two
+     * readers.** `MentionRetry` asks a phrase that bound nothing again without them ([retryOf], [scope]
+     * the phrase's own words); `MentionLayer.leftOutModifiers` makes the ones a declared phrase never
+     * took mentions of their own ([scope] the words no span or leftover covers). Which of them restrict
+     * nothing is `FrameRolePreps.restrictsNothing`, also one rule for both.
+     *
+     *  - **Every `det*` dependent, with whatever hangs from it.** An article or an interrogative says
+     *    WHICH one (#98 took the interrogative out of the anchor phrase outright); `no`, `all`, `these`
+     *    restrict, and are reported.
+     *  - **A BARE `amod` dependent — an adjective with no words of its own — and its conjuncts.**
+     *    *Měsíční a čtvrtletní tržby* coordinates two adjectives; the second hangs from the first as
+     *    `conj`, so it is the first's dependent but no word of its own: each conjunct leaves as its own
+     *    dependent, with its `and` / comma.
+     *  - **An adjective with words of its own stays** — *How many stores*, *vyzvednuté na prodejně*:
+     *    what it governs restricts the noun, and the noun alone would be another question. Outside a
+     *    declared phrase those words are mentions or values of their own (`na prodejně`), and *How
+     *    many* is the count `SlotHints` reads.
+     *
+     * Every word returned is in [scope]; a dependent part of which falls outside it is not returned.
+     */
+    internal fun detachable(
+        head: Int,
+        tokens: List<Token>,
+        dependents: Map<Int, List<Int>>,
+        scope: Set<Int>,
+    ): List<Dropped> {
+        val dropped = mutableListOf<Dropped>()
+        for (c in dependents[head].orEmpty()) {
+            if (c !in scope || c == head) continue
+            val relation = tokens[c].depRelation
+            when {
+                relation == "det" || relation.startsWith("det:") -> {
+                    // A parse with a cycle in it could reach the head from below; the head stays.
+                    val subtree = (subtreeWithin(c, dependents, scope) - head).sorted()
+                    dropped += Dropped(c, subtree, determiner = true)
+                }
+                relation.substringBefore(':') == "amod" -> {
+                    val conjuncts = coordination(c, tokens, dependents, scope) ?: continue
+                    for (word in listOf(c) + conjuncts) {
+                        val glue = dependents[word].orEmpty().filter { it in scope && tokens[it].depRelation in GLUE }
+                        dropped +=
+                            Dropped(word, (listOf(word) + glue).sorted(), determiner = false, words = listOf(word))
+                    }
+                }
+            }
+        }
+        return dropped
+    }
+
+    /** What joins coordinated adjectives and is no word of either: `a` / `and`, the comma. */
+    private val GLUE = setOf("cc", "punct")
+
+    /**
+     * The conjuncts of [adjective] when it has no words of its own — every dependent is a conjunct or
+     * glue, and every conjunct has nothing but glue under it — or null when it has some.
+     */
+    private fun coordination(
+        adjective: Int,
+        tokens: List<Token>,
+        dependents: Map<Int, List<Int>>,
+        scope: Set<Int>,
+    ): List<Int>? {
+        val conjuncts = mutableListOf<Int>()
+        for (d in dependents[adjective].orEmpty()) {
+            when (tokens[d].depRelation) {
+                in GLUE -> {}
+                "conj" -> {
+                    if (d !in scope || dependents[d].orEmpty().any { tokens[it].depRelation !in GLUE }) return null
+                    conjuncts += d
+                }
+                else -> return null
+            }
+        }
+        return conjuncts
+    }
+
+    /** token → its dependents, by 0-based index (`dep_head` is 1-based; 0 is the root). */
+    internal fun dependentsOf(tokens: List<Token>): Map<Int, List<Int>> {
+        val dependents = HashMap<Int, MutableList<Int>>()
+        tokens.forEachIndexed { i, t ->
+            if (t.depHead > 0) dependents.getOrPut(t.depHead - 1) { mutableListOf() } += i
+        }
+        return dependents
     }
 
     /** [root] and everything below it, inside [scope] — what leaves a phrase with [root]. */
