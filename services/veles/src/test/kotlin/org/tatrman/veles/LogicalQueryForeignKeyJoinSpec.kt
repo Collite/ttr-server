@@ -118,7 +118,7 @@ class LogicalQueryForeignKeyJoinSpec :
             ).shouldBeInstanceOf<ParseStatus.ParseSuccess>()
         }
 
-        "a logical query over an entity stacked on a comma-join db query: PARSED (the base query's own join is not the body's)" {
+        "a logical query over an entity on a comma-join db query: PARSED (that join is the base query's)" {
             val root = Files.createTempDirectory("lq-comma-stacked")
             Files.writeString(root.resolve("db.ttrm"), db(secondKey = false))
             Files.writeString(
