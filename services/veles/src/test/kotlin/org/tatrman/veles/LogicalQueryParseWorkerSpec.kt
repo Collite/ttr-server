@@ -42,6 +42,7 @@ class LogicalQueryParseWorkerSpec :
         val shopperRevenue = er("query", "shopper_revenue")
         val mixed = er("query", "sale_paid_mixed")
         val withParameter = er("query", "shopper_revenue_over")
+        val unjoined = er("query", "sale_household_unjoined")
         val stackedEntity = er("entity", "shopper_revenue")
         val mismatchedEntity = er("entity", "shopper_spend")
 
@@ -83,7 +84,7 @@ class LogicalQueryParseWorkerSpec :
 
         "the fixture declares a logical query in the er lane and two queries in the db lane" {
             model.queries.keys.filter { it.schemaCode == SchemaCode.ER } shouldContainExactlyInAnyOrder
-                listOf(shopperRevenue, mixed, withParameter)
+                listOf(shopperRevenue, mixed, withParameter, unjoined)
             dbQuery("store_revenue")
             dbQuery("shopper_revenue_db")
         }
@@ -134,6 +135,15 @@ class LogicalQueryParseWorkerSpec :
             val failed = status(withParameter).shouldBeInstanceOf<ParseStatus.ParseFailure>()
             failed.message shouldStartWith "logical_query_parameters: "
             failed.message shouldContain "threshold"
+        }
+
+        "L-3 — a bare JOIN the model cannot condition is refused (logical_query_join_unresolved), the joiner says why" {
+            val failed = status(unjoined).shouldBeInstanceOf<ParseStatus.ParseFailure>()
+            failed.message shouldStartWith "logical_query_join_unresolved: "
+            failed.message shouldContain "JOIN_NO_RELATION"
+            failed.message shouldContain "household"
+            failed.message shouldContain "Cartesian product"
+            failed.message shouldContain "write the ON"
         }
 
         "L-4 — an entity binding a column its query lacks is entity_query_output_mismatch; the query stays PARSED" {
