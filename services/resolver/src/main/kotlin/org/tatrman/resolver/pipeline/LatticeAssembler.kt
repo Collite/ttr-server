@@ -419,6 +419,20 @@ object LatticeAssembler {
                     .addAllValueIds(narrowings[mention.id].orEmpty()),
             )
         }
+        // ttr-server#237 — one entry naming the words a declared phrase left out and the core made
+        // mentions of their own (`MentionLayer.leftOutModifiers`). The re-gate reads it: such a word may
+        // bind only what `MentionLayer.bindsModifier` allows, whoever proposes it, and the lattice is
+        // all the re-gate is handed. Omitted when there is none, so every other lattice is unchanged.
+        val leftOutIds = mentionSpans.zip(mentions).filter { (span, _) -> span.candidate.leftOut }.map { it.second.id }
+        if (leftOutIds.isNotEmpty()) {
+            builder.addRungLog(
+                RungLogEntry
+                    .newBuilder()
+                    .setRung(CORE_RUNG)
+                    .setAction(LEFT_OUT_ACTION)
+                    .addAllMentionIds(leftOutIds),
+            )
+        }
         // ttr-server#214 — a period the kernel had nothing to count from: "the previous year" after a
         // question naming two years. The value is an ungrounded date like any other, and the one
         // reading a consumer has for an ungrounded period, counting it from today, is the reading the
@@ -493,6 +507,13 @@ object LatticeAssembler {
      * per value. The value stays an ungrounded date; the entry says it must not be counted from today.
      */
     const val GROUND_UNANCHORED_ACTION: String = "ground-unanchored"
+
+    /**
+     * ttr-server#237 — the action the words a declared phrase left out are logged under:
+     * `{round: 0, rung: "core", action: "left-out-modifier", mention_ids: [...]}`, one entry per lattice.
+     * The re-gate holds a hypothesis about such a mention to `MentionLayer.bindsModifier`.
+     */
+    const val LEFT_OUT_ACTION: String = "left-out-modifier"
 
     /** LP §2.4 — the action the core's quoted literals are logged under. */
     const val VERBATIM_ACTION: String = "verbatim"

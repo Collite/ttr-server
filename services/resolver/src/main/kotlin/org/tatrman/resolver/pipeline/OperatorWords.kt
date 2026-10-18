@@ -123,9 +123,11 @@ object OperatorWords {
         literals: Literals,
         thresholds: ResolverThresholds,
         config: LookupRoundConfig,
+        // The caller's [slots] answer for this parse, when it has one; computed here otherwise.
+        slotWords: List<Pair<Int, Slot>> = slots(parse, literals),
     ): List<Word> {
         if (config.budgetMs <= 0) return emptyList()
-        val slots = slots(parse, literals)
+        val slots = slotWords
         if (slots.isEmpty()) return emptyList()
         val tokens = parse.tokensList
         val answers =

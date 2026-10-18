@@ -117,6 +117,7 @@ class ResolverPipeline(
             // per-round cap the lookup rung gives itself, for the same reason this call already
             // borrows its `maxCandidates`.
             maxConcurrentLookups = lookupRounds.config.maxQueriesPerRound,
+            preps = preps,
         )
     }
 
@@ -173,10 +174,15 @@ class ResolverPipeline(
         // clause („s důvodem Nedorazilo včas“): asked of the member vocabularies, verbatim, because no
         // proposal path reaches a verb (`MemberPhrases`). Both are lookups before proposal, so they
         // run side by side; either one finding nothing leaves the question as it was.
+        // The words in an operator slot, found once: asked about below, and kept out of the mention
+        // layer's left-out words (`MentionLayer.Context`).
+        val slotWords = OperatorWords.slots(parse, literals)
         val (operatorWords, memberPhrases) =
             coroutineScope {
                 val operators =
-                    async { OperatorWords.find(fuzzy, parse, literals, declared.thresholds, lookupRounds.config) }
+                    async {
+                        OperatorWords.find(fuzzy, parse, literals, declared.thresholds, lookupRounds.config, slotWords)
+                    }
                 val members =
                     async {
                         MemberPhrases.find(
@@ -249,13 +255,15 @@ class ResolverPipeline(
         // UD-P3 — derived WITHOUT the named-member readings: whether one of them takes its words is
         // known only after the gate, and one that is withdrawn must leave the mentions as they were.
         val mentionable = candidates.filterNot { it.origin == DomainSpanCandidate.Origin.NAMED_MEMBER }
-        val ungatedMentions = MentionLayer.propose(parse, mentionable, literals)
-        // ttr-server#237 — and the adjectives a gated span left out of its noun's phrase („Měsíční“ in
-        // front of the declared `tržby z tržiště`): mentions of their own, for the lattice and the lookup
-        // round. Not offered as grounding triggers — see `MentionLayer.leftOutModifiers`.
+        val mentionContext = MentionLayer.Context(parse, literals, slotWords.map { it.first }.toSet())
+        val ungatedMentions = MentionLayer.propose(mentionable, mentionContext)
+        // ttr-server#237 — and the determiners and adjectives a gated span left out of its noun's phrase
+        // („Měsíční“ in front of the declared `tržby z tržiště`): mentions of their own, for the lattice
+        // and the lookup round. Not offered as grounding triggers — see `MentionLayer.leftOutModifiers`.
         val leftOut =
-            MentionLayer.leftOutModifiers(parse, mentionable, ungatedMentions, literals, preps, assessment.language)
-        val triggerSpans = GroundingTriggers.spansOf(candidates, ungatedMentions)
+            MentionLayer.leftOutModifiers(mentionable, ungatedMentions, mentionContext, preps, assessment.language)
+        // …and a calendar adjective that IS a declared word (`čtvrtletní`) is no trigger either.
+        val triggerSpans = GroundingTriggers.spansOf(candidates, ungatedMentions, parse, preps)
         // LP §3 — and the third question on the same pass: which words say HOW a quoted literal
         // restricts its attribute. Anchored on the LITERAL rather than on the mentions, because
         // span proposal does not reach a participle (see `PredicateTriggers`); empty, and
@@ -518,6 +526,7 @@ class ResolverPipeline(
                 reassemble = assemble,
                 retries = retries.bySpan,
                 settle = settle,
+                preps = preps,
             )
         // The door moves with the lattice: a round that bound a span the broad pass missed changes
         // BOTH what the core understood and what it decided, and a caller reading `Resolution` is
@@ -750,7 +759,7 @@ class ResolverPipeline(
         parse: AnalyzeResponse,
         status: StatusResponse?,
     ): Assessment {
-        val lang = parse.detectedLanguage.ifBlank { parse.language }
+        val lang = MentionLayer.languageOf(parse)
         val caps = status?.capabilitiesList.orEmpty().filter { it.language.equals(lang, ignoreCase = true) }
         val csNer = caps.any { it.op == NlpOp.NER } || parse.entitiesList.isNotEmpty()
         val depParse = caps.any { it.op == NlpOp.DEP_PARSE } || parse.tokensList.any { it.depHead > 0 }
