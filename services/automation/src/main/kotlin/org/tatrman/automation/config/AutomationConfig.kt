@@ -11,10 +11,17 @@ data class DoorConfig(
     val sidecarUrl: String?,
 )
 
+/**
+ * Bearer verification and the identities' token exchange (§7). [tokenUrl] defaults to the JWKS URL's
+ * sibling — Keycloak serves `…/protocol/openid-connect/certs` and `…/token` side by side. [authorMap] is
+ * `AUTOMATION_AUTHOR_MAP` parsed: commit author (e-mail or name) → principal.
+ */
 data class AuthConfig(
     val jwksUrl: String,
-    val issuer: String?,
+    val issuer: String,
     val audience: String?,
+    val tokenUrl: String,
+    val authorMap: Map<String, String>,
 )
 
 data class BundleGitConfig(
@@ -56,7 +63,8 @@ data class BudgetsConfig(
 
 /**
  * The service's configuration (AU contracts §8), typed from `automation.*` of HOCON. [load] fails on the first
- * read when a required key is missing — `db.host`, `door.queryUrl`, `door.velesUrl`, `auth.jwksUrl` — and
+ * read when a required key is missing — `db.host`, `door.queryUrl`, `door.velesUrl`, `auth.jwksUrl`,
+ * `auth.issuer` — and
  * names every missing key at once, so a misconfigured pod dies at start with the whole list, not one key per
  * restart. [db] stays a raw [Config]: it is `DatabaseConnection`'s shape (type/host/port/database/user/password).
  *
@@ -80,7 +88,7 @@ data class AutomationConfig(
 ) {
     companion object {
         const val ROOT = "automation"
-        val REQUIRED = listOf("db.host", "door.queryUrl", "door.velesUrl", "auth.jwksUrl")
+        val REQUIRED = listOf("db.host", "door.queryUrl", "door.velesUrl", "auth.jwksUrl", "auth.issuer")
         const val CONNECTION_ENV_PREFIX = "TTR_CONN_"
 
         fun load(
@@ -103,8 +111,10 @@ data class AutomationConfig(
                 auth =
                     AuthConfig(
                         jwksUrl = c.getString("auth.jwksUrl"),
-                        issuer = c.optString("auth.issuer"),
+                        issuer = c.getString("auth.issuer"),
                         audience = c.optString("auth.audience"),
+                        tokenUrl = c.optString("auth.tokenUrl") ?: siblingTokenUrl(c.getString("auth.jwksUrl")),
+                        authorMap = authorMap(c.optString("auth.authorMap")),
                     ),
                 bundleGit =
                     BundleGitConfig(
@@ -148,6 +158,29 @@ data class AutomationConfig(
                 connections = connections(c, env),
             )
         }
+
+        /** Keycloak's token endpoint beside its JWKS: `…/openid-connect/certs` → `…/openid-connect/token`. */
+        internal fun siblingTokenUrl(jwksUrl: String): String {
+            require(jwksUrl.endsWith("/certs")) {
+                "automation config: auth.tokenUrl is not set and auth.jwksUrl ($jwksUrl) does not end in /certs"
+            }
+            return jwksUrl.removeSuffix("/certs") + "/token"
+        }
+
+        /** `a@x.org=svc-a, Jana Nová=jana` → the map; a pair without `=` is a configuration error, named. */
+        internal fun authorMap(raw: String?): Map<String, String> =
+            raw
+                .orEmpty()
+                .split(',')
+                .map { it.trim() }
+                .filter { it.isNotEmpty() }
+                .associate { pair ->
+                    val at = pair.indexOf('=')
+                    require(at > 0 && at < pair.length - 1) {
+                        "automation config: auth.authorMap entry '$pair' is not author=principal"
+                    }
+                    pair.substring(0, at).trim() to pair.substring(at + 1).trim()
+                }
 
         /** HOCON's `automation.connections` first, the `TTR_CONN_<NAME>` env over it. */
         private fun connections(

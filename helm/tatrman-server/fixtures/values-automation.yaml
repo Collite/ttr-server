@@ -1,0 +1,35 @@
+# Golden fixture: THE AUTOMATION SERVICE (AU-server S0.3). The service is opt-in while pre-release
+# (`automation.enabled: false` in values.yaml), so no other fixture renders it. Its own goldens are
+# the only gate on its chart: without this fixture a broken automation chart would pass `helm lint`
+# and every golden (the DR S1.1 lesson: a new root is silently ungated until something renders it).
+#
+# Every key of values-contract.md §5.4 is set, so the golden pins each rendering together:
+# - the four required keys present (the subchart's `required` would fail the render otherwise);
+# - every secret as a secretKeyRef — the database password, the bundle token, one TTR_CONN_<NAME>;
+#   ⛔ no credential VALUE may appear in the golden;
+# - the policies fragment as its own ConfigMap (`<fullname>-policies`), which the automation
+#   container does NOT mount (validate includes it);
+# - a config fragment mounted with JAVA_TOOL_OPTIONS beside it, and the startup probe that covers
+#   the Flyway migration before the HTTP port opens.
+automation:
+  enabled: true
+  db:
+    host: automation-pg-rw
+    passwordSecret: { name: automation-db, key: password }
+  auth:
+    jwksUrl: http://keycloak.keycloak:8080/realms/tatrman/protocol/openid-connect/certs
+    issuer: https://idp.example.com/realms/tatrman
+    audience: automation
+    authorMap: "ops@example.com=svc-automation"
+  credentials:
+    - { name: AUTOMATION, secretName: automation-identities, secretKey: automation }
+  bundle:
+    git:
+      url: https://git.example.com/acme/model.git
+      tokenSecret: { name: automation-bundle, key: token }
+  policies:
+    fragment: |
+      policies.automation-ops { roles = ["ops"] }
+  configFragment:
+    content: |
+      automation.retention.protocolDays = 30

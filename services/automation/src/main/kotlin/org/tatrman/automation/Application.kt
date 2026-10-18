@@ -6,6 +6,8 @@ import com.typesafe.config.ConfigFactory
 import io.ktor.server.application.Application
 import io.ktor.server.application.ApplicationStopping
 import io.ktor.server.application.install
+import io.ktor.server.auth.Authentication
+import io.ktor.server.auth.authenticate
 import io.ktor.server.plugins.statuspages.StatusPages
 import io.ktor.server.routing.routing
 import org.flywaydb.core.Flyway
@@ -13,13 +15,19 @@ import org.slf4j.LoggerFactory
 import org.tatrman.automation.api.HealthSources
 import org.tatrman.automation.api.SchedulerHealth
 import org.tatrman.automation.api.ServedBundle
+import org.tatrman.automation.api.descriptorRoutes
 import org.tatrman.automation.api.healthRoutes
 import org.tatrman.automation.api.installAutomationErrors
 import org.tatrman.automation.config.AutomationConfig
+import org.tatrman.automation.identity.AUTOMATION_AUTH
+import org.tatrman.automation.identity.AutomationBearerProvider
+import org.tatrman.automation.identity.CallerVerifier
 import org.tatrman.automation.ledger.Ledger
 import org.tatrman.automation.obs.AutomationTelemetry
 import org.tatrman.automation.queue.LedgerQueue
 import org.tatrman.automation.queue.Pgmq
+import org.tatrman.mcp.identity.HttpJwksKeySource
+import org.tatrman.mcp.identity.JwksBearerVerifier
 import shared.ktor.KtorConfigFactory
 import shared.ktor.KtorServerBootstrap
 import shared.ktor.installKtorServerBase
@@ -41,8 +49,10 @@ fun main() {
 
 /**
  * The bootstrap (AU-server S0.1): config (fails at load on a missing required key) → OTel → the ledger's
- * database + Flyway (V1 ledger · V2 pgmq · V3 queues) → the pgmq queues checked → Ktor. The bundle load
- * (S0.2), identity (S0.3), the runner (P1) and the scheduler (S3.2) join this sequence as they land.
+ * database + Flyway (V1 ledger · V2 pgmq · V3 queues) → the pgmq queues checked → the bearer check (S0.3:
+ * every route under `/automation` but `/automation/health` answers 401 without a verified token) → Ktor. The
+ * bundle load (S0.2), the runner (P1, which resolves `RunAs` at open) and the scheduler (S3.2) join this
+ * sequence as they land.
  */
 fun Application.module(config: Config) {
     val automation = AutomationConfig.load(config)
@@ -69,8 +79,21 @@ fun Application.module(config: Config) {
     val sources = LedgerHealthSources(ledger, pgmq, automation)
     AutomationTelemetry(openTelemetry, queueDepths = sources::queueDepths)
 
+    val callers =
+        CallerVerifier(
+            JwksBearerVerifier(
+                HttpJwksKeySource(automation.auth.jwksUrl),
+                issuer = automation.auth.issuer,
+                audience = automation.auth.audience,
+            ),
+        )
+    install(Authentication) { AutomationBearerProvider.register(this, callers) }
+
     install(StatusPages) { installAutomationErrors() }
-    routing { healthRoutes(sources) }
+    routing {
+        healthRoutes(sources)
+        authenticate(AUTOMATION_AUTH) { descriptorRoutes(paused = { automation.paused }) }
+    }
 
     monitor.subscribe(ApplicationStopping) { db.close() }
 }

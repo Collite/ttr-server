@@ -1,0 +1,130 @@
+# Default values for automation. Env-agnostic: sane defaults, NO cluster knowledge. A deploying
+# environment supplies the four values the service cannot start without — db.host,
+# db.passwordSecret.name, auth.jwksUrl, auth.issuer — and the render fails, naming the key, when one
+# is missing (AU contracts §8: a misconfigured pod should not get as far as a crash loop).
+
+# One replica. The claim is safe under concurrency (the ledger's unique index), but the scheduler
+# (S3.2) and the abandonment sweep assume one runner until a later stage elects a leader.
+replicaCount: 1
+
+image:
+  repository: ghcr.io/collite/automation
+  # Defaults to .Chart.appVersion when empty.
+  tag: ""
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+
+# HTTP only: the run API, the probes and /automation/health.
+ports:
+  http: 7131
+
+service:
+  type: ClusterIP
+
+resources:
+  requests:
+    memory: 384Mi
+    cpu: 100m
+  limits:
+    memory: 1Gi
+    cpu: "1"
+
+# OpenTelemetry. The otel-config lib reads a HOST and a gRPC PORT (OTEL_EXPORTER_OTLP_HOST /
+# OTEL_EXPORTER_OTLP_GRPC_PORT), never a single endpoint URL — see services/resolver/k8s/_env.tpl.
+telemetry:
+  enabled: false
+  otlpHost: ""
+  otlpGrpcPort: 4317
+  serviceName: automation
+
+# The ledger's Postgres (D-118: one `automation` database; schema `automation` + pgmq, D-130). The
+# service runs Flyway against it at start, so the user must own the database (or the schema).
+db:
+  host: ""
+  port: 5432
+  name: automation
+  user: automation
+  # The password by Secret ref — never a value in the chart.
+  passwordSecret:
+    name: ""
+    key: password
+
+# The door (query), the model (veles) and the Python sidecar (P4). In-cluster names and gRPC ports,
+# the same in every cluster (the spine shares a namespace).
+door:
+  queryUrl: "query:7306"
+  velesUrl: "veles:7261"
+  sidecarUrl: ""
+
+# Bearer verification (§7, LR-14): RS256 against the realm's JWKS; `iss` must equal `issuer`; `aud`
+# must contain `audience` when one is set. `tokenUrl` (the named identities' client credentials)
+# defaults to the JWKS URL's sibling. `authorMap`: `author=principal` pairs, comma-separated (D-90).
+auth:
+  jwksUrl: ""
+  issuer: ""
+  audience: ""
+  tokenUrl: ""
+  authorMap: ""
+
+# The repository the bundles are read from (S0.2's /refresh). The token by Secret ref.
+bundle:
+  git:
+    url: ""
+    branch: master
+    path: ""
+    tokenSecret:
+      name: ""
+      key: token
+
+# Named identities' and connectors' credentials — each becomes TTR_CONN_<NAME> from a Secret
+# (D-36: by name, never a value in the chart). A named identity's value is `<client id>:<secret>`.
+#   - { name: AUTOMATION, secretName: automation-identities, secretKey: automation }
+# ⛔ Not `connections`: charon's chart overrides the library's `extraVolumeMounts` (a global define)
+# and reads `.Values.connections.configMapName` in every chart of an umbrella render.
+credentials: []
+
+scheduler:
+  tz: UTC
+  enabled: true
+
+# `true` holds the scheduler and answers new runs `503 paused` (S3.3).
+paused: false
+
+# The `automation.ops` policies fragment (D-95, S4.2): rendered as the ConfigMap `<fullname>-policies`
+# (`automation-policies` by default), which the cluster's validate values include. The automation
+# service does not read it. Empty → no ConfigMap.
+policies:
+  fragment: ""
+
+# A HOCON delta merged over the service's application.conf (the library's configFragment: a
+# ConfigMap + -Dconfig.file, the include written by the chart). Empty → nothing rendered.
+configFragment:
+  content: ""
+
+# Any other env. A deploying env adds to it; the keys above cover the contract (§8).
+extraEnv: []
+
+# The HTTP port opens only after the start-up sequence: config → Flyway (V1 ledger · V2 pgmq ·
+# V3 queues) → the queues checked. The startup probe allows three minutes for a first migration
+# against a slow database; liveness and readiness begin after it.
+startupProbe:
+  path: /health
+  initialDelaySeconds: 5
+  periodSeconds: 5
+  failureThreshold: 36
+# /ready answers once the ledger answers a ping (503 while it does not).
+readinessProbe:
+  path: /ready
+  initialDelaySeconds: 0
+  periodSeconds: 10
+  failureThreshold: 3
+livenessProbe:
+  path: /health
+  initialDelaySeconds: 0
+  periodSeconds: 15
+
+podAnnotations: {}
+nodeSelector: {}
+tolerations: []
+affinity: {}

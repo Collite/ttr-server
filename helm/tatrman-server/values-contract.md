@@ -54,6 +54,7 @@ directory names for several services. Use the key in the left column in your val
 | `money` | `money` | `services/money` | grounding — money |
 | `grounding-mcp` | `grounding-mcp` | `services/grounding-mcp` | grounding MCP door |
 | `resolver` | `resolver` | `services/resolver` | resolve core + `resolve.bind:v1` door |
+| `automation` | `automation` | `services/automation` | the automation service — run API, ledger, protocol (AU; opt-in) |
 | `backstage` | `backstage` (upstream) | `infra/backstage` | developer portal (RO-22, opt-in) |
 
 > **Designer viewer (RO-9):** ships in-chart but is **not yet a subchart** — its Veles
@@ -77,17 +78,19 @@ Image pull secrets: set per service (`<name>.imagePullSecrets`), or supply clust
 
 ## 3. Enable toggles
 
-Every service defaults **on** except `backstage` and `devIdp`. `<name>.enabled: false` drops it.
+Every service defaults **on** except `backstage`, `devIdp` and `automation`. `<name>.enabled: false` drops it.
 
 | Group | Keys (all `.enabled`) | Default |
 |---|---|---|
 | Query spine | `veles`, `query`, `translate`, `validate`, `dispatch`, `llm-gateway`, `mssql`, `postgres`, `polars`, `whois`, `health`, `query-mcp`, `veles-mcp` | `true` |
 | Understanding layer | `fuzzy`, `fuzzy-mcp`, `nlp`, `nlp-mcp`, `chrono`, `geo`, `money`, `grounding-mcp`, `resolver` | `true` |
+| Automation | `automation` | `false` (pre-release, opt-in; §5.4) |
 | Developer portal | `backstage` | `false` (upstream image, opt-in) |
 | Dev IdP | `devIdp` | `false` (quickstart only, §4.2) |
 
 The reference fixtures: `fixtures/values-minimal.yaml` (spine only), `fixtures/values-full.yaml`
-(everything + opt-ins), `fixtures/values-dark-geo.yaml` (honest degrade).
+(everything + opt-ins), `fixtures/values-dark-geo.yaml` (honest degrade), `fixtures/values-automation.yaml`
+(the automation service, every key of §5.4 set).
 
 ---
 
@@ -190,6 +193,26 @@ Tuning `geo.confidenceThreshold` is env-driven (`GEO_CONFIDENCE_THRESHOLD`) — 
 
 Gating thresholds (`threshold-bind`, `threshold-ambiguity-gap`, `threshold-exact`) are
 config-baked in the resolver image (`application.conf`), not values-exposed.
+
+### 5.4 Automation (`automation.*`) — opt-in, pre-release
+
+The service migrates its own database at start (Flyway: the ledger, then pgmq installed SQL-only — no
+extension, no custom Postgres image). Four keys have no default and fail the render by name when unset:
+`db.host`, `db.passwordSecret.name`, `auth.jwksUrl`, `auth.issuer`.
+
+| Key | Type | Default | Notes |
+|---|---|---|---|
+| `automation.db.{host,port,name,user}` | | `""` / `5432` / `automation` / `automation` | The ledger's Postgres. The user must own the database (Flyway creates schema `automation` and pgmq's). |
+| `automation.db.passwordSecret.{name,key}` | | `""` / `password` | The password by **Secret ref**. |
+| `automation.auth.{jwksUrl,issuer}` | string | `""` | Every route but `/automation/health` and the probes verifies the bearer: RS256 against the realm's JWKS, `iss` = `issuer`. There is no unverified mode. |
+| `automation.auth.audience` | string | `""` | When set, `aud` must contain it. |
+| `automation.auth.tokenUrl` | string | the JWKS URL's sibling | The realm's token endpoint, for the named identities' client credentials. |
+| `automation.auth.authorMap` | string | `""` | `author=principal` pairs, comma-separated: a commit author (e-mail, else name) → the deployment's `author` principal. |
+| `automation.credentials` | list | `[]` | Credentials by **Secret ref**, each rendered as `TTR_CONN_<name>` — e.g. `{ name: AUTOMATION, secretName: automation-identities, secretKey: automation }`. A named identity's value is `<client id>:<client secret>`. |
+| `automation.door.{queryUrl,velesUrl}` | string | `query:7306` / `veles:7261` | The door and the model, in-namespace gRPC. |
+| `automation.bundle.git.{url,branch,path}` · `.tokenSecret.{name,key}` | | `""` / `master` / `""` | The repository the recipe bundles are read from; its token by Secret ref. |
+| `automation.policies.fragment` | string | `""` | The `automation.ops` policy fragment, rendered as ConfigMap `<fullname>-policies` for validate to include. Empty → none. |
+| `automation.configFragment.content` | string | `""` | A HOCON delta over the service's `application.conf` (the library's config fragment). |
 
 ---
 

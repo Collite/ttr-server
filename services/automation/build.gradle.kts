@@ -86,6 +86,13 @@ dependencies {
     implementation(libs.flyway.core)
     implementation(libs.flyway.pgsql)
 
+    // Identity (S0.3): the shared LR G2b bearer verifier (RS256 over the realm's JWKS) and the Keycloak
+    // client-credentials provider for the named identities; java-jwt reads the verified token's claims.
+    implementation(project(":shared:libs:kotlin:mcp-identity"))
+    implementation(project(":shared:libs:kotlin:keycloak-auth"))
+    implementation(libs.auth0.java.jwt)
+    implementation(libs.ktor.server.auth)
+
     implementation(libs.ktor.server.core)
     implementation(libs.ktor.server.netty)
     implementation(libs.ktor.server.content.negotiation)

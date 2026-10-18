@@ -94,6 +94,11 @@ dependencies:
     version: "0.1.0"
     repository: "file://../../services/resolver/k8s"
     condition: resolver.enabled
+  # ── Automation (AU) ─────────────────────────────────────────────────────────
+  - name: automation
+    version: "0.1.0"
+    repository: "file://../../services/automation/k8s"
+    condition: automation.enabled
   # ── MCP doors ───────────────────────────────────────────────────────────────
   - name: query-mcp
     version: "0.1.0"

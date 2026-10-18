@@ -18,7 +18,8 @@ class AutomationConfigSpec :
             automation.db.host = "pg"
             automation.door.queryUrl = "query:7240"
             automation.door.velesUrl = "veles:7212"
-            automation.auth.jwksUrl = "https://id.example/certs"
+            automation.auth.jwksUrl = "http://keycloak:8080/realms/r/protocol/openid-connect/certs"
+            automation.auth.issuer = "https://id.example/realms/r"
             """.trimIndent()
 
         // The packaged application.conf supplies every default; the test supplies only the required keys.
@@ -37,7 +38,10 @@ class AutomationConfigSpec :
         "the defaults of application.conf type cleanly once the required keys are set" {
             val c = load(required)
             c.door shouldBe DoorConfig("query:7240", "veles:7212", sidecarUrl = null)
-            c.auth.jwksUrl shouldBe "https://id.example/certs"
+            c.auth.jwksUrl shouldBe "http://keycloak:8080/realms/r/protocol/openid-connect/certs"
+            c.auth.issuer shouldBe "https://id.example/realms/r"
+            c.auth.audience shouldBe null
+            c.auth.authorMap shouldBe emptyMap()
             c.db.getString("database") shouldBe "automation"
             c.budgets shouldBe BudgetsConfig(Duration.ofSeconds(60), Duration.ofMinutes(30), 200, 200)
             c.retention shouldBe RetentionConfig(stagingHours = 24, graceHours = 1, protocolDays = 400)
@@ -55,12 +59,40 @@ class AutomationConfigSpec :
             e.message shouldContain "automation.db.host"
             e.message shouldContain "automation.door.velesUrl"
             e.message shouldContain "automation.auth.jwksUrl"
+            e.message shouldContain "automation.auth.issuer"
             e.message shouldNotContain "automation.door.queryUrl"
         }
 
         "a blank required key counts as missing" {
             val e = shouldThrow<IllegalArgumentException> { load(required + "\nautomation.auth.jwksUrl = \"\"") }
             e.message shouldContain "automation.auth.jwksUrl"
+        }
+
+        "the token endpoint defaults to the JWKS URL's sibling; an explicit one wins" {
+            load(required).auth.tokenUrl shouldBe "http://keycloak:8080/realms/r/protocol/openid-connect/token"
+            load(required + "\nautomation.auth.tokenUrl = \"https://id.example/token\"").auth.tokenUrl shouldBe
+                "https://id.example/token"
+        }
+
+        "without a tokenUrl, a JWKS URL that is not Keycloak-shaped fails at load, named" {
+            val e =
+                shouldThrow<IllegalArgumentException> {
+                    load(required + "\nautomation.auth.jwksUrl = \"https://id.example/keys.json\"")
+                }
+            e.message shouldContain "auth.tokenUrl"
+        }
+
+        "the author map: author=principal pairs, comma-separated; a malformed pair fails at load" {
+            load(
+                required +
+                    "\nautomation.auth.authorMap = \"ops@hartland.example=svc-hartland-automation, Jana Nová = jana\"",
+            ).auth.authorMap shouldBe
+                mapOf("ops@hartland.example" to "svc-hartland-automation", "Jana Nová" to "jana")
+            val e =
+                shouldThrow<IllegalArgumentException> {
+                    load(required + "\nautomation.auth.authorMap = \"a=b, lonely\"")
+                }
+            e.message shouldContain "'lonely'"
         }
 
         "connections: HOCON first, the TTR_CONN_<NAME> env over it; other env ignored" {
