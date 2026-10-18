@@ -246,7 +246,18 @@ class GapRecord(BaseModel):
           it would spend the conversation's single question on a word the answer does
           not depend on; carrying it as a gap note (RV-19) is what honesty looks like
           here.
+
+        A **G2** is load-bearing whatever its roles, on either layer. It is the core's own
+        question — several candidates, none dominant, signed as options in the same pass —
+        and carried, compose reads every candidate into the role it sits in: on a value, one
+        equality filter per member, AND-ed; on a mention, one restriction per reading with
+        nothing to restrict by, or a breakdown / a sum of each (ttr-server#236: "Revenue of
+        stores in 2025", the store dimension or the Stores channel in FILTER position). The
+        role says where the word sits, not whether it is decided. Kept in line with the
+        Kotlin Golem's `isLoadBearing` (RV-28).
         """
+        if self.kind == GapKind.G2_AMBIGUOUS and (self.value_id or self.mention_id):
+            return True
         if FrameRole.SUBJECT in self.frame_roles:
             return True
         if [r for r in self.frame_roles if r != FrameRole.UNSPECIFIED]:
