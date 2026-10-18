@@ -91,6 +91,10 @@ class LogicalQueryReferenceSpec :
             storedScans(query("top_tickets", SchemaCode.DB)) shouldContainExactlyInAnyOrder listOf("store_sales")
         }
 
+        "L-20 — a db query in a schema'd file is read as obj.<schema>.<name>" {
+            storedScans(query("frequent_customers", SchemaCode.DB)) shouldContainExactlyInAnyOrder listOf("store_sales")
+        }
+
         "L-4 — an entity stacked on a query that reads another query is checked like any (no mismatch)" {
             (parsed.mappingMismatches(model.version.value) ?: emptyMap()) shouldNotContainKey
                 QualifiedName(schemaCode = SchemaCode.ER, namespace = "entity", name = "big_shopper")

@@ -29,3 +29,18 @@ def table household_demographics { description: "Household demographics (TPC-DS 
         def column hd_buy_potential { type: text, optional: true, description: "Buy potential band" }
     ]
 }
+
+// LQ §8 (L-20) — a db query in a schema'd file is `db.dbo.<name>`; another saved query reads it as `obj.dbo.<name>`.
+def query customer_tickets {
+    description: "Sales tickets per customer",
+    sourceText: """sql
+SELECT ss_customer_sk, COUNT(*) AS tickets FROM store_sales GROUP BY ss_customer_sk
+"""
+}
+
+def query frequent_customers {
+    description: "Customers with more than 10 tickets, from customer_tickets",
+    sourceText: """sql
+SELECT t.ss_customer_sk, t.tickets FROM obj.dbo.customer_tickets t WHERE t.tickets > 10
+"""
+}
