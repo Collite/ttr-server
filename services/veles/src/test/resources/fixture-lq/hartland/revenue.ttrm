@@ -1,0 +1,35 @@
+model er
+
+// A logical query: a saved query written over entities — entity and attribute names, a bare
+// `JOIN` conditioned from the relations — because it is declared in a `model er` file
+// (`er.query.shopper_revenue`). It takes no parameters. An entity is stacked on it; its
+// attributes bind to the query's output columns, and it relates to other entities through
+// `join:` pairs (it has no foreign key).
+
+def query shopper_revenue {
+    description: "Revenue per shopper, from store sales",
+    tags: ["sales"],
+    sourceText: """sql
+SELECT shopper.shopper_id, shopper.last_name, shopper.current_household,
+       SUM(sale.revenue) AS revenue
+FROM sale JOIN shopper
+GROUP BY shopper.shopper_id, shopper.last_name, shopper.current_household
+"""
+}
+
+def entity shopper_revenue { description: "A shopper with the revenue of their store sales",
+    semantics { name: last_name },
+    binding: { target: { query: er.query.shopper_revenue } },
+    attributes: [
+        def attribute shopper_id { type: int, isKey: true, description: "Shopper key" },
+        def attribute last_name { type: text, optional: true, description: "Last name" },
+        def attribute current_household { type: int, optional: true, description: "Current household" },
+        def attribute total_revenue { type: decimal, optional: true, binding: revenue, description: "Revenue of the shopper's store sales" }
+    ]
+}
+
+def relation shopper_revenue_household { description: "A shopper's revenue belongs to their household",
+    from: er.entity.shopper_revenue, to: er.entity.household,
+    cardinality: { from: "0..*", to: "0..1" },
+    join: [{ from: er.entity.shopper_revenue.current_household, to: er.entity.household.household_id }]
+}

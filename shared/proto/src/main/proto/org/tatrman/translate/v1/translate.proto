@@ -107,7 +107,13 @@ message ParseRequest {
   // unqualified references are not supported (a v3.x concern).
   org.tatrman.plan.v1.SchemaCode source_schema = 5;
 
-  reserved 6 to 9;
+  // LQ (logical queries, contract L-8) — end the ER half with EXPAND_LOGICAL_BODIES: an entity stacked on
+  // a logical query (a saved query over entities, stored at the ER level) is expanded in place under a
+  // boundary Project stamped `expanded_from`, so Validate's ER pass sees — and secures — the entities the
+  // body reads. Applies to a `target_schema = ER` parse; otherwise a no-op. Default false: today's plan.
+  bool expand_logical_bodies = 6;
+
+  reserved 7 to 9;
 }
 
 message ParseResponse {
@@ -163,7 +169,10 @@ message TranslateRequest {
   // falls back to `target_schema`.
   org.tatrman.plan.v1.SchemaCode source_schema = 7;
 
-  reserved 8 to 11;
+  // See `ParseRequest.expand_logical_bodies` (LQ, contract L-8).
+  bool expand_logical_bodies = 8;
+
+  reserved 9 to 11;
 }
 
 message TranslateResponse {

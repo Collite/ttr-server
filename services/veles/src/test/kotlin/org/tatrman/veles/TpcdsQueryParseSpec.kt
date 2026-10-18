@@ -5,7 +5,7 @@ import io.kotest.assertions.withClue
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.types.shouldBeInstanceOf
-import org.tatrman.veles.parse.MetadataModelHandle
+import org.tatrman.veles.parse.queryPathHandle
 import org.tatrman.translate.v1.Language as TranslatorLanguage
 import org.tatrman.translator.orchestrator.ParseResult
 import org.tatrman.translator.orchestrator.Translator
@@ -62,7 +62,7 @@ class TpcdsQueryParseSpec :
 
         "all four TPC-DS curated queries parse to RelNode (incl. window + CTE/UNION)" {
             val model = reconciledModel()
-            val translator = Translator(MetadataModelHandle(model))
+            val translator = Translator(queryPathHandle(model))
 
             val results =
                 model.queries.values

@@ -3,16 +3,16 @@
 # https://docs.gradle.org/current/userguide/version_catalogs.html
 
 [versions]
-tatrman-grammar           = "0.15.0"
+tatrman-grammar           = "0.15.2"
 # Moves WITH the grammar ref, always: they are one `api` closure (ttr-snapshot api's
 # ttr-metadata, ttr-lexicon-compile's POM names it exactly), and the `bundle grammar` lane
 # publishes them at one version. Two versions here is the 0.10.3/0.10.4 failure.
-tatrman-ttr-metadata      = "0.15.0"
+tatrman-ttr-metadata      = "0.15.2"
 # Lockstep pair (`translator/v*` cuts both). DQ: 0.11.4 carries MJ's ModelJoinRewriter — a bare
 # ER `JOIN` with no `ON` (the form the Golem's LLM lane and its query door write) is conditioned
 # from the model's relations; on 0.10.3 Calcite refused it ("join requires a condition").
-tatrman-ttr-translator    = "0.11.8"
-tatrman-ttr-plan-proto    = "0.11.8"
+tatrman-ttr-translator    = "0.12.0"
+tatrman-ttr-plan-proto    = "0.12.0"
 # SV-P1 S4 — Maven Central publishing via the Central Portal.
 vanniktech-publish        = "0.36.0"
 

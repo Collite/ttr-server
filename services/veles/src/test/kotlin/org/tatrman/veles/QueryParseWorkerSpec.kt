@@ -21,9 +21,9 @@ import org.tatrman.ttr.metadata.model.ModelVersion
 import org.tatrman.ttr.metadata.model.ParseStatus
 import org.tatrman.ttr.metadata.model.Query
 import org.tatrman.ttr.metadata.model.QueryParameterDef
-import org.tatrman.veles.parse.MetadataModelHandle
 import org.tatrman.veles.parse.QueryParseState
 import org.tatrman.veles.parse.QueryParseWorker
+import org.tatrman.veles.parse.queryPathHandle
 import org.tatrman.ttr.metadata.registry.MetadataRegistry
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
@@ -135,10 +135,10 @@ class QueryParseWorkerSpec :
                         .associateBy { it.qname },
             )
 
-        "MetadataModelHandle exposes db tables and columns from the model" {
-            val handle = MetadataModelHandle(model())
-            // MetadataModelHandle implements the proto-typed query-translator ModelHandle
-            // interface, so its schema/qname args + returned keys are proto (converted here).
+        "the worker's handle exposes db tables and columns from the model" {
+            val handle = queryPathHandle(model())
+            // The translator's ModelHandle is proto-typed, so its schema/qname args + returned keys
+            // are proto (converted here).
             val tables = handle.tables(SchemaCode.DB.toProto(), "dbo")
             tables.keys shouldContainExactlyInAnyOrder listOf(customersQn.toProto())
             handle.columns(customersQn.toProto()).map { it.name } shouldContainExactlyInAnyOrder listOf("id", "name")

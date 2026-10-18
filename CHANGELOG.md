@@ -16,6 +16,57 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+### metadata / query / validate — logical queries: saved queries over entities, entities stacked on them
+
+A saved query declared in a `model er` file is a **logical query** (`er.query.<name>`): written over entities —
+entity and attribute names, a bare `JOIN` conditioned from the relations — and usable through an entity stacked on it
+(`binding: { target: { query: er.query.<name> } }`), whose attributes bind the query's output columns. Pins
+`ttr-translator` / `ttr-plan-proto` **0.12.0** and the grammar bundle (`ttr-metadata`, …) **0.15.2**, where the
+lane, the strict parse and the expansion live.
+
+- **metadata (`veles`) — each saved query parses in the lane it is declared in.** A logical query is stored at the
+  ER level (entity scans kept, bare joins conditioned); every other query in the db lane, as before. Both parse
+  strictly, so a body that reads the other lane, or both, fails by name: `lane_mismatch` (a db query reading
+  entities), `mixed_lanes` (entities and tables in one body), `logical_query_parameters` (a logical query takes
+  no parameters). The codes land in `GetQuery` / `ListQueries`' `parse_error_message`. The worker reads the
+  model through the query path's own adapter (`SnapshotModelHandle` over the model's snapshot), so a query parses
+  against what the translate service sees. A db-lane query that parsed before stores the same plan. Two failures
+  read differently: a body naming an unknown table is `lane_mismatch: … neither entities nor tables: <name>` (with
+  a did-you-mean) where it was `validation_failed: … Object '<name>' not found`, and a saved query that reads no
+  table at all (`select 1`) is refused (`lane_mismatch`) where it parsed.
+- **metadata — an entity stacked on a query is checked against the query's output.** Each attribute's bound column
+  (or its own name, when unbound) must be an output column of the stored body; one that is not is reported by
+  `GetStatus` as a WARNING `entity_query_output_mismatch` naming the entity, the attribute, the column and the
+  body's columns. The query itself stays PARSED.
+- **metadata — `GetSnapshot` and `GetObject` serve relations with their detail** (`RelationDetail`: the entities and
+  the `join:` pairs); they were descriptor-only. The translator conditions a bare entity `JOIN` from these, so a
+  join onto a stacked entity — which has no foreign key, only `join:` pairs — is conditioned. A relation bound to
+  a foreign key carries no pairs and its joins are conditioned from the key as before; an estate whose relations
+  declare `join:` pairs now has its bare joins conditioned from them at the ER level.
+- **metadata — the `GetSnapshot` ETag names the serving process** (`<version>.q<n>.<epoch>`): a restarted server
+  settles on the same version and generation, and a consumer holding the previous process's snapshot was told
+  "not modified". The ETag stays opaque.
+- **translate — `ParseRequest.expand_logical_bodies = 6`, `TranslateRequest.expand_logical_bodies = 8`** (wire,
+  additive). Set on a `target_schema = ER` parse, the ER half expands every entity stacked on a logical query in
+  place: a boundary Project stamped `expanded_from = <entity>` over the query's body. A no-op for a DB target.
+- **translate — a TransDSL `query_ref` to a logical query is refused** (`query_ref_logical_query`): a logical
+  query is read through the entity stacked on it, and its ER-level plan has no physical form on that path.
+- **query — the ER half of the two-pass path asks for the expansion** (`Run`, `Compile`). The DB re-entry closes
+  the boundary itself: the physical plan is the one the unexpanded path produces. An ER plan carrying an expanded
+  body is not cached — the body would freeze in it, while unexpanded every run's re-entry reads it from the live
+  model — so a query over a stacked entity recompiles on every run. The one-pass DB path and query-mcp's `compile`
+  are unchanged.
+- **validate — pass 1 secures a stacked entity and the entities its body reads.** A policy keyed on
+  `er.entity.<x>` matches a scan of `x` and a boundary stamped `expanded_from = x`; its Filter goes directly above
+  the matched node, and a node is wrapped once (an entity read inside a body and at top level is two nodes). The
+  receipt (`security_applied`) names the policy's own key — the stacked entity for a boundary match.
+  `used_objects` lists the stacked entity beside the entities its body reads. The mixed-layer check is unchanged:
+  an expanded body is pure ER.
+- **validate — column rules (DENY / MASK) keep the ground they had before the expansion.** A stacked entity's
+  boundary stands where its scan stood — its attributes are the columns it exposes — and the logical query's body
+  under it is neither read nor rewritten by them: a MASK on a stacked attribute masks the consumers above the
+  boundary (so a row policy placed above it still filters on the real value), and a rule on an entity the body
+  reads does not reach through the stacked entity.
 ### resolver + lex-matcher — several declared lexicon archives, loaded as one layer (#209)
 
 An estate whose packages come from two sources (Veles' `METADATA_GIT2_*`) got a lexicon for only one of them: both
