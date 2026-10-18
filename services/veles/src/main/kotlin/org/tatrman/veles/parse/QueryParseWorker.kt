@@ -21,6 +21,7 @@ import org.tatrman.plan.v1.PlanNode
 import org.tatrman.plan.v1.schemaCodeToToken
 import org.tatrman.translator.framework.EntityMapping
 import org.tatrman.translator.framework.ModelHandle
+import org.tatrman.translator.joiner.JoinerMessages
 import org.tatrman.translator.orchestrator.ParseResult
 import org.tatrman.translator.orchestrator.Translator
 import org.tatrman.translator.params.SqlParam
@@ -121,7 +122,14 @@ class QueryParseWorker(
                         strictLane = true,
                     )
                 when (result) {
-                    is ParseResult.Success -> ParseStatus.ParseSuccess(result.plan.toByteArray())
+                    is ParseResult.Success ->
+                        (
+                            if (lane == ProtoSchemaCode.ER) {
+                                unconditionedJoins(result) ?: physicalJoins(translator, query.sourceText, lang, params)
+                            } else {
+                                null
+                            }
+                        ) ?: ParseStatus.ParseSuccess(result.plan.toByteArray())
                     is ParseResult.Failure -> ParseStatus.ParseFailure(message = "${result.code}: ${result.message}")
                 }
             }
@@ -135,6 +143,54 @@ class QueryParseWorker(
             )
             ParseStatus.ParseFailure("parse_exception: ${e.message}")
         }
+
+    /**
+     * LQ (L-3) — a logical query's bare JOIN that the model cannot condition is refused. The translator leaves such a
+     * join unconditioned and warns (`JOIN_NO_RELATION`, `JOIN_AMBIGUOUS_RELATIONS`, `JOIN_KEY_NAME_COLLISION` — the
+     * WARNING-severity joiner results); a question can carry that warning to its asker, but a stored body would
+     * answer every reader with the Cartesian product, silently. An FK-only relation (`JOIN_RELATION_WITHOUT_PAIRS`,
+     * INFO) is conditioned from its foreign key after MAP_TO_PHYSICAL and stays PARSED.
+     *
+     * The logical lane only: a db query's joins are its author's SQL — model joins do not apply in the db catalog —
+     * so a joiner warning there (a comma join conditioned in WHERE, or a deliberate CROSS JOIN, between tables no
+     * foreign key connects: "Cartesian product preserved") changes nothing and is not refused.
+     */
+    private fun unconditionedJoins(result: ParseResult.Success): ParseStatus.ParseFailure? {
+        val unresolved = result.warnings.filter { JoinerMessages.severity(it) == JoinerMessages.Severity.WARNING }
+        if (unresolved.isEmpty()) return null
+        val reasons = unresolved.joinToString("; ") { "${JoinerMessages.code(it)}: ${JoinerMessages.text(it)}" }
+        return ParseStatus.ParseFailure(
+            "$LOGICAL_QUERY_JOIN_UNRESOLVED: $reasons — a saved query's joins must be conditioned: join entities " +
+                "that one relation connects, or write the ON",
+        )
+    }
+
+    /**
+     * LQ (L-3) — the physical half of [unconditionedJoins] for a logical query. A bare JOIN over an FK-only relation
+     * (no `join:` pairs) is INFO at the ER level and is conditioned from the foreign key only at MAP_TO_PHYSICAL — where
+     * two foreign keys between the same tables leave it unconditioned (`JOIN_AMBIGUOUS_RELATIONS`). The body is taken
+     * to the physical level once, here, so that is refused at parse time rather than served as a Cartesian product.
+     * The stored plan stays the ER half's. A physical pass that fails is not a refusal: the worker's handle does not yet
+     * carry the stored body of an entity stacked on another logical query (parse order), so such a failure says nothing
+     * about the served read, which translates against the full snapshot.
+     */
+    private fun physicalJoins(
+        translator: Translator,
+        source: String,
+        lang: TranslatorLanguage,
+        params: List<SqlParam>,
+    ): ParseStatus.ParseFailure? {
+        val physical =
+            translator.parseToRelNode(
+                source,
+                lang,
+                targetSchema = ProtoSchemaCode.DB,
+                sourceSchema = ProtoSchemaCode.ER,
+                parameters = params,
+                strictLane = true,
+            )
+        return (physical as? ParseResult.Success)?.let { unconditionedJoins(it) }
+    }
 
     /**
      * LQ (L-4) — for every entity stacked on [query] (mapped `ToQuery` onto it): each attribute must bind a column the
@@ -173,6 +229,9 @@ class QueryParseWorker(
     }
 
     private companion object {
+        /** LQ (L-3) — a saved query's bare JOIN the model cannot condition (see [unconditionedJoins]). */
+        const val LOGICAL_QUERY_JOIN_UNRESOLVED = "logical_query_join_unresolved"
+
         private fun translatorLanguage(s: String): TranslatorLanguage? =
             when (s.uppercase().replace("-", "_")) {
                 "SQL" -> TranslatorLanguage.SQL
