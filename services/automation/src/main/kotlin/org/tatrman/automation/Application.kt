@@ -35,6 +35,7 @@ import shared.libs.db.common.DatabaseConnection
 import shared.otel.OtelEndpointConfig
 import shared.otel.createOpenTelemetrySdk
 import java.time.Clock
+import javax.sql.DataSource
 
 private val log = LoggerFactory.getLogger("org.tatrman.automation.Application")
 
@@ -99,10 +100,12 @@ fun Application.module(config: Config) {
 }
 
 /** Flyway over schema `automation` (its history table lives there too); answers how many migrations ran. */
-fun migrateLedger(db: DatabaseConnection): Int =
+fun migrateLedger(db: DatabaseConnection): Int = migrateLedger(db.getDataSource())
+
+fun migrateLedger(dataSource: DataSource): Int =
     Flyway
         .configure()
-        .dataSource(db.getDataSource())
+        .dataSource(dataSource)
         .schemas("automation")
         .load()
         .migrate()

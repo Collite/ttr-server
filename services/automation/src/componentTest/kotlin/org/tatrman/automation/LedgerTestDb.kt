@@ -3,6 +3,7 @@ package org.tatrman.automation
 
 import com.typesafe.config.ConfigFactory
 import org.jetbrains.exposed.v1.jdbc.transactions.transaction
+import org.postgresql.ds.PGSimpleDataSource
 import org.testcontainers.postgresql.PostgreSQLContainer
 import org.testcontainers.utility.DockerImageName
 import org.tatrman.automation.queue.LedgerQueue
@@ -11,6 +12,7 @@ import java.time.Clock
 import java.time.Instant
 import java.time.ZoneId
 import java.time.ZoneOffset
+import javax.sql.DataSource
 
 /**
  * One Postgres for the component specs, migrated once by the service's own [migrateLedger] (so the specs test
@@ -43,6 +45,29 @@ object LedgerTestDb {
             ),
         ).also { it.init() }
     }
+
+    /**
+     * A plain JDBC [DataSource] on the same server, for a spec that needs another role or database. Not a
+     * [DatabaseConnection]: every one of those re-points Exposed's default database, and the other specs'
+     * transactions would follow it.
+     */
+    fun dataSource(
+        database: String,
+        user: String,
+        password: String,
+    ): DataSource =
+        PGSimpleDataSource().apply {
+            setURL("jdbc:postgresql://${container.host}:${container.firstMappedPort}/$database")
+            this.user = user
+            this.password = password
+        }
+
+    /** Runs [block] as the container's superuser on the `postgres` database, autocommit (CREATE DATABASE needs it). */
+    fun asSuperuser(block: (java.sql.Statement) -> Unit) =
+        dataSource("postgres", "automation", "automation").connection.use { c ->
+            c.autoCommit = true
+            c.createStatement().use(block)
+        }
 
     /** How many migrations the first migrate applied — the schema spec's "clean database" evidence. */
     val firstMigration: Int by lazy { migrateLedger(db) }
