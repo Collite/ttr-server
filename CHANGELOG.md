@@ -71,8 +71,9 @@ lane, the strict parse and the expansion live.
 
 A SQL body names another saved query as `obj.<namespace>.<name>`: `er.query.x` (a logical query) and `query.x` (a
 `model query` file) are `obj.query.x`, a db query `db.<schema>.x` is `obj.<schema>.x`. Pins `ttr-translator` /
-`ttr-plan-proto` **0.13.0** (the reader's row type comes from the referenced query's stored plan; references are
-extracted before parsing; a referenced body with parameters is refused).
+`ttr-plan-proto` **0.12.1** (the reader's row type comes from the referenced query's stored plan; references are
+extracted before parsing; a referenced body with parameters is refused) and the grammar bundle (`ttr-metadata`, …)
+**0.15.3** (a `def query` in a `model db` file loads as a db query instead of `ttr/wrong-file-kind`).
 
 - **metadata (`veles`) — saved queries parse in dependency order.** A query parses after every saved query it reads,
   against a handle that serves their stored plans; the reader's stored plan has those bodies inlined, so nothing at
