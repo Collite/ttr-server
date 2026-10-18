@@ -18,3 +18,13 @@ This product is based on source code originally developed
 by DynamoBI Corporation, LucidEra Inc., SQLstream Inc. and others
 under the auspices of the Eigenbase Foundation
 and released as the LucidDB project.
+
+---
+
+This product includes pgmq 1.13.0's SQL-only install, vendored unchanged as a Flyway migration of the
+automation service (`services/automation/src/main/resources/db/migration/V2__pgmq_1_13_0.sql`):
+
+pgmq
+Copyright (c) 2023, Tembo
+Licensed under The PostgreSQL License; see
+`services/automation/src/main/resources/db/LICENSE-pgmq` for the full text.
