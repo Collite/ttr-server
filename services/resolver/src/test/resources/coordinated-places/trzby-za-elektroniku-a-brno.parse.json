@@ -1,0 +1,129 @@
+{
+  "language": "cs",
+  "languageConfidence": 0.5582310253581441,
+  "engineUsed": "morphodita",
+  "tokens": [
+    {
+      "text": "Tržby",
+      "charEnd": 5,
+      "lemma": "tržba",
+      "upos": "NOUN",
+      "xpos": "NNFP1-----A----",
+      "feats": {
+        "Case": "Nom",
+        "Gender": "Fem",
+        "Number": "Plur"
+      },
+      "depRelation": "root"
+    },
+    {
+      "text": "za",
+      "charStart": 6,
+      "charEnd": 8,
+      "lemma": "za",
+      "upos": "ADP",
+      "xpos": "RR--4----------",
+      "feats": {
+        "AdpType": "Prep",
+        "Case": "Acc"
+      },
+      "depHead": 3,
+      "depRelation": "case"
+    },
+    {
+      "text": "elektroniku",
+      "charStart": 9,
+      "charEnd": 20,
+      "lemma": "elektronika",
+      "upos": "NOUN",
+      "xpos": "NNFS4-----A----",
+      "feats": {
+        "Case": "Acc",
+        "Gender": "Fem",
+        "Number": "Sing"
+      },
+      "depHead": 1,
+      "depRelation": "nmod"
+    },
+    {
+      "text": "a",
+      "charStart": 21,
+      "charEnd": 22,
+      "lemma": "a",
+      "upos": "CCONJ",
+      "xpos": "J^-------------",
+      "depHead": 5,
+      "depRelation": "cc"
+    },
+    {
+      "text": "Brno",
+      "charStart": 23,
+      "charEnd": 27,
+      "lemma": "Brno",
+      "upos": "PROPN",
+      "xpos": "NNNS4-----A----",
+      "feats": {
+        "Case": "Acc",
+        "Gender": "Neut",
+        "NameType": "Geo",
+        "Number": "Sing"
+      },
+      "depHead": 3,
+      "depRelation": "conj"
+    }
+  ],
+  "sentences": [
+    {
+      "charEnd": 27
+    }
+  ],
+  "entities": [
+    {
+      "text": "Brno",
+      "label": "LOCATION",
+      "charStart": 23,
+      "charEnd": 27,
+      "normalizedValue": "cnec:gu",
+      "sourceEngine": "nametag3"
+    }
+  ],
+  "detectedLanguage": "cs",
+  "used": [
+    {
+      "op": "DETECT_LANGUAGE",
+      "engine": "langid",
+      "model": "lingua",
+      "modelVersion": "lingua-2.0"
+    },
+    {
+      "op": "POS_TAG",
+      "engine": "morphodita",
+      "model": "czech-morfflex2.0-pdtc1.0-220710",
+      "modelVersion": "czech-morfflex2.0-pdtc1.0-220710"
+    },
+    {
+      "op": "NER",
+      "engine": "nametag3",
+      "model": "nametag3-czech-cnec2.0-240830",
+      "modelVersion": "nametag3-czech-cnec2.0-240830"
+    },
+    {
+      "op": "LEMMATIZE",
+      "engine": "morphodita",
+      "model": "czech-morfflex2.0-pdtc1.0-220710",
+      "modelVersion": "czech-morfflex2.0-pdtc1.0-220710"
+    },
+    {
+      "op": "TOKENIZE",
+      "engine": "morphodita",
+      "model": "czech-morfflex2.0-pdtc1.0-220710",
+      "modelVersion": "czech-morfflex2.0-pdtc1.0-220710"
+    },
+    {
+      "op": "DEP_PARSE",
+      "engine": "stanza",
+      "model": "stanza-cs-en",
+      "modelVersion": "stanza-1.10.0"
+    }
+  ]
+}

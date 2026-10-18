@@ -1,0 +1,411 @@
+{
+  "entityTypes": [{
+    "ref": "er.entity.call_center",
+    "categories": ["er.entity.call_center"],
+    "anchors": ["centrum podpory prodejců", "seller support center"],
+    "objectKind": "entity",
+    "reachedFrom": [{
+      "factRef": "er.entity.catalog_sales",
+      "mandatory": true
+    }],
+    "nameAttributeRef": "er.entity.call_center.name",
+    "codeAttributeRef": "er.entity.call_center.call_center_id",
+    "codeFormat": "^[A-P]{16}$"
+  }, {
+    "ref": "er.entity.call_center.name",
+    "categories": ["er.entity.call_center.name"],
+    "objectKind": "attribute",
+    "ownerRef": "er.entity.call_center",
+    "memberVocabulary": true
+  }, {
+    "ref": "er.entity.catalog_returns",
+    "categories": ["er.entity.catalog_returns"],
+    "anchors": ["marketplace returns", "reklamace z tržiště"],
+    "objectKind": "entity_with_measures"
+  }, {
+    "ref": "er.entity.catalog_returns.return_amt",
+    "categories": ["er.entity.catalog_returns.return_amt"],
+    "anchors": ["vratek z tržiště", "vratka z tržiště", "vratky z tržiště"],
+    "objectKind": "measure",
+    "ownerRef": "er.entity.catalog_returns"
+  }, {
+    "ref": "er.entity.catalog_sales",
+    "categories": ["er.entity.catalog_sales"],
+    "anchors": ["3p", "e\u003dmarket", "market", "marketplace", "marketplace orders", "marketplace sellers", "objednávky z tržiště", "sellers", "third-party", "tržiště"],
+    "objectKind": "entity_with_measures"
+  }, {
+    "ref": "er.entity.catalog_sales.ext_sales_price",
+    "categories": ["er.entity.catalog_sales.ext_sales_price"],
+    "anchors": ["marketplace revenue", "marketplace sales", "obrat z tržiště", "obratu z tržiště", "tržba z tržiště", "tržby z tržiště", "tržeb z tržiště"],
+    "objectKind": "measure",
+    "ownerRef": "er.entity.catalog_sales"
+  }, {
+    "ref": "er.entity.channel_sales",
+    "categories": ["er.entity.channel_sales"],
+    "anchors": ["all-channel sales", "prodeje napříč kanály"],
+    "objectKind": "entity_with_measures"
+  }, {
+    "ref": "er.entity.channel_sales.channel",
+    "categories": ["er.entity.channel_sales.channel"],
+    "anchors": ["channel", "channels", "kanál", "kanálu", "kanály", "kanálů"],
+    "objectKind": "attribute",
+    "ownerRef": "er.entity.channel_sales"
+  }, {
+    "ref": "er.entity.channel_sales.ext_sales_price",
+    "categories": ["er.entity.channel_sales.ext_sales_price"],
+    "anchors": ["obrat", "revenue", "revenues", "tržba", "tržby", "tržeb"],
+    "objectKind": "measure",
+    "ownerRef": "er.entity.channel_sales"
+  }, {
+    "ref": "er.entity.channel_sales.quantity",
+    "categories": ["er.entity.channel_sales.quantity"],
+    "anchors": ["prodané kusy", "prodaných kusů", "sold units", "units sold"],
+    "objectKind": "measure",
+    "ownerRef": "er.entity.channel_sales"
+  }, {
+    "ref": "er.entity.customer",
+    "categories": ["er.entity.customer"],
+    "anchors": ["customer", "customers", "zákazník"],
+    "objectKind": "entity",
+    "reachedFrom": [{
+      "factRef": "er.entity.catalog_returns",
+      "mandatory": true
+    }, {
+      "factRef": "er.entity.catalog_sales",
+      "mandatory": true
+    }, {
+      "factRef": "er.entity.channel_sales",
+      "mandatory": true
+    }, {
+      "factRef": "er.entity.store_returns",
+      "mandatory": true
+    }, {
+      "factRef": "er.entity.store_sales",
+      "mandatory": true
+    }, {
+      "factRef": "er.entity.web_returns",
+      "mandatory": true
+    }, {
+      "factRef": "er.entity.web_sales",
+      "mandatory": true
+    }],
+    "codeAttributeRef": "er.entity.customer.customer_id",
+    "codeFormat": "^[A-P]{16}$"
+  }, {
+    "ref": "er.entity.customer_address",
+    "categories": ["er.entity.customer_address"],
+    "anchors": ["adresa zákazníka", "customer address", "customer addresses"],
+    "objectKind": "entity",
+    "reachedFrom": [{
+      "factRef": "er.entity.catalog_sales",
+      "mandatory": true
+    }, {
+      "factRef": "er.entity.customer",
+      "mandatory": true
+    }, {
+      "factRef": "er.entity.store_sales",
+      "mandatory": true
+    }, {
+      "factRef": "er.entity.web_sales",
+      "mandatory": true
+    }],
+    "nameAttributeRef": "er.entity.customer_address.city",
+    "codeAttributeRef": "er.entity.customer_address.address_id",
+    "codeFormat": "^[A-P]{16}$"
+  }, {
+    "ref": "er.entity.customer_address.state",
+    "categories": ["er.entity.customer_address.state"],
+    "objectKind": "attribute",
+    "ownerRef": "er.entity.customer_address",
+    "memberVocabulary": true
+  }, {
+    "ref": "er.entity.customer_demographics",
+    "categories": ["er.entity.customer_demographics"],
+    "anchors": ["customer demographics", "demografie zákazníka"],
+    "objectKind": "entity",
+    "reachedFrom": [{
+      "factRef": "er.entity.customer",
+      "mandatory": true
+    }]
+  }, {
+    "ref": "er.entity.date_dim",
+    "categories": ["er.entity.date_dim"],
+    "anchors": ["calendar", "kalendář"],
+    "objectKind": "entity",
+    "reachedFrom": [{
+      "factRef": "er.entity.catalog_returns",
+      "mandatory": true
+    }, {
+      "factRef": "er.entity.catalog_sales",
+      "mandatory": true
+    }, {
+      "factRef": "er.entity.channel_sales",
+      "mandatory": true
+    }, {
+      "factRef": "er.entity.inventory",
+      "mandatory": true
+    }, {
+      "factRef": "er.entity.store_returns",
+      "mandatory": true
+    }, {
+      "factRef": "er.entity.store_sales",
+      "mandatory": true
+    }, {
+      "factRef": "er.entity.web_returns",
+      "mandatory": true
+    }, {
+      "factRef": "er.entity.web_sales",
+      "mandatory": true
+    }],
+    "nameAttributeRef": "er.entity.date_dim.cal_date",
+    "codeAttributeRef": "er.entity.date_dim.sk"
+  }, {
+    "ref": "er.entity.date_dim.month",
+    "categories": ["er.entity.date_dim.month"],
+    "anchors": ["by month", "month by month", "monthly", "měsíční", "měsíčních", "měsíčního", "měsíčním", "měsíčními", "měsíčnímu", "měsíčně", "po měsících"],
+    "objectKind": "attribute",
+    "ownerRef": "er.entity.date_dim"
+  }, {
+    "ref": "er.entity.date_dim.quarter",
+    "categories": ["er.entity.date_dim.quarter"],
+    "anchors": ["by quarter", "po čtvrtletích", "quarterly", "čtvrtletní", "čtvrtletních", "čtvrtletního", "čtvrtletním", "čtvrtletními", "čtvrtletnímu", "čtvrtletně"],
+    "objectKind": "attribute",
+    "ownerRef": "er.entity.date_dim"
+  }, {
+    "ref": "er.entity.date_dim.week_seq",
+    "categories": ["er.entity.date_dim.week_seq"],
+    "anchors": ["by week", "po týdnech", "týdenní", "týdenních", "týdenního", "týdenním", "týdenními", "týdennímu", "týdně", "weekly"],
+    "objectKind": "attribute",
+    "ownerRef": "er.entity.date_dim"
+  }, {
+    "ref": "er.entity.date_dim.year",
+    "categories": ["er.entity.date_dim.year"],
+    "anchors": ["annual", "by year", "po letech", "roční", "ročních", "ročního", "ročním", "ročními", "ročnímu", "ročně", "yearly", "za rok"],
+    "objectKind": "attribute",
+    "ownerRef": "er.entity.date_dim"
+  }, {
+    "ref": "er.entity.household_demographics",
+    "categories": ["er.entity.household_demographics"],
+    "anchors": ["demografie domácnosti", "household demographics"],
+    "objectKind": "entity",
+    "reachedFrom": [{
+      "factRef": "er.entity.customer",
+      "mandatory": true
+    }]
+  }, {
+    "ref": "er.entity.income_band",
+    "categories": ["er.entity.income_band"],
+    "anchors": ["income band", "income bands", "příjmové pásmo"],
+    "objectKind": "entity",
+    "reachedFrom": [{
+      "factRef": "er.entity.household_demographics",
+      "mandatory": true
+    }]
+  }, {
+    "ref": "er.entity.inventory",
+    "categories": ["er.entity.inventory"],
+    "anchors": ["inventory snapshots", "stavy zásob"],
+    "objectKind": "entity_with_measures"
+  }, {
+    "ref": "er.entity.inventory.quantity_on_hand",
+    "categories": ["er.entity.inventory.quantity_on_hand"],
+    "anchors": ["inventory on hand", "není skladem", "nulový stav", "on hand", "out of stock", "skladem", "stav zásob", "stock on hand", "stockout", "vyprodáno", "zero on hand", "zásoba", "zásoby"],
+    "objectKind": "measure",
+    "ownerRef": "er.entity.inventory"
+  }, {
+    "ref": "er.entity.item",
+    "categories": ["er.entity.item"],
+    "anchors": ["product", "products", "produkt"],
+    "objectKind": "entity",
+    "reachedFrom": [{
+      "factRef": "er.entity.catalog_returns",
+      "mandatory": true
+    }, {
+      "factRef": "er.entity.catalog_sales",
+      "mandatory": true
+    }, {
+      "factRef": "er.entity.channel_sales",
+      "mandatory": true
+    }, {
+      "factRef": "er.entity.inventory",
+      "mandatory": true
+    }, {
+      "factRef": "er.entity.store_returns",
+      "mandatory": true
+    }, {
+      "factRef": "er.entity.store_sales",
+      "mandatory": true
+    }, {
+      "factRef": "er.entity.web_returns",
+      "mandatory": true
+    }, {
+      "factRef": "er.entity.web_sales",
+      "mandatory": true
+    }],
+    "nameAttributeRef": "er.entity.item.product_name",
+    "codeAttributeRef": "er.entity.item.item_id",
+    "codeFormat": "^[A-P]{16}$"
+  }, {
+    "ref": "er.entity.item.category",
+    "categories": ["er.entity.item.category"],
+    "anchors": ["categories", "category", "kategorie", "kategorií", "product category"],
+    "objectKind": "attribute",
+    "ownerRef": "er.entity.item"
+  }, {
+    "ref": "er.entity.item.product_name",
+    "categories": ["er.entity.item.product_name"],
+    "objectKind": "attribute",
+    "ownerRef": "er.entity.item",
+    "memberVocabulary": true
+  }, {
+    "ref": "er.entity.promotion",
+    "categories": ["er.entity.promotion"],
+    "anchors": ["akce", "promotion"],
+    "objectKind": "entity",
+    "reachedFrom": [{
+      "factRef": "er.entity.catalog_sales",
+      "mandatory": true
+    }, {
+      "factRef": "er.entity.store_sales",
+      "mandatory": true
+    }, {
+      "factRef": "er.entity.web_sales",
+      "mandatory": true
+    }],
+    "nameAttributeRef": "er.entity.promotion.promo_name",
+    "codeAttributeRef": "er.entity.promotion.promo_id",
+    "codeFormat": "^[A-P]{16}$"
+  }, {
+    "ref": "er.entity.reason",
+    "categories": ["er.entity.reason"],
+    "anchors": ["důvod", "důvod reklamace", "return reason", "return reasons"],
+    "objectKind": "entity",
+    "reachedFrom": [{
+      "factRef": "er.entity.catalog_returns",
+      "mandatory": true
+    }, {
+      "factRef": "er.entity.store_returns",
+      "mandatory": true
+    }, {
+      "factRef": "er.entity.web_returns",
+      "mandatory": true
+    }],
+    "nameAttributeRef": "er.entity.reason.reason_desc",
+    "codeAttributeRef": "er.entity.reason.reason_id",
+    "codeFormat": "^[A-P]{16}$"
+  }, {
+    "ref": "er.entity.reason.reason_desc",
+    "categories": ["er.entity.reason.reason_desc"],
+    "objectKind": "attribute",
+    "ownerRef": "er.entity.reason",
+    "memberVocabulary": true
+  }, {
+    "ref": "er.entity.store",
+    "categories": ["er.entity.store"],
+    "anchors": ["prodejen", "prodejna", "prodejnami", "prodejnou", "prodejnu", "prodejny", "prodejnách", "prodejnám", "prodejně", "store", "stores"],
+    "objectKind": "entity",
+    "reachedFrom": [{
+      "factRef": "er.entity.store_returns",
+      "mandatory": true
+    }, {
+      "factRef": "er.entity.store_sales",
+      "mandatory": true
+    }],
+    "nameAttributeRef": "er.entity.store.store_name",
+    "codeAttributeRef": "er.entity.store.store_id",
+    "codeFormat": "^[A-P]{16}$"
+  }, {
+    "ref": "er.entity.store.state",
+    "categories": ["er.entity.store.state"],
+    "objectKind": "attribute",
+    "ownerRef": "er.entity.store",
+    "memberVocabulary": true
+  }, {
+    "ref": "er.entity.store.store_name",
+    "categories": ["er.entity.store.store_name"],
+    "objectKind": "attribute",
+    "ownerRef": "er.entity.store",
+    "memberVocabulary": true
+  }, {
+    "ref": "er.entity.store_returns",
+    "categories": ["er.entity.store_returns"],
+    "anchors": ["reklamace z prodejen", "store returns"],
+    "objectKind": "entity_with_measures"
+  }, {
+    "ref": "er.entity.store_returns.return_amt",
+    "categories": ["er.entity.store_returns.return_amt"],
+    "anchors": ["vratek z prodejen", "vratka z prodejen", "vratky z prodejen"],
+    "objectKind": "measure",
+    "ownerRef": "er.entity.store_returns"
+  }, {
+    "ref": "er.entity.store_sales",
+    "categories": ["er.entity.store_sales"],
+    "anchors": ["brick and mortar", "kamenná prodejna", "obchod", "prodeje v prodejnách", "prodejna", "retail stores", "store sales", "stores", "tn stores"],
+    "objectKind": "entity_with_measures"
+  }, {
+    "ref": "er.entity.store_sales.ext_sales_price",
+    "categories": ["er.entity.store_sales.ext_sales_price"],
+    "anchors": ["obrat z prodejen", "obratu z prodejen", "prodejen", "prodejna", "prodejnami", "prodejnou", "prodejnu", "prodejny", "prodejnách", "prodejnám", "prodejně", "retail revenue", "store revenue", "tržba z prodejen", "tržby z prodejen", "tržeb z prodejen"],
+    "objectKind": "measure",
+    "ownerRef": "er.entity.store_sales"
+  }, {
+    "ref": "er.entity.warehouse",
+    "categories": ["er.entity.warehouse"],
+    "anchors": ["distribution center", "distribution centers", "distribuční centra", "distribuční centrum", "distribučních center", "distribučních centrech", "distribučního centra", "distribučním centrem", "distribučním centru", "distribučním centrům", "distribučními centry", "distribučnímu centru", "sklad"],
+    "objectKind": "entity",
+    "reachedFrom": [{
+      "factRef": "er.entity.catalog_returns",
+      "mandatory": true
+    }, {
+      "factRef": "er.entity.catalog_sales",
+      "mandatory": true
+    }, {
+      "factRef": "er.entity.channel_sales"
+    }, {
+      "factRef": "er.entity.inventory",
+      "mandatory": true
+    }, {
+      "factRef": "er.entity.web_sales",
+      "mandatory": true
+    }],
+    "nameAttributeRef": "er.entity.warehouse.warehouse_name",
+    "codeAttributeRef": "er.entity.warehouse.warehouse_id",
+    "codeFormat": "^[A-P]{16}$"
+  }, {
+    "ref": "er.entity.warehouse.state",
+    "categories": ["er.entity.warehouse.state"],
+    "objectKind": "attribute",
+    "ownerRef": "er.entity.warehouse",
+    "memberVocabulary": true
+  }, {
+    "ref": "er.entity.warehouse.warehouse_name",
+    "categories": ["er.entity.warehouse.warehouse_name"],
+    "objectKind": "attribute",
+    "ownerRef": "er.entity.warehouse",
+    "memberVocabulary": true
+  }, {
+    "ref": "er.entity.web_returns",
+    "categories": ["er.entity.web_returns"],
+    "anchors": ["reklamace z webu", "web returns"],
+    "objectKind": "entity_with_measures"
+  }, {
+    "ref": "er.entity.web_returns.return_amt",
+    "categories": ["er.entity.web_returns.return_amt"],
+    "anchors": ["vratek z webu", "vratka z webu", "vratky z webu"],
+    "objectKind": "measure",
+    "ownerRef": "er.entity.web_returns"
+  }, {
+    "ref": "er.entity.web_sales",
+    "categories": ["er.entity.web_sales"],
+    "anchors": ["e-shop", "hartland.com", "online", "web", "web orders", "webové objednávky"],
+    "objectKind": "entity_with_measures"
+  }, {
+    "ref": "er.entity.web_sales.ext_sales_price",
+    "categories": ["er.entity.web_sales.ext_sales_price"],
+    "anchors": ["obrat z webu", "obratu z webu", "online revenue", "tržba z webu", "tržby z e-shopu", "tržby z webu", "web revenue"],
+    "objectKind": "measure",
+    "ownerRef": "er.entity.web_sales"
+  }],
+  "locales": ["cs", "en"],
+  "snapshotHash": "coordinated-places"
+}
