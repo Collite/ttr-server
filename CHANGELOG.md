@@ -77,6 +77,28 @@ lane, the strict parse and the expansion live.
   under it is neither read nor rewritten by them: a MASK on a stacked attribute masks the consumers above the
   boundary (so a row policy placed above it still filters on the real value), and a rule on an entity the body
   reads does not reach through the stacked entity.
+
+### metadata — a saved query can read another saved query (`obj.<namespace>.<name>`)
+
+A SQL body names another saved query as `obj.<namespace>.<name>`: `er.query.x` (a logical query) and `query.x` (a
+`model query` file) are `obj.query.x`, a db query `db.<schema>.x` is `obj.<schema>.x`. Pins `ttr-translator` /
+`ttr-plan-proto` **0.12.1** (the reader's row type comes from the referenced query's stored plan; references are
+extracted before parsing; a referenced body with parameters is refused) and the grammar bundle (`ttr-metadata`, …)
+**0.15.4** (a `def query` in a `model db` file loads as a db query instead of `ttr/wrong-file-kind`, and so do a
+`drill_map` there and an `er2cnc_role` in a `model cnc` file; `def area` and the `def project` header are legal
+beside any `model` directive).
+
+- **metadata (`veles`) — saved queries parse in dependency order.** A query parses after every saved query it reads,
+  against a handle that serves their stored plans; the reader's stored plan has those bodies inlined, so nothing at
+  run time looks a saved query up. The lane is decided after inlining, as before: a logical query may read a logical
+  one; reading a db query is `lane_mismatch`. Refused, each naming what it read: `saved_query_unknown`,
+  `saved_query_ambiguous` (two saved queries share the obj name — e.g. a logical and a `model query` query of one
+  name), `query_reference_cycle` (with the path), `saved_query_failed` (with the referenced query's failure) and
+  `saved_query_parameters`. A model whose bodies read no saved query parses exactly as before, in one pass.
+- **`translate-snapshot`** — `SnapshotModelHandle.from(snapshot, savedQueriesAsObj = false)`: with `true`, every
+  parsed saved query is also served under its obj name (a name two queries share under neither). Only the metadata
+  worker sets it; the translate service keeps the default, so a saved query is never run by name (LQ-6).
+
 ### resolver + lex-matcher — several declared lexicon archives, loaded as one layer (#209)
 
 An estate whose packages come from two sources (Veles' `METADATA_GIT2_*`) got a lexicon for only one of them: both

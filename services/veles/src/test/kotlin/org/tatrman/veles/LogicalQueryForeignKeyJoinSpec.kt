@@ -83,20 +83,27 @@ class LogicalQueryForeignKeyJoinSpec :
             }
             """.trimIndent()
 
-        fun model(keys: Int): Model {
+        fun model(
+            keys: Int,
+            moreEr: String = "",
+        ): Model {
             val root = Files.createTempDirectory("lq-fk")
             Files.writeString(root.resolve("db.ttrm"), db(keys))
-            Files.writeString(root.resolve("er.ttrm"), er)
+            Files.writeString(root.resolve("er.ttrm"), er + moreEr)
             val source = FileBasedSource("lq-fk", 100, LocalFsStorage("lq-fk", root))
             return ModelReconciler(ModelDescriptor(id = "lq-fk", name = "lq-fk")).reconcile(listOf(source.load())).model
         }
 
-        fun parsed(model: Model): ParseStatus {
+        /** Each logical query's status, by name. */
+        fun statuses(model: Model): Map<String, ParseStatus> {
             val state = QueryParseState().also { it.reset(model.version.value, model.queries.keys) }
             QueryParseWorker().also { runBlocking { it.parseAll(model, state).join() } }.close()
-            val query = model.queries.keys.single { it.schemaCode == SchemaCode.ER }
-            return checkNotNull(state.get(model.version.value, query))
+            return model.queries.keys
+                .filter { it.schemaCode == SchemaCode.ER }
+                .associate { it.name to checkNotNull(state.get(model.version.value, it)) }
         }
+
+        fun parsed(model: Model): ParseStatus = statuses(model).getValue("shopper_revenue")
 
         "db queries joining with a comma + WHERE or a CROSS JOIN, no foreign key between the tables: PARSED" {
             for (keys in listOf(0, 1)) {
@@ -146,12 +153,36 @@ class LogicalQueryForeignKeyJoinSpec :
             message shouldStartWith "logical_query_join_unresolved: "
             message shouldContain "JOIN_AMBIGUOUS_RELATIONS"
         }
+
+        "a logical query that reads another saved query is checked the same: one foreign key PARSED, two refused" {
+            // The reader parses in a later wave, against the handle that serves `shopper_ids` under its obj name; its
+            // own bare JOIN still goes through the physical pass there, so two keys must refuse it, not fail silently.
+            val one = statuses(model(keys = 1, moreEr = READS_SAVED))
+            one.getValue("shopper_ids").shouldBeInstanceOf<ParseStatus.ParseSuccess>()
+            one.getValue("sales_of_listed").shouldBeInstanceOf<ParseStatus.ParseSuccess>()
+            val two = statuses(model(keys = 2, moreEr = READS_SAVED))
+            two.getValue("shopper_ids").shouldBeInstanceOf<ParseStatus.ParseSuccess>()
+            val message = two.getValue("sales_of_listed").shouldBeInstanceOf<ParseStatus.ParseFailure>().message
+            message shouldStartWith "logical_query_join_unresolved: "
+            message shouldContain "JOIN_AMBIGUOUS_RELATIONS"
+        }
     }) {
     private companion object {
         const val FK_CUSTOMER =
             "\ndef fk fk_ss_customer { from: [db.dbo.store_sales.ss_customer_sk], to: [db.dbo.customer.c_customer_sk] }"
         const val FK_BILLING =
             "\ndef fk fk_ss_billing { from: [db.dbo.store_sales.ss_billing_customer_sk], to: [db.dbo.customer.c_customer_sk] }"
+
+        /**
+         * A join-free logical query, and one that reads it by obj name beside a bare JOIN over the FK-only relation
+         * `sale_shopper` — the join the physical pass conditions from one key and cannot from two.
+         */
+        const val READS_SAVED =
+            "\n\ndef query shopper_ids {\n    sourceText: \"\"\"sql\n" +
+                "SELECT shopper.shopper_id FROM shopper\n\"\"\"\n}\n\n" +
+                "def query sales_of_listed {\n    sourceText: \"\"\"sql\n" +
+                "SELECT sale.ticket_number FROM sale JOIN shopper " +
+                "JOIN obj.query.shopper_ids i ON i.shopper_id = shopper.shopper_id\n\"\"\"\n}\n"
 
         /** Two db queries whose joins are the author's: a comma join conditioned in WHERE, and a deliberate CROSS JOIN. */
         const val COMMA_AND_CROSS =

@@ -1,0 +1,46 @@
+model db schema dbo
+
+// The Hartland slice a logical query reads (TPC-DS shaped): store sales, the customers who
+// bought, and their household demographics. Physical names stay TPC-DS; the entities in
+// `er.ttrm` give them logical names.
+
+def table store_sales { description: "Store sales (TPC-DS store_sales)",
+    primaryKey: ["ss_ticket_number"],
+    columns: [
+        def column ss_ticket_number { type: int, isKey: true, description: "Sales ticket" },
+        def column ss_customer_sk { type: int, optional: true, indexed: true, description: "The customer who bought" },
+        def column ss_net_paid { type: decimal, optional: true, description: "Net amount paid" }
+    ]
+}
+
+def table customer { description: "Customers (TPC-DS customer)",
+    primaryKey: ["c_customer_sk"],
+    columns: [
+        def column c_customer_sk { type: int, isKey: true, description: "Customer key" },
+        def column c_last_name { type: text, optional: true, description: "Last name" },
+        def column c_current_hdemo_sk { type: int, optional: true, indexed: true, description: "Current household" }
+    ]
+}
+
+def table household_demographics { description: "Household demographics (TPC-DS household_demographics)",
+    primaryKey: ["hd_demo_sk"],
+    columns: [
+        def column hd_demo_sk { type: int, isKey: true, description: "Household key" },
+        def column hd_buy_potential { type: text, optional: true, description: "Buy potential band" }
+    ]
+}
+
+// LQ §8 (L-20) — a db query in a schema'd file is `db.dbo.<name>`; another saved query reads it as `obj.dbo.<name>`.
+def query customer_tickets {
+    description: "Sales tickets per customer",
+    sourceText: """sql
+SELECT ss_customer_sk, COUNT(*) AS tickets FROM store_sales GROUP BY ss_customer_sk
+"""
+}
+
+def query frequent_customers {
+    description: "Customers with more than 10 tickets, from customer_tickets",
+    sourceText: """sql
+SELECT t.ss_customer_sk, t.tickets FROM obj.dbo.customer_tickets t WHERE t.tickets > 10
+"""
+}
