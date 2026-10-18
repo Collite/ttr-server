@@ -100,6 +100,49 @@ class LogicalQueryForeignKeyJoinSpec :
             return checkNotNull(state.get(model.version.value, query))
         }
 
+        "a db query written with a comma join + WHERE is not a bare join: PARSED (the check is the logical lane's)" {
+            val root = Files.createTempDirectory("lq-comma")
+            Files.writeString(root.resolve("db.ttrm"), db(secondKey = false))
+            Files.writeString(
+                root.resolve("queries.ttrm"),
+                "model query\n\ndef query comma_join {\n    sourceText: \"\"\"sql\n" +
+                    "SELECT s.ss_ticket_number, c.c_customer_sk FROM store_sales s, customer c " +
+                    "WHERE s.ss_billing_customer_sk = c.c_customer_sk\n\"\"\"\n}\n",
+            )
+            val source = FileBasedSource("lq-comma", 100, LocalFsStorage("lq-comma", root))
+            val model = ModelReconciler(ModelDescriptor(id = "c", name = "c")).reconcile(listOf(source.load())).model
+            val state = QueryParseState().also { it.reset(model.version.value, model.queries.keys) }
+            QueryParseWorker().also { runBlocking { it.parseAll(model, state).join() } }.close()
+            checkNotNull(
+                state.get(model.version.value, model.queries.keys.single()),
+            ).shouldBeInstanceOf<ParseStatus.ParseSuccess>()
+        }
+
+        "a logical query over an entity stacked on a comma-join db query: PARSED (the base query's own join is not the body's)" {
+            val root = Files.createTempDirectory("lq-comma-stacked")
+            Files.writeString(root.resolve("db.ttrm"), db(secondKey = false))
+            Files.writeString(
+                root.resolve("queries.ttrm"),
+                "model query\n\ndef query comma_join {\n    sourceText: \"\"\"sql\n" +
+                    "SELECT s.ss_ticket_number, c.c_customer_sk FROM store_sales s, customer c " +
+                    "WHERE s.ss_billing_customer_sk = c.c_customer_sk\n\"\"\"\n}\n",
+            )
+            Files.writeString(
+                root.resolve("er.ttrm"),
+                "model er\n\ndef entity billed { binding: { target: { query: comma_join } }, attributes: [\n" +
+                    "    def attribute ss_ticket_number { type: int, isKey: true },\n" +
+                    "    def attribute c_customer_sk { type: int, optional: true } ] }\n\n" +
+                    "def query billed_customers {\n    sourceText: \"\"\"sql\n" +
+                    "SELECT billed.c_customer_sk FROM billed\n\"\"\"\n}\n",
+            )
+            val source = FileBasedSource("lq-cs", 100, LocalFsStorage("lq-cs", root))
+            val model = ModelReconciler(ModelDescriptor(id = "cs", name = "cs")).reconcile(listOf(source.load())).model
+            val state = QueryParseState().also { it.reset(model.version.value, model.queries.keys) }
+            QueryParseWorker().also { runBlocking { it.parseAll(model, state).join() } }.close()
+            val logical = model.queries.keys.single { it.schemaCode == SchemaCode.ER }
+            checkNotNull(state.get(model.version.value, logical)).shouldBeInstanceOf<ParseStatus.ParseSuccess>()
+        }
+
         "an FK-only relation over one foreign key: PARSED (the key conditions the join)" {
             parsed(model(secondKey = false)).shouldBeInstanceOf<ParseStatus.ParseSuccess>()
         }

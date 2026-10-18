@@ -149,7 +149,9 @@ class QueryParseWorker(
      * (no `join:` pairs) is INFO at the ER level and is conditioned from the foreign key only at MAP_TO_PHYSICAL — where
      * two foreign keys between the same tables leave it unconditioned (`JOIN_AMBIGUOUS_RELATIONS`). The body is taken
      * to the physical level once, here, so that is refused at parse time rather than served as a Cartesian product.
-     * The stored plan stays the ER half's.
+     * The stored plan stays the ER half's. A physical pass that fails is not a refusal: the worker's handle does not yet
+     * carry the stored body of an entity stacked on another logical query (parse order), so such a failure says nothing
+     * about the served read, which translates against the full snapshot.
      */
     private fun physicalJoins(
         translator: Translator,
