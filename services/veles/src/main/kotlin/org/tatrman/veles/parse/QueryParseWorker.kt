@@ -103,6 +103,15 @@ class QueryParseWorker(
                 when (result) {
                     is ParseResult.Success ->
                         unconditionedJoins(result)
+                            ?: (
+                                if (lane ==
+                                    ProtoSchemaCode.ER
+                                ) {
+                                    physicalJoins(translator, query.sourceText, lang, params)
+                                } else {
+                                    null
+                                }
+                            )
                             ?: ParseStatus.ParseSuccess(result.plan.toByteArray())
                     is ParseResult.Failure -> ParseStatus.ParseFailure(message = "${result.code}: ${result.message}")
                 }
@@ -133,6 +142,31 @@ class QueryParseWorker(
             "$LOGICAL_QUERY_JOIN_UNRESOLVED: $reasons — a saved query's joins must be conditioned: join entities " +
                 "that one relation connects, or write the ON",
         )
+    }
+
+    /**
+     * LQ (L-3) — the physical half of [unconditionedJoins] for a logical query. A bare JOIN over an FK-only relation
+     * (no `join:` pairs) is INFO at the ER level and is conditioned from the foreign key only at MAP_TO_PHYSICAL — where
+     * two foreign keys between the same tables leave it unconditioned (`JOIN_AMBIGUOUS_RELATIONS`). The body is taken
+     * to the physical level once, here, so that is refused at parse time rather than served as a Cartesian product.
+     * The stored plan stays the ER half's.
+     */
+    private fun physicalJoins(
+        translator: Translator,
+        source: String,
+        lang: TranslatorLanguage,
+        params: List<SqlParam>,
+    ): ParseStatus.ParseFailure? {
+        val physical =
+            translator.parseToRelNode(
+                source,
+                lang,
+                targetSchema = ProtoSchemaCode.DB,
+                sourceSchema = ProtoSchemaCode.ER,
+                parameters = params,
+                strictLane = true,
+            )
+        return (physical as? ParseResult.Success)?.let { unconditionedJoins(it) }
     }
 
     /**

@@ -21,7 +21,9 @@ outside this repo could notice is in.
   `JOIN_AMBIGUOUS_RELATIONS`, `JOIN_KEY_NAME_COLLISION`). The translator leaves such a join unconditioned and warns;
   the worker stored the plan anyway, so an entity stacked on the query answered every reader with the Cartesian
   product, and nobody was told. An FK-only relation (`JOIN_RELATION_WITHOUT_PAIRS`, INFO) is conditioned from its
-  foreign key and still parses. Found by the independent review of the logical-queries adoption.
+  foreign key at MAP_TO_PHYSICAL, so a logical query's body is also taken to the physical level once at parse time:
+  one foreign key between the tables parses; two (`JOIN_AMBIGUOUS_RELATIONS` there) are refused the same way. Found by
+  the independent review of the logical-queries adoption.
 
 ### metadata / query / validate — logical queries: saved queries over entities, entities stacked on them
 
