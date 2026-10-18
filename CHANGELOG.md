@@ -16,31 +16,49 @@ outside this repo could notice is in.
 
 ## Unreleased
 
-### resolver — an adjective in front of a declared phrase is a mention of its own: „Měsíční“ is the month, never dropped (#237)
+### resolver — a word in front of a declared phrase is a mention of its own: „Měsíční“ is the month, never dropped (#237)
 
 „Měsíční tržby z tržiště v roce 2025“ came back with `tržby z tržiště` (the marketplace revenue measure), `roce` and
 `2025` — and nothing for „Měsíční“: no mention, no gap. A caller reading the lattice answered one total for a question
 asking for months. A declared multi-word phrase names its own extent, so the adjective in front of it was in no span,
-and the mention layer headed its leftovers at nouns only. „Akční tržby z tržiště“ and "Promotional marketplace revenue"
-lost their restriction the same way, and so did an adjective under a governed value or a proper-noun run.
+and the mention layer headed its leftovers at nouns only. „Akční tržby z tržiště“, "Promotional marketplace revenue"
+and "Stores with no marketplace revenue" lost their restriction the same way, and so did a modifier under a governed
+value or a proper-noun run.
 
-- An `amod` dependent that no span covers, hanging from a word a gated span does cover, is now proposed alone as an
-  unbound mention, flagged `DomainSpanCandidate.leftOut`.
-- The lookup round asks it like any leftover mention. Only an ATTRIBUTE or an OPERATOR may bind it: a row reading it as
-  an entity or a measure matched part of a longer term („Dnešní“ ~ `není skladem`, the stock measure). Such a row is
-  refused and recorded on the gap as a hypothesis tried.
-- A Czech grain adjective that binds a calendar attribute is the GROUPING (R6"), as "Monthly" is. On the Hartland demo
-  estate the estate's own grain words reach it: „Měsíční“ / „měsíčních“ → `date_dim.month`, „Čtvrtletní“ → `quarter`,
-  „Roční“ → `year`, „Týdenní“ → `week_seq`.
-- A word nothing binds is a G1: „Denní“ and „Pololetní“ (no day or half-year grain declared), „Akční“, "Promotional",
-  „Průměrné“ (no average operator declared).
-- Such a mention is never the SUBJECT (R9: `FrameRoles.Input.subject`), and it is not offered to the grounding
-  triggers: a word the NER did not type a date has nothing to ground, and a trigger row that only reads like it
-  („Čtvrtletní“ / `čtvrtletí`) would bind it with no gap.
-- Unchanged: the `silent-modifiers` list („Celkové“, "Total"); a word in an operator slot that is no operator
-  (`dalších 10 prodejen`, #58); a word a quoted literal hangs from; a universal-typed word („Letošní“, "Last year's"); a
-  declared adjective ("Monthly"); an adjective inside a one-word anchor's own phrase („Měsíční tržby“).
-- No wire change.
+- **One rule for the words a mention stands without** (`SpanProposal.detachable`), read by the retry (#204) and by
+  the new path alike: a head's determiners, its BARE adjectives and their conjuncts („Měsíční a čtvrtletní“). An
+  adjective with words of its own stays: what it governs is a mention or a value of its own, and "How many" / "How
+  much" is the count the slot hint reads. A word that restricts nothing vanishes by one test too
+  (`FrameRolePreps.restrictsNothing`): the `silent-modifiers` list, and now the `count-heads` (`many`, `kolik`).
+- Such a word in front of a declared phrase — in no span, hanging from a word a gated span covers — is proposed as an
+  unbound mention over its own words, flagged `DomainSpanCandidate.leftOut`; the lookup round asks it like any leftover.
+- **What it may bind is one rule too** (`MentionLayer.bindsModifier`), applied by the lookup round and by the re-gate
+  (`resolve.gate:v1`): an OPERATOR („Průměrné“ → `op:avg`), or — for a calendar adjective — an ATTRIBUTE, declared so
+  or of no declared kind, which R6" makes the GROUPING. Only a row that is the word's whole form: a partial match of a
+  longer term („Dnešní“ ~ `není skladem`, the stock measure; „měsíčních“ ~ `po měsících`) is no reading of it. An
+  adjective that reads as any other attribute stays a G1: no frame rule places it, and a bound mention with no role is
+  one no consumer reads. A refused row is recorded on the gap as a hypothesis tried.
+- R6" reads the calendar adjective in an adjective's place (`amod`, or a conjunct of one), by its surface as well as its
+  lemma, against a `grain-adjectives` table that now holds Czech stems (`měsíčn*`): an inflected form whose lemma the
+  analyser left blank still groups. It also fires on an attribute whose kind the registry did not declare.
+- A calendar adjective is never offered to the grounding triggers, declared word or left out: „Čtvrtletní“ is one edit
+  from the chrono trigger `čtvrtletí`, „Pololetní“ from `pololetí`, and neither names a period.
+- A left-out mention is never the SUBJECT (R9: `FrameRoles.Input.subject`). The lattice names the left-out mentions in
+  one rung-log entry, `{rung: "core", action: "left-out-modifier", mention_ids: [...]}`, which is what the re-gate reads.
+- First-person possessives join `silent-modifiers` (cs `naše` and its forms, en `our`): with determiners left out
+  too, „naše tržby z tržiště“ would otherwise ask what `naše` means.
+- On the Hartland demo estate as of ttr-demo#74, which declares the Czech grain adjectives in every case form,
+  „Měsíční“ binds `date_dim.month` as a declared word; on an estate that declares the grains only as adverbs, the
+  lookup round binds it through `měsíčně`. „Denní“ and „Pololetní“ (no day or half-year grain) and „Akční“ /
+  "Promotional" are G1s.
+- Unchanged: a word in an operator slot that is no operator (`dalších 10 prodejen`, #58); a word a quoted literal hangs
+  from; a universal-typed word („Letošní“, "Last year's"); an adjective inside a one-word anchor's own phrase.
+- Known limits: `Resolution` (the pre-lattice outcome) carries no binding a lookup round makes for an unbound mention —
+  a leftover or a left-out word; the lattice does. No consumer in this repository reads `Resolution.bindings` (golem-py
+  reads `resolution_state` and `awaiting`). An adjective whose only words of its own are adverbs ("very large") is not
+  proposed.
+- No wire change: the rung-log action is a new value of an existing string field.
+
 ### resolver — a store word reads by its role: a filter asks, a word that governs a store name is the dimension (ttr-demo#62)
 
 Where the lexicon gives one word two readings — a dimension (`er.entity.store`) and a fact a channel term is pinned to

@@ -335,30 +335,37 @@ No other rule produces both roles on one mention, so the pair is a signal: the r
 guess, and a consumer should hand the sentence to a reader that can weigh it. A grounding trigger
 under `po` (*"po roce 2020"* binds the time kernel) keeps FILTER.
 
-**An adjective in front of a declared phrase is a mention of its own (ttr-server#237).** A declared
-phrase names its own extent, so the adjective before it is in no span: in *„Měsíční tržby z tržiště
+**A word in front of a declared phrase is a mention of its own (ttr-server#237).** A declared
+phrase names its own extent, so a modifier before it is in no span: in *„Měsíční tržby z tržiště
 v roce 2025“* the phrase is `tržby z tržiště`, and the mention layer heads its leftovers at nouns.
 „Měsíční“ used to vanish, with no mention and no gap, and a question asking for months was answered
-as one total. Now an `amod` dependent that no span covers, hanging from a word a gated span does
-cover, is proposed alone as an unbound mention (`MentionLayer.leftOutModifiers`). That also covers an
-adjective under a governed value or a proper-noun run, which take nominals only.
+as one total; *no* in *Stores with no marketplace revenue* vanished the same way.
 
-- The lookup round asks it like any leftover, in the model-object and operator classes. Only an
-  ATTRIBUTE or an OPERATOR may bind it: the noun it modifies already has its span, so a row that reads
-  the adjective as an entity or a measure matched part of a longer term (*Dnešní* ~ `není skladem`) and
-  is refused. A grain adjective that binds a calendar attribute is the GROUPING (R6"), as *Monthly*
-  is. On hartland the estate's own grain words reach the Czech adjectives (`měsíčně`, `po měsících` →
-  *Měsíční*, *měsíčních*; `po čtvrtletích` → *Čtvrtletní*; `ročně` → *Roční*; `po týdnech` →
-  *Týdenní*).
-- A word nothing binds is a G1, so no fast path answers the question without it: *Denní*,
-  *Pololetní* (no day or half-year grain declared), *Akční*, *Promotional*.
-- It is never the SUBJECT (R9), and it is not offered to the grounding triggers: a word the NER did
-  not type a date has nothing to ground, and a trigger row that only reads like it (*Čtvrtletní* /
-  `čtvrtletí`) would bind it with no gap.
-- Unchanged: the `silent-modifiers` (`celkové`, `total`); a word in an operator slot, which leaves no
-  trace when it is no operator (`dalších 10 prodejen`, above); a word a quoted literal hangs from; a
-  universal-typed word (*Last year's*, *Letošní*); a declared adjective (*Monthly*), which is an
-  anchor of its own.
+- **Which words.** The ones the mention retry (#204) may leave out of a phrase, by the same rule
+  (`SpanProposal.detachable`): a head's determiners, its bare adjectives and their conjuncts. An
+  adjective with words of its own stays — what it governs is a mention or a value of its own, and
+  *How many* is the count the slot hint reads. A word that restricts nothing vanishes, by the same
+  test as in the retry: `silent-modifiers` and `count-heads`. Every other one, hanging from a word a
+  gated span covers and in no span itself, is an unbound mention (`MentionLayer.leftOutModifiers`).
+- **What it may bind** (`MentionLayer.bindsModifier`, read by the lookup round and the re-gate): an
+  operator (*Průměrné* → the average), or, for a calendar adjective, an attribute — which R6" makes
+  the GROUPING — and only through a row that is the word's whole form. A row that matches part of a
+  longer term (*Dnešní* ~ `není skladem`) is no reading of the word. An adjective reading as any
+  other attribute stays a G1: no frame rule places it, and a binding with no role would be dropped by
+  every consumer.
+- **R6"** reads a calendar adjective in an adjective's place — `amod`, or a conjunct of one — by its
+  surface as well as its lemma (`grain-adjectives` holds Czech stems), and on an attribute of no
+  declared kind as well.
+- A calendar adjective is never offered to the grounding triggers: *Čtvrtletní* reads like
+  `čtvrtletí`, *Pololetní* like `pololetí`, and neither is a period. A left-out mention is never the
+  SUBJECT (R9).
+- On hartland (ttr-demo#74) the Czech grain adjectives are declared words in every case form, so
+  *Měsíční* binds the month in the broad pass; an estate that declares only `měsíčně` gets the same
+  answer from the lookup round. *Denní*, *Pololetní* (no such grain), *Akční*, *Promotional* and *no*
+  are G1s.
+- Unchanged: a word in an operator slot, which leaves no trace when it is no operator (`dalších 10
+  prodejen`, above); a word a quoted literal hangs from; a universal-typed word (*Last year's*,
+  *Letošní*).
 
 ## A mention is also looked up by its dictionary form
 
