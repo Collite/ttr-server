@@ -235,18 +235,20 @@ class QueryServiceImpl(
                                     effectiveSchemaLabel = SCHEMA_DB
                                     val requiredParams = dbParsed.context.parametersList.toList()
                                     val fp = PredictedFingerprintComputer.compute(dbParsed.plan)
-                                    cache.record(
-                                        key,
-                                        CachedPlan(
-                                            erPlan = PlanNode.getDefaultInstance(),
-                                            requiredParameters = requiredParams,
-                                            predictedSchemaFingerprint = fp,
-                                            cachedAt = Instant.now(),
-                                            effectiveSchema = SchemaCode.DB,
-                                            physicalPlan = dbParsed.plan,
-                                            detectionMessages = resolution.detectionMessages,
-                                        ),
-                                    )
+                                    if (!readsSavedQuery(request)) {
+                                        cache.record(
+                                            key,
+                                            CachedPlan(
+                                                erPlan = PlanNode.getDefaultInstance(),
+                                                requiredParameters = requiredParams,
+                                                predictedSchemaFingerprint = fp,
+                                                cachedAt = Instant.now(),
+                                                effectiveSchema = SchemaCode.DB,
+                                                physicalPlan = dbParsed.plan,
+                                                detectionMessages = resolution.detectionMessages,
+                                            ),
+                                        )
+                                    }
                                     Triple(
                                         PlanNode.getDefaultInstance(),
                                         dbValidated.plan,
@@ -387,7 +389,7 @@ class QueryServiceImpl(
                 predictedSchemaFingerprint = "",
                 cachedAt = Instant.now(),
             )
-        recordErPlan(key, cached)
+        recordErPlan(request, key, cached)
         return erParsed.plan
     }
 
@@ -701,7 +703,7 @@ class QueryServiceImpl(
                             physicalPlan = dbParsed.plan,
                             detectionMessages = resolution.detectionMessages,
                         )
-                    cache.record(key, cachedPlan)
+                    if (!readsSavedQuery(request)) cache.record(key, cachedPlan)
 
                     return CompileResponse
                         .newBuilder()
@@ -791,7 +793,7 @@ class QueryServiceImpl(
                             effectiveSchema = SchemaCode.ER,
                             detectionMessages = resolution.detectionMessages,
                         )
-                    recordErPlan(key, cachedPlan)
+                    recordErPlan(request, key, cachedPlan)
 
                     return CompileResponse
                         .newBuilder()
@@ -913,6 +915,7 @@ class QueryServiceImpl(
 
         val requiredParameters = erParsed.context.parametersList.toList()
         recordErPlan(
+            request,
             key,
             CachedPlan(
                 erPlan = erParsed.plan,
@@ -930,13 +933,15 @@ class QueryServiceImpl(
      * Cache an ER plan — unless it carries an expanded logical-query body (LQ, contract L-8). Unexpanded, the
      * cached plan scans the stacked entity and every run's DB re-entry inlines the body from the live model;
      * expanded, the body would be frozen in the cache, and the key's model version (the caller's, often unset)
-     * does not move with a model swap. Such a plan is recompiled on every run instead.
+     * does not move with a model swap. Such a plan is recompiled on every run instead. The same holds for a text
+     * that reads a saved query by name ([readsSavedQuery]).
      */
     private fun recordErPlan(
+        request: RunRequest,
         key: CacheKey,
         plan: CachedPlan,
     ) {
-        if (!carriesExpandedBody(plan.erPlan)) cache.record(key, plan)
+        if (!carriesExpandedBody(plan.erPlan) && !readsSavedQuery(request)) cache.record(key, plan)
     }
 
     /**
@@ -1342,6 +1347,18 @@ class QueryServiceImpl(
     )
 
     companion object {
+        /**
+         * LQ (L-28) — whether [request] is SQL that reads a saved query by name (`obj.<namespace>.<name>`). Translate
+         * inlines that query's stored plan as it parses, so a compiled plan would freeze the body as of this model,
+         * and the cache key's model version (the caller's, often unset) does not move with a model swap: like an
+         * expanded logical body, such a text is recompiled on every run. A match inside a string literal or a comment
+         * only costs a cache entry. A stored plan run by name (`REL_NODE`) is keyed by its own bytes and is cached.
+         */
+        internal fun readsSavedQuery(request: RunRequest): Boolean =
+            request.sourceLanguage == Language.SQL && SAVED_QUERY_REFERENCE.containsMatchIn(request.source)
+
+        private val SAVED_QUERY_REFERENCE = Regex("""(?i)(?<![\w$])["`\[]?obj["`\]]?\s*\.""")
+
         /** LQ (L-31) — whether [m] holds, anywhere, an entity scan: a logical query's stored plan does, a db query's not. */
         internal fun readsEntities(m: com.google.protobuf.Message): Boolean =
             (m is org.tatrman.plan.v1.ScanNode && m.getObject().schemaCode == SchemaCode.ER) ||

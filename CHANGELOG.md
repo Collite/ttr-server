@@ -16,6 +16,12 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+- **query** — a SQL text that reads a saved query by name (`obj.…`) is no longer cached. Translate inlines the read
+  query's stored plan as it parses (since the run-time fill-in), so the cached plan froze the body as of that model,
+  and the cache key's model version (often unset by callers) does not move with a model swap: a changed, FAILED or
+  removed read query kept being served until an operator refresh or the TTL. Such a text is recompiled every run, like
+  an expanded logical body. `RunSavedQuery`'s stored plan is keyed by its own bytes and stays cached.
+
 - **query — `RunSavedQuery`** (new RPC, LQ-T7·S2, L-31): run a saved query by name, from the plan veles stored when it
   parsed it. The request is `RunSavedQueryRequest` (`qualified_name`, `context`, `execution_options`, `bypass_cache`,
   `row_window`). There is no re-parse of the query's text, and a query it reads is already inlined.

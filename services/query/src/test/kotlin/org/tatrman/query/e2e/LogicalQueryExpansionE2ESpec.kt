@@ -189,6 +189,51 @@ class LogicalQueryExpansionE2ESpec :
             h.parses.map { it.targetSchema to it.expandLogicalBodies } shouldBe listOf(SchemaCode.DB to false)
         }
 
+        // LQ (L-28): translate inlines a saved query a text reads by name, so a cached plan would freeze its body.
+        "Run — a text that reads a saved query is not cached, ER or DB path; an ordinary one still is" {
+            val plain = expandedEr.project.input
+            val er = Harness(erPlan = plain)
+            val reader = request.toBuilder().setSource("SELECT r.revenue FROM obj.query.shopper_revenue r").build()
+            er.service.run(reader).toList()
+            er.service.run(reader).toList()
+            er.parses.count { it.targetSchema == SchemaCode.ER } shouldBe 2
+
+            val db = Harness(detected = SchemaCode.DB)
+            val dbReader = request.toBuilder().setSource("SELECT r.revenue FROM obj.dbo.store_revenue r").build()
+            db.service.run(dbReader).toList()
+            db.service.run(dbReader).toList()
+            db.parses.count { it.targetSchema == SchemaCode.DB } shouldBe 2
+
+            val control = Harness(detected = SchemaCode.DB)
+            val ordinary = request.toBuilder().setSource("SELECT ss_net_paid FROM store_sales").build()
+            control.service.run(ordinary).toList()
+            control.service.run(ordinary).toList()
+            control.parses.count { it.targetSchema == SchemaCode.DB } shouldBe 1
+        }
+
+        "readsSavedQuery — every spelling of an obj reference, and nothing else" {
+            fun reads(sql: String) = QueryServiceImpl.readsSavedQuery(request.toBuilder().setSource(sql).build())
+            for (sql in listOf(
+                "SELECT * FROM obj.query.x",
+                "SELECT * FROM OBJ.query.x",
+                "SELECT * FROM \"obj\".\"query\".\"x\"",
+                "SELECT * FROM [obj].[query].[x]",
+                "SELECT * FROM obj . dbo . x",
+            )) {
+                reads(sql) shouldBe true
+            }
+            for (sql in listOf("SELECT objective FROM t", "SELECT x FROM sobj.y", "SELECT t.object_id FROM t")) {
+                reads(sql) shouldBe false
+            }
+            QueryServiceImpl.readsSavedQuery(
+                request
+                    .toBuilder()
+                    .setSource("x")
+                    .setSourceLanguage(Language.REL_NODE)
+                    .build(),
+            ) shouldBe false
+        }
+
         "Compile — the ER-half parse asks for the expansion too" {
             val h = Harness()
             h.service.compile(request)
