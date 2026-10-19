@@ -1,0 +1,19 @@
+// hartland's programs and event schemas — design 17 §1 (binding; D-26, D-104), as written
+// for grammar 0.16 (`model automation`; `on_event` for `on-event`, R5).
+package hartland.automation
+model automation
+
+// ---- programs (binding; D-26) ----
+def program morning_release        { recipe: release_order,  port: none,  mode: batch,    as_of: run,   deliver: { digest: { by: who, per: day } }, schedule: "06:00 Europe/Prague" }
+def program release_on_placement   { recipe: release_order,  port: key,   mode: on_event, as_of: event, deliver: immediate }
+
+def program decide_on_request      { recipe: decide_return,  port: event, event: schema.line_received,  mode: on_event, as_of: event }
+def program decide_catch_up        { recipe: decide_return,  port: none,  mode: batch,    as_of: run,   schedule: "06:30 Europe/Prague" }
+def program inbound_on_receipt     { recipe: monitor_inbound, port: event, event: schema.receipt_posted, mode: on_event, as_of: event }
+def program inbound_daily          { recipe: monitor_inbound, port: none, mode: batch,    as_of: run,   schedule: "07:00 Europe/Prague" }
+def program settle_on_document     { recipe: settle,          port: event, event: schema.settlement_posted, mode: on_event, as_of: event }
+def program settle_daily           { recipe: settle,          port: none, mode: batch,    as_of: run,   schedule: "07:30 Europe/Prague" }
+
+def schema line_received    { columns: [def column line_id { type: return_request_line.line_id }] }   // the generator posts one event per line
+def schema receipt_posted   { columns: [def column line_id { type: return_request_line.line_id }] }
+def schema settlement_posted{ columns: [def column line_id { type: return_request_line.line_id }] }
