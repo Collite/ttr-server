@@ -228,6 +228,9 @@ class TranslatorServiceImpl(
                 sourceLanguage = request.sourceLanguage,
                 statedSchema = request.statedSchema,
                 model = handle,
+                // LQ (L-28): a saved-query reference (`obj.<namespace>.<name>`) names neither lane, and the parse
+                // fills it in from the stored plan; counted as a table, it made every reader `schema_object_unknown`.
+                savedQueryRefsNeutral = true,
             )
 
         val builder =

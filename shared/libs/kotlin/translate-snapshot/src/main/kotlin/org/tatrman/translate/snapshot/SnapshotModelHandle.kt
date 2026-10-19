@@ -95,9 +95,10 @@ class SnapshotModelHandle(
          * [savedQueriesAsObj] (LQ, contracts L-20/L-21) — also serve every **parsed** saved query to the SQL surface
          * under its obj name, `obj.<namespace>.<name>` (`er.query.x` and `query.x` → `obj.query.x`, `db.<schema>.x` →
          * `obj.<schema>.x`), with its stored plan as the body, so a saved query that reads another one parses. Two
-         * saved queries with one obj name are served under neither. Only the metadata worker turns this on — it parses
-         * a model's saved queries in dependency order; at run time a saved query is read through its stored plan, never
-         * by name (L-22), so the translate service keeps the default.
+         * saved queries with one obj name are served under neither. The metadata worker turns this on for each wave of
+         * its dependency-ordered parse; the translate service turns it on at run time (L-28), where a pattern, the
+         * lattice or free SQL sends a saved query's text, and that text may read another saved query. The snapshot
+         * carries a stored plan only for a PARSED query, so a FAILED or PENDING one is served under no name.
          */
         fun from(
             snapshot: ModelSnapshot,

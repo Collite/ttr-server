@@ -16,6 +16,17 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+- **translate** — at run time a saved query can read another one (LQ, L-28). The handle translate parses with now
+  serves every PARSED saved query under its obj name (`obj.query.<name>` for a logical or `model query` query,
+  `obj.<schema>.<name>` for a db query), with its stored plan as the body, as veles' worker does during its
+  dependency-ordered parse. A query's text sent through `query.Run` (a Golem pattern, the lattice, free SQL) that
+  reads another saved query therefore parses, with the body inlined from the stored plan: validate sees the tables
+  and entities it really reads, so row policies and masks apply. Before, it failed `Object '<name>' not found within
+  'obj.<namespace>'`. A FAILED or PENDING query has no stored plan in the snapshot and is not served; text that names
+  no saved query parses byte-identically. Schema detection leaves `obj.*` references out of its verdict (the stated
+  schema stands; tables and entities beside them still vote); it reported each one `schema_object_unknown`, and
+  `query.Run` refused the text before the parse. `/status`'s `saved_query_count` now counts the queries served under
+  `obj.query`; it was always 0.
 - **metadata (veles)** — a saved query with a string literal outside Latin-1 (`'Poštovné'`, a `TRANSLATE` over `čšž`)
   parses again. Since the dependency-ordered parse, the worker's first Calcite use in the process was
   `Translator.savedQueryReferences`, which on 0.12.1 (unlike the parse entry points) did not promote Calcite's literal
