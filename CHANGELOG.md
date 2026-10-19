@@ -16,6 +16,19 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+- **query — `RunSavedQuery`** (new RPC, LQ-T7·S2, L-31): run a saved query by name, from the plan veles stored when it
+  parsed it. The request is `RunSavedQueryRequest` (`qualified_name`, `context`, `execution_options`, `bypass_cache`,
+  `row_window`). There is no re-parse of the query's text, and a query it reads is already inlined.
+  - The stored plan joins `Run` as a `REL_NODE` source in its own lane. A logical query (`er.query.<name>`) takes the
+    ER half: Validate pass 1, MAP_TO_PHYSICAL, then Validate pass 2. A db query takes the DB half. The caller's roles,
+    row policies and row window apply exactly as for `Run`, and `context.parameters` bind declared parameters by
+    name (`parameter_unbound` from Validate otherwise).
+  - Refusals come as an error batch: `saved_query_not_found`, `saved_query_pending`, `saved_query_parse_failed`, and
+    `saved_query_unavailable` when no metadata service is reachable.
+  - Entitlement is Validate's alone for now. Nothing calls it yet; it is for automation agents and workflows.
+  - query now reads veles' `GetQuery` for it: `veles.host` / `veles.port` (`VELES_GRPC_HOST` / `VELES_GRPC_PORT`,
+    default `veles:7261`, the in-cluster service name).
+
 - **metadata (veles), translate, query** — pins `ttr-translator` / `ttr-plan-proto` **0.12.4** (LQ-T6, L-30): a logical
   query read by another one is a temporary entity whose relations follow its columns. `FROM obj.query.spend_per_shopper
   r JOIN shopper`, where the query passes `sale.shopper_id` through as its `GROUP BY` key, is conditioned through the

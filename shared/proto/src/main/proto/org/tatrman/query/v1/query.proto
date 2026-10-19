@@ -71,6 +71,26 @@ service QueryService {
 
   // Service-level status (mirrors veles / dispatch / worker shape).
   rpc GetStatus(GetStatusRequest) returns (GetStatusResponse);
+
+  // Run a saved query by name, from its stored plan (LQ, contract L-31): no re-parse, and any saved query it reads
+  // already inlined. A logical query (written over entities) is mapped to tables as the ER half maps any ER plan;
+  // Validate applies the caller's roles and row policies exactly as for Run. For automation agents and workflows.
+  // Refusals travel as an error batch, as Run's do: saved_query_not_found, saved_query_pending,
+  // saved_query_parse_failed, saved_query_unavailable (no metadata service reachable), and Validate's
+  // parameter_unbound for a declared parameter the context does not bind.
+  rpc RunSavedQuery(RunSavedQueryRequest) returns (stream org.tatrman.worker.v1.ResultBatch);
+}
+
+message RunSavedQueryRequest {
+  // The saved query, as the metadata service names it: `er.query.<name>` (a logical query), `db.<schema>.<name>`
+  // (a db query), or a `model query` file's query.
+  org.tatrman.plan.v1.QualifiedName qualified_name = 1;
+  // As RunRequest.context. `parameters` bind the query's declared parameters by name.
+  org.tatrman.plan.v1.PipelineContext context = 2;
+  org.tatrman.worker.v1.ExecutionOptions execution_options = 3;
+  bool bypass_cache = 4;
+  RowWindow row_window = 5;
+  reserved 6 to 10;
 }
 
 // =============================================================================

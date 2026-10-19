@@ -3,13 +3,16 @@ package org.tatrman.query.grpc
 
 import com.google.protobuf.kotlin.toByteString
 import org.tatrman.dispatch.v1.DispatchRequest
+import org.tatrman.meta.v1.GetQueryRequest
 import org.tatrman.meta.v1.OverallStatus
+import org.tatrman.meta.v1.ParseStatus as MetadataParseStatus
 import org.tatrman.common.v1.ResponseMessage
 import org.tatrman.common.v1.Severity
 import org.tatrman.plan.v1.LimitOffsetNode
 import org.tatrman.plan.v1.ParameterBinding
 import org.tatrman.plan.v1.PipelineContext
 import org.tatrman.plan.v1.PlanNode
+import org.tatrman.plan.v1.QualifiedName
 import org.tatrman.plan.v1.Warning
 import org.tatrman.query.v1.CacheStatus
 import org.tatrman.query.v1.CompileResponse
@@ -18,11 +21,13 @@ import org.tatrman.query.v1.GetStatusResponse
 import org.tatrman.query.v1.QueryServiceGrpcKt
 import org.tatrman.query.v1.RowWindow
 import org.tatrman.query.v1.RunRequest
+import org.tatrman.query.v1.RunSavedQueryRequest
 import org.tatrman.translate.v1.DetectSchemaRequest
 import org.tatrman.translate.v1.Language
 import org.tatrman.translate.v1.ParseRequest
 import org.tatrman.translate.v1.ParseResponse
 import org.tatrman.plan.v1.SchemaCode
+import org.tatrman.plan.v1.schemaCodeToToken
 import org.tatrman.translate.v1.SchemaDecision
 import org.tatrman.translate.v1.TranslateRequest
 import org.tatrman.translate.v1.TranslateResponse
@@ -36,6 +41,7 @@ import org.tatrman.worker.v1.ResultBatch
 import io.opentelemetry.api.GlobalOpenTelemetry
 import io.opentelemetry.api.OpenTelemetry
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
 import org.slf4j.LoggerFactory
@@ -45,6 +51,7 @@ import org.tatrman.query.cache.CacheKey
 import org.tatrman.query.cache.CachedPlan
 import org.tatrman.query.cache.CompiledPlanCache
 import org.tatrman.query.client.DispatcherClient
+import org.tatrman.query.client.SavedQueryClient
 import org.tatrman.query.client.TranslatorClient
 import org.tatrman.query.client.TranslatorDetectClient
 import org.tatrman.query.client.TranslatorTranslateClient
@@ -80,6 +87,7 @@ class QueryServiceImpl(
     private val cache: CompiledPlanCache,
     private val retry: RetryPolicy,
     openTelemetry: OpenTelemetry = GlobalOpenTelemetry.get(),
+    rawSavedQueries: SavedQueryClient? = null,
 ) : QueryServiceGrpcKt.QueryServiceCoroutineImplBase() {
     private val tracer = openTelemetry.getTracer("query")
 
@@ -101,6 +109,10 @@ class QueryServiceImpl(
         ValidatorClient { req -> tracer.withSpan("query.validate") { rawValidator.validate(req) } }
     private val dispatcher =
         DispatcherClient { req -> rawDispatcher.dispatch(req).tracedFlow(tracer, "query.dispatch") }
+    private val savedQueries =
+        rawSavedQueries?.let { raw ->
+            SavedQueryClient { req -> tracer.withSpan("query.get_saved_query") { raw.getQuery(req) } }
+        }
 
     private val activeRuns = AtomicInteger(0)
 
@@ -950,6 +962,105 @@ class QueryServiceImpl(
     override suspend fun translate(request: TranslateRequest): TranslateResponse =
         translatorTranslate.translate(request)
 
+    /**
+     * LQ (contract L-31) — run a saved query by name, from the plan the metadata service stored when it parsed it: no
+     * re-parse, and a query it reads is already inlined there. The stored plan joins [run] as a `REL_NODE` source in
+     * its own lane — a logical query's plan reads entities and takes the ER half (EXPAND_LOGICAL_BODIES, Validate pass
+     * 1, MAP_TO_PHYSICAL, Validate pass 2), a db query's takes the DB half — so the caller's roles, row policies and
+     * row window apply exactly as for any Run, and `context.parameters` bind declared parameters by name (an unbound
+     * one is Validate's `parameter_unbound`). Entitlement is Validate's alone in v1; a package or area check is to be
+     * decided before the first caller. A query that is unknown, still parsing, or failed is refused here, with the
+     * codes TransDSL's `query_ref` uses, renamed `saved_query_*`.
+     */
+    override fun runSavedQuery(request: RunSavedQueryRequest): Flow<ResultBatch> =
+        flow {
+            val context = ensureCorrelationId(request.context)
+            when (val resolved = resolveSavedQuery(request.qualifiedName)) {
+                is SavedQueryResolution.Refused -> emit(errorBatch(resolved.code, resolved.message, context))
+                is SavedQueryResolution.Stored ->
+                    emitAll(
+                        run(
+                            RunRequest
+                                .newBuilder()
+                                .setSource(String(resolved.plan.toByteArray(), Charsets.ISO_8859_1))
+                                .setSourceLanguage(Language.REL_NODE)
+                                .setSourceSchema(if (readsEntities(resolved.plan)) SchemaCode.ER else SchemaCode.DB)
+                                .setContext(context)
+                                .setExecutionOptions(request.executionOptions)
+                                .setBypassCache(request.bypassCache)
+                                .setRowWindow(request.rowWindow)
+                                .build(),
+                        ),
+                    )
+            }
+        }
+
+    private sealed interface SavedQueryResolution {
+        data class Stored(
+            val plan: PlanNode,
+        ) : SavedQueryResolution
+
+        data class Refused(
+            val code: String,
+            val message: String,
+        ) : SavedQueryResolution
+    }
+
+    private suspend fun resolveSavedQuery(qname: QualifiedName): SavedQueryResolution {
+        val client =
+            savedQueries
+                ?: return SavedQueryResolution.Refused(
+                    "saved_query_unavailable",
+                    "this query service reads no metadata service, so it cannot run a saved query by name",
+                )
+        val name = listOf(schemaCodeToToken(qname.schemaCode), qname.namespace, qname.name).filter { it.isNotEmpty() }
+        val shown = name.joinToString(".")
+        if (qname.name.isEmpty()) return SavedQueryResolution.Refused("saved_query_not_found", "no saved query named")
+        val outcome =
+            retry.execute("veles.get_query") {
+                client.getQuery(
+                    GetQueryRequest
+                        .newBuilder()
+                        .setQualifiedName(qname)
+                        .setIncludeCanonicalForm(true)
+                        .build(),
+                )
+            }
+        val response =
+            when (outcome) {
+                is RetryOutcome.Success -> outcome.value
+                is RetryOutcome.Failure ->
+                    return SavedQueryResolution.Refused(
+                        "saved_query_unavailable",
+                        "could not reach the metadata service to read saved query '$shown': ${outcome.cause.message}",
+                    )
+            }
+        val codes = response.messagesList.map { it.code }
+        return when {
+            "metadata_not_ready" in codes ->
+                SavedQueryResolution.Refused(
+                    "saved_query_pending",
+                    "the metadata service has no model yet; retry shortly",
+                )
+            "object_not_found" in codes ->
+                SavedQueryResolution.Refused("saved_query_not_found", "'$shown' is not a known saved query")
+            response.parseStatus == MetadataParseStatus.PARSE_STATUS_PARSED && response.hasCanonicalForm() ->
+                SavedQueryResolution.Stored(response.canonicalForm)
+            response.parseStatus == MetadataParseStatus.PARSE_STATUS_PENDING ->
+                SavedQueryResolution.Refused(
+                    "saved_query_pending",
+                    "saved query '$shown' is still being parsed; retry shortly",
+                )
+            response.parseStatus == MetadataParseStatus.PARSE_STATUS_FAILED ->
+                SavedQueryResolution.Refused(
+                    "saved_query_parse_failed",
+                    "saved query '$shown' failed to parse: ${response.parseErrorMessage}",
+                )
+            else ->
+                SavedQueryResolution.Refused("saved_query_parse_failed", "saved query '$shown' has no stored plan")
+        }
+    }
+
     override suspend fun getStatus(request: GetStatusRequest): GetStatusResponse {
         val stats = cache.stats()
         return GetStatusResponse
@@ -1231,6 +1342,18 @@ class QueryServiceImpl(
     )
 
     companion object {
+        /** LQ (L-31) — whether [m] holds, anywhere, an entity scan: a logical query's stored plan does, a db query's not. */
+        internal fun readsEntities(m: com.google.protobuf.Message): Boolean =
+            (m is org.tatrman.plan.v1.ScanNode && m.getObject().schemaCode == SchemaCode.ER) ||
+                m.allFields.any { (field, value) ->
+                    when {
+                        field.isRepeated ->
+                            (value as List<*>).any { it is com.google.protobuf.Message && readsEntities(it) }
+                        value is com.google.protobuf.Message -> readsEntities(value)
+                        else -> false
+                    }
+                }
+
         /** LQ — whether [m] holds, anywhere, a boundary Project stamped `expanded_from` (an expanded logical query). */
         internal fun carriesExpandedBody(m: com.google.protobuf.Message): Boolean =
             (m is org.tatrman.plan.v1.ProjectNode && m.hasExpandedFrom()) ||
