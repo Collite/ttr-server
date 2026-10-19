@@ -19,6 +19,7 @@ import kotlinx.coroutines.sync.withPermit
 import org.slf4j.LoggerFactory
 import org.tatrman.plan.v1.PlanNode
 import org.tatrman.plan.v1.schemaCodeToToken
+import org.tatrman.translator.framework.CalciteCharset
 import org.tatrman.translator.framework.EntityMapping
 import org.tatrman.translator.framework.ModelHandle
 import org.tatrman.translator.joiner.JoinerMessages
@@ -57,6 +58,10 @@ class QueryParseWorker(
     ): Job =
         scope.launch {
             if (model.queries.isEmpty()) return@launch
+            // Calcite freezes its literal charset when it first loads; the translator's parse entry points promote it
+            // to UTF-8 first, but `Translator.savedQueryReferences` (SavedQueryOrder, below) does not. Run first in the
+            // process, it left Calcite on ISO-8859-1, and every body with a literal outside Latin-1 (`č ř š ž`) failed.
+            CalciteCharset.ensureUtf8()
             val handle = queryPathHandle(model)
             val stacked = stackedEntities(handle, model.queries.keys.mapTo(HashSet()) { it.toProto() })
             val version = model.version.value
