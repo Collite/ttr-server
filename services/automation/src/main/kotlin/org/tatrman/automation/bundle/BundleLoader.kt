@@ -1,0 +1,330 @@
+// SPDX-License-Identifier: Apache-2.0
+package org.tatrman.automation.bundle
+
+import kotlinx.serialization.SerializationException
+import org.slf4j.LoggerFactory
+import org.tatrman.automation.identity.AuthorMap
+import org.tatrman.automation.identity.GrantDecl
+import org.tatrman.automation.identity.IdentityDecl
+import org.tatrman.automation.identity.Who
+import org.tatrman.ttr.metadata.model.AutomationSchema
+import org.tatrman.ttr.metadata.model.GrantWho
+import org.tatrman.ttr.metadata.model.ModelDescriptor
+import org.tatrman.ttr.metadata.model.RunAsRef
+import org.tatrman.ttr.metadata.model.World
+import org.tatrman.ttr.metadata.model.WorldSchema
+import org.tatrman.ttr.metadata.reconcile.ModelReconciler
+import org.tatrman.ttr.metadata.source.FileBasedSource
+import org.tatrman.ttr.metadata.source.LoadWarning
+import org.tatrman.ttr.metadata.source.LocalFsStorage
+import java.nio.file.Files
+import java.nio.file.Path
+import java.time.Clock
+import kotlin.io.path.isDirectory
+import kotlin.io.path.name
+import kotlin.io.path.readText
+import kotlin.io.path.relativeTo
+import org.tatrman.automation.identity.RunAsRef as GrantRunAs
+
+/**
+ * `/refresh`'s load (AU-server S0.2 T2; contracts §1.1, D-47, D-62): a checked-out commit → the `ttr-metadata`
+ * snapshot of `model/` + `automation/` (the generated `catalog/<recipe>.ttrm` of every recipe bundle rides the
+ * automation root's walk) → one [LoadedRecipe] per `automation/<r>/<r>.bundle/manifest.json`, its islands read
+ * into memory and checked against the manifest's sha256 → the [Bundle] value. Any refusal collects every finding
+ * before it throws [BundleInvalidException] (`422 bundle-invalid { diagnostics }`), so one refresh names them all.
+ *
+ * **What refuses a commit:** a manifest that is not `schemaVersion` 3, carries no `recipe`, names another recipe
+ * than its directory, or lists an island whose file is missing or whose sha256 differs; a deployment naming an
+ * unknown program or process, a program without a recipe bundle, or a target that is neither `native` nor an
+ * executor of its world; two worlds declaring one deployment name; and every load error of the automation half —
+ * a file under `automation/`, a `model world` file, an automation-validator or `ttr/automation-*` / `ttr/states-*`
+ * finding (a malformed grant or deployment is DROPPED by `ttr-metadata` and reported, so it refuses here: a
+ * deployment must never vanish silently). The model's other issues are warnings: Veles serves that model and
+ * owns its diagnostics. The package-layout codes are never findings — the hartland convention (one flat package
+ * per area, `layout = "off"`) declares packages that differ from the directory by design.
+ */
+class BundleLoader(
+    private val authorMap: AuthorMap,
+    private val clock: Clock = Clock.systemUTC(),
+) {
+    fun load(
+        checkout: Checkout,
+        kind: BundleKind,
+    ): Bundle {
+        val modelRoot = checkout.root.resolve(MODEL_DIR)
+        val automationRoot = checkout.root.resolve(AUTOMATION_DIR)
+        val findings = mutableListOf<String>()
+        val warnings = mutableListOf<String>()
+        if (!automationRoot.isDirectory()) findings += "no `$AUTOMATION_DIR/` directory at ${checkout.commit.take(12)}"
+
+        val snapshots =
+            listOf(MODEL_DIR to modelRoot, AUTOMATION_DIR to automationRoot)
+                .filter { (_, root) -> root.isDirectory() }
+                .map { (id, root) -> FileBasedSource(id, 100, LocalFsStorage(id, root)).load() }
+        val result = ModelReconciler(ModelDescriptor(id = "automation", name = "automation")).reconcile(snapshots)
+        val worldFiles =
+            snapshots
+                .flatMap {
+                    it.loadedFiles
+                }.filter { it.schemaCode == "world" }
+                .map { it.storageFile.path }
+        for (e in snapshots.flatMap { it.errors } + result.errors) {
+            if (LAYOUT_CODES.any { e.message.startsWith(it) }) continue
+            if (isAutomationFinding(e, automationRoot, worldFiles)) {
+                findings += render(e, checkout.root)
+            } else {
+                warnings +=
+                    render(e, checkout.root)
+            }
+        }
+        val model = result.model
+
+        val automation = model.schemas["automation"] as? AutomationSchema ?: AutomationSchema()
+        val worlds = (model.schemas["world"] as? WorldSchema)?.worlds?.values.orEmpty()
+        val programs = automation.programs.associateBy { it.qname.name }
+        val actions = automation.actions.associateBy { it.qname.name }
+        val recipes = loadRecipes(automationRoot, findings)
+
+        val deployments = linkedMapOf<String, org.tatrman.ttr.metadata.model.WorldDeployment>()
+        val processes = linkedMapOf<String, org.tatrman.ttr.metadata.model.WorldProcess>()
+        val executors = linkedMapOf<String, String>()
+        for (w in worlds) {
+            w.processes.forEach { processes[it.qname.name] = it }
+            w.executors.forEach { x -> x.extendsRef?.let { executors[x.qname.name] = it } }
+            for (d in w.deployments) {
+                val name = d.qname.name
+                if (deployments.put(name, d) != null) findings += "deployment $name: declared by two worlds"
+                checkDeployment(
+                    d,
+                    w,
+                    programs.keys,
+                    processes.keys +
+                        w.processes.map {
+                            it.qname.name
+                        },
+                    recipes.keys,
+                    programs,
+                    findings,
+                )
+            }
+        }
+        for (p in programs.values) {
+            val recipe = p.recipe
+            if (recipe != null &&
+                recipe !in recipes
+            ) {
+                warnings += "program ${p.qname.name}: recipe $recipe has no bundle yet"
+            }
+        }
+
+        if (findings.isNotEmpty()) throw BundleInvalidException(findings)
+        val author = authorMap.principalOf(checkout.authorEmail, checkout.authorName)
+        return Bundle(
+            id = "${kind.wire}:${checkout.branch}@${checkout.commit.take(12)}",
+            kind = kind,
+            branch = checkout.branch,
+            commit = checkout.commit,
+            author = author,
+            modelFp = modelFingerprint(modelRoot),
+            loadedAt = clock.instant(),
+            model = model,
+            recipes = recipes,
+            programs = programs,
+            actions = actions,
+            deployments = deployments,
+            processes = processes,
+            identities = worlds.flatMap { identities(it) },
+            grants = worlds.flatMap { grants(it) },
+            executors = executors,
+            programFps = programs.mapValues { Fingerprints.program(it.value) },
+            deploymentFps = deployments.mapValues { Fingerprints.deployment(it.value) },
+            warnings = warnings,
+        ).also {
+            log.info(
+                "automation: loaded {} — {} recipe(s), {} program(s), {} deployment(s), {} warning(s)",
+                it.id,
+                it.recipes.size,
+                it.programs.size,
+                it.deployments.size,
+                warnings.size,
+            )
+        }
+    }
+
+    private fun checkDeployment(
+        d: org.tatrman.ttr.metadata.model.WorldDeployment,
+        world: World,
+        programNames: Set<String>,
+        processNames: Set<String>,
+        recipeNames: Set<String>,
+        programs: Map<String, org.tatrman.ttr.metadata.model.AutomationProgram>,
+        findings: MutableList<String>,
+    ) {
+        val name = d.qname.name
+        d.program?.let { p ->
+            if (p !in programNames) {
+                findings += "deployment $name: program $p is not declared"
+            } else {
+                programs[p]?.recipe?.let { r ->
+                    if (r !in
+                        recipeNames
+                    ) {
+                        findings += "deployment $name: program $p's recipe $r has no bundle"
+                    }
+                }
+            }
+        }
+        d.process?.let { p -> if (p !in processNames) findings += "deployment $name: process $p is not declared" }
+        if (d.target != Bundle.NATIVE && world.executors.none { it.qname.name == d.target }) {
+            findings +=
+                "deployment $name: target ${d.target} is neither native nor an executor of world ${world.qname.name}"
+        }
+    }
+
+    /** Every `automation/<r>/<r>.bundle/manifest.json`, checked and read. */
+    private fun loadRecipes(
+        automationRoot: Path,
+        findings: MutableList<String>,
+    ): Map<String, LoadedRecipe> {
+        if (!automationRoot.isDirectory()) return emptyMap()
+        val out = sortedMapOf<String, LoadedRecipe>()
+        Files.list(automationRoot).use { dirs ->
+            for (dir in dirs.sorted().toList()) {
+                val bundleDir = dir.resolve("${dir.name}.bundle")
+                if (!dir.isDirectory() || !bundleDir.isDirectory()) continue
+                loadRecipe(dir.name, bundleDir, findings)?.let { out[it.name] = it }
+            }
+        }
+        return out
+    }
+
+    private fun loadRecipe(
+        name: String,
+        bundleDir: Path,
+        findings: MutableList<String>,
+    ): LoadedRecipe? {
+        val where = "bundle $name"
+        val manifestFile = bundleDir.resolve("manifest.json")
+        if (!Files.isRegularFile(manifestFile)) {
+            findings += "$where: no manifest.json"
+            return null
+        }
+        val manifest =
+            try {
+                RecipeManifest.parse(manifestFile.readText())
+            } catch (e: SerializationException) {
+                findings += "$where: manifest.json is not a manifest (${e.message?.lineSequence()?.first()})"
+                return null
+            } catch (e: IllegalArgumentException) {
+                findings += "$where: manifest.json is not a manifest (${e.message?.lineSequence()?.first()})"
+                return null
+            }
+        if (manifest.schemaVersion != RecipeManifest.SCHEMA_VERSION) {
+            findings +=
+                "$where: manifest schemaVersion ${manifest.schemaVersion}, this Server reads ${RecipeManifest.SCHEMA_VERSION}"
+            return null
+        }
+        val recipe = manifest.recipe
+        if (recipe == null) {
+            findings += "$where: the manifest carries no `recipe` block"
+            return null
+        }
+        if (recipe.name != name) findings += "$where: the manifest's recipe is ${recipe.name}"
+        val statements = linkedMapOf<String, String>()
+        for (island in manifest.islands) {
+            val outputs =
+                island.outputs.ifEmpty {
+                    listOf(
+                        ManifestOutput(port = "", file = island.file, sha256 = island.sha256),
+                    )
+                }
+            for (o in outputs) {
+                val file = bundleDir.resolve(o.file).normalize()
+                if (!file.startsWith(bundleDir) || !Files.isRegularFile(file)) {
+                    findings += "$where: island ${island.name} — ${o.file} is missing"
+                    continue
+                }
+                val text = file.readText()
+                if (o.sha256.isNotEmpty() && Fingerprints.sha256(text) != o.sha256) {
+                    findings += "$where: island ${island.name} — ${o.file} does not match its sha256"
+                    continue
+                }
+                statements[o.file] = text
+            }
+        }
+        return LoadedRecipe(name, manifest, recipe, statements)
+    }
+
+    private fun isAutomationFinding(
+        e: LoadWarning,
+        automationRoot: Path,
+        worldFiles: List<String>,
+    ): Boolean =
+        e.sourceId == AUTOMATION_DIR ||
+            e.sourceId == AUTOMATION_VALIDATOR ||
+            AUTOMATION_CODES.any { e.message.startsWith(it) } ||
+            e.file.startsWith(automationRoot.toString()) ||
+            e.file in worldFiles
+
+    private fun render(
+        e: LoadWarning,
+        root: Path,
+    ): String {
+        val file =
+            runCatching { Path.of(e.file).relativeTo(root).toString() }.getOrDefault(e.file).ifBlank { e.sourceId }
+        val at = if (e.line > 0) ":${e.line}" else ""
+        return "$file$at: ${e.message}"
+    }
+
+    companion object {
+        const val MODEL_DIR = "model"
+        const val AUTOMATION_DIR = "automation"
+        private const val AUTOMATION_VALIDATOR = "automation-validator"
+        private val LAYOUT_CODES = listOf("ttr/package-declaration-mismatch", "ttr/package-prefix-divergence")
+        private val AUTOMATION_CODES = listOf("ttr/automation-", "ttr/states-")
+        private val log = LoggerFactory.getLogger(BundleLoader::class.java)
+
+        /** sha256 over the model root's files, path and content, in path order — what the bundle was built against. */
+        fun modelFingerprint(modelRoot: Path): String {
+            if (!modelRoot.isDirectory()) return Fingerprints.sha256("")
+            val text =
+                Files.walk(modelRoot).use { s ->
+                    s
+                        .filter { Files.isRegularFile(it) && it.name.substringAfterLast('.') in setOf("ttr", "ttrm") }
+                        .sorted()
+                        .toList()
+                        .joinToString("\n") { "${it.relativeTo(modelRoot)}\n${it.readText()}" }
+                }
+            return Fingerprints.sha256(text)
+        }
+
+        fun identities(w: World): List<IdentityDecl> =
+            w.identities.mapNotNull { i ->
+                val principal = i.principal ?: return@mapNotNull null
+                val credential = i.credential ?: return@mapNotNull null
+                IdentityDecl(i.qname.name, principal, credential)
+            }
+
+        fun grants(w: World): List<GrantDecl> =
+            w.grants.map { g ->
+                GrantDecl(
+                    who =
+                        when (val who = g.who) {
+                            is GrantWho.Role -> Who.Role(who.name)
+                            is GrantWho.User -> Who.User(who.name)
+                            is GrantWho.Identity -> Who.Identity(who.name)
+                            GrantWho.Anyone -> Who.Anyone
+                        },
+                    program = g.program ?: GrantDecl.ANY_PROGRAM,
+                    runAs = runAs(g.runAs),
+                )
+            }
+
+        fun runAs(r: RunAsRef): GrantRunAs =
+            when (r) {
+                RunAsRef.Caller -> GrantRunAs.Caller
+                RunAsRef.Author -> GrantRunAs.Author
+                is RunAsRef.Identity -> GrantRunAs.Named(r.name)
+            }
+    }
+}

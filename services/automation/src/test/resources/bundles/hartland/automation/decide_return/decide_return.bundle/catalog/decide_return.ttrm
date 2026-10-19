@@ -1,0 +1,15 @@
+// fixture-prebuilt: the generated catalog of ttr-core contracts §5.3 (P2 S2.3 writes it).
+package hartland.automation.generated
+model automation
+
+def recipe decide_return {
+    key: return_request_line.line_id
+    parameters: [return_window, abuse_share, small_value, care_threshold, settlement, inbound_reminder]
+    candidates: received
+    contexts: [bought_here, return_share, request_value, stock_at_center]
+    decision: way
+    routes: [reject_not_ours, reject_late, reject_abuse, to_customer_care, refund_no_return, replacement_no_return, exchange, refund_after_return]
+    kinds: [sql]
+    mode: per_candidate
+    document: "handling-a-return-request.md"
+}

@@ -1,0 +1,67 @@
+// settle.ttrp — derived from handling-a-return-request.md §Outbound
+// AU-core-P0 shared fixture: AU design `17` §4.3, verbatim but for the TTR-P comment marker (`#` → `//`).
+uses world "hartland.worlds.demo"
+import hartland.*
+import hartland.automation.*
+
+recipe {
+    key:        return_request_line.line_id
+    as of:      now
+    parameters: [settlement]
+    document:   "handling-a-return-request.md"
+
+    // the candidates are the LINES; the open obligations are a per-candidate context below — joining them into the
+    // candidates would give one row per (line, kind), duplicate keys, and TTRP-REC-004 would refuse the recipe
+    candidates settling(out lines) target erp """sql
+        SELECT l.line_id, l.request_number, l.item, l.quantity, l.way, r.customer
+        FROM   er.entity.return_request_line l JOIN er.entity.return_request r ON r.request_number = l.request_number
+        WHERE  l.state IN ('settling', 'goods_received')
+    """
+
+    context open_obligations(in lines, out rows) target erp """sql
+        SELECT q.line_id, ob.id AS obligation_id, ob.kind, ob.due
+        FROM   lines q JOIN er.entity.obligation ob ON ob.entity = 'return_request_line' AND ob.key = q.line_id
+        WHERE  ob.kind IN ('credit_note', 'payment', 'replacement') AND ob.state IN ('open', 'overdue', 'reopened')
+    """
+    context documents(in lines, out rows) target erp """sql
+        SELECT q.line_id,
+               cn.credit_note_id, cn.issued_date, p.payment_id, p.paid_date, sh.shipment_id, sh.shipped_date
+        FROM   lines q
+        LEFT JOIN er.entity.credit_note          cn ON cn.line_id = q.line_id
+        LEFT JOIN er.entity.refund_payment       p  ON p.credit_note_id = cn.credit_note_id
+        LEFT JOIN er.entity.replacement_shipment sh ON sh.line_id = q.line_id
+    """
+    context overdue_days(in lines, in open_obligations, out rows) target erp {
+        open_obligations -> calc(late = working_days(between: due, and: :as_of))
+                         -> aggregate { group_by: line_id  max_late = max(late), kinds_open = count(kind) }
+                         -> rows
+    }
+
+    decision settlement(in lines, in open_obligations, in documents, in overdue_days) {
+        v = lines -> join(right: documents,    kind: left, on: left.line_id = right.line_id)
+                  -> join(right: overdue_days, kind: left, on: left.line_id = right.line_id)
+        v -> switch {
+            mode: overlapping                                    // a line may be both "credit note issued" and "money overdue"
+            credit_note_issued:  credit_note_id is not null     because: "credit note {credit_note_id} issued"
+            money_received:      payment_id is not null         because: "refund paid on {paid_date}"
+            goods_shipped:       shipment_id is not null        because: "replacement shipped on {shipped_date}"
+            money_overdue:       way in ("refund_no_return", "refund_after_return") and payment_id is null and max_late > 0
+                                                                because: "refund {max_late} working days late"       detail: open_obligations
+            goods_overdue:       way in ("replacement_no_return", "exchange") and shipment_id is null and max_late > 0
+                                                                because: "replacement {max_late} working days late"  detail: open_obligations
+            closed:              (payment_id is not null and way in ("refund_no_return", "refund_after_return"))
+                                 or (shipment_id is not null and way in ("replacement_no_return", "exchange"))
+                                                                because: "settled"
+        }
+    }
+
+    actions {
+        settlement.credit_note_issued -> fulfil    { line: line_id, kind: credit_note,  to: fulfilled }
+        settlement.credit_note_issued -> expect    { line: line_id, kind: payment,      due: working_days(:settlement) }
+        settlement.money_received     -> fulfil    { line: line_id, kind: payment,      to: fulfilled }
+        settlement.goods_shipped      -> fulfil    { line: line_id, kind: replacement,  to: fulfilled }
+        settlement.money_overdue      -> task      { who: role.finance,   about: line_id, detail: open_obligations }
+        settlement.goods_overdue      -> task      { who: role.logistics, about: line_id, detail: open_obligations }
+        settlement.closed             -> set_state { line: line_id, to: closed }
+    }
+}

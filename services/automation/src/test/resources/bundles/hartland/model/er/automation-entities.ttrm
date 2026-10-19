@@ -1,0 +1,37 @@
+// The slice of hartland's ER model the automation package names (the ttr-demo `model/er` entities of AU P0,
+// trimmed to the attributes `automation.ttrm`'s actions, columns and transitions read — `states:` per D-67).
+package hartland
+model er
+
+def entity order {
+    attributes: [
+        def attribute order_number { type: text, isKey: true },
+        def attribute customer     { type: int },
+        def attribute value        { type: decimal },
+        def attribute held_for     { type: text },
+        def attribute state        { type: text, states: [placed, held, released, cancelled],
+                                     transitions: { placed: [held, released, cancelled], held: [released, cancelled] } }
+    ]
+}
+
+def entity customer {
+    attributes: [
+        def attribute customer_sk { type: int, isKey: true },
+        def attribute email       { type: text }
+    ]
+}
+
+def entity return_request_line {
+    attributes: [
+        def attribute line_id        { type: int, isKey: true },
+        def attribute request_number { type: text },
+        def attribute customer       { type: int },
+        def attribute quantity       { type: int },
+        def attribute way            { type: text },
+        def attribute state          { type: text,
+                                       states: [received, rejected, settling, awaiting_goods, goods_received, not_returned, closed],
+                                       transitions: { received: [rejected, settling, awaiting_goods],
+                                                      awaiting_goods: [goods_received, not_returned],
+                                                      settling: [closed], goods_received: [closed] } }
+    ]
+}

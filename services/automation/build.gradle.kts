@@ -24,6 +24,8 @@ tasks.test {
     // migration: inputs the test task does not see on its own, so a change to them must rerun it.
     inputs.dir("src/main/kotlin")
     inputs.dir("src/main/resources")
+    // The bundle fixture is copied into a throwaway git repo by the specs (S0.2).
+    inputs.dir("src/test/resources/bundles")
 }
 
 val osArch = System.getProperty("os.arch").lowercase()
@@ -92,6 +94,18 @@ dependencies {
     implementation(project(":shared:libs:kotlin:keycloak-auth"))
     implementation(libs.auth0.java.jwt)
     implementation(libs.ktor.server.auth)
+
+    // The bundle (S0.2): the automation repo's model + automation package through ttr-metadata (grammar 0.16's
+    // automation tier), checked out by ttr-metadata-git's GitArchiveStorage; jgit reads the commit's author.
+    // Veles's GetStatus (the drift handshake) over the shared protos.
+    implementation(libs.tatrman.ttr.metadata)
+    implementation(libs.tatrman.ttr.metadata.git)
+    implementation(libs.tatrman.ttr.parser)
+    implementation(libs.jgit)
+    implementation(project(":shared:proto"))
+    implementation(libs.grpc.netty.shaded)
+    implementation(libs.grpc.kotlin.stub)
+    implementation(libs.kotlinx.serialization.json)
 
     implementation(libs.ktor.server.core)
     implementation(libs.ktor.server.netty)

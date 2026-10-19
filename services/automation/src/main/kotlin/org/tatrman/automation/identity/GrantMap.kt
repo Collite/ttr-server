@@ -35,7 +35,7 @@ sealed interface RunAsRef {
     }
 }
 
-/** `who:` of a `def grant` — a realm role, a user, or a named identity calling as itself. */
+/** `who:` of a `def grant` — a realm role, a user, a named identity calling as itself, or anyone (`who: *`). */
 sealed interface Who {
     data class Role(
         val name: String,
@@ -49,8 +49,12 @@ sealed interface Who {
         val name: String,
     ) : Who
 
+    /** `who: *` — every verified caller (review-114: `ttr-metadata` reads `*`/`"*"` as `GrantWho.Anyone`). */
+    data object Anyone : Who
+
     companion object {
         fun parse(text: String): Who {
+            if (text == "*") return Anyone
             val dot = text.indexOf('.')
             require(dot > 0 && dot < text.length - 1) { "grant who '$text' is not role.<r> | user.<u> | identity.<i>" }
             val name = text.substring(dot + 1)
@@ -115,5 +119,6 @@ class GrantMap(
             is Who.Role -> who.name in caller.roles
             is Who.User -> caller.kind == TokenKind.PERSON && (who.name == caller.principal || who.name == caller.sub)
             is Who.Identity -> caller.kind == TokenKind.SERVICE && identities[who.name]?.principal == caller.principal
+            Who.Anyone -> true
         }
 }

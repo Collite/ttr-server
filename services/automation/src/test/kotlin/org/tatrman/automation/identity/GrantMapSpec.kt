@@ -77,9 +77,18 @@ class GrantMapSpec :
             RunAsRef.parse("identity.x") shouldBe RunAsRef.Named("x")
             RunAsRef.Named("x").wire shouldBe "identity.x"
             Who.parse("user.maya") shouldBe Who.User("maya")
+            Who.parse("*") shouldBe Who.Anyone
             shouldThrow<IllegalArgumentException> { RunAsRef.parse("identity.") }
             shouldThrow<IllegalArgumentException> { RunAsRef.parse("obo") }
             shouldThrow<IllegalArgumentException> { Who.parse("group.ops") }
             shouldThrow<IllegalArgumentException> { Who.parse("ops") }
+        }
+
+        "`who: *` grants every verified caller — a person or a service — that program as that identity, no other" {
+            val anyone = GrantMap(listOf(GrantDecl(Who.Anyone, "decide_on_request", RunAsRef.Author)), identities)
+            anyone.allows(sales, "decide_on_request", RunAsRef.Author) shouldBe true
+            anyone.allows(caller("svc-x", kind = TokenKind.SERVICE), "decide_on_request", RunAsRef.Author) shouldBe true
+            anyone.allows(sales, "settle_daily", RunAsRef.Author) shouldBe false
+            anyone.allows(sales, "decide_on_request", decider) shouldBe false
         }
     })

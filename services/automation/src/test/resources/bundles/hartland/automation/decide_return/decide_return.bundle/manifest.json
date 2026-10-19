@@ -1,0 +1,594 @@
+{
+  "schemaVersion": 3,
+  "ttrpVersion": 2,
+  "toolchain": "fixture-prebuilt",
+  "program": "decide_return",
+  "world": {
+    "qname": "hartland.worlds.demo",
+    "fingerprint": "sha256:835a2d5eda9a64795b00aa308a222a7412a5ed40e4ff5137d000b66ddb9d1499"
+  },
+  "islands": [
+    {
+      "name": "received",
+      "engine": "erp",
+      "executor": "native",
+      "invocation": "psql",
+      "file": "islands/received.lines.sql",
+      "sha256": "sha256:ea47814170f27029b813004c7cb7d5981ef6b63db62d2f83f2e198f3722072a1",
+      "connections": [
+        "ERP"
+      ],
+      "outputs": [
+        {
+          "port": "lines",
+          "file": "islands/received.lines.sql",
+          "sha256": "sha256:ea47814170f27029b813004c7cb7d5981ef6b63db62d2f83f2e198f3722072a1"
+        }
+      ]
+    },
+    {
+      "name": "bought_here",
+      "engine": "erp",
+      "executor": "native",
+      "invocation": "psql",
+      "file": "islands/bought_here.rows.sql",
+      "sha256": "sha256:92d2aaba4f5d6e7517dd23b81317dfe642137f2b2b552276fd0bbe2d1e274c1f",
+      "connections": [
+        "ERP"
+      ],
+      "outputs": [
+        {
+          "port": "rows",
+          "file": "islands/bought_here.rows.sql",
+          "sha256": "sha256:92d2aaba4f5d6e7517dd23b81317dfe642137f2b2b552276fd0bbe2d1e274c1f"
+        }
+      ]
+    },
+    {
+      "name": "return_share",
+      "engine": "erp",
+      "executor": "native",
+      "invocation": "psql",
+      "file": "islands/return_share.rows.sql",
+      "sha256": "sha256:d2bc8c2093bfd59b53e45a600bfe82e3a16bea9d668542adba45dd14188ceac0",
+      "connections": [
+        "ERP"
+      ],
+      "outputs": [
+        {
+          "port": "rows",
+          "file": "islands/return_share.rows.sql",
+          "sha256": "sha256:d2bc8c2093bfd59b53e45a600bfe82e3a16bea9d668542adba45dd14188ceac0"
+        }
+      ]
+    },
+    {
+      "name": "request_value",
+      "engine": "erp",
+      "executor": "native",
+      "invocation": "psql",
+      "file": "islands/request_value.rows.sql",
+      "sha256": "sha256:bcfc4f4e37dd0d955801b956f10af7b107d0e3f68cd03623771869e5588c39bf",
+      "connections": [
+        "ERP"
+      ],
+      "outputs": [
+        {
+          "port": "rows",
+          "file": "islands/request_value.rows.sql",
+          "sha256": "sha256:bcfc4f4e37dd0d955801b956f10af7b107d0e3f68cd03623771869e5588c39bf"
+        }
+      ]
+    },
+    {
+      "name": "stock_at_center",
+      "engine": "erp",
+      "executor": "native",
+      "invocation": "psql",
+      "file": "islands/stock_at_center.rows.sql",
+      "sha256": "sha256:0aa3f5db4f82f05f540fed0ff0b242c594a0f235a864540f80db44a49016d7d0",
+      "connections": [
+        "ERP"
+      ],
+      "outputs": [
+        {
+          "port": "rows",
+          "file": "islands/stock_at_center.rows.sql",
+          "sha256": "sha256:0aa3f5db4f82f05f540fed0ff0b242c594a0f235a864540f80db44a49016d7d0"
+        }
+      ]
+    },
+    {
+      "name": "way.reject_not_ours",
+      "engine": "erp",
+      "executor": "native",
+      "invocation": "psql",
+      "file": "islands/way.reject_not_ours.sql",
+      "sha256": "sha256:7f4dfd3e3701074046de255c4e1816de94aa070db6908d098bc5cc72d7973676",
+      "connections": [
+        "ERP"
+      ],
+      "outputs": [
+        {
+          "port": "reject_not_ours",
+          "file": "islands/way.reject_not_ours.sql",
+          "sha256": "sha256:7f4dfd3e3701074046de255c4e1816de94aa070db6908d098bc5cc72d7973676"
+        }
+      ]
+    },
+    {
+      "name": "way.reject_late",
+      "engine": "erp",
+      "executor": "native",
+      "invocation": "psql",
+      "file": "islands/way.reject_late.sql",
+      "sha256": "sha256:ec6f71c17233d390cd0bfb61c28ccd6afd003cf7299e561e98ca0a2b27fb473d",
+      "connections": [
+        "ERP"
+      ],
+      "outputs": [
+        {
+          "port": "reject_late",
+          "file": "islands/way.reject_late.sql",
+          "sha256": "sha256:ec6f71c17233d390cd0bfb61c28ccd6afd003cf7299e561e98ca0a2b27fb473d"
+        }
+      ]
+    },
+    {
+      "name": "way.reject_abuse",
+      "engine": "erp",
+      "executor": "native",
+      "invocation": "psql",
+      "file": "islands/way.reject_abuse.sql",
+      "sha256": "sha256:336510d00bbe763df711803bac0e528173b4bf69a7504513dc117419323efffd",
+      "connections": [
+        "ERP"
+      ],
+      "outputs": [
+        {
+          "port": "reject_abuse",
+          "file": "islands/way.reject_abuse.sql",
+          "sha256": "sha256:336510d00bbe763df711803bac0e528173b4bf69a7504513dc117419323efffd"
+        }
+      ]
+    },
+    {
+      "name": "way.to_customer_care",
+      "engine": "erp",
+      "executor": "native",
+      "invocation": "psql",
+      "file": "islands/way.to_customer_care.sql",
+      "sha256": "sha256:4d9e0345d9e7acf436a79808d25dc73166fb1b8fc3ee2424fca50b4475b83ad2",
+      "connections": [
+        "ERP"
+      ],
+      "outputs": [
+        {
+          "port": "to_customer_care",
+          "file": "islands/way.to_customer_care.sql",
+          "sha256": "sha256:4d9e0345d9e7acf436a79808d25dc73166fb1b8fc3ee2424fca50b4475b83ad2"
+        }
+      ]
+    },
+    {
+      "name": "way.refund_no_return",
+      "engine": "erp",
+      "executor": "native",
+      "invocation": "psql",
+      "file": "islands/way.refund_no_return.sql",
+      "sha256": "sha256:c24907e3a6cbc443f7eecba1dcad8b576652241a1fc6746dc1399152189e2826",
+      "connections": [
+        "ERP"
+      ],
+      "outputs": [
+        {
+          "port": "refund_no_return",
+          "file": "islands/way.refund_no_return.sql",
+          "sha256": "sha256:c24907e3a6cbc443f7eecba1dcad8b576652241a1fc6746dc1399152189e2826"
+        }
+      ]
+    },
+    {
+      "name": "way.replacement_no_return",
+      "engine": "erp",
+      "executor": "native",
+      "invocation": "psql",
+      "file": "islands/way.replacement_no_return.sql",
+      "sha256": "sha256:2d55b475dfde00f381a3f00571dcbd7f2305b385f9e42b07bbf7e2c86685a61b",
+      "connections": [
+        "ERP"
+      ],
+      "outputs": [
+        {
+          "port": "replacement_no_return",
+          "file": "islands/way.replacement_no_return.sql",
+          "sha256": "sha256:2d55b475dfde00f381a3f00571dcbd7f2305b385f9e42b07bbf7e2c86685a61b"
+        }
+      ]
+    },
+    {
+      "name": "way.exchange",
+      "engine": "erp",
+      "executor": "native",
+      "invocation": "psql",
+      "file": "islands/way.exchange.sql",
+      "sha256": "sha256:d564aa737eb090539cfb574a57300373f89fd07f0d5697548cf52d9313573113",
+      "connections": [
+        "ERP"
+      ],
+      "outputs": [
+        {
+          "port": "exchange",
+          "file": "islands/way.exchange.sql",
+          "sha256": "sha256:d564aa737eb090539cfb574a57300373f89fd07f0d5697548cf52d9313573113"
+        }
+      ]
+    },
+    {
+      "name": "way.refund_after_return",
+      "engine": "erp",
+      "executor": "native",
+      "invocation": "psql",
+      "file": "islands/way.refund_after_return.sql",
+      "sha256": "sha256:be91bc4bc88ddb171b5d4bce730d89b69b39eec3edc6ed5d3cde26474d00743e",
+      "connections": [
+        "ERP"
+      ],
+      "outputs": [
+        {
+          "port": "refund_after_return",
+          "file": "islands/way.refund_after_return.sql",
+          "sha256": "sha256:be91bc4bc88ddb171b5d4bce730d89b69b39eec3edc6ed5d3cde26474d00743e"
+        }
+      ]
+    }
+  ],
+  "transfers": [],
+  "waves": [
+    [
+      "received"
+    ],
+    [
+      "bought_here",
+      "return_share",
+      "request_value",
+      "stock_at_center"
+    ],
+    [
+      "way"
+    ]
+  ],
+  "connections": [
+    "ERP"
+  ],
+  "displays": [],
+  "recipe": {
+    "name": "decide_return",
+    "key": [
+      "return_request_line.line_id"
+    ],
+    "asOf": "now",
+    "document": "handling-a-return-request.md",
+    "parameters": [
+      {
+        "name": "return_window",
+        "type": "days",
+        "value": "30"
+      },
+      {
+        "name": "abuse_share",
+        "type": "decimal",
+        "value": "0.40"
+      },
+      {
+        "name": "small_value",
+        "type": "decimal",
+        "value": "15"
+      },
+      {
+        "name": "care_threshold",
+        "type": "decimal",
+        "value": "500"
+      },
+      {
+        "name": "settlement",
+        "type": "working_days",
+        "value": "5"
+      },
+      {
+        "name": "inbound_reminder",
+        "type": "days",
+        "value": "14"
+      }
+    ],
+    "roles": {
+      "candidates": "received",
+      "contexts": [
+        {
+          "name": "bought_here",
+          "class": "per-candidate",
+          "kind": "sql"
+        },
+        {
+          "name": "return_share",
+          "class": "per-candidate",
+          "kind": "sql"
+        },
+        {
+          "name": "request_value",
+          "class": "lookup",
+          "kind": "sql"
+        },
+        {
+          "name": "stock_at_center",
+          "class": "per-candidate",
+          "kind": "sql"
+        }
+      ],
+      "decision": "way",
+      "routes": [
+        {
+          "name": "reject_not_ours",
+          "because": "not bought here",
+          "detail": [],
+          "turnFed": false
+        },
+        {
+          "name": "reject_late",
+          "because": "delivered more than {return_window} days ago",
+          "detail": [],
+          "turnFed": false
+        },
+        {
+          "name": "reject_abuse",
+          "because": "return share {share} above the limit",
+          "detail": [],
+          "turnFed": false
+        },
+        {
+          "name": "to_customer_care",
+          "because": "request above the care threshold",
+          "detail": [],
+          "turnFed": false
+        },
+        {
+          "name": "refund_no_return",
+          "because": "small value, {reason}",
+          "detail": [],
+          "turnFed": false
+        },
+        {
+          "name": "replacement_no_return",
+          "because": "{reason}, replacement on stock",
+          "detail": [],
+          "turnFed": false
+        },
+        {
+          "name": "exchange",
+          "because": "requested variant on stock",
+          "detail": [],
+          "turnFed": false
+        },
+        {
+          "name": "refund_after_return",
+          "because": "goods back, then the money",
+          "detail": [],
+          "turnFed": false
+        }
+      ],
+      "switchMode": "exclusive",
+      "elseRoute": "refund_after_return"
+    },
+    "wiring": [
+      {
+        "routes": [
+          "way.reject_not_ours",
+          "way.reject_late",
+          "way.reject_abuse"
+        ],
+        "action": "set_state",
+        "columns": {
+          "line": "line_id",
+          "to": "rejected"
+        },
+        "when": null
+      },
+      {
+        "routes": [
+          "way.reject_not_ours",
+          "way.reject_late",
+          "way.reject_abuse"
+        ],
+        "action": "notify_customer",
+        "columns": {
+          "customer": "customer",
+          "template": "\"return-rejected\""
+        },
+        "when": null
+      },
+      {
+        "routes": [
+          "way.to_customer_care"
+        ],
+        "action": "ask",
+        "columns": {
+          "who": "role.customer_care",
+          "about": "request_number",
+          "action": "set_state",
+          "group_by": "request_number",
+          "due": "3 working_days"
+        },
+        "when": null
+      },
+      {
+        "routes": [
+          "way.refund_no_return"
+        ],
+        "action": "set_state",
+        "columns": {
+          "line": "line_id",
+          "to": "settling",
+          "way": "refund_no_return"
+        },
+        "when": null
+      },
+      {
+        "routes": [
+          "way.refund_no_return"
+        ],
+        "action": "expect",
+        "columns": {
+          "line": "line_id",
+          "kind": "credit_note",
+          "due": "working_days(:settlement)"
+        },
+        "when": null
+      },
+      {
+        "routes": [
+          "way.replacement_no_return"
+        ],
+        "action": "set_state",
+        "columns": {
+          "line": "line_id",
+          "to": "settling",
+          "way": "replacement_no_return"
+        },
+        "when": null
+      },
+      {
+        "routes": [
+          "way.replacement_no_return"
+        ],
+        "action": "expect",
+        "columns": {
+          "line": "line_id",
+          "kind": "replacement",
+          "due": "working_days(:settlement)"
+        },
+        "when": null
+      },
+      {
+        "routes": [
+          "way.exchange"
+        ],
+        "action": "set_state",
+        "columns": {
+          "line": "line_id",
+          "to": "awaiting_goods",
+          "way": "exchange"
+        },
+        "when": null
+      },
+      {
+        "routes": [
+          "way.refund_after_return"
+        ],
+        "action": "set_state",
+        "columns": {
+          "line": "line_id",
+          "to": "awaiting_goods",
+          "way": "refund_after_return"
+        },
+        "when": null
+      },
+      {
+        "routes": [
+          "way.exchange",
+          "way.refund_after_return"
+        ],
+        "action": "expect",
+        "columns": {
+          "line": "line_id",
+          "kind": "inbound",
+          "due": "days(:inbound_reminder)"
+        },
+        "when": null
+      },
+      {
+        "routes": [
+          "way.exchange",
+          "way.refund_after_return"
+        ],
+        "action": "notify_customer",
+        "columns": {
+          "customer": "customer",
+          "template": "\"return-instructions\""
+        },
+        "when": null
+      }
+    ],
+    "kinds": [
+      "sql"
+    ],
+    "mode": "per-candidate",
+    "windows": [],
+    "verdictSchema": {
+      "entity": "decide_return_verdict",
+      "columns": [
+        {
+          "name": "run",
+          "type": "text"
+        },
+        {
+          "name": "as_of",
+          "type": "timestamp"
+        },
+        {
+          "name": "line_id",
+          "type": "int"
+        },
+        {
+          "name": "route",
+          "type": "text"
+        },
+        {
+          "name": "verdict_reason",
+          "type": "text"
+        },
+        {
+          "name": "parameters_fp",
+          "type": "text"
+        },
+        {
+          "name": "run_as",
+          "type": "text"
+        },
+        {
+          "name": "written_at",
+          "type": "timestamp"
+        }
+      ],
+      "detail": "decide_return_verdict_detail",
+      "current": "decide_return_verdict_current"
+    },
+    "objectsRead": [
+      "er.entity.return_request_line",
+      "er.entity.return_request",
+      "er.entity.sales_line",
+      "er.entity.inventory",
+      "er.entity.distribution_center"
+    ],
+    "fingerprints": {
+      "text": "sha256:342e7f3ddc46a16fdd0d5fead95fac64b8f9b90a19ffbba3cbfbfe06fa1a2413",
+      "values": "sha256:9a4bb6b7dee7c6452bae47c1c16d13b8b40de10fc929b57dbfc23bd520553720"
+    },
+    "protocol": "always"
+  },
+  "files": {
+    "catalog/decide_return.ttrm": "sha256:d3d33d334113a0a2466bd181bc0d6810d5e21f56ff80d3af3f976edf0ac4d38c",
+    "islands/bought_here.rows.sql": "sha256:92d2aaba4f5d6e7517dd23b81317dfe642137f2b2b552276fd0bbe2d1e274c1f",
+    "islands/received.lines.sql": "sha256:ea47814170f27029b813004c7cb7d5981ef6b63db62d2f83f2e198f3722072a1",
+    "islands/request_value.rows.sql": "sha256:bcfc4f4e37dd0d955801b956f10af7b107d0e3f68cd03623771869e5588c39bf",
+    "islands/return_share.rows.sql": "sha256:d2bc8c2093bfd59b53e45a600bfe82e3a16bea9d668542adba45dd14188ceac0",
+    "islands/stock_at_center.rows.sql": "sha256:0aa3f5db4f82f05f540fed0ff0b242c594a0f235a864540f80db44a49016d7d0",
+    "islands/way.exchange.sql": "sha256:d564aa737eb090539cfb574a57300373f89fd07f0d5697548cf52d9313573113",
+    "islands/way.refund_after_return.sql": "sha256:be91bc4bc88ddb171b5d4bce730d89b69b39eec3edc6ed5d3cde26474d00743e",
+    "islands/way.refund_no_return.sql": "sha256:c24907e3a6cbc443f7eecba1dcad8b576652241a1fc6746dc1399152189e2826",
+    "islands/way.reject_abuse.sql": "sha256:336510d00bbe763df711803bac0e528173b4bf69a7504513dc117419323efffd",
+    "islands/way.reject_late.sql": "sha256:ec6f71c17233d390cd0bfb61c28ccd6afd003cf7299e561e98ca0a2b27fb473d",
+    "islands/way.reject_not_ours.sql": "sha256:7f4dfd3e3701074046de255c4e1816de94aa070db6908d098bc5cc72d7973676",
+    "islands/way.replacement_no_return.sql": "sha256:2d55b475dfde00f381a3f00571dcbd7f2305b385f9e42b07bbf7e2c86685a61b",
+    "islands/way.to_customer_care.sql": "sha256:4d9e0345d9e7acf436a79808d25dc73166fb1b8fc3ee2424fca50b4475b83ad2"
+  }
+}
