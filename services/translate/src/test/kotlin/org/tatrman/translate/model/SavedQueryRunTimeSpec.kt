@@ -194,6 +194,38 @@ class SavedQueryRunTimeSpec :
             }
         }
 
+        // LQ-T7·S2 (L-31): RunSavedQuery hands a stored plan to query.Run as a REL_NODE source in its own lane.
+        "a logical query's stored plan, sent as REL_NODE, goes through the ER half and maps to its table" {
+            val stored =
+                storedPlan(
+                    "SELECT sale.customer_id, SUM(sale.amount) AS revenue FROM sale GROUP BY sale.customer_id",
+                    SchemaCode.ER,
+                )
+
+            fun relNode(
+                plan: PlanNode,
+                source: SchemaCode,
+                target: SchemaCode,
+            ): ParseResponse =
+                runBlocking {
+                    service.parseToRelNode(
+                        ParseRequest
+                            .newBuilder()
+                            .setSource(String(plan.toByteArray(), Charsets.ISO_8859_1))
+                            .setSourceLanguage(Language.REL_NODE)
+                            .setSourceSchema(source)
+                            .setTargetSchema(target)
+                            .build(),
+                    )
+                }
+            val er = relNode(stored, SchemaCode.ER, SchemaCode.ER)
+            withClue(er.messagesList) { er.messagesList.shouldBeEmpty() }
+            scans(er.plan).map { it.name } shouldContainExactly listOf("sale")
+            val db = relNode(er.plan, SchemaCode.SCHEMA_CODE_UNSPECIFIED, SchemaCode.DB)
+            withClue(db.messagesList) { db.messagesList.shouldBeEmpty() }
+            tableScans(db.plan) shouldContainExactly listOf("sales")
+        }
+
         "text without obj.* parses byte-identically to a handle that serves no saved query" {
             val plain = TranslatorServiceImpl(StaticModelHandleProvider(SnapshotModelHandle.from(snapshot)))
             for ((sql, schema) in listOf(

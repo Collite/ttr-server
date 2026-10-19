@@ -21,6 +21,7 @@ import org.slf4j.LoggerFactory
 import org.tatrman.query.cache.CompiledPlanCache
 import org.tatrman.query.client.DispatcherClient
 import org.tatrman.query.client.GrpcDispatcherClient
+import org.tatrman.query.client.GrpcSavedQueryClient
 import org.tatrman.query.client.GrpcTranslatorClient
 import org.tatrman.query.client.GrpcValidatorClient
 import org.tatrman.query.client.TranslatorClient
@@ -81,6 +82,17 @@ fun Application.module(config: Config) {
     val translatorTranslateClient = translatorClient as TranslatorTranslateClient
     val validatorClient = pickValidatorClient(config, useFixture)
     val dispatcherClient = pickDispatcherClient(config, useFixture)
+    // LQ (L-31): RunSavedQuery reads a saved query's stored plan from veles; no fixture stands in for it.
+    val savedQueryClient =
+        if (useFixture) {
+            null
+        } else {
+            GrpcSavedQueryClient(
+                host = config.getString("veles.host"),
+                port = config.getInt("veles.port"),
+                deadlineSeconds = config.getLong("veles.deadline-seconds"),
+            )
+        }
 
     val service =
         QueryServiceImpl(
@@ -92,6 +104,7 @@ fun Application.module(config: Config) {
             cache = cache,
             retry = retry,
             openTelemetry = openTelemetry,
+            rawSavedQueries = savedQueryClient,
         )
 
     val grpcPort = config.getInt("grpc.port")

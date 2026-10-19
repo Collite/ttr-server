@@ -3,6 +3,9 @@ package org.tatrman.query.client
 
 import org.tatrman.dispatch.v1.DispatchRequest
 import org.tatrman.dispatch.v1.DispatchServiceGrpcKt
+import org.tatrman.meta.v1.GetQueryRequest
+import org.tatrman.meta.v1.GetQueryResponse
+import org.tatrman.meta.v1.VelesServiceGrpcKt
 import org.tatrman.translate.v1.DetectSchemaRequest
 import org.tatrman.translate.v1.DetectSchemaResponse
 import org.tatrman.translate.v1.ParseRequest
@@ -42,6 +45,11 @@ fun interface ValidatorClient {
 
 fun interface DispatcherClient {
     fun dispatch(request: DispatchRequest): Flow<ResultBatch>
+}
+
+/** LQ (L-31) — the metadata service's `GetQuery`: a saved query's parse state and stored plan, for RunSavedQuery. */
+fun interface SavedQueryClient {
+    suspend fun getQuery(request: GetQueryRequest): GetQueryResponse
 }
 
 class GrpcTranslatorClient(
@@ -95,6 +103,23 @@ class GrpcDispatcherClient(
     private val stub = DispatchServiceGrpcKt.DispatchServiceCoroutineStub(channel)
 
     override fun dispatch(request: DispatchRequest): Flow<ResultBatch> = stub.dispatch(request)
+
+    override fun close() {
+        channel.shutdown().awaitTermination(5, TimeUnit.SECONDS)
+    }
+}
+
+class GrpcSavedQueryClient(
+    host: String,
+    port: Int,
+    private val deadlineSeconds: Long = 10,
+) : SavedQueryClient,
+    AutoCloseable {
+    private val channel: ManagedChannel = openChannel(host, port)
+    private val stub = VelesServiceGrpcKt.VelesServiceCoroutineStub(channel)
+
+    override suspend fun getQuery(request: GetQueryRequest): GetQueryResponse =
+        stub.withDeadlineAfter(deadlineSeconds, TimeUnit.SECONDS).getQuery(request)
 
     override fun close() {
         channel.shutdown().awaitTermination(5, TimeUnit.SECONDS)
