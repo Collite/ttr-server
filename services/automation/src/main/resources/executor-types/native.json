@@ -1,0 +1,12 @@
+{
+  "name": "native",
+  "family": "native",
+  "fidelity": "L0",
+  "modes": ["batch", "on_event", "windowed"],
+  "ports": ["none", "key", "keys", "event"],
+  "kinds": { "sql": "native", "builtin": "native", "foreign": "native", "call": "native", "turn": "native" },
+  "sinks": { "transition": "native", "writer": "native", "deliver": "native", "task": "native", "obligation": "native",
+             "start": "native", "emit": "native", "message": "native" },
+  "granularity": ["recipe", "parts", "islands"],
+  "ungoverned": false
+}

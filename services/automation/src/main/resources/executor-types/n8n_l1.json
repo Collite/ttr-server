@@ -1,0 +1,13 @@
+{
+  "name": "n8n_l1",
+  "family": "n8n",
+  "fidelity": "L1",
+  "modes": ["batch", "on_event"],
+  "ports": ["none", "key", "keys", "event"],
+  "kinds": { "sql": "door", "builtin": "door", "foreign": "door", "call": "door", "turn": "door" },
+  "sinks": { "email": "n8n-nodes-base.emailSend", "http": "n8n-nodes-base.httpRequest", "transition": "door",
+             "writer": "door", "obligation": "door", "task": "door", "ask": "door", "wait": "n8n-nodes-base.wait",
+             "message": "door", "start": "n8n-nodes-base.httpRequest" },
+  "granularity": ["recipe", "parts", "islands"],
+  "ungoverned": false
+}
