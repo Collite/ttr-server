@@ -16,6 +16,14 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+- **metadata (veles), translate, query** — pins `ttr-translator` / `ttr-plan-proto` **0.12.4** (LQ-T6, L-30): a logical
+  query read by another one is a temporary entity whose relations follow its columns. `FROM obj.query.spend_per_shopper
+  r JOIN shopper`, where the query passes `sale.shopper_id` through as its `GROUP BY` key, is conditioned through the
+  relation `sale → shopper` it inherits, FK-only relations included; veles stores it PARSED where it refused it
+  (`logical_query_join_unresolved: JOIN_NO_RELATION … a derived table`). A query that passes no attribute through
+  inherits nothing and is refused as before. An FK-only join to an entity stacked on a `GROUP BY` query is conditioned
+  too (ttr-core#204). Every other join is decided exactly as on 0.12.3.
+
 - **metadata (veles) — the grammar bundle 0.16.0** (`ttr-parser` … `ttr-metadata`, `ttr-snapshot`, `ttr-lexicon`). A
   model may now carry TTR-M 0.16: `model automation` files, the automation members of a `def world` (`def identity`,
   `def grant`, `def deployment`, `def process`), `writable:` on a world storage and `states:` / `transitions:` on an
