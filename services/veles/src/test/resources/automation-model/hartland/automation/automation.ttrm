@@ -1,0 +1,94 @@
+// hartland's automation package — design 17 §1 (parameters, actions, roles, approvals),
+// as written for grammar 0.16 (`model automation`; `//` comments; `keycloak_group`).
+package hartland.automation
+model automation
+
+// ---- parameters (D-13: a value change is a re-approval of kind `values`) ----
+def parameter tolerance              { type: decimal,  value: 0.01,  label: { en: "Price tolerance", cs: "Cenová tolerance" } }
+def parameter confirmation_threshold { type: decimal,  value: 50000, label: { en: "Confirmation threshold", cs: "Limit pro potvrzení" } }
+def parameter return_window          { type: days,     value: 30 }
+def parameter abuse_share            { type: decimal,  value: 0.40 }
+def parameter small_value            { type: decimal,  value: 15 }
+def parameter care_threshold         { type: decimal,  value: 500 }
+def parameter inbound_reminder       { type: days,     value: 14 }
+def parameter inbound_close          { type: days,     value: 30 }
+def parameter settlement             { type: working_days, value: 5 }
+
+// ---- actions (sinks per target; `native` = the Server writer or a connector) ----
+def action release {
+    columns:    [def column order { type: order.order_number }]
+    transition: order.state -> released { from: [placed, held] }
+    sinks:      { native: transition, n8n: door, camunda: door }
+    approval:   none
+    dry_run:    { en: "would release order {order}", cs: "uvolnil by objednávku {order}" }
+}
+def action hold {
+    columns:    [def column order { type: order.order_number }, def column department { type: text }]
+    set:        order.held_for = department
+    transition: order.state -> held { from: placed }            // held → held is an implicit silent self-transition (D-85)
+    sinks:      { native: transition, n8n: door, camunda: door }
+    approval:   none
+    dry_run:    { en: "would hold order {order} for {department}" }
+}
+def action notify {
+    columns:    [def column who { type: role }, def column detail { type: rows }, def column template { type: text, optional: true }]
+    sinks:      { native: deliver, n8n: "n8n-nodes-base.emailSend", camunda: "send task", hebe: message }
+    deliverable: true
+    approval:   none
+    dry_run:    { en: "would notify {who} with {detail.count} rows" }
+}
+def action notify_customer {
+    columns:    [def column customer { type: customer.customer_sk }, def column template { type: text }]
+    sinks:      { native: deliver, n8n: "n8n-nodes-base.emailSend" }
+    deliverable: true
+    approval:   none
+}
+def action ask {
+    columns:    [def column who { type: role }, def column about { type: text }, def column action { type: action }, def column detail { type: rows, optional: true }]
+    sinks:      { native: task, hebe: task, camunda: "user task", n8n: door }    // n8n: perform ask, then Wait (D-109)
+    approval:   required
+    due:        2 working_days                                                  // program/action default (D-98)
+}
+def action task {
+    columns:    [def column who { type: role }, def column about { type: text }, def column detail { type: rows, optional: true }]
+    sinks:      { native: task, hebe: task, n8n: door }
+    approval:   none
+}
+def action set_state {
+    columns:    [def column line { type: return_request_line.line_id }, def column to { type: text }, def column way { type: text, optional: true }]
+    transition: return_request_line.state -> {to}
+    set:        return_request_line.way = way
+    sinks:      { native: transition, n8n: door, camunda: door }
+    approval:   none
+}
+def action expect {
+    columns:    [def column line { type: return_request_line.line_id }, def column kind { type: text }, def column due { type: date }]
+    sinks:      { native: obligation }                                          // the Server writer; emits no signal (open)
+    approval:   none
+}
+def action fulfil {
+    columns:    [def column line { type: return_request_line.line_id }, def column kind { type: text }, def column to { type: text } ]
+    transition: obligation.state -> {to}                                        // set_state on obligation ⇒ signal (D-52, GI-4)
+    sinks:      { native: obligation }
+    approval:   none
+}
+def action start {                                                               // the outbound face (H-2 ERP, H-3 purchasing)
+    columns:    [def column process { type: text }, def column rows { type: rows }]
+    sinks:      { native: start, n8n: "n8n-nodes-base.httpRequest" }
+    approval:   none
+}
+
+// ---- roles and approvals ----
+def role sales          { resolve: keycloak_group "hartland-sales",  delivery: { email: "sales@hartland.example" } }
+def role ar             { resolve: keycloak_group "hartland-ar",     delivery: { email: "ar@hartland.example" } }
+def role sales_manager  { resolve: keycloak_group "hartland-sales-managers" }     // Maya
+def role customer_care  { resolve: keycloak_group "hartland-care" }
+def role finance        { resolve: keycloak_group "hartland-finance" }
+def role logistics      { resolve: keycloak_group "hartland-logistics" }
+def role process_owner  { resolve: keycloak_group "hartland-process-owners" }
+def role ops            { resolve: keycloak_group "hartland-ops" }
+
+def approval recipe     { by: role.process_owner, quorum: 1 }
+def approval values     { by: role.process_owner, quorum: 1 }
+def approval program    { by: role.process_owner, quorum: 1 }
+def approval deployment { by: role.ops,           quorum: 1 }
