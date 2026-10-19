@@ -24,6 +24,13 @@ outside this repo could notice is in.
   inherits nothing and is refused as before. An FK-only join to an entity stacked on a `GROUP BY` query is conditioned
   too (ttr-core#204). Every other join is decided exactly as on 0.12.3.
 
+- **metadata (veles) — the grammar bundle 0.16.0** (`ttr-parser` … `ttr-metadata`, `ttr-snapshot`, `ttr-lexicon`). A
+  model may now carry TTR-M 0.16: `model automation` files, the automation members of a `def world` (`def identity`,
+  `def grant`, `def deployment`, `def process`), `writable:` on a world storage and `states:` / `transitions:` on an
+  attribute. Veles loads them instead of refusing the file; the automation objects are the `automation` tier of the
+  snapshot (not yet served over gRPC). A malformed grant or deployment is dropped with a load error
+  (`ttr/automation-grant-dropped`, `ttr/automation-deployment-dropped`). A model without automation files loads as
+  before.
 - **translate** — at run time a saved query can read another one (LQ, L-28). The handle translate parses with now
   serves every PARSED saved query under its obj name (`obj.query.<name>` for a logical or `model query` query,
   `obj.<schema>.<name>` for a db query), with its stored plan as the body, as veles' worker does during its
