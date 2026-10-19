@@ -58,7 +58,9 @@ class MetadataServiceModelHandleProvider(
             resp.notModified -> Unit // already up to date
             resp.hasSnapshot() -> {
                 val firstLoad = lastSuccessfulRefreshRef.get() == null
-                handleRef.set(SnapshotModelHandle.from(resp.snapshot))
+                // LQ (L-28): serve every parsed saved query under its obj name, so a query that reads another one —
+                // sent as text by a pattern, the lattice or free SQL — parses with the body inlined from its stored plan.
+                handleRef.set(SnapshotModelHandle.from(resp.snapshot, savedQueriesAsObj = true))
                 etagRef.set(resp.etag)
                 lastSuccessfulRefreshRef.set(System.currentTimeMillis())
                 logger.info(

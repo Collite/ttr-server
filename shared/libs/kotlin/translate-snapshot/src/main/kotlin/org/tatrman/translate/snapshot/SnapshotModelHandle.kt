@@ -4,6 +4,7 @@ package org.tatrman.translate.snapshot
 import org.tatrman.meta.v1.DbColumnSummary
 import org.tatrman.meta.v1.ModelSnapshot
 import org.tatrman.meta.v1.ObjectEntry
+import org.tatrman.plan.v1.PlanNode
 import org.tatrman.plan.v1.QualifiedName
 import org.tatrman.translator.framework.ModelColumn
 import org.tatrman.translator.framework.ModelForeignKey
@@ -90,7 +91,19 @@ class SnapshotModelHandle(
         }
 
     companion object {
-        fun from(snapshot: ModelSnapshot): SnapshotModelHandle {
+        /**
+         * [savedQueriesAsObj] (LQ, contracts L-20/L-21) — also serve every **parsed** saved query to the SQL surface
+         * under its obj name, `obj.<namespace>.<name>` (`er.query.x` and `query.x` → `obj.query.x`, `db.<schema>.x` →
+         * `obj.<schema>.x`), with its stored plan as the body, so a saved query that reads another one parses. Two
+         * saved queries with one obj name are served under neither. The metadata worker turns this on for each wave of
+         * its dependency-ordered parse; the translate service turns it on at run time (L-28), where a pattern, the
+         * lattice or free SQL sends a saved query's text, and that text may read another saved query. The snapshot
+         * carries a stored plan only for a PARSED query, so a FAILED or PENDING one is served under no name.
+         */
+        fun from(
+            snapshot: ModelSnapshot,
+            savedQueriesAsObj: Boolean = false,
+        ): SnapshotModelHandle {
             val tables = LinkedHashMap<QualifiedName, ModelTable>()
             val fks = mutableListOf<ModelForeignKey>()
             val entitiesMap = LinkedHashMap<QualifiedName, ModelEntity>()
@@ -245,6 +258,7 @@ class SnapshotModelHandle(
                                 .map { it.second },
                     )
                 }
+            if (savedQueriesAsObj) addObjAliases(snapshot, savedQueriesMap, savedQueryBodies)
             return SnapshotModelHandle(
                 tables,
                 fks,
@@ -256,6 +270,41 @@ class SnapshotModelHandle(
                 savedQueryBodies,
                 attributeRenames,
             )
+        }
+
+        /** The obj name a saved query is read under (L-20). */
+        fun objName(query: QualifiedName): QualifiedName =
+            QualifiedName
+                .newBuilder()
+                .setSchemaCode(SchemaCode.OBJ)
+                .setNamespace(query.namespace)
+                .setName(query.name)
+                .build()
+
+        /**
+         * Every parsed saved query (a stored plan) under its obj name, when no other saved query shares that name; the
+         * worker reports a reference to a shared name as ambiguous before it parses (L-20).
+         */
+        private fun addObjAliases(
+            snapshot: ModelSnapshot,
+            savedQueries: MutableMap<QualifiedName, ModelSavedQuery>,
+            bodies: MutableMap<QualifiedName, SavedQueryBody>,
+        ) {
+            val queries = snapshot.objectsList.filter { it.contentCase == ObjectEntry.ContentCase.QUERY }
+            val byObjName =
+                queries.groupBy {
+                    objName(it.objectDescriptor.qualifiedName).let { o ->
+                        "${o.namespace}.${o.name}".lowercase()
+                    }
+                }
+            for (shared in byObjName.values) {
+                val entry = shared.singleOrNull() ?: continue
+                if (entry.query.canonicalForm.nodeCase == PlanNode.NodeCase.NODE_NOT_SET) continue
+                val qn = entry.objectDescriptor.qualifiedName
+                val alias = objName(qn)
+                savedQueries[alias] = ModelSavedQuery(alias)
+                bodies[alias] = bodies.getValue(qn)
+            }
         }
 
         private fun DbColumnSummary.toModelColumn(): ModelColumn =

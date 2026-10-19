@@ -1,0 +1,44 @@
+model query
+
+// LQ §8 (contracts L-20…L-25) — db-lane saved queries reading other saved queries as `obj.query.<name>` (a
+// `model query` query is `query.<name>`, so its obj name is `obj.query.<name>`).
+
+def query store_revenue {
+    description: "Net paid per sales ticket",
+    sourceText: """sql
+SELECT ss_ticket_number, SUM(ss_net_paid) AS revenue FROM store_sales GROUP BY ss_ticket_number
+"""
+}
+
+// A db query reading a db query: parses after it, over the tables its body reads.
+def query top_tickets {
+    description: "Tickets over 100, from store_revenue",
+    sourceText: """sql
+SELECT r.ss_ticket_number, r.revenue FROM obj.query.store_revenue r WHERE r.revenue > 100
+"""
+}
+
+// A db query with a parameter, and a query reading it: refused (saved_query_parameters).
+def query store_revenue_over {
+    description: "Tickets whose revenue is over a minimum",
+    sourceText: """sql
+SELECT ss_ticket_number, SUM(ss_net_paid) AS revenue FROM store_sales GROUP BY ss_ticket_number
+HAVING SUM(ss_net_paid) > {min_revenue}
+""",
+    parameters: [ { name: min_revenue, type: decimal, label: "Minimum revenue" } ]
+}
+
+def query reads_parametrized {
+    description: "Reads a query that takes a parameter",
+    sourceText: """sql
+SELECT r.ss_ticket_number FROM obj.query.store_revenue_over r
+"""
+}
+
+// `dup` here and `dup` in refs.ttrm (a logical query) are both `obj.query.dup`: ambiguous.
+def query dup {
+    description: "A db query whose obj name a logical query shares",
+    sourceText: """sql
+SELECT ss_ticket_number FROM store_sales
+"""
+}

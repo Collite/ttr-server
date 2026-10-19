@@ -1,0 +1,64 @@
+model er
+
+// LQ §8 (contracts L-20…L-25) — logical queries reading other saved queries as `obj.query.<name>`, and the shapes
+// the metadata worker refuses. `LogicalQueryReferenceSpec` pins each.
+
+// Reads the logical query `shopper_revenue` (revenue.ttrm): parses after it; its stored plan inlines that body.
+def query big_shoppers {
+    description: "Shoppers whose revenue is over 1000",
+    sourceText: """sql
+SELECT r.shopper_id, r.revenue FROM obj.query.shopper_revenue r WHERE r.revenue > 1000
+"""
+}
+
+// Two levels: reads big_shoppers, which reads shopper_revenue.
+def query biggest_shoppers {
+    description: "The big shoppers over 5000",
+    sourceText: """sql
+SELECT b.shopper_id FROM obj.query.big_shoppers b WHERE b.revenue > 5000
+"""
+}
+
+// An entity stacked on a query that reads another query: checked against its output like any.
+def entity big_shopper { description: "A shopper whose revenue is over 1000",
+    binding: { target: { query: er.query.big_shoppers } },
+    attributes: [
+        def attribute shopper_id { type: int, isKey: true, description: "Shopper key" },
+        def attribute revenue { type: decimal, optional: true, description: "Revenue" }
+    ]
+}
+
+// A cycle: each reads the other.
+def query loop_a { description: "Reads loop_b", sourceText: """sql
+SELECT x.shopper_id FROM obj.query.loop_b x
+""" }
+def query loop_b { description: "Reads loop_a", sourceText: """sql
+SELECT y.shopper_id FROM obj.query.loop_a y
+""" }
+
+// A reference to no saved query.
+def query reads_unknown { description: "Reads a query that does not exist", sourceText: """sql
+SELECT n.shopper_id FROM obj.query.nothing n
+""" }
+
+// A reference to a saved query that fails (mixed lanes).
+def query broken_mixed { description: "Reads an entity and a table together", sourceText: """sql
+SELECT sale.ticket_number, store_sales.ss_net_paid
+FROM sale JOIN store_sales ON sale.ticket_number = store_sales.ss_ticket_number
+""" }
+def query reads_broken { description: "Reads a query that failed", sourceText: """sql
+SELECT b.ticket_number FROM obj.query.broken_mixed b
+""" }
+
+// A logical query reading a db query reads tables: lane_mismatch (the lane is decided after inlining).
+def query reads_db { description: "Reads the db query store_revenue", sourceText: """sql
+SELECT r.ss_ticket_number FROM obj.query.store_revenue r
+""" }
+
+// `dup` (logical) shares `obj.query.dup` with the db query `dup` (queries.ttrm): a reference is ambiguous.
+def query dup { description: "A logical query whose obj name a db query shares", sourceText: """sql
+SELECT shopper.shopper_id FROM shopper
+""" }
+def query reads_dup { description: "Reads the ambiguous dup", sourceText: """sql
+SELECT d.shopper_id FROM obj.query.dup d
+""" }

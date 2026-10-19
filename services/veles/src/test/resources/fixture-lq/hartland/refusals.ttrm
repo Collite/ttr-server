@@ -42,3 +42,15 @@ def entity ticket_revenue { description: "Net paid per ticket, with a column the
         def attribute margin { type: decimal, optional: true, description: "Not in the query's output" }
     ]
 }
+
+// A bare JOIN the model cannot condition: no relation joins a sale to a household (only through a shopper). The
+// translator keeps the Cartesian product and warns; a saved query stored that way would answer every household with
+// every sale, so the worker refuses it.
+def query sale_household_unjoined {
+    description: "Revenue by buying potential, joined without the shopper between them",
+    sourceText: """sql
+SELECT household.buy_potential, SUM(sale.revenue) AS revenue
+FROM sale JOIN household
+GROUP BY household.buy_potential
+"""
+}

@@ -16,6 +16,36 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+- **translate** — at run time a saved query can read another one (LQ, L-28). The handle translate parses with now
+  serves every PARSED saved query under its obj name (`obj.query.<name>` for a logical or `model query` query,
+  `obj.<schema>.<name>` for a db query), with its stored plan as the body, as veles' worker does during its
+  dependency-ordered parse. A query's text sent through `query.Run` (a Golem pattern, the lattice, free SQL) that
+  reads another saved query therefore parses, with the body inlined from the stored plan: validate sees the tables
+  and entities it really reads, so row policies and masks apply. Before, it failed `Object '<name>' not found within
+  'obj.<namespace>'`. A FAILED or PENDING query has no stored plan in the snapshot and is not served; text that names
+  no saved query parses byte-identically. Schema detection leaves `obj.*` references out of its verdict (the stated
+  schema stands; tables and entities beside them still vote); it reported each one `schema_object_unknown`, and
+  `query.Run` refused the text before the parse. `/status`'s `saved_query_count` now counts the queries served under
+  `obj.query`; it was always 0.
+- **metadata (veles)** — a saved query with a string literal outside Latin-1 (`'Poštovné'`, a `TRANSLATE` over `čšž`)
+  parses again. Since the dependency-ordered parse, the worker's first Calcite use in the process was
+  `Translator.savedQueryReferences`, which on 0.12.1 (unlike the parse entry points) did not promote Calcite's literal
+  charset to UTF-8 before Calcite freezes it, so Calcite stayed on ISO-8859-1 and every such body was FAILED: `Failed to
+  encode … in character set 'ISO-8859-1'`, or a validation error naming none of it (`Cannot apply 'CHAR_LENGTH' to
+  arguments of type 'CHAR_LENGTH(<UNKNOWN>)'`, when the typed-placeholder retry hit the literal). Pins `ttr-translator`
+  / `ttr-plan-proto` **0.12.3**, whose `savedQueryReferences` promotes the charset first, and the worker promotes it
+  itself before anything else; a refresh or a restart did not help, as every start ran the same order.
+
+- **metadata (veles)** — a logical query whose bare `JOIN` the model cannot condition is refused:
+  `logical_query_join_unresolved`, carrying the translator's joiner text (`JOIN_NO_RELATION`,
+  `JOIN_AMBIGUOUS_RELATIONS`, `JOIN_KEY_NAME_COLLISION`). The translator leaves such a join unconditioned and warns;
+  the worker stored the plan anyway, so an entity stacked on the query answered every reader with the Cartesian
+  product, and nobody was told. An FK-only relation (`JOIN_RELATION_WITHOUT_PAIRS`, INFO) is conditioned from its
+  foreign key at MAP_TO_PHYSICAL, so a logical query's body is also taken to the physical level once at parse time:
+  one foreign key between the tables parses; two (`JOIN_AMBIGUOUS_RELATIONS` there) are refused the same way. A db
+  query is not checked: its joins are its author's SQL (a comma join conditioned in WHERE, a deliberate CROSS JOIN),
+  which model joins do not touch. Found by the independent review of the logical-queries adoption.
+
 ### metadata / query / validate — logical queries: saved queries over entities, entities stacked on them
 
 A saved query declared in a `model er` file is a **logical query** (`er.query.<name>`): written over entities —
@@ -67,6 +97,28 @@ lane, the strict parse and the expansion live.
   under it is neither read nor rewritten by them: a MASK on a stacked attribute masks the consumers above the
   boundary (so a row policy placed above it still filters on the real value), and a rule on an entity the body
   reads does not reach through the stacked entity.
+
+### metadata — a saved query can read another saved query (`obj.<namespace>.<name>`)
+
+A SQL body names another saved query as `obj.<namespace>.<name>`: `er.query.x` (a logical query) and `query.x` (a
+`model query` file) are `obj.query.x`, a db query `db.<schema>.x` is `obj.<schema>.x`. Pins `ttr-translator` /
+`ttr-plan-proto` **0.12.1** (the reader's row type comes from the referenced query's stored plan; references are
+extracted before parsing; a referenced body with parameters is refused) and the grammar bundle (`ttr-metadata`, …)
+**0.15.4** (a `def query` in a `model db` file loads as a db query instead of `ttr/wrong-file-kind`, and so do a
+`drill_map` there and an `er2cnc_role` in a `model cnc` file; `def area` and the `def project` header are legal
+beside any `model` directive).
+
+- **metadata (`veles`) — saved queries parse in dependency order.** A query parses after every saved query it reads,
+  against a handle that serves their stored plans; the reader's stored plan has those bodies inlined, so nothing at
+  run time looks a saved query up. The lane is decided after inlining, as before: a logical query may read a logical
+  one; reading a db query is `lane_mismatch`. Refused, each naming what it read: `saved_query_unknown`,
+  `saved_query_ambiguous` (two saved queries share the obj name — e.g. a logical and a `model query` query of one
+  name), `query_reference_cycle` (with the path), `saved_query_failed` (with the referenced query's failure) and
+  `saved_query_parameters`. A model whose bodies read no saved query parses exactly as before, in one pass.
+- **`translate-snapshot`** — `SnapshotModelHandle.from(snapshot, savedQueriesAsObj = false)`: with `true`, every
+  parsed saved query is also served under its obj name (a name two queries share under neither). Only the metadata
+  worker sets it; the translate service keeps the default, so a saved query is never run by name (LQ-6).
+
 ### resolver + lex-matcher — several declared lexicon archives, loaded as one layer (#209)
 
 An estate whose packages come from two sources (Veles' `METADATA_GIT2_*`) got a lexicon for only one of them: both
