@@ -166,6 +166,22 @@ class LogicalQueryForeignKeyJoinSpec :
             message shouldStartWith "logical_query_join_unresolved: "
             message shouldContain "JOIN_AMBIGUOUS_RELATIONS"
         }
+
+        "L-30 — a logical query read by another is a temporary entity: a bare JOIN rides the relation it inherits" {
+            // `spend_per_shopper` passes sale.shopper_id through as its GROUP BY key, so it inherits the FK-only
+            // relation sale → shopper; one that passes no attribute through inherits nothing and is refused as before.
+            val statuses = statuses(model(keys = 1, moreEr = READS_AS_TEMPORARY))
+            statuses.getValue("spend_per_shopper").shouldBeInstanceOf<ParseStatus.ParseSuccess>()
+            statuses.getValue("big_spender_names").shouldBeInstanceOf<ParseStatus.ParseSuccess>()
+            val message =
+                statuses
+                    .getValue(
+                        "total_beside_shoppers",
+                    ).shouldBeInstanceOf<ParseStatus.ParseFailure>()
+                    .message
+            message shouldStartWith "logical_query_join_unresolved: "
+            message shouldContain "JOIN_NO_RELATION"
+        }
     }) {
     private companion object {
         const val FK_CUSTOMER =
@@ -183,6 +199,22 @@ class LogicalQueryForeignKeyJoinSpec :
                 "def query sales_of_listed {\n    sourceText: \"\"\"sql\n" +
                 "SELECT sale.ticket_number FROM sale JOIN shopper " +
                 "JOIN obj.query.shopper_ids i ON i.shopper_id = shopper.shopper_id\n\"\"\"\n}\n"
+
+        /**
+         * L-30: `big_spender_names` joins `shopper` to a logical query that passes `sale.shopper_id` through (it inherits
+         * `sale_shopper`); `total_beside_shoppers` joins it to one that passes nothing through (no relation to inherit).
+         */
+        const val READS_AS_TEMPORARY =
+            "\n\ndef query spend_per_shopper {\n    sourceText: \"\"\"sql\n" +
+                "SELECT sale.shopper_id, SUM(sale.revenue) AS revenue FROM sale " +
+                "GROUP BY sale.shopper_id\n\"\"\"\n}\n\n" +
+                "def query spend_total {\n    sourceText: \"\"\"sql\n" +
+                "SELECT SUM(sale.revenue) AS revenue FROM sale\n\"\"\"\n}\n\n" +
+                "def query big_spender_names {\n    sourceText: \"\"\"sql\n" +
+                "SELECT shopper.shopper_id, r.revenue FROM obj.query.spend_per_shopper r JOIN shopper " +
+                "WHERE r.revenue > 100\n\"\"\"\n}\n\n" +
+                "def query total_beside_shoppers {\n    sourceText: \"\"\"sql\n" +
+                "SELECT shopper.shopper_id, t.revenue FROM obj.query.spend_total t JOIN shopper\n\"\"\"\n}\n"
 
         /** Two db queries whose joins are the author's: a comma join conditioned in WHERE, and a deliberate CROSS JOIN. */
         const val COMMA_AND_CROSS =

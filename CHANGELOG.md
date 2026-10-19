@@ -16,6 +16,14 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+- **metadata (veles), translate, query** — pins `ttr-translator` / `ttr-plan-proto` **0.12.4** (LQ-T6, L-30): a logical
+  query read by another one is a temporary entity whose relations follow its columns. `FROM obj.query.spend_per_shopper
+  r JOIN shopper`, where the query passes `sale.shopper_id` through as its `GROUP BY` key, is conditioned through the
+  relation `sale → shopper` it inherits, FK-only relations included; veles stores it PARSED where it refused it
+  (`logical_query_join_unresolved: JOIN_NO_RELATION … a derived table`). A query that passes no attribute through
+  inherits nothing and is refused as before. An FK-only join to an entity stacked on a `GROUP BY` query is conditioned
+  too (ttr-core#204). Every other join is decided exactly as on 0.12.3.
+
 - **translate** — at run time a saved query can read another one (LQ, L-28). The handle translate parses with now
   serves every PARSED saved query under its obj name (`obj.query.<name>` for a logical or `model query` query,
   `obj.<schema>.<name>` for a db query), with its stored plan as the body, as veles' worker does during its
