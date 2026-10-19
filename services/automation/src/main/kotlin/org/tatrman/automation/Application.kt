@@ -15,14 +15,26 @@ import org.slf4j.LoggerFactory
 import org.tatrman.automation.api.HealthSources
 import org.tatrman.automation.api.SchedulerHealth
 import org.tatrman.automation.api.ServedBundle
+import org.tatrman.automation.api.AutomationException
+import org.tatrman.automation.api.DescriptorSources
 import org.tatrman.automation.api.descriptorRoutes
 import org.tatrman.automation.api.healthRoutes
 import org.tatrman.automation.api.installAutomationErrors
+import org.tatrman.automation.bundle.BundleLoader
+import org.tatrman.automation.bundle.Bundles
+import org.tatrman.automation.bundle.ExecutorType
+import org.tatrman.automation.bundle.GitBundleSource
+import org.tatrman.automation.bundle.GrpcVelesStatus
+import org.tatrman.automation.bundle.Registry
+import org.tatrman.automation.bundle.VelesHandshake
 import org.tatrman.automation.config.AutomationConfig
 import org.tatrman.automation.identity.AUTOMATION_AUTH
+import org.tatrman.automation.identity.AuthorMap
 import org.tatrman.automation.identity.AutomationBearerProvider
 import org.tatrman.automation.identity.CallerVerifier
+import org.tatrman.automation.identity.ServiceTokens
 import org.tatrman.automation.ledger.Ledger
+import org.tatrman.automation.ledger.LedgerBundles
 import org.tatrman.automation.obs.AutomationTelemetry
 import org.tatrman.automation.queue.LedgerQueue
 import org.tatrman.automation.queue.Pgmq
@@ -34,6 +46,9 @@ import shared.ktor.installKtorServerBase
 import shared.libs.db.common.DatabaseConnection
 import shared.otel.OtelEndpointConfig
 import shared.otel.createOpenTelemetrySdk
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import java.nio.file.Path
 import java.time.Clock
 import javax.sql.DataSource
 
@@ -51,9 +66,9 @@ fun main() {
 /**
  * The bootstrap (AU-server S0.1): config (fails at load on a missing required key) → OTel → the ledger's
  * database + Flyway (V1 ledger · V2 pgmq · V3 queues) → the pgmq queues checked → the bearer check (S0.3:
- * every route under `/automation` but `/automation/health` answers 401 without a verified token) → Ktor. The
- * bundle load (S0.2), the runner (P1, which resolves `RunAs` at open) and the scheduler (S3.2) join this
- * sequence as they land.
+ * every route under `/automation` but `/automation/health` answers 401 without a verified token) → Ktor → the
+ * served bundle loaded in the background (S0.2), then polled. The runner (P1, which resolves `RunAs` at open)
+ * and the scheduler (S3.2) join this sequence as they land.
  */
 fun Application.module(config: Config) {
     val automation = AutomationConfig.load(config)
@@ -77,7 +92,17 @@ fun Application.module(config: Config) {
 
     val clock = Clock.offset(Clock.systemUTC(), automation.clockSkew)
     val ledger = Ledger(defaultBudget = automation.budgets.batchDefault, clock = clock)
-    val sources = LedgerHealthSources(ledger, pgmq, automation)
+    val ledgerBundles = LedgerBundles()
+    val bundles =
+        Bundles(
+            servedBranch = automation.bundleGit.branch,
+            previewsConfig = automation.previews,
+            source = GitBundleSource(automation.bundleGit, Path.of(automation.bundleGit.checkoutDir)),
+            loader = BundleLoader(AuthorMap(automation.auth.authorMap), clock),
+            book = ledgerBundles,
+            clock = clock,
+        )
+    val sources = LedgerHealthSources(ledger, pgmq, automation, bundles)
     AutomationTelemetry(openTelemetry, queueDepths = sources::queueDepths)
 
     val callers =
@@ -89,14 +114,42 @@ fun Application.module(config: Config) {
             ),
         )
     install(Authentication) { AutomationBearerProvider.register(this, callers) }
+    val velesStatus = GrpcVelesStatus(automation.door.velesUrl)
 
     install(StatusPages) { installAutomationErrors() }
     routing {
         healthRoutes(sources)
-        authenticate(AUTOMATION_AUTH) { descriptorRoutes(paused = { automation.paused }) }
+        authenticate(AUTOMATION_AUTH) {
+            descriptorRoutes(
+                DescriptorSources(
+                    bundles = bundles,
+                    registry = Registry(ExecutorType.builtin()),
+                    approvals = ledgerBundles,
+                    tokens = ServiceTokens.keycloak(automation.connections, automation.auth.tokenUrl),
+                    veles = VelesHandshake(velesStatus, automation.bundleGit.velesSource),
+                    paused = { automation.paused },
+                ),
+            )
+        }
     }
 
-    monitor.subscribe(ApplicationStopping) { db.close() }
+    // The served bundle: loaded at start (a failure leaves nothing served, the service up), then by the poll, the
+    // CI call on merge and the manual POST /refresh (D-74). No repo configured = nothing is served.
+    if (automation.bundleGit.url != null) {
+        launch {
+            refreshQuietly(bundles)
+            val every = automation.bundleGit.pollSeconds
+            while (every > 0) {
+                delay(every * 1000)
+                refreshQuietly(bundles)
+            }
+        }
+    }
+
+    monitor.subscribe(ApplicationStopping) {
+        velesStatus.close()
+        db.close()
+    }
 }
 
 /** Flyway over schema `automation` (its history table lives there too); answers how many migrations ran. */
@@ -111,11 +164,20 @@ fun migrateLedger(dataSource: DataSource): Int =
         .migrate()
         .migrationsExecuted
 
-/** The health report's reads, over the ledger. The served bundle and the scheduler arrive with S0.2/S3.2. */
+private suspend fun refreshQuietly(bundles: Bundles) {
+    try {
+        bundles.refresh()
+    } catch (e: AutomationException) {
+        log.warn("automation: refresh — {} {}", e.code.code, e.message)
+    }
+}
+
+/** The health report's reads, over the ledger and the bundle registry. The scheduler arrives with S3.2. */
 private class LedgerHealthSources(
     private val ledger: Ledger,
     private val pgmq: Pgmq,
     private val automation: AutomationConfig,
+    private val bundles: Bundles,
 ) : HealthSources {
     override fun dbReachable(): Boolean = ledger.ping()
 
@@ -127,11 +189,14 @@ private class LedgerHealthSources(
 
     override fun abandoned(): Long = ledger.countAbandoned()
 
-    override fun served(): ServedBundle? = null
+    override fun served(): ServedBundle? =
+        bundles.served?.let {
+            ServedBundle(it.id, it.commit, it.modelFp, it.loadedAt.toString())
+        }
 
     override fun scheduler(): SchedulerHealth? = null
 
-    override fun refreshFailed(): Boolean = false
+    override fun refreshFailed(): Boolean = bundles.refreshFailed
 
     override fun paused(): Boolean = automation.paused
 }

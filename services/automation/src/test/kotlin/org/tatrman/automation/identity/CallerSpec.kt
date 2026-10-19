@@ -31,6 +31,8 @@ import org.tatrman.automation.api.ServedBundle
 import org.tatrman.automation.api.descriptorRoutes
 import org.tatrman.automation.api.healthRoutes
 import org.tatrman.automation.api.installAutomationErrors
+import org.tatrman.automation.bundle.BundleFixture
+import org.tatrman.automation.bundle.BundleSource
 import org.tatrman.mcp.identity.HttpJwksKeySource
 import org.tatrman.mcp.identity.JwksBearerVerifier
 import java.time.Instant
@@ -77,7 +79,11 @@ class CallerSpec :
                 routing {
                     healthRoutes(health)
                     authenticate(AUTOMATION_AUTH) {
-                        descriptorRoutes(paused = { false })
+                        descriptorRoutes(
+                            BundleFixture.sources(
+                                BundleFixture.bundles(BundleSource { error("nothing is checked out here") }),
+                            ),
+                        )
                         get("/automation/whoami") {
                             val c = call.caller()
                             call.respondText("${c.principal}|${c.kind}|${c.roles.sorted().joinToString(",")}|${c.sub}")
