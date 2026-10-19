@@ -20,7 +20,7 @@ enum class ErrorCode(
     val stage: String,
 ) {
     // §1.1 — descriptor · refresh
-    BRANCH_NOT_ALLOWED("branch-not-allowed", HttpStatusCode.Forbidden, "S4.2"),
+    BRANCH_NOT_ALLOWED("branch-not-allowed", HttpStatusCode.Forbidden, "S0.2"),
     REFRESH_IN_PROGRESS("refresh-in-progress", HttpStatusCode.Conflict, "S0.2"),
     CHECKOUT_FAILED("checkout-failed", HttpStatusCode.BadGateway, "S0.2"),
     BUNDLE_INVALID("bundle-invalid", HttpStatusCode.UnprocessableEntity, "S0.2"),

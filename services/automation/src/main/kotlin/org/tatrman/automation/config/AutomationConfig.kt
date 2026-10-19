@@ -24,11 +24,19 @@ data class AuthConfig(
     val authorMap: Map<String, String>,
 )
 
+/**
+ * The automation repo (§8): [path] = where `model/` and `automation/` sit in the work tree; [pollSeconds] = the
+ * refresh poll (0 = off; the CI call and the manual `POST /refresh` remain); [checkoutDir] = the clones' root;
+ * [velesSource] = the Veles source id serving this repo's model, for the drift handshake (unset = any source).
+ */
 data class BundleGitConfig(
     val url: String?,
     val branch: String,
     val path: String,
     val token: String?,
+    val pollSeconds: Long = 0,
+    val checkoutDir: String = "/tmp/automation-bundles",
+    val velesSource: String? = null,
 )
 
 data class PreviewsConfig(
@@ -122,6 +130,17 @@ data class AutomationConfig(
                         branch = c.getString("bundle.git.branch"),
                         path = c.getString("bundle.git.path"),
                         token = c.optString("bundle.git.token"),
+                        pollSeconds =
+                            if (c.hasPath(
+                                    "bundle.git.pollSeconds",
+                                )
+                            ) {
+                                c.getLong("bundle.git.pollSeconds")
+                            } else {
+                                0
+                            },
+                        checkoutDir = c.optString("bundle.git.checkoutDir") ?: "/tmp/automation-bundles",
+                        velesSource = c.optString("bundle.velesSource"),
                     ),
                 previews =
                     PreviewsConfig(
