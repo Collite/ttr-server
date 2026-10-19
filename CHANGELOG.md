@@ -16,13 +16,14 @@ outside this repo could notice is in.
 
 ## Unreleased
 
-- **metadata (veles)** — a saved query with a string literal outside Latin-1 (`'Poštovné'`, a `TRANSLATE` over
-  `čšž`) parses again. Since the dependency-ordered parse, the worker's first Calcite use in the process was
-  `Translator.savedQueryReferences`, which (unlike the parse entry points) does not promote Calcite's literal charset to
-  UTF-8 before Calcite freezes it, so Calcite stayed on ISO-8859-1 and every such body was FAILED: `Failed to encode …
-  in character set 'ISO-8859-1'`, or a validation error naming none of it (`Cannot apply 'CHAR_LENGTH' to arguments of
-  type 'CHAR_LENGTH(<UNKNOWN>)'`, when the typed-placeholder retry hit the literal). The worker now promotes the
-  charset itself before anything else; a refresh or a restart did not help, as every start ran the same order.
+- **metadata (veles)** — a saved query with a string literal outside Latin-1 (`'Poštovné'`, a `TRANSLATE` over `čšž`)
+  parses again. Since the dependency-ordered parse, the worker's first Calcite use in the process was
+  `Translator.savedQueryReferences`, which on 0.12.1 (unlike the parse entry points) did not promote Calcite's literal
+  charset to UTF-8 before Calcite freezes it, so Calcite stayed on ISO-8859-1 and every such body was FAILED: `Failed to
+  encode … in character set 'ISO-8859-1'`, or a validation error naming none of it (`Cannot apply 'CHAR_LENGTH' to
+  arguments of type 'CHAR_LENGTH(<UNKNOWN>)'`, when the typed-placeholder retry hit the literal). Pins `ttr-translator`
+  / `ttr-plan-proto` **0.12.3**, whose `savedQueryReferences` promotes the charset first, and the worker promotes it
+  itself before anything else; a refresh or a restart did not help, as every start ran the same order.
 
 - **metadata (veles)** — a logical query whose bare `JOIN` the model cannot condition is refused:
   `logical_query_join_unresolved`, carrying the translator's joiner text (`JOIN_NO_RELATION`,

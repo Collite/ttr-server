@@ -58,9 +58,10 @@ class QueryParseWorker(
     ): Job =
         scope.launch {
             if (model.queries.isEmpty()) return@launch
-            // Calcite freezes its literal charset when it first loads; the translator's parse entry points promote it
-            // to UTF-8 first, but `Translator.savedQueryReferences` (SavedQueryOrder, below) does not. Run first in the
-            // process, it left Calcite on ISO-8859-1, and every body with a literal outside Latin-1 (`č ř š ž`) failed.
+            // Calcite freezes its literal charset when it first loads. Translator 0.12.1's `savedQueryReferences`
+            // (SavedQueryOrder, below) did not promote it to UTF-8 as the parse entry points do; run first in the process,
+            // it left Calcite on ISO-8859-1 and every body with a literal outside Latin-1 (`č ř š ž`) failed. 0.12.3
+            // promotes it there too; the worker still does it first, whichever translator call comes first.
             CalciteCharset.ensureUtf8()
             val handle = queryPathHandle(model)
             val stacked = stackedEntities(handle, model.queries.keys.mapTo(HashSet()) { it.toProto() })
