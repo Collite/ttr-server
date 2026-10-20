@@ -4,6 +4,7 @@ package org.tatrman.translate.grpc
 import io.kotest.core.annotation.Tags
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.shouldNotBe
 import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.string.shouldNotContain
 import org.tatrman.plan.v1.SchemaCode
@@ -11,6 +12,7 @@ import org.tatrman.translate.model.StaticModelHandleProvider
 import org.tatrman.translate.v1.Language
 import org.tatrman.translate.v1.ParseRequest
 import org.tatrman.translate.v1.SqlDialect
+import org.tatrman.translate.v1.TranslateRequest
 import org.tatrman.translate.v1.UnparseRequest
 import java.nio.file.Files
 import java.nio.file.Path
@@ -125,6 +127,79 @@ class ModelJoinComponentSpec :
             sql shouldNotContain "ON TRUE"
             sql shouldNotContain "CROSS JOIN"
             assertGolden("dq_bare_join_three_entities", sql)
+        }
+
+        // ttr-server#232 — a join the model cannot condition stays a Cartesian product (⚑MJ-3: a WARNING), and the
+        // caller is told so. translate used to answer a successful parse with the plan alone and drop the warning.
+        val cartesian =
+            "WARNING/JOIN_NO_RELATION: no declared relation between entity.date_dim and entity.item; " +
+                "Cartesian product preserved"
+        val unrelated =
+            """
+            SELECT "date_dim"."year" AS "year", "item"."brand" AS "brand"
+            FROM "date_dim" JOIN "item"
+            """.trimIndent()
+
+        "a bare JOIN the model cannot condition parses to a Cartesian product, and ParseToRelNode says so" {
+            val (_, messages) = erToPg(unrelated)
+            messages shouldBe listOf(cartesian)
+        }
+
+        // query's two calls: the ER half (target ER), then the plan re-entered for the DB half. query reads the warning
+        // from the second, the plan that runs; this pins that the re-entry decides the join again and says so.
+        "query's two-half pipeline: the DB re-entry says so again" {
+            val erHalf =
+                service.parseToRelNode(
+                    ParseRequest
+                        .newBuilder()
+                        .setSource(unrelated)
+                        .setSourceLanguage(Language.SQL)
+                        .setSourceSchema(SchemaCode.ER)
+                        .setTargetSchema(SchemaCode.ER)
+                        .setExpandLogicalBodies(true)
+                        .build(),
+                )
+            val dbHalf =
+                service.parseToRelNode(
+                    ParseRequest
+                        .newBuilder()
+                        .setSource(String(erHalf.plan.toByteArray(), Charsets.ISO_8859_1))
+                        .setSourceLanguage(Language.REL_NODE)
+                        .setTargetSchema(SchemaCode.DB)
+                        .build(),
+                )
+            dbHalf.hasPlan() shouldBe true
+            dbHalf.messagesList.map { "${it.severity}/${it.code}: ${it.humanMessage}" } shouldBe listOf(cartesian)
+        }
+
+        "Translate says so too" {
+            val resp =
+                service.translate(
+                    TranslateRequest
+                        .newBuilder()
+                        .setSource(unrelated)
+                        .setSourceLanguage(Language.SQL)
+                        .setSourceSchema(SchemaCode.ER)
+                        .setTargetSchema(SchemaCode.DB)
+                        .setTargetLanguage(Language.SQL)
+                        .setTargetDialect(SqlDialect.POSTGRESQL)
+                        .build(),
+                )
+            resp.output shouldNotBe ""
+            resp.messagesList.map { "${it.severity}/${it.code}: ${it.humanMessage}" } shouldBe listOf(cartesian)
+        }
+
+        "a join left to its foreign key, which conditions it, is passed on as the translator's INFO" {
+            val (sql, messages) =
+                erToPg(
+                    """
+                    SELECT "date_dim"."month" AS "month", SUM("catalog_sales"."ext_sales_price") AS "ext_sales_price"
+                    FROM "catalog_sales" JOIN "date_dim"
+                    GROUP BY "date_dim"."month"
+                    """.trimIndent(),
+                )
+            sql shouldContain "ON \"t\".\"sold_date\" = \"t0\".\"sk\""
+            messages.map { it.substringBefore(":") } shouldBe listOf("INFO/JOIN_RELATION_WITHOUT_PAIRS")
         }
 
         "the comma form still yields the plan it yielded before the bump" {

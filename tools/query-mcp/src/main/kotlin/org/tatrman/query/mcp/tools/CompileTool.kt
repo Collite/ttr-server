@@ -268,6 +268,13 @@ class CompileTool(
         // G7: surface accumulated upstream warnings (translator + validator stages).
         val pipelineWarnings = PipelineWarnings.toJsonArray(finalCtx.warningsList)
 
+        // ttr-server#232 — the translator's WARNINGs on the plan: a join it could not condition from the model, left a
+        // Cartesian product. Its INFO (a join left to its foreign key, which conditioned it) is not news to a caller.
+        val joinWarnings =
+            parseResp.messagesList
+                .filter { it.severity == Severity.WARNING }
+                .map { MessageEntry(severity = it.severity.toAgentString(), code = it.code, text = it.humanMessage) }
+
         val structured =
             buildJsonObject {
                 put("ok", JsonPrimitive(true))
@@ -307,7 +314,7 @@ class CompileTool(
                         }
                     },
                 )
-                put("messages", messagesArray(emptyList()))
+                put("messages", messagesArray(joinWarnings))
                 put("pipelineWarnings", pipelineWarnings)
             }
 

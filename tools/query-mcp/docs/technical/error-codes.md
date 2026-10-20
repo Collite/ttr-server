@@ -72,11 +72,19 @@ The `Warning` proto carries no severity; v1 derives severity from a small known-
 | `llm_guard_skeleton`              | warn     | LLM-guard stage is enabled but currently a skeleton (Phase 1.6 carry-over). |
 | `security_skipped_for_workspace`  | info     | Plan references a session-scoped workspace; security was applied when the workspace was created and is not re-applied to it. Every table the plan reads beside the workspace is filtered as usual. _Phase 2.4._ |
 
-### Translator (`source_service = "translator"`)
+### Translator (`source_service = "translate"`)
 
 | Code                              | Severity | Notes |
 |-----------------------------------|----------|-------|
-| _(stage-emitted warnings — codes vary by translator stage)_ | warn | Generic translator stage warnings flow through unchanged. Future codes land here without agent-side changes. |
+| `JOIN_NO_RELATION`                | warn     | `source_stage = "expand_joins"`. A join the model declares no relation for, between the two sides the text names (`a derived table` for a side with no entity), was left a **Cartesian product**: every row of one side against every row of the other. Write the `ON`. |
+| `JOIN_AMBIGUOUS_RELATIONS`        | warn     | `source_stage = "expand_joins"`. More than one relation could join the sides, or an entity occurs twice in the join; the translator does not guess, and the join is a Cartesian product. Write the `ON`. |
+| `JOIN_KEY_NAME_COLLISION`         | warn     | `source_stage = "expand_joins"`. The join key exists on more than one entity of one side; the join is a Cartesian product. Write the `ON`. |
+| _(other stage-emitted warnings)_  | warn     | Future codes land here without agent-side changes. |
+
+The `JOIN_*` warnings come from the translator's parse of the plan that runs (ttr-server#232). `query` carries them in
+`pipelineWarnings`. `compile` carries them in `messages`, with severity `warn`, beside `ok: true`. The translator's INFO
+`JOIN_RELATION_WITHOUT_PAIRS` (a relation declaring no join pairs, conditioned from its foreign key) is not passed on:
+that join was conditioned.
 
 ### Dispatcher (`source_service = "dispatcher"`)
 

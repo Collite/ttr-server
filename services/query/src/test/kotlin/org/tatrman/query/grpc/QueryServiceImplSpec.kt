@@ -14,6 +14,7 @@ import org.tatrman.query.v1.RowWindow
 import org.tatrman.query.v1.RunRequest
 import org.tatrman.translate.v1.DetectSchemaResponse
 import org.tatrman.translate.v1.Language
+import org.tatrman.translate.v1.ParseRequest
 import org.tatrman.translate.v1.ParseResponse
 import org.tatrman.translate.v1.TranslateRequest
 import org.tatrman.translate.v1.TranslateResponse
@@ -1210,6 +1211,118 @@ class QueryServiceImplSpec :
                         .compile(sqlRequest())
                 resp.hasPlan() shouldBe false
                 resp.messagesList[0].code shouldBe "access_denied"
+            }
+        }
+
+        // ── ttr-server#232 — a join the translator left a Cartesian product is said to the caller ─────────────────
+        fun joinNote(
+            severity: Severity,
+            code: String,
+            text: String,
+        ): ResponseMessage =
+            ResponseMessage
+                .newBuilder()
+                .setSeverity(severity)
+                .setCode(code)
+                .setHumanMessage(text)
+                .build()
+        val dbHalfCartesian =
+            joinNote(
+                Severity.WARNING,
+                "JOIN_NO_RELATION",
+                "no declared relation between entity.reason and entity.date_dim; Cartesian product preserved",
+            )
+        val erHalfCartesian = dbHalfCartesian.toBuilder().setHumanMessage("the ER half's own word").build()
+        val leftToForeignKey =
+            joinNote(
+                Severity.INFO,
+                "JOIN_RELATION_WITHOUT_PAIRS",
+                "relation store_returns → reason declares no join pairs; left to its foreign key",
+            )
+
+        // The translator as it answers a statement with one unconditioned join: every DB-target parse (the DB path's
+        // one parse, the ER path's re-entry) warns, beside the INFO on a join its FK conditioned; the ER half warns too,
+        // in words of its own, so a test can tell which half a caller heard.
+        fun cartesianTranslator(parses: MutableList<ParseRequest> = CopyOnWriteArrayList()): TranslatorClient =
+            TranslatorClient { req ->
+                parses += req
+                val resp = ParseResponse.newBuilder().setPlan(planAfterParse).setContext(req.context)
+                if (req.targetSchema == org.tatrman.plan.v1.SchemaCode.DB) {
+                    resp.addMessages(leftToForeignKey).addMessages(dbHalfCartesian)
+                } else {
+                    resp.addMessages(erHalfCartesian)
+                }
+                resp.build()
+            }
+
+        fun joinWarnings(batch: ResultBatch) = batch.context.warningsList.filter { it.code.startsWith("JOIN_") }
+
+        fun codes(batch: ResultBatch) = batch.context.warningsList.map { it.code }
+
+        "run, ER path: the DB re-entry's join WARNING rides the first batch and the last; its INFO does not" {
+            runBlocking {
+                val out = service(translator = cartesianTranslator()).run(sqlRequest()).toList()
+                out.size shouldBe 2
+                for (batch in listOf(out.first(), out.last())) {
+                    val warning = joinWarnings(batch).single()
+                    warning.code shouldBe "JOIN_NO_RELATION"
+                    warning.message shouldBe dbHalfCartesian.humanMessage
+                    warning.sourceStage shouldBe "expand_joins"
+                    warning.sourceService shouldBe "translate"
+                }
+                // The last batch, which query-mcp reads alone, carries the rest of the run's annotations too.
+                codes(out.last()) shouldContain "cache_miss"
+            }
+        }
+
+        "run, DB path: a cache hit carries the join WARNING the miss did, without parsing again" {
+            runBlocking {
+                val parses = CopyOnWriteArrayList<ParseRequest>()
+                val svc =
+                    service(
+                        translator = cartesianTranslator(parses),
+                        translatorDetect = dbDetect,
+                        cache = CompiledPlanCache(100, Duration.ofMinutes(60)),
+                    )
+                val miss = svc.run(sqlRequest()).toList()
+                val hit = svc.run(sqlRequest()).toList()
+                parses.size shouldBe 1
+                codes(hit.last()) shouldContain "cache_hit"
+                for (out in listOf(miss, hit)) {
+                    joinWarnings(out.last()).map { it.message } shouldBe listOf(dbHalfCartesian.humanMessage)
+                }
+            }
+        }
+
+        "a one-batch answer carries each annotation once" {
+            runBlocking {
+                val oneBatch =
+                    DispatcherClient { _ ->
+                        flowOf(
+                            ResultBatch
+                                .newBuilder()
+                                .setIsFirst(true)
+                                .setIsLast(true)
+                                .setArrowIpc(ByteArray(0).toByteString())
+                                .setContext(PipelineContext.getDefaultInstance())
+                                .build(),
+                        )
+                    }
+                val out = service(translator = cartesianTranslator(), dispatcher = oneBatch).run(sqlRequest()).toList()
+                codes(out.single()).count { it == "cache_miss" } shouldBe 1
+                codes(out.single()).count { it == "JOIN_NO_RELATION" } shouldBe 1
+            }
+        }
+
+        "compile, ER and DB paths, miss and hit: the join WARNING is in messages, the INFO is not" {
+            runBlocking {
+                val er = service(translator = cartesianTranslator())
+                val db = service(translator = cartesianTranslator(), translatorDetect = dbDetect)
+                val answers = List(2) { er.compile(sqlRequest()) } + List(2) { db.compile(sqlRequest()) }
+                for (resp in answers) {
+                    resp.hasPlan() shouldBe true
+                    resp.messagesList.filter { it.code.startsWith("JOIN_") } shouldBe listOf(dbHalfCartesian)
+                }
             }
         }
     })

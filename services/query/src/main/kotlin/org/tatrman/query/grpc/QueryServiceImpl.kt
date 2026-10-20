@@ -143,6 +143,9 @@ class QueryServiceImpl(
                     // fresh on every run — including a cache hit, because the query service re-validates
                     // every call (security depends on `user_id`), so the cache never holds it.
                     val securityApplied = linkedSetOf<SecurityRuleApplied>()
+                    // ttr-server#232 — the translator's WARNINGs on the plan that runs (a join it left a Cartesian
+                    // product), from the DB parse: on the ER path the DB re-entry, which runs on every call.
+                    val joinWarnings = mutableListOf<ResponseMessage>()
                     var effectiveSchemaLabel = ""
                     val compileStart = System.currentTimeMillis()
                     val cachedHit = if (request.bypassCache) null else cache.lookup(key)
@@ -166,6 +169,7 @@ class QueryServiceImpl(
                                             ?: run { return@flow }
                                     capNotices += dbValidated.capNotices()
                                     securityApplied += dbValidated.securityAppliedList
+                                    joinWarnings += cachedHit.joinWarnings
                                     effectiveSchemaLabel = SCHEMA_DB
                                     Triple(PlanNode.getDefaultInstance(), dbValidated.plan, cachedHit.detectionMessages)
                                 }
@@ -180,6 +184,7 @@ class QueryServiceImpl(
                                     capNotices += erValidated.capNotices() + dbValidated.capNotices()
                                     securityApplied += erValidated.securityAppliedList
                                     securityApplied += dbValidated.securityAppliedList
+                                    joinWarnings += dbParsed.joinWarnings()
                                     effectiveSchemaLabel = SCHEMA_ER
                                     Triple(erValidated.plan, dbValidated.plan, cachedHit.detectionMessages)
                                 }
@@ -232,6 +237,7 @@ class QueryServiceImpl(
                                             ?: run { return@flow }
                                     capNotices += dbValidated.capNotices()
                                     securityApplied += dbValidated.securityAppliedList
+                                    joinWarnings += dbParsed.joinWarnings()
                                     effectiveSchemaLabel = SCHEMA_DB
                                     val requiredParams = dbParsed.context.parametersList.toList()
                                     val fp = PredictedFingerprintComputer.compute(dbParsed.plan)
@@ -246,6 +252,7 @@ class QueryServiceImpl(
                                                 effectiveSchema = SchemaCode.DB,
                                                 physicalPlan = dbParsed.plan,
                                                 detectionMessages = resolution.detectionMessages,
+                                                joinWarnings = dbParsed.joinWarnings(),
                                             ),
                                         )
                                     }
@@ -268,6 +275,7 @@ class QueryServiceImpl(
                                     capNotices += erValidated.capNotices() + dbValidated.capNotices()
                                     securityApplied += erValidated.securityAppliedList
                                     securityApplied += dbValidated.securityAppliedList
+                                    joinWarnings += dbParsed.joinWarnings()
                                     effectiveSchemaLabel = SCHEMA_ER
                                     Triple(erValidated.plan, dbValidated.plan, resolution.detectionMessages)
                                 }
@@ -275,12 +283,17 @@ class QueryServiceImpl(
                         }
 
                     val compileMs = System.currentTimeMillis() - compileStart
-                    val firstBatchAnnotations =
+                    // On the first batch and on the last (they may be the same batch): a consumer may read the last
+                    // one alone, as query-mcp does — the warnings on a stream accumulate, the last batch has them all.
+                    val runAnnotations =
                         mutableListOf<Warning>().apply {
                             add(warning("compile_duration_ms", compileMs.toString()))
                             add(warning(if (cachedHit != null) "cache_hit" else "cache_miss", key.sourceHash))
                             detectionMessages.forEach { msg ->
                                 add(warning(msg.code, msg.humanMessage))
+                            }
+                            joinWarnings.forEach { msg ->
+                                add(warning(msg.code, msg.humanMessage, stage = "expand_joins", service = "translate"))
                             }
                         }
 
@@ -322,10 +335,9 @@ class QueryServiceImpl(
                             dispatchTarget = batch.receipt.dispatchTarget
                         }
                         var out = batch
-                        if (!firstSeen && batch.isFirst) {
-                            firstSeen = true
-                            out = annotate(out, firstBatchAnnotations)
-                        }
+                        val first = !firstSeen && batch.isFirst
+                        if (first) firstSeen = true
+                        if (first || batch.isLast) out = annotate(out, runAnnotations)
                         if (batch.isLast && capNotice != null && rowCap != null && rowsStreamed >= rowCap) {
                             out = out.toBuilder().addMessages(capNotice).build()
                         }
@@ -623,7 +635,7 @@ class QueryServiceImpl(
                         .setContext(dbValidated.context)
                         .addAllRequiredParameters(requiredParameters)
                         .setPredictedSchemaFingerprint(predictedSchemaFingerprint)
-                        .addAllMessages(cached.detectionMessages + dbValidated.compileMessages())
+                        .addAllMessages(cached.detectionMessages + cached.joinWarnings + dbValidated.compileMessages())
                         .build()
                 }
                 SchemaCode.ER,
@@ -702,6 +714,7 @@ class QueryServiceImpl(
                             effectiveSchema = SchemaCode.DB,
                             physicalPlan = dbParsed.plan,
                             detectionMessages = resolution.detectionMessages,
+                            joinWarnings = dbParsed.joinWarnings(),
                         )
                     if (!readsSavedQuery(request)) cache.record(key, cachedPlan)
 
@@ -711,8 +724,9 @@ class QueryServiceImpl(
                         .setContext(dbValidated.context)
                         .addAllRequiredParameters(requiredParameters)
                         .setPredictedSchemaFingerprint(predictedSchemaFingerprint)
-                        .addAllMessages(resolution.detectionMessages + dbValidated.compileMessages())
-                        .build()
+                        .addAllMessages(
+                            resolution.detectionMessages + dbParsed.joinWarnings() + dbValidated.compileMessages(),
+                        ).build()
                 }
                 SchemaCode.ER,
                 SchemaCode.SCHEMA_CODE_UNSPECIFIED,
@@ -801,8 +815,9 @@ class QueryServiceImpl(
                         .setContext(dbValidated.context)
                         .addAllRequiredParameters(requiredParameters)
                         .setPredictedSchemaFingerprint(predictedSchemaFingerprint)
-                        .addAllMessages(resolution.detectionMessages + dbValidated.compileMessages())
-                        .build()
+                        .addAllMessages(
+                            resolution.detectionMessages + dbParsed.joinWarnings() + dbValidated.compileMessages(),
+                        ).build()
                 }
                 else -> {
                     return CompileResponse
@@ -865,7 +880,7 @@ class QueryServiceImpl(
             .setContext(dbValidated.context)
             .addAllRequiredParameters(requiredParameters)
             .setPredictedSchemaFingerprint(predictedSchemaFingerprint)
-            .addAllMessages(resolution.detectionMessages + dbValidated.messagesList)
+            .addAllMessages(resolution.detectionMessages + dbParsed.joinWarnings() + dbValidated.messagesList)
             .build()
     }
 
@@ -1251,14 +1266,25 @@ class QueryServiceImpl(
     private fun warning(
         code: String,
         message: String,
+        stage: String = "run",
+        service: String = "query",
     ): Warning =
         Warning
             .newBuilder()
             .setCode(code)
             .setMessage(message)
-            .setSourceStage("run")
-            .setSourceService("query")
+            .setSourceStage(stage)
+            .setSourceService(service)
             .build()
+
+    /**
+     * ttr-server#232 — the translator's WARNINGs on a successful parse: a join it could not condition from the model
+     * and left a Cartesian product (`JOIN_NO_RELATION`, `JOIN_AMBIGUOUS_RELATIONS`, `JOIN_KEY_NAME_COLLISION`). Its
+     * INFO `JOIN_RELATION_WITHOUT_PAIRS` is not passed on: that join WAS conditioned, from its foreign key, and on a
+     * model whose relations declare no join pairs it would be said of every join of every call.
+     */
+    private fun ParseResponse.joinWarnings(): List<ResponseMessage> =
+        messagesList.filter { it.severity == Severity.WARNING }
 
     private fun errorBatch(
         code: String,
