@@ -29,6 +29,8 @@ import org.tatrman.translate.v1.UnparseResponse
 import org.slf4j.LoggerFactory
 import org.tatrman.translate.model.ModelHandleProvider
 import org.tatrman.translator.codec.transdsl.TransDslCodec
+import org.tatrman.translator.joiner.JoinerMessages
+import org.tatrman.translator.joiner.JoinerWarning
 import org.tatrman.translator.orchestrator.ParseResult
 import org.tatrman.translator.orchestrator.Translator
 import org.tatrman.translator.orchestrator.TranslateResult
@@ -81,7 +83,7 @@ class TranslatorServiceImpl(
                 expandLogicalBodies = request.expandLogicalBodies,
             )
         return when (result) {
-            is ParseResult.Success -> builder.setPlan(result.plan).build()
+            is ParseResult.Success -> builder.setPlan(result.plan).addAllMessages(joinMessages(result.warnings)).build()
             is ParseResult.Failure -> {
                 // Phase 08 C2 / DF-V07 — enrich validation_failed messages with
                 // scoped suggestions or cross-schema hints.
@@ -181,7 +183,8 @@ class TranslatorServiceImpl(
                 expandLogicalBodies = request.expandLogicalBodies,
             )
         return when (result) {
-            is TranslateResult.Success -> builder.setOutput(result.output).build()
+            is TranslateResult.Success ->
+                builder.setOutput(result.output).addAllMessages(joinMessages(result.warnings)).build()
             is TranslateResult.Failure -> builder.addMessages(errorMessage(result.code, result.message)).build()
         }
     }
@@ -465,6 +468,26 @@ class TranslatorServiceImpl(
                     org.tatrman.plan.v1.Value.VCase.DATETIME_VALUE -> value.datetimeValue
                     org.tatrman.plan.v1.Value.VCase.V_NOT_SET, null -> null
                 }
+        }
+
+    /**
+     * ttr-server#232 — what the translator's joiners could not condition, as wire messages beside a plan. A join the
+     * model cannot condition stays a Cartesian product (⚑MJ-3: a WARNING, never a refusal), so this is the only word a
+     * caller gets of it: `JOIN_NO_RELATION`, `JOIN_AMBIGUOUS_RELATIONS` and `JOIN_KEY_NAME_COLLISION` at WARNING, and
+     * `JOIN_RELATION_WITHOUT_PAIRS` (left to its foreign key) at INFO, in [JoinerMessages]' code and text.
+     */
+    private fun joinMessages(warnings: List<JoinerWarning>): List<ResponseMessage> =
+        warnings.map { w ->
+            ResponseMessage
+                .newBuilder()
+                .setSeverity(
+                    when (JoinerMessages.severity(w)) {
+                        JoinerMessages.Severity.INFO -> Severity.INFO
+                        JoinerMessages.Severity.WARNING -> Severity.WARNING
+                    },
+                ).setCode(JoinerMessages.code(w))
+                .setHumanMessage(JoinerMessages.text(w))
+                .build()
         }
 
     private fun errorMessage(

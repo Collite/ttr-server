@@ -507,4 +507,38 @@ class CompileToolSpec :
             ((msgs[0] as JsonObject)["text"] as JsonPrimitive).content shouldContain "'physical'"
             captured.size shouldBe 0
         }
+
+        // ttr-server#232 — a join the translator left a Cartesian product reaches the caller, as `ok: true` with the
+        // warning in `messages`; the INFO on a join its foreign key conditioned does not.
+        "a join WARNING from the parse is in messages; its INFO is not" {
+            fun note(
+                severity: Severity,
+                code: String,
+                text: String,
+            ) = ResponseMessage
+                .newBuilder()
+                .setSeverity(severity)
+                .setCode(code)
+                .setHumanMessage(text)
+            val translator =
+                fakeTranslator(
+                    parseImpl = { req ->
+                        ParseResponse
+                            .newBuilder()
+                            .setPlan(plan)
+                            .setContext(req.context)
+                            .addMessages(note(Severity.INFO, "JOIN_RELATION_WITHOUT_PAIRS", "left to its foreign key"))
+                            .addMessages(note(Severity.WARNING, "JOIN_NO_RELATION", "Cartesian product preserved"))
+                            .build()
+                    },
+                )
+            val tool = CompileTool(cfg, translator, fakeValidator { req -> validated(req) })
+            val res = runBlocking { tool.execute(compileRequest(), identity = null) }
+
+            res.isError shouldBe false
+            ((res.structuredContent!!["ok"] as JsonPrimitive).content) shouldBe "true"
+            val msgs = (res.structuredContent!!["messages"] as JsonArray).map { it as JsonObject }
+            msgs.map { m -> listOf("severity", "code", "text").map { (m[it] as JsonPrimitive).content } } shouldBe
+                listOf(listOf("warn", "JOIN_NO_RELATION", "Cartesian product preserved"))
+        }
     })

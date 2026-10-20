@@ -447,6 +447,79 @@ class QueryToolSpec :
             ((warnings[0] as JsonObject)["sourceService"] as JsonPrimitive).content shouldBe "validator"
         }
 
+        // ttr-server#232 — a hop's notes on the stream ride its first batch alone (query's join warnings among
+        // them); the request's context rides every batch.
+        fun note(
+            code: String,
+            service: String,
+        ) = org.tatrman.plan.v1.Warning
+            .newBuilder()
+            .setCode(code)
+            .setMessage("$code from $service")
+            .setSourceService(service)
+            .build()
+        val carried = note("security_predicate_applied", "validator")
+        val joinNote = note("JOIN_NO_RELATION", "translate")
+
+        fun rowsBatch(
+            index: Int,
+            rows: LongArray,
+            warnings: List<org.tatrman.plan.v1.Warning>,
+            isLast: Boolean = false,
+        ): ResultBatch =
+            ResultBatch
+                .newBuilder()
+                .setBatchIndex(index)
+                .setIsFirst(index == 0)
+                .setIsLast(isLast)
+                .setBatchRowCount(rows.size.toLong())
+                .setArrowIpc(ByteString.copyFrom(arrowIpcOneIntColumn("v", rows)))
+                .setContext(PipelineContext.newBuilder().addAllWarnings(warnings))
+                .build()
+
+        fun warningCodes(
+            batches: List<ResultBatch>,
+            rowLimit: Int,
+        ): List<String> {
+            val args =
+                buildJsonObject {
+                    put("source", JsonPrimitive("SELECT 1"))
+                    put("source_language", JsonPrimitive("sql"))
+                    put("row_limit", JsonPrimitive(rowLimit))
+                }
+            val res =
+                runBlocking {
+                    QueryTool(cfg, fakeRunner(batches), fakeMetadata).execute(
+                        CallToolRequest(params = CallToolRequestParams(name = "query", arguments = args)),
+                        identity = null,
+                    )
+                }
+            return (res.structuredContent!!["pipelineWarnings"] as JsonArray)
+                .map { ((it as JsonObject)["code"] as JsonPrimitive).content }
+        }
+
+        "pipelineWarnings: a first-batch warning survives an answer cut at row_limit, past the first batch" {
+            // row_limit 3 reads two batches of 2 and stops before the last: the last batch collected is a middle one.
+            val batches =
+                listOf(
+                    rowsBatch(0, longArrayOf(1L, 2L), listOf(carried, joinNote)),
+                    rowsBatch(1, longArrayOf(3L, 4L), listOf(carried)),
+                    rowsBatch(2, longArrayOf(5L, 6L), listOf(carried), isLast = true),
+                )
+            warningCodes(batches, rowLimit = 3) shouldBe listOf(carried.code, joinNote.code)
+        }
+
+        "pipelineWarnings: each batch adds what an earlier one did not say; a warning said twice in a batch stays" {
+            val lastOnly = note("late_note", "worker")
+            val batches =
+                listOf(
+                    rowsBatch(0, longArrayOf(1L), listOf(carried, joinNote, joinNote)),
+                    rowsBatch(1, longArrayOf(2L), listOf(carried, joinNote, joinNote, lastOnly), isLast = true),
+                )
+            warningCodes(batches, rowLimit = 10) shouldBe
+                listOf(carried.code, joinNote.code, joinNote.code, lastOnly.code)
+        }
+
         "Smoke: input schema includes G3 fields" {
             val tool = QueryTool(cfg, fakeRunner(emptyList()), fakeMetadata)
             val schemaProps = tool.inputSchema.properties!!

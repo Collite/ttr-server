@@ -168,4 +168,9 @@ data class CachedPlan(
     val effectiveSchema: SchemaCode = SchemaCode.SCHEMA_CODE_UNSPECIFIED,
     val physicalPlan: PlanNode? = null,
     val detectionMessages: List<ResponseMessage> = emptyList(),
+    /**
+     * ttr-server#232 — the translator's WARNINGs on [physicalPlan] (a join it could not condition), so a cache hit
+     * says what the miss said. An ER plan keeps none: its DB re-entry runs on every call and warns afresh.
+     */
+    val joinWarnings: List<ResponseMessage> = emptyList(),
 )

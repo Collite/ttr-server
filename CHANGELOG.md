@@ -16,6 +16,23 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+- **translate, query, query-mcp** — a join the model cannot condition is no longer silent (#232). The translator leaves
+  it a Cartesian product with a warning, and translate used to answer a successful parse with the plan alone.
+  - **translate**: `ParseToRelNode` and `Translate` now carry the translator's join warnings in `messages`, in its own
+    code and text: `JOIN_NO_RELATION`, `JOIN_AMBIGUOUS_RELATIONS` and `JOIN_KEY_NAME_COLLISION` at WARNING,
+    `JOIN_RELATION_WITHOUT_PAIRS` (a join left to its foreign key, which conditions it) at INFO.
+  - **query**: the WARNINGs on the plan that runs reach the caller, from the DB parse (on the ER path, the DB re-entry).
+    `Run` puts them on `context.warnings` (`source_service = "translate"`, `source_stage = "expand_joins"`), and
+    `Compile` puts them in `messages`. A cached plan keeps them, so a cache hit says what the miss said. The INFO is not
+    passed on: that join was conditioned, and on a model whose relations declare no join pairs it would be said of
+    every join.
+  - **query-mcp `query` reads `pipelineWarnings` from every batch it collected**, each warning once, where it read the
+    last batch alone. The notes a hop makes on the stream ride its first batch: query's compile, cache and join
+    notes, dispatch's, and the worker's unsupported-type warnings. So an answer of more than one batch lost them all,
+    and an answer cut at `row_limit`, the likely shape of a Cartesian product, has no last batch to read.
+  - **query-mcp `compile`** puts the parse's join WARNINGs in `messages` (`severity: "warn"`) beside `ok: true`, where
+    it used to answer `messages: []`.
+
 - **query** — a SQL text that reads a saved query by name (`obj.…`) is no longer cached. Translate inlines the read
   query's stored plan as it parses (since the run-time fill-in), so the cached plan froze the body as of that model,
   and the cache key's model version (often unset by callers) does not move with a model swap: a changed, FAILED or
