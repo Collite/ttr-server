@@ -16,6 +16,25 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+- **translate — a bare `JOIN` that stays a Cartesian product is refused** (#232, part 2). On `ttr-translator` /
+  `ttr-plan-proto` **0.12.5**, translate sets its `refuseUnconditionedBareJoins` on `ParseToRelNode` and `Translate`.
+  - A SQL `JOIN` with no `ON` that the model cannot condition fails with `join_unconditioned`. That covers a join with
+    no relation, more than one relation, or one whose relation declares no join pairs, when no table foreign key
+    completes it either. The message names the sides: `a JOIN without ON that the model cannot condition: no relation
+    or foreign key joins entity.date_dim and entity.item; write the ON`.
+  - It is decided per join where the physical stage runs. With a `DB` target, that is the call itself. On query's two
+    calls, the ER half answers its plan with the join marked (`JoinNode.condition_required`), and the DB re-entry
+    refuses it. validate's ER pass keeps the mark through a row policy or a mask.
+  - query answers it as `translator_rejected` with that text. query-mcp `compile` answers it with the code itself.
+  - **Not refused:**
+    - the comma list and `CROSS JOIN`, the author's own Cartesian products, which keep their `JOIN_NO_RELATION`
+      warning;
+    - a bare join a table FK conditions;
+    - a bare INNER join its `WHERE` conditions (a conjunct reading both of its sides), which takes that condition as
+      its `ON`;
+    - a plan with no mark, such as `RunSavedQuery`'s stored plan.
+  - veles parses saved queries with the translator's default and is unchanged; its own join check stands.
+
 - **translate, query, query-mcp** — a join the model cannot condition is no longer silent (#232). The translator leaves
   it a Cartesian product with a warning, and translate used to answer a successful parse with the plan alone.
   - **translate**: `ParseToRelNode` and `Translate` now carry the translator's join warnings in `messages`, in its own

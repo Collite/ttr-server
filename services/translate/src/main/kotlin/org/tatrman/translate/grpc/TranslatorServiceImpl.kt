@@ -81,6 +81,7 @@ class TranslatorServiceImpl(
                 sourceSchema = request.sourceSchema,
                 parameters = toSqlParams(request.context),
                 expandLogicalBodies = request.expandLogicalBodies,
+                refuseUnconditionedBareJoins = true,
             )
         return when (result) {
             is ParseResult.Success -> builder.setPlan(result.plan).addAllMessages(joinMessages(result.warnings)).build()
@@ -181,6 +182,7 @@ class TranslatorServiceImpl(
                 sourceSchema = request.sourceSchema,
                 parameters = toSqlParams(request.context),
                 expandLogicalBodies = request.expandLogicalBodies,
+                refuseUnconditionedBareJoins = true,
             )
         return when (result) {
             is TranslateResult.Success ->
@@ -471,9 +473,12 @@ class TranslatorServiceImpl(
         }
 
     /**
-     * ttr-server#232 — what the translator's joiners could not condition, as wire messages beside a plan. A join the
-     * model cannot condition stays a Cartesian product (⚑MJ-3: a WARNING, never a refusal), so this is the only word a
-     * caller gets of it: `JOIN_NO_RELATION`, `JOIN_AMBIGUOUS_RELATIONS` and `JOIN_KEY_NAME_COLLISION` at WARNING, and
+     * ttr-server#232 — what the translator's joiners could not condition, as wire messages beside a plan. A bare
+     * `JOIN` that stays a Cartesian product does not run: this service sets `refuseUnconditionedBareJoins`, and the
+     * parse that runs the physical stage fails `join_unconditioned` (for an ER target, the DB re-entry of the plan,
+     * which carries the join marked; the ER half itself still says the logical joiner's warning). The comma list and
+     * `CROSS JOIN` are the author's own Cartesian products (⚑MJ-3) and stay warnings, so this is the only word a caller
+     * gets of them: `JOIN_NO_RELATION`, `JOIN_AMBIGUOUS_RELATIONS` and `JOIN_KEY_NAME_COLLISION` at WARNING, and
      * `JOIN_RELATION_WITHOUT_PAIRS` (left to its foreign key) at INFO, in [JoinerMessages]' code and text.
      */
     private fun joinMessages(warnings: List<JoinerWarning>): List<ResponseMessage> =
