@@ -3,6 +3,7 @@ package org.tatrman.query.mcp.tools
 
 import org.tatrman.plan.v1.PipelineContext
 import org.tatrman.plan.v1.SchemaCode
+import org.tatrman.plan.v1.Warning
 import org.tatrman.plan.v1.parseSchemaCode
 import org.tatrman.query.v1.RunRequest
 import org.tatrman.translate.v1.Language
@@ -281,7 +282,6 @@ class QueryTool(
 
         val arrowBatches: List<ByteArray> = collected.batches.map { it.arrowIpc.toByteArray() }
         val firstBatch: ResultBatch? = collected.batches.firstOrNull()
-        val lastBatch: ResultBatch? = collected.batches.lastOrNull()
         val pipelineMessages = mutableListOf<MessageEntry>()
         if (collected.moreBatchesAvailable) {
             pipelineMessages.add(
@@ -328,10 +328,12 @@ class QueryTool(
 
         val truncated = formatted.truncated || collected.moreBatchesAvailable
 
-        // G7: surface accumulated upstream warnings. The worker contract is that warnings
-        // accumulate monotonically across the batch stream, so the LAST batch's context carries
-        // the full set — switched from "first batch only" with D5's multi-batch collection.
-        val pipelineWarnings = PipelineWarnings.toJsonArray(lastBatch?.context?.warningsList ?: emptyList())
+        // G7: surface the upstream warnings, from every batch collected. The request's context rides
+        // every batch, but a hop's notes on the stream (query's compile, cache and join notes, dispatch's,
+        // the worker's unsupported-type ones) ride the FIRST batch alone. The last batch alone misses those
+        // on an answer of more than one batch, and an answer cut at row_limit has no last batch at all
+        // (ttr-server#232).
+        val pipelineWarnings = PipelineWarnings.toJsonArray(streamWarnings(collected.batches))
 
         // ES-P0·S0.5 — the two halves of the execution receipt, merged once, here.
         val executionReceipt = ExecutionJson.mergeReceipts(collected.batches)
@@ -439,6 +441,23 @@ class QueryTool(
             return errorOutcome(e.status)
         }
         return CollectionOutcome(batches = batches, moreBatchesAvailable = moreAvailable)
+    }
+
+    /**
+     * The warnings of [batches], in order, each batch adding those an earlier batch has not said. A batch
+     * repeating an earlier batch's warning carries the same context on; a warning said twice within one
+     * batch (two joins with the same sides) stays twice.
+     */
+    private fun streamWarnings(batches: List<ResultBatch>): List<Warning> {
+        val warnings = mutableListOf<Warning>()
+        for (batch in batches) {
+            val said = warnings.groupingBy { it }.eachCount().toMutableMap()
+            for (warning in batch.context.warningsList) {
+                val earlier = said[warning] ?: 0
+                if (earlier > 0) said[warning] = earlier - 1 else warnings += warning
+            }
+        }
+        return warnings
     }
 
     private fun errorOutcome(status: Status): CollectionOutcome =

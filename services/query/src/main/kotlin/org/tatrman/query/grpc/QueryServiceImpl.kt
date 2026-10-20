@@ -283,9 +283,10 @@ class QueryServiceImpl(
                         }
 
                     val compileMs = System.currentTimeMillis() - compileStart
-                    // On the first batch and on the last (they may be the same batch): a consumer may read the last
-                    // one alone, as query-mcp does — the warnings on a stream accumulate, the last batch has them all.
-                    val runAnnotations =
+                    // On the first batch alone, as dispatch and the worker put theirs: a consumer reads a stream's
+                    // warnings across the batches it collected (query-mcp's `query` does), and a later batch repeating
+                    // them would say each twice to one that adds them up.
+                    val firstBatchAnnotations =
                         mutableListOf<Warning>().apply {
                             add(warning("compile_duration_ms", compileMs.toString()))
                             add(warning(if (cachedHit != null) "cache_hit" else "cache_miss", key.sourceHash))
@@ -335,9 +336,10 @@ class QueryServiceImpl(
                             dispatchTarget = batch.receipt.dispatchTarget
                         }
                         var out = batch
-                        val first = !firstSeen && batch.isFirst
-                        if (first) firstSeen = true
-                        if (first || batch.isLast) out = annotate(out, runAnnotations)
+                        if (!firstSeen && batch.isFirst) {
+                            firstSeen = true
+                            out = annotate(out, firstBatchAnnotations)
+                        }
                         if (batch.isLast && capNotice != null && rowCap != null && rowsStreamed >= rowCap) {
                             out = out.toBuilder().addMessages(capNotice).build()
                         }

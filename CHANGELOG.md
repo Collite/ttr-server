@@ -26,9 +26,10 @@ outside this repo could notice is in.
     `Compile` puts them in `messages`. A cached plan keeps them, so a cache hit says what the miss said. The INFO is not
     passed on: that join was conditioned, and on a model whose relations declare no join pairs it would be said of
     every join.
-  - **query — `Run`'s annotations now ride the last batch as well as the first.** These are the compile and cache
-    notes, the detection messages and the join warnings. A consumer may read the last batch alone, as query-mcp's
-    `query` does; on an answer of more than one batch it used to get none of them.
+  - **query-mcp `query` reads `pipelineWarnings` from every batch it collected**, each warning once, where it read the
+    last batch alone. The notes a hop makes on the stream ride its first batch: query's compile, cache and join
+    notes, dispatch's, and the worker's unsupported-type warnings. So an answer of more than one batch lost them all,
+    and an answer cut at `row_limit`, the likely shape of a Cartesian product, has no last batch to read.
   - **query-mcp `compile`** puts the parse's join WARNINGs in `messages` (`severity: "warn"`) beside `ok: true`, where
     it used to answer `messages: []`.
 

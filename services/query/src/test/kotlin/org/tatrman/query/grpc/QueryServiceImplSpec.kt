@@ -1259,19 +1259,19 @@ class QueryServiceImplSpec :
 
         fun codes(batch: ResultBatch) = batch.context.warningsList.map { it.code }
 
-        "run, ER path: the DB re-entry's join WARNING rides the first batch and the last; its INFO does not" {
+        "run, ER path: the DB re-entry's join WARNING rides the first batch, once; its INFO does not" {
             runBlocking {
                 val out = service(translator = cartesianTranslator()).run(sqlRequest()).toList()
                 out.size shouldBe 2
-                for (batch in listOf(out.first(), out.last())) {
-                    val warning = joinWarnings(batch).single()
-                    warning.code shouldBe "JOIN_NO_RELATION"
-                    warning.message shouldBe dbHalfCartesian.humanMessage
-                    warning.sourceStage shouldBe "expand_joins"
-                    warning.sourceService shouldBe "translate"
-                }
-                // The last batch, which query-mcp reads alone, carries the rest of the run's annotations too.
-                codes(out.last()) shouldContain "cache_miss"
+                val warning = joinWarnings(out.first()).single()
+                warning.code shouldBe "JOIN_NO_RELATION"
+                warning.message shouldBe dbHalfCartesian.humanMessage
+                warning.sourceStage shouldBe "expand_joins"
+                warning.sourceService shouldBe "translate"
+                codes(out.first()) shouldContain "cache_miss"
+                // Not again on the last batch: a consumer adding the batches up would hear it twice.
+                joinWarnings(out.last()) shouldBe emptyList()
+                codes(out.last()) shouldNotContain "cache_miss"
             }
         }
 
@@ -1287,9 +1287,9 @@ class QueryServiceImplSpec :
                 val miss = svc.run(sqlRequest()).toList()
                 val hit = svc.run(sqlRequest()).toList()
                 parses.size shouldBe 1
-                codes(hit.last()) shouldContain "cache_hit"
+                codes(hit.first()) shouldContain "cache_hit"
                 for (out in listOf(miss, hit)) {
-                    joinWarnings(out.last()).map { it.message } shouldBe listOf(dbHalfCartesian.humanMessage)
+                    joinWarnings(out.first()).map { it.message } shouldBe listOf(dbHalfCartesian.humanMessage)
                 }
             }
         }
