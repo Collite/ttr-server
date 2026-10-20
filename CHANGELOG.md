@@ -17,7 +17,9 @@ outside this repo could notice is in.
 ## Unreleased
 
 - **translate — a bare `JOIN` that stays a Cartesian product is refused** (#232, part 2). On `ttr-translator` /
-  `ttr-plan-proto` **0.12.5**, translate sets its `refuseUnconditionedBareJoins` on `ParseToRelNode` and `Translate`.
+  `ttr-plan-proto` **0.12.6**, translate sets its `refuseUnconditionedBareJoins` on `ParseToRelNode`, `Translate` and
+  `Explain`. (0.12.5 must not be run with the option: it turned a WHERE filter reading both sides of an FK-only bare
+  join into the join's whole condition, dropping the foreign key; ttr-core#223.)
   - A SQL `JOIN` with no `ON` that the model cannot condition fails with `join_unconditioned`. That covers a join with
     no relation, more than one relation, or one whose relation declares no join pairs, when no table foreign key
     completes it either. The message names the sides: `a JOIN without ON that the model cannot condition: no relation
@@ -25,15 +27,25 @@ outside this repo could notice is in.
   - It is decided per join where the physical stage runs. With a `DB` target, that is the call itself. On query's two
     calls, the ER half answers its plan with the join marked (`JoinNode.condition_required`), and the DB re-entry
     refuses it. validate's ER pass keeps the mark through a row policy or a mask.
+  - **The switch:** `translate.refuse-unconditioned-bare-joins` (env `TRANSLATE_REFUSE_UNCONDITIONED_BARE_JOINS`),
+    default `true`. `false` is the behaviour before: the join runs, with its `JOIN_NO_RELATION` warning.
+  - **Explain** shows the refusal the parse gives, where it showed the Cartesian plan the parse refuses.
   - query answers it as `translator_rejected` with that text. query-mcp `compile` answers it with the code itself.
   - **Not refused:**
     - the comma list and `CROSS JOIN`, the author's own Cartesian products, which keep their `JOIN_NO_RELATION`
       warning;
     - a bare join a table FK conditions;
-    - a bare INNER join its `WHERE` conditions (a conjunct reading both of its sides), which takes that condition as
-      its `ON`;
+    - a bare INNER join its `WHERE` conditions: a top-level comparison between its two sides (`=`, `<`, `>`, …; not
+      `<>`, not an `OR`). Its plan is the one the switch off gives, so an FK-only relation keeps its foreign key;
     - a plan with no mark, such as `RunSavedQuery`'s stored plan.
   - veles parses saved queries with the translator's default and is unchanged; its own join check stands.
+  - **validate — a mask no longer gives a join with no condition an empty one.** The mask rewrite set every join's
+    condition, so a Cartesian product or a marked bare join came back from validate's ER pass with an empty condition,
+    which the DB re-entry cannot decode: with any MASK rule such a statement failed `rel_node_schema_resolution_failed`
+    (an FK-only bare join, which the re-entry would have conditioned, included).
+  - **Deploy: restart query after translate rolls out.** query's compiled-plan cache keys carry no translator
+    version, so for up to an hour (its expire-after-write) a cached plan from the previous translate keeps running:
+    a bare join it ran unrefused still runs.
 
 - **translate, query, query-mcp** — a join the model cannot condition is no longer silent (#232). The translator leaves
   it a Cartesian product with a warning, and translate used to answer a successful parse with the plan alone.

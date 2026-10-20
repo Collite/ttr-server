@@ -58,10 +58,15 @@ import org.tatrman.plan.v1.parseSchemaCode
  * production it's a thin wrapper over `VelesServiceCoroutineStub.getQuery(...)`. `null` (the
  * fixture / no-metadata path) disables `query_ref` resolution — `query_ref` sources then fall
  * back to the codec's placeholder behaviour.
+ *
+ * [refuseUnconditionedBareJoins] (ttr-server#232; `translate.refuse-unconditioned-bare-joins`, default on) is the
+ * translator's option of that name on every SQL parse here, Explain included: a bare `JOIN` that stays a Cartesian
+ * product fails `join_unconditioned`. Off, such a join runs with its `JOIN_*` warning, as before.
  */
 class TranslatorServiceImpl(
     private val modelProvider: ModelHandleProvider,
     private val getQuery: (suspend (GetQueryRequest) -> GetQueryResponse)? = null,
+    private val refuseUnconditionedBareJoins: Boolean = true,
 ) : TranslateServiceGrpcKt.TranslateServiceCoroutineImplBase() {
     override suspend fun parseToRelNode(request: ParseRequest): ParseResponse {
         val builder = ParseResponse.newBuilder().setContext(request.context)
@@ -81,7 +86,7 @@ class TranslatorServiceImpl(
                 sourceSchema = request.sourceSchema,
                 parameters = toSqlParams(request.context),
                 expandLogicalBodies = request.expandLogicalBodies,
-                refuseUnconditionedBareJoins = true,
+                refuseUnconditionedBareJoins = refuseUnconditionedBareJoins,
             )
         return when (result) {
             is ParseResult.Success -> builder.setPlan(result.plan).addAllMessages(joinMessages(result.warnings)).build()
@@ -182,7 +187,7 @@ class TranslatorServiceImpl(
                 sourceSchema = request.sourceSchema,
                 parameters = toSqlParams(request.context),
                 expandLogicalBodies = request.expandLogicalBodies,
-                refuseUnconditionedBareJoins = true,
+                refuseUnconditionedBareJoins = refuseUnconditionedBareJoins,
             )
         return when (result) {
             is TranslateResult.Success ->
@@ -214,7 +219,13 @@ class TranslatorServiceImpl(
                         ).build()
             }
 
-        val r = translator.explain(source = sourceText, sourceLanguage = sourceLanguage)
+        // The option the parse that runs takes, so Explain shows that parse's refusal rather than a plan it refuses.
+        val r =
+            translator.explain(
+                source = sourceText,
+                sourceLanguage = sourceLanguage,
+                refuseUnconditionedBareJoins = refuseUnconditionedBareJoins,
+            )
         val builder = ExplainResponse.newBuilder()
         r.stages.forEach {
             builder.addStages(StageArtifact.newBuilder().setStageCode(it.code).setCanonicalForm(it.summary))
@@ -474,7 +485,7 @@ class TranslatorServiceImpl(
 
     /**
      * ttr-server#232 — what the translator's joiners could not condition, as wire messages beside a plan. A bare
-     * `JOIN` that stays a Cartesian product does not run: this service sets `refuseUnconditionedBareJoins`, and the
+     * `JOIN` that stays a Cartesian product does not run: this service sets [refuseUnconditionedBareJoins], and the
      * parse that runs the physical stage fails `join_unconditioned` (for an ER target, the DB re-entry of the plan,
      * which carries the join marked; the ER half itself still says the logical joiner's warning). The comma list and
      * `CROSS JOIN` are the author's own Cartesian products (⚑MJ-3) and stay warnings, so this is the only word a caller

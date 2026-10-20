@@ -9,6 +9,7 @@ import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.string.shouldNotContain
 import org.tatrman.plan.v1.SchemaCode
 import org.tatrman.translate.model.StaticModelHandleProvider
+import org.tatrman.translate.v1.ExplainRequest
 import org.tatrman.translate.v1.Language
 import org.tatrman.translate.v1.ParseRequest
 import org.tatrman.translate.v1.SqlDialect
@@ -40,10 +41,20 @@ class ModelJoinComponentSpec :
 
         val service = TranslatorServiceImpl(StaticModelHandleProvider(HartlandErFixture.handle()))
 
+        // `translate.refuse-unconditioned-bare-joins = false`: the behaviour before the refusal, the switch's fallback.
+        val warnOnly =
+            TranslatorServiceImpl(
+                StaticModelHandleProvider(HartlandErFixture.handle()),
+                refuseUnconditionedBareJoins = false,
+            )
+
         /** ER SQL → plan (physical) → PostgreSQL; every message either side produced, verbatim. */
-        suspend fun erToPg(sql: String): Pair<String, List<String>> {
+        suspend fun erToPg(
+            sql: String,
+            via: TranslatorServiceImpl = service,
+        ): Pair<String, List<String>> {
             val parse =
-                service.parseToRelNode(
+                via.parseToRelNode(
                     ParseRequest
                         .newBuilder()
                         .setSource(sql)
@@ -55,7 +66,7 @@ class ModelJoinComponentSpec :
             val parseMessages = parse.messagesList.map { "${it.severity}/${it.code}: ${it.humanMessage}" }
             if (!parse.hasPlan()) return "" to parseMessages
             val unparse =
-                service.unparseFromRelNode(
+                via.unparseFromRelNode(
                     UnparseRequest
                         .newBuilder()
                         .setPlan(parse.plan)
@@ -161,18 +172,20 @@ class ModelJoinComponentSpec :
                     .build(),
             )
 
-        suspend fun translated(sql: String) =
-            service.translate(
-                TranslateRequest
-                    .newBuilder()
-                    .setSource(sql)
-                    .setSourceLanguage(Language.SQL)
-                    .setSourceSchema(SchemaCode.ER)
-                    .setTargetSchema(SchemaCode.DB)
-                    .setTargetLanguage(Language.SQL)
-                    .setTargetDialect(SqlDialect.POSTGRESQL)
-                    .build(),
-            )
+        suspend fun translated(
+            sql: String,
+            via: TranslatorServiceImpl = service,
+        ) = via.translate(
+            TranslateRequest
+                .newBuilder()
+                .setSource(sql)
+                .setSourceLanguage(Language.SQL)
+                .setSourceSchema(SchemaCode.ER)
+                .setTargetSchema(SchemaCode.DB)
+                .setTargetLanguage(Language.SQL)
+                .setTargetDialect(SqlDialect.POSTGRESQL)
+                .build(),
+        )
 
         suspend fun reEntered(erPlan: org.tatrman.plan.v1.PlanNode) =
             service.parseToRelNode(
@@ -214,20 +227,56 @@ class ModelJoinComponentSpec :
             said(db.messagesList) shouldBe listOf(refusal)
         }
 
-        "a bare JOIN its WHERE conditions is the author's join: not refused, and conditioned" {
-            val (sql, messages) =
-                erToPg(
-                    """
-                    SELECT "date_dim"."year" AS "year", "item"."brand" AS "brand"
-                    FROM "date_dim" JOIN "item"
-                    WHERE "date_dim"."sk" = "item"."sk"
-                    """.trimIndent(),
+        fun unrelatedWhere(condition: String) = unrelated("JOIN") + "\nWHERE " + condition
+
+        "a bare JOIN its WHERE conditions is the author's join: not refused, and parsed as with the switch off" {
+            val sql = unrelatedWhere("\"date_dim\".\"sk\" = \"item\".\"sk\"")
+            val answer = erToPg(sql)
+            answer shouldBe erToPg(sql, warnOnly)
+            // The joiners' warning, as with the switch off: that it is false here is ttr-core#218.
+            answer.second shouldBe listOf(cartesian)
+        }
+
+        // A WHERE condition that reads both sides of a bare join over an FK-only relation (every hartland relation) is a
+        // filter, and the join takes its FK as with the switch off. translator 0.12.5 made such a condition the join's ON.
+        "a bare JOIN over an FK-only relation keeps its foreign key under a WHERE filter reading both sides" {
+            val sql =
+                """
+                SELECT "date_dim"."year" AS "year", SUM("catalog_sales"."quantity") AS "quantity"
+                FROM "catalog_sales" JOIN "date_dim"
+                WHERE "date_dim"."year" = 2000 OR "catalog_sales"."quantity" > 100
+                GROUP BY "date_dim"."year"
+                """.trimIndent()
+            val answer = erToPg(sql)
+            answer.first shouldContain "ON \"t\".\"sold_date\" = \"t0\".\"sk\""
+            answer shouldBe erToPg(sql, warnOnly)
+        }
+
+        "a disjunction reading both sides does not condition a bare JOIN: refused" {
+            erToPg(unrelatedWhere("\"date_dim\".\"year\" = 2000 OR \"item\".\"brand\" = 'X'")).second shouldBe
+                listOf(refusal)
+        }
+
+        "Explain says the refusal the parse gives" {
+            val explained =
+                service.explain(
+                    ExplainRequest
+                        .newBuilder()
+                        .setParse(
+                            ParseRequest
+                                .newBuilder()
+                                .setSource(unrelated("JOIN"))
+                                .setSourceLanguage(Language.SQL),
+                        ).build(),
                 )
-            messages shouldBe emptyList()
-            // The WHERE conjunct became the join's ON (over the columns MAP_TO_PHYSICAL renames).
-            sql shouldContain "INNER JOIN"
-            sql shouldContain "ON \"t\".\"sk\" = \"t0\".\"sk\""
-            sql shouldNotContain "ON TRUE"
+            said(explained.messagesList).single() shouldContain "a JOIN without ON that the model cannot condition"
+        }
+
+        "with the switch off a bare JOIN the model cannot condition runs, with its warning" {
+            val (sql, messages) = erToPg(unrelated("JOIN"), warnOnly)
+            sql shouldNotBe ""
+            messages shouldBe listOf(cartesian)
+            said(translated(unrelated("JOIN"), warnOnly).messagesList) shouldBe listOf(cartesian)
         }
 
         "a CROSS JOIN between unrelated entities parses to a Cartesian product, and ParseToRelNode says so" {
