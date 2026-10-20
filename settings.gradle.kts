@@ -121,6 +121,8 @@ include(":services:geo")
 // kantheon/platform siblings (arc CH; base = platform PL-P3 copy). transfer.v1 → :shared:proto.
 include(":services:charon")
 include(":services:grounding-mcp")
+// AU-server — the automation service: run API, the ledger (Flyway + pgmq), the runner and the writer.
+include(":services:automation")
 
 // Engine workers (JVM; the Polars worker is Python — out of the Gradle build)
 include(":workers:worker-postgres")

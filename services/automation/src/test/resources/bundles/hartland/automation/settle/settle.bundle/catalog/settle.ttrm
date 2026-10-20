@@ -1,0 +1,15 @@
+// fixture-prebuilt: the generated catalog of ttr-core contracts §5.3 (P2 S2.3 writes it).
+package hartland.automation.generated
+model automation
+
+def recipe settle {
+    key: return_request_line.line_id
+    parameters: [settlement]
+    candidates: settling
+    contexts: [open_obligations, documents, overdue_days]
+    decision: settlement
+    routes: [credit_note_issued, money_received, goods_shipped, money_overdue, goods_overdue, closed]
+    kinds: [sql]
+    mode: per_candidate
+    document: "handling-a-return-request.md"
+}

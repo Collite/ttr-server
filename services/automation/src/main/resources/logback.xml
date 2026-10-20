@@ -1,0 +1,38 @@
+<configuration>
+    <!--
+      LOG_LEVEL env var controls verbosity of OUR code + the gRPC call interceptors.
+      Default INFO: every incoming RPC is logged with its full payload.
+      Set LOG_LEVEL=DEBUG to additionally see outgoing gRPC calls pre/post-flight.
+    -->
+    <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>%d{HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <appender name="OTEL" class="io.opentelemetry.instrumentation.logback.appender.v1_0.OpenTelemetryAppender">
+        <captureExperimentalAttributes>true</captureExperimentalAttributes>
+        <captureKeyValuePairAttributes>true</captureKeyValuePairAttributes>
+        <captureLoggerContext>true</captureLoggerContext>
+        <captureMdcAttributes>*</captureMdcAttributes>
+    </appender>
+
+    <root level="DEBUG">
+        <appender-ref ref="STDOUT"/>
+        <appender-ref ref="OTEL"/>
+    </root>
+
+    <logger name="org.tatrman.automation" level="${LOG_LEVEL:-DEBUG}"/>
+    <logger name="grpc.in" level="${LOG_LEVEL:-DEBUG}"/>
+    <logger name="grpc.out" level="${LOG_LEVEL:-DEBUG}"/>
+    <logger name="io.netty" level="INFO"/>
+    <!-- grpc's *shaded* netty (io.grpc.netty.shaded.io.grpc.netty.*) is not
+         covered by the io.netty pin; pin it so HTTP/2 frame DEBUG doesn't flood. -->
+    <logger name="io.grpc.netty.shaded" level="INFO"/>
+    <logger name="io.grpc.netty" level="INFO"/>
+    <logger name="io.ktor" level="INFO"/>
+    <!-- The ledger: Exposed logs every statement at DEBUG; Flyway and Hikari chatter at DEBUG too. -->
+    <logger name="Exposed" level="INFO"/>
+    <logger name="org.flywaydb" level="INFO"/>
+    <logger name="com.zaxxer.hikari" level="INFO"/>
+</configuration>

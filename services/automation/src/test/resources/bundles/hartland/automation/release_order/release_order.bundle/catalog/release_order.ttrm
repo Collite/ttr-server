@@ -1,0 +1,15 @@
+// fixture-prebuilt: the generated catalog of ttr-core contracts §5.3 (P2 S2.3 writes it).
+package hartland.automation.generated
+model automation
+
+def recipe release_order {
+    key: order.order_number
+    parameters: [tolerance, confirmation_threshold]
+    candidates: placed_orders
+    contexts: [shortfall, price_differences, overdue]
+    decision: verdict
+    routes: [hold_sales, hold_ar, release_confirmed, release]
+    kinds: [sql]
+    mode: per_candidate
+    document: "releasing-a-placed-order.md"
+}

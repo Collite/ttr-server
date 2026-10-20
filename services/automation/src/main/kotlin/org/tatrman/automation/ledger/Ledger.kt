@@ -1,0 +1,354 @@
+// SPDX-License-Identifier: Apache-2.0
+package org.tatrman.automation.ledger
+
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.booleanOrNull
+import org.jetbrains.exposed.v1.core.SortOrder
+import org.jetbrains.exposed.v1.core.and
+import org.jetbrains.exposed.v1.core.eq
+import org.jetbrains.exposed.v1.core.notInList
+import org.jetbrains.exposed.v1.jdbc.insert
+import org.jetbrains.exposed.v1.jdbc.select
+import org.jetbrains.exposed.v1.jdbc.selectAll
+import org.jetbrains.exposed.v1.jdbc.transactions.TransactionManager
+import org.jetbrains.exposed.v1.jdbc.transactions.transaction
+import org.jetbrains.exposed.v1.jdbc.update
+import java.sql.Connection
+import java.time.Clock
+import java.time.Duration
+import java.time.Instant
+import java.time.OffsetDateTime
+import java.time.ZoneOffset
+import java.util.UUID
+
+/** The nine sections of a protocol/v1 document (AU contracts §5; D-70). */
+enum class ProtocolSection(
+    val wire: String,
+) {
+    AUTOMATION("automation"),
+    ISLANDS("islands"),
+    DECISION("decision"),
+    ACTIONS("actions"),
+    WRITES("writes"),
+    PEOPLE("people"),
+    TURNS("turns"),
+    SIGNALS("signals"),
+    RECEIPTS("receipts"),
+}
+
+/** What opening a run records (AU contracts §2 `runs`). The fingerprints are the approved-against set (D-60). */
+data class RunOpen(
+    val recipe: String,
+    val program: String? = null,
+    val deployment: String? = null,
+    val bundle: String? = null,
+    val fpText: String? = null,
+    val fpValues: String? = null,
+    val fpProgram: String? = null,
+    val fpDeployment: String? = null,
+    val modelFp: String? = null,
+    val port: JsonElement = JsonObject(emptyMap()),
+    val asOf: Instant? = null,
+    val author: String? = null,
+    val runAs: String? = null,
+    val caller: String? = null,
+    val origin: String? = null,
+    val dryRun: Boolean = false,
+    val governed: Boolean = true,
+    val idempotencyKey: String? = null,
+    val replayOf: UUID? = null,
+    val budgetSync: Duration? = null,
+    val budgetBatch: Duration? = null,
+)
+
+/** A staged output (`run_outputs`). */
+data class RunOutput(
+    val run: UUID,
+    val island: String,
+    val port: String,
+    val rows: Long,
+    val bytes: Long,
+    val path: String?,
+    val sha256: String?,
+)
+
+/** What an `ask` (or another outbound task) opens (`tasks`; D-97 snapshot, D-98 one open, D-101 run nullable). */
+data class TaskOpen(
+    val run: UUID?,
+    val recipe: String?,
+    val key: JsonElement?,
+    val kind: String,
+    val action: String?,
+    val targetRole: String?,
+    val targetPerson: String?,
+    val about: String?,
+    val options: JsonElement?,
+    val detail: JsonElement?,
+    val due: Instant?,
+    val dryRun: Boolean,
+    val origin: String?,
+)
+
+class NoSuchRun(
+    val runId: UUID,
+) : RuntimeException("no run `$runId`")
+
+class IllegalRunTransition(
+    val runId: UUID,
+    val from: RunStatus,
+    val to: RunStatus,
+) : RuntimeException("run `$runId` cannot move from ${from.wire} to ${to.wire}")
+
+class ProtocolSealed(
+    val runId: UUID,
+) : RuntimeException("the protocol of run `$runId` is sealed (D-110)")
+
+/**
+ * The ledger (AU contracts §2) — every write the service makes to schema `automation`. The operations the
+ * later stages need are named here with their signatures, so the API shape is fixed from S0.1; the ones a
+ * later stage implements are `TODO("S<n.m>")`.
+ *
+ * Each operation is one Exposed transaction on the default database (the one [shared.libs.db.common.
+ * DatabaseConnection] connected). [defaultBudget] is the batch budget a run without its own is held to
+ * (`automation.budgets.batchDefault`). [abandoned] counts each run the claim abandons, by its recipe
+ * (`automation_abandoned_total`, §10).
+ *
+ * [claimRun] and [appendProtocol] must each be the outermost transaction: inside a caller's `transaction {}`
+ * Exposed would join the outer one, and their retry and isolation — what makes them correct under concurrency —
+ * would silently not apply. They refuse to run there ([IllegalStateException]).
+ */
+class Ledger(
+    private val defaultBudget: Duration,
+    private val clock: Clock = Clock.systemUTC(),
+    private val abandoned: (recipe: String) -> Unit = {},
+) {
+    /**
+     * Opens a run, or answers the key's existing one (D-46). Without a key every call opens a run.
+     *
+     * Two claims of one fresh key race on the partial unique index `runs_idempotency_key_claimed`: the loser's
+     * INSERT fails, Exposed retries the whole block in a new transaction, and the retry reads the winner as
+     * the key's holder. Hence [CLAIM_ATTEMPTS] — one try plus the retry a race needs, plus one spare. A retry
+     * needs a transaction of its own, so the claim never runs inside another.
+     */
+    fun claimRun(open: RunOpen): Claim {
+        outermost("claimRun")
+        var abandonedRecipe: String? = null
+        val claim =
+            transaction {
+                maxAttempts = CLAIM_ATTEMPTS
+                abandonedRecipe = null
+                val now = clock.instant()
+                val key = open.idempotencyKey ?: return@transaction Claim.Claimed(insertRun(open, now))
+                val row =
+                    Runs
+                        .selectAll()
+                        .where { (Runs.idempotencyKey eq key) and (Runs.status notInList FREE_STATUSES) }
+                        .forUpdate()
+                        .firstOrNull()
+                val holder =
+                    row?.let {
+                        KeyHolder(
+                            runId = it[Runs.id],
+                            status = RunStatus.of(it[Runs.status]),
+                            startedAt = it[Runs.startedAt].toInstant(),
+                            budget = budgetOf(it[Runs.budgetBatch], it[Runs.budgetSync]),
+                        )
+                    }
+                when (val decision = IdempotencyPolicy.decide(holder, now)) {
+                    ClaimDecision.Open -> Claim.Claimed(insertRun(open, now))
+                    is ClaimDecision.Replay -> Claim.Replay(decision.runId)
+                    is ClaimDecision.Wait -> Claim.Running(decision.runId, decision.status)
+                    is ClaimDecision.AbandonThenOpen -> {
+                        Runs.update({ Runs.id eq decision.runId }) {
+                            it[status] = RunStatus.ABANDONED.wire
+                            it[endedAt] = now.utc()
+                            it[error] = JsonObject(mapOf("code" to JsonPrimitive("run-abandoned")))
+                        }
+                        abandonedRecipe = row?.get(Runs.recipe)
+                        Claim.Claimed(insertRun(open, now), abandoned = decision.runId)
+                    }
+                }
+            }
+        abandonedRecipe?.let(abandoned)
+        return claim
+    }
+
+    /** Moves a run along [RunStatus.next]; a terminal status stamps `ended_at`. [error] lands in `runs.error`. */
+    fun markStatus(
+        runId: UUID,
+        to: RunStatus,
+        error: JsonElement? = null,
+    ) {
+        transaction {
+            val from =
+                Runs
+                    .select(Runs.status)
+                    .where { Runs.id eq runId }
+                    .forUpdate()
+                    .firstOrNull()
+                    ?.let { RunStatus.of(it[Runs.status]) }
+                    ?: throw NoSuchRun(runId)
+            if (to !in from.next) throw IllegalRunTransition(runId, from, to)
+            Runs.update({ Runs.id eq runId }) {
+                it[status] = to.wire
+                if (to.terminal) it[endedAt] = clock.instant().utc()
+                if (error != null) it[Runs.error] = error
+            }
+        }
+    }
+
+    /**
+     * Appends one entry to a section of the run's protocol (D-110: INSERT-only) and answers its `seq`. The run
+     * row is locked first, so two appends to one run serialize and number their entries without a gap or a
+     * clash. A sealed protocol refuses every append.
+     *
+     * READ COMMITTED, not the pool's REPEATABLE READ: under REPEATABLE READ the snapshot is taken by the first
+     * statement — the lock itself — so an append that waited for the lock would still read the seq the earlier
+     * append had replaced, and clash with it. Under READ COMMITTED each statement after the lock sees the
+     * earlier append. The isolation is only set on a transaction of its own, so the append never runs inside
+     * another.
+     */
+    fun appendProtocol(
+        runId: UUID,
+        section: ProtocolSection,
+        payload: JsonElement,
+    ): Int {
+        outermost("appendProtocol")
+        return transaction(transactionIsolation = Connection.TRANSACTION_READ_COMMITTED) {
+            lockRun(runId)
+            if (isSealed(runId)) throw ProtocolSealed(runId)
+            val seq = nextSeq(runId, section)
+            RunProtocol.insert {
+                it[run] = runId
+                it[RunProtocol.section] = section.wire
+                it[RunProtocol.seq] = seq
+                it[RunProtocol.payload] = payload
+                it[at] = clock.instant().utc()
+            }
+            seq
+        }
+    }
+
+    /** Seals the protocol at close: a `{"sealed": true}` entry in `automation`, after which nothing appends. */
+    fun sealProtocol(runId: UUID): Int = appendProtocol(runId, ProtocolSection.AUTOMATION, SEALED)
+
+    /** The readiness probe's question: does the ledger's database answer? */
+    fun ping(): Boolean =
+        runCatching {
+            transaction {
+                maxAttempts = 1
+                exec("SELECT 1") { it.next() } == true
+            }
+        }.getOrDefault(false)
+
+    /** The D-72 health count: runs the clock abandoned. */
+    fun countAbandoned(): Long =
+        transaction {
+            Runs.selectAll().where { Runs.status eq RunStatus.ABANDONED.wire }.count()
+        }
+
+    /** Records a staged island output (`run_outputs`). */
+    fun putOutput(output: RunOutput): Unit = TODO("S1.1 — staging writes the run_outputs row")
+
+    /** Opens a task; one open per (recipe, key, action) (D-98). */
+    fun openTask(task: TaskOpen): UUID = TODO("S3.3 — ask/start/deliver tasks")
+
+    /** Records a task's answer (D-99's fingerprint check is the caller's). */
+    fun answerTask(
+        taskId: UUID,
+        answer: JsonElement,
+        by: String,
+    ): Unit = TODO("S3.3 — POST /tasks/{t}/answer")
+
+    /** The tasks a person sees (`GET /tasks?for=me`, D-101). */
+    fun listTasksFor(
+        person: String,
+        status: String?,
+    ): List<UUID> = TODO("S3.3 — GET /tasks?for=me")
+
+    private fun insertRun(
+        open: RunOpen,
+        now: Instant,
+    ): UUID {
+        val runId = UUID.randomUUID()
+        Runs.insert {
+            it[id] = runId
+            it[recipe] = open.recipe
+            it[program] = open.program
+            it[deployment] = open.deployment
+            it[bundle] = open.bundle
+            it[fpText] = open.fpText
+            it[fpValues] = open.fpValues
+            it[fpProgram] = open.fpProgram
+            it[fpDeployment] = open.fpDeployment
+            it[modelFp] = open.modelFp
+            it[port] = open.port
+            it[asOf] = open.asOf?.utc()
+            it[author] = open.author
+            it[runAs] = open.runAs
+            it[caller] = open.caller
+            it[origin] = open.origin
+            it[status] = RunStatus.OPEN.wire
+            it[dryRun] = open.dryRun
+            it[governance] = if (open.governed) "governed" else "ungoverned"
+            it[idempotencyKey] = open.idempotencyKey
+            it[replayOf] = open.replayOf
+            it[startedAt] = now.utc()
+            it[budgetSync] = open.budgetSync?.toMillis()
+            it[budgetBatch] = open.budgetBatch?.toMillis()
+        }
+        return runId
+    }
+
+    private fun outermost(operation: String) =
+        check(TransactionManager.currentOrNull() == null) {
+            "Ledger.$operation runs in a transaction of its own; called inside another, its retry and isolation " +
+                "would not apply"
+        }
+
+    private fun lockRun(runId: UUID) {
+        Runs
+            .select(Runs.id)
+            .where { Runs.id eq runId }
+            .forUpdate()
+            .firstOrNull() ?: throw NoSuchRun(runId)
+    }
+
+    private fun isSealed(runId: UUID): Boolean =
+        RunProtocol
+            .select(RunProtocol.payload)
+            .where { (RunProtocol.run eq runId) and (RunProtocol.section eq ProtocolSection.AUTOMATION.wire) }
+            .orderBy(RunProtocol.seq, SortOrder.DESC)
+            .limit(1)
+            .firstOrNull()
+            ?.let { ((it[RunProtocol.payload] as? JsonObject)?.get("sealed") as? JsonPrimitive)?.booleanOrNull == true }
+            ?: false
+
+    private fun nextSeq(
+        runId: UUID,
+        section: ProtocolSection,
+    ): Int =
+        RunProtocol
+            .select(RunProtocol.seq)
+            .where { (RunProtocol.run eq runId) and (RunProtocol.section eq section.wire) }
+            .orderBy(RunProtocol.seq, SortOrder.DESC)
+            .limit(1)
+            .firstOrNull()
+            ?.let { it[RunProtocol.seq] + 1 }
+            ?: 1
+
+    private fun budgetOf(
+        batchMs: Long?,
+        syncMs: Long?,
+    ): Duration = (batchMs ?: syncMs)?.let(Duration::ofMillis) ?: defaultBudget
+
+    private fun Instant.utc(): OffsetDateTime = atOffset(ZoneOffset.UTC)
+
+    companion object {
+        const val CLAIM_ATTEMPTS = 3
+        private val FREE_STATUSES = RunStatus.entries.filter { it.freesKey }.map { it.wire }
+        private val SEALED = JsonObject(mapOf("sealed" to JsonPrimitive(true)))
+    }
+}

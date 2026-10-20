@@ -1,0 +1,113 @@
+// decide_return.ttrp — derived from handling-a-return-request.md §Deciding
+// AU-core-P0 shared fixture: AU design `17` §4.1, verbatim but for the TTR-P comment marker (`#` → `//`).
+// F2: `return_share` is restated without scalar subqueries (TTR-SQL has none, TTRP-SQL-006) — see there.
+uses world "hartland.worlds.demo"
+import hartland.*
+import hartland.automation.*
+
+recipe {
+    key:        return_request_line.line_id
+    as of:      now
+    parameters: [return_window, abuse_share, small_value, care_threshold, settlement, inbound_reminder]
+    document:   "handling-a-return-request.md"
+
+    candidates received(out lines) target erp """sql
+        SELECT l.line_id, l.request_number, l.item, l.quantity, l.unit_price, l.quantity * l.unit_price AS line_value,
+               l.reason, l.requested_resolution, l.requested_variant,
+               r.customer, r.order_number, r.requested_date
+        FROM   er.entity.return_request_line l JOIN er.entity.return_request r ON r.request_number = l.request_number
+        WHERE  l.state = 'received'
+    """
+
+    // per candidate: was it bought here, and delivered within the window?
+    context bought_here(in lines, out rows) target erp """sql
+        SELECT q.line_id, o.delivered_date,
+               CASE WHEN o.delivered_date >= :as_of - :return_window THEN 1 ELSE 0 END AS in_window,
+               CASE WHEN s.item IS NULL THEN 0 ELSE 1 END AS item_on_order
+        FROM   lines q
+        LEFT JOIN er.entity.order o      ON o.order_number = q.order_number AND o.customer = q.customer
+        LEFT JOIN er.entity.sales_line s ON s.order_number = q.order_number AND s.item = q.item
+    """
+
+    // per candidate: the customer's 12-month return share — two per-customer aggregates, no fan-out (D-85).
+    // AU-core-P0 restatement (fixture F2): `17` wrote two correlated scalar subqueries; TTR-SQL's fragment
+    // cut has none (TTRP-SQL-006, C2-b), so each aggregate is a lookup CTE (it reads no candidates port)
+    // left-joined on the candidate's customer — the same value per line, still per candidate.
+    context return_share(in lines, out rows) target erp """sql
+        WITH returned AS (
+            SELECT rr.customer, SUM(rl.quantity * rl.unit_price) AS returned_value
+            FROM   er.entity.return_request_line rl JOIN er.entity.return_request rr ON rr.request_number = rl.request_number
+            WHERE  rr.requested_date >= :as_of - 365 AND rl.state <> 'rejected'
+            GROUP  BY rr.customer
+        ),
+        bought AS (
+            SELECT s.customer, SUM(s.ext_sales_price) AS bought_value
+            FROM   er.entity.sales_line s
+            WHERE  s.sold_date >= :as_of - 365
+            GROUP  BY s.customer
+        )
+        SELECT q.line_id, COALESCE(r.returned_value, 0) / NULLIF(b.bought_value, 0) AS share
+        FROM   lines q
+        LEFT JOIN returned r ON r.customer = q.customer
+        LEFT JOIN bought   b ON b.customer = q.customer
+    """
+
+    // lookup (reads no candidates port): the request's total value from the MODEL, not from the candidates —
+    // aggregating the candidates by request would make a line's verdict depend on sibling lines (set-level); this is the restatement (06 A-5)
+    context request_value(out rows) target erp """sql
+        SELECT l.request_number, SUM(l.quantity * l.unit_price) AS request_value
+        FROM   er.entity.return_request_line l GROUP BY l.request_number
+    """
+
+    // per candidate: stock at the customer's center — the line's own item (replacement) and the requested variant (exchange)
+    context stock_at_center(in lines, out rows) target erp {
+        latest = load(er.entity.inventory) -> latest(by: as_of_date, per: item, warehouse)
+        lines -> join(right: load(er.entity.customer), kind: inner, on: relation rel_line_customer)      // lines.customer → customer (1..1)
+              -> join(right: latest, kind: left, on: left.item = right.item and customer.center = right.warehouse)
+              -> calc(item_on_hand = coalesce(latest.quantity_on_hand, 0))
+              -> join(right: latest, kind: left, on: left.requested_variant = right.item and customer.center = right.warehouse)
+              -> calc(variant_on_hand = coalesce(latest.quantity_on_hand, 0))
+              -> select(line_id, item_on_hand, variant_on_hand)
+              -> rows
+    }
+
+    decision way(in lines, in bought_here, in return_share, in request_value, in stock_at_center) {
+        v = lines -> join(right: bought_here,     kind: left, on: left.line_id = right.line_id)
+                  -> join(right: return_share,    kind: left, on: left.line_id = right.line_id)
+                  -> join(right: stock_at_center, kind: left, on: left.line_id = right.line_id)
+                  -> join(right: request_value,   kind: left, on: left.request_number = right.request_number)
+        v -> switch {
+            mode: exclusive
+            reject_not_ours:       delivered_date is null or item_on_order = 0           because: "not bought here"
+            reject_late:           in_window = 0                                          because: "delivered more than {return_window} days ago"
+            reject_abuse:          share > :abuse_share                                   because: "return share {share} above the limit"
+            to_customer_care:      request_value > :care_threshold                        because: "request above the care threshold"
+            refund_no_return:      line_value < :small_value and reason in ("damaged", "did_not_arrive")
+                                                                                          because: "small value, {reason}"
+            replacement_no_return: reason in ("damaged", "did_not_arrive") and item_on_hand >= quantity
+                                                                                          because: "{reason}, replacement on stock"
+            exchange:              requested_resolution = "exchange" and variant_on_hand >= quantity
+                                                                                          because: "requested variant on stock"
+            else:                  refund_after_return                                    because: "goods back, then the money"
+        }
+    }
+
+    actions {
+        way.reject_not_ours, way.reject_late, way.reject_abuse
+                                   -> set_state       { line: line_id, to: rejected }
+        way.reject_not_ours, way.reject_late, way.reject_abuse
+                                   -> notify_customer { customer: customer, template: "return-rejected" }
+        way.to_customer_care       -> ask              { who: role.customer_care, about: request_number, action: set_state,
+                                                         group_by: request_number, due: 3 working_days }
+        way.refund_no_return       -> set_state        { line: line_id, to: settling, way: refund_no_return }
+        way.refund_no_return       -> expect           { line: line_id, kind: credit_note, due: working_days(:settlement) }
+        way.replacement_no_return  -> set_state        { line: line_id, to: settling, way: replacement_no_return }
+        way.replacement_no_return  -> expect           { line: line_id, kind: replacement, due: working_days(:settlement) }
+        way.exchange               -> set_state        { line: line_id, to: awaiting_goods, way: exchange }
+        way.refund_after_return    -> set_state        { line: line_id, to: awaiting_goods, way: refund_after_return }
+        way.exchange, way.refund_after_return
+                                   -> expect           { line: line_id, kind: inbound, due: days(:inbound_reminder) }
+        way.exchange, way.refund_after_return
+                                   -> notify_customer  { customer: customer, template: "return-instructions" }
+    }
+}

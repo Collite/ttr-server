@@ -1,0 +1,412 @@
+{
+  "schemaVersion": 3,
+  "ttrpVersion": 2,
+  "toolchain": "fixture-prebuilt",
+  "program": "monitor_inbound",
+  "world": {
+    "qname": "hartland.worlds.demo",
+    "fingerprint": "sha256:835a2d5eda9a64795b00aa308a222a7412a5ed40e4ff5137d000b66ddb9d1499"
+  },
+  "islands": [
+    {
+      "name": "awaiting",
+      "engine": "erp",
+      "executor": "native",
+      "invocation": "psql",
+      "file": "islands/awaiting.lines.sql",
+      "sha256": "sha256:248b91d65cce963d0cf4aec5f297c069a73d1ece12d8b2bbd047f69b1688553a",
+      "connections": [
+        "ERP"
+      ],
+      "outputs": [
+        {
+          "port": "lines",
+          "file": "islands/awaiting.lines.sql",
+          "sha256": "sha256:248b91d65cce963d0cf4aec5f297c069a73d1ece12d8b2bbd047f69b1688553a"
+        }
+      ]
+    },
+    {
+      "name": "receipts",
+      "engine": "erp",
+      "executor": "native",
+      "invocation": "psql",
+      "file": "islands/receipts.rows.sql",
+      "sha256": "sha256:7b6e0515dfd56011b1635a5351d4762cf10cdd66aea46bbf6548ba5ef5fbdd10",
+      "connections": [
+        "ERP"
+      ],
+      "outputs": [
+        {
+          "port": "rows",
+          "file": "islands/receipts.rows.sql",
+          "sha256": "sha256:7b6e0515dfd56011b1635a5351d4762cf10cdd66aea46bbf6548ba5ef5fbdd10"
+        }
+      ]
+    },
+    {
+      "name": "age",
+      "engine": "erp",
+      "executor": "native",
+      "invocation": "psql",
+      "file": "islands/age.rows.sql",
+      "sha256": "sha256:5c17e9d3fa00834fae5b2711b49a92373ca05a2806f1821185d478a1f316fdba",
+      "connections": [
+        "ERP"
+      ],
+      "outputs": [
+        {
+          "port": "rows",
+          "file": "islands/age.rows.sql",
+          "sha256": "sha256:5c17e9d3fa00834fae5b2711b49a92373ca05a2806f1821185d478a1f316fdba"
+        }
+      ]
+    },
+    {
+      "name": "reminded",
+      "engine": "erp",
+      "executor": "native",
+      "invocation": "psql",
+      "file": "islands/reminded.rows.sql",
+      "sha256": "sha256:527aca1abd4a6d5a270e91d5de3feee6961fcef5b506ef094e380fce972ca173",
+      "connections": [
+        "ERP"
+      ],
+      "outputs": [
+        {
+          "port": "rows",
+          "file": "islands/reminded.rows.sql",
+          "sha256": "sha256:527aca1abd4a6d5a270e91d5de3feee6961fcef5b506ef094e380fce972ca173"
+        }
+      ]
+    },
+    {
+      "name": "inbound.complete",
+      "engine": "erp",
+      "executor": "native",
+      "invocation": "psql",
+      "file": "islands/inbound.complete.sql",
+      "sha256": "sha256:a6c3cfb98eb10cc7d3bd58156ed943c8cc231a19fab86d553ed5f37bb37ffef1",
+      "connections": [
+        "ERP"
+      ],
+      "outputs": [
+        {
+          "port": "complete",
+          "file": "islands/inbound.complete.sql",
+          "sha256": "sha256:a6c3cfb98eb10cc7d3bd58156ed943c8cc231a19fab86d553ed5f37bb37ffef1"
+        }
+      ]
+    },
+    {
+      "name": "inbound.damaged",
+      "engine": "erp",
+      "executor": "native",
+      "invocation": "psql",
+      "file": "islands/inbound.damaged.sql",
+      "sha256": "sha256:2abcd5d780f764a4b1b60a4cbfcfc7c01fb55eb072d7ff0ffa453eae864e9eff",
+      "connections": [
+        "ERP"
+      ],
+      "outputs": [
+        {
+          "port": "damaged",
+          "file": "islands/inbound.damaged.sql",
+          "sha256": "sha256:2abcd5d780f764a4b1b60a4cbfcfc7c01fb55eb072d7ff0ffa453eae864e9eff"
+        }
+      ]
+    },
+    {
+      "name": "inbound.expired",
+      "engine": "erp",
+      "executor": "native",
+      "invocation": "psql",
+      "file": "islands/inbound.expired.sql",
+      "sha256": "sha256:942fd0bbee9a4378958424e6c718a81c26929a03e5331681c6927d5c4b79ebbf",
+      "connections": [
+        "ERP"
+      ],
+      "outputs": [
+        {
+          "port": "expired",
+          "file": "islands/inbound.expired.sql",
+          "sha256": "sha256:942fd0bbee9a4378958424e6c718a81c26929a03e5331681c6927d5c4b79ebbf"
+        }
+      ]
+    },
+    {
+      "name": "inbound.remind",
+      "engine": "erp",
+      "executor": "native",
+      "invocation": "psql",
+      "file": "islands/inbound.remind.sql",
+      "sha256": "sha256:dda314a179e46d80180e2116f39e7e1ead4ccc09e902d1c4a0c208251e200328",
+      "connections": [
+        "ERP"
+      ],
+      "outputs": [
+        {
+          "port": "remind",
+          "file": "islands/inbound.remind.sql",
+          "sha256": "sha256:dda314a179e46d80180e2116f39e7e1ead4ccc09e902d1c4a0c208251e200328"
+        }
+      ]
+    }
+  ],
+  "transfers": [],
+  "waves": [
+    [
+      "awaiting"
+    ],
+    [
+      "receipts",
+      "age",
+      "reminded"
+    ],
+    [
+      "inbound"
+    ]
+  ],
+  "connections": [
+    "ERP"
+  ],
+  "displays": [],
+  "recipe": {
+    "name": "monitor_inbound",
+    "key": [
+      "return_request_line.line_id"
+    ],
+    "asOf": "now",
+    "document": "handling-a-return-request.md",
+    "parameters": [
+      {
+        "name": "inbound_reminder",
+        "type": "days",
+        "value": "14"
+      },
+      {
+        "name": "inbound_close",
+        "type": "days",
+        "value": "30"
+      },
+      {
+        "name": "settlement",
+        "type": "working_days",
+        "value": "5"
+      }
+    ],
+    "roles": {
+      "candidates": "awaiting",
+      "contexts": [
+        {
+          "name": "receipts",
+          "class": "per-candidate",
+          "kind": "sql"
+        },
+        {
+          "name": "age",
+          "class": "per-candidate",
+          "kind": "sql"
+        },
+        {
+          "name": "reminded",
+          "class": "per-candidate",
+          "kind": "sql"
+        }
+      ],
+      "decision": "inbound",
+      "routes": [
+        {
+          "name": "complete",
+          "because": "returned in full",
+          "detail": [
+            "receipts"
+          ],
+          "turnFed": false
+        },
+        {
+          "name": "damaged",
+          "because": "incomplete or damaged return",
+          "detail": [
+            "receipts"
+          ],
+          "turnFed": false
+        },
+        {
+          "name": "expired",
+          "because": "nothing returned after {inbound_close} days",
+          "detail": [],
+          "turnFed": false
+        },
+        {
+          "name": "remind",
+          "because": "nothing returned after {inbound_reminder} days",
+          "detail": [],
+          "turnFed": false
+        }
+      ],
+      "switchMode": "exclusive",
+      "elseRoute": "none"
+    },
+    "wiring": [
+      {
+        "routes": [
+          "inbound.complete"
+        ],
+        "action": "fulfil",
+        "columns": {
+          "line": "line_id",
+          "kind": "inbound",
+          "to": "fulfilled"
+        },
+        "when": null
+      },
+      {
+        "routes": [
+          "inbound.complete"
+        ],
+        "action": "set_state",
+        "columns": {
+          "line": "line_id",
+          "to": "goods_received"
+        },
+        "when": null
+      },
+      {
+        "routes": [
+          "inbound.complete"
+        ],
+        "action": "expect",
+        "columns": {
+          "line": "line_id",
+          "kind": "credit_note",
+          "due": "working_days(:settlement)"
+        },
+        "when": null
+      },
+      {
+        "routes": [
+          "inbound.complete"
+        ],
+        "action": "expect",
+        "columns": {
+          "line": "line_id",
+          "kind": "replacement",
+          "due": "working_days(:settlement)"
+        },
+        "when": null
+      },
+      {
+        "routes": [
+          "inbound.damaged"
+        ],
+        "action": "task",
+        "columns": {
+          "who": "role.customer_care",
+          "about": "line_id",
+          "detail": "receipts"
+        },
+        "when": null
+      },
+      {
+        "routes": [
+          "inbound.expired"
+        ],
+        "action": "fulfil",
+        "columns": {
+          "line": "line_id",
+          "kind": "inbound",
+          "to": "cancelled"
+        },
+        "when": null
+      },
+      {
+        "routes": [
+          "inbound.expired"
+        ],
+        "action": "set_state",
+        "columns": {
+          "line": "line_id",
+          "to": "not_returned"
+        },
+        "when": null
+      },
+      {
+        "routes": [
+          "inbound.remind"
+        ],
+        "action": "notify_customer",
+        "columns": {
+          "customer": "customer",
+          "template": "\"return-reminder\""
+        },
+        "when": null
+      }
+    ],
+    "kinds": [
+      "sql"
+    ],
+    "mode": "per-candidate",
+    "windows": [],
+    "verdictSchema": {
+      "entity": "monitor_inbound_verdict",
+      "columns": [
+        {
+          "name": "run",
+          "type": "text"
+        },
+        {
+          "name": "as_of",
+          "type": "timestamp"
+        },
+        {
+          "name": "line_id",
+          "type": "int"
+        },
+        {
+          "name": "route",
+          "type": "text"
+        },
+        {
+          "name": "verdict_reason",
+          "type": "text"
+        },
+        {
+          "name": "parameters_fp",
+          "type": "text"
+        },
+        {
+          "name": "run_as",
+          "type": "text"
+        },
+        {
+          "name": "written_at",
+          "type": "timestamp"
+        }
+      ],
+      "detail": "monitor_inbound_verdict_detail",
+      "current": "monitor_inbound_verdict_current"
+    },
+    "objectsRead": [
+      "er.entity.return_request_line",
+      "er.entity.return_receipt",
+      "er.entity.obligation"
+    ],
+    "fingerprints": {
+      "text": "sha256:e0e126d8ba3a235512c5a8a1208733789c588a09cd45fa8fd9b67145b4e87ee7",
+      "values": "sha256:41cf7487d63de15f907da445487966310dfe208aec6cc4bb8106760e6a489dcd"
+    },
+    "protocol": "always"
+  },
+  "files": {
+    "catalog/monitor_inbound.ttrm": "sha256:99d4b2d3e42ed8d36d1d488bfb67ec63fd9d9a6e61a84942fa70471f305f2d82",
+    "islands/age.rows.sql": "sha256:5c17e9d3fa00834fae5b2711b49a92373ca05a2806f1821185d478a1f316fdba",
+    "islands/awaiting.lines.sql": "sha256:248b91d65cce963d0cf4aec5f297c069a73d1ece12d8b2bbd047f69b1688553a",
+    "islands/inbound.complete.sql": "sha256:a6c3cfb98eb10cc7d3bd58156ed943c8cc231a19fab86d553ed5f37bb37ffef1",
+    "islands/inbound.damaged.sql": "sha256:2abcd5d780f764a4b1b60a4cbfcfc7c01fb55eb072d7ff0ffa453eae864e9eff",
+    "islands/inbound.expired.sql": "sha256:942fd0bbee9a4378958424e6c718a81c26929a03e5331681c6927d5c4b79ebbf",
+    "islands/inbound.remind.sql": "sha256:dda314a179e46d80180e2116f39e7e1ead4ccc09e902d1c4a0c208251e200328",
+    "islands/receipts.rows.sql": "sha256:7b6e0515dfd56011b1635a5351d4762cf10cdd66aea46bbf6548ba5ef5fbdd10",
+    "islands/reminded.rows.sql": "sha256:527aca1abd4a6d5a270e91d5de3feee6961fcef5b506ef094e380fce972ca173"
+  }
+}

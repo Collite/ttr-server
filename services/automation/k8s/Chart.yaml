@@ -1,0 +1,19 @@
+apiVersion: v2
+name: automation
+description: |
+  The automation service (AU) — runs recipes through the door, keeps the ledger and the protocol,
+  and is the exchange (the run API in, the connector SPI out). An env-agnostic Helm chart: image,
+  database, IdP, door wiring and credentials are values; per-environment values live in the
+  deploying repo (olymp). The service migrates its own database at start (Flyway — the ledger, and
+  pgmq installed SQL-only, D-130), so the chart has no init Job and no database image requirement.
+type: application
+# Chart version: the packaging. appVersion tracks the default image tag.
+version: 0.1.0
+appVersion: "dev"
+# The common Deployment/Service shape lives in the tatrman-service library chart
+# (shared/charts). This chart stays thin: values + the per-module env hook
+# (templates/_env.tpl). See docs/architecture/deploy-test/contracts.md §1.
+dependencies:
+  - name: tatrman-service
+    version: 0.1.0
+    repository: "file://../../../shared/charts/tatrman-service"

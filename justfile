@@ -16,7 +16,7 @@ set shell := ["bash", "-uc"]
 # `nlp-stanza`/`nlp-spacy` are the two NLP BACKENDS that need no build-arg;
 # `nlp-morphodita`/`nlp-nametag3` bake a LINDAT model and are deliberately NOT here —
 # CI cannot build them without its URL. All four: `just nlp-backend-image`.
-image_modules := "veles query translate validate dispatch charon lex-matcher llm-gateway nlp nlp-stanza nlp-spacy golem-py morph-studio chrono geo money grounding-mcp resolver meta-mcp query-mcp lex-matcher-mcp nlp-mcp worker-postgres worker-mssql worker-polars identity health"
+image_modules := "veles query translate validate dispatch charon lex-matcher llm-gateway nlp nlp-stanza nlp-spacy golem-py morph-studio chrono geo money grounding-mcp resolver automation meta-mcp query-mcp lex-matcher-mcp nlp-mcp worker-postgres worker-mssql worker-polars identity health"
 
 # The pure-Python wheels publish-python.yml builds (`python-<lane>/v*` tag →
 # PyPI). Kept in lockstep with that workflow's tag map — the wheel-name → tag-

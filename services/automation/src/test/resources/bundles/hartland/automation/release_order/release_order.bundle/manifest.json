@@ -1,0 +1,384 @@
+{
+  "schemaVersion": 3,
+  "ttrpVersion": 2,
+  "toolchain": "fixture-prebuilt",
+  "program": "release_order",
+  "world": {
+    "qname": "hartland.worlds.demo",
+    "fingerprint": "sha256:835a2d5eda9a64795b00aa308a222a7412a5ed40e4ff5137d000b66ddb9d1499"
+  },
+  "islands": [
+    {
+      "name": "placed_orders",
+      "engine": "erp",
+      "executor": "native",
+      "invocation": "psql",
+      "file": "islands/placed_orders.orders.sql",
+      "sha256": "sha256:c2500c56830fde1f2eda8e9035ee2500e50ecce67f1a2c542512c75bc0fddd68",
+      "connections": [
+        "ERP"
+      ],
+      "outputs": [
+        {
+          "port": "orders",
+          "file": "islands/placed_orders.orders.sql",
+          "sha256": "sha256:c2500c56830fde1f2eda8e9035ee2500e50ecce67f1a2c542512c75bc0fddd68"
+        }
+      ]
+    },
+    {
+      "name": "shortfall",
+      "engine": "erp",
+      "executor": "native",
+      "invocation": "psql",
+      "file": "islands/shortfall.rows.sql",
+      "sha256": "sha256:9230f844e3cb4e053f6235a2016113340081015b6a13784b126e56507bc1b6e0",
+      "connections": [
+        "ERP"
+      ],
+      "outputs": [
+        {
+          "port": "rows",
+          "file": "islands/shortfall.rows.sql",
+          "sha256": "sha256:9230f844e3cb4e053f6235a2016113340081015b6a13784b126e56507bc1b6e0"
+        }
+      ]
+    },
+    {
+      "name": "price_differences",
+      "engine": "erp",
+      "executor": "native",
+      "invocation": "psql",
+      "file": "islands/price_differences.rows.sql",
+      "sha256": "sha256:417c971f6fc57dbab21623548947cab82712cb70babe03b9b2ddb9c117ea53dc",
+      "connections": [
+        "ERP"
+      ],
+      "outputs": [
+        {
+          "port": "rows",
+          "file": "islands/price_differences.rows.sql",
+          "sha256": "sha256:417c971f6fc57dbab21623548947cab82712cb70babe03b9b2ddb9c117ea53dc"
+        }
+      ]
+    },
+    {
+      "name": "overdue",
+      "engine": "erp",
+      "executor": "native",
+      "invocation": "psql",
+      "file": "islands/overdue.rows.sql",
+      "sha256": "sha256:3c1634be952cda14091eae0927a1fa6a844798862a4c913f87aa47428d5d9ad9",
+      "connections": [
+        "ERP"
+      ],
+      "outputs": [
+        {
+          "port": "rows",
+          "file": "islands/overdue.rows.sql",
+          "sha256": "sha256:3c1634be952cda14091eae0927a1fa6a844798862a4c913f87aa47428d5d9ad9"
+        }
+      ]
+    },
+    {
+      "name": "verdict.hold_sales",
+      "engine": "erp",
+      "executor": "native",
+      "invocation": "psql",
+      "file": "islands/verdict.hold_sales.sql",
+      "sha256": "sha256:b63c2298c85a7f0460cc7af49ab4de0d620847f2c19cfd4edf38bc153fb73831",
+      "connections": [
+        "ERP"
+      ],
+      "outputs": [
+        {
+          "port": "hold_sales",
+          "file": "islands/verdict.hold_sales.sql",
+          "sha256": "sha256:b63c2298c85a7f0460cc7af49ab4de0d620847f2c19cfd4edf38bc153fb73831"
+        }
+      ]
+    },
+    {
+      "name": "verdict.hold_ar",
+      "engine": "erp",
+      "executor": "native",
+      "invocation": "psql",
+      "file": "islands/verdict.hold_ar.sql",
+      "sha256": "sha256:ab3402f1de926cde649008667d6c55e9ed47e84ea184a0abbd78083ee73b8934",
+      "connections": [
+        "ERP"
+      ],
+      "outputs": [
+        {
+          "port": "hold_ar",
+          "file": "islands/verdict.hold_ar.sql",
+          "sha256": "sha256:ab3402f1de926cde649008667d6c55e9ed47e84ea184a0abbd78083ee73b8934"
+        }
+      ]
+    },
+    {
+      "name": "verdict.release_confirmed",
+      "engine": "erp",
+      "executor": "native",
+      "invocation": "psql",
+      "file": "islands/verdict.release_confirmed.sql",
+      "sha256": "sha256:61f29cf57612526090d42ddd1175f81a6572bc04dc1a9841eed2ed1770f29d44",
+      "connections": [
+        "ERP"
+      ],
+      "outputs": [
+        {
+          "port": "release_confirmed",
+          "file": "islands/verdict.release_confirmed.sql",
+          "sha256": "sha256:61f29cf57612526090d42ddd1175f81a6572bc04dc1a9841eed2ed1770f29d44"
+        }
+      ]
+    },
+    {
+      "name": "verdict.release",
+      "engine": "erp",
+      "executor": "native",
+      "invocation": "psql",
+      "file": "islands/verdict.release.sql",
+      "sha256": "sha256:df5d4c28a6a447e16bf612e94710b57d835f9a48a3a2a5c92419a293b6a6f66d",
+      "connections": [
+        "ERP"
+      ],
+      "outputs": [
+        {
+          "port": "release",
+          "file": "islands/verdict.release.sql",
+          "sha256": "sha256:df5d4c28a6a447e16bf612e94710b57d835f9a48a3a2a5c92419a293b6a6f66d"
+        }
+      ]
+    }
+  ],
+  "transfers": [],
+  "waves": [
+    [
+      "placed_orders"
+    ],
+    [
+      "shortfall",
+      "price_differences",
+      "overdue"
+    ],
+    [
+      "verdict"
+    ]
+  ],
+  "connections": [
+    "ERP"
+  ],
+  "displays": [],
+  "recipe": {
+    "name": "release_order",
+    "key": [
+      "order.order_number"
+    ],
+    "asOf": "now",
+    "document": "releasing-a-placed-order.md",
+    "parameters": [
+      {
+        "name": "tolerance",
+        "type": "decimal",
+        "value": "0.01"
+      },
+      {
+        "name": "confirmation_threshold",
+        "type": "decimal",
+        "value": "50000"
+      }
+    ],
+    "roles": {
+      "candidates": "placed_orders",
+      "contexts": [
+        {
+          "name": "shortfall",
+          "class": "per-candidate",
+          "kind": "sql"
+        },
+        {
+          "name": "price_differences",
+          "class": "per-candidate",
+          "kind": "sql"
+        },
+        {
+          "name": "overdue",
+          "class": "per-candidate",
+          "kind": "sql"
+        }
+      ],
+      "decision": "verdict",
+      "routes": [
+        {
+          "name": "hold_sales",
+          "because": "stock shortfall or price difference",
+          "detail": [
+            "shortfall",
+            "price_differences"
+          ],
+          "turnFed": false
+        },
+        {
+          "name": "hold_ar",
+          "because": "overdue invoices",
+          "detail": [
+            "overdue"
+          ],
+          "turnFed": false
+        },
+        {
+          "name": "release_confirmed",
+          "because": "all checks passed; above the confirmation threshold",
+          "detail": [],
+          "turnFed": false
+        },
+        {
+          "name": "release",
+          "because": "all checks passed",
+          "detail": [],
+          "turnFed": false
+        }
+      ],
+      "switchMode": "overlapping",
+      "elseRoute": null
+    },
+    "wiring": [
+      {
+        "routes": [
+          "verdict.release"
+        ],
+        "action": "release",
+        "columns": {
+          "order": "order_number"
+        },
+        "when": null
+      },
+      {
+        "routes": [
+          "verdict.release_confirmed"
+        ],
+        "action": "ask",
+        "columns": {
+          "who": "role.sales_manager",
+          "about": "order_number",
+          "action": "release",
+          "due": "2 working_days"
+        },
+        "when": null
+      },
+      {
+        "routes": [
+          "verdict.hold_sales"
+        ],
+        "action": "hold",
+        "columns": {
+          "order": "order_number",
+          "department": "\"Sales\""
+        },
+        "when": null
+      },
+      {
+        "routes": [
+          "verdict.hold_sales"
+        ],
+        "action": "notify",
+        "columns": {
+          "who": "role.sales",
+          "detail": "shortfall, price_differences"
+        },
+        "when": null
+      },
+      {
+        "routes": [
+          "verdict.hold_ar"
+        ],
+        "action": "hold",
+        "columns": {
+          "order": "order_number",
+          "department": "\"AR\""
+        },
+        "when": null
+      },
+      {
+        "routes": [
+          "verdict.hold_ar"
+        ],
+        "action": "notify",
+        "columns": {
+          "who": "role.ar",
+          "detail": "overdue"
+        },
+        "when": null
+      }
+    ],
+    "kinds": [
+      "sql"
+    ],
+    "mode": "per-candidate",
+    "windows": [],
+    "verdictSchema": {
+      "entity": "release_order_verdict",
+      "columns": [
+        {
+          "name": "run",
+          "type": "text"
+        },
+        {
+          "name": "as_of",
+          "type": "timestamp"
+        },
+        {
+          "name": "order_number",
+          "type": "text"
+        },
+        {
+          "name": "route",
+          "type": "text"
+        },
+        {
+          "name": "verdict_reason",
+          "type": "text"
+        },
+        {
+          "name": "parameters_fp",
+          "type": "text"
+        },
+        {
+          "name": "run_as",
+          "type": "text"
+        },
+        {
+          "name": "written_at",
+          "type": "timestamp"
+        }
+      ],
+      "detail": "release_order_verdict_detail",
+      "current": "release_order_verdict_current"
+    },
+    "objectsRead": [
+      "er.entity.order",
+      "er.entity.sales_line",
+      "er.entity.inventory",
+      "er.entity.invoice",
+      "er.entity.price_list"
+    ],
+    "fingerprints": {
+      "text": "sha256:76049a8677a1a57d5264ddbff9ba57037c74eabef4963e0d2ed7d89111da959f",
+      "values": "sha256:6c63016f02df4d40daf1b4cdb247c36d5ec8dad2633083a0608265710d03e126"
+    },
+    "protocol": "always"
+  },
+  "files": {
+    "catalog/release_order.ttrm": "sha256:eee5cc3f69ae690e7f4ed0b4f793067d41ccf4828afd58b4edcdbe8359f4f4a2",
+    "islands/overdue.rows.sql": "sha256:3c1634be952cda14091eae0927a1fa6a844798862a4c913f87aa47428d5d9ad9",
+    "islands/placed_orders.orders.sql": "sha256:c2500c56830fde1f2eda8e9035ee2500e50ecce67f1a2c542512c75bc0fddd68",
+    "islands/price_differences.rows.sql": "sha256:417c971f6fc57dbab21623548947cab82712cb70babe03b9b2ddb9c117ea53dc",
+    "islands/shortfall.rows.sql": "sha256:9230f844e3cb4e053f6235a2016113340081015b6a13784b126e56507bc1b6e0",
+    "islands/verdict.hold_ar.sql": "sha256:ab3402f1de926cde649008667d6c55e9ed47e84ea184a0abbd78083ee73b8934",
+    "islands/verdict.hold_sales.sql": "sha256:b63c2298c85a7f0460cc7af49ab4de0d620847f2c19cfd4edf38bc153fb73831",
+    "islands/verdict.release.sql": "sha256:df5d4c28a6a447e16bf612e94710b57d835f9a48a3a2a5c92419a293b6a6f66d",
+    "islands/verdict.release_confirmed.sql": "sha256:61f29cf57612526090d42ddd1175f81a6572bc04dc1a9841eed2ed1770f29d44"
+  }
+}

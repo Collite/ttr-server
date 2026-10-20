@@ -1,0 +1,16 @@
+{{- /*
+The `automation.ops` policies fragment (D-95, AU-server S4.2): a ConfigMap the cluster's validate
+values include into its policy set. The automation service never reads it. Rendered only when the
+fragment has content.
+*/}}
+{{- if .Values.policies.fragment }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "tatrman-service.fullname" . }}-policies
+  labels:
+    {{- include "tatrman-service.labels" . | nindent 4 }}
+data:
+  automation-ops.conf: |
+{{ .Values.policies.fragment | indent 4 }}
+{{- end }}

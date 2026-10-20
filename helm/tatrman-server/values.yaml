@@ -122,6 +122,12 @@ resolver:
     activeKeyId: ""
     allowEphemeralKey: false
 
+# ── Automation (AU) — OFF until the service is released ───────────────────────
+# The automation service (AU-server P0+). Opt-in while it is pre-release: enabling it needs the
+# ledger database, the IdP and the door wiring (values-contract.md §5.4); the subchart fails the
+# render, by key, when one is missing.
+automation: { enabled: false }
+
 # ── Developer portal (RO-22) — upstream image, opt-in ─────────────────────────
 # Backstage ships in-chart but OFF by default: it is an upstream (non-Collite) image
 # outside the acceptance bar. Enable + supply its app-config to use it.

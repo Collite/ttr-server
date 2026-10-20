@@ -114,6 +114,7 @@ jobs:
             [money]=services/money
             [grounding-mcp]=services/grounding-mcp
             [resolver]=services/resolver
+            [automation]=services/automation
             [meta-mcp]=tools/meta-mcp
             [query-mcp]=tools/query-mcp
             [lex-matcher-mcp]=tools/lex-matcher-mcp
@@ -124,7 +125,7 @@ jobs:
             [identity]=infra/identity
             [health]=infra/health
           )
-          ALL="veles query translate validate dispatch charon lex-matcher llm-gateway nlp nlp-stanza nlp-spacy golem-py morph-studio chrono geo money grounding-mcp resolver meta-mcp query-mcp lex-matcher-mcp nlp-mcp worker-postgres worker-mssql worker-polars identity health"
+          ALL="veles query translate validate dispatch charon lex-matcher llm-gateway nlp nlp-stanza nlp-spacy golem-py morph-studio chrono geo money grounding-mcp resolver automation meta-mcp query-mcp lex-matcher-mcp nlp-mcp worker-postgres worker-mssql worker-polars identity health"
 
           declare -a NAMES
           if [ "${{ github.event_name }}" = "push" ]; then

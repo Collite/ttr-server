@@ -1,0 +1,15 @@
+// fixture-prebuilt: the generated catalog of ttr-core contracts §5.3 (P2 S2.3 writes it).
+package hartland.automation.generated
+model automation
+
+def recipe monitor_inbound {
+    key: return_request_line.line_id
+    parameters: [inbound_reminder, inbound_close, settlement]
+    candidates: awaiting
+    contexts: [receipts, age, reminded]
+    decision: inbound
+    routes: [complete, damaged, expired, remind]
+    kinds: [sql]
+    mode: per_candidate
+    document: "handling-a-return-request.md"
+}

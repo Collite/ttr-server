@@ -1,0 +1,444 @@
+{
+  "schemaVersion": 3,
+  "ttrpVersion": 2,
+  "toolchain": "fixture-prebuilt",
+  "program": "settle",
+  "world": {
+    "qname": "hartland.worlds.demo",
+    "fingerprint": "sha256:835a2d5eda9a64795b00aa308a222a7412a5ed40e4ff5137d000b66ddb9d1499"
+  },
+  "islands": [
+    {
+      "name": "settling",
+      "engine": "erp",
+      "executor": "native",
+      "invocation": "psql",
+      "file": "islands/settling.lines.sql",
+      "sha256": "sha256:72e58a12caafaffb91564ac4c41a87cdc56550dafdf31eb353990c18d3795d7f",
+      "connections": [
+        "ERP"
+      ],
+      "outputs": [
+        {
+          "port": "lines",
+          "file": "islands/settling.lines.sql",
+          "sha256": "sha256:72e58a12caafaffb91564ac4c41a87cdc56550dafdf31eb353990c18d3795d7f"
+        }
+      ]
+    },
+    {
+      "name": "open_obligations",
+      "engine": "erp",
+      "executor": "native",
+      "invocation": "psql",
+      "file": "islands/open_obligations.rows.sql",
+      "sha256": "sha256:369a6513c43544d7c310efea2e3dedcff81289c52a7cad055a6d682fe9a275f4",
+      "connections": [
+        "ERP"
+      ],
+      "outputs": [
+        {
+          "port": "rows",
+          "file": "islands/open_obligations.rows.sql",
+          "sha256": "sha256:369a6513c43544d7c310efea2e3dedcff81289c52a7cad055a6d682fe9a275f4"
+        }
+      ]
+    },
+    {
+      "name": "documents",
+      "engine": "erp",
+      "executor": "native",
+      "invocation": "psql",
+      "file": "islands/documents.rows.sql",
+      "sha256": "sha256:46e0e5db839d474e4bc45b5979d0140e7adc78015eb32fb04278f5f23acbe178",
+      "connections": [
+        "ERP"
+      ],
+      "outputs": [
+        {
+          "port": "rows",
+          "file": "islands/documents.rows.sql",
+          "sha256": "sha256:46e0e5db839d474e4bc45b5979d0140e7adc78015eb32fb04278f5f23acbe178"
+        }
+      ]
+    },
+    {
+      "name": "overdue_days",
+      "engine": "erp",
+      "executor": "native",
+      "invocation": "psql",
+      "file": "islands/overdue_days.rows.sql",
+      "sha256": "sha256:0636870831bc494b33c1b9846b02cb0ce027c691bf50c6394d03acdacaa15c30",
+      "connections": [
+        "ERP"
+      ],
+      "outputs": [
+        {
+          "port": "rows",
+          "file": "islands/overdue_days.rows.sql",
+          "sha256": "sha256:0636870831bc494b33c1b9846b02cb0ce027c691bf50c6394d03acdacaa15c30"
+        }
+      ]
+    },
+    {
+      "name": "settlement.credit_note_issued",
+      "engine": "erp",
+      "executor": "native",
+      "invocation": "psql",
+      "file": "islands/settlement.credit_note_issued.sql",
+      "sha256": "sha256:997c56943d03bcd72dcbe168aaa2481a255c98b659806e168227f190a7375b3c",
+      "connections": [
+        "ERP"
+      ],
+      "outputs": [
+        {
+          "port": "credit_note_issued",
+          "file": "islands/settlement.credit_note_issued.sql",
+          "sha256": "sha256:997c56943d03bcd72dcbe168aaa2481a255c98b659806e168227f190a7375b3c"
+        }
+      ]
+    },
+    {
+      "name": "settlement.money_received",
+      "engine": "erp",
+      "executor": "native",
+      "invocation": "psql",
+      "file": "islands/settlement.money_received.sql",
+      "sha256": "sha256:170f5aae955840a9e7f9444e5f87b33ef1c952cb05271e318b4715dda9b17b25",
+      "connections": [
+        "ERP"
+      ],
+      "outputs": [
+        {
+          "port": "money_received",
+          "file": "islands/settlement.money_received.sql",
+          "sha256": "sha256:170f5aae955840a9e7f9444e5f87b33ef1c952cb05271e318b4715dda9b17b25"
+        }
+      ]
+    },
+    {
+      "name": "settlement.goods_shipped",
+      "engine": "erp",
+      "executor": "native",
+      "invocation": "psql",
+      "file": "islands/settlement.goods_shipped.sql",
+      "sha256": "sha256:f14fd6ad80a9d6412933826950f739b597e7a3fdd61e9253026cd7877452cbaf",
+      "connections": [
+        "ERP"
+      ],
+      "outputs": [
+        {
+          "port": "goods_shipped",
+          "file": "islands/settlement.goods_shipped.sql",
+          "sha256": "sha256:f14fd6ad80a9d6412933826950f739b597e7a3fdd61e9253026cd7877452cbaf"
+        }
+      ]
+    },
+    {
+      "name": "settlement.money_overdue",
+      "engine": "erp",
+      "executor": "native",
+      "invocation": "psql",
+      "file": "islands/settlement.money_overdue.sql",
+      "sha256": "sha256:4e2f30c414d9d6669c07322676d6b2de528b28956219daf3dfb65d51dd2b9db0",
+      "connections": [
+        "ERP"
+      ],
+      "outputs": [
+        {
+          "port": "money_overdue",
+          "file": "islands/settlement.money_overdue.sql",
+          "sha256": "sha256:4e2f30c414d9d6669c07322676d6b2de528b28956219daf3dfb65d51dd2b9db0"
+        }
+      ]
+    },
+    {
+      "name": "settlement.goods_overdue",
+      "engine": "erp",
+      "executor": "native",
+      "invocation": "psql",
+      "file": "islands/settlement.goods_overdue.sql",
+      "sha256": "sha256:5a8031f4ac1ca1db0c773f84609000ed5e52709fb72501f82aa2c8d15dc578e7",
+      "connections": [
+        "ERP"
+      ],
+      "outputs": [
+        {
+          "port": "goods_overdue",
+          "file": "islands/settlement.goods_overdue.sql",
+          "sha256": "sha256:5a8031f4ac1ca1db0c773f84609000ed5e52709fb72501f82aa2c8d15dc578e7"
+        }
+      ]
+    },
+    {
+      "name": "settlement.closed",
+      "engine": "erp",
+      "executor": "native",
+      "invocation": "psql",
+      "file": "islands/settlement.closed.sql",
+      "sha256": "sha256:20628363d4da9f2644424c1c90cbd404d1abb38fca05dd1c521895e7d87fa939",
+      "connections": [
+        "ERP"
+      ],
+      "outputs": [
+        {
+          "port": "closed",
+          "file": "islands/settlement.closed.sql",
+          "sha256": "sha256:20628363d4da9f2644424c1c90cbd404d1abb38fca05dd1c521895e7d87fa939"
+        }
+      ]
+    }
+  ],
+  "transfers": [],
+  "waves": [
+    [
+      "settling"
+    ],
+    [
+      "open_obligations",
+      "documents",
+      "overdue_days"
+    ],
+    [
+      "settlement"
+    ]
+  ],
+  "connections": [
+    "ERP"
+  ],
+  "displays": [],
+  "recipe": {
+    "name": "settle",
+    "key": [
+      "return_request_line.line_id"
+    ],
+    "asOf": "now",
+    "document": "handling-a-return-request.md",
+    "parameters": [
+      {
+        "name": "settlement",
+        "type": "working_days",
+        "value": "5"
+      }
+    ],
+    "roles": {
+      "candidates": "settling",
+      "contexts": [
+        {
+          "name": "open_obligations",
+          "class": "per-candidate",
+          "kind": "sql"
+        },
+        {
+          "name": "documents",
+          "class": "per-candidate",
+          "kind": "sql"
+        },
+        {
+          "name": "overdue_days",
+          "class": "per-candidate",
+          "kind": "sql"
+        }
+      ],
+      "decision": "settlement",
+      "routes": [
+        {
+          "name": "credit_note_issued",
+          "because": "credit note {credit_note_id} issued",
+          "detail": [],
+          "turnFed": false
+        },
+        {
+          "name": "money_received",
+          "because": "refund paid on {paid_date}",
+          "detail": [],
+          "turnFed": false
+        },
+        {
+          "name": "goods_shipped",
+          "because": "replacement shipped on {shipped_date}",
+          "detail": [],
+          "turnFed": false
+        },
+        {
+          "name": "money_overdue",
+          "because": "refund {max_late} working days late",
+          "detail": [
+            "open_obligations"
+          ],
+          "turnFed": false
+        },
+        {
+          "name": "goods_overdue",
+          "because": "replacement {max_late} working days late",
+          "detail": [
+            "open_obligations"
+          ],
+          "turnFed": false
+        },
+        {
+          "name": "closed",
+          "because": "settled",
+          "detail": [],
+          "turnFed": false
+        }
+      ],
+      "switchMode": "overlapping",
+      "elseRoute": null
+    },
+    "wiring": [
+      {
+        "routes": [
+          "settlement.credit_note_issued"
+        ],
+        "action": "fulfil",
+        "columns": {
+          "line": "line_id",
+          "kind": "credit_note",
+          "to": "fulfilled"
+        },
+        "when": null
+      },
+      {
+        "routes": [
+          "settlement.credit_note_issued"
+        ],
+        "action": "expect",
+        "columns": {
+          "line": "line_id",
+          "kind": "payment",
+          "due": "working_days(:settlement)"
+        },
+        "when": null
+      },
+      {
+        "routes": [
+          "settlement.money_received"
+        ],
+        "action": "fulfil",
+        "columns": {
+          "line": "line_id",
+          "kind": "payment",
+          "to": "fulfilled"
+        },
+        "when": null
+      },
+      {
+        "routes": [
+          "settlement.goods_shipped"
+        ],
+        "action": "fulfil",
+        "columns": {
+          "line": "line_id",
+          "kind": "replacement",
+          "to": "fulfilled"
+        },
+        "when": null
+      },
+      {
+        "routes": [
+          "settlement.money_overdue"
+        ],
+        "action": "task",
+        "columns": {
+          "who": "role.finance",
+          "about": "line_id",
+          "detail": "open_obligations"
+        },
+        "when": null
+      },
+      {
+        "routes": [
+          "settlement.goods_overdue"
+        ],
+        "action": "task",
+        "columns": {
+          "who": "role.logistics",
+          "about": "line_id",
+          "detail": "open_obligations"
+        },
+        "when": null
+      },
+      {
+        "routes": [
+          "settlement.closed"
+        ],
+        "action": "set_state",
+        "columns": {
+          "line": "line_id",
+          "to": "closed"
+        },
+        "when": null
+      }
+    ],
+    "kinds": [
+      "sql"
+    ],
+    "mode": "per-candidate",
+    "windows": [],
+    "verdictSchema": {
+      "entity": "settle_verdict",
+      "columns": [
+        {
+          "name": "run",
+          "type": "text"
+        },
+        {
+          "name": "as_of",
+          "type": "timestamp"
+        },
+        {
+          "name": "line_id",
+          "type": "int"
+        },
+        {
+          "name": "route",
+          "type": "text"
+        },
+        {
+          "name": "verdict_reason",
+          "type": "text"
+        },
+        {
+          "name": "parameters_fp",
+          "type": "text"
+        },
+        {
+          "name": "run_as",
+          "type": "text"
+        },
+        {
+          "name": "written_at",
+          "type": "timestamp"
+        }
+      ],
+      "detail": "settle_verdict_detail",
+      "current": "settle_verdict_current"
+    },
+    "objectsRead": [
+      "er.entity.return_request_line",
+      "er.entity.obligation",
+      "er.entity.credit_note",
+      "er.entity.payment",
+      "er.entity.shipment"
+    ],
+    "fingerprints": {
+      "text": "sha256:ebf5e9a9789bbff3c2b34f4101c48a1a69e2ffae254b4d6535b987df5dbb6f7c",
+      "values": "sha256:74cdef7d5307c826f30d8f0516f855d6867c0b5667b35a91d6afb4a9a7981337"
+    },
+    "protocol": "always"
+  },
+  "files": {
+    "catalog/settle.ttrm": "sha256:686962c6df9f861c00d31e31b423c0f22827d68ceec702c97e0ef34ccc0a1079",
+    "islands/documents.rows.sql": "sha256:46e0e5db839d474e4bc45b5979d0140e7adc78015eb32fb04278f5f23acbe178",
+    "islands/open_obligations.rows.sql": "sha256:369a6513c43544d7c310efea2e3dedcff81289c52a7cad055a6d682fe9a275f4",
+    "islands/overdue_days.rows.sql": "sha256:0636870831bc494b33c1b9846b02cb0ce027c691bf50c6394d03acdacaa15c30",
+    "islands/settlement.closed.sql": "sha256:20628363d4da9f2644424c1c90cbd404d1abb38fca05dd1c521895e7d87fa939",
+    "islands/settlement.credit_note_issued.sql": "sha256:997c56943d03bcd72dcbe168aaa2481a255c98b659806e168227f190a7375b3c",
+    "islands/settlement.goods_overdue.sql": "sha256:5a8031f4ac1ca1db0c773f84609000ed5e52709fb72501f82aa2c8d15dc578e7",
+    "islands/settlement.goods_shipped.sql": "sha256:f14fd6ad80a9d6412933826950f739b597e7a3fdd61e9253026cd7877452cbaf",
+    "islands/settlement.money_overdue.sql": "sha256:4e2f30c414d9d6669c07322676d6b2de528b28956219daf3dfb65d51dd2b9db0",
+    "islands/settlement.money_received.sql": "sha256:170f5aae955840a9e7f9444e5f87b33ef1c952cb05271e318b4715dda9b17b25",
+    "islands/settling.lines.sql": "sha256:72e58a12caafaffb91564ac4c41a87cdc56550dafdf31eb353990c18d3795d7f"
+  }
+}
