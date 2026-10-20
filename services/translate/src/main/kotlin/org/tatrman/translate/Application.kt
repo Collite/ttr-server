@@ -189,7 +189,14 @@ fun Application.module(config: Config) {
             ).also { it.start(this) }
         }
 
-    val translatorService = TranslatorServiceImpl(modelProvider, getQuery = getQueryFn)
+    val translatorService =
+        TranslatorServiceImpl(
+            modelProvider,
+            getQuery = getQueryFn,
+            refuseUnconditionedBareJoins =
+                !config.hasPath("translate.refuse-unconditioned-bare-joins") ||
+                    config.getBoolean("translate.refuse-unconditioned-bare-joins"),
+        )
 
     val grpcPort = config.getInt("grpc.port")
     val maxMessageSize = config.getInt("grpc.max-message-size-bytes")

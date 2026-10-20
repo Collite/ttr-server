@@ -590,8 +590,14 @@ internal object ExpressionRewriter {
                     .setJoin(
                         plan.join
                             .toBuilder()
-                            .setCondition(rewriteExpression(plan.join.condition, transform))
-                            .setLeft(rewriteColumnRefs(plan.join.left, transform))
+                            .apply {
+                                // ttr-server#232 — a join with no condition (a Cartesian product, or a bare JOIN still
+                                // marked `condition_required`) keeps none: an empty one reads as a condition, which the
+                                // translator cannot decode on the re-entry.
+                                if (plan.join.hasCondition()) {
+                                    setCondition(rewriteExpression(plan.join.condition, transform))
+                                }
+                            }.setLeft(rewriteColumnRefs(plan.join.left, transform))
                             .setRight(rewriteColumnRefs(plan.join.right, transform)),
                     ).build()
             PlanNode.NodeCase.UNION ->
