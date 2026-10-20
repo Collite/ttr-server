@@ -16,6 +16,33 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+- **query** — a SQL text that reads a saved query by name (`obj.…`) is no longer cached. Translate inlines the read
+  query's stored plan as it parses (since the run-time fill-in), so the cached plan froze the body as of that model,
+  and the cache key's model version (often unset by callers) does not move with a model swap: a changed, FAILED or
+  removed read query kept being served until an operator refresh or the TTL. Such a text is recompiled every run, like
+  an expanded logical body. `RunSavedQuery`'s stored plan is keyed by its own bytes and stays cached.
+
+- **query — `RunSavedQuery`** (new RPC, LQ-T7·S2, L-31): run a saved query by name, from the plan veles stored when it
+  parsed it. The request is `RunSavedQueryRequest` (`qualified_name`, `context`, `execution_options`, `bypass_cache`,
+  `row_window`). There is no re-parse of the query's text, and a query it reads is already inlined.
+  - The stored plan joins `Run` as a `REL_NODE` source in its own lane. A logical query (`er.query.<name>`) takes the
+    ER half: Validate pass 1, MAP_TO_PHYSICAL, then Validate pass 2. A db query takes the DB half. The caller's roles,
+    row policies and row window apply exactly as for `Run`, and `context.parameters` bind declared parameters by
+    name (`parameter_unbound` from Validate otherwise).
+  - Refusals come as an error batch: `saved_query_not_found`, `saved_query_pending`, `saved_query_parse_failed`, and
+    `saved_query_unavailable` when no metadata service is reachable.
+  - Entitlement is Validate's alone for now. Nothing calls it yet; it is for automation agents and workflows.
+  - query now reads veles' `GetQuery` for it: `veles.host` / `veles.port` (`VELES_GRPC_HOST` / `VELES_GRPC_PORT`,
+    default `veles:7261`, the in-cluster service name).
+
+- **metadata (veles), translate, query** — pins `ttr-translator` / `ttr-plan-proto` **0.12.4** (LQ-T6, L-30): a logical
+  query read by another one is a temporary entity whose relations follow its columns. `FROM obj.query.spend_per_shopper
+  r JOIN shopper`, where the query passes `sale.shopper_id` through as its `GROUP BY` key, is conditioned through the
+  relation `sale → shopper` it inherits, FK-only relations included; veles stores it PARSED where it refused it
+  (`logical_query_join_unresolved: JOIN_NO_RELATION … a derived table`). A query that passes no attribute through
+  inherits nothing and is refused as before. An FK-only join to an entity stacked on a `GROUP BY` query is conditioned
+  too (ttr-core#204). Every other join is decided exactly as on 0.12.3.
+
 - **metadata (veles) — the grammar bundle 0.16.0** (`ttr-parser` … `ttr-metadata`, `ttr-snapshot`, `ttr-lexicon`). A
   model may now carry TTR-M 0.16: `model automation` files, the automation members of a `def world` (`def identity`,
   `def grant`, `def deployment`, `def process`), `writable:` on a world storage and `states:` / `transitions:` on an
