@@ -3,6 +3,7 @@ package org.tatrman.automation.ledger
 
 import org.jetbrains.exposed.v1.core.and
 import org.jetbrains.exposed.v1.core.eq
+import org.jetbrains.exposed.v1.core.inList
 import org.jetbrains.exposed.v1.jdbc.select
 import org.jetbrains.exposed.v1.jdbc.transactions.transaction
 import org.jetbrains.exposed.v1.jdbc.update
@@ -47,18 +48,35 @@ class LedgerBundles :
         fp: String,
     ): Boolean =
         transaction {
-            val fpColumn =
-                when (kind) {
-                    "recipe" -> Approvals.fpText
-                    "values" -> Approvals.fpValues
-                    else -> Approvals.fp
-                }
             Approvals
                 .select(Approvals.id)
                 .where {
-                    (Approvals.kind eq kind) and (Approvals.obj eq obj) and (fpColumn eq fp) and
+                    (Approvals.kind eq kind) and (Approvals.obj eq obj) and (fpColumn(kind) eq fp) and
                         (Approvals.status eq "approved")
                 }.limit(1)
                 .any()
+        }
+
+    /** One query: every approved row of [objects], each under the fingerprint its kind is judged by. */
+    override fun snapshot(objects: Collection<String>): ApprovalReader {
+        if (objects.isEmpty()) return ApprovalReader { _, _, _ -> false }
+        val approved =
+            transaction {
+                Approvals
+                    .select(Approvals.kind, Approvals.obj, Approvals.fpText, Approvals.fpValues, Approvals.fp)
+                    .where { (Approvals.status eq "approved") and (Approvals.obj inList objects.distinct()) }
+                    .mapNotNull { row ->
+                        val kind = row[Approvals.kind]
+                        row[fpColumn(kind)]?.let { Triple(kind, row[Approvals.obj], it) }
+                    }.toSet()
+            }
+        return ApprovalReader { kind, obj, fp -> Triple(kind, obj, fp) in approved }
+    }
+
+    private fun fpColumn(kind: String) =
+        when (kind) {
+            "recipe" -> Approvals.fpText
+            "values" -> Approvals.fpValues
+            else -> Approvals.fp
         }
 }

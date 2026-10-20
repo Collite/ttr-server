@@ -7,15 +7,23 @@ import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldMatch
 import io.ktor.client.request.get
+import io.ktor.client.request.post
+import io.ktor.client.request.setBody
 import io.ktor.client.statement.bodyAsText
+import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
+import io.ktor.http.contentType
 import io.ktor.serialization.kotlinx.json.json
 import io.ktor.server.application.install
 import io.ktor.server.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.server.plugins.statuspages.StatusPages
+import io.ktor.server.request.receive
+import io.ktor.server.response.respond
 import io.ktor.server.routing.get
+import io.ktor.server.routing.post
 import io.ktor.server.routing.routing
 import io.ktor.server.testing.testApplication
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
@@ -90,6 +98,32 @@ class ErrorEnvelopeSpec :
             }
         }
 
+        "a body Ktor cannot read is 400 bad-request; a content type it cannot read is 415 — never 500" {
+            testApplication {
+                application {
+                    install(ContentNegotiation) { json() }
+                    install(StatusPages) { installAutomationErrors() }
+                    routing { post("/runs") { call.respond(call.receive<Port>()) } }
+                }
+                val malformed =
+                    client.post("/runs") {
+                        contentType(ContentType.Application.Json)
+                        setBody("""{"key": """)
+                    }
+                malformed.status shouldBe HttpStatusCode.BadRequest
+                Json.parseToJsonElement(malformed.bodyAsText()).jsonObject["error"]!!.jsonObject["code"] shouldBe
+                    JsonPrimitive("bad-request")
+                val text =
+                    client.post("/runs") {
+                        contentType(ContentType.Text.Plain)
+                        setBody("key=1")
+                    }
+                text.status shouldBe HttpStatusCode.UnsupportedMediaType
+                Json.parseToJsonElement(text.bodyAsText()).jsonObject["error"]!!.jsonObject["code"] shouldBe
+                    JsonPrimitive("unsupported-media-type")
+            }
+        }
+
         "anything unexpected answers 500 `internal` in the same envelope, without the exception's text" {
             testApplication {
                 application {
@@ -106,6 +140,11 @@ class ErrorEnvelopeSpec :
             }
         }
     }) {
+    @Serializable
+    data class Port(
+        val key: String,
+    )
+
     companion object {
         val DELIVERED = setOf("S0.1", "S0.2", "S0.3")
         private val RAISE = Regex("""AutomationException\(\s*ErrorCode\.([A-Z_]+)""")

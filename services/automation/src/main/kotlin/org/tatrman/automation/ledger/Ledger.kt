@@ -12,6 +12,7 @@ import org.jetbrains.exposed.v1.core.notInList
 import org.jetbrains.exposed.v1.jdbc.insert
 import org.jetbrains.exposed.v1.jdbc.select
 import org.jetbrains.exposed.v1.jdbc.selectAll
+import org.jetbrains.exposed.v1.jdbc.transactions.TransactionManager
 import org.jetbrains.exposed.v1.jdbc.transactions.transaction
 import org.jetbrains.exposed.v1.jdbc.update
 import java.sql.Connection
@@ -111,31 +112,43 @@ class ProtocolSealed(
  *
  * Each operation is one Exposed transaction on the default database (the one [shared.libs.db.common.
  * DatabaseConnection] connected). [defaultBudget] is the batch budget a run without its own is held to
- * (`automation.budgets.batchDefault`).
+ * (`automation.budgets.batchDefault`). [abandoned] counts each run the claim abandons, by its recipe
+ * (`automation_abandoned_total`, §10).
+ *
+ * [claimRun] and [appendProtocol] must each be the outermost transaction: inside a caller's `transaction {}`
+ * Exposed would join the outer one, and their retry and isolation — what makes them correct under concurrency —
+ * would silently not apply. They refuse to run there ([IllegalStateException]).
  */
 class Ledger(
     private val defaultBudget: Duration,
     private val clock: Clock = Clock.systemUTC(),
+    private val abandoned: (recipe: String) -> Unit = {},
 ) {
     /**
      * Opens a run, or answers the key's existing one (D-46). Without a key every call opens a run.
      *
      * Two claims of one fresh key race on the partial unique index `runs_idempotency_key_claimed`: the loser's
      * INSERT fails, Exposed retries the whole block in a new transaction, and the retry reads the winner as
-     * the key's holder. Hence [CLAIM_ATTEMPTS] — one try plus the retry a race needs, plus one spare.
+     * the key's holder. Hence [CLAIM_ATTEMPTS] — one try plus the retry a race needs, plus one spare. A retry
+     * needs a transaction of its own, so the claim never runs inside another.
      */
-    fun claimRun(open: RunOpen): Claim =
-        transaction {
-            maxAttempts = CLAIM_ATTEMPTS
-            val now = clock.instant()
-            val key = open.idempotencyKey ?: return@transaction Claim.Claimed(insertRun(open, now))
-            val holder =
-                Runs
-                    .selectAll()
-                    .where { (Runs.idempotencyKey eq key) and (Runs.status notInList FREE_STATUSES) }
-                    .forUpdate()
-                    .firstOrNull()
-                    ?.let {
+    fun claimRun(open: RunOpen): Claim {
+        outermost("claimRun")
+        var abandonedRecipe: String? = null
+        val claim =
+            transaction {
+                maxAttempts = CLAIM_ATTEMPTS
+                abandonedRecipe = null
+                val now = clock.instant()
+                val key = open.idempotencyKey ?: return@transaction Claim.Claimed(insertRun(open, now))
+                val row =
+                    Runs
+                        .selectAll()
+                        .where { (Runs.idempotencyKey eq key) and (Runs.status notInList FREE_STATUSES) }
+                        .forUpdate()
+                        .firstOrNull()
+                val holder =
+                    row?.let {
                         KeyHolder(
                             runId = it[Runs.id],
                             status = RunStatus.of(it[Runs.status]),
@@ -143,20 +156,24 @@ class Ledger(
                             budget = budgetOf(it[Runs.budgetBatch], it[Runs.budgetSync]),
                         )
                     }
-            when (val decision = IdempotencyPolicy.decide(holder, now)) {
-                ClaimDecision.Open -> Claim.Claimed(insertRun(open, now))
-                is ClaimDecision.Replay -> Claim.Replay(decision.runId)
-                is ClaimDecision.Wait -> Claim.Running(decision.runId, decision.status)
-                is ClaimDecision.AbandonThenOpen -> {
-                    Runs.update({ Runs.id eq decision.runId }) {
-                        it[status] = RunStatus.ABANDONED.wire
-                        it[endedAt] = now.utc()
-                        it[error] = JsonObject(mapOf("code" to JsonPrimitive("run-abandoned")))
+                when (val decision = IdempotencyPolicy.decide(holder, now)) {
+                    ClaimDecision.Open -> Claim.Claimed(insertRun(open, now))
+                    is ClaimDecision.Replay -> Claim.Replay(decision.runId)
+                    is ClaimDecision.Wait -> Claim.Running(decision.runId, decision.status)
+                    is ClaimDecision.AbandonThenOpen -> {
+                        Runs.update({ Runs.id eq decision.runId }) {
+                            it[status] = RunStatus.ABANDONED.wire
+                            it[endedAt] = now.utc()
+                            it[error] = JsonObject(mapOf("code" to JsonPrimitive("run-abandoned")))
+                        }
+                        abandonedRecipe = row?.get(Runs.recipe)
+                        Claim.Claimed(insertRun(open, now), abandoned = decision.runId)
                     }
-                    Claim.Claimed(insertRun(open, now), abandoned = decision.runId)
                 }
             }
-        }
+        abandonedRecipe?.let(abandoned)
+        return claim
+    }
 
     /** Moves a run along [RunStatus.next]; a terminal status stamps `ended_at`. [error] lands in `runs.error`. */
     fun markStatus(
@@ -190,14 +207,16 @@ class Ledger(
      * READ COMMITTED, not the pool's REPEATABLE READ: under REPEATABLE READ the snapshot is taken by the first
      * statement — the lock itself — so an append that waited for the lock would still read the seq the earlier
      * append had replaced, and clash with it. Under READ COMMITTED each statement after the lock sees the
-     * earlier append.
+     * earlier append. The isolation is only set on a transaction of its own, so the append never runs inside
+     * another.
      */
     fun appendProtocol(
         runId: UUID,
         section: ProtocolSection,
         payload: JsonElement,
-    ): Int =
-        transaction(transactionIsolation = Connection.TRANSACTION_READ_COMMITTED) {
+    ): Int {
+        outermost("appendProtocol")
+        return transaction(transactionIsolation = Connection.TRANSACTION_READ_COMMITTED) {
             lockRun(runId)
             if (isSealed(runId)) throw ProtocolSealed(runId)
             val seq = nextSeq(runId, section)
@@ -210,6 +229,7 @@ class Ledger(
             }
             seq
         }
+    }
 
     /** Seals the protocol at close: a `{"sealed": true}` entry in `automation`, after which nothing appends. */
     fun sealProtocol(runId: UUID): Int = appendProtocol(runId, ProtocolSection.AUTOMATION, SEALED)
@@ -281,6 +301,12 @@ class Ledger(
         }
         return runId
     }
+
+    private fun outermost(operation: String) =
+        check(TransactionManager.currentOrNull() == null) {
+            "Ledger.$operation runs in a transaction of its own; called inside another, its retry and isolation " +
+                "would not apply"
+        }
 
     private fun lockRun(runId: UUID) {
         Runs

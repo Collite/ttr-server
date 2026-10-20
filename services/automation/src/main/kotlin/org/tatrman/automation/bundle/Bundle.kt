@@ -43,12 +43,27 @@ data class LoadedRecipe(
 )
 
 /**
+ * What one world declares for its own deployments: the validator resolves a deployment's identity, process and
+ * executor references within its world (review-114), so the Server never looks them up across worlds — two worlds
+ * may each declare an `automation_decider` with its own credential. [executors]: executor name → its type id
+ * (`n8n` → `n8n_l1`); `native` is implicit.
+ */
+data class WorldScope(
+    val name: String,
+    val processes: Map<String, WorldProcess>,
+    val identities: List<IdentityDecl>,
+    val grants: List<GrantDecl>,
+    val executors: Map<String, String>,
+)
+
+/**
  * The served view of one commit — immutable; `/refresh` swaps whole bundles, never parts (D-47). [model] is the
  * `ttr-metadata` snapshot of `model/` + `automation/` (the generated `catalog/<recipe>.ttrm` of every recipe bundle
- * included); the typed lists below are read out of it. [programFps]/[deploymentFps] are D-60's program and
- * deployment fingerprints ([Fingerprints]); a recipe's two are in its manifest. [author] is the deployer's
- * principal (the commit author through `AUTOMATION_AUTHOR_MAP`). [warnings] are the load findings that do not
- * refuse the bundle (the model's own issues are Veles's to serve).
+ * included); the typed lists below are read out of it. Deployment names are unique across the worlds (a clash
+ * refuses the commit); [deploymentWorlds] names each one's world, and [worlds] holds what each world declares.
+ * [programFps]/[deploymentFps] are D-60's program and deployment fingerprints ([Fingerprints]); a recipe's two are
+ * in its manifest. [author] is the deployer's principal (the commit author through `AUTOMATION_AUTHOR_MAP`).
+ * [warnings] are the load findings that do not refuse the bundle (the model's own issues are Veles's to serve).
  */
 data class Bundle(
     val id: String,
@@ -63,23 +78,28 @@ data class Bundle(
     val programs: Map<String, AutomationProgram>,
     val actions: Map<String, AutomationAction>,
     val deployments: Map<String, WorldDeployment>,
-    val processes: Map<String, WorldProcess>,
-    val identities: List<IdentityDecl>,
-    val grants: List<GrantDecl>,
-    /** World executor name → its executor type id (`n8n` → `n8n_l1`); `native` is implicit. */
-    val executors: Map<String, String>,
+    val deploymentWorlds: Map<String, String>,
+    val worlds: Map<String, WorldScope>,
     val programFps: Map<String, String>,
     val deploymentFps: Map<String, String>,
     val warnings: List<String>,
 ) {
-    /** The executor type a deployment's `target:` runs on: `native`, or its world executor's `extends:`. */
-    fun targetType(deployment: WorldDeployment): String? =
-        if (deployment.target == NATIVE) NATIVE else executors[deployment.target]
+    /** The world that declares [deployment]. */
+    fun worldOf(deployment: WorldDeployment): WorldScope? = deploymentWorlds[deployment.qname.name]?.let { worlds[it] }
 
-    /** The programs a deployment runs: its own, or every step's of its process. */
+    /** The executor type a deployment's `target:` runs on: `native`, or its world's executor's `extends:`. */
+    fun targetType(deployment: WorldDeployment): String? =
+        if (deployment.target == NATIVE) NATIVE else worldOf(deployment)?.executors?.get(deployment.target)
+
+    /** The programs a deployment runs: its own, or every step's of its world's process. */
     fun programsOf(deployment: WorldDeployment): List<String> =
         deployment.program?.let { listOf(it) }
-            ?: processes[deployment.process]?.steps?.mapNotNull { it.program }.orEmpty()
+            ?: worldOf(deployment)
+                ?.processes
+                ?.get(deployment.process)
+                ?.steps
+                ?.mapNotNull { it.program }
+                .orEmpty()
 
     companion object {
         const val NATIVE = "native"

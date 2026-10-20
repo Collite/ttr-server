@@ -2,6 +2,9 @@
 package org.tatrman.automation.api
 
 import io.ktor.http.HttpStatusCode
+import io.ktor.server.application.ApplicationCall
+import io.ktor.server.plugins.BadRequestException
+import io.ktor.server.plugins.ContentTransformationException
 import io.ktor.server.plugins.statuspages.StatusPagesConfig
 import io.ktor.server.response.respond
 import kotlinx.serialization.Serializable
@@ -24,6 +27,7 @@ enum class ErrorCode(
     REFRESH_IN_PROGRESS("refresh-in-progress", HttpStatusCode.Conflict, "S0.2"),
     CHECKOUT_FAILED("checkout-failed", HttpStatusCode.BadGateway, "S0.2"),
     BUNDLE_INVALID("bundle-invalid", HttpStatusCode.UnprocessableEntity, "S0.2"),
+    REFRESH_FORBIDDEN("refresh-forbidden", HttpStatusCode.Forbidden, "S0.2"),
 
     // §1.2 — runs
     PORT("port", HttpStatusCode.BadRequest, "S1.1"),
@@ -56,7 +60,10 @@ enum class ErrorCode(
     // §7 — a missing, unsigned or tampered bearer, before any route.
     UNAUTHENTICATED("unauthenticated", HttpStatusCode.Unauthorized, "S0.3"),
 
-    // The envelope's own: anything unexpected still answers in the envelope's shape.
+    // The envelope's own: a request Ktor could not read (a malformed body, a content type no route takes), and
+    // anything unexpected — each still answers in the envelope's shape.
+    BAD_REQUEST("bad-request", HttpStatusCode.BadRequest, "S0.1"),
+    UNSUPPORTED_MEDIA_TYPE("unsupported-media-type", HttpStatusCode.UnsupportedMediaType, "S0.1"),
     INTERNAL("internal", HttpStatusCode.InternalServerError, "S0.1"),
 }
 
@@ -84,12 +91,29 @@ class AutomationException(
 
 private val log = LoggerFactory.getLogger("org.tatrman.automation.api.Errors")
 
-/** One StatusPages handler, so every route renders a failure the same way. */
+/**
+ * One StatusPages handler, so every route renders a failure the same way. Ktor's own client errors stay client
+ * errors in the envelope — a malformed body is 400, a content type no route reads 415 (Ktor's engine answers that
+ * one itself, bare, before any handler sees the exception; the status handler dresses it) — never the catch-all's
+ * 500, which a client would retry.
+ */
 fun StatusPagesConfig.installAutomationErrors() {
     exception<AutomationException> { call, e -> call.respond(e.code.status, e.envelope()) }
+    exception<BadRequestException> { call, e ->
+        val refusal = AutomationException(ErrorCode.BAD_REQUEST, e.message ?: "the request could not be read")
+        call.respond(refusal.code.status, refusal.envelope())
+    }
+    exception<ContentTransformationException> { call, _ -> call.unsupportedMediaType() }
+    status(HttpStatusCode.UnsupportedMediaType) { call, _ -> call.unsupportedMediaType() }
     exception<Throwable> { call, e ->
         log.error("unhandled failure on {} {}", call.request.local.method.value, call.request.local.uri, e)
         val internal = AutomationException(ErrorCode.INTERNAL, "the automation service failed; see its log")
         call.respond(internal.code.status, internal.envelope())
     }
+}
+
+private suspend fun ApplicationCall.unsupportedMediaType() {
+    val refusal =
+        AutomationException(ErrorCode.UNSUPPORTED_MEDIA_TYPE, "the request's content type cannot be read here")
+    respond(refusal.code.status, refusal.envelope())
 }

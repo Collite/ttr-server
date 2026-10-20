@@ -120,9 +120,15 @@ class RefreshSpec :
             e.message!! shouldContain "feature-x"
         }
 
-        "a branch the repo does not have is 502 checkout-failed" {
-            val bundles = BundleFixture.bundles(source(BundleFixture.gitRepo()), allowed = listOf("*"))
+        "a branch the repo does not have is 502 checkout-failed, and leaves no clone behind" {
+            val clones = Files.createTempDirectory("clones")
+            val source =
+                GitBundleSource(BundleGitConfig(BundleFixture.gitRepo().toUri().toString(), "master", "", null), clones)
+            val bundles = BundleFixture.bundles(source, allowed = listOf("*"))
+            bundles.refresh()
             bundles.refusal("nope").code shouldBe ErrorCode.CHECKOUT_FAILED
+            bundles.refusal("nope-2").code shouldBe ErrorCode.CHECKOUT_FAILED
+            Files.list(clones).use { s -> s.map { it.fileName.toString() }.toList() } shouldBe listOf("master")
         }
 
         "one refresh at a time: a second one meanwhile is 409 refresh-in-progress" {

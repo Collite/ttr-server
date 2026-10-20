@@ -1,12 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 package org.tatrman.automation.identity
 
+import com.auth0.jwt.JWT
+import com.auth0.jwt.algorithms.Algorithm
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
+import org.tatrman.keycloak.auth.TokenProvider
 import java.time.Clock
 import java.time.Instant
 import java.time.ZoneOffset
@@ -67,6 +70,28 @@ class ServiceTokensSpec :
             clock.now = start.plusSeconds(270)
             tokens.token("AUTOMATION")
             fetched.get() shouldBe 2
+        }
+
+        "keycloak: one provider (one HTTP client) per credential, reused by every fetch" {
+            val built = mutableListOf<String>()
+            val fetched = AtomicInteger()
+            // No `exp`, so nothing is cached and every call fetches.
+            val unexpiring = JWT.create().withSubject("svc").sign(Algorithm.HMAC256("k"))
+            val tokens =
+                ServiceTokens.keycloak(
+                    mapOf("AUTOMATION" to "svc-a:s", "MAILER" to "svc-m:s"),
+                    tokenUrl = "http://keycloak.invalid/token",
+                    provider = { c ->
+                        built += c.clientId
+                        object : TokenProvider {
+                            override suspend fun getToken(): String = unexpiring.also { fetched.incrementAndGet() }
+                        }
+                    },
+                )
+            repeat(3) { tokens.token("AUTOMATION") }
+            tokens.token("MAILER")
+            fetched.get() shouldBe 4
+            built shouldBe listOf("svc-a", "svc-m")
         }
 
         "concurrent first calls fetch once" {

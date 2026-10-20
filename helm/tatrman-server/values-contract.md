@@ -205,7 +205,8 @@ extension, no custom Postgres image). Four keys have no default and fail the ren
 | `automation.db.{host,port,name,user}` | | `""` / `5432` / `automation` / `automation` | The ledger's Postgres. The user must own the database (Flyway creates schema `automation` and pgmq's). |
 | `automation.db.passwordSecret.{name,key}` | | `""` / `password` | The password by **Secret ref**. |
 | `automation.auth.{jwksUrl,issuer}` | string | `""` | Every route but `/automation/health` and the probes verifies the bearer: RS256 against the realm's JWKS, `iss` = `issuer`. There is no unverified mode. |
-| `automation.auth.audience` | string | `""` | When set, `aud` must contain it. |
+| `automation.auth.audience` | string | `""` | When set, `aud` must contain it. Unset, a token the realm issued to **any** client is accepted (the service warns at start). |
+| `automation.auth.refreshRoles` | list | `[]` | The realm roles that may call `POST /automation/refresh`; empty = the service's default, `ops`. Anyone else is `403 refresh-forbidden`. |
 | `automation.auth.tokenUrl` | string | the JWKS URL's sibling | The realm's token endpoint, for the named identities' client credentials. |
 | `automation.auth.authorMap` | string | `""` | `author=principal` pairs, comma-separated: a commit author (e-mail, else name) → the deployment's `author` principal. |
 | `automation.credentials` | list | `[]` | Credentials by **Secret ref**, each rendered as `TTR_CONN_<name>` — e.g. `{ name: AUTOMATION, secretName: automation-identities, secretKey: automation }`. A named identity's value is `<client id>:<client secret>`. |

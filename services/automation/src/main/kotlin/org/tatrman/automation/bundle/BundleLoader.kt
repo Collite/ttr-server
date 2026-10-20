@@ -35,8 +35,10 @@ import org.tatrman.automation.identity.RunAsRef as GrantRunAs
  *
  * **What refuses a commit:** a manifest that is not `schemaVersion` 3, carries no `recipe`, names another recipe
  * than its directory, or lists an island whose file is missing or whose sha256 differs; a deployment naming an
- * unknown program or process, a program without a recipe bundle, or a target that is neither `native` nor an
- * executor of its world; two worlds declaring one deployment name; and every load error of the automation half —
+ * unknown program or a process its world does not declare, a program — its own or a step's of its process —
+ * without a recipe bundle, or a target that is neither `native` nor an executor of its world; two worlds
+ * declaring one deployment name; a commit without an author (no deployer, D-90); and every load error of the
+ * automation half —
  * a file under `automation/`, a `model world` file, an automation-validator or `ttr/automation-*` / `ttr/states-*`
  * finding (a malformed grant or deployment is DROPPED by `ttr-metadata` and reported, so it refuses here: a
  * deployment must never vanish silently). The model's other issues are warnings: Veles serves that model and
@@ -86,26 +88,16 @@ class BundleLoader(
         val recipes = loadRecipes(automationRoot, findings)
 
         val deployments = linkedMapOf<String, org.tatrman.ttr.metadata.model.WorldDeployment>()
-        val processes = linkedMapOf<String, org.tatrman.ttr.metadata.model.WorldProcess>()
-        val executors = linkedMapOf<String, String>()
+        val deploymentWorlds = linkedMapOf<String, String>()
+        val scopes = linkedMapOf<String, WorldScope>()
         for (w in worlds) {
-            w.processes.forEach { processes[it.qname.name] = it }
-            w.executors.forEach { x -> x.extendsRef?.let { executors[x.qname.name] = it } }
+            val scope = scope(w)
+            scopes[scope.name] = scope
             for (d in w.deployments) {
                 val name = d.qname.name
                 if (deployments.put(name, d) != null) findings += "deployment $name: declared by two worlds"
-                checkDeployment(
-                    d,
-                    w,
-                    programs.keys,
-                    processes.keys +
-                        w.processes.map {
-                            it.qname.name
-                        },
-                    recipes.keys,
-                    programs,
-                    findings,
-                )
+                deploymentWorlds[name] = scope.name
+                checkDeployment(d, w, scope, recipes.keys, programs, findings)
             }
         }
         for (p in programs.values) {
@@ -117,8 +109,14 @@ class BundleLoader(
             }
         }
 
-        if (findings.isNotEmpty()) throw BundleInvalidException(findings)
-        val author = authorMap.principalOf(checkout.authorEmail, checkout.authorName)
+        val author =
+            try {
+                authorMap.principalOf(checkout.authorEmail, checkout.authorName)
+            } catch (e: IllegalArgumentException) {
+                findings += "commit ${checkout.commit.take(12)} has no author (name or e-mail): no deployer (D-90)"
+                null
+            }
+        if (findings.isNotEmpty() || author == null) throw BundleInvalidException(findings)
         return Bundle(
             id = "${kind.wire}:${checkout.branch}@${checkout.commit.take(12)}",
             kind = kind,
@@ -132,10 +130,8 @@ class BundleLoader(
             programs = programs,
             actions = actions,
             deployments = deployments,
-            processes = processes,
-            identities = worlds.flatMap { identities(it) },
-            grants = worlds.flatMap { grants(it) },
-            executors = executors,
+            deploymentWorlds = deploymentWorlds,
+            worlds = scopes,
             programFps = programs.mapValues { Fingerprints.program(it.value) },
             deploymentFps = deployments.mapValues { Fingerprints.deployment(it.value) },
             warnings = warnings,
@@ -154,27 +150,35 @@ class BundleLoader(
     private fun checkDeployment(
         d: org.tatrman.ttr.metadata.model.WorldDeployment,
         world: World,
-        programNames: Set<String>,
-        processNames: Set<String>,
+        scope: WorldScope,
         recipeNames: Set<String>,
         programs: Map<String, org.tatrman.ttr.metadata.model.AutomationProgram>,
         findings: MutableList<String>,
     ) {
         val name = d.qname.name
-        d.program?.let { p ->
-            if (p !in programNames) {
-                findings += "deployment $name: program $p is not declared"
-            } else {
-                programs[p]?.recipe?.let { r ->
-                    if (r !in
-                        recipeNames
-                    ) {
-                        findings += "deployment $name: program $p's recipe $r has no bundle"
-                    }
-                }
+
+        // A program the deployment runs — its own, or a step's — must be declared and have its recipe's bundle.
+        fun runnable(
+            p: String,
+            via: String,
+        ) {
+            if (p !in programs) {
+                findings += "deployment $name: ${via}program $p is not declared"
+                return
+            }
+            programs[p]?.recipe?.let { r ->
+                if (r !in recipeNames) findings += "deployment $name: ${via}program $p's recipe $r has no bundle"
             }
         }
-        d.process?.let { p -> if (p !in processNames) findings += "deployment $name: process $p is not declared" }
+        d.program?.let { runnable(it, "") }
+        d.process?.let { p ->
+            val process = scope.processes[p]
+            if (process == null) {
+                findings += "deployment $name: process $p is not declared in world ${scope.name}"
+            } else {
+                process.steps.forEach { step -> step.program?.let { runnable(it, "process $p step ${step.name}: ") } }
+            }
+        }
         if (d.target != Bundle.NATIVE && world.executors.none { it.qname.name == d.target }) {
             findings +=
                 "deployment $name: target ${d.target} is neither native nor an executor of world ${world.qname.name}"
@@ -297,6 +301,16 @@ class BundleLoader(
                 }
             return Fingerprints.sha256(text)
         }
+
+        /** What [w] declares for its deployments: its processes, identities, grants and executors. */
+        fun scope(w: World): WorldScope =
+            WorldScope(
+                name = w.qname.name,
+                processes = w.processes.associateBy { it.qname.name },
+                identities = identities(w),
+                grants = grants(w),
+                executors = w.executors.mapNotNull { x -> x.extendsRef?.let { x.qname.name to it } }.toMap(),
+            )
 
         fun identities(w: World): List<IdentityDecl> =
             w.identities.mapNotNull { i ->

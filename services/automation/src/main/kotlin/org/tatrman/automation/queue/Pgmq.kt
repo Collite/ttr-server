@@ -46,8 +46,10 @@ data class QueueMetrics(
 /**
  * pgmq over JDBC (D-130: the SQL-only install, so these are plain function calls into schema `pgmq`).
  *
- * Every call runs in the caller's Exposed transaction when there is one — a run's ledger write and the
- * message that announces it commit together or not at all — and in its own transaction otherwise.
+ * Every call runs in the caller's Exposed transaction when there is one — a ledger write and the message that
+ * announces it commit together or not at all (`markStatus` + `send`) — and in its own transaction otherwise.
+ * Not [org.tatrman.automation.ledger.Ledger.claimRun] or `appendProtocol`: those must be the outermost transaction
+ * and refuse to run inside one, so a message about a claim is sent after the claim commits.
  */
 class Pgmq {
     /** Sends [message] to [queue], visible after [delaySeconds]; answers the message id. */

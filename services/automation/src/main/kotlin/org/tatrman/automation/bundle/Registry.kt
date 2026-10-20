@@ -98,7 +98,11 @@ class Registry(
             ) {
                 return refused("TTRP-TGT-001: ${type.name} does not run mode $pm (program ${p.qname.name})")
             }
-            val recipe = p.recipe?.let { bundle.recipes[it] } ?: continue
+            val recipeName = p.recipe ?: continue
+            // The load refuses a commit with a program whose recipe has no bundle; never call such a cell ok.
+            val recipe =
+                bundle.recipes[recipeName]
+                    ?: return refused("recipe $recipeName of program ${p.qname.name} has no bundle")
             for (k in recipe.recipe.kinds) {
                 val how = type.kinds[k]
                 if (how == null ||

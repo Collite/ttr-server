@@ -12,6 +12,12 @@ fun interface ApprovalReader {
         obj: String,
         fp: String,
     ): Boolean
+
+    /**
+     * The approvals of [objects] read once, to answer many questions from (a descriptor asks four per
+     * deployment). The default asks each question of this reader.
+     */
+    fun snapshot(objects: Collection<String>): ApprovalReader = this
 }
 
 /** Which of a deployment's fingerprints lack an approval — empty = not stale. */

@@ -7,6 +7,7 @@ import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
+import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.types.shouldBeInstanceOf
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -36,11 +37,13 @@ class LedgerSpec :
         val t0 = Instant.parse("2026-10-18T10:00:00Z")
         val clock = MutableClock(t0)
         val budget = Duration.ofMinutes(30)
-        val ledger = Ledger(defaultBudget = budget, clock = clock)
+        val abandonedRecipes = mutableListOf<String>()
+        val ledger = Ledger(defaultBudget = budget, clock = clock, abandoned = { abandonedRecipes += it })
 
         beforeEach {
             LedgerTestDb.reset()
             clock.now = t0
+            abandonedRecipes.clear()
         }
 
         fun open(key: String?) = RunOpen(recipe = "release_order", program = "nightly", idempotencyKey = key)
@@ -86,6 +89,7 @@ class LedgerSpec :
             second.abandoned shouldBe first
             statusOf(first) shouldBe "abandoned"
             ledger.countAbandoned() shouldBe 1L
+            abandonedRecipes shouldContainExactly listOf("release_order")
             transaction { Runs.selectAll().where { Runs.id eq first }.single()[Runs.endedAt] }.shouldNotBeNull()
         }
 
@@ -156,6 +160,16 @@ class LedgerSpec :
                     JsonObject(emptyMap()),
                 )
             }
+        }
+
+        "the claim and the append refuse a caller's transaction: their retry and isolation need their own" {
+            val run = ledger.claimRun(open(null)).runId
+            shouldThrow<IllegalStateException> { transaction { ledger.claimRun(open("k-6")) } }.message shouldContain
+                "claimRun"
+            shouldThrow<IllegalStateException> {
+                transaction { ledger.appendProtocol(run, ProtocolSection.SIGNALS, JsonObject(emptyMap())) }
+            }.message shouldContain "appendProtocol"
+            transaction { Runs.selectAll().where { Runs.idempotencyKey eq "k-6" }.count() } shouldBe 0L
         }
 
         "concurrent appends to one section number without a gap or a clash" {

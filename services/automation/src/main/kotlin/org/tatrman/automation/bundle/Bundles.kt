@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package org.tatrman.automation.bundle
 
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.withContext
@@ -44,7 +45,9 @@ data class RefreshOutcome(
  * leaves the served bundle untouched. One refresh at a time — a second one meanwhile is `409 refresh-in-progress`,
  * never queued (the CI call, the poll and a person may race; the loser retries). Refreshing a commit already
  * loaded is a no-op. A preview branch must match `previews.allowedBranches` (an exact name, or a prefix ending in
- * `*`) — else `403 branch-not-allowed`.
+ * `*`) — else `403 branch-not-allowed`. Any other failure (the ledger's `bundles` write, say) fails the refresh as
+ * well: the served bundle stays, health's `refreshFailed` turns true, and the exception goes on to the caller.
+ * [refreshed] counts every outcome (`automation_refresh_total`, §10): `loaded`, `unchanged`, or the error code.
  */
 class Bundles(
     private val servedBranch: String,
@@ -53,6 +56,7 @@ class Bundles(
     private val loader: BundleLoader,
     private val book: BundleBook,
     private val clock: Clock = Clock.systemUTC(),
+    private val refreshed: (outcome: String) -> Unit = {},
 ) {
     @Volatile
     var served: Bundle? = null
@@ -75,17 +79,38 @@ class Bundles(
 
     fun preview(branch: String): Preview? = previews[branch]
 
-    /** Marks a preview used (a run on it — P4); the ledger row follows. */
+    /**
+     * Marks a preview used (a run on it — P4); the ledger row follows. Atomic per branch: a refresh swapping the
+     * preview's bundle meanwhile is never undone by a stale copy.
+     */
     fun touch(branch: String) {
-        val p = previews[branch] ?: return
         val now = clock.instant()
-        previews[branch] = p.copy(lastUsedAt = now)
-        book.touch(p.bundle.id, now)
+        val touched = previews.computeIfPresent(branch) { _, p -> p.copy(lastUsedAt = now) } ?: return
+        book.touch(touched.bundle.id, now)
     }
 
     suspend fun refresh(branch: String? = null): RefreshOutcome {
         val target = branch?.takeIf { it.isNotBlank() } ?: servedBranch
         val kind = if (target == servedBranch) BundleKind.SERVED else BundleKind.PREVIEW
+        return try {
+            refreshLocked(target, kind).also { refreshed(if (it.changed) LOADED else UNCHANGED) }
+        } catch (e: AutomationException) {
+            refreshed(e.code.code)
+            throw e
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            if (kind == BundleKind.SERVED) refreshFailed = true
+            log.error("automation: refresh of {} failed", target, e)
+            refreshed(ErrorCode.INTERNAL.code)
+            throw e
+        }
+    }
+
+    private suspend fun refreshLocked(
+        target: String,
+        kind: BundleKind,
+    ): RefreshOutcome {
         if (kind == BundleKind.PREVIEW && !allowed(target)) {
             throw AutomationException(ErrorCode.BRANCH_NOT_ALLOWED, "branch $target is not an allowed preview branch")
         }
@@ -144,7 +169,11 @@ class Bundles(
             if (p.endsWith("*")) branch.startsWith(p.dropLast(1)) else branch == p
         }
 
-    private companion object {
-        val log = LoggerFactory.getLogger(Bundles::class.java)
+    companion object {
+        /** The `outcome` of `automation_refresh_total` besides an error code. */
+        const val LOADED = "loaded"
+        const val UNCHANGED = "unchanged"
+
+        private val log = LoggerFactory.getLogger(Bundles::class.java)
     }
 }

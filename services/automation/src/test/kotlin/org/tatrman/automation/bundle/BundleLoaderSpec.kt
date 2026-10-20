@@ -15,6 +15,8 @@ import org.tatrman.automation.bundle.BundleFixture.edit
 import org.tatrman.automation.identity.GrantDecl
 import org.tatrman.automation.identity.RunAsRef
 import org.tatrman.automation.identity.Who
+import kotlin.io.path.readText
+import kotlin.io.path.writeText
 
 /**
  * AU-server S0.2 T1/T2 — `/refresh`'s load over the hartland fixture (`17` §1–§2 + the four `17` bundles,
@@ -39,13 +41,16 @@ class BundleLoaderSpec :
                 )
             b.deployments.keys shouldHaveSize 12
             b.deployments.keys shouldContain "returns_n8n"
-            b.processes.keys shouldBe setOf("return_line_flow")
-            b.identities.single().let {
+            b.worlds.keys shouldBe setOf("demo")
+            b.deploymentWorlds.values.toSet() shouldBe setOf("demo")
+            val demo = b.worlds.getValue("demo")
+            demo.processes.keys shouldBe setOf("return_line_flow")
+            demo.identities.single().let {
                 it.name shouldBe "automation_decider"
                 it.principal shouldBe "svc-hartland-automation"
                 it.credential shouldBe "TTR_CONN_AUTOMATION_DECIDER" // D-132
             }
-            b.executors shouldBe mapOf("n8n" to "n8n_l1", "bpmn" to "camunda_8", "py" to "python_client")
+            demo.executors shouldBe mapOf("n8n" to "n8n_l1", "bpmn" to "camunda_8", "py" to "python_client")
             b.actions.keys shouldContain "expect"
             b.id shouldBe "served:master@0123456789ab"
             b.author shouldBe "po"
@@ -65,7 +70,11 @@ class BundleLoaderSpec :
         }
 
         "the grants: `who: *` is anyone, `program: *` any program, `as:` the run-as" {
-            BundleFixture.load().grants shouldContainExactlyInAnyOrder
+            BundleFixture
+                .load()
+                .worlds
+                .getValue("demo")
+                .grants shouldContainExactlyInAnyOrder
                 listOf(
                     GrantDecl(Who.Role("ops"), GrantDecl.ANY_PROGRAM, RunAsRef.Named("automation_decider")),
                     GrantDecl(Who.Role("sales_manager"), "release_on_placement", RunAsRef.Named("automation_decider")),
@@ -115,9 +124,11 @@ class BundleLoaderSpec :
             } shouldContainExactlyInAnyOrder
                 listOf(
                     "bundle settle: manifest schemaVersion 2, this Server reads 3",
-                    // the recipe is gone, so its deployments cannot run
+                    // the recipe is gone, so its deployments cannot run — the process's step too
                     "deployment settle_native_event: program settle_on_document's recipe settle has no bundle",
                     "deployment settle_native_batch: program settle_daily's recipe settle has no bundle",
+                    "deployment returns_n8n: process return_line_flow step settle: program settle_on_document's " +
+                        "recipe settle has no bundle",
                 )
         }
 
@@ -168,6 +179,67 @@ class BundleLoaderSpec :
                     "deployment inbound_native_batch: program inbound_hourly is not declared",
                     "deployment settle_native_event: program settle_on_document's recipe settle has no bundle",
                     "deployment settle_native_batch: program settle_daily's recipe settle has no bundle",
+                    "deployment returns_n8n: process return_line_flow step settle: program settle_on_document's " +
+                        "recipe settle has no bundle",
                 )
+        }
+
+        "two worlds keep their own identities, grants, processes and executors (review-114: resolved within a world)" {
+            val dir = BundleFixture.copy()
+            val demo = dir.resolve("model/worlds/demo.ttrm").readText()
+            // A second world declaring the same names with other values, and one deployment of its own.
+            val other =
+                demo
+                    .replace("def world demo", "def world other")
+                    .replace("\"svc-hartland-automation\"", "\"svc-other-automation\"")
+                    .replace("TTR_CONN_AUTOMATION_DECIDER", "TTR_CONN_OTHER_DECIDER")
+                    .replace("extends: camunda_8", "extends: n8n_l1")
+                    .replace("who: role.sales_manager", "who: user.olga")
+                    .lines()
+                    .filterNot { it.trimStart().startsWith("def deployment") }
+                    .joinToString("\n")
+                    .replaceFirst(
+                        "    def process return_line_flow",
+                        "    def deployment other_bpmn { program: release_on_placement, target: bpmn, " +
+                            "run_as: identity.automation_decider }\n\n    def process return_line_flow",
+                    )
+            dir.resolve("model/worlds/other.ttrm").writeText(other)
+            val b = BundleFixture.load(dir)
+            b.worlds.keys shouldBe setOf("demo", "other")
+            b.deploymentWorlds.getValue("other_bpmn") shouldBe "other"
+            b
+                .worldOf(b.deployments.getValue("other_bpmn"))!!
+                .identities
+                .single()
+                .credential shouldBe "TTR_CONN_OTHER_DECIDER"
+            b
+                .worldOf(b.deployments.getValue("release_bpmn"))!!
+                .identities
+                .single()
+                .credential shouldBe "TTR_CONN_AUTOMATION_DECIDER"
+            b.targetType(b.deployments.getValue("other_bpmn")) shouldBe "n8n_l1"
+            b.targetType(b.deployments.getValue("release_bpmn")) shouldBe "camunda_8"
+            b.worlds
+                .getValue("demo")
+                .grants
+                .map { it.who } shouldContain Who.Role("sales_manager")
+            b.worlds
+                .getValue("other")
+                .grants
+                .map { it.who } shouldContain Who.User("olga")
+            b.worlds
+                .getValue("demo")
+                .grants
+                .map { it.who }
+                .contains(Who.User("olga")) shouldBe false
+        }
+
+        "a commit without an author refuses the commit: no deployer (D-90)" {
+            shouldThrow<BundleInvalidException> {
+                BundleFixture.loader().load(
+                    BundleFixture.checkout().copy(authorName = "", authorEmail = ""),
+                    BundleKind.SERVED,
+                )
+            }.diagnostics shouldBe listOf("commit 0123456789ab has no author (name or e-mail): no deployer (D-90)")
         }
     })

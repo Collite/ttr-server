@@ -36,6 +36,7 @@ class GitBundleSource(
     override fun checkout(branch: String): Checkout {
         val url = config.url ?: throw CheckoutFailedException("automation.bundle.git.url is not configured")
         val dir = baseDir.resolve(branch.replace(Regex("[^A-Za-z0-9._-]"), "_"))
+        val cloned = !dir.toFile().exists()
         val storage =
             storages.computeIfAbsent(branch) {
                 GitArchiveStorage(
@@ -51,7 +52,9 @@ class GitBundleSource(
             try {
                 storage.fetchVersion()
             } catch (e: Exception) {
-                storages.remove(branch)
+                // A clone this call began is dropped; an existing one is kept for the next try (a remote that is
+                // down for a moment should not cost a full clone).
+                if (cloned) forget(branch, dir) else storages.remove(branch)
                 throw CheckoutFailedException("checkout of $branch failed: ${e.message}", e)
             }
         return try {
@@ -65,10 +68,21 @@ class GitBundleSource(
                 Checkout(root, branch, sha, commit.authorIdent.name, commit.authorIdent.emailAddress)
             }
         } catch (e: CheckoutFailedException) {
+            // JGit clones a branch the remote lacks without complaint (every object, no checkout): drop that clone,
+            // or each unknown branch name asked for would leave a full copy of the repo on disk.
+            forget(branch, dir)
             throw e
         } catch (e: Exception) {
             throw CheckoutFailedException("reading $branch at $sha failed: ${e.message}", e)
         }.also { log.info("automation: {} checked out at {}", branch, it.commit.take(12)) }
+    }
+
+    private fun forget(
+        branch: String,
+        dir: Path,
+    ) {
+        storages.remove(branch)
+        if (!dir.toFile().deleteRecursively()) log.warn("automation: could not delete the clone {}", dir)
     }
 
     private companion object {

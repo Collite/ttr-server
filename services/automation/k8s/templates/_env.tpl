@@ -44,6 +44,10 @@ incomplete values file is a diff in olymp, not a crash loop on the cluster.
 - name: AUTOMATION_AUTHOR_MAP
   value: {{ . | quote }}
 {{- end }}
+{{- with .Values.auth.refreshRoles }}
+- name: AUTOMATION_AUTH_REFRESH_ROLES
+  value: {{ join "," . | quote }}
+{{- end }}
 {{- with .Values.bundle.git.url }}
 - name: AUTOMATION_BUNDLE_GIT_URL
   value: {{ . | quote }}

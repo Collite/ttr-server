@@ -20,14 +20,17 @@ the render by key when one is missing.
 
 **The database migrates itself.** At start the service runs Flyway against its own database (one
 `automation` database, schema `automation`): `V1` the ledger, `V2` pgmq 1.13.0 installed **SQL-only** —
-upstream's `pgmq.sql`, vendored unchanged and hash-checked, PostgreSQL License (see NOTICE) — and `V3` the
-four queues. No extension and no custom Postgres image are needed; the database user must own the database.
+upstream's `pgmq.sql`, vendored unchanged and hash-checked, PostgreSQL License (see NOTICE) — `V3` the
+four queues, and `V4` D-98's one-open-task index with NULLs held equal (`NULLS NOT DISTINCT`, PostgreSQL 15+).
+No extension and no custom Postgres image are needed; the database user must own the database.
 The HTTP port opens only after the migration, so the chart's startup probe covers it.
 
 **Identity, in five lines** (AU contracts §7):
 1. Every route but `/health`, `/ready` and `/automation/health` needs a bearer that verifies — RS256 against
    the realm's JWKS, the configured issuer, unexpired, the audience when one is set. Anything else is `401
-   unauthenticated`; there is no header or argument fallback.
+   unauthenticated`; there is no header or argument fallback. ⚑ Without `auth.audience`, a token the realm
+   issued to any client verifies (the service warns at start). `POST /automation/refresh` also needs one of
+   `auth.refreshRoles` (default `ops`) — else `403 refresh-forbidden`.
 2. The caller may always run a deployment **as caller** — the door sees the caller's own token.
 3. **As author** (the deployer, from the refresh commit via `AUTOMATION_AUTHOR_MAP`) or **as a named identity**
    (`def identity` in the world) needs a `def grant`; the deployer may always run their own deployment as author.

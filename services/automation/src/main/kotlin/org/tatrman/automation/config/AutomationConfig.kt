@@ -14,7 +14,8 @@ data class DoorConfig(
 /**
  * Bearer verification and the identities' token exchange (§7). [tokenUrl] defaults to the JWKS URL's
  * sibling — Keycloak serves `…/protocol/openid-connect/certs` and `…/token` side by side. [authorMap] is
- * `AUTOMATION_AUTHOR_MAP` parsed: commit author (e-mail or name) → principal.
+ * `AUTOMATION_AUTHOR_MAP` parsed: commit author (e-mail or name) → principal. [refreshRoles] are the realm roles
+ * that may call `POST /automation/refresh` (the CI's service principal and operators: `role.ops`, S4.3).
  */
 data class AuthConfig(
     val jwksUrl: String,
@@ -22,7 +23,12 @@ data class AuthConfig(
     val audience: String?,
     val tokenUrl: String,
     val authorMap: Map<String, String>,
-)
+    val refreshRoles: Set<String> = setOf(DEFAULT_REFRESH_ROLE),
+) {
+    companion object {
+        const val DEFAULT_REFRESH_ROLE = "ops"
+    }
+}
 
 /**
  * The automation repo (§8): [path] = where `model/` and `automation/` sit in the work tree; [pollSeconds] = the
@@ -123,6 +129,7 @@ data class AutomationConfig(
                         audience = c.optString("auth.audience"),
                         tokenUrl = c.optString("auth.tokenUrl") ?: siblingTokenUrl(c.getString("auth.jwksUrl")),
                         authorMap = authorMap(c.optString("auth.authorMap")),
+                        refreshRoles = refreshRoles(c.optString("auth.refreshRoles")),
                     ),
                 bundleGit =
                     BundleGitConfig(
@@ -200,6 +207,16 @@ data class AutomationConfig(
                     }
                     pair.substring(0, at).trim() to pair.substring(at + 1).trim()
                 }
+
+        /** `ops, release-ci` → the set; unset or blank → `ops`. An empty set would let nobody refresh by hand. */
+        internal fun refreshRoles(raw: String?): Set<String> =
+            raw
+                .orEmpty()
+                .split(',')
+                .map { it.trim() }
+                .filter { it.isNotEmpty() }
+                .toSet()
+                .ifEmpty { setOf(AuthConfig.DEFAULT_REFRESH_ROLE) }
 
         /** HOCON's `automation.connections` first, the `TTR_CONN_<NAME>` env over it. */
         private fun connections(

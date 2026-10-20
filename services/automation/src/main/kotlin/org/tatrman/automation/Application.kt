@@ -46,6 +46,7 @@ import shared.ktor.installKtorServerBase
 import shared.libs.db.common.DatabaseConnection
 import shared.otel.OtelEndpointConfig
 import shared.otel.createOpenTelemetrySdk
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.nio.file.Path
@@ -65,10 +66,10 @@ fun main() {
 
 /**
  * The bootstrap (AU-server S0.1): config (fails at load on a missing required key) → OTel → the ledger's
- * database + Flyway (V1 ledger · V2 pgmq · V3 queues) → the pgmq queues checked → the bearer check (S0.3:
- * every route under `/automation` but `/automation/health` answers 401 without a verified token) → Ktor → the
- * served bundle loaded in the background (S0.2), then polled. The runner (P1, which resolves `RunAs` at open)
- * and the scheduler (S3.2) join this sequence as they land.
+ * database + Flyway (V1 ledger · V2 pgmq · V3 queues · V4 D-98's index) → the pgmq queues checked → the bearer
+ * check (S0.3: every route under `/automation` but `/automation/health` answers 401 without a verified token) →
+ * Ktor → the served bundle loaded in the background (S0.2), then polled. The runner (P1, which resolves `RunAs` at
+ * open) and the scheduler (S3.2) join this sequence as they land.
  */
 fun Application.module(config: Config) {
     val automation = AutomationConfig.load(config)
@@ -91,7 +92,10 @@ fun Application.module(config: Config) {
     if (created.isNotEmpty()) log.warn("automation: created missing queue(s) {} — V3 should have", created)
 
     val clock = Clock.offset(Clock.systemUTC(), automation.clockSkew)
-    val ledger = Ledger(defaultBudget = automation.budgets.batchDefault, clock = clock)
+    // The telemetry first: the ledger and the registry count into it (§10).
+    val telemetry = AutomationTelemetry(openTelemetry, queueDepths = pgmq::depths)
+    val ledger =
+        Ledger(defaultBudget = automation.budgets.batchDefault, clock = clock, abandoned = telemetry::abandoned)
     val ledgerBundles = LedgerBundles()
     val bundles =
         Bundles(
@@ -101,10 +105,16 @@ fun Application.module(config: Config) {
             loader = BundleLoader(AuthorMap(automation.auth.authorMap), clock),
             book = ledgerBundles,
             clock = clock,
+            refreshed = telemetry::refreshed,
         )
     val sources = LedgerHealthSources(ledger, pgmq, automation, bundles)
-    AutomationTelemetry(openTelemetry, queueDepths = sources::queueDepths)
 
+    if (automation.auth.audience == null) {
+        log.warn(
+            "automation: auth.audience is not set — a token the realm issued to ANY client is accepted; " +
+                "set it once the realm has this service's client",
+        )
+    }
     val callers =
         CallerVerifier(
             JwksBearerVerifier(
@@ -115,6 +125,7 @@ fun Application.module(config: Config) {
         )
     install(Authentication) { AutomationBearerProvider.register(this, callers) }
     val velesStatus = GrpcVelesStatus(automation.door.velesUrl)
+    val tokens = ServiceTokens.keycloak(automation.connections, automation.auth.tokenUrl)
 
     install(StatusPages) { installAutomationErrors() }
     routing {
@@ -125,9 +136,10 @@ fun Application.module(config: Config) {
                     bundles = bundles,
                     registry = Registry(ExecutorType.builtin()),
                     approvals = ledgerBundles,
-                    tokens = ServiceTokens.keycloak(automation.connections, automation.auth.tokenUrl),
+                    tokens = tokens,
                     veles = VelesHandshake(velesStatus, automation.bundleGit.velesSource),
                     paused = { automation.paused },
+                    refreshRoles = automation.auth.refreshRoles,
                 ),
             )
         }
@@ -164,13 +176,24 @@ fun migrateLedger(dataSource: DataSource): Int =
         .migrate()
         .migrationsExecuted
 
+/**
+ * The start load and the poll: a failed refresh is logged, never thrown — an exception escaping here would end the
+ * poll loop for the life of the pod. [Bundles] has already marked a served-branch failure for health.
+ */
 private suspend fun refreshQuietly(bundles: Bundles) {
     try {
         bundles.refresh()
     } catch (e: AutomationException) {
         log.warn("automation: refresh — {} {}", e.code.code, e.message)
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        log.error("automation: refresh failed; the poll goes on", e)
     }
 }
+
+/** Each ledger queue's depth, keyed as health and the `queue` label name it. */
+private fun Pgmq.depths(): Map<String, Long> = LedgerQueue.entries.associate { it.key to metrics(it).queueLength }
 
 /** The health report's reads, over the ledger and the bundle registry. The scheduler arrives with S3.2. */
 private class LedgerHealthSources(
@@ -181,11 +204,7 @@ private class LedgerHealthSources(
 ) : HealthSources {
     override fun dbReachable(): Boolean = ledger.ping()
 
-    override fun queueDepths(): Map<String, Long> =
-        LedgerQueue.entries.associate {
-            it.key to
-                pgmq.metrics(it).queueLength
-        }
+    override fun queueDepths(): Map<String, Long> = pgmq.depths()
 
     override fun abandoned(): Long = ledger.countAbandoned()
 

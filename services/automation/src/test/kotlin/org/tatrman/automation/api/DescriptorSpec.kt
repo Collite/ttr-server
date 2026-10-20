@@ -189,4 +189,19 @@ class DescriptorSpec :
                 Json.parseToJsonElement(again.bodyAsText()).jsonObject["changed"] shouldBe JsonPrimitive(false)
             }
         }
+
+        "POST /automation/refresh needs a refresh role: anyone else is 403 refresh-forbidden, and nothing loads" {
+            testApplication {
+                val bundles: Bundles = BundleFixture.bundles(BundleSource { BundleFixture.checkout(branch = it) })
+                service(BundleFixture.sources(bundles))
+                val maya = realm.person("maya", listOf("sales_manager"))
+                val r = client.post("/automation/refresh") { header(HttpHeaders.Authorization, "Bearer $maya") }
+                r.status shouldBe HttpStatusCode.Forbidden
+                r.errorCode(r.bodyAsText()) shouldBe "refresh-forbidden"
+                bundles.served shouldBe null
+                val ci = realm.service("svc-hartland-ci", roles = listOf("ops"))
+                client.post("/automation/refresh") { header(HttpHeaders.Authorization, "Bearer $ci") }.status shouldBe
+                    HttpStatusCode.OK
+            }
+        }
     })

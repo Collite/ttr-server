@@ -58,14 +58,18 @@ door:
   sidecarUrl: ""
 
 # Bearer verification (§7, LR-14): RS256 against the realm's JWKS; `iss` must equal `issuer`; `aud`
-# must contain `audience` when one is set. `tokenUrl` (the named identities' client credentials)
-# defaults to the JWKS URL's sibling. `authorMap`: `author=principal` pairs, comma-separated (D-90).
+# must contain `audience` when one is set. ⚑ Without an audience a token the realm issued to ANY
+# client is accepted (the service logs a warning at start) — set it once the realm has this service's
+# client. `tokenUrl` (the named identities' client credentials) defaults to the JWKS URL's sibling.
+# `authorMap`: `author=principal` pairs, comma-separated (D-90). `refreshRoles`: the realm roles that
+# may call POST /automation/refresh; empty = the service's default, `ops`.
 auth:
   jwksUrl: ""
   issuer: ""
   audience: ""
   tokenUrl: ""
   authorMap: ""
+  refreshRoles: []
 
 # The repository the bundles are read from (S0.2's /refresh). The token by Secret ref.
 bundle:

@@ -142,5 +142,6 @@ object BundleFixture {
         tokens = ServiceTokens(emptyMap(), { error("no token exchange in a descriptor") }),
         veles = veles,
         paused = { false },
+        refreshRoles = setOf("ops"),
     )
 }

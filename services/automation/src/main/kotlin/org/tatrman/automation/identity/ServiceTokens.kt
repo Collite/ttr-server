@@ -5,6 +5,7 @@ import com.auth0.jwt.JWT
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import org.tatrman.keycloak.auth.KeycloakTokenProvider
+import org.tatrman.keycloak.auth.TokenProvider
 import java.time.Clock
 import java.time.Duration
 import java.time.Instant
@@ -68,10 +69,19 @@ class ServiceTokens(
     companion object {
         private const val CONNECTION_ENV_PREFIX = "TTR_CONN_"
 
-        /** Client credentials at the realm's token endpoint (Keycloak). */
+        /**
+         * Client credentials at the realm's token endpoint (Keycloak). One provider — one HTTP client — per
+         * credential, built on its first fetch and kept: a provider per fetch would leak a client every expiry.
+         */
         fun keycloak(
             connections: Map<String, String>,
             tokenUrl: String,
-        ) = ServiceTokens(connections, { c -> KeycloakTokenProvider.create(tokenUrl, c.clientId, c.secret).getToken() })
+            provider: (
+                ClientCredential,
+            ) -> TokenProvider = { KeycloakTokenProvider.create(tokenUrl, it.clientId, it.secret) },
+        ): ServiceTokens {
+            val providers = ConcurrentHashMap<ClientCredential, TokenProvider>()
+            return ServiceTokens(connections, { c -> providers.computeIfAbsent(c, provider).getToken() })
+        }
     }
 }

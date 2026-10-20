@@ -5,6 +5,8 @@ import io.ktor.server.response.respond
 import io.ktor.server.routing.Route
 import io.ktor.server.routing.get
 import io.ktor.server.routing.post
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
@@ -142,7 +144,10 @@ data class RefreshResponse(
 
 const val RUN_API_VERSION = "v1"
 
-/** What the descriptor routes read: the registry of bundles and the rules that judge a deployment for a caller. */
+/**
+ * What the descriptor routes read: the registry of bundles and the rules that judge a deployment for a caller.
+ * [refreshRoles] are the realm roles that may call `POST /refresh` (`automation.auth.refreshRoles`).
+ */
 class DescriptorSources(
     val bundles: Bundles,
     val registry: Registry,
@@ -150,6 +155,7 @@ class DescriptorSources(
     val tokens: ServiceTokens,
     val veles: VelesHandshake?,
     val paused: () -> Boolean,
+    val refreshRoles: Set<String>,
 )
 
 /** Authenticated: mounted under the bearer check — the caller is known to every route here. */
@@ -175,10 +181,17 @@ fun Route.descriptorRoutes(sources: DescriptorSources) {
         val d = call.parameters["d"].orEmpty()
         val deployment =
             bundle?.deployments?.get(d) ?: throw AutomationException(ErrorCode.DEPLOYMENT, "no deployment $d is served")
-        val staleness = Staleness.of(bundle, d, sources.approvals)
+        val staleness = withContext(Dispatchers.IO) { Staleness.of(bundle, d, sources.approvals) }
         call.respond(
             DeploymentDetail(
-                deployment = deploymentOf(bundle, deployment, sources, call.caller(), staleness.stale),
+                deployment =
+                    deploymentOf(
+                        bundle,
+                        deployment,
+                        runAsByWorld(bundle, sources),
+                        call.caller(),
+                        staleness.stale,
+                    ),
                 registry = sources.registry.cell(bundle, deployment),
                 unapproved = staleness.unapproved,
                 lastRun = null,
@@ -187,6 +200,15 @@ fun Route.descriptorRoutes(sources: DescriptorSources) {
         )
     }
     post("/automation/refresh") {
+        // A refresh swaps what every deployment runs, and a preview clones a branch: an operator's or the CI's call,
+        // not any verified caller's.
+        val caller = call.caller()
+        if (caller.roles.none { it in sources.refreshRoles }) {
+            throw AutomationException(
+                ErrorCode.REFRESH_FORBIDDEN,
+                "${caller.principal} may not refresh: it needs one of the roles ${sources.refreshRoles.sorted()}",
+            )
+        }
         val outcome = sources.bundles.refresh(call.request.queryParameters["branch"])
         call.respond(RefreshResponse(outcome.bundle.id, outcome.bundle.commit, outcome.changed))
     }
@@ -198,6 +220,14 @@ suspend fun describe(
 ): Descriptor {
     val bundles = sources.bundles
     val bundle = bundles.served
+    // Once per request, not per deployment: the approvals in one query, a RunAs per world.
+    val approvals =
+        bundle?.let {
+            withContext(Dispatchers.IO) {
+                sources.approvals.snapshot(it.recipes.keys + it.programs.keys + it.deployments.keys)
+            }
+        } ?: sources.approvals
+    val runAs = bundle?.let { runAsByWorld(it, sources) }.orEmpty()
     return Descriptor(
         served = bundle?.let { ServedBundle(it.id, it.commit, it.modelFp, it.loadedAt.toString()) },
         latest = bundles.latestCommit?.let { LatestCommit(it) },
@@ -222,13 +252,7 @@ suspend fun describe(
                 ?.deployments
                 ?.values
                 ?.map { d ->
-                    deploymentOf(
-                        bundle,
-                        d,
-                        sources,
-                        caller,
-                        Staleness.of(bundle, d.qname.name, sources.approvals).stale,
-                    )
+                    deploymentOf(bundle, d, runAs, caller, Staleness.of(bundle, d.qname.name, approvals).stale)
                 }.orEmpty(),
         connectors = emptyList(),
         registry = bundle?.let { sources.registry.grid(it) }.orEmpty(),
@@ -275,18 +299,29 @@ private fun programOf(
         fingerprint = bundle.programFps.getValue(p.qname.name),
     )
 
+/** Each world's identity rules: its own grants and identities (review-114 — never another world's). */
+private fun runAsByWorld(
+    bundle: Bundle,
+    sources: DescriptorSources,
+): Map<String, RunAs> =
+    bundle.worlds.mapValues { (_, w) -> RunAs(GrantMap(w.grants, w.identities), w.identities, sources.tokens) }
+
 private fun deploymentOf(
     bundle: Bundle,
     d: WorldDeployment,
-    sources: DescriptorSources,
+    runAsByWorld: Map<String, RunAs>,
     caller: Caller,
     stale: Boolean,
 ): DeploymentDescriptor {
-    val runAs = RunAs(GrantMap(bundle.grants, bundle.identities), bundle.identities, sources.tokens)
+    val runAs = bundle.worldOf(d)?.let { runAsByWorld[it.name] }
     val granted =
-        bundle.programsOf(d).ifEmpty { listOf("") }.all { program ->
-            runAs.granted(caller, DeploymentIdentity(d.qname.name, program, BundleLoader.runAs(d.runAs), bundle.author))
-        }
+        runAs != null &&
+            bundle.programsOf(d).ifEmpty { listOf("") }.all { program ->
+                runAs.granted(
+                    caller,
+                    DeploymentIdentity(d.qname.name, program, BundleLoader.runAs(d.runAs), bundle.author),
+                )
+            }
     return DeploymentDescriptor(
         name = d.qname.name,
         program = d.program,
