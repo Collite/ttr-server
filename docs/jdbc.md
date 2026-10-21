@@ -20,7 +20,8 @@ validator.
 Write statements with the full three-part names: `SELECT * FROM er.entity.warehouse`, `SELECT * FROM
 obj.query.revenue_per_customer`, `SELECT * FROM db.dbo.inventory`. Quote an identifier that is a reserved word
 (`"count"`, `"value"`, `"year"`); the edge publishes the reserved-word list as `SQL_KEYWORDS` so clients quote
-for you. Entity and table columns are typed from the model; a logical query's columns are read from its first row.
+for you. Entity and table columns are typed from the model; a logical query's columns are read from its first row,
+run as you, so a query your roles may not read lists no columns.
 
 The edge is **read-only**: no DML, no transactions, no bound parameters (`?`), no uploads.
 
@@ -81,8 +82,9 @@ The world is the connection's only catalog (`getCatalogs()` returns it). A world
 fails the connect with `unknown_world: World '<x>' is not served here; the worlds are …`. With no world, the
 deployment's default connection answers and no catalog is listed.
 
-A statement may qualify a table with the connection's own catalog (`hartland_us.er.entity.warehouse`, or
-`"hartland_us"."er.entity"."warehouse"`); the qualifier is ignored (blanked out, so an error's line and column
+A statement may qualify a table with the connection's own catalog (`hartland_us.er.entity.warehouse`,
+`"hartland_us"."er.entity"."warehouse"`, or every part quoted, `"hartland_us"."er"."entity"."warehouse"`); the
+qualifier is ignored (blanked out, so an error's line and column
 still point into your text). Naming **another**
 catalog is refused before anything runs: `world_mismatch: the statement reads catalog 'hartland_cz', but this
 connection's world is 'hartland_us'.` The edge also checks the answer: if the door reports that it ran a statement

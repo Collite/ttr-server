@@ -106,6 +106,50 @@ class FlightJdbcRoundTripSpec :
             }
         }
 
+        "R13 — getImportedKeys: two relations from one entity to another are two named keys" {
+            fun qn(name: String) =
+                org.tatrman.plan.v1.QualifiedName
+                    .newBuilder()
+                    .setSchemaCode(org.tatrman.plan.v1.SchemaCode.ER)
+                    .setNamespace("entity")
+                    .setName(name)
+                    .build()
+
+            fun dated(attribute: String) =
+                org.tatrman.meta.v1.RelationDetail
+                    .newBuilder()
+                    .setFromEntity(qn("order"))
+                    .setToEntity(qn("date_dim"))
+                    .addJoinPairs(
+                        org.tatrman.meta.v1.AttributeJoinPair
+                            .newBuilder()
+                            .setFromAttr(qn("order.$attribute"))
+                            .setToAttr(qn("date_dim.sk")),
+                    ).build()
+            val model =
+                RecordedVeles
+                    .hartlandModel()
+                    .toBuilder()
+                    .addRelations(dated("placed_date"))
+                    .addRelations(dated("delivered_date"))
+                    .build()
+            RunningEdge(door(), RecordedVeles(model = model), session).use { edge ->
+                connect(edge).use { conn ->
+                    val keys = mutableListOf<Triple<String?, String?, Int>>()
+                    conn.metaData.getImportedKeys(null, "er.entity", "order").use { rs ->
+                        while (rs.next()) {
+                            keys += Triple(rs.getString("FK_NAME"), rs.getString("FKCOLUMN_NAME"), rs.getInt("KEY_SEQ"))
+                        }
+                    }
+                    keys shouldContainExactly
+                        listOf(
+                            Triple("order_placed_date_fkey", "placed_date", 1),
+                            Triple("order_delivered_date_fkey", "delivered_date", 1),
+                        )
+                }
+            }
+        }
+
         "C-5 — an empty answer still has the statement's columns" {
             val empty =
                 ScriptedDoor {

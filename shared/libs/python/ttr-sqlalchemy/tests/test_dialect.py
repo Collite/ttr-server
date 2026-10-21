@@ -156,7 +156,7 @@ def test_primary_keys_from_the_catalog(inspector):
 def test_foreign_keys_from_relations_with_join_pairs(inspector):
     assert inspector.get_foreign_keys("channel_sales", schema="er.entity") == [
         {
-            "name": None,
+            "name": "channel_sales_warehouse_id_fkey",
             "constrained_columns": ["warehouse_id"],
             "referred_schema": "er.entity",
             "referred_table": "warehouse",
@@ -165,6 +165,26 @@ def test_foreign_keys_from_relations_with_join_pairs(inspector):
         }
     ]
     assert inspector.get_foreign_keys("warehouse", schema="er.entity") == []
+
+
+# Two relations from channel_sales to date_dim (a star schema's role-playing dates), each a one-column key.
+ROLE_PLAYING = [
+    ("er.entity", "date_dim", "sk", "er.entity", "channel_sales", "sold_date", 1, "channel_sales_sold_date_fkey"),
+    ("er.entity", "date_dim", "sk", "er.entity", "channel_sales", "ship_date", 1, "channel_sales_ship_date_fkey"),
+]
+
+
+@pytest.mark.parametrize("named", [True, False], ids=["named", "an-edge-that-names-no-key"])
+def test_two_relations_to_one_table_are_two_foreign_keys(inspector, monkeypatch, named):
+    from tests.fixtures import edge as recorded
+
+    keys = ROLE_PLAYING if named else [(*k[:7], None) for k in ROLE_PLAYING]
+    monkeypatch.setattr(recorded, "FOREIGN_KEYS", keys)
+    reflected = inspector.get_foreign_keys("channel_sales", schema="er.entity")
+    assert [(fk["name"], fk["constrained_columns"], fk["referred_table"]) for fk in reflected] == [
+        ("channel_sales_sold_date_fkey" if named else None, ["sold_date"], "date_dim"),
+        ("channel_sales_ship_date_fkey" if named else None, ["ship_date"], "date_dim"),
+    ]
 
 
 def test_nothing_else_is_reflected(inspector):

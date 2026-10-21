@@ -24,7 +24,8 @@ outside this repo could notice is in.
     (exchanged for a bearer at connect).
   - Introspection from the edge's catalog only: schemas `er.entity` · `obj.query` · `db.dbo`, entities and bound tables
     as tables, saved queries as views, Arrow-typed columns, primary keys, foreign keys from relations with join pairs.
-    Every identifier quoted; a dotted schema as two names (`"er"."entity"."warehouse"`).
+    Every identifier quoted; a dotted schema as two names (`"er"."entity"."warehouse"`). Each relation is its own
+    foreign key: two relations to one table are two keys.
   - `:name` parameters are written in as literals (the edge takes no bound parameters); a name with no value is
     refused `parameter_unbound` before anything is sent.
   - A result is read whole before its first row, so a stream the edge fails on its receipt (`world_mismatch`) yields
@@ -50,6 +51,10 @@ outside this repo could notice is in.
     (`world_mismatch`).
   - **Row ask:** every statement asks for as many rows as its caller's ceiling allows (`row_window.limit`
     2147483647), so it gets `VALIDATE_MAX_TOP_N` or its role's higher value; its own `LIMIT` lowers that.
+  - **Catalog:** packages come from every kind it lists (entities, queries, tables, views), so a package of only
+    saved queries is listed. A saved query's probed columns are kept per model version and role set, probed four at
+    a time. Foreign keys carry a name per relation (`fk_key_name`). A catalog qualifier is recognised with every part
+    quoted (`"hartland_us"."er"."entity"."warehouse"`).
   - **Results:** the closing metadata's `notices` carry the warnings of every batch (a worker's `blob_too_large` on
     the batch it concerns), once each; an answer with no rows still has its columns; a client that stops reading for
     5 minutes is ended `TIMED_OUT` (`client_stalled`).

@@ -87,8 +87,20 @@ CATALOG = [
     ),
 ]
 
-# channel_sales.warehouse_id → warehouse.warehouse_id: the one E-R relation with join pairs.
-FOREIGN_KEYS = [("er.entity", "warehouse", "warehouse_id", "er.entity", "channel_sales", "warehouse_id")]
+# channel_sales.warehouse_id → warehouse.warehouse_id: the one E-R relation with join pairs. As the edge sends a key:
+# (pk schema, pk table, pk column, fk schema, fk table, fk column, key_sequence, fk_key_name — one per relation).
+FOREIGN_KEYS = [
+    (
+        "er.entity",
+        "warehouse",
+        "warehouse_id",
+        "er.entity",
+        "channel_sales",
+        "warehouse_id",
+        1,
+        "channel_sales_warehouse_id_fkey",
+    )
+]
 
 WAREHOUSES = {
     "hartland_cz": [(1, "Brno DC", "Brno"), (2, "Ostrava DC", "Ostrava"), (3, "Plzeň DC", "Plzeň")],
@@ -373,8 +385,8 @@ class RecordedEdge(fl.FlightServerBase):
                     "fk_db_schema_name": pa.array([k[3] for k in keys], pa.utf8()),
                     "fk_table_name": pa.array([k[4] for k in keys], pa.utf8()),
                     "fk_column_name": pa.array([k[5] for k in keys], pa.utf8()),
-                    "key_sequence": pa.array([1] * n, pa.int32()),
-                    "fk_key_name": pa.array([None] * n, pa.utf8()),
+                    "key_sequence": pa.array([k[6] for k in keys], pa.int32()),
+                    "fk_key_name": pa.array([k[7] for k in keys], pa.utf8()),
                     "pk_key_name": pa.array([None] * n, pa.utf8()),
                     "update_rule": pa.array([3] * n, pa.uint8()),
                     "delete_rule": pa.array([3] * n, pa.uint8()),

@@ -82,22 +82,36 @@ def primary_key(conn: Connection, schema: str, name: str) -> list[str]:
 
 
 def foreign_keys(conn: Connection, schema: str, name: str) -> list[ForeignKey]:
+    """The table's foreign keys, one per relation: grouped by the edge's `fk_key_name`. From an edge that names no key,
+    a `key_sequence` back at 1 starts the next key, so two relations to one table stay two keys."""
     answer = conn.fetch_command(_flightsql.get_imported_keys(name, catalog=_catalog(conn), schema=schema))
-    groups: dict[tuple, list[dict]] = {}
+    keys: list[list[dict]] = []
+    named: dict[tuple, list[dict]] = {}
+    unnamed: dict[tuple, list[dict]] = {}
     for r in answer.to_pylist():
         if r["fk_table_name"] != name or r["fk_db_schema_name"] not in (None, schema):
             continue
-        key = (r["fk_key_name"], r["pk_db_schema_name"], r["pk_table_name"])
-        groups.setdefault(key, []).append(r)
+        target = (r["pk_db_schema_name"], r["pk_table_name"])
+        if r["fk_key_name"]:
+            rows = named.get((r["fk_key_name"], *target))
+            if rows is None:
+                rows = named[(r["fk_key_name"], *target)] = []
+                keys.append(rows)
+        else:
+            rows = unnamed.get(target)
+            if rows is None or (r["key_sequence"] or 1) == 1:
+                rows = unnamed[target] = []
+                keys.append(rows)
+        rows.append(r)
     out = []
-    for (key_name, pk_schema, pk_table), rows in groups.items():
+    for rows in keys:
         rows.sort(key=lambda r: r["key_sequence"] or 0)
         out.append(
             ForeignKey(
-                name=key_name,
+                name=rows[0]["fk_key_name"],
                 columns=[r["fk_column_name"] for r in rows],
-                referred_schema=pk_schema or schema,
-                referred_table=pk_table,
+                referred_schema=rows[0]["pk_db_schema_name"] or schema,
+                referred_table=rows[0]["pk_table_name"],
                 referred_columns=[r["pk_column_name"] for r in rows],
             )
         )

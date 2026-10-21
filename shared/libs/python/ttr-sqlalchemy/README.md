@@ -60,7 +60,8 @@ inspector.get_columns("warehouse", schema="er.entity")
 
 Columns are typed from the Arrow schema the edge publishes (`int64` → `BigInteger`, `decimal128(p, s)` →
 `Numeric(p, s)`, `date32` → `Date`, `timestamp` → `DateTime`, `utf8` → `String`, `bool` → `Boolean`). Primary keys come
-from the model; foreign keys only from E-R relations that state join pairs. The edge is **read-only**: no DML, no
+from the model; foreign keys only from E-R relations that state join pairs, one key per relation (named
+`<table>_<columns>_fkey`), so two relations to one table are two keys. The edge is **read-only**: no DML, no
 transactions (`commit` and `rollback` are no-ops so pools keep working).
 
 Every identifier is quoted, and a dotted schema is two quoted names: `SELECT "er"."entity"."warehouse"."city" FROM

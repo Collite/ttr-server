@@ -7,6 +7,7 @@ import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.shouldBe
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import org.apache.arrow.flight.FlightRuntimeException
 import org.apache.arrow.flight.FlightStatusCode
@@ -23,6 +24,7 @@ import org.tatrman.plan.v1.QualifiedName
 import org.tatrman.plan.v1.SchemaCode
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
+import kotlin.system.measureTimeMillis
 
 class CatalogSourceSpec :
     StringSpec({
@@ -55,6 +57,35 @@ class CatalogSourceSpec :
             clock: AtomicLong = AtomicLong(0),
         ) = CatalogSource(veles, probe, ttlSeconds = 30, nanoClock = { clock.get() })
 
+        // `order` relates to `date_dim` twice: placed and delivered (a star schema's role-playing dates).
+        fun roleplayingDates(): org.tatrman.meta.v1.ModelBundle {
+            fun qn(name: String) =
+                QualifiedName
+                    .newBuilder()
+                    .setSchemaCode(SchemaCode.ER)
+                    .setNamespace("entity")
+                    .setName(name)
+                    .build()
+
+            fun dated(attribute: String) =
+                RelationDetail
+                    .newBuilder()
+                    .setFromEntity(qn("order"))
+                    .setToEntity(qn("date_dim"))
+                    .addJoinPairs(
+                        AttributeJoinPair
+                            .newBuilder()
+                            .setFromAttr(qn("order.$attribute"))
+                            .setToAttr(qn("date_dim.sk")),
+                    ).build()
+            return RecordedVeles
+                .hartlandModel()
+                .toBuilder()
+                .addRelations(dated("placed_date"))
+                .addRelations(dated("delivered_date"))
+                .build()
+        }
+
         "schemas are exactly the door's three spellings: db.dbo, er.entity, obj.query" {
             runBlocking {
                 source().schemas(session, catalog = null, schemaPattern = null) shouldContainExactly
@@ -79,13 +110,13 @@ class CatalogSourceSpec :
             }
         }
 
-        "one load reads ListObjects for entities and tables (paged) and GetModel once, over the packages they name" {
+        "one load reads ListObjects for entities, queries, tables and views (paged) and GetModel once" {
             runBlocking {
                 val veles = RecordedVeles()
                 source(veles).tables(session, null, null, null)
                 veles.modelCalls.get() shouldBe 1
-                // 36 entities + 33 tables at 20 per page: 2 + 2 pages.
-                veles.listCalls.get() shouldBe 4
+                // 36 entities, 1 query, 33 tables and 3 views at 20 per page: 2 + 1 + 2 + 1 pages.
+                veles.listCalls.get() shouldBe 6
                 veles.requestedPackages.single() shouldContainExactly listOf("hartland")
             }
         }
@@ -217,7 +248,146 @@ class CatalogSourceSpec :
                                 ),
                         ).build()
                 val key = source(RecordedVeles(model = related)).foreignKeys(session).single()
-                key shouldBe CatalogForeignKey("er.entity", "warehouse", "sk", "er.entity", "inventory", "warehouse", 1)
+                key shouldBe
+                    CatalogForeignKey(
+                        "er.entity",
+                        "warehouse",
+                        "sk",
+                        "er.entity",
+                        "inventory",
+                        "warehouse",
+                        1,
+                        "inventory_warehouse_fkey",
+                    )
+            }
+        }
+
+        "R13 — two relations from one entity to another are two keys, each named, each from key_sequence 1" {
+            runBlocking {
+                val keys = source(RecordedVeles(model = roleplayingDates())).foreignKeys(session)
+                keys.map { Triple(it.name, it.fkColumn, it.keySequence) } shouldContainExactly
+                    listOf(
+                        Triple("order_placed_date_fkey", "placed_date", 1),
+                        Triple("order_delivered_date_fkey", "delivered_date", 1),
+                    )
+                keys.map { it.pkTable }.distinct() shouldContainExactly listOf("date_dim")
+            }
+        }
+
+        "R9 — a package holding only a saved query is loaded too" {
+            runBlocking {
+                val base = RecordedVeles.hartlandModel()
+                val query = base.namedQueriesList.single()
+                val elsewhere =
+                    query
+                        .toBuilder()
+                        .setObjectDescriptor(
+                            query.objectDescriptor
+                                .toBuilder()
+                                .setPackageName("reports")
+                                .setQualifiedName(
+                                    query.objectDescriptor.qualifiedName
+                                        .toBuilder()
+                                        .setName("monthly"),
+                                ),
+                        ).build()
+                val veles = RecordedVeles(model = base.toBuilder().addNamedQueries(elsewhere).build())
+                val names = source(veles).tables(session, null, "obj.query", null, withFields = false).map { it.name }
+                names shouldContainExactly listOf("monthly", "revenue_per_customer")
+                veles.requestedPackages.single() shouldContainExactly listOf("hartland", "reports")
+            }
+        }
+
+        "R4 — probed columns are kept per role set: a caller with other roles gets its own probe's answer" {
+            runBlocking {
+                // The door answers the BI reader's probe, and refuses every other role set's.
+                val asked = mutableListOf<List<String>>()
+                val probe =
+                    SchemaProbe { _, caller ->
+                        asked += caller.roles
+                        if ("kantheon-bi-reader" in caller.roles) revenueSchema else null
+                    }
+                val catalog = source(probe = probe)
+                val reader = session.copy(roles = listOf("kantheon-area-hartland", "kantheon-bi-reader"))
+                val other = session.copy(userId = "petr", roles = listOf("kantheon-scope-dc-5"))
+                catalog
+                    .tables(reader, null, "obj.query", null)
+                    .single()
+                    .fields
+                    .map { it.name } shouldContainExactly
+                    listOf("customer_id", "revenue")
+                catalog
+                    .tables(other, null, "obj.query", null)
+                    .single()
+                    .fields
+                    .shouldBeEmpty()
+                asked shouldContainExactly listOf(reader.roles, other.roles)
+                // A refused probe is kept too: once per model version per role set, whoever asks.
+                catalog
+                    .tables(other.copy(userId = "someone"), null, "obj.query", null)
+                    .single()
+                    .fields
+                    .shouldBeEmpty()
+                // The same roles in another order are the same role set.
+                catalog.tables(reader.copy(roles = reader.roles.reversed()), null, "obj.query", null)
+                asked shouldHaveSize 2
+            }
+        }
+
+        "R4 — a probe the door could not answer is not kept: the next listing asks again" {
+            runBlocking {
+                val calls = AtomicInteger()
+                val probe =
+                    SchemaProbe { _, _ ->
+                        if (calls.incrementAndGet() == 1) error("door unavailable") else revenueSchema
+                    }
+                val catalog = source(probe = probe)
+                catalog
+                    .tables(session, null, "obj.query", null)
+                    .single()
+                    .fields
+                    .shouldBeEmpty()
+                catalog.tables(session, null, "obj.query", null).single().fields shouldHaveSize 2
+                calls.get() shouldBe 2
+            }
+        }
+
+        "R4 — one listing probes its uncached queries four at a time" {
+            runBlocking {
+                val base = RecordedVeles.hartlandModel()
+                val query = base.namedQueriesList.single()
+                val five =
+                    base
+                        .toBuilder()
+                        .addAllNamedQueries(
+                            (1..4).map { i ->
+                                query
+                                    .toBuilder()
+                                    .setObjectDescriptor(
+                                        query.objectDescriptor
+                                            .toBuilder()
+                                            .setQualifiedName(
+                                                query.objectDescriptor.qualifiedName
+                                                    .toBuilder()
+                                                    .setName("q$i"),
+                                            ),
+                                    ).build()
+                            },
+                        ).build()
+                val running = AtomicInteger()
+                val most = AtomicInteger()
+                val probe =
+                    SchemaProbe { _, _ ->
+                        most.accumulateAndGet(running.incrementAndGet(), ::maxOf)
+                        delay(200)
+                        running.decrementAndGet()
+                        revenueSchema
+                    }
+                val catalog = source(RecordedVeles(model = five), probe)
+                val took = measureTimeMillis { catalog.tables(session, null, "obj.query", null) shouldHaveSize 5 }
+                most.get() shouldBe CatalogSource.PROBE_CONCURRENCY
+                // Serially, five probes take 1 000 ms; four at a time, about 400.
+                (took < 900) shouldBe true
             }
         }
 

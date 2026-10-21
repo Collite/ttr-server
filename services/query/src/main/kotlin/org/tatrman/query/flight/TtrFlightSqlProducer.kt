@@ -999,7 +999,7 @@ class TtrFlightSqlProducer(
             (root.getVector("fk_table_name") as VarCharVector).setSafe(i, key.fkTable.toByteArray())
             (root.getVector("fk_column_name") as VarCharVector).setSafe(i, key.fkColumn.toByteArray())
             (root.getVector("key_sequence") as IntVector).setSafe(i, key.keySequence)
-            (root.getVector("fk_key_name") as VarCharVector).setNull(i)
+            (root.getVector("fk_key_name") as VarCharVector).setNullableUtf8(i, key.name.ifEmpty { null })
             (root.getVector("pk_key_name") as VarCharVector).setNull(i)
             (root.getVector("update_rule") as UInt1Vector).setSafe(i, NO_ACTION)
             (root.getVector("delete_rule") as UInt1Vector).setSafe(i, NO_ACTION)

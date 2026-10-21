@@ -205,6 +205,14 @@ class IdentityWorldMiddlewareSpec :
             run("SELECT * FROM hartland_us.er.entity.warehouse") shouldBe Outcome.Mismatch("hartland_us")
             run("""SELECT * FROM "hartland_us"."db.dbo"."web_sales"""") shouldBe Outcome.Mismatch("hartland_us")
             run("SELECT * FROM hartland_cz.er.entity.warehouse", world = "") shouldBe Outcome.Mismatch("hartland_cz")
+            // R11 — every part quoted, as a tool that quotes every identifier writes it.
+            run("""SELECT * FROM "hartland_us"."er"."entity"."warehouse"""") shouldBe Outcome.Mismatch("hartland_us")
+            val own =
+                """SELECT "hartland_cz"."er"."entity"."warehouse"."city" """ +
+                    """FROM "hartland_cz"."er"."entity"."warehouse""""
+            run(own) shouldBe Outcome.Run(own.replace("\"hartland_cz\".", " ".repeat(14)))
+            run("""SELECT "t"."er" FROM er.entity.warehouse "t"""") shouldBe
+                Outcome.Run("""SELECT "t"."er" FROM er.entity.warehouse "t"""")
             // Not catalogs: three-part door names, a column called `db`, literals and comments.
             run("SELECT w.db, w.er FROM er.entity.warehouse w") shouldBe
                 Outcome.Run("SELECT w.db, w.er FROM er.entity.warehouse w")

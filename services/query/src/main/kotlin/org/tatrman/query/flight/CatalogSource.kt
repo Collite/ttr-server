@@ -3,9 +3,15 @@ package org.tatrman.query.flight
 
 import io.grpc.ManagedChannel
 import io.grpc.ManagedChannelBuilder
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.sync.withPermit
 import org.apache.arrow.flight.CallStatus
 import org.apache.arrow.flight.sql.FlightSqlColumnMetadata
 import org.apache.arrow.memory.BufferAllocator
@@ -71,6 +77,8 @@ data class CatalogForeignKey(
     val fkTable: String,
     val fkColumn: String,
     val keySequence: Int,
+    /** The key's name, one per relation: `<table>_<columns>_fkey`. Two relations to one table are two keys. */
+    val name: String = "",
 )
 
 /** The three Veles reads the catalog needs. */
@@ -83,7 +91,10 @@ interface VelesCatalogClient {
     suspend fun getModel(request: GetModelRequest): GetModelResponse
 }
 
-/** The columns of a statement's result, as the door would return them; null when it cannot say. */
+/**
+ * The columns of a statement's result, as the door would return them to [session]: null when the door refused it or it
+ * names no columns (a definite answer, kept for the model version); throws when the door could not be asked (not kept).
+ */
 fun interface SchemaProbe {
     suspend fun schemaOf(
         sql: String,
@@ -92,10 +103,14 @@ fun interface SchemaProbe {
 }
 
 /**
- * BI (contracts C-4) — the Flight SQL catalog, from Veles: two `ListObjects` (entities, tables) name the model's
- * packages and one `GetModel(packages)` carries every entity, query, table and view in them (BI-0 memo §4: 73
- * objects in 0.14 s on hartland). The answer is cached by Veles' model version, which is itself re-read at most
+ * BI (contracts C-4) — the Flight SQL catalog, from Veles: four `ListObjects` (entities, queries, tables, views) name
+ * the model's packages and one `GetModel(packages)` carries every entity, query, table and view in them (BI-0 memo §4:
+ * 73 objects in 0.14 s on hartland). The answer is cached by Veles' model version, which is itself re-read at most
  * once per [ttlSeconds]: within that window a catalog call touches no Veles at all.
+ *
+ * A saved logical query declares no columns; they are probed through the door as the caller ([SchemaProbe]) and kept
+ * per model version and **role set**: callers with the same roles share a probe, and a caller with other roles gets
+ * its own. The uncached queries of one listing are probed [PROBE_CONCURRENCY] at a time.
  *
  * Schemas are exactly the door's own spellings (D-5h): `er.entity` (entities), `obj.query` (saved logical
  * queries — L-20: readable only as `obj.query.<name>`) and `db.<schema>` (bound tables and views, `db.dbo` on
@@ -114,6 +129,7 @@ class CatalogSource(
 
     @Volatile private var checkedAtNanos = 0L
 
+    /** Probed columns by `version|role set|schema.name`; an empty list is a probe the door refused. */
     private val probedFields = ConcurrentHashMap<String, List<Field>>()
 
     /** Model loads since boot (tests read it: a cached call loads nothing). */
@@ -154,11 +170,14 @@ class CatalogSource(
         val schemaRegex = schemaPattern?.let(::likeRegex)
         val tableRegex = tablePattern?.let(::likeRegex)
         val types = tableTypes.map { it.uppercase() }.toSet()
-        return snapshot.tables
-            .filter { schemaRegex == null || schemaRegex.matches(it.schema) }
-            .filter { tableRegex == null || tableRegex.matches(it.name) }
-            .filter { types.isEmpty() || it.type.label in types }
-            .map { if (withFields && it.probed) withProbedFields(snapshot.version, it, session) else it }
+        val listed =
+            snapshot.tables
+                .filter { schemaRegex == null || schemaRegex.matches(it.schema) }
+                .filter { tableRegex == null || tableRegex.matches(it.name) }
+                .filter { types.isEmpty() || it.type.label in types }
+        val probed = if (withFields) probeFields(snapshot.version, listed.filter { it.probed }, session) else emptyMap()
+        return listed
+            .map { table -> probed[table.schema to table.name]?.let { table.copy(fields = it) } ?: table }
             .sortedWith(compareBy({ it.schema }, { it.name }))
     }
 
@@ -179,19 +198,55 @@ class CatalogSource(
 
     suspend fun foreignKeys(session: EdgeSession): List<CatalogForeignKey> = snapshot().foreignKeys
 
-    private suspend fun withProbedFields(
+    /**
+     * The probed columns of [tables] for [session]'s role set, probing those not yet kept — concurrently, at most
+     * [PROBE_CONCURRENCY] at a time. A refused probe is kept as no columns; one the door could not answer is not kept,
+     * and its table is listed without columns this time.
+     */
+    private suspend fun probeFields(
         version: String,
-        table: CatalogTable,
+        tables: List<CatalogTable>,
         session: EdgeSession,
-    ): CatalogTable {
-        val key = "$version|${table.schema}.${table.name}"
-        val fields =
-            probedFields[key] ?: probe
-                .schemaOf("SELECT * FROM ${table.schema}.${table.name}", session)
-                ?.fields
-                ?.map { it.withColumnMetadata(table.schema, table.name, it.type.toString()) }
-                ?.also { probedFields[key] = it }
-        return if (fields == null) table else table.copy(fields = fields)
+    ): Map<Pair<String, String>, List<Field>> {
+        val roleSet = session.roles.sorted().joinToString(",")
+
+        fun keyOf(table: CatalogTable) = "$version|$roleSet|${table.schema}.${table.name}"
+        val slots = Semaphore(PROBE_CONCURRENCY)
+        coroutineScope {
+            tables
+                .filter { probedFields[keyOf(it)] == null }
+                .map { table ->
+                    async {
+                        slots.withPermit {
+                            runCatching { probe.schemaOf("SELECT * FROM ${table.schema}.${table.name}", session) }
+                                .onSuccess { schema ->
+                                    probedFields[keyOf(table)] =
+                                        schema?.fields?.map {
+                                            it.withColumnMetadata(table.schema, table.name, it.type.toString())
+                                        } ?: emptyList()
+                                }.onFailure {
+                                    if (it is CancellationException) throw it
+                                    log.warn(
+                                        "Flight catalog: could not probe {}.{}: {}",
+                                        table.schema,
+                                        table.name,
+                                        it.message,
+                                    )
+                                }
+                        }
+                    }
+                }.awaitAll()
+        }
+        return tables
+            .mapNotNull { table ->
+                probedFields[keyOf(table)]?.takeIf { it.isNotEmpty() }?.let {
+                    (
+                        table.schema to
+                            table.name
+                    ) to
+                        it
+                }
+            }.toMap()
     }
 
     private suspend fun snapshot(): Snapshot =
@@ -215,7 +270,10 @@ class CatalogSource(
 
     private suspend fun load(version: String): Snapshot {
         loads++
-        val objects = listAll(SchemaCode.ER, "entity") + listAll(SchemaCode.DB, "table")
+        // Every kind the catalog lists names packages: a package may hold only queries, or only views.
+        val objects =
+            listAll(SchemaCode.ER, "entity") + listAll(SchemaCode.ER, "query") + listAll(SchemaCode.DB, "table") +
+                listAll(SchemaCode.DB, "view")
         val packages =
             objects
                 .map { it.packageName.ifEmpty { it.qualifiedName.`package` } }
@@ -265,6 +323,9 @@ class CatalogSource(
     companion object {
         private val log = LoggerFactory.getLogger(CatalogSource::class.java)
         private const val PAGE_SIZE = 1000
+
+        /** Saved-query probes one listing runs at once (each is a translate + validate + one-row execute). */
+        const val PROBE_CONCURRENCY = 4
 
         const val ENTITY_SCHEMA = "er.entity"
         const val QUERY_SCHEMA = "obj.query"
@@ -400,7 +461,9 @@ class CatalogSource(
 
         /**
          * Foreign keys from E-R relations that state join pairs: the side whose attribute is its entity's key is
-         * referenced, the other side refers. A pair where neither side is a key states no key and is skipped.
+         * referenced, the other side refers. A pair where neither side is a key states no key and is skipped. Each
+         * relation is its own key, named `<table>_<columns>_fkey` (the relation has no name on the wire): two
+         * relations from one entity to another — role-playing dates — are two keys, not one of two columns.
          */
         internal fun foreignKeysOf(
             model: ModelBundle,
@@ -410,17 +473,23 @@ class CatalogSource(
             return model.relationsList.flatMap { relation ->
                 val from = relation.fromEntity.name
                 val to = relation.toEntity.name
-                relation.joinPairsList.mapIndexedNotNull { i, pair ->
-                    val fromAttr = pair.fromAttr.name.substringAfterLast('.')
-                    val toAttr = pair.toAttr.name.substringAfterLast('.')
-                    when {
-                        toAttr in keys[to].orEmpty() ->
-                            CatalogForeignKey(ENTITY_SCHEMA, to, toAttr, ENTITY_SCHEMA, from, fromAttr, i + 1)
-                        fromAttr in keys[from].orEmpty() ->
-                            CatalogForeignKey(ENTITY_SCHEMA, from, fromAttr, ENTITY_SCHEMA, to, toAttr, i + 1)
-                        else -> null
+                relation.joinPairsList
+                    .mapNotNull { pair ->
+                        val fromAttr = pair.fromAttr.name.substringAfterLast('.')
+                        val toAttr = pair.toAttr.name.substringAfterLast('.')
+                        when {
+                            toAttr in keys[to].orEmpty() ->
+                                CatalogForeignKey(ENTITY_SCHEMA, to, toAttr, ENTITY_SCHEMA, from, fromAttr, 0)
+                            fromAttr in keys[from].orEmpty() ->
+                                CatalogForeignKey(ENTITY_SCHEMA, from, fromAttr, ENTITY_SCHEMA, to, toAttr, 0)
+                            else -> null
+                        }
+                    }.groupBy { it.fkTable to it.pkTable }
+                    .values
+                    .flatMap { pairs ->
+                        val name = "${pairs.first().fkTable}_${pairs.joinToString("_") { it.fkColumn }}_fkey"
+                        pairs.mapIndexed { i, key -> key.copy(keySequence = i + 1, name = name) }
                     }
-                }
             }
         }
 
@@ -555,7 +624,8 @@ class GrpcVelesCatalogClient(
 
 /**
  * The production [SchemaProbe]: the statement's first row through the door, as the caller — so the probe is
- * validated like any statement and a caller who may not read the query learns none of its columns.
+ * validated like any statement, and a caller whose roles may not read the query gets none of its columns
+ * ([CatalogSource] keeps a probe per role set). A refusal is null; a door that does not answer throws.
  */
 class RunnerSchemaProbe(
     private val runner: StatementRunner,
@@ -569,20 +639,13 @@ class RunnerSchemaProbe(
     ): Schema? {
         val request =
             edgeRunRequest(sql, session, UUID.randomUUID().toString(), RowWindow.newBuilder().setLimit(1).build())
-        return runCatching {
-            runner
-                .run(request)
-                .first { batch ->
-                    batch.messagesList.any { it.severity == Severity.ERROR } ||
-                        batch.arrowIpc.size() > 0 ||
-                        batch.isLast
-                }.takeUnless { batch -> batch.messagesList.any { it.severity == Severity.ERROR } }
-                ?.let { reframer.schemaOf(it.arrowIpc.toByteArray()) }
-        }.onFailure { log.warn("Flight edge: schema probe failed for '{}': {}", sql, it.message) }
-            .getOrNull()
-    }
-
-    private companion object {
-        private val log = LoggerFactory.getLogger(RunnerSchemaProbe::class.java)
+        return runner
+            .run(request)
+            .first { batch ->
+                batch.messagesList.any { it.severity == Severity.ERROR } ||
+                    batch.arrowIpc.size() > 0 ||
+                    batch.isLast
+            }.takeUnless { batch -> batch.messagesList.any { it.severity == Severity.ERROR } }
+            ?.let { reframer.schemaOf(it.arrowIpc.toByteArray()) }
     }
 }

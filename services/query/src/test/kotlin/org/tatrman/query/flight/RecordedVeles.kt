@@ -22,8 +22,9 @@ import org.tatrman.plan.v1.SchemaCode
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
- * Veles answering from the hartland catalog BI-0 recorded (`flight/hartland-catalog.txt`): the two `ListObjects`
+ * Veles answering from the hartland catalog BI-0 recorded (`flight/hartland-catalog.txt`): the four `ListObjects`
  * and the one `GetModel` the edge's catalog makes, with call counters. [version] is the model version it serves.
+ * `GetModel` answers the objects of the packages asked for.
  */
 class RecordedVeles(
     var version: String = "01HARTLAND",
@@ -53,6 +54,9 @@ class RecordedVeles(
                     model.tablesList.map {
                         it.objectDescriptor
                     }
+                request.schema == SchemaCode.ER && request.kind == "query" ->
+                    (model.namedQueriesList + model.patternQueriesList).map { it.objectDescriptor }
+                request.schema == SchemaCode.DB && request.kind == "view" -> model.viewsList.map { it.objectDescriptor }
                 else -> emptyList()
             }
         val from = request.page.pageToken.toIntOrNull() ?: 0
@@ -68,7 +72,22 @@ class RecordedVeles(
     override suspend fun getModel(request: GetModelRequest): GetModelResponse {
         modelCalls.incrementAndGet()
         requestedPackages += request.packagesList
-        return GetModelResponse.newBuilder().setModel(model).build()
+        val asked = request.packagesList.toSet()
+
+        fun ObjectDescriptor.asked() = packageName in asked
+        val scoped =
+            model
+                .toBuilder()
+                .clearEntities()
+                .addAllEntities(model.entitiesList.filter { it.objectDescriptor.asked() })
+                .clearNamedQueries()
+                .addAllNamedQueries(model.namedQueriesList.filter { it.objectDescriptor.asked() })
+                .clearTables()
+                .addAllTables(model.tablesList.filter { it.objectDescriptor.asked() })
+                .clearViews()
+                .addAllViews(model.viewsList.filter { it.objectDescriptor.asked() })
+                .build()
+        return GetModelResponse.newBuilder().setModel(scoped).build()
     }
 
     companion object {

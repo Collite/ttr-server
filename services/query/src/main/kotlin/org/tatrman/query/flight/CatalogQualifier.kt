@@ -9,8 +9,9 @@ package org.tatrman.query.flight
  * as the client wrote it — and any other catalog is [Outcome.Mismatch] — `world_mismatch`, refused before `Run`,
  * never run quietly against the connection's own world.
  *
- * A qualifier is recognised by what follows it, the door's schema spellings: `<catalog>.er|db|obj.<namespace>.<name>`
- * (four parts at least, so `alias.db` — a column called `db` — is not one), or a quoted dotted schema,
+ * A qualifier is recognised by what follows it, the door's schema spellings: `<catalog>.er|db|obj.<namespace>.<name>`,
+ * each part quoted or not (`"hartland_cz"."er"."entity"."warehouse"`, as a tool that quotes every identifier writes
+ * it; four parts at least, so `alias.db` — a column called `db` — is not one), or a quoted dotted schema,
  * `<catalog>."er.entity".<name>`. String literals and comments are skipped; nothing else in the statement changes.
  */
 internal object CatalogQualifier {
@@ -58,11 +59,10 @@ internal object CatalogQualifier {
     private fun isCatalogQualified(chain: List<Part>): Boolean {
         if (chain.size < 3) return false
         val second = chain[1]
-        return if (second.quoted) {
-            second.name.contains('.') && second.name.substringBefore('.').lowercase() in SCHEMA_HEADS
-        } else {
-            chain.size >= 4 && second.name.lowercase() in SCHEMA_HEADS
+        if (second.quoted && second.name.contains('.')) {
+            return second.name.substringBefore('.').lowercase() in SCHEMA_HEADS
         }
+        return chain.size >= 4 && second.name.lowercase() in SCHEMA_HEADS
     }
 
     private fun chains(sql: String): List<List<Part>> {
