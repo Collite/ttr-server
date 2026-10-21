@@ -1,7 +1,7 @@
 # Changelog
 
 All notable changes to what this repo **publishes** are recorded here: the
-`ttr-nlp` PyPI wheel, the `org.tatrman:*` Kotlin artifacts cut from
+`ttr-nlp` and `ttr-sqlalchemy` PyPI wheels, the `org.tatrman:*` Kotlin artifacts cut from
 `shared/libs/kotlin`, and the wire contracts in `shared/proto` that deployed
 consumers speak. Internal refactoring is out of scope; a change that a consumer
 outside this repo could notice is in.
@@ -16,6 +16,20 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+- **`ttr-sqlalchemy` — a new PyPI wheel: a DB-API driver and the `tatrman://` SQLAlchemy dialect** (BI-2) over the
+  Flight SQL edge, for Superset, pandas and anything that takes a SQLAlchemy URL. Python ≥ 3.10, SQLAlchemy 1.4 or
+  2.x, pyarrow ≥ 16; no gRPC stubs (it speaks Flight SQL through `pyarrow.flight`). Tag lane
+  `python-sqlalchemy/v<x.y.z>[-RELEASE]`. Guide: `shared/libs/python/ttr-sqlalchemy/README.md`.
+  - `tatrman://<host>[:<port>]/<world>?tls=…`: one URL = one world; `connect_args` `token`, or `user` / `password`
+    (exchanged for a bearer at connect).
+  - Introspection from the edge's catalog only: schemas `er.entity` · `obj.query` · `db.dbo`, entities and bound tables
+    as tables, saved queries as views, Arrow-typed columns, primary keys, foreign keys from relations with join pairs.
+    Every identifier quoted; a dotted schema as two names (`"er"."entity"."warehouse"`).
+  - `:name` parameters are written in as literals (the edge takes no bound parameters); a name with no value is
+    refused `parameter_unbound` before anything is sent.
+  - A result is read whole before its first row, so a stream the edge fails on its receipt (`world_mismatch`) yields
+    no rows. The cursor carries the closing metadata: `correlation_id`, `connection_id`, `top_n_applied`, `notices`.
+  - Refusals keep the edge's code and sentence (`err.code`, `err.message`) under the PEP 249 classes.
 - **query — an Arrow Flight SQL edge for BI tools** (BI-1). Opt-in, port 7308 (`QUERY_FLIGHT_ENABLED`), for the stock
   Flight SQL JDBC driver (DBeaver, IntelliJ), ADBC and the `tatrman://` dialect. Every statement is the door's own
   `Run` with the caller's verified identity. Client guide: `docs/jdbc.md`; operator's: `docs/operations.md` § BI.

@@ -259,6 +259,45 @@ jobs:
         working-directory: shared/libs/python/ttr-morph
         run: uv run python tests/engine/golden/regen.py --check
 
+  # BI-2 (S2.1) — the Python unit gate for `ttr-sqlalchemy` (the DB-API + the
+  # `tatrman://` dialect over the Flight SQL edge): ruff, pytest against the
+  # recorded edge, the same suite again on the floor Superset 6.1.0 runs
+  # (Python 3.10, SQLAlchemy 1.4.54, pyarrow 16), and a real wheel build — it is
+  # a published artifact, like `ttr-nlp`. The live tests skip without
+  # TTR_FLIGHT_URL.
+  ttr-sqlalchemy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: ruff
+        working-directory: shared/libs/python/ttr-sqlalchemy
+        run: uv run ruff check .
+
+      - name: pytest
+        working-directory: shared/libs/python/ttr-sqlalchemy
+        run: uv run pytest -q
+
+      - name: pytest on Superset's floor (Python 3.10, SQLAlchemy 1.4.54, pyarrow 16)
+        working-directory: shared/libs/python/ttr-sqlalchemy
+        run: >-
+          uv run --isolated --python 3.10
+          --with 'sqlalchemy==1.4.54' --with 'pyarrow==16.1.0' --with 'numpy<2'
+          pytest -q
+
+      - name: build the wheel
+        run: uv build --wheel shared/libs/python/ttr-sqlalchemy
+
   # NLS-P3.3 — the Python unit gate for `services/nlp` (ruff + pytest).
   #
   # ⚑ This job did not exist before NLS-P3. `golem-py` and the `ttr-nlp` wheel had

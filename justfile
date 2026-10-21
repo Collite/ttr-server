@@ -21,9 +21,9 @@ image_modules := "veles query translate validate dispatch charon lex-matcher llm
 # The pure-Python wheels publish-python.yml builds (`python-<lane>/v*` tag →
 # PyPI). Kept in lockstep with that workflow's tag map — the wheel-name → tag-
 # prefix mapping is in `publish` itself, since the two differ (`ttr-nlp` ships
-# from the `python-nlp` tag lane). `otel-config` is shared config, not a
+# from the `python-nlp` tag lane, `ttr-sqlalchemy` from `python-sqlalchemy`). `otel-config` is shared config, not a
 # published distribution, and is deliberately absent.
-wheel_modules := "ttr-nlp"
+wheel_modules := "ttr-nlp ttr-sqlalchemy"
 
 # List available recipes
 default:
@@ -163,7 +163,7 @@ test-component:
     ./gradlew componentTest --continue
 
 # ── Python lane (uv + ruff + pytest) — services/nlp, services/golem-py, ───────
-#    workers/worker-polars, shared/libs/python/{ttr-nlp,ttr-morph} ──────────────
+#    workers/worker-polars, shared/libs/python/{ttr-nlp,ttr-morph,ttr-sqlalchemy} ─
 #
 # `ttr-morph` is in these loops but deliberately NOT in `wheel_modules`: it is
 # not published (⚑LMP-D4). Its artifact is the morph/v* snapshot, cut by
@@ -175,7 +175,7 @@ lint-py module="":
     #!/usr/bin/env bash
     set -euo pipefail
     if [ -z "{{module}}" ]; then
-        for d in services/nlp services/golem-py workers/worker-polars shared/libs/python/ttr-nlp shared/libs/python/ttr-morph; do just lint-py "$d"; done
+        for d in services/nlp services/golem-py workers/worker-polars shared/libs/python/ttr-nlp shared/libs/python/ttr-morph shared/libs/python/ttr-sqlalchemy; do just lint-py "$d"; done
         exit 0
     fi
     path=$(just _resolve "{{module}}")
@@ -187,7 +187,7 @@ build-py module="":
     #!/usr/bin/env bash
     set -euo pipefail
     if [ -z "{{module}}" ]; then
-        for d in services/nlp services/golem-py services/morph-studio workers/worker-polars shared/libs/python/ttr-nlp shared/libs/python/ttr-morph; do just build-py "$d"; done
+        for d in services/nlp services/golem-py services/morph-studio workers/worker-polars shared/libs/python/ttr-nlp shared/libs/python/ttr-morph shared/libs/python/ttr-sqlalchemy; do just build-py "$d"; done
         exit 0
     fi
     path=$(just _resolve "{{module}}")
@@ -199,7 +199,7 @@ test-py module="" *args:
     #!/usr/bin/env bash
     set -euo pipefail
     if [ -z "{{module}}" ]; then
-        for d in services/nlp services/golem-py services/morph-studio workers/worker-polars shared/libs/python/ttr-nlp shared/libs/python/ttr-morph; do just test-py "$d" {{args}}; done
+        for d in services/nlp services/golem-py services/morph-studio workers/worker-polars shared/libs/python/ttr-nlp shared/libs/python/ttr-morph shared/libs/python/ttr-sqlalchemy; do just test-py "$d" {{args}}; done
         exit 0
     fi
     path=$(just _resolve "{{module}}")
@@ -730,6 +730,7 @@ publish *args:
         # is `python-nlp`. publish-python.yml owns the mapping; this mirrors it.
         case "$WHEEL_NAME" in
             ttr-nlp) PREFIX=python-nlp ;;
+            ttr-sqlalchemy) PREFIX=python-sqlalchemy ;;
             *) echo "❌ No tag prefix known for wheel '$WHEEL_NAME' — add it here and in publish-python.yml." >&2; exit 1 ;;
         esac
         DESC="the ${WHEEL_NAME} wheel (shared/libs/python/${WHEEL_NAME}) → PyPI"

@@ -3,7 +3,8 @@
 The query service speaks [Arrow Flight SQL](https://arrow.apache.org/docs/format/FlightSql.html) on its
 **Flight SQL edge** (port **7308**, opt-in). Any Flight SQL client reads the model through it — the stock
 Arrow Flight SQL JDBC driver (DBeaver, IntelliJ, any JVM tool), ADBC (`adbc_driver_flightsql` for pandas /
-Polars / DuckDB), and the `tatrman://` SQLAlchemy dialect for Superset. Every statement goes through the same
+Polars / DuckDB), and the `tatrman://` SQLAlchemy dialect for Superset and pandas
+([`ttr-sqlalchemy`](../shared/libs/python/ttr-sqlalchemy/README.md)). Every statement goes through the same
 translate → validate → dispatch path as any other caller's: your roles and row rules apply, nothing bypasses the
 validator.
 

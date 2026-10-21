@@ -1,0 +1,63 @@
+[project]
+name = "ttr-sqlalchemy"
+# The repo keeps 0.0.0 — `publish-python.yml` injects the version from the
+# `python-sqlalchemy/v<x.y.z>-RELEASE` tag at build time (the ttr-nlp pattern).
+version = "0.0.0"
+description = "A DB-API driver and SQLAlchemy dialect (tatrman://) for a Tatrman Server's Arrow Flight SQL edge"
+readme = "README.md"
+# Superset 6.1.0's floor (BI C-13).
+requires-python = ">=3.10"
+license = "Apache-2.0"
+authors = [{ name = "Collite" }]
+keywords = ["sqlalchemy", "dialect", "dbapi", "arrow", "flight-sql", "superset", "ttr"]
+
+# The edge speaks Arrow Flight SQL, and pyarrow carries the Flight client: no
+# gRPC stubs, no native driver beyond pyarrow itself (BI C-13). SQLAlchemy 1.4
+# is the floor because Superset 6.1.0 ships 1.4.54; 2.x is tested too.
+dependencies = [
+    "pyarrow>=16",
+    "sqlalchemy>=1.4,<3",
+]
+
+[project.entry-points."sqlalchemy.dialects"]
+tatrman = "ttr_sqlalchemy.dialect:TatrmanDialect"
+
+[project.urls]
+Homepage = "https://github.com/Collite/ttr-server"
+Source = "https://github.com/Collite/ttr-server/tree/master/shared/libs/python/ttr-sqlalchemy"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/ttr_sqlalchemy"]
+
+[tool.uv]
+package = true
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3.4",
+    "ruff>=0.9.4",
+    # The recorded edge (tests/fixtures/edge.py) decodes the client's commands
+    # with the official FlightSql.proto, compiled at test time — so the
+    # client's hand-written encoding is checked against the real schema.
+    "grpcio-tools>=1.68.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+markers = [
+    "live: against a real Flight SQL edge (needs TTR_FLIGHT_URL; skipped without it)",
+]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 120
+src = ["src", "tests"]
+extend-exclude = ["tests/fixtures/generated"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
