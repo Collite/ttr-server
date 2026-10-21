@@ -46,16 +46,19 @@ on:
       - '!shared/v*'      # shared libs are Maven artifacts, not images
       - '!shared-proto/v*'
       - '!server-libs/v*' # the Maven library publish tag (publish.yml) — not an image
-      # The PyPI wheel tag (publish-python.yml) — not an image either. Without
+      # The PyPI wheel tags (publish-python.yml) — not images either. Without
       # this, every `ttr-nlp` release also started an image build that failed on
       # `could not resolve a buildable path for module 'python-nlp'`, so a
       # successful publish left a red X beside it. It cost nothing and published
       # nothing, which is worse than it sounds: a release lane that always shows
-      # one failure is a release lane whose failures nobody reads.
-      - '!python-nlp/v*'
+      # one failure is a release lane whose failures nobody reads. Every wheel
+      # lane is `python-<lane>/v*` (python-nlp, python-sqlalchemy), so one
+      # pattern covers them all: naming only `python-nlp` let the first
+      # `python-sqlalchemy` tag fail here the same way.
+      - '!python-*/v*'
       # The morphology snapshot tag (publish-morph.yml). It publishes DATA —
       # `cs.morph.snap` and its member files — and there is no module called
-      # "morph" to build. Excluded for the same reason as `python-nlp/v*`: a
+      # "morph" to build. Excluded for the same reason as `python-*/v*`: a
       # release lane that always shows one failure is a release lane whose
       # failures nobody reads.
       - '!morph/v*'

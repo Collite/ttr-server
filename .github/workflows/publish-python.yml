@@ -9,9 +9,15 @@ name: Publish Python (PyPI)
 #   python-nlp/v<x.y.z>[-RELEASE]          ttr-nlp          (shared/libs/python/ttr-nlp)
 #   python-sqlalchemy/v<x.y.z>[-RELEASE]   ttr-sqlalchemy   (shared/libs/python/ttr-sqlalchemy)
 #
+# A new wheel lane keeps the `python-<lane>/v*` shape: release-image.yml skips
+# tags of that shape (`!python-*/v*`), and any other shape would also start an
+# image build that fails.
+#
 # Each distribution needs its own trusted-publisher registration on PyPI (a
 # "pending publisher" before its first upload): project name, this repository,
-# this workflow file and the `pypi` environment.
+# this workflow file and the `pypi` environment. The `pypi` environment's
+# deployment rules must also allow the lane's tags (Settings → Environments →
+# pypi → a tag rule `python-<lane>/v*`), or GitHub refuses the publish job.
 #
 # ⚑ NAME COUPLING — the trusted-publisher registration on PyPI names three
 # things that MUST keep matching this file (P-BP T1/T2, Bora):
