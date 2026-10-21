@@ -28,6 +28,11 @@ import org.tatrman.query.client.TranslatorClient
 import org.tatrman.query.client.TranslatorDetectClient
 import org.tatrman.query.client.TranslatorTranslateClient
 import org.tatrman.query.client.ValidatorClient
+import org.tatrman.query.flight.FlightConfig
+import org.tatrman.query.flight.FlightEdge
+import org.tatrman.query.flight.GrpcVelesCatalogClient
+import org.tatrman.query.flight.LoopbackStatementRunner
+import org.tatrman.query.flight.SessionResolver
 import org.tatrman.query.grpc.QueryServiceImpl
 import org.tatrman.query.retry.RetryPolicy
 import shared.ktor.KtorConfigFactory
@@ -126,9 +131,36 @@ fun Application.module(config: Config) {
             .apply { if (reflectionEnabled) addService(ProtoReflectionServiceV1.newInstance()) }
             .build()
 
+    // BI (contracts C-1) — the Flight SQL edge, a client of this door over loopback. Never in fixture mode: it
+    // reads its catalog from Veles, which the fixture clients do not stand in for.
+    val flightConfig = FlightConfig.fromConfig(config)
+    if (flightConfig.enabled && useFixture) log.warn("Flight edge enabled but query.use-fixture = true — not started.")
+    val flightEdge =
+        if (flightConfig.enabled && !useFixture) {
+            val runner = LoopbackStatementRunner(flightConfig.loopbackHost, flightConfig.loopbackPort, maxMessageSize)
+            val veles =
+                GrpcVelesCatalogClient(
+                    host = config.getString("veles.host"),
+                    port = config.getInt("veles.port"),
+                    deadlineSeconds = config.getLong("veles.deadline-seconds"),
+                )
+            FlightEdge.create(
+                config = flightConfig,
+                runner = runner,
+                veles = veles,
+                sessions = SessionResolver { null },
+                authenticator = FlightEdge.REFUSE_ALL,
+                openTelemetry = openTelemetry,
+                closeables = listOf(runner, veles),
+            )
+        } else {
+            null
+        }
+
     launch {
         grpcServer.start()
         log.info("Query gRPC server started on port {} (reflection={})", grpcPort, reflectionEnabled)
+        flightEdge?.start()
         grpcServer.awaitTermination()
     }
 
@@ -152,6 +184,7 @@ fun Application.module(config: Config) {
                     put("service", "query")
                     put("grpc_port", grpcPort)
                     put("active_runs", service.activeRunCount)
+                    put("flight", flightEdge?.status() ?: FlightEdge.DISABLED_STATUS)
                     putJsonObject("cache") {
                         put("entries", stats.entries)
                         put("max_entries", stats.maxEntries)
@@ -181,6 +214,7 @@ fun Application.module(config: Config) {
 
     monitor.subscribe(ApplicationStopping) {
         log.info("Shutting down Query")
+        flightEdge?.close()
         grpcServer.shutdown()
         if (translatorClient is AutoCloseable) runCatching { translatorClient.close() }
         if (validatorClient is AutoCloseable) runCatching { validatorClient.close() }

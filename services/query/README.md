@@ -20,8 +20,39 @@ Proto `org.tatrman.query.v1` / `QueryService` (`com.tatrman.runner.v1` is gone):
 - **Translate** — passthrough to translate's Translate (any-to-any conversion).
 - **GetStatus** — readiness + cache stats.
 
-Ports: HTTP 7305 (health/ready/status) · gRPC 7306. Downstreams via config
+Ports: HTTP 7305 (health/ready/status) · gRPC 7306 · Flight SQL 7308 (opt-in, see below). Downstreams via config
 (`translate`/`validate`/`dispatch` host+port, env-overridable).
+
+## Flight SQL edge (BI)
+
+An Arrow Flight SQL server inside the same pod, so JDBC (DBeaver, IntelliJ), ADBC (pandas) and the
+`tatrman://` Superset dialect read the model through the door — `org.tatrman.query.flight`. It is a
+**client of the door**, not a second query path: every statement is this service's own `Run`, over a
+loopback channel to the gRPC port, carrying the caller's identity.
+
+- **Port 7308**, opt-in (`QUERY_FLIGHT_ENABLED=true`), bound to `QUERY_FLIGHT_BIND` (default
+  `127.0.0.1`; a deployment behind the gateway sets `0.0.0.0`). The door's own gRPC 7306 has no
+  authentication; the edge is the BI entry that verifies callers.
+- **Catalog** from Veles (two `ListObjects` + one `GetModel`, cached by model version for
+  `QUERY_FLIGHT_CATALOG_TTL_SECONDS`): catalog = the connection's world; schemas `er.entity`
+  (entities), `obj.query` (parameterless saved logical queries, columns by a one-row probe as the
+  caller) and `db.dbo` (bound tables and views). Primary keys from the model; foreign keys only from
+  E-R relations that state join pairs.
+- **Statements execute eagerly**: `GetFlightInfo` / `CreatePreparedStatement` start the run and read
+  it to its first batch so the schema is real (the JDBC driver prepares even a plain `executeQuery`).
+  The started run waits under its ticket for one `DoGet`, and is cancelled after
+  `QUERY_FLIGHT_PENDING_TTL_SECONDS` (60) unread.
+- **Results**: each worker batch re-framed (IPC → vectors, no value conversion). The last batch
+  carries JSON app metadata — `correlation_id`, `connection_id`, `rows_total`, `top_n_applied`,
+  `notices`. An error batch becomes a Flight error `"<code>: <one sentence>"`, the code also in the
+  `x-ttr-code` error metadata.
+- **Read-only**: no DML, no transactions, no `DoPut`, no bound parameters.
+- Telemetry: span `bi.statement` (`user_id`, `world`, `client`, `rows`, `status`); metrics
+  `bi_statements_total{client,status}`, `bi_statement_seconds`. `/status` has a `flight` block.
+- JVM: Arrow needs `--add-opens=java.base/java.nio=ALL-UNNAMED` (set in `build.gradle.kts` for
+  run, test and the Jib image).
+
+Client recipes: [`docs/jdbc.md`](../../docs/jdbc.md).
 
 ## Plan cache
 

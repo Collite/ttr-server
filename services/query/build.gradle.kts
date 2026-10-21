@@ -18,8 +18,20 @@ kotlin {
     jvmToolchain(21)
 }
 
+// BI (C-1) — Arrow (the Flight SQL edge's vectors and allocator) needs module access on JDK 16+.
+val arrowJvmFlags =
+    listOf(
+        "--add-opens=java.base/java.nio=ALL-UNNAMED",
+        "--add-opens=java.base/sun.nio.ch=ALL-UNNAMED",
+    )
+
+application {
+    applicationDefaultJvmArgs = arrowJvmFlags
+}
+
 tasks.test {
     useJUnitPlatform()
+    jvmArgs(arrowJvmFlags)
 }
 
 val osArch = System.getProperty("os.arch").lowercase()
@@ -52,7 +64,8 @@ jib {
     }
     container {
         mainClass = "org.tatrman.query.ApplicationKt"
-        ports = listOf("7305", "7306")
+        ports = listOf("7305", "7306", "7308")
+        jvmFlags = arrowJvmFlags
     }
     dockerClient {
         executable = "docker"
@@ -96,6 +109,16 @@ dependencies {
 
     implementation(libs.caffeine)
 
+    // BI-P1 — the Arrow Flight SQL edge (contracts C-1…C-8). flight-core's own grpc-netty is built on an
+    // older grpc than the repo's; pinning it here keeps grpc-core and its netty transport in lockstep.
+    implementation(libs.arrow.flight.core)
+    implementation(libs.arrow.flight.sql)
+    implementation(libs.arrow.vector)
+    implementation(libs.arrow.memory.netty)
+    implementation(libs.grpc.netty)
+
     testImplementation(libs.bundles.kotest)
     testImplementation(libs.mockk)
+    // The stock Flight SQL JDBC driver (shaded) — the round-trip test makes DBeaver's metadata calls with it.
+    testImplementation(libs.arrow.flight.sql.jdbc.driver)
 }

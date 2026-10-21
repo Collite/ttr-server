@@ -226,6 +226,7 @@ grpc-stub                            = { module = "io.grpc:grpc-stub",          
 grpc-protobuf                        = { module = "io.grpc:grpc-protobuf",                                  version.ref = "grpc" }
 grpc-kotlin-stub                     = { module = "io.grpc:grpc-kotlin-stub",                               version.ref = "grpc-kotlin" }
 grpc-netty-shaded                    = { module = "io.grpc:grpc-netty-shaded",                              version.ref = "grpc" }
+grpc-netty                           = { module = "io.grpc:grpc-netty",                                     version.ref = "grpc" }
 grpc-services                        = { module = "io.grpc:grpc-services",                                  version.ref = "grpc" }
 grpc-inprocess                        = { module = "io.grpc:grpc-inprocess",                                version.ref = "grpc" }
 
@@ -345,6 +346,13 @@ pgvector                            = { module = "com.pgvector:pgvector",       
 # adds `arrow-jdbc` + the ADBC drivers when the spike gate runs.
 arrow-vector                        = { module = "org.apache.arrow:arrow-vector",                           version.ref = "arrow-java" }
 arrow-memory-netty                  = { module = "org.apache.arrow:arrow-memory-netty",                     version.ref = "arrow-java" }
+# BI-P1 — the query service's Arrow Flight SQL edge (BI contracts C-1). `flight-core` brings an UNSHADED
+# `grpc-netty` built on grpc 1.71; services/query forces it to the repo's grpc (`grpc-netty`, above) so
+# grpc-core and its transport agree. `flight-sql-jdbc-driver` is the stock (shaded) JDBC driver — test scope
+# only, for the round-trip test a DBeaver user's calls are modelled on.
+arrow-flight-core                   = { module = "org.apache.arrow:flight-core",                            version.ref = "arrow-java" }
+arrow-flight-sql                    = { module = "org.apache.arrow:flight-sql",                             version.ref = "arrow-java" }
+arrow-flight-sql-jdbc-driver        = { module = "org.apache.arrow:flight-sql-jdbc-driver",                 version.ref = "arrow-java" }
 
 # AWS SDK v2 S3 client — Charon's SeaweedEndpoint (P1 Stage 1.2) talks to
 # SeaweedFS S3 gateway at `data-seaweedfs:8333` (architecture §2). SeaweedFS is
