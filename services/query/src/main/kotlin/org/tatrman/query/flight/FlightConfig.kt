@@ -20,7 +20,10 @@ data class FlightConfig(
     val bind: String,
     val loopbackHost: String,
     val loopbackPort: Int,
-    /** A started statement nobody fetched is cancelled after this long. */
+    /**
+     * How long a started statement waits for its `DoGet` after its `FlightInfo` went out; then it is cancelled. The
+     * time its first batch took is not counted.
+     */
     val pendingTtlSeconds: Long = 60,
     /** How long a catalog snapshot is trusted before Veles is asked for its model version again. */
     val catalogTtlSeconds: Long = 30,

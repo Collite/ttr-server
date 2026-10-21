@@ -11,6 +11,9 @@ import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.string.shouldStartWith
+import kotlinx.coroutines.flow.asFlow
+import kotlinx.coroutines.flow.emitAll
+import kotlinx.coroutines.flow.flow
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.boolean
 import kotlinx.serialization.json.jsonArray
@@ -32,6 +35,7 @@ import org.tatrman.query.flight.FlightTestKit.RunningEdge
 import org.tatrman.query.flight.FlightTestKit.ScriptedDoor
 import org.tatrman.query.flight.FlightTestKit.readAll
 import org.tatrman.translate.v1.Language
+import java.util.concurrent.atomic.AtomicLong
 
 class TtrFlightSqlProducerSpec :
     StringSpec({
@@ -374,6 +378,40 @@ class TtrFlightSqlProducerSpec :
                 edge.sql.execute("SELECT * FROM er.entity.warehouse")
                 val deadline = System.currentTimeMillis() + 20_000
                 while (edge.outcomes.isEmpty() && System.currentTimeMillis() < deadline) Thread.sleep(100)
+                edge.outcomes.single().status shouldBe StatementOutcome.Status.EXPIRED
+            }
+        }
+
+        "the unread-statement TTL counts from FlightInfo, not from the statement's start" {
+            // A first batch that takes 5 s: the clock moves while the door works. TTL 1 s.
+            val clock = AtomicLong(0)
+            val slow =
+                StatementRunner {
+                    flow {
+                        clock.set(5_000_000_000)
+                        emitAll(twoBatchesAndTail().asFlow())
+                    }
+                }
+            val config = FlightTestKit.testConfig().copy(pendingTtlSeconds = 1)
+            RunningEdge(slow, config = config, nanoClock = clock::get).use { edge ->
+                val info = edge.sql.execute("SELECT * FROM db.dbo.inventory")
+                clock.set(5_500_000_000)
+                edge.producer.sweep()
+                // 0.5 s after its FlightInfo, 5.5 s after it started: still there.
+                edge.sql
+                    .getStream(info.endpoints[0].ticket)
+                    .use { it.readAll() }
+                    .rows shouldHaveSize 5
+            }
+            clock.set(0)
+            RunningEdge(slow, config = config, nanoClock = clock::get).use { edge ->
+                edge.sql.execute("SELECT * FROM db.dbo.inventory")
+                clock.set(5_500_000_000)
+                edge.producer.sweep()
+                edge.outcomes shouldHaveSize 0
+                // …and an unread one still expires 1 s after its FlightInfo.
+                clock.set(6_100_000_000)
+                edge.producer.sweep()
                 edge.outcomes.single().status shouldBe StatementOutcome.Status.EXPIRED
             }
         }

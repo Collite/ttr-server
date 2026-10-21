@@ -565,10 +565,11 @@ proto-baseline:
 # file:// subcharts over the tatrman-service library. `just charts` is the CI gate;
 # scripts/helm-deps.sh vendors the (gitignored) subchart deps offline.
 
-# Lint the umbrella + verify golden templates are current (the `helm` CI gate).
+# Lint the umbrella + verify golden templates are current + the render guards refuse (the `helm` CI gate).
 charts:
     helm lint helm/tatrman-server
     scripts/helm-golden.sh --check
+    scripts/helm-guards.sh
 
 # Regenerate the golden template output (after an intended chart change; review the diff).
 charts-golden:

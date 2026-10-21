@@ -505,6 +505,9 @@ jobs:
         run: helm lint helm/tatrman-server
       - name: golden templates (drift check)
         run: scripts/helm-golden.sh --check
+      # Values a chart must refuse to render (the query chart's single-replica Flight edge).
+      - name: render guards
+        run: scripts/helm-guards.sh
 
   # SV-P4·S2·T7 — the kind install gate. Proves the umbrella actually INSTALLS and a
   # light subset reaches Ready (not just templates). Heavy, so it does NOT run on every

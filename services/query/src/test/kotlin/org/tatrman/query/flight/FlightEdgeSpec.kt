@@ -6,6 +6,7 @@ import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
+import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.string.shouldStartWith
 import kotlinx.serialization.json.boolean
 import kotlinx.serialization.json.int
@@ -114,6 +115,42 @@ class FlightEdgeSpec :
                     e.status().code() shouldBe FlightStatusCode.UNAVAILABLE
                 }
             }
+        }
+
+        "C-1 — an enabled edge that cannot listen fails its start, naming the address" {
+            val door = ScriptedDoor { listOf(FlightTestKit.tail(0)) }
+            RunningEdge(door).use { first ->
+                val taken = FlightTestKit.testConfig().copy(port = first.edge.port)
+                val second =
+                    FlightEdge.create(
+                        config = taken,
+                        runner = door,
+                        veles = FlightTestKit.NoVeles,
+                        identity = IdentityWorldMiddleware.Factory(FlightAuthenticator(AuthTestKit.verifier)),
+                    )
+                val e = shouldThrow<IllegalStateException> { second.start() }
+                e.message shouldContain "127.0.0.1:${first.edge.port}"
+                second.running shouldBe false
+                second.close()
+            }
+        }
+
+        "C-1 — /ready is not ready while an enabled edge is not running" {
+            val door = ScriptedDoor { listOf(FlightTestKit.tail(0)) }
+            FlightEdge.ready(doorReady = true, edge = null) shouldBe true
+            FlightEdge.ready(doorReady = false, edge = null) shouldBe false
+            val stopped =
+                FlightEdge.create(
+                    config = FlightTestKit.testConfig(),
+                    runner = door,
+                    veles = FlightTestKit.NoVeles,
+                    identity = IdentityWorldMiddleware.Factory(FlightAuthenticator(AuthTestKit.verifier)),
+                )
+            FlightEdge.ready(doorReady = true, edge = stopped) shouldBe false
+            stopped.start()
+            FlightEdge.ready(doorReady = true, edge = stopped) shouldBe true
+            stopped.close()
+            FlightEdge.ready(doorReady = true, edge = stopped) shouldBe false
         }
 
         "/status says the edge is off when it is not configured" {

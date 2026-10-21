@@ -1,1 +1,6 @@
+{{- /* BI (C-1) — the Flight edge keeps a statement's ticket and prepared handles in the pod that started it, so a
+       second replica behind the route would answer another pod's DoGet with NOT_FOUND. */ -}}
+{{- if and .Values.flight.enabled (gt (int .Values.replicaCount) 1) -}}
+{{- fail "query: the Flight edge is single-replica: a statement's ticket lives in the pod that started it (flight.enabled needs replicaCount 1)" -}}
+{{- end -}}
 {{ include "tatrman-service.deployment" . }}

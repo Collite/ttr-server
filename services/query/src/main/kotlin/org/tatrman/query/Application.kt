@@ -226,18 +226,25 @@ fun Application.module(config: Config) {
             null
         }
     val flightEdge = flight?.edge
+    // On the application's own thread, before the gRPC server: an enabled edge that cannot listen fails the start
+    // (and the process), as an enabled edge without an issuer does. Its statements reach the door once gRPC is up.
+    try {
+        flightEdge?.start()
+    } catch (e: IllegalStateException) {
+        runCatching { flightEdge?.close() }
+        throw e
+    }
 
     launch {
         grpcServer.start()
         log.info("Query gRPC server started on port {} (reflection={})", grpcPort, reflectionEnabled)
-        flightEdge?.start()
         grpcServer.awaitTermination()
     }
 
     routing {
         get("/health") { call.respond(buildJsonObject { put("status", "UP") }) }
         get("/ready") {
-            val ready = useFixture || (translatorClient is AutoCloseable)
+            val ready = FlightEdge.ready(doorReady = useFixture || (translatorClient is AutoCloseable), flightEdge)
             if (ready) {
                 call.respond(buildJsonObject { put("status", "UP") })
             } else {

@@ -199,6 +199,7 @@ object FlightTestKit {
         identity: IdentityWorldMiddleware.Factory? = null,
         worlds: Worlds = Worlds.NONE,
         listener: StatementListener? = null,
+        nanoClock: () -> Long = System::nanoTime,
     ) : AutoCloseable {
         val allocator: BufferAllocator = RootAllocator()
         val catalog = CatalogSource(veles, RunnerSchemaProbe(door, allocator), ttlSeconds = 30)
@@ -215,6 +216,7 @@ object FlightTestKit {
                         listener?.onStatementDone(it)
                     },
                 worlds = worlds,
+                nanoClock = nanoClock,
             )
         val edge =
             FlightEdge(

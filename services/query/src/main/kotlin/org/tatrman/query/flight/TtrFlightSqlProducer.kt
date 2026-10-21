@@ -97,8 +97,8 @@ import java.util.concurrent.atomic.AtomicReference
  * [sessions] — the edge adds no query path of its own. **Execution is eager:** `GetFlightInfo` and
  * `CreatePreparedStatement` start the statement and read it up to its first data batch, because the Flight SQL
  * JDBC driver prepares even a plain `executeQuery` and a dataset's schema must be real, not guessed (BI-0 memo
- * §4). The started statement waits under its ticket for the `DoGet` that streams it — read once, cancelled after
- * [FlightConfig.pendingTtlSeconds] if nobody comes.
+ * §4). The started statement waits under its ticket for the `DoGet` that streams it — read once, cancelled
+ * [FlightConfig.pendingTtlSeconds] after its `FlightInfo` went out if nobody comes.
  *
  * The stream's closing app metadata (JSON) rides the last data batch: `correlation_id`, `connection_id`,
  * `rows_total`, `top_n_applied` and the door's notices (C-5). An error batch — first or mid-stream — becomes a
@@ -119,6 +119,8 @@ class TtrFlightSqlProducer(
     private val worlds: Worlds = Worlds.NONE,
     openTelemetry: OpenTelemetry = GlobalOpenTelemetry.get(),
     serverVersion: String = TtrFlightSqlProducer::class.java.`package`?.implementationVersion ?: "dev",
+    /** The clock statement ages are read from (tests move it). */
+    private val nanoClock: () -> Long = System::nanoTime,
 ) : NoOpFlightSqlProducer() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val reframer = BatchReframer(allocator)
@@ -198,7 +200,8 @@ class TtrFlightSqlProducer(
             val session = sessionOf(context)
             val execution = begin(request.query, session)
             val handle = UUID.randomUUID().toString()
-            prepared[handle] = Prepared(request.query, session.userId, execution.schema, AtomicReference(execution))
+            prepared[handle] =
+                Prepared(request.query, session.userId, execution.schema, AtomicReference(execution), nanoClock())
             val result =
                 ActionCreatePreparedStatementResult
                     .newBuilder()
@@ -220,7 +223,8 @@ class TtrFlightSqlProducer(
         val session = sessionOf(context)
         val statement = preparedFor(command.preparedStatementHandle, session)
         // The execution `prepare` started is the first one run; every later execute starts afresh.
-        val execution = statement.pending.getAndSet(null) ?: begin(statement.sql, session)
+        val execution =
+            statement.pending.getAndSet(null)?.also { it.readyNanos = nanoClock() } ?: begin(statement.sql, session)
         return flightInfo(execution, descriptor)
     }
 
@@ -520,7 +524,7 @@ class TtrFlightSqlProducer(
         statements.incrementAndGet()
         val correlationId = UUID.randomUUID().toString()
         val span = telemetry.startStatement(session)
-        val startedNanos = System.nanoTime()
+        val startedNanos = nanoClock()
         val runSql =
             when (val qualified = CatalogQualifier.resolve(sql, session.world)) {
                 is CatalogQualifier.Outcome.Run -> qualified.sql
@@ -596,7 +600,11 @@ class TtrFlightSqlProducer(
             job = job,
             span = span,
             startedNanos = startedNanos,
-        ).also { pending[it.id] = it }
+        ).also {
+            // The ticket's wait for its DoGet starts now, however long the first batch took.
+            it.readyNanos = nanoClock()
+            pending[it.id] = it
+        }
     }
 
     private fun flightInfo(
@@ -854,7 +862,7 @@ class TtrFlightSqlProducer(
             rowsStreamed = rows,
             receipt = receipt,
             notices = notices,
-            durationMs = (System.nanoTime() - startedNanos) / 1_000_000,
+            durationMs = (nanoClock() - startedNanos) / 1_000_000,
         )
 
     private fun finish(
@@ -872,16 +880,21 @@ class TtrFlightSqlProducer(
             }
     }
 
-    /** A started statement nobody fetched within the TTL is cancelled, and reported `expired`. */
-    private fun sweep() {
-        val cutoff = System.nanoTime() - TimeUnit.SECONDS.toNanos(config.pendingTtlSeconds)
-        pending.values.filter { it.startedNanos < cutoff }.forEach { execution ->
+    /**
+     * A started statement nobody fetched within the TTL of its `FlightInfo` is cancelled, and reported `expired`.
+     * The TTL counts from when the ticket went out, not from the statement's start: a slow first batch is not the
+     * client's wait.
+     */
+    internal fun sweep() {
+        val now = nanoClock()
+        val cutoff = now - TimeUnit.SECONDS.toNanos(config.pendingTtlSeconds)
+        pending.values.filter { it.readyNanos < cutoff }.forEach { execution ->
             if (pending.remove(execution.id, execution)) {
                 execution.abandon(StatementOutcome.Status.EXPIRED, "expired_unread")
                 prepared.values.forEach { it.pending.compareAndSet(execution, null) }
             }
         }
-        val idleCutoff = System.nanoTime() - TimeUnit.SECONDS.toNanos(PREPARED_IDLE_SECONDS)
+        val idleCutoff = now - TimeUnit.SECONDS.toNanos(PREPARED_IDLE_SECONDS)
         prepared.entries.removeIf { it.value.lastUsedNanos < idleCutoff }
     }
 
@@ -922,7 +935,7 @@ class TtrFlightSqlProducer(
                     "this prepared statement belongs to another caller",
                 ).toRuntimeException()
         }
-        statement.lastUsedNanos = System.nanoTime()
+        statement.lastUsedNanos = nanoClock()
         return statement
     }
 
@@ -1011,16 +1024,18 @@ class TtrFlightSqlProducer(
         val job: Job,
         val span: Span,
         val startedNanos: Long,
-    )
+    ) {
+        /** When its ticket went out (its `FlightInfo`, or a prepared statement's execute): the TTL counts from here. */
+        @Volatile var readyNanos: Long = startedNanos
+    }
 
     private class Prepared(
         val sql: String,
         val userId: String,
         val schema: Schema,
         val pending: AtomicReference<Execution?>,
-    ) {
-        @Volatile var lastUsedNanos: Long = System.nanoTime()
-    }
+        @Volatile var lastUsedNanos: Long,
+    )
 
     /**
      * An ERROR the door sent in-band (its error batch), as `"<code>: <message>"`, with the statement position it

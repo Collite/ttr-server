@@ -13,6 +13,7 @@ import org.apache.arrow.memory.BufferAllocator
 import org.apache.arrow.memory.RootAllocator
 import org.slf4j.LoggerFactory
 import org.tatrman.query.world.Worlds
+import java.io.IOException
 import java.util.concurrent.TimeUnit
 
 /** A server middleware the edge installs, with the key its producer reads it back by. */
@@ -42,13 +43,26 @@ class FlightEdge(
 ) : AutoCloseable {
     @Volatile private var server: FlightServer? = null
 
+    /**
+     * Binds and starts the listener. A listener that cannot bind (the port taken, an address the host does not have)
+     * fails here, naming the address: the query service does not start without the edge it was configured with.
+     */
     fun start(): FlightEdge {
-        server =
+        val built =
             FlightServer
                 .builder(allocator, Location.forGrpcInsecure(config.bind, config.port), producer)
                 .apply { middleware.forEach { it.install(this) } }
                 .build()
-                .start()
+        try {
+            built.start()
+        } catch (e: IOException) {
+            runCatching { built.close() }
+            throw IllegalStateException(
+                "Flight SQL edge could not listen on ${config.bind}:${config.port}: ${e.message ?: e.javaClass.simpleName}",
+                e,
+            )
+        }
+        server = built
         log.info("Flight SQL edge started on {}:{}", config.bind, port)
         return this
     }
@@ -86,6 +100,12 @@ class FlightEdge(
 
     companion object {
         private val log = LoggerFactory.getLogger(FlightEdge::class.java)
+
+        /** `/ready`: the door is ready, and an enabled edge ([edge] non-null) is listening (C-1). */
+        fun ready(
+            doorReady: Boolean,
+            edge: FlightEdge?,
+        ): Boolean = doorReady && (edge?.running ?: true)
 
         /** `/status`'s `flight` block when the edge is not configured. */
         val DISABLED_STATUS: JsonObject = buildJsonObject { put("enabled", false) }

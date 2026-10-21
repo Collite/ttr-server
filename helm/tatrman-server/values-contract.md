@@ -225,7 +225,7 @@ Receipts: the service migrates `bi_receipts` (schema `query`) itself at first us
 
 | Key | Type | Default | Notes |
 |---|---|---|---|
-| `query.flight.enabled` | bool | `false` | The edge on 7308. |
+| `query.flight.enabled` | bool | `false` | The edge on 7308. **Single-replica:** a statement's ticket lives in the pod that started it, so the chart refuses it with `query.replicaCount` above 1. |
 | `query.flight.{port,bind}` | | `7308` / `0.0.0.0` | Behind the gateway; the service's own default bind (no chart) is `127.0.0.1`. |
 | `query.flight.auth.issuer` | string | `""` | **Required when enabled.** Bearers are verified RS256 against the realm's JWKS, `iss` = this. |
 | `query.flight.auth.{jwksUri,tokenUrl}` | string | the issuer's Keycloak endpoints | `…/protocol/openid-connect/certs` and `…/token`. |

@@ -113,6 +113,12 @@ and an edge switched on without an issuer does not start.
 | `QUERY_FLIGHT_KC_CLIENT` (`auth.passwordClient`) | `jdbc` | The Keycloak client for password login (direct-access grants on); empty = bearer tokens only. |
 
 `/status` on the query HTTP port has a `flight` block (running, port, bind, statements, receipts).
+An enabled edge that cannot listen (the port taken, a bind address the pod does not have) stops
+the service from starting, and `/ready` is not ready while an enabled edge is not running.
+
+**The Flight edge is single-replica:** a statement's ticket lives in the pod that started it, so
+a second replica behind the route would answer another pod's read with `NOT_FOUND`. The chart
+refuses `flight.enabled` with `replicaCount` above 1.
 
 ### Worlds — `QUERY_WORLDS` (Helm `query.worlds`)
 
