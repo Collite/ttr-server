@@ -76,6 +76,37 @@ class PostgresReceiptComponentSpec :
             }
         }
 
+        "BI (C-10) — row_limit is exact on a real server: 2 rows of 3, in one batch of a hundred" {
+            Containers.postgres().use { pg ->
+                pg.start()
+                val tenant = UUID.randomUUID()
+                PostgresPgFixture.connect(pg.jdbcUrl, pg.username, pg.password).use { su ->
+                    PostgresPgFixture.provision(su)
+                    PostgresPgFixture.insert(su, tenant, 1001L, "1.0000", "a")
+                    PostgresPgFixture.insert(su, tenant, 1002L, "2.0000", "b")
+                    PostgresPgFixture.insert(su, tenant, 1003L, "3.0000", "c")
+                }
+                val pool = PostgresComponentSupport.pool(pg.jdbcUrl, pg.databaseName)
+                val batches =
+                    try {
+                        PostgresComponentSupport.execute(
+                            pool,
+                            tenant,
+                            org.tatrman.worker.v1.ExecutionOptions
+                                .newBuilder()
+                                .setRowLimit(2)
+                                .setBatchSizeRows(100)
+                                .build(),
+                        )
+                    } finally {
+                        pool.close()
+                    }
+                batches.sumOf { it.batchRowCount } shouldBe 2L
+                PostgresComponentSupport.decode(batches).size shouldBe 2
+                batches.last().receipt.rowsTotal shouldBe 2L
+            }
+        }
+
         "a connection without the tenant flag reports RLS_NOT_REQUIRED" {
             Containers.postgres().use { pg ->
                 pg.start()

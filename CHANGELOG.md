@@ -16,6 +16,36 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+- **query — an Arrow Flight SQL edge for BI tools** (BI-1). Opt-in, port 7308 (`QUERY_FLIGHT_ENABLED`), for the stock
+  Flight SQL JDBC driver (DBeaver, IntelliJ), ADBC and the `tatrman://` dialect. Every statement is the door's own
+  `Run` with the caller's verified identity. Client guide: `docs/jdbc.md`; operator's: `docs/operations.md` § BI.
+  - **Identity:** a realm bearer (verified as query-mcp verifies one), or a user name and password the edge exchanges
+    for one (Keycloak's direct-access grant, client `jdbc`). No anonymous mode; an enabled edge needs
+    `QUERY_FLIGHT_AUTH_ISSUER`.
+  - **Worlds:** `RunRequest.world` / `RunSavedQueryRequest.world` (field 8, additive) pick the connection through
+    `QUERY_WORLDS` (`world=connection_id,…`); an unknown world is refused `unknown_world`. The edge reads the world
+    from the `world` property (or the JDBC `catalog`), and refuses a statement naming another catalog
+    (`world_mismatch`).
+  - **Receipts:** one `bi_receipts` row per statement (schema `query`, created on first use; best effort), read with
+    `GET /receipts` by `query-platform-admin`.
+  - **Chart:** `query.flight.*`, `query.worlds`, and the `tatrman-service` library's `ports.extra` (default renders
+    unchanged).
+- **The door's small contract drift, fixed** (BI-1, C-10/C-11):
+  - **query — `parameter_unbound` is emitted.** `Run` (and so `RunSavedQuery`) refuses a parameter the plan reads
+    with no value, before dispatch; it used to bind NULL and answer zero rows. An explicit NULL (`is_null`) is a
+    value. `Compile` still reports such a parameter in `required_parameters`. The proto now says the SQL spelling is
+    `{name}`.
+  - **workers — `ExecutionOptions.row_limit` is exact** (Postgres, MSSQL, Polars). It was checked per batch, so a
+    limit below the batch size let the whole batch through.
+  - **validate — `VALIDATE_MAX_TOP_N_BY_ROLE`** (`role:rows,…`) raises the row ceiling for callers holding a role;
+    the default stays everyone's. A malformed entry fails the start.
+  - **wire — `ResultBatch.notices`** (field 9, `Notice{code, requested, applied}`): query puts `top_n_applied` there as
+    well as in `messages` when the cap cut the answer.
+  - **translate — readable refusals.** Every refusal is one line without Calcite's exception class, position prose
+    or repeats (`Object 'warehouse' not found within 'er' — did you mean: …`); the position moves to
+    **`ResponseMessage.line` / `column`** (fields 5/6, additive), which query keeps on `translator_rejected`. "Did
+    you mean: ?" with nothing to suggest is gone.
+
 - **translate — a bare `JOIN` that stays a Cartesian product is refused** (#232, part 2). On `ttr-translator` /
   `ttr-plan-proto` **0.12.6**, translate sets its `refuseUnconditionedBareJoins` on `ParseToRelNode`, `Translate` and
   `Explain`. (0.12.5 must not be run with the option: it turned a WHERE filter reading both sides of an FK-only bare

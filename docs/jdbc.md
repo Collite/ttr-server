@@ -7,9 +7,6 @@ Polars / DuckDB), and the `tatrman://` SQLAlchemy dialect for Superset. Every st
 translate → validate → dispatch path as any other caller's: your roles and row rules apply, nothing bypasses the
 validator.
 
-> This page is being completed alongside the edge. Sections marked *(pending)* describe behaviour that is not
-> available yet.
-
 ## What you see
 
 | Flight SQL / JDBC | Tatrman |
@@ -31,11 +28,21 @@ The edge is **read-only**: no DML, no transactions, no bound parameters (`?`), n
 JDBC URL:
 
 ```
-jdbc:arrow-flight-sql://<host>:<port>/?useEncryption=<true|false>
+jdbc:arrow-flight-sql://<host>:<port>/?useEncryption=<true|false>&world=<world>
 ```
 
-Behind the cluster gateway the edge is TLS-terminated at `flight.<cluster host>:443` (`useEncryption=true`); a
-port-forward to the pod is plaintext on 7308 (`useEncryption=false`).
+Behind the cluster gateway the edge is TLS-terminated at `flight.<cluster host>:443` (`useEncryption=true`, the
+driver's default); a port-forward to the pod is plaintext on 7308 (`useEncryption=false`):
+
+```
+kubectl -n <namespace> port-forward deploy/query 7308:7308
+jdbc:arrow-flight-sql://localhost:7308/?useEncryption=false&world=hartland_us
+```
+
+The driver is the stock [Arrow Flight SQL JDBC driver](https://arrow.apache.org/java/current/flight_sql_jdbc_driver.html)
+(`org.apache.arrow:flight-sql-jdbc-driver`, tested with 18.3.0). On JDK 17+ the JVM that loads it needs
+`--add-opens=java.base/java.nio=ALL-UNNAMED`. A URL property the driver does not know travels as a gRPC header;
+that is how `world` reaches the edge.
 
 ### Authentication
 
@@ -71,15 +78,58 @@ fails the connect with `unknown_world: World '<x>' is not served here; the world
 deployment's default connection answers and no catalog is listed.
 
 A statement may qualify a table with the connection's own catalog (`hartland_us.er.entity.warehouse`, or
-`"hartland_us"."er.entity"."warehouse"`); the qualifier is dropped before the statement runs. Naming **another**
+`"hartland_us"."er.entity"."warehouse"`); the qualifier is ignored (blanked out, so an error's line and column
+still point into your text). Naming **another**
 catalog is refused before anything runs: `world_mismatch: the statement reads catalog 'hartland_cz', but this
 connection's world is 'hartland_us'.` The edge also checks the answer: if the door reports that it ran a statement
 on a connection other than the world's, the read fails with `world_mismatch` instead of returning those rows as the
 world's.
 
-### DBeaver / IntelliJ *(pending)*
+### DBeaver / IntelliJ
 
-### pandas over ADBC *(pending)*
+Both take the driver as a custom JDBC driver.
+
+1. Download `flight-sql-jdbc-driver-18.3.0.jar` from Maven Central (`org.apache.arrow:flight-sql-jdbc-driver`).
+2. **DBeaver:** *Database → Driver Manager → New*. Class name `org.apache.arrow.driver.jdbc.ArrowFlightJdbcDriver`,
+   URL template `jdbc:arrow-flight-sql://{host}:{port}/`, default port `443`; add the jar under *Libraries*.
+   **IntelliJ / DataGrip:** *Database → + → Driver*, the same class and jar.
+3. The JVM flag: in DBeaver add `--add-opens=java.base/java.nio=ALL-UNNAMED` on its own line after `-vmargs` in
+   `dbeaver.ini`; in IntelliJ add it to the data source's *Advanced → VM options*.
+4. New connection with that driver: host `flight.<cluster host>`, port `443`; your realm user name and password
+   in the login fields. Under *Driver properties* add `world` = `hartland_us` (or `hartland_cz`), and
+   `useEncryption` = `false` for a port-forward.
+5. *Test connection*. The navigator shows one catalog (the world) with the schemas `er.entity`, `obj.query` and
+   `db.dbo`; open a table to read its rows.
+
+One connection per world: to read the other world, create a second connection. A tool that browses with
+catalog-qualified names (`hartland_us."er.entity".warehouse`) works, since the qualifier is the connection's own.
+
+### pandas over ADBC
+
+[`adbc_driver_flightsql`](https://arrow.apache.org/adbc/current/driver/flight_sql.html) (Python, `pip install
+adbc-driver-flightsql pyarrow pandas`). The world is a call header; credentials are a bearer token or a user name
+and password:
+
+```python
+import adbc_driver_flightsql.dbapi as flightsql
+from adbc_driver_flightsql import DatabaseOptions
+
+with flightsql.connect(
+    "grpc+tls://flight.<cluster host>:443",          # grpc://localhost:7308 for a port-forward
+    db_kwargs={
+        "username": "marketa",
+        "password": "…",                              # or: DatabaseOptions.AUTHORIZATION_HEADER.value: f"Bearer {token}"
+        f"{DatabaseOptions.RPC_CALL_HEADER_PREFIX.value}world": "hartland_cz",
+    },
+) as conn, conn.cursor() as cur:
+    cur.execute(
+        "SELECT warehouse.warehouse_name AS dc, SUM(channel_sales.ext_sales_price) AS revenue "
+        "FROM er.entity.channel_sales JOIN er.entity.warehouse GROUP BY warehouse.warehouse_name"
+    )
+    df = cur.fetch_df()
+```
+
+Receipts record the client as `adbc`, from the driver's user agent.
 
 ## Results
 
@@ -87,11 +137,21 @@ world's.
 - The **last batch carries app metadata** (JSON): `correlation_id` (the id to quote when asking an operator
   about a statement), `connection_id` (the connection that actually ran it), `rows_total`, `top_n_applied` and
   the door's `notices`. The stock JDBC driver does not surface app metadata; ADBC and `pyarrow.flight` can read it.
-- **Row caps.** The validator caps answers (`top_n_applied`). A capped answer says so in the closing metadata —
-  a full page with `top_n_applied: true` means "the estate's ceiling", not "the end of the data".
+- **Row caps.** The validator caps every answer. A statement without a `LIMIT` gets the deployment's default
+  (`VALIDATE_DEFAULT_TOP_N`, e.g. 200); a `LIMIT` is granted up to the ceiling (`VALIDATE_MAX_TOP_N`), which a
+  role can raise (`VALIDATE_MAX_TOP_N_BY_ROLE`, e.g. `kantheon-bi-reader:10000` — what a BI reader gets when it
+  asks for 10 000). An answer the cap cut says so on its last batch: `top_n_applied: true`, and its entry in
+  `notices` carries `requested` (the `LIMIT` asked, 0 = none) and `applied` (the cap). A full page with that notice
+  means "the estate's ceiling", not "the end of the data". The stock JDBC driver does not surface it; ADBC and
+  `pyarrow.flight` read it from the closing metadata, and the receipt records it.
 - **Errors** arrive as Flight errors whose description is `"<code>: <one sentence>"` (e.g.
-  `translator_rejected: …`, `column_denied: …`); the code is also in the `x-ttr-code` error metadata. A refusal
-  before any row fails the `execute`; a failure mid-stream fails the read.
+  `translator_rejected: Object 'warehouse' not found within 'er' — did you mean: warehouse, warehouse_id?` for
+  `FROM er.warehouse`,
+  `column_denied: …`); the code is also in the `x-ttr-code` error metadata. A refusal that points into the
+  statement carries its position in `x-ttr-line` and `x-ttr-column` (1-based, in the text as sent). A refusal
+  before any row fails the `execute`; a failure mid-stream fails the read. Refusals raised while the call is being
+  authenticated (`missing_credentials`, `invalid_token`, `unknown_world`) lead with the code but carry no
+  metadata: Flight drops it at that stage.
 
 ## Receipts
 

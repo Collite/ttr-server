@@ -1059,6 +1059,158 @@ class QueryServiceImplSpec :
             }
         }
 
+        "BI (C-10) — the capped last batch carries the cap as a typed notice too: requested, applied" {
+            runBlocking {
+                val out =
+                    service(
+                        translatorDetect = dbDetect,
+                        validator = cappingAt2(notice = true),
+                        dispatcher = streaming(1, 1),
+                    ).run(windowRequest(5, 0))
+                        .toList()
+                val notice = out.last().noticesList.single()
+                notice.code shouldBe "top_n_applied"
+                notice.requested shouldBe 5L
+                notice.applied shouldBe 2L
+                out.dropLast(1).flatMap { it.noticesList } shouldBe emptyList()
+                // Unstated: requested is 0.
+                service(
+                    translatorDetect = dbDetect,
+                    validator = cappingAt2(notice = true),
+                    dispatcher = streaming(2),
+                ).run(windowRequest(0, 0))
+                    .toList()
+                    .last()
+                    .noticesList
+                    .single()
+                    .requested shouldBe 0L
+            }
+        }
+
+        // ── BI (C-11): a parameter the plan reads must have a value — Run refuses, Compile reports ──
+
+        val byCityPlan =
+            PlanNode
+                .newBuilder()
+                .setFilter(
+                    org.tatrman.plan.v1.FilterNode
+                        .newBuilder()
+                        .setInput(planFor("warehouse"))
+                        .setCondition(
+                            org.tatrman.plan.v1.Expression
+                                .newBuilder()
+                                .setParameter(
+                                    org.tatrman.plan.v1.ParameterRef
+                                        .newBuilder()
+                                        .setName("city"),
+                                ),
+                        ),
+                ).build()
+        val byCityParse =
+            TranslatorClient { req ->
+                ParseResponse
+                    .newBuilder()
+                    .setPlan(byCityPlan)
+                    .setContext(req.context)
+                    .build()
+            }
+
+        fun cityRequest(value: org.tatrman.plan.v1.Value?): RunRequest =
+            RunRequest
+                .newBuilder()
+                .setSource("SELECT name FROM warehouse WHERE city = {city}")
+                .setSourceLanguage(Language.SQL)
+                .setContext(
+                    PipelineContext
+                        .newBuilder()
+                        .setModelVersion("v")
+                        .addParameters(
+                            org.tatrman.plan.v1.ParameterBinding
+                                .newBuilder()
+                                .setName("city")
+                                .setType("text")
+                                .apply { if (value != null) setValue(value) },
+                        ),
+                ).build()
+
+        "Run refuses a declared parameter with no value as parameter_unbound — nothing is dispatched" {
+            runBlocking {
+                var dispatched = 0
+                val out =
+                    service(
+                        translator = byCityParse,
+                        translatorDetect = dbDetect,
+                        dispatcher =
+                            DispatcherClient { req ->
+                                dispatched++
+                                dispatcherStub.dispatch(req)
+                            },
+                    ).run(cityRequest(null)).toList()
+                val refusal = out.single().messagesList.single()
+                refusal.code shouldBe "parameter_unbound"
+                refusal.humanMessage shouldBe "Parameter 'city' has no value; bind it, or send an explicit NULL."
+                dispatched shouldBe 0
+            }
+        }
+
+        "a bound value, or an explicit NULL, runs; Compile still answers an unbound one with a plan" {
+            runBlocking {
+                val svc = service(translator = byCityParse, translatorDetect = dbDetect)
+                val brno =
+                    org.tatrman.plan.v1.Value
+                        .newBuilder()
+                        .setStringValue("Brno")
+                        .build()
+                svc
+                    .run(
+                        cityRequest(brno),
+                    ).toList()
+                    .flatMap { it.messagesList }
+                    .none { it.severity == Severity.ERROR } shouldBe
+                    true
+                val explicitNull =
+                    org.tatrman.plan.v1.Value
+                        .newBuilder()
+                        .setIsNull(true)
+                        .build()
+                svc.run(cityRequest(explicitNull)).toList().flatMap { it.messagesList }.none {
+                    it.severity == Severity.ERROR
+                } shouldBe true
+                svc.compile(cityRequest(null)).hasPlan() shouldBe true
+            }
+        }
+
+        "BI (C-11) — a translator refusal keeps the position translate gave it" {
+            runBlocking {
+                val rejecting =
+                    TranslatorClient { req ->
+                        ParseResponse
+                            .newBuilder()
+                            .setContext(req.context)
+                            .addMessages(
+                                ResponseMessage
+                                    .newBuilder()
+                                    .setSeverity(Severity.ERROR)
+                                    .setCode("validation_failed")
+                                    .setHumanMessage("Column 'nme' not found in any table")
+                                    .setLine(1)
+                                    .setColumn(8),
+                            ).build()
+                    }
+                val refusal =
+                    service(translator = rejecting, translatorDetect = dbDetect)
+                        .run(cityRequest(null))
+                        .toList()
+                        .single()
+                        .messagesList
+                        .single()
+                refusal.code shouldBe "translator_rejected"
+                refusal.humanMessage shouldBe "Column 'nme' not found in any table"
+                refusal.line shouldBe 1
+                refusal.column shouldBe 8
+            }
+        }
+
         "an answer under the row cap carries nothing: 1 row under a 2-row cap is the whole answer" {
             runBlocking {
                 val out =

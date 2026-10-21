@@ -238,6 +238,11 @@ class ExecutePipeline(
                 bindParameters(statement, unparse.context.parametersList)
                 runCatching { statement.fetchSize = opt.batchSizeRows }
                 runCatching { statement.queryTimeout = opt.timeoutSeconds }
+                // BI (C-10) — row_limit is exact: the driver asks the server for no more (pgjdbc sends it as the
+                // portal's row count), and the batcher stops reading at it.
+                if (opt.rowLimit > 0) {
+                    runCatching { statement.maxRows = opt.rowLimit.coerceAtMost(Int.MAX_VALUE.toLong()).toInt() }
+                }
 
                 // Step 6 — execute.
                 resultSet = statement.executeQuery()
@@ -278,7 +283,7 @@ class ExecutePipeline(
                 var index = 0
                 var rowsTotal = 0L
                 var firstEmitted = false
-                for (batch in converter.convert(resultSet)) {
+                for (batch in converter.convert(resultSet, opt.rowLimit)) {
                     if (!currentCoroutineContext().isActive) break
                     val root = batch.root
                     val rowCount = batch.rowCount.toLong()

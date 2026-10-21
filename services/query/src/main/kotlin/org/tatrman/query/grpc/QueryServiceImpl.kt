@@ -38,6 +38,7 @@ import org.tatrman.validate.v1.ValidateResponse
 import org.tatrman.validate.v1.ValidationOptions
 import org.tatrman.worker.receipt.ExecutionReceiptBuilder
 import org.tatrman.worker.v1.ExecutionReceipt
+import org.tatrman.worker.v1.Notice
 import org.tatrman.worker.v1.ResultBatch
 import io.opentelemetry.api.GlobalOpenTelemetry
 import io.opentelemetry.api.OpenTelemetry
@@ -207,11 +208,9 @@ class QueryServiceImpl(
                             val resolution = resolveSchema(request, context)
                             if (resolution.isError) {
                                 emit(
-                                    errorBatch(
-                                        "detection_failed",
-                                        resolution.detectionMessages.firstOrNull()?.humanMessage ?: "Detection failed",
-                                        context,
-                                    ),
+                                    resolution.detectionMessages.firstOrNull()?.let { first ->
+                                        errorBatch("detection_failed", first, context)
+                                    } ?: errorBatch("detection_failed", "Detection failed", context),
                                 )
                                 return@flow
                             }
@@ -237,11 +236,7 @@ class QueryServiceImpl(
                                             }
                                     if (dbParsed.messagesList.any { it.severity == Severity.ERROR }) {
                                         emit(
-                                            errorBatch(
-                                                "translator_rejected",
-                                                dbParsed.messagesList.first().humanMessage,
-                                                context,
-                                            ),
+                                            errorBatch("translator_rejected", dbParsed.messagesList.first(), context),
                                         )
                                         return@flow
                                     }
@@ -295,6 +290,15 @@ class QueryServiceImpl(
                                 }
                             }
                         }
+
+                    // BI (C-11) — a parameter the plan reads with no value would be bound as NULL by the worker and
+                    // answer nothing, silently: Run refuses it. (Compile does not: it reports such a parameter in
+                    // `required_parameters`, which is what it is for.)
+                    val unbound = ParameterCheck.unbound(dbPlan, context)
+                    if (unbound.isNotEmpty()) {
+                        emit(errorBatch(ParameterCheck.PARAMETER_UNBOUND, ParameterCheck.message(unbound), context))
+                        return@flow
+                    }
 
                     val compileMs = System.currentTimeMillis() - compileStart
                     // On the first batch alone, as dispatch and the worker put theirs: a consumer reads a stream's
@@ -356,7 +360,18 @@ class QueryServiceImpl(
                             out = annotate(out, firstBatchAnnotations)
                         }
                         if (batch.isLast && capNotice != null && rowCap != null && rowsStreamed >= rowCap) {
-                            out = out.toBuilder().addMessages(capNotice).build()
+                            // BI (C-10) — and as a typed notice, for a client that tells its user with the numbers.
+                            out =
+                                out
+                                    .toBuilder()
+                                    .addMessages(capNotice)
+                                    .addNotices(
+                                        Notice
+                                            .newBuilder()
+                                            .setCode(TOP_N_APPLIED)
+                                            .setRequested(window.limit)
+                                            .setApplied(rowCap),
+                                    ).build()
                         }
                         // ⚑ES-1 — one merge, on the first batch and on the last (they may be the
                         // same batch). The worker's statement half is on the last one and is
@@ -407,7 +422,7 @@ class QueryServiceImpl(
                 }
             }
         if (erParsed.messagesList.any { it.severity == Severity.ERROR }) {
-            emit(errorBatch("translator_rejected", erParsed.messagesList.first().humanMessage, erParsed.context))
+            emit(errorBatch("translator_rejected", erParsed.messagesList.first(), erParsed.context))
             return null
         }
 
@@ -467,7 +482,7 @@ class QueryServiceImpl(
             return null
         }
         dbParsed.messagesList.firstOrNull { it.severity == Severity.ERROR }?.let { first ->
-            emit(errorBatch("translator_rejected", first.humanMessage, context))
+            emit(errorBatch("translator_rejected", first, context))
             return null
         }
         return dbParsed
@@ -1005,7 +1020,7 @@ class QueryServiceImpl(
      * its own lane — a logical query's plan reads entities and takes the ER half (EXPAND_LOGICAL_BODIES, Validate pass
      * 1, MAP_TO_PHYSICAL, Validate pass 2), a db query's takes the DB half — so the caller's roles, row policies and
      * row window apply exactly as for any Run, and `context.parameters` bind declared parameters by name (an unbound
-     * one is Validate's `parameter_unbound`). Entitlement is Validate's alone in v1; a package or area check is to be
+     * one is Run's `parameter_unbound`). Entitlement is Validate's alone in v1; a package or area check is to be
      * decided before the first caller. A query that is unknown, still parsing, or failed is refused here, with the
      * codes TransDSL's `query_ref` uses, renamed `saved_query_*`.
      */
@@ -1317,6 +1332,28 @@ class QueryServiceImpl(
             .setContext(context)
             .addMessages(errorMessage(code, message))
             .build()
+
+    /**
+     * [errorBatch] answering [from] — another service's refusal — under [code]: its sentence, and the position it
+     * points at (translate's `line`/`column`, BI C-11), which the bare text would lose.
+     */
+    private fun errorBatch(
+        code: String,
+        from: ResponseMessage,
+        context: PipelineContext,
+    ): ResultBatch =
+        ResultBatch
+            .newBuilder()
+            .setIsFirst(true)
+            .setIsLast(true)
+            .setArrowIpc(ByteArray(0).toByteString())
+            .setContext(context)
+            .addMessages(
+                errorMessage(code, from.humanMessage)
+                    .toBuilder()
+                    .setLine(from.line)
+                    .setColumn(from.column),
+            ).build()
 
     private fun errorMessage(
         code: String,

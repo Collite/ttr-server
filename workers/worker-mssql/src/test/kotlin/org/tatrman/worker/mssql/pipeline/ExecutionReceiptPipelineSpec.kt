@@ -98,8 +98,10 @@ class ExecutionReceiptPipelineSpec :
             lastBatches.forEach {
                 it.hasReceipt() shouldBe true
                 it.receipt.statement shouldBe SELECT
-                it.receipt.rowsTotal shouldBe 2L
+                // BI (C-10) — exact: one row of the two, however the batches fall.
+                it.receipt.rowsTotal shouldBe 1L
             }
+            out.sumOf { it.batchRowCount } shouldBe 1L
         }
     })
 

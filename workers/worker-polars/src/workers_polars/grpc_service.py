@@ -138,6 +138,9 @@ class WorkerService:
             # also clamp by the configured max_batch_size_rows.
             with _tracer.start_as_current_span("workers-polars.serialize") as ser_span:
                 table = df.to_arrow()
+                # BI (C-10) — ExecutionOptions.row_limit is exact: the stream carries at most that many rows.
+                if request.options.row_limit > 0:
+                    table = table.slice(0, request.options.row_limit)
                 batch_size_rows = (
                     int(request.options.batch_size_rows) if request.options.batch_size_rows > 0
                     else self._cfg.limits.default_batch_size_rows

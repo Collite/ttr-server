@@ -26,6 +26,7 @@ import org.tatrman.meta.v1.ListObjectsResponse
 import org.tatrman.query.v1.RunRequest
 import org.tatrman.query.world.Worlds
 import org.tatrman.worker.v1.ExecutionReceipt
+import org.tatrman.worker.v1.Notice
 import org.tatrman.worker.v1.ResultBatch
 import java.io.ByteArrayOutputStream
 import java.nio.channels.Channels
@@ -109,6 +110,13 @@ object FlightTestKit {
                             .setCode("top_n_applied")
                             .setHumanMessage("Answer limited to 200 rows (caller asked for 10000)."),
                     )
+                    addNotices(
+                        Notice
+                            .newBuilder()
+                            .setCode("top_n_applied")
+                            .setRequested(10_000)
+                            .setApplied(200),
+                    )
                 }
             }.build()
 
@@ -116,6 +124,8 @@ object FlightTestKit {
         code: String,
         message: String,
         index: Int = 0,
+        line: Int = 0,
+        column: Int = 0,
     ): ResultBatch =
         ResultBatch
             .newBuilder()
@@ -128,7 +138,9 @@ object FlightTestKit {
                     .newBuilder()
                     .setSeverity(Severity.ERROR)
                     .setCode(code)
-                    .setHumanMessage(message),
+                    .setHumanMessage(message)
+                    .setLine(line)
+                    .setColumn(column),
             ).build()
 
     /** A door that answers every `Run` with [script]'s batches, and remembers every request. */

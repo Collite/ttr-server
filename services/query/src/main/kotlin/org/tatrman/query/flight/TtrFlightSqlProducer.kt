@@ -77,6 +77,7 @@ import org.tatrman.common.v1.ResponseMessage
 import org.tatrman.common.v1.Severity
 import org.tatrman.query.world.Worlds
 import org.tatrman.worker.v1.ExecutionReceipt
+import org.tatrman.worker.v1.Notice
 import org.tatrman.worker.v1.ResultBatch
 import java.io.ByteArrayOutputStream
 import java.nio.channels.Channels
@@ -549,7 +550,7 @@ class TtrFlightSqlProducer(
                     var found: Schema? = null
                     for (batch in batches) {
                         head += batch
-                        batch.errorMessage()?.let { throw RefusedException(it) }
+                        batch.refusal()?.let { throw it }
                         found = reframer.schemaOf(batch.arrowIpc.toByteArray())
                         if (found != null || batch.isLast) break
                     }
@@ -559,7 +560,7 @@ class TtrFlightSqlProducer(
                 job.cancel()
                 val outcome = outcomeOf(correlationId, session, sql, startedNanos, refusal = e.message)
                 finish(outcome, span)
-                throw flightError(e.message)
+                throw flightError(e.message, e.line, e.column)
             } catch (t: Throwable) {
                 job.cancel()
                 val outcome =
@@ -629,6 +630,7 @@ class TtrFlightSqlProducer(
         var rows = 0L
         var receipt: ExecutionReceipt? = null
         val notices = mutableListOf<ResponseMessage>()
+        val typedNotices = mutableListOf<Notice>()
         VectorSchemaRoot.create(execution.schema, allocator).use { root ->
             try {
                 out.start(root)
@@ -646,9 +648,12 @@ class TtrFlightSqlProducer(
                 var held: ByteArray? = null
                 runBlocking {
                     suspend fun consume(batch: ResultBatch): Boolean {
-                        batch.errorMessage()?.let { throw RefusedException(it) }
+                        batch.refusal()?.let { throw it }
                         if (batch.hasReceipt()) receipt = batch.receipt
-                        if (batch.isLast) notices += batch.messagesList.filter { it.severity != Severity.ERROR }
+                        if (batch.isLast) {
+                            notices += batch.messagesList.filter { it.severity != Severity.ERROR }
+                            typedNotices += batch.noticesList
+                        }
                         val ipc = batch.arrowIpc.toByteArray()
                         if (ipc.isNotEmpty()) {
                             held?.let { send(it, null) }
@@ -664,7 +669,7 @@ class TtrFlightSqlProducer(
                 }
                 receiptGuard(execution.session, receipt)?.let { throw RefusedException(it) }
                 val heldRows = held?.let { reframer.rowsOf(it) } ?: 0L
-                val closing = closingMetadata(execution, receipt, notices, rows + heldRows)
+                val closing = closingMetadata(execution, receipt, notices, typedNotices, rows + heldRows)
                 val last = held
                 if (last != null) {
                     send(last, closing)
@@ -702,7 +707,7 @@ class TtrFlightSqlProducer(
                     ),
                     execution.span,
                 )
-                out.error(flightError(e.message))
+                out.error(flightError(e.message, e.line, e.column))
             } catch (e: ClientGoneException) {
                 execution.job.cancel()
                 finish(
@@ -774,10 +779,15 @@ class TtrFlightSqlProducer(
             "'${session.world}' ('$expected')."
     }
 
+    /**
+     * C-5 — the app metadata on the last batch. A notice the door also sent typed (C-10: `top_n_applied`) carries its
+     * numbers, `requested` (0 = unstated) and `applied` (the cap).
+     */
     private fun closingMetadata(
         execution: Execution,
         receipt: ExecutionReceipt?,
         notices: List<ResponseMessage>,
+        typedNotices: List<Notice>,
         rows: Long,
     ): ByteArray =
         buildJsonObject {
@@ -791,6 +801,10 @@ class TtrFlightSqlProducer(
                         put("code", notice.code)
                         put("severity", notice.severity.name)
                         put("message", notice.humanMessage)
+                        typedNotices.firstOrNull { it.code == notice.code }?.let { typed ->
+                            put("requested", typed.requested)
+                            put("applied", typed.applied)
+                        }
                     }
                 }
             }
@@ -990,9 +1004,14 @@ class TtrFlightSqlProducer(
         @Volatile var lastUsedNanos: Long = System.nanoTime()
     }
 
-    /** An ERROR the door sent in-band (its error batch), as `"<code>: <message>"`. */
+    /**
+     * An ERROR the door sent in-band (its error batch), as `"<code>: <message>"`, with the statement position it
+     * points at when it names one (translate's refusals, C-11; 0 = none).
+     */
     private class RefusedException(
         override val message: String,
+        val line: Int = 0,
+        val column: Int = 0,
     ) : RuntimeException(message)
 
     /** The client cancelled, or stopped reading. */
@@ -1009,6 +1028,10 @@ class TtrFlightSqlProducer(
 
         /** Error metadata key carrying the door's code beside the description. */
         const val CODE_METADATA_KEY = "x-ttr-code"
+
+        /** C-11 — error metadata keys for the position in the statement a refusal points at (1-based). */
+        const val LINE_METADATA_KEY = "x-ttr-line"
+        const val COLUMN_METADATA_KEY = "x-ttr-column"
 
         /** C-3 — a statement or a stream that is not the connection's world. */
         const val WORLD_MISMATCH = "world_mismatch"
@@ -1111,17 +1134,34 @@ class TtrFlightSqlProducer(
         private val ACCESS_CODES = setOf("access_denied", "column_denied", "permission_denied", "world_mismatch")
         private val INTERNAL_CODES = setOf("query_failed", "cache_corrupted", "translator_failed")
 
-        private fun flightError(refusal: String): FlightRuntimeException {
+        private fun flightError(
+            refusal: String,
+            line: Int = 0,
+            column: Int = 0,
+        ): FlightRuntimeException {
             val code = codeOf(refusal)
-            val metadata = ErrorFlightMetadata().apply { insert(CODE_METADATA_KEY, code) }
+            val metadata =
+                ErrorFlightMetadata().apply {
+                    insert(CODE_METADATA_KEY, code)
+                    if (line > 0) {
+                        insert(LINE_METADATA_KEY, line.toString())
+                        insert(COLUMN_METADATA_KEY, column.toString())
+                    }
+                }
             return statusFor(code).withDescription(refusal).withMetadata(metadata).toRuntimeException()
         }
 
-        /** The batch's first ERROR as `"<code>: <one sentence>"`, or null. */
-        private fun ResultBatch.errorMessage(): String? =
+        /** The batch's first ERROR as `"<code>: <one sentence>"` (and its position), or null. */
+        private fun ResultBatch.refusal(): RefusedException? =
             messagesList
                 .firstOrNull { it.severity == Severity.ERROR }
-                ?.let { "${it.code.ifEmpty { "query_error" }}: ${oneSentence(it.humanMessage)}" }
+                ?.let {
+                    RefusedException(
+                        "${it.code.ifEmpty { "query_error" }}: ${oneSentence(it.humanMessage)}",
+                        it.line,
+                        it.column,
+                    )
+                }
     }
 }
 

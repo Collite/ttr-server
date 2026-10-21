@@ -14,9 +14,14 @@ repeated identical queries skip parse/translate.
 
 Proto `org.tatrman.query.v1` / `QueryService` (`com.tatrman.runner.v1` is gone):
 
-- **Run** — submit a query in any source language; stream Arrow IPC results.
+- **Run** — submit a query in any source language; stream Arrow IPC results. SQL parameters are
+  `{name}`, bound by name in `context.parameters`; one the plan reads with no value is refused
+  `parameter_unbound` before dispatch (BI C-11 — it used to bind NULL and answer nothing). A
+  translator refusal keeps translate's `line` / `column`. When the row cap cut the answer, the last
+  batch carries `top_n_applied` as a WARNING and as a typed `Notice` (`requested`, `applied`; C-10).
 - **Compile** — front of the pipeline only (translate + validate); returns the
-  validated `PlanNode` + required parameters + predicted schema fingerprint.
+  validated `PlanNode` + required parameters + predicted schema fingerprint (an unbound
+  parameter is reported there, not refused).
 - **Translate** — passthrough to translate's Translate (any-to-any conversion).
 - **GetStatus** — readiness + cache stats.
 
@@ -44,8 +49,9 @@ loopback channel to the gRPC port, carrying the caller's identity.
   `QUERY_FLIGHT_PENDING_TTL_SECONDS` (60) unread.
 - **Results**: each worker batch re-framed (IPC → vectors, no value conversion). The last batch
   carries JSON app metadata — `correlation_id`, `connection_id`, `rows_total`, `top_n_applied`,
-  `notices`. An error batch becomes a Flight error `"<code>: <one sentence>"`, the code also in the
-  `x-ttr-code` error metadata.
+  `notices` (a typed notice's `requested` / `applied` with it, C-10). An error batch becomes a Flight
+  error `"<code>: <one sentence>"`, the code also in the `x-ttr-code` error metadata and, when the
+  refusal points into the statement, its position in `x-ttr-line` / `x-ttr-column` (C-11).
 - **Read-only**: no DML, no transactions, no `DoPut`, no bound parameters.
 - **Identity** (C-2): every call carries a bearer verified as query-mcp verifies one (mcp-identity's
   `JwksBearerVerifier` against `QUERY_FLIGHT_AUTH_ISSUER`, JWKS `QUERY_FLIGHT_AUTH_JWKS_URI`, optional

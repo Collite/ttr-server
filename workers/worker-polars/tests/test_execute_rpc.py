@@ -102,6 +102,24 @@ async def test_execute_workspace_ref_streams_arrow_back():
 
 
 @pytest.mark.asyncio
+async def test_execute_row_limit_is_exact():
+    # BI (C-10) — 2 of 3 rows, however the batches fall; the receipt counts what was streamed.
+    cfg = _cfg_full()
+    store = WorkspaceStore(cfg.workspace)
+    await store.put("s1", "q1", pl.DataFrame({"id": [1, 2, 3]}))
+    service = WorkerService(cfg, store)
+    request = worker_pb2.ExecuteRequest(
+        plan=_workspace_ref("q1"),
+        context=context_pb2.PipelineContext(session_id="s1"),
+        options=worker_pb2.ExecutionOptions(row_limit=2),
+    )
+    batches = await _drain(service.execute(request, context=None))
+    assert sum(b.batch_row_count for b in batches) == 2
+    assert _read_arrow_stream(batches[0].arrow_ipc)["id"].to_list() == [1, 2]
+    assert batches[-1].receipt.rows_total == 2
+
+
+@pytest.mark.asyncio
 async def test_execute_with_assign_to_workspace_persists_result():
     cfg = _cfg_full()
     store = WorkspaceStore(cfg.workspace)

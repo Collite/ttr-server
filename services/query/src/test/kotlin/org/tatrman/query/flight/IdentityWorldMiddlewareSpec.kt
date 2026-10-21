@@ -122,11 +122,12 @@ class IdentityWorldMiddlewareSpec :
             }
         }
 
-        "a statement naming its own catalog runs, the qualifier dropped for the door" {
+        "a statement naming its own catalog runs, the qualifier blanked out for the door (positions hold)" {
             val door = answering()
             RunningEdge(door, identity = identity, worlds = worlds).use { edge ->
                 edge.run("""SELECT w.city FROM "hartland_cz"."er.entity"."warehouse" w""", bearer, world("hartland_cz"))
-                door.requests.single().source shouldBe """SELECT w.city FROM "er.entity"."warehouse" w"""
+                door.requests.single().source shouldBe
+                    """SELECT w.city FROM ${" ".repeat(14)}"er.entity"."warehouse" w"""
                 edge.outcomes.single().statement shouldBe
                     """SELECT w.city FROM "hartland_cz"."er.entity"."warehouse" w"""
             }
@@ -196,10 +197,11 @@ class IdentityWorldMiddlewareSpec :
                 world: String = "hartland_cz",
             ) = CatalogQualifier.resolve(sql, world)
             run("SELECT * FROM HARTLAND_CZ.er.entity.warehouse") shouldBe
-                Outcome.Run("SELECT * FROM er.entity.warehouse")
-            run("SELECT * FROM hartland_cz . db.dbo.web_sales") shouldBe Outcome.Run("SELECT * FROM db.dbo.web_sales")
+                Outcome.Run("SELECT * FROM ${" ".repeat(12)}er.entity.warehouse")
+            run("SELECT * FROM hartland_cz .\n db.dbo.web_sales") shouldBe
+                Outcome.Run("SELECT * FROM ${" ".repeat(13)}\n db.dbo.web_sales")
             run("SELECT * FROM hartland_cz.obj.query.revenue_per_customer") shouldBe
-                Outcome.Run("SELECT * FROM obj.query.revenue_per_customer")
+                Outcome.Run("SELECT * FROM ${" ".repeat(12)}obj.query.revenue_per_customer")
             run("SELECT * FROM hartland_us.er.entity.warehouse") shouldBe Outcome.Mismatch("hartland_us")
             run("""SELECT * FROM "hartland_us"."db.dbo"."web_sales"""") shouldBe Outcome.Mismatch("hartland_us")
             run("SELECT * FROM hartland_cz.er.entity.warehouse", world = "") shouldBe Outcome.Mismatch("hartland_cz")

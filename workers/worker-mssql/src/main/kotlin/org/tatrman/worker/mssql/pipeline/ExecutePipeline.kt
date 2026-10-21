@@ -209,7 +209,9 @@ class ExecutePipeline(
                 var index = 0
                 var rowsTotal = 0L
                 var firstEmitted = false
-                for (batch in converter.convert(resultSet)) {
+                // BI (C-10) — row_limit is exact: the batcher stops reading at it. (Not `Statement.maxRows`, which the SQL
+                // Server driver may carry out as a session `SET ROWCOUNT` on a pooled connection.)
+                for (batch in converter.convert(resultSet, opt.rowLimit)) {
                     if (!currentCoroutineContext().isActive) break
                     val root = batch.root
                     val rowCount = batch.rowCount.toLong()

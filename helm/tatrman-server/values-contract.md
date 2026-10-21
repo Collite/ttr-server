@@ -235,6 +235,9 @@ Receipts: the service migrates `bi_receipts` (schema `query`) itself at first us
 | `query.flight.receipts.db.passwordSecret.{name,key}` | | `""` / `password` | By **Secret ref**; the name is required with a host. |
 | `query.worlds` | string | `""` | `world=connection_id` pairs, comma-separated: the worlds the door serves (`RunRequest.world`). Empty = one world. |
 
+The BI row ceiling is validate's, set through `validate.extraEnv` (no chart key): `VALIDATE_MAX_TOP_N_BY_ROLE`
+(`role:rows,…`, e.g. `kantheon-bi-reader:10000`) raises `VALIDATE_MAX_TOP_N` for callers holding the role.
+
 ---
 
 ## 6. Model source (`veles.metadata.*`)

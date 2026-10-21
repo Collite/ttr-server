@@ -200,7 +200,7 @@ class ValidateServiceImpl(
         // Section C — RULES (DF-V01 column deny/mask enforcement + TopN), on the plan AS ASKED: the
         // security filters are not in it yet, so a MASK on a policy's own column cannot rewrite the
         // policy's filter, and no column is denied because only the filter names it.
-        val rulesResult = ruleEnforcer.enforce(incomingPlan, options, allowed?.columnRules.orEmpty())
+        val rulesResult = ruleEnforcer.enforce(incomingPlan, options, allowed?.columnRules.orEmpty(), effectiveRoles)
         responseMessages.addAll(rulesResult.messages)
         if (rulesResult.rejected) {
             return rejection(contextBuilder.build(), applied, responseMessages)

@@ -88,6 +88,7 @@ object PostgresComponentSupport {
     fun execute(
         pool: ConnectionPoolManager,
         tenant: UUID?,
+        options: ExecutionOptions = ExecutionOptions.getDefaultInstance(),
     ): List<ResultBatch> {
         val ctx =
             PipelineContext
@@ -111,7 +112,7 @@ object PostgresComponentSupport {
                         ).build(),
                 ).setContext(ctx)
                 .setConnectionId("pg-midas")
-                .setOptions(ExecutionOptions.getDefaultInstance())
+                .setOptions(options)
                 .build()
         return runBlocking { ExecutePipeline(pool, translator(), limits).execute(request).toList() }
     }

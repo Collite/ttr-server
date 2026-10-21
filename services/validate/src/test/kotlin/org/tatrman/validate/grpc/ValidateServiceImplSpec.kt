@@ -49,10 +49,11 @@ class ValidatorServiceImplSpec :
             llmEnabled: Boolean = false,
             metadataClient: MetadataClient = StaticMetadataClient(metadataVersion),
             roleSource: RoleSource = BearerRoleSource(),
+            ruleEnforcer: RuleEnforcer = RuleEnforcer(serviceDefault = 30),
         ): ValidateServiceImpl =
             ValidateServiceImpl(
                 securityApplier = SecurityApplier(client),
-                ruleEnforcer = RuleEnforcer(serviceDefault = 30),
+                ruleEnforcer = ruleEnforcer,
                 llmGuard = LlmGuard(enabled = llmEnabled),
                 metadataClient = metadataClient,
                 roleSource = roleSource,
@@ -863,6 +864,34 @@ class ValidatorServiceImplSpec :
             val resp = service(denying).validate(request(plan))
             resp.hasPlan() shouldBe true
             resp.plan.project.input.filter.condition shouldBe tenant
+        }
+
+        val noPolicy = SecurityClient { _ -> EvaluatePoliciesResponse.getDefaultInstance() }
+
+        // --- BI (C-10): the caller's roles reach the row cap ---
+
+        "a caller whose bearer roles name a max-top-n-by-role role is granted its ceiling" {
+            val bi =
+                service(
+                    noPolicy,
+                    ruleEnforcer =
+                        RuleEnforcer(
+                            serviceDefault = 200,
+                            maxByRole = RuleEnforcer.parseMaxByRole("kantheon-bi-reader:10000"),
+                        ),
+                )
+
+            fun asking(vararg roles: String): ValidateRequest =
+                request(scan(customers), ValidationOptions.newBuilder().setEnforceTopN(true).setDefaultTopN(10_000))
+                    .let { r ->
+                        r.toBuilder().setContext(r.context.toBuilder().addAllAuthRoles(roles.toList())).build()
+                    }
+            bi
+                .validate(asking("kantheon-bi-reader"))
+                .plan.limitOffset.limit shouldBe 10_000L
+            bi
+                .validate(asking("kantheon-area-x"))
+                .plan.limitOffset.limit shouldBe 200L
         }
     })
 

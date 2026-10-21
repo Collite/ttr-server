@@ -93,12 +93,11 @@ class TtrFlightSqlProducerSpec :
                     door.requests
                         .single()
                         .context.correlationId
-                closing["notices"]!!
-                    .jsonArray
-                    .single()
-                    .jsonObject["code"]!!
-                    .jsonPrimitive.content shouldBe
-                    "top_n_applied"
+                val notice = closing["notices"]!!.jsonArray.single().jsonObject
+                notice["code"]!!.jsonPrimitive.content shouldBe "top_n_applied"
+                // C-10 — the typed notice's numbers ride along.
+                notice["requested"]!!.jsonPrimitive.long shouldBe 10_000
+                notice["applied"]!!.jsonPrimitive.long shouldBe 200
                 edge.outcomes.single().topNApplied shouldBe true
             }
         }
@@ -149,6 +148,31 @@ class TtrFlightSqlProducerSpec :
                 e.status().metadata().get(TtrFlightSqlProducer.CODE_METADATA_KEY) shouldBe "translator_rejected"
                 edge.outcomes.single().status shouldBe StatementOutcome.Status.REFUSED
                 edge.outcomes.single().errorCode shouldBe "translator_rejected"
+            }
+        }
+
+        "C-11 — a refusal that points into the statement carries the line and column in the metadata" {
+            val door =
+                ScriptedDoor {
+                    listOf(
+                        FlightTestKit.errorBatch(
+                            "translator_rejected",
+                            "Syntax error near \"= {\".",
+                            line = 2,
+                            column = 7,
+                        ),
+                    )
+                }
+            RunningEdge(door).use { edge ->
+                val e = shouldThrow<FlightRuntimeException> { edge.sql.execute("SELECT 1\nWHERE = {x}") }
+                e.status().description() shouldBe "translator_rejected: Syntax error near \"= {\"."
+                e.status().metadata().get(TtrFlightSqlProducer.LINE_METADATA_KEY) shouldBe "2"
+                e.status().metadata().get(TtrFlightSqlProducer.COLUMN_METADATA_KEY) shouldBe "7"
+            }
+            val positionless = ScriptedDoor { listOf(FlightTestKit.errorBatch("translator_rejected", "nope")) }
+            RunningEdge(positionless).use { edge ->
+                val e = shouldThrow<FlightRuntimeException> { edge.sql.execute("SELECT 1") }
+                e.status().metadata().containsKey(TtrFlightSqlProducer.LINE_METADATA_KEY) shouldBe false
             }
         }
 

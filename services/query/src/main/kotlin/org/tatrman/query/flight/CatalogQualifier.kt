@@ -4,9 +4,10 @@ package org.tatrman.query.flight
 /**
  * BI (contracts C-3) — a statement may name its catalog, the way a tool that read `GetCatalogs` qualifies a table:
  * `hartland_cz.er.entity.warehouse`, or quoted, `"hartland_cz"."er.entity"."warehouse"`. The connection's world is
- * the only catalog it may name: that qualifier is dropped before the door sees the statement (the door's names have
- * no catalog part), and any other catalog is [Outcome.Mismatch] — `world_mismatch`, refused before `Run`, never run
- * quietly against the connection's own world.
+ * the only catalog it may name: that qualifier is blanked out before the door sees the statement (the door's names
+ * have no catalog part) — spaces in its place, so a refusal's line and column (C-11) still point into the statement
+ * as the client wrote it — and any other catalog is [Outcome.Mismatch] — `world_mismatch`, refused before `Run`,
+ * never run quietly against the connection's own world.
  *
  * A qualifier is recognised by what follows it, the door's schema spellings: `<catalog>.er|db|obj.<namespace>.<name>`
  * (four parts at least, so `alias.db` — a column called `db` — is not one), or a quoted dotted schema,
@@ -14,7 +15,7 @@ package org.tatrman.query.flight
  */
 internal object CatalogQualifier {
     sealed interface Outcome {
-        /** The statement to run: [sql] with the connection's own catalog qualifiers dropped. */
+        /** The statement to run: [sql] with the connection's own catalog qualifiers blanked out. */
         data class Run(
             val sql: String,
         ) : Outcome
@@ -38,13 +39,10 @@ internal object CatalogQualifier {
             drops += catalog.start until chain[1].start
         }
         if (drops.isEmpty()) return Outcome.Run(sql)
-        val out = StringBuilder(sql.length)
-        var at = 0
+        val out = StringBuilder(sql)
         for (range in drops) {
-            out.append(sql, at, range.first)
-            at = range.last + 1
+            for (i in range) if (out[i] != '\n' && out[i] != '\r') out.setCharAt(i, ' ')
         }
-        out.append(sql, at, sql.length)
         return Outcome.Run(out.toString())
     }
 
