@@ -390,6 +390,15 @@ def test_a_token_endpoint_failure_is_not_a_sign_in(ctx, spec, monkeypatch):
 # Answers --------------------------------------------------------------------------------------------------------------
 
 
+def test_an_answer_with_no_rows_reads_as_no_rows_with_its_columns(petr, edge):
+    # A dashboard filter that matches nothing: "No results", not an error over a column-less result.
+    database = _database(edge)
+    _token(database, petr, "tok-petr")
+    df = database.get_df("SELECT * FROM er.entity.warehouse WHERE city = 'Nowhere'")
+    assert list(df.columns) == ["warehouse_id", "warehouse_name", "city"]
+    assert len(df) == 0
+
+
 def test_a_cut_answer_is_refused_with_the_numbers(petr, edge):
     from superset.errors import ErrorLevel, SupersetErrorType
 

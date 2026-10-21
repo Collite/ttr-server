@@ -5,9 +5,12 @@ import io.kotest.core.annotation.Tags
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.longs.shouldBeGreaterThan
 import io.kotest.matchers.shouldBe
+import org.apache.arrow.memory.RootAllocator
+import org.apache.arrow.vector.ipc.ArrowStreamReader
 import org.tatrman.testkit.containers.Containers
 import org.tatrman.worker.v1.RlsOutcome
 import org.tatrman.worker.v1.StatementKind
+import java.io.ByteArrayInputStream
 import java.util.UUID
 
 /**
@@ -104,6 +107,56 @@ class PostgresReceiptComponentSpec :
                 batches.sumOf { it.batchRowCount } shouldBe 2L
                 PostgresComponentSupport.decode(batches).size shouldBe 2
                 batches.last().receipt.rowsTotal shouldBe 2L
+            }
+        }
+
+        "BI (C-5) — an empty answer on a real server still names its columns: the tail is a zero-row batch" {
+            Containers.postgres().use { pg ->
+                pg.start()
+                PostgresPgFixture.connect(pg.jdbcUrl, pg.username, pg.password).use { su ->
+                    PostgresPgFixture.provision(su)
+                    PostgresPgFixture.insert(su, UUID.randomUUID(), 1001L, "1.0000", "someone else's")
+                }
+                val pool = PostgresComponentSupport.pool(pg.jdbcUrl, pg.databaseName)
+                // A tenant with no rows: RLS lets nothing through, so the statement answers no rows.
+                val batches =
+                    try {
+                        PostgresComponentSupport.execute(pool, UUID.randomUUID())
+                    } finally {
+                        pool.close()
+                    }
+                val tail = batches.single()
+                tail.isLast shouldBe true
+                tail.batchRowCount shouldBe 0L
+                RootAllocator(Long.MAX_VALUE).use { alloc ->
+                    ArrowStreamReader(ByteArrayInputStream(tail.arrowIpc.toByteArray()), alloc).use { reader ->
+                        reader.vectorSchemaRoot.schema.fields
+                            .map { it.name } shouldBe listOf("account_id", "amount", "label")
+                        reader.loadNextBatch() shouldBe true
+                        reader.vectorSchemaRoot.rowCount shouldBe 0
+                    }
+                }
+                tail.receipt.rowsTotal shouldBe 0L
+            }
+        }
+
+        "a non-empty answer's tail stays empty on a real server" {
+            Containers.postgres().use { pg ->
+                pg.start()
+                val tenant = UUID.randomUUID()
+                PostgresPgFixture.connect(pg.jdbcUrl, pg.username, pg.password).use { su ->
+                    PostgresPgFixture.provision(su)
+                    PostgresPgFixture.insert(su, tenant, 1001L, "1.0000", "a")
+                }
+                val pool = PostgresComponentSupport.pool(pg.jdbcUrl, pg.databaseName)
+                val batches =
+                    try {
+                        PostgresComponentSupport.execute(pool, tenant)
+                    } finally {
+                        pool.close()
+                    }
+                batches.size shouldBe 2
+                batches.last().arrowIpc.isEmpty shouldBe true
             }
         }
 

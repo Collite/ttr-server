@@ -344,7 +344,9 @@ class ExecutePipeline(
 
                 // Always emit a tail marker so callers can rely on `is_last`. If no batch was
                 // emitted yet (empty result set), the tail IS the first batch — attach the
-                // unsupported-type warnings here so they still reach the caller.
+                // unsupported-type warnings here so they still reach the caller, and a zero-row
+                // batch of the statement's schema, so an answer with no rows still names its
+                // columns (BI C-5). After data batches the tail stays empty.
                 rowsStreamed = rowsTotal
                 emit(
                     ResultBatch
@@ -354,7 +356,10 @@ class ExecutePipeline(
                         .setIsLast(true)
                         .setContext(if (!firstEmitted) firstBatchContext else unparse.context)
                         .let { b -> if (!firstEmitted) b.setSchemaFingerprint(fingerprint) else b }
-                        .setArrowIpc(ByteArray(0).toByteString())
+                        .setArrowIpc(
+                            (if (firstEmitted) ByteArray(0) else ArrowIpcSerializer.serializeEmpty(schema, allocator))
+                                .toByteString(),
+                        )
                         // ES — the statement half rides the tail marker (⚑ES-1): rows and time
                         // are only known here.
                         .setReceiptIfPresent(receipt(request, sql, parameters, rowsTotal, startedNanos, rls))

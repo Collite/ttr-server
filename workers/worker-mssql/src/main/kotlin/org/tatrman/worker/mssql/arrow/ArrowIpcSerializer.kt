@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package org.tatrman.worker.mssql.arrow
 
+import org.apache.arrow.memory.BufferAllocator
 import org.apache.arrow.vector.VectorSchemaRoot
 import org.apache.arrow.vector.ipc.ArrowStreamWriter
 import org.apache.arrow.vector.types.DateUnit
@@ -45,6 +46,20 @@ object ArrowIpcSerializer {
         }
         return out.toByteArray()
     }
+
+    /**
+     * A zero-row batch of [schema], in the same form: what the tail of an empty result carries, so a consumer
+     * learns the columns of an answer with no rows (BI C-5).
+     */
+    fun serializeEmpty(
+        schema: Schema,
+        allocator: BufferAllocator,
+    ): ByteArray =
+        VectorSchemaRoot.create(schema, allocator).use { root ->
+            root.allocateNew()
+            root.rowCount = 0
+            serializeBatch(root)
+        }
 
     /**
      * Cross-engine schema fingerprint = SHA-256 over the **canonical,

@@ -106,32 +106,38 @@ class MssqlMssqlComponentSpec :
                                 ),
                         ),
                     )
+                var sql = query
                 val translator =
                     object : TranslatorClient {
                         override suspend fun unparse(request: UnparseRequest): UnparseResponse =
                             UnparseResponse
                                 .newBuilder()
-                                .setOutput(query)
+                                .setOutput(sql)
                                 .setContext(request.context)
                                 .build()
 
                         override suspend fun probe() = Unit
                     }
 
-                val batches =
+                fun execute() =
+                    runBlocking {
+                        ExecutePipeline(pool, translator, limits)
+                            .execute(
+                                ExecuteRequest
+                                    .newBuilder()
+                                    .setPlan(scan("dbo", "sample_orders"))
+                                    .setContext(PipelineContext.getDefaultInstance())
+                                    .setConnectionId("mssql-default")
+                                    .setOptions(ExecutionOptions.getDefaultInstance())
+                                    .build(),
+                            ).toList()
+                    }
+                val (batches, empty) =
                     try {
-                        runBlocking {
-                            ExecutePipeline(pool, translator, limits)
-                                .execute(
-                                    ExecuteRequest
-                                        .newBuilder()
-                                        .setPlan(scan("dbo", "sample_orders"))
-                                        .setContext(PipelineContext.getDefaultInstance())
-                                        .setConnectionId("mssql-default")
-                                        .setOptions(ExecutionOptions.getDefaultInstance())
-                                        .build(),
-                                ).toList()
-                        }
+                        val full = execute()
+                        // BI (C-5) — the same statement matching nothing.
+                        sql = query.replace("WHERE o.tenant_id = 't-alpha'", "WHERE o.tenant_id = 't-nobody'")
+                        full to execute()
                     } finally {
                         pool.close()
                     }
@@ -171,6 +177,20 @@ class MssqlMssqlComponentSpec :
                         root.rowCount shouldBe 2
                         // ORDER BY id → row 0 is id=1, region EU → "Europe" (the JOIN resolved).
                         root.getVector("region_name").getObject(0).toString() shouldBe "Europe"
+                    }
+                }
+                // BI (C-5) — after data batches the tail stays empty; an answer with no rows is one tail that
+                // carries a zero-row batch of the statement's columns.
+                tail.arrowIpc.isEmpty shouldBe true
+                val emptyTail = empty.single()
+                emptyTail.isLast shouldBe true
+                emptyTail.batchRowCount shouldBe 0L
+                RootAllocator(Long.MAX_VALUE).use { allocator ->
+                    ArrowStreamReader(ByteArrayInputStream(emptyTail.arrowIpc.toByteArray()), allocator).use { reader ->
+                        reader.vectorSchemaRoot.schema.fields
+                            .map { it.name } shouldBe listOf("id", "tenant_id", "region", "amount", "region_name")
+                        reader.loadNextBatch() shouldBe true
+                        reader.vectorSchemaRoot.rowCount shouldBe 0
                     }
                 }
             }

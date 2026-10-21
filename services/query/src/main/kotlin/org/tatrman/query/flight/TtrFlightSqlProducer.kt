@@ -554,7 +554,14 @@ class TtrFlightSqlProducer(
                         found = reframer.schemaOf(batch.arrowIpc.toByteArray())
                         if (found != null || batch.isLast) break
                     }
-                    found ?: Schema(emptyList())
+                    // Every worker names an empty answer's columns (C-5); an answer with no schema at all is a door
+                    // that sent none (an empty plan), and it reads as no columns.
+                    found ?: Schema(emptyList()).also {
+                        log.warn(
+                            "Flight edge: statement {} answered without a schema; listed as no columns",
+                            correlationId,
+                        )
+                    }
                 }
             } catch (e: RefusedException) {
                 job.cancel()
@@ -629,7 +636,7 @@ class TtrFlightSqlProducer(
         backpressure.register(out)
         var rows = 0L
         var receipt: ExecutionReceipt? = null
-        val notices = mutableListOf<ResponseMessage>()
+        val notices = linkedMapOf<Pair<String, String>, ResponseMessage>()
         val typedNotices = mutableListOf<Notice>()
         VectorSchemaRoot.create(execution.schema, allocator).use { root ->
             try {
@@ -645,19 +652,20 @@ class TtrFlightSqlProducer(
                             if (closing != null && lastInPayload) out.putNext(metadataBuf(closing)) else out.putNext()
                         }
                 }
-                var held: ByteArray? = null
+                // The payload held back, and its rows (the worker's own count: it is decoded once, when sent).
+                var held: Pair<ByteArray, Long>? = null
                 runBlocking {
                     suspend fun consume(batch: ResultBatch): Boolean {
                         batch.refusal()?.let { throw it }
                         if (batch.hasReceipt()) receipt = batch.receipt
-                        if (batch.isLast) {
-                            notices += batch.messagesList.filter { it.severity != Severity.ERROR }
-                            typedNotices += batch.noticesList
-                        }
+                        // C-5 — every batch's warnings: a worker puts one on the batch it concerns (a row it dropped),
+                        // the door its own on the first. Typed notices come with the last batch.
+                        noticesOf(batch).forEach { notices.putIfAbsent(it.code to it.humanMessage, it) }
+                        if (batch.isLast) typedNotices += batch.noticesList
                         val ipc = batch.arrowIpc.toByteArray()
                         if (ipc.isNotEmpty()) {
-                            held?.let { send(it, null) }
-                            held = ipc
+                            held?.let { (payload, _) -> send(payload, null) }
+                            held = ipc to batch.batchRowCount
                         }
                         return batch.isLast
                     }
@@ -668,11 +676,11 @@ class TtrFlightSqlProducer(
                     }
                 }
                 receiptGuard(execution.session, receipt)?.let { throw RefusedException(it) }
-                val heldRows = held?.let { reframer.rowsOf(it) } ?: 0L
-                val closing = closingMetadata(execution, receipt, notices, typedNotices, rows + heldRows)
+                val said = notices.values.toList()
+                val closing = closingMetadata(execution, receipt, said, typedNotices, rows + (held?.second ?: 0L))
                 val last = held
                 if (last != null) {
-                    send(last, closing)
+                    send(last.first, closing)
                 } else {
                     root.rowCount = 0
                     out.putNext(metadataBuf(closing))
@@ -686,7 +694,7 @@ class TtrFlightSqlProducer(
                         execution.startedNanos,
                         rows = rows,
                         receipt = receipt,
-                        notices = notices,
+                        notices = said,
                     ),
                     execution.span,
                 )
@@ -717,11 +725,21 @@ class TtrFlightSqlProducer(
                         execution.sql,
                         execution.startedNanos,
                         status = StatementOutcome.Status.CANCELLED,
-                        errorCode = "client_cancelled",
+                        errorCode = if (e.stalled) CLIENT_STALLED else "client_cancelled",
                         rows = rows,
                     ),
                     execution.span,
                 )
+                // A cancelled call is over already; a stalled one is ended here, so every DoGet ends with a status.
+                if (e.stalled) {
+                    out.error(
+                        CallStatus.TIMED_OUT
+                            .withDescription(
+                                "$CLIENT_STALLED: the client read nothing for ${config.readyWaitMillis / 1000} s, " +
+                                    "so the statement was stopped.",
+                            ).toRuntimeException(),
+                    )
+                }
             } catch (t: Throwable) {
                 execution.job.cancel()
                 log.warn("Flight edge: statement {} failed mid-stream: {}", execution.correlationId, t.message, t)
@@ -749,16 +767,16 @@ class TtrFlightSqlProducer(
         backpressure: BackpressureStrategy,
         execution: Execution,
     ) {
-        when (backpressure.waitForListener(READY_WAIT_MILLIS)) {
+        when (backpressure.waitForListener(config.readyWaitMillis)) {
             BackpressureStrategy.WaitResult.READY -> Unit
-            BackpressureStrategy.WaitResult.CANCELLED -> throw ClientGoneException()
+            BackpressureStrategy.WaitResult.CANCELLED -> throw ClientGoneException(stalled = false)
             else -> {
                 log.warn(
                     "Flight edge: statement {} — client not reading for {} ms",
                     execution.correlationId,
-                    READY_WAIT_MILLIS,
+                    config.readyWaitMillis,
                 )
-                throw ClientGoneException()
+                throw ClientGoneException(stalled = true)
             }
         }
     }
@@ -1014,8 +1032,10 @@ class TtrFlightSqlProducer(
         val column: Int = 0,
     ) : RuntimeException(message)
 
-    /** The client cancelled, or stopped reading. */
-    private class ClientGoneException : RuntimeException()
+    /** The client cancelled, or ([stalled]) stopped reading for [FlightConfig.readyWaitMillis]. */
+    private class ClientGoneException(
+        val stalled: Boolean,
+    ) : RuntimeException()
 
     companion object {
         private val log = LoggerFactory.getLogger(TtrFlightSqlProducer::class.java)
@@ -1061,7 +1081,38 @@ class TtrFlightSqlProducer(
         private const val BUFFERED_BATCHES = 4
         private const val SWEEP_SECONDS = 10L
         private const val PREPARED_IDLE_SECONDS = 3600L
-        private const val READY_WAIT_MILLIS = 300_000L
+
+        /** A `DoGet` whose client stopped reading: ended `TIMED_OUT`, recorded with this code. */
+        const val CLIENT_STALLED = "client_stalled"
+
+        /**
+         * The door's bookkeeping a BI client has no use for (compile time, the plan cache, how dispatch routed,
+         * that the schema was autodetected — the edge never states one): left out of the closing metadata's notices.
+         */
+        private val QUIET_CODES =
+            setOf(
+                "compile_duration_ms",
+                "cache_hit",
+                "cache_miss",
+                "schema_autodetected",
+                "routing_decision",
+                "sticky_session_match",
+                "connection_id_overrides_derived",
+            )
+
+        /** A batch's non-ERROR messages and its context's warnings, as notices; the door's bookkeeping left out. */
+        private fun noticesOf(batch: ResultBatch): List<ResponseMessage> =
+            (
+                batch.messagesList.filter { it.severity != Severity.ERROR } +
+                    batch.context.warningsList.map {
+                        ResponseMessage
+                            .newBuilder()
+                            .setSeverity(Severity.WARNING)
+                            .setCode(it.code)
+                            .setHumanMessage(it.message)
+                            .build()
+                    }
+            ).filter { it.code !in QUIET_CODES }
 
         /** Flight SQL's `UpdateDeleteRules.NO_ACTION`. */
         private const val NO_ACTION = 3

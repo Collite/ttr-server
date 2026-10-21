@@ -106,6 +106,35 @@ class FlightJdbcRoundTripSpec :
             }
         }
 
+        "C-5 — an empty answer still has the statement's columns" {
+            val empty =
+                ScriptedDoor {
+                    listOf(
+                        FlightTestKit
+                            .tail(0)
+                            .toBuilder()
+                            .setIsFirst(true)
+                            .setArrowIpc(
+                                com.google.protobuf.ByteString
+                                    .copyFrom(FlightTestKit.ipc(allocator, emptyList())),
+                            ).build(),
+                    )
+                }
+            RunningEdge(empty, RecordedVeles(), session).use { edge ->
+                connect(edge).use { conn ->
+                    conn.createStatement().use { st ->
+                        st.executeQuery("SELECT * FROM er.entity.warehouse WHERE 1 = 0").use { rs ->
+                            val names = (1..rs.metaData.columnCount).map { rs.metaData.getColumnName(it) }
+                            // The edge sends the two columns once; the stock driver (≥ 15.0.0, so 18.3.0 too) lists an
+                            // empty result's columns twice (apache/arrow#44467).
+                            names.distinct() shouldContainExactly listOf("id", "name")
+                            rs.next() shouldBe false
+                        }
+                    }
+                }
+            }
+        }
+
         "executeQuery returns the door's rows" {
             val door = door()
             RunningEdge(door, RecordedVeles(), session).use { edge ->

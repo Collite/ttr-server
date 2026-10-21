@@ -50,6 +50,9 @@ outside this repo could notice is in.
     (`world_mismatch`).
   - **Row ask:** every statement asks for as many rows as its caller's ceiling allows (`row_window.limit`
     2147483647), so it gets `VALIDATE_MAX_TOP_N` or its role's higher value; its own `LIMIT` lowers that.
+  - **Results:** the closing metadata's `notices` carry the warnings of every batch (a worker's `blob_too_large` on
+    the batch it concerns), once each; an answer with no rows still has its columns; a client that stops reading for
+    5 minutes is ended `TIMED_OUT` (`client_stalled`).
   - **Receipts:** one `bi_receipts` row per statement (schema `query`, created on first use; best effort), read with
     `GET /receipts` by `query-platform-admin`.
   - **Chart:** `query.flight.*`, `query.worlds`, and the `tatrman-service` library's `ports.extra` (default renders
@@ -61,6 +64,9 @@ outside this repo could notice is in.
     `{name}`.
   - **workers — `ExecutionOptions.row_limit` is exact** (Postgres, MSSQL, Polars). It was checked per batch, so a
     limit below the batch size let the whole batch through.
+  - **workers — an empty result names its columns** (Postgres, MSSQL): the tail of a stream that sent no data batch
+    carries a zero-row batch of the statement's schema in `arrow_ipc`, as Polars already sent one. After data
+    batches the tail stays empty.
   - **validate — `VALIDATE_MAX_TOP_N_BY_ROLE`** (`role:rows,…`) raises the row ceiling for callers holding a role;
     the default stays everyone's. A role name may contain `:` (the rows follow the last one). A malformed entry fails
     the start.

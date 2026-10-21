@@ -24,7 +24,10 @@ data class FlightConfig(
     val pendingTtlSeconds: Long = 60,
     /** How long a catalog snapshot is trusted before Veles is asked for its model version again. */
     val catalogTtlSeconds: Long = 30,
+    /** The largest gRPC message the edge's loopback channel to the door accepts (`grpc.max-message-size-bytes`). */
     val maxMessageSizeBytes: Int = 32 * 1024 * 1024,
+    /** How long a `DoGet` waits for a client that stopped reading before it ends the call `TIMED_OUT`. */
+    val readyWaitMillis: Long = 300_000,
     val auth: Auth = Auth(),
 ) {
     /**

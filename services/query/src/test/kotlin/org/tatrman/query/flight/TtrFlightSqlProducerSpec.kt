@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package org.tatrman.query.flight
 
+import com.google.protobuf.ByteString
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldContain
@@ -23,6 +24,10 @@ import org.apache.arrow.flight.sql.impl.FlightSql
 import org.apache.arrow.memory.RootAllocator
 import org.apache.arrow.vector.UInt4Vector
 import org.apache.arrow.vector.complex.DenseUnionVector
+import org.tatrman.common.v1.ResponseMessage
+import org.tatrman.common.v1.Severity
+import org.tatrman.plan.v1.PipelineContext
+import org.tatrman.plan.v1.Warning
 import org.tatrman.query.flight.FlightTestKit.RunningEdge
 import org.tatrman.query.flight.FlightTestKit.ScriptedDoor
 import org.tatrman.query.flight.FlightTestKit.readAll
@@ -147,6 +152,109 @@ class TtrFlightSqlProducerSpec :
                     ).jsonObject["rows_total"]!!
                     .jsonPrimitive.long shouldBe
                     0
+            }
+        }
+
+        "C-5 — an empty answer names its columns and closes with one message, from either worker shape" {
+            // (a) PostgreSQL / MSSQL: the tail itself carries a zero-row batch. (b) Polars: a schema, no batch.
+            val shapes =
+                listOf(
+                    FlightTestKit.ipc(allocator, emptyList()),
+                    FlightTestKit.schemaOnly(allocator),
+                )
+            shapes.forEach { payload ->
+                val tail =
+                    FlightTestKit
+                        .tail(0)
+                        .toBuilder()
+                        .setIsFirst(true)
+                        .setArrowIpc(ByteString.copyFrom(payload))
+                val door = ScriptedDoor { listOf(tail.build()) }
+                RunningEdge(door).use { edge ->
+                    val info = edge.sql.execute("SELECT * FROM er.entity.warehouse WHERE 1 = 0")
+                    info.schema shouldBe FlightTestKit.SCHEMA
+                    val read = edge.sql.getStream(info.endpoints[0].ticket).use { it.readAll() }
+                    read.rows shouldHaveSize 0
+                    read.metadata shouldHaveSize 1
+                    val closing = Json.parseToJsonElement(read.closing.shouldNotBeNull()).jsonObject
+                    closing["rows_total"]!!.jsonPrimitive.long shouldBe 0
+                    closing["connection_id"]!!.jsonPrimitive.content shouldBe "pg-hartland-cz"
+                }
+            }
+        }
+
+        "C-5 — warnings from every batch reach the closing metadata and the receipt once; bookkeeping does not" {
+            fun warning(code: String) =
+                ResponseMessage
+                    .newBuilder()
+                    .setSeverity(Severity.WARNING)
+                    .setCode(code)
+                    .setHumanMessage("Row dropped: a value exceeds max-blob-bytes-per-cell.")
+                    .build()
+            val context =
+                PipelineContext
+                    .newBuilder()
+                    .addWarnings(Warning.newBuilder().setCode("cache_miss").setMessage("abc"))
+                    .addWarnings(Warning.newBuilder().setCode("unsupported_type_as_binary").setMessage("Column 'g'."))
+            val door =
+                ScriptedDoor {
+                    listOf(
+                        FlightTestKit
+                            .dataBatch(0, firstIpc, first.size)
+                            .toBuilder()
+                            .setContext(context)
+                            .addMessages(warning("blob_too_large"))
+                            .build(),
+                        // The same warning again, on a later batch: said once.
+                        FlightTestKit
+                            .dataBatch(1, secondIpc, second.size)
+                            .toBuilder()
+                            .addMessages(warning("blob_too_large"))
+                            .build(),
+                        FlightTestKit.tail(2, rowsTotal = 5),
+                    )
+                }
+            RunningEdge(door).use { edge ->
+                val info = edge.sql.execute("SELECT * FROM db.dbo.inventory")
+                val read = edge.sql.getStream(info.endpoints[0].ticket).use { it.readAll() }
+                val codes =
+                    Json
+                        .parseToJsonElement(read.closing.shouldNotBeNull())
+                        .jsonObject["notices"]!!
+                        .jsonArray
+                        .map { it.jsonObject["code"]!!.jsonPrimitive.content }
+                codes shouldContainExactly listOf("blob_too_large", "unsupported_type_as_binary")
+                edge.outcomes
+                    .single()
+                    .notices
+                    .map { it.code } shouldContainExactly codes
+            }
+        }
+
+        "a client that stops reading is ended TIMED_OUT (client_stalled), and the outcome is recorded once" {
+            val wide = FlightTestKit.ipc(allocator, (0 until 1_000).map { it to "x".repeat(1_000) })
+            val door =
+                ScriptedDoor {
+                    (0 until 30).map { FlightTestKit.dataBatch(it, wide, 1_000) } + FlightTestKit.tail(30)
+                }
+            val config = FlightTestKit.testConfig().copy(readyWaitMillis = 300)
+            RunningEdge(door, config = config).use { edge ->
+                val info = edge.sql.execute("SELECT * FROM db.dbo.inventory")
+                val e =
+                    shouldThrow<FlightRuntimeException> {
+                        edge.sql.getStream(info.endpoints[0].ticket).use { stream ->
+                            stream.next()
+                            Thread.sleep(3_000)
+                            while (stream.next()) Unit
+                        }
+                    }
+                e.status().code() shouldBe FlightStatusCode.TIMED_OUT
+                e.status().description() shouldStartWith "client_stalled: "
+                val deadline = System.currentTimeMillis() + 10_000
+                while (edge.outcomes.isEmpty() && System.currentTimeMillis() < deadline) Thread.sleep(50)
+                Thread.sleep(200)
+                edge.outcomes.single().errorCode shouldBe TtrFlightSqlProducer.CLIENT_STALLED
+                edge.outcomes.single().status shouldBe StatementOutcome.Status.CANCELLED
             }
         }
 

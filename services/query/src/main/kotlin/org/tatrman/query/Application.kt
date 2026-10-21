@@ -197,7 +197,12 @@ fun Application.module(config: Config) {
                     "off (no QUERY_RECEIPTS_DB_HOST)"
                 },
             )
-            val runner = LoopbackStatementRunner(flightConfig.loopbackHost, flightConfig.loopbackPort, maxMessageSize)
+            val runner =
+                LoopbackStatementRunner(
+                    flightConfig.loopbackHost,
+                    flightConfig.loopbackPort,
+                    flightConfig.maxMessageSizeBytes,
+                )
             val veles =
                 GrpcVelesCatalogClient(
                     host = config.getString("veles.host"),

@@ -68,6 +68,20 @@ object FlightTestKit {
             out.toByteArray()
         }
 
+    /** The Polars worker's empty result: an IPC stream with the schema and no record batch. */
+    fun schemaOnly(
+        allocator: BufferAllocator,
+        schema: Schema = SCHEMA,
+    ): ByteArray =
+        VectorSchemaRoot.create(schema, allocator).use { root ->
+            val out = ByteArrayOutputStream()
+            ArrowStreamWriter(root, null, Channels.newChannel(out)).use { w ->
+                w.start()
+                w.end()
+            }
+            out.toByteArray()
+        }
+
     fun dataBatch(
         index: Int,
         payload: ByteArray,

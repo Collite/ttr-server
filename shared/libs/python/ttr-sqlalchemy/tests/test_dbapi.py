@@ -118,6 +118,18 @@ def test_the_closing_metadata_is_read(edge):
         assert cur.notices == []
 
 
+def test_an_empty_answer_names_its_columns_and_closes(edge):
+    # C-5 — as the real edge sends an answer with no rows: one zero-row batch of the statement's columns, carrying
+    # the closing metadata.
+    with _connect(edge, world="hartland_cz") as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM er.entity.warehouse WHERE city = 'Nowhere'")
+        assert [d[0] for d in cur.description] == ["warehouse_id", "warehouse_name", "city"]
+        assert cur.fetchall() == []
+        assert cur.connection_id == "pg-hartland-cz"
+        assert cur.closing["rows_total"] == 0
+
+
 def test_a_capped_answer_says_so(edge):
     with _connect(edge, world="hartland_cz") as conn:
         cur = conn.cursor()

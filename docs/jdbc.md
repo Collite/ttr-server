@@ -137,7 +137,9 @@ Receipts record the client as `adbc`, from the driver's user agent.
 
 ## Results
 
-- Rows stream batch by batch as the workers produce them.
+- Rows stream batch by batch as the workers produce them. An answer with no rows still has its columns. (The
+  stock JDBC driver, since 15.0.0, lists an empty result's columns twice:
+  [apache/arrow#44467](https://github.com/apache/arrow/issues/44467).)
 - The **last batch carries app metadata** (JSON): `correlation_id` (the id to quote when asking an operator
   about a statement), `connection_id` (the connection that actually ran it), `rows_total`, `top_n_applied` and
   the door's `notices`. The stock JDBC driver does not surface app metadata; ADBC and `pyarrow.flight` can read it.

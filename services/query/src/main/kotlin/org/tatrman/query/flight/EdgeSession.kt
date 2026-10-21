@@ -45,7 +45,7 @@ data class StatementOutcome(
     val rowsStreamed: Long = 0,
     /** The last batch's execution receipt (ES): executed statement, connection, security applied. */
     val receipt: ExecutionReceipt? = null,
-    /** Notices the door attached to the last batch (`top_n_applied`, …). */
+    /** Warnings the door and the worker raised on the statement, from every batch (`top_n_applied`, `blob_too_large`, …). */
     val notices: List<ResponseMessage> = emptyList(),
     val durationMs: Long = 0,
 ) {

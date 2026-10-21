@@ -29,21 +29,12 @@ class BatchReframer(
         }
     }
 
-    /** The rows an IPC payload holds, across its record batches. */
-    fun rowsOf(ipc: ByteArray): Long {
-        if (ipc.isEmpty()) return 0
-        var rows = 0L
-        ArrowStreamReader(ByteArrayInputStream(ipc), allocator).use { reader ->
-            while (reader.loadNextBatch()) rows += reader.vectorSchemaRoot.rowCount
-        }
-        return rows
-    }
-
     /**
      * Moves every record batch of [ipc] into [target], calling [emit] after each load (the caller's `putNext`)
      * with whether that batch is the payload's last — the one a stream's closing metadata rides on. Returns the
-     * rows moved. A payload whose schema differs from [target]'s is refused: the stream promised one schema at
-     * `GetFlightInfo`, and a second one would be read as the first.
+     * rows moved. A payload with a schema and no record batch (the Polars worker's empty result) emits once, with
+     * no rows, so a closing metadata riding it still goes out. A payload whose schema differs from [target]'s is
+     * refused: the stream promised one schema at `GetFlightInfo`, and a second one would be read as the first.
      */
     fun reframe(
         ipc: ByteArray,
@@ -59,6 +50,10 @@ class BatchReframer(
             }
             val loader = VectorLoader(target)
             var loaded = reader.loadNextBatch()
+            if (!loaded) {
+                target.rowCount = 0
+                emit(true)
+            }
             while (loaded) {
                 // The unloaded batch holds its own references to the buffers, so the reader may move on to the
                 // next batch (and learn whether there is one) before this one is loaded into the target.

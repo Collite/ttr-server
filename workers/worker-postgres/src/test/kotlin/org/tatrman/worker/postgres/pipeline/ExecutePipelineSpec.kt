@@ -324,6 +324,87 @@ class ExecutePipelineSpec :
                 warning.humanMessage.contains("'share'") shouldBe true
             }
         }
+
+        // BI (C-5) — an answer with no rows still names its columns: the tail of a stream that sent no data batch
+        // carries a zero-row batch of the statement's schema. After data batches the tail stays empty.
+        "an empty result's tail carries a zero-row batch of its columns; a non-empty result's tail stays empty" {
+            runBlocking {
+                val translator =
+                    translator { req ->
+                        UnparseResponse
+                            .newBuilder()
+                            .setOutput("SELECT id, name FROM t WHERE false")
+                            .setContext(req.context)
+                            .build()
+                    }
+
+                fun run(vararg next: Boolean): List<org.tatrman.worker.v1.ResultBatch> {
+                    val rsMeta = mockk<ResultSetMetaData>()
+                    every { rsMeta.columnCount } returns 2
+                    listOf(
+                        Triple(1, "id", Types.BIGINT),
+                        Triple(2, "name", Types.VARCHAR),
+                    ).forEach { (i, name, type) ->
+                        every { rsMeta.getColumnLabel(i) } returns name
+                        every { rsMeta.getColumnName(i) } returns name
+                        every { rsMeta.getColumnTypeName(i) } returns if (type == Types.BIGINT) "int8" else "varchar"
+                        every { rsMeta.getColumnType(i) } returns type
+                        every { rsMeta.getPrecision(i) } returns 0
+                        every { rsMeta.getScale(i) } returns 0
+                        every { rsMeta.isNullable(i) } returns ResultSetMetaData.columnNullable
+                    }
+                    val rs = mockk<ResultSet>(relaxed = true)
+                    every { rs.metaData } returns rsMeta
+                    every { rs.next() } returnsMany next.toList()
+                    every { rs.wasNull() } returns false
+                    every { rs.getLong(1) } returns 7L
+                    every { rs.getObject(2) } returns "Brno DC"
+                    val stmt = mockk<PreparedStatement>(relaxed = true)
+                    every { stmt.executeQuery() } returns rs
+                    val conn = mockk<Connection>(relaxed = true)
+                    every { conn.prepareStatement(any()) } returns stmt
+                    val pool = mockk<ConnectionPoolManager>()
+                    every { pool.supportedConnections } returns setOf("pg-midas")
+                    every { pool.requiresTenantId("pg-midas") } returns false
+                    every { pool.acquire("pg-midas") } returns conn
+                    return runBlocking {
+                        ExecutePipeline(pool, translator, limits)
+                            .execute(
+                                ExecuteRequest
+                                    .newBuilder()
+                                    .setPlan(scan("public", "t"))
+                                    .setContext(PipelineContext.getDefaultInstance())
+                                    .setConnectionId("pg-midas")
+                                    .setOptions(ExecutionOptions.getDefaultInstance())
+                                    .build(),
+                            ).toList()
+                    }
+                }
+
+                val empty = run(false)
+                val tail = empty.single()
+                tail.isFirst shouldBe true
+                tail.isLast shouldBe true
+                tail.batchRowCount shouldBe 0L
+                RootAllocator(Long.MAX_VALUE).use { alloc ->
+                    ArrowStreamReader(ByteArrayInputStream(tail.arrowIpc.toByteArray()), alloc).use { reader ->
+                        reader.vectorSchemaRoot.schema.fields
+                            .map { it.name } shouldBe listOf("id", "name")
+                        reader.loadNextBatch() shouldBe true
+                        reader.vectorSchemaRoot.rowCount shouldBe 0
+                        tail.schemaFingerprint shouldBe
+                            org.tatrman.worker.postgres.arrow.ArrowIpcSerializer
+                                .fingerprintFor(reader.vectorSchemaRoot.schema)
+                    }
+                }
+
+                val full = run(true, false)
+                full.size shouldBe 2
+                full[0].arrowIpc.size() shouldNotBe 0
+                full[1].isLast shouldBe true
+                full[1].arrowIpc.size() shouldBe 0
+            }
+        }
     })
 
 private fun scan(
