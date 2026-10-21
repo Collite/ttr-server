@@ -215,6 +215,29 @@ extension, no custom Postgres image). Four keys have no default and fail the ren
 | `automation.policies.fragment` | string | `""` | The `automation.ops` policy fragment, rendered as ConfigMap `<fullname>-policies` for validate to include. Empty → none. |
 | `automation.configFragment.content` | string | `""` | A HOCON delta over the service's `application.conf` (the library's config fragment). |
 
+### 5.5 BI — the Flight SQL edge (`query.flight.*`, `query.worlds`) — opt-in, pre-release
+
+The query service's Arrow Flight SQL listener (JDBC — DBeaver, IntelliJ; ADBC — pandas; the `tatrman://`
+Superset dialect). Off by default; on, it verifies every caller and the render fails by name without
+`flight.auth.issuer`. The listener is exposed with the library's `ports.extra`
+(`[{ name: flight, port: 7308, appProtocol: kubernetes.io/h2c }]`); the gateway route is the deployment's.
+Receipts: the service migrates `bi_receipts` (schema `query`) itself at first use.
+
+| Key | Type | Default | Notes |
+|---|---|---|---|
+| `query.flight.enabled` | bool | `false` | The edge on 7308. **Single-replica:** a statement's ticket lives in the pod that started it, so the chart refuses it with `query.replicaCount` above 1. |
+| `query.flight.{port,bind}` | | `7308` / `0.0.0.0` | Behind the gateway; the service's own default bind (no chart) is `127.0.0.1`. |
+| `query.flight.auth.issuer` | string | `""` | **Required when enabled.** Bearers are verified RS256 against the realm's JWKS, `iss` = this. |
+| `query.flight.auth.{jwksUri,tokenUrl}` | string | the issuer's Keycloak endpoints | `…/protocol/openid-connect/certs` and `…/token`. |
+| `query.flight.auth.audience` | string | `""` | When set, `aud` must contain it; unset, any client's token from the realm is accepted (warned at start). |
+| `query.flight.auth.passwordClient` | string | `jdbc` | User name + password logins are this client's direct-access grant. `""` = bearer tokens only. |
+| `query.flight.receipts.db.{host,port,name,user}` | | `""` / `5432` / `query` / `query` | `bi_receipts`' Postgres; no host = receipts off. The user must own the database (or schema `query`). |
+| `query.flight.receipts.db.passwordSecret.{name,key}` | | `""` / `password` | By **Secret ref**; the name is required with a host. |
+| `query.worlds` | string | `""` | `world=connection_id` pairs, comma-separated: the worlds the door serves (`RunRequest.world`). Empty = one world. |
+
+The BI row ceiling is validate's, set through `validate.extraEnv` (no chart key): `VALIDATE_MAX_TOP_N_BY_ROLE`
+(`role:rows,…`, e.g. `kantheon-bi-reader:10000`) raises `VALIDATE_MAX_TOP_N` for callers holding the role.
+
 ---
 
 ## 6. Model source (`veles.metadata.*`)

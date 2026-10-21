@@ -306,14 +306,10 @@ class TranslatorServiceImpl(
             }
             org.tatrman.translator.detect.SchemaDecision.UNKNOWN -> {
                 val tables = result.unknownTables.joinToString()
-                builder.addMessages(
-                    errorMessage(
-                        "schema_object_unknown",
-                        "Unknown object(s): $tables. Did you mean: ${result.suggestions.flatMap {
-                            it.candidates
-                        }.distinct().joinToString()}?",
-                    ),
-                )
+                // BI (C-11) — no "Did you mean: ?" when there is nothing to suggest.
+                val candidates = result.suggestions.flatMap { it.candidates }.distinct()
+                val suggestion = if (candidates.isEmpty()) "" else " Did you mean: ${candidates.joinToString()}?"
+                builder.addMessages(errorMessage("schema_object_unknown", "Unknown object(s): $tables.$suggestion"))
             }
             org.tatrman.translator.detect.SchemaDecision.MIXED -> {
                 val tableSchemas =
@@ -506,16 +502,21 @@ class TranslatorServiceImpl(
                 .build()
         }
 
+    /** BI (C-11) — every refusal leaves here readable: one line, said once, its position as fields ([RefusalText]). */
     private fun errorMessage(
         code: String,
         message: String,
-    ): ResponseMessage =
-        ResponseMessage
+    ): ResponseMessage {
+        val clean = RefusalText.of(message)
+        return ResponseMessage
             .newBuilder()
             .setSeverity(Severity.ERROR)
             .setCode(code)
-            .setHumanMessage(message)
+            .setHumanMessage(clean.text)
+            .setLine(clean.line)
+            .setColumn(clean.column)
             .build()
+    }
 
     private fun infoMessage(
         code: String,

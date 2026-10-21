@@ -28,6 +28,8 @@ import org.tatrman.query.client.TranslatorTranslateClient
 import org.tatrman.query.client.ValidatorClient
 import org.tatrman.query.grpc.QueryServiceImpl
 import org.tatrman.query.retry.RetryPolicy
+import org.tatrman.query.world.Worlds
+import org.tatrman.dispatch.v1.DispatchRequest
 import org.tatrman.query.v1.RunSavedQueryRequest
 import org.tatrman.translate.v1.Language
 import org.tatrman.translate.v1.ParseRequest
@@ -89,8 +91,10 @@ class RunSavedQueryE2ESpec :
                 .build()
 
         class Harness(
+            worlds: Worlds = Worlds.NONE,
             val metadata: (GetQueryRequest) -> GetQueryResponse,
         ) {
+            val dispatchRequests = mutableListOf<DispatchRequest>()
             val asked = mutableListOf<GetQueryRequest>()
             val parses = mutableListOf<ParseRequest>()
             val validated = mutableListOf<ValidateRequest>()
@@ -124,8 +128,9 @@ class RunSavedQueryE2ESpec :
                             .setContext(req.context)
                             .build()
                     },
-                    DispatcherClient { _ ->
+                    DispatcherClient { req ->
                         dispatched++
+                        synchronized(dispatchRequests) { dispatchRequests += req }
                         flowOf(
                             ResultBatch
                                 .newBuilder()
@@ -141,6 +146,7 @@ class RunSavedQueryE2ESpec :
                         SavedQueryClient { req ->
                             synchronized(asked) { asked += req }.let { metadata(req) }
                         },
+                    worlds = worlds,
                 )
         }
 
@@ -277,5 +283,14 @@ class RunSavedQueryE2ESpec :
                             .setInput(erStored),
                     ).build()
             QueryServiceImpl.readsEntities(nested) shouldBe true
+        }
+
+        "a saved query runs in the world it names (C-9): RunSavedQueryRequest.world reaches dispatch's connection" {
+            val h = Harness(Worlds.parse("hartland_us=pg-hartland-us")) { stored(erStored) }
+            val batches = h.service.runSavedQuery(request(logical).toBuilder().setWorld("hartland_us").build()).toList()
+            errors(batches).shouldBeEmpty()
+            h.dispatchRequests.single().connectionId shouldBe "pg-hartland-us"
+            val refused = h.service.runSavedQuery(request(logical).toBuilder().setWorld("hartland_de").build()).toList()
+            errors(refused).single().code shouldBe "unknown_world"
         }
     })

@@ -282,6 +282,25 @@ class TranslatorServiceImplSpec :
             resp.messagesList[0].code shouldBe "validation_failed"
         }
 
+        "a refusal is one readable line, its position as fields (BI C-11)" {
+            val resp =
+                service.parseToRelNode(
+                    ParseRequest
+                        .newBuilder()
+                        .setSource("SELECT id,\n  does_not_exist FROM customer")
+                        .setSourceLanguage(Language.SQL)
+                        .setTargetSchema(SchemaCode.DB)
+                        .build(),
+                )
+            val refusal = resp.messagesList.single()
+            refusal.humanMessage shouldNotContain "Calcite"
+            refusal.humanMessage shouldNotContain "From line"
+            refusal.humanMessage shouldContain "does_not_exist"
+            refusal.humanMessage.lines() shouldHaveSize 1
+            refusal.line shouldBe 2
+            refusal.column shouldBe 3
+        }
+
         "UnparseFromRelNode produces SQL for a valid PlanNode" {
             val parseResp =
                 service.parseToRelNode(

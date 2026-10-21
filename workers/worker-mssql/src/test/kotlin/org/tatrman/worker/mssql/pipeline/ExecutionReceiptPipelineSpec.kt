@@ -13,6 +13,9 @@ import org.tatrman.plan.v1.PipelineContext
 import org.tatrman.plan.v1.Value
 import org.tatrman.translate.v1.UnparseRequest
 import org.tatrman.translate.v1.UnparseResponse
+import org.apache.arrow.memory.RootAllocator
+import org.apache.arrow.vector.ipc.ArrowStreamReader
+import org.tatrman.worker.mssql.arrow.ArrowIpcSerializer
 import org.tatrman.worker.mssql.client.TranslatorClient
 import org.tatrman.worker.mssql.connection.ConnectionPoolManager
 import org.tatrman.worker.receipt.ExecutionReceiptBuilder
@@ -21,6 +24,7 @@ import org.tatrman.worker.v1.ExecutionOptions
 import org.tatrman.worker.v1.ResultBatch
 import org.tatrman.worker.v1.RlsOutcome
 import org.tatrman.worker.v1.StatementKind
+import java.io.ByteArrayInputStream
 import java.sql.Connection
 import java.sql.PreparedStatement
 import java.sql.ResultSet
@@ -40,6 +44,29 @@ import java.sql.Types
  */
 class ExecutionReceiptPipelineSpec :
     StringSpec({
+
+        // BI (C-5) — an answer with no rows still names its columns: the tail of a stream that sent no data batch
+        // carries a zero-row batch of the statement's schema. After data batches the tail stays empty.
+        "an empty result's tail carries a zero-row batch of its columns; a non-empty result's tail stays empty" {
+            val tail = run(sql = SELECT, empty = true).single()
+            tail.isFirst shouldBe true
+            tail.isLast shouldBe true
+            tail.batchRowCount shouldBe 0L
+            tail.hasReceipt() shouldBe true
+            RootAllocator(Long.MAX_VALUE).use { alloc ->
+                ArrowStreamReader(ByteArrayInputStream(tail.arrowIpc.toByteArray()), alloc).use { reader ->
+                    reader.vectorSchemaRoot.schema.fields
+                        .map { it.name } shouldBe listOf("id")
+                    reader.loadNextBatch() shouldBe true
+                    reader.vectorSchemaRoot.rowCount shouldBe 0
+                    tail.schemaFingerprint shouldBe ArrowIpcSerializer.fingerprintFor(reader.vectorSchemaRoot.schema)
+                }
+            }
+            run(sql = SELECT)
+                .last()
+                .arrowIpc
+                .size() shouldBe 0
+        }
 
         "the tail marker of a successful run carries the statement half" {
             val out = run(sql = SELECT, parameters = listOf(binding("year_from", "int", 2025)))
@@ -98,8 +125,10 @@ class ExecutionReceiptPipelineSpec :
             lastBatches.forEach {
                 it.hasReceipt() shouldBe true
                 it.receipt.statement shouldBe SELECT
-                it.receipt.rowsTotal shouldBe 2L
+                // BI (C-10) — exact: one row of the two, however the batches fall.
+                it.receipt.rowsTotal shouldBe 1L
             }
+            out.sumOf { it.batchRowCount } shouldBe 1L
         }
     })
 
@@ -153,8 +182,8 @@ private fun request(
         .setOptions(ExecutionOptions.newBuilder().setRowLimit(rowLimit))
         .build()
 
-/** Two-row fake ResultSet (`id BIGINT`), the smallest thing the Arrow path accepts. */
-private fun fakeResultSet(): ResultSet {
+/** Two-row fake ResultSet (`id BIGINT`), the smallest thing the Arrow path accepts; [empty] = no rows. */
+private fun fakeResultSet(empty: Boolean = false): ResultSet {
     val meta =
         mockk<ResultSetMetaData>().also {
             every { it.columnCount } returns 1
@@ -168,7 +197,7 @@ private fun fakeResultSet(): ResultSet {
         }
     return mockk<ResultSet>(relaxed = true).also {
         every { it.metaData } returns meta
-        every { it.next() } returnsMany listOf(true, true, false)
+        every { it.next() } returnsMany if (empty) listOf(false) else listOf(true, true, false)
         every { it.wasNull() } returns false
         every { it.getLong(1) } returnsMany listOf(1001L, 1002L)
     }
@@ -179,13 +208,14 @@ private fun run(
     parameters: List<ParameterBinding> = emptyList(),
     rowLimit: Long = 0,
     executeThrows: Throwable? = null,
+    empty: Boolean = false,
 ): List<ResultBatch> {
     val statement =
         mockk<PreparedStatement>(relaxed = true).also {
             if (executeThrows != null) {
                 every { it.executeQuery() } throws executeThrows
             } else {
-                every { it.executeQuery() } returns fakeResultSet()
+                every { it.executeQuery() } returns fakeResultSet(empty)
             }
         }
     val connection = mockk<Connection>(relaxed = true).also { every { it.prepareStatement(any()) } returns statement }

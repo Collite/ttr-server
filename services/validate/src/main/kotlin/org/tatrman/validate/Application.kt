@@ -107,7 +107,21 @@ fun Application.module(config: Config) {
             maxTopN,
         )
     }
-    val ruleEnforcer = RuleEnforcer(serviceDefault = defaultTopN, serviceMax = maxTopN)
+    // BI (C-10) — per-role ceilings; a malformed table fails the boot (RuleEnforcer.parseMaxByRole).
+    val maxTopNByRole =
+        RuleEnforcer.parseMaxByRole(
+            if (config.hasPath("validate.max-top-n-by-role")) config.getString("validate.max-top-n-by-role") else "",
+        )
+    maxTopNByRole.filterValues { it <= maxTopN }.keys.forEach { role ->
+        log.warn(
+            "validate.max-top-n-by-role: {}'s ceiling ({}) is not above max-top-n ({}); it changes nothing",
+            role,
+            maxTopNByRole.getValue(role),
+            maxTopN,
+        )
+    }
+    if (maxTopNByRole.isNotEmpty()) log.info("Row ceilings by role: {}", maxTopNByRole)
+    val ruleEnforcer = RuleEnforcer(serviceDefault = defaultTopN, serviceMax = maxTopN, maxByRole = maxTopNByRole)
     val llmGuardEnabled = config.getBoolean("validate.llm-guard.enabled")
     val llmGuardGateway = buildLlmGatewayClient(config)
     val llmGuardModel =
@@ -229,6 +243,7 @@ fun Application.module(config: Config) {
                     put("llm_guard_enabled", llmGuardEnabled)
                     put("default_top_n", defaultTopN)
                     put("max_top_n", maxTopN)
+                    putJsonObject("max_top_n_by_role") { maxTopNByRole.forEach { (role, rows) -> put(role, rows) } }
                     put("ready", dependencyMonitor.ready())
                     putJsonObject("dependencies") {
                         dependencyMonitor.statuses().forEach { (name, up) -> put(name, up) }

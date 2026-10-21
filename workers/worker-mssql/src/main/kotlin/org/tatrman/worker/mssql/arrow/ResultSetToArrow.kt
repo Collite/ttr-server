@@ -49,19 +49,29 @@ class ResultSetToArrow(
     private val batchRows: Int,
     private val maxBlobBytesPerCell: Long,
 ) {
-    fun convert(resultSet: ResultSet): Sequence<Batch> {
+    /**
+     * [rowLimit] (`ExecutionOptions.row_limit`, 0 = none) bounds the rows read across all batches: the last batch
+     * stops at it, however [batchRows] falls (BI C-10).
+     */
+    fun convert(
+        resultSet: ResultSet,
+        rowLimit: Long = 0,
+    ): Sequence<Batch> {
         val meta = resultSet.metaData
         val fields = (1..meta.columnCount).map { MssqlArrowTypeMapper.fieldFor(meta, it) }
         val schema = Schema(fields)
         return sequence {
+            var remaining = if (rowLimit > 0) rowLimit else Long.MAX_VALUE
             do {
-                val (root, rowCount, rejections) = nextBatch(resultSet, meta, schema)
+                val want = minOf(batchRows.toLong(), remaining).toInt()
+                val (root, rowCount, rejections) = nextBatch(resultSet, meta, schema, want)
                 if (rowCount == 0 && rejections.isEmpty() && root != null) {
                     root.close()
                     break
                 }
                 yield(Batch(root = root, rowCount = rowCount, rejections = rejections))
-                if (rowCount < batchRows) break
+                remaining -= rowCount
+                if (rowCount < want || remaining <= 0) break
             } while (true)
         }
     }
@@ -70,13 +80,14 @@ class ResultSetToArrow(
         resultSet: ResultSet,
         meta: ResultSetMetaData,
         schema: Schema,
+        rows: Int,
     ): Triple<VectorSchemaRoot?, Int, List<RejectedRow>> {
         val root = VectorSchemaRoot.create(schema, allocator)
         root.allocateNew()
         var row = 0
         val rejections = mutableListOf<RejectedRow>()
         try {
-            while (row < batchRows && resultSet.next()) {
+            while (row < rows && resultSet.next()) {
                 val rejection = appendRow(root, meta, resultSet, row)
                 if (rejection != null) {
                     rejections.add(rejection)

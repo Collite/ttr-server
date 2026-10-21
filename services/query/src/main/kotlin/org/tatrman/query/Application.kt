@@ -13,6 +13,8 @@ import io.ktor.server.routing.get
 import io.ktor.server.routing.post
 import io.ktor.server.routing.routing
 import kotlinx.coroutines.launch
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
@@ -28,8 +30,24 @@ import org.tatrman.query.client.TranslatorClient
 import org.tatrman.query.client.TranslatorDetectClient
 import org.tatrman.query.client.TranslatorTranslateClient
 import org.tatrman.query.client.ValidatorClient
+import org.tatrman.mcp.identity.BearerVerifier
+import org.tatrman.mcp.identity.HttpJwksKeySource
+import org.tatrman.mcp.identity.JwksBearerVerifier
+import org.tatrman.query.flight.FlightAuthenticator
+import org.tatrman.query.flight.FlightConfig
+import org.tatrman.query.flight.FlightEdge
+import org.tatrman.query.flight.GrpcVelesCatalogClient
+import org.tatrman.query.flight.IdentityWorldMiddleware
+import org.tatrman.query.flight.KeycloakPasswordGrant
+import org.tatrman.query.flight.LoopbackStatementRunner
+import org.tatrman.query.flight.PostgresReceiptStore
+import org.tatrman.query.flight.ReceiptSink
+import org.tatrman.query.flight.ReceiptStore
+import org.tatrman.query.flight.StatementListener
+import org.tatrman.query.flight.receiptRoutes
 import org.tatrman.query.grpc.QueryServiceImpl
 import org.tatrman.query.retry.RetryPolicy
+import org.tatrman.query.world.Worlds
 import shared.ktor.KtorConfigFactory
 import shared.ktor.KtorServerBootstrap
 import shared.ktor.installKtorServerBase
@@ -94,6 +112,13 @@ fun Application.module(config: Config) {
             )
         }
 
+    // BI (C-9) — the worlds this door serves, parsed once; a malformed table fails the boot, by name.
+    val worlds = Worlds.fromConfig(config)
+    log.info(
+        "Worlds: {}",
+        if (worlds.connections.isEmpty()) "none (one world, the default connection)" else worlds.toString(),
+    )
+
     val service =
         QueryServiceImpl(
             rawTranslator = translatorClient,
@@ -105,6 +130,7 @@ fun Application.module(config: Config) {
             retry = retry,
             openTelemetry = openTelemetry,
             rawSavedQueries = savedQueryClient,
+            worlds = worlds,
         )
 
     val grpcPort = config.getInt("grpc.port")
@@ -126,6 +152,89 @@ fun Application.module(config: Config) {
             .apply { if (reflectionEnabled) addService(ProtoReflectionServiceV1.newInstance()) }
             .build()
 
+    // BI (contracts C-1…C-6) — the Flight SQL edge, a client of this door over loopback. Never in fixture mode: it
+    // reads its catalog from Veles, which the fixture clients do not stand in for. Every caller is verified (C-2) —
+    // an enabled edge without an issuer to verify against does not start — and every statement leaves a receipt
+    // when the receipts database is configured (C-6).
+    val flightConfig = FlightConfig.fromConfig(config)
+    if (flightConfig.enabled && useFixture) log.warn("Flight edge enabled but query.use-fixture = true — not started.")
+    val flight =
+        if (flightConfig.enabled && !useFixture) {
+            val auth = flightConfig.auth
+            require(auth.issuer.isNotBlank()) {
+                "flight.enabled = true needs flight.auth.issuer (QUERY_FLIGHT_AUTH_ISSUER): the edge verifies every caller"
+            }
+            val verifier =
+                JwksBearerVerifier(
+                    HttpJwksKeySource(auth.effectiveJwksUri),
+                    issuer = auth.issuer,
+                    audience = auth.audience.ifBlank { null },
+                )
+            val passwords =
+                auth.passwordClient.takeIf { it.isNotBlank() }?.let {
+                    KeycloakPasswordGrant(auth.effectiveTokenUrl, it, auth.passwordClientSecret)
+                }
+            log.info(
+                "Flight edge: bearers verified against {} (jwks {}); password login {}",
+                auth.issuer,
+                auth.effectiveJwksUri,
+                passwords?.let { "on client ${auth.passwordClient} at ${auth.effectiveTokenUrl}" } ?: "off",
+            )
+            if (auth.audience.isBlank()) {
+                log.warn(
+                    "Flight edge: no audience set — any client's token from the realm is accepted",
+                )
+            }
+            val receiptStore = PostgresReceiptStore.fromConfig(config)
+            val receiptSink = receiptStore?.let { ReceiptSink(it) }
+            log.info(
+                "Flight edge: receipts {}",
+                if (receiptStore !=
+                    null
+                ) {
+                    "on (bi_receipts)"
+                } else {
+                    "off (no QUERY_RECEIPTS_DB_HOST)"
+                },
+            )
+            val runner =
+                LoopbackStatementRunner(
+                    flightConfig.loopbackHost,
+                    flightConfig.loopbackPort,
+                    flightConfig.maxMessageSizeBytes,
+                )
+            val veles =
+                GrpcVelesCatalogClient(
+                    host = config.getString("veles.host"),
+                    port = config.getInt("veles.port"),
+                    deadlineSeconds = config.getLong("veles.deadline-seconds"),
+                )
+            val edge =
+                FlightEdge.create(
+                    config = flightConfig,
+                    runner = runner,
+                    veles = veles,
+                    identity = IdentityWorldMiddleware.Factory(FlightAuthenticator(verifier, passwords), worlds),
+                    worlds = worlds,
+                    outcomes = receiptSink ?: StatementListener { },
+                    openTelemetry = openTelemetry,
+                    // In order: the sink drains into the store before the store's pool closes.
+                    closeables = listOfNotNull(runner, veles, receiptSink, receiptStore),
+                )
+            FlightWiring(edge, verifier, receiptStore)
+        } else {
+            null
+        }
+    val flightEdge = flight?.edge
+    // On the application's own thread, before the gRPC server: an enabled edge that cannot listen fails the start
+    // (and the process), as an enabled edge without an issuer does. Its statements reach the door once gRPC is up.
+    try {
+        flightEdge?.start()
+    } catch (e: IllegalStateException) {
+        runCatching { flightEdge?.close() }
+        throw e
+    }
+
     launch {
         grpcServer.start()
         log.info("Query gRPC server started on port {} (reflection={})", grpcPort, reflectionEnabled)
@@ -135,7 +244,7 @@ fun Application.module(config: Config) {
     routing {
         get("/health") { call.respond(buildJsonObject { put("status", "UP") }) }
         get("/ready") {
-            val ready = useFixture || (translatorClient is AutoCloseable)
+            val ready = FlightEdge.ready(doorReady = useFixture || (translatorClient is AutoCloseable), flightEdge)
             if (ready) {
                 call.respond(buildJsonObject { put("status", "UP") })
             } else {
@@ -152,6 +261,16 @@ fun Application.module(config: Config) {
                     put("service", "query")
                     put("grpc_port", grpcPort)
                     put("active_runs", service.activeRunCount)
+                    put(
+                        "flight",
+                        flight?.let {
+                            JsonObject(
+                                it.edge.status() + ("receipts" to JsonPrimitive(it.receipts != null)),
+                            )
+                        }
+                            ?: FlightEdge.DISABLED_STATUS,
+                    )
+                    put("worlds", JsonArray(worlds.names.map { JsonPrimitive(it) }))
                     putJsonObject("cache") {
                         put("entries", stats.entries)
                         put("max_entries", stats.maxEntries)
@@ -164,6 +283,8 @@ fun Application.module(config: Config) {
                 },
             )
         }
+        // C-6 — the Flight edge's receipts, query-platform-admin only (verified like the edge's callers).
+        flight?.receipts?.let { store -> receiptRoutes(store, flight.verifier) }
         // Unauthenticated, cluster-internal (see DF decision: /refresh has no auth). Drops every
         // cached compiled plan so the next query recompiles against the latest model. Golem's
         // /v2/refresh calls this AFTER forcing the translator to re-poll metadata, so the recompiled
@@ -181,12 +302,20 @@ fun Application.module(config: Config) {
 
     monitor.subscribe(ApplicationStopping) {
         log.info("Shutting down Query")
+        flightEdge?.close()
         grpcServer.shutdown()
         if (translatorClient is AutoCloseable) runCatching { translatorClient.close() }
         if (validatorClient is AutoCloseable) runCatching { validatorClient.close() }
         if (dispatcherClient is AutoCloseable) runCatching { dispatcherClient.close() }
     }
 }
+
+/** The Flight edge and what the HTTP side reads from it: the bearer verifier and the receipt store (null = off). */
+private class FlightWiring(
+    val edge: FlightEdge,
+    val verifier: BearerVerifier,
+    val receipts: ReceiptStore?,
+)
 
 private fun pickTranslatorClient(
     config: Config,

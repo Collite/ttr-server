@@ -5,9 +5,12 @@ import io.kotest.core.annotation.Tags
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.longs.shouldBeGreaterThan
 import io.kotest.matchers.shouldBe
+import org.apache.arrow.memory.RootAllocator
+import org.apache.arrow.vector.ipc.ArrowStreamReader
 import org.tatrman.testkit.containers.Containers
 import org.tatrman.worker.v1.RlsOutcome
 import org.tatrman.worker.v1.StatementKind
+import java.io.ByteArrayInputStream
 import java.util.UUID
 
 /**
@@ -73,6 +76,87 @@ class PostgresReceiptComponentSpec :
                 // The plan half belongs to the query service (⚑ES-1) — the worker leaves it unset.
                 receipt.hasDispatchedPlan() shouldBe false
                 receipt.securityAppliedCount shouldBe 0
+            }
+        }
+
+        "BI (C-10) — row_limit is exact on a real server: 2 rows of 3, in one batch of a hundred" {
+            Containers.postgres().use { pg ->
+                pg.start()
+                val tenant = UUID.randomUUID()
+                PostgresPgFixture.connect(pg.jdbcUrl, pg.username, pg.password).use { su ->
+                    PostgresPgFixture.provision(su)
+                    PostgresPgFixture.insert(su, tenant, 1001L, "1.0000", "a")
+                    PostgresPgFixture.insert(su, tenant, 1002L, "2.0000", "b")
+                    PostgresPgFixture.insert(su, tenant, 1003L, "3.0000", "c")
+                }
+                val pool = PostgresComponentSupport.pool(pg.jdbcUrl, pg.databaseName)
+                val batches =
+                    try {
+                        PostgresComponentSupport.execute(
+                            pool,
+                            tenant,
+                            org.tatrman.worker.v1.ExecutionOptions
+                                .newBuilder()
+                                .setRowLimit(2)
+                                .setBatchSizeRows(100)
+                                .build(),
+                        )
+                    } finally {
+                        pool.close()
+                    }
+                batches.sumOf { it.batchRowCount } shouldBe 2L
+                PostgresComponentSupport.decode(batches).size shouldBe 2
+                batches.last().receipt.rowsTotal shouldBe 2L
+            }
+        }
+
+        "BI (C-5) — an empty answer on a real server still names its columns: the tail is a zero-row batch" {
+            Containers.postgres().use { pg ->
+                pg.start()
+                PostgresPgFixture.connect(pg.jdbcUrl, pg.username, pg.password).use { su ->
+                    PostgresPgFixture.provision(su)
+                    PostgresPgFixture.insert(su, UUID.randomUUID(), 1001L, "1.0000", "someone else's")
+                }
+                val pool = PostgresComponentSupport.pool(pg.jdbcUrl, pg.databaseName)
+                // A tenant with no rows: RLS lets nothing through, so the statement answers no rows.
+                val batches =
+                    try {
+                        PostgresComponentSupport.execute(pool, UUID.randomUUID())
+                    } finally {
+                        pool.close()
+                    }
+                val tail = batches.single()
+                tail.isLast shouldBe true
+                tail.batchRowCount shouldBe 0L
+                RootAllocator(Long.MAX_VALUE).use { alloc ->
+                    ArrowStreamReader(ByteArrayInputStream(tail.arrowIpc.toByteArray()), alloc).use { reader ->
+                        reader.vectorSchemaRoot.schema.fields
+                            .map { it.name } shouldBe listOf("account_id", "amount", "label")
+                        reader.loadNextBatch() shouldBe true
+                        reader.vectorSchemaRoot.rowCount shouldBe 0
+                    }
+                }
+                tail.receipt.rowsTotal shouldBe 0L
+            }
+        }
+
+        "a non-empty answer's tail stays empty on a real server" {
+            Containers.postgres().use { pg ->
+                pg.start()
+                val tenant = UUID.randomUUID()
+                PostgresPgFixture.connect(pg.jdbcUrl, pg.username, pg.password).use { su ->
+                    PostgresPgFixture.provision(su)
+                    PostgresPgFixture.insert(su, tenant, 1001L, "1.0000", "a")
+                }
+                val pool = PostgresComponentSupport.pool(pg.jdbcUrl, pg.databaseName)
+                val batches =
+                    try {
+                        PostgresComponentSupport.execute(pool, tenant)
+                    } finally {
+                        pool.close()
+                    }
+                batches.size shouldBe 2
+                batches.last().arrowIpc.isEmpty shouldBe true
             }
         }
 

@@ -145,7 +145,8 @@ message ExecutionOptions {
 
   // Hard cap on rows returned across the whole stream; 0 = no cap.
   // Validator's TopN enforcement is already applied — this is an additional
-  // belt-and-braces cap callers may set.
+  // belt-and-braces cap callers may set. Exact: the stream carries at most
+  // this many rows, however the worker batches them (BI C-10).
   int64 row_limit = 2;
 
   // Hard execution timeout in seconds (covers connection acquire +
@@ -184,8 +185,24 @@ message ResultBatch {
   // reads the last alone. (⚑ES-1)
   ExecutionReceipt receipt = 8;
 
+  // BI (C-10) — what a client should tell its user about the answer, with the numbers: today
+  // `top_n_applied` (the row cap bounded the answer). On the LAST batch, set by the query service; each
+  // notice is also a WARNING in `messages`, for readers that know only those.
+  repeated Notice notices = 9;
+
   repeated org.tatrman.common.v1.ResponseMessage messages = 99;
   reserved 100 to 104;
+}
+
+// A typed notice about a result (BI C-10).
+message Notice {
+  string code = 1;                       // "top_n_applied"
+  // top_n_applied: the rows the caller asked for, and the row cap that bounded the answer. requested 0 = the
+  // caller stated no number: no row window, or the largest one (2147483647, "as many as my ceiling allows",
+  // which the Flight edge sends).
+  int64 requested = 2;
+  int64 applied = 3;
+  reserved 4 to 8;
 }
 
 // =============================================================================

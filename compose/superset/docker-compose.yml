@@ -1,0 +1,51 @@
+# Superset 6.1.0 over a Tatrman Server's Flight SQL edge: an evaluation convenience, not a production topology (one
+# Superset container, no workers, no cache, metadata in a local Postgres). README.md has the steps.
+#
+#   cp .env.example .env          # the Keycloak realm and its client(s)
+#   docker compose up -d --build  # then http://localhost:8088 → "Sign in with keycloak"
+#   docker compose down -v        # and the metadata is gone
+
+name: tatrman-superset
+
+services:
+  metadata:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: superset
+      POSTGRES_PASSWORD: superset
+      POSTGRES_DB: superset
+    volumes:
+      - metadata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U superset -d superset"]
+      interval: 2s
+      retries: 30
+
+  # Once per `up`: the metadata schema, Superset's roles, and the two example databases (bundle/databases/).
+  init:
+    build: .
+    image: tatrman-superset:6.1.0
+    env_file: .env
+    command: >-
+      sh -c "superset db upgrade && superset init
+      && superset import-directory --overwrite /app/tatrman/bundle"
+    depends_on:
+      metadata:
+        condition: service_healthy
+    extra_hosts:
+      - host.docker.internal:host-gateway
+
+  superset:
+    image: tatrman-superset:6.1.0
+    env_file: .env
+    ports:
+      - "127.0.0.1:8088:8088"
+    depends_on:
+      init:
+        condition: service_completed_successfully
+    # The example databases reach an edge port-forwarded on the host.
+    extra_hosts:
+      - host.docker.internal:host-gateway
+
+volumes:
+  metadata:

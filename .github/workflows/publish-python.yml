@@ -6,7 +6,12 @@ name: Publish Python (PyPI)
 # the trusted publisher for this workflow.
 #
 # Tag → wheel:
-#   python-nlp/v<x.y.z>[-RELEASE]   ttr-nlp   (shared/libs/python/ttr-nlp)
+#   python-nlp/v<x.y.z>[-RELEASE]          ttr-nlp          (shared/libs/python/ttr-nlp)
+#   python-sqlalchemy/v<x.y.z>[-RELEASE]   ttr-sqlalchemy   (shared/libs/python/ttr-sqlalchemy)
+#
+# Each distribution needs its own trusted-publisher registration on PyPI (a
+# "pending publisher" before its first upload): project name, this repository,
+# this workflow file and the `pypi` environment.
 #
 # ⚑ NAME COUPLING — the trusted-publisher registration on PyPI names three
 # things that MUST keep matching this file (P-BP T1/T2, Bora):
@@ -27,6 +32,7 @@ on:
   push:
     tags:
       - 'python-nlp/v*'
+      - 'python-sqlalchemy/v*'
 
 permissions:
   contents: read
@@ -165,6 +171,122 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: dist
+          path: dist/
+      - name: Publish to PyPI (Trusted Publishing)
+        uses: pypa/gh-action-pypi-publish@release/v1
+
+  # ── ttr-sqlalchemy (python-sqlalchemy/v*) ─────────────────────────────────
+  # The BI driver: DB-API + the `tatrman://` SQLAlchemy dialect over the Flight
+  # SQL edge. Pure Python, no stubs and no build hook, so its checks are the
+  # wheel's contents, the entry point and a constructing engine.
+  build-sqlalchemy:
+    if: startsWith(github.ref_name, 'python-sqlalchemy/v')
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.ver.outputs.version }}
+      public: ${{ steps.ver.outputs.public }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Derive version from the tag
+        id: ver
+        run: |
+          RAW="${GITHUB_REF_NAME#python-sqlalchemy/v}"
+          if [[ "$RAW" == *-RELEASE ]]; then
+            PUBLIC=true
+            VERSION="${RAW%-RELEASE}"
+          else
+            PUBLIC=false
+            VERSION="$RAW"
+          fi
+          if [ -z "$VERSION" ]; then
+            echo "::error::could not derive a version from tag '$GITHUB_REF_NAME'"
+            exit 1
+          fi
+          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([abrc.dev+-][0-9A-Za-z.+-]*)?$ ]]; then
+            echo "::error::'$VERSION' is not a PEP 440 release version"
+            exit 1
+          fi
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "public=${PUBLIC}" >> "$GITHUB_OUTPUT"
+          sed -i "s/^version = \"0.0.0\"/version = \"$VERSION\"/" \
+            shared/libs/python/ttr-sqlalchemy/pyproject.toml
+          grep -q "^version = \"$VERSION\"$" shared/libs/python/ttr-sqlalchemy/pyproject.toml \
+            || { echo "::error::version injection did not take — is the repo tree still 0.0.0?"; exit 1; }
+          echo "Building ttr-sqlalchemy $VERSION (public=$PUBLIC)"
+
+      - name: Build wheel
+        run: uv build --wheel shared/libs/python/ttr-sqlalchemy
+
+      - name: Verify the wheel
+        run: |
+          set -euo pipefail
+          cd shared/libs/python/ttr-sqlalchemy
+          uvx twine check dist/*
+
+          unzip -l dist/*.whl | grep -qE 'ttr_sqlalchemy/dialect\.py' \
+            || { echo "::error::ttr_sqlalchemy package missing from the wheel"; exit 1; }
+
+          # The recorded edge's FlightSql.proto and its compiled stubs are test
+          # fixtures, never runtime: a wheel carrying them would be shipping tests.
+          if unzip -l dist/*.whl | grep -qE 'FlightSql|tests/'; then
+            echo "::error::test fixtures leaked into the wheel"; exit 1
+          fi
+
+          # Installed, the dialect must be found by name through its entry
+          # point — that is how Superset and create_engine() reach it.
+          python -m venv /tmp/wheelcheck
+          /tmp/wheelcheck/bin/pip install --quiet "$(ls dist/*.whl)"
+          /tmp/wheelcheck/bin/python -c "
+          import sqlalchemy as sa
+          from sqlalchemy.dialects import registry
+          from ttr_sqlalchemy.dialect import TatrmanDialect
+          assert registry.load('tatrman') is TatrmanDialect
+          engine = sa.create_engine('tatrman://flight.example.com/hartland_us')
+          assert engine.dialect.name == 'tatrman'
+          print('installed wheel: tatrman:// resolves through the entry point')
+          " || { echo "::error::the installed wheel does not register tatrman://"; exit 1; }
+
+          # Superset finds the engine spec by its entry point. The spec imports Superset, so the check reads the
+          # declaration and does not load it.
+          /tmp/wheelcheck/bin/python -c "
+          from importlib.metadata import entry_points
+          (ep,) = [e for e in entry_points(group='superset.db_engine_specs') if e.name == 'tatrman']
+          assert ep.value == 'ttr_sqlalchemy.superset:TatrmanEngineSpec', ep.value
+          print('installed wheel: declares the Superset engine spec')
+          " || { echo "::error::the installed wheel does not declare superset.db_engine_specs: tatrman"; exit 1; }
+          unzip -l dist/*.whl | grep -qE 'ttr_sqlalchemy/superset\.py' \
+            || { echo "::error::the engine spec is missing from the wheel"; exit 1; }
+
+          ls dist/ | grep -qE "^ttr_sqlalchemy-${{ steps.ver.outputs.version }}-py3-none-any\.whl$" \
+            || { echo "::error::wheel filename does not carry version ${{ steps.ver.outputs.version }}"; ls dist/; exit 1; }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist-sqlalchemy
+          path: shared/libs/python/ttr-sqlalchemy/dist/
+
+  publish-sqlalchemy:
+    needs: build-sqlalchemy
+    if: needs.build-sqlalchemy.outputs.public == 'true'
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/ttr-sqlalchemy
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist-sqlalchemy
           path: dist/
       - name: Publish to PyPI (Trusted Publishing)
         uses: pypa/gh-action-pypi-publish@release/v1

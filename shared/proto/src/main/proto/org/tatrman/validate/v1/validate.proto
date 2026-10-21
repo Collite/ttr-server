@@ -77,7 +77,9 @@ message ValidationOptions {
   // many it gets: an unstated request gets the service's default-top-n, a
   // stated one is granted up to the service's max-top-n and cut to it above
   // that. max-top-n defaults to default-top-n, which keeps the older rule —
-  // a caller could ask for fewer rows than the default, never more. When the
+  // a caller could ask for fewer rows than the default, never more. A caller
+  // holding a role named in the service's max-top-n-by-role is granted up to
+  // that role's ceiling instead, when it is higher (BI C-10). When the
   // cap bounds the plan below what was asked, the response carries a
   // `top_n_applied` WARNING.
   int32 default_top_n = 3;

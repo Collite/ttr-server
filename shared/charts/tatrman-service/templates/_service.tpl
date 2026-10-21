@@ -1,6 +1,7 @@
 {{/*
 Backend ClusterIP Service. `http` always; `grpc` gated on `.Values.ports.grpc`
-(HTTP-only modules leave it unset). port == targetPort == the container port.
+(HTTP-only modules leave it unset); each of `.Values.ports.extra` with its optional `appProtocol`
+(`kubernetes.io/h2c` for a gRPC listener a gateway routes to). port == targetPort == the container port.
 */}}
 {{- define "tatrman-service.service" -}}
 apiVersion: v1
@@ -21,5 +22,13 @@ spec:
     - name: grpc
       port: {{ .Values.ports.grpc }}
       targetPort: {{ .Values.ports.grpc }}
+    {{- end }}
+    {{- range .Values.ports.extra }}
+    - name: {{ .name }}
+      port: {{ .port }}
+      targetPort: {{ .port }}
+      {{- with .appProtocol }}
+      appProtocol: {{ . }}
+      {{- end }}
     {{- end }}
 {{- end -}}

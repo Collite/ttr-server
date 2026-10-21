@@ -18,8 +18,20 @@ kotlin {
     jvmToolchain(21)
 }
 
+// BI (C-1) — Arrow (the Flight SQL edge's vectors and allocator) needs module access on JDK 16+.
+val arrowJvmFlags =
+    listOf(
+        "--add-opens=java.base/java.nio=ALL-UNNAMED",
+        "--add-opens=java.base/sun.nio.ch=ALL-UNNAMED",
+    )
+
+application {
+    applicationDefaultJvmArgs = arrowJvmFlags
+}
+
 tasks.test {
     useJUnitPlatform()
+    jvmArgs(arrowJvmFlags)
 }
 
 val osArch = System.getProperty("os.arch").lowercase()
@@ -52,7 +64,8 @@ jib {
     }
     container {
         mainClass = "org.tatrman.query.ApplicationKt"
-        ports = listOf("7305", "7306")
+        ports = listOf("7305", "7306", "7308")
+        jvmFlags = arrowJvmFlags
     }
     dockerClient {
         executable = "docker"
@@ -96,6 +109,41 @@ dependencies {
 
     implementation(libs.caffeine)
 
+    // BI-P1 — the Arrow Flight SQL edge (contracts C-1…C-8). flight-core's own grpc-netty is built on an
+    // older grpc than the repo's; pinning it here keeps grpc-core and its netty transport in lockstep.
+    implementation(libs.arrow.flight.core)
+    implementation(libs.arrow.flight.sql)
+    implementation(libs.arrow.vector)
+    implementation(libs.arrow.memory.netty)
+    implementation(libs.grpc.netty)
+    // BI-P1 (C-2) — the edge verifies bearers exactly as query-mcp does (RS256 over the realm's JWKS).
+    implementation(project(":shared:libs:kotlin:mcp-identity"))
+    // BI-P1 (C-6) — the receipt sink: plain JDBC over a small Hikari pool, Flyway for `bi_receipts`.
+    implementation(libs.hikaricp)
+    implementation(libs.postgresql)
+    implementation(libs.flyway.core)
+    implementation(libs.flyway.pgsql)
+
     testImplementation(libs.bundles.kotest)
     testImplementation(libs.mockk)
+    // The stock Flight SQL JDBC driver (shaded) — the round-trip test makes DBeaver's metadata calls with it.
+    testImplementation(libs.arrow.flight.sql.jdbc.driver)
+    // Realm-signed test tokens for the edge's authenticator specs; the receipts route in a test host.
+    testImplementation(libs.auth0.java.jwt)
+    testImplementation(libs.ktor.server.test.host)
+    // BI (C-10) — the row-ask spec runs validate's real RuleEnforcer behind the validate stub, so the edge's ask and
+    // the validator's arithmetic are proven together. Validate's classes only: its resources (application.conf)
+    // would merge into query's.
+    val validateClasses =
+        rootProject
+            .project(":services:validate")
+            .layout.buildDirectory
+            .dir("classes/kotlin/main")
+    testImplementation(files(validateClasses).builtBy(":services:validate:compileKotlin"))
+
+    // Component tier — bi_receipts over a REAL Postgres (Testcontainers): Flyway migrates clean, every C-6 column
+    // round-trips. `src/componentTest`, so the unit gate stays Docker-free.
+    "componentTestImplementation"(libs.testcontainers.postgresql)
+    "componentTestImplementation"(libs.postgresql)
+    "componentTestImplementation"(libs.kotlinx.serialization.json)
 }

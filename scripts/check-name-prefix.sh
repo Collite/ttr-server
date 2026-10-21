@@ -71,6 +71,11 @@ cd "$(dirname "$0")/.."
 # on this branch since P8.1 created the package and nobody added the entry; the
 # wave's PR opens at P9.3, which is where that stopped being tolerable.
 #
+# `ttr-sqlalchemy` (BI-2, contracts C-13) is the third class's second PUBLISHED member:
+# the PyPI project `ttr-sqlalchemy` at `shared/libs/python/ttr-sqlalchemy`, imported
+# as `ttr_sqlalchemy` — the DB-API + `tatrman://` dialect over the query service's
+# Flight SQL edge. Like `ttr-nlp`, once on PyPI the name is public API.
+#
 # GitHub repository names are a FOURTH class: `Collite/ttr-core`, `Collite/ttr-server`,
 # `Collite/ttr-demo`. The repos were renamed into the Collite organization on 2026-09-15
 # after GitHub retired their old `Collite/<name>` paths; a repository name is an external
@@ -81,7 +86,7 @@ cd "$(dirname "$0")/.."
 #
 # Order matters: `nlp-routing` must precede bare `nlp` so the longer schema id
 # matches first.
-ALLOW='(?<!services\/)ttr-(metadata-git|metadata-adoption|metadata|translator-extraction|translator|plan-proto|parser|writer|semantics|server-proto|snapshot|lexicon|skill|operator-library|nlp-routing|nlp|morph|server|umbrella-ci|umbrella|\*|\{)|Collite\/ttr-(core|server|demo)'
+ALLOW='(?<!services\/)ttr-(metadata-git|metadata-adoption|metadata|translator-extraction|translator|plan-proto|parser|writer|semantics|server-proto|snapshot|lexicon|skill|operator-library|nlp-routing|nlp|morph|sqlalchemy|server|umbrella-ci|umbrella|\*|\{)|Collite\/ttr-(core|server|demo)'
 
 hits="$(
   git grep -nI -P '(?<![A-Za-z0-9_])ttr-' -- . ':(exclude)scripts/check-name-prefix.sh' \

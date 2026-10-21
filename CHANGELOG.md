@@ -1,7 +1,7 @@
 # Changelog
 
 All notable changes to what this repo **publishes** are recorded here: the
-`ttr-nlp` PyPI wheel, the `org.tatrman:*` Kotlin artifacts cut from
+`ttr-nlp` and `ttr-sqlalchemy` PyPI wheels, the `org.tatrman:*` Kotlin artifacts cut from
 `shared/libs/kotlin`, and the wire contracts in `shared/proto` that deployed
 consumers speak. Internal refactoring is out of scope; a change that a consumer
 outside this repo could notice is in.
@@ -15,6 +15,76 @@ outside this repo could notice is in.
 > While versions are `< 1.0.0`, minor bumps may contain breaking changes.
 
 ## Unreleased
+
+- **`ttr-sqlalchemy` — a new PyPI wheel: a DB-API driver and the `tatrman://` SQLAlchemy dialect** (BI-2) over the
+  Flight SQL edge, for Superset, pandas and anything that takes a SQLAlchemy URL. Python ≥ 3.10, SQLAlchemy 1.4 or
+  2.x, pyarrow ≥ 16; no gRPC stubs (it speaks Flight SQL through `pyarrow.flight`). Tag lane
+  `python-sqlalchemy/v<x.y.z>[-RELEASE]`. Guide: `shared/libs/python/ttr-sqlalchemy/README.md`.
+  - `tatrman://<host>[:<port>]/<world>?tls=…`: one URL = one world; `connect_args` `token`, or `user` / `password`
+    (exchanged for a bearer at connect).
+  - Introspection from the edge's catalog only: schemas `er.entity` · `obj.query` · `db.dbo`, entities and bound tables
+    as tables, saved queries as views, Arrow-typed columns, primary keys, foreign keys from relations with join pairs.
+    Every identifier quoted; a dotted schema as two names (`"er"."entity"."warehouse"`). Each relation is its own
+    foreign key: two relations to one table are two keys.
+  - `:name` parameters are written in as literals (the edge takes no bound parameters); a name with no value is
+    refused `parameter_unbound` before anything is sent.
+  - A result is read whole before its first row, so a stream the edge fails on its receipt (`world_mismatch`) yields
+    no rows. The cursor carries the closing metadata: `correlation_id`, `connection_id`, `top_n_applied`, `notices`.
+  - Refusals keep the edge's code and sentence (`err.code`, `err.message`) under the PEP 249 classes.
+  - **Superset's engine spec** (`superset.db_engine_specs: tatrman`, tested on Superset 6.1.0). A Tatrman database
+    reads as its viewer: the viewer's token comes from Superset's per-database OAuth2
+    (`DATABASE_OAUTH2_CLIENTS["tatrman"]`, Keycloak's authorization code; `issuer` derives the endpoints). A database
+    with impersonation off, or with no client to get a token from, refuses to connect (`BI_REQUIRE_IMPERSONATION =
+    False` lifts that, for a local trial). An answer the door's row cap cut is refused as a `RESULT_TOO_LARGE_ERROR`
+    warning naming the cap. Time grains are day, month, quarter and year, with no week yet.
+    Every alias is quoted; refusals map to Superset's DB-API errors with the edge's code and sentence.
+    `docs/superset.md` is rewritten to match; `compose/superset/` runs it locally (not a production topology).
+- **query — an Arrow Flight SQL edge for BI tools** (BI-1). Opt-in, port 7308 (`QUERY_FLIGHT_ENABLED`), for the stock
+  Flight SQL JDBC driver (DBeaver, IntelliJ), ADBC and the `tatrman://` dialect. Every statement is the door's own
+  `Run` with the caller's verified identity. Client guide: `docs/jdbc.md`; operator's: `docs/operations.md` § BI.
+  - **Identity:** a realm bearer (verified as query-mcp verifies one), or a user name and password the edge exchanges
+    for one (Keycloak's direct-access grant, client `jdbc`). No anonymous mode; an enabled edge needs
+    `QUERY_FLIGHT_AUTH_ISSUER`.
+  - **Worlds:** `RunRequest.world` / `RunSavedQueryRequest.world` (field 8, additive) pick the connection through
+    `QUERY_WORLDS` (`world=connection_id,…`); an unknown world is refused `unknown_world`. The edge reads the world
+    from the `world` property (or the JDBC `catalog`), and refuses a statement naming another catalog
+    (`world_mismatch`).
+  - **Row ask:** every statement asks for as many rows as its caller's ceiling allows (`row_window.limit`
+    2147483647), so it gets `VALIDATE_MAX_TOP_N` or its role's higher value; its own `LIMIT` lowers that.
+  - **Catalog:** packages come from every kind it lists (entities, queries, tables, views), so a package of only
+    saved queries is listed. A saved query's probed columns are kept per model version and role set, probed four at
+    a time. Foreign keys carry a name per relation (`fk_key_name`). A catalog qualifier is recognised with every part
+    quoted (`"hartland_us"."er"."entity"."warehouse"`).
+  - **Results:** the closing metadata's `notices` carry the warnings of every batch (a worker's `blob_too_large` on
+    the batch it concerns), once each; an answer with no rows still has its columns; a client that stops reading for
+    5 minutes is ended `TIMED_OUT` (`client_stalled`).
+  - **Receipts:** one `bi_receipts` row per statement (schema `query`, created on first use; best effort), read with
+    `GET /receipts` by `query-platform-admin`. A receipt keeps the statement's notices (`notices` jsonb, the closing
+    metadata's list), from migration V2.
+  - **Lifecycle:** an enabled edge that cannot listen fails the service's start, and `/ready` is not ready while it
+    is not running. An unread statement waits `pending-ttl-seconds` from its `FlightInfo` (not from its start).
+  - **Chart:** `query.flight.*`, `query.worlds`, and the `tatrman-service` library's `ports.extra` (default renders
+    unchanged). The edge is single-replica: the chart refuses `flight.enabled` with `replicaCount` above 1.
+- **The door's small contract drift, fixed** (BI-1, C-10/C-11):
+  - **query — `parameter_unbound` is emitted.** `Run` (and so `RunSavedQuery`) refuses a parameter the plan reads
+    with no value, before dispatch; it used to bind NULL and answer zero rows. An explicit NULL (`is_null`) is a
+    value. `Compile` still reports such a parameter in `required_parameters`. The proto now says the SQL spelling is
+    `{name}`.
+  - **workers — `ExecutionOptions.row_limit` is exact** (Postgres, MSSQL, Polars). It was checked per batch, so a
+    limit below the batch size let the whole batch through.
+  - **workers — an empty result names its columns** (Postgres, MSSQL): the tail of a stream that sent no data batch
+    carries a zero-row batch of the statement's schema in `arrow_ipc`, as Polars already sent one. After data
+    batches the tail stays empty.
+  - **validate — `VALIDATE_MAX_TOP_N_BY_ROLE`** (`role:rows,…`) raises the row ceiling for callers holding a role;
+    the default stays everyone's. A role name may contain `:` (the rows follow the last one). A malformed entry fails
+    the start.
+  - **wire — `ResultBatch.notices`** (field 9, `Notice{code, requested, applied}`): query puts `top_n_applied` there as
+    well as in `messages` when the cap cut the answer. `requested` is 0 when the caller stated no number: no row
+    window, or the largest one.
+  - **translate — readable refusals.** Every refusal is one line without Calcite's exception class, position prose
+    or repeats (`Object 'warehouse' not found within 'er' — did you mean: …`); the position moves to
+    **`ResponseMessage.line` / `column`** (fields 5/6, additive), which query keeps on `translator_rejected`. "Did
+    you mean: ?" with nothing to suggest is gone.
 
 - **translate — a bare `JOIN` that stays a Cartesian product is refused** (#232, part 2). On `ttr-translator` /
   `ttr-plan-proto` **0.12.6**, translate sets its `refuseUnconditionedBareJoins` on `ParseToRelNode`, `Translate` and

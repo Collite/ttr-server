@@ -22,6 +22,7 @@ import org.tatrman.query.v1.QueryServiceGrpcKt
 import org.tatrman.query.v1.RowWindow
 import org.tatrman.query.v1.RunRequest
 import org.tatrman.query.v1.RunSavedQueryRequest
+import org.tatrman.query.world.Worlds
 import org.tatrman.translate.v1.DetectSchemaRequest
 import org.tatrman.translate.v1.Language
 import org.tatrman.translate.v1.ParseRequest
@@ -37,6 +38,7 @@ import org.tatrman.validate.v1.ValidateResponse
 import org.tatrman.validate.v1.ValidationOptions
 import org.tatrman.worker.receipt.ExecutionReceiptBuilder
 import org.tatrman.worker.v1.ExecutionReceipt
+import org.tatrman.worker.v1.Notice
 import org.tatrman.worker.v1.ResultBatch
 import io.opentelemetry.api.GlobalOpenTelemetry
 import io.opentelemetry.api.OpenTelemetry
@@ -88,6 +90,8 @@ class QueryServiceImpl(
     private val retry: RetryPolicy,
     openTelemetry: OpenTelemetry = GlobalOpenTelemetry.get(),
     rawSavedQueries: SavedQueryClient? = null,
+    /** BI (C-9) — `QUERY_WORLDS`: the connection each `RunRequest.world` runs on. */
+    private val worlds: Worlds = Worlds.NONE,
 ) : QueryServiceGrpcKt.QueryServiceCoroutineImplBase() {
     private val tracer = openTelemetry.getTracer("query")
 
@@ -134,6 +138,17 @@ class QueryServiceImpl(
                         emit(errorBatch("invalid_row_window", reason, context))
                         return@flow
                     }
+                    // BI (C-9) — the world picks the connection; one this door does not serve is refused before
+                    // anything is compiled. Empty = the deployment's default connection, as before.
+                    val connectionId =
+                        if (request.world.isEmpty()) {
+                            ""
+                        } else {
+                            worlds.connectionOf(request.world) ?: run {
+                                emit(errorBatch(Worlds.UNKNOWN_WORLD, worlds.unknown(request.world), context))
+                                return@flow
+                            }
+                        }
                     // The validator's `top_n_applied` warnings, from whichever pass raised one.
                     val capNotices = mutableListOf<ResponseMessage>()
                     // ES-P0·S0.3 — the receipt's plan half. `security_applied` accumulates across
@@ -193,11 +208,9 @@ class QueryServiceImpl(
                             val resolution = resolveSchema(request, context)
                             if (resolution.isError) {
                                 emit(
-                                    errorBatch(
-                                        "detection_failed",
-                                        resolution.detectionMessages.firstOrNull()?.humanMessage ?: "Detection failed",
-                                        context,
-                                    ),
+                                    resolution.detectionMessages.firstOrNull()?.let { first ->
+                                        errorBatch("detection_failed", first, context)
+                                    } ?: errorBatch("detection_failed", "Detection failed", context),
                                 )
                                 return@flow
                             }
@@ -223,11 +236,7 @@ class QueryServiceImpl(
                                             }
                                     if (dbParsed.messagesList.any { it.severity == Severity.ERROR }) {
                                         emit(
-                                            errorBatch(
-                                                "translator_rejected",
-                                                dbParsed.messagesList.first().humanMessage,
-                                                context,
-                                            ),
+                                            errorBatch("translator_rejected", dbParsed.messagesList.first(), context),
                                         )
                                         return@flow
                                     }
@@ -282,6 +291,15 @@ class QueryServiceImpl(
                             }
                         }
 
+                    // BI (C-11) — a parameter the plan reads with no value would be bound as NULL by the worker and
+                    // answer nothing, silently: Run refuses it. (Compile does not: it reports such a parameter in
+                    // `required_parameters`, which is what it is for.)
+                    val unbound = ParameterCheck.unbound(dbPlan, context)
+                    if (unbound.isNotEmpty()) {
+                        emit(errorBatch(ParameterCheck.PARAMETER_UNBOUND, ParameterCheck.message(unbound), context))
+                        return@flow
+                    }
+
                     val compileMs = System.currentTimeMillis() - compileStart
                     // On the first batch alone, as dispatch and the worker put theirs: a consumer reads a stream's
                     // warnings across the batches it collected (query-mcp's `query` does), and a later batch repeating
@@ -316,6 +334,7 @@ class QueryServiceImpl(
                             .setPlan(dbPlan)
                             .setContext(context)
                             .setOptions(request.executionOptions)
+                            .setConnectionId(connectionId)
                             .build()
 
                     // The row cap's warning is a statement about the PLAN — validate cannot see the
@@ -341,7 +360,18 @@ class QueryServiceImpl(
                             out = annotate(out, firstBatchAnnotations)
                         }
                         if (batch.isLast && capNotice != null && rowCap != null && rowsStreamed >= rowCap) {
-                            out = out.toBuilder().addMessages(capNotice).build()
+                            // BI (C-10) — and as a typed notice, for a client that tells its user with the numbers.
+                            out =
+                                out
+                                    .toBuilder()
+                                    .addMessages(capNotice)
+                                    .addNotices(
+                                        Notice
+                                            .newBuilder()
+                                            .setCode(TOP_N_APPLIED)
+                                            .setRequested(statedLimit(window))
+                                            .setApplied(rowCap),
+                                    ).build()
                         }
                         // ⚑ES-1 — one merge, on the first batch and on the last (they may be the
                         // same batch). The worker's statement half is on the last one and is
@@ -392,7 +422,7 @@ class QueryServiceImpl(
                 }
             }
         if (erParsed.messagesList.any { it.severity == Severity.ERROR }) {
-            emit(errorBatch("translator_rejected", erParsed.messagesList.first().humanMessage, erParsed.context))
+            emit(errorBatch("translator_rejected", erParsed.messagesList.first(), erParsed.context))
             return null
         }
 
@@ -452,7 +482,7 @@ class QueryServiceImpl(
             return null
         }
         dbParsed.messagesList.firstOrNull { it.severity == Severity.ERROR }?.let { first ->
-            emit(errorBatch("translator_rejected", first.humanMessage, context))
+            emit(errorBatch("translator_rejected", first, context))
             return null
         }
         return dbParsed
@@ -990,7 +1020,7 @@ class QueryServiceImpl(
      * its own lane — a logical query's plan reads entities and takes the ER half (EXPAND_LOGICAL_BODIES, Validate pass
      * 1, MAP_TO_PHYSICAL, Validate pass 2), a db query's takes the DB half — so the caller's roles, row policies and
      * row window apply exactly as for any Run, and `context.parameters` bind declared parameters by name (an unbound
-     * one is Validate's `parameter_unbound`). Entitlement is Validate's alone in v1; a package or area check is to be
+     * one is Run's `parameter_unbound`). Entitlement is Validate's alone in v1; a package or area check is to be
      * decided before the first caller. A query that is unknown, still parsing, or failed is refused here, with the
      * codes TransDSL's `query_ref` uses, renamed `saved_query_*`.
      */
@@ -1011,6 +1041,7 @@ class QueryServiceImpl(
                                 .setExecutionOptions(request.executionOptions)
                                 .setBypassCache(request.bypassCache)
                                 .setRowWindow(request.rowWindow)
+                                .setWorld(request.world)
                                 .build(),
                         ),
                     )
@@ -1143,6 +1174,12 @@ class QueryServiceImpl(
             .setApplySecurity(true)
             .setEnforceTopN(true)
             .setDefaultTopN(window.limit.coerceAtMost(Int.MAX_VALUE.toLong()).toInt())
+
+    /**
+     * C-10 — the rows a caller stated, for `Notice.requested`: 0 when it stated none, and 0 for the largest window
+     * (`Int.MAX_VALUE`, the Flight edge's "as many as my ceiling allows"), which is no number the caller chose.
+     */
+    private fun statedLimit(window: RowWindow): Long = if (window.limit >= Int.MAX_VALUE) 0 else window.limit
 
     private fun windowRefusal(window: RowWindow): String? =
         when {
@@ -1301,6 +1338,28 @@ class QueryServiceImpl(
             .setContext(context)
             .addMessages(errorMessage(code, message))
             .build()
+
+    /**
+     * [errorBatch] answering [from] — another service's refusal — under [code]: its sentence, and the position it
+     * points at (translate's `line`/`column`, BI C-11), which the bare text would lose.
+     */
+    private fun errorBatch(
+        code: String,
+        from: ResponseMessage,
+        context: PipelineContext,
+    ): ResultBatch =
+        ResultBatch
+            .newBuilder()
+            .setIsFirst(true)
+            .setIsLast(true)
+            .setArrowIpc(ByteArray(0).toByteString())
+            .setContext(context)
+            .addMessages(
+                errorMessage(code, from.humanMessage)
+                    .toBuilder()
+                    .setLine(from.line)
+                    .setColumn(from.column),
+            ).build()
 
     private fun errorMessage(
         code: String,

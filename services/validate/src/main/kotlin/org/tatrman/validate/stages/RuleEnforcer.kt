@@ -34,9 +34,15 @@ import org.slf4j.LoggerFactory
  *        - [serviceDefault] (`validate.default-top-n`) — what a caller gets when it asks for nothing;
  *        - [serviceMax] (`validate.max-top-n`) — the ceiling a caller may ask up to;
  *        - `options.default_top_n` — what the caller asked for (0 = nothing).
- *      `cap = min(requested > 0 ? requested : serviceDefault, serviceMax)`. [serviceMax] defaults to
+ *      `cap = min(requested > 0 ? requested : serviceDefault, ceiling)`. [serviceMax] defaults to
  *      [serviceDefault], which is the older rule exactly: a caller could ask for fewer rows than the
  *      default and never more, because the default and the ceiling were one number.
+ *
+ *      BI (C-10) — [maxByRole] (`validate.max-top-n-by-role`, `role:rows,…`) raises the ceiling for a
+ *      caller holding one of its roles: `ceiling = max(serviceMax, the caller's roles' values)`. A role
+ *      only ever raises it — a caller with several roles gets the most generous one, and a value at or
+ *      below [serviceMax] changes nothing. The default stays [serviceDefault] for every caller: a BI
+ *      reader that asks for nothing gets what everyone gets.
  *
  *      When the cap is what bounds the plan — a limit injected where there was none, or an existing
  *      one lowered — and the caller did not ask for exactly that many, the result carries a
@@ -48,11 +54,13 @@ import org.slf4j.LoggerFactory
 class RuleEnforcer(
     private val serviceDefault: Int = 30,
     private val serviceMax: Int = serviceDefault,
+    private val maxByRole: Map<String, Int> = emptyMap(),
 ) {
     fun enforce(
         plan: PlanNode,
         options: ValidationOptions,
         columnRules: List<ColumnRule> = emptyList(),
+        roles: List<String> = emptyList(),
     ): Result {
         val messages = mutableListOf<ResponseMessage>()
 
@@ -65,7 +73,7 @@ class RuleEnforcer(
         // 2. TopN.
         val withTopN =
             if (options.enforceTopN) {
-                val cap = effectiveCap(options)
+                val cap = effectiveCap(options, roles)
                 val (capped, bound) = applyTopN(rewritten, cap)
                 val requested = options.defaultTopN
                 if (bound && (requested <= 0 || requested > cap)) {
@@ -214,9 +222,13 @@ class RuleEnforcer(
             -> false
         }
 
-    private fun effectiveCap(options: ValidationOptions): Int {
+    private fun effectiveCap(
+        options: ValidationOptions,
+        roles: List<String>,
+    ): Int {
         val requested = options.defaultTopN
-        return minOf(if (requested > 0) requested else serviceDefault, serviceMax)
+        val ceiling = maxOf(serviceMax, roles.mapNotNull(maxByRole::get).maxOrNull() ?: serviceMax)
+        return minOf(if (requested > 0) requested else serviceDefault, ceiling)
     }
 
     /** The plan with its root limit capped, and whether the cap was what bounded it. */
@@ -252,10 +264,11 @@ class RuleEnforcer(
         requested: Int,
     ): ResponseMessage {
         val asked =
-            if (requested > 0) {
-                "the caller asked for $requested"
-            } else {
-                "the caller stated no row limit, so the service default applies"
+            when {
+                // The largest window: the Flight edge's ask, "as many rows as my ceiling allows" (BI C-10).
+                requested == Int.MAX_VALUE -> "the caller asked for as many rows as its ceiling allows"
+                requested > 0 -> "the caller asked for $requested"
+                else -> "the caller stated no row limit, so the service default applies"
             }
         return ResponseMessage
             .newBuilder()
@@ -270,5 +283,24 @@ class RuleEnforcer(
 
         /** The code of the WARNING raised when the row cap bounds a plan below what was asked. */
         const val TOP_N_APPLIED = "top_n_applied"
+
+        /**
+         * `validate.max-top-n-by-role` (`VALIDATE_MAX_TOP_N_BY_ROLE`): `role:rows` pairs, comma-separated
+         * (`kantheon-bi-reader:10000`); blank = none. A malformed entry fails the boot rather than leaving a
+         * reader capped at the default without a word.
+         */
+        fun parseMaxByRole(raw: String): Map<String, Int> {
+            val source = "validate.max-top-n-by-role (VALIDATE_MAX_TOP_N_BY_ROLE)"
+            val entries = raw.split(',').map(String::trim).filter(String::isNotEmpty)
+            val byRole = linkedMapOf<String, Int>()
+            for (entry in entries) {
+                // At the last `:`: a realm role's name may hold one itself (`ns:bi-reader:10000`).
+                val role = entry.substringBeforeLast(':', "").trim()
+                val rows = entry.substringAfterLast(':', "").trim().toIntOrNull()
+                require(role.isNotEmpty() && rows != null && rows > 0) { "$source: '$entry' is not role:rows" }
+                require(byRole.put(role, rows) == null) { "$source names $role twice" }
+            }
+            return byRole
+        }
     }
 }

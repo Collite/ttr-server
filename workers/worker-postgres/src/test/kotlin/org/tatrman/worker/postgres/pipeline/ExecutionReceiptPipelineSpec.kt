@@ -178,8 +178,22 @@ class ExecutionReceiptPipelineSpec :
                 batch.hasReceipt() shouldBe true
                 batch.receipt.statementKind shouldBe StatementKind.SQL_EXECUTED
                 batch.receipt.statement shouldBe SELECT
-                batch.receipt.rowsTotal shouldBe 2L
+                // BI (C-10) — exact: one row of the two, however the batches fall.
+                batch.receipt.rowsTotal shouldBe 1L
             }
+            out.sumOf { it.batchRowCount } shouldBe 1L
+        }
+
+        "row_limit reaches the driver as maxRows, so the server stops at it too" {
+            val statement = mockk<PreparedStatement>(relaxed = true)
+            every { statement.executeQuery() } returns fakeResultSet()
+            val connection = mockk<Connection>(relaxed = true)
+            every { connection.prepareStatement(any()) } returns statement
+            val pool = pool().also { every { it.acquire(CONN) } returns connection }
+            runBlocking {
+                ExecutePipeline(pool, translator(SELECT), LIMITS).execute(request(CONN, rowLimit = 50)).toList()
+            }
+            io.mockk.verify { statement.maxRows = 50 }
         }
     })
 

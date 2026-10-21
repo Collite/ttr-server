@@ -180,6 +180,95 @@ class RuleEnforcerSpec :
             enforcer.enforce(bounded, options(enforce = true)).messages shouldHaveSize 0
         }
 
+        // --- BI (C-10): a role raises the ceiling; the default is everyone's ---
+
+        val byRole =
+            RuleEnforcer(
+                serviceDefault = 200,
+                maxByRole = RuleEnforcer.parseMaxByRole("kantheon-bi-reader:10000"),
+            )
+        val biReader = listOf("default-roles-kantheon", "kantheon-bi-reader")
+
+        "a caller with the BI role gets 10 000 when it asks 10 000, silently" {
+            val out = byRole.enforce(scan, options(enforce = true, defaultTopN = 10_000), roles = biReader)
+            out.plan.limitOffset.limit shouldBe 10_000L
+            out.messages shouldHaveSize 0
+        }
+
+        "a caller without it asking 10 000 gets 200, and the warning" {
+            val out =
+                byRole.enforce(scan, options(enforce = true, defaultTopN = 10_000), roles = listOf("kantheon-area-x"))
+            out.plan.limitOffset.limit shouldBe 200L
+            out.messages.single().code shouldBe RuleEnforcer.TOP_N_APPLIED
+        }
+
+        "the default is unchanged for the role: asking nothing gets 200" {
+            val out = byRole.enforce(scan, options(enforce = true), roles = biReader)
+            out.plan.limitOffset.limit shouldBe 200L
+            out.messages.single().code shouldBe RuleEnforcer.TOP_N_APPLIED
+        }
+
+        "the role's ceiling still caps: asking 50 000 gets 10 000, and the warning" {
+            val out = byRole.enforce(scan, options(enforce = true, defaultTopN = 50_000), roles = biReader)
+            out.plan.limitOffset.limit shouldBe 10_000L
+            out.messages.single().humanMessage shouldContainStr "10000"
+        }
+
+        "a role only raises: the global max-top-n wins when it is higher, the most generous role when several" {
+            val mixed =
+                RuleEnforcer(
+                    serviceDefault = 200,
+                    serviceMax = 10_000,
+                    maxByRole = RuleEnforcer.parseMaxByRole("low:500, high:20000"),
+                )
+            mixed
+                .enforce(scan, options(enforce = true, defaultTopN = 10_000), roles = listOf("low"))
+                .plan.limitOffset.limit shouldBe 10_000L
+            mixed
+                .enforce(scan, options(enforce = true, defaultTopN = 30_000), roles = listOf("low", "high"))
+                .plan.limitOffset.limit shouldBe 20_000L
+        }
+
+        // The Flight edge's ask: the largest window, "as many rows as my ceiling allows".
+        val edgeAsk = Int.MAX_VALUE
+
+        "the edge's ask with the BI role gets the role's ceiling" {
+            val out = byRole.enforce(scan, options(enforce = true, defaultTopN = edgeAsk), roles = biReader)
+            out.plan.limitOffset.limit shouldBe 10_000L
+            out.messages.single().humanMessage shouldBe
+                "Answer limited to 10000 rows by the row cap; the caller asked for as many rows as its ceiling allows."
+        }
+
+        "the edge's ask without the role gets exactly the default" {
+            val out =
+                byRole.enforce(scan, options(enforce = true, defaultTopN = edgeAsk), roles = listOf("kantheon-area-x"))
+            out.plan.limitOffset.limit shouldBe 200L
+            out.messages.single().humanMessage shouldContainStr "as many rows as its ceiling allows"
+        }
+
+        "the edge's ask over a statement's own lower LIMIT keeps the LIMIT, silently" {
+            val limited =
+                PlanNode
+                    .newBuilder()
+                    .setLimitOffset(LimitOffsetNode.newBuilder().setInput(scan).setLimit(5_000))
+                    .build()
+            val out = byRole.enforce(limited, options(enforce = true, defaultTopN = edgeAsk), roles = biReader)
+            out.plan.limitOffset.limit shouldBe 5_000L
+            out.messages shouldHaveSize 0
+        }
+
+        "max-top-n-by-role: role:rows pairs; blank is none, a malformed entry is refused" {
+            RuleEnforcer.parseMaxByRole("") shouldBe emptyMap()
+            RuleEnforcer.parseMaxByRole(" a:1 , b:20 ") shouldBe mapOf("a" to 1, "b" to 20)
+            // Split at the last `:`, so a role name may hold one.
+            RuleEnforcer.parseMaxByRole("ns:bi-reader:10000") shouldBe mapOf("ns:bi-reader" to 10_000)
+            listOf("a", "a:", ":5", "a:x", "a:0", "a:1,a:2").forEach { raw ->
+                io.kotest.assertions.throwables
+                    .shouldThrow<IllegalArgumentException> { RuleEnforcer.parseMaxByRole(raw) }
+                    .message shouldContainStr "VALIDATE_MAX_TOP_N_BY_ROLE"
+            }
+        }
+
         "enforce_top_n = false never warns" {
             ceilinged.enforce(scan, options(enforce = false, defaultTopN = 5000)).messages shouldHaveSize 0
         }

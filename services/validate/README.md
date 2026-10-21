@@ -10,7 +10,10 @@
 
 - **SECURITY** — applies row-level security predicates (wraps matching `TableScan`s
   with `Filter`s) and column rules (DENY → reject, MASK → rewrite).
-- **RULES** — enforces TopN (a `LimitOffset` cap) and the DF-V01 column allow/deny set.
+- **RULES** — enforces TopN (a `LimitOffset` cap) and the DF-V01 column allow/deny set. The cap: an unstated
+  request gets `VALIDATE_DEFAULT_TOP_N`, a stated one is granted up to `VALIDATE_MAX_TOP_N`, and
+  `VALIDATE_MAX_TOP_N_BY_ROLE` (`role:rows,…`, e.g. `kantheon-bi-reader:10000`) raises that ceiling for a caller
+  holding the role (BI C-10). A cut answer carries a `top_n_applied` WARNING.
 - **STRICT COERCION** (DF-V06, opt-in) — rejects implicit type-widening the DB would silently coerce.
 - **LLM GUARD** (DF-V04, opt-in) — an LLM-as-judge semantic review with configurable fail-open/closed posture.
 - **ADMIN BYPASS** (DF-V02) — `apply_security = false` honoured only when the caller's

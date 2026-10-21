@@ -57,8 +57,14 @@ class ResultSetToArrow(
      * they carry (capped at [PostgresArrowTypeMapper.UNCONSTRAINED_MAX_SCALE], narrower when the integer
      * part needs the room), and every later batch reuses that schema: one schema per result. A later
      * value with more decimals is rounded to it and reported in [Batch.rounded].
+     *
+     * [rowLimit] (`ExecutionOptions.row_limit`, 0 = none) bounds the rows read across all batches: the last batch
+     * stops at it, however [batchRows] falls (BI C-10).
      */
-    fun convert(resultSet: ResultSet): Sequence<Batch> {
+    fun convert(
+        resultSet: ResultSet,
+        rowLimit: Long = 0,
+    ): Sequence<Batch> {
         val meta = resultSet.metaData
         val fields = (1..meta.columnCount).map { PostgresArrowTypeMapper.fieldFor(meta, it) }
         val open =
@@ -73,8 +79,10 @@ class ResultSetToArrow(
         return sequence {
             var schema = Schema(fields)
             var sizing = open.isNotEmpty()
+            var remaining = if (rowLimit > 0) rowLimit else Long.MAX_VALUE
             do {
-                val next = nextBatch(resultSet, meta, schema, open, sizing)
+                val want = minOf(batchRows.toLong(), remaining).toInt()
+                val next = nextBatch(resultSet, meta, schema, open, sizing, want)
                 val root = next.root
                 if (sizing) {
                     schema = root.schema
@@ -87,7 +95,8 @@ class ResultSetToArrow(
                 yield(
                     Batch(root = root, rowCount = next.rowCount, rejections = next.rejections, rounded = next.rounded),
                 )
-                if (next.rowCount < batchRows) break
+                remaining -= next.rowCount
+                if (next.rowCount < want || remaining <= 0) break
             } while (true)
         }
     }
@@ -100,7 +109,7 @@ class ResultSetToArrow(
     )
 
     /**
-     * Read up to [batchRows] rows. With [sizing], the [open] columns' values are held back instead of
+     * Read up to [rows] rows. With [sizing], the [open] columns' values are held back instead of
      * written, and the batch is returned on a root whose open columns are sized from them.
      */
     private fun nextBatch(
@@ -109,6 +118,7 @@ class ResultSetToArrow(
         schema: Schema,
         open: Set<Int>,
         sizing: Boolean,
+        rows: Int,
     ): NextBatch {
         val root = VectorSchemaRoot.create(schema, allocator)
         root.allocateNew()
@@ -117,7 +127,7 @@ class ResultSetToArrow(
         val rounded = linkedMapOf<String, Int>()
         val held: Map<Int, MutableList<BigDecimal?>>? = if (sizing) open.associateWith { mutableListOf() } else null
         try {
-            while (row < batchRows && resultSet.next()) {
+            while (row < rows && resultSet.next()) {
                 val rowHeld = if (held != null) HashMap<Int, BigDecimal?>() else null
                 val rejection = appendRow(root, meta, resultSet, row, open, rowHeld, rounded)
                 if (rejection != null) {
