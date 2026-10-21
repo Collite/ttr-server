@@ -108,6 +108,7 @@ internal fun Receipt.toJson(): JsonObject =
         put("security_applied", securityApplied)
         put("rows_total", rowsTotal)
         put("top_n_applied", topNApplied)
+        put("notices", notices)
         put("status", status)
         put("error_code", errorCode)
     }

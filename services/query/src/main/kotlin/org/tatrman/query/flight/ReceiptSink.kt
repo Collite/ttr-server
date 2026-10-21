@@ -38,6 +38,11 @@ data class Receipt(
     val topNApplied: Boolean,
     val status: String,
     val errorCode: String,
+    /**
+     * The statement's notices, as its closing metadata carried them (C-5): `[{"code", "severity", "message"}]`, with
+     * `requested` / `applied` on a typed one (`top_n_applied`).
+     */
+    val notices: JsonArray = JsonArray(emptyList()),
 ) {
     companion object {
         fun of(
@@ -69,6 +74,7 @@ data class Receipt(
                 topNApplied = outcome.topNApplied,
                 status = outcome.status.label,
                 errorCode = outcome.errorCode,
+                notices = outcome.noticesJson,
             )
         }
     }
@@ -173,8 +179,9 @@ class PostgresReceiptStore(
                 .prepareStatement(
                     """
                     INSERT INTO query.bi_receipts (correlation_id, ts, user_id, roles, world, connection_id, client,
-                        statement, executed_sql, security_applied, rows_total, top_n_applied, status, error_code)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?, ?, ?, ?)
+                        statement, executed_sql, security_applied, rows_total, top_n_applied, status, error_code,
+                        notices)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?, ?, ?, ?, ?::jsonb)
                     ON CONFLICT (correlation_id) DO NOTHING
                     """.trimIndent(),
                 ).use { s ->
@@ -192,6 +199,7 @@ class PostgresReceiptStore(
                     s.setBoolean(12, receipt.topNApplied)
                     s.setString(13, receipt.status)
                     s.setString(14, receipt.errorCode)
+                    s.setString(15, receipt.notices.toString())
                     s.executeUpdate()
                 }
         }
@@ -215,7 +223,8 @@ class PostgresReceiptStore(
         }
         val sql =
             "SELECT correlation_id, ts, user_id, roles, world, connection_id, client, statement, executed_sql, " +
-                "security_applied::text, rows_total, top_n_applied, status, error_code FROM query.bi_receipts" +
+                "security_applied::text, rows_total, top_n_applied, status, error_code, notices::text " +
+                "FROM query.bi_receipts" +
                 (if (where.isEmpty()) "" else " WHERE " + where.joinToString(" AND ")) +
                 " ORDER BY ts DESC LIMIT ?"
         return dataSource.connection.use { c ->
@@ -244,6 +253,9 @@ class PostgresReceiptStore(
                                     topNApplied = rs.getBoolean(12),
                                     status = rs.getString(13),
                                     errorCode = rs.getString(14),
+                                    notices =
+                                        kotlinx.serialization.json.Json
+                                            .parseToJsonElement(rs.getString(15)) as JsonArray,
                                 ),
                             )
                         }

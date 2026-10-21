@@ -66,8 +66,8 @@ loopback channel to the gRPC port, carrying the caller's identity.
   refuses a statement naming another catalog (`world_mismatch`) and checks the receipt's connection.
 - **Receipts** (C-6): one `bi_receipts` row per statement (schema `query`, Flyway-migrated on first
   use; `QUERY_RECEIPTS_DB_HOST/PORT/NAME/USER/PASSWORD`, no host = off), written after the stream on a
-  bounded queue, best effort. `GET /receipts?correlation_id=…|user_id=…&since=…` for
-  `query-platform-admin`.
+  bounded queue, best effort; `notices` keeps the closing metadata's warnings.
+  `GET /receipts?correlation_id=…|user_id=…&since=…` for `query-platform-admin`.
 - Telemetry: span `bi.statement` (`user_id`, `world`, `client`, `rows`, `status`); metrics
   `bi_statements_total{client,status}`, `bi_statement_seconds`. `/status` has a `flight` block
   (incl. `receipts`) and the door's `worlds`.

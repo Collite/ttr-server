@@ -19,10 +19,8 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.ReceiveChannel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
-import kotlinx.serialization.json.addJsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
-import kotlinx.serialization.json.putJsonArray
 import org.apache.arrow.flight.BackpressureStrategy
 import org.apache.arrow.flight.CloseSessionRequest
 import org.apache.arrow.flight.CloseSessionResult
@@ -703,6 +701,7 @@ class TtrFlightSqlProducer(
                         rows = rows,
                         receipt = receipt,
                         notices = said,
+                        typedNotices = typedNotices,
                     ),
                     execution.span,
                 )
@@ -821,19 +820,7 @@ class TtrFlightSqlProducer(
             put("connection_id", receipt?.connectionId.orEmpty())
             put("rows_total", rows)
             put("top_n_applied", notices.any { it.code == StatementOutcome.TOP_N_APPLIED })
-            putJsonArray("notices") {
-                notices.forEach { notice ->
-                    addJsonObject {
-                        put("code", notice.code)
-                        put("severity", notice.severity.name)
-                        put("message", notice.humanMessage)
-                        typedNotices.firstOrNull { it.code == notice.code }?.let { typed ->
-                            put("requested", typed.requested)
-                            put("applied", typed.applied)
-                        }
-                    }
-                }
-            }
+            put("notices", StatementOutcome.noticesJson(notices, typedNotices))
         }.toString().toByteArray()
 
     private fun metadataBuf(bytes: ByteArray): ArrowBuf =
@@ -852,6 +839,7 @@ class TtrFlightSqlProducer(
         rows: Long = 0,
         receipt: ExecutionReceipt? = null,
         notices: List<ResponseMessage> = emptyList(),
+        typedNotices: List<Notice> = emptyList(),
     ): StatementOutcome =
         StatementOutcome(
             correlationId = correlationId,
@@ -862,6 +850,7 @@ class TtrFlightSqlProducer(
             rowsStreamed = rows,
             receipt = receipt,
             notices = notices,
+            typedNotices = typedNotices,
             durationMs = (nanoClock() - startedNanos) / 1_000_000,
         )
 

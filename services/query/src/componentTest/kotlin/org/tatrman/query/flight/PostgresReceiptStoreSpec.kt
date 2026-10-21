@@ -61,10 +61,22 @@ class PostgresReceiptStoreSpec :
             topNApplied = true,
             status = "ok",
             errorCode = "",
+            notices =
+                buildJsonArray {
+                    add(
+                        buildJsonObject {
+                            put("code", "top_n_applied")
+                            put("severity", "WARNING")
+                            put("message", "Answer limited to 200 rows by the row cap.")
+                            put("requested", 0)
+                            put("applied", 200)
+                        },
+                    )
+                },
         )
 
-        "Flyway migrates bi_receipts into schema query, once" {
-            PostgresReceiptStore.migrate(dataSource) shouldBe 1
+        "Flyway migrates bi_receipts into schema query, once: the table (V1), then its notices (V2)" {
+            PostgresReceiptStore.migrate(dataSource) shouldBe 2
             PostgresReceiptStore.migrate(dataSource) shouldBe 0
             dataSource.connection.use { c ->
                 val sql = "SELECT table_schema FROM information_schema.tables WHERE table_name = 'bi_receipts'"
@@ -80,6 +92,17 @@ class PostgresReceiptStoreSpec :
             store.insert(written)
             store.insert(written.copy(status = "failed"))
             store.find(ReceiptQuery(correlationId = "c-1")) shouldContainExactly listOf(written)
+        }
+
+        "a row written without notices (before V2) reads as none" {
+            val store = PostgresReceiptStore(dataSource)
+            dataSource.connection.use { c ->
+                c.createStatement().executeUpdate(
+                    "INSERT INTO query.bi_receipts (correlation_id, ts, user_id, client, statement, status) " +
+                        "VALUES ('old-1', now(), 'petr', 'jdbc', 'SELECT 1', 'ok')",
+                )
+            }
+            store.find(ReceiptQuery(correlationId = "old-1")).single().notices shouldBe buildJsonArray { }
         }
 
         "by user since an instant, newest first, at most the limit" {

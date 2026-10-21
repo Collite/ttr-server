@@ -34,6 +34,7 @@ import org.tatrman.query.flight.FlightTestKit.ipc
 import org.tatrman.query.flight.FlightTestKit.readAll
 import org.tatrman.validate.v1.SecurityRuleApplied
 import org.tatrman.worker.v1.ExecutionReceipt
+import org.tatrman.worker.v1.Notice
 import org.tatrman.worker.v1.ResultBatch
 import java.time.Clock
 import java.time.Instant
@@ -83,10 +84,19 @@ class ReceiptSinkSpec :
                 .setTable("db.dbo.warehouse")
                 .build()
 
+        val dropped =
+            ResponseMessage
+                .newBuilder()
+                .setSeverity(Severity.WARNING)
+                .setCode("blob_too_large")
+                .setHumanMessage("Row dropped: a value exceeds max-blob-bytes-per-cell.")
+                .build()
+
         fun governedDoor() =
             ScriptedDoor {
                 listOf(
-                    dataBatch(0, ipc(allocator, listOf(5 to "Brno DC")), 1),
+                    // A worker's warning on the data batch it concerns (R7): the receipt keeps it too.
+                    dataBatch(0, ipc(allocator, listOf(5 to "Brno DC")), 1).toBuilder().addMessages(dropped).build(),
                     ResultBatch
                         .newBuilder()
                         .setBatchIndex(1)
@@ -105,7 +115,33 @@ class ReceiptSinkSpec :
                                 .setSeverity(Severity.WARNING)
                                 .setCode("top_n_applied")
                                 .setHumanMessage("Answer limited to 1 row."),
+                        ).addNotices(
+                            Notice
+                                .newBuilder()
+                                .setCode("top_n_applied")
+                                .setRequested(0)
+                                .setApplied(1),
                         ).build(),
+                )
+            }
+
+        val expectedNotices =
+            buildJsonArray {
+                add(
+                    buildJsonObject {
+                        put("code", "blob_too_large")
+                        put("severity", "WARNING")
+                        put("message", "Row dropped: a value exceeds max-blob-bytes-per-cell.")
+                    },
+                )
+                add(
+                    buildJsonObject {
+                        put("code", "top_n_applied")
+                        put("severity", "WARNING")
+                        put("message", "Answer limited to 1 row.")
+                        put("requested", 0)
+                        put("applied", 1)
+                    },
                 )
             }
 
@@ -144,6 +180,8 @@ class ReceiptSinkSpec :
             receipt.topNApplied shouldBe true
             receipt.status shouldBe "ok"
             receipt.errorCode shouldBe ""
+            // The notices as the closing metadata carried them: every batch's, with the typed one's numbers.
+            receipt.notices shouldBe expectedNotices
         }
 
         "a refused statement is a receipt too: status refused, its code, nothing executed" {
@@ -215,6 +253,7 @@ class ReceiptSinkSpec :
                     .jsonObject["rule_id"]!!
                     .jsonPrimitive.content shouldBe
                     "dc_scope"
+                row["notices"]!!.jsonArray shouldBe expectedNotices
                 row["ts"]!!.jsonPrimitive.content shouldBe "2026-10-21T10:15:30Z"
                 client
                     .get("/receipts?user_id=petr&since=2026-10-21T00:00:00Z") {

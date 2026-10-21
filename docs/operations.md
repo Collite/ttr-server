@@ -155,11 +155,12 @@ for that.
 One row per statement through the edge, in schema `query` of the database named by
 `QUERY_RECEIPTS_DB_HOST` / `_PORT` / `_NAME` / `_USER` / `_PASSWORD` (Helm `query.flight.receipts.db`,
 the password by Secret ref). No host = no receipts. The service creates the table on first use
-(Flyway, history in the same schema); its user must own the database or schema `query`. Writing is
+(Flyway, history in the same schema; a table from before `notices` gains the column, its older rows
+with none); its user must own the database or schema `query`. Writing is
 best effort: a full queue or a database outage drops receipts and logs it, and never fails a statement.
 
-- **Size.** A row is the statement, the SQL the door ran and the row rules applied — typically
-  1–4 KB. 10 000 statements a day is roughly 10–40 MB a day.
+- **Size.** A row is the statement, the SQL the door ran, the row rules applied and the statement's
+  notices (`notices`, jsonb: the warnings its closing metadata carried) — typically 1–4 KB. 10 000 statements a day is roughly 10–40 MB a day.
 - **Retention.** Nothing is deleted automatically. Prune by time (the `ts` index serves it), e.g. a
   nightly `DELETE FROM query.bi_receipts WHERE ts < now() - interval '90 days'` from a CronJob or
   `pg_cron`, at the retention your audit policy sets.

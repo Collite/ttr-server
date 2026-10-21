@@ -59,7 +59,8 @@ outside this repo could notice is in.
     the batch it concerns), once each; an answer with no rows still has its columns; a client that stops reading for
     5 minutes is ended `TIMED_OUT` (`client_stalled`).
   - **Receipts:** one `bi_receipts` row per statement (schema `query`, created on first use; best effort), read with
-    `GET /receipts` by `query-platform-admin`.
+    `GET /receipts` by `query-platform-admin`. A receipt keeps the statement's notices (`notices` jsonb, the closing
+    metadata's list), from migration V2.
   - **Lifecycle:** an enabled edge that cannot listen fails the service's start, and `/ready` is not ready while it
     is not running. An unread statement waits `pending-ttl-seconds` from its `FlightInfo` (not from its start).
   - **Chart:** `query.flight.*`, `query.worlds`, and the `tatrman-service` library's `ports.extra` (default renders

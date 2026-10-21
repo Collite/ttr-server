@@ -168,8 +168,9 @@ Receipts record the client as `adbc`, from the driver's user agent.
 
 Every statement through the edge leaves one receipt, written after its stream ends: `correlation_id`, time,
 `user_id`, roles, world, `connection_id`, client (`jdbc` / `adbc` / `superset` / `other`), the statement as sent,
-the SQL the door executed, the row rules it applied (`security_applied`), rows, `top_n_applied`, how it ended
-(`ok` / `refused` / `failed` / `cancelled` / `expired`) and the error code. Refused statements leave receipts too.
+the SQL the door executed, the row rules it applied (`security_applied`), rows, `top_n_applied`, the notices
+(the same list as the closing metadata's), how it ended (`ok` / `refused` / `failed` / `cancelled` / `expired`) and
+the error code. Refused statements leave receipts too.
 
 Operators read them on the query service's HTTP port, with a bearer carrying `query-platform-admin`:
 

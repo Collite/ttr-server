@@ -2,8 +2,13 @@
 package org.tatrman.query.flight
 
 import org.apache.arrow.flight.FlightProducer
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.addJsonObject
+import kotlinx.serialization.json.buildJsonArray
+import kotlinx.serialization.json.put
 import org.tatrman.common.v1.ResponseMessage
 import org.tatrman.worker.v1.ExecutionReceipt
+import org.tatrman.worker.v1.Notice
 
 /**
  * BI (contracts C-2, C-3) — who is calling the edge, and for which world: the verified bearer's
@@ -47,6 +52,8 @@ data class StatementOutcome(
     val receipt: ExecutionReceipt? = null,
     /** Warnings the door and the worker raised on the statement, from every batch (`top_n_applied`, `blob_too_large`, …). */
     val notices: List<ResponseMessage> = emptyList(),
+    /** The door's typed notices (C-10: `top_n_applied` with `requested` / `applied`), from the last batch. */
+    val typedNotices: List<Notice> = emptyList(),
     val durationMs: Long = 0,
 ) {
     enum class Status(
@@ -61,9 +68,35 @@ data class StatementOutcome(
 
     val topNApplied: Boolean get() = notices.any { it.code == TOP_N_APPLIED }
 
+    /** [notices] as the closing metadata and the receipt carry them ([noticesJson]). */
+    val noticesJson: JsonArray get() = noticesJson(notices, typedNotices)
+
     companion object {
         /** validate's `RuleEnforcer.TOP_N_APPLIED`. */
         const val TOP_N_APPLIED = "top_n_applied"
+
+        /**
+         * C-5/C-6 — a statement's notices in one shape, for the closing metadata and the receipt alike: `code`,
+         * `severity`, `message`, and for a notice the door also sent typed, its numbers (`requested`, 0 = unstated, and
+         * `applied`).
+         */
+        fun noticesJson(
+            notices: List<ResponseMessage>,
+            typed: List<Notice>,
+        ): JsonArray =
+            buildJsonArray {
+                notices.forEach { notice ->
+                    addJsonObject {
+                        put("code", notice.code)
+                        put("severity", notice.severity.name)
+                        put("message", notice.humanMessage)
+                        typed.firstOrNull { it.code == notice.code }?.let {
+                            put("requested", it.requested)
+                            put("applied", it.applied)
+                        }
+                    }
+                }
+            }
     }
 }
 
