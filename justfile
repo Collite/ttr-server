@@ -664,6 +664,7 @@ _release-guard:
 #   `bundle server-libs` (the 14-module Maven library set — GH Packages always,
 #   + Maven Central on RELEASE), or `wheel <name>` (a pure-Python distribution —
 #   see `wheel_modules`; a bare tag BUILDS ONLY, PyPI upload on RELEASE).
+#   `alchemy` is short for `wheel ttr-sqlalchemy` (no image module is called that).
 #
 # ⚑ `nlp` and `wheel ttr-nlp` are different artifacts and one letter apart in
 #   intent. `just publish nlp` ships the nlp SERVICE IMAGE to GHCR (internal,
@@ -679,6 +680,8 @@ _release-guard:
 #   just publish bundle server-libs release set 0.9.2  # + Maven Central, explicit
 #   just publish wheel ttr-nlp                   # build-only proof, no upload
 #   just publish wheel ttr-nlp release set 0.1.0     # + PyPI (PUBLIC), explicit
+#   just publish alchemy                         # ttr-sqlalchemy: build-only proof, no upload
+#   just publish alchemy release set 0.1.0       # + PyPI (PUBLIC), explicit
 publish *args:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -689,9 +692,11 @@ publish *args:
     if [ "$WHAT" = "bundle" ] || [ "$WHAT" = "wheel" ]; then
         WHAT="$WHAT ${ARGS[1]:-}"
         NEXT=2
+    elif [ "$WHAT" = "alchemy" ]; then
+        WHAT="wheel ttr-sqlalchemy"
     fi
     if [ -z "$WHAT" ] || [ "$WHAT" = "bundle " ] || [ "$WHAT" = "wheel " ]; then
-        echo "❌ Usage: just publish <module|path|bundle server-libs|wheel NAME> [release] [major|minor|patch|set VERSION]" >&2
+        echo "❌ Usage: just publish <module|path|bundle server-libs|wheel NAME|alchemy> [release] [major|minor|patch|set VERSION]" >&2
         echo "   Wheels: {{wheel_modules}}" >&2
         exit 1
     fi

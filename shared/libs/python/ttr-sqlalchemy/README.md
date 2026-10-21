@@ -156,4 +156,4 @@ commands with Apache Arrow's `FlightSql.proto` (vendored under `tests/fixtures/v
 driver's hand-written encoding is checked against the real schema. CI also runs the suite on Superset's floor
 (Python 3.10, SQLAlchemy 1.4.54, pyarrow 16), and once more inside Superset 6.1.0, where `tests/test_superset_spec.py`
 drives the engine spec through Superset's own database model, OAuth2 token store and fetch path (elsewhere it skips). Releases: a `python-sqlalchemy/v<x.y.z>-RELEASE` tag
-(`just publish wheel ttr-sqlalchemy release set <x.y.z>`).
+(`just publish alchemy release set <x.y.z>`, short for `just publish wheel ttr-sqlalchemy release set <x.y.z>`).
