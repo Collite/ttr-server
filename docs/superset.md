@@ -86,10 +86,12 @@ reading.
   `db.dbo` the bound physical tables. Columns are typed from the model, and dates and timestamps are temporal.
 - **Time grains:** day, month, quarter and year. There is no week grain yet: the translator cannot yet truncate a
   date to its week.
-- **Answers the row cap cut are refused, not shown.** The door caps every answer, and an operator can raise the cap
-  per role (`VALIDATE_MAX_TOP_N_BY_ROLE`). A chart that asks for more rows than its viewer's cap gets a warning that
-  names the cap and what was asked for. A chart over part of the rows would mislead. SQL Lab asks for one row more
-  than its limit, to tell whether there are more, so keep SQL Lab's limit below the cap.
+- **Answers the row cap cut are refused, not shown.** The door caps every answer at its viewer's ceiling: the
+  deployment's `VALIDATE_MAX_TOP_N`, which an operator can raise per role (`VALIDATE_MAX_TOP_N_BY_ROLE`, e.g.
+  `kantheon-bi-reader:10000`). A chart's own row limit lowers it. A chart whose answer reaches the ceiling gets a
+  warning that names the ceiling, because a chart over part of the rows would mislead. SQL Lab asks for one row
+  more than its limit, to tell whether there are more, so keep SQL Lab's limit below the ceiling. Superset holds a
+  whole answer in memory, so the ceiling also bounds that.
 - **Refusals** read as the edge's code and sentence: `translator_rejected: Object 'warehouse' not found within 'er'
   …`.
 - **Embedded dashboards** (Superset's guest tokens) cannot read a Tatrman database: a guest has no token of their

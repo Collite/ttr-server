@@ -83,7 +83,10 @@ object FlightTestKit {
             .setArrowIpc(ByteString.copyFrom(payload))
             .build()
 
-    /** The door's tail: no rows, the receipt's statement half and the cap notice when the answer hit it. */
+    /**
+     * The door's tail: no rows, the receipt's statement half and the cap notice when the answer hit it — as the door
+     * sends it for an edge statement (C-10: the edge's ask is the largest window, so `requested` is 0).
+     */
     fun tail(
         index: Int,
         connectionId: String = "pg-hartland-cz",
@@ -108,13 +111,16 @@ object FlightTestKit {
                             .newBuilder()
                             .setSeverity(Severity.WARNING)
                             .setCode("top_n_applied")
-                            .setHumanMessage("Answer limited to 200 rows (caller asked for 10000)."),
+                            .setHumanMessage(
+                                "Answer limited to 200 rows by the row cap; the caller asked for as many rows as its " +
+                                    "ceiling allows.",
+                            ),
                     )
                     addNotices(
                         Notice
                             .newBuilder()
                             .setCode("top_n_applied")
-                            .setRequested(10_000)
+                            .setRequested(0)
                             .setApplied(200),
                     )
                 }

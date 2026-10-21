@@ -79,6 +79,25 @@ class TtrFlightSqlProducerSpec :
             }
         }
 
+        "C-10 — a statement asks for as many rows as the caller's ceiling allows; the schema probe for one" {
+            val door = ScriptedDoor { twoBatchesAndTail() }
+            RunningEdge(door).use { edge ->
+                val info = edge.sql.execute("SELECT * FROM db.dbo.catalog_sales LIMIT 10000")
+                edge.sql.getStream(info.endpoints[0].ticket).use { it.readAll() }
+                door.requests
+                    .single()
+                    .rowWindow.limit shouldBe Int.MAX_VALUE.toLong()
+                door.requests
+                    .single()
+                    .rowWindow.limit shouldBe EDGE_ROW_ASK
+            }
+            val probed = ScriptedDoor { twoBatchesAndTail() }
+            RunnerSchemaProbe(probed, allocator).schemaOf("SELECT * FROM obj.query.q", FlightTestKit.SESSION)
+            probed.requests
+                .single()
+                .rowWindow.limit shouldBe 1L
+        }
+
         "the last batch — and only it — carries the closing metadata: connection, rows, cap notice" {
             val door = ScriptedDoor { twoBatchesAndTail(topN = true) }
             RunningEdge(door).use { edge ->
@@ -95,8 +114,8 @@ class TtrFlightSqlProducerSpec :
                         .context.correlationId
                 val notice = closing["notices"]!!.jsonArray.single().jsonObject
                 notice["code"]!!.jsonPrimitive.content shouldBe "top_n_applied"
-                // C-10 — the typed notice's numbers ride along.
-                notice["requested"]!!.jsonPrimitive.long shouldBe 10_000
+                // C-10 — the typed notice's numbers ride along (0: the edge's ask is no number the caller chose).
+                notice["requested"]!!.jsonPrimitive.long shouldBe 0
                 notice["applied"]!!.jsonPrimitive.long shouldBe 200
                 edge.outcomes.single().topNApplied shouldBe true
             }

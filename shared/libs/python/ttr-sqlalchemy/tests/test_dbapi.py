@@ -125,7 +125,7 @@ def test_a_capped_answer_says_so(edge):
         assert cur.top_n_applied is True
         (notice,) = cur.notices
         assert notice["code"] == "top_n_applied"
-        assert (notice["requested"], notice["applied"]) == (10000, 200)
+        assert (notice["requested"], notice["applied"]) == (0, 200)
 
 
 @pytest.mark.parametrize(

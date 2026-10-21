@@ -369,7 +369,7 @@ class QueryServiceImpl(
                                         Notice
                                             .newBuilder()
                                             .setCode(TOP_N_APPLIED)
-                                            .setRequested(window.limit)
+                                            .setRequested(statedLimit(window))
                                             .setApplied(rowCap),
                                     ).build()
                         }
@@ -1174,6 +1174,12 @@ class QueryServiceImpl(
             .setApplySecurity(true)
             .setEnforceTopN(true)
             .setDefaultTopN(window.limit.coerceAtMost(Int.MAX_VALUE.toLong()).toInt())
+
+    /**
+     * C-10 — the rows a caller stated, for `Notice.requested`: 0 when it stated none, and 0 for the largest window
+     * (`Int.MAX_VALUE`, the Flight edge's "as many as my ceiling allows"), which is no number the caller chose.
+     */
+    private fun statedLimit(window: RowWindow): Long = if (window.limit >= Int.MAX_VALUE) 0 else window.limit
 
     private fun windowRefusal(window: RowWindow): String? =
         when {

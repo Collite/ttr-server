@@ -74,6 +74,9 @@ A connection reads **one world**. Name it with either property:
 jdbc:arrow-flight-sql://<host>:<port>/?useEncryption=true&world=hartland_us
 ```
 
+A world selects the data; the caller's roles and row rules decide what of it they read. Worlds grant nothing:
+any signed-in caller may pick any world the deployment serves, and the same row rules apply in each.
+
 The world is the connection's only catalog (`getCatalogs()` returns it). A world the deployment does not serve
 fails the connect with `unknown_world: World '<x>' is not served here; the worlds are …`. With no world, the
 deployment's default connection answers and no catalog is listed.
@@ -138,13 +141,16 @@ Receipts record the client as `adbc`, from the driver's user agent.
 - The **last batch carries app metadata** (JSON): `correlation_id` (the id to quote when asking an operator
   about a statement), `connection_id` (the connection that actually ran it), `rows_total`, `top_n_applied` and
   the door's `notices`. The stock JDBC driver does not surface app metadata; ADBC and `pyarrow.flight` can read it.
-- **Row caps.** The validator caps every answer. A statement without a `LIMIT` gets the deployment's default
-  (`VALIDATE_DEFAULT_TOP_N`, e.g. 200); a `LIMIT` is granted up to the ceiling (`VALIDATE_MAX_TOP_N`), which a
-  role can raise (`VALIDATE_MAX_TOP_N_BY_ROLE`, e.g. `kantheon-bi-reader:10000` — what a BI reader gets when it
-  asks for 10 000). An answer the cap cut says so on its last batch: `top_n_applied: true`, and its entry in
-  `notices` carries `requested` (the `LIMIT` asked, 0 = none) and `applied` (the cap). A full page with that notice
-  means "the estate's ceiling", not "the end of the data". The stock JDBC driver does not surface it; ADBC and
-  `pyarrow.flight` read it from the closing metadata, and the receipt records it.
+- **Row caps.** The validator caps every answer, and through the edge a statement gets up to its caller's
+  **ceiling**: the deployment's `VALIDATE_MAX_TOP_N`, which a role can raise (`VALIDATE_MAX_TOP_N_BY_ROLE`, e.g.
+  `kantheon-bi-reader:10000`). The edge asks for as many rows as the ceiling allows, so a statement without a `LIMIT`
+  gets the ceiling, not the deployment's default (`VALIDATE_DEFAULT_TOP_N`, which applies to callers that state no
+  row window). A statement's own `LIMIT` lowers that. A caller with no such role gets `VALIDATE_MAX_TOP_N`, which
+  is the default unless an operator raised it. An answer the ceiling cut says so on its last batch:
+  `top_n_applied: true`, and its entry in `notices` carries `requested: 0` (the edge states no number) and `applied`
+  (the ceiling). A full page with that notice means "the estate's ceiling", not "the end of the data". The stock
+  JDBC driver does not surface it; ADBC and `pyarrow.flight` read it from the closing metadata, and the receipt
+  records it.
 - **Errors** arrive as Flight errors whose description is `"<code>: <one sentence>"` (e.g.
   `translator_rejected: Object 'warehouse' not found within 'er' — did you mean: warehouse, warehouse_id?` for
   `FROM er.warehouse`,

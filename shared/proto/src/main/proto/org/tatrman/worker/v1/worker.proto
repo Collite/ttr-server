@@ -197,7 +197,9 @@ message ResultBatch {
 // A typed notice about a result (BI C-10).
 message Notice {
   string code = 1;                       // "top_n_applied"
-  // top_n_applied: the rows the caller asked for (0 = unstated), and the row cap that bounded the answer.
+  // top_n_applied: the rows the caller asked for, and the row cap that bounded the answer. requested 0 = the
+  // caller stated no number: no row window, or the largest one (2147483647, "as many as my ceiling allows",
+  // which the Flight edge sends).
   int64 requested = 2;
   int64 applied = 3;
   reserved 4 to 8;

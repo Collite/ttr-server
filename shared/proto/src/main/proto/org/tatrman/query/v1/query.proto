@@ -163,12 +163,13 @@ message RunRequest {
 // When the validator's cap is what bounds the answer AND the answer reached
 // it, the LAST ResultBatch carries a `top_n_applied` WARNING in `messages`,
 // naming the cap and what was asked for, and the same as a typed Notice in
-// `notices` (`requested` = this `limit`, `applied` = the cap). A full page
-// with that notice means "the estate's ceiling", not "the end of the data".
-// The ceiling is the validator's max-top-n, raised per role by its
-// max-top-n-by-role (BI C-10).
+// `notices` (`requested` = this `limit`, 0 for the largest one, `applied` =
+// the cap). A full page with that notice means "the estate's ceiling", not
+// "the end of the data". The ceiling is the validator's max-top-n, raised per
+// role by its max-top-n-by-role (BI C-10).
 message RowWindow {
-  // Rows wanted. 0 = unstated: the validator's default-top-n applies.
+  // Rows wanted. 0 = unstated: the validator's default-top-n applies. The
+  // largest, 2147483647, asks for the caller's ceiling.
   int64 limit = 1;
   // Rows to skip before the first one returned. 0 = from the start.
   int64 offset = 2;

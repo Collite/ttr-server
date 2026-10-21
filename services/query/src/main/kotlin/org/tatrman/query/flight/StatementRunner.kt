@@ -18,15 +18,23 @@ fun interface StatementRunner {
 }
 
 /**
+ * C-10 — the rows an edge statement asks for: as many as the caller's ceiling allows. The validator grants
+ * `min(ask, ceiling)`, so the caller gets its ceiling (`max-top-n`, raised per role by `max-top-n-by-role`), and a
+ * statement's own `LIMIT` still bounds it below that. A BI client states its page in SQL, never in a row window,
+ * so the edge has no smaller number to pass on. The largest window the door accepts.
+ */
+const val EDGE_ROW_ASK: Long = Int.MAX_VALUE.toLong()
+
+/**
  * One edge statement as the door's `RunRequest`: SQL, schema autodetected from its qualified names (`er.entity.x`,
- * `obj.query.x`, `db.dbo.x`), the caller's identity exactly as the verified bearer stated it (C-2), and the
- * connection's world (C-3, C-9).
+ * `obj.query.x`, `db.dbo.x`), the caller's identity exactly as the verified bearer stated it (C-2), the
+ * connection's world (C-3, C-9), and the edge's row ask ([EDGE_ROW_ASK]) unless the caller says otherwise.
  */
 internal fun edgeRunRequest(
     sql: String,
     session: EdgeSession,
     correlationId: String,
-    window: RowWindow = RowWindow.getDefaultInstance(),
+    window: RowWindow = RowWindow.newBuilder().setLimit(EDGE_ROW_ASK).build(),
 ): RunRequest =
     RunRequest
         .newBuilder()

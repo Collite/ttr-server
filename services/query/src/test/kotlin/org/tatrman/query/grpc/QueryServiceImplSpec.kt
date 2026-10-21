@@ -1084,6 +1084,19 @@ class QueryServiceImplSpec :
                     .noticesList
                     .single()
                     .requested shouldBe 0L
+                // The Flight edge's ask, the largest window, is no number the caller chose: 0 as well.
+                val edgeAsk =
+                    service(
+                        translatorDetect = dbDetect,
+                        validator = cappingAt2(notice = true),
+                        dispatcher = streaming(2),
+                    ).run(windowRequest(Int.MAX_VALUE.toLong(), 0))
+                        .toList()
+                        .last()
+                        .noticesList
+                        .single()
+                edgeAsk.requested shouldBe 0L
+                edgeAsk.applied shouldBe 2L
             }
         }
 

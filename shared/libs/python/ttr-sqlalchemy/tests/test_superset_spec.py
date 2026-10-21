@@ -401,8 +401,10 @@ def test_a_cut_answer_is_refused_with_the_numbers(petr, edge):
         database.get_df("SELECT * FROM er.entity.channel_sales LIMIT 10000")
     error = cut.value.error
     assert (error.error_type, error.level) == (SupersetErrorType.RESULT_TOO_LARGE_ERROR, ErrorLevel.WARNING)
-    assert "200 rows" in error.message and "10000" in error.message
-    assert error.extra["requested"] == 10000 and error.extra["applied"] == 200
+    # The edge states no number of its own (requested 0), so the message names the cap alone.
+    assert "cut this answer at 200 rows, so it is not shown" in error.message
+    assert "were asked for" not in error.message
+    assert error.extra["requested"] == 0 and error.extra["applied"] == 200
     assert error.extra["correlation_id"]
 
     assert len(database.get_df("SELECT * FROM er.entity.channel_sales LIMIT 10")) == 1  # an uncut answer reads

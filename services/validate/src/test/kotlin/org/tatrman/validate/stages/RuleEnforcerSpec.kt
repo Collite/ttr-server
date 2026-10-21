@@ -229,9 +229,39 @@ class RuleEnforcerSpec :
                 .plan.limitOffset.limit shouldBe 20_000L
         }
 
+        // The Flight edge's ask: the largest window, "as many rows as my ceiling allows".
+        val edgeAsk = Int.MAX_VALUE
+
+        "the edge's ask with the BI role gets the role's ceiling" {
+            val out = byRole.enforce(scan, options(enforce = true, defaultTopN = edgeAsk), roles = biReader)
+            out.plan.limitOffset.limit shouldBe 10_000L
+            out.messages.single().humanMessage shouldBe
+                "Answer limited to 10000 rows by the row cap; the caller asked for as many rows as its ceiling allows."
+        }
+
+        "the edge's ask without the role gets exactly the default" {
+            val out =
+                byRole.enforce(scan, options(enforce = true, defaultTopN = edgeAsk), roles = listOf("kantheon-area-x"))
+            out.plan.limitOffset.limit shouldBe 200L
+            out.messages.single().humanMessage shouldContainStr "as many rows as its ceiling allows"
+        }
+
+        "the edge's ask over a statement's own lower LIMIT keeps the LIMIT, silently" {
+            val limited =
+                PlanNode
+                    .newBuilder()
+                    .setLimitOffset(LimitOffsetNode.newBuilder().setInput(scan).setLimit(5_000))
+                    .build()
+            val out = byRole.enforce(limited, options(enforce = true, defaultTopN = edgeAsk), roles = biReader)
+            out.plan.limitOffset.limit shouldBe 5_000L
+            out.messages shouldHaveSize 0
+        }
+
         "max-top-n-by-role: role:rows pairs; blank is none, a malformed entry is refused" {
             RuleEnforcer.parseMaxByRole("") shouldBe emptyMap()
             RuleEnforcer.parseMaxByRole(" a:1 , b:20 ") shouldBe mapOf("a" to 1, "b" to 20)
+            // Split at the last `:`, so a role name may hold one.
+            RuleEnforcer.parseMaxByRole("ns:bi-reader:10000") shouldBe mapOf("ns:bi-reader" to 10_000)
             listOf("a", "a:", ":5", "a:x", "a:0", "a:1,a:2").forEach { raw ->
                 io.kotest.assertions.throwables
                     .shouldThrow<IllegalArgumentException> { RuleEnforcer.parseMaxByRole(raw) }

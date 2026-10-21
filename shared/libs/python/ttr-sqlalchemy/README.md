@@ -85,8 +85,10 @@ refused (`parameter_type`). Positional parameters are refused (`parameter_style`
 
 A result is read **whole** before its first row is returned. The edge holds an answer's last batch until the door's
 receipt names the connection it ran on, and fails the stream with `world_mismatch` if that is another world's; reading
-to the end first means such an answer yields no rows, only the error. The door caps every answer (default 200 rows; a
-`LIMIT` up to the deployment's ceiling, which a role can raise), which bounds what is held.
+to the end first means such an answer yields no rows, only the error. The door caps every answer at the caller's
+**ceiling** (the deployment's `VALIDATE_MAX_TOP_N`, which a role can raise with `VALIDATE_MAX_TOP_N_BY_ROLE`): the edge
+asks for as many rows as the ceiling allows, so a statement without a `LIMIT` gets the ceiling, and its own `LIMIT`
+lowers it. The ceiling is also what bounds the memory a whole answer takes.
 
 The DB-API cursor carries what the edge says about the answer (its last batch's app metadata):
 
@@ -98,7 +100,7 @@ with engine.connect() as conn:
     cursor.correlation_id   # quote it to an operator: it finds the statement's receipt
     cursor.connection_id    # the connection the door ran it on
     cursor.top_n_applied    # True: the cap cut the answer — a full page is the ceiling, not the end of the data
-    cursor.notices          # [{'code': 'top_n_applied', 'requested': 10000, 'applied': 200, …}]
+    cursor.notices          # [{'code': 'top_n_applied', 'requested': 0, 'applied': 200, …}]
 ```
 
 `cursor.fetch_arrow_table()` returns the answer as the Arrow table it arrived as.

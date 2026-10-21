@@ -121,16 +121,28 @@ A request naming a world runs on that connection; a world not in the table is re
 (`unknown_world`). Empty = one world, on the deployment's default connection. A malformed table
 fails the start. `/status` lists the worlds.
 
+A world selects the data; the caller's roles and row rules decide what of it they read. Worlds grant
+nothing: any signed-in caller may pick any world in the table, and the same row rules apply in each
+(a row rule keyed on a value both worlds hold applies in both).
+
 ### Row caps — validate
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
 | `VALIDATE_DEFAULT_TOP_N` | `30` | Rows an answer gets when the caller states no limit. |
 | `VALIDATE_MAX_TOP_N` | = default | The most a caller may ask for. |
-| `VALIDATE_MAX_TOP_N_BY_ROLE` | empty | `role:rows,…` — a higher ceiling for callers holding the role (`kantheon-bi-reader:10000`). A role only raises the ceiling; the default stays everyone's. A malformed entry fails the start. |
+| `VALIDATE_MAX_TOP_N_BY_ROLE` | empty | `role:rows,…` — a higher ceiling for callers holding the role (`kantheon-bi-reader:10000`). A role only raises the ceiling; the default stays everyone's. The role name may contain `:` (the rows follow the last one). A malformed entry fails the start. |
 
 Set them through validate's `extraEnv`. A capped answer carries `top_n_applied` (a warning, and a
 typed notice with `requested` / `applied`) on its last batch. validate's `/status` shows all three.
+
+**Through the Flight edge** a statement asks for as many rows as its caller's ceiling allows: it gets
+`VALIDATE_MAX_TOP_N`, or its role's higher value, and its own `LIMIT` lowers that. The default
+applies to door callers that state no row window (MCP, agents), not to edge statements. A caller with
+no BI role gets `VALIDATE_MAX_TOP_N`, which is the default unless you raised it. An answer the ceiling
+cut carries `top_n_applied` with `requested: 0` and `applied` = the ceiling. BI clients that read an
+answer whole (`ttr-sqlalchemy`, so Superset) hold up to the ceiling in memory: size the role's value
+for that.
 
 ### Receipts — `bi_receipts`
 

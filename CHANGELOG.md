@@ -35,7 +35,7 @@ outside this repo could notice is in.
     (`DATABASE_OAUTH2_CLIENTS["tatrman"]`, Keycloak's authorization code; `issuer` derives the endpoints). A database
     with impersonation off, or with no client to get a token from, refuses to connect (`BI_REQUIRE_IMPERSONATION =
     False` lifts that, for a local trial). An answer the door's row cap cut is refused as a `RESULT_TOO_LARGE_ERROR`
-    warning with the cap and what was asked for. Time grains are day, month, quarter and year, with no week yet.
+    warning naming the cap. Time grains are day, month, quarter and year, with no week yet.
     Every alias is quoted; refusals map to Superset's DB-API errors with the edge's code and sentence.
     `docs/superset.md` is rewritten to match; `compose/superset/` runs it locally (not a production topology).
 - **query — an Arrow Flight SQL edge for BI tools** (BI-1). Opt-in, port 7308 (`QUERY_FLIGHT_ENABLED`), for the stock
@@ -48,6 +48,8 @@ outside this repo could notice is in.
     `QUERY_WORLDS` (`world=connection_id,…`); an unknown world is refused `unknown_world`. The edge reads the world
     from the `world` property (or the JDBC `catalog`), and refuses a statement naming another catalog
     (`world_mismatch`).
+  - **Row ask:** every statement asks for as many rows as its caller's ceiling allows (`row_window.limit`
+    2147483647), so it gets `VALIDATE_MAX_TOP_N` or its role's higher value; its own `LIMIT` lowers that.
   - **Receipts:** one `bi_receipts` row per statement (schema `query`, created on first use; best effort), read with
     `GET /receipts` by `query-platform-admin`.
   - **Chart:** `query.flight.*`, `query.worlds`, and the `tatrman-service` library's `ports.extra` (default renders
@@ -60,9 +62,11 @@ outside this repo could notice is in.
   - **workers — `ExecutionOptions.row_limit` is exact** (Postgres, MSSQL, Polars). It was checked per batch, so a
     limit below the batch size let the whole batch through.
   - **validate — `VALIDATE_MAX_TOP_N_BY_ROLE`** (`role:rows,…`) raises the row ceiling for callers holding a role;
-    the default stays everyone's. A malformed entry fails the start.
+    the default stays everyone's. A role name may contain `:` (the rows follow the last one). A malformed entry fails
+    the start.
   - **wire — `ResultBatch.notices`** (field 9, `Notice{code, requested, applied}`): query puts `top_n_applied` there as
-    well as in `messages` when the cap cut the answer.
+    well as in `messages` when the cap cut the answer. `requested` is 0 when the caller stated no number: no row
+    window, or the largest one.
   - **translate — readable refusals.** Every refusal is one line without Calcite's exception class, position prose
     or repeats (`Object 'warehouse' not found within 'er' — did you mean: …`); the position moves to
     **`ResponseMessage.line` / `column`** (fields 5/6, additive), which query keeps on `translator_rejected`. "Did

@@ -393,7 +393,7 @@ class Cursor:
 
     @property
     def notices(self) -> list[dict]:
-        """The door's notices on the answer; `top_n_applied` carries `requested` (0 = unstated) and `applied`."""
+        """The door's notices on the answer; `top_n_applied` carries `requested` (0: no number stated) and `applied`."""
         notices = self.closing.get("notices", [])
         return [n for n in notices if isinstance(n, dict)] if isinstance(notices, list) else []
 

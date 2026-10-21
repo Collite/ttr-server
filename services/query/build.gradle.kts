@@ -131,6 +131,15 @@ dependencies {
     // Realm-signed test tokens for the edge's authenticator specs; the receipts route in a test host.
     testImplementation(libs.auth0.java.jwt)
     testImplementation(libs.ktor.server.test.host)
+    // BI (C-10) — the row-ask spec runs validate's real RuleEnforcer behind the validate stub, so the edge's ask and
+    // the validator's arithmetic are proven together. Validate's classes only: its resources (application.conf)
+    // would merge into query's.
+    val validateClasses =
+        rootProject
+            .project(":services:validate")
+            .layout.buildDirectory
+            .dir("classes/kotlin/main")
+    testImplementation(files(validateClasses).builtBy(":services:validate:compileKotlin"))
 
     // Component tier — bi_receipts over a REAL Postgres (Testcontainers): Flyway migrates clean, every C-6 column
     // round-trips. `src/componentTest`, so the unit gate stays Docker-free.

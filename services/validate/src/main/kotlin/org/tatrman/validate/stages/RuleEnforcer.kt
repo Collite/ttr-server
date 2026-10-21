@@ -264,10 +264,11 @@ class RuleEnforcer(
         requested: Int,
     ): ResponseMessage {
         val asked =
-            if (requested > 0) {
-                "the caller asked for $requested"
-            } else {
-                "the caller stated no row limit, so the service default applies"
+            when {
+                // The largest window: the Flight edge's ask, "as many rows as my ceiling allows" (BI C-10).
+                requested == Int.MAX_VALUE -> "the caller asked for as many rows as its ceiling allows"
+                requested > 0 -> "the caller asked for $requested"
+                else -> "the caller stated no row limit, so the service default applies"
             }
         return ResponseMessage
             .newBuilder()
@@ -293,8 +294,9 @@ class RuleEnforcer(
             val entries = raw.split(',').map(String::trim).filter(String::isNotEmpty)
             val byRole = linkedMapOf<String, Int>()
             for (entry in entries) {
-                val role = entry.substringBefore(':', "").trim()
-                val rows = entry.substringAfter(':', "").trim().toIntOrNull()
+                // At the last `:`: a realm role's name may hold one itself (`ns:bi-reader:10000`).
+                val role = entry.substringBeforeLast(':', "").trim()
+                val rows = entry.substringAfterLast(':', "").trim().toIntOrNull()
                 require(role.isNotEmpty() && rows != null && rows > 0) { "$source: '$entry' is not role:rows" }
                 require(byRole.put(role, rows) == null) { "$source names $role twice" }
             }

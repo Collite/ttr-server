@@ -275,8 +275,13 @@ class RecordedEdge(fl.FlightServerBase):
                     {
                         "code": "top_n_applied",
                         "severity": "WARNING",
-                        "message": "Answer limited to 200 rows by the row cap; the caller asked for 10000.",
-                        "requested": 10000,
+                        # As the real edge sends it (C-10): the edge asks for as many rows as the caller's
+                        # ceiling allows, so `requested` is 0 whatever the LIMIT, and the cap is the ceiling.
+                        "message": (
+                            "Answer limited to 200 rows by the row cap; the caller asked for as many rows as its "
+                            "ceiling allows."
+                        ),
+                        "requested": 0,
                         "applied": 200,
                     }
                 ]
