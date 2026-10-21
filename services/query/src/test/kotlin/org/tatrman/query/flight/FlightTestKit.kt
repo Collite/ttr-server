@@ -6,7 +6,6 @@ import kotlinx.coroutines.flow.asFlow
 import org.apache.arrow.flight.FlightClient
 import org.apache.arrow.flight.FlightStream
 import org.apache.arrow.flight.Location
-import org.apache.arrow.flight.auth2.CallHeaderAuthenticator
 import org.apache.arrow.flight.sql.FlightSqlClient
 import org.apache.arrow.memory.BufferAllocator
 import org.apache.arrow.memory.RootAllocator
@@ -25,6 +24,7 @@ import org.tatrman.meta.v1.GetModelResponse
 import org.tatrman.meta.v1.ListObjectsRequest
 import org.tatrman.meta.v1.ListObjectsResponse
 import org.tatrman.query.v1.RunRequest
+import org.tatrman.query.world.Worlds
 import org.tatrman.worker.v1.ExecutionReceipt
 import org.tatrman.worker.v1.ResultBatch
 import java.io.ByteArrayOutputStream
@@ -154,8 +154,9 @@ object FlightTestKit {
     }
 
     /**
-     * A running edge on an OS-picked loopback port, with the authenticator in allow-all TEST mode (no such mode
-     * exists outside tests: production wires a verifying one) and every call made as [session].
+     * A running edge on an OS-picked loopback port. Without [identity], in allow-all TEST mode (no such mode exists
+     * outside tests: production always installs [IdentityWorldMiddleware]) and every call made as [session]; with
+     * it, every call authenticated and placed in its world by the real middleware.
      */
     class RunningEdge(
         door: StatementRunner,
@@ -163,6 +164,9 @@ object FlightTestKit {
         session: EdgeSession? = SESSION,
         val outcomes: MutableList<StatementOutcome> = CopyOnWriteArrayList(),
         config: FlightConfig = testConfig(),
+        identity: IdentityWorldMiddleware.Factory? = null,
+        worlds: Worlds = Worlds.NONE,
+        listener: StatementListener? = null,
     ) : AutoCloseable {
         val allocator: BufferAllocator = RootAllocator()
         val catalog = CatalogSource(veles, RunnerSchemaProbe(door, allocator), ttlSeconds = 30)
@@ -170,12 +174,23 @@ object FlightTestKit {
             TtrFlightSqlProducer(
                 runner = door,
                 catalog = catalog,
-                sessions = SessionResolver { session },
+                sessions = if (identity != null) IdentityWorldMiddleware.SESSIONS else SessionResolver { session },
                 allocator = allocator,
                 config = config,
-                outcomes = StatementListener { outcomes += it },
+                outcomes =
+                    StatementListener {
+                        outcomes += it
+                        listener?.onStatementDone(it)
+                    },
+                worlds = worlds,
             )
-        val edge = FlightEdge(config, producer, allocator, CallHeaderAuthenticator.NO_OP).start()
+        val edge =
+            FlightEdge(
+                config,
+                producer,
+                allocator,
+                listOfNotNull(identity?.let { IdentityWorldMiddleware.binding(it) }),
+            ).start()
         private val clientAllocator = RootAllocator()
         val client: FlightClient =
             FlightClient.builder(clientAllocator, Location.forGrpcInsecure("127.0.0.1", edge.port)).build()

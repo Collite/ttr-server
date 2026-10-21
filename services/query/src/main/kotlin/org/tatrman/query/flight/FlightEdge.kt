@@ -6,14 +6,13 @@ import io.opentelemetry.api.OpenTelemetry
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
-import org.apache.arrow.flight.auth2.CallHeaderAuthenticator
-import org.apache.arrow.flight.CallStatus
 import org.apache.arrow.flight.FlightServer
 import org.apache.arrow.flight.FlightServerMiddleware
 import org.apache.arrow.flight.Location
 import org.apache.arrow.memory.BufferAllocator
 import org.apache.arrow.memory.RootAllocator
 import org.slf4j.LoggerFactory
+import org.tatrman.query.world.Worlds
 import java.util.concurrent.TimeUnit
 
 /** A server middleware the edge installs, with the key its producer reads it back by. */
@@ -27,15 +26,17 @@ class MiddlewareBinding<T : FlightServerMiddleware>(
 }
 
 /**
- * BI (contracts C-1, C-8) — the Flight SQL edge's server: [TtrFlightSqlProducer] on [FlightConfig.port], bound to
- * [FlightConfig.bind], behind [authenticator]. Started and stopped with the query service's Ktor application; owns
+ * BI (contracts C-1, C-2, C-8) — the Flight SQL edge's server: [TtrFlightSqlProducer] on [FlightConfig.port], bound
+ * to [FlightConfig.bind], behind [middleware]. Started and stopped with the query service's Ktor application; owns
  * the producer and the Arrow allocator.
+ *
+ * Authentication is [IdentityWorldMiddleware]'s, installed by [create]: the edge built for production cannot be made
+ * without it. The bare constructor is the test seam, where a spec stands a fixed session in for a verified one.
  */
 class FlightEdge(
     private val config: FlightConfig,
     private val producer: TtrFlightSqlProducer,
     private val allocator: BufferAllocator,
-    private val authenticator: CallHeaderAuthenticator,
     private val middleware: List<MiddlewareBinding<*>> = emptyList(),
     private val closeables: List<AutoCloseable> = emptyList(),
 ) : AutoCloseable {
@@ -45,7 +46,6 @@ class FlightEdge(
         server =
             FlightServer
                 .builder(allocator, Location.forGrpcInsecure(config.bind, config.port), producer)
-                .headerAuthenticator(authenticator)
                 .apply { middleware.forEach { it.install(this) } }
                 .build()
                 .start()
@@ -91,24 +91,16 @@ class FlightEdge(
         val DISABLED_STATUS: JsonObject = buildJsonObject { put("enabled", false) }
 
         /**
-         * The authenticator the edge uses until a verifying one is configured: every call is refused. The edge must
-         * never answer an unverified caller — the door behind it trusts the identity it is handed.
+         * The edge with its production collaborators: the loopback runner, Veles' catalog and the schema probe, every
+         * call authenticated and placed in its world by [identity] — the door behind the edge trusts the identity it
+         * is handed, so the edge never answers an unverified caller.
          */
-        val REFUSE_ALL =
-            CallHeaderAuthenticator {
-                throw CallStatus.UNAUTHENTICATED
-                    .withDescription("this Flight edge has no authenticator configured")
-                    .toRuntimeException()
-            }
-
-        /** The edge with its production collaborators: the loopback runner, Veles' catalog and the schema probe. */
         fun create(
             config: FlightConfig,
             runner: StatementRunner,
             veles: VelesCatalogClient,
-            sessions: SessionResolver,
-            authenticator: CallHeaderAuthenticator,
-            middleware: List<MiddlewareBinding<*>> = emptyList(),
+            identity: IdentityWorldMiddleware.Factory,
+            worlds: Worlds = Worlds.NONE,
             outcomes: StatementListener = StatementListener { },
             openTelemetry: OpenTelemetry = GlobalOpenTelemetry.get(),
             closeables: List<AutoCloseable> = emptyList(),
@@ -119,13 +111,20 @@ class FlightEdge(
                 TtrFlightSqlProducer(
                     runner = runner,
                     catalog = catalog,
-                    sessions = sessions,
+                    sessions = IdentityWorldMiddleware.SESSIONS,
                     allocator = allocator,
                     config = config,
                     outcomes = outcomes,
+                    worlds = worlds,
                     openTelemetry = openTelemetry,
                 )
-            return FlightEdge(config, producer, allocator, authenticator, middleware, closeables)
+            return FlightEdge(
+                config,
+                producer,
+                allocator,
+                listOf(IdentityWorldMiddleware.binding(identity)),
+                closeables,
+            )
         }
     }
 }

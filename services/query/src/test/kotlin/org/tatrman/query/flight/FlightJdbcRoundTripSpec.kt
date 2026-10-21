@@ -1,23 +1,28 @@
 // SPDX-License-Identifier: Apache-2.0
 package org.tatrman.query.flight
 
+import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.string.shouldContain
 import org.apache.arrow.memory.RootAllocator
 import org.apache.arrow.vector.types.pojo.Schema
 import org.tatrman.query.flight.FlightTestKit.RunningEdge
 import org.tatrman.query.flight.FlightTestKit.ScriptedDoor
+import org.tatrman.query.world.Worlds
 import java.sql.Connection
 import java.sql.DriverManager
 import java.sql.ResultSet
+import java.sql.SQLException
 import java.sql.Types
 import java.util.Properties
 
 /**
  * C-1 — the stock Arrow Flight SQL JDBC driver (18.3.0) against the edge, making the calls DBeaver makes when it
  * connects: catalogs, schemas, tables, columns, then one query. The door and Veles are stubs (the recorded hartland
- * catalog); the authenticator is in allow-all TEST mode — identity is S1.2's and is tested there.
+ * catalog). The metadata cases run the authenticator in allow-all TEST mode; the C-2/C-3 cases at the end run the real
+ * identity middleware, as a DBeaver user would meet it: `user`/`password`, `token`, `catalog`, `world`.
  */
 class FlightJdbcRoundTripSpec :
     StringSpec({
@@ -39,11 +44,25 @@ class FlightJdbcRoundTripSpec :
                 }
             }
 
-        fun connect(edge: RunningEdge): Connection {
+        fun connect(
+            edge: RunningEdge,
+            vararg properties: Pair<String, String>,
+        ): Connection {
             Class.forName("org.apache.arrow.driver.jdbc.ArrowFlightJdbcDriver")
-            val props = Properties().apply { setProperty("useEncryption", "false") }
+            val props =
+                Properties().apply {
+                    setProperty("useEncryption", "false")
+                    properties.forEach { (k, v) -> setProperty(k, v) }
+                }
             return DriverManager.getConnection("jdbc:arrow-flight-sql://127.0.0.1:${edge.edge.port}/", props)
         }
+
+        fun Connection.count(sql: String): Int =
+            createStatement().use { st ->
+                st.executeQuery(sql).use { rs -> generateSequence { rs.next().takeIf { it } }.count() }
+            }
+
+        val worlds = Worlds.parse("hartland_us=pg-hartland-cz,hartland_cz=pg-hartland-cz")
 
         fun ResultSet.column(name: String): List<String?> = use { buildList { while (next()) add(getString(name)) } }
 
@@ -119,6 +138,67 @@ class FlightJdbcRoundTripSpec :
                     }
                 }
                 door.requests.count { it.source == "SELECT * FROM er.entity.warehouse" } shouldBe 2
+            }
+        }
+
+        "C-2 — user and password: the driver's Basic handshake gets the realm's bearer, and every call runs as petr" {
+            AuthTestKit.KeycloakStub().use { keycloak ->
+                val door = door()
+                val identity =
+                    IdentityWorldMiddleware.Factory(
+                        FlightAuthenticator(AuthTestKit.verifier, KeycloakPasswordGrant(keycloak.tokenUrl, "jdbc")),
+                        worlds,
+                    )
+                RunningEdge(door, RecordedVeles(), identity = identity, worlds = worlds).use { edge ->
+                    connect(edge, "user" to "petr", "password" to "petr-secret").use { conn ->
+                        conn.count("SELECT * FROM er.entity.warehouse") shouldBe 3
+                        conn.count("SELECT * FROM er.entity.warehouse") shouldBe 3
+                    }
+                    door.requests.map { it.context.userId }.distinct() shouldContainExactly listOf("petr")
+                    // One grant at connect; the driver reuses the bearer for every call after.
+                    keycloak.forms.size shouldBe 1
+                    val e = shouldThrow<SQLException> { connect(edge, "user" to "petr", "password" to "nope") }
+                    e.stackTraceToString() shouldContain "Keycloak refused the password grant (401 invalid_grant)"
+                }
+            }
+        }
+
+        "C-2 — the token property is a bearer; without one the connection is refused" {
+            val door = door()
+            val identity = IdentityWorldMiddleware.Factory(FlightAuthenticator(AuthTestKit.verifier), worlds)
+            RunningEdge(door, RecordedVeles(), identity = identity, worlds = worlds).use { edge ->
+                connect(edge, "token" to AuthTestKit.token(user = "marketa")).use { conn ->
+                    conn.count("SELECT * FROM er.entity.warehouse") shouldBe 3
+                }
+                door.requests
+                    .last()
+                    .context.userId shouldBe "marketa"
+                val e = shouldThrow<SQLException> { connect(edge).use { it.count("SELECT 1") } }
+                e.stackTraceToString() shouldContain "missing_credentials"
+            }
+        }
+
+        "C-3 — the catalog property (SetSessionOptions) and the world property (a header) pick the world" {
+            val door = door()
+            val identity = IdentityWorldMiddleware.Factory(FlightAuthenticator(AuthTestKit.verifier), worlds)
+            RunningEdge(door, RecordedVeles(), identity = identity, worlds = worlds).use { edge ->
+                val token = AuthTestKit.token()
+                val conn = connect(edge, "token" to token, "catalog" to "hartland_us")
+                conn.metaData.catalogs.column("TABLE_CAT") shouldContainExactly listOf("hartland_us")
+                conn.count("SELECT * FROM er.entity.warehouse") shouldBe 3
+                door.requests.last().world shouldBe "hartland_us"
+                // Canary — driver 18.3.0 closes its client handler twice, and with `catalog` set the second close
+                // re-sends CloseSession on the channel it has just shut down (apache/arrow-java#863): the statements
+                // are fine, Connection.close() reports UNAVAILABLE. docs/jdbc.md says so and recommends `world`.
+                // When a driver upgrade fixes it this assertion fails: update the doc and drop it.
+                shouldThrow<SQLException> { conn.close() }.message shouldBe "Channel shutdown invoked"
+                connect(edge, "token" to token, "world" to "hartland_cz").use { conn ->
+                    conn.count("SELECT * FROM er.entity.warehouse") shouldBe 3
+                }
+                door.requests.last().world shouldBe "hartland_cz"
+                // An unknown catalog fails the connect with the edge's reason, not the driver's generic one.
+                val e = shouldThrow<SQLException> { connect(edge, "token" to token, "catalog" to "hartland_de") }
+                e.stackTraceToString() shouldContain "unknown_world: World 'hartland_de' is not served here"
             }
         }
 

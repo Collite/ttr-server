@@ -6,6 +6,7 @@ import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
+import io.kotest.matchers.string.shouldStartWith
 import kotlinx.serialization.json.boolean
 import kotlinx.serialization.json.int
 import kotlinx.serialization.json.jsonPrimitive
@@ -42,6 +43,40 @@ class FlightEdgeSpec :
             config.bind shouldBe "127.0.0.1"
             config.pendingTtlSeconds shouldBe 60
             config.catalogTtlSeconds shouldBe 30
+        }
+
+        "auth: the issuer names Keycloak's endpoints; password login is client jdbc unless turned off" {
+            val shipped = FlightConfig.fromConfig(ConfigFactory.load()).auth
+            shipped.issuer shouldBe ""
+            shipped.passwordClient shouldBe "jdbc"
+            val auth =
+                FlightConfig
+                    .fromConfig(
+                        ConfigFactory.parseString(
+                            "$base\nflight.auth { issuer = \"https://keycloak.example/realms/kantheon/\" }",
+                        ),
+                    ).auth
+            auth.effectiveJwksUri shouldBe "https://keycloak.example/realms/kantheon/protocol/openid-connect/certs"
+            auth.effectiveTokenUrl shouldBe "https://keycloak.example/realms/kantheon/protocol/openid-connect/token"
+            val bearerOnly =
+                FlightConfig
+                    .fromConfig(
+                        ConfigFactory.parseString(
+                            "$base\nflight.auth { issuer = \"https://kc/realms/r\", password-client = \"\", " +
+                                "jwks-uri = \"http://keycloak:8080/realms/r/protocol/openid-connect/certs\" }",
+                        ),
+                    ).auth
+            bearerOnly.passwordClient shouldBe ""
+            bearerOnly.effectiveJwksUri shouldBe "http://keycloak:8080/realms/r/protocol/openid-connect/certs"
+        }
+
+        "the shipped worlds table is empty (one world); QUERY_WORLDS fills it" {
+            org.tatrman.query.world.Worlds
+                .fromConfig(ConfigFactory.load())
+                .connections shouldBe emptyMap()
+            org.tatrman.query.world.Worlds
+                .fromConfig(ConfigFactory.parseString("query.worlds = \"hartland_us=pg-hartland-us\""))
+                .connectionOf("hartland_us") shouldBe "pg-hartland-us"
         }
 
         "a deployment sets the bind, the port and an explicit loopback" {
@@ -85,31 +120,31 @@ class FlightEdgeSpec :
             FlightEdge.DISABLED_STATUS["enabled"]!!.jsonPrimitive.boolean shouldBe false
         }
 
-        "an edge without a verifying authenticator refuses every call" {
+        "the production edge authenticates every call: no credential, no statement reaches the door" {
             val door = ScriptedDoor { listOf(FlightTestKit.tail(0)) }
-            val allocator = RootAllocator()
             val config = FlightTestKit.testConfig()
-            val producer =
-                TtrFlightSqlProducer(
-                    runner = door,
-                    catalog = CatalogSource(FlightTestKit.NoVeles, RunnerSchemaProbe(door, allocator)),
-                    sessions = SessionResolver { FlightTestKit.SESSION },
-                    allocator = allocator,
+            FlightEdge
+                .create(
                     config = config,
-                )
-            FlightEdge(config, producer, allocator, FlightEdge.REFUSE_ALL).start().use { edge ->
-                RootAllocator().use { clientAllocator ->
-                    FlightClient
-                        .builder(
-                            clientAllocator,
-                            Location.forGrpcInsecure("127.0.0.1", edge.port),
-                        ).build()
-                        .use { client ->
-                            val e = shouldThrow<FlightRuntimeException> { FlightSqlClient(client).execute("SELECT 1") }
-                            e.status().code() shouldBe FlightStatusCode.UNAUTHENTICATED
-                        }
+                    runner = door,
+                    veles = FlightTestKit.NoVeles,
+                    identity = IdentityWorldMiddleware.Factory(FlightAuthenticator(AuthTestKit.verifier)),
+                ).start()
+                .use { edge ->
+                    RootAllocator().use { clientAllocator ->
+                        FlightClient
+                            .builder(
+                                clientAllocator,
+                                Location.forGrpcInsecure("127.0.0.1", edge.port),
+                            ).build()
+                            .use { client ->
+                                val e =
+                                    shouldThrow<FlightRuntimeException> { FlightSqlClient(client).execute("SELECT 1") }
+                                e.status().code() shouldBe FlightStatusCode.UNAUTHENTICATED
+                                e.message shouldStartWith "missing_credentials:"
+                            }
+                    }
                 }
-            }
             door.requests.size shouldBe 0
         }
     })

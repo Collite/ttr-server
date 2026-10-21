@@ -19,7 +19,8 @@ fun interface StatementRunner {
 
 /**
  * One edge statement as the door's `RunRequest`: SQL, schema autodetected from its qualified names (`er.entity.x`,
- * `obj.query.x`, `db.dbo.x`), and the caller's identity exactly as the verified bearer stated it (C-2).
+ * `obj.query.x`, `db.dbo.x`), the caller's identity exactly as the verified bearer stated it (C-2), and the
+ * connection's world (C-3, C-9).
  */
 internal fun edgeRunRequest(
     sql: String,
@@ -38,6 +39,7 @@ internal fun edgeRunRequest(
                 .setUserId(session.userId)
                 .addAllAuthRoles(session.roles),
         ).setRowWindow(window)
+        .setWorld(session.world)
         .build()
 
 /**

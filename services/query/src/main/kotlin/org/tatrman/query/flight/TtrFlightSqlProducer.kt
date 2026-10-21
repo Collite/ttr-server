@@ -24,6 +24,14 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
 import org.apache.arrow.flight.BackpressureStrategy
+import org.apache.arrow.flight.CloseSessionRequest
+import org.apache.arrow.flight.CloseSessionResult
+import org.apache.arrow.flight.GetSessionOptionsRequest
+import org.apache.arrow.flight.GetSessionOptionsResult
+import org.apache.arrow.flight.NoOpSessionOptionValueVisitor
+import org.apache.arrow.flight.SessionOptionValueFactory
+import org.apache.arrow.flight.SetSessionOptionsRequest
+import org.apache.arrow.flight.SetSessionOptionsResult
 import org.apache.arrow.flight.CallStatus
 import org.apache.arrow.flight.ErrorFlightMetadata
 import org.apache.arrow.flight.FlightDescriptor
@@ -67,6 +75,7 @@ import org.apache.arrow.vector.types.pojo.Schema
 import org.slf4j.LoggerFactory
 import org.tatrman.common.v1.ResponseMessage
 import org.tatrman.common.v1.Severity
+import org.tatrman.query.world.Worlds
 import org.tatrman.worker.v1.ExecutionReceipt
 import org.tatrman.worker.v1.ResultBatch
 import java.io.ByteArrayOutputStream
@@ -93,6 +102,10 @@ import java.util.concurrent.atomic.AtomicReference
  * The stream's closing app metadata (JSON) rides the last data batch: `correlation_id`, `connection_id`,
  * `rows_total`, `top_n_applied` and the door's notices (C-5). An error batch — first or mid-stream — becomes a
  * Flight error `"<code>: <one sentence>"` with the code also in the `x-ttr-code` error metadata.
+ *
+ * Every statement runs in the connection's world (C-3): `RunRequest.world` is set from it, a statement naming another
+ * catalog is refused `world_mismatch` before `Run` ([CatalogQualifier]), and a stream whose receipt names a connection
+ * other than the world's is failed `world_mismatch` rather than delivered as the world's rows.
  */
 class TtrFlightSqlProducer(
     private val runner: StatementRunner,
@@ -101,6 +114,8 @@ class TtrFlightSqlProducer(
     private val allocator: BufferAllocator,
     private val config: FlightConfig,
     private val outcomes: StatementListener = StatementListener { },
+    /** C-3/C-9 — the door's world table: which catalogs exist, and the connection each world's receipts must name. */
+    private val worlds: Worlds = Worlds.NONE,
     openTelemetry: OpenTelemetry = GlobalOpenTelemetry.get(),
     serverVersion: String = TtrFlightSqlProducer::class.java.`package`?.implementationVersion ?: "dev",
 ) : NoOpFlightSqlProducer() {
@@ -227,6 +242,81 @@ class TtrFlightSqlProducer(
             statement.pending.getAndSet(null)?.abandon(StatementOutcome.Status.CANCELLED, "closed_unread")
         }
         listener.onCompleted()
+    }
+
+    // ── session options: the JDBC `catalog` property (C-3) ───────────────────────────────────────────────────
+
+    /**
+     * The Flight SQL JDBC driver sends its `catalog` property as `SetSessionOptions(catalog)` when it connects: the
+     * world the connection keeps, as the `ttr_world` cookie ([IdentityWorldMiddleware]). A world this door does not
+     * serve is refused with its reason, which the driver shows; any other option is not one this edge has.
+     */
+    override fun setSessionOptions(
+        request: SetSessionOptionsRequest,
+        context: CallContext,
+        listener: StreamListener<SetSessionOptionsResult>,
+    ) {
+        try {
+            sessionOf(context)
+            val middleware = context.getMiddleware(IdentityWorldMiddleware.KEY)
+            val errors = mutableMapOf<String, SetSessionOptionsResult.Error>()
+            request.sessionOptions.forEach { (name, value) ->
+                if (name != CATALOG_OPTION) {
+                    errors[name] = SetSessionOptionsResult.Error(SetSessionOptionsResult.ErrorValue.INVALID_NAME)
+                    return@forEach
+                }
+                val world = value.acceptVisitor(STRING_OPTION)
+                val refusal =
+                    when {
+                        world == null -> "$INVALID_OPTION: the catalog option is a world's name, a string."
+                        middleware == null -> "$INVALID_OPTION: this edge keeps no session options."
+                        else -> middleware.keepWorld(world)
+                    }
+                if (refusal != null) throw flightError(refusal)
+            }
+            listener.onNext(SetSessionOptionsResult(errors))
+            listener.onCompleted()
+        } catch (e: FlightRuntimeException) {
+            listener.onError(e)
+        }
+    }
+
+    override fun getSessionOptions(
+        request: GetSessionOptionsRequest,
+        context: CallContext,
+        listener: StreamListener<GetSessionOptionsResult>,
+    ) {
+        try {
+            val world = sessionOf(context).world
+            val options =
+                if (world.isEmpty()) {
+                    emptyMap()
+                } else {
+                    mapOf(
+                        CATALOG_OPTION to SessionOptionValueFactory.makeSessionOptionValue(world),
+                    )
+                }
+            listener.onNext(GetSessionOptionsResult(options))
+            listener.onCompleted()
+        } catch (e: FlightRuntimeException) {
+            listener.onError(e)
+        }
+    }
+
+    /** Closing the session forgets the kept world (the cookie is cleared); the edge holds nothing else. */
+    override fun closeSession(
+        request: CloseSessionRequest,
+        context: CallContext,
+        listener: StreamListener<CloseSessionResult>,
+    ) {
+        try {
+            sessionOf(context)
+            context.getMiddleware(IdentityWorldMiddleware.KEY)?.keepWorld("")
+            listener.onNext(CloseSessionResult(CloseSessionResult.Status.CLOSED))
+            listener.onCompleted()
+        } catch (e: FlightRuntimeException) {
+            listener.onError(e)
+        }
     }
 
     // ── catalog (C-4) ─────────────────────────────────────────────────────────────────────────────────────────
@@ -430,11 +520,20 @@ class TtrFlightSqlProducer(
         val correlationId = UUID.randomUUID().toString()
         val span = telemetry.startStatement(session)
         val startedNanos = System.nanoTime()
+        val runSql =
+            when (val qualified = CatalogQualifier.resolve(sql, session.world)) {
+                is CatalogQualifier.Outcome.Run -> qualified.sql
+                is CatalogQualifier.Outcome.Mismatch -> {
+                    val refusal = "$WORLD_MISMATCH: ${catalogMismatch(qualified.catalog, session.world)}"
+                    finish(outcomeOf(correlationId, session, sql, startedNanos, refusal = refusal), span)
+                    throw flightError(refusal)
+                }
+            }
         val batches = Channel<ResultBatch>(BUFFERED_BATCHES)
         val job =
             scope.launch {
                 try {
-                    runner.run(edgeRunRequest(sql, session, correlationId)).collect { batches.send(it) }
+                    runner.run(edgeRunRequest(runSql, session, correlationId)).collect { batches.send(it) }
                     batches.close()
                 } catch (e: CancellationException) {
                     batches.close(e)
@@ -563,6 +662,7 @@ class TtrFlightSqlProducer(
                         for (batch in execution.rest) if (consume(batch)) break
                     }
                 }
+                receiptGuard(execution.session, receipt)?.let { throw RefusedException(it) }
                 val heldRows = held?.let { reframer.rowsOf(it) } ?: 0L
                 val closing = closingMetadata(execution, receipt, notices, rows + heldRows)
                 val last = held
@@ -656,6 +756,22 @@ class TtrFlightSqlProducer(
                 throw ClientGoneException()
             }
         }
+    }
+
+    /**
+     * C-3 — the receipt's connection against the connection's world: the door names where it ran, and rows from
+     * another connection are not this world's. Null when they agree, or when there is nothing to compare.
+     */
+    private fun receiptGuard(
+        session: EdgeSession,
+        receipt: ExecutionReceipt?,
+    ): String? {
+        if (session.world.isEmpty()) return null
+        val expected = worlds.connectionOf(session.world) ?: return null
+        val ran = receipt?.connectionId.orEmpty()
+        if (ran.isEmpty() || ran == expected) return null
+        return "$WORLD_MISMATCH: the door ran this on connection '$ran', not on world " +
+            "'${session.world}' ('$expected')."
     }
 
     private fun closingMetadata(
@@ -893,6 +1009,31 @@ class TtrFlightSqlProducer(
 
         /** Error metadata key carrying the door's code beside the description. */
         const val CODE_METADATA_KEY = "x-ttr-code"
+
+        /** C-3 — a statement or a stream that is not the connection's world. */
+        const val WORLD_MISMATCH = "world_mismatch"
+
+        /** The session option the JDBC driver's `catalog` property becomes. */
+        const val CATALOG_OPTION = "catalog"
+
+        private const val INVALID_OPTION = "invalid_option"
+
+        private val STRING_OPTION =
+            object : NoOpSessionOptionValueVisitor<String?>() {
+                override fun visit(value: String): String = value
+
+                override fun visit(value: Void?): String = ""
+            }
+
+        internal fun catalogMismatch(
+            catalog: String,
+            world: String,
+        ): String =
+            if (world.isEmpty()) {
+                "the statement reads catalog '$catalog', but this connection has no world (set world or catalog)."
+            } else {
+                "the statement reads catalog '$catalog', but this connection's world is '$world'."
+            }
 
         private const val BUFFERED_BATCHES = 4
         private const val SWEEP_SECONDS = 10L

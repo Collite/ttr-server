@@ -2,7 +2,8 @@
 Backend (Kotlin/Ktor service · agent · worker · Python service) Deployment.
 The per-module container env block is delegated to `<module>.env` (defined in the
 consuming chart). The gRPC port + its env are gated on `.Values.ports.grpc` so
-HTTP-only modules omit them. Optional volumeMounts/volumes come from the override
+HTTP-only modules omit them; `.Values.ports.extra` (`[{name, port}]`, empty by default) adds a module's own
+listeners (the query service's Flight SQL edge). Optional volumeMounts/volumes come from the override
 hooks (tatrman-service.volumeMounts / .volumes), empty unless a module needs them.
 */}}
 {{- define "tatrman-service.deployment" -}}
@@ -52,6 +53,10 @@ spec:
             {{- if .Values.ports.grpc }}
             - name: grpc
               containerPort: {{ .Values.ports.grpc }}
+            {{- end }}
+            {{- range .Values.ports.extra }}
+            - name: {{ .name }}
+              containerPort: {{ .port }}
             {{- end }}
           env:
             {{- include (printf "%s.env" .Chart.Name) . | nindent 12 }}

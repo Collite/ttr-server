@@ -25,7 +25,32 @@ data class FlightConfig(
     /** How long a catalog snapshot is trusted before Veles is asked for its model version again. */
     val catalogTtlSeconds: Long = 30,
     val maxMessageSizeBytes: Int = 32 * 1024 * 1024,
+    val auth: Auth = Auth(),
 ) {
+    /**
+     * C-2 — how callers are verified. [issuer] is the realm the edge trusts (required: an edge that cannot verify
+     * does not start); [jwksUri] defaults to Keycloak's `<issuer>/protocol/openid-connect/certs`. Password login is
+     * the direct-access grant on [passwordClient] at [tokenUrl] (default `<issuer>/protocol/openid-connect/token`);
+     * an empty [passwordClient] turns it off, leaving bearer tokens only.
+     */
+    data class Auth(
+        val issuer: String = "",
+        val jwksUri: String = "",
+        val audience: String = "",
+        val tokenUrl: String = "",
+        val passwordClient: String = "jdbc",
+        val passwordClientSecret: String = "",
+    ) {
+        val effectiveJwksUri: String get() = jwksUri.ifBlank { "${issuer.trimEnd('/')}/protocol/openid-connect/certs" }
+
+        val effectiveTokenUrl: String get() =
+            tokenUrl.ifBlank {
+                "${issuer.trimEnd(
+                    '/',
+                )}/protocol/openid-connect/token"
+            }
+    }
+
     companion object {
         const val DEFAULT_PORT = 7308
 
@@ -47,6 +72,15 @@ data class FlightConfig(
                 pendingTtlSeconds = config.optLong("flight.pending-ttl-seconds") ?: 60,
                 catalogTtlSeconds = config.optLong("flight.catalog-ttl-seconds") ?: 30,
                 maxMessageSizeBytes = config.getInt("grpc.max-message-size-bytes"),
+                auth =
+                    Auth(
+                        issuer = config.optString("flight.auth.issuer").orEmpty().trim(),
+                        jwksUri = config.optString("flight.auth.jwks-uri").orEmpty().trim(),
+                        audience = config.optString("flight.auth.audience").orEmpty().trim(),
+                        tokenUrl = config.optString("flight.auth.token-url").orEmpty().trim(),
+                        passwordClient = config.optString("flight.auth.password-client")?.trim() ?: "jdbc",
+                        passwordClientSecret = config.optString("flight.auth.password-client-secret").orEmpty(),
+                    ),
             )
         }
 

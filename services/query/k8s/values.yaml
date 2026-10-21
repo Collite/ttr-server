@@ -17,6 +17,9 @@ imagePullSecrets: []
 ports:
   http: 7305
   grpc: 7306
+  # BI — the Flight SQL edge's listener, when `flight.enabled` (keep `port` = flight.port):
+  #   extra: [{ name: flight, port: 7308, appProtocol: kubernetes.io/h2c }]
+  extra: []
 
 service:
   type: ClusterIP
@@ -45,6 +48,36 @@ extraEnv:
   - { name: TRANSLATE_SERVER, value: "translate" }
   - { name: VALIDATE_SERVER, value: "validate" }
   - { name: DISPATCH_SERVER, value: "dispatch" }
+
+# BI (contracts C-1…C-6) — the Arrow Flight SQL edge (JDBC, ADBC, the Superset dialect). Off by default. On, it
+# verifies every caller against `auth.issuer` (required) and binds `bind` — 0.0.0.0 here, behind the gateway's
+# GRPCRoute; expose the port with `ports.extra`. Password login is Keycloak's direct-access grant on
+# `auth.passwordClient` (empty = bearer tokens only). Receipts go to `bi_receipts` when `receipts.db.host` is set
+# (the service migrates it at start-up; the user must own the database or schema `query`).
+flight:
+  enabled: false
+  port: 7308
+  bind: "0.0.0.0"
+  auth:
+    issuer: ""
+    jwksUri: ""
+    audience: ""
+    tokenUrl: ""
+    passwordClient: jdbc
+  receipts:
+    db:
+      host: ""
+      port: 5432
+      name: query
+      user: query
+      # The password by Secret ref — never a value in the chart.
+      passwordSecret:
+        name: ""
+        key: password
+
+# BI (C-9) — the worlds this door serves: `world=connection_id` pairs, comma-separated
+# (`hartland_us=pg-hartland-us,hartland_cz=pg-hartland-cz`). Empty = one world, the default connection.
+worlds: ""
 
 # Probes (HTTP on the http port).
 readinessProbe:

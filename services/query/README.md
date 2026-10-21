@@ -47,8 +47,24 @@ loopback channel to the gRPC port, carrying the caller's identity.
   `notices`. An error batch becomes a Flight error `"<code>: <one sentence>"`, the code also in the
   `x-ttr-code` error metadata.
 - **Read-only**: no DML, no transactions, no `DoPut`, no bound parameters.
+- **Identity** (C-2): every call carries a bearer verified as query-mcp verifies one (mcp-identity's
+  `JwksBearerVerifier` against `QUERY_FLIGHT_AUTH_ISSUER`, JWKS `QUERY_FLIGHT_AUTH_JWKS_URI`, optional
+  `QUERY_FLIGHT_AUTH_AUDIENCE`), or a user name and password the edge turns into one with Keycloak's
+  direct-access grant (`QUERY_FLIGHT_KC_TOKEN_URL`, client `QUERY_FLIGHT_KC_CLIENT`, default `jdbc`;
+  empty = bearer only) and returns in the handshake. `user_id` / `auth_roles` go to `Run` from the
+  verified token only. An enabled edge without an issuer does not start.
+- **Worlds** (C-3, C-9): `QUERY_WORLDS` (`world=connection_id,…`) is the door's world table —
+  `RunRequest.world` / `RunSavedQueryRequest.world` map through it to `DispatchRequest.connection_id`;
+  an unknown world is refused `unknown_world`. The edge takes the connection's world from the `world`
+  header (or the JDBC `catalog` session option, kept as a `ttr_world` cookie), sets it on every `Run`,
+  refuses a statement naming another catalog (`world_mismatch`) and checks the receipt's connection.
+- **Receipts** (C-6): one `bi_receipts` row per statement (schema `query`, Flyway-migrated on first
+  use; `QUERY_RECEIPTS_DB_HOST/PORT/NAME/USER/PASSWORD`, no host = off), written after the stream on a
+  bounded queue, best effort. `GET /receipts?correlation_id=…|user_id=…&since=…` for
+  `query-platform-admin`.
 - Telemetry: span `bi.statement` (`user_id`, `world`, `client`, `rows`, `status`); metrics
-  `bi_statements_total{client,status}`, `bi_statement_seconds`. `/status` has a `flight` block.
+  `bi_statements_total{client,status}`, `bi_statement_seconds`. `/status` has a `flight` block
+  (incl. `receipts`) and the door's `worlds`.
 - JVM: Arrow needs `--add-opens=java.base/java.nio=ALL-UNNAMED` (set in `build.gradle.kts` for
   run, test and the Jib image).
 

@@ -37,9 +37,45 @@ jdbc:arrow-flight-sql://<host>:<port>/?useEncryption=<true|false>
 Behind the cluster gateway the edge is TLS-terminated at `flight.<cluster host>:443` (`useEncryption=true`); a
 port-forward to the pod is plaintext on 7308 (`useEncryption=false`).
 
-### Authentication *(pending)*
+### Authentication
 
-### Choosing the world *(pending)*
+Every call is authenticated; there is no anonymous mode. Two ways, both ending in the same identity — the realm's
+`preferred_username` and its realm roles, exactly as the MCP door reads them:
+
+- **User name and password** (`user` / `password` properties; DBeaver's login fields). The edge exchanges them for
+  an access token with Keycloak's direct-access grant on the `jdbc` client, returns the token in the handshake, and
+  the driver sends it from then on. The edge keeps neither the password nor the token. A wrong password fails the
+  connect with `password_refused: Keycloak refused the password grant (401 invalid_grant).`
+- **A bearer token** (`token` property): an access token from the realm, sent as `Authorization: Bearer`. Access
+  tokens are short-lived (minutes), so a `token=` URL goes stale; password login is the practical desktop path.
+
+A token the realm did not sign, or one that has expired, fails with `invalid_token: The bearer token was not
+accepted (<reason>).` No credential at all fails with `missing_credentials: …`. When the token expires during a
+long session, reconnect. The driver logs in once per connection; it does not refresh the token.
+
+### Choosing the world
+
+A connection reads **one world**. Name it with either property:
+
+| Property | How it travels | Notes |
+|---|---|---|
+| `world=<world>` | a gRPC header on every call (the driver sends unknown URL properties as headers) | **Recommended.** |
+| `catalog=<world>` | the driver's `SetSessionOptions(catalog)` at connect; the edge answers with a `ttr_world` cookie the driver returns on every call | With the stock driver 18.3.0, closing such a connection reports `Channel shutdown invoked`: the driver closes its session twice ([apache/arrow-java#863](https://github.com/apache/arrow-java/issues/863)). The statements are unaffected. |
+
+```
+jdbc:arrow-flight-sql://<host>:<port>/?useEncryption=true&world=hartland_us
+```
+
+The world is the connection's only catalog (`getCatalogs()` returns it). A world the deployment does not serve
+fails the connect with `unknown_world: World '<x>' is not served here; the worlds are …`. With no world, the
+deployment's default connection answers and no catalog is listed.
+
+A statement may qualify a table with the connection's own catalog (`hartland_us.er.entity.warehouse`, or
+`"hartland_us"."er.entity"."warehouse"`); the qualifier is dropped before the statement runs. Naming **another**
+catalog is refused before anything runs: `world_mismatch: the statement reads catalog 'hartland_cz', but this
+connection's world is 'hartland_us'.` The edge also checks the answer: if the door reports that it ran a statement
+on a connection other than the world's, the read fails with `world_mismatch` instead of returning those rows as the
+world's.
 
 ### DBeaver / IntelliJ *(pending)*
 
@@ -57,4 +93,18 @@ port-forward to the pod is plaintext on 7308 (`useEncryption=false`).
   `translator_rejected: …`, `column_denied: …`); the code is also in the `x-ttr-code` error metadata. A refusal
   before any row fails the `execute`; a failure mid-stream fails the read.
 
-## Receipts *(pending)*
+## Receipts
+
+Every statement through the edge leaves one receipt, written after its stream ends: `correlation_id`, time,
+`user_id`, roles, world, `connection_id`, client (`jdbc` / `adbc` / `superset` / `other`), the statement as sent,
+the SQL the door executed, the row rules it applied (`security_applied`), rows, `top_n_applied`, how it ended
+(`ok` / `refused` / `failed` / `cancelled` / `expired`) and the error code. Refused statements leave receipts too.
+
+Operators read them on the query service's HTTP port, with a bearer carrying `query-platform-admin`:
+
+```
+GET /receipts?correlation_id=<id>
+GET /receipts?user_id=<user>&since=2026-10-21T00:00:00Z&limit=100
+```
+
+Receipts are best effort: if their database is down, statements still run and the missing receipts are logged.

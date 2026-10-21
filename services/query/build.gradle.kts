@@ -116,9 +116,25 @@ dependencies {
     implementation(libs.arrow.vector)
     implementation(libs.arrow.memory.netty)
     implementation(libs.grpc.netty)
+    // BI-P1 (C-2) — the edge verifies bearers exactly as query-mcp does (RS256 over the realm's JWKS).
+    implementation(project(":shared:libs:kotlin:mcp-identity"))
+    // BI-P1 (C-6) — the receipt sink: plain JDBC over a small Hikari pool, Flyway for `bi_receipts`.
+    implementation(libs.hikaricp)
+    implementation(libs.postgresql)
+    implementation(libs.flyway.core)
+    implementation(libs.flyway.pgsql)
 
     testImplementation(libs.bundles.kotest)
     testImplementation(libs.mockk)
     // The stock Flight SQL JDBC driver (shaded) — the round-trip test makes DBeaver's metadata calls with it.
     testImplementation(libs.arrow.flight.sql.jdbc.driver)
+    // Realm-signed test tokens for the edge's authenticator specs; the receipts route in a test host.
+    testImplementation(libs.auth0.java.jwt)
+    testImplementation(libs.ktor.server.test.host)
+
+    // Component tier — bi_receipts over a REAL Postgres (Testcontainers): Flyway migrates clean, every C-6 column
+    // round-trips. `src/componentTest`, so the unit gate stays Docker-free.
+    "componentTestImplementation"(libs.testcontainers.postgresql)
+    "componentTestImplementation"(libs.postgresql)
+    "componentTestImplementation"(libs.kotlinx.serialization.json)
 }

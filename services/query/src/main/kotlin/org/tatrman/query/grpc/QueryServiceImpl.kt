@@ -22,6 +22,7 @@ import org.tatrman.query.v1.QueryServiceGrpcKt
 import org.tatrman.query.v1.RowWindow
 import org.tatrman.query.v1.RunRequest
 import org.tatrman.query.v1.RunSavedQueryRequest
+import org.tatrman.query.world.Worlds
 import org.tatrman.translate.v1.DetectSchemaRequest
 import org.tatrman.translate.v1.Language
 import org.tatrman.translate.v1.ParseRequest
@@ -88,6 +89,8 @@ class QueryServiceImpl(
     private val retry: RetryPolicy,
     openTelemetry: OpenTelemetry = GlobalOpenTelemetry.get(),
     rawSavedQueries: SavedQueryClient? = null,
+    /** BI (C-9) — `QUERY_WORLDS`: the connection each `RunRequest.world` runs on. */
+    private val worlds: Worlds = Worlds.NONE,
 ) : QueryServiceGrpcKt.QueryServiceCoroutineImplBase() {
     private val tracer = openTelemetry.getTracer("query")
 
@@ -134,6 +137,17 @@ class QueryServiceImpl(
                         emit(errorBatch("invalid_row_window", reason, context))
                         return@flow
                     }
+                    // BI (C-9) — the world picks the connection; one this door does not serve is refused before
+                    // anything is compiled. Empty = the deployment's default connection, as before.
+                    val connectionId =
+                        if (request.world.isEmpty()) {
+                            ""
+                        } else {
+                            worlds.connectionOf(request.world) ?: run {
+                                emit(errorBatch(Worlds.UNKNOWN_WORLD, worlds.unknown(request.world), context))
+                                return@flow
+                            }
+                        }
                     // The validator's `top_n_applied` warnings, from whichever pass raised one.
                     val capNotices = mutableListOf<ResponseMessage>()
                     // ES-P0·S0.3 — the receipt's plan half. `security_applied` accumulates across
@@ -316,6 +330,7 @@ class QueryServiceImpl(
                             .setPlan(dbPlan)
                             .setContext(context)
                             .setOptions(request.executionOptions)
+                            .setConnectionId(connectionId)
                             .build()
 
                     // The row cap's warning is a statement about the PLAN — validate cannot see the
@@ -1011,6 +1026,7 @@ class QueryServiceImpl(
                                 .setExecutionOptions(request.executionOptions)
                                 .setBypassCache(request.bypassCache)
                                 .setRowWindow(request.rowWindow)
+                                .setWorld(request.world)
                                 .build(),
                         ),
                     )

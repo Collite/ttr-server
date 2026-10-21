@@ -38,6 +38,8 @@ import org.tatrman.query.client.TranslatorDetectClient
 import org.tatrman.query.client.TranslatorTranslateClient
 import org.tatrman.query.client.ValidatorClient
 import org.tatrman.query.retry.RetryPolicy
+import org.tatrman.query.world.Worlds
+import org.tatrman.dispatch.v1.DispatchRequest
 import java.time.Duration
 import java.util.concurrent.CopyOnWriteArrayList
 
@@ -140,6 +142,7 @@ class QueryServiceImplSpec :
             dispatcher: DispatcherClient = dispatcherStub,
             cache: CompiledPlanCache = CompiledPlanCache(100, Duration.ofMinutes(60)),
             retry: RetryPolicy = nojitterRetry,
+            worlds: Worlds = Worlds.NONE,
         ): QueryServiceImpl =
             QueryServiceImpl(
                 translator,
@@ -149,6 +152,7 @@ class QueryServiceImplSpec :
                 dispatcher,
                 cache,
                 retry,
+                worlds = worlds,
             )
 
         "Run streams Dispatcher batches and annotates the first with cache_miss + compile_duration_ms" {
@@ -1324,5 +1328,103 @@ class QueryServiceImplSpec :
                     resp.messagesList.filter { it.code.startsWith("JOIN_") } shouldBe listOf(dbHalfCartesian)
                 }
             }
+        }
+
+        // ── BI contracts C-9 — RunRequest.world through QUERY_WORLDS to dispatch's connection_id ──
+
+        val hartlandWorlds = Worlds.parse("hartland_us=pg-hartland-us, hartland_cz=pg-hartland-cz")
+
+        fun capturing(into: MutableList<DispatchRequest>): DispatcherClient =
+            DispatcherClient { req ->
+                into += req
+                flowOf(
+                    ResultBatch
+                        .newBuilder()
+                        .setIsFirst(true)
+                        .setIsLast(true)
+                        .setArrowIpc(ByteArray(0).toByteString())
+                        .build(),
+                )
+            }
+
+        fun worldRequest(world: String): RunRequest =
+            RunRequest
+                .newBuilder()
+                .setSource("SELECT id FROM customers")
+                .setSourceLanguage(Language.SQL)
+                .setContext(PipelineContext.newBuilder().setUserId("u").setModelVersion("v"))
+                .setWorld(world)
+                .build()
+
+        "a world the table names runs on its connection: dispatch gets connection_id, explicitly" {
+            runBlocking {
+                val dispatched = CopyOnWriteArrayList<DispatchRequest>()
+                val out =
+                    service(dispatcher = capturing(dispatched), worlds = hartlandWorlds)
+                        .run(worldRequest("hartland_us"))
+                        .toList()
+                out.flatMap { it.messagesList }.filter { it.severity == Severity.ERROR } shouldBe emptyList()
+                dispatched.single().connectionId shouldBe "pg-hartland-us"
+                service(dispatcher = capturing(dispatched), worlds = hartlandWorlds)
+                    .run(worldRequest("hartland_cz"))
+                    .toList()
+                dispatched.last().connectionId shouldBe "pg-hartland-cz"
+            }
+        }
+
+        "an unknown world is refused before anything is parsed: one error batch, unknown_world, naming the worlds" {
+            runBlocking {
+                val dispatched = CopyOnWriteArrayList<DispatchRequest>()
+                val parses = CopyOnWriteArrayList<ParseRequest>()
+                val counting =
+                    TranslatorClient { req ->
+                        parses += req
+                        ParseResponse
+                            .newBuilder()
+                            .setPlan(planAfterParse)
+                            .setContext(req.context)
+                            .build()
+                    }
+                val out =
+                    service(translator = counting, dispatcher = capturing(dispatched), worlds = hartlandWorlds)
+                        .run(worldRequest("hartland_de"))
+                        .toList()
+                val error = out.single().messagesList.single()
+                error.severity shouldBe Severity.ERROR
+                error.code shouldBe "unknown_world"
+                error.humanMessage shouldBe
+                    "World 'hartland_de' is not served here; the worlds are hartland_cz, hartland_us."
+                out.single().isLast shouldBe true
+                parses shouldBe emptyList()
+                dispatched shouldBe emptyList()
+            }
+        }
+
+        "a door with no world table refuses any named world, and an empty world is today's path" {
+            runBlocking {
+                val dispatched = CopyOnWriteArrayList<DispatchRequest>()
+                val refused = service(dispatcher = capturing(dispatched)).run(worldRequest("hartland_us")).toList()
+                refused
+                    .single()
+                    .messagesList
+                    .single()
+                    .code shouldBe "unknown_world"
+                dispatched shouldBe emptyList()
+                service(dispatcher = capturing(dispatched), worlds = hartlandWorlds).run(worldRequest("")).toList()
+                dispatched.single().connectionId shouldBe ""
+            }
+        }
+
+        "QUERY_WORLDS parses world=connection pairs and names a malformed or repeated one" {
+            hartlandWorlds.connectionOf("hartland_us") shouldBe "pg-hartland-us"
+            hartlandWorlds.names shouldBe listOf("hartland_cz", "hartland_us")
+            Worlds.parse("").connections shouldBe emptyMap()
+            Worlds.parse(null).connections shouldBe emptyMap()
+            io.kotest.assertions.throwables
+                .shouldThrow<IllegalArgumentException> { Worlds.parse("hartland_us") }
+                .message shouldBe "query.worlds (QUERY_WORLDS): 'hartland_us' is not world=connection"
+            io.kotest.assertions.throwables
+                .shouldThrow<IllegalArgumentException> { Worlds.parse("a=x,a=y") }
+                .message shouldBe "query.worlds (QUERY_WORLDS) names a twice"
         }
     })
