@@ -47,7 +47,8 @@ built) · **parked** (deliberately deferred).
   health & status page (version, model fingerprint, per-service health), the config
   reference, and the "no admin app" stance (FO-28).
 - **[docs/superset.md](docs/superset.md)** — BI via the semantic layer: self-serve Superset
-  pairing/embedding on the open tier, and the operated Superset add-on (operate tier).
+  over the Flight SQL edge on the open tier (`pip install ttr-sqlalchemy`, a compose
+  convenience), and the operated Superset add-on (operate tier).
 
 ## Quickstart
 

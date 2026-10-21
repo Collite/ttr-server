@@ -30,6 +30,14 @@ outside this repo could notice is in.
   - A result is read whole before its first row, so a stream the edge fails on its receipt (`world_mismatch`) yields
     no rows. The cursor carries the closing metadata: `correlation_id`, `connection_id`, `top_n_applied`, `notices`.
   - Refusals keep the edge's code and sentence (`err.code`, `err.message`) under the PEP 249 classes.
+  - **Superset's engine spec** (`superset.db_engine_specs: tatrman`, tested on Superset 6.1.0). A Tatrman database
+    reads as its viewer: the viewer's token comes from Superset's per-database OAuth2
+    (`DATABASE_OAUTH2_CLIENTS["tatrman"]`, Keycloak's authorization code; `issuer` derives the endpoints). A database
+    with impersonation off, or with no client to get a token from, refuses to connect (`BI_REQUIRE_IMPERSONATION =
+    False` lifts that, for a local trial). An answer the door's row cap cut is refused as a `RESULT_TOO_LARGE_ERROR`
+    warning with the cap and what was asked for. Time grains are day, month, quarter and year, with no week yet.
+    Every alias is quoted; refusals map to Superset's DB-API errors with the edge's code and sentence.
+    `docs/superset.md` is rewritten to match; `compose/superset/` runs it locally (not a production topology).
 - **query — an Arrow Flight SQL edge for BI tools** (BI-1). Opt-in, port 7308 (`QUERY_FLIGHT_ENABLED`), for the stock
   Flight SQL JDBC driver (DBeaver, IntelliJ), ADBC and the `tatrman://` dialect. Every statement is the door's own
   `Run` with the caller's verified identity. Client guide: `docs/jdbc.md`; operator's: `docs/operations.md` § BI.

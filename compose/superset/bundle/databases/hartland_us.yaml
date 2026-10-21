@@ -1,0 +1,17 @@
+# One Superset database per world, imported by the compose `init` service (`superset import-directory bundle/`).
+# The URI reaches an edge port-forwarded on the host (`kubectl -n <namespace> port-forward deploy/query 7308:7308`);
+# for a Server behind its gateway it is `tatrman://flight.<host>/hartland_us` (TLS on 443).
+database_name: hartland_us
+sqlalchemy_uri: tatrman://host.docker.internal:7308/hartland_us?tls=false
+# Mandatory: the engine spec refuses a Tatrman database that does not read as its viewer.
+impersonate_user: true
+expose_in_sqllab: true
+allow_run_async: false
+allow_ctas: false
+allow_cvas: false
+allow_dml: false
+allow_file_upload: false
+extra:
+  allows_virtual_table_explore: true
+uuid: 06b6ee64-0ab5-4f50-bf1e-2f6a563638e0
+version: 1.0.0

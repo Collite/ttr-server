@@ -295,6 +295,17 @@ jobs:
           --with 'sqlalchemy==1.4.54' --with 'pyarrow==16.1.0' --with 'numpy<2'
           pytest -q
 
+      # The engine spec's tests (tests/test_superset_spec.py) run inside Superset itself; the steps above skip them.
+      # PyPI's apache-superset 6.1.0 leaves `cachetools` out of its dependencies (its image installs it).
+      - name: pytest inside Superset 6.1.0 (the engine spec)
+        working-directory: shared/libs/python/ttr-sqlalchemy
+        env:
+          TTR_SUPERSET_TESTS: required
+        run: >-
+          uv run --isolated --python 3.10
+          --with 'apache-superset==6.1.0' --with cachetools
+          pytest -q
+
       - name: build the wheel
         run: uv build --wheel shared/libs/python/ttr-sqlalchemy
 

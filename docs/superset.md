@@ -1,93 +1,118 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 # Superset & BI
 
-Tatrman's stance on BI is **bring-your-own** (FO-6): the open Server publishes a
-governed **semantic layer**, and any BI tool reads through it. Superset is the
-reference pairing — fully self-serve on the open tier, and available as a managed
-**operated add-on** on Platform (operate-tier) estates.
-
-The dividing line (FO-26):
+Tatrman's stance on BI is **bring your own** (FO-6). The open Server publishes the model through its governed query
+path, and any SQL-speaking BI tool reads through it. Superset is the reference pairing. It reads through the query
+service's [Flight SQL edge](jdbc.md) with [`ttr-sqlalchemy`](../shared/libs/python/ttr-sqlalchemy/README.md), which
+carries the `tatrman://` SQLAlchemy dialect and Superset's engine spec for it.
 
 | | Open tier (Apache-2.0) | Operate tier (Platform) |
 | --- | --- | --- |
-| Superset | **self-serve** — you run it, we document the pairing | **operated add-on** — we run it, managed |
-| Governance | semantic layer + RLS on every query | same, plus estate-managed guest-token RLS |
-| Promise | batteries-included, self-hosted | managed service SLA |
+| Superset | **self-serve**: you run it, with `pip install ttr-sqlalchemy` | **operated add-on**: run for you on the estate |
+| What you get | the driver, the dialect, the engine spec, a compose convenience, this page | the same, deployed and kept up |
 
 ---
 
-## Open tier — self-serve (FO-6)
+## Open tier: self-serve
 
-Everything a team needs to point their own Superset (or any SQL-speaking BI tool) at
-governed data, self-hosted.
+### What reading through Tatrman means
 
-### The semantic layer
+Every chart, dataset and SQL Lab statement goes through translate → validate → dispatch, like any other caller's. The
+validator injects the viewer's row rules into the plan, so a chart cannot show rows its viewer is not entitled to,
+however it was built. That only holds if the edge knows who the viewer is. So **a Tatrman database always reads as
+its viewer**, with the viewer's own Keycloak token, and never with a shared login.
 
-The Server exposes modeled entities — not physical tables — through the governed query
-path (translate → validate → dispatch). Row-level security is injected *into the plan*,
-so a BI query cannot see rows the caller isn't entitled to, regardless of how the
-dashboard was authored. This is the same governed path the MCP surface uses; BI is just
-another consumer of it.
+Each statement leaves a [receipt](jdbc.md#receipts) on the Server, recording who ran what and on which connection.
 
-### Pairing Superset
+### Install
 
-1. **Connect** Superset to the semantic layer as a database source (governed endpoint,
-   not a raw warehouse connection — that is the whole point).
-2. **Authenticate** with a per-user token so RLS resolves to the viewing user.
-3. **Build** datasets/charts against modeled entities; provenance rides every result.
+Into Superset's own Python environment:
 
-### Compose convenience & embedding
+```bash
+pip install ttr-sqlalchemy
+```
 
-- A compose-convenience bundle for a local Superset alongside a dev Server is provided
-  for evaluation (self-serve; not a production topology).
-- **Embedding** dashboards into your own app uses Superset's embedded SDK against your
-  self-hosted instance. For governed embedding with per-viewer RLS, see the guest-token
-  wiring below (the same mechanism the operated add-on manages for you).
+This is tested on Superset 6.1.0, which ships SQLAlchemy 1.4.54. The engine spec registers itself through an entry
+point, so there is nothing to configure for Superset to find it. The official `apache/superset:6.1.0` image also
+needs `psycopg2-binary` (for a Postgres metadata database) and `authlib` (to sign in with Keycloak).
+[`compose/superset/Dockerfile`](../compose/superset/Dockerfile) is that image.
 
-Keep these docs current against the **shipped** semantic layer (the FO-6 capability
-ladder): as new entity/query capabilities land, the pairing/embed examples track them.
+### Configure
+
+The engine spec needs three things from `superset_config.py` and the database settings.
+
+**1. A per-database OAuth2 client, `DATABASE_OAUTH2_CLIENTS["tatrman"]`.** This is how each viewer's token reaches
+the edge.
+
+```python
+DATABASE_OAUTH2_CLIENTS = {
+    "tatrman": {
+        "id": "superset-db",                                    # a confidential client, standard flow on
+        "secret": "…",
+        "issuer": "https://keycloak.example.com/realms/hartland",  # the realm the edge trusts
+        # "scope": "openid",                                    # the default
+        # or, for a provider that is not Keycloak: "authorization_request_uri" and "token_request_uri"
+    }
+}
+```
+
+- The client's redirect URI is `https://<superset host>/api/v1/database/oauth2/`.
+- Tokens must come from the realm the edge trusts (its `QUERY_FLIGHT_AUTH_ISSUER`), asked for at that same URL.
+  Keycloak stamps a token with the URL it was asked at.
+- If the edge sets `QUERY_FLIGHT_AUTH_AUDIENCE`, the client's tokens must carry that audience (an audience mapper).
+
+**2. "Impersonate logged in user" on, for every Tatrman database** (Advanced → Security). A database without it
+refuses to connect, and so does one with no OAuth2 client to get a token from. Both refusals say why.
+`BI_REQUIRE_IMPERSONATION = False` lifts them, for a local trial with a fixed `token` or a user in the URL; it is not
+for a shared Superset.
+
+**3. One database per world:**
+
+```
+tatrman://flight.<host>/hartland_us            behind the gateway (TLS on 443)
+tatrman://localhost:7308/hartland_us?tls=false through a port-forward
+```
+
+Leave DML and file uploads off; the edge is read-only. Viewers should sign in to Superset with the same realm
+(`AUTH_OAUTH`, FAB's `keycloak` provider). Then the consent below is one click, and the Superset user is the person
+reading.
+
+### What viewers see
+
+- **The first read of a database asks for consent.** A Keycloak tab asks to let Superset read on the viewer's
+  behalf. From then on Superset keeps the token and refreshes it. When the Keycloak session behind it ends, or the
+  edge stops accepting the token, the viewer is asked to sign in again.
+- **Schemas:** `er.entity` holds the model's entities, `obj.query` its saved logical queries (read like views), and
+  `db.dbo` the bound physical tables. Columns are typed from the model, and dates and timestamps are temporal.
+- **Time grains:** day, month, quarter and year. There is no week grain yet: the translator cannot yet truncate a
+  date to its week.
+- **Answers the row cap cut are refused, not shown.** The door caps every answer, and an operator can raise the cap
+  per role (`VALIDATE_MAX_TOP_N_BY_ROLE`). A chart that asks for more rows than its viewer's cap gets a warning that
+  names the cap and what was asked for. A chart over part of the rows would mislead. SQL Lab asks for one row more
+  than its limit, to tell whether there are more, so keep SQL Lab's limit below the cap.
+- **Refusals** read as the edge's code and sentence: `translator_rejected: Object 'warehouse' not found within 'er'
+  …`.
+- **Embedded dashboards** (Superset's guest tokens) cannot read a Tatrman database: a guest has no token of their
+  own, and the engine spec does not read without one.
+
+### The compose convenience
+
+[`compose/superset/`](../compose/superset/README.md) runs Superset 6.1.0 locally against a Server's Flight edge, with
+two example databases (`hartland_us`, `hartland_cz`) and Keycloak sign-in. It is for trying the pairing out. It is
+not a production topology: one container, no workers, no cache, HTTP on localhost.
 
 ---
 
-## Operate tier — operated Superset add-on (FO-26)
+## Operate tier: the operated Superset add-on
 
-> **This is an operate-tier managed add-on, not an open-tier promise.** On an open
-> self-hosted Server you run and maintain Superset yourself (above). The following is the
-> runbook for the *operated* instance we manage on a Platform estate.
+> **This is an operate-tier managed add-on, not an open-tier promise.** On an open, self-hosted Server you run
+> Superset yourself, as above.
 
-### Provisioning
-
-- Superset is deployed as a managed workload on the estate (Helm/GitOps via olymp),
-  wired to the estate's semantic-layer endpoint and identity provider (the same Keycloak
-  the rest of the estate uses — one login).
-- Datasets are pre-bound to the estate's modeled entities; no raw warehouse credentials
-  are ever handed to Superset.
-
-### Guest-token RLS wiring (PF B)
-
-Embedded, per-viewer dashboards use **Superset guest tokens** carrying the viewer's
-**row-level-security context**:
-
-- The estate mints a short-lived guest token per viewer, stamped with the viewer's RLS
-  predicates (derived from their entitlements — the same predicates the governed query
-  path injects).
-- Superset applies them as RLS rules on the embedded dashboard, so an embedded viewer
-  sees exactly their entitled rows — enforced by the governed layer, not by dashboard
-  authoring discipline.
-- Tokens are short-lived and minted server-side; a dashboard embed never carries a
-  long-lived credential.
-
-### Upgrade & backup
-
-- **Upgrades** follow the estate's GitOps flow: bump the managed Superset chart version,
-  reconcile, verify against a smoke dashboard; metadata migrations run as part of the
-  managed upgrade.
-- **Backup**: Superset's metadata database is backed up on the estate's standard schedule;
-  dashboards/datasets are also exportable as version-controllable assets. Governed data
-  itself is never copied into Superset — it stays in the warehouse, read live through the
-  semantic layer.
+On a Platform estate, Superset runs as a managed add-on. It uses the same image recipe and engine spec, the estate's
+Keycloak for sign-in and per-database OAuth2, and the estate's Flight route. The estate's GitOps configuration
+deploys it, and its runbook (provisioning, upgrades, backups) lives with that configuration, not in this repo.
 
 ---
 
-*See also:* **[operations.md](operations.md)** (operating the open Server) · the FO-6
-capability ladder and the semantic-layer contracts in the companion `tatrman` repo.
+*See also:* **[jdbc.md](jdbc.md)** (the Flight SQL edge and its other clients) · **[operations.md](operations.md)**
+(operating the open Server).

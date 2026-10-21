@@ -255,6 +255,17 @@ jobs:
           print('installed wheel: tatrman:// resolves through the entry point')
           " || { echo "::error::the installed wheel does not register tatrman://"; exit 1; }
 
+          # Superset finds the engine spec by its entry point. The spec imports Superset, so the check reads the
+          # declaration and does not load it.
+          /tmp/wheelcheck/bin/python -c "
+          from importlib.metadata import entry_points
+          (ep,) = [e for e in entry_points(group='superset.db_engine_specs') if e.name == 'tatrman']
+          assert ep.value == 'ttr_sqlalchemy.superset:TatrmanEngineSpec', ep.value
+          print('installed wheel: declares the Superset engine spec')
+          " || { echo "::error::the installed wheel does not declare superset.db_engine_specs: tatrman"; exit 1; }
+          unzip -l dist/*.whl | grep -qE 'ttr_sqlalchemy/superset\.py' \
+            || { echo "::error::the engine spec is missing from the wheel"; exit 1; }
+
           ls dist/ | grep -qE "^ttr_sqlalchemy-${{ steps.ver.outputs.version }}-py3-none-any\.whl$" \
             || { echo "::error::wheel filename does not carry version ${{ steps.ver.outputs.version }}"; ls dist/; exit 1; }
 

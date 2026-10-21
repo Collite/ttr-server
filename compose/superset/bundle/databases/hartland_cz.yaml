@@ -1,0 +1,14 @@
+# The second world of the same Server: a world is a tenant, so it is a database of its own (see hartland_us.yaml).
+database_name: hartland_cz
+sqlalchemy_uri: tatrman://host.docker.internal:7308/hartland_cz?tls=false
+impersonate_user: true
+expose_in_sqllab: true
+allow_run_async: false
+allow_ctas: false
+allow_cvas: false
+allow_dml: false
+allow_file_upload: false
+extra:
+  allows_virtual_table_explore: true
+uuid: abd70e7d-19ff-4d7e-87ce-ba70ebdfd796
+version: 1.0.0

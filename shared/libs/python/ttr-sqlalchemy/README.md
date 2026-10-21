@@ -117,6 +117,15 @@ warehouse_id?`). Through SQLAlchemy they arrive wrapped (`sqlalchemy.exc.DBAPIEr
 | `InternalError` | the door's own failure: `query_failed`, `translator_failed`, … |
 | `NotSupportedError` | `executemany`, a value with no literal |
 
+## Superset
+
+The package also carries Superset's engine spec for `tatrman://` (`ttr_sqlalchemy.superset`), registered through the
+`superset.db_engine_specs` entry point, so installing the package into Superset's environment is all it takes for
+Superset to find it. Tested on Superset 6.1.0. A Tatrman database always reads as its viewer: it needs Superset's
+per-database OAuth2 (`DATABASE_OAUTH2_CLIENTS["tatrman"]`) and "Impersonate logged in user" on, and refuses to
+connect without them. [docs/superset.md](../../../../docs/superset.md) has the configuration, and
+[compose/superset/](../../../../compose/superset/README.md) runs it locally.
+
 ## The DB-API without SQLAlchemy
 
 ```python
@@ -134,10 +143,14 @@ with dbapi.connect(host="localhost", port=7308, world="hartland_us", tls=False, 
 uv run ruff check .
 uv run pytest -q                                   # against the recorded edge (tests/fixtures/edge.py)
 TTR_FLIGHT_URL=localhost:7308 TTR_FLIGHT_USER=petr TTR_FLIGHT_PASSWORD=… uv run pytest -m live -v
+
+# the engine spec, inside Superset 6.1.0 (PyPI's apache-superset 6.1.0 leaves cachetools out of its dependencies)
+uv run --isolated --python 3.10 --with apache-superset==6.1.0 --with cachetools pytest -q
 ```
 
 The recorded edge is an in-process Flight SQL server that answers the way the real one does. It decodes the driver's
 commands with Apache Arrow's `FlightSql.proto` (vendored under `tests/fixtures/vendor/`, compiled at test time), so the
 driver's hand-written encoding is checked against the real schema. CI also runs the suite on Superset's floor
-(Python 3.10, SQLAlchemy 1.4.54, pyarrow 16). Releases: a `python-sqlalchemy/v<x.y.z>-RELEASE` tag
+(Python 3.10, SQLAlchemy 1.4.54, pyarrow 16), and once more inside Superset 6.1.0, where `tests/test_superset_spec.py`
+drives the engine spec through Superset's own database model, OAuth2 token store and fetch path (elsewhere it skips). Releases: a `python-sqlalchemy/v<x.y.z>-RELEASE` tag
 (`just publish wheel ttr-sqlalchemy release set <x.y.z>`).

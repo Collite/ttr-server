@@ -275,7 +275,7 @@ class RecordedEdge(fl.FlightServerBase):
                     {
                         "code": "top_n_applied",
                         "severity": "WARNING",
-                        "message": "The answer was capped at 200 rows.",
+                        "message": "Answer limited to 200 rows by the row cap; the caller asked for 10000.",
                         "requested": 10000,
                         "applied": 200,
                     }

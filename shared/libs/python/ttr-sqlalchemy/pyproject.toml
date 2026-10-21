@@ -22,6 +22,10 @@ dependencies = [
 [project.entry-points."sqlalchemy.dialects"]
 tatrman = "ttr_sqlalchemy.dialect:TatrmanDialect"
 
+# Loaded only by Superset (BI C-16); nothing else imports `ttr_sqlalchemy.superset`.
+[project.entry-points."superset.db_engine_specs"]
+tatrman = "ttr_sqlalchemy.superset:TatrmanEngineSpec"
+
 [project.urls]
 Homepage = "https://github.com/Collite/ttr-server"
 Source = "https://github.com/Collite/ttr-server/tree/master/shared/libs/python/ttr-sqlalchemy"
