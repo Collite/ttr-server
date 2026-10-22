@@ -23,7 +23,7 @@ data class GuardResult(
  * check candidates after their combine and key filter. A source at its cap is unsafe even if an aggregate
  * reduces it to one row. `top_n_applied` signals a reached validator cap lower than the declared read ceiling.
  * Refusals latch: later cached reads and in-flight reads checked after a refusal cannot bypass it.
- * ER scan-scope validation remains a separate preflight integration; these checks do not certify objectsRead.
+ * QueryDoor verifies ER scan scope before execution; its refusals latch alongside the result guards.
  */
 class Guards(
     private val context: RunContext,
@@ -34,6 +34,19 @@ class Guards(
 
     fun ensureAllowed() {
         failure.get()?.let { throw it }
+    }
+
+    fun scopePassed(island: String) {
+        ensureAllowed()
+        record("out-of-scope-read", island, "passed")
+    }
+
+    fun doorRefused(
+        island: String,
+        exception: AutomationException,
+    ): Nothing {
+        if (exception.code == ErrorCode.OUT_OF_SCOPE_READ) refuse(exception, island)
+        throw exception
     }
 
     fun read(

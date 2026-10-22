@@ -18,6 +18,24 @@ import org.tatrman.plan.v1.Warning
 import org.tatrman.worker.v1.ResultBatch
 import java.math.BigDecimal
 
+private fun scopedQuery(run: (org.tatrman.query.v1.RunRequest) -> kotlinx.coroutines.flow.Flow<ResultBatch>): QueryRun =
+    object : QueryRun {
+        override fun run(request: org.tatrman.query.v1.RunRequest) = run.invoke(request)
+
+        override suspend fun compile(request: org.tatrman.query.v1.RunRequest) =
+            org.tatrman.query.v1.CompileResponse
+                .newBuilder()
+                .setPlan(
+                    org.tatrman.plan.v1.PlanNode.newBuilder().setValues(
+                        org.tatrman.plan.v1.ValuesNode
+                            .getDefaultInstance(),
+                    ),
+                ).setErReads(
+                    org.tatrman.query.v1.ErReadScope
+                        .getDefaultInstance(),
+                ).build()
+    }
+
 class DoorSpec :
     StringSpec({
         "door request pins ER SQL, run identity, roles, model, storage alias, typed bindings and ceiling" {
@@ -42,7 +60,7 @@ class DoorSpec :
                 )
             val door =
                 QueryDoor(
-                    QueryRun { request ->
+                    scopedQuery { request ->
                         request.source shouldBe "SELECT {tolerance}, {as_of}, {order_number}"
                         request.world shouldBe "us_erp"
                         request.sourceSchema.name shouldBe "ER"
@@ -75,7 +93,7 @@ class DoorSpec :
             val c = runnerContext(realRecipe("release_order"))
             val door =
                 QueryDoor(
-                    QueryRun {
+                    scopedQuery {
                         flowOf(
                             batch(Table(listOf(ManifestColumn("id", "int")), listOf(listOf(1L))))
                                 .toBuilder()
@@ -103,6 +121,130 @@ class DoorSpec :
             result.table.rows shouldBe listOf(listOf(1L))
         }
 
+        "scope preflight pins the identical request and refuses undeclared reads before Run" {
+            val c = runnerContext(realRecipe("release_order"))
+            val r = read(c).copy(objectsRead = setOf("er.entity.order"))
+            var preflight: org.tatrman.query.v1.RunRequest? = null
+            var runs = 0
+
+            fun query(objects: List<String>) =
+                object : QueryRun {
+                    override suspend fun compile(
+                        request: org.tatrman.query.v1.RunRequest,
+                    ): org.tatrman.query.v1.CompileResponse {
+                        preflight = request
+                        request.allowedErReads.objectsList shouldBe listOf("er.entity.order")
+                        return org.tatrman.query.v1.CompileResponse
+                            .newBuilder()
+                            .setPlan(
+                                org.tatrman.plan.v1.PlanNode.newBuilder().setValues(
+                                    org.tatrman.plan.v1.ValuesNode
+                                        .getDefaultInstance(),
+                                ),
+                            ).setErReads(
+                                org.tatrman.query.v1.ErReadScope
+                                    .newBuilder()
+                                    .addAllObjects(objects),
+                            ).build()
+                    }
+
+                    override fun run(
+                        request: org.tatrman.query.v1.RunRequest,
+                    ): kotlinx.coroutines.flow.Flow<ResultBatch> {
+                        request shouldBe preflight
+                        runs++
+                        return flowOf(batch(Table(r.columns, emptyList())))
+                    }
+                }
+            QueryDoor(query(listOf("er.entity.order")), ROUTES, NO_TOKENS).read(r)
+            runs shouldBe 1
+            val e =
+                shouldThrow<AutomationException> {
+                    QueryDoor(query(listOf("er.entity.order", "er.entity.secret")), ROUTES, NO_TOKENS).read(r)
+                }
+            e.code shouldBe ErrorCode.OUT_OF_SCOPE_READ
+            e.detail.toString() shouldBe "{\"island\":\"i\"}"
+            runs shouldBe 1
+        }
+        "absent ER evidence, compile errors and transport failures never invoke Run" {
+            val c = runnerContext(realRecipe("release_order"))
+            for (mode in listOf("old-query", "no-plan", "error", "transport", "scope")) {
+                var runs = 0
+                val query =
+                    object : QueryRun {
+                        override fun run(
+                            request: org.tatrman.query.v1.RunRequest,
+                        ): kotlinx.coroutines.flow.Flow<ResultBatch> = error("must not execute: ${++runs}")
+
+                        override suspend fun compile(
+                            request: org.tatrman.query.v1.RunRequest,
+                        ): org.tatrman.query.v1.CompileResponse {
+                            if (mode == "transport") throw Status.UNAVAILABLE.asException()
+                            return org.tatrman.query.v1.CompileResponse
+                                .newBuilder()
+                                .apply {
+                                    if (mode !=
+                                        "no-plan"
+                                    ) {
+                                        setPlan(
+                                            org.tatrman.plan.v1.PlanNode.newBuilder().setValues(
+                                                org.tatrman.plan.v1.ValuesNode
+                                                    .getDefaultInstance(),
+                                            ),
+                                        )
+                                    }
+                                    if (mode != "old-query") {
+                                        setErReads(
+                                            org.tatrman.query.v1.ErReadScope
+                                                .getDefaultInstance(),
+                                        )
+                                    }
+                                    if (mode == "error" || mode == "scope") {
+                                        addMessages(
+                                            ResponseMessage
+                                                .newBuilder()
+                                                .setCode(
+                                                    if (mode ==
+                                                        "scope"
+                                                    ) {
+                                                        "out-of-scope-read"
+                                                    } else {
+                                                        "denied"
+                                                    },
+                                                ).setSeverity(Severity.ERROR),
+                                        )
+                                    }
+                                }.build()
+                        }
+                    }
+                shouldThrow<AutomationException> { QueryDoor(query, ROUTES, NO_TOKENS).read(read(c)) }.code shouldBe
+                    if (mode == "scope") ErrorCode.OUT_OF_SCOPE_READ else ErrorCode.DOOR_REFUSED
+                runs shouldBe 0
+            }
+        }
+        "Run's scope recheck refusal discards already streamed data" {
+            val c = runnerContext(realRecipe("release_order"))
+            val door =
+                QueryDoor(
+                    scopedQuery {
+                        flowOf(
+                            batch(Table(listOf(ManifestColumn("id", "int")), listOf(listOf(1L)))),
+                            ResultBatch
+                                .newBuilder()
+                                .addMessages(
+                                    ResponseMessage
+                                        .newBuilder()
+                                        .setSeverity(Severity.ERROR)
+                                        .setCode("out-of-scope-read"),
+                                ).build(),
+                        )
+                    },
+                    ROUTES,
+                    NO_TOKENS,
+                )
+            shouldThrow<AutomationException> { door.read(read(c)) }.code shouldBe ErrorCode.OUT_OF_SCOPE_READ
+        }
+
         "a named identity uses its own IdP roles rather than the caller roles" {
             val c = runnerContext(realRecipe("release_order"))
             val token =
@@ -119,7 +261,7 @@ class DoorSpec :
             val identity = c.identity.copy(principal = "svc", credential = "DECIDER")
             val door =
                 QueryDoor(
-                    QueryRun { request ->
+                    scopedQuery { request ->
                         request.context.userId shouldBe "svc"
                         request.context.authRolesList shouldBe listOf("decider")
                         flowOf(batch(Table(listOf(ManifestColumn("id", "int")), emptyList())))
@@ -132,7 +274,7 @@ class DoorSpec :
 
         "a missing storage route fails closed before invoking Query" {
             val c = runnerContext(realRecipe("release_order"))
-            val door = QueryDoor(QueryRun { error("must not use default connection") }, emptyMap(), NO_TOKENS)
+            val door = QueryDoor(scopedQuery { error("must not use default connection") }, emptyMap(), NO_TOKENS)
             shouldThrow<AutomationException> { door.read(read(c)) }.code shouldBe ErrorCode.DOOR_REFUSED
         }
         "an error batch after data discards the entire result" {
@@ -150,7 +292,7 @@ class DoorSpec :
                     ).build()
             val door =
                 QueryDoor(
-                    QueryRun {
+                    scopedQuery {
                         flowOf(batch(Table(listOf(ManifestColumn("id", "int")), listOf(listOf(1L)))), failure)
                     },
                     ROUTES,
@@ -163,10 +305,10 @@ class DoorSpec :
         "transport failure and missing Arrow schema never become empty successes" {
             val c = runnerContext(realRecipe("release_order"))
             for (query in listOf(
-                QueryRun {
+                scopedQuery {
                     flow { throw Status.PERMISSION_DENIED.asException() }
                 },
-                QueryRun { flowOf(ResultBatch.getDefaultInstance()) },
+                scopedQuery { flowOf(ResultBatch.getDefaultInstance()) },
             )) {
                 shouldThrow<AutomationException> { QueryDoor(query, ROUTES, NO_TOKENS).read(read(c)) }.code shouldBe
                     ErrorCode.DOOR_REFUSED
@@ -176,21 +318,21 @@ class DoorSpec :
             val c = runnerContext(realRecipe("release_order"))
             val columns = listOf(ManifestColumn("id", "int"))
             QueryDoor(
-                QueryRun { flowOf(batch(Table(columns, emptyList()))) },
+                scopedQuery { flowOf(batch(Table(columns, emptyList()))) },
                 ROUTES,
                 NO_TOKENS,
             ).read(read(c)).table.rows shouldBe
                 emptyList()
             shouldThrow<AutomationException> {
                 QueryDoor(
-                    QueryRun { error("never called") },
+                    scopedQuery { error("never called") },
                     ROUTES,
                     NO_TOKENS,
                 ).read(read(c).copy(sql = "SELECT :missing"))
             }
             shouldThrow<AutomationException> {
                 QueryDoor(
-                    QueryRun {
+                    scopedQuery {
                         flowOf(batch(Table(columns, listOf(listOf(1L), listOf(2L)))))
                     },
                     ROUTES,

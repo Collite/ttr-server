@@ -159,6 +159,7 @@ class ErrorEnvelopeSpec :
                 ErrorCode.RESTRICTED_VIEW,
                 ErrorCode.CANDIDATES_TRUNCATED,
                 ErrorCode.OUT_OF_SCOPE,
+                ErrorCode.OUT_OF_SCOPE_READ,
                 ErrorCode.DUPLICATE_KEY,
             )
         val DELIVERED = setOf("S0.1", "S0.2", "S0.3")

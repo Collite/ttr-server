@@ -205,25 +205,32 @@ class PartRunner(
     ): ReadResult =
         slots.withPermit {
             checks.ensureAllowed()
-            door
-                .read(
-                    DoorRead(
-                        context.id,
-                        island,
-                        context.world,
-                        storage,
-                        scoped.sql,
-                        bindings(params) + scoped.bindings,
-                        context.identity,
-                        context.modelFp,
-                        context.readCeiling,
-                        columns,
-                        context.timeout,
-                    ),
-                ).also {
-                    observedWarnings.merge(island, it.warnings.toSet()) { earlier, later -> earlier + later }
-                    checks.read(island, it)
-                }
+            try {
+                door
+                    .read(
+                        DoorRead(
+                            context.id,
+                            island,
+                            context.world,
+                            storage,
+                            scoped.sql,
+                            bindings(params) + scoped.bindings,
+                            context.identity,
+                            context.modelFp,
+                            context.readCeiling,
+                            columns,
+                            context.timeout,
+                            context.recipe.recipe.objectsRead
+                                .toSet(),
+                        ),
+                    ).also {
+                        observedWarnings.merge(island, it.warnings.toSet()) { earlier, later -> earlier + later }
+                        checks.read(island, it)
+                        checks.scopePassed(island)
+                    }
+            } catch (e: org.tatrman.automation.api.AutomationException) {
+                checks.doorRefused(island, e)
+            }
         }
 
     private fun candidateStatement(

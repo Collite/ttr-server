@@ -301,6 +301,27 @@ class QueryServiceImpl(
                             }
                         }
 
+                    if (request.hasAllowedErReads()) {
+                        val actual =
+                            if (effectiveSchemaLabel ==
+                                SCHEMA_ER
+                            ) {
+                                runCatching { ErReads.inspect(erPlan) }.getOrNull()
+                            } else {
+                                null
+                            }
+                        if (actual == null || !request.allowedErReads.objectsList.containsAll(actual.objectsList)) {
+                            emit(
+                                errorBatch(
+                                    "out-of-scope-read",
+                                    "validated ER reads exceed the declared scope or cannot be inspected",
+                                    context,
+                                ),
+                            )
+                            return@flow
+                        }
+                    }
+
                     // BI (C-11) — a parameter the plan reads with no value would be bound as NULL by the worker and
                     // answer nothing, silently: Run refuses it. (Compile does not: it reports such a parameter in
                     // `required_parameters`, which is what it is for.)
@@ -672,6 +693,13 @@ class QueryServiceImpl(
                                 ),
                             ).build()
                     if (dbValidated.refused()) return dbValidated.refusalResponse(context, cached.detectionMessages)
+                    if (request.hasAllowedErReads()) {
+                        return CompileResponse
+                            .newBuilder()
+                            .setContext(context)
+                            .addMessages(errorMessage("out-of-scope-read", "read scope requires ER compilation"))
+                            .build()
+                    }
                     return CompileResponse
                         .newBuilder()
                         .setPlan(dbValidated.plan)
@@ -744,6 +772,13 @@ class QueryServiceImpl(
                                     ),
                                 ).build()
                     if (dbValidated.refused()) return dbValidated.refusalResponse(context, resolution.detectionMessages)
+                    if (request.hasAllowedErReads()) {
+                        return CompileResponse
+                            .newBuilder()
+                            .setContext(context)
+                            .addMessages(errorMessage("out-of-scope-read", "read scope requires ER compilation"))
+                            .build()
+                    }
 
                     requiredParameters = dbParsed.context.parametersList.toList()
                     predictedSchemaFingerprint = PredictedFingerprintComputer.compute(dbParsed.plan)
@@ -807,6 +842,17 @@ class QueryServiceImpl(
                                 ),
                             ).build()
                     if (erValidated.refused()) return erValidated.refusalResponse(context, resolution.detectionMessages)
+                    val erReads = runCatching { ErReads.inspect(erValidated.plan) }.getOrNull()
+                    if (request.hasAllowedErReads() &&
+                        (erReads == null || !request.allowedErReads.objectsList.containsAll(erReads.objectsList))
+                    ) {
+                        return CompileResponse
+                            .newBuilder()
+                            .setContext(context)
+                            .addMessages(
+                                errorMessage("out-of-scope-read", "validated ER reads exceed the declared scope"),
+                            ).build()
+                    }
 
                     val dbParsed =
                         translateToDbPlain(erValidated.plan, context) ?: return CompileResponse
@@ -855,6 +901,7 @@ class QueryServiceImpl(
                     return CompileResponse
                         .newBuilder()
                         .setPlan(dbValidated.plan)
+                        .apply { erReads?.let { setErReads(it) } }
                         .setContext(dbValidated.context)
                         .addAllRequiredParameters(requiredParameters)
                         .setPredictedSchemaFingerprint(predictedSchemaFingerprint)
@@ -883,6 +930,17 @@ class QueryServiceImpl(
                     ),
                 ).build()
         if (erValidated.refused()) return erValidated.refusalResponse(context, resolution.detectionMessages)
+        val erReads = runCatching { ErReads.inspect(erValidated.plan) }.getOrNull()
+        if (request.hasAllowedErReads() &&
+            (erReads == null || !request.allowedErReads.objectsList.containsAll(erReads.objectsList))
+        ) {
+            return CompileResponse
+                .newBuilder()
+                .setContext(context)
+                .addMessages(
+                    errorMessage("out-of-scope-read", "validated ER reads exceed the declared scope"),
+                ).build()
+        }
 
         val dbParsed =
             translateToDbPlain(erValidated.plan, context) ?: return CompileResponse
@@ -920,6 +978,7 @@ class QueryServiceImpl(
         return CompileResponse
             .newBuilder()
             .setPlan(dbValidated.plan)
+            .apply { erReads?.let { setErReads(it) } }
             .setContext(dbValidated.context)
             .addAllRequiredParameters(requiredParameters)
             .setPredictedSchemaFingerprint(predictedSchemaFingerprint)

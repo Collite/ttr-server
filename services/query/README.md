@@ -21,9 +21,20 @@ Proto `org.tatrman.query.v1` / `QueryService` (`com.tatrman.runner.v1` is gone):
   batch carries `top_n_applied` as a WARNING and as a typed `Notice` (`requested`, `applied`; C-10).
 - **Compile** — front of the pipeline only (translate + validate); returns the
   validated `PlanNode` + required parameters + predicted schema fingerprint (an unbound
-  parameter is reported there, not refused).
+  parameter is reported there, not refused). Successful ER compilation also returns `er_reads` when its
+  validated ER tree can be fully inspected; `plan` remains the physical DB plan. This evidence includes
+  expression subqueries, expanded logical-query bodies and their stamped entity boundaries. Presence with
+  an empty list certifies a constant query; absence provides no read-scope evidence.
+
 - **Translate** — passthrough to translate's Translate (any-to-any conversion).
 - **GetStatus** — readiness + cache stats.
+
+`RunRequest.allowed_er_reads` optionally constrains both Run and Compile to declared ER qnames. Query checks
+this call's validated ER tree on every request, including cache hits, before dispatch. Undeclared reads or a
+DB/workspace/write/uninspectable plan return `out-of-scope-read`. An empty, present allow-list permits no
+model reads. Context audit entries and physical DB names cannot authorize ER reads. AU uses Compile preflight
+and sends the same allow-list on Run, so a changed policy or logical body cannot bypass the execution check.
+Caller-dependent validation/evidence is never cached.
 
 Ports: HTTP 7305 (health/ready/status) · gRPC 7306 · Flight SQL 7308 (opt-in, see below). Downstreams via config
 (`translate`/`validate`/`dispatch` host+port, env-overridable).

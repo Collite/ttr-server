@@ -7,15 +7,25 @@ in the project folder:
 (the service: `implementation/ttr-server/` — `contracts.md` is the API, the ledger and the config).
 
 > **Built so far:** P0 (ledger, bundle load/refresh, descriptor, identity, chart/image). P1 S1.1 now has the
-> executor foundation: governed Query reads, shared storage parts, embedded DuckDB combines, typed Arrow staging
-> and immutable `run_outputs` journalling. Open policy, REST run routes and lifecycle integration remain in S1.1;
-> this foundation is not wired into Application yet.
+> executor, Open policy, pinned run sessions and bounded part/island handlers: governed Query reads, shared
+> storage parts, embedded DuckDB combines, typed Arrow staging and immutable `run_outputs` journalling.
+> All five read/candidate guards are implemented. Production runtime/storage wiring, evaluate, output downloads,
+> async execution and protocol/lifecycle orchestration remain; the run handlers are not mounted in Application.
 
 The executor requires an explicit `world/storage` → Query world alias map. Query resolves those aliases through
 its existing `QUERY_WORLDS` table. Missing routes fail before a query is issued; there is no fallback to Query's
 default connection. Recipe `:name` bindings are translated lexically to the door's `{name}` syntax. Named runs
-use the IdP token's own roles, not the caller's. The remaining open layer will expand `port: keys` into scalar
-bindings, since the current PipelineContext has no array value type.
+use the IdP token's own roles, not the caller's. Open expands `port: keys` into scalar bindings; every keyed
+output is filtered before staging.
+
+Before each governed read, QueryDoor compiles the exact scoped/bound request and requires explicit validated
+ER read evidence contained in the pinned manifest's `objectsRead`. Missing evidence (including an older Query
+service), compile errors or undeclared reads prevent execution. The same allow-list goes on Run; Query checks
+that call's validated ER tree before dispatch, including on cache hits. This covers expression subqueries,
+expanded logical-query bodies and entity boundaries without mapping physical DB names back to ER. Policy
+validation stays fresh per caller. Scope refusals latch on the run before staging, alongside restricted-view,
+ceiling, empty scoped candidates and duplicate-key guards. Production wiring must deploy the matching Query
+contract before mounting these handlers.
 
 Local staging publishes immutable Arrow blobs before journalling their metadata. A journal failure leaves an
 unreferenced blob for the S1.3 retention job; it never deletes content another claimant might reference. The

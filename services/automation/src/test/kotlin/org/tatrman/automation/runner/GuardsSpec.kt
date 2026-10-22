@@ -42,6 +42,29 @@ class GuardsSpec :
                 }
             }
         }
+        "scope refusals latch before staging and manifest scope reaches every governed read" {
+            val base = guardContext()
+            val allowed = listOf("er.entity.order", "er.entity.inventory")
+            val context = base.copy(recipe = base.recipe.copy(recipe = base.recipe.recipe.copy(objectsRead = allowed)))
+            var reads = 0
+            guarded(
+                context,
+                Door { read ->
+                    read.objectsRead shouldBe allowed.toSet()
+                    reads++
+                    throw AutomationException(ErrorCode.OUT_OF_SCOPE_READ, "scope refused")
+                },
+            ) { runner, staged ->
+                repeat(2) {
+                    shouldThrow<AutomationException> { runner.island("candidates") }.code shouldBe
+                        ErrorCode.OUT_OF_SCOPE_READ
+                }
+                shouldThrow<AutomationException> { runner.all() }.code shouldBe ErrorCode.OUT_OF_SCOPE_READ
+                staged.size shouldBe 0
+                reads shouldBe 1
+                runner.guards.single { it.code == "out-of-scope-read" }.status shouldBe "refused"
+            }
+        }
         "deployment opt-in and reads-only recipes allow restricted reads with evidence" {
             for (context in listOf(guardContext().copy(allowRestrictedView = true), guardContext(decision = false))) {
                 guarded(context, Door { ReadResult(table(), setOf("security_predicate_applied")) }) { runner, _ ->

@@ -199,9 +199,25 @@ class RunReadRoutesSpec :
                 GuardHttpCase("candidates-truncated", emptySet(), listOf(listOf("4711", "a")), 1),
                 GuardHttpCase("duplicate-key", emptySet(), listOf(listOf("4711", "a"), listOf("4711", "b"))),
                 GuardHttpCase("out-of-scope", emptySet(), emptyList()),
+                GuardHttpCase("out-of-scope-read", emptySet(), emptyList()),
             )) {
                 for (suffix in listOf("parts/candidates", "islands/placed")) {
-                    val fixture = RunSessionFixture(door = Door { ReadResult(Table(it.columns, rows), warnings) })
+                    val fixture =
+                        RunSessionFixture(
+                            door =
+                                Door {
+                                    if (code ==
+                                        "out-of-scope-read"
+                                    ) {
+                                        throw AutomationException(
+                                            ErrorCode.OUT_OF_SCOPE_READ,
+                                            "scope refused",
+                                            buildJsonObject { put("island", it.island) },
+                                        )
+                                    }
+                                    ReadResult(Table(it.columns, rows), warnings)
+                                },
+                        )
                     try {
                         if (cap != null) {
                             val b = fixture.bundle
@@ -232,7 +248,8 @@ class RunReadRoutesSpec :
                             val token = realm.person("maya", listOf("sales_manager"))
                             val id = fixture.open(by = Caller.of(token)!!).response.runId
                             val response = client.post("/automation/runs/$id/$suffix") { bearerAuth(token) }
-                            response.status.value shouldBe if (code == "out-of-scope") 422 else 409
+                            response.status.value shouldBe
+                                if (code in setOf("out-of-scope", "out-of-scope-read")) 422 else 409
                             response.json()["error"]!!.jsonObject.let {
                                 it["code"] shouldBe JsonPrimitive(code)
                                 it["detail"]!!.jsonObject["island"] shouldBe JsonPrimitive("placed")

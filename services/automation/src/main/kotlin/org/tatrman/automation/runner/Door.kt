@@ -21,6 +21,8 @@ import org.tatrman.plan.v1.ParameterBinding
 import org.tatrman.plan.v1.PipelineContext
 import org.tatrman.plan.v1.SchemaCode
 import org.tatrman.plan.v1.Value
+import org.tatrman.query.v1.CompileResponse
+import org.tatrman.query.v1.ErReadScope
 import org.tatrman.query.v1.QueryServiceGrpcKt
 import org.tatrman.query.v1.RowWindow
 import org.tatrman.query.v1.RunRequest
@@ -42,6 +44,7 @@ data class DoorRead(
     val readCeiling: Int,
     val columns: List<ManifestColumn>,
     val timeout: Duration,
+    val objectsRead: Set<String> = emptySet(),
 )
 
 data class ReadResult(
@@ -56,6 +59,9 @@ fun interface Door {
 /** Test seam at the gRPC stub boundary, not a second SQL execution road. */
 fun interface QueryRun {
     fun run(request: RunRequest): Flow<ResultBatch>
+
+    suspend fun compile(request: RunRequest): CompileResponse =
+        error("Query Compile is required for ER scope preflight")
 }
 
 /**
@@ -112,13 +118,24 @@ class QueryDoor(
                     .setContext(context)
                     .setWorld(world)
                     .setRowWindow(RowWindow.newBuilder().setLimit(read.readCeiling.toLong()))
+                    .setAllowedErReads(ErReadScope.newBuilder().addAllObjects(read.objectsRead.sorted()))
                     .build()
             val streams = mutableListOf<ByteArray>()
             val warnings = linkedSetOf<String>()
             var rows = 0L
             kotlinx.coroutines.withTimeout(read.timeout.toMillis()) {
+                val compiled = query.compile(request)
+                compiled.messagesList.firstOrNull { it.severity == Severity.ERROR }?.let {
+                    if (it.code == "out-of-scope-read") scopeRefusal(read.island)
+                    refuse(it.code, it.humanMessage)
+                }
+                if (!compiled.hasPlan() || !compiled.hasErReads()) {
+                    refuse("er-read-scope-unavailable", "Query did not provide validated ER read evidence")
+                }
+                if (!read.objectsRead.containsAll(compiled.erReads.objectsList)) scopeRefusal(read.island)
                 query.run(request).collect { batch ->
                     batch.messagesList.firstOrNull { it.severity == Severity.ERROR }?.let {
+                        if (it.code == "out-of-scope-read") scopeRefusal(read.island)
                         refuse(
                             it.code,
                             it.humanMessage,
@@ -151,6 +168,13 @@ class QueryDoor(
             refuse("invalid-result", "door result or identity could not be read")
         }
     }
+
+    private fun scopeRefusal(island: String): Nothing =
+        throw AutomationException(
+            ErrorCode.OUT_OF_SCOPE_READ,
+            "a governed read exceeds the recipe's declared objects",
+            buildJsonObject { put("island", island) },
+        )
 
     private fun parameter(
         name: String,
@@ -209,6 +233,8 @@ class GrpcQueryRun(
     private val stub = QueryServiceGrpcKt.QueryServiceCoroutineStub(channel)
 
     override fun run(request: RunRequest): Flow<ResultBatch> = stub.run(request)
+
+    override suspend fun compile(request: RunRequest): CompileResponse = stub.compile(request)
 
     override fun close() {
         channel.shutdownNow()
