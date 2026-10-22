@@ -211,7 +211,7 @@ class ReceiptSinkSpec :
                     .use { it.readAll() }
                     .rows shouldBe
                     listOf(5 to "Brno DC")
-                edge.outcomes.single().status shouldBe StatementOutcome.Status.OK
+                edge.awaitOutcomes().single().status shouldBe StatementOutcome.Status.OK
                 // The database comes back: the next statement's receipt is written.
                 val again = edge.sql.execute("SELECT 2")
                 edge.sql.getStream(again.endpoints.single().ticket).use { it.readAll() }

@@ -142,7 +142,7 @@ class TtrFlightSqlProducerSpec :
                 // C-10 — the typed notice's numbers ride along (0: the edge's ask is no number the caller chose).
                 notice["requested"]!!.jsonPrimitive.long shouldBe 0
                 notice["applied"]!!.jsonPrimitive.long shouldBe 200
-                edge.outcomes.single().topNApplied shouldBe true
+                edge.awaitOutcomes().single().topNApplied shouldBe true
             }
         }
 
@@ -244,7 +244,8 @@ class TtrFlightSqlProducerSpec :
                         .jsonArray
                         .map { it.jsonObject["code"]!!.jsonPrimitive.content }
                 codes shouldContainExactly listOf("blob_too_large", "unsupported_type_as_binary")
-                edge.outcomes
+                edge
+                    .awaitOutcomes()
                     .single()
                     .notices
                     .map { it.code } shouldContainExactly codes
@@ -273,8 +274,8 @@ class TtrFlightSqlProducerSpec :
                 val deadline = System.currentTimeMillis() + 10_000
                 while (edge.outcomes.isEmpty() && System.currentTimeMillis() < deadline) Thread.sleep(50)
                 Thread.sleep(200)
-                edge.outcomes.single().errorCode shouldBe TtrFlightSqlProducer.CLIENT_STALLED
-                edge.outcomes.single().status shouldBe StatementOutcome.Status.CANCELLED
+                edge.awaitOutcomes().single().errorCode shouldBe TtrFlightSqlProducer.CLIENT_STALLED
+                edge.awaitOutcomes().single().status shouldBe StatementOutcome.Status.CANCELLED
             }
         }
 
@@ -293,8 +294,8 @@ class TtrFlightSqlProducerSpec :
                 e.status().code() shouldBe FlightStatusCode.INVALID_ARGUMENT
                 e.status().description() shouldBe "translator_rejected: Unknown table 'warehose'"
                 e.status().metadata().get(TtrFlightSqlProducer.CODE_METADATA_KEY) shouldBe "translator_rejected"
-                edge.outcomes.single().status shouldBe StatementOutcome.Status.REFUSED
-                edge.outcomes.single().errorCode shouldBe "translator_rejected"
+                edge.awaitOutcomes().single().status shouldBe StatementOutcome.Status.REFUSED
+                edge.awaitOutcomes().single().errorCode shouldBe "translator_rejected"
             }
         }
 
@@ -338,8 +339,8 @@ class TtrFlightSqlProducerSpec :
                         edge.sql.getStream(info.endpoints[0].ticket).use { it.readAll() }
                     }
                 e.status().description() shouldStartWith "worker_failed: connection reset by peer"
-                edge.outcomes.single().status shouldBe StatementOutcome.Status.FAILED
-                edge.outcomes.single().errorCode shouldBe "worker_failed"
+                edge.awaitOutcomes().single().status shouldBe StatementOutcome.Status.FAILED
+                edge.awaitOutcomes().single().errorCode shouldBe "worker_failed"
             }
         }
 
@@ -394,7 +395,7 @@ class TtrFlightSqlProducerSpec :
                 edge.sql.execute("SELECT * FROM er.entity.warehouse")
                 val deadline = System.currentTimeMillis() + 20_000
                 while (edge.outcomes.isEmpty() && System.currentTimeMillis() < deadline) Thread.sleep(100)
-                edge.outcomes.single().status shouldBe StatementOutcome.Status.EXPIRED
+                edge.awaitOutcomes().single().status shouldBe StatementOutcome.Status.EXPIRED
             }
         }
 
@@ -428,7 +429,7 @@ class TtrFlightSqlProducerSpec :
                 // …and an unread one still expires 1 s after its FlightInfo.
                 clock.set(6_100_000_000)
                 edge.producer.sweep()
-                edge.outcomes.single().status shouldBe StatementOutcome.Status.EXPIRED
+                edge.awaitOutcomes().single().status shouldBe StatementOutcome.Status.EXPIRED
             }
         }
 

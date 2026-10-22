@@ -80,7 +80,8 @@ class IdentityWorldMiddlewareSpec :
                         }
                     }
                 catalogs shouldContainExactly listOf("hartland_us")
-                edge.outcomes
+                edge
+                    .awaitOutcomes()
                     .single()
                     .session.world shouldBe "hartland_us"
             }
@@ -117,7 +118,7 @@ class IdentityWorldMiddlewareSpec :
                 e.message shouldBe
                     "world_mismatch: the statement reads catalog 'hartland_us', but this connection's world is 'hartland_cz'."
                 door.requests.shouldBeEmpty()
-                val outcome = edge.outcomes.single()
+                val outcome = edge.awaitOutcomes().single()
                 outcome.status shouldBe StatementOutcome.Status.REFUSED
                 outcome.errorCode shouldBe "world_mismatch"
             }
@@ -132,7 +133,7 @@ class IdentityWorldMiddlewareSpec :
                     """SELECT w.city FROM ${" ".repeat(14)}er."entity"."warehouse" w"""
                 // S-8: the layer is read past the blanked catalog.
                 door.requests.single().sourceSchema shouldBe SchemaCode.ER
-                edge.outcomes.single().statement shouldBe
+                edge.awaitOutcomes().single().statement shouldBe
                     """SELECT w.city FROM "hartland_cz"."er.entity"."warehouse" w"""
             }
         }
@@ -145,8 +146,8 @@ class IdentityWorldMiddlewareSpec :
                 e.message shouldBe
                     "world_mismatch: the door ran this on connection 'pg-hartland-us', not on world 'hartland_cz' " +
                     "('pg-hartland-cz')."
-                edge.outcomes.single().status shouldBe StatementOutcome.Status.FAILED
-                edge.outcomes.single().errorCode shouldBe "world_mismatch"
+                edge.awaitOutcomes().single().status shouldBe StatementOutcome.Status.FAILED
+                edge.awaitOutcomes().single().errorCode shouldBe "world_mismatch"
             }
         }
 

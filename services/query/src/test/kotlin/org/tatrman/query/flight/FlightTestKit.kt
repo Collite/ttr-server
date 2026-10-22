@@ -230,6 +230,16 @@ object FlightTestKit {
             FlightClient.builder(clientAllocator, Location.forGrpcInsecure("127.0.0.1", edge.port)).build()
         val sql = FlightSqlClient(client)
 
+        /**
+         * [outcomes] once [n] are recorded (up to 5 s). The edge records a statement's outcome after it completes the
+         * stream, so a client that has read the whole answer can look before the server's thread has.
+         */
+        fun awaitOutcomes(n: Int = 1): List<StatementOutcome> {
+            val deadline = System.nanoTime() + 5_000_000_000L
+            while (outcomes.size < n && System.nanoTime() < deadline) Thread.sleep(10)
+            return outcomes.toList()
+        }
+
         override fun close() {
             client.close()
             clientAllocator.close()
