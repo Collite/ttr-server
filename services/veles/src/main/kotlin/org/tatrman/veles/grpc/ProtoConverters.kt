@@ -19,7 +19,8 @@ import org.tatrman.ttr.metadata.model.SchemaCode as DomainSchemaCode
  * The proto surface is FROZEN (MD7): proto `SchemaCode` has no `WORLD` member, so a
  * library `WORLD` qname (never produced by the Veles model, but mapped defensively)
  * degrades to `SCHEMA_CODE_UNSPECIFIED`. So does grammar 0.16's `AUTOMATION` tier (`model automation`
- * objects): the automation service reads them from its own bundle, not over this wire.
+ * objects): the automation service reads them from its own bundle, not over this wire. And grammar 0.17's `CN`
+ * (the conceptual tier, CN-P2), which ttr-metadata documents as never sent over the metadata wire either.
  */
 
 internal fun DomainSchemaCode.toProto(): ProtoSchemaCode =
@@ -31,6 +32,7 @@ internal fun DomainSchemaCode.toProto(): ProtoSchemaCode =
         DomainSchemaCode.OBJ -> ProtoSchemaCode.OBJ
         DomainSchemaCode.WORLD -> ProtoSchemaCode.SCHEMA_CODE_UNSPECIFIED
         DomainSchemaCode.AUTOMATION -> ProtoSchemaCode.SCHEMA_CODE_UNSPECIFIED
+        DomainSchemaCode.CN -> ProtoSchemaCode.SCHEMA_CODE_UNSPECIFIED
         DomainSchemaCode.UNSPECIFIED -> ProtoSchemaCode.SCHEMA_CODE_UNSPECIFIED
     }
 
