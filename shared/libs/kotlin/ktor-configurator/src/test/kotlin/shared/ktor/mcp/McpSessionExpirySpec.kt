@@ -139,6 +139,7 @@ class McpSessionExpirySpec :
                         release.complete(Unit)
                         (call.await()?.content?.single() as TextContent).text shouldBe "ok"
                     }
+                    door.settled()
                     // The idle clock starts when the request ends, not when it began.
                     door.sessions.expireIdle() shouldBe 0
                     door.time += 9.minutes
@@ -253,6 +254,9 @@ private class Door(
     /** Server-side GET streams that are still open. */
     val openStreams = AtomicInteger()
 
+    /** Server-side POSTs and DELETEs that have not ended yet. */
+    val openRequests = AtomicInteger()
+
     /** When set, the next tool call signals `first` on entry and waits for `second`. */
     @Volatile
     var hold: Pair<CompletableDeferred<Unit>, CompletableDeferred<Unit>>? = null
@@ -263,12 +267,12 @@ private class Door(
         embeddedServer(CIO, port = 0, host = "127.0.0.1") {
             configure()
             intercept(ApplicationCallPipeline.Plugins) {
-                if (context.request.local.method != HttpMethod.Get) return@intercept
-                openStreams.incrementAndGet()
+                val open = if (context.request.local.method == HttpMethod.Get) openStreams else openRequests
+                open.incrementAndGet()
                 try {
                     proceed()
                 } finally {
-                    openStreams.decrementAndGet()
+                    open.decrementAndGet()
                 }
             }
             sessions =
@@ -316,12 +320,20 @@ private class Door(
         try {
             client.connect(transport)
             client.callTool(name = "echo", arguments = emptyMap())
+            settled()
             return transport.sessionId!!
         } finally {
             client.close()
             http.close()
         }
     }
+
+    /**
+     * Waits until the server has ended every POST and DELETE it took. A client has its answer before
+     * the server's handler returns, and only then does the registry mark the request ended and start
+     * the session's idle clock; a test that moves [time] straight after a call would race that.
+     */
+    suspend fun settled() = eventually(5.seconds) { openRequests.get() shouldBe 0 }
 
     /** A raw `tools/list` on [sessionId]; returns the HTTP status. */
     suspend fun postWithSession(sessionId: String): Int {
