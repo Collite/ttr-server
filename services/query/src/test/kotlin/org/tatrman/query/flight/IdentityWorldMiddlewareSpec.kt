@@ -22,6 +22,7 @@ import org.apache.arrow.flight.grpc.CredentialCallOption
 import org.apache.arrow.flight.sql.FlightSqlClient
 import org.apache.arrow.memory.RootAllocator
 import org.apache.arrow.vector.VarCharVector
+import org.tatrman.plan.v1.SchemaCode
 import org.tatrman.query.flight.CatalogQualifier.Outcome
 import org.tatrman.query.flight.FlightTestKit.RunningEdge
 import org.tatrman.query.flight.FlightTestKit.ScriptedDoor
@@ -128,6 +129,8 @@ class IdentityWorldMiddlewareSpec :
                 edge.run("""SELECT w.city FROM "hartland_cz"."er.entity"."warehouse" w""", bearer, world("hartland_cz"))
                 door.requests.single().source shouldBe
                     """SELECT w.city FROM ${" ".repeat(14)}"er.entity"."warehouse" w"""
+                // S-8: the layer is read past the blanked catalog.
+                door.requests.single().sourceSchema shouldBe SchemaCode.ER
                 edge.outcomes.single().statement shouldBe
                     """SELECT w.city FROM "hartland_cz"."er.entity"."warehouse" w"""
             }
