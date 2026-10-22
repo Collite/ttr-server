@@ -127,8 +127,9 @@ class IdentityWorldMiddlewareSpec :
             val door = answering()
             RunningEdge(door, identity = identity, worlds = worlds).use { edge ->
                 edge.run("""SELECT w.city FROM "hartland_cz"."er.entity"."warehouse" w""", bearer, world("hartland_cz"))
+                // #275: the quoted dotted schema reaches the door as its two names.
                 door.requests.single().source shouldBe
-                    """SELECT w.city FROM ${" ".repeat(14)}"er.entity"."warehouse" w"""
+                    """SELECT w.city FROM ${" ".repeat(14)} er.entity ."warehouse" w"""
                 // S-8: the layer is read past the blanked catalog.
                 door.requests.single().sourceSchema shouldBe SchemaCode.ER
                 edge.outcomes.single().statement shouldBe
@@ -222,5 +223,29 @@ class IdentityWorldMiddlewareSpec :
             val quiet =
                 "SELECT 'hartland_us.er.entity.x' -- hartland_us.er.entity.x\n FROM er.entity.warehouse /* a.er.b.c */"
             run(quiet) shouldBe Outcome.Run(quiet)
+        }
+
+        "#275 — a quoted dotted schema leading a name loses its quotes to spaces; nothing else like it does" {
+            fun run(sql: String) = CatalogQualifier.resolve(sql, "hartland_cz")
+            run("""SELECT t.* FROM "er.entity".warehouse t""") shouldBe
+                Outcome.Run("""SELECT t.* FROM  er.entity .warehouse t""")
+            run("""SELECT * FROM "DB.dbo"."web_sales" JOIN "obj.query".revenue_per_customer r ON 1 = 1""") shouldBe
+                Outcome.Run("""SELECT * FROM  DB.dbo ."web_sales" JOIN  obj.query .revenue_per_customer r ON 1 = 1""")
+            run("""SELECT "er.entity".warehouse.city FROM hartland_cz."er.entity".warehouse""") shouldBe
+                Outcome.Run("""SELECT  er.entity .warehouse.city FROM ${" ".repeat(12)} er.entity .warehouse""")
+            // The world check still comes first.
+            run("""SELECT * FROM hartland_us."er.entity".warehouse""") shouldBe Outcome.Mismatch("hartland_us")
+            // Not schemas: a quoted dotted name that ends the run (an alias, a column), one after an alias, another
+            // head, a part that is not a plain identifier, literals and comments.
+            val untouched =
+                listOf(
+                    """SELECT w.city AS "er.entity" FROM er.entity.warehouse w""",
+                    """SELECT w."er.entity" FROM er.entity.warehouse w""",
+                    """SELECT * FROM "dw.entity".warehouse""",
+                    """SELECT * FROM "er.entity x".warehouse""",
+                    """SELECT * FROM "er.entity.warehouse"""",
+                    """SELECT '"er.entity".x' FROM er.entity.warehouse -- "er.entity".x""",
+                )
+            untouched.forEach { run(it) shouldBe Outcome.Run(it) }
         }
     })

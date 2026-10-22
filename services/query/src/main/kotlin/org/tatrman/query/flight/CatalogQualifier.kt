@@ -12,7 +12,15 @@ package org.tatrman.query.flight
  * A qualifier is recognised by what follows it, the door's schema spellings: `<catalog>.er|db|obj.<namespace>.<name>`,
  * each part quoted or not (`"hartland_cz"."er"."entity"."warehouse"`, as a tool that quotes every identifier writes
  * it; four parts at least, so `alias.db` — a column called `db` — is not one), or a quoted dotted schema,
- * `<catalog>."er.entity".<name>`. String literals and comments are skipped; nothing else in the statement changes.
+ * `<catalog>."er.entity".<name>`.
+ *
+ * A **quoted dotted schema** is unfolded too (ttr-server#275). The catalog publishes the schemas as one name each
+ * (`er.entity`), so a JDBC tool that builds its SQL from the catalog quotes the name for its dot:
+ * `SELECT t.* FROM "er.entity".warehouse t` (DataGrip, DBeaver, opening a table). The door reads a quoted identifier
+ * as one name, and refuses it: `Object 'er.entity' not found`. Leading a name (or right after the connection's
+ * catalog), a quoted `er|db|obj.<namespace>` of plain identifiers loses its quotes to spaces, `"er.entity".warehouse`
+ * → ` er.entity .warehouse`, which the door reads as the two names it means. Every other character keeps its
+ * position. String literals and comments are skipped; nothing else in the statement changes.
  */
 internal object CatalogQualifier {
     sealed interface Outcome {
@@ -32,20 +40,36 @@ internal object CatalogQualifier {
         world: String,
     ): Outcome {
         val drops = mutableListOf<IntRange>()
+        val quotes = mutableListOf<Int>()
         for (chain in chains(sql)) {
-            if (!isCatalogQualified(chain)) continue
-            val catalog = chain[0]
-            val same = if (catalog.quoted) catalog.name == world else catalog.name.equals(world, ignoreCase = true)
-            if (!same || world.isEmpty()) return Outcome.Mismatch(catalog.name)
-            drops += catalog.start until chain[1].start
+            val schemaAt =
+                if (isCatalogQualified(chain)) {
+                    val catalog = chain[0]
+                    val same =
+                        if (catalog.quoted) catalog.name == world else catalog.name.equals(world, ignoreCase = true)
+                    if (!same || world.isEmpty()) return Outcome.Mismatch(catalog.name)
+                    drops += catalog.start until chain[1].start
+                    1
+                } else {
+                    0
+                }
+            val schema = chain[schemaAt]
+            if (schemaAt < chain.lastIndex && schema.quoted && DOTTED_SCHEMA.matches(schema.name)) {
+                quotes += schema.start
+                quotes += schema.start + schema.name.length + 1
+            }
         }
-        if (drops.isEmpty()) return Outcome.Run(sql)
+        if (drops.isEmpty() && quotes.isEmpty()) return Outcome.Run(sql)
         val out = StringBuilder(sql)
         for (range in drops) {
             for (i in range) if (out[i] != '\n' && out[i] != '\r') out.setCharAt(i, ' ')
         }
+        for (i in quotes) out.setCharAt(i, ' ')
         return Outcome.Run(out.toString())
     }
+
+    /** A quoted dotted schema the door would read as one name: `er|db|obj.<namespace>`, plain identifiers only. */
+    private val DOTTED_SCHEMA = Regex("""(?i)(er|db|obj)\.[a-z_][a-z0-9_]*""")
 
     /** One part of a `.`-joined run of identifiers, in source order (also read by [SourceSchema]). */
     internal data class Part(

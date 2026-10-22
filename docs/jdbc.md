@@ -28,6 +28,11 @@ The edge reads the layer from those names: a statement over `er.entity` or `obj.
 that names both layers is refused (`validator_mixed_layer_tree`: one statement reads one layer). A bare name
 (`FROM warehouse`) is left to the door, which refuses it when both layers have it (`detection_failed`).
 
+The catalog lists each schema as one name with a dot in it, so a tool that writes SQL from the catalog quotes it:
+`SELECT t.* FROM "er.entity".warehouse t` (DataGrip, IntelliJ or DBeaver opening a table). The edge reads a quoted
+`"er.entity"`, `"db.dbo"` or `"obj.query"` at the head of a name as the schema's two parts. Every other part keeps
+its quoting, and a refusal's position still points into your text.
+
 The edge is **read-only**: no DML, no transactions, no bound parameters (`?`), no uploads.
 
 ## Connecting
