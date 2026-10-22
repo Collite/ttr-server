@@ -201,7 +201,7 @@ class PartRunner(
                         context.timeout,
                     ),
                 ).also {
-                    observedWarnings[island] = it.warnings.toSet()
+                    observedWarnings.merge(island, it.warnings.toSet()) { earlier, later -> earlier + later }
                 }
         }
 

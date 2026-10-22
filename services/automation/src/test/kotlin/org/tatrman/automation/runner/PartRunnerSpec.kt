@@ -56,6 +56,51 @@ class PartRunnerSpec :
                 }
             }
         }
+        "a later output without warnings cannot erase an earlier restricted read notice" {
+            coroutineScope {
+                val base = splitRecipe()
+                val outputs =
+                    listOf("restricted", "plain").map { port ->
+                        ManifestOutput(port, "$port.sql", columns = COLUMNS, storage = "erp_db")
+                    }
+                val recipe =
+                    base.copy(
+                        manifest =
+                            RecipeManifest(
+                                3,
+                                islands = listOf(ManifestIsland("both", outputs = outputs)),
+                                waves = listOf(listOf("both")),
+                            ),
+                        recipe = base.recipe.copy(parts = emptyList()),
+                        statements = mapOf("restricted.sql" to "restricted", "plain.sql" to "plain"),
+                    )
+                val restrictedFinished = CompletableDeferred<Unit>()
+                val door =
+                    Door { read ->
+                        val warnings =
+                            if (read.sql == "restricted") {
+                                restrictedFinished.complete(Unit)
+                                setOf("security_predicate_applied")
+                            } else {
+                                restrictedFinished.await()
+                                delay(20)
+                                emptySet()
+                            }
+                        ReadResult(Table(COLUMNS, emptyList()), warnings)
+                    }
+                PartRunner(
+                    runnerContext(recipe),
+                    door,
+                    Staging(LocalStagingStore(Files.createTempDirectory("au-notices"))) {},
+                    this,
+                ).use { runner ->
+                    runner.all()
+                    runner.warnings shouldBe setOf("security_predicate_applied")
+                    runner.warningsByRead.getValue("both") shouldBe setOf("security_predicate_applied")
+                }
+            }
+        }
+
         "failed parts fail every dependent output; never stage an empty success or retry the failed part" {
             coroutineScope {
                 val calls = AtomicInteger()
