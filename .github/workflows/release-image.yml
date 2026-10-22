@@ -164,6 +164,12 @@ jobs:
               echo "::error::could not resolve a buildable path for module '$n'"
               exit 1
             fi
+            # superset's version is Superset's plus our -ttr<N> (images/superset/README.md § Tags). A dispatch (or a
+            # tag) without it would push e.g. `superset:0.9.0`, a tag that says nothing true about the image.
+            if [ "$n" = superset ] && ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+-ttr[0-9]+$ ]]; then
+              echo "::error::superset's version is <superset version>-ttr<N> (e.g. 6.1.0-ttr2), not '$VERSION'"
+              exit 1
+            fi
             ENTRIES+=("{\"name\":\"$n\",\"path\":\"$P\",\"version\":\"$VERSION\"}")
           done
 
@@ -192,8 +198,8 @@ jobs:
           # Order matters, and the two existing tests come FIRST so no module that
           # builds today can change lane: every mapped path carries either a
           # build.gradle.kts or a pyproject.toml. The third lane is for a module
-          # that is only a Dockerfile with a LOCAL context — the NLP backends —
-          # which the kotlin default would have sent to Jib.
+          # that is only a Dockerfile with a LOCAL context — the NLP backends and
+          # images/superset — which the kotlin default would have sent to Jib.
           if [ -f "$P/pyproject.toml" ]; then LANE=python
           elif [ -f "$P/build.gradle.kts" ]; then LANE=kotlin
           elif [ -f "$P/Dockerfile" ]; then LANE=dockerfile

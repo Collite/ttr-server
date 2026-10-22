@@ -7,8 +7,15 @@ OAuth2) and [`ttr-sqlalchemy`](../../shared/libs/python/ttr-sqlalchemy/README.md
 its Superset engine spec). No configuration is baked in: the deployment mounts its own `superset_config.py`. For a
 self-contained local pairing, use [`compose/superset/`](../../compose/superset/README.md) instead.
 
-Every version is pinned in the [Dockerfile](Dockerfile); the build fails if the engine spec does not load inside
-that Superset.
+What is pinned, in the [Dockerfile](Dockerfile):
+- the base, by digest (`apache/superset:6.1.0@sha256:…`), since a Docker Hub tag can move;
+- the three packages added, by version;
+- everything those packages pull in, held to Superset's own pins (the base's `/app/requirements/base.txt`, used as a
+  constraint). A rebuild resolves the same set: the build prints `cryptography`, `pyarrow`, `sqlalchemy` and
+  `flask-appbuilder` as it ends.
+
+The build fails if the engine spec does not load inside that Superset. CI builds the image (without pushing) on any
+change under `images/superset/`.
 
 ## Tags
 
@@ -24,8 +31,24 @@ The image is tag-only (not in `just publish`, which mints the repo's own version
 git tag superset/v6.1.0-ttr1 && git push origin superset/v6.1.0-ttr1
 ```
 
-`release-image.yml` builds `images/superset` and pushes `ghcr.io/collite/superset:6.1.0-ttr1`. The base comes from
-Docker Hub (it is not an official image, so the GHCR base mirror does not carry it); on a `TOOMANYREQUESTS`, rerun
-the job.
+`release-image.yml` builds `images/superset` and pushes `ghcr.io/collite/superset:6.1.0-ttr1`. It refuses a version
+that is not `<x.y.z>-ttr<N>`, on a tag or a dispatch.
+
+**The first push of a new package** creates it unlinked and private, and a cluster's pull credential (an org member,
+not the package's owner) gets `403` on it. In the package's settings on GitHub:
+1. connect it to `Collite/ttr-server`;
+2. set its visibility to public, as for the other images.
+
+Hartland met this on 2026-10-22 with `6.1.0-ttr1`. Later tags of the same package keep these settings.
 
 Local build: `docker build -t superset-ttr:local images/superset`.
+
+## Limits
+
+- **amd64 only.** The release runner is amd64 and the dockerfile lane runs a plain `docker build`. The base is
+  multi-arch, so if an arm64 machine (an Apple-silicon Mac) needs the image, use the Kotlin lanes' multi-arch
+  `buildx` step for this lane too.
+- **Docker Hub, pulled directly.** `apache/superset` is not a Docker *official* image, so `mirror-base-images.yml`
+  does not copy it. One pull per release tag (and per CI build of a change here); on `TOOMANYREQUESTS`, rerun the
+  job. If the rate limit starts to bite, add `apache/superset` to that workflow's list and point `FROM` at the
+  mirror, keeping the digest.

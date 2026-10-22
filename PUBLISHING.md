@@ -14,6 +14,8 @@ action; no workflow publishes anything from a branch.
 | `python-nlp/v<x.y.z>-RELEASE` | `ttr-nlp` wheel | **PyPI** | `publish-python.yml` | `-RELEASE` marker + `pypi` env |
 | `<module>/v<x.y.z>` | one container image | `ghcr.io/collite/<module>` | `release-image.yml` | every tag |
 | *(manual dispatch only)* | the four `nlp-<backend>` images | `ghcr.io/collite/nlp-*` | `release-nlp-backends.yml` | human dispatch + FI-4 legal gate |
+| `superset/v<superset>-ttr<N>` | the operated Superset image (official + `ttr-sqlalchemy`) | `ghcr.io/collite/superset` | `release-image.yml` | every tag; the version must be `<x.y.z>-ttr<N>` |
+| `python-sqlalchemy/v<x.y.z>[-RELEASE]` | `ttr-sqlalchemy` wheel | PyPI on `-RELEASE` | `publish-python.yml` | as `python-nlp` |
 
 ## The `-RELEASE` marker
 

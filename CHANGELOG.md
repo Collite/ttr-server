@@ -29,6 +29,11 @@ outside this repo could notice is in.
 - **`ghcr.io/collite/superset` — the operated Superset image** (BI-3, C-18): official Superset 6.1.0 + `psycopg2-binary`,
   `authlib` and `ttr-sqlalchemy` 0.11.0, all pinned; no configuration baked in. Tag-only lane
   `superset/v<superset version>-ttr<N>` (`superset/v6.1.0-ttr1` → `superset:6.1.0-ttr1`). `images/superset/README.md`.
+  Since then (review-123 R12–R15): the base is pinned by digest, and what the three packages pull in is held to
+  Superset's own pins, so a rebuild resolves the same set (identical to `6.1.0-ttr1`'s, so no new tag). CI builds
+  the image on any change to it. The release refuses a `superset` version that is not `<x.y.z>-ttr<N>`.
+  `compose/superset/` now builds on this image rather than repeating its install (`SUPERSET_IMAGE` build arg; a wheel
+  in `wheels/` still replaces `ttr-sqlalchemy`; the `TTR_SQLALCHEMY` build arg is gone).
 - **query — the Flight SQL edge states the layer a statement names** (BI-0 memo S-8, found live on the first deploy).
   The edge sent statements with `source_schema` unset, and the door's detector resolves bare table names only, so
   `SELECT … FROM db.dbo.warehouse` (or `er.entity.warehouse`) was refused `detection_failed` ("warehouse exist in

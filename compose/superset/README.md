@@ -43,9 +43,12 @@ Users who sign in become `Gamma`. Members of the group named in `SUPERSET_ADMIN_
 
 ## An unreleased ttr-sqlalchemy
 
-The image installs `ttr-sqlalchemy` from PyPI. To try a build of your own, drop its wheel into [`wheels/`](wheels/):
+The image builds on the operated one, [`ghcr.io/collite/superset`](../../images/superset/README.md), with its pinned
+`ttr-sqlalchemy`. To try a build of your own, drop its wheel into [`wheels/`](wheels/): it replaces the pinned one.
 
 ```bash
 uv build --wheel ../../shared/libs/python/ttr-sqlalchemy -o wheels
-docker compose build --build-arg TTR_SQLALCHEMY="ttr-sqlalchemy==0.0.0"
+docker compose build
 ```
+
+Another release of the image: `docker compose build --build-arg SUPERSET_IMAGE=ghcr.io/collite/superset:<tag>`.
