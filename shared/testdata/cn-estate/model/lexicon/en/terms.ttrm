@@ -1,0 +1,9 @@
+package shop
+
+model lexicon locale en
+
+def term debtor_en { for: cn.DebtorCustomer, forms: ["overdue customer", "debtor"] }
+def term item_en { for: cn.Item, forms: ["item"] }
+def term channel_en { for: cn.Channel, forms: ["channel"] }
+def term supplier_en { for: cn.Supplier, forms: ["supplier"] }
+def term revenue_en { for: cn.revenue, forms: ["revenue"] }
