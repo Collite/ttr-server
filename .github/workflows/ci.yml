@@ -309,6 +309,38 @@ jobs:
       - name: build the wheel
         run: uv build --wheel shared/libs/python/ttr-sqlalchemy
 
+  # BI (C-18) — the operated Superset image (images/superset) is built when it changes, not first on a release tag:
+  # release-image.yml is the only other place it builds, and a pushed tag is never rebuilt. Build only, no push. The
+  # build itself loads the engine spec inside that Superset, so a pin that breaks it fails here.
+  superset-image:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: does this change touch images/superset?
+        id: changed
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+          BEFORE: ${{ github.event.before }}
+        run: |
+          case "$EVENT" in
+            pull_request) range="$BASE...HEAD" ;;
+            push) range="$BEFORE..HEAD" ;;
+            *) echo "build=true" >> "$GITHUB_OUTPUT"; exit 0 ;;   # nightly + manual: always
+          esac
+          if git diff --quiet "$range" -- images/superset; then build=false; else build=true; fi
+          echo "build=$build" >> "$GITHUB_OUTPUT"
+          echo "images/superset changed in $range: $build"
+
+      - name: docker build images/superset (no push)
+        if: steps.changed.outputs.build == 'true'
+        run: docker build -t superset-ttr:ci images/superset
+
   # NLS-P3.3 — the Python unit gate for `services/nlp` (ruff + pytest).
   #
   # ⚑ This job did not exist before NLS-P3. `golem-py` and the `ttr-nlp` wheel had
