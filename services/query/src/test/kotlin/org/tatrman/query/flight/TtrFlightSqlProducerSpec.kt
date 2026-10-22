@@ -30,6 +30,7 @@ import org.apache.arrow.vector.complex.DenseUnionVector
 import org.tatrman.common.v1.ResponseMessage
 import org.tatrman.common.v1.Severity
 import org.tatrman.plan.v1.PipelineContext
+import org.tatrman.plan.v1.SchemaCode
 import org.tatrman.plan.v1.Warning
 import org.tatrman.query.flight.FlightTestKit.RunningEdge
 import org.tatrman.query.flight.FlightTestKit.ScriptedDoor
@@ -85,7 +86,22 @@ class TtrFlightSqlProducerSpec :
                 request.context.authRolesList shouldContainExactly
                     listOf("kantheon-area-hartland", "kantheon-scope-dc-5")
                 request.context.correlationId.isNotEmpty() shouldBe true
+                request.sourceSchema shouldBe SchemaCode.ER
             }
+        }
+
+        "S-8 — the layer the statement names is stated, so a name both layers hold is not ambiguous at the door" {
+            val door = ScriptedDoor { twoBatchesAndTail() }
+            RunningEdge(door).use { edge ->
+                for (sql in listOf("SELECT w_city FROM db.dbo.warehouse", """SELECT * FROM "db"."dbo"."warehouse"""")) {
+                    val info = edge.sql.execute(sql)
+                    edge.sql.getStream(info.endpoints[0].ticket).use { it.readAll() }
+                }
+                door.requests.map { it.sourceSchema } shouldContainExactly listOf(SchemaCode.DB, SchemaCode.DB)
+            }
+            val probed = ScriptedDoor { twoBatchesAndTail() }
+            RunnerSchemaProbe(probed, allocator).schemaOf("SELECT * FROM obj.query.q", FlightTestKit.SESSION)
+            probed.requests.single().sourceSchema shouldBe SchemaCode.ER
         }
 
         "C-10 — a statement asks for as many rows as the caller's ceiling allows; the schema probe for one" {

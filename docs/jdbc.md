@@ -23,6 +23,11 @@ obj.query.revenue_per_customer`, `SELECT * FROM db.dbo.inventory`. Quote an iden
 for you. Entity and table columns are typed from the model; a logical query's columns are read from its first row,
 run as you, so a query your roles may not read lists no columns.
 
+The edge reads the layer from those names: a statement over `er.entity` or `obj.query` reads entities, one over
+`db.dbo` reads tables — so a name both hold (`warehouse` is an entity and a table) is never ambiguous. A statement
+that names both layers is refused (`validator_mixed_layer_tree`: one statement reads one layer). A bare name
+(`FROM warehouse`) is left to the door, which refuses it when both layers have it (`detection_failed`).
+
 The edge is **read-only**: no DML, no transactions, no bound parameters (`?`), no uploads.
 
 ## Connecting

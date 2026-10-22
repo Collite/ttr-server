@@ -47,14 +47,14 @@ internal object CatalogQualifier {
         return Outcome.Run(out.toString())
     }
 
-    /** One `.`-joined run of identifiers, in source order. */
-    private data class Part(
+    /** One part of a `.`-joined run of identifiers, in source order (also read by [SourceSchema]). */
+    internal data class Part(
         val start: Int,
         val name: String,
         val quoted: Boolean,
     )
 
-    private val SCHEMA_HEADS = setOf("er", "db", "obj")
+    internal val SCHEMA_HEADS = setOf("er", "db", "obj")
 
     private fun isCatalogQualified(chain: List<Part>): Boolean {
         if (chain.size < 3) return false
@@ -65,7 +65,8 @@ internal object CatalogQualifier {
         return chain.size >= 4 && second.name.lowercase() in SCHEMA_HEADS
     }
 
-    private fun chains(sql: String): List<List<Part>> {
+    /** Every `.`-joined identifier run of two parts or more; string literals and comments skipped. */
+    internal fun chains(sql: String): List<List<Part>> {
         val chains = mutableListOf<List<Part>>()
         var current = mutableListOf<Part>()
         var afterDot = false

@@ -26,8 +26,9 @@ fun interface StatementRunner {
 const val EDGE_ROW_ASK: Long = Int.MAX_VALUE.toLong()
 
 /**
- * One edge statement as the door's `RunRequest`: SQL, schema autodetected from its qualified names (`er.entity.x`,
- * `obj.query.x`, `db.dbo.x`), the caller's identity exactly as the verified bearer stated it (C-2), the
+ * One edge statement as the door's `RunRequest`: SQL, the layer its qualified names are written in stated as
+ * `source_schema` ([SourceSchema]: `er.entity.x` / `obj.query.x` → ER, `db.dbo.x` → DB, none → the door's
+ * autodetection), the caller's identity exactly as the verified bearer stated it (C-2), the
  * connection's world (C-3, C-9), and the edge's row ask ([EDGE_ROW_ASK]) unless the caller says otherwise.
  */
 internal fun edgeRunRequest(
@@ -40,6 +41,7 @@ internal fun edgeRunRequest(
         .newBuilder()
         .setSource(sql)
         .setSourceLanguage(Language.SQL)
+        .setSourceSchema(SourceSchema.of(sql))
         .setContext(
             PipelineContext
                 .newBuilder()

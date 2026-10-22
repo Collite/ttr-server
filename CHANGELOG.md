@@ -16,6 +16,13 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+- **query — the Flight SQL edge states the layer a statement names** (BI-0 memo S-8, found live on the first deploy).
+  The edge sent statements with `source_schema` unset, and the door's detector resolves bare table names only, so
+  `SELECT … FROM db.dbo.warehouse` (or `er.entity.warehouse`) was refused `detection_failed` ("warehouse exist in
+  multiple schemas (db, er)") on any model whose entities share names with its tables. Now `er.…` / `obj.…` names
+  state ER, `db.…` names state DB, a statement naming both states ER (refused as a mixed-layer tree, as before but
+  with that reason), and one with no qualified name stays unstated. The schema probe for a logical query's columns
+  goes the same way.
 - **`ttr-sqlalchemy` — a new PyPI wheel: a DB-API driver and the `tatrman://` SQLAlchemy dialect** (BI-2) over the
   Flight SQL edge, for Superset, pandas and anything that takes a SQLAlchemy URL. Python ≥ 3.10, SQLAlchemy 1.4 or
   2.x, pyarrow ≥ 16; no gRPC stubs (it speaks Flight SQL through `pyarrow.flight`). Tag lane
