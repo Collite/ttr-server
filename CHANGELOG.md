@@ -16,6 +16,9 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+- **`ghcr.io/collite/superset` — the operated Superset image** (BI-3, C-18): official Superset 6.1.0 + `psycopg2-binary`,
+  `authlib` and `ttr-sqlalchemy` 0.11.0, all pinned; no configuration baked in. Tag-only lane
+  `superset/v<superset version>-ttr<N>` (`superset/v6.1.0-ttr1` → `superset:6.1.0-ttr1`). `images/superset/README.md`.
 - **query — the Flight SQL edge states the layer a statement names** (BI-0 memo S-8, found live on the first deploy).
   The edge sent statements with `source_schema` unset, and the door's detector resolves bare table names only, so
   `SELECT … FROM db.dbo.warehouse` (or `er.entity.warehouse`) was refused `detection_failed` ("warehouse exist in

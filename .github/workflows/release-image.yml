@@ -127,6 +127,11 @@ jobs:
             [worker-polars]=workers/worker-polars
             [identity]=infra/identity
             [health]=infra/health
+            # A THIRD-PARTY image with our additions (BI C-18): official Superset + the `tatrman://` dialect. Its
+            # tag carries Superset's version, not ours (`superset/v6.1.0-ttr1` → `superset:6.1.0-ttr1`), so it is
+            # tag-only — deliberately absent from ALL, which would stamp it with a ttr module version. A Dockerfile
+            # with a local context: the dockerfile lane below.
+            [superset]=images/superset
           )
           ALL="veles query translate validate dispatch charon lex-matcher llm-gateway nlp nlp-stanza nlp-spacy golem-py morph-studio chrono geo money grounding-mcp resolver automation meta-mcp query-mcp lex-matcher-mcp nlp-mcp worker-postgres worker-mssql worker-polars identity health"
 
