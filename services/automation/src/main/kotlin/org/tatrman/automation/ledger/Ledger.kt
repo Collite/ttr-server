@@ -7,6 +7,7 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
 import org.jetbrains.exposed.v1.core.SortOrder
 import org.jetbrains.exposed.v1.core.and
+import org.jetbrains.exposed.v1.core.inList
 import org.jetbrains.exposed.v1.core.eq
 import org.jetbrains.exposed.v1.core.notInList
 import org.jetbrains.exposed.v1.jdbc.insert
@@ -208,6 +209,26 @@ class Ledger(
             }
         }
     }
+
+    /**
+     * Executor failure, conditional on an executing status. Repeated/concurrent reports are harmless and cannot
+     * replace CLOSED/ABANDONED/WAITING (e.g. another claimant already abandoned this run). The caller may retry
+     * a failed journal attempt. No exception text or bearer is stored by default.
+     */
+    fun failActiveRun(
+        runId: UUID,
+        error: JsonElement? = null,
+    ): Boolean =
+        transaction {
+            Runs.update({
+                (Runs.id eq runId) and
+                    (Runs.status inList listOf(RunStatus.OPEN.wire, RunStatus.RUNNING.wire, RunStatus.EVALUATED.wire))
+            }) {
+                it[status] = RunStatus.FAILED.wire
+                it[endedAt] = clock.instant().utc()
+                it[Runs.error] = error ?: JsonObject(mapOf("code" to JsonPrimitive("internal")))
+            } == 1
+        }
 
     /**
      * Appends one entry to a section of the run's protocol (D-110: INSERT-only) and answers its `seq`. The run

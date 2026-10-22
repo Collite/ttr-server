@@ -51,6 +51,33 @@ class LedgerSpec :
         fun statusOf(runId: UUID): String =
             transaction { Runs.select(Runs.status).where { Runs.id eq runId }.single()[Runs.status] }
 
+        "executor failures are conditional, idempotent and free the key without replacing terminal or waiting rows" {
+            val id = ledger.claimRun(open("failed-executor")).runId
+            val error = JsonObject(mapOf("code" to JsonPrimitive("door-refused")))
+            ledger.failActiveRun(id, error) shouldBe true
+            ledger.failActiveRun(id) shouldBe false
+            statusOf(id) shouldBe "failed"
+            transaction {
+                val row = Runs.selectAll().where { Runs.id eq id }.single()
+                row[Runs.error] shouldBe error
+                row[Runs.endedAt]!!.toInstant() shouldBe t0
+            }
+            ledger.claimRun(open("failed-executor")).runId shouldNotBe id
+            for (status in listOf(RunStatus.RUNNING, RunStatus.EVALUATED)) {
+                val active = ledger.claimRun(open(null)).runId
+                ledger.markStatus(active, status)
+                ledger.failActiveRun(active) shouldBe true
+                statusOf(active) shouldBe "failed"
+            }
+            for (status in listOf(RunStatus.CLOSED, RunStatus.ABANDONED, RunStatus.WAITING)) {
+                val protected = ledger.claimRun(open(null)).runId
+                ledger.markStatus(protected, status)
+                ledger.failActiveRun(protected) shouldBe false
+                statusOf(protected) shouldBe status.wire
+            }
+            ledger.failActiveRun(UUID.randomUUID()) shouldBe false
+        }
+
         "opening policy evidence is atomic with the claim and never duplicated on a retry" {
             val evidence = JsonObject(mapOf("approvals" to JsonPrimitive("development-off")))
             val input =

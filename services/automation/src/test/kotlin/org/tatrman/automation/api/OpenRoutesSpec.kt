@@ -74,7 +74,13 @@ class OpenRoutesSpec :
                             JwksBearerVerifier(HttpJwksKeySource(realm.jwksUrl), TestRealm.ISSUER, TestRealm.AUDIENCE),
                         )
                     install(Authentication) { AutomationBearerProvider.register(this, verifier) }
-                    routing { authenticate(AUTOMATION_AUTH) { openRoutes(open) { contexts += it } } }
+                    routing {
+                        authenticate(AUTOMATION_AUTH) {
+                            openRoutes { r, request, caller ->
+                                open.open(r, request, caller).also { result -> result.context?.let { contexts += it } }
+                            }
+                        }
+                    }
                 }
 
                 suspend fun post(
