@@ -1,0 +1,28 @@
+SELECT "item", "warehouse", "lines", "on_hand", "sold", "weekly_demand", "proposed_qty", 'propose' AS "route", CASE WHEN "on_hand" IS NULL THEN '' ELSE CAST("on_hand" AS VARCHAR) END || ' on hand covers less than ' || CAST(:cover_target AS VARCHAR) || ' weeks of ' || CASE WHEN "weekly_demand" IS NULL THEN '' ELSE CAST(CAST("weekly_demand" AS DECIMAL(19, 4)) AS VARCHAR) END || ' a week' AS "verdict_reason"
+FROM (SELECT "t8"."item", "t8"."warehouse", "t8"."lines", "t8"."on_hand", "t14"."sold", "t14"."weekly_demand", CEIL(:order_up_to * "t14"."weekly_demand" - "t8"."on_hand") AS "proposed_qty"
+        FROM (SELECT "t0"."item", "t0"."warehouse", "t0"."lines", "t7"."on_hand"
+                FROM (SELECT "item", "warehouse", COUNT("line_no") AS "lines"
+                        FROM "sales_line"
+                        WHERE "sold_date" >= :as_of_minus_demand_period_weeks AND "sold_date" <= :as_of
+                        GROUP BY "item", "warehouse") AS "t0"
+                    LEFT JOIN (SELECT "t2"."item", "t2"."warehouse", COALESCE("t6"."quantity_on_hand", 0) AS "on_hand"
+                        FROM (SELECT "item", "warehouse", COUNT("line_no") AS "lines"
+                                FROM "sales_line"
+                                WHERE "sold_date" >= :as_of_minus_demand_period_weeks AND "sold_date" <= :as_of
+                                GROUP BY "item", "warehouse") AS "t2"
+                            LEFT JOIN (SELECT "t3"."as_of_date", "t3"."item", "t3"."warehouse", "t3"."quantity_on_hand", "t3"."_ttrp_g_n6_0", "t3"."_ttrp_g_n6_1"
+                                FROM (SELECT "as_of_date", "item", "warehouse", "quantity_on_hand", CASE WHEN "item" IS NULL THEN 'n' ELSE 'v' || CAST("item" AS VARCHAR) END AS "_ttrp_g_n6_0", CASE WHEN "warehouse" IS NULL THEN 'n' ELSE 'v' || CAST("warehouse" AS VARCHAR) END AS "_ttrp_g_n6_1"
+                                        FROM "inventory") AS "t3"
+                                    INNER JOIN (SELECT CASE WHEN "item" IS NULL THEN 'n' ELSE 'v' || CAST("item" AS VARCHAR) END AS "_ttrp_g_n6_0", CASE WHEN "warehouse" IS NULL THEN 'n' ELSE 'v' || CAST("warehouse" AS VARCHAR) END AS "_ttrp_g_n6_1", MAX("as_of_date") AS "_ttrp_latest_n6"
+                                        FROM "inventory"
+                                        GROUP BY CASE WHEN "item" IS NULL THEN 'n' ELSE 'v' || CAST("item" AS VARCHAR) END, CASE WHEN "warehouse" IS NULL THEN 'n' ELSE 'v' || CAST("warehouse" AS VARCHAR) END) AS "t5" ON "t3"."_ttrp_g_n6_0" = "t5"."_ttrp_g_n6_0" AND "t3"."_ttrp_g_n6_1" = "t5"."_ttrp_g_n6_1" AND "t3"."as_of_date" = "t5"."_ttrp_latest_n6") AS "t6" ON "t2"."item" = "t6"."item" AND "t2"."warehouse" = "t6"."warehouse") AS "t7" ON "t0"."item" = "t7"."item" AND "t0"."warehouse" = "t7"."warehouse") AS "t8"
+            LEFT JOIN (SELECT "item", "warehouse", SUM("quantity") AS "sold", CAST(SUM("quantity") AS DECIMAL(19, 1)) / :demand_period AS "weekly_demand"
+                FROM (SELECT "t10"."item", "t10"."warehouse", "t10"."lines", "sales_line2"."order_number", "sales_line2"."line_no", "sales_line2"."quantity", "sales_line2"."unit_price", "sales_line2"."ext_sales_price", "sales_line2"."sold_date", "sales_line2"."customer", "sales_line2"."channel"
+                        FROM (SELECT "item", "warehouse", COUNT("line_no") AS "lines"
+                                FROM "sales_line"
+                                WHERE "sold_date" >= :as_of_minus_demand_period_weeks AND "sold_date" <= :as_of
+                                GROUP BY "item", "warehouse") AS "t10"
+                            INNER JOIN "sales_line" AS "sales_line2" ON "t10"."item" = "sales_line2"."item" AND "t10"."warehouse" = "sales_line2"."warehouse") AS "t11"
+                WHERE "t11"."sold_date" >= :as_of_minus_demand_period_weeks AND "t11"."sold_date" <= :as_of
+                GROUP BY "item", "warehouse") AS "t14" ON "t8"."item" = "t14"."item" AND "t8"."warehouse" = "t14"."warehouse") AS "t15"
+WHERE "t15"."on_hand" < :cover_target * "t15"."weekly_demand"

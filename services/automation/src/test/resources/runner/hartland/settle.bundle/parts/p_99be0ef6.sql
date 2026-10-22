@@ -1,0 +1,22 @@
+SELECT "line_id", "request_number", "item", "quantity", "way", "customer", "credit_note_id", "issued_date", "payment_id", "paid_date", "shipment_id", "shipped_date"
+FROM (
+  SELECT *
+  FROM (SELECT "t1"."line_id", "t1"."request_number", "t1"."item", "t1"."quantity", "t1"."way", "t1"."customer", "t7"."credit_note_id", "t7"."issued_date", "t7"."payment_id", "t7"."paid_date", "t7"."shipment_id", "t7"."shipped_date"
+          FROM (SELECT "line_id", "request_number", "item", "quantity", "way", "customer0" AS "customer"
+                  FROM (SELECT "return_request_line"."line_id", "return_request_line"."request_number", "return_request_line"."line_no", "return_request_line"."item", "return_request_line"."quantity", "return_request_line"."unit_price", "return_request_line"."reason", "return_request_line"."requested_resolution", "return_request_line"."requested_variant", "return_request_line"."state", "return_request_line"."way", "return_request_line"."customer", "return_request"."customer" AS "customer0", "return_request"."order_number", "return_request"."channel", "return_request"."requested_date", "return_request"."state" AS "state0"
+                          FROM "return_request_line"
+                              INNER JOIN "return_request" ON "return_request_line"."request_number" = "return_request"."request_number") AS "t"
+                  WHERE "t"."state" IN ('goods_received', 'settling')) AS "t1"
+              LEFT JOIN (SELECT "t6"."line_id", "t6"."credit_note_id", "t6"."issued_date", "t6"."payment_id", "t6"."paid_date", "replacement_shipment"."shipment_id", "replacement_shipment"."shipped_date"
+                  FROM (SELECT "t5"."line_id", "t5"."request_number", "t5"."item", "t5"."quantity", "t5"."way", "t5"."customer", "t5"."credit_note_id", "t5"."customer0", "t5"."issued_date", "t5"."amount", "t5"."status", "refund_payment"."payment_id", "refund_payment"."paid_date", "refund_payment"."amount" AS "amount0"
+                          FROM (SELECT "t4"."line_id", "t4"."request_number", "t4"."item", "t4"."quantity", "t4"."way", "t4"."customer", "credit_note"."credit_note_id", "credit_note"."customer" AS "customer0", "credit_note"."issued_date", "credit_note"."amount", "credit_note"."status"
+                                  FROM (SELECT "line_id", "request_number", "item", "quantity", "way", "customer0" AS "customer"
+                                          FROM (SELECT "return_request_line0"."line_id", "return_request_line0"."request_number", "return_request_line0"."line_no", "return_request_line0"."item", "return_request_line0"."quantity", "return_request_line0"."unit_price", "return_request_line0"."reason", "return_request_line0"."requested_resolution", "return_request_line0"."requested_variant", "return_request_line0"."state", "return_request_line0"."way", "return_request_line0"."customer", "return_request0"."customer" AS "customer0", "return_request0"."order_number", "return_request0"."channel", "return_request0"."requested_date", "return_request0"."state" AS "state0"
+                                                  FROM "return_request_line" AS "return_request_line0"
+                                                      INNER JOIN "return_request" AS "return_request0" ON "return_request_line0"."request_number" = "return_request0"."request_number") AS "t2"
+                                          WHERE "t2"."state" IN ('goods_received', 'settling')) AS "t4"
+                                      LEFT JOIN "credit_note" ON "t4"."line_id" = "credit_note"."line_id") AS "t5"
+                              LEFT JOIN "refund_payment" ON "t5"."credit_note_id" = "refund_payment"."credit_note_id") AS "t6"
+                      LEFT JOIN "replacement_shipment" ON "t6"."line_id" = "replacement_shipment"."line_id") AS "t7" ON "t1"."line_id" = "t7"."line_id") AS "t8"
+  WHERE "t8"."shipment_id" IS NOT NULL
+) AS "_ttrp_part"

@@ -1,0 +1,405 @@
+{
+  "schemaVersion": 3,
+  "ttrpVersion": 2,
+  "toolchain": "org.tatrman:ttrp:0.17.3-au.2",
+  "program": "reorder_proposals.ttrp",
+  "world": {
+    "qname": "hartland.worlds.demo",
+    "fingerprint": "sha256:e6ed5c4a3be8aa1fc00c13fb32f873e77c478b13ed24f6721a6a70b52904dbd9"
+  },
+  "islands": [
+    {
+      "name": "selling",
+      "engine": "erp",
+      "executor": "native",
+      "invocation": "sql-text",
+      "file": "islands/selling.pairs.sql",
+      "sha256": "sha256:3bd54cdd11aa79d1d384a66268e805727beb0977073b3d344d9bc7859be421da",
+      "connections": [
+        "TTR_CONN_ERP"
+      ],
+      "params": [
+        "as_of_minus_demand_period_weeks",
+        "as_of"
+      ],
+      "outputs": [
+        {
+          "port": "pairs",
+          "file": "islands/selling.pairs.sql",
+          "sha256": "sha256:3bd54cdd11aa79d1d384a66268e805727beb0977073b3d344d9bc7859be421da",
+          "columns": [
+            {
+              "name": "item",
+              "type": "int"
+            },
+            {
+              "name": "warehouse",
+              "type": "int"
+            },
+            {
+              "name": "lines",
+              "type": "int"
+            }
+          ],
+          "params": [
+            "as_of_minus_demand_period_weeks",
+            "as_of"
+          ],
+          "keyed": true,
+          "storage": "erp_db"
+        }
+      ],
+      "schema": "er"
+    },
+    {
+      "name": "on_hand",
+      "engine": "erp",
+      "executor": "native",
+      "invocation": "sql-text",
+      "file": "islands/on_hand.rows.sql",
+      "sha256": "sha256:befa54923ccb3c5f6b09c96f5910ff11979a91f6377b14c864e2ba2e8168a9a3",
+      "connections": [
+        "TTR_CONN_ERP"
+      ],
+      "params": [
+        "as_of_minus_demand_period_weeks",
+        "as_of"
+      ],
+      "outputs": [
+        {
+          "port": "rows",
+          "file": "islands/on_hand.rows.sql",
+          "sha256": "sha256:befa54923ccb3c5f6b09c96f5910ff11979a91f6377b14c864e2ba2e8168a9a3",
+          "columns": [
+            {
+              "name": "item",
+              "type": "int"
+            },
+            {
+              "name": "warehouse",
+              "type": "int"
+            },
+            {
+              "name": "on_hand",
+              "type": "int"
+            }
+          ],
+          "params": [
+            "as_of_minus_demand_period_weeks",
+            "as_of"
+          ],
+          "keyed": true,
+          "storage": "erp_db"
+        }
+      ],
+      "schema": "er"
+    },
+    {
+      "name": "weekly_demand",
+      "engine": "erp",
+      "executor": "native",
+      "invocation": "sql-text",
+      "file": "islands/weekly_demand.rows.sql",
+      "sha256": "sha256:4f4aaf037c128986eb0b1e51e1dafa3f9b11fe1999c0c674d9a249cd15225b6d",
+      "connections": [
+        "TTR_CONN_ERP"
+      ],
+      "params": [
+        "demand_period",
+        "as_of_minus_demand_period_weeks",
+        "as_of"
+      ],
+      "outputs": [
+        {
+          "port": "rows",
+          "file": "islands/weekly_demand.rows.sql",
+          "sha256": "sha256:4f4aaf037c128986eb0b1e51e1dafa3f9b11fe1999c0c674d9a249cd15225b6d",
+          "columns": [
+            {
+              "name": "item",
+              "type": "int"
+            },
+            {
+              "name": "warehouse",
+              "type": "int"
+            },
+            {
+              "name": "sold",
+              "type": "float"
+            },
+            {
+              "name": "weekly_demand",
+              "type": "float"
+            }
+          ],
+          "params": [
+            "demand_period",
+            "as_of_minus_demand_period_weeks",
+            "as_of"
+          ],
+          "keyed": true,
+          "storage": "erp_db"
+        }
+      ],
+      "schema": "er"
+    },
+    {
+      "name": "cover",
+      "engine": "erp",
+      "executor": "native",
+      "invocation": "sql-text",
+      "file": "islands/cover.propose.sql",
+      "sha256": "sha256:90b4e8a5c1a0114425b9895e47493df87fdcd6d64c1cc8c960bcaf0fc5147e22",
+      "connections": [
+        "TTR_CONN_ERP"
+      ],
+      "params": [
+        "cover_target",
+        "order_up_to",
+        "as_of_minus_demand_period_weeks",
+        "as_of",
+        "demand_period"
+      ],
+      "outputs": [
+        {
+          "port": "propose",
+          "file": "islands/cover.propose.sql",
+          "sha256": "sha256:90b4e8a5c1a0114425b9895e47493df87fdcd6d64c1cc8c960bcaf0fc5147e22",
+          "columns": [
+            {
+              "name": "item",
+              "type": "int"
+            },
+            {
+              "name": "warehouse",
+              "type": "int"
+            },
+            {
+              "name": "lines",
+              "type": "int"
+            },
+            {
+              "name": "on_hand",
+              "type": "int"
+            },
+            {
+              "name": "sold",
+              "type": "float"
+            },
+            {
+              "name": "weekly_demand",
+              "type": "float"
+            },
+            {
+              "name": "proposed_qty",
+              "type": "float"
+            },
+            {
+              "name": "route",
+              "type": "text"
+            },
+            {
+              "name": "verdict_reason",
+              "type": "text"
+            }
+          ],
+          "params": [
+            "cover_target",
+            "order_up_to",
+            "as_of_minus_demand_period_weeks",
+            "as_of",
+            "demand_period"
+          ],
+          "keyed": true,
+          "storage": "erp_db"
+        }
+      ],
+      "schema": "er"
+    }
+  ],
+  "transfers": [],
+  "waves": [
+    [
+      "selling"
+    ],
+    [
+      "weekly_demand",
+      "on_hand"
+    ],
+    [
+      "cover"
+    ]
+  ],
+  "connections": [
+    "TTR_CONN_ERP"
+  ],
+  "displays": [],
+  "rejectSites": [],
+  "recipe": {
+    "name": "reorder_proposals",
+    "key": [
+      "sales_line.item",
+      "sales_line.warehouse"
+    ],
+    "asOf": "now",
+    "document": "reorder-proposals.md",
+    "parameters": [
+      {
+        "name": "cover_target",
+        "type": "int",
+        "value": "3"
+      },
+      {
+        "name": "order_up_to",
+        "type": "int",
+        "value": "6"
+      },
+      {
+        "name": "demand_period",
+        "type": "int",
+        "value": "8"
+      }
+    ],
+    "bindings": [
+      {
+        "name": "as_of",
+        "type": "datetime",
+        "source": "run"
+      },
+      {
+        "name": "as_of_minus_demand_period_weeks",
+        "type": "datetime",
+        "source": "derived",
+        "derive": {
+          "base": "as_of",
+          "op": "minus",
+          "amount": "demand_period",
+          "unit": "weeks"
+        }
+      }
+    ],
+    "roles": {
+      "candidates": "selling",
+      "contexts": [
+        {
+          "name": "on_hand",
+          "class": "per-candidate",
+          "kind": "canonical"
+        },
+        {
+          "name": "weekly_demand",
+          "class": "per-candidate",
+          "kind": "canonical"
+        }
+      ],
+      "decision": "cover",
+      "routes": [
+        {
+          "name": "propose",
+          "because": "{on_hand} on hand covers less than {cover_target} weeks of {weekly_demand} a week",
+          "detail": [],
+          "turnFed": false
+        }
+      ],
+      "elseRoute": "none"
+    },
+    "wiring": [
+      {
+        "routes": [
+          "cover.propose"
+        ],
+        "action": "propose",
+        "columns": {
+          "item": "item",
+          "warehouse": "warehouse",
+          "on_hand": "on_hand",
+          "weekly_demand": "weekly_demand",
+          "proposed_qty": "proposed_qty"
+        }
+      },
+      {
+        "routes": [
+          "cover.propose"
+        ],
+        "action": "ask",
+        "columns": {
+          "who": "role.buyer",
+          "about": "warehouse",
+          "action": "start { process: \"purchasing\" }",
+          "group_by": "warehouse",
+          "due": "2 working_days"
+        }
+      }
+    ],
+    "kinds": [
+      "sql"
+    ],
+    "mode": "per-candidate",
+    "windows": [],
+    "verdictSchema": {
+      "entity": "reorder_proposals_verdict",
+      "columns": [
+        {
+          "name": "run",
+          "type": "text"
+        },
+        {
+          "name": "as_of",
+          "type": "timestamp"
+        },
+        {
+          "name": "item",
+          "type": "int"
+        },
+        {
+          "name": "warehouse",
+          "type": "int"
+        },
+        {
+          "name": "route",
+          "type": "text"
+        },
+        {
+          "name": "verdict_reason",
+          "type": "text"
+        },
+        {
+          "name": "parameters_fp",
+          "type": "text"
+        },
+        {
+          "name": "run_as",
+          "type": "text"
+        },
+        {
+          "name": "written_at",
+          "type": "timestamp"
+        }
+      ],
+      "detail": "reorder_proposals_verdict_detail",
+      "current": "reorder_proposals_verdict_current"
+    },
+    "objectsRead": [
+      "er.entity.inventory",
+      "er.entity.sales_line"
+    ],
+    "fingerprints": {
+      "text": "sha256:3a255c06f5c06c3214d1ca24a4e2d3d9ffe154b1a9412b7588c4950d4d18600b",
+      "values": "sha256:ad397986c43308fe3aad5ec1b8dae7e87d89f7a1a98b28cc2030c71f5405ec6b",
+      "labels": "sha256:8a4532d72448aaa6eb42af030ddf9ac4c2c193bed28fab2e1dbf38fda59daa6b"
+    },
+    "protocol": "always",
+    "tests": [
+      "tests/propose.yaml"
+    ]
+  },
+  "files": {
+    "catalog/reorder_proposals.ttrm": "sha256:a9a7c3d91d1e080604a126fd22c61ff607a93c9e617e0b5b85005c17eb35434f",
+    "catalog/reorder_proposals_verdict.ttrm": "sha256:c67933e68fc626c91ae7c58c30923a406620c3f26dab50a8cdb7945792f55fb2",
+    "islands/cover.propose.sql": "sha256:90b4e8a5c1a0114425b9895e47493df87fdcd6d64c1cc8c960bcaf0fc5147e22",
+    "islands/on_hand.rows.sql": "sha256:befa54923ccb3c5f6b09c96f5910ff11979a91f6377b14c864e2ba2e8168a9a3",
+    "islands/selling.pairs.sql": "sha256:3bd54cdd11aa79d1d384a66268e805727beb0977073b3d344d9bc7859be421da",
+    "islands/weekly_demand.rows.sql": "sha256:4f4aaf037c128986eb0b1e51e1dafa3f9b11fe1999c0c674d9a249cd15225b6d",
+    "tests/propose.yaml": "sha256:387b4f869bd4eca8b2cdbf6eeb7dba72bd12429b543c1718b26b46eec6a4da42"
+  }
+}

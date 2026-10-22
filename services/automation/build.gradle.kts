@@ -12,6 +12,7 @@ plugins {
 
 application {
     mainClass.set("org.tatrman.automation.ApplicationKt")
+    applicationDefaultJvmArgs = listOf("--add-opens=java.base/java.nio=ALL-UNNAMED")
 }
 
 kotlin {
@@ -20,12 +21,14 @@ kotlin {
 
 tasks.test {
     useJUnitPlatform()
+    jvmArgs("--add-opens=java.base/java.nio=ALL-UNNAMED")
     // ErrorEnvelopeSpec sweeps the main sources for raising sites, and PgmqVendorSpec reads the vendored
     // migration: inputs the test task does not see on its own, so a change to them must rerun it.
     inputs.dir("src/main/kotlin")
     inputs.dir("src/main/resources")
     // The bundle fixture is copied into a throwaway git repo by the specs (S0.2).
     inputs.dir("src/test/resources/bundles")
+    inputs.dir("src/test/resources/runner")
 }
 
 val osArch = System.getProperty("os.arch").lowercase()
@@ -59,6 +62,7 @@ jib {
     container {
         mainClass = "org.tatrman.automation.ApplicationKt"
         ports = listOf("7131")
+        jvmFlags = listOf("--add-opens=java.base/java.nio=ALL-UNNAMED")
     }
     dockerClient {
         executable = "docker"
@@ -112,6 +116,10 @@ dependencies {
     implementation(libs.ktor.server.content.negotiation)
     implementation(libs.ktor.server.status.pages)
     implementation(libs.ktor.serialization.kotlinx.json)
+
+    implementation(libs.arrow.vector)
+    implementation(libs.arrow.memory.netty)
+    implementation(libs.duckdb.jdbc)
 
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.typesafe.config)

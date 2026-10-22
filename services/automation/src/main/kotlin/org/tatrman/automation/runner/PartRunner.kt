@@ -1,0 +1,241 @@
+// SPDX-License-Identifier: Apache-2.0
+package org.tatrman.automation.runner
+
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.sync.withPermit
+import org.tatrman.automation.bundle.LoadedRecipe
+import org.tatrman.automation.bundle.ManifestOutput
+import org.tatrman.automation.identity.RunIdentity
+import org.tatrman.automation.staging.StagedOutput
+import org.tatrman.automation.staging.Staging
+import java.time.Duration
+import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
+
+/** The immutable execution inputs pinned at open. The API/ledger open policy owns their validation. */
+data class RunContext(
+    val id: UUID,
+    val recipe: LoadedRecipe,
+    val world: String,
+    val modelFp: String,
+    val identity: RunIdentity,
+    val bindings: Map<String, BoundValue>,
+    /** null = all candidates; an empty list = no candidates. Composite keys are maps of column names. */
+    val keys: List<Map<String, Any?>>? = null,
+    val readCeiling: Int = 100_000,
+    val timeout: Duration = Duration.ofMinutes(30),
+) {
+    init {
+        require(readCeiling > 0 && !timeout.isNegative && !timeout.isZero)
+        val names =
+            recipe.recipe.key
+                .map { it.substringAfterLast('.') }
+                .toSet()
+        require(
+            keys == null ||
+                names.isNotEmpty() &&
+                keys.all {
+                    it.keys == names &&
+                        it.values.none { v ->
+                            v == null
+                        }
+                },
+        ) {
+            "run keys must carry every recipe key column"
+        }
+    }
+}
+
+/**
+ * Run-local executor (D-135/D-136). Distinct parts and outputs are promises: overlapping callers share one read,
+ * including its failure. Waves finish in order, with at most four concurrent door reads. DuckDB sees only these
+ * governed parts; an output's combine and its compatibility file are never sent to Query.
+ * The owning run closes this executor after all work has finished (close/retention policy is S1.3).
+ */
+class PartRunner(
+    val context: RunContext,
+    private val door: Door,
+    private val staging: Staging,
+    private val scope: CoroutineScope,
+) : AutoCloseable {
+    private val islands =
+        context.recipe.manifest.islands
+            .associateBy { it.name }
+    private val parts =
+        context.recipe.recipe.parts
+            .associateBy { it.name }
+    private val lock = Mutex()
+    private val slots = Semaphore(4)
+    private val partReads = mutableMapOf<String, Deferred<Unit>>()
+    private val outputs = mutableMapOf<String, Deferred<StagedOutput>>()
+    private val combine = lazy { DuckDbCombiner() }
+    private val observedWarnings = ConcurrentHashMap<String, Set<String>>()
+    val warningsByRead: Map<String, Set<String>> get() = observedWarnings.toMap()
+    val warnings: Set<String> get() = observedWarnings.values.flatten().toSet()
+
+    init {
+        require(islands.size == context.recipe.manifest.islands.size) { "duplicate island" }
+        require(parts.size == context.recipe.recipe.parts.size) { "duplicate storage part" }
+        val scheduled =
+            context.recipe.manifest.waves
+                .flatten()
+        require(scheduled.toSet() == islands.keys && scheduled.size == islands.size) {
+            "waves must name each island exactly once"
+        }
+    }
+
+    /** Runs all preceding waves, then the named island. Missing inputs never silently become empty tables. */
+    suspend fun island(name: String): List<StagedOutput> {
+        require(name in islands) { "unknown island $name" }
+        for (wave in context.recipe.manifest.waves) {
+            if (name in wave) return outputIsland(name)
+            kotlinx.coroutines.coroutineScope { wave.map { async { outputIsland(it) } }.awaitAll() }
+        }
+        error("island is not scheduled")
+    }
+
+    suspend fun all(): List<StagedOutput> {
+        val result = mutableListOf<StagedOutput>()
+        for (wave in context.recipe.manifest.waves) {
+            result += kotlinx.coroutines.coroutineScope { wave.map { async { outputIsland(it) } }.awaitAll() }.flatten()
+        }
+        return result
+    }
+
+    private suspend fun outputIsland(name: String): List<StagedOutput> =
+        kotlinx.coroutines.coroutineScope {
+            islands
+                .getValue(name)
+                .outputs
+                .map { output -> async { output(name, output) } }
+                .awaitAll()
+        }
+
+    private suspend fun output(
+        island: String,
+        output: ManifestOutput,
+    ): StagedOutput {
+        val key = "$island.${output.port}"
+        val work =
+            lock.withLock {
+                outputs.getOrPut(key) {
+                    scope.async {
+                        val table =
+                            if (output.combine != null) {
+                                val plan = output.combine
+                                require(
+                                    plan.engine == "duckdb" && plan.dialect == "duckdb",
+                                ) { "unsupported combine engine" }
+                                kotlinx.coroutines.coroutineScope { plan.parts.map { async { part(it) } }.awaitAll() }
+                                slots.withPermit {
+                                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                                        combine.value.query(statement(plan.file), bindings(plan.params))
+                                    }
+                                }
+                            } else {
+                                require(
+                                    islands.getValue(island).schema == "er",
+                                ) { "direct outputs must be SQL over E-R" }
+                                read(
+                                    island,
+                                    requireNotNull(output.storage) { "direct output has no storage" },
+                                    output.file,
+                                    output.params,
+                                    output.columns,
+                                ).table
+                            }
+                        // AU-C-3: filter EVERY keyed output, including combines and detail ports, before staging.
+                        val scoped = if (output.keyed) filter(table) else table
+                        staging.put(context.id, island, output.port, scoped)
+                    }
+                }
+            }
+        return work.await()
+    }
+
+    private suspend fun part(name: String) {
+        val work =
+            lock.withLock {
+                partReads.getOrPut(name) {
+                    scope.async {
+                        val part = parts.getValue(name)
+                        require(part.schema == "er") { "parts must be SQL over E-R" }
+                        val table = read("parts/$name", part.storage, part.file, part.params, part.columns).table
+                        // Do not filter storage parts blindly: even keyed parts can feed set-level calculations.
+                        kotlinx.coroutines.withContext(
+                            kotlinx.coroutines.Dispatchers.IO,
+                        ) { combine.value.load(name, table) }
+                    }
+                }
+            }
+        work.await()
+    }
+
+    private suspend fun read(
+        island: String,
+        storage: String,
+        file: String,
+        params: List<String>,
+        columns: List<org.tatrman.automation.bundle.ManifestColumn>,
+    ): ReadResult =
+        slots.withPermit {
+            door
+                .read(
+                    DoorRead(
+                        context.id,
+                        island,
+                        context.world,
+                        storage,
+                        statement(file),
+                        bindings(params),
+                        context.identity,
+                        context.modelFp,
+                        context.readCeiling,
+                        columns,
+                        context.timeout,
+                    ),
+                ).also {
+                    observedWarnings[island] = it.warnings.toSet()
+                }
+        }
+
+    private fun bindings(names: List<String>): Map<String, BoundValue> =
+        names.associateWith {
+            requireNotNull(context.bindings[it]) { "unbound declared parameter $it" }
+        }
+
+    private fun statement(file: String): String =
+        requireNotNull(context.recipe.statements[file]) {
+            "unloaded statement $file"
+        }
+
+    private fun filter(table: Table): Table {
+        val keys = context.keys ?: return table
+        val names =
+            context.recipe.recipe.key
+                .map { it.substringAfterLast('.') }
+        val indices =
+            names.map { name ->
+                table.columns.indexOfFirst { it.name == name }.also {
+                    require(
+                        it >= 0,
+                    ) { "keyed output is missing $name" }
+                }
+            }
+
+        fun canonical(value: Any?): Any? =
+            if (value is Number) java.math.BigDecimal(value.toString()).stripTrailingZeros() else value
+        val allowed = keys.map { key -> names.map { canonical(key.getValue(it)) } }.toSet()
+        return table.copy(rows = table.rows.filter { row -> indices.map { canonical(row[it]) } in allowed })
+    }
+
+    override fun close() {
+        if (combine.isInitialized()) combine.value.close()
+    }
+}

@@ -1,0 +1,16 @@
+SELECT "order_number0" AS "order_number", "line_no0" AS "line_no", "item", "unit_price", "price" AS "list_price"
+FROM (SELECT "t1"."order_number", "t1"."line_no", "t1"."item", "t1"."unit_price", "t1"."customer", "t1"."channel", "t1"."placed_date", "t5"."order_number" AS "order_number0", "t5"."line_no" AS "line_no0", "t5"."price"
+        FROM (SELECT "sales_line"."order_number", "sales_line"."line_no", "sales_line"."item", "sales_line"."unit_price", "t0"."customer", "t0"."channel", "t0"."placed_date"
+                FROM (SELECT "order_number", "customer", "channel", "fulfilling_warehouse", "value", "placed_date", "state"
+                        FROM "order"
+                        WHERE "state" IN ('held', 'placed')) AS "t0"
+                    INNER JOIN "sales_line" ON "t0"."order_number" = "sales_line"."order_number") AS "t1"
+            INNER JOIN (SELECT "t4"."order_number", "t4"."line_no", COALESCE("customer_price"."price", "price_list"."price") AS "price"
+                FROM (SELECT "sales_line0"."order_number", "sales_line0"."line_no", "sales_line0"."item", "sales_line0"."unit_price", "t3"."customer", "t3"."channel", "t3"."placed_date"
+                        FROM (SELECT "order_number", "customer", "channel", "fulfilling_warehouse", "value", "placed_date", "state"
+                                FROM "order"
+                                WHERE "state" IN ('held', 'placed')) AS "t3"
+                            INNER JOIN "sales_line" AS "sales_line0" ON "t3"."order_number" = "sales_line0"."order_number") AS "t4"
+                    LEFT JOIN "customer_price" ON "t4"."item" = "customer_price"."item" AND "t4"."customer" = "customer_price"."customer" AND "t4"."placed_date" >= "customer_price"."valid_from" AND ("customer_price"."valid_to" IS NULL OR "t4"."placed_date" <= "customer_price"."valid_to")
+                    LEFT JOIN "price_list" ON "t4"."item" = "price_list"."item" AND "t4"."channel" = "price_list"."channel" AND "t4"."placed_date" >= "price_list"."valid_from" AND ("price_list"."valid_to" IS NULL OR "t4"."placed_date" <= "price_list"."valid_to")) AS "t5" ON "t1"."order_number" = "t5"."order_number" AND "t1"."line_no" = "t5"."line_no") AS "t6"
+WHERE "t6"."price" IS NULL OR ABS("t6"."unit_price" - "t6"."price") > :tolerance

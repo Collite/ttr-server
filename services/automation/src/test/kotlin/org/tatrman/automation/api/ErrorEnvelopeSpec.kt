@@ -60,7 +60,7 @@ class ErrorEnvelopeSpec :
             val wrong =
                 ErrorCode.entries.mapNotNull { code ->
                     val sites = raised[code.name].orEmpty()
-                    val expected = if (code.stage in DELIVERED) 1 else 0
+                    val expected = if (code.stage in DELIVERED || code in LANDED_CODES) 1 else 0
                     if (sites.size ==
                         expected
                     ) {
@@ -146,6 +146,7 @@ class ErrorEnvelopeSpec :
     )
 
     companion object {
+        val LANDED_CODES = setOf(ErrorCode.DOOR_REFUSED) // S1.1 executor landed before the open API.
         val DELIVERED = setOf("S0.1", "S0.2", "S0.3")
         private val RAISE = Regex("""AutomationException\(\s*ErrorCode\.([A-Z_]+)""")
     }

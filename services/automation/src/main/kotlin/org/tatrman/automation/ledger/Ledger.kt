@@ -250,7 +250,37 @@ class Ledger(
         }
 
     /** Records a staged island output (`run_outputs`). */
-    fun putOutput(output: RunOutput): Unit = TODO("S1.1 — staging writes the run_outputs row")
+    fun putOutput(output: RunOutput) {
+        transaction {
+            lockRun(output.run)
+            val existing =
+                RunOutputs
+                    .selectAll()
+                    .where {
+                        (RunOutputs.run eq output.run) and (RunOutputs.island eq output.island) and
+                            (RunOutputs.port eq output.port)
+                    }.firstOrNull()
+            if (existing != null) {
+                check(
+                    existing[RunOutputs.sha256] == output.sha256 &&
+                        existing[RunOutputs.rows] == output.rows &&
+                        existing[RunOutputs.bytes] == output.bytes &&
+                        existing[RunOutputs.path] == output.path &&
+                        existing[RunOutputs.releasedAt] == null,
+                ) { "a staged output cannot change within one pinned run" }
+            } else {
+                RunOutputs.insert {
+                    it[run] = output.run
+                    it[island] = output.island
+                    it[port] = output.port
+                    it[rows] = output.rows
+                    it[bytes] = output.bytes
+                    it[path] = output.path
+                    it[sha256] = output.sha256
+                }
+            }
+        }
+    }
 
     /** Opens a task; one open per (recipe, key, action) (D-98). */
     fun openTask(task: TaskOpen): UUID = TODO("S3.3 — ask/start/deliver tasks")

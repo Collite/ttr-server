@@ -1,0 +1,17 @@
+SELECT "t7"."line_id", COALESCE("t7"."returned_value", 0) / NULLIF("t9"."bought_value", 0) AS "share"
+FROM (SELECT "t1"."line_id", "t1"."request_number", "t1"."item", "t1"."quantity", "t1"."unit_price", "t1"."line_value", "t1"."reason", "t1"."requested_resolution", "t1"."requested_variant", "t1"."customer", "t1"."order_number", "t1"."requested_date", "t6"."returned_value"
+        FROM (SELECT "line_id", "request_number", "item", "quantity", "unit_price", "quantity" * "unit_price" AS "line_value", "reason", "requested_resolution", "requested_variant", "customer0" AS "customer", "order_number", "requested_date"
+                FROM (SELECT "return_request_line"."line_id", "return_request_line"."request_number", "return_request_line"."line_no", "return_request_line"."item", "return_request_line"."quantity", "return_request_line"."unit_price", "return_request_line"."reason", "return_request_line"."requested_resolution", "return_request_line"."requested_variant", "return_request_line"."state", "return_request_line"."way", "return_request_line"."customer", "return_request"."customer" AS "customer0", "return_request"."order_number", "return_request"."channel", "return_request"."requested_date", "return_request"."state" AS "state0"
+                        FROM "return_request_line"
+                            INNER JOIN "return_request" ON "return_request_line"."request_number" = "return_request"."request_number") AS "t"
+                WHERE "t"."state" = 'received') AS "t1"
+            LEFT JOIN (SELECT "customer", SUM("quantity" * "unit_price") AS "returned_value"
+                FROM (SELECT "return_request_line0"."line_id", "return_request_line0"."request_number", "return_request_line0"."line_no", "return_request_line0"."item", "return_request_line0"."quantity", "return_request_line0"."unit_price", "return_request_line0"."reason", "return_request_line0"."requested_resolution", "return_request_line0"."requested_variant", "return_request_line0"."state", "return_request_line0"."way", "return_request_line0"."customer", "return_request0"."customer" AS "customer0", "return_request0"."order_number", "return_request0"."channel", "return_request0"."requested_date", "return_request0"."state" AS "state0"
+                        FROM "return_request_line" AS "return_request_line0"
+                            INNER JOIN "return_request" AS "return_request0" ON "return_request_line0"."request_number" = "return_request0"."request_number") AS "t2"
+                WHERE "t2"."requested_date" >= :as_of_minus_365_days AND "t2"."state" <> 'rejected'
+                GROUP BY "customer") AS "t6" ON "t1"."customer" = "t6"."customer") AS "t7"
+    LEFT JOIN (SELECT "customer", SUM("ext_sales_price") AS "bought_value"
+        FROM "sales_line"
+        WHERE "sold_date" >= :as_of_minus_365_days
+        GROUP BY "customer") AS "t9" ON "t7"."customer" = "t9"."customer"

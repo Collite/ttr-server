@@ -51,6 +51,22 @@ class LedgerSpec :
         fun statusOf(runId: UUID): String =
             transaction { Runs.select(Runs.status).where { Runs.id eq runId }.single()[Runs.status] }
 
+        "staged outputs journal their exact Arrow metadata once and refuse changed content" {
+            val run = ledger.claimRun(open(null)).runId
+            val output = RunOutput(run, "shortfall", "rows", 2, 1024, "runs/$run/shortfall.rows.arrow", "sha256:abc")
+            ledger.putOutput(output)
+            ledger.putOutput(output)
+            transaction {
+                val rows = RunOutputs.selectAll().where { RunOutputs.run eq run }.toList()
+                rows.size shouldBe 1
+                rows.single()[RunOutputs.rows] shouldBe 2L
+                rows.single()[RunOutputs.sha256] shouldBe "sha256:abc"
+                rows.single()[RunOutputs.releasedAt] shouldBe null
+            }
+            shouldThrow<IllegalStateException> { ledger.putOutput(output.copy(sha256 = "sha256:changed")) }
+            shouldThrow<NoSuchRun> { ledger.putOutput(output.copy(run = UUID.randomUUID())) }
+        }
+
         "without a key every claim opens a new run" {
             val a = ledger.claimRun(open(null))
             val b = ledger.claimRun(open(null))
