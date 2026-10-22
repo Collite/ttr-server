@@ -51,6 +51,45 @@ class LedgerSpec :
         fun statusOf(runId: UUID): String =
             transaction { Runs.select(Runs.status).where { Runs.id eq runId }.single()[Runs.status] }
 
+        "opening policy evidence is atomic with the claim and never duplicated on a retry" {
+            val evidence = JsonObject(mapOf("approvals" to JsonPrimitive("development-off")))
+            val input =
+                RunOpen(
+                    recipe = "r",
+                    program = "p",
+                    deployment = "d",
+                    bundle = "pinned-bundle",
+                    fpText = "text",
+                    fpValues = "values",
+                    fpProgram = "program",
+                    fpDeployment = "deployment",
+                    modelFp = "model",
+                    asOf = t0,
+                    author = "author",
+                    caller = "caller",
+                    runAs = "decider",
+                    dryRun = true,
+                    budgetSync = Duration.ofSeconds(5),
+                    budgetBatch = budget,
+                    idempotencyKey = "recorded-open",
+                    openingProtocol = evidence,
+                )
+            val id = ledger.claimRun(input).runId
+            ledger.claimRun(input) shouldBe Claim.Running(id, RunStatus.OPEN)
+            val record = ledger.findRun(id)!!
+            record.open shouldBe input.copy(openingProtocol = null)
+            record.status shouldBe RunStatus.OPEN
+            record.protocolRef shouldBe null
+            ledger.findRun(UUID.randomUUID()) shouldBe null
+            transaction {
+                val entries = RunProtocol.selectAll().where { RunProtocol.run eq id }.toList()
+                entries.size shouldBe 1
+                entries.single()[RunProtocol.payload] shouldBe evidence
+                entries.single()[RunProtocol.seq] shouldBe 1
+            }
+            ledger.appendProtocol(id, ProtocolSection.AUTOMATION, JsonObject(emptyMap())) shouldBe 2
+        }
+
         "staged outputs journal their exact Arrow metadata once and refuse changed content" {
             val run = ledger.claimRun(open(null)).runId
             val output = RunOutput(run, "shortfall", "rows", 2, 1024, "runs/$run/shortfall.rows.arrow", "sha256:abc")

@@ -119,4 +119,12 @@ class AutomationConfigSpec :
         "clock.skew is read when set (test only)" {
             load(required + "\nautomation.clock.skew = 90s").clockSkew shouldBe Duration.ofSeconds(90)
         }
+
+        "approvals are required by default; off needs an explicit development gate and typos refuse" {
+            load(required).approvalsOff shouldBe false
+            shouldThrow<IllegalArgumentException> { load(required + "\nautomation.approvals = off") }
+                .message shouldContain "development"
+            load(required + "\nautomation.approvals = off\nautomation.development = true").approvalsOff shouldBe true
+            shouldThrow<IllegalArgumentException> { load(required + "\nautomation.approvals = of") }
+        }
     })

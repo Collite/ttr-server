@@ -80,6 +80,7 @@ class PartRunner(
     val warnings: Set<String> get() = observedWarnings.values.flatten().toSet()
 
     init {
+        require(context.bindings.keys.none { it.startsWith("_au_port_") }) { "reserved port binding prefix in recipe" }
         require(islands.size == context.recipe.manifest.islands.size) { "duplicate island" }
         require(parts.size == context.recipe.recipe.parts.size) { "duplicate storage part" }
         val scheduled =
@@ -135,7 +136,8 @@ class PartRunner(
                                 kotlinx.coroutines.coroutineScope { plan.parts.map { async { part(it) } }.awaitAll() }
                                 slots.withPermit {
                                     kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                                        combine.value.query(statement(plan.file), bindings(plan.params))
+                                        val scoped = candidateStatement(island, output, statement(plan.file))
+                                        combine.value.query(scoped.sql, bindings(plan.params) + scoped.bindings)
                                     }
                                 }
                             } else {
@@ -148,6 +150,7 @@ class PartRunner(
                                     output.file,
                                     output.params,
                                     output.columns,
+                                    candidateStatement(island, output, statement(output.file)),
                                 ).table
                             }
                         // AU-C-3: filter EVERY keyed output, including combines and detail ports, before staging.
@@ -183,6 +186,7 @@ class PartRunner(
         file: String,
         params: List<String>,
         columns: List<org.tatrman.automation.bundle.ManifestColumn>,
+        scoped: CandidateScope.Statement = CandidateScope.Statement(statement(file), emptyMap()),
     ): ReadResult =
         slots.withPermit {
             door
@@ -192,8 +196,8 @@ class PartRunner(
                         island,
                         context.world,
                         storage,
-                        statement(file),
-                        bindings(params),
+                        scoped.sql,
+                        bindings(params) + scoped.bindings,
                         context.identity,
                         context.modelFp,
                         context.readCeiling,
@@ -203,6 +207,20 @@ class PartRunner(
                 ).also {
                     observedWarnings.merge(island, it.warnings.toSet()) { earlier, later -> earlier + later }
                 }
+        }
+
+    private fun candidateStatement(
+        island: String,
+        output: ManifestOutput,
+        sql: String,
+    ): CandidateScope.Statement =
+        if (island ==
+            context.recipe.recipe.roles
+                ?.candidates
+        ) {
+            CandidateScope.wrap(sql, output.columns, context.keys)
+        } else {
+            CandidateScope.Statement(sql, emptyMap())
         }
 
     private fun bindings(names: List<String>): Map<String, BoundValue> =

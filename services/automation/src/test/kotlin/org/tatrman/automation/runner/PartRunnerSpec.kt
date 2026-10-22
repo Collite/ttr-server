@@ -56,6 +56,63 @@ class PartRunnerSpec :
                 }
             }
         }
+        "candidate wrappers bind scalar keys for direct and local combine outputs; storage parts stay complete" {
+            coroutineScope {
+                val outputs =
+                    listOf(
+                        ManifestOutput("direct", "direct.sql", columns = COLUMNS, keyed = true, storage = "erp_db"),
+                        ManifestOutput(
+                            "combined",
+                            "compat.sql",
+                            columns = COLUMNS,
+                            keyed = true,
+                            combine = ManifestCombine("combine.sql", parts = listOf("source")),
+                        ),
+                    )
+                val recipe =
+                    LoadedRecipe(
+                        "r",
+                        RecipeManifest(
+                            3,
+                            islands = listOf(ManifestIsland("candidate", outputs = outputs)),
+                            waves = listOf(listOf("candidate")),
+                        ),
+                        ManifestRecipe(
+                            "r",
+                            key = listOf("order.id"),
+                            roles = ManifestRoles(candidates = "candidate"),
+                            parts = listOf(ManifestPart("source", "erp_db", file = "part.sql", columns = COLUMNS)),
+                        ),
+                        mapOf(
+                            "direct.sql" to "SELECT * FROM (VALUES (12, 'x'), (13, 'y')) AS x(id, label);",
+                            "part.sql" to "SOURCE",
+                            "combine.sql" to "SELECT * FROM source",
+                        ),
+                    )
+                val direct = CompletableDeferred<DoorRead>()
+                val door =
+                    Door { read ->
+                        if (read.island == "parts/source") {
+                            read.sql shouldBe "SOURCE"
+                            read.bindings shouldBe emptyMap()
+                            ReadResult(Table(COLUMNS, listOf(listOf(12L, "x"), listOf(13L, "y"))))
+                        } else {
+                            direct.complete(read)
+                            DuckDbCombiner().use { db -> ReadResult(db.query(read.sql, read.bindings)) }
+                        }
+                    }
+                PartRunner(
+                    runnerContext(recipe).copy(keys = listOf(mapOf("id" to 12L))),
+                    door,
+                    Staging(LocalStagingStore(Files.createTempDirectory("au-scoped"))) {},
+                    this,
+                ).use { runner ->
+                    runner.all().map { it.table.rows } shouldBe
+                        listOf(listOf(listOf(12L, "x")), listOf(listOf(12L, "x")))
+                    direct.await().bindings shouldBe mapOf("_au_port_0_0" to BoundValue("int", 12L))
+                }
+            }
+        }
         "a later output without warnings cannot erase an earlier restricted read notice" {
             coroutineScope {
                 val base = splitRecipe()

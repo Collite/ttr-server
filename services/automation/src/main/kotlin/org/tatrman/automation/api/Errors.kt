@@ -14,7 +14,7 @@ import org.slf4j.LoggerFactory
 /**
  * The error codes of the run API (AU contracts §1, plus the legacy A-AG-10 three, §6's `connector-face`, §7's
  * 401 and the envelope's own `internal`). [stage] is the plan stage that first raises the code:
- * `ErrorEnvelopeSpec` holds every code of a delivered stage to exactly one raising site and every other code
+ * `ErrorEnvelopeSpec` holds every code of a delivered stage to at least one raising site and every other code
  * to none, so the catalogue and the code cannot drift apart as the phases land.
  */
 enum class ErrorCode(

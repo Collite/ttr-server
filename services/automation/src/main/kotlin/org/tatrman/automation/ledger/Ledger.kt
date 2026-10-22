@@ -61,6 +61,16 @@ data class RunOpen(
     val replayOf: UUID? = null,
     val budgetSync: Duration? = null,
     val budgetBatch: Duration? = null,
+    /** Written in the same transaction as a new claim; never appended again for a replay/live handle. */
+    val openingProtocol: JsonElement? = null,
+)
+
+/** A persisted run handle. The caller's token and execution resources never enter the ledger. */
+data class RunRecord(
+    val id: UUID,
+    val open: RunOpen,
+    val status: RunStatus,
+    val protocolRef: String?,
 )
 
 /** A staged output (`run_outputs`). */
@@ -249,6 +259,40 @@ class Ledger(
             Runs.selectAll().where { Runs.status eq RunStatus.ABANDONED.wire }.count()
         }
 
+    fun findRun(id: UUID): RunRecord? =
+        transaction {
+            Runs.selectAll().where { Runs.id eq id }.firstOrNull()?.let { row ->
+                RunRecord(
+                    id,
+                    RunOpen(
+                        recipe = row[Runs.recipe],
+                        program = row[Runs.program],
+                        deployment = row[Runs.deployment],
+                        bundle = row[Runs.bundle],
+                        fpText = row[Runs.fpText],
+                        fpValues = row[Runs.fpValues],
+                        fpProgram = row[Runs.fpProgram],
+                        fpDeployment = row[Runs.fpDeployment],
+                        modelFp = row[Runs.modelFp],
+                        port = row[Runs.port],
+                        asOf = row[Runs.asOf]?.toInstant(),
+                        author = row[Runs.author],
+                        runAs = row[Runs.runAs],
+                        caller = row[Runs.caller],
+                        origin = row[Runs.origin],
+                        dryRun = row[Runs.dryRun],
+                        governed = row[Runs.governance] == "governed",
+                        idempotencyKey = row[Runs.idempotencyKey],
+                        replayOf = row[Runs.replayOf],
+                        budgetSync = row[Runs.budgetSync]?.let(Duration::ofMillis),
+                        budgetBatch = row[Runs.budgetBatch]?.let(Duration::ofMillis),
+                    ),
+                    RunStatus.of(row[Runs.status]),
+                    row[Runs.protocolRef],
+                )
+            }
+        }
+
     /** Records a staged island output (`run_outputs`). */
     fun putOutput(output: RunOutput) {
         transaction {
@@ -328,6 +372,15 @@ class Ledger(
             it[startedAt] = now.utc()
             it[budgetSync] = open.budgetSync?.toMillis()
             it[budgetBatch] = open.budgetBatch?.toMillis()
+        }
+        open.openingProtocol?.let { payload ->
+            RunProtocol.insert {
+                it[run] = runId
+                it[section] = ProtocolSection.AUTOMATION.wire
+                it[seq] = 1
+                it[RunProtocol.payload] = payload
+                it[at] = now.utc()
+            }
         }
         return runId
     }
