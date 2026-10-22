@@ -19,10 +19,13 @@ outside this repo could notice is in.
 - **query — the Flight SQL edge reads a quoted dotted schema as its two parts** (#275). The catalog lists each schema
   as one name (`er.entity`, `db.dbo`, `obj.query`), so a JDBC tool that writes SQL from it quotes the name:
   `SELECT t.* FROM "er.entity".warehouse t` (DataGrip, IntelliJ, DBeaver opening a table). The door read `"er.entity"`
-  as one identifier and refused it (`translator_rejected: Object 'er.entity' not found`). The edge now drops those
-  quotes, at the head of a name or after the connection's own catalog, and replaces them with spaces so a refusal's
-  position (`x-ttr-line` / `x-ttr-column`) still points into the client's text. A new spec runs the edge's text through
-  the translator itself.
+  as one identifier and refused it (`translator_rejected: Object 'er.entity' not found`). The edge now unfolds it, at
+  the head of a name or after the connection's own catalog: `"er.entity"` becomes `er."entity"`. The text keeps its
+  length, so a refusal's position (`x-ttr-line` / `x-ttr-column`) still points into the client's text, and the
+  namespace stays quoted (a reserved word such as `db."user"` still parses). A quoted name the statement defines itself
+  (`AS "db.w"`) is left alone. The edge's tokenizer also treats `//` as a comment, as the door's parser does, and treats
+  a comment between a name's parts as whitespace, so the world check sees `hartland_us/* */.er.entity.x`. A new spec
+  runs the edge's text through the translator itself and checks the object each name resolves to.
 - **`ghcr.io/collite/superset` — the operated Superset image** (BI-3, C-18): official Superset 6.1.0 + `psycopg2-binary`,
   `authlib` and `ttr-sqlalchemy` 0.11.0, all pinned; no configuration baked in. Tag-only lane
   `superset/v<superset version>-ttr<N>` (`superset/v6.1.0-ttr1` → `superset:6.1.0-ttr1`). `images/superset/README.md`.

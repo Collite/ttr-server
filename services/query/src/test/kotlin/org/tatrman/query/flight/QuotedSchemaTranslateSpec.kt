@@ -11,11 +11,14 @@ import org.tatrman.translate.v1.Language
 import org.tatrman.translator.framework.HartlandJoinModel
 import org.tatrman.translator.orchestrator.ParseResult
 import org.tatrman.translator.orchestrator.Translator
+import org.tatrman.translator.codec.sql.ParseResult as SqlParse
+import org.tatrman.translator.codec.sql.SqlParser as DoorParser
 
 /**
  * BI (ttr-server#275) — the text the edge sends, read by the door's own translator (`ttr-translator` over its hartland
  * fixture model) rather than a scripted door. The edge's other specs record what reaches a fake door. This one shows
- * that the door resolves it, so a rewrite the door cannot read fails here, not in a desktop client.
+ * that the door resolves it to the object the client named, so a rewrite the door cannot read fails here, not in a
+ * desktop client.
  *
  * The catalog publishes `er.entity` and `db.dbo` as one name each, and a JDBC tool that builds its SQL from the
  * catalog quotes them for their dot (`"er.entity".shopper`).
@@ -38,19 +41,22 @@ class QuotedSchemaTranslateSpec :
                 .message shouldContain "er.entity"
         }
 
-        "every spelling a JDBC tool writes reaches the door as names it resolves, at the length it was written" {
+        "every spelling a JDBC tool writes reaches the door as the object it names, at the length it was written" {
+            val shopper = listOf("namespace: \"entity\"", "name: \"shopper\"")
+            val customer = listOf("namespace: \"dbo\"", "name: \"customer\"")
             listOf(
-                """SELECT t.* FROM "er.entity".shopper t""" to SchemaCode.ER,
-                """SELECT t.* FROM "er.entity"."shopper" t""" to SchemaCode.ER,
-                """SELECT * FROM hartland_cz."er.entity".shopper""" to SchemaCode.ER,
-                """SELECT * FROM "hartland_cz"."er.entity"."shopper"""" to SchemaCode.ER,
-                """SELECT "er.entity".shopper.* FROM "er.entity".shopper""" to SchemaCode.ER,
-                """SELECT t.* FROM "db.dbo".customer t""" to SchemaCode.DB,
-                """SELECT * FROM "hartland_cz"."db.dbo"."customer"""" to SchemaCode.DB,
-            ).forEach { (sql, schema) ->
+                Triple("""SELECT t.* FROM "er.entity".shopper t""", SchemaCode.ER, shopper),
+                Triple("""SELECT t.* FROM "er.entity"."shopper" t""", SchemaCode.ER, shopper),
+                Triple("""SELECT * FROM hartland_cz."er.entity".shopper""", SchemaCode.ER, shopper),
+                Triple("""SELECT * FROM "hartland_cz"."er.entity"."shopper"""", SchemaCode.ER, shopper),
+                Triple("""SELECT "er.entity".shopper.* FROM "er.entity".shopper""", SchemaCode.ER, shopper),
+                Triple("""SELECT t.* FROM "db.dbo".customer t""", SchemaCode.DB, customer),
+                Triple("""SELECT * FROM "hartland_cz"."db.dbo"."customer"""", SchemaCode.DB, customer),
+            ).forEach { (sql, schema, names) ->
                 val text = sent(sql)
                 text.length shouldBe sql.length
-                translate(text, schema).shouldBeInstanceOf<ParseResult.Success>()
+                val plan = translate(text, schema).shouldBeInstanceOf<ParseResult.Success>().plan.toString()
+                names.forEach { plan shouldContain it }
             }
         }
 
@@ -61,5 +67,11 @@ class QuotedSchemaTranslateSpec :
             line shouldBe "1"
             val at = sql.indexOf("t.nope")
             (column.toInt() - 1) shouldBeInRange (at until at + "t.nope".length)
+        }
+
+        "the door's parser: a namespace that is a reserved word parses only quoted, and `//` is a comment to it" {
+            DoorParser.parseQuery(sent("""SELECT * FROM "db.user".t""")).shouldBeInstanceOf<SqlParse.Success>()
+            DoorParser.parseQuery("SELECT * FROM db.user.t").shouldBeInstanceOf<SqlParse.Failure>()
+            DoorParser.parseQuery("SELECT * FROM er.entity.shopper // db.dbo.x").shouldBeInstanceOf<SqlParse.Success>()
         }
     })

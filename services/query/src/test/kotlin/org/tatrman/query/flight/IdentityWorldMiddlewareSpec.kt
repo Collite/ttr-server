@@ -129,7 +129,7 @@ class IdentityWorldMiddlewareSpec :
                 edge.run("""SELECT w.city FROM "hartland_cz"."er.entity"."warehouse" w""", bearer, world("hartland_cz"))
                 // #275: the quoted dotted schema reaches the door as its two names.
                 door.requests.single().source shouldBe
-                    """SELECT w.city FROM ${" ".repeat(14)} er.entity ."warehouse" w"""
+                    """SELECT w.city FROM ${" ".repeat(14)}er."entity"."warehouse" w"""
                 // S-8: the layer is read past the blanked catalog.
                 door.requests.single().sourceSchema shouldBe SchemaCode.ER
                 edge.outcomes.single().statement shouldBe
@@ -225,26 +225,35 @@ class IdentityWorldMiddlewareSpec :
             run(quiet) shouldBe Outcome.Run(quiet)
         }
 
-        "#275 — a quoted dotted schema leading a name loses its quotes to spaces; nothing else like it does" {
+        "#275 — a quoted dotted schema leading a name becomes its two names, at its length; nothing else like it does" {
             fun run(sql: String) = CatalogQualifier.resolve(sql, "hartland_cz")
             run("""SELECT t.* FROM "er.entity".warehouse t""") shouldBe
-                Outcome.Run("""SELECT t.* FROM  er.entity .warehouse t""")
+                Outcome.Run("""SELECT t.* FROM er."entity".warehouse t""")
             run("""SELECT * FROM "DB.dbo"."web_sales" JOIN "obj.query".revenue_per_customer r ON 1 = 1""") shouldBe
-                Outcome.Run("""SELECT * FROM  DB.dbo ."web_sales" JOIN  obj.query .revenue_per_customer r ON 1 = 1""")
+                Outcome.Run("""SELECT * FROM DB."dbo"."web_sales" JOIN obj."query".revenue_per_customer r ON 1 = 1""")
             run("""SELECT "er.entity".warehouse.city FROM hartland_cz."er.entity".warehouse""") shouldBe
-                Outcome.Run("""SELECT  er.entity .warehouse.city FROM ${" ".repeat(12)} er.entity .warehouse""")
-            // The world check still comes first.
+                Outcome.Run("""SELECT er."entity".warehouse.city FROM ${" ".repeat(12)}er."entity".warehouse""")
+            // The namespace stays quoted: a reserved word, any text a database allows.
+            run("""SELECT * FROM "db.user".t, "db.Účetnictví"."faktura", "er.entity x".w""") shouldBe
+                Outcome.Run("""SELECT * FROM db."user".t, db."Účetnictví"."faktura", er."entity x".w""")
+            // The world check still comes first, and a comment between a name's parts is whitespace.
             run("""SELECT * FROM hartland_us."er.entity".warehouse""") shouldBe Outcome.Mismatch("hartland_us")
-            // Not schemas: a quoted dotted name that ends the run (an alias, a column), one after an alias, another
-            // head, a part that is not a plain identifier, literals and comments.
+            run("""SELECT * FROM hartland_us/* x */."er.entity".warehouse""") shouldBe Outcome.Mismatch("hartland_us")
+            run("SELECT * FROM hartland_us -- x\n.er.entity.warehouse") shouldBe Outcome.Mismatch("hartland_us")
+            // Not schemas: a quoted dotted name that ends the run (an alias, a column), one after an alias, one the
+            // statement defines itself (an alias spelled like a schema), another head, no namespace, an escaped quote,
+            // literals and comments.
             val untouched =
                 listOf(
                     """SELECT w.city AS "er.entity" FROM er.entity.warehouse w""",
                     """SELECT w."er.entity" FROM er.entity.warehouse w""",
+                    """SELECT "db.w".city FROM db.dbo.warehouse AS "db.w"""",
                     """SELECT * FROM "dw.entity".warehouse""",
-                    """SELECT * FROM "er.entity x".warehouse""",
+                    """SELECT * FROM "er.".warehouse""",
+                    """SELECT * FROM "er.en""tity".warehouse""",
                     """SELECT * FROM "er.entity.warehouse"""",
                     """SELECT '"er.entity".x' FROM er.entity.warehouse -- "er.entity".x""",
+                    """SELECT 1 FROM er.entity.warehouse // "er.entity".x""",
                 )
             untouched.forEach { run(it) shouldBe Outcome.Run(it) }
         }

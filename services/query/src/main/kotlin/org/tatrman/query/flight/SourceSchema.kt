@@ -14,9 +14,10 @@ import org.tatrman.plan.v1.SchemaCode
  * - both → ER: the door then refuses the mixed tree with LQ-2's own sentence (ledger 10b), not "Set source_schema";
  * - no qualified name → unstated: the door autodetects, as for every other caller.
  *
- * A qualified name is three parts or more (`er.entity.warehouse`, a column `er.entity.warehouse.city`) or a quoted
- * dotted schema (`"er.entity".warehouse`), each part quoted or not, so an alias called `db` (`db.city`) is not one.
- * Read after [CatalogQualifier] has blanked the connection's own catalog out.
+ * A qualified name is three parts or more (`er.entity.warehouse`, a column `er.entity.warehouse.city`), each part
+ * quoted or not, so an alias called `db` (`db.city`) is not one. Read the text [CatalogQualifier] made: the connection's
+ * own catalog blanked out and a quoted dotted schema unfolded (`"er.entity".warehouse` → `er."entity".warehouse`), so
+ * a quoted dotted name still standing is one the statement defines (an alias), not a layer.
  */
 internal object SourceSchema {
     fun of(sql: String): SchemaCode {
@@ -29,13 +30,7 @@ internal object SourceSchema {
     }
 
     private fun layerOf(chain: List<CatalogQualifier.Part>): String? {
-        val head = chain[0]
-        val layer =
-            when {
-                head.quoted && head.name.contains('.') -> head.name.substringBefore('.')
-                chain.size >= 3 -> head.name
-                else -> return null
-            }.lowercase()
-        return layer.takeIf { it in CatalogQualifier.SCHEMA_HEADS }
+        if (chain.size < 3) return null
+        return chain[0].name.lowercase().takeIf { it in CatalogQualifier.SCHEMA_HEADS }
     }
 }
