@@ -16,7 +16,8 @@ class SourceSchemaSpec :
         "er.entity and obj.query name the ER layer, quoted or not" {
             SourceSchema.of("SELECT * FROM er.entity.warehouse") shouldBe SchemaCode.ER
             SourceSchema.of("""SELECT * FROM "er"."entity"."warehouse"""") shouldBe SchemaCode.ER
-            SourceSchema.of("""SELECT * FROM "er.entity"."warehouse"""") shouldBe SchemaCode.ER
+            // A quoted dotted schema arrives unfolded (#275): `"er.entity"` → `er."entity"`.
+            SourceSchema.of("""SELECT * FROM er."entity"."warehouse"""") shouldBe SchemaCode.ER
             SourceSchema.of("""SELECT "er"."entity"."warehouse"."city" FROM "er"."entity"."warehouse"""") shouldBe
                 SchemaCode.ER
             // The spike's ledger 11b: a logical query is a table under ER.
@@ -27,7 +28,7 @@ class SourceSchemaSpec :
         "db.dbo names the DB layer, quoted or not" {
             SourceSchema.of("SELECT w_city FROM db.dbo.warehouse") shouldBe SchemaCode.DB
             SourceSchema.of("""SELECT * FROM "db"."dbo"."warehouse"""") shouldBe SchemaCode.DB
-            SourceSchema.of("""SELECT * FROM "db.dbo".warehouse""") shouldBe SchemaCode.DB
+            SourceSchema.of("""SELECT * FROM db."dbo".warehouse""") shouldBe SchemaCode.DB
             SourceSchema.of("SELECT * FROM DB.DBO.WAREHOUSE") shouldBe SchemaCode.DB
         }
 
@@ -42,6 +43,7 @@ class SourceSchemaSpec :
         }
 
         "literals, comments and two-part names are not qualifiers" {
+            SourceSchema.of("SELECT * FROM er.entity.warehouse // db.dbo.x") shouldBe SchemaCode.ER
             SourceSchema.of("SELECT 'db.dbo.warehouse' AS s FROM er.entity.warehouse") shouldBe SchemaCode.ER
             SourceSchema.of("-- db.dbo.warehouse\nSELECT * FROM er.entity.warehouse") shouldBe SchemaCode.ER
             SourceSchema.of("/* er.entity.x */ SELECT * FROM db.dbo.warehouse") shouldBe SchemaCode.DB
@@ -57,5 +59,11 @@ class SourceSchemaSpec :
                         CatalogQualifier.Outcome.Run
                 ).sql
             SourceSchema.of(blanked) shouldBe SchemaCode.DB
+        }
+
+        "after the edge's rewrite: an unfolded quoted schema names its layer, an alias spelled like one does not" {
+            fun sent(sql: String) = (CatalogQualifier.resolve(sql, "hartland_cz") as CatalogQualifier.Outcome.Run).sql
+            SourceSchema.of(sent("""SELECT t.* FROM hartland_cz."db.dbo".warehouse t""")) shouldBe SchemaCode.DB
+            SourceSchema.of(sent("""SELECT "er.w".city FROM db.dbo.warehouse AS "er.w"""")) shouldBe SchemaCode.DB
         }
     })

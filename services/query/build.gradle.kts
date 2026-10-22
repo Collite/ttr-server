@@ -140,6 +140,10 @@ dependencies {
             .layout.buildDirectory
             .dir("classes/kotlin/main")
     testImplementation(files(validateClasses).builtBy(":services:validate:compileKotlin"))
+    // BI (ttr-server#275) — the statement text the edge sends, through the door's own translator over its hartland
+    // fixture model: what a JDBC tool writes must reach the door as names it resolves, not just pass a scripted door.
+    testImplementation(libs.tatrman.ttr.translator)
+    testImplementation(testFixtures(libs.tatrman.ttr.translator))
 
     // Component tier — bi_receipts over a REAL Postgres (Testcontainers): Flyway migrates clean, every C-6 column
     // round-trips. `src/componentTest`, so the unit gate stays Docker-free.
