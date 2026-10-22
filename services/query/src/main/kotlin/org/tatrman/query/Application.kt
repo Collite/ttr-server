@@ -187,16 +187,11 @@ fun Application.module(config: Config) {
             }
             val receiptStore = PostgresReceiptStore.fromConfig(config)
             val receiptSink = receiptStore?.let { ReceiptSink(it) }
-            log.info(
-                "Flight edge: receipts {}",
-                if (receiptStore !=
-                    null
-                ) {
-                    "on (bi_receipts)"
-                } else {
-                    "off (no QUERY_RECEIPTS_DB_HOST)"
-                },
-            )
+            when (val off = PostgresReceiptStore.offReason(config)) {
+                null -> log.info("Flight edge: receipts on (bi_receipts)")
+                PostgresReceiptStore.OFF_NO_HOST -> log.info("Flight edge: receipts off ({})", off)
+                else -> log.warn("Flight edge: receipts off ({}) — statements run, none is receipted", off)
+            }
             val runner =
                 LoopbackStatementRunner(
                     flightConfig.loopbackHost,

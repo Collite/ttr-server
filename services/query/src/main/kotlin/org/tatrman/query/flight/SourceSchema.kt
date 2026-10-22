@@ -11,8 +11,13 @@ import org.tatrman.plan.v1.SchemaCode
  *
  * - `er.<namespace>.<name>` or `obj.<namespace>.<name>` only → ER (a logical query is a table under ER; spike ledger 11b);
  * - `db.<namespace>.<name>` only → DB;
- * - both → ER: the door then refuses the mixed tree with LQ-2's own sentence (ledger 10b), not "Set source_schema";
+ * - `obj` and `db` only → unstated: a saved query reads either layer, and the door picks the one its body reads
+ *   (⚑R123-D), where stating ER would refuse a DB-lane query joined to a table as mixed;
+ * - `er` and `db` → ER: the door then refuses the mixed tree with LQ-2's own sentence (ledger 10b), not "Set source_schema";
  * - no qualified name → unstated: the door autodetects, as for every other caller.
+ *
+ * The stated layer is the statement's, so the door reads its bare names in it too: `FROM db.dbo.inventory i JOIN
+ * warehouse w` reads the table `warehouse` (⚑R123-C, review-123 R8).
  *
  * A qualified name is three parts or more (`er.entity.warehouse`, a column `er.entity.warehouse.city`), each part
  * quoted or not, so an alias called `db` (`db.city`) is not one. Read the text [CatalogQualifier] made: the connection's
@@ -25,6 +30,7 @@ internal object SourceSchema {
         return when {
             layers.isEmpty() -> SchemaCode.SCHEMA_CODE_UNSPECIFIED
             layers == setOf("db") -> SchemaCode.DB
+            layers == setOf("obj", "db") -> SchemaCode.SCHEMA_CODE_UNSPECIFIED
             else -> SchemaCode.ER
         }
     }

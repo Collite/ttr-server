@@ -32,9 +32,26 @@ class SourceSchemaSpec :
             SourceSchema.of("SELECT * FROM DB.DBO.WAREHOUSE") shouldBe SchemaCode.DB
         }
 
-        "both layers: ER is stated, so the door refuses the mixed tree with LQ-2's own sentence (ledger 10b)" {
+        "er and db: ER is stated, so the door refuses the mixed tree with LQ-2's own sentence (ledger 10b)" {
             SourceSchema.of("SELECT * FROM er.entity.warehouse JOIN db.dbo.channel_sales") shouldBe SchemaCode.ER
-            SourceSchema.of("SELECT * FROM db.dbo.warehouse, obj.query.revenue_per_customer") shouldBe SchemaCode.ER
+            SourceSchema.of("SELECT * FROM er.entity.warehouse, obj.query.q, db.dbo.inventory") shouldBe SchemaCode.ER
+        }
+
+        // ⚑R123-D (review-123 R9) — a saved query reads either layer: the door picks the one its body reads. Stating ER
+        // here would refuse a DB-lane saved query joined to a table as mixed.
+        "obj and db: unstated, the door decides by what the saved query reads" {
+            SourceSchema.of("SELECT * FROM db.dbo.warehouse, obj.query.revenue_per_customer") shouldBe
+                SchemaCode.SCHEMA_CODE_UNSPECIFIED
+            SourceSchema.of("SELECT * FROM obj.query.q JOIN db.dbo.inventory i ON q.k = i.k") shouldBe
+                SchemaCode.SCHEMA_CODE_UNSPECIFIED
+            SourceSchema.of("SELECT * FROM obj.query.revenue_per_customer") shouldBe SchemaCode.ER
+        }
+
+        // ⚑R123-C (review-123 R8) — the stated layer is the statement's: the door reads its bare names in it (live on
+        // hartland: `db.dbo.inventory i JOIN warehouse w` reads the table warehouse).
+        "a bare name beside a qualified one is stated with it" {
+            SourceSchema.of("SELECT * FROM db.dbo.inventory i JOIN warehouse w ON i.k = w.k") shouldBe SchemaCode.DB
+            SourceSchema.of("SELECT * FROM shopper s JOIN er.entity.sale x ON s.k = x.k") shouldBe SchemaCode.ER
         }
 
         "no qualified name: unstated, the door autodetects as for any caller" {

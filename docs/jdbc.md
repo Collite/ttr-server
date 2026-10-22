@@ -24,9 +24,17 @@ for you. Entity and table columns are typed from the model; a logical query's co
 run as you, so a query your roles may not read lists no columns.
 
 The edge reads the layer from those names: a statement over `er.entity` or `obj.query` reads entities, one over
-`db.dbo` reads tables — so a name both hold (`warehouse` is an entity and a table) is never ambiguous. A statement
-that names both layers is refused (`validator_mixed_layer_tree`: one statement reads one layer). A bare name
-(`FROM warehouse`) is left to the door, which refuses it when both layers have it (`detection_failed`).
+`db.dbo` reads tables — so a name both hold (`warehouse` is an entity and a table) is never ambiguous. A bare name
+is read in the same layer: `FROM db.dbo.inventory i JOIN warehouse w` reads the table `warehouse`. Only in a
+statement with no qualified name is a bare name left to the door, which refuses it when both layers have it
+(`detection_failed`). A statement over `obj.query` and `db.dbo` states no layer: a saved query can read either, and
+the door uses the one its body reads.
+
+Write each statement in one layer. A statement naming `er.entity` and `db.dbo` is refused with
+`validator_mixed_layer_tree`, or with `detection_failed` when it names an entity that has no table and a table that
+has no entity. There is one exception until the door reads qualified names itself. When every entity the statement
+names is also a table, and a table it names has no entity, the door reads the entity names as their tables and runs
+the statement. The answer then carries a `schema_corrected` warning.
 
 The catalog lists each schema as one name with a dot in it, so a tool that writes SQL from the catalog quotes it:
 `SELECT t.* FROM "er.entity".warehouse t` (DataGrip, IntelliJ or DBeaver opening a table). The edge reads a quoted

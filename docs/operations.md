@@ -154,7 +154,11 @@ for that.
 
 One row per statement through the edge, in schema `query` of the database named by
 `QUERY_RECEIPTS_DB_HOST` / `_PORT` / `_NAME` / `_USER` / `_PASSWORD` (Helm `query.flight.receipts.db`,
-the password by Secret ref). No host = no receipts. The service creates the table on first use
+the password by Secret ref). No host = no receipts. The Secret is optional: if it is missing (or the password is
+empty) the service still starts and logs `Flight edge: receipts off (no QUERY_RECEIPTS_DB_PASSWORD …)` at WARN.
+Statements then run without receipts until the Secret exists and the pod restarts. The password is read once at
+start-up, so rotating it also needs a rollout restart (`kubectl rollout restart deploy/query`). Until then, each
+receipt the old password cannot write is logged at WARN and dropped. The service creates the table on first use
 (Flyway, history in the same schema; a table from before `notices` gains the column, its older rows
 with none); its user must own the database or schema `query`. Writing is
 best effort: a full queue or a database outage drops receipts and logs it, and never fails a statement.

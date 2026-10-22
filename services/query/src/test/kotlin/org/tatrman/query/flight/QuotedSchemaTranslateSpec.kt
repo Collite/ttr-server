@@ -60,6 +60,21 @@ class QuotedSchemaTranslateSpec :
             }
         }
 
+        // ⚑R123-C (review-123 R8) — the edge states the layer of the statement's qualified names, and the door reads a
+        // bare name in it: the table `customer` beside `db.dbo.store_sales`; the entity `shopper` there is not found.
+        "a bare name is read in the layer the statement's qualified names state" {
+            val sql = "SELECT c.shopper_id FROM db.dbo.store_sales s JOIN customer c ON s.shopper_id = c.shopper_id"
+            SourceSchema.of(sent(sql)) shouldBe SchemaCode.DB
+            translate(sent(sql), SchemaCode.DB)
+                .shouldBeInstanceOf<ParseResult.Success>()
+                .plan
+                .toString() shouldContain "name: \"customer\""
+            val entity = "SELECT x.shopper_id FROM db.dbo.store_sales s JOIN shopper x ON s.shopper_id = x.shopper_id"
+            SourceSchema.of(sent(entity)) shouldBe SchemaCode.DB
+            val refused = translate(sent(entity), SchemaCode.DB).shouldBeInstanceOf<ParseResult.Failure>()
+            refused.message shouldContain "shopper"
+        }
+
         "a refusal after the rewritten schema points at the characters the client wrote there (C-11)" {
             val sql = """SELECT * FROM hartland_cz."er.entity".shopper t WHERE t.nope = 1"""
             val failure = translate(sent(sql)).shouldBeInstanceOf<ParseResult.Failure>()
