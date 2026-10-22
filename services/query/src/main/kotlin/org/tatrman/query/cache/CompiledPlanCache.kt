@@ -158,6 +158,11 @@ data class CacheKey(
     val sourceHash: String,
     val sourceLanguage: Language,
     val paramSignature: String,
+    /**
+     * The layer the caller stated (`RunRequest.source_schema`): the detector decides with it, so one text stated DB
+     * and stated ER are two compiled plans (review-123 R3 — the Flight edge states it per statement).
+     */
+    val sourceSchema: SchemaCode = SchemaCode.SCHEMA_CODE_UNSPECIFIED,
 )
 
 data class CachedPlan(

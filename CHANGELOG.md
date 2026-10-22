@@ -16,6 +16,16 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+- **query — the stated layer is part of the compiled-plan cache key** (review-123 R3). The cache keyed a plan by
+  model version, text, language and parameter signature. The detector decides the layer with `source_schema`, so one
+  text stated DB and then ER was served the first caller's plan. The key now includes `source_schema`.
+- **query — a statement over `obj.query` and `db.dbo` states no layer** (review-123 R9). The edge stated ER for any
+  `obj.…` name. A saved query can read either layer, and the door picks the layer its body reads, so stating ER
+  refused a DB-lane saved query joined to a table as mixed. The door now decides.
+- **query chart — the receipts password Secret is optional** (review-123 R4). A missing `passwordSecret` held the
+  query container in `CreateContainerConfigError` and took the whole door down, although receipts are best effort.
+  Now the service starts, logs `Flight edge: receipts off (no QUERY_RECEIPTS_DB_PASSWORD …)` at WARN, and runs every
+  statement without a receipt. A receipts host with an empty password now means receipts off.
 - **query — the Flight SQL edge reads a quoted dotted schema as its two parts** (#275). The catalog lists each schema
   as one name (`er.entity`, `db.dbo`, `obj.query`), so a JDBC tool that writes SQL from it quotes the name:
   `SELECT t.* FROM "er.entity".warehouse t` (DataGrip, IntelliJ, DBeaver opening a table). The door read `"er.entity"`
@@ -33,9 +43,10 @@ outside this repo could notice is in.
   The edge sent statements with `source_schema` unset, and the door's detector resolves bare table names only, so
   `SELECT … FROM db.dbo.warehouse` (or `er.entity.warehouse`) was refused `detection_failed` ("warehouse exist in
   multiple schemas (db, er)") on any model whose entities share names with its tables. Now `er.…` / `obj.…` names
-  state ER, `db.…` names state DB, a statement naming both states ER (refused as a mixed-layer tree, as before but
-  with that reason), and one with no qualified name stays unstated. The schema probe for a logical query's columns
-  goes the same way.
+  state ER, `db.…` names state DB, and a statement naming both `er` and `db` states ER (refused as mixed: see
+  `docs/jdbc.md` for which code). The stated layer is the statement's, so its bare names are read in it too
+  (`db.dbo.inventory i JOIN warehouse w` reads the table). Only a statement with no qualified name stays unstated. The
+  schema probe for a logical query's columns goes the same way.
 - **`ttr-sqlalchemy` — a new PyPI wheel: a DB-API driver and the `tatrman://` SQLAlchemy dialect** (BI-2) over the
   Flight SQL edge, for Superset, pandas and anything that takes a SQLAlchemy URL. Python ≥ 3.10, SQLAlchemy 1.4 or
   2.x, pyarrow ≥ 16; no gRPC stubs (it speaks Flight SQL through `pyarrow.flight`). Tag lane

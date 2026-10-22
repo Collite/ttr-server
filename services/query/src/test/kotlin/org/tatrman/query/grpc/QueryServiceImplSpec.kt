@@ -266,6 +266,42 @@ class QueryServiceImplSpec :
             }
         }
 
+        // review-123 R3 — the detector decides the layer WITH the stated one, so the stated layer is part of what was
+        // compiled. Keyed without it, a text stated DB and then ER was served the DB caller's plan.
+        "the stated source_schema is part of the cache key: one text stated DB, then ER, compiles twice" {
+            runBlocking {
+                val cache = CompiledPlanCache(100, Duration.ofMinutes(60))
+                val stated = CopyOnWriteArrayList<org.tatrman.plan.v1.SchemaCode>()
+                val followsStated =
+                    TranslatorDetectClient { req ->
+                        stated.add(req.statedSchema)
+                        DetectSchemaResponse
+                            .newBuilder()
+                            .setDecision(org.tatrman.translate.v1.SchemaDecision.CONFIRMED)
+                            .setEffectiveSchema(req.statedSchema)
+                            .build()
+                    }
+                val svc = service(translatorDetect = followsStated, cache = cache)
+
+                fun req(schema: org.tatrman.plan.v1.SchemaCode) =
+                    RunRequest
+                        .newBuilder()
+                        .setSource("SELECT id FROM customers")
+                        .setSourceLanguage(Language.SQL)
+                        .setSourceSchema(schema)
+                        .setContext(PipelineContext.newBuilder().setUserId("u").setModelVersion("v"))
+                        .build()
+
+                svc.run(req(org.tatrman.plan.v1.SchemaCode.DB)).toList()
+                val asEr = svc.run(req(org.tatrman.plan.v1.SchemaCode.ER)).toList()
+                asEr[0].context.warningsList.map { it.code } shouldContain "cache_miss"
+                stated shouldBe listOf(org.tatrman.plan.v1.SchemaCode.DB, org.tatrman.plan.v1.SchemaCode.ER)
+                cache.stats().entries shouldBe 2
+                val again = svc.run(req(org.tatrman.plan.v1.SchemaCode.DB)).toList()
+                again[0].context.warningsList.map { it.code } shouldContain "cache_hit"
+            }
+        }
+
         "bypass_cache forces a fresh translator call even with a populated cache" {
             runBlocking {
                 val cache = CompiledPlanCache(100, Duration.ofMinutes(60))

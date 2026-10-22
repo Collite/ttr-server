@@ -49,11 +49,14 @@
   value: {{ .name | quote }}
 - name: QUERY_RECEIPTS_DB_USER
   value: {{ .user | quote }}
+{{- /* Optional: receipts are best effort (C-6), so a missing Secret turns them off (the service says so at start-up)
+     instead of holding the whole door in CreateContainerConfigError. */}}
 - name: QUERY_RECEIPTS_DB_PASSWORD
   valueFrom:
     secretKeyRef:
       name: {{ required "query: flight.receipts.db.passwordSecret.name is required with a receipts host" .passwordSecret.name }}
       key: {{ .passwordSecret.key }}
+      optional: true
 {{- end }}
 {{- end }}
 {{- end }}

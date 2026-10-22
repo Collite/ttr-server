@@ -1140,6 +1140,7 @@ class QueryServiceImpl(
             sourceHash = CompiledPlanCache.sourceHash(request.source),
             sourceLanguage = request.sourceLanguage,
             paramSignature = CompiledPlanCache.paramSignature(request.context.parametersList),
+            sourceSchema = request.sourceSchema,
         )
 
     /**

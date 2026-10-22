@@ -283,14 +283,30 @@ class PostgresReceiptStore(
                 .migrate()
                 .migrationsExecuted
 
+        private const val PATH = "flight.receipts.db"
+
+        /** Receipts are off when no host is set. */
+        const val OFF_NO_HOST = "no QUERY_RECEIPTS_DB_HOST"
+
         /**
-         * The store from `flight.receipts.db`, or null when no host is set (receipts off). The pool does not connect
+         * Why receipts are off for [config], or null when they are on: no host, or a host with no password. The chart
+         * reads the password from an optional Secret, so a missing Secret lands here and costs receipts, not the door
+         * (review-123 R4).
+         */
+        fun offReason(config: Config): String? =
+            when {
+                !config.hasPath("$PATH.host") || config.getString("$PATH.host").isBlank() -> OFF_NO_HOST
+                config.getString("$PATH.password").isBlank() -> "no QUERY_RECEIPTS_DB_PASSWORD (is its Secret missing?)"
+                else -> null
+            }
+
+        /**
+         * The store from `flight.receipts.db`, or null when receipts are off ([offReason]). The pool does not connect
          * until the first receipt: the database is not a precondition of the query service.
          */
         fun fromConfig(config: Config): PostgresReceiptStore? {
-            val path = "flight.receipts.db"
-            if (!config.hasPath("$path.host") || config.getString("$path.host").isBlank()) return null
-            val db = config.getConfig(path)
+            if (offReason(config) != null) return null
+            val db = config.getConfig(PATH)
             val hikari =
                 HikariConfig().apply {
                     poolName = "bi-receipts"

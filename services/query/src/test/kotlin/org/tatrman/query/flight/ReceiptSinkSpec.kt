@@ -2,9 +2,11 @@
 package org.tatrman.query.flight
 
 import com.google.protobuf.ByteString
+import com.typesafe.config.ConfigFactory
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldContainExactly
+import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.ktor.client.request.get
 import io.ktor.client.request.header
@@ -216,6 +218,25 @@ class ReceiptSinkSpec :
             }
             sink.close()
             store.rows.map { it.statement } shouldContainExactly listOf("SELECT 2")
+        }
+
+        // review-123 R4 — the chart reads the password from an OPTIONAL Secret, so a missing one reaches the service as
+        // no password: receipts off, said at start-up, the door up. A pool with an empty password would fail each receipt.
+        "receipts are off without a host, and off with a host but no password; on with both" {
+            fun receipts(vararg pairs: Pair<String, String>) =
+                ConfigFactory
+                    .parseMap(pairs.associate { (k, v) -> "flight.receipts.db.$k" to v })
+                    .withFallback(ConfigFactory.load())
+            val noHost = receipts()
+            PostgresReceiptStore.offReason(noHost) shouldBe PostgresReceiptStore.OFF_NO_HOST
+            PostgresReceiptStore.fromConfig(noHost) shouldBe null
+            val noPassword = receipts("host" to "postgres-rw")
+            PostgresReceiptStore.offReason(noPassword) shouldBe "no QUERY_RECEIPTS_DB_PASSWORD (is its Secret missing?)"
+            PostgresReceiptStore.fromConfig(noPassword) shouldBe null
+            val both = receipts("host" to "postgres-rw", "password" to "s3cret")
+            PostgresReceiptStore.offReason(both) shouldBe null
+            // The pool connects on the first receipt, so a store builds without a database.
+            PostgresReceiptStore.fromConfig(both).shouldNotBeNull().close()
         }
 
         "GET /receipts: the row for query-platform-admin; 403 anyone else, 401 without a bearer, 400 without a key" {

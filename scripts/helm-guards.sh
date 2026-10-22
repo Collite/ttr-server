@@ -38,4 +38,18 @@ helm template tatrman-server "$CHART" --namespace ttr-server -f "$CHART/fixtures
   --set query.flight.enabled=true --set query.flight.auth.issuer=https://keycloak.example.com/realms/r \
   >/dev/null && echo "✓ query: Flight edge on one replica renders" || rc=1
 
+# BI (C-6, review-123 R4) — receipts are best effort: their password Secret is optional, so a missing one costs
+# receipts, not the door (a required secretKeyRef holds the container in CreateContainerConfigError).
+receipts=$(helm template tatrman-server "$CHART" --namespace ttr-server -f "$CHART/fixtures/values-minimal.yaml" \
+  --set query.flight.enabled=true --set query.flight.auth.issuer=https://keycloak.example.com/realms/r \
+  --set query.flight.receipts.db.host=pg --set query.flight.receipts.db.passwordSecret.name=pg-query \
+  | grep -A6 'name: QUERY_RECEIPTS_DB_PASSWORD' || true)
+if grep -q 'optional: true' <<<"$receipts"; then
+  echo "✓ query: the receipts password Secret is optional"
+else
+  echo "✗ query: the receipts password secretKeyRef is required — a missing Secret stops the door:" >&2
+  echo "$receipts" >&2
+  rc=1
+fi
+
 exit $rc

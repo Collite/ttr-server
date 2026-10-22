@@ -232,7 +232,7 @@ Receipts: the service migrates `bi_receipts` (schema `query`) itself at first us
 | `query.flight.auth.audience` | string | `""` | When set, `aud` must contain it; unset, any client's token from the realm is accepted (warned at start). |
 | `query.flight.auth.passwordClient` | string | `jdbc` | User name + password logins are this client's direct-access grant. `""` = bearer tokens only. |
 | `query.flight.receipts.db.{host,port,name,user}` | | `""` / `5432` / `query` / `query` | `bi_receipts`' Postgres; no host = receipts off. The user must own the database (or schema `query`). |
-| `query.flight.receipts.db.passwordSecret.{name,key}` | | `""` / `password` | By **Secret ref**; the name is required with a host. |
+| `query.flight.receipts.db.passwordSecret.{name,key}` | | `""` / `password` | By **Secret ref**; the name is required with a host. The Secret is optional: missing = receipts off, the door up. |
 | `query.worlds` | string | `""` | `world=connection_id` pairs, comma-separated: the worlds the door serves (`RunRequest.world`). Empty = one world. |
 
 The BI row ceiling is validate's, set through `validate.extraEnv` (no chart key): `VALIDATE_MAX_TOP_N_BY_ROLE`
