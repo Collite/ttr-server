@@ -160,6 +160,7 @@ class Open(
                 port.keys,
                 d.readCeiling ?: 100_000,
                 batch,
+                allowRestrictedView = d.allowRestrictedView,
             )
         if (port.keys != null &&
             port.keys.size > context.readCeiling
@@ -197,6 +198,8 @@ class Open(
                         put("caller", caller.principal)
                         put("runAs", identity.principal)
                         put("dryRun", true)
+                        put("allowRestrictedView", d.allowRestrictedView)
+                        put("readCeiling", context.readCeiling)
                         put("approvals", if (approvalsOff) "development-off" else "required")
                     },
             )

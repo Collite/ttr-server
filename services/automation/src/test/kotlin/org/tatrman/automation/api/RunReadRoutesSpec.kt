@@ -77,14 +77,14 @@ class RunReadRoutesSpec :
                     candidates.json().let { json ->
                         json["rows"]!!.jsonArray shouldBe
                             Json.parseToJsonElement(
-                                """[{"order_number":"4711","note":"a"},{"order_number":"4711","note":null}]""",
+                                """[{"order_number":"4711","note":"a"}]""",
                             )
-                        json["rowCount"] shouldBe JsonPrimitive(3)
-                        json["truncated"] shouldBe JsonPrimitive(true)
+                        json["rowCount"] shouldBe JsonPrimitive(1)
+                        json["truncated"] shouldBe JsonPrimitive(false)
                         json["keyed"] shouldBe JsonPrimitive(true)
                         json["ref"] shouldBe JsonPrimitive("$base/outputs/placed.orders")
                     }
-                    fixture.outputs.single().rows shouldBe 3L
+                    fixture.outputs.single().rows shouldBe 1L
                     fixture.outputs
                         .single()
                         .sha256!!
@@ -92,6 +92,10 @@ class RunReadRoutesSpec :
                     val context = post("$base/parts/shortfall").json()
                     context["class"] shouldBe JsonPrimitive("lookup")
                     context["keyed"] shouldBe JsonPrimitive(false)
+                    context["rowCount"] shouldBe JsonPrimitive(3)
+                    context["truncated"] shouldBe JsonPrimitive(true)
+                    context["rows"]!!.jsonArray.size shouldBe 2
+                    context["rows"]!!.jsonArray[1].jsonObject["note"] shouldBe JsonNull
                     post("$base/islands/placed").json() shouldBe candidates.json()
                     fixture.reads.get() shouldBe 2 // Shared candidate output is not read twice.
                     val decision = post("$base/parts/decision").json()["outputs"]!!.jsonObject
@@ -117,7 +121,18 @@ class RunReadRoutesSpec :
                     door =
                         Door { read ->
                             order += read.island
-                            ReadResult(Table(read.columns, emptyList()))
+                            ReadResult(
+                                Table(
+                                    read.columns,
+                                    if (read.island ==
+                                        "placed"
+                                    ) {
+                                        listOf(listOf("4711", "candidate"))
+                                    } else {
+                                        emptyList()
+                                    },
+                                ),
+                            )
                         },
                 )
             try {
@@ -178,6 +193,64 @@ class RunReadRoutesSpec :
             }
         }
 
+        "part and island requests enforce guards and fail the ledger before returning data" {
+            for ((code, warnings, rows, cap) in listOf(
+                GuardHttpCase("restricted-view", setOf("security_predicate_applied"), listOf(listOf("4711", "a"))),
+                GuardHttpCase("candidates-truncated", emptySet(), listOf(listOf("4711", "a")), 1),
+                GuardHttpCase("duplicate-key", emptySet(), listOf(listOf("4711", "a"), listOf("4711", "b"))),
+                GuardHttpCase("out-of-scope", emptySet(), emptyList()),
+            )) {
+                for (suffix in listOf("parts/candidates", "islands/placed")) {
+                    val fixture = RunSessionFixture(door = Door { ReadResult(Table(it.columns, rows), warnings) })
+                    try {
+                        if (cap != null) {
+                            val b = fixture.bundle
+                            fixture.bundle =
+                                b.copy(
+                                    deployments =
+                                        b.deployments + (
+                                            "release_native_event" to
+                                                b.deployments.getValue("release_native_event").copy(readCeiling = cap)
+                                        ),
+                                )
+                        }
+                        testApplication {
+                            application {
+                                install(ContentNegotiation) { json() }
+                                install(StatusPages) { installAutomationErrors() }
+                                val verifier =
+                                    CallerVerifier(
+                                        JwksBearerVerifier(
+                                            HttpJwksKeySource(realm.jwksUrl),
+                                            TestRealm.ISSUER,
+                                            TestRealm.AUDIENCE,
+                                        ),
+                                    )
+                                install(Authentication) { AutomationBearerProvider.register(this, verifier) }
+                                routing { authenticate(AUTOMATION_AUTH) { runReadRoutes(fixture.runs, 2) } }
+                            }
+                            val token = realm.person("maya", listOf("sales_manager"))
+                            val id = fixture.open(by = Caller.of(token)!!).response.runId
+                            val response = client.post("/automation/runs/$id/$suffix") { bearerAuth(token) }
+                            response.status.value shouldBe if (code == "out-of-scope") 422 else 409
+                            response.json()["error"]!!.jsonObject.let {
+                                it["code"] shouldBe JsonPrimitive(code)
+                                it["detail"]!!.jsonObject["island"] shouldBe JsonPrimitive("placed")
+                            }
+                            fixture.states.values
+                                .single()
+                                .wire shouldBe "failed"
+                            fixture.outputs.size shouldBe 0
+                            client.post("/automation/runs/$id/$suffix") { bearerAuth(token) }.status shouldBe
+                                HttpStatusCode.ServiceUnavailable
+                        }
+                    } finally {
+                        fixture.close()
+                    }
+                }
+            }
+        }
+
         "decimal output stays exact JSON with its full reference and count" {
             val fixture =
                 RunSessionFixture(
@@ -226,3 +299,10 @@ class RunReadRoutesSpec :
 
 private suspend fun io.ktor.client.statement.HttpResponse.json(): JsonObject =
     Json.parseToJsonElement(bodyAsText()).jsonObject
+
+private data class GuardHttpCase(
+    val code: String,
+    val warnings: Set<String>,
+    val rows: List<List<Any?>>,
+    val cap: Int? = null,
+)

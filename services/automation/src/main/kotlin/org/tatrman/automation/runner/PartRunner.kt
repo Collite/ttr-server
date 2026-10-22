@@ -30,6 +30,7 @@ data class RunContext(
     val keys: List<Map<String, Any?>>? = null,
     val readCeiling: Int = 100_000,
     val timeout: Duration = Duration.ofMinutes(30),
+    val allowRestrictedView: Boolean = false,
 ) {
     init {
         require(readCeiling > 0 && !timeout.isNegative && !timeout.isZero)
@@ -75,6 +76,8 @@ class PartRunner(
     private val partReads = mutableMapOf<String, Deferred<Unit>>()
     private val outputs = mutableMapOf<String, Deferred<StagedOutput>>()
     private val combine = lazy { DuckDbCombiner() }
+    private val checks = Guards(context)
+    val guards: List<GuardResult> get() = checks.results
     private val observedWarnings = ConcurrentHashMap<String, Set<String>>()
     val warningsByRead: Map<String, Set<String>> get() = observedWarnings.toMap()
     val warnings: Set<String> get() = observedWarnings.values.flatten().toSet()
@@ -93,6 +96,7 @@ class PartRunner(
 
     /** Runs all preceding waves, then the named island. Missing inputs never silently become empty tables. */
     suspend fun island(name: String): List<StagedOutput> {
+        checks.ensureAllowed()
         require(name in islands) { "unknown island $name" }
         for (wave in context.recipe.manifest.waves) {
             if (name in wave) return outputIsland(name)
@@ -102,10 +106,12 @@ class PartRunner(
     }
 
     suspend fun all(): List<StagedOutput> {
+        checks.ensureAllowed()
         val result = mutableListOf<StagedOutput>()
         for (wave in context.recipe.manifest.waves) {
             result += kotlinx.coroutines.coroutineScope { wave.map { async { outputIsland(it) } }.awaitAll() }.flatten()
         }
+        checks.ensureAllowed()
         return result
     }
 
@@ -153,13 +159,22 @@ class PartRunner(
                                     candidateStatement(island, output, statement(output.file)),
                                 ).table
                             }
+                        // A combine may expand several individually short sources to the ceiling.
+                        checks.ceiling(island, table)
                         // AU-C-3: filter EVERY keyed output, including combines and detail ports, before staging.
                         val scoped = if (output.keyed) filter(table) else table
+                        if (island ==
+                            context.recipe.recipe.roles
+                                ?.candidates
+                        ) {
+                            checks.candidates(island, scoped)
+                        }
+                        checks.ensureAllowed()
                         staging.put(context.id, island, output.port, scoped)
                     }
                 }
             }
-        return work.await()
+        return work.await().also { checks.ensureAllowed() }
     }
 
     private suspend fun part(name: String) {
@@ -189,6 +204,7 @@ class PartRunner(
         scoped: CandidateScope.Statement = CandidateScope.Statement(statement(file), emptyMap()),
     ): ReadResult =
         slots.withPermit {
+            checks.ensureAllowed()
             door
                 .read(
                     DoorRead(
@@ -206,6 +222,7 @@ class PartRunner(
                     ),
                 ).also {
                     observedWarnings.merge(island, it.warnings.toSet()) { earlier, later -> earlier + later }
+                    checks.read(island, it)
                 }
         }
 

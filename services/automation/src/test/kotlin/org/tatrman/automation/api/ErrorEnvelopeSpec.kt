@@ -156,6 +156,10 @@ class ErrorEnvelopeSpec :
                 ErrorCode.DEPLOYMENT_STALE,
                 ErrorCode.PAUSED,
                 ErrorCode.RUN_ABANDONED,
+                ErrorCode.RESTRICTED_VIEW,
+                ErrorCode.CANDIDATES_TRUNCATED,
+                ErrorCode.OUT_OF_SCOPE,
+                ErrorCode.DUPLICATE_KEY,
             )
         val DELIVERED = setOf("S0.1", "S0.2", "S0.3")
         private val RAISE = Regex("""AutomationException\(\s*ErrorCode\.([A-Z_]+)""")

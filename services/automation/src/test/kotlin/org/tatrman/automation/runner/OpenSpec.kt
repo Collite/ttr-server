@@ -94,6 +94,30 @@ class OpenSpec :
             recorded!!.dryRun shouldBe true // P1 has no writer; false in a request cannot make it wet.
             recorded!!.asOf shouldBe now
         }
+        "deployment guard options are pinned at open and recorded in opening policy" {
+            val b = bundle()
+            val optedIn =
+                b.copy(
+                    deployments =
+                        b.deployments + (
+                            deployment to
+                                b.deployments.getValue(deployment).copy(allowRestrictedView = true, readCeiling = 17)
+                        ),
+                )
+            var recorded: RunOpen? = null
+            val result =
+                service(optedIn, claim = {
+                    recorded = it
+                    Claim.Claimed(UUID.randomUUID())
+                })
+                    .open(recipe, request(), caller)
+            result.context!!.allowRestrictedView shouldBe true
+            result.context!!.readCeiling shouldBe 17
+            recorded!!.openingProtocol!!.jsonObject["allowRestrictedView"] shouldBe JsonPrimitive(true)
+            recorded!!.openingProtocol!!.jsonObject["readCeiling"] shouldBe JsonPrimitive(17)
+            service().open(recipe, request(), caller).context!!.allowRestrictedView shouldBe false
+        }
+
         "response matrix: closed replays 200; a live claim returns 202 and no second context" {
             val id = UUID.randomUUID()
             val replay = service(claim = { Claim.Replay(id) }).open(recipe, request(), caller)

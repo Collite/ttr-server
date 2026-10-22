@@ -71,6 +71,38 @@ class DoorSpec :
             result.table.rows shouldBe listOf(listOf(12L))
             result.warnings shouldBe setOf("security_predicate_applied")
         }
+        "warnings and late cap notices accumulate across the entire Query stream" {
+            val c = runnerContext(realRecipe("release_order"))
+            val door =
+                QueryDoor(
+                    QueryRun {
+                        flowOf(
+                            batch(Table(listOf(ManifestColumn("id", "int")), listOf(listOf(1L))))
+                                .toBuilder()
+                                .setContext(
+                                    org.tatrman.plan.v1.PipelineContext
+                                        .newBuilder()
+                                        .addWarnings(Warning.newBuilder().setCode("security_predicate_applied")),
+                                ).build(),
+                            ResultBatch
+                                .newBuilder()
+                                .addNotices(
+                                    org.tatrman.worker.v1.Notice
+                                        .newBuilder()
+                                        .setCode("top_n_applied")
+                                        .setRequested(500)
+                                        .setApplied(1),
+                                ).build(),
+                        )
+                    },
+                    ROUTES,
+                    NO_TOKENS,
+                )
+            val result = door.read(read(c))
+            result.warnings shouldBe setOf("security_predicate_applied", "top_n_applied")
+            result.table.rows shouldBe listOf(listOf(1L))
+        }
+
         "a named identity uses its own IdP roles rather than the caller roles" {
             val c = runnerContext(realRecipe("release_order"))
             val token =

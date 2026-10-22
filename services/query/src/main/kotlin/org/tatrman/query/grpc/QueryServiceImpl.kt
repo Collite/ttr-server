@@ -158,6 +158,10 @@ class QueryServiceImpl(
                     // fresh on every run — including a cache hit, because the query service re-validates
                     // every call (security depends on `user_id`), so the cache never holds it.
                     val securityApplied = linkedSetOf<SecurityRuleApplied>()
+                    // AU D-92 consumes the validator's warning, independently of the best-effort receipt.
+                    // Validation contexts do not otherwise flow into dispatch's context. Preserve both
+                    // passes' predicate notices, including cache hits, and derive them afresh for this caller.
+                    val securityWarnings = linkedSetOf<Warning>()
                     // ttr-server#232 — the translator's WARNINGs on the plan that runs (a join it left a Cartesian
                     // product), from the DB parse: on the ER path the DB re-entry, which runs on every call.
                     val joinWarnings = mutableListOf<ResponseMessage>()
@@ -184,6 +188,7 @@ class QueryServiceImpl(
                                             ?: run { return@flow }
                                     capNotices += dbValidated.capNotices()
                                     securityApplied += dbValidated.securityAppliedList
+                                    securityWarnings += dbValidated.predicateWarnings()
                                     joinWarnings += cachedHit.joinWarnings
                                     effectiveSchemaLabel = SCHEMA_DB
                                     Triple(PlanNode.getDefaultInstance(), dbValidated.plan, cachedHit.detectionMessages)
@@ -198,7 +203,9 @@ class QueryServiceImpl(
                                         validateDbPlanCompile(dbParsed.plan, context, window) ?: run { return@flow }
                                     capNotices += erValidated.capNotices() + dbValidated.capNotices()
                                     securityApplied += erValidated.securityAppliedList
+                                    securityWarnings += erValidated.predicateWarnings()
                                     securityApplied += dbValidated.securityAppliedList
+                                    securityWarnings += dbValidated.predicateWarnings()
                                     joinWarnings += dbParsed.joinWarnings()
                                     effectiveSchemaLabel = SCHEMA_ER
                                     Triple(erValidated.plan, dbValidated.plan, cachedHit.detectionMessages)
@@ -246,6 +253,7 @@ class QueryServiceImpl(
                                             ?: run { return@flow }
                                     capNotices += dbValidated.capNotices()
                                     securityApplied += dbValidated.securityAppliedList
+                                    securityWarnings += dbValidated.predicateWarnings()
                                     joinWarnings += dbParsed.joinWarnings()
                                     effectiveSchemaLabel = SCHEMA_DB
                                     val requiredParams = dbParsed.context.parametersList.toList()
@@ -283,7 +291,9 @@ class QueryServiceImpl(
                                         validateDbPlanCompile(dbParsed.plan, context, window) ?: run { return@flow }
                                     capNotices += erValidated.capNotices() + dbValidated.capNotices()
                                     securityApplied += erValidated.securityAppliedList
+                                    securityWarnings += erValidated.predicateWarnings()
                                     securityApplied += dbValidated.securityAppliedList
+                                    securityWarnings += dbValidated.predicateWarnings()
                                     joinWarnings += dbParsed.joinWarnings()
                                     effectiveSchemaLabel = SCHEMA_ER
                                     Triple(erValidated.plan, dbValidated.plan, resolution.detectionMessages)
@@ -306,6 +316,7 @@ class QueryServiceImpl(
                     // them would say each twice to one that adds them up.
                     val firstBatchAnnotations =
                         mutableListOf<Warning>().apply {
+                            addAll(securityWarnings)
                             add(warning("compile_duration_ms", compileMs.toString()))
                             add(warning(if (cachedHit != null) "cache_hit" else "cache_miss", key.sourceHash))
                             detectionMessages.forEach { msg ->
@@ -1251,6 +1262,9 @@ class QueryServiceImpl(
             .takeIf { it.nodeCase == PlanNode.NodeCase.LIMIT_OFFSET && it.limitOffset.hasLimit() }
             ?.limitOffset
             ?.limit
+
+    private fun ValidateResponse.predicateWarnings(): List<Warning> =
+        context.warningsList.filter { it.code == "security_predicate_applied" }
 
     private fun ValidateResponse.capNotices(): List<ResponseMessage> = messagesList.filter { it.code == TOP_N_APPLIED }
 

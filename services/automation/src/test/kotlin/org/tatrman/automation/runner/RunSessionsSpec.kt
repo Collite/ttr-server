@@ -85,7 +85,7 @@ class RunSessionsSpec :
                         .island("placed")
                         .single()
                         .table.rows.size
-                } shouldBe 3
+                } shouldBe 1
             } finally {
                 fixture.close()
             }
@@ -454,7 +454,14 @@ internal class RunSessionFixture(
                     door ?: Door { read ->
                         reads.incrementAndGet()
                         ReadResult(
-                            Table(read.columns, listOf(listOf("4711", "a"), listOf("4711", null), listOf("4711", "c"))),
+                            Table(
+                                read.columns,
+                                if (read.island == "placed") {
+                                    listOf(listOf("4711", "a"))
+                                } else {
+                                    listOf(listOf("4711", "a"), listOf("4711", null), listOf("4711", "c"))
+                                },
+                            ),
                         )
                     },
                     Staging(LocalStagingStore(Files.createTempDirectory("au-session")), outputs::add),
