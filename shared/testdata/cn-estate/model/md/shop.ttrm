@@ -1,0 +1,23 @@
+package shop
+
+model md
+
+// The md face: one cubelet carrying `Channel` as its grain, and the explicit `md2er_cubelet` — the only hop P2 answers
+// (`ExplicitMdErHop`) — that lands the cubelet on `channel_sales`. So `Sale` (grounded on the cubelet) reaches E-R
+// through the hop; `revenue` (on the measure) does not — a measure's hop, like a dimension's, is md/hop's, and that
+// concept's landing stays null (`md-grounded-hop-missing`).
+
+def domain ChannelCode { type: string }
+def domain Money { type: decimal }
+
+def dimension Channel { key: code, attributes: [ def attribute code { domain: md.ChannelCode, isKey: true } ] }
+
+def measure revenue { domain: md.Money, class: additive, aggregation: sum }
+
+def cubelet channelSales { grain: [Channel.code], measures: [revenue] }
+
+def md2er_cubelet channel_sales_er {
+    cubelet: md.channelSales,
+    target: er.entity.channel_sales,
+    attributes: { Channel.code: channel }
+}

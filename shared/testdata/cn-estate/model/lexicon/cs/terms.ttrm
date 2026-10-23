@@ -1,0 +1,17 @@
+package shop
+
+model lexicon locale cs
+
+// Concept terms beside element terms. `tržby` names both `cn.revenue` and the measure it is grounded on (R-cn-1's
+// "same thing" — the compiler stays silent); `kanál` names both `cn.Channel` and `channel_sales`, which `Channel` does
+// NOT ground to (it lands on the attribute) — the divergence the compiler keeps warning about.
+
+def term debtor_cs { for: cn.DebtorCustomer, forms: ["zákazník po splatnosti", "dlužník"] }
+def term item_cs { for: cn.Item, forms: ["položka", "zboží"], sense_priority: 1 }
+def term segment_cs { for: cn.Segment, forms: ["segment"] }
+def term channel_cs { for: cn.Channel, forms: ["kanál", "prodejní kanál"] }
+def term supplier_cs { for: cn.Supplier, forms: ["dodavatel"] }
+def term revenue_cs { for: cn.revenue, forms: ["tržby"] }
+
+def term revenue_md_cs { for: md.measure.revenue, forms: ["tržby", "obrat"] }
+def term channel_sales_cs { for: er.entity.channel_sales, forms: ["kanál"] }

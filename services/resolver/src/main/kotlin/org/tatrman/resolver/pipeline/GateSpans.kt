@@ -6,8 +6,10 @@ import org.tatrman.fuzzy.v1.BatchMatchResponse
 import org.tatrman.fuzzy.v1.FuzzyMatch
 import org.tatrman.fuzzy.v1.SourceTag
 import org.tatrman.fuzzy.v1.SpanQuery
+import org.tatrman.resolver.model.ConceptFacts
 import org.tatrman.resolver.model.ResolverEntityType
 import org.tatrman.resolver.model.ResolverThresholds
+import org.tatrman.resolver.model.conceptFacts
 import org.tatrman.resolver.model.kindsByRef
 import org.tatrman.resolver.model.memberEntityByCategory
 import org.tatrman.resolver.model.ownersByRef
@@ -77,6 +79,8 @@ object GateSpans {
                 // MV §5.3 — category → the ENTITY a member row belongs to. The same map
                 // `entityRefOf` reads below, so the Binder and the door name one owner.
                 val memberOwners = entityTypes.memberEntityByCategory()
+                // CN-P4 — and the concept tier the ordering table reads, the same way.
+                val concepts = entityTypes.conceptFacts()
 
                 fun rowsOf(i: Int): List<FuzzyMatch> =
                     response.resultsList
@@ -90,7 +94,7 @@ object GateSpans {
                 fun gate(
                     cand: DomainSpanCandidate,
                     rows: List<FuzzyMatch>,
-                ): Binder.Verdict = Binder.gate(rows, cand, thresholds, owners, kinds, reach, memberOwners)
+                ): Binder.Verdict = Binder.gate(rows, cand, thresholds, owners, kinds, reach, memberOwners, concepts)
 
                 // ttr-demo#62 (coordination, 2026-10-14) — the conjuncts of a coordination of values
                 // that intersect at one entity keep that entity's members, in place of their scope. Their
@@ -163,6 +167,7 @@ object GateSpans {
         val bindings = mutableListOf<DomainBinding>()
         val options = mutableListOf<ClarificationOption>()
         val memberEntities = entityTypes.memberEntityByCategory()
+        val concepts = entityTypes.conceptFacts()
 
         for (span in gated) {
             if (span.contenders.isEmpty()) continue
@@ -172,7 +177,7 @@ object GateSpans {
                 // (RG-P6 review M).
                 span.contenders
                     .take(thresholds.maxOptions)
-                    .forEach { options += toOption(it.match, span.candidate, entityTypes, memberEntities) }
+                    .forEach { options += toOption(it.match, span.candidate, entityTypes, memberEntities, concepts) }
             } else {
                 bindings +=
                     toBinding(
@@ -182,6 +187,8 @@ object GateSpans {
                         memberEntities,
                         siblings,
                         snapshotHash,
+                        span.equivalents,
+                        concepts,
                     )
             }
         }
@@ -308,9 +315,15 @@ object GateSpans {
         memberEntities: Map<String, String>,
         siblings: SiblingCatalog,
         snapshotHash: String,
+        equivalents: List<EquivalentReading> = emptyList(),
+        concepts: ConceptFacts = ConceptFacts.NONE,
     ): DomainBinding {
         val isMember = top.source == SourceTag.MEMBER
-        val entityRef = entityRefOf(top, entityTypes, memberEntities)
+        // CN-P4 (A-CN-70) — a concept binding names its ER landing where every binding names its object;
+        // the concept rides in `concepts` below.
+        val conceptTarget = ConceptLifts.domainTargetOf(top, equivalents, concepts)
+        val entityRef = conceptTarget ?: entityRefOf(top, entityTypes, memberEntities)
+        val vocabulary = if (isMember) vocabularyRefOf(top, entityTypes) else ""
         return DomainBinding(
             span = cand,
             entityTypeRef = entityRef,
@@ -318,13 +331,20 @@ object GateSpans {
             vocabularySource = top.source.name,
             resolvedId = if (isMember) top.candidateId else null,
             resolvedLabel = top.candidate,
-            targetRef = if (!isMember && top.targetRef.isNotBlank()) top.targetRef else null,
+            targetRef =
+                when {
+                    conceptTarget != null -> conceptTarget.ifBlank { null }
+                    !isMember && top.targetRef.isNotBlank() -> top.targetRef
+                    else -> null
+                },
             siblingRefs = siblings[top.category].orEmpty(),
             score = top.score,
             algorithm = top.provenance.method.ifBlank { "TATRMAN" },
             snapshotHash = snapshotHash,
             // review-104 F6 — the attribute, which `entityRef` above no longer names for a member.
-            memberOf = if (isMember) vocabularyRefOf(top, entityTypes) else "",
+            memberOf = vocabulary,
+            concepts = ConceptLifts.of(top, vocabulary, if (isMember) entityRef else "", equivalents, concepts),
+            conceptQname = if (conceptTarget != null) top.targetRef else "",
         )
     }
 
@@ -333,14 +353,27 @@ object GateSpans {
         cand: DomainSpanCandidate,
         entityTypes: List<ResolverEntityType>,
         memberEntities: Map<String, String>,
+        concepts: ConceptFacts,
     ): ClarificationOption {
         val isMember = m.source == SourceTag.MEMBER
+        // CN-P4 (A-CN-70, ⚑R130-b) — a concept option offers the concept (its id and `target_ref` stay `cn.X`:
+        // that is what was offered), names its ER landing where an option names its entity, and carries the
+        // reading its pick will bind.
+        val concept =
+            if (!isMember &&
+                concepts.isConcept(m.targetRef)
+            ) {
+                ConceptLifts.of(m, "", "", emptyList(), concepts).single()
+            } else {
+                null
+            }
         return ClarificationOption(
             id = Binder.identityKey(m),
             label = m.candidate,
             resolvedId = if (isMember) m.candidateId else null,
             targetRef = if (!isMember && m.targetRef.isNotBlank()) m.targetRef else null,
-            entityTypeRef = entityRefOf(m, entityTypes, memberEntities),
+            entityTypeRef =
+                if (concept != null) concepts.erTarget(m.targetRef) else entityRefOf(m, entityTypes, memberEntities),
             spanStart = cand.start,
             spanEnd = cand.end,
             spanText = cand.text,
@@ -362,6 +395,7 @@ object GateSpans {
             // shipping state), and then only the attribute tells the two options apart
             // (resolver.proto `member_of`: "the attribute (or entity)").
             memberOf = if (isMember) vocabularyRefOf(m, entityTypes) else "",
+            concept = concept,
         )
     }
 
@@ -373,8 +407,12 @@ object GateSpans {
     private fun dedupeByIdentity(bindings: List<DomainBinding>): List<DomainBinding> {
         val best = LinkedHashMap<String, DomainBinding>()
         for (b in bindings) {
+            // CN-P4 (review-130 R2) — a concept binding is its concept, not its landing: `Customer` and
+            // `DebtorCustomer` land on one entity and are two answers.
             val key =
-                b.resolvedId?.let { "M:${b.memberOf}#$it" } ?: b.targetRef?.let { "V:$it" }
+                b.resolvedId?.let { "M:${b.memberOf}#$it" }
+                    ?: b.conceptQname.ifBlank { null }?.let { "C:$it" }
+                    ?: b.targetRef?.let { "V:$it" }
                     ?: "S:${b.entityTypeRef}:${b.rawText}"
             val existing = best[key]
             if (existing == null || b.score > existing.score) best[key] = b

@@ -19,6 +19,11 @@ application {
 
 tasks.test {
     useJUnitPlatform()
+    // CN-P4 S4.4 — the conceptual tier's shared fixture estate, compiled at test time by the real producer
+    // (`CnEstate`). Declared as an input so an edit to it re-runs the tests that read it.
+    val cnEstate = rootProject.file("shared/testdata/cn-estate")
+    inputs.dir(cnEstate).withPropertyName("cnEstate")
+    systemProperty("cnEstate", cnEstate.absolutePath)
 }
 
 val osArch = System.getProperty("os.arch").lowercase()

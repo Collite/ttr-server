@@ -1,0 +1,5 @@
+package clinic
+
+model binding
+
+def cn2er_kind diagnosis_g { kind: cn.Diagnosis, target: er.entity.diagnosis }

@@ -1,0 +1,22 @@
+package shop
+
+model binding
+
+// One grounding per concept (CN-D12). Direct on er: Customer, Item, Segment and Channel (value kinds — each on its
+// attribute, AM-27), Invoice, TopCustomer (a phase grounded to a stacked entity). Through the hop: Sale (the cubelet).
+// Hop missing: revenue (a measure). Ungrounded: Supplier, Party.
+
+def cn2er_role customer_g { role: cn.Customer, target: er.entity.customer }
+def cn2er_kind item_g { kind: cn.Item, target: er.entity.item }
+def cn2er_kind segment_g { kind: cn.Segment, target: er.entity.customer.segment }
+def cn2er_kind channel_g { kind: cn.Channel, target: er.entity.channel_sales.channel }
+def cn2er_event invoice_g {
+    event: cn.Invoice,
+    target: er.entity.invoice,
+    period: { start: er.entity.invoice.issued, end: er.entity.invoice.due },
+    participants: { customer: [er.relation.invoice_customer] }
+}
+def cn2er_phase top_g { phase: cn.TopCustomer, target: er.entity.top_customer }
+
+def cn2md_event sale_g { event: cn.Sale, target: md.channelSales }
+def cn2md_quality revenue_g { quality: cn.revenue, target: md.revenue }

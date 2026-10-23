@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package org.tatrman.resolver.registry
 
+import org.tatrman.resolver.model.Lift
 import org.tatrman.resolver.model.Reach
 
 /**
@@ -16,6 +17,13 @@ import org.tatrman.resolver.model.Reach
 data class DeclaredValue(
     val id: String,
     val value: String,
+    /**
+     * CN-P4 (cn contracts §1.5, A-CN-8) — the entry's `default: true` and `sense_priority:`, from the
+     * v6 archive's row (`CompiledEntry.defaultSense` / `sensePriority`). The ordering reads them at
+     * steps 3 and 4. `false` / null on a row that states neither, which is every pre-v6 row.
+     */
+    val defaultSense: Boolean = false,
+    val sensePriority: Double? = null,
 )
 
 data class DeclaredVocabularyEntry(
@@ -63,6 +71,23 @@ data class DeclaredVocabularyEntry(
      * [values] at all. `false` for everything else and for every pre-v5 archive.
      */
     val memberVocabulary: Boolean = false,
+    /**
+     * CN-P4 (cn contracts §5, v6) — a concept's facts, from the archive's `targets[ref]`: its
+     * `stereotype`, its ER landing `erTarget` (an entity, or the attribute for a value kind or a
+     * quality), `via` (`direct` | `md-hop`) and its `of:` as `ofRef`. `""` on every element and on every
+     * pre-v6 archive. [objectKind] is `concept` for a concept, and [ownerRef] keeps its meaning: the
+     * entity around the landing.
+     */
+    val stereotype: String = "",
+    val erTarget: String = "",
+    val via: String = "",
+    val ofRef: String = "",
+    /**
+     * CN-P4 (A-CN-4) — the reverse index: the concepts this er or md element lifts to, from
+     * `targets[ref].liftsTo`. Empty on a concept, a member, an element nothing is grounded on, and on
+     * every pre-v6 archive.
+     */
+    val liftsTo: List<Lift> = emptyList(),
 )
 
 data class DeclaredVocabulary(

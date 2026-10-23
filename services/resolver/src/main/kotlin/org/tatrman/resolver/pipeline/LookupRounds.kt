@@ -11,6 +11,7 @@ import org.tatrman.fuzzy.v1.LookupRequest
 import org.tatrman.resolver.client.FuzzyClient
 import org.tatrman.resolver.model.ResolverEntityType
 import org.tatrman.resolver.model.ResolverThresholds
+import org.tatrman.resolver.model.conceptFacts
 import org.tatrman.resolver.model.kindsByRef
 import org.tatrman.resolver.model.memberEntityByCategory
 import org.tatrman.resolver.model.ownersByRef
@@ -132,6 +133,8 @@ class LookupRounds(
         val kinds = entityTypes.kindsByRef()
         val reach = entityTypes.reachByRef()
         val memberOwners = entityTypes.memberEntityByCategory()
+        // CN-P4 — the concept tier, read through the same registry, for the same reason.
+        val concepts = entityTypes.conceptFacts()
         val tried = mutableMapOf<Pair<Int, Int>, List<Hypothesis>>()
         var currentGated = gated
         var currentUngated = ungated
@@ -188,7 +191,8 @@ class LookupRounds(
                 val span = existing ?: quotedSpan(query, currentGated + currentUngated, currentLattice) ?: continue
                 // The same gate the broad pass used. A round is a proposer; this is where its
                 // proposals stop being proposals (RV-7).
-                val verdict = Binder.gate(candidates, span.candidate, thresholds, owners, kinds, reach, memberOwners)
+                val verdict =
+                    Binder.gate(candidates, span.candidate, thresholds, owners, kinds, reach, memberOwners, concepts)
                 // What the gate refused, recorded where a refusal belongs. `RungLogEntry.hypotheses`
                 // is contracts' "what it PROPOSED (never what it bound)", and a WEAK candidate is
                 // exactly that: something the round offered and the binder declined. It goes in the
@@ -376,6 +380,11 @@ class LookupRounds(
         val contenders = span.contenders + additions
         return span.copy(
             contenders = contenders,
+            // review-130 R5 — a span the round FILLED keeps what its bind proved: R-cn-1's `cn-grounds` element
+            // (the concept's `lift:` source and its door fallback) and MH-D3's reach-equal readings, as a
+            // broad-pass bind does. A span that already had a binding keeps its own.
+            equivalents =
+                if (span.contenders.isEmpty()) (verdict as? Binder.Bind)?.equivalents.orEmpty() else span.equivalents,
             // A span the broad pass left empty is ambiguous exactly when the round that filled it
             // found several identities; one that already had a binding is untouched by the guard
             // above, because the planner never asks about it.

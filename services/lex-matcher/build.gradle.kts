@@ -19,6 +19,12 @@ tasks.test {
     listOf("regenGoldens", "includePerf").forEach { key ->
         System.getProperty(key)?.let { systemProperty(key, it) }
     }
+    // CN-P4 S4.3 — the conceptual tier's shared fixture estate (`shared/testdata/cn-estate`, one copy for veles,
+    // lex-matcher and the resolver), compiled at test time. Declared as an input too: a system property naming a
+    // directory is not one.
+    val cnEstate = rootProject.file("shared/testdata/cn-estate")
+    inputs.dir(cnEstate).withPropertyName("cnEstate")
+    systemProperty("cnEstate", cnEstate.absolutePath)
 }
 
 val osArch = System.getProperty("os.arch").lowercase()

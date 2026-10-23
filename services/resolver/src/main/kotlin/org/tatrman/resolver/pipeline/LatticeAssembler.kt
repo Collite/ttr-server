@@ -3,7 +3,9 @@ package org.tatrman.resolver.pipeline
 
 import org.tatrman.fuzzy.v1.BatchMatchResponse
 import org.tatrman.nlp.v1.AnalyzeResponse
+import org.tatrman.resolver.model.KIND_CONCEPT
 import org.tatrman.resolver.model.ResolverEntityType
+import org.tatrman.resolver.model.standsFor
 import org.tatrman.resolver.v1.Attribution
 import org.tatrman.resolver.v1.Binding
 import org.tatrman.resolver.v1.Grounding
@@ -206,6 +208,9 @@ object LatticeAssembler {
         // Each head carries its span's first and last TOKEN as well as its head word: §2.1's
         // distance runs edge to edge (review-103 F2), and the edge of *dodací místa* nearest a
         // literal after it is *místa*, not the head word the phrase was proposed from.
+        // CN-P4 (⚑R130-a / A-CN-72) — a concept-bound mention's object is its concept's ER landing: the head
+        // facet a literal is attributed through is the landing's, and so is the kind frame roles read below.
+        val standsFor = entityTypes.standsFor()
         val heads =
             mentionSpans
                 .zip(mentionBuilders)
@@ -215,7 +220,7 @@ object LatticeAssembler {
                         mention.bindingsList
                             .firstOrNull { it.targetClass == TargetClass.TARGET_CLASS_MODEL_OBJECT }
                             ?.ref ?: return@mapNotNull null
-                    val entityType = entityTypes.firstOrNull { it.ref == ref } ?: return@mapNotNull null
+                    val entityType = entityTypes.firstOrNull { it.ref == standsFor(ref) } ?: return@mapNotNull null
                     val spanTokens =
                         parse.tokensList.indices.filter { i ->
                             val t = parse.tokensList[i]
@@ -339,7 +344,7 @@ object LatticeAssembler {
                             targetClass =
                                 mention.bindingsList.firstOrNull()?.targetClass
                                     ?: TargetClass.TARGET_CLASS_UNSPECIFIED,
-                            objectKind = objectKindOf(span, mention, objectKinds),
+                            objectKind = objectKindOf(span, mention, objectKinds, standsFor),
                             anchorsValue = mention.id in anchoring,
                             charEnd = span.candidate.end,
                             subject = !span.candidate.leftOut,
@@ -555,11 +560,18 @@ object LatticeAssembler {
         span: GatedSpan,
         mention: Mention.Builder,
         objectKinds: Map<String, String>,
+        standsFor: (String) -> String,
     ): String =
         mention.bindingsList
-            .firstNotNullOfOrNull { objectKinds[it.ref]?.ifBlank { null } }
-            ?: span.candidate.gatedEntityRefs.firstNotNullOfOrNull { objectKinds[it]?.ifBlank { null } }
+            .firstNotNullOfOrNull { kindOf(objectKinds, standsFor(it.ref)) }
+            ?: span.candidate.gatedEntityRefs.firstNotNullOfOrNull { kindOf(objectKinds, it) }
             ?: ""
+
+    /** A ref's declared kind, or null — a concept with no landing is no kind a frame role reads (silence, not a species). */
+    private fun kindOf(
+        objectKinds: Map<String, String>,
+        ref: String,
+    ): String? = objectKinds[ref]?.ifBlank { null }?.takeUnless { it == KIND_CONCEPT }
 
     private enum class Layer { MENTION, VALUE, DROPPED }
 

@@ -16,6 +16,29 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+- **lex-matcher + resolver — the declared layer reads lexicon archive v6** (CN-P4). The grammar bundle pin moves to
+  0.18.1, whose `ttr-lexicon` reads `ttr-lexicon-compiled/v6`: concept entries under `cn.*` refs, the reverse index
+  (`liftsTo`) on er and md elements, and the default sense on rows. lex-matcher serves a concept's terms as declared
+  vocabulary under the concept's ref, as it serves an er object's. `fuzzy.match:v1` and Lookup keep their shape, and
+  narrowing a match to a concept's ref works. A v5 archive still loads, with the schema-version WARN. When two archives
+  carry the same ref, the merged layer now keeps its concept facts (`stereotype`, `erTarget`, `via`, `ofRef`) and the
+  union of its `liftsTo`; before, it dropped them. **Rollout:** these readers ship before any estate rebuilds its
+  archive as v6.
+- **resolver — concepts resolve, lift and gate** (CN-P4). On an estate with a `model cn`:
+  - A term that names a concept binds the concept. Its values gate as the concept's ER landing's would: "Praha"
+    under "zákazníci po splatnosti" is the customer address's city.
+  - An element or member hit lifts to the concepts grounded on it: its own ref, a member's attribute and that
+    attribute's entity. A lift never crosses a relation or lands on a phase.
+  - A span with several readings follows the cn resolution order. A phase yields to its bearer, then the default
+    sense, then `sense_priority`. A concept and an element it grounds to bind the concept; one it does not ground to
+    is asked about, concepts first.
+  - `resolver.v1.EntityBinding` gains `concepts[]` (`ConceptReading`: `concept_qname`, `stereotype`, `via`,
+    `lift_provenance[]`, `note`). This is additive; `resolve.bind:v1` JSON carries it as `concepts`.
+  - A concept binding's `domain` names the concept's ER landing, never the `cn.*` ref. So does a clarification
+    option that offers a concept (`object_kind` `concept`), and picking it binds the concept reading. A concept with
+    no landing carries the advisory note `cn/ungrounded` or `md/er-unmapped`; its values resolve as open values.
+
+  An estate without a `model cn` resolves exactly as before.
 - **query — the stated layer is part of the compiled-plan cache key** (review-123 R3). The cache keyed a plan by
   model version, text, language and parameter signature. The detector decides the layer with `source_schema`, so one
   text stated DB and then ER was served the first caller's plan. The key now includes `source_schema`.

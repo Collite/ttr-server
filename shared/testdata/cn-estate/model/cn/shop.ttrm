@@ -1,0 +1,46 @@
+package shop
+
+model cn
+
+// The concepts. `Customer` carries its terms INLINE (the sugar `CnSchema` surfaces as `LexiconLink` INLINE); every
+// other concept's terms are canonical `def term`s under `model/lexicon/`.
+
+def kind Party { label: { en: "Party", cs: "Strana" } }
+def kind Item { label: { en: "Item", cs: "Položka" } }
+def kind Segment { label: { en: "Segment", cs: "Segment" } }                 // a value kind: customer.segment
+def kind Channel { label: { en: "Channel", cs: "Kanál" } }                   // a value kind: channel_sales.channel
+def kind Supplier { label: { en: "Supplier", cs: "Dodavatel" } }             // ungrounded
+
+def role Customer {
+    of: Party,
+    event: Sale,
+    label: { en: "Customer", cs: "Zákazník" },
+    lexicon: { terms: ["zákazník", "customer"], default: true }
+}
+
+def event Sale {
+    label: { en: "Sale", cs: "Prodej" },
+    involves: [Customer, Item, Channel],
+    qualities: [revenue]
+}
+def quality revenue { of: Sale, label: { en: "Revenue", cs: "Tržby" } }
+
+def event Invoice {
+    label: { en: "Invoice", cs: "Faktura" },
+    extent: durative,
+    involves: [Customer],
+    period: { start: issued, end: due },
+    qualities: [status, issued, due]
+}
+
+def phase OverdueInvoice {
+    of: Invoice,
+    label: { en: "Overdue invoice", cs: "Faktura po splatnosti" },
+    definition: """status = 'open' and period.end < :as_of"""
+}
+def phase DebtorCustomer {
+    of: Customer,
+    label: { en: "Customer with overdue invoices", cs: "Zákazník po splatnosti" },
+    definition: """exists Invoice involving this as customer where OverdueInvoice"""
+}
+def phase TopCustomer { of: Customer, label: { en: "Top customer", cs: "Nejlepší zákazník" } }

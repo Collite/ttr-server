@@ -31,6 +31,11 @@ kotlin {
 
 tasks.test {
     useJUnitPlatform()
+    // CN-P4 S4.2 — the conceptual tier's shared fixture estate (`shared/testdata/cn-estate`, one copy for veles,
+    // lex-matcher and the resolver). Declared as an input too: a system property naming a directory is not one.
+    val cnEstate = rootProject.file("shared/testdata/cn-estate")
+    inputs.dir(cnEstate).withPropertyName("cnEstate")
+    systemProperty("cnEstate", cnEstate.absolutePath)
 }
 
 // VelesModelLoadComponentSpec reconciles the `model-seed` and `model-tpcds` fixture trees through

@@ -81,6 +81,16 @@ data class DomainBinding(
      * `TN` as a billing state and as a shipping state of one customer were the same binding.
      */
     val memberOf: String = "",
+    /**
+     * CN-P4 (cn contracts §5) — the concepts this binding reads as: the one its term names and the ones
+     * its element or member lifts to ([ConceptLifts]). Empty on an estate with no `model cn`.
+     */
+    val concepts: List<ConceptLifts.LiftedConcept> = emptyList(),
+    /**
+     * CN-P4 (review-130 R2) — the concept this binding's term names (`cn.<Name>`), `""` otherwise. A concept
+     * binding's [targetRef] is its landing (A-CN-70), which two concepts may share; this is its identity.
+     */
+    val conceptQname: String = "",
 )
 
 /**
@@ -116,6 +126,12 @@ data class ClarificationOption(
      * span and the (absent) target ref are all identical and the owner is the whole difference.
      */
     val memberOf: String = "",
+    /**
+     * CN-P4 (⚑R130-b) — for a CONCEPT option, the concept it offers: signed into the resume token so a pick
+     * rebuilds the binding a broad-pass bind of the concept would have produced — a `domain` naming the
+     * landing ([entityTypeRef]) and the concept reading. Null for every other option.
+     */
+    val concept: ConceptLifts.LiftedConcept? = null,
 )
 
 /**
