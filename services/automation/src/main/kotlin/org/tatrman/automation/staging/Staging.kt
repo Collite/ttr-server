@@ -15,7 +15,9 @@ import java.nio.file.Path
 import java.util.UUID
 
 /** Blob storage seam: local development now; the configured Charon/object-store adapter plugs in here. */
-interface StagingStore {
+interface StagingStore : AutoCloseable {
+    override fun close() {}
+
     fun putIfAbsent(
         path: String,
         bytes: ByteArray,

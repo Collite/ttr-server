@@ -52,12 +52,68 @@ data class PreviewsConfig(
     val idleEvictHours: Long,
 )
 
-/** Where island outputs are staged: `local` with a [path], or a store at a [url] (Seaweed/Redis via transfer-core). */
+/** Raw immutable staging; credentials stay in the Redis URL or the AWS provider chain. */
 data class StagingConfig(
     val kind: String,
     val path: String?,
     val url: String?,
-)
+    val bucket: String? = null,
+    val prefix: String = "automation/staging",
+    val region: String = "us-east-1",
+    val anonymous: Boolean = false,
+) {
+    init {
+        require(
+            kind in setOf("local", "redis", "seaweed"),
+        ) { "automation.staging.kind must be local, redis or seaweed" }
+        require(prefix.split('/').all { it.matches(Regex("[A-Za-z0-9_-][A-Za-z0-9_.-]*")) && it != ".." }) {
+            "automation.staging.prefix must be a nonempty relative namespace"
+        }
+        if (kind == "local") {
+            require(!path.isNullOrBlank()) { "automation.staging.path is required for local storage" }
+        } else {
+            val uri = runCatching { java.net.URI(requireNotNull(url)) }.getOrNull()
+            require(
+                uri != null &&
+                    uri.host != null &&
+                    uri.fragment == null &&
+                    uri.query == null &&
+                    (uri.port == -1 || uri.port in 1..65535),
+            ) { "invalid automation.staging.url" }
+            if (kind == "redis") {
+                require(
+                    uri.scheme in setOf("redis", "rediss") &&
+                        uri.path.orEmpty().matches(Regex("(/[0-9]+)?")),
+                ) {
+                    "automation.staging.url must be a redis/rediss URL with an optional database number"
+                }
+            } else {
+                require(
+                    uri.scheme in
+                        setOf(
+                            "http",
+                            "https",
+                        ) &&
+                        uri.userInfo == null &&
+                        uri.path.orEmpty() in setOf("", "/"),
+                ) {
+                    "automation.staging.url must be an HTTP(S) S3 endpoint without credentials or a path"
+                }
+                require(
+                    bucket != null && bucket.matches(Regex("[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]")) && ".." !in bucket,
+                ) {
+                    "automation.staging.bucket is required for seaweed storage"
+                }
+                require(region.matches(Regex("[a-z0-9-]+"))) { "invalid automation.staging.region" }
+            }
+        }
+    }
+
+    // Redis URLs may contain credentials. Never include the URL in bootstrap diagnostics.
+    override fun toString(): String =
+        "StagingConfig(kind=$kind, path=$path, url=${if (url == null) null else "<configured>"}, " +
+            "bucket=$bucket, prefix=$prefix, region=$region, anonymous=$anonymous)"
+}
 
 data class SchedulerConfig(
     val tz: ZoneId,
@@ -172,6 +228,10 @@ data class AutomationConfig(
                         kind = c.getString("staging.kind"),
                         path = c.optString("staging.path"),
                         url = c.optString("staging.url"),
+                        bucket = c.optString("staging.bucket"),
+                        prefix = c.optString("staging.prefix") ?: "automation/staging",
+                        region = c.optString("staging.region") ?: "us-east-1",
+                        anonymous = c.hasPath("staging.anonymous") && c.getBoolean("staging.anonymous"),
                     ),
                 scheduler =
                     SchedulerConfig(

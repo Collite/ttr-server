@@ -125,6 +125,9 @@ dependencies {
     implementation(libs.arrow.vector)
     implementation(libs.arrow.memory.netty)
     implementation(libs.duckdb.jdbc)
+    implementation(project(":shared:libs:kotlin:transfer-core"))
+    implementation(libs.aws.sdk.s3)
+    implementation(libs.lettuce.core)
 
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.typesafe.config)
@@ -155,6 +158,9 @@ dependencies {
     "componentTestImplementation"(libs.kotlinx.serialization.json)
     "componentTestImplementation"(libs.kotlinx.coroutines.core)
     "componentTestImplementation"(libs.arrow.vector)
+    "componentTestImplementation"(project(":shared:libs:kotlin:transfer-core"))
+    "componentTestImplementation"(libs.aws.sdk.s3)
+    "componentTestImplementation"(libs.lettuce.core)
     "componentTestImplementation"(libs.tatrman.ttr.metadata)
     "componentTestImplementation"(project(":shared:proto"))
 }

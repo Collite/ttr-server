@@ -5,6 +5,7 @@ import com.typesafe.config.Config
 import com.typesafe.config.ConfigFactory
 import io.ktor.server.application.Application
 import io.ktor.server.application.ApplicationStopping
+import io.ktor.server.application.ApplicationStopped
 import io.ktor.server.application.install
 import io.ktor.server.auth.Authentication
 import io.ktor.server.auth.authenticate
@@ -34,6 +35,7 @@ import org.tatrman.automation.identity.AutomationBearerProvider
 import org.tatrman.automation.identity.CallerVerifier
 import org.tatrman.automation.identity.ServiceTokens
 import org.tatrman.automation.ledger.Ledger
+import org.tatrman.automation.staging.StagingStores
 import org.tatrman.automation.ledger.LedgerBundles
 import org.tatrman.automation.obs.AutomationTelemetry
 import org.tatrman.automation.queue.LedgerQueue
@@ -88,6 +90,11 @@ fun Application.module(config: Config) {
             OtelEndpointConfig(serviceName = SERVICE, protocol = System.getenv("AUTOMATION_OTEL_PROTOCOL") ?: "grpc"),
             enabled = config.hasPath("telemetry.enabled") && config.getBoolean("telemetry.enabled"),
         )
+
+    // Configure storage now; run routes remain gated on the remaining P1 integration. Stop storage only
+    // after HTTP has drained. The later runtime must join workers before this subscription can close it.
+    val staging = StagingStores.open(automation.staging)
+    monitor.subscribe(ApplicationStopped) { staging.close() }
 
     val db = DatabaseConnection(automation.db).also { it.init() }
     val migrated = migrateLedger(db)

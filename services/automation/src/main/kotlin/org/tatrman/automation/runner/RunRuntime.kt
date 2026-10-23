@@ -27,8 +27,8 @@ import java.util.UUID
  * it must keep them alive until [shutdown] returns. Supply the SAME clock used to construct the ledger
  * (including configured clock.skew). No credentials or executors are recovered after a process restart.
  *
- * This assembles the execution path; Application mounting still waits for configured storage and
- * deployment owner routing. HTTP integration specs mount [org.tatrman.automation.api.runRoutes] directly.
+ * This assembles the execution path; Application mounting still waits for deployment owner routing and
+ * the remaining P1 integration. HTTP integration specs mount [org.tatrman.automation.api.runRoutes] directly.
  */
 class RunRuntime(
     config: AutomationConfig,

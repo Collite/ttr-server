@@ -15,7 +15,7 @@ in the project folder:
 > and authenticated route/detail/output readers page the verified Arrow or download Arrow/CSV. Absolute
 > evaluation deadlines, runtime assembly, durable execution evidence and the authenticated raw protocol reader
 > are implemented, along with durable status and native dry-run preview batches. Application installation,
-> object storage, owner routing and remaining preview lowering remain. Durable dry-run close/sealing and local staging retention
+> owner routing and remaining preview lowering remain. Durable dry-run close/sealing and local staging retention
 > are assembled and tested; Application mounting remains pending.
 > Budgeted evaluate, observation-only polling and durable abandonment/cleanup primitives are implemented. Run handlers,
 > including evaluate and route/detail/output readers, are not mounted in Application.
@@ -221,7 +221,7 @@ Runtime shutdown first fences new opens/reads, then joins worker cancellation an
 Concurrent shutdown calls join the same cleanup; database, Query channel and staging must remain usable until
 it returns. These dependencies belong to the application and are not closed by the runtime.
 
-Deployment owner routing, Application installation and the configured object-store adapter are pending. No run routes or
+Deployment owner routing, Application installation and remaining P1 lifecycle integration are pending. No run routes or
 maintenance loop are installed in Application yet. Remaining performed payloads, configured PT/ES links, preview lowering and
 task deadline handoff must be integrated before exposing this path there.
 
@@ -293,7 +293,7 @@ executor's cancellation scope.
 
 Local staging publishes immutable Arrow blobs before journalling their metadata. A journal failure leaves an
 unreferenced blob for the S1.3 retention job; it never deletes content another claimant might reference. The
-object-store adapter remains pending; the local lifecycle is described below. The checked-in real bundle fixture
+object-store adapter remains pending; the configured remote lifecycle is described below. The checked-in real bundle fixture
 records its provenance under `src/test/resources/runner/hartland/README.md`.
 
 ### Durable dry-run close and local staging retention
@@ -320,12 +320,57 @@ The scan selects at most 100 runs per maintenance pass, prioritizing never-attem
 staging_checked_at. Released runs are revisited to collect delayed blob puts that began before the fence.
 Per-run store deletion uses the canonical runs/{UUID}/ prefix, including unjournalled Arrow/temp files, and
 ignores ledger-provided paths. The local adapter refuses symlink ancestors and does not follow links inside
-a run directory. It preserves sibling runs. Object-store adapters must implement the same deleteRun contract;
+a run directory. It preserves sibling runs. The configured Redis/S3 adapters implement the same deleteRun contract;
 the default method refuses unsupported adapters rather than marking their output index released.
 
 This lifecycle is verified locally and against PostgreSQL, including runtime maintenance and retries after
-restart. The configured object-store adapter, Application installation/owner routing and live Hartland
-certification remain pending.
+restart. Configured remote staging is described below. Application run-route/worker installation, owner routing and
+live Hartland certification remain pending.
+
+### Configured immutable staging
+
+Application selects `local`, `redis` or `seaweed` through `StagingStores.open` at startup and closes the owned
+store after HTTP drain (`ApplicationStopped`). This installs storage only: run routes/workers/maintenance are
+still unmounted pending the remaining P1 integration. RunRuntime continues to accept the application-owned
+store and must finish shutdown before its dependencies close.
+
+| setting | use |
+| --- | --- |
+| `staging.kind` / `AUTOMATION_STAGING_KIND` | `local` (default), `redis`, `seaweed`; other values refuse |
+| `staging.path` / `AUTOMATION_STAGING_PATH` | local root; default `/tmp/automation-staging` |
+| `staging.url` / `AUTOMATION_STAGING_URL` | Redis `redis[s]://[user:password@]host[:port][/db]`, or HTTP(S) S3 endpoint |
+| `staging.bucket` / `AUTOMATION_STAGING_BUCKET` | existing, dedicated unversioned bucket; required for seaweed |
+| `staging.prefix` / `AUTOMATION_STAGING_PREFIX` | relative installation namespace; default `automation/staging` |
+| `staging.region` / `AUTOMATION_STAGING_REGION` | S3 region; default `us-east-1` |
+| `staging.anonymous` / `AUTOMATION_STAGING_ANONYMOUS` | explicit anonymous S3; default false |
+
+Redis credentials belong in a Secret-backed URL. S3 uses the AWS default credential provider chain; credentials
+can be supplied through Secret-backed `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY`, or the provider chain's
+role mechanisms. `extraEnv` already supports Secret references for these deployment settings. URLs are
+redacted from configuration diagnostics; malformed/ambiguous URLs and unsafe namespaces refuse before IO.
+The S3 endpoint URL has no bucket path, query, fragment or embedded credentials. Prefixes identify separate
+installations sharing a bucket/database; run paths remain `runs/{UUID}/{island}.{port}.arrow` in the ledger.
+
+`transfer-core` now exposes an additive `ImmutableBlobStore` raw-byte port. AU's namespaced adapter preserves
+IPC bytes over it. Existing Charon MoveExecutor/RedisEndpoint/SeaweedEndpoint operations remain unchanged:
+their row-transfer/overwrite semantics cannot implement immutable AU publication directly. Redis uses atomic
+SET NX with no TTL or sidecar; S3 uses conditional PUT (`If-None-Match: *`). Identical existing bytes return
+false, different bytes refuse, and missing/corrupt data never becomes empty rows. S3 409 conflicts retry at most
+three conditional calls, with no unconditional fallback. The AWS client's individual calls have a 20 s total /
+10 s attempt timeout. Redis commands use a 10 s timeout.
+
+Before accepting run output, the S3 factory checks an unversioned bucket and conditional-write support.
+It retains one intentional byte at `<prefix>/_capabilities/conditional-create-v1`, outside run directories.
+The marker makes concurrent/restarted capability checks safe without transient probe-orphan cleanup. A gateway
+which ignores the precondition, or a versioned/suspended bucket, refuses startup. Permissions must cover bucket
+versioning inspection/listing and object GET/conditional PUT/DELETE under the installation namespace.
+
+Cleanup uses Redis SCAN or paginated S3 ListObjectsV2 and checked batch deletion under the exact UUID prefix.
+A partial S3 deletion error, escaped listing or nonadvancing token refuses cleanup so the ledger stays retryable.
+Client/connection/credential resources are owned and closed on shutdown or failed construction. Real Redis
+8.2.2 and SeaweedFS 4.48 component tests cover racing immutable writes, Arrow/client restart, scan/pagination,
+no implicit Redis TTL, sibling isolation and grace/abandoned/late-orphan retention. These tests run in the
+ordinary component tier without an opt-in switch. They do not certify the live Hartland storage deployment.
 
 ## Operating it
 

@@ -126,6 +126,68 @@ class AutomationConfigSpec :
             }
         }
 
+        "remote staging loads explicit namespace settings and hides credential-bearing URLs" {
+            val c =
+                load(
+                    required + """
+                automation.staging {
+                    kind = redis
+                    url = "redis://au:private-password@redis:6379/2"
+                    prefix = "hartland/au"
+                }
+            """,
+                )
+            c.staging.prefix shouldBe "hartland/au"
+            c.staging.url shouldContain "private-password"
+            c.toString() shouldNotContain "private-password"
+            c.staging.toString() shouldNotContain "private-password"
+            val s3 =
+                load(
+                    required + """
+                automation.staging {
+                    kind = seaweed
+                    url = "http://seaweed:8333"
+                    bucket = "au-staging"
+                    anonymous = true
+                }
+            """,
+                )
+            s3.staging.bucket shouldBe "au-staging"
+            s3.staging.anonymous shouldBe true
+        }
+
+        "invalid staging kinds and unsafe namespaces fail before storage IO" {
+            for (kind in listOf("s3", "Redis", "")) {
+                shouldThrow<IllegalArgumentException> { StagingConfig(kind, "/tmp", null) }
+            }
+            for (prefix in listOf("", "/au", "au/", "../au", "au/../x", "au/*", "au/[x]")) {
+                shouldThrow<IllegalArgumentException> { StagingConfig("local", "/tmp", null, prefix = prefix) }
+            }
+            shouldThrow<IllegalArgumentException> { StagingConfig("local", null, null) }
+        }
+
+        "remote staging rejects malformed and ambiguous URLs without exposing a secret" {
+            for (url in listOf(
+                "redis://u:secret@/0",
+                "http://u:secret@redis/0",
+                "redis://u:secret@redis/x",
+                "redis://redis/0?q=secret",
+            )) {
+                shouldThrow<IllegalArgumentException> { StagingConfig("redis", null, url) }.message shouldNotContain
+                    "secret"
+            }
+            for (url in listOf(
+                "http://u:secret@seaweed",
+                "http://seaweed/bucket",
+                "file:///tmp",
+                "http://seaweed#secret",
+            )) {
+                shouldThrow<IllegalArgumentException> { StagingConfig("seaweed", null, url, bucket = "au-staging") }
+                    .message shouldNotContain "secret"
+            }
+            shouldThrow<IllegalArgumentException> { StagingConfig("seaweed", null, "http://seaweed") }
+        }
+
         "clock.skew is read when set (test only)" {
             load(required + "\nautomation.clock.skew = 90s").clockSkew shouldBe Duration.ofSeconds(90)
         }
