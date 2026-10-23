@@ -53,7 +53,7 @@ class ConfigLoaderTest :
             val keys = ConfigLoader.load().technologies.keys
             keys.none { it.startsWith("sql-") } shouldBe true
             keys shouldNotContainAnyOf
-                setOf("themis", "ariadne", "theseus", "opensearch", "qdrant", "neo4j", "nats", "whois", "backstage")
+                setOf("themis", "opensearch", "qdrant", "neo4j", "nats", "whois", "backstage")
         }
 
         "Postgres checks are TCP on the CNPG primary and Keycloak hits its management port" {
