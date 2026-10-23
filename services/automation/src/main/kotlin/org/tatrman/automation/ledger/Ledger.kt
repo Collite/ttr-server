@@ -23,6 +23,9 @@ import org.jetbrains.exposed.v1.jdbc.transactions.TransactionManager
 import org.jetbrains.exposed.v1.jdbc.transactions.transaction
 import org.jetbrains.exposed.v1.jdbc.update
 import org.tatrman.automation.runner.EvaluationResult
+import org.tatrman.automation.protocol.IslandExecution
+import org.tatrman.automation.protocol.ProtocolDocument
+import org.tatrman.automation.protocol.ProtocolEntry
 import java.sql.Connection
 import java.time.Clock
 import java.time.Duration
@@ -71,6 +74,8 @@ data class RunOpen(
     val budgetBatch: Duration? = null,
     /** Written in the same transaction as a new claim; never appended again for a replay/live handle. */
     val openingProtocol: JsonElement? = null,
+    /** Verified JWT subject; never infer this from the caller's display principal. Legacy rows stay null. */
+    val callerSubject: String? = null,
 )
 
 /** A persisted run handle. The caller's token and execution resources never enter the ledger. */
@@ -427,6 +432,7 @@ class Ledger(
                         author = row[Runs.author],
                         runAs = row[Runs.runAs],
                         caller = row[Runs.caller],
+                        callerSubject = row[Runs.callerSubject],
                         origin = row[Runs.origin],
                         dryRun = row[Runs.dryRun],
                         governed = row[Runs.governance] == "governed",
@@ -442,7 +448,21 @@ class Ledger(
         }
 
     /** Records a staged island output; a late worker cannot publish after abandonment/close/failure/sealing. */
-    fun putOutput(output: RunOutput) {
+    fun putOutput(output: RunOutput) = recordOutput(output, null)
+
+    fun putOutput(
+        output: RunOutput,
+        execution: IslandExecution,
+    ) {
+        require(execution.kind == "output" && execution.name == output.island && execution.port == output.port)
+        require(execution.rows == output.rows && execution.bytes == output.bytes)
+        recordOutput(output, execution)
+    }
+
+    private fun recordOutput(
+        output: RunOutput,
+        execution: IslandExecution?,
+    ) {
         outermost("putOutput")
         transaction(transactionIsolation = Connection.TRANSACTION_READ_COMMITTED) {
             lockRun(output.run)
@@ -459,6 +479,7 @@ class Ledger(
                         (RunOutputs.run eq output.run) and (RunOutputs.island eq output.island) and
                             (RunOutputs.port eq output.port)
                     }.firstOrNull()
+            if (execution != null) appendExecution(output.run, execution)
             if (existing != null) {
                 check(
                     existing[RunOutputs.sha256] == output.sha256 &&
@@ -478,6 +499,94 @@ class Ledger(
                     it[sha256] = output.sha256
                 }
             }
+        }
+    }
+
+    /** Successful shared-part evidence: immutable by (kind, name, port), fenced by status, seal and budget. */
+    fun recordExecution(
+        runId: UUID,
+        execution: IslandExecution,
+    ) {
+        require(execution.kind == "part") { "output evidence must commit with its output row" }
+        outermost("recordExecution")
+        transaction(transactionIsolation = Connection.TRANSACTION_READ_COMMITTED) {
+            lockRun(runId)
+            val from = RunStatus.of(Runs.select(Runs.status).where { Runs.id eq runId }.single()[Runs.status])
+            if (from !in setOf(RunStatus.OPEN, RunStatus.RUNNING, RunStatus.EVALUATED)) {
+                throw IllegalRunTransition(runId, from, RunStatus.RUNNING)
+            }
+            if (isSealed(runId)) throw ProtocolSealed(runId)
+            ensureRunBudget(runId, defaultBudget, clock)
+            appendExecution(runId, execution)
+        }
+    }
+
+    /**
+     * One consistent snapshot, including authorization. Unknown/other/legacy subjects answer the same failure;
+     * neither the current bundle nor a live executor is needed. Only the configured verifier supplies subject.
+     */
+    fun readProtocol(
+        runId: UUID,
+        subject: String,
+    ): ProtocolDocument {
+        require(subject.isNotBlank())
+        outermost("readProtocol")
+        return transaction(transactionIsolation = Connection.TRANSACTION_REPEATABLE_READ) {
+            Runs
+                .select(Runs.id)
+                .where { (Runs.id eq runId) and (Runs.callerSubject eq subject) }
+                .firstOrNull() ?: throw NoSuchRun(runId)
+            val rows =
+                RunProtocol
+                    .selectAll()
+                    .where { RunProtocol.run eq runId }
+                    .orderBy(RunProtocol.seq to SortOrder.ASC)
+                    .toList()
+            ProtocolDocument(
+                runId.toString(),
+                ProtocolSection.entries.associate { section ->
+                    section.wire to
+                        rows.filter { it[RunProtocol.section] == section.wire }.map { row ->
+                            ProtocolEntry(
+                                row[RunProtocol.seq],
+                                row[RunProtocol.at].toInstant().toString(),
+                                row[RunProtocol.payload],
+                            )
+                        }
+                },
+            )
+        }
+    }
+
+    /** Called only while holding the run row, in the step/output transaction. */
+    private fun appendExecution(
+        runId: UUID,
+        execution: IslandExecution,
+    ) {
+        val payload = Json.encodeToJsonElement(execution)
+        val entries =
+            RunProtocol
+                .selectAll()
+                .where {
+                    (RunProtocol.run eq runId) and (RunProtocol.section eq ProtocolSection.ISLANDS.wire)
+                }.toList()
+        val existing =
+            entries.firstOrNull { row ->
+                val value = row[RunProtocol.payload] as? JsonObject
+                value?.get("kind") == JsonPrimitive(execution.kind) &&
+                    value["name"] == JsonPrimitive(execution.name) &&
+                    value["port"] == (execution.port?.let(::JsonPrimitive))
+            }
+        if (existing != null) {
+            check(existing[RunProtocol.payload] == payload) { "a pinned run's execution evidence cannot change" }
+            return
+        }
+        RunProtocol.insert {
+            it[run] = runId
+            it[section] = ProtocolSection.ISLANDS.wire
+            it[seq] = nextSeq(runId, ProtocolSection.ISLANDS)
+            it[RunProtocol.payload] = payload
+            it[at] = clock.instant().utc()
         }
     }
 
@@ -518,6 +627,7 @@ class Ledger(
             it[author] = open.author
             it[runAs] = open.runAs
             it[caller] = open.caller
+            it[callerSubject] = open.callerSubject
             it[origin] = open.origin
             it[status] = RunStatus.OPEN.wire
             it[dryRun] = open.dryRun

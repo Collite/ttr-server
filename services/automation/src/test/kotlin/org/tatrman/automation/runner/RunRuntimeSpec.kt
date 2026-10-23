@@ -442,7 +442,7 @@ private class RuntimeFixture(
             evaluations[firstArg()] = secondArg()
             states[firstArg()] = RunStatus.EVALUATED
         }
-        every { ledger.putOutput(any()) } answers {
+        every { ledger.putOutput(any(), any()) } answers {
             outputs.add(firstArg())
             Unit
         }

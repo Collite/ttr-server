@@ -156,6 +156,7 @@ class ErrorEnvelopeSpec :
                 ErrorCode.DEPLOYMENT_STALE,
                 ErrorCode.PAUSED,
                 ErrorCode.RUN_ABANDONED,
+                ErrorCode.PROTOCOL_RENDERER_UNAVAILABLE,
                 ErrorCode.RESTRICTED_VIEW,
                 ErrorCode.CANDIDATES_TRUNCATED,
                 ErrorCode.OUT_OF_SCOPE,

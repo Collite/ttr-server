@@ -13,6 +13,7 @@ import org.tatrman.automation.config.AutomationConfig
 import org.tatrman.automation.identity.ServiceTokens
 import org.tatrman.automation.ledger.Ledger
 import org.tatrman.automation.ledger.RunQueue
+import org.tatrman.automation.protocol.ProtocolRecorder
 import org.tatrman.automation.queue.RunWorkQueue
 import org.tatrman.automation.staging.Staging
 import org.tatrman.automation.staging.StagingStore
@@ -42,6 +43,9 @@ class RunRuntime(
     private val shutdownLock = Mutex()
     private var shutdownComplete = false
     private val workers: RunWorkers
+    val protocol =
+        org.tatrman.automation.protocol
+            .ProtocolRecorder(ledger)
     val sessions: RunSessions
     val displayRows = config.budgets.displayRows
     val owner: UUID get() = workers.owner
@@ -49,7 +53,7 @@ class RunRuntime(
     init {
         require(displayRows > 0 && config.budgets.detailLimit > 0) { "runner row limits must be positive" }
         val door = QueryDoor(query, config.door.routes.toMap(), tokens)
-        val staging = Staging(store, ledger::putOutput)
+        val staging = Staging(store, protocol)
         val policy =
             Open(
                 served,
@@ -71,7 +75,7 @@ class RunRuntime(
                 policy,
                 parent,
                 { context, scope ->
-                    PartRunner(context, door, staging, scope, ledger::completeEvaluation, ::dispatch)
+                    PartRunner(context, door, staging, scope, ledger::completeEvaluation, ::dispatch, protocol::part)
                 },
                 { ledger.findRun(it)?.status },
                 ledger::failExecution,

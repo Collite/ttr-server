@@ -61,7 +61,7 @@ class RunRuntimeComponentSpec :
                 transaction { RunOutputs.selectAll().where { RunOutputs.run eq id }.count() } shouldBe 2L
                 transaction {
                     RunProtocol.selectAll().where { RunProtocol.run eq id }.count()
-                } shouldBe 2L // Opening automation evidence + atomic decision.
+                } shouldBe 4L // Opening + two output entries + atomic decision.
                 eventually {
                     transaction { RunEvaluations.selectAll().single()[RunEvaluations.archivedAt] != null }
                 }
@@ -76,6 +76,24 @@ class RunRuntimeComponentSpec :
                     .evaluate(id, f.caller)!!
                     .verdict.none shouldBe 0L
                 f.reads.get() shouldBe 2
+                val document = runtime.protocol.read(id, f.caller)
+                document.sections.getValue("islands").size shouldBe 2
+                document.sections.getValue("islands").forEach {
+                    it.payload.jsonObject["engine"] shouldBe JsonPrimitive("query")
+                    it.payload.jsonObject["rows"] shouldBe JsonPrimitive(1)
+                    (
+                        it.payload.jsonObject["bytes"]!!
+                            .jsonPrimitive.long > 0
+                    ) shouldBe true
+                }
+                runtime.shutdown()
+                val restarted = f.start()
+                try {
+                    restarted.protocol.read(id, f.caller) shouldBe document
+                    f.reads.get() shouldBe 2
+                } finally {
+                    restarted.shutdown()
+                }
             } finally {
                 runtime.shutdown()
                 f.close()

@@ -47,6 +47,7 @@ object Runs : Table("automation.runs") {
     val author = text("author").nullable()
     val runAs = text("run_as").nullable()
     val caller = text("caller").nullable()
+    val callerSubject = text("caller_subject").nullable()
     val origin = text("origin").nullable()
     val status = text("status")
     val dryRun = bool("dry_run")

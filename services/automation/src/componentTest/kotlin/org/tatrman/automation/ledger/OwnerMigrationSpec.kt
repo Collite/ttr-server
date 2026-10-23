@@ -21,7 +21,7 @@ class OwnerMigrationSpec :
             }
             val owned = LedgerTestDb.dataSource("ledger_owned", "ledger_owner", "owner")
 
-            migrateLedger(owned) shouldBe 5
+            migrateLedger(owned) shouldBe 6
 
             owned.connection.use { c ->
                 c.createStatement().use { s ->

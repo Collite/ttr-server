@@ -13,8 +13,8 @@ in the project folder:
 > pinned runner, returns route counts/refs plus unmatched candidates and guard evidence, and records the decision
 > atomically with EVALUATED status. Detail snapshots now apply pinned limits per route/context/key before staging,
 > and authenticated route/detail/output readers page the verified Arrow or download Arrow/CSV. Absolute
-> evaluation deadlines and runtime assembly are implemented. Application installation, object storage,
-> owner routing and the remaining protocol/lifecycle work remain.
+> evaluation deadlines, runtime assembly, durable execution evidence and the authenticated raw protocol reader
+> are implemented. Application installation, object storage, owner routing and preview/close/retention remain.
 > Budgeted evaluate, observation-only polling and durable abandonment/cleanup primitives are implemented. Run handlers,
 > including evaluate and route/detail/output readers, are not mounted in Application.
 
@@ -208,7 +208,7 @@ constructs the registry before starting consumers; maintenance sweeps the ledger
 sessions even when the sweep returns no IDs, then archives finished tickets. Its default queue uses the same
 clock and configured batch default. The caller must construct Ledger with that clock too, including clock.skew.
 
-`api.runRoutes(runtime)` installs Open/evaluate/poll, part/island, route/detail and output handlers inside
+`api.runRoutes(runtime)` installs Open/evaluate/poll, part/island, route/detail/output and protocol handlers inside
 `authenticate(AUTOMATION_AUTH)`. Authenticated HTTP assembly specs exercise the real runtime with mocked
 ledger/queue/Query boundaries; PostgreSQL component specs use the real ledger, default queue and workers.
 Runtime shutdown first fences new opens/reads, then joins worker cancellation and releases session resources.
@@ -218,6 +218,35 @@ it returns. These dependencies belong to the application and are not closed by t
 Deployment owner routing, Application installation and staging retention are pending. No run routes or
 maintenance loop are installed in Application yet. Full protocol/status, dry-run previews, close/sealing and
 preview/close/task deadline handoff must be integrated before exposing this path there.
+
+### Durable execution protocol (S1.3 foundation)
+
+`GET /automation/runs/{id}/protocol` (or `?render=raw`) returns
+`{ schema: "protocol/v1", run: "<uuid>", sections: { automation: [{ seq, at, payload }], islands: [], … } }`.
+Every document includes all nine sections in contract order, with per-section sequences and UTC timestamps.
+The read uses one PostgreSQL snapshot and has no dependency on a live session, the current bundle or Query.
+V6 persists `runs.caller_subject` from the verified JWT separately from the display principal. Only that subject
+can read a run's document, including after a restart, failure or seal. A renamed principal keeps access; another
+subject reusing its name does not. Unknown, other-owned and legacy rows without a recorded subject all answer
+`403 identity`. Existing subjects are never guessed or backfilled from display names. The bearer is not stored.
+
+Open records recipe/program/deployment, bundle/fingerprints, author/caller/run identity, port/as-of, origin and
+pinned policy. Successful shared storage parts and published island ports append typed `islands` evidence:
+kind/name/port, statement path relative to the pinned recipe, engine/logical storage, declared typed params,
+rows, duration and security warnings. Each shared source is recorded once, and each output port once. Output
+counts/bytes describe the staged snapshot after key filtering and detail limits. Source byte counts are absent
+because the door returns decoded rows. Durations use monotonic elapsed time and include prerequisite/slot waits;
+protocol timestamps use the runtime's configured clock. Combine evidence references the executed DuckDB file.
+Output metadata and its evidence commit atomically after immutable blob publication. The run lock serializes
+concurrent records, identical evidence retries do not append again, and changed evidence, sealed/terminal rows
+or elapsed execution budgets refuse publication. A failed source journal prevents its dependent outputs.
+
+`?render=pt` currently returns `501 protocol-renderer-unavailable` after ownership verification. Configured PT
+proxying, action/write payloads, preview batches, close/HTTP sealing and retention remain S1.3 work. The existing
+ledger seal and INSERT-only database triggers are exercised by the component tier; no close route is installed.
+ES receipt links still need a stable source reference; the current worker proto supplies an inline receipt.
+Application shutdown must drain durable HTTP readers before closing the ledger; they do not belong to an
+executor's cancellation scope.
 
 Local staging publishes immutable Arrow blobs before journalling their metadata. A journal failure leaves an
 unreferenced blob for the S1.3 retention job; it never deletes content another claimant might reference. The

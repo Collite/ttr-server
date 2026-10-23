@@ -95,6 +95,7 @@ class OpenSpec :
                     .recipe.fingerprints.text
             recorded!!.fpProgram shouldBe original.programFps.getValue(program)
             recorded!!.caller shouldBe "maya"
+            recorded!!.callerSubject shouldBe caller.sub
             recorded!!.dryRun shouldBe true // P1 has no writer; false in a request cannot make it wet.
             recorded!!.asOf shouldBe now
         }

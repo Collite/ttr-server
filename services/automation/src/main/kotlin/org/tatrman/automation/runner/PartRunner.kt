@@ -5,6 +5,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withLock
@@ -12,6 +13,8 @@ import kotlinx.coroutines.sync.withPermit
 import org.tatrman.automation.bundle.LoadedRecipe
 import org.tatrman.automation.bundle.ManifestOutput
 import org.tatrman.automation.identity.RunIdentity
+import org.tatrman.automation.protocol.IslandExecution
+import org.tatrman.automation.protocol.ProtocolRecorder
 import org.tatrman.automation.staging.StagedOutput
 import org.tatrman.automation.staging.Staging
 import java.time.Duration
@@ -85,6 +88,8 @@ class PartRunner(
     ) -> Unit = { _, _ -> error("evaluation journal unavailable") },
     /** Runtime supplies the durable worker dispatcher; all evaluation entry paths share this hook. */
     private val dispatch: (suspend (UUID, CoroutineScope, suspend () -> EvaluationResult) -> EvaluationResult)? = null,
+    /** Runtime supplies the durable successful-part journal, before its rows enter a local combine. */
+    private val recordRead: (UUID, IslandExecution) -> Unit = { _, _ -> },
 ) : AutoCloseable {
     private val islands =
         context.recipe.manifest.islands
@@ -195,6 +200,8 @@ class PartRunner(
             lock.withLock {
                 outputs.getOrPut(key) {
                     scope.async {
+                        val started = System.nanoTime()
+                        var readWarnings: Set<String> = emptySet()
                         val table =
                             if (output.combine != null) {
                                 val plan = output.combine
@@ -202,6 +209,7 @@ class PartRunner(
                                     plan.engine == "duckdb" && plan.dialect == "duckdb",
                                 ) { "unsupported combine engine" }
                                 kotlinx.coroutines.coroutineScope { plan.parts.map { async { part(it) } }.awaitAll() }
+                                readWarnings = plan.parts.flatMap { observedWarnings["parts/$it"].orEmpty() }.toSet()
                                 slots.withPermit {
                                     kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
                                         val scoped = candidateStatement(island, output, statement(plan.file))
@@ -219,7 +227,7 @@ class PartRunner(
                                     output.params,
                                     output.columns,
                                     candidateStatement(island, output, statement(output.file)),
-                                ).table
+                                ).also { readWarnings = it.warnings }.table
                             }
                         // A combine may expand several individually short sources to the ceiling.
                         checks.ceiling(island, table)
@@ -232,12 +240,36 @@ class PartRunner(
                             checks.candidates(island, scoped)
                         }
                         checks.ensureAllowed()
-                        staging.put(context.id, island, output.port, snapshot(island, output, scoped))
+                        val plan = output.combine
+                        val file = plan?.file ?: output.file
+                        val declared = plan?.params ?: output.params
+                        val params = bindings(declared) + candidateStatement(island, output, statement(file)).bindings
+                        val published = snapshot(island, output, scoped)
+                        staging.put(
+                            context.id,
+                            island,
+                            output.port,
+                            published,
+                            IslandExecution(
+                                "output",
+                                island,
+                                file,
+                                if (plan != null) "duckdb" else "query",
+                                ProtocolRecorder.parameters(params),
+                                published.rows.size.toLong(),
+                                elapsedMs(started),
+                                readWarnings.sorted(),
+                                port = output.port,
+                                storage = output.storage.takeIf { plan == null },
+                            ),
+                        )
                     }
                 }
             }
         return work.await().also { checks.ensureAllowed() }
     }
+
+    private fun elapsedMs(started: Long): Long = ((System.nanoTime() - started) / 1_000_000).coerceAtLeast(0)
 
     private fun snapshot(
         island: String,
@@ -271,7 +303,26 @@ class PartRunner(
                     scope.async {
                         val part = parts.getValue(name)
                         require(part.schema == "er") { "parts must be SQL over E-R" }
-                        val table = read("parts/$name", part.storage, part.file, part.params, part.columns).table
+                        val started = System.nanoTime()
+                        val result = read("parts/$name", part.storage, part.file, part.params, part.columns)
+                        val table = result.table
+                        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                            kotlinx.coroutines.currentCoroutineContext().ensureActive()
+                            recordRead(
+                                context.id,
+                                IslandExecution(
+                                    "part",
+                                    name,
+                                    part.file,
+                                    "query",
+                                    ProtocolRecorder.parameters(bindings(part.params)),
+                                    table.rows.size.toLong(),
+                                    elapsedMs(started),
+                                    result.warnings.sorted(),
+                                    storage = part.storage,
+                                ),
+                            )
+                        }
                         // Do not filter storage parts blindly: even keyed parts can feed set-level calculations.
                         kotlinx.coroutines.withContext(
                             kotlinx.coroutines.Dispatchers.IO,

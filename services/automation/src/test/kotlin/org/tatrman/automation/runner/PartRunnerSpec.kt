@@ -4,6 +4,12 @@ package org.tatrman.automation.runner
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
+import io.mockk.every
+import io.mockk.mockk
+import io.mockk.verify
+import org.tatrman.automation.ledger.Ledger
+import org.tatrman.automation.protocol.IslandExecution
+import org.tatrman.automation.protocol.ProtocolRecorder
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -24,6 +30,18 @@ class PartRunnerSpec :
             coroutineScope {
                 val reads = ConcurrentHashMap<String, AtomicInteger>()
                 val recorded = java.util.Collections.synchronizedList(mutableListOf<RunOutput>())
+                val steps = java.util.Collections.synchronizedList(mutableListOf<IslandExecution>())
+                val ledger = mockk<Ledger>()
+                every { ledger.putOutput(any(), any()) } answers {
+                    recorded.add(firstArg())
+                    steps.add(secondArg())
+                    Unit
+                }
+                every { ledger.recordExecution(any(), any()) } answers {
+                    steps.add(secondArg())
+                    Unit
+                }
+                val protocol = ProtocolRecorder(ledger)
                 val recipe = splitRecipe()
                 val context = runnerContext(recipe).copy(keys = listOf(mapOf("id" to 12)))
                 val door =
@@ -41,10 +59,29 @@ class PartRunnerSpec :
                         )
                     }
                 val dir = Files.createTempDirectory("au-stage")
-                PartRunner(context, door, Staging(LocalStagingStore(dir), recorded::add), this).use { runner ->
+                PartRunner(
+                    context,
+                    door,
+                    Staging(LocalStagingStore(dir), protocol),
+                    this,
+                    recordRead = protocol::part,
+                ).use { runner ->
                     val results = listOf(async { runner.all() }, async { runner.all() }).awaitAll()
                     reads.mapValues { it.value.get() } shouldBe mapOf("erp_db" to 1, "automation_db" to 1)
                     recorded.size shouldBe 2
+                    steps.size shouldBe 4
+                    steps.filter { it.kind == "part" }.map { it.name }.toSet() shouldBe setOf("erp", "ledger")
+                    steps.filter { it.kind == "output" }.forEach {
+                        it.statement shouldBe "combine.sql" // Never the compatibility SQL.
+                        it.engine shouldBe "duckdb"
+                        it.rows shouldBe 1 // The filtered published snapshot, not the two source rows.
+                        (it.bytes!! > 0) shouldBe true
+                    }
+                    steps.forEach {
+                        it.params.keys shouldBe setOf("limit") // The unused secret binding never enters evidence.
+                        it.warnings shouldBe listOf("security_predicate_applied")
+                        (it.durationMs >= 0) shouldBe true
+                    }
                     results.flatten().forEach { it.table.rows shouldBe listOf(listOf(12L, "x")) }
                     runner.warnings shouldBe setOf("security_predicate_applied")
                     runner.warningsByRead.keys shouldBe setOf("parts/erp", "parts/ledger")
@@ -56,6 +93,55 @@ class PartRunnerSpec :
                 }
             }
         }
+        "a refused source journal prevents dependent outputs and is cached without repeating the read" {
+            val base = splitRecipe()
+            val recipe =
+                base.copy(
+                    recipe = base.recipe.copy(parts = base.recipe.parts.filter { it.name == "erp" }),
+                    manifest =
+                        base.manifest.copy(
+                            islands =
+                                base.manifest.islands.map { island ->
+                                    island.copy(
+                                        outputs =
+                                            island.outputs.map {
+                                                it.copy(
+                                                    combine = it.combine!!.copy(parts = listOf("erp")),
+                                                )
+                                            },
+                                    )
+                                },
+                        ),
+                    statements = base.statements + ("combine.sql" to "SELECT * FROM erp"),
+                )
+            val reads = AtomicInteger()
+            val journal = mockk<Ledger>()
+            every { journal.recordExecution(any(), any()) } throws IllegalStateException("journal refused")
+            every { journal.putOutput(any(), any()) } returns Unit
+            val protocol = ProtocolRecorder(journal)
+            val work = kotlinx.coroutines.CoroutineScope(coroutineContext + kotlinx.coroutines.SupervisorJob())
+            try {
+                PartRunner(
+                    runnerContext(recipe),
+                    Door {
+                        reads.incrementAndGet()
+                        ReadResult(Table(COLUMNS, listOf(listOf(12L, "x"))))
+                    },
+                    Staging(LocalStagingStore(Files.createTempDirectory("au-journal-refused")), protocol),
+                    work,
+                    recordRead = protocol::part,
+                ).use { runner ->
+                    shouldThrow<IllegalStateException> { runner.all() }
+                    shouldThrow<IllegalStateException> { runner.all() }
+                    reads.get() shouldBe 1
+                    verify(exactly = 1) { journal.recordExecution(any(), any()) }
+                    verify(exactly = 0) { journal.putOutput(any(), any()) }
+                }
+            } finally {
+                work.coroutineContext[kotlinx.coroutines.Job]!!.cancel()
+            }
+        }
+
         "candidate wrappers bind scalar keys for direct and local combine outputs; storage parts stay complete" {
             coroutineScope {
                 val outputs =

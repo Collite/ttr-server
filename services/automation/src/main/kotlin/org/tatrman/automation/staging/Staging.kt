@@ -6,6 +6,8 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.tatrman.automation.ledger.RunOutput
+import org.tatrman.automation.protocol.IslandExecution
+import org.tatrman.automation.protocol.ProtocolRecorder
 import org.tatrman.automation.runner.ArrowTables
 import org.tatrman.automation.runner.Table
 import java.nio.file.Files
@@ -76,10 +78,16 @@ data class StagedData(
 )
 
 /** Publish a completed Arrow blob before recording its ledger row; a failed read never reaches this point. */
-class Staging(
+class Staging private constructor(
     private val store: StagingStore,
-    private val record: (RunOutput) -> Unit,
+    private val record: (RunOutput, IslandExecution?) -> Unit,
 ) {
+    constructor(store: StagingStore, record: (RunOutput) -> Unit) : this(store, { output, _ -> record(output) })
+
+    constructor(store: StagingStore, protocol: ProtocolRecorder) : this(store, { output, execution ->
+        protocol.output(output, requireNotNull(execution).copy(bytes = output.bytes))
+    })
+
     /** Page readers use the published Arrow, verifying its immutable journal metadata before returning rows. */
     suspend fun read(output: StagedOutput): Table = readData(output).table
 
@@ -102,9 +110,13 @@ class Staging(
         island: String,
         port: String,
         table: Table,
+        execution: IslandExecution? = null,
     ): StagedOutput =
         withContext(Dispatchers.IO) {
             require(SAFE.matches(island) && SAFE.matches(port)) { "invalid staged output name" }
+            require(
+                execution == null || execution.rows == table.rows.size.toLong(),
+            ) { "execution rows differ from the snapshot" }
             val path = "runs/$run/$island.$port.arrow"
             val bytes = ArrowTables.encode(table)
             currentCoroutineContext().ensureActive()
@@ -113,7 +125,7 @@ class Staging(
             val output = RunOutput(run, island, port, table.rows.size.toLong(), bytes.size.toLong(), path, hash(bytes))
             // On a journal failure leave the blob for retention. Another claimant may already reference it;
             // deleting here could destroy its valid output. No reference is returned until the ledger succeeds.
-            record(output)
+            record(output, execution)
             StagedOutput(output, "/automation/runs/$run/outputs/$island.$port", table)
         }
 

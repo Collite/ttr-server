@@ -11,4 +11,5 @@ fun Route.runRoutes(runtime: RunRuntime) {
     runReadRoutes(runtime.sessions, runtime.displayRows)
     routeRows(runtime.sessions, runtime.displayRows)
     outputRoutes(runtime.sessions, runtime.displayRows)
+    protocolRoutes(runtime.protocol)
 }

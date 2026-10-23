@@ -187,6 +187,7 @@ class Open(
                 author = bundle.author,
                 runAs = identity.principal,
                 caller = caller.principal,
+                callerSubject = caller.sub,
                 origin = request.origin,
                 dryRun = true,
                 governed = true,
@@ -196,6 +197,21 @@ class Open(
                 openingProtocol =
                     buildJsonObject {
                         put("event", "opened")
+                        put("recipe", recipeName)
+                        put("program", programName)
+                        put("deployment", request.deployment)
+                        put(
+                            "fps",
+                            buildJsonObject {
+                                put("text", fps.text)
+                                put("values", fps.values)
+                                put("program", programFp)
+                                put("deployment", deploymentFp)
+                            },
+                        )
+                        put("author", bundle.author)
+                        put("port", request.port)
+                        put("origin", request.origin)
                         put("bundle", bundle.id)
                         put("modelFp", bundle.modelFp)
                         put("asOf", asOf.toString())
