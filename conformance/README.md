@@ -12,7 +12,7 @@ demonstrated" gate; the other two tiers seed the fuller E2E coverage that SV-P4 
 
 ## The gating service-level tier — `just conformance-service-level`
 
-Runs seven **hermetic** corpora (zero live services, zero pilot estate) — six service-level, plus
+Runs eight **hermetic** corpora (zero live services, zero pilot estate) — seven service-level, plus
 the RV-P4 conversation tier that sits above them:
 
 1. **ENTITIES_ONLY** (resolver) — `Q20ParityTest` over
@@ -80,7 +80,16 @@ the RV-P4 conversation tier that sits above them:
    member term stays the member: the matcher never lifts to a concept, the resolver does).
    Provenance: authored 2026-10-23 against the cn-estate fixture, itself a byte-for-byte copy of
    ttr-core's `ttr-lexicon-compile` cn fixture (see its README).
-7. **Grounding hermetic** — `eval/grounding/tests/` (`test_corpus_valid.py` + `test_report.py`,
+7. **cn resolution** (resolver — CN-P4 S4.4, gating since S4.5) — `CnResolutionTest` (21 cases) over the same
+   `shared/testdata/cn-estate`, and `CnPeriodsCodesTest` (2 cases) over
+   `services/resolver/src/test/resources/cn-clinic` (an invented clinic: `I21` in two code vocabularies). Both
+   compile their estate at test time with the real producer and resolve through the real pipeline (fake NLP and
+   matcher; the matcher serves the archive's own rows). Covered: a concept governs and stands for its ER landing
+   (A-CN-6 / 72 — gating, the UD dual reading, slot facts, the lattice's literal heads and frame kinds); the reverse
+   lift with stereotype and every source (A-CN-5/7); the nine-row §1.5 resolution order (A-CN-8); the ungrounded
+   concept; clarification options and pins of a concept (A-CN-73); R-cn-6. The cn-estate files are pinned above; the
+   clinic's model files below. Provenance: authored 2026-10-23 (CN-P4 S4.4 + review-130).
+8. **Grounding hermetic** — `eval/grounding/tests/` (`test_corpus_valid.py` + `test_report.py`,
    21 checks): corpus-validity of the 123-case bulk + 21-case e2e corpora, and the pure `report.py`
    scoring logic. The **live** run (`run_eval.py` → grounding-mcp + Golem) is the extended tier, NOT here.
 
@@ -103,6 +112,10 @@ cn-estate/model/er/shop.ttrm            4ebedd04daa85e05a0821b873e22e9ecd711fe2d
 cn-estate/model/lexicon/cs/terms.ttrm   2627ef02f2f429295277a554fbc4d0365b4a9ad54e9de879e3785fee2363f905
 cn-estate/model/lexicon/en/terms.ttrm   186a07d7663af482c8d23877cfa6641ac30cce52d26e8643da0555da6802b09e
 cn-estate/model/md/shop.ttrm            8a21c45249736ab68acfe9e70b9b424cddb278c0b41fc1641c39bbd8a55f0672
+cn-clinic/model/er/clinic.ttrm          d4a6236b844d39b54b854443692d5d800ba1e39d45f99b24015526f5fe16d530
+cn-clinic/model/cn/clinic.ttrm          47c11d35a6ceb866b58948735ee60200ad4867d35bbb26065abec81d9f7b3e48
+cn-clinic/model/binding/clinic.ttrm     9ee44f0b1d5978b193948ad4129a7ba5316f1bb1c36ee445ed90b445c1532154
+cn-clinic/model/lexicon/cs/terms.ttrm   16126bcfc31313bf7f6f68465226e0d988c5fcccc2476d138e0d7bd2f3a4e7bf
 ```
 
 The hartland_cz leg pins **three** files, not one: the corpus is authored source compiled at test

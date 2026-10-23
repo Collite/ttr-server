@@ -20,3 +20,7 @@ cea0f490c5eec53ed62d34c976f0db57a739f852d12bd1adede694bb87c84106  services/lex-m
 2627ef02f2f429295277a554fbc4d0365b4a9ad54e9de879e3785fee2363f905  shared/testdata/cn-estate/model/lexicon/cs/terms.ttrm
 186a07d7663af482c8d23877cfa6641ac30cce52d26e8643da0555da6802b09e  shared/testdata/cn-estate/model/lexicon/en/terms.ttrm
 8a21c45249736ab68acfe9e70b9b424cddb278c0b41fc1641c39bbd8a55f0672  shared/testdata/cn-estate/model/md/shop.ttrm
+d4a6236b844d39b54b854443692d5d800ba1e39d45f99b24015526f5fe16d530  services/resolver/src/test/resources/cn-clinic/model/er/clinic.ttrm
+47c11d35a6ceb866b58948735ee60200ad4867d35bbb26065abec81d9f7b3e48  services/resolver/src/test/resources/cn-clinic/model/cn/clinic.ttrm
+9ee44f0b1d5978b193948ad4129a7ba5316f1bb1c36ee445ed90b445c1532154  services/resolver/src/test/resources/cn-clinic/model/binding/clinic.ttrm
+16126bcfc31313bf7f6f68465226e0d988c5fcccc2476d138e0d7bd2f3a4e7bf  services/resolver/src/test/resources/cn-clinic/model/lexicon/cs/terms.ttrm
