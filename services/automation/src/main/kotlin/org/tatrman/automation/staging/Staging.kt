@@ -73,6 +73,18 @@ class Staging(
     private val store: StagingStore,
     private val record: (RunOutput) -> Unit,
 ) {
+    /** Page readers use the published Arrow, verifying its immutable journal metadata before returning rows. */
+    suspend fun read(output: StagedOutput): Table =
+        withContext(Dispatchers.IO) {
+            val bytes = store.get(requireNotNull(output.output.path))
+            check(bytes.size.toLong() == output.output.bytes && hash(bytes) == output.output.sha256) {
+                "staged output differs from its journal"
+            }
+            ArrowTables.decode(listOf(bytes), output.table.columns).also {
+                check(it.rows.size.toLong() == output.output.rows) { "staged row count differs from its journal" }
+            }
+        }
+
     suspend fun put(
         run: UUID,
         island: String,
@@ -83,14 +95,8 @@ class Staging(
             require(SAFE.matches(island) && SAFE.matches(port)) { "invalid staged output name" }
             val path = "runs/$run/$island.$port.arrow"
             val bytes = ArrowTables.encode(table)
-            val hash =
-                "sha256:" +
-                    java.security.MessageDigest
-                        .getInstance("SHA-256")
-                        .digest(bytes)
-                        .joinToString("") { "%02x".format(it) }
             store.putIfAbsent(path, bytes)
-            val output = RunOutput(run, island, port, table.rows.size.toLong(), bytes.size.toLong(), path, hash)
+            val output = RunOutput(run, island, port, table.rows.size.toLong(), bytes.size.toLong(), path, hash(bytes))
             // On a journal failure leave the blob for retention. Another claimant may already reference it;
             // deleting here could destroy its valid output. No reference is returned until the ledger succeeds.
             record(output)
@@ -99,5 +105,12 @@ class Staging(
 
     companion object {
         private val SAFE = Regex("[A-Za-z_][A-Za-z_0-9.-]*")
+
+        private fun hash(bytes: ByteArray): String =
+            "sha256:" +
+                java.security.MessageDigest
+                    .getInstance("SHA-256")
+                    .digest(bytes)
+                    .joinToString("") { "%02x".format(it) }
     }
 }

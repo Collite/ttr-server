@@ -11,9 +11,10 @@ in the project folder:
 > storage parts, embedded DuckDB combines, typed Arrow staging and immutable `run_outputs` journalling.
 > All five read/candidate guards and synchronous evaluation summaries are implemented. Evaluation shares the
 > pinned runner, returns route counts/refs plus unmatched candidates and guard evidence, and records the decision
-> atomically with EVALUATED status. Production runtime/storage wiring, bounded detail snapshots, route paging,
-> output downloads, async execution and the remaining protocol/lifecycle orchestration remain. Run handlers,
-> including evaluate, are not mounted in Application.
+> atomically with EVALUATED status. Detail snapshots now apply pinned limits per route/context/key before staging,
+> and authenticated route/detail readers page the verified Arrow. Production runtime/storage wiring, output
+> downloads, async execution and the remaining protocol/lifecycle orchestration remain. Run handlers,
+> including evaluate and route/detail readers, are not mounted in Application.
 
 The executor requires an explicit `world/storage` → Query world alias map. Query resolves those aliases through
 its existing `QUERY_WORLDS` table. Missing routes fail before a query is issued; there is no fallback to Query's
@@ -36,6 +37,31 @@ Only route ports contribute to counts. `none` counts candidate keys absent from 
 overlapping switch cannot double-subtract a key. Composite numeric keys compare by exact normalized decimal
 value. Unknown/missing ports, duplicate/non-candidate route keys and overlapping exclusive routes fail before
 a decision is recorded. SQL's `verdict_reason` stays in the staged output; the server does not render `because`.
+
+Detail snapshots retain at most `detail_limit` data rows and one extra `truncated: true` marker per
+(route, context, composite key). Normal rows carry `truncated: false`; markers retain the key and set other
+source columns to null. Route/context stamps and non-null key columns are checked before bounding; evaluation
+also refuses detail keys absent from their route. Sources and local combines must still pass the general read
+ceiling before any intentional snapshot truncation, so the bound cannot conceal an incomplete context.
+Open pins `budgets.detailLimit` (default 200) and effective route limits in its context/opening evidence. Runtime
+must pass the configured `detailLimit` to Open. Authored action `detail_limit` is read from the model's preserved
+properties; malformed, nonpositive or overflowing values refuse before claiming. A route shared by several
+actions retains the largest required limit. P2's writer must separately apply each action's own smaller bound.
+
+`GET /automation/runs/{id}/routes/{route}?offset=0&limit=200` requires a successful durable evaluation (starting
+it if needed), then returns key columns, SQL's `verdict_reason`, and `detail: { <context>: ref }` for each row.
+Summary `verdict.routes.<route>.detail` maps contexts to the whole bounded snapshot. Row refs resolve through
+`GET …/routes/{route}/details/{context}?row=<route-row-offset>` and select only that immutable route row's composite
+key. Omitting `row` reads the whole bounded context snapshot. Neither form reissues governed reads after the
+shared evaluation. These P1 refs address staged run data; P2's model detail keys are a separate writer contract.
+
+Both readers accept nonnegative integer `offset` and `limit` in `1..displayRows` (default `displayRows`). Invalid
+names/parameters refuse before execution and do not fail the run. Offset beyond the result returns empty rows.
+`rowCount` counts the whole selected snapshot, including markers; `truncated` is true when the page omits rows
+or any selected detail key has a marker, even if that marker lies on another page. Detail rows never mix keys
+when following a row ref. The initiating verified subject owns all reads; missing/released/terminal/other-owner
+handles refuse. Readers decode published Arrow and verify its byte count, SHA-256 and row count, refusing
+corruption instead of falling back to cached rows. Retention/restart recovery remain lifecycle work.
 
 Runtime construction must pass `recordEvaluation = ledger::completeEvaluation` to PartRunner. Without the
 journal callback, evaluate fails closed. The callback stores the typed evaluate result (including `mode` and

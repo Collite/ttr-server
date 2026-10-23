@@ -108,7 +108,7 @@ private fun StagedOutput.preview(
     )
 
 @OptIn(ExperimentalSerializationApi::class)
-private fun scalar(value: Any?): JsonElement =
+internal fun scalar(value: Any?): JsonElement =
     when (value) {
         null -> JsonNull
         is Boolean -> JsonPrimitive(value)

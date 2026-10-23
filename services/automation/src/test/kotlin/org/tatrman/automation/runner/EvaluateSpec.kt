@@ -227,7 +227,7 @@ private val ROUTE_COLUMNS =
         ManifestColumn("verdict_reason", "text"),
     )
 
-private fun evaluationRecipe(mode: String = "overlapping"): LoadedRecipe {
+internal fun evaluationRecipe(mode: String = "overlapping"): LoadedRecipe {
     fun output(
         port: String,
         file: String,
@@ -274,7 +274,7 @@ private fun evaluationRecipe(mode: String = "overlapping"): LoadedRecipe {
     )
 }
 
-private fun evaluationRows(name: String): List<List<Any?>> =
+internal fun evaluationRows(name: String): List<List<Any?>> =
     when (name) {
         "candidates" -> listOf(1L, 2L, 3L).map { listOf(BigDecimal.valueOf(it), "a") }
         "context" -> emptyList()

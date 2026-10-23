@@ -3,12 +3,12 @@ package org.tatrman.automation.runner
 
 import kotlinx.serialization.Serializable
 import org.tatrman.automation.staging.StagedOutput
-import java.math.BigDecimal
 
 @Serializable
 data class RouteSummary(
     val rowCount: Long,
     val ref: String,
+    val detail: Map<String, String> = emptyMap(),
 )
 
 @Serializable
@@ -68,7 +68,13 @@ internal suspend fun summarizeEvaluation(runner: PartRunner): EvaluationResult {
             require(candidateKeys.containsAll(routeKeys)) { "route contains a non-candidate key" }
             require(roles.switchMode != "exclusive" || routeKeys.none { it in selected }) { "exclusive routes overlap" }
             selected += routeKeys
-            RouteSummary(output.output.rows, output.ref)
+            val detail =
+                roles.routes.single { it.name == name }.detail.associateWith { context ->
+                    val snapshot = outputs.getValue("$name.$context")
+                    require(routeKeys.containsAll(snapshot.table.keyValues(keys))) { "detail contains a non-route key" }
+                    "/automation/runs/${runner.context.id}/routes/$name/details/$context"
+                }
+            RouteSummary(output.output.rows, output.ref, detail)
         }
     return EvaluationResult(
         VerdictSummary(summaries, (candidateKeys - selected).size.toLong()),
@@ -77,16 +83,4 @@ internal suspend fun summarizeEvaluation(runner: PartRunner): EvaluationResult {
     )
 }
 
-private fun StagedOutput.keys(names: List<String>): Set<List<Any>> {
-    val indices =
-        names.map { name ->
-            table.columns.indexOfFirst { it.name == name }.also { require(it >= 0) { "decision key column missing" } }
-        }
-    return table.rows
-        .map { row ->
-            indices.map { index ->
-                val value = requireNotNull(row[index]) { "decision key is null" }
-                if (value is Number) BigDecimal(value.toString()).stripTrailingZeros() else value
-            }
-        }.toSet()
-}
+private fun StagedOutput.keys(names: List<String>): Set<List<Any>> = table.keyValues(names).toSet()

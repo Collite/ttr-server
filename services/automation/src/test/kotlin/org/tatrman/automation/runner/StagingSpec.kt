@@ -20,6 +20,7 @@ class StagingSpec :
             val id = UUID.randomUUID()
             val table = Table(listOf(ManifestColumn("id", "int")), listOf(listOf(42L)))
             val output = stage.put(id, "i", "rows", table)
+            stage.read(output) shouldBe table
             stage.put(id, "i", "rows", table).output shouldBe output.output
             shouldThrow<IllegalStateException> { stage.put(id, "i", "rows", table.copy(rows = listOf(listOf(43L)))) }
             val bytes = store.get(output.output.path!!)
@@ -30,6 +31,21 @@ class StagingSpec :
                     .getInstance("SHA-256")
                     .digest(bytes)
                     .joinToString("") { "%02x".format(it) }
+        }
+        "page reads refuse corrupt Arrow and changed journal counts instead of using cached rows" {
+            val root = Files.createTempDirectory("au-staging-corrupt")
+            val store = LocalStagingStore(root)
+            val stage = Staging(store) {}
+            val table = Table(listOf(ManifestColumn("id", "int")), listOf(listOf(42L)))
+            val output = stage.put(UUID.randomUUID(), "i", "rows", table)
+            shouldThrow<IllegalStateException> {
+                stage.read(output.copy(output = output.output.copy(rows = 2)))
+            }
+            val path = output.output.path!!
+            val bytes = store.get(path)
+            bytes[bytes.lastIndex] = (bytes.last().toInt() xor 1).toByte()
+            Files.write(root.resolve(path), bytes)
+            shouldThrow<IllegalStateException> { stage.read(output) }
         }
         "failed ledger publication never deletes a blob another claimant may already reference" {
             val root = Files.createTempDirectory("au-staging-failed")

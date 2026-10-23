@@ -111,7 +111,25 @@ class HartlandRunnerSpec :
                                                         }
                                                     "WITH ${ctes.joinToString()} ${r.statements.getValue(c.file)}"
                                                 }
-                                            val expected = JdbcTables.query(oracle, sql, bindings)
+                                            val raw = JdbcTables.query(oracle, sql, bindings)
+                                            val isDetail =
+                                                island.name == r.recipe.roles?.decision &&
+                                                    r.recipe.roles!!.routes.any { route ->
+                                                        route.detail.any {
+                                                            o.port ==
+                                                                "${route.name}.$it"
+                                                        }
+                                                    }
+                                            val expected =
+                                                if (isDetail) {
+                                                    boundedDetails(
+                                                        raw,
+                                                        r.recipe.key.map { it.substringAfterLast('.') },
+                                                        200,
+                                                    )
+                                                } else {
+                                                    raw
+                                                }
                                             val actual = results.getValue("${island.name}.${o.port}").table
                                             withClue("$name ${island.name}.${o.port}") {
                                                 actual.columns.map { it.name } shouldBe expected.columns.map { it.name }

@@ -330,8 +330,8 @@ class RunReadRoutesSpec :
                         verdict["none"] shouldBe JsonPrimitive(0)
                         verdict["routes"]!!.jsonObject shouldBe
                             Json.parseToJsonElement(
-                                """{"release":{"rowCount":1,"ref":"/automation/runs/$id/outputs/way.release"},
-                                "hold":{"rowCount":0,"ref":"/automation/runs/$id/outputs/way.hold"}}""",
+                                """{"release":{"rowCount":1,"ref":"/automation/runs/$id/outputs/way.release","detail":{}},
+                                "hold":{"rowCount":0,"ref":"/automation/runs/$id/outputs/way.hold","detail":{}}}""",
                             )
                     }
                     body["guards"]!!.jsonArray.map { it.jsonObject["code"]!!.jsonPrimitive.content }.toSet() shouldBe

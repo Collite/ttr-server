@@ -65,6 +65,7 @@ class Open(
     private val batchDefault: Duration,
     private val clock: Clock = Clock.systemUTC(),
     private val approvalsOff: Boolean = false,
+    private val detailLimit: Int = 200,
 ) {
     fun open(
         recipeName: String,
@@ -161,6 +162,8 @@ class Open(
                 d.readCeiling ?: 100_000,
                 batch,
                 allowRestrictedView = d.allowRestrictedView,
+                detailLimit = detailLimit,
+                detailLimits = detailLimits(recipe.recipe, bundle.actions, detailLimit),
             )
         if (port.keys != null &&
             port.keys.size > context.readCeiling
@@ -200,6 +203,8 @@ class Open(
                         put("dryRun", true)
                         put("allowRestrictedView", d.allowRestrictedView)
                         put("readCeiling", context.readCeiling)
+                        put("detailLimit", context.detailLimit)
+                        put("detailLimits", JsonObject(context.detailLimits.mapValues { JsonPrimitive(it.value) }))
                         put("approvals", if (approvalsOff) "development-off" else "required")
                     },
             )

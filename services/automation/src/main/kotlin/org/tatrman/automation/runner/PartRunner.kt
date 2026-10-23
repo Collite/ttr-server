@@ -31,9 +31,19 @@ data class RunContext(
     val readCeiling: Int = 100_000,
     val timeout: Duration = Duration.ofMinutes(30),
     val allowRestrictedView: Boolean = false,
+    val detailLimit: Int = 200,
+    val detailLimits: Map<String, Int> = emptyMap(),
 ) {
     init {
-        require(readCeiling > 0 && !timeout.isNegative && !timeout.isZero)
+        require(readCeiling > 0 && detailLimit > 0 && !timeout.isNegative && !timeout.isZero)
+        require(detailLimits.values.all { it > 0 })
+        require(
+            detailLimits.keys.all { name ->
+                recipe.recipe.roles
+                    ?.routes
+                    ?.any { it.name == name } == true
+            },
+        )
         val names =
             recipe.recipe.key
                 .map { it.substringAfterLast('.') }
@@ -140,6 +150,12 @@ class PartRunner(
         return work.await().also { checks.ensureAllowed() }
     }
 
+    internal suspend fun readStaged(output: StagedOutput): Table {
+        checks.ensureAllowed()
+        require(output.output.run == context.id)
+        return staging.read(output).also { checks.ensureAllowed() }
+    }
+
     private suspend fun outputIsland(name: String): List<StagedOutput> =
         kotlinx.coroutines.coroutineScope {
             islands
@@ -195,11 +211,36 @@ class PartRunner(
                             checks.candidates(island, scoped)
                         }
                         checks.ensureAllowed()
-                        staging.put(context.id, island, output.port, scoped)
+                        staging.put(context.id, island, output.port, snapshot(island, output, scoped))
                     }
                 }
             }
         return work.await().also { checks.ensureAllowed() }
+    }
+
+    private fun snapshot(
+        island: String,
+        output: ManifestOutput,
+        table: Table,
+    ): Table {
+        val roles = context.recipe.recipe.roles ?: return table
+        if (island != roles.decision) return table
+        val route =
+            roles.routes.singleOrNull { route ->
+                route.detail.any { output.port == "${route.name}.$it" }
+            } ?: return table
+        require(output.keyed) { "detail output must be keyed" }
+        val detailContext = route.detail.single { output.port == "${route.name}.$it" }
+        for ((column, expected) in mapOf("route" to route.name, "context" to detailContext)) {
+            val index = table.columns.indexOfFirst { it.name == column }
+            require(index >= 0 && table.rows.all { it[index] == expected }) {
+                "detail stamp differs from its port"
+            }
+        }
+        val keys =
+            context.recipe.recipe.key
+                .map { it.substringAfterLast('.') }
+        return boundedDetails(table, keys, context.detailLimits[route.name] ?: context.detailLimit)
     }
 
     private suspend fun part(name: String) {

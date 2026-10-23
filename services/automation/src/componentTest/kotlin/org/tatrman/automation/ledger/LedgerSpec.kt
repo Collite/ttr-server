@@ -70,7 +70,7 @@ class LedgerSpec :
             val id = ledger.claimRun(open("evaluation")).runId
             val payload =
                 kotlinx.serialization.json.Json.parseToJsonElement(
-                    """{"verdict":{"routes":{"release":{"rowCount":2,"ref":"staged"}},"none":1},
+                    """{"verdict":{"routes":{"release":{"rowCount":2,"ref":"staged","detail":{"lines":"detail-ref"}}},"none":1},
                     "guards":[{"code":"duplicate-key","island":"candidates","status":"passed"}],"mode":"exclusive"}""",
                 )
             val result = Json.decodeFromJsonElement<EvaluationResult>(payload)

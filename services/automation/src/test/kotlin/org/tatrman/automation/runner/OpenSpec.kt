@@ -9,6 +9,8 @@ import org.tatrman.automation.api.*
 import org.tatrman.automation.bundle.*
 import org.tatrman.automation.identity.*
 import org.tatrman.automation.ledger.*
+import org.tatrman.ttr.parser.model.AutoValue
+import org.tatrman.ttr.parser.model.SourceLocation
 import org.tatrman.ttr.metadata.model.RunAsRef as ModelRunAs
 import java.time.Duration
 import java.time.Instant
@@ -47,6 +49,7 @@ class OpenSpec :
             claim: (RunOpen) -> Claim = { Claim.Claimed(UUID.randomUUID()) },
             paused: Boolean = false,
             devOff: Boolean = false,
+            detailLimit: Int = 200,
         ) = Open(
             {
                 b
@@ -64,6 +67,7 @@ class OpenSpec :
             Duration.ofMinutes(30),
             BundleFixture.clock,
             devOff,
+            detailLimit,
         )
 
         "open pins the bundle, model, fingerprints, verified identity, bindings and dry-run before claiming" {
@@ -116,6 +120,77 @@ class OpenSpec :
             recorded!!.openingProtocol!!.jsonObject["allowRestrictedView"] shouldBe JsonPrimitive(true)
             recorded!!.openingProtocol!!.jsonObject["readCeiling"] shouldBe JsonPrimitive(17)
             service().open(recipe, request(), caller).context!!.allowRestrictedView shouldBe false
+        }
+
+        "detail limit is pinned and journalled before claiming, and invalid limits never claim" {
+            var recorded: RunOpen? = null
+            val result =
+                service(detailLimit = 7, claim = {
+                    recorded = it
+                    Claim.Claimed(UUID.randomUUID())
+                }).open(recipe, request(), caller)
+            result.context!!.detailLimit shouldBe 7
+            recorded!!.openingProtocol!!.jsonObject["detailLimit"] shouldBe JsonPrimitive(7)
+            service().open(recipe, request(), caller).context!!.detailLimit shouldBe 200
+            shouldThrow<IllegalArgumentException> {
+                service(detailLimit = 0, claim = { error("must not claim") }).open(recipe, request(), caller)
+            }
+        }
+
+        "authored action detail limits are pinned before claim and recorded with the opening policy" {
+            val b = bundle()
+            val loaded = b.recipes.getValue(recipe)
+            val action = b.actions.values.first()
+            val metadata =
+                loaded.recipe.copy(
+                    roles =
+                        ManifestRoles(
+                            routes =
+                                listOf(
+                                    ManifestRoute("release", detail = listOf("shortfall")),
+                                ),
+                        ),
+                    wiring = listOf(ManifestWiring(listOf("release"), action.qname.name)),
+                )
+            val limited =
+                b.copy(
+                    recipes = b.recipes + (recipe to loaded.copy(recipe = metadata)),
+                    actions =
+                        b.actions + (
+                            action.qname.name to
+                                action.copy(
+                                    properties =
+                                        listOf(
+                                            "detail_limit" to AutoValue.Num(3.0, SourceLocation.UNKNOWN, "3"),
+                                        ),
+                                )
+                        ),
+                )
+            var recorded: RunOpen? = null
+            val result =
+                service(limited, claim = {
+                    recorded = it
+                    Claim.Claimed(UUID.randomUUID())
+                })
+                    .open(recipe, request(), caller)
+            result.context!!.detailLimits shouldBe mapOf("release" to 3)
+            recorded!!.openingProtocol!!.jsonObject["detailLimits"] shouldBe buildJsonObject { put("release", 3) }
+            val invalid =
+                limited.copy(
+                    actions =
+                        limited.actions + (
+                            action.qname.name to
+                                action.copy(
+                                    properties =
+                                        listOf(
+                                            "detail_limit" to AutoValue.Num(0.0, SourceLocation.UNKNOWN, "0"),
+                                        ),
+                                )
+                        ),
+                )
+            shouldThrow<IllegalArgumentException> {
+                service(invalid, claim = { error("must not claim") }).open(recipe, request(), caller)
+            }
         }
 
         "response matrix: closed replays 200; a live claim returns 202 and no second context" {

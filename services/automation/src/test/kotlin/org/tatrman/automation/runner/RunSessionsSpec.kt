@@ -344,6 +344,7 @@ internal class RunSessionFixture(
     door: Door? = null,
     claimed: () -> Unit = {},
     beforeFailure: () -> Unit = {},
+    detailLimit: Int = 200,
     private val columns: List<ManifestColumn> =
         listOf(ManifestColumn("order_number", "text"), ManifestColumn("note", "text")),
 ) {
@@ -449,6 +450,7 @@ internal class RunSessionFixture(
             Duration.ofSeconds(60),
             Duration.ofMinutes(30),
             BundleFixture.clock,
+            detailLimit = detailLimit,
         )
     val runs =
         RunSessions(
