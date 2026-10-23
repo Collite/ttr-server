@@ -225,6 +225,45 @@ Deployment owner routing, Application installation and remaining P1 lifecycle in
 maintenance loop are installed in Application yet. Remaining performed payloads, configured PT/ES links, preview lowering and
 task deadline handoff must be integrated before exposing this path there.
 
+### Debug-run walkthrough
+
+From the repository root, `scripts/debug-run.sh <base> <recipe> <deployment> [keys…]` opens a fresh
+dry run, evaluates it, polls asynchronous completion, reads a one-row preview of each route and retrieves
+the raw nine-section protocol. It prints route counts, unmatched candidates and up to ten authored English
+would-lines. Linux/macOS, Bash and Python 3.10+ are sufficient; there are no Python package dependencies.
+The bearer comes from `AUTOMATION_BEARER`, never a command-line argument. For example:
+
+```bash
+# Set AUTOMATION_BEARER in your shell using your existing login procedure.
+scripts/debug-run.sh https://automation.example.test release_order native_debug 123 456 \
+  --as-of 2026-10-23T00:00:00Z --output /tmp/au-debug-capture
+
+# Exact single-key or event ports use the API's JSON spelling explicitly:
+scripts/debug-run.sh https://automation.example.test release_order native_debug --port '{"key":123}'
+```
+
+Use a served recipe/deployment and a caller authorized for that deployment. Positional keys use a `keys`
+port: JSON numbers/booleans/objects retain their type, other text is a string; use `'"001"'` for a numeric-looking
+text key. With no keys the port is `{ "none": true }`. `--port` supplies the complete port object, including
+composite keys, events or an explicitly empty keys array. Decimal key literals are sent exactly. `--as-of`
+is optional; otherwise the program's as-of policy applies.
+
+`--timeout` bounds the entire walkthrough (default 300 seconds), including HTTP reads and polling. Requests
+are not retried automatically. Redirects and server-provided Location/ref URLs are not followed with the bearer.
+The script reports refused HTTP requests and failed/abandoned/waiting runs as errors. It leaves the run open
+for inspection and never calls perform, connectors or close. Each invocation uses a fresh idempotency key.
+
+`--output` must name a new directory under an existing parent. It captures `open.json`, `evaluate.json`, final
+`status.json`, numbered route previews and `protocol.json` as raw response bytes. Directory/file permissions
+are 0700/0600; partial captures remain on failure. These files contain run data: sanitize a live capture before
+adding it as a shared fixture. Exact decimal/large-integer response bytes are preserved. Closed replays use only
+durable readers because their route snapshots are no longer executable.
+
+The script is ready for a runtime with run routes installed. **Application currently leaves those routes
+unmounted**, so this does not certify a live Hartland run. Remaining lowering, deployment/lifecycle installation
+and the independent P1 exit still gate that proof. `just test-automation-debug` runs eighteen mocked HTTP contract
+tests; the ordinary `automation-debug` CI job runs the same suite without services, network or Docker.
+
 ### Native dry-run previews (S1.3 foundation)
 
 Open pins action definitions and entity key metadata with the recipe. After summarization,

@@ -164,6 +164,11 @@ test-component:
     # first CI run stopped at translate and left the rest of the estate unknown.
     ./gradlew componentTest --continue
 
+# AU debug-run HTTP contract checks (standard-library mocks; no services or network).
+test-automation-debug:
+    bash -n scripts/debug-run.sh
+    python3 -m unittest discover -s scripts/tests -p 'test_debug_run.py' -v
+
 # ── Python lane (uv + ruff + pytest) — services/nlp, services/golem-py, ───────
 #    workers/worker-polars, shared/libs/python/{ttr-nlp,ttr-morph,ttr-sqlalchemy} ─
 #
