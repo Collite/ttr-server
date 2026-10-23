@@ -706,6 +706,11 @@ class ResolverPipeline(
     }
 
     private fun pinnedBinding(option: ResumeOption): EntityBinding {
+        // CN-P4 (A-CN-70, ⚑R130-b) — a concept pick binds as a broad-pass concept bind does: the domain names the
+        // concept's ER landing (the signed entity_type_ref; none when it has no landing), never the `cn.*` ref, and
+        // the concept rides in `concepts`.
+        val concept = option.conceptQname
+        if (concept != null) return pinnedConceptBinding(option, concept)
         // Prefer the signed entity_type_ref (present for MEMBER options too, RG-P6
         // review F); fall back to the VOCABULARY target's ref prefix for older tokens.
         val entityTypeRef = option.entityTypeRef?.ifBlank { null } ?: option.targetRef?.substringBefore('#') ?: ""
@@ -738,6 +743,47 @@ class ResolverPipeline(
                     .setVocabularySource(if (option.resolvedId != null) "MEMBER" else "VOCABULARY")
                     .setAlgorithm("hmac-pin")
                     .setScore(1.0),
+            ).build()
+    }
+
+    /** [pinnedBinding] for a concept option — see there. */
+    private fun pinnedConceptBinding(
+        option: ResumeOption,
+        concept: String,
+    ): EntityBinding {
+        val landing = option.entityTypeRef.orEmpty()
+        val domain =
+            Domain
+                .newBuilder()
+                .setEntityTypeRef(landing)
+                .setRawText(option.label)
+                .setResolvedLabel(option.label)
+        if (landing.isNotBlank()) {
+            domain.addCandidates(
+                Candidate
+                    .newBuilder()
+                    .setTargetRef(landing)
+                    .setScore(1.0)
+                    .setResolvedLabel(option.label),
+            )
+        }
+        return EntityBinding
+            .newBuilder()
+            .setDomain(domain)
+            .setProvenance(
+                BindingProvenance
+                    .newBuilder()
+                    .setVocabularySource("VOCABULARY")
+                    .setAlgorithm("hmac-pin")
+                    .setScore(1.0),
+            ).addConcepts(
+                ConceptReading
+                    .newBuilder()
+                    .setConceptQname(concept)
+                    .setStereotype(option.conceptStereotype.orEmpty())
+                    .setVia(option.conceptVia.orEmpty())
+                    .addLiftProvenance("term:$concept")
+                    .setNote(option.conceptNote.orEmpty()),
             ).build()
     }
 
@@ -927,6 +973,11 @@ class ResolverPipeline(
                     o.resolvedId,
                     o.entityTypeRef,
                     memberOf = o.memberOf.takeIf { it.isNotBlank() },
+                    // CN-P4 (⚑R130-b) — the concept a concept option offers, signed with its reading.
+                    conceptQname = o.concept?.qname,
+                    conceptStereotype = o.concept?.stereotype?.ifBlank { null },
+                    conceptVia = o.concept?.via?.ifBlank { null },
+                    conceptNote = o.concept?.note?.ifBlank { null },
                 )
         }
         // ttr-server#231 — then each kernel question, span by span, its options in the kernel's order.

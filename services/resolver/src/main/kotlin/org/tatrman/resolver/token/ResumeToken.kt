@@ -43,6 +43,20 @@ data class ResumeOption(
      */
     @EncodeDefault(EncodeDefault.Mode.NEVER)
     val kernelOptionId: String? = null,
+    /**
+     * CN-P4 (⚑R130-b) — set on an option that offers a CONCEPT: the concept (`cn.<Name>`), its stereotype, `via`
+     * and the advisory note when it has no ER landing ([entityTypeRef] is the landing then, `""` for none). SIGNED,
+     * so a pick rebuilds the concept reading a broad-pass bind carries, and never encoded when absent, so every
+     * other option's token is byte for byte what an older resolver mints and reads.
+     */
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val conceptQname: String? = null,
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val conceptStereotype: String? = null,
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val conceptVia: String? = null,
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val conceptNote: String? = null,
 )
 
 /**

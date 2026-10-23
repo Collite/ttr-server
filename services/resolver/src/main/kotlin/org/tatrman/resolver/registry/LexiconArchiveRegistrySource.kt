@@ -170,8 +170,9 @@ class LexiconArchiveRegistrySource(
         // CN-P4 (cn contracts §5) — and every concept and every element that lifts to one, terms or
         // not. A lift lands on a concept nobody wrote a term for (`cn.Sale` from its cubelet), carries
         // its stereotype from that concept's own entry, and a phase's `of:` chain may pass through one;
-        // an md element carries `liftsTo` alone. Neither adds an anchor, so proposal is unchanged; and
-        // an archive with no `model cn` has none of them, so its vocabulary is exactly what it was.
+        // an md element carries `liftsTo` alone. Neither adds an anchor, and one with no term registers no
+        // category (`SnapshotRegistry`), so proposal is unchanged; an archive with no `model cn` has none of
+        // them, so its vocabulary is exactly what it was.
         val conceptRefs =
             lexicon.targets
                 .filterValues { it.objectKind == TargetFacts.CONCEPT || it.liftsTo.isNotEmpty() }
@@ -224,7 +225,7 @@ class LexiconArchiveRegistrySource(
                 "${loaded.served.size} of ${archivePaths.size} lexicon archive(s) ${loaded.served}"
             }
         val message =
-            "declared vocabulary from {}: {} entity type(s) ({} member vocabularies), {} anchor(s), " +
+            "declared vocabulary from {}: {} entity type(s) ({} member vocabularies, {} concept(s)), {} anchor(s), " +
                 "from {} archive entries ({} non-object rows excluded)" +
                 if (loaded.skipped.isEmpty()) "" else "; skipped: {}"
         val args =
@@ -232,6 +233,7 @@ class LexiconArchiveRegistrySource(
                 source,
                 entries.size,
                 entries.count { it.memberVocabulary },
+                entries.count { it.objectKind == TargetFacts.CONCEPT },
                 entries.sumOf { it.values.size },
                 lexicon.entries.size,
                 lexicon.entries.count { it.targetClass != TargetClass.MODEL_OBJECT },

@@ -180,9 +180,11 @@ object CnEstate {
         archive: Path = pack(),
         members: Map<String, List<Member>> = MEMBERS,
         entities: List<NerEntity> = emptyList(),
+        /** BatchMatch questions (by the categories they ask) the matcher answers with NOTHING — the broad pass's only. */
+        blindBatch: (List<String>) -> Boolean = { false },
     ): Pair<ResolveResponse, Matcher> {
         val registry = registry(archive)
-        val matcher = Matcher(lexiconOf(archive), members)
+        val matcher = Matcher(lexiconOf(archive), members, blindBatch)
         val parse =
             MhMembers
                 .parse(text, tokens, lang)
@@ -206,13 +208,62 @@ object CnEstate {
         return runBlocking { pipeline.resolve(request) } to matcher
     }
 
+    private fun pipeline(
+        archive: Path,
+        matcher: Matcher,
+        parse: org.tatrman.nlp.v1.AnalyzeResponse = MhMembers.parse("", emptyArray()),
+    ) = ResolverPipeline(
+        MhMembers.FakeNlp(parse, "cs"),
+        matcher,
+        registry(archive),
+        emptyMap(),
+        ResumeTokenCodec(mapOf("k1" to ByteArray(32) { it.toByte() }), activeKeyId = "k1"),
+    )
+
+    /** A resume of [token] picking [optionId], keyed like [resolve]'s pipeline; a signed pin calls no fake. */
+    fun resume(
+        token: String,
+        optionId: String,
+        archive: Path,
+    ): ResolveResponse =
+        runBlocking {
+            pipeline(archive, Matcher(lexiconOf(archive), emptyMap())).resolve(
+                ResolveRequest
+                    .newBuilder()
+                    .setConversationId("cn-p4")
+                    .setResume(
+                        org.tatrman.resolver.v1.ResumeAnswer
+                            .newBuilder()
+                            .setToken(token)
+                            .setSelectedOptionId(optionId),
+                    ).build(),
+            )
+        }
+
+    /** `resolve.gate:v1` over [lattice] with [hypotheses], answered by the archive's rows and [members]. */
+    fun gate(
+        lattice: org.tatrman.resolver.v1.ResolutionState,
+        hypotheses: List<org.tatrman.resolver.v1.Hypothesis>,
+        archive: Path,
+        members: Map<String, List<Member>> = MEMBERS,
+    ): org.tatrman.resolver.v1.GateResponse =
+        runBlocking {
+            pipeline(archive, Matcher(lexiconOf(archive), members)).gate(
+                org.tatrman.resolver.v1.GateRequest
+                    .newBuilder()
+                    .setLattice(lattice)
+                    .addAllHypotheses(hypotheses)
+                    .build(),
+            )
+        }
+
     /** The lexicon inside a packed archive, decoded the way the readers decode it. */
     fun lexiconOf(archive: Path): CompiledLexicon =
         (DeclaredLayer.ArchiveSet(listOf(archive)).pass() as DeclaredLayer.Pass.Served).archives.single().lexicon
 
     /**
      * lex-matcher, as far as the resolver can tell: each object row of the archive under its own ref (its category),
-     * with the archive's method and its term as the candidate, as the declared layer serves it; and the member
+     * with the archive's method, its term as the candidate and its class (`MODEL_OBJECT`), as the declared layer serves it; and the member
      * values of [members], each in its attribute's vocabulary. Categories are an exact-key filter, and no categories
      * is the cross-category ask. A row answers a query whose words match its term word for word — a folded word, or
      * one sharing a long enough stem (the inflection the lemma lookup would otherwise reach).
@@ -220,6 +271,7 @@ object CnEstate {
     class Matcher(
         private val lexicon: CompiledLexicon,
         private val members: Map<String, List<Member>>,
+        private val blindBatch: (List<String>) -> Boolean = { false },
     ) : FuzzyClient {
         data class Asked(
             val via: String,
@@ -233,7 +285,15 @@ object CnEstate {
         override suspend fun batchMatch(request: BatchMatchRequest): BatchMatchResponse {
             val builder = BatchMatchResponse.newBuilder()
             for (span in request.spansList) {
-                val matches = answer(span.query, span.categoriesList.toSet().ifEmpty { null })
+                val matches =
+                    if (blindBatch(
+                            span.categoriesList,
+                        )
+                    ) {
+                        emptyList()
+                    } else {
+                        answer(span.query, span.categoriesList.toSet().ifEmpty { null })
+                    }
                 log += Asked("batch", span.query, span.categoriesList, matches.map(::refOf))
                 builder.addResults(FuzzyMatchResponse.newBuilder().addAllMatches(matches))
             }
@@ -313,6 +373,7 @@ object CnEstate {
             base(term, ref, method)
                 .setCandidateId("lex:$ref")
                 .setTargetRef(ref)
+                .setTargetClass(org.tatrman.fuzzy.v1.TargetClass.TARGET_CLASS_MODEL_OBJECT)
                 .setSource(if (source == LexiconSourceTag.METADATA) SourceTag.METADATA else SourceTag.DECLARED)
                 .build()
 

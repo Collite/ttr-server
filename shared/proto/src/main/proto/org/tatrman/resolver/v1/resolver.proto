@@ -356,6 +356,8 @@ message Option {
   // `entity_with_measures`; empty for MEMBER options), so a clarification can be worded
   // by SPECIES rather than by label alone: "the stores (a dimension), or the Stores
   // channel (sales)?" is answerable; "Prodejna, or Tržby z prodejen?" is not.
+  // CN-P4: `concept` for an option offering a concept (`target_ref` = `cn.<Name>`); its
+  // `entity_type_ref` is then the concept's ER landing, empty when it has none.
   string object_kind = 7;
   // MH tier M — the attribute (or entity) whose MEMBER vocabulary this option came from;
   // empty for VOCABULARY options. A clarification over `TN` ×3 is literally unanswerable

@@ -34,8 +34,9 @@ outside this repo could notice is in.
     is asked about, concepts first.
   - `resolver.v1.EntityBinding` gains `concepts[]` (`ConceptReading`: `concept_qname`, `stereotype`, `via`,
     `lift_provenance[]`, `note`). This is additive; `resolve.bind:v1` JSON carries it as `concepts`.
-  - A concept binding's `domain` names the concept's ER landing, never the `cn.*` ref. A concept with no landing
-    carries the advisory note `cn/ungrounded` or `md/er-unmapped`; its values resolve as open values.
+  - A concept binding's `domain` names the concept's ER landing, never the `cn.*` ref. So does a clarification
+    option that offers a concept (`object_kind` `concept`), and picking it binds the concept reading. A concept with
+    no landing carries the advisory note `cn/ungrounded` or `md/er-unmapped`; its values resolve as open values.
 
   An estate without a `model cn` resolves exactly as before.
 - **query — the stated layer is part of the compiled-plan cache key** (review-123 R3). The cache keyed a plan by

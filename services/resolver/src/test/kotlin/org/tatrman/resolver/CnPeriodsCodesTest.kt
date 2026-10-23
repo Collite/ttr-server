@@ -42,11 +42,15 @@ class CnPeriodsCodesTest :
                     members = members,
                     entities = listOf(MhMembers.ner("I21", 9, 12, "MISC")),
                 )
-            // The governed lookup asks the diagnosis's vocabularies — the concept's landing (A-CN-6) — and binds there.
+            // The governed lookup asks the concept's own term, then the diagnosis's vocabularies — the concept's landing
+            // (A-CN-6, ⚑R130-c) — and binds there.
             matcher.log
-                .filter { it.query == "I21" && it.categories.size in 1..2 }
-                .map { it.categories } shouldContainExactly
-                listOf(listOf("er.entity.diagnosis", "er.entity.diagnosis.code"))
+                .filter {
+                    it.query == "I21" &&
+                        it.categories.size in 1..3 &&
+                        it.categories.none { c -> c.startsWith("ground:") }
+                }.map { it.categories } shouldContainExactly
+                listOf(listOf("cn.Diagnosis", "er.entity.diagnosis", "er.entity.diagnosis.code"))
             r.hasAwaiting() shouldBe false
             val code = r.resolution.bindingsList.single { it.span.text == "I21" }
             code.domain.memberOf shouldBe "er.entity.diagnosis.code"

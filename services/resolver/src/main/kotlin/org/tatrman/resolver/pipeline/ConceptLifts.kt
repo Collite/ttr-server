@@ -4,6 +4,7 @@ package org.tatrman.resolver.pipeline
 import org.tatrman.fuzzy.v1.FuzzyMatch
 import org.tatrman.fuzzy.v1.SourceTag
 import org.tatrman.resolver.model.ConceptFacts
+import org.tatrman.ttr.lexicon.TargetFacts
 
 /**
  * CN-P4 S4.4 (cn contracts §5, A-CN-5/7) — the concepts one bound reading reads as: the reverse lift
@@ -35,8 +36,6 @@ object ConceptLifts {
 
     const val NOTE_UNGROUNDED = "cn/ungrounded"
     const val NOTE_ER_UNMAPPED = "md/er-unmapped"
-
-    private const val VIA_MD_HOP = "md-hop"
 
     /**
      * [top]'s concept readings. [category] is the vocabulary a member row came from (its attribute) and
@@ -85,7 +84,7 @@ object ConceptLifts {
                 note =
                     when {
                         concepts.erTarget(qname).isNotBlank() -> ""
-                        via == VIA_MD_HOP -> NOTE_ER_UNMAPPED
+                        via == TargetFacts.VIA_MD_HOP -> NOTE_ER_UNMAPPED
                         else -> NOTE_UNGROUNDED
                     },
             )

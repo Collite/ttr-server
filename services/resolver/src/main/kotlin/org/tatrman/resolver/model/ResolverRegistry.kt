@@ -2,6 +2,7 @@
 package org.tatrman.resolver.model
 
 import org.tatrman.text.Normalization
+import org.tatrman.ttr.lexicon.TargetFacts
 
 /**
  * The resolver-side registry (RG-P5, RS-24) — the plain-Kotlin view of the
@@ -132,8 +133,8 @@ data class TermSense(
     val priority: Double? = null,
 )
 
-/** CN-P4 — the [ResolverEntityType.objectKind] of a concept (`TargetFacts.CONCEPT`). Never a mention kind. */
-const val KIND_CONCEPT = "concept"
+/** CN-P4 — the [ResolverEntityType.objectKind] of a concept. Never a mention kind. */
+const val KIND_CONCEPT = TargetFacts.CONCEPT
 
 /** CN-P4 — the stereotype the ordering and the lift treat apart (L17-2, L17-3). */
 const val STEREOTYPE_PHASE = "phase"
@@ -192,6 +193,31 @@ fun List<ResolverEntityType>.ownersByRef(): Map<String, String> =
  */
 fun List<ResolverEntityType>.governingRefByRef(): Map<String, String> =
     filter { it.objectKind == KIND_CONCEPT && it.erTarget.isNotBlank() }.associate { it.ref to it.erTarget }
+
+/**
+ * CN-P4 (⚑R130-a, A-CN-72) — what a ref STANDS FOR as an object: a grounded concept's ER landing
+ * ([governingRefByRef]), any other ref itself. A-CN-6 says a concept governs as its landing; the same holds
+ * wherever the resolver asks what an object IS — its kind (a quality landing on a measure is a measure),
+ * its entity type (a quoted literal's head facet), its slot facts, whether it owns values. Read at two points:
+ * span proposal maps every candidate's gated refs through it, and the readers that start from a binding's ref
+ * (the lattice's heads and kinds, the door's options) call it. The concept itself stays the binding's ref.
+ */
+fun List<ResolverEntityType>.standsFor(): (String) -> String {
+    val governing = governingRefByRef()
+    return if (governing.isEmpty()) { ref -> ref } else { ref -> governing[ref] ?: ref }
+}
+
+/**
+ * CN-P4 (A-CN-72) — concept → the declared type of its ER landing, for a reader that needs the landing's own
+ * facts (its kind, its owner) rather than its ref. A landing the registry does not list is ABSENT, so a reader
+ * learns nothing about it — the "nothing declared" shape the other maps here use.
+ */
+fun List<ResolverEntityType>.landingTypeByRef(): Map<String, ResolverEntityType> {
+    val governing = governingRefByRef()
+    if (governing.isEmpty()) return emptyMap()
+    val byRef = associateBy { it.ref }
+    return governing.mapNotNull { (concept, landing) -> byRef[landing]?.let { concept to it } }.toMap()
+}
 
 /**
  * MH — ref → its declared reach, for the Binder's reachability rule.
@@ -259,9 +285,11 @@ fun List<ResolverEntityType>.membersOf(): Map<String, List<String>> =
  * its anchor bound) and `ReGate` (a hypothesis scoped by a ref or by the value's anchor). The own
  * categories come FIRST, so a registry with no member vocabularies yields byte-identical scopes.
  *
- * CN-P4 (A-CN-6) — a concept's scope is its ER landing's ([governingRefByRef]): a value it governs is
- * a value of the landing. A landing the registry does not list names itself, the convention every
- * category here follows (a category is its ref).
+ * CN-P4 (A-CN-6, ⚑R130-c) — a concept's scope is its own categories first (its terms: a hypothesis naming
+ * the concept must still reach its row), then its ER landing's ([governingRefByRef]): a value it governs is
+ * a value of the landing. A scope is never empty — an empty category list is the matcher's unscoped ask — so
+ * a type with no category of its own (a term-less concept or landing) falls back to its ref, the convention
+ * every category here follows.
  */
 fun List<ResolverEntityType>.valueCategoriesByRef(): Map<String, List<String>> {
     val members = membersOf()
@@ -274,14 +302,13 @@ fun List<ResolverEntityType>.valueCategoriesByRef(): Map<String, List<String>> {
     ): List<String> = (own + members[ref].orEmpty().flatMap { categoriesByRef[it].orEmpty() }).distinct()
     return associate { et ->
         val landing = governing[et.ref]
-        et.ref to
-            if (landing ==
-                null
-            ) {
+        val scope =
+            if (landing == null) {
                 scopeOf(et.ref, et.categories)
             } else {
-                scopeOf(landing, categoriesByRef[landing] ?: listOf(landing))
+                (et.categories + scopeOf(landing, categoriesByRef[landing].orEmpty())).distinct()
             }
+        et.ref to scope.ifEmpty { listOf(et.ref) }
     }
 }
 
@@ -324,7 +351,8 @@ class ConceptFacts internal constructor(
     ): TermSense? {
         val senses = byRef[ref]?.senses ?: return null
         if (senses.isEmpty()) return null
-        return senses[form] ?: senses.entries.firstOrNull { (term, _) -> fold(term) == fold(form) }?.value
+        val folded = Normalization.fold(form)
+        return senses[form] ?: senses.entries.firstOrNull { (term, _) -> Normalization.fold(term) == folded }?.value
     }
 
     /**
@@ -334,12 +362,12 @@ class ConceptFacts internal constructor(
     fun groundsTo(
         concept: String,
         element: String,
-    ): Boolean = erTarget(concept) == element || liftsTo(element).any { it.qname == concept }
+    ): Boolean =
+        (erTarget(concept).isNotBlank() && erTarget(concept) == element) ||
+            liftsTo(element).any { it.qname == concept }
 
     companion object {
         val NONE = ConceptFacts(emptyMap())
-
-        private fun fold(s: String): String = Normalization.fold(s)
     }
 }
 

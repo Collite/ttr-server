@@ -380,6 +380,11 @@ class LookupRounds(
         val contenders = span.contenders + additions
         return span.copy(
             contenders = contenders,
+            // review-130 R5 — a span the round FILLED keeps what its bind proved: R-cn-1's `cn-grounds` element
+            // (the concept's `lift:` source and its door fallback) and MH-D3's reach-equal readings, as a
+            // broad-pass bind does. A span that already had a binding keeps its own.
+            equivalents =
+                if (span.contenders.isEmpty()) (verdict as? Binder.Bind)?.equivalents.orEmpty() else span.equivalents,
             // A span the broad pass left empty is ambiguous exactly when the round that filled it
             // found several identities; one that already had a binding is untouched by the guard
             // above, because the planner never asks about it.

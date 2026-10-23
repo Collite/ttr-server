@@ -5,7 +5,9 @@ import org.tatrman.nlp.v1.AnalyzeResponse
 import org.tatrman.nlp.v1.NerEntity
 import org.tatrman.nlp.v1.Token
 import org.tatrman.resolver.model.ResolverEntityType
-import org.tatrman.resolver.model.governingRefByRef
+import org.tatrman.resolver.model.KIND_CONCEPT
+import org.tatrman.resolver.model.landingTypeByRef
+import org.tatrman.resolver.model.standsFor
 import org.tatrman.resolver.model.valueCategoriesByRef
 import org.tatrman.resolver.v1.UniversalEntityType
 import org.tatrman.text.Normalization.fold
@@ -205,11 +207,21 @@ object SpanProposal {
         // MV §5.3 — where a value governed by each object is looked up (its own categories, then
         // its member vocabularies'). Built once per proposal; read by the governed block below.
         val valueCategories = entityTypes.valueCategoriesByRef()
-        // CN-P4 (cn contracts §5, A-CN-6) — a concept anchor governs its values as its ER landing: the
-        // governed candidate is gated to the landing, so the governor stamp (`SlotHints`), the Binder's
-        // tier-M rule and a dual reading's scope (`UniversalSeam`) all read the entity or attribute the
-        // concept lands on. Empty on an estate with no `model cn`.
-        val governing = entityTypes.governingRefByRef()
+        // CN-P4 (A-CN-6, ⚑R130-a / A-CN-72) — a concept stands for its ER landing as an object. Every candidate
+        // leaves here gated to landings (see the return), and whether an anchor owns values is its landing's
+        // kind: a quality landing on a measure governs no value, as the measure does not. The identity on an
+        // estate with no `model cn`.
+        val standsFor = entityTypes.standsFor()
+        val landings = entityTypes.landingTypeByRef()
+
+        /** An anchor as an object: a concept stands for its landing's type; any other anchor for itself. */
+        fun objectOf(et: ResolverEntityType): ResolverEntityType? =
+            if (et.objectKind == KIND_CONCEPT) landings[et.ref] else et
+
+        fun kindOf(et: ResolverEntityType): String = objectOf(et)?.objectKind.orEmpty()
+
+        /** A measure anchor's fact: the declared owner of what it stands for. */
+        fun factOf(et: ResolverEntityType): String = objectOf(et)?.ownerRef.orEmpty()
         val universal = universalCharRanges(parse.entitiesList)
         // ttr-server#152 — the one-word dates: token → the char range of the DATE the NER typed
         // over exactly that word and nothing else (`Monthly`). A date wider than its word (`last
@@ -356,7 +368,7 @@ object SpanProposal {
             hits: List<AnchorPhrase>,
             placesOnly: Boolean,
         ) {
-            val valueOwners = hits.map { it.et }.filter { it.objectKind !in VALUELESS_OBJECT_KINDS }
+            val valueOwners = hits.map { it.et }.filter { kindOf(it) !in VALUELESS_OBJECT_KINDS }
             // ⚑ A-MH-1a (MH-P3·S1·T2). Governed values used to be emitted PER OWNER — one
             // candidate per owner on the SAME span — on the argument that merging them would
             // offer `QT ORLAK` to every owner sharing the anchor. But `dedupe` keys on
@@ -376,15 +388,15 @@ object SpanProposal {
             // refs, never its own, so before MV this lookup could not find `TN` under `stores`
             // at all and every tier-M bind came through the open sibling and M3 (MH §7.5 ⚑).
             // The GATED refs stay the owners: they are the governor the gate reasons about.
-            val refs = if (placesOnly) emptyList() else valueOwners.map { governing[it.ref] ?: it.ref }.distinct()
+            val refs = if (placesOnly) emptyList() else valueOwners.map { it.ref }.distinct()
             val categories = valueOwners.flatMap { valueCategories[it.ref] ?: it.categories }.distinct()
             // ✅UD-8 — a place's governors: the value-bearing owners, then each measure's fact.
             // With no measure among the hits this is exactly [valueOwners], so a dual reading
             // under an entity is gated as it always was.
             val placeOwners =
                 (
-                    valueOwners.map { governing[it.ref] ?: it.ref } +
-                        hits.map { it.et }.filter { it.objectKind == MEASURE_KIND }.map { it.ownerRef }
+                    valueOwners.map { it.ref } +
+                        hits.map { it.et }.filter { kindOf(it) == MEASURE_KIND }.map(::factOf)
                 ).filter { it.isNotBlank() }.distinct()
             if (refs.isEmpty() && placeOwners.isEmpty()) return
             // A fact the registry does not declare lends its ref, which no vocabulary is keyed by:
@@ -662,7 +674,22 @@ object SpanProposal {
         // LP: the invariant, stated once at the end rather than trusted to six exclusions above.
         // Each of those keeps a literal out of the source it guards; this one is the promise the
         // lattice depends on — NOTHING proposed overlaps a literal, however it was proposed.
-        return if (literals.isEmpty) proposed else proposed.filterNot { literals.overlaps(it.start, it.end) }
+        val kept = if (literals.isEmpty) proposed else proposed.filterNot { literals.overlaps(it.start, it.end) }
+        // CN-P4 (⚑R130-a / A-CN-72) — and every candidate names what its refs STAND FOR: a concept anchor's
+        // landing. Its categories are untouched (the concept's own term rows are still asked); its gated refs —
+        // which the slot stamp, the Binder's tier M, a dual reading's scope, a named member's anchors and the
+        // lattice read as the object — are the landing. One point, so no reader has to know the rule.
+        return kept.map { c ->
+            val refs = c.gatedEntityRefs.map(standsFor).distinct()
+            val scope = c.dualReadingScope.map(standsFor).distinct()
+            if (refs == c.gatedEntityRefs &&
+                scope == c.dualReadingScope
+            ) {
+                c
+            } else {
+                c.copy(gatedEntityRefs = refs, dualReadingScope = scope)
+            }
+        }
     }
 
     /**

@@ -11,7 +11,6 @@ import org.tatrman.nlp.v1.AnalyzeResponse
 import org.tatrman.resolver.client.FuzzyClient
 import org.tatrman.resolver.model.Reach
 import org.tatrman.resolver.model.ResolverEntityType
-import org.tatrman.resolver.model.governingRefByRef
 import org.tatrman.resolver.model.ownersByRef
 import org.tatrman.resolver.v1.UniversalEntityType
 import org.tatrman.text.Normalization.fold
@@ -100,13 +99,10 @@ object NamedMembers {
         // UD-P3 S2 — the model objects the question names, each with its owner (a measure's fact): the
         // anchors whose reach decides a name read in part or through its dictionary form.
         val owners = entityTypes.ownersByRef()
-        // CN-P4 (A-CN-6) — a concept anchor names its ER landing here as it does everywhere a governor is read.
-        val governing = entityTypes.governingRefByRef()
         val anchors =
             proposed
                 .filter { it.origin == DomainSpanCandidate.Origin.ANCHOR_PHRASE }
                 .flatMap { it.gatedEntityRefs }
-                .map { governing[it] ?: it }
                 .flatMap { ref -> listOfNotNull(ref, owners[ref]?.takeIf { it.isNotBlank() }) }
                 .distinct()
 

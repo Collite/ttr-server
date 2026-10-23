@@ -46,14 +46,30 @@ object ConceptOrder {
         val refs = objects(kept).map { it.match.targetRef }.toSet()
         kept = drop(kept, rejected) { c -> concepts.isPhase(ref(c)) && concepts.bearers(ref(c)).any { it in refs } }
 
+        // ⚑R130-d — an element reading a concept in the band grounds to is that concept's reading (R-cn-1 folds
+        // it at step 6), so at steps 3–4 it takes that concept's sense as well as its own: it stands or falls with
+        // the concept instead of being discarded before R-cn-1 can record it as a source.
+        fun lenders(c: Binder.ClassedMatch): List<Binder.ClassedMatch> =
+            if (concepts.isConcept(ref(c))) {
+                listOf(c)
+            } else {
+                listOf(c) + objects(kept).filter { concepts.isConcept(ref(it)) && concepts.groundsTo(ref(it), ref(c)) }
+            }
+
         // 3 — the default sense of the form, ignored on a phase (AM-36).
         kept =
             keepPreferred(kept, rejected) { c ->
-                !concepts.isPhase(ref(c)) && concepts.sense(ref(c), c.match.candidate)?.default == true
+                lenders(c).any { l ->
+                    !concepts.isPhase(ref(l)) &&
+                        concepts.sense(ref(l), l.match.candidate)?.default == true
+                }
             }
 
         // 4 — the authored priority, higher wins; a term that states none ranks as 0.
-        val priority = objects(kept).associateWith { c -> concepts.sense(ref(c), c.match.candidate)?.priority ?: 0.0 }
+        val priority =
+            objects(kept).associateWith { c ->
+                lenders(c).maxOf { l -> concepts.sense(ref(l), l.match.candidate)?.priority ?: 0.0 }
+            }
         val top = priority.values.maxOrNull()
         if (top != null) kept = keepPreferred(kept, rejected) { c -> priority[c] == top }
         return kept

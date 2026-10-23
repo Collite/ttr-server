@@ -5,6 +5,7 @@ import org.tatrman.resolver.model.ResolverEntityType
 import org.tatrman.resolver.model.ResolverRegistry
 import org.tatrman.resolver.model.ResolverThresholds
 import org.tatrman.resolver.model.TermSense
+import org.tatrman.ttr.lexicon.TargetFacts
 import java.util.concurrent.atomic.AtomicReference
 
 /**
@@ -53,7 +54,10 @@ class SnapshotRegistry(
             byRef.map { (ref, entries) ->
                 ResolverEntityType(
                     ref = ref,
-                    categories = entries.map { it.category }.distinct(),
+                    // CN-P4 (review-130 R11) — a concept or lifting element with no term and no member vocabulary
+                    // has no rows under its ref, so it registers no category: proposal asks the categories it
+                    // always asked. It is in the registry for its facts (a lift's stereotype, an `of:` chain).
+                    categories = entries.filterNot { it.factsOnly() }.map { it.category }.distinct(),
                     anchors = entries.flatMap { it.values.map { v -> v.value } }.distinct(),
                     // MS: verbatim. The grouping above is by targetRef and the facts are per
                     // ref, so every entry in a group carries the same pair — `first` is not a
@@ -89,4 +93,8 @@ class SnapshotRegistry(
         val locales = (vocab.locales + configLocales).distinct()
         return ResolverRegistry(entityTypes, locales, thresholds, hash)
     }
+
+    /** CN-P4 — an entry registered for its concept facts alone: no term, no member vocabulary. */
+    private fun DeclaredVocabularyEntry.factsOnly(): Boolean =
+        values.isEmpty() && !memberVocabulary && (objectKind == TargetFacts.CONCEPT || liftsTo.isNotEmpty())
 }

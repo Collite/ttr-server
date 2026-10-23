@@ -225,4 +225,27 @@ class CnArchiveLoadTest :
                     "cn.Customer.stereotype: 'role' vs 'kind'; kept 'role'",
                 )
         }
+
+        "two archives that disagree on a row's sense say so (review-130 R13)" {
+            val full = estate.result.lexicon
+            val other =
+                full.copy(
+                    entries =
+                        full.entries.map {
+                            if (it.targetRef == "cn.Customer" &&
+                                it.termNormalized == "zákazník"
+                            ) {
+                                it.copy(defaultSense = false)
+                            } else {
+                                it
+                            }
+                        },
+                )
+
+            val conflict = DeclaredLayer.merge(listOf(full, other)).methodConflicts.single()
+            conflict shouldContain "\"zákazník\""
+            conflict shouldContain "cn.Customer: sense"
+            conflict shouldContain "default=true"
+            conflict shouldContain "default=false"
+        }
     })

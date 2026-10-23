@@ -300,7 +300,9 @@ object ReGate {
             when {
                 verdict is Binder.Ambiguous -> outcomes += outcome(hypothesis, Reason.AMBIGUOUS)
                 verdict is Binder.Bind -> {
-                    val binding = Bindings.of(verdict.winner, snapshotHash).withRung(hypothesis.proposingRung)
+                    // review-130 R5 — with what the bind proved (R-cn-1's `cn-grounds` element, MH-D3's equivalents).
+                    val gated = Bindings.of(verdict.winner, snapshotHash, verdict.equivalents)
+                    val binding = gated.withRung(hypothesis.proposingRung)
                     if (hypothesis.ref.isNotBlank() && !confirms(binding.ref, hypothesis.ref, memberOwners)) {
                         outcomes += outcome(hypothesis, Reason.REF_MISMATCH)
                     } else {

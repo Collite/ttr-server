@@ -297,6 +297,18 @@ internal object DeclaredLayer {
                             rows.joinToString(" vs ") { "${it.value.method} in archive ${it.index + 1}" } +
                             "; kept ${winner.method}"
                     }
+                    // v6 (review-130 R13) — the row's sense (§1.5 steps 3–4) is a per-row fact too: two archives
+                    // that disagree on it decide the ordering by precedence, so it is reported like the method.
+                    if (rows.any {
+                            it.value.defaultSense != winner.defaultSense ||
+                                it.value.sensePriority != winner.sensePriority
+                        }
+                    ) {
+                        methodConflicts +=
+                            "\"${key.first}\" (${key.second}) → ${key.third}: sense " +
+                            rows.joinToString(" vs ") { "${sense(it.value)} in archive ${it.index + 1}" } +
+                            "; kept ${sense(winner)}"
+                    }
                     winner
                 }.sortedWith(ENTRY_ORDER)
 
@@ -381,6 +393,9 @@ internal object DeclaredLayer {
         }
         return byFact.values.sortedBy { it.factRef }
     }
+
+    /** v6 — a row's sense, as a merge conflict names it. */
+    private fun sense(e: CompiledEntry): String = "default=${e.defaultSense} priority=${e.sensePriority}"
 
     /**
      * CN-P4 (v6) — the union of two `liftsTo` lists by concept, sorted by concept as the compiler sorts
