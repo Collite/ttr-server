@@ -5,6 +5,7 @@ import com.typesafe.config.Config
 import com.typesafe.config.ConfigValueType
 import org.tatrman.ttr.lexicon.CompiledEntry
 import org.tatrman.ttr.lexicon.CompiledLexicon
+import org.tatrman.ttr.lexicon.ConceptLift
 import org.tatrman.ttr.lexicon.LexiconArchive
 import org.tatrman.ttr.lexicon.MatchMethod
 import org.tatrman.ttr.lexicon.Reach
@@ -52,7 +53,10 @@ import kotlin.io.path.readBytes
  * `targets` is keyed by ref. A ref present in one archive is copied. A ref in two (a package both
  * sources build against) keeps the first archive's scalar facts and takes the UNION of `reachedFrom`
  * — a build over both models would see every relation that reaches the ref — and `memberVocabulary`
- * if either says so.
+ * if either says so. The v6 concept facts follow the same rules (CN-P4 S4.3): `stereotype`,
+ * `erTarget`, `via` and `ofRef` are scalar facts, and `liftsTo` is the UNION by concept — a build over
+ * both models would see every concept grounded on the element. Every field of `TargetFacts` is named
+ * in [union]: one left out is a fact a two-archive estate silently drops.
  *
  * **One winner rule for every per-ref fact: the first archive that states it** — the primary, then
  * the additive archives in declared order — and every disagreement is reported in
@@ -346,6 +350,11 @@ internal object DeclaredLayer {
             codeRef = pick("codeRef", a.codeRef, b.codeRef),
             codeFormat = pick("codeFormat", a.codeFormat, b.codeFormat),
             memberVocabulary = a.memberVocabulary || b.memberVocabulary,
+            stereotype = pick("stereotype", a.stereotype, b.stereotype),
+            erTarget = pick("erTarget", a.erTarget, b.erTarget),
+            via = pick("via", a.via, b.via),
+            ofRef = pick("ofRef", a.ofRef, b.ofRef),
+            liftsTo = lifts(ref, a.liftsTo, b.liftsTo, conflicts),
         )
     }
 
@@ -371,6 +380,29 @@ internal object DeclaredLayer {
             }
         }
         return byFact.values.sortedBy { it.factRef }
+    }
+
+    /**
+     * CN-P4 (v6) — the union of two `liftsTo` lists by concept, sorted by concept as the compiler sorts
+     * it. A concept both carry keeps [a]'s `via` (the first archive's), and a different one in [b] is a
+     * conflict like any other per-ref fact: `via` is how the concept lands, which the resolver's lift
+     * reports.
+     */
+    private fun lifts(
+        ref: String,
+        a: List<ConceptLift>,
+        b: List<ConceptLift>,
+        conflicts: MutableList<String>,
+    ): List<ConceptLift> {
+        val byConcept = LinkedHashMap<String, ConceptLift>()
+        for (l in a) byConcept.putIfAbsent(l.qname, l)
+        for (l in b) {
+            val kept = byConcept.putIfAbsent(l.qname, l) ?: continue
+            if (kept.via != l.via) {
+                conflicts += "$ref.liftsTo[${l.qname}].via: '${kept.via}' vs '${l.via}'; kept '${kept.via}'"
+            }
+        }
+        return byConcept.values.sortedBy { it.qname }
     }
 
     /** How much a method admits — `LexiconCompiler.breadth`, read off the wire. Unknown ranks last. */

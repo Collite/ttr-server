@@ -395,6 +395,9 @@ conformance-service-level:
     ./gradlew :services:resolver:test --tests '*IssuesRegressionTest*'
     ./gradlew :services:lex-matcher:test --tests '*MatchQualityCorpusTest*'
     ./gradlew :services:lex-matcher:test --tests '*LexiconConformanceTest*'
+    # CN-P4 S4.3 — the conceptual tier's terms in the declared layer: the shared cn estate, compiled by the
+    # real producer at the pinned grammar (archive v6), read back through the archive reader.
+    ./gradlew :services:lex-matcher:test --tests '*CnConformanceTest*'
     # RV-P7.4 T6 — the LEARNED overlay joins the gating tier, on its recorded promotion
     # criterion: `OverlayDrillTest` is fed by `drill/overlay-final.json`, which is the exact
     # document kantheon's H2H3DrillSpec produced from a real H2 conversation — so this corpus

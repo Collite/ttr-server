@@ -16,6 +16,14 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+- **lex-matcher + resolver — the declared layer reads lexicon archive v6** (CN-P4). The grammar bundle pin moves to
+  0.18.1, whose `ttr-lexicon` reads `ttr-lexicon-compiled/v6`: concept entries under `cn.*` refs, the reverse index
+  (`liftsTo`) on er and md elements, and the default sense on rows. lex-matcher serves a concept's terms as declared
+  vocabulary under the concept's ref, as it serves an er object's. `fuzzy.match:v1` and Lookup keep their shape, and
+  narrowing a match to a concept's ref works. A v5 archive still loads, with the schema-version WARN. When two archives
+  carry the same ref, the merged layer now keeps its concept facts (`stereotype`, `erTarget`, `via`, `ofRef`) and the
+  union of its `liftsTo`; before, it dropped them. **Rollout:** these readers ship before any estate rebuilds its
+  archive as v6.
 - **query — the stated layer is part of the compiled-plan cache key** (review-123 R3). The cache keyed a plan by
   model version, text, language and parameter signature. The detector decides the layer with `source_schema`, so one
   text stated DB and then ER was served the first caller's plan. The key now includes `source_schema`.

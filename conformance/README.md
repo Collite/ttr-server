@@ -12,7 +12,7 @@ demonstrated" gate; the other two tiers seed the fuller E2E coverage that SV-P4 
 
 ## The gating service-level tier — `just conformance-service-level`
 
-Runs six **hermetic** corpora (zero live services, zero pilot estate) — five service-level, plus
+Runs seven **hermetic** corpora (zero live services, zero pilot estate) — six service-level, plus
 the RV-P4 conversation tier that sits above them:
 
 1. **ENTITIES_ONLY** (resolver) — `Q20ParityTest` over
@@ -68,7 +68,19 @@ the RV-P4 conversation tier that sits above them:
    rather than inside one service's test resources. Schema + the invariant vocabulary:
    [`conversations/SCHEMA.md`](conversations/SCHEMA.md). Hash-pinned like every other
    corpus here.
-6. **Grounding hermetic** — `eval/grounding/tests/` (`test_corpus_valid.py` + `test_report.py`,
+6. **cn-estate declared layer** (fuzzy — CN-P4 S4.3) — `CnConformanceTest` over
+   `services/lex-matcher/src/test/resources/conformance/cn-estate/cases.jsonl` (3 cases). The estate is
+   `shared/testdata/cn-estate` (an invented `shop` package with a `model cn` of twelve concepts, the copy
+   veles and the resolver read too), compiled at test time by the real producer at the pinned grammar
+   (`LexiconBuild.run` → lexicon archive **v6**) and read back through `LexiconArchiveSource`. Each case
+   runs through Lookup and through Match, which must give the same exact-form targets, and Match
+   narrowed to one reading's category returns that reading alone. Classes: `concept` (a concept's
+   term reaches its `cn.*` ref, served as an er object's term is) · `beside` (a form a concept and an
+   element both carry returns both readings at one score; the resolver orders them) · `member` (a
+   member term stays the member: the matcher never lifts to a concept, the resolver does).
+   Provenance: authored 2026-10-23 against the cn-estate fixture, itself a byte-for-byte copy of
+   ttr-core's `ttr-lexicon-compile` cn fixture (see its README).
+7. **Grounding hermetic** — `eval/grounding/tests/` (`test_corpus_valid.py` + `test_report.py`,
    21 checks): corpus-validity of the 123-case bulk + 21-case e2e corpora, and the pure `report.py`
    scoring logic. The **live** run (`run_eval.py` → grounding-mcp + Golem) is the extended tier, NOT here.
 
@@ -84,11 +96,20 @@ e2e-cases.json                  0034ed387f31c1dca8ba1a56b22b72f968193ee5f1aacb0f
 hartland-cz/aliases.lex.yaml    78577f1f142fdb6b9bca261e559b69335885358bcd4ba9ed6fb2bd75d45b2208
 hartland-cz/skills/trend.md     3db553d63ab7dcbecd021326dbb13f9cab72b71ee9d7d571c663f65349208bc2
 hartland-cz/cases.jsonl         1a0754ddac81c219a11c074d427c52c36ded5eab4304feeaa28c0c30c2f54de9
+cn-estate/cases.jsonl           075777f50cf9eb888ce567a470c84ded9c43225570e9ec488e43a39b87c1cd31
+cn-estate/model/binding/shop.ttrm       071157c002a742675beca8b7a8d0a1d47b81331d75b40ff443c60767801b77bc
+cn-estate/model/cn/shop.ttrm            2646bc33720d21b7fca47de6444400f052153f29880e1a2322594acd1eb0e409
+cn-estate/model/er/shop.ttrm            4ebedd04daa85e05a0821b873e22e9ecd711fe2d0f01f25347aa87a4a727e3a7
+cn-estate/model/lexicon/cs/terms.ttrm   2627ef02f2f429295277a554fbc4d0365b4a9ad54e9de879e3785fee2363f905
+cn-estate/model/lexicon/en/terms.ttrm   186a07d7663af482c8d23877cfa6641ac30cce52d26e8643da0555da6802b09e
+cn-estate/model/md/shop.ttrm            8a21c45249736ab68acfe9e70b9b424cddb278c0b41fc1641c39bbd8a55f0672
 ```
 
 The hartland_cz leg pins **three** files, not one: the corpus is authored source compiled at test
 time, so the lexicon and the skill are as much fixture as the cases are. A silent edit to either
-would change what is served without changing a single expectation.
+would change what is served without changing a single expectation. The cn-estate leg pins its cases
+and the six model files it compiles, for the same reason: re-copying the estate from ttr-core is a
+deliberate change, and bumps these hashes in the same commit.
 
 ### Why hermetic (no pilot estate)
 The gate must be green in CI without a deployed stack or any pilot estate — that is the SV-P3 promise.

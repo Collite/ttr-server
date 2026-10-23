@@ -7,7 +7,7 @@ cs + en lexicon units. Three consumers read this one copy, so the three read the
 | Consumer | Reads | Since |
 |---|---|---|
 | veles | `model/`: the registry carries the cn tier, and the wire survives it | CN-P4 S4.2 |
-| lex-matcher | `expected/lexicon.json`: the v6 concept rows load as declared vocabulary | CN-P4 S4.3 |
+| lex-matcher | `model/`, compiled at test time and held to `expected/lexicon.json`: the v6 concept rows load as declared vocabulary (`CnArchiveLoadTest`, and the gating `CnConformanceTest`) | CN-P4 S4.3 |
 | resolver | `expected/lexicon.json`: concept entries, `liftsTo`, the default sense | CN-P4 S4.4 |
 
 ## Source
@@ -15,4 +15,5 @@ cs + en lexicon units. Three consumers read this one copy, so the three read the
 A byte-for-byte copy of ttr-core's `packages/kotlin/ttr-lexicon-compile/src/test/resources/cn/` at `ce90a093` (CN-P4
 S4.1, ttr-core#268). `expected/lexicon.json` is the v6 archive's lexicon (`ttr-lexicon-compiled/v6`) that ttr-core's
 `CnArchiveV6Spec` holds byte-stable. ttr-core's copy is the source: change it there, then copy it here again
-(`diff -r` against the source shows any drift).
+(`diff -r` against the source shows any drift). The model files and the conformance cases are hash-pinned in
+`conformance/corpus-hashes.sha256`: a re-copy bumps those hashes in the same commit.
