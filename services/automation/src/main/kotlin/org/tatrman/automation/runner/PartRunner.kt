@@ -33,9 +33,11 @@ data class RunContext(
     val allowRestrictedView: Boolean = false,
     val detailLimit: Int = 200,
     val detailLimits: Map<String, Int> = emptyMap(),
+    val syncBudget: Duration = Duration.ofSeconds(60),
 ) {
     init {
         require(readCeiling > 0 && detailLimit > 0 && !timeout.isNegative && !timeout.isZero)
+        require(!syncBudget.isNegative && syncBudget.toMillis() > 0) { "invalid sync budget" }
         require(detailLimits.values.all { it > 0 })
         require(
             detailLimits.keys.all { name ->
@@ -147,6 +149,12 @@ class PartRunner(
                         result
                     }.also { evaluation = it }
             }
+        return work.await().also { checks.ensureAllowed() }
+    }
+
+    /** Observes completed work only: a status poll cannot execute or journal a decision. */
+    internal suspend fun completedEvaluation(): EvaluationResult? {
+        val work = lock.withLock { evaluation?.takeIf { it.isCompleted } } ?: return null
         return work.await().also { checks.ensureAllowed() }
     }
 

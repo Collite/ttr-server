@@ -213,6 +213,20 @@ class Ledger(
         }
     }
 
+    /** Idempotent begin: a retry cannot regress a completed decision or resurrect a terminal/waiting run. */
+    fun startEvaluation(runId: UUID) {
+        outermost("startEvaluation")
+        transaction(transactionIsolation = Connection.TRANSACTION_READ_COMMITTED) {
+            lockRun(runId)
+            val from = RunStatus.of(Runs.select(Runs.status).where { Runs.id eq runId }.single()[Runs.status])
+            if (from !in setOf(RunStatus.OPEN, RunStatus.RUNNING, RunStatus.EVALUATED)) {
+                throw IllegalRunTransition(runId, from, RunStatus.RUNNING)
+            }
+            if (isSealed(runId)) throw ProtocolSealed(runId)
+            if (from == RunStatus.OPEN) Runs.update({ Runs.id eq runId }) { it[status] = RunStatus.RUNNING.wire }
+        }
+    }
+
     /**
      * Executor failure, conditional on an executing status. Repeated/concurrent reports are harmless and cannot
      * replace CLOSED/ABANDONED/WAITING (e.g. another claimant already abandoned this run). The caller may retry

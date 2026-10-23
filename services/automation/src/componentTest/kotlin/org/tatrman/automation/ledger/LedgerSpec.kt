@@ -66,6 +66,42 @@ class LedgerSpec :
                     .map { it[RunProtocol.payload] }
             }
 
+        "evaluation begin is idempotent under races and never regresses completed evidence" {
+            val id = ledger.claimRun(open("begin")).runId
+            val pool = Executors.newFixedThreadPool(4)
+            try {
+                val jobs = (1..8).map { pool.submit { ledger.startEvaluation(id) } }
+                jobs.forEach { it.get(10, TimeUnit.SECONDS) }
+            } finally {
+                pool.shutdownNow()
+            }
+            statusOf(id) shouldBe "running"
+            val result = EvaluationResult(VerdictSummary(emptyMap(), 0), emptyList())
+            ledger.completeEvaluation(id, result)
+            ledger.startEvaluation(id)
+            statusOf(id) shouldBe "evaluated"
+            decisionOf(id) shouldBe listOf(Json.encodeToJsonElement(result))
+            transaction { Runs.selectAll().where { Runs.id eq id }.single()[Runs.endedAt] } shouldBe null
+        }
+
+        "evaluation begin refuses terminal, waiting, sealed, missing and nested transaction handles" {
+            for (state in listOf(RunStatus.CLOSED, RunStatus.FAILED, RunStatus.ABANDONED, RunStatus.WAITING)) {
+                val id = ledger.claimRun(open("begin-${state.wire}")).runId
+                ledger.markStatus(id, state)
+                shouldThrow<IllegalRunTransition> { ledger.startEvaluation(id) }
+                statusOf(id) shouldBe state.wire
+                decisionOf(id) shouldBe emptyList()
+            }
+            val sealed = ledger.claimRun(open("begin-sealed")).runId
+            ledger.sealProtocol(sealed)
+            shouldThrow<ProtocolSealed> { ledger.startEvaluation(sealed) }
+            statusOf(sealed) shouldBe "open"
+            shouldThrow<NoSuchRun> { ledger.startEvaluation(UUID.randomUUID()) }
+            val nested = ledger.claimRun(open("begin-nested")).runId
+            shouldThrow<IllegalStateException> { transaction { ledger.startEvaluation(nested) } }
+            statusOf(nested) shouldBe "open"
+        }
+
         "evaluation records its immutable summary and guards atomically with status, accepting only identical retries" {
             val id = ledger.claimRun(open("evaluation")).runId
             val payload =

@@ -510,6 +510,9 @@ class OpenSpec :
                 }).open(recipe, request(), caller)
             row!!.budgetSync shouldBe Duration.ofMillis(250)
             row!!.budgetBatch shouldBe Duration.ofMinutes(2)
+            result.context!!.syncBudget shouldBe Duration.ofMillis(250)
+            row!!.openingProtocol!!.jsonObject["budgetSyncMs"] shouldBe JsonPrimitive(250)
+            row!!.openingProtocol!!.jsonObject["budgetBatchMs"] shouldBe JsonPrimitive(120000)
             result.context!!
                 .bindings
                 .getValue("tolerance")

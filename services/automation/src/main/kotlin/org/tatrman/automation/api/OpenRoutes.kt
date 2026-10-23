@@ -23,6 +23,7 @@ internal fun Route.openRoutes(open: suspend (String, OpenRequest, Caller) -> Ope
         val request = call.receive<OpenRequest>()
         val result = open(call.parameters["r"].orEmpty(), request, call.caller())
         result.response.location?.let { call.response.header(HttpHeaders.Location, it) }
+        if (result.httpStatus == 202) call.response.header(HttpHeaders.RetryAfter, "15")
         call.respond(HttpStatusCode.fromValue(result.httpStatus), result.response)
     }
 }

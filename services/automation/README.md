@@ -13,7 +13,8 @@ in the project folder:
 > pinned runner, returns route counts/refs plus unmatched candidates and guard evidence, and records the decision
 > atomically with EVALUATED status. Detail snapshots now apply pinned limits per route/context/key before staging,
 > and authenticated route/detail/output readers page the verified Arrow or download Arrow/CSV. Production
-> runtime/storage wiring, async execution and the remaining protocol/lifecycle orchestration remain. Run handlers,
+> runtime/storage wiring, durable async queue/deadline ownership and the remaining protocol/lifecycle work remain.
+> Budgeted evaluate and observation-only polling are implemented. Run handlers,
 > including evaluate and route/detail/output readers, are not mounted in Application.
 
 The executor requires an explicit `world/storage` → Query world alias map. Query resolves those aliases through
@@ -86,8 +87,42 @@ journal callback, evaluate fails closed. The callback stores the typed evaluate 
 `guards`) in the protocol's INSERT-only `decision` section and sets EVALUATED in one locked transaction.
 Identical durable retries are harmless; changed evidence, sealed protocols and terminal/waiting runs refuse.
 This supplies the durable summary for later status/protocol readers without a second mutable summary column.
-A journal failure is shared like other executor failures and the session fails the active run. This synchronous
-handler still needs the async budget/poll wrapper before production mounting.
+A journal failure is shared like other executor failures and the session fails the active run. Budgeted evaluate/poll is described below; production mounting still needs durable queue ownership, deadlines
+and lifecycle recovery.
+
+`POST /automation/runs/{id}/evaluate` waits at most the program's pinned `budget.sync` (configured default when
+absent). Open pins and journals that budget in milliseconds alongside the batch budget. One supervised session
+promise begins evaluation with `ledger::startEvaluation` before Query; retries and concurrent callers share it,
+including failures. The begin transition is idempotent and cannot regress an evaluated decision or resurrect a
+terminal/waiting/sealed run. Runtime must provide `RunSessions(running = ledger::startEvaluation)`; missing
+journalling fails closed before Query. Cancelling an HTTP waiter or exhausting its sync wait leaves shared work
+running. Release/shutdown join that work, including a blocked begin journal, before closing the runner.
+
+Fast success returns the existing `200 { verdict, guards, mode? }`. A sync wait expiring returns
+`202 { runId, status: "running", location }` with `Location: /automation/runs/{id}` and `Retry-After: 15`.
+An in-progress idempotent open also carries Location/Retry-After. While the begin journal is pending, the poll may
+still report `open`; no Query read starts before RUNNING is durably accepted.
+
+`GET /automation/runs/{id}` is the P1 progress projection: `{ runId, status, verdict?, guards, mode?, protocolRef }`.
+It checks the verified initiating subject before ledger access and never starts Query, evaluation or a decision
+write. Open/running responses include `Retry-After: 15`; evaluated responses include the completed summary and
+guards with no retry hint. The tiny gap between EVALUATED committing and the completed promise becoming visible
+still reports running. A poll can observe an evaluation started through another read endpoint. The original
+failure/refusal is cached: polls and evaluate return it without a new read; a failed conditional failure journal
+can retry. Closed/waiting/abandoned/released/missing/other-owner contexts refuse. Batch/tasks/deliveries, complete
+status metadata and durable restart/terminal readers remain S1.3 work.
+
+Engine polling contract (D-47):
+1. Open with an idempotency key and retain it with the run id. After a new open, call evaluate.
+2. On `202`, follow Location every 15–30 seconds, respecting Retry-After. Keep the same run id/key while it is
+   running; do not create a new key to bypass a slow evaluation.
+3. On evaluated, consume the verdict/route refs. On a guard, identity, stale-policy or other refusal, stop;
+   never automatically restart a refusal.
+4. A lost transport response can be retried with the same key/run id. A `503 run-abandoned` permits a bounded
+   restart with that same key (bound attempts and elapsed time in the engine); stop when that bound is reached.
+   The durable queue, abandonment deadline/sweeper and restart ownership are still pending. With these unmounted
+   session handlers, a missing/released context fails closed; restarting cannot reconstruct today's recipe as
+   the old run, and an existing key may remain held until the ledger's existing budget-plus-two-minute claim rule.
 
 Local staging publishes immutable Arrow blobs before journalling their metadata. A journal failure leaves an
 unreferenced blob for the S1.3 retention job; it never deletes content another claimant might reference. The

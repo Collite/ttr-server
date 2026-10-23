@@ -346,6 +346,9 @@ internal class RunSessionFixture(
     beforeFailure: () -> Unit = {},
     detailLimit: Int = 200,
     stagingStore: org.tatrman.automation.staging.StagingStore? = null,
+    syncDefault: Duration = Duration.ofSeconds(60),
+    beforeRunning: () -> Unit = {},
+    afterEvaluation: () -> Unit = {},
     private val columns: List<ManifestColumn> =
         listOf(ManifestColumn("order_number", "text"), ManifestColumn("note", "text")),
 ) {
@@ -448,7 +451,7 @@ internal class RunSessionFixture(
             },
             { "/automation/runs/$it/protocol" },
             { false },
-            Duration.ofSeconds(60),
+            syncDefault,
             Duration.ofMinutes(30),
             BundleFixture.clock,
             detailLimit = detailLimit,
@@ -479,6 +482,7 @@ internal class RunSessionFixture(
                     { id, result ->
                         evaluations[id] = result
                         states[id] = RunStatus.EVALUATED
+                        afterEvaluation()
                     },
                 )
             },
@@ -496,6 +500,13 @@ internal class RunSessionFixture(
                     } else {
                         old
                     }
+                }
+            },
+            { id ->
+                beforeRunning()
+                states.compute(id) { _, old ->
+                    check(old in setOf(RunStatus.OPEN, RunStatus.RUNNING, RunStatus.EVALUATED))
+                    if (old == RunStatus.OPEN) RunStatus.RUNNING else old
                 }
             },
         )

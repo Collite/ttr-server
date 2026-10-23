@@ -28,13 +28,18 @@ class RunSessions(
     private val create: (RunContext, CoroutineScope) -> PartRunner,
     private val status: (UUID) -> RunStatus?,
     private val failed: (UUID) -> Unit,
+    private val running: (UUID) -> Unit = { error("running journal unavailable") },
 ) {
     private class Session(
         val runner: PartRunner,
         val job: Job,
         val scope: CoroutineScope,
     ) {
+        val evaluationLock = Mutex()
+        var evaluation: Deferred<EvaluationResult>? = null
         val failureLock = Mutex()
+
+        @Volatile var failure: Exception? = null
         var failureRecorded = false
         var closing = false // Guarded by the registry lock.
         val released = CompletableDeferred<Unit>()
@@ -77,33 +82,115 @@ class RunSessions(
         select: (RunContext) -> S,
         block: suspend (PartRunner, S) -> T,
     ): T {
-        val session = lock.withLock { sessions[id]?.takeUnless { it.closing } } ?: unavailable()
-        if (session.runner.context.identity.caller.sub != caller.sub) {
-            // Same answer as a missing context: a guessed id cannot reveal whether another caller owns it.
-            unavailable()
-        }
+        val session = owned(id, caller)
         val current = withContext(Dispatchers.IO) { status(id) }
         if (current !in setOf(RunStatus.OPEN, RunStatus.RUNNING, RunStatus.EVALUATED)) unavailable()
         val selection = select(session.runner.context) // Client mistakes never fail the run.
-        return session.scope
-            .async {
-                try {
-                    block(session.runner, selection)
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: Exception) {
-                    withContext(NonCancellable) {
-                        session.failureLock.withLock {
-                            if (!session.failureRecorded) {
-                                withContext(Dispatchers.IO) { failed(id) }
-                                session.failureRecorded = true
-                            }
-                        }
-                    }
-                    throw e
-                }
-            }.await()
+        return session.scope.async { guarded(session, id) { block(session.runner, selection) } }.await()
     }
+
+    /** A timed-out/disconnected HTTP waiter never cancels the shared evaluation. Null means still running. */
+    suspend fun evaluate(
+        id: UUID,
+        caller: Caller,
+    ): EvaluationResult? {
+        val session = owned(id, caller)
+        val current = withContext(Dispatchers.IO) { status(id) }
+        if (current !in setOf(RunStatus.OPEN, RunStatus.RUNNING, RunStatus.EVALUATED, RunStatus.FAILED)) unavailable()
+        throwFailure(session, id) // Preserve a cached refusal, never restart it.
+        if (current !in setOf(RunStatus.OPEN, RunStatus.RUNNING, RunStatus.EVALUATED)) unavailable()
+        val work =
+            session.evaluationLock.withLock {
+                session.evaluation ?: run {
+                    session.scope.ensureActive()
+                    session.scope
+                        .async {
+                            guarded(session, id) {
+                                withContext(Dispatchers.IO) { running(id) }
+                                session.runner.evaluate()
+                            }
+                        }.also { session.evaluation = it }
+                }
+            }
+        return withTimeoutOrNull(
+            session.runner.context.syncBudget
+                .toMillis(),
+        ) { work.await() }
+    }
+
+    /** Owner-checked observation only: polling never starts a read, evaluation or decision journal. */
+    suspend fun progress(
+        id: UUID,
+        caller: Caller,
+    ): RunProgress {
+        val session = owned(id, caller)
+        val current = withContext(Dispatchers.IO) { status(id) }
+        if (current !in setOf(RunStatus.OPEN, RunStatus.RUNNING, RunStatus.EVALUATED, RunStatus.FAILED)) unavailable()
+        throwFailure(session, id) // Replay failures even after the active-run failure was journalled.
+        if (current == RunStatus.FAILED) unavailable()
+        val result =
+            if (current == RunStatus.EVALUATED) {
+                guarded(session, id) { session.runner.completedEvaluation() }
+            } else {
+                null
+            }
+        // The journal can commit just before the executor publishes its completed promise.
+        val visibleStatus =
+            if (current == RunStatus.EVALUATED &&
+                result == null
+            ) {
+                "running"
+            } else {
+                requireNotNull(current).wire
+            }
+        return RunProgress(
+            id.toString(),
+            visibleStatus,
+            result?.verdict,
+            result?.guards.orEmpty(),
+            result?.mode,
+            "/automation/runs/$id/protocol",
+        )
+    }
+
+    private suspend fun throwFailure(
+        session: Session,
+        id: UUID,
+    ) {
+        val failure = session.failure ?: return
+        guarded(session, id) { throw failure }
+    }
+
+    private suspend fun owned(
+        id: UUID,
+        caller: Caller,
+    ): Session {
+        val session = lock.withLock { sessions[id]?.takeUnless { it.closing } } ?: unavailable()
+        if (session.runner.context.identity.caller.sub != caller.sub) unavailable()
+        return session
+    }
+
+    private suspend fun <T> guarded(
+        session: Session,
+        id: UUID,
+        block: suspend () -> T,
+    ): T =
+        try {
+            block()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            withContext(NonCancellable) {
+                session.failureLock.withLock {
+                    if (session.failure == null) session.failure = e
+                    if (!session.failureRecorded) {
+                        withContext(Dispatchers.IO) { failed(id) }
+                        session.failureRecorded = true
+                    }
+                }
+            }
+            throw e
+        }
 
     suspend fun release(id: UUID) {
         val (session, owner) =

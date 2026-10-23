@@ -164,6 +164,7 @@ class Open(
                 allowRestrictedView = d.allowRestrictedView,
                 detailLimit = detailLimit,
                 detailLimits = detailLimits(recipe.recipe, bundle.actions, detailLimit),
+                syncBudget = sync,
             )
         if (port.keys != null &&
             port.keys.size > context.readCeiling
@@ -205,6 +206,8 @@ class Open(
                         put("readCeiling", context.readCeiling)
                         put("detailLimit", context.detailLimit)
                         put("detailLimits", JsonObject(context.detailLimits.mapValues { JsonPrimitive(it.value) }))
+                        put("budgetSyncMs", sync.toMillis())
+                        put("budgetBatchMs", batch.toMillis())
                         put("approvals", if (approvalsOff) "development-off" else "required")
                     },
             )
