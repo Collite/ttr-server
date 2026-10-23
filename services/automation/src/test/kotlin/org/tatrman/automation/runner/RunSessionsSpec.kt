@@ -345,6 +345,7 @@ internal class RunSessionFixture(
     claimed: () -> Unit = {},
     beforeFailure: () -> Unit = {},
     detailLimit: Int = 200,
+    stagingStore: org.tatrman.automation.staging.StagingStore? = null,
     private val columns: List<ManifestColumn> =
         listOf(ManifestColumn("order_number", "text"), ManifestColumn("note", "text")),
 ) {
@@ -473,7 +474,7 @@ internal class RunSessionFixture(
                             ),
                         )
                     },
-                    Staging(LocalStagingStore(Files.createTempDirectory("au-session")), outputs::add),
+                    Staging(stagingStore ?: LocalStagingStore(Files.createTempDirectory("au-session")), outputs::add),
                     scope,
                     { id, result ->
                         evaluations[id] = result

@@ -68,21 +68,31 @@ data class StagedOutput(
     val table: Table,
 )
 
+data class StagedData(
+    val arrow: ByteArray,
+    val table: Table,
+)
+
 /** Publish a completed Arrow blob before recording its ledger row; a failed read never reaches this point. */
 class Staging(
     private val store: StagingStore,
     private val record: (RunOutput) -> Unit,
 ) {
     /** Page readers use the published Arrow, verifying its immutable journal metadata before returning rows. */
-    suspend fun read(output: StagedOutput): Table =
+    suspend fun read(output: StagedOutput): Table = readData(output).table
+
+    /** Verify before HTTP headers are sent; downloads retain the exact published IPC bytes. */
+    suspend fun readData(output: StagedOutput): StagedData =
         withContext(Dispatchers.IO) {
             val bytes = store.get(requireNotNull(output.output.path))
             check(bytes.size.toLong() == output.output.bytes && hash(bytes) == output.output.sha256) {
                 "staged output differs from its journal"
             }
-            ArrowTables.decode(listOf(bytes), output.table.columns).also {
-                check(it.rows.size.toLong() == output.output.rows) { "staged row count differs from its journal" }
-            }
+            val table =
+                ArrowTables.decode(listOf(bytes), output.table.columns).also {
+                    check(it.rows.size.toLong() == output.output.rows) { "staged row count differs from its journal" }
+                }
+            StagedData(bytes, table)
         }
 
     suspend fun put(

@@ -12,9 +12,9 @@ in the project folder:
 > All five read/candidate guards and synchronous evaluation summaries are implemented. Evaluation shares the
 > pinned runner, returns route counts/refs plus unmatched candidates and guard evidence, and records the decision
 > atomically with EVALUATED status. Detail snapshots now apply pinned limits per route/context/key before staging,
-> and authenticated route/detail readers page the verified Arrow. Production runtime/storage wiring, output
-> downloads, async execution and the remaining protocol/lifecycle orchestration remain. Run handlers,
-> including evaluate and route/detail readers, are not mounted in Application.
+> and authenticated route/detail/output readers page the verified Arrow or download Arrow/CSV. Production
+> runtime/storage wiring, async execution and the remaining protocol/lifecycle orchestration remain. Run handlers,
+> including evaluate and route/detail/output readers, are not mounted in Application.
 
 The executor requires an explicit `world/storage` → Query world alias map. Query resolves those aliases through
 its existing `QUERY_WORLDS` table. Missing routes fail before a query is issued; there is no fallback to Query's
@@ -62,6 +62,24 @@ or any selected detail key has a marker, even if that marker lies on another pag
 when following a row ref. The initiating verified subject owns all reads; missing/released/terminal/other-owner
 handles refuse. Readers decode published Arrow and verify its byte count, SHA-256 and row count, refusing
 corruption instead of falling back to cached rows. Retention/restart recovery remain lifecycle work.
+
+`GET /automation/runs/{id}/outputs/{island}.{port}` resolves an exact, unambiguous manifest handle, including
+ports containing dots. It shares the pinned island work; decision outputs require durable evaluation first.
+The default `format=json` returns `{ rows, rowCount, ref, class?, keyed, truncated }`, preserving decimal precision
+and nulls. JSON/CSV accept the same bounded `offset`/`limit` as route readers. Full counts include snapshot markers;
+`truncated` reports omitted page rows or any source marker, even outside the page. An empty/out-of-range page
+keeps its full count and schema (CSV/Arrow). Invalid handles/formats/duplicate or invalid paging parameters refuse
+before execution without failing the run. Ownership and active-session restrictions also apply to downloads.
+
+`format=arrow` streams the exact staged Arrow IPC bytes after byte-count/hash/row-count verification, with
+`application/vnd.apache.arrow.stream`; it rejects pagination rather than silently ignoring it. The current
+staging store reads a blob into memory for verification before the response starts. CSV uses `text/csv; charset=UTF-8`,
+a UTF-8 BOM, `sep=,`, CRLF and quoted comma-separated fields (embedded quotes/newlines are escaped). Text cells
+and headers starting with formula characters `= + - @` (including after whitespace/BOM), tab, CR or LF get an
+apostrophe prefix; typed signed numbers retain their representation. CSV retains explicit detail marker rows and
+adds a `# truncated` trailer whenever the snapshot or page is truncated. Both downloads carry `X-Row-Count`,
+`X-Truncated` and an attachment filename based on the run UUID. Corrupt data refuses with the JSON error envelope
+before any download headers or bytes; formats never re-encode Arrow or repeat a governed read for another page.
 
 Runtime construction must pass `recordEvaluation = ledger::completeEvaluation` to PartRunner. Without the
 journal callback, evaluate fails closed. The callback stores the typed evaluate result (including `mode` and

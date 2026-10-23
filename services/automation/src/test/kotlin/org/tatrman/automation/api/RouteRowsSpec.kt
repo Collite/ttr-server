@@ -127,7 +127,12 @@ class RouteRowsSpec :
                                 ),
                             )
                         install(Authentication) { AutomationBearerProvider.register(this, verifier) }
-                        routing { authenticate(AUTOMATION_AUTH) { routeRows(fixture.runs, 3) } }
+                        routing {
+                            authenticate(AUTOMATION_AUTH) {
+                                routeRows(fixture.runs, 3)
+                                outputRoutes(fixture.runs, 3)
+                            }
+                        }
                     }
                     val token = realm.person("maya", listOf("sales_manager"))
                     val result =
@@ -208,6 +213,15 @@ class RouteRowsSpec :
                     fixture.evaluations.size shouldBe 1
                     reads.get() shouldBe 5 // Every route/detail read reuses the pinned evaluation.
                     fixture.outputs.single { it.port == "release.shortfall" }.rows shouldBe 4
+                    val outputRef = "/automation/runs/$id/outputs/way.release.shortfall"
+                    val output = get("$outputRef?limit=1").bodyAsText().let { Json.parseToJsonElement(it).jsonObject }
+                    output["rowCount"] shouldBe JsonPrimitive(4)
+                    output["truncated"] shouldBe JsonPrimitive(true)
+                    output["rows"]!!.jsonArray.single().jsonObject["note"] shouldBe JsonPrimitive("first")
+                    val csv = get("$outputRef?format=csv&offset=3&limit=1").bodyAsText()
+                    csv.endsWith("\"4711\",\"\",\"\",\"\",\"true\"\r\n# truncated\r\n") shouldBe true
+                    reads.get() shouldBe 5
+                    fixture.evaluations.size shouldBe 1
                     fixture.states[UUID.fromString(id)] = RunStatus.CLOSED
                     get(ref).status shouldBe HttpStatusCode.ServiceUnavailable
                 }

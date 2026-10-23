@@ -150,10 +150,12 @@ class PartRunner(
         return work.await().also { checks.ensureAllowed() }
     }
 
-    internal suspend fun readStaged(output: StagedOutput): Table {
+    internal suspend fun readStaged(output: StagedOutput): Table = stagedData(output).table
+
+    internal suspend fun stagedData(output: StagedOutput): org.tatrman.automation.staging.StagedData {
         checks.ensureAllowed()
         require(output.output.run == context.id)
-        return staging.read(output).also { checks.ensureAllowed() }
+        return staging.readData(output).also { checks.ensureAllowed() }
     }
 
     private suspend fun outputIsland(name: String): List<StagedOutput> =
