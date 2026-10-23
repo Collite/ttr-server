@@ -1,0 +1,24 @@
+{
+ "service": "metadata",
+ "ready": true,
+ "model_loaded": true,
+ "model_version": "stock-v1|3d54d5e8327902f38e996d9e895507fb6d8622f5:b33a900b",
+ "object_count": 1101,
+ "queries_total": 20,
+ "issues": [],
+ "sources": [
+  {
+   "id": "github-model",
+   "source": "git https://github.com/Collite/ttr-demo.git (branch master, sub-path model)",
+   "loaded": true,
+   "serving_fallback": false,
+   "version": "3d54d5e8327902f38e996d9e895507fb6d8622f5",
+   "object_count": 630,
+   "last_attempt_at": "2026-10-23T06:40:55.951601037Z",
+   "last_success_at": "2026-10-23T06:40:55.951601037Z",
+   "last_error": "",
+   "consecutive_failures": 0,
+   "failures_total": 0
+  }
+ ]
+}

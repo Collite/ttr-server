@@ -1,0 +1,26 @@
+{
+ "service": "query",
+ "grpc_port": 7306,
+ "active_runs": 0,
+ "flight": {
+  "enabled": true,
+  "running": true,
+  "port": 7308,
+  "bind": "0.0.0.0",
+  "statements": 10,
+  "receipts": true
+ },
+ "worlds": [
+  "hartland_cz",
+  "hartland_us"
+ ],
+ "cache": {
+  "entries": 2,
+  "max_entries": 1000,
+  "hits": 0,
+  "misses": 12,
+  "invalidations": 0,
+  "evictions": 0,
+  "current_model_version": ""
+ }
+}

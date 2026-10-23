@@ -35,10 +35,31 @@ telemetry:
   endpoint: ""
   serviceName: health-check-service
 
-# Per-target check wiring. The bundled application.conf carries kantheon + shared-cluster defaults;
-# a deploying env appends HEALTH_*_URL / HEALTH_*_HOST / HEALTH_*_PORT overrides here to retune
-# DNS/ports/paths for its cluster (and the monitoring Prometheus URL for prometheus-type checks).
+# Extra container env (e.g. HEALTH_PROMETHEUS_URL for prometheus-type checks).
 extraEnv: []
+
+# The per-cluster ROSTER (README "Per-cluster roster"). The bundled application.conf carries the
+# reference estate's technologies; another estate supplies its own as a config fragment:
+#
+#   configFragment:
+#     content: |
+#       health-check-service.roster {
+#         technologies { veles { type = native, url = "http://veles.ttr-server:7260", healthEndpoint = "/ready" } … }
+#       }
+#
+# A `roster` block REPLACES the bundled technologies (a merge would keep every target the estate does
+# not run, as a red tile). The library mounts the fragment, points the JVM at it and rolls the pod when
+# it changes (tatrman-service `configFragment`).
+configFragment:
+  content: ""
+
+# The content rows of External Secrets and cert-manager read the Kubernetes API: with `rbac.enabled`
+# the chart creates `serviceAccount.name`, a ClusterRole that may get/list ExternalSecrets and
+# Certificates (their status — never a Secret), and the binding; the pod runs as that account.
+rbac:
+  enabled: false
+serviceAccount:
+  name: ""
 
 # Probes hit /healthz — the cheap SELF-liveness route (200 immediately, independent of any target;
 # HealthRoutes.kt). NOT /health/all: that fans out to every configured target (each up to a 30s

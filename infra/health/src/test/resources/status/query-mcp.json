@@ -1,0 +1,18 @@
+{
+ "service": "query-mcp",
+ "version": "0.1.0",
+ "port": 7307,
+ "mcp_path": "/mcp",
+ "transport": "streamable-http",
+ "active_requests": 0,
+ "upstream_states": {
+  "queryRunner": "IDLE",
+  "translator": "IDLE",
+  "validator": "IDLE",
+  "metadata": "IDLE"
+ },
+ "tools": [
+  "query",
+  "compile"
+ ]
+}

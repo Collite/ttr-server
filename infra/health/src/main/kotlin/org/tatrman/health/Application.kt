@@ -5,6 +5,7 @@ import org.tatrman.health.api.healthRoutes
 import org.tatrman.health.api.statusRoutes
 import org.tatrman.health.config.ConfigLoader
 import org.tatrman.health.config.HealthConfig
+import org.tatrman.health.content.ContentService
 import org.tatrman.health.service.HealthCheckService
 import org.tatrman.health.status.BuildInfo
 import org.tatrman.health.status.ModelFingerprintProbe
@@ -53,6 +54,10 @@ fun Application.module(
     installKtorServerBase(serverConfig)
 
     val service = HealthCheckService(healthConfig)
+    val content =
+        ContentService(
+            healthConfig.technologies.mapNotNull { (key, technology) -> technology.status?.let { key to it } }.toMap(),
+        )
 
     // FO-P5.S2 (FO-28): the open-tier status surface — Server version + model fingerprint + rollup.
     val fingerprintUrl =
@@ -70,7 +75,7 @@ fun Application.module(
         )
 
     routing {
-        healthRoutes(service)
+        healthRoutes(service, content)
         statusRoutes(statusService)
     }
 }

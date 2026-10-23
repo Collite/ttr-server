@@ -1,0 +1,104 @@
+{
+ "service": "nlp-service",
+ "version": "0.1.0",
+ "capabilities": [
+  {
+   "language": "cs",
+   "op": "TOKENIZE",
+   "engine": "morphodita",
+   "modelVersion": "czech-morfflex2.0-pdtc1.0-220710",
+   "tier": "SELF_HOSTED_PINNED"
+  },
+  {
+   "language": "cs",
+   "op": "SENTENCE_SPLIT",
+   "engine": "morphodita",
+   "modelVersion": "czech-morfflex2.0-pdtc1.0-220710",
+   "tier": "SELF_HOSTED_PINNED"
+  },
+  {
+   "language": "cs",
+   "op": "LEMMATIZE",
+   "engine": "morphodita",
+   "modelVersion": "czech-morfflex2.0-pdtc1.0-220710",
+   "tier": "SELF_HOSTED_PINNED"
+  },
+  {
+   "language": "cs",
+   "op": "POS_TAG",
+   "engine": "morphodita",
+   "modelVersion": "czech-morfflex2.0-pdtc1.0-220710",
+   "tier": "SELF_HOSTED_PINNED"
+  },
+  {
+   "language": "cs",
+   "op": "DEP_PARSE",
+   "engine": "stanza",
+   "modelVersion": "stanza-1.10.0",
+   "tier": "SELF_HOSTED_PINNED"
+  },
+  {
+   "language": "cs",
+   "op": "NER",
+   "engine": "nametag3",
+   "modelVersion": "nametag3-czech-cnec2.0-240830",
+   "tier": "SELF_HOSTED_PINNED"
+  },
+  {
+   "language": "cs",
+   "op": "DETECT_LANGUAGE",
+   "engine": "langid",
+   "modelVersion": "lingua-2.0",
+   "tier": "SELF_HOSTED_PINNED"
+  },
+  {
+   "language": "en",
+   "op": "TOKENIZE",
+   "engine": "stanza",
+   "modelVersion": "stanza-1.10.0",
+   "tier": "SELF_HOSTED_PINNED"
+  },
+  {
+   "language": "en",
+   "op": "SENTENCE_SPLIT",
+   "engine": "stanza",
+   "modelVersion": "stanza-1.10.0",
+   "tier": "SELF_HOSTED_PINNED"
+  },
+  {
+   "language": "en",
+   "op": "LEMMATIZE",
+   "engine": "stanza",
+   "modelVersion": "stanza-1.10.0",
+   "tier": "SELF_HOSTED_PINNED"
+  },
+  {
+   "language": "en",
+   "op": "POS_TAG",
+   "engine": "stanza",
+   "modelVersion": "stanza-1.10.0",
+   "tier": "SELF_HOSTED_PINNED"
+  },
+  {
+   "language": "en",
+   "op": "DEP_PARSE",
+   "engine": "stanza",
+   "modelVersion": "stanza-1.10.0",
+   "tier": "SELF_HOSTED_PINNED"
+  },
+  {
+   "language": "en",
+   "op": "NER",
+   "engine": "stanza",
+   "modelVersion": "stanza-1.10.0",
+   "tier": "SELF_HOSTED_PINNED"
+  },
+  {
+   "language": "en",
+   "op": "DETECT_LANGUAGE",
+   "engine": "langid",
+   "modelVersion": "lingua-2.0",
+   "tier": "SELF_HOSTED_PINNED"
+  }
+ ]
+}

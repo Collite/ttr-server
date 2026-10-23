@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package org.tatrman.health.api
 
+import org.tatrman.health.content.ContentService
 import org.tatrman.health.service.HealthCheckResult
 import org.tatrman.health.service.HealthCheckService
 import io.ktor.http.HttpStatusCode
@@ -9,12 +10,17 @@ import io.ktor.server.response.respond
 import io.ktor.server.routing.RoutingCall
 import io.ktor.server.routing.get
 import io.ktor.server.routing.routing
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 
-fun Application.healthRoutes(service: HealthCheckService) {
+fun Application.healthRoutes(
+    service: HealthCheckService,
+    content: ContentService,
+) {
     routing {
         // Self-liveness/readiness: is THIS aggregator process up? Answers immediately, independent
         // of any downstream target — the pod probe target. Contrast /health/all, which fans out to
@@ -71,9 +77,26 @@ fun Application.healthRoutes(service: HealthCheckService) {
             call.respond(httpStatus, result)
         }
 
+        // The landing reads this: every technology's health and, where configured, its content.
         get("/health/all/detailed") {
-            val result = service.checkAllHealth(100)
+            val result =
+                coroutineScope {
+                    val health = async { service.checkAllHealth(100) }
+                    val status = if (content.configured) async { content.all() } else null
+                    val snapshot = health.await()
+                    val statusAll = status?.await() ?: return@coroutineScope snapshot
+                    snapshot.copy(
+                        technologies = snapshot.technologies.map { it.copy(content = statusAll.technologies[it.name]) },
+                        content = statusAll.summary,
+                    )
+                }
             call.respond(result)
+        }
+
+        // Only the content: every technology with a `status` block (cached, see ContentService). Not to
+        // be confused with `/status`, the open-tier status page's JSON twin (StatusRoutes).
+        get("/status/all") {
+            call.respond(content.all())
         }
     }
 }

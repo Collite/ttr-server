@@ -1,0 +1,15 @@
+{
+ "service": "validate",
+ "grpc_port": 7286,
+ "metadata_version": "stock-v1|3d54d5e8327902f38e996d9e895507fb6d8622f5:b33a900b",
+ "llm_guard_enabled": false,
+ "default_top_n": 200,
+ "max_top_n": 200,
+ "max_top_n_by_role": {
+  "kantheon-bi-reader": 10000
+ },
+ "ready": true,
+ "dependencies": {
+  "veles": true
+ }
+}

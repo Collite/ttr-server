@@ -1,0 +1,9 @@
+{
+ "service": "mssql",
+ "engine": "mssql",
+ "engine_version": "MS SQL Server",
+ "grpc_port": 7296,
+ "supported_connections": [],
+ "active_queries": 0,
+ "pool_stats": {}
+}
