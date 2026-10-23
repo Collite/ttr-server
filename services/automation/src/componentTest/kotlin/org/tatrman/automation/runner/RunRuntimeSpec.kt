@@ -117,6 +117,54 @@ class RunRuntimeComponentSpec :
             }
         }
 
+        "close releases the pinned runtime and retries after restart without any new Query work" {
+            val f = DurableRuntimeFixture()
+            val runtime = f.start()
+            try {
+                val id =
+                    UUID.fromString(
+                        runtime.sessions
+                            .open("release_order", f.request, f.caller)
+                            .response.runId,
+                    )
+                shouldThrow<AutomationException> { runtime.closer.close(id, f.caller) }.code shouldBe
+                    ErrorCode.CLOSE_NOT_READY
+                runtime.sessions.evaluate(id, f.caller)
+                val batch = runtime.status.batch(id, f.caller)
+                val closed = runtime.closer.close(id, f.caller)
+                closed.batch.state shouldBe "preview"
+                runtime.status.batch(id, f.caller) shouldBe batch
+                runtime.status.read(id, f.caller).status shouldBe "closed"
+                shouldThrow<AutomationException> { runtime.sessions.evaluate(id, f.caller) }.code shouldBe
+                    ErrorCode.RUN_CLOSED
+                shouldThrow<AutomationException> {
+                    runtime.sessions.read(
+                        id,
+                        f.caller,
+                        { Unit },
+                    ) { _, _ -> Unit }
+                }.code shouldBe
+                    ErrorCode.RUN_CLOSED
+                runtime.sessions.open("release_order", f.request, f.caller).httpStatus shouldBe 200
+                val protocol = runtime.protocol.read(id, f.caller)
+                runtime.shutdown()
+                val restarted = f.start()
+                try {
+                    restarted.closer.close(id, f.caller) shouldBe closed
+                    restarted.protocol.read(id, f.caller) shouldBe protocol
+                    restarted.status.batch(id, f.caller) shouldBe batch
+                    shouldThrow<AutomationException> { restarted.sessions.evaluate(id, f.caller) }.code shouldBe
+                        ErrorCode.RUN_CLOSED
+                    f.reads.get() shouldBe 2
+                } finally {
+                    restarted.shutdown()
+                }
+            } finally {
+                runtime.shutdown()
+                f.close()
+            }
+        }
+
         "the assembled deadline cancels actual queued execution and persists the typed public refusal" {
             val entered = CompletableDeferred<Unit>()
             val cancelled = CompletableDeferred<Unit>()
@@ -161,7 +209,11 @@ class RunRuntimeComponentSpec :
         "startup maintenance abandons and archives a lost owner's trigger without executing its context" {
             val f = DurableRuntimeFixture()
             val lost = UUID.randomUUID()
-            val id = f.ledger.claimRun(RunOpen("lost", budgetBatch = f.config.budgets.batchDefault)).runId
+            val id =
+                f.ledger
+                    .claimRun(
+                        RunOpen("lost", budgetBatch = f.config.budgets.batchDefault, callerSubject = f.caller.sub),
+                    ).runId
             RunQueue(clock = f.clock, defaultBudget = f.config.budgets.batchDefault).enqueue(id, lost)
             f.base.now = f.base.now.plusSeconds(131) // Strict budget + two minute recovery grace.
             val runtime = f.start()

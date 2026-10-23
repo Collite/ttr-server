@@ -26,7 +26,8 @@ import org.slf4j.LoggerFactory
  * The committed claim timestamp bounds idle/queued/running execution. Deadline monitors belong to the
  * application scope so they can cancel the run scope and journal/replay its refusal independently. Supply
  * the same configured clock as Open/Ledger and Ledger.failExecution as [failed]. A successful durable
- * evaluation ends this timer; production mounting, preview/close/task handoff and retention remain separate.
+ * preview evaluation ends this timer; close rechecks the original ledger budget. Production mounting,
+ * task handoff and blob retention remain separate.
  */
 class RunSessions(
     private val policy: Open,
@@ -36,6 +37,7 @@ class RunSessions(
     private val failed: (UUID, Exception) -> Unit,
     private val running: (UUID) -> Unit = { error("running journal unavailable") },
     private val clock: Clock,
+    private val authorizeExecution: suspend (UUID, Caller) -> Unit = { _, _ -> },
 ) {
     private class Session(
         val runner: PartRunner,
@@ -52,7 +54,7 @@ class RunSessions(
 
         @Volatile var failureRecorded = false
         var closing = false // Guarded by the registry lock.
-        val released = CompletableDeferred<Unit>()
+        var released = CompletableDeferred<Unit>()
         var deadline: Job? = null
     }
 
@@ -189,6 +191,7 @@ class RunSessions(
         id: UUID,
         caller: Caller,
     ): Session {
+        authorizeExecution(id, caller)
         val session = lock.withLock { if (stopped) null else sessions[id]?.takeUnless { it.closing } } ?: unavailable()
         if (session.runner.context.identity.caller.sub != caller.sub) unavailable()
         return session
@@ -296,28 +299,33 @@ class RunSessions(
     }
 
     suspend fun release(id: UUID) {
-        val (session, owner) =
-            lock.withLock {
-                val session = sessions[id] ?: return
-                val owner = !session.closing
-                session.closing = true
-                session to owner
-            }
         withContext(NonCancellable) {
+            val (session, owner, completion) =
+                lock.withLock {
+                    val session = sessions[id] ?: return@withContext
+                    val owner = !session.closing
+                    session.closing = true
+                    Triple(session, owner, session.released)
+                }
             if (!owner) {
-                session.released.await()
+                completion.await()
                 return@withContext
             }
             try {
                 session.deadline?.cancelAndJoin()
                 session.job.cancelAndJoin()
                 withContext(Dispatchers.IO) { session.runner.close() }
-                session.released.complete(Unit)
-            } catch (e: Exception) {
-                session.released.completeExceptionally(e)
-                throw e
-            } finally {
                 lock.withLock { sessions.remove(id) }
+                completion.complete(Unit)
+            } catch (e: Exception) {
+                // Keep the fenced executor available to another close/shutdown cleanup attempt. Waiters on
+                // this attempt share its failure, rather than accidentally joining the replacement promise.
+                lock.withLock {
+                    session.released = CompletableDeferred()
+                    session.closing = false
+                }
+                completion.completeExceptionally(e)
+                throw e
             }
         }
     }

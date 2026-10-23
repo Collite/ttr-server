@@ -25,7 +25,7 @@ import java.util.UUID
  * it must keep them alive until [shutdown] returns. Supply the SAME clock used to construct the ledger
  * (including configured clock.skew). No credentials or executors are recovered after a process restart.
  *
- * This assembles the execution path; Application mounting still waits for protocol/close/retention and
+ * This assembles the execution path; Application mounting still waits for configured storage/retention and
  * deployment owner routing. HTTP integration specs mount [org.tatrman.automation.api.runRoutes] directly.
  */
 class RunRuntime(
@@ -48,6 +48,7 @@ class RunRuntime(
             .ProtocolRecorder(ledger)
     val sessions: RunSessions
     val status = RunStatusReader(ledger)
+    val closer = RunCloser(ledger) { sessions.release(it) }
     val displayRows = config.budgets.displayRows
     val owner: UUID get() = workers.owner
 
@@ -95,6 +96,7 @@ class RunRuntime(
                 ledger::failExecution,
                 ledger::startEvaluation,
                 clock,
+                closer::authorizeExecution,
             )
         workers =
             RunWorkers(

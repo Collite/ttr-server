@@ -98,9 +98,48 @@ class RunRuntimeSpec :
                         HttpStatusCode.Forbidden
                     for (url in listOf("$base/routes/release", "$base/outputs/way.release")) {
                         client.get(url) { bearerAuth(realm.person("other", listOf("sales_manager"))) }.status shouldBe
-                            HttpStatusCode.ServiceUnavailable
+                            HttpStatusCode.Forbidden
                     }
                     f.statusReads.get() shouldBe before
+                }
+            } finally {
+                f.close()
+            }
+        }
+
+        "mounted close seals execution reads and retries while status and batch stay readable" {
+            val f = RuntimeFixture()
+            try {
+                testApplication {
+                    application { runtimeApi(f.runtime, realm) }
+                    val id = openRun(token)
+                    val base = "/automation/runs/$id"
+                    client.post("$base/close") { bearerAuth(token) }.status shouldBe HttpStatusCode.Conflict
+                    client.post("$base/evaluate") { bearerAuth(token) }.status shouldBe HttpStatusCode.OK
+                    val count = f.requests.size
+                    val batch = client.get("$base/batch") { bearerAuth(token) }.bodyAsText()
+                    val closed = client.post("$base/close") { bearerAuth(token) }
+                    closed.status shouldBe HttpStatusCode.OK
+                    closed.bodyAsText().json()["status"] shouldBe JsonPrimitive("closed")
+                    for (url in listOf("$base/evaluate", "$base/parts/candidates", "$base/islands/way")) {
+                        val response = client.post(url) { bearerAuth(token) }
+                        response.status shouldBe HttpStatusCode.Conflict
+                        response.bodyAsText().json()["error"]!!.jsonObject["code"] shouldBe JsonPrimitive("run-closed")
+                    }
+                    for (url in listOf(
+                        "$base/routes/release",
+                        "$base/outputs/way.release",
+                        "$base/routes/release/details/shortfall?row=0",
+                    )) {
+                        val response = client.get(url) { bearerAuth(token) }
+                        response.status shouldBe HttpStatusCode.Conflict
+                        response.bodyAsText().json()["error"]!!.jsonObject["code"] shouldBe JsonPrimitive("run-closed")
+                    }
+                    client.get(base) { bearerAuth(token) }.bodyAsText().json()["status"] shouldBe
+                        JsonPrimitive("closed")
+                    client.get("$base/batch") { bearerAuth(token) }.bodyAsText() shouldBe batch
+                    client.post("$base/close") { bearerAuth(token) }.bodyAsText() shouldBe closed.bodyAsText()
+                    f.requests.size shouldBe count
                 }
             } finally {
                 f.close()
@@ -424,6 +463,25 @@ private class RuntimeFixture(
     val runtime: RunRuntime
 
     init {
+        every { ledger.closePreview(any(), any()) } answers {
+            val id = firstArg<UUID>()
+            if (records[id]?.callerSubject != secondArg<String>()) throw NoSuchRun(id)
+            if (states[id] !in setOf(RunStatus.EVALUATED, RunStatus.CLOSED)) {
+                throw IllegalRunTransition(id, states.getValue(id), RunStatus.CLOSED)
+            }
+            val preview = previews[id] ?: throw NoRunBatch(id)
+            states[id] = RunStatus.CLOSED
+            CloseResult(
+                "closed",
+                RunBatch(preview.batch, "preview", preview.rows.size),
+                "/automation/runs/$id/protocol",
+            )
+        }
+        every { ledger.checkRunExecution(any(), any()) } answers {
+            val id = firstArg<UUID>()
+            if (records[id]?.callerSubject != secondArg<String>()) throw NoSuchRun(id)
+            if (states[id] == RunStatus.CLOSED) throw ProtocolSealed(id)
+        }
         every { ledger.readRunProgress(any(), any()) } answers {
             val id = firstArg<UUID>()
             val open = records[id]?.takeIf { it.callerSubject == secondArg<String>() } ?: throw NoSuchRun(id)

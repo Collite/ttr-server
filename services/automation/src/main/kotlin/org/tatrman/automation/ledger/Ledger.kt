@@ -28,6 +28,7 @@ import org.tatrman.automation.runner.EvaluationResult
 import org.tatrman.automation.runner.RunProgress
 import org.tatrman.automation.runner.RunFingerprints
 import org.tatrman.automation.runner.RunBatch
+import org.tatrman.automation.runner.CloseResult
 import org.tatrman.automation.apply.*
 import org.tatrman.automation.protocol.IslandExecution
 import org.tatrman.automation.protocol.ProtocolDocument
@@ -518,6 +519,104 @@ class Ledger(
 
     /** Seals the protocol at close: a `{"sealed": true}` entry in `automation`, after which nothing appends. */
     fun sealProtocol(runId: UUID): Int = appendProtocol(runId, ProtocolSection.AUTOMATION, SEALED)
+
+    /**
+     * P1 close consumes a completed dry-run preview. Owner lookup, final write evidence, closure/seal and
+     * ended_at are one locked transaction. No executor/current bundle is needed, even for a restarted retry.
+     * A pending evaluation must finish first; close never starts work or converts a wet/held batch to preview.
+     */
+    fun closePreview(
+        runId: UUID,
+        subject: String,
+    ): CloseResult {
+        require(subject.isNotBlank())
+        outermost("closePreview")
+        return transaction(transactionIsolation = Connection.TRANSACTION_READ_COMMITTED) {
+            val row =
+                Runs
+                    .selectAll()
+                    .where { (Runs.id eq runId) and (Runs.callerSubject eq subject) }
+                    .forUpdate()
+                    .firstOrNull() ?: throw NoSuchRun(runId)
+            val from = RunStatus.of(row[Runs.status])
+            if (from !in setOf(RunStatus.EVALUATED, RunStatus.CLOSED)) {
+                throw IllegalRunTransition(runId, from, RunStatus.CLOSED)
+            }
+            check(row[Runs.dryRun]) { "P1 close requires a dry run" }
+            val batchId = row[Runs.batchId] ?: throw NoRunBatch(runId)
+            val batch = Batches.selectAll().where { (Batches.id eq batchId) and (Batches.run eq runId) }.single()
+            check(batch[Batches.state] == "preview") { "P1 close requires a preview batch" }
+            val result =
+                CloseResult(
+                    status = RunStatus.CLOSED.wire,
+                    batch = RunBatch(batchId.toString(), batch[Batches.state], batch[Batches.rows]),
+                    protocolRef = row[Runs.protocolRef] ?: "/automation/runs/$runId/protocol",
+                )
+            if (from == RunStatus.CLOSED) {
+                check(isSealed(runId) && row[Runs.endedAt] != null) { "closed run is missing its seal/end time" }
+                return@transaction result
+            }
+            if (isSealed(runId)) throw ProtocolSealed(runId)
+            ensureRunBudget(runId, defaultBudget, clock)
+            val now = clock.instant().utc()
+            // The preview summary at evaluate is retained; this final entry records that close applied zero rows.
+            val writes =
+                kotlinx.serialization.json.buildJsonObject {
+                    put("event", JsonPrimitive("closed"))
+                    put("batch", JsonPrimitive(batchId.toString()))
+                    put("state", JsonPrimitive("preview"))
+                    put("rows", JsonPrimitive(batch[Batches.rows]))
+                    put("applied", JsonPrimitive(0))
+                }
+            RunProtocol.insert {
+                it[run] = runId
+                it[section] = ProtocolSection.WRITES.wire
+                it[seq] = nextSeq(runId, ProtocolSection.WRITES)
+                it[payload] = writes
+                it[at] = now
+            }
+            val closure =
+                kotlinx.serialization.json.buildJsonObject {
+                    put("event", JsonPrimitive("closed"))
+                    put("status", JsonPrimitive("closed"))
+                    put("dryRun", JsonPrimitive(true))
+                    put("batch", JsonPrimitive(batchId.toString()))
+                }
+            val sequence = nextSeq(runId, ProtocolSection.AUTOMATION)
+            listOf(closure, SEALED).forEachIndexed { index, evidence ->
+                RunProtocol.insert {
+                    it[run] = runId
+                    it[section] = ProtocolSection.AUTOMATION.wire
+                    it[seq] = sequence + index
+                    it[payload] = evidence
+                    it[at] = now
+                }
+            }
+            ensureRunBudget(runId, defaultBudget, clock)
+            Runs.update({ Runs.id eq runId }) {
+                it[status] = RunStatus.CLOSED.wire
+                it[endedAt] = now
+            }
+            result
+        }
+    }
+
+    /** Durable owner/seal fence before touching a local executor, including after resource release/restart. */
+    fun checkRunExecution(
+        runId: UUID,
+        subject: String,
+    ) {
+        require(subject.isNotBlank())
+        outermost("checkRunExecution")
+        transaction(transactionIsolation = Connection.TRANSACTION_REPEATABLE_READ) {
+            val row =
+                Runs
+                    .select(Runs.status)
+                    .where { (Runs.id eq runId) and (Runs.callerSubject eq subject) }
+                    .firstOrNull() ?: throw NoSuchRun(runId)
+            if (row[Runs.status] == RunStatus.CLOSED.wire || isSealed(runId)) throw ProtocolSealed(runId)
+        }
+    }
 
     /** The readiness probe's question: does the ledger's database answer? */
     fun ping(): Boolean =

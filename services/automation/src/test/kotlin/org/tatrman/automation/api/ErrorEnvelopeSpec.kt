@@ -159,6 +159,8 @@ class ErrorEnvelopeSpec :
                 ErrorCode.PROTOCOL_RENDERER_UNAVAILABLE,
                 ErrorCode.PREVIEW_UNSUPPORTED,
                 ErrorCode.BATCH_NOT_READY,
+                ErrorCode.RUN_CLOSED,
+                ErrorCode.CLOSE_NOT_READY,
                 ErrorCode.RESTRICTED_VIEW,
                 ErrorCode.CANDIDATES_TRUNCATED,
                 ErrorCode.OUT_OF_SCOPE,
