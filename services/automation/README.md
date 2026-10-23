@@ -112,20 +112,23 @@ Fast success returns the existing `200 { verdict, guards, mode? }`. A sync wait 
 An in-progress idempotent open also carries Location/Retry-After. While the begin journal is pending, the poll may
 still report `open`; no Query read starts before RUNNING is durably accepted.
 
-`GET /automation/runs/{id}` is the P1 progress projection: `{ runId, status, verdict?, guards, mode?, protocolRef }`.
-It checks the verified initiating subject before ledger access and never starts Query, evaluation or a decision
-write. Open/running responses include `Retry-After: 15`; evaluated responses include the completed summary and
-guards with no retry hint. The tiny gap between EVALUATED committing and the completed promise becoming visible
-still reports running. A poll can observe an evaluation started through another read endpoint. The original
-failure/refusal is cached: polls and evaluate return it without a new read; a failed conditional failure journal
-can retry. Closed/waiting/abandoned/released/missing/other-owner contexts refuse. Batch/tasks/deliveries, complete
-status metadata and durable restart/terminal readers remain S1.3 work.
+`GET /automation/runs/{id}` reads committed status from the ledger, including after restart, failure, abandonment
+or seal. Its projection includes `{ runId, status, verdict?, guards, mode?, protocolRef }` plus pinned recipe,
+program, deployment, runAs, author, asOf, bundle/fingerprints, dryRun, replayOf, startedAt/endedAt and stored error.
+A linked batch contributes `{ id, state, rows }`. The verified initiating JWT subject is part of the first SQL
+filter; unknown, other-owned and legacy rows without a subject all return `403 identity`. The read uses a single
+repeatable-read snapshot for run, decision and batch. It needs no current bundle, local promise or credentials.
+Open/running responses include `Retry-After: 15`; every other persisted status is a `200` observation without
+a retry hint. An evaluated decision is visible as soon as its transaction commits, independently of the local
+promise. Failed status carries the stored public error code; execution requests still replay their original
+typed refusal. Polling never executes Query, applies an execution budget, retries a journal or mutates the run.
+Preview generation, action/task/delivery projections and close remain S1.3/later lifecycle work.
 
 Engine polling contract (D-47):
 1. Open with an idempotency key and retain it with the run id. After a new open, call evaluate.
 2. On `202`, follow Location every 15–30 seconds, respecting Retry-After. Keep the same run id/key while it is
    running; do not create a new key to bypass a slow evaluation.
-3. On evaluated, consume the verdict/route refs. On a guard, identity, stale-policy or other refusal, stop;
+3. On evaluated, consume the verdict/route refs. On failed/abandoned status or a guard, identity or policy refusal, stop;
    never automatically restart a refusal.
 4. A lost transport response can be retried with the same key/run id. A `503 run-abandoned` permits a bounded
    restart with that same key (bound attempts and elapsed time in the engine); stop when that bound is reached.
@@ -216,7 +219,7 @@ Concurrent shutdown calls join the same cleanup; database, Query channel and sta
 it returns. These dependencies belong to the application and are not closed by the runtime.
 
 Deployment owner routing, Application installation and staging retention are pending. No run routes or
-maintenance loop are installed in Application yet. Full protocol/status, dry-run previews, close/sealing and
+maintenance loop are installed in Application yet. Remaining protocol/status payloads, dry-run previews, close/sealing and
 preview/close/task deadline handoff must be integrated before exposing this path there.
 
 ### Durable execution protocol (S1.3 foundation)
@@ -265,7 +268,7 @@ the render by key when one is missing.
 `automation` database, schema `automation`): `V1` the ledger, `V2` pgmq 1.13.0 installed **SQL-only** —
 upstream's `pgmq.sql`, vendored unchanged and hash-checked, PostgreSQL License (see NOTICE) — `V3` the
 four queues, `V4` D-98's one-open-task index with NULLs held equal (`NULLS NOT DISTINCT`, PostgreSQL 15+),
-and `V5` the durable evaluation dispatch/claim/acknowledgement journal.
+`V5` the durable evaluation dispatch/claim/acknowledgement journal, and `V6` the initiating verified subject.
 No extension and no custom Postgres image are needed; the database user must own the database.
 The HTTP port opens only after the migration, so the chart's startup probe covers it.
 

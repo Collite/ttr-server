@@ -77,6 +77,16 @@ class RunRuntimeComponentSpec :
                     .verdict.none shouldBe 0L
                 f.reads.get() shouldBe 2
                 val document = runtime.protocol.read(id, f.caller)
+                val progress = runtime.status.read(id, f.caller)
+                progress.status shouldBe "evaluated"
+                progress.verdict!!
+                    .routes
+                    .getValue("release")
+                    .rowCount shouldBe 1L
+                progress.bundle shouldBe
+                    f.ledger
+                        .findRun(id)!!
+                        .open.bundle
                 document.sections.getValue("islands").size shouldBe 2
                 document.sections.getValue("islands").forEach {
                     it.payload.jsonObject["engine"] shouldBe JsonPrimitive("query")
@@ -90,6 +100,7 @@ class RunRuntimeComponentSpec :
                 val restarted = f.start()
                 try {
                     restarted.protocol.read(id, f.caller) shouldBe document
+                    restarted.status.read(id, f.caller) shouldBe progress
                     f.reads.get() shouldBe 2
                 } finally {
                     restarted.shutdown()
@@ -125,6 +136,8 @@ class RunRuntimeComponentSpec :
                 f.base.now = f.base.now.plusSeconds(10)
                 withTimeout(5000) { cancelled.await() }
                 eventually { f.ledger.findRun(id)!!.status == RunStatus.FAILED }
+                runtime.status.read(id, f.caller).status shouldBe "failed"
+                runtime.status.read(id, f.caller).error shouldBe buildJsonObject { put("code", "budget") }
                 shouldThrow<AutomationException> { runtime.sessions.progress(id, f.caller) }.code shouldBe
                     ErrorCode.BUDGET
                 transaction {

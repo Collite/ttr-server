@@ -47,6 +47,7 @@ class RunRuntime(
         org.tatrman.automation.protocol
             .ProtocolRecorder(ledger)
     val sessions: RunSessions
+    val status = RunStatusReader(ledger)
     val displayRows = config.budgets.displayRows
     val owner: UUID get() = workers.owner
 

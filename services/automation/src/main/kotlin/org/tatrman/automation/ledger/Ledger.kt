@@ -3,6 +3,7 @@ package org.tatrman.automation.ledger
 
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.encodeToJsonElement
+import kotlinx.serialization.json.decodeFromJsonElement
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -23,6 +24,9 @@ import org.jetbrains.exposed.v1.jdbc.transactions.TransactionManager
 import org.jetbrains.exposed.v1.jdbc.transactions.transaction
 import org.jetbrains.exposed.v1.jdbc.update
 import org.tatrman.automation.runner.EvaluationResult
+import org.tatrman.automation.runner.RunProgress
+import org.tatrman.automation.runner.RunFingerprints
+import org.tatrman.automation.runner.RunBatch
 import org.tatrman.automation.protocol.IslandExecution
 import org.tatrman.automation.protocol.ProtocolDocument
 import org.tatrman.automation.protocol.ProtocolEntry
@@ -410,6 +414,70 @@ class Ledger(
             }
         expired.forEach { (_, recipe) -> abandoned(recipe) }
         return expired.map { it.first }
+    }
+
+    /**
+     * Owner-filtered repeatable-read snapshot: status and its immutable decision cannot straddle a commit.
+     * Terminal/expired runs remain observable, without a current bundle, local promise or execution budget.
+     * Task/delivery/action projections arrive with their lifecycle implementations.
+     */
+    fun readRunProgress(
+        runId: UUID,
+        subject: String,
+    ): RunProgress {
+        require(subject.isNotBlank())
+        outermost("readRunProgress")
+        return transaction(transactionIsolation = Connection.TRANSACTION_REPEATABLE_READ) {
+            val row =
+                Runs
+                    .selectAll()
+                    .where { (Runs.id eq runId) and (Runs.callerSubject eq subject) }
+                    .firstOrNull() ?: throw NoSuchRun(runId)
+            val decisions =
+                RunProtocol
+                    .select(RunProtocol.payload)
+                    .where { (RunProtocol.run eq runId) and (RunProtocol.section eq ProtocolSection.DECISION.wire) }
+                    .toList()
+            check(decisions.size <= 1) { "a run must have at most one decision" }
+            val result =
+                decisions.singleOrNull()?.let {
+                    Json.decodeFromJsonElement<EvaluationResult>(it[RunProtocol.payload])
+                }
+            val batch =
+                row[Runs.batchId]?.let { id ->
+                    val b = Batches.selectAll().where { (Batches.id eq id) and (Batches.run eq runId) }.single()
+                    RunBatch(id.toString(), b[Batches.state], b[Batches.rows])
+                }
+            RunProgress(
+                runId = runId.toString(),
+                status = row[Runs.status],
+                verdict = result?.verdict,
+                guards = result?.guards.orEmpty(),
+                mode = result?.mode,
+                protocolRef = row[Runs.protocolRef] ?: "/automation/runs/$runId/protocol",
+                recipe = row[Runs.recipe],
+                program = row[Runs.program],
+                deployment = row[Runs.deployment],
+                runAs = row[Runs.runAs],
+                author = row[Runs.author],
+                asOf = row[Runs.asOf]?.toInstant()?.toString(),
+                bundle = row[Runs.bundle],
+                fingerprints =
+                    RunFingerprints(
+                        row[Runs.fpText],
+                        row[Runs.fpValues],
+                        row[Runs.fpProgram],
+                        row[Runs.fpDeployment],
+                        row[Runs.modelFp],
+                    ),
+                dryRun = row[Runs.dryRun],
+                replayOf = row[Runs.replayOf]?.toString(),
+                startedAt = row[Runs.startedAt].toInstant().toString(),
+                endedAt = row[Runs.endedAt]?.toInstant()?.toString(),
+                error = row[Runs.error],
+                batch = batch,
+            )
+        }
     }
 
     fun findRun(id: UUID): RunRecord? =

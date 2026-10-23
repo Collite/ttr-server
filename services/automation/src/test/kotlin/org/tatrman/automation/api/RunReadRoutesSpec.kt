@@ -246,7 +246,7 @@ class RunReadRoutesSpec :
                                 routing {
                                     authenticate(AUTOMATION_AUTH) {
                                         runReadRoutes(fixture.runs, 2)
-                                        evaluateRoutes(fixture.runs)
+                                        evaluateRoutes(fixture.runs, fixture.runs::progress)
                                     }
                                 }
                             }
@@ -312,7 +312,11 @@ class RunReadRoutesSpec :
                                 ),
                             )
                         install(Authentication) { AutomationBearerProvider.register(this, verifier) }
-                        routing { authenticate(AUTOMATION_AUTH) { evaluateRoutes(fixture.runs) } }
+                        routing {
+                            authenticate(
+                                AUTOMATION_AUTH,
+                            ) { evaluateRoutes(fixture.runs, fixture.runs::progress) }
+                        }
                     }
                     val token = realm.person("maya", listOf("sales_manager"))
                     val id = fixture.open(by = Caller.of(token)!!).response.runId
@@ -381,7 +385,7 @@ class RunReadRoutesSpec :
                         routing {
                             authenticate(AUTOMATION_AUTH) {
                                 runReadRoutes(fixture.runs, 2)
-                                evaluateRoutes(fixture.runs)
+                                evaluateRoutes(fixture.runs, fixture.runs::progress)
                             }
                         }
                     }

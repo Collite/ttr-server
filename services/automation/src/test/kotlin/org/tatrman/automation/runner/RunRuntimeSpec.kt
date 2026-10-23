@@ -94,7 +94,9 @@ class RunRuntimeSpec :
                         it.context.authRolesList shouldBe listOf("sales_manager")
                     }
                     val before = f.statusReads.get()
-                    for (url in listOf(base, "$base/routes/release", "$base/outputs/way.release")) {
+                    client.get(base) { bearerAuth(realm.person("other", listOf("sales_manager"))) }.status shouldBe
+                        HttpStatusCode.Forbidden
+                    for (url in listOf("$base/routes/release", "$base/outputs/way.release")) {
                         client.get(url) { bearerAuth(realm.person("other", listOf("sales_manager"))) }.status shouldBe
                             HttpStatusCode.ServiceUnavailable
                     }
@@ -125,8 +127,12 @@ class RunRuntimeSpec :
                     withTimeout(5000) { while (f.failures[id] == null) delay(10) }
                     (f.failures.getValue(id) as AutomationException).code shouldBe ErrorCode.BUDGET
                     f.baseClock.now = f.baseClock.now.minusSeconds(100)
+                    val progress = client.get(base) { bearerAuth(token) }
+                    progress.status shouldBe HttpStatusCode.OK
+                    progress.headers[HttpHeaders.RetryAfter] shouldBe null
+                    progress.bodyAsText().json()["status"] shouldBe JsonPrimitive("failed")
+                    progress.bodyAsText().json()["error"]!!.jsonObject["code"] shouldBe JsonPrimitive("budget")
                     for (response in listOf(
-                        client.get(base) { bearerAuth(token) },
                         client.post("$base/evaluate") { bearerAuth(token) },
                         client.post("$base/parts/candidates") { bearerAuth(token) },
                     )) {
@@ -169,7 +175,7 @@ class RunRuntimeSpec :
                     replay.status shouldBe HttpStatusCode.Accepted
                     replay.bodyAsText().json()["runId"] shouldBe JsonPrimitive(id.toString())
                     client.get("/automation/runs/$id") { bearerAuth(token) }.status shouldBe
-                        HttpStatusCode.ServiceUnavailable
+                        HttpStatusCode.OK
                     client.post("/automation/runs/$id/evaluate") { bearerAuth(token) }.status shouldBe
                         HttpStatusCode.ServiceUnavailable
                     f.queue.claims.get() shouldBe 0
@@ -212,7 +218,7 @@ class RunRuntimeSpec :
                         stopping.isCompleted shouldBe false
                         alsoStopping.isCompleted shouldBe false
                         client.get("/automation/runs/$id") { bearerAuth(token) }.status shouldBe
-                            HttpStatusCode.ServiceUnavailable
+                            HttpStatusCode.OK
                         client
                             .post("/automation/recipes/release_order/runs") {
                                 bearerAuth(token)
@@ -274,6 +280,8 @@ class RunRuntimeSpec :
                     withTimeout(5000) { while (f.queue.cleanups.get() == 0) delay(10) }
                     f.states[id] = RunStatus.OPEN // Prove removal, independently of the persisted status guard.
                     client.get("/automation/runs/$id") { bearerAuth(token) }.status shouldBe
+                        HttpStatusCode.OK
+                    client.post("/automation/runs/$id/evaluate") { bearerAuth(token) }.status shouldBe
                         HttpStatusCode.ServiceUnavailable
                     f.requests.size shouldBe 0
                     f.queue.claims.get() shouldBe 0
@@ -415,6 +423,29 @@ private class RuntimeFixture(
     val runtime: RunRuntime
 
     init {
+        every { ledger.readRunProgress(any(), any()) } answers {
+            val id = firstArg<UUID>()
+            val open = records[id]?.takeIf { it.callerSubject == secondArg<String>() } ?: throw NoSuchRun(id)
+            val result = evaluations[id]
+            RunProgress(
+                id.toString(),
+                states.getValue(id).wire,
+                result?.verdict,
+                result?.guards.orEmpty(),
+                result?.mode,
+                "/automation/runs/$id/protocol",
+                recipe = open.recipe,
+                error =
+                    failures[id]?.let {
+                        buildJsonObject {
+                            put(
+                                "code",
+                                (it as? AutomationException)?.code?.code ?: "internal",
+                            )
+                        }
+                    },
+            )
+        }
         every { ledger.abandonExpiredRuns(any()) } answers {
             beforeSweep()
             emptyList()

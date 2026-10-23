@@ -252,7 +252,7 @@ private fun Application.asyncTestApi(
     routing {
         authenticate(AUTOMATION_AUTH) {
             openRoutes(fixture.runs)
-            evaluateRoutes(fixture.runs)
+            evaluateRoutes(fixture.runs, fixture.runs::progress)
         }
     }
 }
