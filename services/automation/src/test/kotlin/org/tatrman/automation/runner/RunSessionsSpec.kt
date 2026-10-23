@@ -350,6 +350,7 @@ internal class RunSessionFixture(
     beforeRunning: () -> Unit = {},
     afterEvaluation: () -> Unit = {},
     beforeStatus: (UUID) -> Unit = {},
+    workers: RunWorkers? = null,
     private val columns: List<ManifestColumn> =
         listOf(ManifestColumn("order_number", "text"), ManifestColumn("note", "text")),
 ) {
@@ -485,6 +486,7 @@ internal class RunSessionFixture(
                         states[id] = RunStatus.EVALUATED
                         afterEvaluation()
                     },
+                    dispatch = workers?.let { it::evaluate },
                 )
             },
             { id ->

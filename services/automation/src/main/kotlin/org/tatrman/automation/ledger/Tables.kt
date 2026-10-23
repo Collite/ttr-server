@@ -64,6 +64,17 @@ object Runs : Table("automation.runs") {
     override val primaryKey = PrimaryKey(id)
 }
 
+/** Internal dispatch journal; the queue is a delivery mechanism, this row fences execution. */
+object RunEvaluations : Table("automation.run_evaluations") {
+    val run = javaUUID("run")
+    val owner = javaUUID("owner")
+    val messageId = long("message_id")
+    val claimedAt = timestampWithTimeZone("claimed_at").nullable()
+    val archivedAt = timestampWithTimeZone("archived_at").nullable()
+
+    override val primaryKey = PrimaryKey(run)
+}
+
 object RunOutputs : Table("automation.run_outputs") {
     val run = javaUUID("run")
     val island = text("island")
@@ -216,6 +227,7 @@ val LEDGER_TABLES: List<Table> =
         Bundles,
         Runs,
         RunOutputs,
+        RunEvaluations,
         Tasks,
         Windows,
         WindowEvents,

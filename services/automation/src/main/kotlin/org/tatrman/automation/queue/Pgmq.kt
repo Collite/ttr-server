@@ -2,6 +2,7 @@
 package org.tatrman.automation.queue
 
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonElement
 import org.jetbrains.exposed.v1.core.IColumnType
 import org.jetbrains.exposed.v1.core.IntegerColumnType
@@ -72,13 +73,15 @@ class Pgmq {
         queue: LedgerQueue,
         visibilitySeconds: Int,
         qty: Int = 1,
+        conditional: JsonObject = JsonObject(emptyMap()),
     ): List<PgmqMessage> =
         query(
-            "SELECT msg_id, read_ct, enqueued_at, vt, message FROM pgmq.read(?, ?::integer, ?::integer)",
+            "SELECT msg_id, read_ct, enqueued_at, vt, message FROM pgmq.read(?, ?::integer, ?::integer, ?::jsonb)",
             listOf(
                 TextColumnType() to queue.queueName,
                 IntegerColumnType() to visibilitySeconds,
                 IntegerColumnType() to qty,
+                TextColumnType() to conditional.toString(),
             ),
         ) { rs ->
             buildList {

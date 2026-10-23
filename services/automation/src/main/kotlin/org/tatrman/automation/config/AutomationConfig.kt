@@ -68,6 +68,14 @@ data class RetentionConfig(
     val protocolDays: Long,
 )
 
+data class RunnerConfig(
+    val workers: Int = 4,
+) {
+    init {
+        require(workers in 1..256) { "automation.runner.workers must be in 1..256" }
+    }
+}
+
 data class BudgetsConfig(
     val syncDefault: Duration,
     val batchDefault: Duration,
@@ -100,6 +108,7 @@ data class AutomationConfig(
     val clockSkew: Duration,
     val connections: Map<String, String>,
     val approvalsOff: Boolean = false,
+    val runner: RunnerConfig = RunnerConfig(),
 ) {
     companion object {
         const val ROOT = "automation"
@@ -184,6 +193,7 @@ data class AutomationConfig(
                 clockSkew = if (c.hasPath("clock.skew")) c.getDuration("clock.skew") else Duration.ZERO,
                 connections = connections(c, env),
                 approvalsOff = approvalsOff(c),
+                runner = RunnerConfig(if (c.hasPath("runner.workers")) c.getInt("runner.workers") else 4),
             )
         }
 
@@ -257,5 +267,5 @@ data class AutomationConfig(
             token = bundleGit.token?.let { "***" },
         )}, " +
             "previews=$previews, staging=$staging, scheduler=$scheduler, retention=$retention, budgets=$budgets, " +
-            "paused=$paused, policiesFragment=$policiesFragment, clockSkew=$clockSkew, approvalsOff=$approvalsOff, connections=${connections.keys})"
+            "paused=$paused, runner=$runner, policiesFragment=$policiesFragment, clockSkew=$clockSkew, approvalsOff=$approvalsOff, connections=${connections.keys})"
 }

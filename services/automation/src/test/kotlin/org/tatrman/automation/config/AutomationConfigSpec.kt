@@ -50,6 +50,7 @@ class AutomationConfigSpec :
             c.bundleGit.branch shouldBe "master"
             c.staging.kind shouldBe "local"
             c.paused shouldBe false
+            c.runner shouldBe RunnerConfig(4)
             c.clockSkew shouldBe Duration.ZERO
             c.connections shouldBe emptyMap()
         }
@@ -114,6 +115,15 @@ class AutomationConfigSpec :
             printed shouldNotContain "ghp_secret"
             printed shouldNotContain "s3cr3t-value"
             printed shouldContain "N8N"
+        }
+
+        "runner concurrency is configurable and invalid bounds fail at startup" {
+            load(required + "\nautomation.runner.workers = 2").runner shouldBe RunnerConfig(2)
+            for (workers in listOf(-1, 0, 257)) {
+                shouldThrow<IllegalArgumentException> {
+                    load(required + "\nautomation.runner.workers = $workers")
+                }.message shouldContain "runner.workers"
+            }
         }
 
         "clock.skew is read when set (test only)" {

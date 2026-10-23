@@ -66,7 +66,7 @@ fun main() {
 
 /**
  * The bootstrap (AU-server S0.1): config (fails at load on a missing required key) → OTel → the ledger's
- * database + Flyway (V1 ledger · V2 pgmq · V3 queues · V4 D-98's index) → the pgmq queues checked → the bearer
+ * database + Flyway (V1 ledger · V2 pgmq · V3 queues · V4 D-98 index · V5 evaluation dispatch) → queues → bearer
  * check (S0.3: every route under `/automation` but `/automation/health` answers 401 without a verified token) →
  * Ktor → the served bundle loaded in the background (S0.2), then polled. The runner (P1, which resolves `RunAs` at
  * open) and the scheduler (S3.2) join this sequence as they land.

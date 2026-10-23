@@ -13,9 +13,13 @@ in the project folder:
 > pinned runner, returns route counts/refs plus unmatched candidates and guard evidence, and records the decision
 > atomically with EVALUATED status. Detail snapshots now apply pinned limits per route/context/key before staging,
 > and authenticated route/detail/output readers page the verified Arrow or download Arrow/CSV. Production
-> runtime/storage wiring, durable async queue/deadline ownership and the remaining protocol/lifecycle work remain.
+> runtime/storage wiring, total batch cancellation and the remaining protocol/lifecycle work remain.
 > Budgeted evaluate, observation-only polling and durable abandonment/cleanup primitives are implemented. Run handlers,
 > including evaluate and route/detail/output readers, are not mounted in Application.
+
+The durable evaluation path now has atomic pgmq enqueue/acknowledgement, a permanent execution claim and
+bounded coroutine consumers. It remains unmounted with the other P1 run handlers; runtime must wire its
+dispatcher and maintenance callback as described below.
 
 The executor requires an explicit `world/storage` → Query world alias map. Query resolves those aliases through
 its existing `QUERY_WORLDS` table. Missing routes fail before a query is issued; there is no fallback to Query's
@@ -87,8 +91,8 @@ journal callback, evaluate fails closed. The callback stores the typed evaluate 
 `guards`) in the protocol's INSERT-only `decision` section and sets EVALUATED in one locked transaction.
 Identical durable retries are harmless; changed evidence, sealed protocols and terminal/waiting runs refuse.
 This supplies the durable summary for later status/protocol readers without a second mutable summary column.
-A journal failure is shared like other executor failures and the session fails the active run. Budgeted evaluate/poll is described below; production mounting still needs durable queue ownership, deadlines
-and lifecycle recovery.
+A journal failure is shared like other executor failures and the session fails the active run. Budgeted
+evaluate/poll is described below; production mounting still needs the queue hook, total deadlines and lifecycle recovery.
 
 `POST /automation/runs/{id}/evaluate` waits at most the program's pinned `budget.sync` (configured default when
 absent). Open pins and journals that budget in milliseconds alongside the batch budget. One supervised session
@@ -120,8 +124,8 @@ Engine polling contract (D-47):
    never automatically restart a refusal.
 4. A lost transport response can be retried with the same key/run id. A `503 run-abandoned` permits a bounded
    restart with that same key (bound attempts and elapsed time in the engine); stop when that bound is reached.
-   The durable queue, total batch cancellation, periodic abandonment/reaping and restart ownership are pending. With these unmounted
-   session handlers, a missing/released context fails closed; restarting cannot reconstruct today's recipe as
+   Production queue/maintenance wiring, total batch cancellation and owner routing are pending. With these
+   unmounted session handlers, a missing/released context fails closed; restarting cannot reconstruct today's recipe as
    the old run, and an existing key may remain held until the ledger's existing budget-plus-two-minute claim rule.
 
 `Ledger.abandonExpiredRuns(limit = 100)` supplies the durable clock sweep. It selects at most `limit` expired
@@ -139,9 +143,40 @@ status lookup leaves that session for retry while cleanup continues for other se
 requires an outermost READ COMMITTED ledger transaction and checks active status/sealing under the same run
 lock; late writes cannot publish even an identical retry after abandonment/close/failure/waiting/sealing. Existing
 immutable outputs remain evidence. A rejected journal can leave an unreferenced blob for retention, as below.
-These are independently tested primitives. The periodic runtime loop, pgmq execution ownership/visibility,
-bounded workers, total batch cancellation and blob retention remain integration/lifecycle work; no run routes
-or maintenance loop are mounted by this slice.
+These are independently tested primitives. The worker loop below invokes a required runtime maintenance
+callback; production mounting, total batch cancellation and blob retention remain integration/lifecycle work.
+
+Durable evaluation uses `ledger/RunQueue` and V5's `run_evaluations` journal. Enqueue locks the run, checks
+active/unsealed status, and commits one dispatch row plus one pgmq message together. Repeated enqueue by the
+same owner reuses that ticket; another owner refuses. The payload contains only run/owner UUIDs. Each process
+uses a fresh incarnation UUID, never a stable pod/host name; bearer tokens and the original pinned bundle,
+bindings and execution resources stay in its `RunSessions`. pgmq reads filter by owner before hiding messages,
+so another process cannot steal an original context's trigger or keep it invisible to its owner.
+
+Before any evaluation Query, a worker locks the run and matches the owner/run/message against the dispatch
+journal. It commits a permanent `claimed_at` and RUNNING together. A visibility expiry, concurrent consumer or
+redelivery cannot grant another execution, even if acknowledgement was lost. Unknown handles and terminal/
+waiting/sealed runs cannot acquire authority. A crash after claim is deliberately not retried: the run waits
+for abandonment, then the engine can reopen the same key. A new process never reconstructs the old run from
+today's bundle/caller. Unclaimed delivery can be retried while its original context still exists. Durable
+terminal cleanup archives triggers for evaluated/waiting/terminal runs, including lost owners, in bounded
+locked batches; acknowledgement and its journal stamp commit together.
+
+`RunWorkers` starts exactly `automation.runner.workers` consumers (default 4, valid 1..256;
+`AUTOMATION_RUNNER_WORKERS`, or the chart's `extraEnv`). Each consumes one job at a time. Runtime must pass
+`dispatch = workers::evaluate` to every PartRunner; that single hook covers direct route/output reads as well
+as POST evaluate, and the runner still shares one evaluation promise across callers. Without this optional
+hook the existing isolated executor runs inline; production must install the hook before mounting run routes.
+Each dispatch receives the original supervised per-run scope, not the application scope. HTTP disconnects
+leave its work alive; missing/released contexts never acquire a claim. Refusals remain cached without new Query.
+
+The worker's periodic loop requires a `maintenance` callback that performs the ledger sweep on IO and then
+`sessions.reapAbandoned()`; it subsequently archives finished triggers. Construct the session registry before
+starting workers so this callback cannot observe an uninitialized registry. Queue/maintenance errors back off
+and retry without ending the consumers. Stop/join workers before `sessions.shutdown()` closes executors, and
+finish both before closing the database. Shutdown joins in-flight enqueue and active evaluation cancellation.
+Absolute batch cancellation across queue waits/waves, deployment owner routing, production integration and
+staging retention are pending. No run routes or maintenance loop are installed in Application yet.
 
 Local staging publishes immutable Arrow blobs before journalling their metadata. A journal failure leaves an
 unreferenced blob for the S1.3 retention job; it never deletes content another claimant might reference. The
@@ -159,7 +194,8 @@ the render by key when one is missing.
 **The database migrates itself.** At start the service runs Flyway against its own database (one
 `automation` database, schema `automation`): `V1` the ledger, `V2` pgmq 1.13.0 installed **SQL-only** —
 upstream's `pgmq.sql`, vendored unchanged and hash-checked, PostgreSQL License (see NOTICE) — `V3` the
-four queues, and `V4` D-98's one-open-task index with NULLs held equal (`NULLS NOT DISTINCT`, PostgreSQL 15+).
+four queues, `V4` D-98's one-open-task index with NULLs held equal (`NULLS NOT DISTINCT`, PostgreSQL 15+),
+and `V5` the durable evaluation dispatch/claim/acknowledgement journal.
 No extension and no custom Postgres image are needed; the database user must own the database.
 The HTTP port opens only after the migration, so the chart's startup probe covers it.
 

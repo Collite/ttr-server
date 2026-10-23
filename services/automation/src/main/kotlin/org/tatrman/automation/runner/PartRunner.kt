@@ -81,6 +81,8 @@ class PartRunner(
         UUID,
         EvaluationResult,
     ) -> Unit = { _, _ -> error("evaluation journal unavailable") },
+    /** Runtime supplies the durable worker dispatcher; all evaluation entry paths share this hook. */
+    private val dispatch: (suspend (UUID, CoroutineScope, suspend () -> EvaluationResult) -> EvaluationResult)? = null,
 ) : AutoCloseable {
     private val islands =
         context.recipe.manifest.islands
@@ -140,13 +142,16 @@ class PartRunner(
             lock.withLock {
                 evaluation ?: scope
                     .async {
-                        val result = summarizeEvaluation(this@PartRunner)
-                        checks.ensureAllowed()
-                        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                            recordEvaluation(context.id, result)
+                        val execute: suspend () -> EvaluationResult = {
+                            val result = summarizeEvaluation(this@PartRunner)
+                            checks.ensureAllowed()
+                            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                                recordEvaluation(context.id, result)
+                            }
+                            checks.ensureAllowed()
+                            result
                         }
-                        checks.ensureAllowed()
-                        result
+                        dispatch?.invoke(context.id, scope, execute) ?: execute()
                     }.also { evaluation = it }
             }
         return work.await().also { checks.ensureAllowed() }

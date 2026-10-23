@@ -47,8 +47,14 @@ class PgmqVendorSpec :
             File("src/main/resources/db/LICENSE-pgmq").readText() shouldContain "The PostgreSQL License"
         }
 
-        "the migrations are the ledger, pgmq, the queues, D-98's index — in that order" {
+        "the migrations are the ledger, pgmq, queues, task index and run dispatch — in that order" {
             migrations.list()!!.sorted() shouldContainExactly
-                listOf("V1__ledger.sql", vendored.name, "V3__queues.sql", "V4__tasks_one_open_nulls.sql")
+                listOf(
+                    "V1__ledger.sql",
+                    vendored.name,
+                    "V3__queues.sql",
+                    "V4__tasks_one_open_nulls.sql",
+                    "V5__run_evaluations.sql",
+                )
         }
     })

@@ -20,7 +20,7 @@ import java.time.Duration
 
 /**
  * AU contracts §2 against a real Postgres: Flyway migrates a clean database (ledger · pgmq · queues · V4's D-98
- * index), every table carries the contract's columns, the Exposed objects map them, the D-46/D-98 indexes exist
+ * index · V5 dispatch), every table carries its columns, the Exposed objects map them, the D-46/D-98 indexes exist
  * (D-98's with NULLs equal), the four queues exist, and `run_protocol` refuses every change but an INSERT (D-110).
  */
 class LedgerSchemaSpec :
@@ -35,13 +35,13 @@ class LedgerSchemaSpec :
                 exec(sql) { rs -> buildList { while (rs.next()) add(read(rs)) } } ?: emptyList()
             }
 
-        "Flyway applies ledger · pgmq · queues · V4 on a clean database, and a second migrate applies nothing" {
-            LedgerTestDb.firstMigration shouldBe 4
+        "Flyway applies ledger · pgmq · queues · V4 · V5 on a clean database, and a second migrate applies nothing" {
+            LedgerTestDb.firstMigration shouldBe 5
             rows(
                 "SELECT version, success FROM automation.flyway_schema_history WHERE version IS NOT NULL ORDER BY installed_rank",
             ) {
                 it.getString(1) to it.getBoolean(2)
-            } shouldContainExactly listOf("1" to true, "2" to true, "3" to true, "4" to true)
+            } shouldContainExactly listOf("1" to true, "2" to true, "3" to true, "4" to true, "5" to true)
             migrateLedger(db) shouldBe 0
         }
 
@@ -174,6 +174,7 @@ class LedgerSchemaSpec :
                         "budget_batch",
                         "error",
                     ),
+                "run_evaluations" to listOf("run", "owner", "message_id", "claimed_at", "archived_at"),
                 "run_outputs" to listOf("run", "island", "port", "rows", "bytes", "path", "sha256", "released_at"),
                 "tasks" to
                     listOf(
