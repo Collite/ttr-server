@@ -293,7 +293,7 @@ executor's cancellation scope.
 
 Local staging publishes immutable Arrow blobs before journalling their metadata. A journal failure leaves an
 unreferenced blob for the S1.3 retention job; it never deletes content another claimant might reference. The
-object-store adapter remains pending; the configured remote lifecycle is described below. The checked-in real bundle fixture
+configured Redis/S3 adapters and their lifecycle are described below. The checked-in real bundle fixture
 records its provenance under `src/test/resources/runner/hartland/README.md`.
 
 ### Durable dry-run close and local staging retention
