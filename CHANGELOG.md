@@ -16,6 +16,36 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+- **veles — the cn candidate store and promotion** (CN-P5 S5.3, cn contracts §6). Producers submit candidate concepts,
+  terms and relations as `cn-candidate.v1` (ttr-concept 0.18.3, `org.tatrman.concept.candidate`); a steward rejects or
+  promotes them; a promotion is a model-text pull request, and the candidate is `promoted` once a model load carries
+  its def. **Off by default:** on only with both a database (`METADATA_CN_DB_*`) and a token issuer
+  (`METADATA_CN_AUTH_ISSUER`, `METADATA_CN_AUTH_JWKS_URI`); off, every route below answers `503 CN_STORE_OFF` and Veles
+  serves the model as before.
+  - REST on the HTTP port: `POST /v1/cn/candidates` (201 new; 200 for a proposal already stored, which returns the
+    first candidate with `"duplicate": true`) · `GET /v1/cn/candidates?status=&producer=&stereotype=&sort=newest|evidence&limit=`
+    · `GET /v1/cn/candidates/{id}` (with its audit `history`) · `POST /v1/cn/candidates/{id}/reject` `{"note"?}` ·
+    `POST /v1/cn/candidates/{id}/promote`. JSON out wraps the document: `{"candidate", "state", "content_hash",
+    "submitted_by", "submitted_at", "updated_at", "promotion"?}`. `state` adds `pending_merge` (a promotion opened, not
+    merged yet) to the document's three statuses; the document stays `proposed` meanwhile.
+  - Every call needs a verified bearer token (RS256 against the realm's JWKS). The caller is the token, never a field:
+    `submit` takes a producer the registry admits **and** the caller may speak for (`METADATA_CN_PRODUCERS`,
+    `producer=principal[|…]`; `manual:<p>` only by the steward `p`); `reject` / `promote` need the `cn-steward` realm
+    role (`METADATA_CN_STEWARD_ROLE`). `import:*` is always refused.
+  - Promotion reads the promotion source (`METADATA_CN_PROMOTION_SOURCE`, default the git source) through a checkout of
+    its own, writes the patch, and gates it: the model before and after the patch, through the strict load report and
+    the cn definition diagnostics. A new error refuses it (`422 CN_PROMOTION_GATE`); other new findings ride in the pull
+    request, and a phase's pull request carries its er rendering. The diff and pull-request text are kept and served
+    by the API. A GitHub pull request opens when `METADATA_CN_PR_TOKEN` is set (REST Git Data API, branched from the
+    gated base commit); `METADATA_CN_INBOX_DIR` also writes `<id>.diff` / `<id>.md`. `canon_ref` = the promotion
+    source's commit at the load that first carries the def, `:`, the def's qname.
+  - `POST /v1/vocabularies/{id}/version` `{"version", "bundle"?}` (the `cn-importer` role) · `GET /v1/vocabularies[/{id}/version]`:
+    registered versions are published in the model's `cn.vocabularyVersions` (ttr-server#281 item 1).
+  - `METADATA_CN_NOTIFY_URL`: every candidate event is POSTed there, fire and forget (the steward app's queue seam).
+  - The store: tables in schema `metadata` of the configured database, migrated by Flyway on first use; a database
+    that is down costs the candidate API until it is back, never Veles's start.
+  - The grammar bundle pin moves to 0.18.3 (`tatrman-grammar`, `tatrman-ttr-metadata`).
+
 - **resolver — the four cn door families** (CN-P5 S5.1, cn contracts §4). The resolver's MCP server, beside
   `resolve.bind:v1` and behind the same fail-closed OBO gate, now answers `statement.validate:v1` · `statement.lower:v1` ·
   `statement.explain:v1` · `assertion.validate:v1` · `assertion.lower:v1` · `assertion.explain:v1` ·

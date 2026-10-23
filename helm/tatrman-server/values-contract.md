@@ -259,6 +259,13 @@ Veles serves the model of one git repository, cloned at install and re-fetched e
 `METADATA_GIT_SUBDIR` (the older way to set them), so an existing install keeps its values and gets no
 duplicate env var.
 
+**The cn candidate store (CN-P5 S5.3) has no chart keys yet.** It is off unless a database and a token
+issuer are set. Turn it on through `veles.extraEnv`: `METADATA_CN_DB_HOST` / `_PORT` / `_NAME` / `_USER`,
+`METADATA_CN_AUTH_ISSUER`, `METADATA_CN_AUTH_JWKS_URI`, and `METADATA_CN_PRODUCERS`. Pass the secrets through
+`veles.secretEnv`: `METADATA_CN_DB_PASSWORD`, and `METADATA_CN_PR_TOKEN` when promotions should open pull
+requests. The full list is in `services/veles/README.md`. Off, its routes answer 503 `CN_STORE_OFF` and the
+model is served as before.
+
 **No fallback model (ttr-server#180).** Veles bundles no model. If the repository can't be loaded (a
 bad token, a wrong branch or sub-path, no network), Veles serves no model and its `/ready` answers 503
 until the source has loaded once; `GET /status` on Veles shows the source and its last error. A

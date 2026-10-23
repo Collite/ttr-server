@@ -36,6 +36,10 @@ tasks.test {
     val cnEstate = rootProject.file("shared/testdata/cn-estate")
     inputs.dir(cnEstate).withPropertyName("cnEstate")
     systemProperty("cnEstate", cnEstate.absolutePath)
+    // CN-P5 S5.3 — the candidate store promotes into ttr-concept's clinic golden world (`shared/testdata/cn-worlds`).
+    val cnWorlds = rootProject.file("shared/testdata/cn-worlds")
+    inputs.dir(cnWorlds).withPropertyName("cnWorlds")
+    systemProperty("cnWorlds", cnWorlds.absolutePath)
 }
 
 // VelesModelLoadComponentSpec reconciles the `model-seed` and `model-tpcds` fixture trees through
@@ -72,6 +76,15 @@ dependencies {
     implementation(project(":shared:libs:kotlin:translate-snapshot"))
     implementation(project(":shared:libs:kotlin:diagnostics"))
     implementation(project(":shared:proto"))
+    // CN-P5 S5.3 — the candidate store (cn contracts §6): ttr-concept's candidate reader, producer registry and
+    // promotion patch (S5.2), and its definition renderer for a phase's pull request; the verified bearer
+    // (mcp-identity's JWKS verifier); the store's Postgres (the BI receipts pattern: Hikari, Flyway on first use).
+    implementation(libs.tatrman.ttr.concept)
+    implementation(project(":shared:libs:kotlin:mcp-identity"))
+    implementation(libs.hikaricp)
+    implementation(libs.postgresql)
+    implementation(libs.flyway.core)
+    implementation(libs.flyway.pgsql)
 
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.grpc.kotlin.stub)
@@ -116,4 +129,9 @@ dependencies {
     // so not visible to the suite transitively).
     "componentTestImplementation"(libs.tatrman.ttr.metadata)
     "componentTestImplementation"(project(":shared:proto"))
+    // CN-P5 S5.3 — the candidate store on a real Postgres (Testcontainers; `src/componentTest`, so the unit gate stays
+    // Docker-free).
+    "componentTestImplementation"(libs.tatrman.ttr.concept)
+    "componentTestImplementation"(libs.testcontainers.postgresql)
+    "componentTestImplementation"(libs.postgresql)
 }

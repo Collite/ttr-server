@@ -51,6 +51,30 @@ each omitted when empty (ttr-server#185):
 Veles picks no locale here. The reader chooses the language and applies the D7 chain to descriptions:
 requested locale → plain form → `en` → first by language code.
 
+## The cn candidate store (`cn/`, off by default)
+
+Producers propose concepts, terms and relations as `cn-candidate.v1` documents (ttr-concept's
+`org.tatrman.concept.candidate`). A steward rejects or promotes them, and a promotion is a pull request against
+the model text: canon stays text, and the steward merges. The routes live under `/v1/cn/candidates` and
+`/v1/vocabularies` on the HTTP port.
+
+| Env | Meaning |
+|---|---|
+| `METADATA_CN_DB_HOST` · `_PORT` · `_NAME` · `_USER` · `_PASSWORD` | The store's Postgres. Tables go in schema `metadata`, migrated on first use. No host: the store is off. |
+| `METADATA_CN_AUTH_ISSUER` · `METADATA_CN_AUTH_JWKS_URI` · `METADATA_CN_AUTH_AUDIENCE` | Bearer verification. Every call needs a token; without an issuer the store is off. |
+| `METADATA_CN_STEWARD_ROLE` · `METADATA_CN_IMPORTER_ROLE` | The realm roles that reject and promote (`cn-steward`) and that register vocabulary versions (`cn-importer`). |
+| `METADATA_CN_PRODUCERS` | Who submits as which producer: `producer=principal[\|principal…]`, comma-separated. |
+| `METADATA_CN_PROMOTION_SOURCE` | The `metadata.sources` block that a promotion patches (default `github-model`). Its loads decide merges. |
+| `METADATA_CN_PR_TOKEN` · `METADATA_CN_PR_REPOSITORY` · `METADATA_CN_PR_API_URL` | Optional: open GitHub pull requests. The token needs contents and pull-request write access; the repository defaults to the source's `github.com` remote. |
+| `METADATA_CN_INBOX_DIR` | Optional: write each promotion's `<id>.diff` and `<id>.md` there. |
+| `METADATA_CN_NOTIFY_URL` | Optional: every candidate event is POSTed here. |
+
+A promotion is checked by a gate before it goes anywhere. The gate loads the model before and after the patch,
+through the strict load report and the cn definition diagnostics. A new error refuses the promotion; other new
+findings and a phase's er rendering go into the pull request. The candidate then waits in `pending_merge`. It
+becomes `promoted` when a model load carries the def, with `canon_ref` = that load's commit `:` the def's qname.
+Contract: cn contracts §6 in `project/tatrman/features/conceptual/plan/contracts.md`.
+
 ## Run
 
 ```bash

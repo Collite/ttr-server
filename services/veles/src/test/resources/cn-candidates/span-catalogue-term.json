@@ -1,0 +1,19 @@
+{
+  "id": "d3e0b6a5-58c1-4e27-9f04-7ab2c61e8d35",
+  "proposal": {
+    "term": { "target_qname": "cn.Transfer", "locale": "cs", "forms": ["přeložení", "přeložení pacienta"] }
+  },
+  "provenance": {
+    "producer": "clinic:span-catalogue",
+    "source_ref": "doc://clinic/du-50077#s2",
+    "confidence": { "value": 0.9, "producer": "clinic:span-catalogue", "method": "span-frequency" },
+    "evidence": {
+      "document_count": 31,
+      "examples": [
+        { "kind": "document", "ref": "doc://clinic/du-50077#s2", "text": "Přeložení pacienta na interní oddělení." }
+      ]
+    },
+    "created_at": "2026-10-23T09:40:52Z"
+  },
+  "status": "proposed"
+}

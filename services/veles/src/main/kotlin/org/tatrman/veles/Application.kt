@@ -6,6 +6,7 @@ import com.typesafe.config.ConfigFactory
 import org.tatrman.ttr.metadata.graph.ModelGraph
 import org.tatrman.veles.grpc.MetadataServiceImpl
 import org.tatrman.veles.grpc.PackageIndex
+import org.tatrman.ttr.metadata.model.CnSchema
 import org.tatrman.ttr.metadata.model.ModelDescriptor
 import org.tatrman.veles.parse.QueryParseState
 import org.tatrman.veles.parse.QueryParseWorker
@@ -32,6 +33,10 @@ import org.tatrman.ttr.metadata.source.logModelLoadIssues
 import org.tatrman.ttr.metadata.source.ModelSource
 import org.tatrman.ttr.metadata.source.ModelStorage
 import org.tatrman.ttr.metadata.source.SourceSnapshot
+import org.tatrman.veles.cn.CnSetup
+import org.tatrman.veles.cn.PromotionTarget
+import org.tatrman.veles.cn.VocabularySource
+import org.tatrman.veles.cn.candidateRoutes
 import org.tatrman.veles.export.metadataExportRoutes
 import org.tatrman.veles.health.SourceLoadBoard
 import org.tatrman.veles.health.modelHealthRoutes
@@ -116,7 +121,20 @@ fun Application.module(config: Config) {
     // reconciled model keeps no such map, and package scoping must not guess it from the path.
     // The index serves a load once its model swaps in, so it is the registry's FIRST listener.
     val packageIndex = PackageIndex().commitOnSwap(registry)
-    val sourceSlots = buildSources(config, packageIndex, loadBoard)
+    // CN-P5 S5.3 — the candidate store (cn contracts §6). Its registered vocabulary versions ride the refresher as one
+    // more source (A-CN-94); it is not a configured model source, so it stays off the load board and out of /ready.
+    val cn = CnSetup.fromConfig(config) { id -> promotionTarget(config, id) }
+    val sourceSlots =
+        buildSources(config, packageIndex, loadBoard) +
+            listOfNotNull(
+                cn.vocabularySource?.let {
+                    SourceSlot(
+                        VocabularySource.SOURCE_ID,
+                        it,
+                        "registered vocabulary versions",
+                    )
+                },
+            )
     val refresher =
         MetadataRefresher(
             sources = sourceSlots.map { it.source },
@@ -183,6 +201,24 @@ fun Application.module(config: Config) {
     registry.addListener { snapshot ->
         parseState.reset(snapshot.model.version.value, snapshot.model.queries.keys)
         parseWorker.parseAll(snapshot.model, parseState)
+    }
+
+    // CN-P5 S5.3 T4 — a pending promotion is merged once a load of the promotion source carries its def; that load's
+    // version (the commit) is its canon_ref. Off the swap thread: the store is a database.
+    cn.service?.let { candidates ->
+        registry.addListener { snapshot ->
+            val version =
+                loadBoard
+                    .states()
+                    .firstOrNull { it.id == cn.promotionSourceId }
+                    ?.version
+                    .orEmpty()
+            val schema = snapshot.model.schemas["cn"] as? CnSchema ?: return@addListener
+            launch(Dispatchers.IO) {
+                runCatching { candidates.observe(schema, version) }
+                    .onFailure { log.warn("cn candidates: merge check failed: {}", it.message) }
+            }
+        }
     }
 
     val service =
@@ -310,12 +346,17 @@ fun Application.module(config: Config) {
         }
         metadataExportRoutes(registry)
         velesReadRoutes(registry, searchRegistryWithAll, searchIndexHolder, packageIndex)
+        // CN-P5 S5.3 — the candidate store and the vocabulary versions; a registration is in the model at once.
+        candidateRoutes(cn.surface) {
+            withContext(Dispatchers.IO) { refresher.refresh(sourceId = VocabularySource.SOURCE_ID, force = true) }
+        }
     }
 
     monitor.subscribe(ApplicationStopping) {
         log.info("Shutting down metadata gRPC server")
         refreshSchedulerJob?.cancel()
         parseWorker.close()
+        cn.store?.close()
         grpcServer.shutdown()
     }
 }
@@ -475,58 +516,9 @@ private fun buildSourceFromConfig(
     sub: Config,
     id: String,
 ): ModelSource? {
-    val type = if (sub.hasPath("type")) sub.getString("type") else id
     val kind = if (sub.hasPath("kind")) sub.getString("kind") else "ttr"
-    val path = if (sub.hasPath("path")) sub.getString("path") else ""
     val priority = if (sub.hasPath("priority")) sub.getInt("priority") else 100
-
-    val storage: ModelStorage =
-        when (type) {
-            "git" -> {
-                // Phase 07 C1 — GitArchiveStorage. Requires `remote-uri`; optional
-                // `local-checkout-dir` (defaults to /tmp/metadata-git/<id>), `branch`
-                // (defaults to "main"), `subdirectory`, `username` / `password` for
-                // HTTPS auth (PAT tokens use username="x-access-token").
-                val remoteUri = if (sub.hasPath("remote-uri")) sub.getString("remote-uri") else ""
-                if (remoteUri.isBlank()) {
-                    log.warn("git source '{}' has no remote-uri; skipping", id)
-                    return null
-                }
-                val checkout =
-                    if (sub.hasPath("local-checkout-dir")) {
-                        Path.of(sub.getString("local-checkout-dir"))
-                    } else {
-                        Path.of(System.getProperty("java.io.tmpdir"), "metadata-git", id)
-                    }
-                GitArchiveStorage(
-                    id = id,
-                    remoteUri = remoteUri,
-                    localCheckoutDir = checkout,
-                    branch = if (sub.hasPath("branch")) sub.getString("branch") else "main",
-                    subdirectory = if (sub.hasPath("subdirectory")) sub.getString("subdirectory") else "",
-                    username = if (sub.hasPath("username")) sub.getString("username") else null,
-                    password = if (sub.hasPath("password")) sub.getString("password") else null,
-                )
-            }
-            "filesystem" -> {
-                if (path.isBlank()) {
-                    log.warn("filesystem source '{}' has no path; skipping", id)
-                    return null
-                }
-                LocalFsStorage(id = id, rootPath = Path.of(path))
-            }
-            "resources" -> {
-                if (path.isBlank()) {
-                    log.warn("resources source '{}' has no path; skipping", id)
-                    return null
-                }
-                ClasspathStorage(id = id, resourcePrefix = path)
-            }
-            else -> {
-                log.warn("Unknown source type '{}' for '{}' — skipping", type, id)
-                return null
-            }
-        }
+    val storage = buildStorage(sub, id) ?: return null
 
     return when (kind) {
         // VL V-37: Veles serves the layouts committed next to the model — a source collects them only when asked
@@ -537,6 +529,84 @@ private fun buildSourceFromConfig(
         else -> {
             log.warn("Unknown source kind '{}' for '{}' — skipping", kind, id)
             null
+        }
+    }
+}
+
+/**
+ * CN-P5 S5.3 (A-CN-93) — the promotion source: the `metadata.sources` block named [sourceId], read through a storage
+ * of its own (a git source clones into `<checkout>-promotion`), so a promotion never reads a tree the refresher is
+ * pulling. Null when no such block builds.
+ */
+internal fun promotionTarget(
+    config: Config,
+    sourceId: String,
+): PromotionTarget? {
+    if (!config.hasPath("metadata.sources")) return null
+    val sub = referencedSourceConfig(config.getConfig("metadata.sources"), sourceId) ?: return null
+    val storage = buildStorage(sub, sourceId, checkoutSuffix = "-promotion") ?: return null
+
+    fun str(path: String) = if (sub.hasPath(path)) sub.getString(path) else ""
+    return PromotionTarget(
+        storage = storage,
+        remoteUri = str("remote-uri"),
+        branch = str("branch").ifBlank { "main" },
+        subdirectory = str("subdirectory"),
+    )
+}
+
+/** The storage one `metadata.sources.<id>` block reads; null when the block is unbuildable. */
+private fun buildStorage(
+    sub: Config,
+    id: String,
+    checkoutSuffix: String = "",
+): ModelStorage? {
+    val type = if (sub.hasPath("type")) sub.getString("type") else id
+    val path = if (sub.hasPath("path")) sub.getString("path") else ""
+    return when (type) {
+        "git" -> {
+            // Phase 07 C1 — GitArchiveStorage. Requires `remote-uri`; optional
+            // `local-checkout-dir` (defaults to /tmp/metadata-git/<id>), `branch`
+            // (defaults to "main"), `subdirectory`, `username` / `password` for
+            // HTTPS auth (PAT tokens use username="x-access-token").
+            val remoteUri = if (sub.hasPath("remote-uri")) sub.getString("remote-uri") else ""
+            if (remoteUri.isBlank()) {
+                log.warn("git source '{}' has no remote-uri; skipping", id)
+                return null
+            }
+            val checkout =
+                if (sub.hasPath("local-checkout-dir")) {
+                    Path.of(sub.getString("local-checkout-dir") + checkoutSuffix)
+                } else {
+                    Path.of(System.getProperty("java.io.tmpdir"), "metadata-git", id + checkoutSuffix)
+                }
+            GitArchiveStorage(
+                id = id,
+                remoteUri = remoteUri,
+                localCheckoutDir = checkout,
+                branch = if (sub.hasPath("branch")) sub.getString("branch") else "main",
+                subdirectory = if (sub.hasPath("subdirectory")) sub.getString("subdirectory") else "",
+                username = if (sub.hasPath("username")) sub.getString("username") else null,
+                password = if (sub.hasPath("password")) sub.getString("password") else null,
+            )
+        }
+        "filesystem" -> {
+            if (path.isBlank()) {
+                log.warn("filesystem source '{}' has no path; skipping", id)
+                return null
+            }
+            LocalFsStorage(id = id, rootPath = Path.of(path))
+        }
+        "resources" -> {
+            if (path.isBlank()) {
+                log.warn("resources source '{}' has no path; skipping", id)
+                return null
+            }
+            ClasspathStorage(id = id, resourcePrefix = path)
+        }
+        else -> {
+            log.warn("Unknown source type '{}' for '{}' — skipping", type, id)
+            return null
         }
     }
 }
