@@ -349,6 +349,7 @@ internal class RunSessionFixture(
     syncDefault: Duration = Duration.ofSeconds(60),
     beforeRunning: () -> Unit = {},
     afterEvaluation: () -> Unit = {},
+    beforeStatus: (UUID) -> Unit = {},
     private val columns: List<ManifestColumn> =
         listOf(ManifestColumn("order_number", "text"), ManifestColumn("note", "text")),
 ) {
@@ -488,6 +489,7 @@ internal class RunSessionFixture(
             },
             { id ->
                 statusReads.incrementAndGet()
+                beforeStatus(id)
                 states[id]
             },
             { id ->

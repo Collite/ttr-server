@@ -14,7 +14,7 @@ in the project folder:
 > atomically with EVALUATED status. Detail snapshots now apply pinned limits per route/context/key before staging,
 > and authenticated route/detail/output readers page the verified Arrow or download Arrow/CSV. Production
 > runtime/storage wiring, durable async queue/deadline ownership and the remaining protocol/lifecycle work remain.
-> Budgeted evaluate and observation-only polling are implemented. Run handlers,
+> Budgeted evaluate, observation-only polling and durable abandonment/cleanup primitives are implemented. Run handlers,
 > including evaluate and route/detail/output readers, are not mounted in Application.
 
 The executor requires an explicit `world/storage` → Query world alias map. Query resolves those aliases through
@@ -120,9 +120,28 @@ Engine polling contract (D-47):
    never automatically restart a refusal.
 4. A lost transport response can be retried with the same key/run id. A `503 run-abandoned` permits a bounded
    restart with that same key (bound attempts and elapsed time in the engine); stop when that bound is reached.
-   The durable queue, abandonment deadline/sweeper and restart ownership are still pending. With these unmounted
+   The durable queue, total batch cancellation, periodic abandonment/reaping and restart ownership are pending. With these unmounted
    session handlers, a missing/released context fails closed; restarting cannot reconstruct today's recipe as
    the old run, and an existing key may remain held until the ledger's existing budget-plus-two-minute claim rule.
+
+`Ledger.abandonExpiredRuns(limit = 100)` supplies the durable clock sweep. It selects at most `limit` expired
+OPEN/RUNNING/EVALUATED rows with `FOR UPDATE SKIP LOCKED`, so pods can sweep concurrently without waiting on
+each other's rows. Expiry is strictly after `started_at + budget + 2 minutes`, using the stored batch budget,
+else stored sync budget, else configured batch default, and the injected clock (Application already applies
+`automation.clock.skew` to that clock). Unkeyed runs expire too. WAITING and terminal runs are excluded.
+Abandonment, endedAt and the stable error code commit together; telemetry is called after commit. A sweep
+and a same-key reopen cannot abandon/count the predecessor twice or overwrite a competing close/waiting transition.
+
+After each sweep, runtime must call `RunSessions.reapAbandoned()`, including when the sweep returns no IDs:
+another pod or an idempotent claim may have abandoned a local run. Reaping joins cancelled work before closing
+the executor, preserves a fresh same-key executor and leaves waiting/failed-refusal sessions intact. A failed
+status lookup leaves that session for retry while cleanup continues for other sessions. Output publication now
+requires an outermost READ COMMITTED ledger transaction and checks active status/sealing under the same run
+lock; late writes cannot publish even an identical retry after abandonment/close/failure/waiting/sealing. Existing
+immutable outputs remain evidence. A rejected journal can leave an unreferenced blob for retention, as below.
+These are independently tested primitives. The periodic runtime loop, pgmq execution ownership/visibility,
+bounded workers, total batch cancellation and blob retention remain integration/lifecycle work; no run routes
+or maintenance loop are mounted by this slice.
 
 Local staging publishes immutable Arrow blobs before journalling their metadata. A journal failure leaves an
 unreferenced blob for the S1.3 retention job; it never deletes content another claimant might reference. The

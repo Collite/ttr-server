@@ -8,6 +8,10 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
 import org.jetbrains.exposed.v1.core.SortOrder
+import org.jetbrains.exposed.v1.core.IntegerColumnType
+import org.jetbrains.exposed.v1.core.LongColumnType
+import org.jetbrains.exposed.v1.core.TextColumnType
+import org.jetbrains.exposed.v1.core.statements.StatementType
 import org.jetbrains.exposed.v1.core.and
 import org.jetbrains.exposed.v1.core.inList
 import org.jetbrains.exposed.v1.core.eq
@@ -129,9 +133,10 @@ class ProtocolSealed(
  * (`automation.budgets.batchDefault`). [abandoned] counts each run the claim abandons, by its recipe
  * (`automation_abandoned_total`, §10).
  *
- * [claimRun] and [appendProtocol] must each be the outermost transaction: inside a caller's `transaction {}`
- * Exposed would join the outer one, and their retry and isolation — what makes them correct under concurrency —
- * would silently not apply. They refuse to run there ([IllegalStateException]).
+ * Claim, evaluation begin/completion, output publication, abandonment sweep and protocol append require an
+ * outermost transaction: inside a caller's `transaction {}` Exposed would join the outer one, and their retry
+ * and isolation — what makes them correct under concurrency — would silently not apply. They refuse to run
+ * there ([IllegalStateException]).
  */
 class Ledger(
     private val defaultBudget: Duration,
@@ -342,6 +347,55 @@ class Ledger(
             Runs.selectAll().where { Runs.status eq RunStatus.ABANDONED.wire }.count()
         }
 
+    /**
+     * D-46's clock sweep, including runs without an idempotency key. Only OPEN/RUNNING/EVALUATED can expire;
+     * WAITING belongs to its tasks (D-97). The strict boundary and batch → sync → default budget match claimRun.
+     *
+     * Locks and updates commit together. Concurrent pods skip each other's locked rows, and a close/waiting
+     * transition holding the row wins before the next sweep. Counters run only after commit. The caller must
+     * separately reap local abandoned sessions, including runs abandoned by another pod or by claimRun.
+     */
+    fun abandonExpiredRuns(limit: Int = 100): List<UUID> {
+        require(limit in 1..1000) { "abandonment sweep limit must be in 1..1000" }
+        outermost("abandonExpiredRuns")
+        val expired =
+            transaction(transactionIsolation = Connection.TRANSACTION_READ_COMMITTED) {
+                val now = clock.instant()
+                // Numeric elapsed milliseconds avoid floating-point rounding at the strict grace boundary.
+                val rows =
+                    exec(
+                        """
+                        SELECT id, recipe FROM automation.runs
+                        WHERE status IN ('open', 'running', 'evaluated')
+                          AND EXTRACT(EPOCH FROM (?::timestamptz - started_at)) * 1000
+                              > COALESCE(budget_batch, budget_sync, ?)::numeric + ?
+                        ORDER BY started_at, id LIMIT ? FOR UPDATE SKIP LOCKED
+                        """.trimIndent(),
+                        listOf(
+                            TextColumnType() to now.utc().toString(),
+                            LongColumnType() to defaultBudget.toMillis(),
+                            LongColumnType() to IdempotencyPolicy.GRACE.toMillis(),
+                            IntegerColumnType() to limit,
+                        ),
+                        StatementType.SELECT,
+                    ) { rs ->
+                        buildList<Pair<UUID, String>> {
+                            while (rs.next()) add(rs.getObject("id", UUID::class.java) to rs.getString("recipe"))
+                        }
+                    } ?: error("abandonment sweep answered no result")
+                if (rows.isNotEmpty()) {
+                    Runs.update({ Runs.id inList rows.map { it.first } }) {
+                        it[status] = RunStatus.ABANDONED.wire
+                        it[endedAt] = now.utc()
+                        it[error] = JsonObject(mapOf("code" to JsonPrimitive("run-abandoned")))
+                    }
+                }
+                rows
+            }
+        expired.forEach { (_, recipe) -> abandoned(recipe) }
+        return expired.map { it.first }
+    }
+
     fun findRun(id: UUID): RunRecord? =
         transaction {
             Runs.selectAll().where { Runs.id eq id }.firstOrNull()?.let { row ->
@@ -376,10 +430,16 @@ class Ledger(
             }
         }
 
-    /** Records a staged island output (`run_outputs`). */
+    /** Records a staged island output; a late worker cannot publish after abandonment/close/failure/sealing. */
     fun putOutput(output: RunOutput) {
-        transaction {
+        outermost("putOutput")
+        transaction(transactionIsolation = Connection.TRANSACTION_READ_COMMITTED) {
             lockRun(output.run)
+            val from = RunStatus.of(Runs.select(Runs.status).where { Runs.id eq output.run }.single()[Runs.status])
+            if (from !in setOf(RunStatus.OPEN, RunStatus.RUNNING, RunStatus.EVALUATED)) {
+                throw IllegalRunTransition(output.run, from, RunStatus.RUNNING)
+            }
+            if (isSealed(output.run)) throw ProtocolSealed(output.run)
             val existing =
                 RunOutputs
                     .selectAll()

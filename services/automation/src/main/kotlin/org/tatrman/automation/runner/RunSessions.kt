@@ -218,6 +218,27 @@ class RunSessions(
         }
     }
 
+    /**
+     * Reconcile local resources against durable abandonment, regardless of which pod/claim swept the row.
+     * Run after each clock sweep, even when that sweep returns no IDs. Status failures leave that session
+     * intact for retry while other sessions are still cleaned. Failed runs retain their cached refusal;
+     * waiting runs and their tasks are never clock-abandoned. Blob retention is a separate lifecycle task.
+     */
+    suspend fun reapAbandoned() {
+        val active = lock.withLock { sessions.keys.toList() }
+        var failure: Exception? = null
+        active.forEach { id ->
+            try {
+                if (withContext(Dispatchers.IO) { status(id) } == RunStatus.ABANDONED) release(id)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                if (failure == null) failure = e else failure!!.addSuppressed(e)
+            }
+        }
+        failure?.let { throw it }
+    }
+
     suspend fun shutdown() {
         withContext(NonCancellable) {
             val active =
