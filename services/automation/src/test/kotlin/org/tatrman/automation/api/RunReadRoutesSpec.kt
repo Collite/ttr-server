@@ -193,7 +193,7 @@ class RunReadRoutesSpec :
             }
         }
 
-        "part and island requests enforce guards and fail the ledger before returning data" {
+        "part, island and evaluate requests enforce guards and fail the ledger before returning data" {
             for ((code, warnings, rows, cap) in listOf(
                 GuardHttpCase("restricted-view", setOf("security_predicate_applied"), listOf(listOf("4711", "a"))),
                 GuardHttpCase("candidates-truncated", emptySet(), listOf(listOf("4711", "a")), 1),
@@ -201,7 +201,7 @@ class RunReadRoutesSpec :
                 GuardHttpCase("out-of-scope", emptySet(), emptyList()),
                 GuardHttpCase("out-of-scope-read", emptySet(), emptyList()),
             )) {
-                for (suffix in listOf("parts/candidates", "islands/placed")) {
+                for (suffix in listOf("parts/candidates", "islands/placed", "evaluate")) {
                     val fixture =
                         RunSessionFixture(
                             door =
@@ -243,7 +243,12 @@ class RunReadRoutesSpec :
                                         ),
                                     )
                                 install(Authentication) { AutomationBearerProvider.register(this, verifier) }
-                                routing { authenticate(AUTOMATION_AUTH) { runReadRoutes(fixture.runs, 2) } }
+                                routing {
+                                    authenticate(AUTOMATION_AUTH) {
+                                        runReadRoutes(fixture.runs, 2)
+                                        evaluateRoutes(fixture.runs)
+                                    }
+                                }
                             }
                             val token = realm.person("maya", listOf("sales_manager"))
                             val id = fixture.open(by = Caller.of(token)!!).response.runId
@@ -258,6 +263,7 @@ class RunReadRoutesSpec :
                                 .single()
                                 .wire shouldBe "failed"
                             fixture.outputs.size shouldBe 0
+                            fixture.evaluations.size shouldBe 0
                             client.post("/automation/runs/$id/$suffix") { bearerAuth(token) }.status shouldBe
                                 HttpStatusCode.ServiceUnavailable
                         }
@@ -265,6 +271,87 @@ class RunReadRoutesSpec :
                         fixture.close()
                     }
                 }
+            }
+        }
+
+        "evaluate authenticates the owner, publishes a staged summary and guards, and reuses the completed result" {
+            val reads =
+                java.util.concurrent.atomic
+                    .AtomicInteger()
+            val fixture =
+                RunSessionFixture(
+                    door =
+                        Door { read ->
+                            reads.incrementAndGet()
+                            ReadResult(
+                                Table(
+                                    read.columns,
+                                    if (read.sql ==
+                                        "hold"
+                                    ) {
+                                        emptyList()
+                                    } else {
+                                        listOf(listOf("4711", "from SQL"))
+                                    },
+                                ),
+                            )
+                        },
+                    columns = listOf(ManifestColumn("order_number", "text"), ManifestColumn("verdict_reason", "text")),
+                )
+            try {
+                testApplication {
+                    application {
+                        install(ContentNegotiation) { json() }
+                        install(StatusPages) { installAutomationErrors() }
+                        val verifier =
+                            CallerVerifier(
+                                JwksBearerVerifier(
+                                    HttpJwksKeySource(realm.jwksUrl),
+                                    TestRealm.ISSUER,
+                                    TestRealm.AUDIENCE,
+                                ),
+                            )
+                        install(Authentication) { AutomationBearerProvider.register(this, verifier) }
+                        routing { authenticate(AUTOMATION_AUTH) { evaluateRoutes(fixture.runs) } }
+                    }
+                    val token = realm.person("maya", listOf("sales_manager"))
+                    val id = fixture.open(by = Caller.of(token)!!).response.runId
+                    val path = "/automation/runs/$id/evaluate"
+                    client.post(path).status shouldBe HttpStatusCode.Unauthorized
+                    client.post(path) { bearerAuth(realm.person("other", listOf("sales_manager"))) }.status shouldBe
+                        HttpStatusCode.ServiceUnavailable
+                    client.post("/automation/runs/1-1-1-1-1/evaluate") { bearerAuth(token) }.status shouldBe
+                        HttpStatusCode.BadRequest
+                    reads.get() shouldBe 0
+                    val first = client.post(path) { bearerAuth(token) }
+                    first.status shouldBe HttpStatusCode.OK
+                    val body = first.json()
+                    body["verdict"]!!.jsonObject.let { verdict ->
+                        verdict["none"] shouldBe JsonPrimitive(0)
+                        verdict["routes"]!!.jsonObject shouldBe
+                            Json.parseToJsonElement(
+                                """{"release":{"rowCount":1,"ref":"/automation/runs/$id/outputs/way.release"},
+                                "hold":{"rowCount":0,"ref":"/automation/runs/$id/outputs/way.hold"}}""",
+                            )
+                    }
+                    body["guards"]!!.jsonArray.map { it.jsonObject["code"]!!.jsonPrimitive.content }.toSet() shouldBe
+                        setOf(
+                            "restricted-view",
+                            "candidates-truncated",
+                            "out-of-scope-read",
+                            "duplicate-key",
+                            "out-of-scope",
+                        )
+                    fixture.states.values
+                        .single()
+                        .wire shouldBe "evaluated"
+                    fixture.evaluations.size shouldBe 1
+                    client.post(path) { bearerAuth(token) }.json() shouldBe body
+                    reads.get() shouldBe 4
+                    fixture.outputs.size shouldBe 4
+                }
+            } finally {
+                fixture.close()
             }
         }
 
@@ -291,7 +378,12 @@ class RunReadRoutesSpec :
                                 ),
                             )
                         install(Authentication) { AutomationBearerProvider.register(this, verifier) }
-                        routing { authenticate(AUTOMATION_AUTH) { runReadRoutes(fixture.runs, 2) } }
+                        routing {
+                            authenticate(AUTOMATION_AUTH) {
+                                runReadRoutes(fixture.runs, 2)
+                                evaluateRoutes(fixture.runs)
+                            }
+                        }
                     }
                     val token = realm.person("maya", listOf("sales_manager"))
                     val id = fixture.open(by = Caller.of(token)!!).response.runId

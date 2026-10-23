@@ -350,6 +350,7 @@ internal class RunSessionFixture(
     val caller = Caller("subject-maya", "maya", setOf("sales_manager"), TokenKind.PERSON, "original-token")
     val states = ConcurrentHashMap<UUID, RunStatus>()
     val records = ConcurrentHashMap<UUID, RunOpen>()
+    val evaluations = ConcurrentHashMap<UUID, EvaluationResult>()
     val created = AtomicInteger()
     val reads = AtomicInteger()
     val statusReads = AtomicInteger()
@@ -381,7 +382,13 @@ internal class RunSessionFixture(
         original.recipes.getValue("release_order").let { r ->
             val metadata =
                 r.recipe.copy(
-                    roles = ManifestRoles("placed", listOf(ManifestContext("shortfall", "lookup", "sql")), "way"),
+                    roles =
+                        ManifestRoles(
+                            "placed",
+                            listOf(ManifestContext("shortfall", "lookup", "sql")),
+                            "way",
+                            routes = listOf(ManifestRoute("release"), ManifestRoute("hold")),
+                        ),
                     parts = emptyList(),
                 )
             r.copy(
@@ -466,6 +473,10 @@ internal class RunSessionFixture(
                     },
                     Staging(LocalStagingStore(Files.createTempDirectory("au-session")), outputs::add),
                     scope,
+                    { id, result ->
+                        evaluations[id] = result
+                        states[id] = RunStatus.EVALUATED
+                    },
                 )
             },
             { id ->

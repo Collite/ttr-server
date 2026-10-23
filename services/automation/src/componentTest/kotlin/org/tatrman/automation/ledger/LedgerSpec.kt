@@ -9,6 +9,9 @@ import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
 import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.types.shouldBeInstanceOf
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.encodeToJsonElement
+import kotlinx.serialization.json.decodeFromJsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import org.jetbrains.exposed.v1.core.SortOrder
@@ -19,6 +22,8 @@ import org.jetbrains.exposed.v1.jdbc.selectAll
 import org.jetbrains.exposed.v1.jdbc.transactions.transaction
 import org.tatrman.automation.LedgerTestDb
 import org.tatrman.automation.MutableClock
+import org.tatrman.automation.runner.EvaluationResult
+import org.tatrman.automation.runner.VerdictSummary
 import java.time.Duration
 import java.time.Instant
 import java.util.UUID
@@ -50,6 +55,95 @@ class LedgerSpec :
 
         fun statusOf(runId: UUID): String =
             transaction { Runs.select(Runs.status).where { Runs.id eq runId }.single()[Runs.status] }
+
+        fun decisionOf(id: UUID) =
+            transaction {
+                RunProtocol
+                    .selectAll()
+                    .where {
+                        (RunProtocol.run eq id) and (RunProtocol.section eq ProtocolSection.DECISION.wire)
+                    }.orderBy(RunProtocol.seq)
+                    .map { it[RunProtocol.payload] }
+            }
+
+        "evaluation records its immutable summary and guards atomically with status, accepting only identical retries" {
+            val id = ledger.claimRun(open("evaluation")).runId
+            val payload =
+                kotlinx.serialization.json.Json.parseToJsonElement(
+                    """{"verdict":{"routes":{"release":{"rowCount":2,"ref":"staged"}},"none":1},
+                    "guards":[{"code":"duplicate-key","island":"candidates","status":"passed"}],"mode":"exclusive"}""",
+                )
+            val result = Json.decodeFromJsonElement<EvaluationResult>(payload)
+            ledger.completeEvaluation(id, result)
+            ledger.completeEvaluation(id, result)
+            statusOf(id) shouldBe "evaluated"
+            transaction {
+                val entries =
+                    RunProtocol
+                        .selectAll()
+                        .where {
+                            (RunProtocol.run eq id) and (RunProtocol.section eq ProtocolSection.DECISION.wire)
+                        }.toList()
+                entries.size shouldBe 1
+                entries.single()[RunProtocol.payload] shouldBe payload
+                entries.single()[RunProtocol.seq] shouldBe 1
+                Runs.selectAll().where { Runs.id eq id }.single()[Runs.endedAt] shouldBe null
+            }
+            shouldThrow<IllegalStateException> {
+                ledger.completeEvaluation(id, EvaluationResult(VerdictSummary(emptyMap(), 0), emptyList()))
+            }
+            statusOf(id) shouldBe "evaluated"
+            decisionOf(id) shouldBe listOf(payload)
+        }
+
+        "late evaluation cannot replace terminal or waiting status or append to a sealed protocol" {
+            for (state in listOf(RunStatus.CLOSED, RunStatus.FAILED, RunStatus.ABANDONED, RunStatus.WAITING)) {
+                val id = ledger.claimRun(open(null)).runId
+                ledger.markStatus(id, state)
+                shouldThrow<IllegalRunTransition> {
+                    ledger.completeEvaluation(id, EvaluationResult(VerdictSummary(emptyMap(), 0), emptyList()))
+                }
+                statusOf(id) shouldBe state.wire
+                decisionOf(id) shouldBe emptyList()
+            }
+            val id = ledger.claimRun(open(null)).runId
+            ledger.sealProtocol(id)
+            shouldThrow<ProtocolSealed> {
+                ledger.completeEvaluation(id, EvaluationResult(VerdictSummary(emptyMap(), 0), emptyList()))
+            }
+            statusOf(id) shouldBe "open"
+            decisionOf(id) shouldBe emptyList()
+            shouldThrow<NoSuchRun> {
+                ledger.completeEvaluation(
+                    UUID.randomUUID(),
+                    EvaluationResult(VerdictSummary(emptyMap(), 0), emptyList()),
+                )
+            }
+        }
+
+        "concurrent identical evaluation commits publish one decision" {
+            val id = ledger.claimRun(open(null)).runId
+            ledger.markStatus(id, RunStatus.RUNNING)
+            val start = CountDownLatch(1)
+            val pool = Executors.newFixedThreadPool(2)
+            val result = EvaluationResult(VerdictSummary(emptyMap(), 0), emptyList())
+            val payload = Json.encodeToJsonElement(result)
+            try {
+                val futures =
+                    (1..2).map {
+                        pool.submit {
+                            start.await()
+                            ledger.completeEvaluation(id, result)
+                        }
+                    }
+                start.countDown()
+                futures.forEach { it.get(10, TimeUnit.SECONDS) }
+                statusOf(id) shouldBe "evaluated"
+                decisionOf(id) shouldBe listOf(payload)
+            } finally {
+                pool.shutdownNow()
+            }
+        }
 
         "executor failures are conditional, idempotent and free the key without replacing terminal or waiting rows" {
             val id = ledger.claimRun(open("failed-executor")).runId

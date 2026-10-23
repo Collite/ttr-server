@@ -32,7 +32,7 @@ data class IslandPreview(
 )
 
 /**
- * Authenticated, bounded read handlers. Kept unmounted until the production lifecycle and decision guards land.
+ * Authenticated, bounded read handlers. Kept unmounted until the production runtime and lifecycle are wired.
  * `parts/candidates` and `parts/decision` resolve roles; contexts and islands resolve exact manifest names.
  * Storage parts are internal shared inputs and never become public part names.
  */
@@ -67,14 +67,7 @@ fun Route.runReadRoutes(
 
     for (kind in listOf("parts", "islands")) {
         post("/automation/runs/{id}/$kind/{name}") {
-            val id =
-                try {
-                    UUID.fromString(call.parameters["id"]).also {
-                        if (it.toString() != call.parameters["id"]?.lowercase()) throw IllegalArgumentException()
-                    }
-                } catch (_: IllegalArgumentException) {
-                    throw BadRequestException("run id must be a UUID")
-                }
+            val id = call.runId()
             val name = call.parameters["name"].orEmpty()
             val result =
                 runs.read(id, call.caller(), { select(it, name, kind == "parts") }) { runner, island ->
@@ -126,4 +119,13 @@ private fun scalar(value: Any?): JsonElement =
             JsonPrimitive(value)
         }
         else -> JsonPrimitive(value.toString())
+    }
+
+internal fun io.ktor.server.application.ApplicationCall.runId(): UUID =
+    try {
+        UUID.fromString(parameters["id"]).also {
+            if (it.toString() != parameters["id"]?.lowercase()) throw IllegalArgumentException()
+        }
+    } catch (_: IllegalArgumentException) {
+        throw BadRequestException("run id must be a UUID")
     }

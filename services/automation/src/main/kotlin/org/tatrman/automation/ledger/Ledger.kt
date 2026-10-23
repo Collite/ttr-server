@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package org.tatrman.automation.ledger
 
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.encodeToJsonElement
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -16,6 +18,7 @@ import org.jetbrains.exposed.v1.jdbc.selectAll
 import org.jetbrains.exposed.v1.jdbc.transactions.TransactionManager
 import org.jetbrains.exposed.v1.jdbc.transactions.transaction
 import org.jetbrains.exposed.v1.jdbc.update
+import org.tatrman.automation.runner.EvaluationResult
 import java.sql.Connection
 import java.time.Clock
 import java.time.Duration
@@ -229,6 +232,51 @@ class Ledger(
                 it[Runs.error] = error ?: JsonObject(mapOf("code" to JsonPrimitive("internal")))
             } == 1
         }
+
+    /**
+     * Commit evaluation as one transaction: immutable decision evidence and EVALUATED status. The decision
+     * section is the run's durable verdict summary; no second mutable copy can drift from the protocol.
+     * Retries accept the identical payload only. A late worker cannot resurrect an abandoned/failed/closed run.
+     */
+    fun completeEvaluation(
+        runId: UUID,
+        result: EvaluationResult,
+    ) {
+        outermost("completeEvaluation")
+        val payload = Json.encodeToJsonElement(result)
+        transaction(transactionIsolation = Connection.TRANSACTION_READ_COMMITTED) {
+            lockRun(runId)
+            val from = RunStatus.of(Runs.select(Runs.status).where { Runs.id eq runId }.single()[Runs.status])
+            if (from !in setOf(RunStatus.OPEN, RunStatus.RUNNING, RunStatus.EVALUATED)) {
+                throw IllegalRunTransition(runId, from, RunStatus.EVALUATED)
+            }
+            if (isSealed(runId)) throw ProtocolSealed(runId)
+            val existing =
+                RunProtocol
+                    .selectAll()
+                    .where {
+                        (RunProtocol.run eq runId) and (RunProtocol.section eq ProtocolSection.DECISION.wire)
+                    }.toList()
+            if (existing.isNotEmpty()) {
+                check(
+                    existing.size == 1 &&
+                        existing.single()[RunProtocol.payload] == payload &&
+                        from == RunStatus.EVALUATED,
+                ) {
+                    "a pinned run's decision cannot change"
+                }
+            } else {
+                RunProtocol.insert {
+                    it[run] = runId
+                    it[section] = ProtocolSection.DECISION.wire
+                    it[seq] = 1
+                    it[RunProtocol.payload] = payload
+                    it[at] = clock.instant().utc()
+                }
+                Runs.update({ Runs.id eq runId }) { it[status] = RunStatus.EVALUATED.wire }
+            }
+        }
+    }
 
     /**
      * Appends one entry to a section of the run's protocol (D-110: INSERT-only) and answers its `seq`. The run

@@ -93,6 +93,7 @@ class HartlandRunnerSpec :
                                         }
                                     },
                                     this,
+                                    { _, _ -> },
                                 ).use { runner ->
                                     val results = runner.all().associateBy { "${it.output.island}.${it.output.port}" }
                                     for (island in r.manifest.islands) {
@@ -145,6 +146,22 @@ class HartlandRunnerSpec :
                                         val index = table.columns.indexOfFirst { it.name == "line_id" }
                                         table.rows.map { (it[index] as Number).toInt() }.sorted() shouldBe keys.sorted()
                                     }
+                                    val evaluation = runner.evaluate()
+                                    evaluation.verdict.routes.mapValues { it.value.rowCount } shouldBe
+                                        expectedKeys.mapValues { it.value.size.toLong() }
+                                    val candidates =
+                                        results.values.single {
+                                            it.output.island ==
+                                                r.recipe.roles!!.candidates
+                                        }
+                                    val keyColumn = candidates.table.columns.indexOfFirst { it.name == "line_id" }
+                                    val candidateKeys =
+                                        candidates.table.rows
+                                            .map { (it[keyColumn] as Number).toInt() }
+                                            .toSet()
+                                    evaluation.verdict.none shouldBe
+                                        (candidateKeys - expectedKeys.values.flatten().toSet()).size.toLong()
+                                    reads.values.forEach { it.get() shouldBe 1 }
                                 }
                             }
                         }

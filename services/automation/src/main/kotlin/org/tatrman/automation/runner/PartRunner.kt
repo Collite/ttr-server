@@ -64,6 +64,11 @@ class PartRunner(
     private val door: Door,
     private val staging: Staging,
     private val scope: CoroutineScope,
+    /** Must durably record the decision and EVALUATED status together before evaluate returns. */
+    private val recordEvaluation: (
+        UUID,
+        EvaluationResult,
+    ) -> Unit = { _, _ -> error("evaluation journal unavailable") },
 ) : AutoCloseable {
     private val islands =
         context.recipe.manifest.islands
@@ -75,6 +80,7 @@ class PartRunner(
     private val slots = Semaphore(4)
     private val partReads = mutableMapOf<String, Deferred<Unit>>()
     private val outputs = mutableMapOf<String, Deferred<StagedOutput>>()
+    private var evaluation: Deferred<EvaluationResult>? = null
     private val combine = lazy { DuckDbCombiner() }
     private val checks = Guards(context)
     val guards: List<GuardResult> get() = checks.results
@@ -113,6 +119,25 @@ class PartRunner(
         }
         checks.ensureAllowed()
         return result
+    }
+
+    /** One shared evaluation per pinned run, including journal failures; disconnecting a waiter cannot restart it. */
+    suspend fun evaluate(): EvaluationResult {
+        checks.ensureAllowed()
+        val work =
+            lock.withLock {
+                evaluation ?: scope
+                    .async {
+                        val result = summarizeEvaluation(this@PartRunner)
+                        checks.ensureAllowed()
+                        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                            recordEvaluation(context.id, result)
+                        }
+                        checks.ensureAllowed()
+                        result
+                    }.also { evaluation = it }
+            }
+        return work.await().also { checks.ensureAllowed() }
     }
 
     private suspend fun outputIsland(name: String): List<StagedOutput> =

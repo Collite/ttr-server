@@ -9,8 +9,11 @@ in the project folder:
 > **Built so far:** P0 (ledger, bundle load/refresh, descriptor, identity, chart/image). P1 S1.1 now has the
 > executor, Open policy, pinned run sessions and bounded part/island handlers: governed Query reads, shared
 > storage parts, embedded DuckDB combines, typed Arrow staging and immutable `run_outputs` journalling.
-> All five read/candidate guards are implemented. Production runtime/storage wiring, evaluate, output downloads,
-> async execution and protocol/lifecycle orchestration remain; the run handlers are not mounted in Application.
+> All five read/candidate guards and synchronous evaluation summaries are implemented. Evaluation shares the
+> pinned runner, returns route counts/refs plus unmatched candidates and guard evidence, and records the decision
+> atomically with EVALUATED status. Production runtime/storage wiring, bounded detail snapshots, route paging,
+> output downloads, async execution and the remaining protocol/lifecycle orchestration remain. Run handlers,
+> including evaluate, are not mounted in Application.
 
 The executor requires an explicit `world/storage` → Query world alias map. Query resolves those aliases through
 its existing `QUERY_WORLDS` table. Missing routes fail before a query is issued; there is no fallback to Query's
@@ -26,6 +29,21 @@ expanded logical-query bodies and entity boundaries without mapping physical DB 
 validation stays fresh per caller. Scope refusals latch on the run before staging, alongside restricted-view,
 ceiling, empty scoped candidates and duplicate-key guards. Production wiring must deploy the matching Query
 contract before mounting these handlers.
+
+Evaluation reuses scheduled part/output promises, including across concurrent calls and overlapping part reads.
+In manifest v3, a decision island emits a port for each route and additional `<route>.<context>` detail ports.
+Only route ports contribute to counts. `none` counts candidate keys absent from the union of routes, so an
+overlapping switch cannot double-subtract a key. Composite numeric keys compare by exact normalized decimal
+value. Unknown/missing ports, duplicate/non-candidate route keys and overlapping exclusive routes fail before
+a decision is recorded. SQL's `verdict_reason` stays in the staged output; the server does not render `because`.
+
+Runtime construction must pass `recordEvaluation = ledger::completeEvaluation` to PartRunner. Without the
+journal callback, evaluate fails closed. The callback stores the typed evaluate result (including `mode` and
+`guards`) in the protocol's INSERT-only `decision` section and sets EVALUATED in one locked transaction.
+Identical durable retries are harmless; changed evidence, sealed protocols and terminal/waiting runs refuse.
+This supplies the durable summary for later status/protocol readers without a second mutable summary column.
+A journal failure is shared like other executor failures and the session fails the active run. This synchronous
+handler still needs the async budget/poll wrapper before production mounting.
 
 Local staging publishes immutable Arrow blobs before journalling their metadata. A journal failure leaves an
 unreferenced blob for the S1.3 retention job; it never deletes content another claimant might reference. The
