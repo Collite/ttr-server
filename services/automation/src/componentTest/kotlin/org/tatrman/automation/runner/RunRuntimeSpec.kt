@@ -42,6 +42,37 @@ class RunRuntimeComponentSpec :
         LedgerTestDb.ready()
         beforeEach { LedgerTestDb.reset() }
 
+        "runtime maintenance collects abandoned orphans and closed previews release only after grace" {
+            val f = DurableRuntimeFixture()
+            val abandoned = f.ledger.claimRun(RunOpen("orphan", callerSubject = f.caller.sub)).runId
+            f.ledger.markStatus(abandoned, RunStatus.ABANDONED)
+            val store = LocalStagingStore(f.stagingRoot)
+            store.putIfAbsent("runs/$abandoned/orphan.arrow", byteArrayOf(1))
+            val runtime = f.start()
+            try {
+                eventually { !Files.exists(f.stagingRoot.resolve("runs/$abandoned")) }
+                val opened = runtime.sessions.open("release_order", f.request, f.caller)
+                val id = UUID.fromString(opened.response.runId)
+                runtime.sessions.evaluate(id, f.caller)
+                runtime.closer.close(id, f.caller)
+                val protocol = runtime.protocol.read(id, f.caller)
+                runtime.sweeper.sweep()
+                Files.exists(f.stagingRoot.resolve("runs/$id")) shouldBe true
+                f.base.now = f.base.now.plusSeconds(3600)
+                runtime.sweeper.sweep()
+                Files.exists(f.stagingRoot.resolve("runs/$id")) shouldBe false
+                transaction {
+                    RunOutputs.selectAll().where { RunOutputs.run eq id }.all { it[RunOutputs.releasedAt] != null }
+                } shouldBe true
+                runtime.protocol.read(id, f.caller) shouldBe protocol
+                runtime.status.read(id, f.caller).status shouldBe "closed"
+                f.reads.get() shouldBe 2
+            } finally {
+                runtime.shutdown()
+                f.close()
+            }
+        }
+
         "the assembled runtime uses the configured clock through durable dispatch, staging and decision commit" {
             val f = DurableRuntimeFixture()
             val runtime = f.start()
@@ -279,6 +310,7 @@ private class DurableRuntimeFixture(
         )
     val clock = Clock.offset(base, config.clockSkew)
     val ledger = Ledger(config.budgets.batchDefault, clock)
+    val stagingRoot = Files.createTempDirectory("au-runtime-pg")
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     val caller = Caller("sub-maya", "maya", setOf("sales_manager"), TokenKind.PERSON, "not-stored")
     val request = OpenRequest("release_native_event", buildJsonObject { put("key", "4711") })
@@ -400,7 +432,7 @@ private class DurableRuntimeFixture(
             scope,
             clock,
             query,
-            LocalStagingStore(Files.createTempDirectory("au-runtime-pg")),
+            LocalStagingStore(stagingRoot),
         )
 
     fun close() {

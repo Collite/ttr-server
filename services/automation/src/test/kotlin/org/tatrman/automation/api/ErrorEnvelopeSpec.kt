@@ -161,6 +161,7 @@ class ErrorEnvelopeSpec :
                 ErrorCode.BATCH_NOT_READY,
                 ErrorCode.RUN_CLOSED,
                 ErrorCode.CLOSE_NOT_READY,
+                ErrorCode.STAGING_RELEASED,
                 ErrorCode.RESTRICTED_VIEW,
                 ErrorCode.CANDIDATES_TRUNCATED,
                 ErrorCode.OUT_OF_SCOPE,

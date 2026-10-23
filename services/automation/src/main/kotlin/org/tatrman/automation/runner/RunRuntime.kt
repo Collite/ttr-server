@@ -13,6 +13,8 @@ import org.tatrman.automation.config.AutomationConfig
 import org.tatrman.automation.identity.ServiceTokens
 import org.tatrman.automation.ledger.Ledger
 import org.tatrman.automation.ledger.RunQueue
+import org.tatrman.automation.ledger.StagingRetention
+import org.tatrman.automation.staging.StagingSweeper
 import org.tatrman.automation.protocol.ProtocolRecorder
 import org.tatrman.automation.queue.RunWorkQueue
 import org.tatrman.automation.staging.Staging
@@ -25,7 +27,7 @@ import java.util.UUID
  * it must keep them alive until [shutdown] returns. Supply the SAME clock used to construct the ledger
  * (including configured clock.skew). No credentials or executors are recovered after a process restart.
  *
- * This assembles the execution path; Application mounting still waits for configured storage/retention and
+ * This assembles the execution path; Application mounting still waits for configured storage and
  * deployment owner routing. HTTP integration specs mount [org.tatrman.automation.api.runRoutes] directly.
  */
 class RunRuntime(
@@ -39,6 +41,7 @@ class RunRuntime(
     query: QueryRun,
     store: StagingStore,
     queue: RunWorkQueue = RunQueue(clock = clock, defaultBudget = config.budgets.batchDefault),
+    retention: StagingRetention = StagingRetention(config.retention, clock),
 ) {
     private val shutdownLock = Mutex()
     private var shutdownComplete = false
@@ -49,6 +52,7 @@ class RunRuntime(
     val sessions: RunSessions
     val status = RunStatusReader(ledger)
     val closer = RunCloser(ledger) { sessions.release(it) }
+    val sweeper = StagingSweeper(retention, store) { sessions.release(it) }
     val displayRows = config.budgets.displayRows
     val owner: UUID get() = workers.owner
 
@@ -105,7 +109,11 @@ class RunRuntime(
                 config.runner.workers,
                 maintenance = {
                     withContext(Dispatchers.IO) { ledger.abandonExpiredRuns() }
-                    sessions.reapAbandoned()
+                    try {
+                        sessions.reapAbandoned()
+                    } finally {
+                        sweeper.sweep()
+                    }
                 },
             )
     }

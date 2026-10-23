@@ -301,6 +301,31 @@ class RunRuntimeSpec :
             }
         }
 
+        "released staging refuses execution with 410 while owner-scoped status remains readable" {
+            val f = RuntimeFixture()
+            try {
+                testApplication {
+                    application { runtimeApi(f.runtime, realm) }
+                    val id = UUID.fromString(openRun(token))
+                    val base = "/automation/runs/$id"
+                    f.released.add(id)
+                    for (url in listOf("$base/routes/release", "$base/outputs/way.release")) {
+                        val response = client.get(url) { bearerAuth(token) }
+                        response.status shouldBe HttpStatusCode.Gone
+                        response.bodyAsText().json()["error"]!!.jsonObject["code"] shouldBe
+                            JsonPrimitive("staging-released")
+                        client.get(url) { bearerAuth(realm.person("other", listOf("sales_manager"))) }.status shouldBe
+                            HttpStatusCode.Forbidden
+                    }
+                    client.post("$base/evaluate") { bearerAuth(token) }.status shouldBe HttpStatusCode.Gone
+                    client.get(base) { bearerAuth(token) }.status shouldBe HttpStatusCode.OK
+                    f.requests.size shouldBe 0
+                }
+            } finally {
+                f.close()
+            }
+        }
+
         "maintenance reaps local abandoned sessions even when the sweep returns no newly abandoned ids" {
             val entered = CountDownLatch(1)
             val finish = CountDownLatch(1)
@@ -424,6 +449,7 @@ private class RuntimeFixture(
     val compiles = AtomicInteger()
     val statusReads = AtomicInteger()
     private val store = LocalStagingStore(Files.createTempDirectory("au-runtime"))
+    val released = ConcurrentHashMap.newKeySet<UUID>()
     private val ledger = mockk<Ledger>()
     private val query =
         object : QueryRun {
@@ -481,6 +507,7 @@ private class RuntimeFixture(
             val id = firstArg<UUID>()
             if (records[id]?.callerSubject != secondArg<String>()) throw NoSuchRun(id)
             if (states[id] == RunStatus.CLOSED) throw ProtocolSealed(id)
+            if (id in released) throw AutomationException(ErrorCode.STAGING_RELEASED, "staging released")
         }
         every { ledger.readRunProgress(any(), any()) } answers {
             val id = firstArg<UUID>()
@@ -571,6 +598,7 @@ private class RuntimeFixture(
             query,
             store,
             queue,
+            mockk<StagingRetention> { every { candidates(any()) } returns emptyList() },
         )
 
     suspend fun close() {

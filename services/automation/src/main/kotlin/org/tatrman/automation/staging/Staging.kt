@@ -24,16 +24,30 @@ interface StagingStore {
     fun get(path: String): ByteArray
 
     fun delete(path: String)
+
+    /** Delete every blob (including unjournalled temporary files) under exactly runs/{id}/. */
+    fun deleteRun(id: UUID): Unit =
+        throw UnsupportedOperationException("this staging adapter does not implement per-run retention")
 }
 
 class LocalStagingStore(
     root: Path,
 ) : StagingStore {
-    private val root = root.toAbsolutePath().normalize()
+    private val root =
+        root
+            .toAbsolutePath()
+            .normalize()
+            .also { Files.createDirectories(it) }
+            .toRealPath()
 
     private fun file(path: String): Path =
         root.resolve(path).normalize().also {
-            require(it.startsWith(root) && it != root) { "staging path escapes its root" }
+            require(!Path.of(path).isAbsolute && it.startsWith(root) && it != root) { "staging path escapes its root" }
+            var component = root
+            root.relativize(it).forEach { part ->
+                component = component.resolve(part)
+                require(!Files.isSymbolicLink(component)) { "staging path contains a symbolic link" }
+            }
         }
 
     override fun putIfAbsent(
@@ -63,6 +77,33 @@ class LocalStagingStore(
 
     override fun delete(path: String) {
         Files.deleteIfExists(file(path))
+    }
+
+    override fun deleteRun(id: UUID) {
+        val directory = file("runs/$id")
+        if (!Files.exists(directory, java.nio.file.LinkOption.NOFOLLOW_LINKS)) return
+        // walkFileTree does not follow symlinks. Links inside this run are removed, never traversed.
+        Files.walkFileTree(
+            directory,
+            object : java.nio.file.SimpleFileVisitor<Path>() {
+                override fun visitFile(
+                    path: Path,
+                    attrs: java.nio.file.attribute.BasicFileAttributes,
+                ): java.nio.file.FileVisitResult {
+                    Files.deleteIfExists(path)
+                    return java.nio.file.FileVisitResult.CONTINUE
+                }
+
+                override fun postVisitDirectory(
+                    path: Path,
+                    failure: java.io.IOException?,
+                ): java.nio.file.FileVisitResult {
+                    if (failure != null) throw failure
+                    Files.deleteIfExists(path)
+                    return java.nio.file.FileVisitResult.CONTINUE
+                }
+            },
+        )
     }
 }
 

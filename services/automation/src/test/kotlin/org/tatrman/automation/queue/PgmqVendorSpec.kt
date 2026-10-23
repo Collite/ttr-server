@@ -47,7 +47,7 @@ class PgmqVendorSpec :
             File("src/main/resources/db/LICENSE-pgmq").readText() shouldContain "The PostgreSQL License"
         }
 
-        "the ordered migrations include ledger, pgmq, queues, task index, dispatch and verified subject" {
+        "the ordered migrations include the ledger, queues, dispatch, verified subject and staging retention" {
             migrations.list()!!.sorted() shouldContainExactly
                 listOf(
                     "V1__ledger.sql",
@@ -56,6 +56,7 @@ class PgmqVendorSpec :
                     "V4__tasks_one_open_nulls.sql",
                     "V5__run_evaluations.sql",
                     "V6__verified_run_subject.sql",
+                    "V7__staging_retention.sql",
                 )
         }
     })

@@ -24,6 +24,8 @@ import org.jetbrains.exposed.v1.jdbc.selectAll
 import org.jetbrains.exposed.v1.jdbc.transactions.TransactionManager
 import org.jetbrains.exposed.v1.jdbc.transactions.transaction
 import org.jetbrains.exposed.v1.jdbc.update
+import org.tatrman.automation.api.AutomationException
+import org.tatrman.automation.api.ErrorCode
 import org.tatrman.automation.runner.EvaluationResult
 import org.tatrman.automation.runner.RunProgress
 import org.tatrman.automation.runner.RunFingerprints
@@ -244,6 +246,7 @@ class Ledger(
                 throw IllegalRunTransition(runId, from, RunStatus.RUNNING)
             }
             if (isSealed(runId)) throw ProtocolSealed(runId)
+            ensureStagingAvailable(runId)
             if (from != RunStatus.EVALUATED) ensureRunBudget(runId, defaultBudget, clock)
             if (from == RunStatus.OPEN) Runs.update({ Runs.id eq runId }) { it[status] = RunStatus.RUNNING.wire }
         }
@@ -311,6 +314,7 @@ class Ledger(
                 throw IllegalRunTransition(runId, from, RunStatus.EVALUATED)
             }
             if (isSealed(runId)) throw ProtocolSealed(runId)
+            ensureStagingAvailable(runId)
             val existing =
                 RunProtocol
                     .selectAll()
@@ -557,6 +561,7 @@ class Ledger(
                 return@transaction result
             }
             if (isSealed(runId)) throw ProtocolSealed(runId)
+            ensureStagingAvailable(runId)
             ensureRunBudget(runId, defaultBudget, clock)
             val now = clock.instant().utc()
             // The preview summary at evaluate is retained; this final entry records that close applied zero rows.
@@ -615,6 +620,10 @@ class Ledger(
                     .where { (Runs.id eq runId) and (Runs.callerSubject eq subject) }
                     .firstOrNull() ?: throw NoSuchRun(runId)
             if (row[Runs.status] == RunStatus.CLOSED.wire || isSealed(runId)) throw ProtocolSealed(runId)
+            if (row[Runs.status] == RunStatus.ABANDONED.wire) {
+                throw AutomationException(ErrorCode.RUN_ABANDONED, "the run was abandoned")
+            }
+            ensureStagingAvailable(runId)
         }
     }
 
@@ -806,6 +815,7 @@ class Ledger(
                 throw IllegalRunTransition(output.run, from, RunStatus.RUNNING)
             }
             if (isSealed(output.run)) throw ProtocolSealed(output.run)
+            ensureStagingAvailable(output.run)
             ensureRunBudget(output.run, defaultBudget, clock)
             val existing =
                 RunOutputs
@@ -851,6 +861,7 @@ class Ledger(
                 throw IllegalRunTransition(runId, from, RunStatus.RUNNING)
             }
             if (isSealed(runId)) throw ProtocolSealed(runId)
+            ensureStagingAvailable(runId)
             ensureRunBudget(runId, defaultBudget, clock)
             appendExecution(runId, execution)
         }

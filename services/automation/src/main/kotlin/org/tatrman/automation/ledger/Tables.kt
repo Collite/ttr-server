@@ -80,6 +80,8 @@ object Runs : Table("automation.runs") {
     val protocolRef = text("protocol_ref").nullable()
     val startedAt = timestampWithTimeZone("started_at")
     val endedAt = timestampWithTimeZone("ended_at").nullable()
+    val stagingReleasedAt = timestampWithTimeZone("staging_released_at").nullable()
+    val stagingCheckedAt = timestampWithTimeZone("staging_checked_at").nullable()
     val budgetSync = long("budget_sync").nullable()
     val budgetBatch = long("budget_batch").nullable()
     val error = json("error").nullable()

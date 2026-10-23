@@ -27,14 +27,19 @@ class SubjectMigrationSpec :
                     )
                 }
             }
-            migrateLedger(source) shouldBe 1
+            migrateLedger(source) shouldBe 2
             source.connection.use { connection ->
                 connection.createStatement().use { statement ->
-                    statement.executeQuery("SELECT caller, caller_subject FROM automation.runs").use {
-                        it.next() shouldBe true
-                        it.getString("caller") shouldBe "maya"
-                        it.getString("caller_subject") shouldBe null
-                    }
+                    statement
+                        .executeQuery(
+                            "SELECT caller, caller_subject, staging_released_at, staging_checked_at FROM automation.runs",
+                        ).use {
+                            it.next() shouldBe true
+                            it.getString("caller") shouldBe "maya"
+                            it.getString("caller_subject") shouldBe null
+                            it.getObject("staging_released_at") shouldBe null
+                            it.getObject("staging_checked_at") shouldBe null
+                        }
                 }
             }
         }

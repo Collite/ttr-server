@@ -15,7 +15,8 @@ in the project folder:
 > and authenticated route/detail/output readers page the verified Arrow or download Arrow/CSV. Absolute
 > evaluation deadlines, runtime assembly, durable execution evidence and the authenticated raw protocol reader
 > are implemented, along with durable status and native dry-run preview batches. Application installation,
-> object storage, owner routing, remaining preview lowering, close and retention remain.
+> object storage, owner routing and remaining preview lowering remain. Durable dry-run close/sealing and local staging retention
+> are assembled and tested; Application mounting remains pending.
 > Budgeted evaluate, observation-only polling and durable abandonment/cleanup primitives are implemented. Run handlers,
 > including evaluate and route/detail/output readers, are not mounted in Application.
 
@@ -220,9 +221,9 @@ Runtime shutdown first fences new opens/reads, then joins worker cancellation an
 Concurrent shutdown calls join the same cleanup; database, Query channel and staging must remain usable until
 it returns. These dependencies belong to the application and are not closed by the runtime.
 
-Deployment owner routing, Application installation and staging retention are pending. No run routes or
-maintenance loop are installed in Application yet. Remaining protocol/status payloads and preview lowering, close/sealing and
-preview/close/task deadline handoff must be integrated before exposing this path there.
+Deployment owner routing, Application installation and the configured object-store adapter are pending. No run routes or
+maintenance loop are installed in Application yet. Remaining performed payloads, configured PT/ES links, preview lowering and
+task deadline handoff must be integrated before exposing this path there.
 
 ### Native dry-run previews (S1.3 foundation)
 
@@ -258,7 +259,7 @@ This foundation supports scalar column/literal/parameter arguments, symbolic rol
 compatible scalar conditions (numeric ordering and scalar equality). Native writer/obligation synthesis, key
 lookups, calendar/date expressions, general conditions and text ordering require their compiler lowering;
 selected unsupported operations return `501 preview-unsupported` before decision/batch completion. P2/P3
-retain dry-run task/delivery rows and performed action outcomes. Close/retention and Application mounting are
+retain dry-run task/delivery rows and performed action outcomes. Durable close/sealing and local staging retention are described below. Application mounting is
 pending. The local Query fixtures do not certify live Hartland behavior.
 
 ### Durable execution protocol (S1.3 foundation)
@@ -284,16 +285,47 @@ concurrent records, identical evidence retries do not append again, and changed 
 or elapsed execution budgets refuse publication. A failed source journal prevents its dependent outputs.
 
 `?render=pt` currently returns `501 protocol-renderer-unavailable` after ownership verification. Configured PT
-proxying, performed action/outcome/close payloads, remaining preview lowering and retention remain S1.3 work. The existing
-ledger seal and INSERT-only database triggers are exercised by the component tier; no close route is installed.
+proxying, performed action/outcome payloads, stable ES links and remaining preview lowering remain S1.3 work.
+The assembled runtime installs close and its ledger seal; Application routes remain unmounted.
 ES receipt links still need a stable source reference; the current worker proto supplies an inline receipt.
 Application shutdown must drain durable HTTP readers before closing the ledger; they do not belong to an
 executor's cancellation scope.
 
 Local staging publishes immutable Arrow blobs before journalling their metadata. A journal failure leaves an
 unreferenced blob for the S1.3 retention job; it never deletes content another claimant might reference. The
-object-store adapter and cleanup/close policy remain separate pending work. The checked-in real bundle fixture
+object-store adapter remains pending; the local lifecycle is described below. The checked-in real bundle fixture
 records its provenance under `src/test/resources/runner/hartland/README.md`.
+
+### Durable dry-run close and local staging retention
+
+`POST /automation/runs/{id}/close` requires a completed preview and the verified initiating subject. Under
+one run lock and the original absolute budget it adds final write evidence (zero applied rows), closure and
+seal, and commits CLOSED/endedAt. Pending or missing previews answer `409 close-not-ready`. Closed retries
+return the same result after restart or budget expiry and retry executor cleanup if it failed. The preview,
+model, tasks, deliveries and connectors remain untouched. Sealed execution endpoints answer `409 run-closed`;
+status, batch and protocol remain readable without an executor. Cleanup joins local work before DuckDB close.
+
+RunRuntime's maintenance timer now invokes StagingSweeper. Eligibility is the earliest of close + graceHours,
+started_at + stagingHours, or immediate abandonment (defaults: 1 h / 24 h). Boundaries are inclusive and use
+the same configured clock as the ledger. Global expiry releases staging even for WAITING; it does not abandon
+the run or change its tasks. Task handoff must retain its own durable snapshots when implemented at P3.
+
+V7's staging_released_at fence commits before cleanup. New evaluation, source/output publication and
+execution reads refuse released staging with `410 staging-released`; closed/sealed and abandoned runs keep
+their existing `409 run-closed` / `503 run-abandoned` refusals. Ownership is checked first. Executor cleanup
+precedes blob deletion. Only successful deletion sets unreleased run_outputs.released_at; metadata, hashes,
+protocol and preview rows remain as audit evidence. Failure or cancellation after fencing remains retryable.
+
+The scan selects at most 100 runs per maintenance pass, prioritizing never-attempted runs and then the oldest
+staging_checked_at. Released runs are revisited to collect delayed blob puts that began before the fence.
+Per-run store deletion uses the canonical runs/{UUID}/ prefix, including unjournalled Arrow/temp files, and
+ignores ledger-provided paths. The local adapter refuses symlink ancestors and does not follow links inside
+a run directory. It preserves sibling runs. Object-store adapters must implement the same deleteRun contract;
+the default method refuses unsupported adapters rather than marking their output index released.
+
+This lifecycle is verified locally and against PostgreSQL, including runtime maintenance and retries after
+restart. The configured object-store adapter, Application installation/owner routing and live Hartland
+certification remain pending.
 
 ## Operating it
 
@@ -307,7 +339,8 @@ the render by key when one is missing.
 `automation` database, schema `automation`): `V1` the ledger, `V2` pgmq 1.13.0 installed **SQL-only** —
 upstream's `pgmq.sql`, vendored unchanged and hash-checked, PostgreSQL License (see NOTICE) — `V3` the
 four queues, `V4` D-98's one-open-task index with NULLs held equal (`NULLS NOT DISTINCT`, PostgreSQL 15+),
-`V5` the durable evaluation dispatch/claim/acknowledgement journal, and `V6` the initiating verified subject.
+`V5` the durable evaluation dispatch/claim/acknowledgement journal, `V6` the initiating verified subject, and
+`V7` durable staging release/scan timestamps.
 No extension and no custom Postgres image are needed; the database user must own the database.
 The HTTP port opens only after the migration, so the chart's startup probe covers it.
 

@@ -68,4 +68,39 @@ class StagingSpec :
                 ) {}.put(UUID.randomUUID(), "../outside", "rows", Table(emptyList(), emptyList()))
             }
         }
+        "per-run deletion collects journalled, orphan and temporary blobs without touching siblings" {
+            val root = Files.createTempDirectory("au-staging-delete")
+            val store = LocalStagingStore(root)
+            val id = UUID.randomUUID()
+            val other = UUID.randomUUID()
+            store.putIfAbsent("runs/$id/i.rows.arrow", byteArrayOf(1))
+            store.putIfAbsent("runs/$id/.stage-orphan.tmp", byteArrayOf(2))
+            store.putIfAbsent("runs/$id/nested/orphan.arrow", byteArrayOf(3))
+            store.putIfAbsent("runs/$other/i.rows.arrow", byteArrayOf(4))
+            store.deleteRun(id)
+            store.deleteRun(id)
+            Files.exists(root.resolve("runs/$id")) shouldBe false
+            store.get("runs/$other/i.rows.arrow").toList() shouldBe listOf<Byte>(4)
+        }
+        "per-run deletion never follows links to another directory" {
+            val root = Files.createTempDirectory("au-staging-links")
+            val outside = Files.createTempDirectory("au-staging-outside")
+            Files.write(outside.resolve("keep.arrow"), byteArrayOf(5))
+            val store = LocalStagingStore(root)
+            val id = UUID.randomUUID()
+            Files.createDirectories(root.resolve("runs/$id"))
+            Files.createSymbolicLink(root.resolve("runs/$id/link"), outside)
+            store.deleteRun(id)
+            Files.readAllBytes(outside.resolve("keep.arrow")).toList() shouldBe listOf<Byte>(5)
+            Files.createSymbolicLink(root.resolve("runs/$id"), outside)
+            shouldThrow<IllegalArgumentException> { store.deleteRun(id) }
+            shouldThrow<IllegalArgumentException> { store.get("runs/$id/keep.arrow") }
+            shouldThrow<IllegalArgumentException> { store.putIfAbsent("runs/$id/new.arrow", byteArrayOf(1)) }
+            Files.exists(outside.resolve("new.arrow")) shouldBe false
+            Files.delete(root.resolve("runs/$id"))
+            Files.delete(root.resolve("runs"))
+            Files.createSymbolicLink(root.resolve("runs"), outside)
+            shouldThrow<IllegalArgumentException> { store.deleteRun(id) }
+            Files.exists(outside.resolve("keep.arrow")) shouldBe true
+        }
     })
