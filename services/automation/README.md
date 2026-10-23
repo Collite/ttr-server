@@ -12,20 +12,25 @@ in the project folder:
 > All five read/candidate guards and synchronous evaluation summaries are implemented. Evaluation shares the
 > pinned runner, returns route counts/refs plus unmatched candidates and guard evidence, and records the decision
 > atomically with EVALUATED status. Detail snapshots now apply pinned limits per route/context/key before staging,
-> and authenticated route/detail/output readers page the verified Arrow or download Arrow/CSV. Production
-> runtime/storage wiring, total batch cancellation and the remaining protocol/lifecycle work remain.
+> and authenticated route/detail/output readers page the verified Arrow or download Arrow/CSV. Absolute
+> evaluation deadlines and runtime assembly are implemented. Application installation, object storage,
+> owner routing and the remaining protocol/lifecycle work remain.
 > Budgeted evaluate, observation-only polling and durable abandonment/cleanup primitives are implemented. Run handlers,
 > including evaluate and route/detail/output readers, are not mounted in Application.
 
-The durable evaluation path now has atomic pgmq enqueue/acknowledgement, a permanent execution claim and
-bounded coroutine consumers. It remains unmounted with the other P1 run handlers; runtime must wire its
-dispatcher and maintenance callback as described below.
+The durable evaluation path has atomic pgmq enqueue/acknowledgement, a permanent execution claim and
+bounded coroutine consumers. `RunRuntime` assembles this path with the pinned sessions, governed Query door,
+staging and typed ledger callbacks. Application installation remains pending with the other P1 lifecycle work.
 
 The executor requires an explicit `world/storage` → Query world alias map. Query resolves those aliases through
 its existing `QUERY_WORLDS` table. Missing routes fail before a query is issued; there is no fallback to Query's
 default connection. Recipe `:name` bindings are translated lexically to the door's `{name}` syntax. Named runs
 use the IdP token's own roles, not the caller's. Open expands `port: keys` into scalar bindings; every keyed
 output is filtered before staging.
+
+Set `automation.door.routes` / `AUTOMATION_DOOR_ROUTES` to comma-separated aliases, for example
+`demo/erp_db=us-erp,demo/automation_db=us-ledger`. Duplicate keys and malformed pairs fail configuration load.
+Each alias must also exist in Query's `QUERY_WORLDS`; these values are logical names, never database URLs.
 
 Before each governed read, QueryDoor compiles the exact scoped/bound request and requires explicit validated
 ER read evidence contained in the pinned manifest's `objectsRead`. Missing evidence (including an older Query
@@ -197,7 +202,22 @@ The worker's periodic loop requires a `maintenance` callback that performs the l
 starting workers so this callback cannot observe an uninitialized registry. Queue/maintenance errors back off
 and retry without ending the consumers. Stop/join workers before `sessions.shutdown()` closes executors, and
 finish both before closing the database. Shutdown joins in-flight enqueue and active evaluation cancellation.
-Deployment owner routing, production integration and staging retention are pending. No run routes or maintenance loop are installed in Application yet.
+`RunRuntime` installs this dispatcher and maintenance callback in one place, with the configured worker count,
+batch/sync/default detail limits, explicit storage aliases, `ledger::failExecution` and the shared clock. It
+constructs the registry before starting consumers; maintenance sweeps the ledger, reaps local abandoned
+sessions even when the sweep returns no IDs, then archives finished tickets. Its default queue uses the same
+clock and configured batch default. The caller must construct Ledger with that clock too, including clock.skew.
+
+`api.runRoutes(runtime)` installs Open/evaluate/poll, part/island, route/detail and output handlers inside
+`authenticate(AUTOMATION_AUTH)`. Authenticated HTTP assembly specs exercise the real runtime with mocked
+ledger/queue/Query boundaries; PostgreSQL component specs use the real ledger, default queue and workers.
+Runtime shutdown first fences new opens/reads, then joins worker cancellation and releases session resources.
+Concurrent shutdown calls join the same cleanup; database, Query channel and staging must remain usable until
+it returns. These dependencies belong to the application and are not closed by the runtime.
+
+Deployment owner routing, Application installation and staging retention are pending. No run routes or
+maintenance loop are installed in Application yet. Full protocol/status, dry-run previews, close/sealing and
+preview/close/task deadline handoff must be integrated before exposing this path there.
 
 Local staging publishes immutable Arrow blobs before journalling their metadata. A journal failure leaves an
 unreferenced blob for the S1.3 retention job; it never deletes content another claimant might reference. The

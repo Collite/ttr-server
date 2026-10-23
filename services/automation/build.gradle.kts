@@ -31,6 +31,11 @@ tasks.test {
     inputs.dir("src/test/resources/runner")
 }
 
+tasks.named<Test>("componentTest") {
+    jvmArgs("--add-opens=java.base/java.nio=ALL-UNNAMED")
+    inputs.dir("src/test/resources/bundles")
+}
+
 val osArch = System.getProperty("os.arch").lowercase()
 val isArm64 = osArch.contains("aarch64") || osArch.contains("arm64")
 val isCi = System.getenv("CI") != null
@@ -148,4 +153,8 @@ dependencies {
     "componentTestImplementation"(libs.flyway.pgsql)
     "componentTestImplementation"(libs.typesafe.config)
     "componentTestImplementation"(libs.kotlinx.serialization.json)
+    "componentTestImplementation"(libs.kotlinx.coroutines.core)
+    "componentTestImplementation"(libs.arrow.vector)
+    "componentTestImplementation"(libs.tatrman.ttr.metadata)
+    "componentTestImplementation"(project(":shared:proto"))
 }

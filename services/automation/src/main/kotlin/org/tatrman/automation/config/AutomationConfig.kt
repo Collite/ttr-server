@@ -9,6 +9,8 @@ data class DoorConfig(
     val queryUrl: String,
     val velesUrl: String,
     val sidecarUrl: String?,
+    /** Exact logical world/storage → Query world (also configured in Query's QUERY_WORLDS). */
+    val routes: Map<String, String> = emptyMap(),
 )
 
 /**
@@ -131,6 +133,7 @@ data class AutomationConfig(
                         queryUrl = c.getString("door.queryUrl"),
                         velesUrl = c.getString("door.velesUrl"),
                         sidecarUrl = c.optString("door.sidecarUrl"),
+                        routes = doorRoutes(c.optString("door.routes")),
                     ),
                 auth =
                     AuthConfig(
@@ -195,6 +198,25 @@ data class AutomationConfig(
                 approvalsOff = approvalsOff(c),
                 runner = RunnerConfig(if (c.hasPath("runner.workers")) c.getInt("runner.workers") else 4),
             )
+        }
+
+        /** Explicit aliases only; duplicate keys must not silently redirect a storage to another database. */
+        internal fun doorRoutes(raw: String?): Map<String, String> {
+            val routes = linkedMapOf<String, String>()
+            val name = Regex("[A-Za-z_][A-Za-z_0-9.-]*")
+            raw.orEmpty().split(',').map { it.trim() }.filter { it.isNotEmpty() }.forEach { pair ->
+                val parts = pair.split('=')
+                require(parts.size == 2) { "automation.door.routes requires world/storage=query-world pairs" }
+                val key = parts[0].trim()
+                val alias = parts[1].trim()
+                val path = key.split('/')
+                require(path.size == 2 && path.all { name.matches(it) } && name.matches(alias)) {
+                    "automation.door.routes requires world/storage=query-world pairs"
+                }
+                require(key !in routes) { "automation.door.routes repeats $key" }
+                routes[key] = alias
+            }
+            return routes
         }
 
         /** Keycloak's token endpoint beside its JWKS: `…/openid-connect/certs` → `…/openid-connect/token`. */

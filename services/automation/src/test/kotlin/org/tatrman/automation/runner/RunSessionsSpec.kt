@@ -366,69 +366,7 @@ internal class RunSessionFixture(
     val statusReads = AtomicInteger()
     val outputs = java.util.Collections.synchronizedList(mutableListOf<RunOutput>())
     private val work = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-    private val original = BundleFixture.load()
-    private val islands =
-        listOf(
-            ManifestIsland(
-                "placed",
-                outputs =
-                    listOf(
-                        ManifestOutput("orders", "c.sql", columns = columns, keyed = true, storage = "erp_db"),
-                    ),
-            ),
-            ManifestIsland(
-                "shortfall",
-                outputs = listOf(ManifestOutput("rows", "s.sql", columns = columns, keyed = false, storage = "erp_db")),
-            ),
-            ManifestIsland(
-                "way",
-                outputs =
-                    listOf("release", "hold").map {
-                        ManifestOutput(it, "$it.sql", columns = columns, keyed = true, storage = "erp_db")
-                    },
-            ),
-        )
-    private val recipe =
-        original.recipes.getValue("release_order").let { r ->
-            val metadata =
-                r.recipe.copy(
-                    roles =
-                        ManifestRoles(
-                            "placed",
-                            listOf(ManifestContext("shortfall", "lookup", "sql")),
-                            "way",
-                            routes = listOf(ManifestRoute("release"), ManifestRoute("hold")),
-                        ),
-                    parts = emptyList(),
-                )
-            r.copy(
-                recipe = metadata,
-                manifest =
-                    r.manifest.copy(
-                        islands = islands,
-                        waves = listOf(listOf("placed"), listOf("shortfall"), listOf("way")),
-                        recipe = metadata,
-                    ),
-                statements =
-                    mapOf(
-                        "c.sql" to "candidates-original",
-                        "s.sql" to "shortfall",
-                        "release.sql" to "release",
-                        "hold.sql" to "hold",
-                    ),
-            )
-        }
-    var bundle =
-        original.copy(
-            modelFp = "pinned-model",
-            recipes = original.recipes + ("release_order" to recipe),
-            deployments =
-                original.deployments +
-                    (
-                        "release_native_event" to
-                            original.deployments.getValue("release_native_event").copy(runAs = ModelRunAs.Caller)
-                    ),
-        )
+    var bundle = sessionBundle(columns)
     private val policy =
         Open(
             { bundle },
@@ -533,4 +471,70 @@ internal class RunSessionFixture(
         runs.shutdown()
         work.cancel()
     }
+}
+
+/** One small executable bundle shared by session and assembled-runtime specs. */
+internal fun sessionBundle(columns: List<ManifestColumn>): Bundle {
+    val original = BundleFixture.load()
+    val islands =
+        listOf(
+            ManifestIsland(
+                "placed",
+                outputs =
+                    listOf(
+                        ManifestOutput("orders", "c.sql", columns = columns, keyed = true, storage = "erp_db"),
+                    ),
+            ),
+            ManifestIsland(
+                "shortfall",
+                outputs = listOf(ManifestOutput("rows", "s.sql", columns = columns, keyed = false, storage = "erp_db")),
+            ),
+            ManifestIsland(
+                "way",
+                outputs =
+                    listOf("release", "hold").map {
+                        ManifestOutput(it, "$it.sql", columns = columns, keyed = true, storage = "erp_db")
+                    },
+            ),
+        )
+    val recipe =
+        original.recipes.getValue("release_order").let { r ->
+            val metadata =
+                r.recipe.copy(
+                    roles =
+                        ManifestRoles(
+                            "placed",
+                            listOf(ManifestContext("shortfall", "lookup", "sql")),
+                            "way",
+                            routes = listOf(ManifestRoute("release"), ManifestRoute("hold")),
+                        ),
+                    parts = emptyList(),
+                )
+            r.copy(
+                recipe = metadata,
+                manifest =
+                    r.manifest.copy(
+                        islands = islands,
+                        waves = listOf(listOf("placed"), listOf("shortfall"), listOf("way")),
+                        recipe = metadata,
+                    ),
+                statements =
+                    mapOf(
+                        "c.sql" to "candidates-original",
+                        "s.sql" to "shortfall",
+                        "release.sql" to "release",
+                        "hold.sql" to "hold",
+                    ),
+            )
+        }
+    return original.copy(
+        modelFp = "pinned-model",
+        recipes = original.recipes + ("release_order" to recipe),
+        deployments =
+            original.deployments +
+                (
+                    "release_native_event" to
+                        original.deployments.getValue("release_native_event").copy(runAs = ModelRunAs.Caller)
+                ),
+    )
 }

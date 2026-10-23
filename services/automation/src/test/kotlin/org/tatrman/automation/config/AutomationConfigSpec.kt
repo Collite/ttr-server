@@ -130,6 +130,16 @@ class AutomationConfigSpec :
             load(required + "\nautomation.clock.skew = 90s").clockSkew shouldBe Duration.ofSeconds(90)
         }
 
+        "door aliases are explicit world-storage pairs and malformed or repeated routes fail at load" {
+            load(required + "\nautomation.door.routes = \"demo/erp_db=us-erp, demo/automation_db=us-ledger\"")
+                .door.routes shouldBe mapOf("demo/erp_db" to "us-erp", "demo/automation_db" to "us-ledger")
+            for (raw in listOf("erp_db=us", "demo/erp_db=", "demo/erp_db=http://db", "a/b=x,a/b=y", "a/b=x=y")) {
+                shouldThrow<IllegalArgumentException> {
+                    load(required + "\nautomation.door.routes = \"$raw\"")
+                }.message shouldContain "door.routes"
+            }
+        }
+
         "approvals are required by default; off needs an explicit development gate and typos refuse" {
             load(required).approvalsOff shouldBe false
             shouldThrow<IllegalArgumentException> { load(required + "\nautomation.approvals = off") }

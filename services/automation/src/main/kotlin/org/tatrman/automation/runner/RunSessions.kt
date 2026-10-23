@@ -189,7 +189,7 @@ class RunSessions(
         id: UUID,
         caller: Caller,
     ): Session {
-        val session = lock.withLock { sessions[id]?.takeUnless { it.closing } } ?: unavailable()
+        val session = lock.withLock { if (stopped) null else sessions[id]?.takeUnless { it.closing } } ?: unavailable()
         if (session.runner.context.identity.caller.sub != caller.sub) unavailable()
         return session
     }
@@ -341,6 +341,11 @@ class RunSessions(
             }
         }
         failure?.let { throw it }
+    }
+
+    /** Fence new HTTP work before the runtime joins workers and then closes the pinned executors. */
+    suspend fun stopAccepting() {
+        lock.withLock { stopped = true }
     }
 
     suspend fun shutdown() {
