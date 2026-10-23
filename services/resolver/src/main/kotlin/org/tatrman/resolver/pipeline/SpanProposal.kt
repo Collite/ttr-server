@@ -5,6 +5,7 @@ import org.tatrman.nlp.v1.AnalyzeResponse
 import org.tatrman.nlp.v1.NerEntity
 import org.tatrman.nlp.v1.Token
 import org.tatrman.resolver.model.ResolverEntityType
+import org.tatrman.resolver.model.governingRefByRef
 import org.tatrman.resolver.model.valueCategoriesByRef
 import org.tatrman.resolver.v1.UniversalEntityType
 import org.tatrman.text.Normalization.fold
@@ -204,6 +205,11 @@ object SpanProposal {
         // MV §5.3 — where a value governed by each object is looked up (its own categories, then
         // its member vocabularies'). Built once per proposal; read by the governed block below.
         val valueCategories = entityTypes.valueCategoriesByRef()
+        // CN-P4 (cn contracts §5, A-CN-6) — a concept anchor governs its values as its ER landing: the
+        // governed candidate is gated to the landing, so the governor stamp (`SlotHints`), the Binder's
+        // tier-M rule and a dual reading's scope (`UniversalSeam`) all read the entity or attribute the
+        // concept lands on. Empty on an estate with no `model cn`.
+        val governing = entityTypes.governingRefByRef()
         val universal = universalCharRanges(parse.entitiesList)
         // ttr-server#152 — the one-word dates: token → the char range of the DATE the NER typed
         // over exactly that word and nothing else (`Monthly`). A date wider than its word (`last
@@ -370,14 +376,14 @@ object SpanProposal {
             // refs, never its own, so before MV this lookup could not find `TN` under `stores`
             // at all and every tier-M bind came through the open sibling and M3 (MH §7.5 ⚑).
             // The GATED refs stay the owners: they are the governor the gate reasons about.
-            val refs = if (placesOnly) emptyList() else valueOwners.map { it.ref }.distinct()
+            val refs = if (placesOnly) emptyList() else valueOwners.map { governing[it.ref] ?: it.ref }.distinct()
             val categories = valueOwners.flatMap { valueCategories[it.ref] ?: it.categories }.distinct()
             // ✅UD-8 — a place's governors: the value-bearing owners, then each measure's fact.
             // With no measure among the hits this is exactly [valueOwners], so a dual reading
             // under an entity is gated as it always was.
             val placeOwners =
                 (
-                    valueOwners.map { it.ref } +
+                    valueOwners.map { governing[it.ref] ?: it.ref } +
                         hits.map { it.et }.filter { it.objectKind == MEASURE_KIND }.map { it.ownerRef }
                 ).filter { it.isNotBlank() }.distinct()
             if (refs.isEmpty() && placeOwners.isEmpty()) return

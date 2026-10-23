@@ -244,6 +244,24 @@ message EntityBinding {
   }
   BindingProvenance provenance = 4; // S-1 + S-4 + RS-15
   bool degraded = 5;                // RS-25: set when the capability matrix forced a floor
+  // CN-P4 (cn contracts §5, A-CN-5/7) — the concepts a domain binding reads as: the one its term
+  // names, and the ones its element or member lifts to, deduped by concept. Empty on an estate with
+  // no `model cn`. A concept binding's `domain` names the concept's ER landing, never the `cn.*` ref
+  // (A-CN-70); the concept itself rides here, with its stereotype for the frame builder to filter on.
+  repeated ConceptReading concepts = 6;
+}
+
+// CN-P4 — one concept a domain binding reads as (cn contracts §5).
+message ConceptReading {
+  string concept_qname = 1;            // `cn.<Name>`
+  string stereotype = 2;               // kind | role | event | quality | phase (a lift never lands on a phase)
+  string via = 3;                      // direct | md-hop; "" for an ungrounded concept
+  // Every source of this reading: `term:<concept>` when a term names the concept, `lift:<ref>` for
+  // each element or member category that lifts to it (A-CN-5).
+  repeated string lift_provenance = 4;
+  // Advisory, when the concept has no ER landing: `cn/ungrounded`, or `md/er-unmapped` for an md
+  // grounding whose hop is missing. Its values then resolve as open values; nothing is refused.
+  string note = 5;
 }
 
 // A character span of the resolved surface text.

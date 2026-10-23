@@ -1,0 +1,5 @@
+package clinic
+
+model lexicon locale cs
+
+def term diagnosis_cs { for: cn.Diagnosis, forms: ["diagnóza"] }

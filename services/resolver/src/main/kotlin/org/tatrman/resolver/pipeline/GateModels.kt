@@ -81,6 +81,11 @@ data class DomainBinding(
      * `TN` as a billing state and as a shipping state of one customer were the same binding.
      */
     val memberOf: String = "",
+    /**
+     * CN-P4 (cn contracts §5) — the concepts this binding reads as: the one its term names and the ones
+     * its element or member lifts to ([ConceptLifts]). Empty on an estate with no `model cn`.
+     */
+    val concepts: List<ConceptLifts.LiftedConcept> = emptyList(),
 )
 
 /**

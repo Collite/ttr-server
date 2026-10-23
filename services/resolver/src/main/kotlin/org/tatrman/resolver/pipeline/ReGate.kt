@@ -12,6 +12,7 @@ import org.tatrman.fuzzy.v1.LookupRequest
 import org.tatrman.resolver.client.FuzzyClient
 import org.tatrman.resolver.model.ResolverEntityType
 import org.tatrman.resolver.model.ResolverThresholds
+import org.tatrman.resolver.model.conceptFacts
 import org.tatrman.resolver.model.kindsByRef
 import org.tatrman.resolver.model.memberEntityByCategory
 import org.tatrman.resolver.model.ownersByRef
@@ -182,6 +183,8 @@ object ReGate {
         val kinds = entityTypes.kindsByRef()
         val reach = entityTypes.reachByRef()
         val memberOwners = entityTypes.memberEntityByCategory()
+        // CN-P4 — the concept tier, read through the same registry, for the same reason.
+        val concepts = entityTypes.conceptFacts()
         // `Gate` is a public rpc and `hypotheses` is an unbounded repeated field, so the fan-out has
         // to be bounded by this service rather than by the caller's good manners: without this a
         // single request opens one concurrent matcher RPC per hypothesis, each with a 30s deadline.
@@ -292,6 +295,7 @@ object ReGate {
                     kinds,
                     reach,
                     memberOwners,
+                    concepts,
                 )
             when {
                 verdict is Binder.Ambiguous -> outcomes += outcome(hypothesis, Reason.AMBIGUOUS)

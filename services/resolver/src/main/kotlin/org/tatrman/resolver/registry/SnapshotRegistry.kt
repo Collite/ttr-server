@@ -4,6 +4,7 @@ package org.tatrman.resolver.registry
 import org.tatrman.resolver.model.ResolverEntityType
 import org.tatrman.resolver.model.ResolverRegistry
 import org.tatrman.resolver.model.ResolverThresholds
+import org.tatrman.resolver.model.TermSense
 import java.util.concurrent.atomic.AtomicReference
 
 /**
@@ -68,6 +69,21 @@ class SnapshotRegistry(
                     codeFormat = entries.first().codeFormat,
                     // MV: per-ref as well.
                     memberVocabulary = entries.first().memberVocabulary,
+                    // CN-P4: per-ref facts again; the senses are per term, kept for the terms
+                    // that state one.
+                    stereotype = entries.first().stereotype,
+                    erTarget = entries.first().erTarget,
+                    via = entries.first().via,
+                    ofRef = entries.first().ofRef,
+                    liftsTo = entries.first().liftsTo,
+                    senses =
+                        entries
+                            .flatMap { it.values }
+                            .filter { it.defaultSense || it.sensePriority != null }
+                            .groupBy { it.value }
+                            .mapValues { (_, vs) ->
+                                TermSense(vs.any { it.defaultSense }, vs.mapNotNull { it.sensePriority }.maxOrNull())
+                            },
                 )
             }
         val locales = (vocab.locales + configLocales).distinct()

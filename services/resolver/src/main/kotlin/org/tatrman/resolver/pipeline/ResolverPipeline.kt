@@ -28,6 +28,7 @@ import org.tatrman.resolver.v1.AwaitingClarification
 import org.tatrman.resolver.v1.BindingProvenance
 import org.tatrman.resolver.v1.Candidate
 import org.tatrman.resolver.v1.Capabilities
+import org.tatrman.resolver.v1.ConceptReading
 import org.tatrman.resolver.v1.Domain
 import org.tatrman.resolver.v1.GateRequest
 import org.tatrman.resolver.v1.GateResponse
@@ -878,7 +879,19 @@ class ResolverPipeline(
                     .setSnapshotHash(b.snapshotHash)
                     .addAllModelVersions(parse.usedList),
             ).setDegraded(degraded)
-            .build()
+            // CN-P4 (cn contracts §5) — the concept readings, in the order the lift found them.
+            .addAllConcepts(
+                b.concepts.map {
+                    ConceptReading
+                        .newBuilder()
+                        .setConceptQname(it.qname)
+                        .setStereotype(it.stereotype)
+                        .setVia(it.via)
+                        .addAllLiftProvenance(it.provenance)
+                        .setNote(it.note)
+                        .build()
+                },
+            ).build()
     }
 
     private fun awaitingOf(

@@ -1,12 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 package org.tatrman.resolver.registry
 
+import org.tatrman.resolver.model.Lift
 import org.tatrman.resolver.model.Reach
 import org.slf4j.LoggerFactory
 import org.tatrman.ttr.lexicon.CompiledEntry
 import org.tatrman.ttr.lexicon.CompiledLexicon
 import org.tatrman.ttr.lexicon.CompiledLexiconHeader
 import org.tatrman.ttr.lexicon.TargetClass
+import org.tatrman.ttr.lexicon.TargetFacts
 import java.nio.file.Path
 
 /**
@@ -165,8 +167,17 @@ class LexiconArchiveRegistrySource(
                 .filter { it.targetClass == TargetClass.MODEL_OBJECT }
                 .groupBy { it.targetRef }
         val memberRefs = lexicon.targets.filterValues { it.memberVocabulary }.keys
+        // CN-P4 (cn contracts §5) — and every concept and every element that lifts to one, terms or
+        // not. A lift lands on a concept nobody wrote a term for (`cn.Sale` from its cubelet), carries
+        // its stereotype from that concept's own entry, and a phase's `of:` chain may pass through one;
+        // an md element carries `liftsTo` alone. Neither adds an anchor, so proposal is unchanged; and
+        // an archive with no `model cn` has none of them, so its vocabulary is exactly what it was.
+        val conceptRefs =
+            lexicon.targets
+                .filterValues { it.objectKind == TargetFacts.CONCEPT || it.liftsTo.isNotEmpty() }
+                .keys
         val entries =
-            (rowsByRef.keys + memberRefs)
+            (rowsByRef.keys + memberRefs + conceptRefs)
                 .map { targetRef ->
                     val rows = rowsByRef[targetRef].orEmpty()
                     // MS: a lookup and a copy. A ref the archive declares nothing about — a
@@ -193,6 +204,12 @@ class LexiconArchiveRegistrySource(
                         codeFormat = facts?.codeFormat ?: "",
                         // MV: the fourth lookup-and-copy. A pre-v5 archive decodes it as false.
                         memberVocabulary = facts?.memberVocabulary ?: false,
+                        // CN-P4: the fifth. A pre-v6 archive decodes them as null and empty.
+                        stereotype = facts?.stereotype ?: "",
+                        erTarget = facts?.erTarget ?: "",
+                        via = facts?.via ?: "",
+                        ofRef = facts?.ofRef ?: "",
+                        liftsTo = facts?.liftsTo.orEmpty().map { Lift(it.qname, it.via) },
                     )
                 }.sortedBy { it.category }
 
@@ -229,7 +246,12 @@ class LexiconArchiveRegistrySource(
 
     /** `id` must be stable and unique per row — term + lang, since one term may serve two. */
     private fun CompiledEntry.toDeclaredValue(): DeclaredValue =
-        DeclaredValue(id = "lex:$targetRef:$lang:$termNormalized", value = termNormalized)
+        DeclaredValue(
+            id = "lex:$targetRef:$lang:$termNormalized",
+            value = termNormalized,
+            defaultSense = defaultSense,
+            sensePriority = sensePriority,
+        )
 
     /**
      * Reads every archive and assembles the layer, reusing the cache when the archives served hash

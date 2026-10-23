@@ -1,0 +1,6 @@
+package clinic
+
+model cn
+
+// A vocabulary-bound kind: its instances are the code entity's rows, named by their codes (R-cn-6).
+def kind Diagnosis { label: { en: "Diagnosis", cs: "Diagnóza" } }
