@@ -1,0 +1,7 @@
+{
+ "service": "chrono",
+ "grpc_port": 7220,
+ "llm_fallback": false,
+ "lexicon_slice": "sha256:0500811a53ebcfc2f69266a9f73eea43fe04df317a8ef5003d879c0cfa9205e4",
+ "lexicon_slice_terms": 59
+}

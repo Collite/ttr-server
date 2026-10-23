@@ -2,6 +2,8 @@
 package org.tatrman.health.service
 
 import kotlinx.serialization.Serializable
+import org.tatrman.health.content.Content
+import org.tatrman.health.content.ContentSummary
 
 @Serializable
 data class HealthCheckResult(
@@ -53,6 +55,8 @@ data class TechnologyStatus(
     val status: String,
     val error: String? = null,
     val details: Map<String, String> = emptyMap(),
+    /** What the service reports about its content (`/health/all/detailed` only, when configured). */
+    val content: Content? = null,
 )
 
 @Serializable
@@ -61,6 +65,8 @@ data class AllHealthResponse(
     val summary: HealthSummary,
     val threshold: Int? = null,
     val technologies: List<TechnologyStatus>,
+    /** Whether the content-serving services agree on the model commit (`/health/all/detailed`). */
+    val content: ContentSummary? = null,
 )
 
 @Serializable

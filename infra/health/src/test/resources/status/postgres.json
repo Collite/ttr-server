@@ -1,0 +1,32 @@
+{
+ "service": "postgres",
+ "engine": "postgres",
+ "engine_version": "PostgreSQL",
+ "grpc_port": 7303,
+ "supported_connections": [
+  "pg-hartland-cz",
+  "pg-hartland-us",
+  "pg-tpcds"
+ ],
+ "active_queries": 0,
+ "pool_stats": {
+  "pg-hartland-cz": {
+   "active": 0,
+   "idle": 10,
+   "max": 10,
+   "awaiting": 0
+  },
+  "pg-hartland-us": {
+   "active": 0,
+   "idle": 10,
+   "max": 10,
+   "awaiting": 0
+  },
+  "pg-tpcds": {
+   "active": 0,
+   "idle": 10,
+   "max": 10,
+   "awaiting": 0
+  }
+ }
+}

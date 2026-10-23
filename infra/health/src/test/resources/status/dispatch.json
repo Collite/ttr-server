@@ -1,0 +1,8 @@
+{
+ "service": "dispatch",
+ "grpc_port": 7291,
+ "default_connection": "pg-hartland-cz",
+ "known_workers": 3,
+ "healthy_workers": 3,
+ "active_sticky_sessions": 0
+}

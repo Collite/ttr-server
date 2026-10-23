@@ -1,0 +1,53 @@
+{
+ "kind": "CertificateList",
+ "items": [
+  {
+   "metadata": {
+    "name": "hartland-root-ca",
+    "namespace": "auth"
+   },
+   "status": {
+    "notAfter": "2026-12-16T09:09:31Z",
+    "renewalTime": "2026-11-16T09:09:31Z",
+    "conditions": [
+     {
+      "type": "Ready",
+      "status": "True"
+     }
+    ]
+   }
+  },
+  {
+   "metadata": {
+    "name": "gateway-wildcard",
+    "namespace": "gateway"
+   },
+   "status": {
+    "notAfter": "2026-12-16T09:09:31Z",
+    "renewalTime": "2026-11-16T09:09:31Z",
+    "conditions": [
+     {
+      "type": "Ready",
+      "status": "True"
+     }
+    ]
+   }
+  },
+  {
+   "metadata": {
+    "name": "gateway-wildcard-collite",
+    "namespace": "gateway"
+   },
+   "status": {
+    "notAfter": "2026-12-24T10:37:15Z",
+    "renewalTime": "2026-11-24T10:37:15Z",
+    "conditions": [
+     {
+      "type": "Ready",
+      "status": "True"
+     }
+    ]
+   }
+  }
+ ]
+}

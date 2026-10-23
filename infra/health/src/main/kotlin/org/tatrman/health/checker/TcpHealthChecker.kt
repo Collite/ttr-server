@@ -2,9 +2,6 @@
 package org.tatrman.health.checker
 
 import org.tatrman.health.service.HealthCheckResult
-import kotlinx.coroutines.withTimeoutOrNull
-import java.net.InetSocketAddress
-import java.net.Socket
 
 class TcpHealthChecker(
     override val technology: String,
@@ -19,44 +16,46 @@ class TcpHealthChecker(
         fun isValidResponse(response: ByteArray): Boolean
     }
 
-    override suspend fun check(): HealthCheckResult =
-        withTimeoutOrNull(timeout) {
-            Socket().use { socket ->
-                socket.connect(InetSocketAddress(host, port), timeout.toInt())
-                socket.soTimeout = timeout.toInt()
+    override suspend fun check(): HealthCheckResult {
+        val details = mapOf("host" to host, "port" to port.toString())
+        return try {
+            // The name lookup and the connect both run inside the timeout (Blocking.kt).
+            tcpConnect(host, port, timeout) { socket ->
                 val probeBytes = probe?.createProbeBytes()
-                if (probeBytes != null) {
-                    socket.outputStream.write(probeBytes)
-                    socket.outputStream.flush()
-                    val response = ByteArray(1024).also { socket.inputStream.read(it) }
-                    if (probe.isValidResponse(response)) {
-                        HealthCheckResult.healthy(
-                            technology = technology,
-                            source = "tcp",
-                            details = mapOf("host" to host, "port" to port.toString()),
-                        )
-                    } else {
+                if (probeBytes == null) return@tcpConnect true
+                socket.outputStream.write(probeBytes)
+                socket.outputStream.flush()
+                val response = ByteArray(1024).also { socket.inputStream.read(it) }
+                probe.isValidResponse(response)
+            }.let { valid ->
+                when (valid) {
+                    true -> HealthCheckResult.healthy(technology = technology, source = "tcp", details = details)
+                    false ->
                         HealthCheckResult.unhealthy(
                             technology = technology,
                             source = "tcp",
                             error = "Invalid probe response",
-                            details = mapOf("host" to host, "port" to port.toString()),
+                            details = details,
                         )
-                    }
-                } else {
-                    HealthCheckResult.healthy(
-                        technology = technology,
-                        source = "tcp",
-                        details = mapOf("host" to host, "port" to port.toString()),
-                    )
+                    null ->
+                        HealthCheckResult.unhealthy(
+                            technology = technology,
+                            source = "tcp",
+                            error = "Connection timeout",
+                            details = details,
+                        )
                 }
             }
-        } ?: HealthCheckResult.unhealthy(
-            technology = technology,
-            source = "tcp",
-            error = "Connection timeout",
-            details = mapOf("host" to host, "port" to port.toString()),
-        )
+        } catch (e: Exception) {
+            val cause = (e as? java.util.concurrent.CompletionException)?.cause ?: e
+            HealthCheckResult.unhealthy(
+                technology = technology,
+                source = "tcp",
+                error = cause.message ?: cause::class.simpleName ?: "Connection failed",
+                details = details,
+            )
+        }
+    }
 }
 
 class RedisPingProbe : TcpHealthChecker.TcpProbe {

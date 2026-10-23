@@ -11,11 +11,22 @@ import org.tatrman.health.config.HealthConfig
 import org.tatrman.health.config.TechnologyConfig
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeout
+import java.time.Clock
 import java.time.Duration
+import java.time.Instant
 
+/**
+ * [snapshotTtl]: how long one fan-out over every technology (`checkAllHealth`) is served to every caller.
+ * The landing polls it from each open browser every 60 s through a public route; without a shared snapshot
+ * each viewer would run every check itself. Concurrent callers share the one fan-out in flight.
+ */
 class HealthCheckService(
     private val config: HealthConfig,
+    private val snapshotTtl: Duration = Duration.ofSeconds(15),
+    private val clock: Clock = Clock.systemUTC(),
 ) {
     private val cache: Cache<String, HealthCheckResult> =
         Caffeine
@@ -79,7 +90,23 @@ class HealthCheckService(
         // TODO no details defined yet
         checkHealth(technology, true)
 
-    suspend fun checkAllHealth(threshold: Int = 100): AllHealthResponse =
+    private val snapshotLock = Mutex()
+
+    @Volatile
+    private var snapshot: Pair<Instant, List<TechnologyStatus>>? = null
+
+    /** Every technology's state — the shared snapshot while it is fresh, else one fan-out for all waiting callers. */
+    private suspend fun allTechnologies(): List<TechnologyStatus> {
+        fresh()?.let { return it }
+        return snapshotLock.withLock {
+            fresh() ?: checkAll().also { snapshot = clock.instant() to it }
+        }
+    }
+
+    private fun fresh(): List<TechnologyStatus>? =
+        snapshot?.let { (at, value) -> value.takeIf { Duration.between(at, clock.instant()) < snapshotTtl } }
+
+    private suspend fun checkAll(): List<TechnologyStatus> =
         coroutineScope {
             val asyncChecks =
                 checkers.mapValues { (name, checker) ->
@@ -100,33 +127,39 @@ class HealthCheckService(
                         }
                     }
                 }
-            val results = asyncChecks.mapValues { it.value.await() }
-            val technologies =
-                results.map { (name, result) ->
-                    TechnologyStatus(
-                        name = name,
-                        status = result.status,
-                        error = result.error,
-                        details = result.details,
-                    )
-                }
-            val healthyCount = technologies.count { it.status == "healthy" }
-            val total = technologies.size
-            val allHealthy = healthyCount >= (total * threshold / 100)
-            AllHealthResponse(
-                status = if (allHealthy) "healthy" else "unhealthy",
-                summary =
-                    HealthSummary(
-                        total = total,
-                        healthy = healthyCount,
-                        unhealthy = total - healthyCount,
-                    ),
-                threshold = if (threshold != 100) threshold else null,
-                technologies = technologies,
-            )
+            asyncChecks.map { (name, check) ->
+                val result = check.await()
+                TechnologyStatus(
+                    name = name,
+                    status = result.status,
+                    error = result.error,
+                    details = result.details,
+                )
+            }
         }
+
+    suspend fun checkAllHealth(threshold: Int = 100): AllHealthResponse {
+        val technologies = allTechnologies()
+        val healthyCount = technologies.count { it.status == "healthy" }
+        val total = technologies.size
+        val allHealthy = healthyCount >= (total * threshold / 100)
+        return AllHealthResponse(
+            status = if (allHealthy) "healthy" else "unhealthy",
+            summary =
+                HealthSummary(
+                    total = total,
+                    healthy = healthyCount,
+                    unhealthy = total - healthyCount,
+                ),
+            threshold = if (threshold != 100) threshold else null,
+            technologies = technologies,
+        )
+    }
 
     fun getSupportedTechnologies(): List<String> = checkers.keys.toList()
 
-    fun clearCache() = cache.invalidateAll()
+    fun clearCache() {
+        cache.invalidateAll()
+        snapshot = null
+    }
 }

@@ -22,6 +22,8 @@ Every route is **read-only** — the open surface exposes no mutating verb.
 | `GET /` | Minimal human status page: Server version, model fingerprint, per-service health. |
 | `GET /status` | The same as JSON — `{ serverVersion, modelFingerprint, summary, services[] }`. |
 | `GET /health/all` | Liveness rollup across every configured target (`200` healthy / `503` otherwise). |
+| `GET /health/all/detailed` | The rollup with each target's **content** (the model commit it serves, what it loaded and when — `infra/health/README.md` "Content") and whether the model-serving services agree on one commit. What a landing page polls. |
+| `GET /status/all` | The content alone. |
 | `GET /health/{service}` | One target's liveness (e.g. `/health/veles`). |
 | `GET /healthz` | The aggregator's own self-probe (use this as the pod liveness probe, not `/health/all`). |
 
@@ -46,13 +48,16 @@ a running UI.
 | --- | --- | --- |
 | `HEALTH_CHECK_SERVICE_PORT` | `7000` | The health service HTTP port. |
 | `VELES_STATUS_URL` | `http://veles:7260/status` | Where the status page reads the model fingerprint. |
-| `HEALTH_<SERVICE>_URL` | per `application.conf` | Override a target's base URL (e.g. `HEALTH_VELES_URL`). |
-| `HEALTH_<SERVICE>_ENDPOINT` | `/health` | Override a target's health path. |
-| `HEALTH_CACHE_TTL_SECONDS` | `30` | Result cache TTL for the rollup. |
+| `HEALTH_CACHE_TTL_SECONDS` | `30` | How long one target's own check (`/health/{service}`) is cached. |
+| `HEALTH_PROMETHEUS_URL` | `http://mon-prometheus-server.monitoring` | Prometheus, for `prometheus`-type checks. |
 
-The full target inventory (every service + infra dependency, each with a `HEALTH_*`
-override) lives in `infra/health/src/main/resources/application.conf`; a deploying repo
-(olymp) retunes DNS/ports/paths via a ConfigMap without rebuilding the image.
+The rollups share one fan-out over every target for 15 s, and each target's content read is kept 30 s
+(5 s after it failed), so a page polled from many browsers costs each service one check at a time.
+
+The target inventory is a **roster**: the bundled one (the reference estate's) lives in
+`infra/health/src/main/resources/application.conf`; a deploying repo (olymp) supplies its estate's own as a
+`health-check-service.roster` block through the chart's config fragment, which **replaces** the bundled one
+without rebuilding the image (`infra/health/README.md` "Per-cluster roster").
 
 **Per-service wiring** — each service reads its peers from its own `application.conf`
 with `${?ENV}` overrides (e.g. `TRANSLATE_SERVER`, `VALIDATE_SERVER`, `VELES_GRPC_HOST`).
