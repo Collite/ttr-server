@@ -1,0 +1,518 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`n8n descriptions > defines a valid Run description and stable parameter forms 1`] = `
+[
+  {
+    "default": "open",
+    "displayName": "Operation",
+    "name": "operation",
+    "noDataExpression": true,
+    "options": [
+      {
+        "action": "Open a run",
+        "name": "Open",
+        "value": "open",
+      },
+      {
+        "action": "Part a run",
+        "name": "Part",
+        "value": "part",
+      },
+      {
+        "action": "Islands a run",
+        "name": "Islands",
+        "value": "islands",
+      },
+      {
+        "action": "Evaluate a run",
+        "name": "Evaluate",
+        "value": "evaluate",
+      },
+      {
+        "action": "Routes a run",
+        "name": "Routes",
+        "value": "routes",
+      },
+      {
+        "action": "Perform a run",
+        "name": "Perform",
+        "value": "perform",
+      },
+      {
+        "action": "Outcome a run",
+        "name": "Outcome",
+        "value": "outcome",
+      },
+      {
+        "action": "Digests a run",
+        "name": "Digests",
+        "value": "digests",
+      },
+      {
+        "action": "Close a run",
+        "name": "Close",
+        "value": "close",
+      },
+      {
+        "action": "Answer a run",
+        "name": "Answer",
+        "value": "answer",
+      },
+      {
+        "action": "Task a run",
+        "name": "Task",
+        "value": "task",
+      },
+    ],
+    "type": "options",
+  },
+  {
+    "default": "",
+    "description": "Choose from the list, or specify an ID using an expression",
+    "displayName": "Recipe Name or ID",
+    "displayOptions": {
+      "show": {
+        "operation": [
+          "open",
+          "routes",
+          "perform",
+          "outcome",
+        ],
+      },
+    },
+    "name": "recipe",
+    "required": true,
+    "type": "options",
+    "typeOptions": {
+      "loadOptionsMethod": "getRecipes",
+    },
+  },
+  {
+    "default": "",
+    "description": "Choose from the list, or specify an ID using an expression",
+    "displayName": "Deployment Name or ID",
+    "displayOptions": {
+      "show": {
+        "operation": [
+          "open",
+        ],
+      },
+    },
+    "name": "deployment",
+    "required": true,
+    "type": "options",
+    "typeOptions": {
+      "loadOptionsMethod": "getDeployments",
+    },
+  },
+  {
+    "default": "",
+    "description": "Run returned by Open",
+    "displayName": "Run ID",
+    "displayOptions": {
+      "show": {
+        "operation": [
+          "part",
+          "islands",
+          "evaluate",
+          "routes",
+          "perform",
+          "outcome",
+          "digests",
+          "close",
+        ],
+      },
+    },
+    "name": "runId",
+    "required": true,
+    "type": "string",
+  },
+  {
+    "default": "{"none":true}",
+    "description": "JSON object: {"none":true}, {"key":…}, {"keys":[…]}, {"event":{…}} or {"window":{…}}",
+    "displayName": "Port",
+    "displayOptions": {
+      "show": {
+        "operation": [
+          "open",
+        ],
+      },
+    },
+    "name": "port",
+    "required": true,
+    "type": "json",
+  },
+  {
+    "default": "",
+    "description": "Optional replay instant or now (requires debug or dry run)",
+    "displayName": "As Of",
+    "displayOptions": {
+      "show": {
+        "operation": [
+          "open",
+        ],
+      },
+    },
+    "name": "asOf",
+    "required": false,
+    "type": "string",
+  },
+  {
+    "default": "",
+    "description": "Optional preview bundle (debug only)",
+    "displayName": "Bundle",
+    "displayOptions": {
+      "show": {
+        "operation": [
+          "open",
+        ],
+      },
+    },
+    "name": "bundle",
+    "required": false,
+    "type": "string",
+  },
+  {
+    "default": false,
+    "description": "Whether to request a dry run",
+    "displayName": "Dry Run",
+    "displayOptions": {
+      "show": {
+        "operation": [
+          "open",
+        ],
+      },
+    },
+    "name": "dryRun",
+    "required": false,
+    "type": "boolean",
+  },
+  {
+    "default": "",
+    "description": "Stable key for replaying an open request safely",
+    "displayName": "Idempotency Key",
+    "displayOptions": {
+      "show": {
+        "operation": [
+          "open",
+        ],
+      },
+    },
+    "name": "idempotencyKey",
+    "required": false,
+    "type": "string",
+  },
+  {
+    "default": "candidates",
+    "description": "Candidates, a context name, or decision",
+    "displayName": "Part",
+    "displayOptions": {
+      "show": {
+        "operation": [
+          "part",
+        ],
+      },
+    },
+    "name": "part",
+    "required": true,
+    "type": "string",
+  },
+  {
+    "default": "",
+    "description": "Island name in the recipe manifest",
+    "displayName": "Island",
+    "displayOptions": {
+      "show": {
+        "operation": [
+          "islands",
+        ],
+      },
+    },
+    "name": "island",
+    "required": true,
+    "type": "string",
+  },
+  {
+    "default": "",
+    "description": "Choose from the list, or specify an ID using an expression",
+    "displayName": "Route Name or ID",
+    "displayOptions": {
+      "show": {
+        "operation": [
+          "routes",
+        ],
+      },
+    },
+    "name": "route",
+    "required": true,
+    "type": "options",
+    "typeOptions": {
+      "loadOptionsDependsOn": [
+        "recipe",
+      ],
+      "loadOptionsMethod": "getRoutes",
+    },
+  },
+  {
+    "default": "",
+    "description": "Choose from the list, or specify an ID using an expression",
+    "displayName": "Action Name or ID",
+    "displayOptions": {
+      "show": {
+        "operation": [
+          "perform",
+          "outcome",
+        ],
+      },
+    },
+    "name": "action",
+    "required": true,
+    "type": "options",
+    "typeOptions": {
+      "loadOptionsDependsOn": [
+        "recipe",
+      ],
+      "loadOptionsMethod": "getActions",
+    },
+  },
+  {
+    "default": "",
+    "description": "Optional JSON array of candidate keys",
+    "displayName": "Keys",
+    "displayOptions": {
+      "show": {
+        "operation": [
+          "perform",
+        ],
+      },
+    },
+    "name": "keys",
+    "required": false,
+    "type": "json",
+  },
+  {
+    "default": "",
+    "description": "Optional JSON group value",
+    "displayName": "Group",
+    "displayOptions": {
+      "show": {
+        "operation": [
+          "perform",
+        ],
+      },
+    },
+    "name": "group",
+    "required": false,
+    "type": "json",
+  },
+  {
+    "default": "",
+    "description": "Optional URL for the action completion callback",
+    "displayName": "Callback URL",
+    "displayOptions": {
+      "show": {
+        "operation": [
+          "perform",
+        ],
+      },
+    },
+    "name": "callbackUrl",
+    "required": false,
+    "type": "string",
+  },
+  {
+    "default": "[]",
+    "description": "JSON array of {key, status, at, detail?} records",
+    "displayName": "Outcomes",
+    "displayOptions": {
+      "show": {
+        "operation": [
+          "outcome",
+        ],
+      },
+    },
+    "name": "outcomes",
+    "required": true,
+    "type": "json",
+  },
+  {
+    "default": "",
+    "description": "Task to fetch or answer",
+    "displayName": "Task ID",
+    "displayOptions": {
+      "show": {
+        "operation": [
+          "task",
+          "answer",
+        ],
+      },
+    },
+    "name": "taskId",
+    "required": true,
+    "type": "string",
+  },
+  {
+    "default": "approve",
+    "description": "Approve, reject, or a task option",
+    "displayName": "Answer",
+    "displayOptions": {
+      "show": {
+        "operation": [
+          "answer",
+        ],
+      },
+    },
+    "name": "answer",
+    "required": true,
+    "type": "string",
+  },
+  {
+    "default": "",
+    "description": "Optional note from the answerer",
+    "displayName": "Note",
+    "displayOptions": {
+      "show": {
+        "operation": [
+          "answer",
+        ],
+      },
+    },
+    "name": "note",
+    "required": false,
+    "type": "string",
+  },
+  {
+    "default": "",
+    "description": "Optional JSON array of answer rows",
+    "displayName": "Rows",
+    "displayOptions": {
+      "show": {
+        "operation": [
+          "answer",
+        ],
+      },
+    },
+    "name": "rows",
+    "required": false,
+    "type": "json",
+  },
+]
+`;
+
+exports[`n8n descriptions > defines a valid Trigger description and stable parameter forms 1`] = `
+[
+  {
+    "default": "webhook",
+    "displayName": "Mode",
+    "name": "mode",
+    "noDataExpression": true,
+    "options": [
+      {
+        "name": "Webhook",
+        "value": "webhook",
+      },
+      {
+        "name": "Poll",
+        "value": "poll",
+      },
+    ],
+    "type": "options",
+  },
+  {
+    "default": "",
+    "description": "Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>",
+    "displayName": "Deployment Name or ID",
+    "name": "deployment",
+    "required": true,
+    "type": "options",
+    "typeOptions": {
+      "loadOptionsMethod": "getDeployments",
+    },
+  },
+  {
+    "default": [
+      "run_closed",
+    ],
+    "description": "Events to receive. Poll mode supports Run Closed and Route Rows only.",
+    "displayName": "Events",
+    "name": "kinds",
+    "options": [
+      {
+        "name": "Answer",
+        "value": "answer",
+      },
+      {
+        "name": "Route Rows",
+        "value": "route_rows",
+      },
+      {
+        "name": "Run Closed",
+        "value": "run_closed",
+      },
+      {
+        "name": "Signal",
+        "value": "signal",
+      },
+      {
+        "name": "Window Closed",
+        "value": "window_closed",
+      },
+    ],
+    "required": true,
+    "type": "multiOptions",
+  },
+  {
+    "default": "",
+    "description": "Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>",
+    "displayName": "Recipe Name or ID",
+    "displayOptions": {
+      "show": {
+        "kinds": [
+          "route_rows",
+        ],
+      },
+    },
+    "name": "recipe",
+    "required": true,
+    "type": "options",
+    "typeOptions": {
+      "loadOptionsMethod": "getRecipes",
+    },
+  },
+  {
+    "default": "",
+    "description": "Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>",
+    "displayName": "Route Name or ID",
+    "displayOptions": {
+      "show": {
+        "kinds": [
+          "route_rows",
+        ],
+      },
+    },
+    "name": "route",
+    "required": true,
+    "type": "options",
+    "typeOptions": {
+      "loadOptionsDependsOn": [
+        "recipe",
+      ],
+      "loadOptionsMethod": "getRoutes",
+    },
+  },
+  {
+    "default": "",
+    "description": "Optional creation-time lower bound for the first poll. Defaults to activation time.",
+    "displayName": "Since",
+    "displayOptions": {
+      "show": {
+        "mode": [
+          "poll",
+        ],
+      },
+    },
+    "name": "since",
+    "type": "dateTime",
+  },
+]
+`;
