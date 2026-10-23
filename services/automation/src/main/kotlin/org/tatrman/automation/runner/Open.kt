@@ -165,6 +165,9 @@ class Open(
                 detailLimit = detailLimit,
                 detailLimits = detailLimits(recipe.recipe, bundle.actions, detailLimit),
                 syncBudget = sync,
+                previewMetadata =
+                    org.tatrman.automation.apply.PreviewMetadata
+                        .from(bundle),
             )
         if (port.keys != null &&
             port.keys.size > context.readCeiling

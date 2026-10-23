@@ -55,6 +55,9 @@ class RunRuntime(
         require(displayRows > 0 && config.budgets.detailLimit > 0) { "runner row limits must be positive" }
         val door = QueryDoor(query, config.door.routes.toMap(), tokens)
         val staging = Staging(store, protocol)
+        val planner =
+            org.tatrman.automation.apply
+                .ApplyPlanner(clock)
         val policy =
             Open(
                 served,
@@ -76,7 +79,17 @@ class RunRuntime(
                 policy,
                 parent,
                 { context, scope ->
-                    PartRunner(context, door, staging, scope, ledger::completeEvaluation, ::dispatch, protocol::part)
+                    PartRunner(
+                        context,
+                        door,
+                        staging,
+                        scope,
+                        ledger::completeEvaluation,
+                        ::dispatch,
+                        protocol::part,
+                        planner::preview,
+                        ledger::completeEvaluation,
+                    )
                 },
                 { ledger.findRun(it)?.status },
                 ledger::failExecution,

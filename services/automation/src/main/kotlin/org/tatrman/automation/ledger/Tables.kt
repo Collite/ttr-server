@@ -3,6 +3,12 @@ package org.tatrman.automation.ledger
 
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.JsonUnquotedLiteral
+import kotlinx.serialization.json.booleanOrNull
 import org.jetbrains.exposed.v1.core.Column
 import org.jetbrains.exposed.v1.core.Table
 import org.jetbrains.exposed.v1.core.TextColumnType
@@ -17,7 +23,23 @@ import org.jetbrains.exposed.v1.json.jsonb
  */
 private val ledgerJson = Json { ignoreUnknownKeys = true }
 
-private fun Table.json(name: String): Column<JsonElement> = jsonb(name, ledgerJson, JsonElement.serializer())
+// Generic JsonElement number serialization may pass parsed numeric literals through Double. Keep the
+// original JSON lexemes at the JDBC boundary, and preserve raw numeric leaves for subsequent HTTP encoding.
+private fun Table.json(name: String): Column<JsonElement> =
+    jsonb(name, { it.toString() }, { exactNumbers(ledgerJson.parseToJsonElement(it)) })
+
+@OptIn(kotlinx.serialization.ExperimentalSerializationApi::class)
+private fun exactNumbers(value: JsonElement): JsonElement =
+    when (value) {
+        is JsonObject -> JsonObject(value.mapValues { exactNumbers(it.value) })
+        is JsonArray -> JsonArray(value.map(::exactNumbers))
+        is JsonPrimitive ->
+            if (value == JsonNull || value.isString || value.booleanOrNull != null) {
+                value
+            } else {
+                JsonUnquotedLiteral(value.content)
+            }
+    }
 
 object Bundles : Table("automation.bundles") {
     val id = text("id")

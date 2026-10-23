@@ -27,6 +27,7 @@ data class RunProgress(
     val endedAt: String? = null,
     val error: JsonElement? = null,
     val batch: RunBatch? = null,
+    val actions: List<org.tatrman.automation.apply.DryRunAction> = emptyList(),
 )
 
 @Serializable

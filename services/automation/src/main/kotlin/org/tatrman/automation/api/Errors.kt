@@ -43,6 +43,8 @@ enum class ErrorCode(
     PAUSED("paused", HttpStatusCode.ServiceUnavailable, "S3.3"),
     RUN_ABANDONED("run-abandoned", HttpStatusCode.ServiceUnavailable, "S1.3"),
     PROTOCOL_RENDERER_UNAVAILABLE("protocol-renderer-unavailable", HttpStatusCode.NotImplemented, "S1.3"),
+    PREVIEW_UNSUPPORTED("preview-unsupported", HttpStatusCode.NotImplemented, "S1.3"),
+    BATCH_NOT_READY("batch-not-ready", HttpStatusCode.Conflict, "S1.3"),
     RESTRICTED_VIEW("restricted-view", HttpStatusCode.Conflict, "S1.2"),
     CANDIDATES_TRUNCATED("candidates-truncated", HttpStatusCode.Conflict, "S1.2"),
     OUT_OF_SCOPE_READ("out-of-scope-read", HttpStatusCode.UnprocessableEntity, "S1.2"),

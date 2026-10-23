@@ -11,6 +11,8 @@ import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.sync.withPermit
 import org.tatrman.automation.bundle.LoadedRecipe
+import org.tatrman.automation.apply.PreviewMetadata
+import org.tatrman.automation.apply.PreviewPlan
 import org.tatrman.automation.bundle.ManifestOutput
 import org.tatrman.automation.identity.RunIdentity
 import org.tatrman.automation.protocol.IslandExecution
@@ -39,6 +41,7 @@ data class RunContext(
     val syncBudget: Duration = Duration.ofSeconds(60),
     /** Production Open replaces this with the committed ledger claim timestamp. */
     val startedAt: java.time.Instant = java.time.Instant.now(),
+    val previewMetadata: PreviewMetadata? = null,
 ) {
     init {
         require(readCeiling > 0 && detailLimit > 0 && !timeout.isNegative && !timeout.isZero)
@@ -90,6 +93,8 @@ class PartRunner(
     private val dispatch: (suspend (UUID, CoroutineScope, suspend () -> EvaluationResult) -> EvaluationResult)? = null,
     /** Runtime supplies the durable successful-part journal, before its rows enter a local combine. */
     private val recordRead: (UUID, IslandExecution) -> Unit = { _, _ -> },
+    private val preview: (suspend (PartRunner) -> PreviewPlan)? = null,
+    private val recordPreview: ((UUID, EvaluationResult, PreviewPlan) -> Unit)? = null,
 ) : AutoCloseable {
     private val islands =
         context.recipe.manifest.islands
@@ -113,6 +118,7 @@ class PartRunner(
     val warnings: Set<String> get() = observedWarnings.values.flatten().toSet()
 
     init {
+        require((preview == null) == (recordPreview == null)) { "preview planning and journalling must be paired" }
         require(context.bindings.keys.none { it.startsWith("_au_port_") }) { "reserved port binding prefix in recipe" }
         require(islands.size == context.recipe.manifest.islands.size) { "duplicate island" }
         require(parts.size == context.recipe.recipe.parts.size) { "duplicate storage part" }
@@ -154,9 +160,14 @@ class PartRunner(
                     .async {
                         val execute: suspend () -> EvaluationResult = {
                             val result = summarizeEvaluation(this@PartRunner)
+                            val plan = preview?.invoke(this@PartRunner)
                             checks.ensureAllowed()
                             kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                                recordEvaluation(context.id, result)
+                                if (plan == null) {
+                                    recordEvaluation(context.id, result)
+                                } else {
+                                    requireNotNull(recordPreview).invoke(context.id, result, plan)
+                                }
                                 evaluationRecorded = true
                             }
                             checks.ensureAllowed()
@@ -175,6 +186,20 @@ class PartRunner(
     }
 
     internal suspend fun readStaged(output: StagedOutput): Table = stagedData(output).table
+
+    /** Preview observes already published promises only; it cannot start a missing island or Query read. */
+    internal suspend fun completedIsland(name: String): List<StagedOutput> {
+        checks.ensureAllowed()
+        val ready =
+            lock.withLock {
+                islands.getValue(name).outputs.map { output ->
+                    checkNotNull(outputs["$name.${output.port}"]?.takeIf { it.isCompleted }) {
+                        "preview requires completed staged outputs"
+                    }
+                }
+            }
+        return ready.awaitAll().also { checks.ensureAllowed() }
+    }
 
     internal suspend fun stagedData(output: StagedOutput): org.tatrman.automation.staging.StagedData {
         checks.ensureAllowed()

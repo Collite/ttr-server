@@ -12,4 +12,5 @@ fun Route.runRoutes(runtime: RunRuntime) {
     routeRows(runtime.sessions, runtime.displayRows)
     outputRoutes(runtime.sessions, runtime.displayRows)
     protocolRoutes(runtime.protocol)
+    batchRoutes(runtime.status)
 }

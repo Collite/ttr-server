@@ -14,7 +14,8 @@ in the project folder:
 > atomically with EVALUATED status. Detail snapshots now apply pinned limits per route/context/key before staging,
 > and authenticated route/detail/output readers page the verified Arrow or download Arrow/CSV. Absolute
 > evaluation deadlines, runtime assembly, durable execution evidence and the authenticated raw protocol reader
-> are implemented. Application installation, object storage, owner routing and preview/close/retention remain.
+> are implemented, along with durable status and native dry-run preview batches. Application installation,
+> object storage, owner routing, remaining preview lowering, close and retention remain.
 > Budgeted evaluate, observation-only polling and durable abandonment/cleanup primitives are implemented. Run handlers,
 > including evaluate and route/detail/output readers, are not mounted in Application.
 
@@ -91,13 +92,14 @@ adds a `# truncated` trailer whenever the snapshot or page is truncated. Both do
 `X-Truncated` and an attachment filename based on the run UUID. Corrupt data refuses with the JSON error envelope
 before any download headers or bytes; formats never re-encode Arrow or repeat a governed read for another page.
 
-Runtime construction must pass `recordEvaluation = ledger::completeEvaluation` to PartRunner. Without the
-journal callback, evaluate fails closed. The callback stores the typed evaluate result (including `mode` and
-`guards`) in the protocol's INSERT-only `decision` section and sets EVALUATED in one locked transaction.
+Runtime construction pairs `preview = ApplyPlanner::preview` with the three-argument
+`recordPreview = ledger::completeEvaluation` callback on PartRunner. It commits preview/action/write evidence
+with the typed evaluate result (`mode` and `guards`) and EVALUATED status in one locked transaction.
+The decision-only callback remains a foundation test seam; the assembled runtime always requires the preview.
 Identical durable retries are harmless; changed evidence, sealed protocols and terminal/waiting runs refuse.
-This supplies the durable summary for later status/protocol readers without a second mutable summary column.
+This supplies the durable summary for status/protocol readers without a second mutable summary column.
 A journal failure is shared like other executor failures and the session fails the active run. Budgeted
-evaluate/poll is described below; production mounting still needs the queue hook and lifecycle recovery.
+evaluate/poll is described below; Application mounting and remaining lifecycle work are still pending.
 
 `POST /automation/runs/{id}/evaluate` waits at most the program's pinned `budget.sync` (configured default when
 absent). Open pins and journals that budget in milliseconds alongside the batch budget. One supervised session
@@ -122,7 +124,7 @@ Open/running responses include `Retry-After: 15`; every other persisted status i
 a retry hint. An evaluated decision is visible as soon as its transaction commits, independently of the local
 promise. Failed status carries the stored public error code; execution requests still replay their original
 typed refusal. Polling never executes Query, applies an execution budget, retries a journal or mutates the run.
-Preview generation, action/task/delivery projections and close remain S1.3/later lifecycle work.
+Preview actions now appear in `actions`; task/delivery projections and close remain later lifecycle work.
 
 Engine polling contract (D-47):
 1. Open with an idempotency key and retain it with the run id. After a new open, call evaluate.
@@ -219,8 +221,45 @@ Concurrent shutdown calls join the same cleanup; database, Query channel and sta
 it returns. These dependencies belong to the application and are not closed by the runtime.
 
 Deployment owner routing, Application installation and staging retention are pending. No run routes or
-maintenance loop are installed in Application yet. Remaining protocol/status payloads, dry-run previews, close/sealing and
+maintenance loop are installed in Application yet. Remaining protocol/status payloads and preview lowering, close/sealing and
 preview/close/task deadline handoff must be integrated before exposing this path there.
+
+### Native dry-run previews (S1.3 foundation)
+
+Open pins action definitions and entity key metadata with the recipe. After summarization,
+`ApplyPlanner.preview()` observes completed output promises and rereads verified immutable Arrow. Calling
+the planner before staging refuses without executing Query. Verdict/detail inserts and native keyed
+set/transition effects form an ordered apply preview; detail rows retain composite keys, row numbers and
+truncation markers. The native transition carries its from/to/history intent; P2 must do the real state read,
+silent-self-transition handling, writable checks and apply lowering before any model write.
+
+Each selected route row × wiring records `{ key, route, action, sink, arguments, batchRows, would?,
+event: "preview", dryRun: true }`. `would` renders the authored English text from resolved arguments; missing
+English text produces no would-text. Detail arguments contain shared snapshot references, each action's own limit,
+retained data-row count and truncation flag. References use the existing paged snapshot URL; the action limit
+is metadata and cannot bypass the HTTP page cap. Qualified manifest wiring now participates in authored
+detail-limit resolution. Connector actions are evidence only; no task, delivery or connector is invoked.
+
+The held run lock commits the batch header/rows, preview action/write evidence, decision and EVALUATED status
+in one transaction. Deadline monitoring remains active through planning and completion, and the journal checks
+the budget again after inserting preview rows. A failure rolls back the whole completion. Identical retries
+publish once; changed rows or action text refuse. JSONB numeric spelling changes compare by exact decimal value.
+The ledger JSON codec preserves large numeric literals at JDBC and HTTP boundaries without converting through
+Double. Empty reads-only evaluations still leave a real preview batch with zero rows.
+
+Status includes the preview batch summary and action descriptions. `GET /automation/runs/{id}/batch` returns
+`{ batch, run, mode: "preview", rows: [{ seq, entity, op, key?, row?, set?, attribute?, from?, to?, history? }] }`.
+It is a full ordered apply subset for the initiating verified subject, independent of a local executor/bundle.
+Unknown/other/legacy subjects answer the same 403; an owned run without a batch answers `409 batch-not-ready`.
+Reading never evaluates. In `batch_rows`, inserts store their row directly; update/transition rows store their
+named operation payload in `row`, with key/group in the corresponding columns. Rows remain `staged`.
+
+This foundation supports scalar column/literal/parameter arguments, symbolic role/action arguments and simple
+compatible scalar conditions (numeric ordering and scalar equality). Native writer/obligation synthesis, key
+lookups, calendar/date expressions, general conditions and text ordering require their compiler lowering;
+selected unsupported operations return `501 preview-unsupported` before decision/batch completion. P2/P3
+retain dry-run task/delivery rows and performed action outcomes. Close/retention and Application mounting are
+pending. The local Query fixtures do not certify live Hartland behavior.
 
 ### Durable execution protocol (S1.3 foundation)
 
@@ -245,7 +284,7 @@ concurrent records, identical evidence retries do not append again, and changed 
 or elapsed execution budgets refuse publication. A failed source journal prevents its dependent outputs.
 
 `?render=pt` currently returns `501 protocol-renderer-unavailable` after ownership verification. Configured PT
-proxying, action/write payloads, preview batches, close/HTTP sealing and retention remain S1.3 work. The existing
+proxying, performed action/outcome/close payloads, remaining preview lowering and retention remain S1.3 work. The existing
 ledger seal and INSERT-only database triggers are exercised by the component tier; no close route is installed.
 ES receipt links still need a stable source reference; the current worker proto supplies an inline receipt.
 Application shutdown must drain durable HTTP readers before closing the ledger; they do not belong to an

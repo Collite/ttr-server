@@ -18,6 +18,7 @@ import org.jetbrains.exposed.v1.core.inList
 import org.jetbrains.exposed.v1.core.eq
 import org.jetbrains.exposed.v1.core.notInList
 import org.jetbrains.exposed.v1.jdbc.insert
+import org.jetbrains.exposed.v1.jdbc.batchInsert
 import org.jetbrains.exposed.v1.jdbc.select
 import org.jetbrains.exposed.v1.jdbc.selectAll
 import org.jetbrains.exposed.v1.jdbc.transactions.TransactionManager
@@ -27,6 +28,7 @@ import org.tatrman.automation.runner.EvaluationResult
 import org.tatrman.automation.runner.RunProgress
 import org.tatrman.automation.runner.RunFingerprints
 import org.tatrman.automation.runner.RunBatch
+import org.tatrman.automation.apply.*
 import org.tatrman.automation.protocol.IslandExecution
 import org.tatrman.automation.protocol.ProtocolDocument
 import org.tatrman.automation.protocol.ProtocolEntry
@@ -121,6 +123,10 @@ data class TaskOpen(
 class NoSuchRun(
     val runId: UUID,
 ) : RuntimeException("no run `$runId`")
+
+class NoRunBatch(
+    val runId: UUID,
+) : RuntimeException("run has no batch")
 
 class IllegalRunTransition(
     val runId: UUID,
@@ -279,8 +285,23 @@ class Ledger(
     fun completeEvaluation(
         runId: UUID,
         result: EvaluationResult,
+    ) = completeEvaluationStep(runId, result, null)
+
+    /** P1 runtime completion: preview, action/write evidence, decision and status commit together. */
+    fun completeEvaluation(
+        runId: UUID,
+        result: EvaluationResult,
+        preview: PreviewPlan,
+    ) = completeEvaluationStep(runId, result, preview)
+
+    private fun completeEvaluationStep(
+        runId: UUID,
+        result: EvaluationResult,
+        preview: PreviewPlan?,
     ) {
         outermost("completeEvaluation")
+        require(preview == null || preview.run == runId.toString()) { "preview belongs to another run" }
+        preview?.let { require(UUID.fromString(it.batch).toString() == it.batch) { "invalid preview batch id" } }
         val payload = Json.encodeToJsonElement(result)
         transaction(transactionIsolation = Connection.TRANSACTION_READ_COMMITTED) {
             lockRun(runId)
@@ -298,13 +319,18 @@ class Ledger(
             if (existing.isNotEmpty()) {
                 check(
                     existing.size == 1 &&
-                        existing.single()[RunProtocol.payload] == payload &&
+                        sameJson(existing.single()[RunProtocol.payload], payload) &&
                         from == RunStatus.EVALUATED,
                 ) {
                     "a pinned run's decision cannot change"
                 }
+                preview?.let { checkPreview(runId, it) }
             } else {
                 ensureRunBudget(runId, defaultBudget, clock)
+                preview?.let {
+                    insertPreview(runId, it)
+                    ensureRunBudget(runId, defaultBudget, clock)
+                }
                 RunProtocol.insert {
                     it[run] = runId
                     it[section] = ProtocolSection.DECISION.wire
@@ -314,6 +340,147 @@ class Ledger(
                 }
                 Runs.update({ Runs.id eq runId }) { it[status] = RunStatus.EVALUATED.wire }
             }
+        }
+    }
+
+    /** Held run lock, same transaction as the decision. No model tables or outbound task rows are touched. */
+    private fun insertPreview(
+        runId: UUID,
+        preview: PreviewPlan,
+    ) {
+        val runRow = Runs.selectAll().where { Runs.id eq runId }.single()
+        check(runRow[Runs.dryRun] && runRow[Runs.batchId] == null) { "a preview requires an unbatched dry run" }
+        check(Batches.selectAll().where { Batches.run eq runId }.empty()) { "a run already has a batch" }
+        val id = UUID.fromString(preview.batch)
+        Batches.insert {
+            it[Batches.id] = id
+            it[Batches.run] = runId
+            it[state] = "preview"
+            it[rows] = preview.rows.size
+        }
+        BatchRows.batchInsert(preview.rows, shouldReturnGeneratedValues = false) { item ->
+            this[BatchRows.batch] = id
+            this[BatchRows.seq] = item.seq
+            this[BatchRows.entity] = item.entity
+            this[BatchRows.op] = item.op
+            this[BatchRows.key] = item.key
+            this[BatchRows.row] = item.storedRow()
+            this[BatchRows.groupKey] = item.group
+            this[BatchRows.status] = "staged"
+        }
+        val at = clock.instant().utc()
+        val first = nextSeq(runId, ProtocolSection.ACTIONS)
+        RunProtocol.batchInsert(
+            preview.actions.withIndex().toList(),
+            shouldReturnGeneratedValues = false,
+        ) { (index, action) ->
+            this[RunProtocol.run] = runId
+            this[RunProtocol.section] = ProtocolSection.ACTIONS.wire
+            this[RunProtocol.seq] = first + index
+            this[RunProtocol.payload] = action.payload()
+            this[RunProtocol.at] = at
+        }
+        RunProtocol.insert {
+            it[run] = runId
+            it[section] = ProtocolSection.WRITES.wire
+            it[seq] = nextSeq(runId, ProtocolSection.WRITES)
+            it[payload] = Json.encodeToJsonElement(preview.evidence())
+            it[RunProtocol.at] = at
+        }
+        Runs.update({ Runs.id eq runId }) { it[batchId] = id }
+    }
+
+    private fun checkPreview(
+        runId: UUID,
+        preview: PreviewPlan,
+    ) {
+        val id = Runs.select(Runs.batchId).where { Runs.id eq runId }.single()[Runs.batchId]
+        check(id?.toString() == preview.batch) { "a pinned run's preview cannot change" }
+        val stored = batchPlan(runId, requireNotNull(id))
+        check(
+            stored.rows.size == preview.rows.size &&
+                stored.rows.zip(preview.rows).all { (a, b) ->
+                    a.seq == b.seq &&
+                        a.entity == b.entity &&
+                        a.op == b.op &&
+                        sameJson(a.key, b.key) &&
+                        sameJson(a.group, b.group) &&
+                        sameJson(a.storedRow(), b.storedRow())
+                },
+        ) {
+            "a pinned run's preview rows cannot change"
+        }
+        val actions = previewActions(runId)
+        check(
+            actions.size == preview.actions.size &&
+                actions.zip(preview.actions).all { (a, b) -> sameJson(a.payload(), b.payload()) },
+        ) {
+            "a pinned run's action preview cannot change"
+        }
+        val writes =
+            RunProtocol
+                .select(RunProtocol.payload)
+                .where { (RunProtocol.run eq runId) and (RunProtocol.section eq ProtocolSection.WRITES.wire) }
+                .toList()
+        check(
+            writes.size == 1 &&
+                sameJson(writes.single()[RunProtocol.payload], Json.encodeToJsonElement(preview.evidence())),
+        ) {
+            "a pinned run's write preview cannot change"
+        }
+    }
+
+    private fun previewActions(runId: UUID): List<DryRunAction> =
+        RunProtocol
+            .selectAll()
+            .where { (RunProtocol.run eq runId) and (RunProtocol.section eq ProtocolSection.ACTIONS.wire) }
+            .orderBy(RunProtocol.seq to SortOrder.ASC)
+            .mapNotNull { entry ->
+                val payload = entry[RunProtocol.payload]
+                if ((payload as? JsonObject)?.get("event") ==
+                    JsonPrimitive("preview")
+                ) {
+                    Json.decodeFromJsonElement<DryRunAction>(payload)
+                } else {
+                    null
+                }
+            }
+
+    private fun batchPlan(
+        runId: UUID,
+        id: UUID,
+    ): RunBatchPlan {
+        val batch = Batches.selectAll().where { (Batches.id eq id) and (Batches.run eq runId) }.single()
+        check(batch[Batches.state] == "preview") { "only preview batch reads are implemented in P1" }
+        val rows =
+            BatchRows.selectAll().where { BatchRows.batch eq id }.orderBy(BatchRows.seq to SortOrder.ASC).map {
+                ApplyRow.restore(
+                    it[BatchRows.seq],
+                    it[BatchRows.entity],
+                    it[BatchRows.op],
+                    it[BatchRows.key],
+                    it[BatchRows.row],
+                    it[BatchRows.groupKey],
+                )
+            }
+        check(rows.size == batch[Batches.rows]) { "batch row count differs from its header" }
+        check(rows.map { it.seq } == (1..rows.size).toList()) { "batch sequence is not contiguous" }
+        return RunBatchPlan(id.toString(), runId.toString(), rows, batch[Batches.state])
+    }
+
+    fun readRunBatch(
+        runId: UUID,
+        subject: String,
+    ): RunBatchPlan {
+        require(subject.isNotBlank())
+        outermost("readRunBatch")
+        return transaction(transactionIsolation = Connection.TRANSACTION_REPEATABLE_READ) {
+            val row =
+                Runs
+                    .select(Runs.batchId)
+                    .where { (Runs.id eq runId) and (Runs.callerSubject eq subject) }
+                    .firstOrNull() ?: throw NoSuchRun(runId)
+            batchPlan(runId, row[Runs.batchId] ?: throw NoRunBatch(runId))
         }
     }
 
@@ -476,6 +643,7 @@ class Ledger(
                 endedAt = row[Runs.endedAt]?.toInstant()?.toString(),
                 error = row[Runs.error],
                 batch = batch,
+                actions = previewActions(runId),
             )
         }
     }
@@ -646,7 +814,9 @@ class Ledger(
                     value["port"] == (execution.port?.let(::JsonPrimitive))
             }
         if (existing != null) {
-            check(existing[RunProtocol.payload] == payload) { "a pinned run's execution evidence cannot change" }
+            check(
+                sameJson(existing[RunProtocol.payload], payload),
+            ) { "a pinned run's execution evidence cannot change" }
             return
         }
         RunProtocol.insert {

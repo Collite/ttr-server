@@ -379,6 +379,7 @@ private class RuntimeFixture(
     val states = ConcurrentHashMap<UUID, RunStatus>()
     val failures = ConcurrentHashMap<UUID, Exception>()
     val evaluations = ConcurrentHashMap<UUID, EvaluationResult>()
+    val previews = ConcurrentHashMap<UUID, org.tatrman.automation.apply.PreviewPlan>()
     val outputs = ConcurrentLinkedQueue<RunOutput>()
     val requests = ConcurrentLinkedQueue<RunRequest>()
     val compiles = AtomicInteger()
@@ -435,6 +436,8 @@ private class RuntimeFixture(
                 result?.mode,
                 "/automation/runs/$id/protocol",
                 recipe = open.recipe,
+                batch = previews[id]?.let { RunBatch(it.batch, "preview", it.rows.size) },
+                actions = previews[id]?.actions.orEmpty(),
                 error =
                     failures[id]?.let {
                         buildJsonObject {
@@ -472,6 +475,18 @@ private class RuntimeFixture(
         every { ledger.completeEvaluation(any(), any()) } answers {
             evaluations[firstArg()] = secondArg()
             states[firstArg()] = RunStatus.EVALUATED
+        }
+        every { ledger.completeEvaluation(any(), any(), any()) } answers {
+            previews[firstArg()] = thirdArg()
+            evaluations[firstArg()] = secondArg()
+            states[firstArg()] = RunStatus.EVALUATED
+        }
+        every { ledger.readRunBatch(any(), any()) } answers {
+            val id = firstArg<UUID>()
+            records[id]?.takeIf { it.callerSubject == secondArg<String>() } ?: throw NoSuchRun(id)
+            val p = previews[id] ?: throw NoRunBatch(id)
+            org.tatrman.automation.apply
+                .RunBatchPlan(p.batch, p.run, p.rows, p.mode)
         }
         every { ledger.putOutput(any(), any()) } answers {
             outputs.add(firstArg())

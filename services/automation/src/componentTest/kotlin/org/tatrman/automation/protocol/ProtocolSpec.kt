@@ -104,6 +104,27 @@ class ProtocolSpec :
             ledger.readProtocol(id, "subject-1") shouldBe document // Observations are not subject to execution budgets.
         }
 
+        "raw decimals, integers, nulls and strings survive storage and HTTP encoding exactly" {
+            val id = open()
+            val payload =
+                Json.parseToJsonElement(
+                    """
+                    {"amount":12345678901234567890.123456789,
+                     "nested":[123456789012345678901234567890,null,true,"1.230"]}
+                    """.trimIndent(),
+                )
+            ledger.appendProtocol(id, ProtocolSection.SIGNALS, payload)
+            val document = ledger.readProtocol(id, "subject-1")
+            document.sections
+                .getValue("signals")
+                .single()
+                .payload shouldBe payload
+            val wire = Json.encodeToString(document)
+            wire.contains("12345678901234567890.123456789") shouldBe true
+            wire.contains("123456789012345678901234567890") shouldBe true
+            wire.contains("\"1.230\"") shouldBe true
+        }
+
         "other subjects, reused display names, unknown handles and legacy rows all refuse durable reads" {
             val id = open()
             shouldThrow<NoSuchRun> { ledger.readProtocol(id, "display-name") }

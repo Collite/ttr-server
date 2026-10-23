@@ -509,6 +509,7 @@ internal fun sessionBundle(columns: List<ManifestColumn>): Bundle {
                             routes = listOf(ManifestRoute("release"), ManifestRoute("hold")),
                         ),
                     parts = emptyList(),
+                    wiring = listOf(ManifestWiring(listOf("way.release"), "release", mapOf("order" to "order_number"))),
                 )
             r.copy(
                 recipe = metadata,

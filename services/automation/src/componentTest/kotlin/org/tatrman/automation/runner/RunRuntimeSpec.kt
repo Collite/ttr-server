@@ -61,7 +61,7 @@ class RunRuntimeComponentSpec :
                 transaction { RunOutputs.selectAll().where { RunOutputs.run eq id }.count() } shouldBe 2L
                 transaction {
                     RunProtocol.selectAll().where { RunProtocol.run eq id }.count()
-                } shouldBe 4L // Opening + two output entries + atomic decision.
+                } shouldBe 6L // Opening + two outputs + decision + action preview + write preview.
                 eventually {
                     transaction { RunEvaluations.selectAll().single()[RunEvaluations.archivedAt] != null }
                 }
@@ -78,6 +78,11 @@ class RunRuntimeComponentSpec :
                 f.reads.get() shouldBe 2
                 val document = runtime.protocol.read(id, f.caller)
                 val progress = runtime.status.read(id, f.caller)
+                val batch = runtime.status.batch(id, f.caller)
+                batch.mode shouldBe "preview"
+                batch.rows.map { it.op } shouldBe listOf("insert", "transition")
+                progress.batch!!.rows shouldBe 2
+                progress.actions.single().would shouldBe "would release order 4711"
                 progress.status shouldBe "evaluated"
                 progress.verdict!!
                     .routes
@@ -101,6 +106,7 @@ class RunRuntimeComponentSpec :
                 try {
                     restarted.protocol.read(id, f.caller) shouldBe document
                     restarted.status.read(id, f.caller) shouldBe progress
+                    restarted.status.batch(id, f.caller) shouldBe batch
                     f.reads.get() shouldBe 2
                 } finally {
                     restarted.shutdown()
@@ -242,6 +248,7 @@ private class DurableRuntimeFixture(
             val metadata =
                 r.recipe.copy(
                     parts = emptyList(),
+                    wiring = listOf(ManifestWiring(listOf("way.release"), "release", mapOf("order" to "order_number"))),
                     roles =
                         ManifestRoles(
                             "placed",

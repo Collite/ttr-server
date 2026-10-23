@@ -20,25 +20,27 @@ internal fun detailLimits(
     require(default > 0)
     return recipe.roles?.routes.orEmpty().filter { it.detail.isNotEmpty() }.associate { route ->
         val limits =
-            recipe.wiring.filter { route.name in it.routes }.map { wiring ->
-                val action = actions.getValue(wiring.action)
-                val value = action.property("detail_limit")
-                if (value == null) {
-                    default
-                } else {
-                    require(value is AutoValue.Num) { "action detail_limit must be a positive integer" }
-                    val limit =
-                        try {
-                            BigDecimal(value.text).intValueExact()
-                        } catch (_: ArithmeticException) {
-                            0
-                        }
-                    require(limit > 0) { "action detail_limit must be a positive integer" }
-                    limit
-                }
-            }
+            recipe.wiring
+                .filter { route.name in it.routes || "${recipe.roles?.decision}.${route.name}" in it.routes }
+                .map { wiring -> actionDetailLimit(actions.getValue(wiring.action), default) }
         route.name to (limits.maxOrNull() ?: default)
     }
+}
+
+internal fun actionDetailLimit(
+    action: AutomationAction,
+    default: Int,
+): Int {
+    val value = action.property("detail_limit") ?: return default
+    require(value is AutoValue.Num) { "action detail_limit must be a positive integer" }
+    val limit =
+        try {
+            BigDecimal(value.text).intValueExact()
+        } catch (_: ArithmeticException) {
+            0
+        }
+    require(limit > 0) { "action detail_limit must be a positive integer" }
+    return limit
 }
 
 /** Compare composite keys exactly across Arrow/JDBC numeric representations; never coerce text to numbers. */
