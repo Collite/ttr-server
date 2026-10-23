@@ -16,6 +16,26 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+- **resolver — the four cn door families** (CN-P5 S5.1, cn contracts §4). The resolver's MCP server, beside
+  `resolve.bind:v1` and behind the same fail-closed OBO gate, now answers `statement.validate:v1` · `statement.lower:v1` ·
+  `statement.explain:v1` · `assertion.validate:v1` · `assertion.lower:v1` · `assertion.explain:v1` ·
+  `concept.search:v1` · `definition.render:v1`.
+  - Each frame tool wraps one of ttr-concept's pure functions (`org.tatrman:ttr-concept`, grammar bundle 0.18.2). A frame
+    arrives as protobuf JSON (`org.tatrman.statement.v1.Statement`, `org.tatrman.assertion.v1.Assertion`) and an
+    unknown field is an argument error. A frame the module refuses is a result, `refused: true` with its `cn/*`
+    findings, never a guess; `isError` is for bad arguments, a missing model, or a resume token that does not verify.
+  - `concept.search:v1` reads the vocabulary: one lex-matcher lookup, the resolution order, the lift. It returns
+    concepts only, each with its stereotype, `via` and every source.
+  - The model comes from `RESOLVER_CONCEPT_MODEL_PATH` (`resolver.concept.model-path`): the estate's model tree, or a
+    snapshot archive of it. It is served only when its content id is the one the lexicon archive names
+    (`modelSnapshotHash`); otherwise the frame tools answer `CN_MODEL_SKEW`. Unset, they answer `CN_MODEL_UNAVAILABLE`.
+    Every answer names the snapshot it was read from.
+  - A resume token inside a frame (`Candidate.resume_token`, `MemberRef.resume_token`) is checked with the resolver's
+    codec: signature, age, the caller it was issued to, and that it offered what the slot names (`RG-RES-002`). The
+    doors never mint one.
+  - The resolver image now carries `ttr-concept` and, through it, `ttr-translator` (Calcite). A build guard,
+    `verifyNoDbClient`, keeps any database driver or ADBC client off its runtime classpath: the doors never write.
+
 - **lex-matcher + resolver — the declared layer reads lexicon archive v6** (CN-P4). The grammar bundle pin moves to
   0.18.1, whose `ttr-lexicon` reads `ttr-lexicon-compiled/v6`: concept entries under `cn.*` refs, the reverse index
   (`liftsTo`) on er and md elements, and the default sense on rows. lex-matcher serves a concept's terms as declared

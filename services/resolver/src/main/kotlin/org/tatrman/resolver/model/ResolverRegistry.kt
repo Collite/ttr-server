@@ -16,6 +16,12 @@ data class ResolverRegistry(
     val locales: List<String>,
     val thresholds: ResolverThresholds,
     val snapshotHash: String,
+    /**
+     * CN-P5 S5.1 — the content id of the model the lexicon was compiled from (the archive header's
+     * `modelSnapshotHash`); the cn doors serve a model only when its own content id is this one. `""` without an
+     * archive, or from a per-request override.
+     */
+    val modelSnapshotHash: String = "",
 )
 
 /**

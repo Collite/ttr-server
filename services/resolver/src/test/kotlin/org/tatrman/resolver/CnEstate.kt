@@ -74,8 +74,11 @@ object CnEstate {
         return result.model!!
     }
 
-    fun build(root: Path = this.root): LexiconBuildOutcome =
-        LexiconBuild.run(root, model(root), SNAPSHOT_ID, BUILT_AT, "cn-estate-test", includeStdlib = false).also {
+    fun build(
+        root: Path = this.root,
+        snapshotId: String = SNAPSHOT_ID,
+    ): LexiconBuildOutcome =
+        LexiconBuild.run(root, model(root), snapshotId, BUILT_AT, "cn-estate-test", includeStdlib = false).also {
             check(it.ok) { "the estate's lexicon files do not parse: ${it.violations}" }
         }
 
@@ -87,6 +90,20 @@ object CnEstate {
         outcome: LexiconBuildOutcome = build(),
         path: Path = Files.createTempDirectory("cn-estate").resolve("lexicon.tar.zst"),
     ): Path = path.also { it.writeBytes(outcome.packed.bytes) }
+
+    /**
+     * CN-P5 S5.1 — the estate's archive as a deployed build writes it: the header names the content id of the model it
+     * was compiled from (ttr-lexicon-cli's `ModelContentId`), which is what the cn doors pin their model to. The golden
+     * names a placeholder instead ([SNAPSHOT_ID]), so a door over [pack]'s archive refuses the model as skewed.
+     */
+    fun pinnedArchive(root: Path = this.root): Path =
+        pack(
+            build(
+                root,
+                org.tatrman.ttr.lexicon.cli.ModelContentId
+                    .of(root.resolve("model")),
+            ),
+        )
 
     /** A writable copy of the estate, [edit]ed. */
     fun variant(edit: (Path) -> Unit): Path {

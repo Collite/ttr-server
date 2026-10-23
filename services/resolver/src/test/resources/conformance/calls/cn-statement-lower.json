@@ -1,0 +1,81 @@
+{
+  "id": "cn-statement-lower",
+  "description": "statement.lower:v1 — the ActiveCustomer frame lowers to the golden's dot-path (⚑CN-P9's grain-key semi-join, the golden revenue-active); the ambiguous frame lowers to nothing — no partial plan.",
+  "surface": "cn",
+  "estate": "sales",
+  "invariants": [
+    "refusal over guess — an ambiguous slot is a finding, never a choice; a refused frame lowers to nothing",
+    "a refusal is not an error — it is a result with its cn findings (A-CN-57)",
+    "deterministic — the same call on the same snapshot is byte-equal"
+  ],
+  "turns": [
+    {
+      "tool": "statement.lower:v1",
+      "args": {
+        "statement": {
+          "ask": "ASK_VALUE",
+          "measures": [
+            {
+              "qname": "cn.revenue"
+            }
+          ],
+          "filters": [
+            {
+              "phase": {
+                "phase": {
+                  "qname": "cn.ActiveCustomer"
+                }
+              }
+            }
+          ],
+          "time": {
+            "periodCode": "2026-01"
+          },
+          "locale": "en",
+          "asOf": {
+            "value": "2026-01-31",
+            "granularity": "DAY"
+          }
+        }
+      },
+      "expect": {
+        "refusal_over_guess": true,
+        "deterministic": true,
+        "outcome": "result",
+        "dot_path": "sales[customer.name: *, time.month: 1, time.year: 2026].net @ sum where customer.name in (sales[customer.name: *, time.day: \"2025-01-31\"..\"2026-01-31\"].net @ sum)"
+      }
+    },
+    {
+      "tool": "statement.lower:v1",
+      "args": {
+        "statement": {
+          "ask": "ASK_VALUE",
+          "measures": [
+            {
+              "candidates": [
+                {
+                  "qname": "cn.revenue"
+                },
+                {
+                  "qname": "cn.gross_revenue"
+                }
+              ]
+            }
+          ],
+          "time": {
+            "periodCode": "2026-01"
+          },
+          "locale": "en"
+        }
+      },
+      "expect": {
+        "refusal_over_guess": true,
+        "deterministic": true,
+        "outcome": "refused",
+        "slugs": [
+          "cn/ambiguous-statement"
+        ]
+      }
+    }
+  ]
+}

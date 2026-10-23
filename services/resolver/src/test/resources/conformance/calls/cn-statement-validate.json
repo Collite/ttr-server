@@ -1,0 +1,80 @@
+{
+  "id": "cn-statement-validate",
+  "description": "statement.validate:v1 — ttr-concept's ActiveCustomer frame validates on the sales world; a measure with two candidates is refused as ambiguous, never resolved to the first.",
+  "surface": "cn",
+  "estate": "sales",
+  "invariants": [
+    "refusal over guess — an ambiguous slot is a finding, never a choice; a refused frame lowers to nothing",
+    "a refusal is not an error — it is a result with its cn findings (A-CN-57)",
+    "deterministic — the same call on the same snapshot is byte-equal"
+  ],
+  "turns": [
+    {
+      "tool": "statement.validate:v1",
+      "args": {
+        "statement": {
+          "ask": "ASK_VALUE",
+          "measures": [
+            {
+              "qname": "cn.revenue"
+            }
+          ],
+          "filters": [
+            {
+              "phase": {
+                "phase": {
+                  "qname": "cn.ActiveCustomer"
+                }
+              }
+            }
+          ],
+          "time": {
+            "periodCode": "2026-01"
+          },
+          "locale": "en",
+          "asOf": {
+            "value": "2026-01-31",
+            "granularity": "DAY"
+          }
+        }
+      },
+      "expect": {
+        "refusal_over_guess": true,
+        "deterministic": true,
+        "outcome": "result"
+      }
+    },
+    {
+      "tool": "statement.validate:v1",
+      "args": {
+        "statement": {
+          "ask": "ASK_VALUE",
+          "measures": [
+            {
+              "candidates": [
+                {
+                  "qname": "cn.revenue"
+                },
+                {
+                  "qname": "cn.gross_revenue"
+                }
+              ]
+            }
+          ],
+          "time": {
+            "periodCode": "2026-01"
+          },
+          "locale": "en"
+        }
+      },
+      "expect": {
+        "refusal_over_guess": true,
+        "deterministic": true,
+        "outcome": "refused",
+        "slugs": [
+          "cn/ambiguous-statement"
+        ]
+      }
+    }
+  ]
+}

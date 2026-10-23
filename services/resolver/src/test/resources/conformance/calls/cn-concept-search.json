@@ -1,0 +1,66 @@
+{
+  "id": "cn-concept-search",
+  "description": "concept.search:v1 — concepts only: a member hit („VIP“) is returned as the concepts it lifts to, never as the member; a term and the element it is grounded on read as one concept with both sources; a span that names nothing answers nothing.",
+  "surface": "cn",
+  "estate": "cn-estate",
+  "invariants": [
+    "refusal over guess — an ambiguous slot is a finding, never a choice; a refused frame lowers to nothing",
+    "a refusal is not an error — it is a result with its cn findings (A-CN-57)",
+    "deterministic — the same call on the same snapshot is byte-equal"
+  ],
+  "turns": [
+    {
+      "tool": "concept.search:v1",
+      "args": {
+        "text": "VIP",
+        "locale": "cs"
+      },
+      "expect": {
+        "refusal_over_guess": true,
+        "deterministic": true,
+        "outcome": "result",
+        "concepts": [
+          "cn.Segment",
+          "cn.Customer"
+        ],
+        "concepts_only": true
+      }
+    },
+    {
+      "tool": "concept.search:v1",
+      "args": {
+        "text": "tržby",
+        "locale": "cs"
+      },
+      "expect": {
+        "refusal_over_guess": true,
+        "deterministic": true,
+        "outcome": "result",
+        "concepts": [
+          "cn.revenue"
+        ],
+        "concepts_only": true,
+        "sources": {
+          "cn.revenue": [
+            "term:cn.revenue",
+            "lift:md.measure.revenue"
+          ]
+        }
+      }
+    },
+    {
+      "tool": "concept.search:v1",
+      "args": {
+        "text": "nic takového",
+        "locale": "cs"
+      },
+      "expect": {
+        "refusal_over_guess": true,
+        "deterministic": true,
+        "outcome": "result",
+        "concepts": [],
+        "concepts_only": true
+      }
+    }
+  ]
+}

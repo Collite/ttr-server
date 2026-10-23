@@ -26,6 +26,11 @@ import org.tatrman.resolver.client.GrpcFuzzyClient
 import org.tatrman.resolver.pipeline.NamedCategorySource
 import org.tatrman.resolver.client.GrpcNlpClient
 import org.tatrman.resolver.grpc.ResolverGrpcService
+import org.tatrman.resolver.concept.ConceptModelSource
+import org.tatrman.resolver.concept.ConceptModels
+import org.tatrman.resolver.concept.ConceptSearch
+import org.tatrman.resolver.mcp.ConceptDoor
+import org.tatrman.resolver.mcp.ConceptDoorHandler
 import org.tatrman.resolver.mcp.ResolveDoor
 import org.tatrman.resolver.mcp.ResolveDoorHandler
 import org.tatrman.resolver.mcp.installResolveDoor
@@ -262,6 +267,41 @@ fun Application.module(config: Config) {
     val identityPolicy = if (trustNetwork) IdentityPolicy.PERMISSIVE else IdentityPolicy.TOKEN_ONLY
     val door = ResolveDoor(pipeline::resolve)
     val doorHandler = ResolveDoorHandler(door, requireIdentity, identityPolicy)
+    // CN-P5 S5.1 — the cn doors, co-hosted on the same server, behind the same gate and policy (cn contracts §4).
+    val conceptModelPath = config.getString("resolver.concept.model-path").trim()
+    val conceptModels =
+        ConceptModels(
+            if (conceptModelPath.isEmpty()) {
+                null
+            } else {
+                ConceptModelSource(
+                    java.nio.file.Path
+                        .of(conceptModelPath),
+                )
+            },
+            registry::current,
+        )
+    if (conceptModelPath.isEmpty()) {
+        log.info(
+            "resolver.concept.model-path is unset — the cn doors are bound but answer CN_MODEL_UNAVAILABLE " +
+                "(concept.search:v1 reads the vocabulary and answers). Set RESOLVER_CONCEPT_MODEL_PATH to the " +
+                "estate's model tree or a snapshot archive of it.",
+        )
+    } else {
+        // ⛑ Loaded at boot, like the vocabulary above, so the model and its pin are in the log before the first call.
+        runBlocking {
+            when (val state = conceptModels.current()) {
+                is ConceptModels.State.Ready -> Unit
+                is ConceptModels.State.Unavailable -> log.warn("cn doors: {} — {}", state.code, state.message)
+            }
+        }
+    }
+    val conceptHandler =
+        ConceptDoorHandler(
+            ConceptDoor(conceptModels, ConceptSearch(fuzzyClient, registry::current), tokenCodec),
+            requireIdentity,
+            identityPolicy,
+        )
     val doorServer =
         embeddedServer(
             factory = CIO,
@@ -280,7 +320,7 @@ fun Application.module(config: Config) {
                             // the service only because the rest of the service was noop too.
                             otel,
                         )
-                        installResolveDoor(door, doorHandler)
+                        installResolveDoor(door, doorHandler, concepts = conceptHandler)
                     }
                 },
             configure = {

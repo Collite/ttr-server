@@ -53,7 +53,7 @@ directory names for several services. Use the key in the left column in your val
 | `geo` | `geo` | `services/geo` | grounding — location |
 | `money` | `money` | `services/money` | grounding — money |
 | `grounding-mcp` | `grounding-mcp` | `services/grounding-mcp` | grounding MCP door |
-| `resolver` | `resolver` | `services/resolver` | resolve core + `resolve.bind:v1` door |
+| `resolver` | `resolver` | `services/resolver` | resolve core + `resolve.bind:v1` door + the cn doors (CN-P5) |
 | `automation` | `automation` | `services/automation` | the automation service — run API, ledger, protocol (AU; opt-in) |
 | `backstage` | `backstage` (upstream) | `infra/backstage` | developer portal (RO-22, opt-in) |
 
@@ -189,7 +189,11 @@ Tuning `geo.confidenceThreshold` is env-driven (`GEO_CONFIDENCE_THRESHOLD`) — 
 | `resolver.resumeToken.activeKeyId` | string | `""` | HMAC resume-token signing key id. |
 | `resolver.resumeToken.allowEphemeralKey` | bool | `false` | **Fail-closed:** with no key and this `false`, the service refuses to boot. `true` = a throwaway per-process key (local/test only — breaks stateless resume across replicas/restarts). |
 | `resolver.secretEnv` | list | `[]` | The key material by **Secret ref** — e.g. `{ name: RESOLVER_RESUME_KEY_K1, secretName: resolver-resume-keys, secretKey: k1 }`. |
-| `resolver.mcp.{host,requireIdentity,trustNetwork}` | | `127.0.0.1` / `true` / `false` | The `resolve.bind:v1` MCP door: loopback + require-identity by default (RG-P6 review D — the door decodes but does not signature-verify the OBO JWT, so it must not be off-host-reachable unless fronted by an auth-terminating ingress). |
+| `resolver.mcp.{host,requireIdentity,trustNetwork}` | | `127.0.0.1` / `true` / `false` | The `resolve.bind:v1` MCP door: loopback + require-identity by default (RG-P6 review D — the door decodes but does not signature-verify the OBO JWT, so it must not be off-host-reachable unless fronted by an auth-terminating ingress). The four cn door families (`statement.*` · `assertion.*` · `concept.search:v1` · `definition.render:v1`, CN-P5) are on the same server, behind the same settings. |
+
+The cn doors' model is `RESOLVER_CONCEPT_MODEL_PATH` (via `resolver.extraEnv`): the estate's model tree or a snapshot
+archive of it, served only when it is the model the lexicon archive names. Not values-exposed yet — no estate mounts a
+model; unset, the frame tools answer `CN_MODEL_UNAVAILABLE` and `concept.search:v1` answers from the vocabulary.
 
 Gating thresholds (`threshold-bind`, `threshold-ambiguity-gap`, `threshold-exact`) are
 config-baked in the resolver image (`application.conf`), not values-exposed.

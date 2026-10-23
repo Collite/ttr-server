@@ -109,6 +109,12 @@ interface RegistrySource {
     suspend fun fetch(): DeclaredVocabulary
 
     fun hash(): String
+
+    /**
+     * CN-P5 S5.1 — the content id of the model this vocabulary was compiled from (a lexicon archive header's
+     * `modelSnapshotHash`, several comma-joined for a layer of archives); `""` when the source does not say.
+     */
+    fun modelSnapshotHash(): String = ""
 }
 
 /** A fixed fixture source — the stub used until the snapshot archive lands. */

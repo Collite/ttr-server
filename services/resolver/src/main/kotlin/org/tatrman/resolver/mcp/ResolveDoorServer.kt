@@ -23,6 +23,9 @@ fun Application.installResolveDoor(
     door: ResolveDoor,
     handler: ResolveDoorHandler,
     toolTimeoutMs: Long = 20_000L,
+    // CN-P5 S5.1 — the four cn door families, co-hosted on the same server and path (cn contracts §4). Null keeps the
+    // server exactly the resolve door it was.
+    concepts: ConceptDoorHandler? = null,
 ) {
     val logger = LoggerFactory.getLogger("resolver.door")
     mcpStreamableHttp {
@@ -49,6 +52,25 @@ fun Application.installResolveDoor(
                 }(request)
             }
             logger.info("resolve door bound: tool '{}' (streamable HTTP)", door.tool.name)
+            concepts?.let { cn ->
+                for (tool in cn.door.tools) {
+                    server.addTool(
+                        name = tool.name,
+                        description = tool.description ?: "",
+                        inputSchema = tool.inputSchema,
+                    ) { request ->
+                        val headers = McpRequestHeaders.current()
+                        safeMcpTool(tool.name, toolTimeoutMs) { req ->
+                            cn.handle(tool.name, req.arguments, headers.authorization, headers.userId)
+                        }(request)
+                    }
+                }
+                logger.info(
+                    "cn doors bound: {} tool(s) {} (streamable HTTP)",
+                    cn.door.tools.size,
+                    cn.door.tools.map { it.name },
+                )
+            }
         }
     }
 }

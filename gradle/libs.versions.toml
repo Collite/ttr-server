@@ -307,6 +307,10 @@ tatrman-ttr-metadata-git            = { module = "org.tatrman:ttr-metadata-git",
 tatrman-ttr-snapshot                = { module = "org.tatrman:ttr-snapshot",                                version.ref = "tatrman-grammar" }
 tatrman-ttr-lexicon                 = { module = "org.tatrman:ttr-lexicon",                                 version.ref = "tatrman-grammar" }
 tatrman-ttr-lexicon-compile         = { module = "org.tatrman:ttr-lexicon-compile",                         version.ref = "tatrman-grammar" }
+# CN-P5 S5.1 — the conceptual tier's three function families (statements, assertions, definitions), served by the
+# resolver's cn doors. Grammar bundle (A-CN-1); its POM pins ttr-translator / ttr-plan-proto at its own translator tag.
+tatrman-ttr-lexicon-cli             = { module = "org.tatrman:ttr-lexicon-cli",                             version.ref = "tatrman-grammar" }
+tatrman-ttr-concept                 = { module = "org.tatrman:ttr-concept",                                 version.ref = "tatrman-grammar" }
 # translate.v1 public line (SV-P1 gate 2, kotlin-translator/v0.9.0): the renamed
 # ttr-plan-proto/ttr-translator now resolve from GitHub Packages — the SV-P0
 # 0.0.1-LOCAL/mavenLocal interim is retired. 0.9.0 carries org/tatrman/translate/v1/.

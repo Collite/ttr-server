@@ -1,0 +1,30 @@
+// CN-P3 S3.7 — the concepts over the md hero (design `04` §E-0): a sale of the `sales` cubelet, its customer (the
+// `Customer` dimension), net and gross revenue, and two phases a statement filters by — ActiveCustomer (an existence over
+// the carrying cubelet's own event, ⚑CN-P9) and LargeSale (a measure predicate reading a parameter, R-cn-7's explain).
+// Everything is md-grounded and nothing has an er landing (no `md2er`), so this world also holds the er refusals.
+model cn
+
+def role Customer { label: { en: "Customer", cs: "Zákazník" }, event: Sale }
+
+def event Sale {
+    label: { en: "Sale", cs: "Prodej" },
+    involves: [Customer],
+    period: { at: sold_on },
+    qualities: [revenue, gross_revenue, sold_on]
+}
+
+def quality revenue       { of: Sale, label: { en: "Net revenue", cs: "Čistý obrat" } }
+def quality gross_revenue { of: Sale, label: { en: "Gross revenue", cs: "Hrubý obrat" } }
+def quality sold_on       { of: Sale, label: { en: "Sold on", cs: "Datum prodeje" } }
+
+def phase ActiveCustomer {
+    of: Customer,
+    basis: occurrence,
+    label: { en: "Active customer", cs: "Aktivní zákazník" },
+    definition: """exists Sale involving this where within(period.at, last: days(365))"""
+}
+def phase LargeSale {
+    of: Sale,
+    label: { en: "Large sale", cs: "Velký prodej" },
+    definition: """revenue > :large_sale"""
+}

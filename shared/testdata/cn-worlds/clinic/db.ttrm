@@ -1,0 +1,87 @@
+// CN-P3 S3.7 — the invented clinical world's physical face (invented names and X-codes; never client content).
+model db schema dbo
+
+def table patient {
+    primaryKey: ["patient_id"]
+    columns: [
+        def column patient_id { type: int, isKey: true },
+        def column birth_year { type: int }
+    ]
+}
+
+def table encounter {
+    primaryKey: ["encounter_id"]
+    columns: [
+        def column encounter_id { type: int, isKey: true },
+        def column patient_id { type: int },
+        def column department_id { type: int },
+        def column admitted_at { type: timestamp },
+        def column discharged_at { type: timestamp, optional: true }
+    ]
+}
+
+def table transfer {
+    primaryKey: ["transfer_id"]
+    columns: [
+        def column transfer_id { type: int, isKey: true },
+        def column patient_id { type: int },
+        def column from_encounter { type: int },
+        def column to_encounter { type: int },
+        def column at { type: timestamp },
+        def column transfer_kind { type: text }
+    ]
+}
+
+def table condition {
+    primaryKey: ["condition_id"]
+    columns: [
+        def column condition_id { type: int, isKey: true },
+        def column patient_id { type: int },
+        def column encounter_id { type: int },
+        def column code { type: text },
+        def column certainty { type: text },
+        def column experiencer { type: text },
+        def column onset { type: date },
+        def column onset_hi { type: date, optional: true },
+        def column onset_granularity { type: text },
+        def column abatement { type: date, optional: true }
+    ]
+}
+
+def table diagnosis_code {
+    primaryKey: ["code"]
+    columns: [
+        def column code { type: text, isKey: true },
+        def column title { type: text }
+    ]
+}
+
+def table code_closure {
+    primaryKey: ["ancestor_code", "descendant_code"]
+    columns: [
+        def column ancestor_code { type: text, isKey: true },
+        def column descendant_code { type: text, isKey: true }
+    ]
+}
+
+def table fracture_episode {
+    primaryKey: ["episode_id"]
+    columns: [
+        def column episode_id { type: int, isKey: true },
+        def column patient_id { type: int },
+        def column period_start { type: date },
+        def column period_end { type: date, optional: true },
+        def column end_state { type: text }
+    ]
+}
+
+def table observation {
+    primaryKey: ["observation_id"]
+    columns: [
+        def column observation_id { type: int, isKey: true },
+        def column patient_id { type: int },
+        def column analyte { type: text },
+        def column value { type: decimal },
+        def column observed_at { type: timestamp }
+    ]
+}

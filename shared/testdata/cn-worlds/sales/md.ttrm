@@ -1,0 +1,64 @@
+// CN-P3 S3.7 — the md hero (copied from ttrp-cli's md-project fixture, `models/md/model.ttrm`, the dot-path arc's shared
+// `sales-model`): E-0 reads `sales` (Customer.name × Time.day; `net` / `gross`), month and year through the calc maps.
+model md
+
+def domain Code    { type: string }
+def domain Name    { type: string, publish: members }
+def domain Region  { type: string }
+def domain Date    { type: date }
+def domain Month   { type: int, kind: calc, restrict: { range: 1..12 } }
+def domain Quarter { type: int, kind: calc, restrict: { range: 1..4 } }
+def domain Year    { type: int, kind: calc }   // dot-path S2: ordered numeric year member (2025, 2024..2026)
+def domain ProductCode { type: string }
+def domain Money   { type: decimal }
+
+def dimension Customer {
+  key: code,
+  attributes: [
+    def attribute code   { domain: md.Code, isKey: true },
+    def attribute name   { domain: md.Name },
+    def attribute region { domain: md.Region }
+  ]
+}
+
+def dimension Time {
+  key: day,
+  attributes: [
+    def attribute day     { domain: md.Date, isKey: true },
+    def attribute month   { domain: md.Month },
+    def attribute quarter { domain: md.Quarter },
+    def attribute year    { domain: md.Year }
+  ],
+  hierarchies: [calendar]
+}
+
+def dimension Product {
+  key: code,
+  attributes: [
+    def attribute code { domain: md.ProductCode, isKey: true }
+  ]
+}
+
+// N:1 coarsening maps (demote leaf-ness of the target).
+def map name_to_region { from: md.Name, to: md.Region, cardinality: { from: "N", to: "1" } }
+// 1:1 map — code and name are co-leaves; a 1:1 map does NOT demote leaf-ness.
+def map code_to_name   { from: md.Code, to: md.Name, cardinality: { from: "1", to: "1" } }
+// calc maps (implicitly N:1).
+def map date_to_month     { from: md.Date,  to: md.Month,   calc: monthOfDate }
+def map month_to_quarter  { from: md.Month, to: md.Quarter, calc: quarterOfMonth }
+def map date_to_year      { from: md.Date,  to: md.Year,    calc: yearOfDate }
+// Attribute→domain sugar (2B4): `from:` names a dimension attribute, resolved to md.Region.
+def map region_from_attr  { from: Customer.name, to: md.Region, cardinality: { from: "N", to: "1" } }
+
+def hierarchy calendar {
+  dimension: md.Time,
+  levels: [day, month via md.date_to_month, quarter via md.month_to_quarter]
+}
+
+def measure net   { domain: md.Money, class: additive, aggregation: sum }
+def measure gross { domain: md.Money, class: additive, aggregation: sum }
+
+// sales grain: Customer.name × Time.day, default measure net.
+def cubelet sales { grain: [Customer.name, Time.day], measures: [net, gross] }
+// plan grain: Customer.name × Time.month (coarser time grain).
+def cubelet plan  { grain: [Customer.name, Time.month], measures: [net] }

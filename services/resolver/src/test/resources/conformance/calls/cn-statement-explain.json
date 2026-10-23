@@ -1,0 +1,83 @@
+{
+  "id": "cn-statement-explain",
+  "description": "statement.explain:v1 — the ActiveCustomer frame in Czech, the phase's definition said as prose (A-CN-54); a refused frame is still explained, with its refusal.",
+  "surface": "cn",
+  "estate": "sales",
+  "invariants": [
+    "refusal over guess — an ambiguous slot is a finding, never a choice; a refused frame lowers to nothing",
+    "a refusal is not an error — it is a result with its cn findings (A-CN-57)",
+    "deterministic — the same call on the same snapshot is byte-equal"
+  ],
+  "turns": [
+    {
+      "tool": "statement.explain:v1",
+      "args": {
+        "statement": {
+          "ask": "ASK_VALUE",
+          "measures": [
+            {
+              "qname": "cn.revenue"
+            }
+          ],
+          "filters": [
+            {
+              "phase": {
+                "phase": {
+                  "qname": "cn.ActiveCustomer"
+                }
+              }
+            }
+          ],
+          "time": {
+            "periodCode": "2026-01"
+          },
+          "locale": "en",
+          "asOf": {
+            "value": "2026-01-31",
+            "granularity": "DAY"
+          }
+        },
+        "locale": "cs"
+      },
+      "expect": {
+        "refusal_over_guess": true,
+        "deterministic": true,
+        "outcome": "result",
+        "text": "Čistý obrat · aktivní zákazník: existuje prodej, účastník zákazník, kde čas za posledních 365 dní · leden 2026 · ke dni 31. 1. 2026."
+      }
+    },
+    {
+      "tool": "statement.explain:v1",
+      "args": {
+        "statement": {
+          "ask": "ASK_VALUE",
+          "measures": [
+            {
+              "candidates": [
+                {
+                  "qname": "cn.revenue"
+                },
+                {
+                  "qname": "cn.gross_revenue"
+                }
+              ]
+            }
+          ],
+          "time": {
+            "periodCode": "2026-01"
+          },
+          "locale": "en"
+        },
+        "locale": "en"
+      },
+      "expect": {
+        "refusal_over_guess": true,
+        "deterministic": true,
+        "outcome": "result",
+        "text_contains": [
+          "refused: cn/ambiguous-statement (measures[0])"
+        ]
+      }
+    }
+  ]
+}

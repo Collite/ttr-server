@@ -1,0 +1,4 @@
+// CN-P3 S3.7 — the parameter LargeSale reads as `:large_sale` (A-CN-26); a statement binds its value from here.
+model automation
+
+def parameter large_sale { type: decimal, value: 10000 }
