@@ -46,7 +46,7 @@ class OpenSpec :
         fun service(
             b: Bundle = bundle(),
             approved: ApprovalReader = ApprovalReader { _, _, _ -> true },
-            claim: (RunOpen) -> Claim = { Claim.Claimed(UUID.randomUUID()) },
+            claim: (RunOpen) -> Claim = { Claim.Claimed(UUID.randomUUID(), startedAt = BundleFixture.clock.instant()) },
             paused: Boolean = false,
             devOff: Boolean = false,
             detailLimit: Int = 200,
@@ -76,7 +76,7 @@ class OpenSpec :
             val result =
                 service(claim = {
                     recorded = it
-                    Claim.Claimed(id)
+                    Claim.Claimed(id, startedAt = BundleFixture.clock.instant())
                 }).open(recipe, request(), caller)
             result.httpStatus shouldBe 201
             result.response.runId shouldBe id.toString()
@@ -112,7 +112,7 @@ class OpenSpec :
             val result =
                 service(optedIn, claim = {
                     recorded = it
-                    Claim.Claimed(UUID.randomUUID())
+                    Claim.Claimed(UUID.randomUUID(), startedAt = BundleFixture.clock.instant())
                 })
                     .open(recipe, request(), caller)
             result.context!!.allowRestrictedView shouldBe true
@@ -127,7 +127,7 @@ class OpenSpec :
             val result =
                 service(detailLimit = 7, claim = {
                     recorded = it
-                    Claim.Claimed(UUID.randomUUID())
+                    Claim.Claimed(UUID.randomUUID(), startedAt = BundleFixture.clock.instant())
                 }).open(recipe, request(), caller)
             result.context!!.detailLimit shouldBe 7
             recorded!!.openingProtocol!!.jsonObject["detailLimit"] shouldBe JsonPrimitive(7)
@@ -170,7 +170,7 @@ class OpenSpec :
             val result =
                 service(limited, claim = {
                     recorded = it
-                    Claim.Claimed(UUID.randomUUID())
+                    Claim.Claimed(UUID.randomUUID(), startedAt = BundleFixture.clock.instant())
                 })
                     .open(recipe, request(), caller)
             result.context!!.detailLimits shouldBe mapOf("release" to 3)
@@ -214,7 +214,7 @@ class OpenSpec :
                 paused: Boolean = false,
             ) = service(b, claim = {
                 claims++
-                Claim.Claimed(UUID.randomUUID())
+                Claim.Claimed(UUID.randomUUID(), startedAt = BundleFixture.clock.instant())
             }, paused = paused)
             refused(ErrorCode.PAUSED) { s(paused = true).open(recipe, request(), caller) }
             refused(ErrorCode.RECIPE) { s().open("absent", request(), caller) }
@@ -387,7 +387,7 @@ class OpenSpec :
             val s =
                 service(claim = {
                     recorded += it
-                    Claim.Claimed(UUID.randomUUID())
+                    Claim.Claimed(UUID.randomUUID(), startedAt = BundleFixture.clock.instant())
                 })
             s.open(
                 recipe,
@@ -464,7 +464,7 @@ class OpenSpec :
             val result =
                 service(b, claim = {
                     row = it
-                    Claim.Claimed(UUID.randomUUID())
+                    Claim.Claimed(UUID.randomUUID(), startedAt = BundleFixture.clock.instant())
                 }).open(
                     "decide_return",
                     OpenRequest(d, buildJsonObject { put("key", 123) }),
@@ -474,6 +474,18 @@ class OpenSpec :
             row!!.program shouldBe "decide_on_request"
             row!!.fpProgram shouldBe original.programFps.getValue("decide_on_request")
         }
+        "the execution start is the committed claim time rather than request time or user asOf" {
+            val started = now.plusSeconds(8)
+            val result =
+                service(claim = { Claim.Claimed(UUID.randomUUID(), startedAt = started) })
+                    .open(recipe, request().copy(asOf = now.minusSeconds(86400).toString()), caller)
+            result.context!!.startedAt shouldBe started
+            result.context!!
+                .bindings
+                .getValue("as_of")
+                .value shouldBe now.minusSeconds(86400)
+        }
+
         "program budgets and overrides resolve before the claim; debug runs use the verified caller" {
             val b = bundle()
             val p = b.programs.getValue(program)
@@ -506,7 +518,7 @@ class OpenSpec :
             val result =
                 service(configured, claim = {
                     row = it
-                    Claim.Claimed(UUID.randomUUID())
+                    Claim.Claimed(UUID.randomUUID(), startedAt = BundleFixture.clock.instant())
                 }).open(recipe, request(), caller)
             row!!.budgetSync shouldBe Duration.ofMillis(250)
             row!!.budgetBatch shouldBe Duration.ofMinutes(2)
@@ -533,7 +545,7 @@ class OpenSpec :
             val s =
                 service(claim = {
                     opens += it
-                    Claim.Claimed(UUID.randomUUID())
+                    Claim.Claimed(UUID.randomUUID(), startedAt = BundleFixture.clock.instant())
                 })
             s.open(recipe, request(), caller)
             s.open(recipe, request(), caller)
@@ -544,7 +556,7 @@ class OpenSpec :
             val changed = bundle().copy(modelFp = "new-model")
             service(changed, claim = {
                 opens += it
-                Claim.Claimed(UUID.randomUUID())
+                Claim.Claimed(UUID.randomUUID(), startedAt = BundleFixture.clock.instant())
             }).open(recipe, request().copy(idempotencyKey = "engine:1"), caller)
             opens[3].idempotencyKey shouldBe opens[4].idempotencyKey
         }

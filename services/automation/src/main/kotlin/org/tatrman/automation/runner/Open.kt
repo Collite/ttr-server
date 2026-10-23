@@ -225,7 +225,7 @@ class Open(
                 OpenResult(
                     201,
                     OpenResponse(id.toString(), false, "open", location),
-                    context.copy(id = id),
+                    context.copy(id = id, startedAt = claimed.startedAt),
                     approvalsOff,
                 )
         }

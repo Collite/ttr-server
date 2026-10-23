@@ -47,7 +47,7 @@ class OpenRoutesSpec :
 
         "authenticated open answers 201, live handle 202, replay 200; only a new claim creates an executor context" {
             val id = UUID.randomUUID()
-            var claim: Claim = Claim.Claimed(id)
+            var claim: Claim = Claim.Claimed(id, startedAt = BundleFixture.clock.instant())
             var recorded: RunOpen? = null
             val contexts = mutableListOf<RunContext>()
             val open =

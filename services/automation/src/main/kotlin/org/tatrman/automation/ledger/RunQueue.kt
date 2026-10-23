@@ -25,6 +25,7 @@ import java.util.UUID
 class RunQueue(
     private val pgmq: Pgmq = Pgmq(),
     private val clock: Clock = Clock.systemUTC(),
+    private val defaultBudget: java.time.Duration,
 ) : RunWorkQueue {
     override fun enqueue(
         run: UUID,
@@ -37,7 +38,9 @@ class RunQueue(
             val existing = RunEvaluations.selectAll().where { RunEvaluations.run eq run }.firstOrNull()
             if (existing != null) {
                 if (existing[RunEvaluations.owner] != owner) unavailable()
+                ensureRunBudget(run, defaultBudget, clock)
             } else {
+                ensureRunBudget(run, defaultBudget, clock)
                 val message =
                     buildJsonObject {
                         put("run", run.toString())
@@ -99,6 +102,7 @@ class RunQueue(
             ) {
                 return@transaction false
             }
+            ensureRunBudget(run, defaultBudget, clock)
             RunEvaluations.update({ RunEvaluations.run eq run }) {
                 it[claimedAt] =
                     clock.instant().atOffset(ZoneOffset.UTC)

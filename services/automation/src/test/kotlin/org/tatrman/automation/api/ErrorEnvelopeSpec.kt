@@ -161,6 +161,7 @@ class ErrorEnvelopeSpec :
                 ErrorCode.OUT_OF_SCOPE,
                 ErrorCode.OUT_OF_SCOPE_READ,
                 ErrorCode.DUPLICATE_KEY,
+                ErrorCode.BUDGET,
             )
         val DELIVERED = setOf("S0.1", "S0.2", "S0.3")
         private val RAISE = Regex("""AutomationException\(\s*ErrorCode\.([A-Z_]+)""")

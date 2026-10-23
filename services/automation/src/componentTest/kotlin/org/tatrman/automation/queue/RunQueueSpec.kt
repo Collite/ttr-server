@@ -24,7 +24,7 @@ class RunQueueSpec :
         val clock = MutableClock(Instant.parse("2026-10-23T10:00:00Z"))
         val ledger = Ledger(Duration.ofMinutes(30), clock)
         val pgmq = Pgmq()
-        val queue = RunQueue(pgmq, clock)
+        val queue = RunQueue(pgmq, clock, Duration.ofMinutes(30))
         val owner = UUID.randomUUID()
         beforeEach { LedgerTestDb.reset() }
 

@@ -9,6 +9,9 @@ import org.tatrman.automation.api.ErrorCode
 import org.tatrman.automation.identity.Caller
 import org.tatrman.automation.ledger.RunStatus
 import java.util.UUID
+import java.time.Clock
+import java.time.Duration
+import org.slf4j.LoggerFactory
 
 /**
  * Owns the pinned executors, not a cache of reconstructible runs. A refresh never replaces a context; a
@@ -20,15 +23,19 @@ import java.util.UUID
  * waiter does not cancel shared work. [release] cancels and joins that scope BEFORE closing DuckDB.
  * [failed] must atomically fail only an active ledger row, never overwrite a terminal/waiting run. A failed
  * journal attempt can be retried; successful recording is serialized once per session.
- * Production mounting, deadlines/retention and restart recovery are separate integration tasks.
+ * The committed claim timestamp bounds idle/queued/running execution. Deadline monitors belong to the
+ * application scope so they can cancel the run scope and journal/replay its refusal independently. Supply
+ * the same configured clock as Open/Ledger and Ledger.failExecution as [failed]. A successful durable
+ * evaluation ends this timer; production mounting, preview/close/task handoff and retention remain separate.
  */
 class RunSessions(
     private val policy: Open,
     private val parent: CoroutineScope,
     private val create: (RunContext, CoroutineScope) -> PartRunner,
     private val status: (UUID) -> RunStatus?,
-    private val failed: (UUID) -> Unit,
+    private val failed: (UUID, Exception) -> Unit,
     private val running: (UUID) -> Unit = { error("running journal unavailable") },
+    private val clock: Clock,
 ) {
     private class Session(
         val runner: PartRunner,
@@ -40,9 +47,13 @@ class RunSessions(
         val failureLock = Mutex()
 
         @Volatile var failure: Exception? = null
-        var failureRecorded = false
+
+        @Volatile var budgetExpired = false
+
+        @Volatile var failureRecorded = false
         var closing = false // Guarded by the registry lock.
         val released = CompletableDeferred<Unit>()
+        var deadline: Job? = null
     }
 
     private val lock = Mutex()
@@ -65,10 +76,12 @@ class RunSessions(
                 try {
                     parent.ensureActive()
                     check(context.id !in sessions) { "duplicate executor for a claimed run" }
-                    sessions[context.id] = Session(create(context, scope), job, scope)
+                    val session = Session(create(context, scope), job, scope)
+                    sessions[context.id] = session
+                    session.deadline = parent.launch { watchDeadline(session, context.id) }
                 } catch (e: Exception) {
                     job.cancel()
-                    withContext(Dispatchers.IO) { failed(context.id) }
+                    withContext(Dispatchers.IO) { failed(context.id, e) }
                     throw e
                 }
                 result
@@ -84,9 +97,15 @@ class RunSessions(
     ): T {
         val session = owned(id, caller)
         val current = withContext(Dispatchers.IO) { status(id) }
-        if (current !in setOf(RunStatus.OPEN, RunStatus.RUNNING, RunStatus.EVALUATED)) unavailable()
+        if (current !in setOf(RunStatus.OPEN, RunStatus.RUNNING, RunStatus.EVALUATED, RunStatus.FAILED)) unavailable()
+        if (current == RunStatus.FAILED) {
+            if ((session.failure as? AutomationException)?.code == ErrorCode.BUDGET) throwFailure(session, id)
+            unavailable()
+        }
+        checkDeadline(session, id)
+        throwFailure(session, id)
         val selection = select(session.runner.context) // Client mistakes never fail the run.
-        return session.scope.async { guarded(session, id) { block(session.runner, selection) } }.await()
+        return await(session, id, session.scope.async { guarded(session, id) { block(session.runner, selection) } })
     }
 
     /** A timed-out/disconnected HTTP waiter never cancels the shared evaluation. Null means still running. */
@@ -97,12 +116,12 @@ class RunSessions(
         val session = owned(id, caller)
         val current = withContext(Dispatchers.IO) { status(id) }
         if (current !in setOf(RunStatus.OPEN, RunStatus.RUNNING, RunStatus.EVALUATED, RunStatus.FAILED)) unavailable()
+        checkDeadline(session, id)
         throwFailure(session, id) // Preserve a cached refusal, never restart it.
         if (current !in setOf(RunStatus.OPEN, RunStatus.RUNNING, RunStatus.EVALUATED)) unavailable()
         val work =
             session.evaluationLock.withLock {
                 session.evaluation ?: run {
-                    session.scope.ensureActive()
                     session.scope
                         .async {
                             guarded(session, id) {
@@ -112,10 +131,14 @@ class RunSessions(
                         }.also { session.evaluation = it }
                 }
             }
-        return withTimeoutOrNull(
-            session.runner.context.syncBudget
-                .toMillis(),
-        ) { work.await() }
+        val result =
+            withTimeoutOrNull(
+                session.runner.context.syncBudget
+                    .toMillis(),
+            ) { await(session, id, work) }
+        checkDeadline(session, id)
+        throwFailure(session, id)
+        return result
     }
 
     /** Owner-checked observation only: polling never starts a read, evaluation or decision journal. */
@@ -126,6 +149,7 @@ class RunSessions(
         val session = owned(id, caller)
         val current = withContext(Dispatchers.IO) { status(id) }
         if (current !in setOf(RunStatus.OPEN, RunStatus.RUNNING, RunStatus.EVALUATED, RunStatus.FAILED)) unavailable()
+        checkDeadline(session, id)
         throwFailure(session, id) // Replay failures even after the active-run failure was journalled.
         if (current == RunStatus.FAILED) unavailable()
         val result =
@@ -180,17 +204,96 @@ class RunSessions(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            withContext(NonCancellable) {
-                session.failureLock.withLock {
-                    if (session.failure == null) session.failure = e
-                    if (!session.failureRecorded) {
-                        withContext(Dispatchers.IO) { failed(id) }
-                        session.failureRecorded = true
-                    }
-                }
+            recordFailure(session, id, e)
+            throw requireNotNull(session.failure)
+        }
+
+    /** HTTP cancellation remains cancellation; a cancelled shared executor replays its stable refusal. */
+    private suspend fun <T> await(
+        session: Session,
+        id: UUID,
+        work: Deferred<T>,
+    ): T =
+        try {
+            work.await().also {
+                checkDeadline(session, id)
+                throwFailure(session, id)
             }
+        } catch (e: CancellationException) {
+            currentCoroutineContext().ensureActive()
+            throwFailure(session, id)
             throw e
         }
+
+    private suspend fun recordFailure(
+        session: Session,
+        id: UUID,
+        error: Exception,
+    ) {
+        withContext(NonCancellable) {
+            session.failureLock.withLock {
+                if (session.failure == null) session.failure = error
+                if (!session.failureRecorded) {
+                    withContext(Dispatchers.IO) { failed(id, requireNotNull(session.failure)) }
+                    session.failureRecorded = true
+                }
+            }
+        }
+    }
+
+    private fun expired(session: Session): Boolean =
+        session.budgetExpired ||
+            !session.runner.evaluationRecorded &&
+            Duration.between(session.runner.context.startedAt, clock.instant()) >= session.runner.context.timeout
+
+    private suspend fun checkDeadline(
+        session: Session,
+        id: UUID,
+    ) {
+        if (!expired(session)) return
+        withContext(NonCancellable) {
+            session.failureLock.withLock {
+                if (session.runner.evaluationRecorded) return@withContext
+                if (session.failure == null) {
+                    session.failure = AutomationException(ErrorCode.BUDGET, "the run exceeded its batch budget")
+                }
+                // Latch before cancelling every shared read/combine/dispatch child. Keep the session itself
+                // available for refusal replay; release still joins blocking IO before closing the executor.
+                session.budgetExpired = true
+                session.job.cancel(CancellationException("automation batch budget expired"))
+            }
+            recordFailure(session, id, requireNotNull(session.failure))
+        }
+    }
+
+    private suspend fun watchDeadline(
+        session: Session,
+        id: UUID,
+    ) {
+        while (currentCoroutineContext().isActive && !session.runner.evaluationRecorded) {
+            try {
+                checkDeadline(session, id)
+                if (session.budgetExpired && session.failureRecorded) return
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                log.warn("automation batch deadline journal failed; will retry", e)
+            }
+            // Re-read the same clock as Open/Ledger, including clock.skew and forward/backward adjustments.
+            // Never reset from a delivery, a new HTTP waiter, user asOf, or today's bundle.
+            val remaining =
+                session.runner.context.timeout.minus(
+                    Duration.between(session.runner.context.startedAt, clock.instant()),
+                )
+            delay(
+                if (remaining.isNegative || remaining.isZero || remaining >= Duration.ofMillis(250)) {
+                    250
+                } else {
+                    remaining.toMillis().coerceAtLeast(1)
+                },
+            )
+        }
+    }
 
     suspend fun release(id: UUID) {
         val (session, owner) =
@@ -206,6 +309,7 @@ class RunSessions(
                 return@withContext
             }
             try {
+                session.deadline?.cancelAndJoin()
                 session.job.cancelAndJoin()
                 withContext(Dispatchers.IO) { session.runner.close() }
                 session.released.complete(Unit)
@@ -257,6 +361,10 @@ class RunSessions(
             }
             failure?.let { throw it }
         }
+    }
+
+    companion object {
+        private val log = LoggerFactory.getLogger(RunSessions::class.java)
     }
 
     private fun unavailable(): Nothing =

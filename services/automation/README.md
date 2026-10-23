@@ -92,7 +92,7 @@ journal callback, evaluate fails closed. The callback stores the typed evaluate 
 Identical durable retries are harmless; changed evidence, sealed protocols and terminal/waiting runs refuse.
 This supplies the durable summary for later status/protocol readers without a second mutable summary column.
 A journal failure is shared like other executor failures and the session fails the active run. Budgeted
-evaluate/poll is described below; production mounting still needs the queue hook, total deadlines and lifecycle recovery.
+evaluate/poll is described below; production mounting still needs the queue hook and lifecycle recovery.
 
 `POST /automation/runs/{id}/evaluate` waits at most the program's pinned `budget.sync` (configured default when
 absent). Open pins and journals that budget in milliseconds alongside the batch budget. One supervised session
@@ -124,9 +124,31 @@ Engine polling contract (D-47):
    never automatically restart a refusal.
 4. A lost transport response can be retried with the same key/run id. A `503 run-abandoned` permits a bounded
    restart with that same key (bound attempts and elapsed time in the engine); stop when that bound is reached.
-   Production queue/maintenance wiring, total batch cancellation and owner routing are pending. With these
+   Production queue/maintenance wiring and owner routing are pending. With these
    unmounted session handlers, a missing/released context fails closed; restarting cannot reconstruct today's recipe as
    the old run, and an existing key may remain held until the ledger's existing budget-plus-two-minute claim rule.
+
+`RunSessions` enforces the batch budget from the **committed** `runs.started_at` returned by a new claim,
+not from HTTP arrival, user `asOf`, delivery or evaluation start. Idle time, queue wait and all evaluation waves
+share that deadline. The monitor rechecks the injected clock at most every 250ms, and API reads/polls check it
+before starting work and before publishing success. Expiry latches `504 budget`, cancels the original run scope
+(including shared reads, combines and queued dispatch), and retries its failure journal without a new Query.
+A clock rollback cannot resume expired work or replace an earlier guard refusal. Disconnected HTTP waiters
+still leave live work alone. Successful durable evaluations stop this execution timer and retain their result.
+
+Runtime must pass the **same configured clock** to Open, Ledger, RunQueue and RunSessions, the configured batch
+default to RunQueue, and `failed = ledger::failExecution` to RunSessions. The typed failure callback persists
+only the public error code, never exception text/credentials. Begin, new decision, output publication, queue
+enqueue and execution claim also enforce the pinned batch → sync → default budget under the PostgreSQL run
+lock, at the exact deadline without grace. Lock waits cannot authorize a late commit. Identical already
+committed decisions remain idempotent. Cancellation is rechecked after blocking blob publication before its
+ledger insert; unreferenced blobs remain for retention. Release joins the deadline monitor and all cancelled
+blocking work before closing DuckDB. The DB checks protect late results independently of timer scheduling.
+
+The cancellation path is implemented for active P1 execution. Production clock-skew/runtime mounting,
+preview/close lifecycle deadlines and later WAITING/task handoff remain integration work; the execution timer
+must be disarmed when ownership passes to a waiting task. A lost process has no local timer or reconstructible
+context: its row still waits for durable budget-plus-grace abandonment before a bounded same-key restart.
 
 `Ledger.abandonExpiredRuns(limit = 100)` supplies the durable clock sweep. It selects at most `limit` expired
 OPEN/RUNNING/EVALUATED rows with `FOR UPDATE SKIP LOCKED`, so pods can sweep concurrently without waiting on
@@ -144,7 +166,7 @@ requires an outermost READ COMMITTED ledger transaction and checks active status
 lock; late writes cannot publish even an identical retry after abandonment/close/failure/waiting/sealing. Existing
 immutable outputs remain evidence. A rejected journal can leave an unreferenced blob for retention, as below.
 These are independently tested primitives. The worker loop below invokes a required runtime maintenance
-callback; production mounting, total batch cancellation and blob retention remain integration/lifecycle work.
+callback; production mounting and blob retention remain integration/lifecycle work.
 
 Durable evaluation uses `ledger/RunQueue` and V5's `run_evaluations` journal. Enqueue locks the run, checks
 active/unsealed status, and commits one dispatch row plus one pgmq message together. Repeated enqueue by the
@@ -175,8 +197,7 @@ The worker's periodic loop requires a `maintenance` callback that performs the l
 starting workers so this callback cannot observe an uninitialized registry. Queue/maintenance errors back off
 and retry without ending the consumers. Stop/join workers before `sessions.shutdown()` closes executors, and
 finish both before closing the database. Shutdown joins in-flight enqueue and active evaluation cancellation.
-Absolute batch cancellation across queue waits/waves, deployment owner routing, production integration and
-staging retention are pending. No run routes or maintenance loop are installed in Application yet.
+Deployment owner routing, production integration and staging retention are pending. No run routes or maintenance loop are installed in Application yet.
 
 Local staging publishes immutable Arrow blobs before journalling their metadata. A journal failure leaves an
 unreferenced blob for the S1.3 retention job; it never deletes content another claimant might reference. The

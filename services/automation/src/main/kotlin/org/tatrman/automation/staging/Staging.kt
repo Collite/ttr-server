@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package org.tatrman.automation.staging
 
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.tatrman.automation.ledger.RunOutput
@@ -105,7 +107,9 @@ class Staging(
             require(SAFE.matches(island) && SAFE.matches(port)) { "invalid staged output name" }
             val path = "runs/$run/$island.$port.arrow"
             val bytes = ArrowTables.encode(table)
+            currentCoroutineContext().ensureActive()
             store.putIfAbsent(path, bytes)
+            currentCoroutineContext().ensureActive()
             val output = RunOutput(run, island, port, table.rows.size.toLong(), bytes.size.toLong(), path, hash(bytes))
             // On a journal failure leave the blob for retention. Another claimant may already reference it;
             // deleting here could destroy its valid output. No reference is returned until the ledger succeeds.

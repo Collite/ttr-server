@@ -34,6 +34,8 @@ data class RunContext(
     val detailLimit: Int = 200,
     val detailLimits: Map<String, Int> = emptyMap(),
     val syncBudget: Duration = Duration.ofSeconds(60),
+    /** Production Open replaces this with the committed ledger claim timestamp. */
+    val startedAt: java.time.Instant = java.time.Instant.now(),
 ) {
     init {
         require(readCeiling > 0 && detailLimit > 0 && !timeout.isNegative && !timeout.isZero)
@@ -95,6 +97,9 @@ class PartRunner(
     private val partReads = mutableMapOf<String, Deferred<Unit>>()
     private val outputs = mutableMapOf<String, Deferred<StagedOutput>>()
     private var evaluation: Deferred<EvaluationResult>? = null
+
+    @Volatile internal var evaluationRecorded = false
+        private set
     private val combine = lazy { DuckDbCombiner() }
     private val checks = Guards(context)
     val guards: List<GuardResult> get() = checks.results
@@ -147,6 +152,7 @@ class PartRunner(
                             checks.ensureAllowed()
                             kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
                                 recordEvaluation(context.id, result)
+                                evaluationRecorded = true
                             }
                             checks.ensureAllowed()
                             result

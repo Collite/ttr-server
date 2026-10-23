@@ -351,6 +351,8 @@ internal class RunSessionFixture(
     afterEvaluation: () -> Unit = {},
     beforeStatus: (UUID) -> Unit = {},
     workers: RunWorkers? = null,
+    batchDefault: Duration = Duration.ofMinutes(30),
+    clock: java.time.Clock = BundleFixture.clock,
     private val columns: List<ManifestColumn> =
         listOf(ManifestColumn("order_number", "text"), ManifestColumn("note", "text")),
 ) {
@@ -358,6 +360,7 @@ internal class RunSessionFixture(
     val states = ConcurrentHashMap<UUID, RunStatus>()
     val records = ConcurrentHashMap<UUID, RunOpen>()
     val evaluations = ConcurrentHashMap<UUID, EvaluationResult>()
+    val failures = ConcurrentHashMap<UUID, Exception>()
     val created = AtomicInteger()
     val reads = AtomicInteger()
     val statusReads = AtomicInteger()
@@ -448,14 +451,14 @@ internal class RunSessionFixture(
                     states[id] = RunStatus.OPEN
                     records[id] = input
                     claimed()
-                    Claim.Claimed(id)
+                    Claim.Claimed(id, startedAt = clock.instant())
                 }
             },
             { "/automation/runs/$it/protocol" },
             { false },
             syncDefault,
-            Duration.ofMinutes(30),
-            BundleFixture.clock,
+            batchDefault,
+            clock,
             detailLimit = detailLimit,
         )
     val runs =
@@ -494,8 +497,9 @@ internal class RunSessionFixture(
                 beforeStatus(id)
                 states[id]
             },
-            { id ->
+            { id, failure ->
                 beforeFailure()
+                failures[id] = failure
                 states.computeIfPresent(id) { _, old ->
                     if (!old.terminal &&
                         old != RunStatus.WAITING
@@ -513,6 +517,7 @@ internal class RunSessionFixture(
                     if (old == RunStatus.OPEN) RunStatus.RUNNING else old
                 }
             },
+            clock = clock,
         )
 
     suspend fun open(

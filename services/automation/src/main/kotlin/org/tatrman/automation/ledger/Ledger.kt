@@ -158,8 +158,8 @@ class Ledger(
             transaction {
                 maxAttempts = CLAIM_ATTEMPTS
                 abandonedRecipe = null
-                val now = clock.instant()
-                val key = open.idempotencyKey ?: return@transaction Claim.Claimed(insertRun(open, now))
+                val now = clock.instant().truncatedTo(java.time.temporal.ChronoUnit.MICROS)
+                val key = open.idempotencyKey ?: return@transaction Claim.Claimed(insertRun(open, now), startedAt = now)
                 val row =
                     Runs
                         .selectAll()
@@ -176,7 +176,7 @@ class Ledger(
                         )
                     }
                 when (val decision = IdempotencyPolicy.decide(holder, now)) {
-                    ClaimDecision.Open -> Claim.Claimed(insertRun(open, now))
+                    ClaimDecision.Open -> Claim.Claimed(insertRun(open, now), startedAt = now)
                     is ClaimDecision.Replay -> Claim.Replay(decision.runId)
                     is ClaimDecision.Wait -> Claim.Running(decision.runId, decision.status)
                     is ClaimDecision.AbandonThenOpen -> {
@@ -186,7 +186,7 @@ class Ledger(
                             it[error] = JsonObject(mapOf("code" to JsonPrimitive("run-abandoned")))
                         }
                         abandonedRecipe = row?.get(Runs.recipe)
-                        Claim.Claimed(insertRun(open, now), abandoned = decision.runId)
+                        Claim.Claimed(insertRun(open, now), abandoned = decision.runId, startedAt = now)
                     }
                 }
             }
@@ -228,6 +228,7 @@ class Ledger(
                 throw IllegalRunTransition(runId, from, RunStatus.RUNNING)
             }
             if (isSealed(runId)) throw ProtocolSealed(runId)
+            if (from != RunStatus.EVALUATED) ensureRunBudget(runId, defaultBudget, clock)
             if (from == RunStatus.OPEN) Runs.update({ Runs.id eq runId }) { it[status] = RunStatus.RUNNING.wire }
         }
     }
@@ -251,6 +252,15 @@ class Ledger(
                 it[Runs.error] = error ?: JsonObject(mapOf("code" to JsonPrimitive("internal")))
             } == 1
         }
+
+    /** Session failure callback: preserve the public code without storing exception text or credentials. */
+    fun failExecution(
+        runId: UUID,
+        cause: Exception,
+    ) {
+        val code = (cause as? org.tatrman.automation.api.AutomationException)?.code?.code ?: "internal"
+        failActiveRun(runId, JsonObject(mapOf("code" to JsonPrimitive(code))))
+    }
 
     /**
      * Commit evaluation as one transaction: immutable decision evidence and EVALUATED status. The decision
@@ -285,6 +295,7 @@ class Ledger(
                     "a pinned run's decision cannot change"
                 }
             } else {
+                ensureRunBudget(runId, defaultBudget, clock)
                 RunProtocol.insert {
                     it[run] = runId
                     it[section] = ProtocolSection.DECISION.wire
@@ -440,6 +451,7 @@ class Ledger(
                 throw IllegalRunTransition(output.run, from, RunStatus.RUNNING)
             }
             if (isSealed(output.run)) throw ProtocolSealed(output.run)
+            ensureRunBudget(output.run, defaultBudget, clock)
             val existing =
                 RunOutputs
                     .selectAll()

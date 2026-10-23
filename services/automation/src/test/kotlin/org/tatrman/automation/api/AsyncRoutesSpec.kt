@@ -31,6 +31,57 @@ class AsyncRoutesSpec :
         val realm = TestRealm()
         afterSpec { realm.close() }
 
+        "batch expiry returns a stable 504 budget on active evaluate and subsequent polls without a retry hint" {
+            val now = java.time.Instant.parse("2026-10-23T12:00:00Z")
+            val clock = BatchClock(now)
+            val entered = CompletableDeferred<Unit>()
+            val reads = AtomicInteger()
+            val fixture =
+                RunSessionFixture(
+                    batchDefault = Duration.ofSeconds(10),
+                    clock = clock,
+                    door =
+                        Door {
+                            reads.incrementAndGet()
+                            entered.complete(Unit)
+                            awaitCancellation()
+                        },
+                )
+            try {
+                testApplication {
+                    application { asyncTestApi(fixture, realm) }
+                    val token = realm.person("maya", listOf("sales_manager"))
+                    val id = fixture.open(by = Caller.of(token)!!).response.runId
+                    val base = "/automation/runs/$id"
+                    coroutineScope {
+                        val request = async { client.post("$base/evaluate") { bearerAuth(token) } }
+                        withTimeout(5000) { entered.await() }
+                        clock.now = now.plusSeconds(10)
+                        val expired = withTimeout(5000) { request.await() }
+                        for (response in listOf(
+                            expired,
+                            client.get(base) { bearerAuth(token) },
+                            client.post("$base/evaluate") { bearerAuth(token) },
+                        )) {
+                            response.status shouldBe HttpStatusCode.GatewayTimeout
+                            response.headers[HttpHeaders.RetryAfter] shouldBe null
+                            Json
+                                .parseToJsonElement(
+                                    response.bodyAsText(),
+                                ).jsonObject["error"]!!
+                                .jsonObject["code"] shouldBe
+                                JsonPrimitive("budget")
+                        }
+                    }
+                    reads.get() shouldBe 1
+                    fixture.outputs.size shouldBe 0
+                    fixture.evaluations.size shouldBe 0
+                }
+            } finally {
+                fixture.close()
+            }
+        }
+
         "slow evaluation returns 202 within the pinned sync budget and polls to one completed decision" {
             val entered = CompletableDeferred<Unit>()
             val finish = CompletableDeferred<Unit>()
