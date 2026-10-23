@@ -1,6 +1,6 @@
 # Default values for health. Env-agnostic: sane defaults, NO cluster knowledge. Deploying
-# environments (Olymp cluster values, or test-context values) override image, telemetry, and
-# retune the per-target check wiring through the HEALTH_* env overrides (extraEnv).
+# environments (Olymp cluster values, or test-context values) override image and telemetry, and
+# supply their own roster of checks as the config fragment (`configFragment`, below).
 
 replicaCount: 1
 
@@ -53,9 +53,9 @@ extraEnv: []
 configFragment:
   content: ""
 
-# The content rows of External Secrets and cert-manager read the Kubernetes API: with `rbac.enabled`
-# the chart creates `serviceAccount.name`, a ClusterRole that may get/list ExternalSecrets and
-# Certificates (their status — never a Secret), and the binding; the pod runs as that account.
+# The content rows of External Secrets and cert-manager read the Kubernetes API. `serviceAccount.name`:
+# the chart creates that account and the pod runs as it. `rbac.enabled` (needs the name): a ClusterRole
+# that may get/list ExternalSecrets and Certificates (their status — never a Secret), bound to it.
 rbac:
   enabled: false
 serviceAccount:

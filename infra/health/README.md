@@ -23,7 +23,10 @@ serves, what it loaded and when) and how to read it. `/health/all/detailed` retu
 as `content` — a small vocabulary the landing renders without knowing the service: `ok`, `at`, `commit`,
 `summary` (label/value pairs with a `kind`: `count`, `time`, `date`, `commit`, `list`, `text`), `note`,
 `sources`, `top`, `children` — plus a `content` summary saying whether every service that reports a
-commit reports the same one. Only what a service exposes is shown; nothing is estimated.
+commit reports the same one. A service configured to name the commit that names none (its boot fixture,
+no model loaded) is not ok and is listed as `missing`: it is not on the same commit. The summary's
+`lastRefresh` is the newest load among the services that name a commit. Only what a service exposes is
+shown; nothing is estimated.
 
 ```hocon
 translate {
@@ -45,11 +48,14 @@ translate {
 
 `adapter` picks code for what a path cannot say (`content/Adapters.kt`): `generic-json` (the default),
 `veles` (one row per model source), `nlp` (languages and engines from `/version`), `prometheus-targets`,
-`k8s-externalsecrets` and `k8s-certificates`. A `k8s:/apis/…` URL is read from the Kubernetes API as the
-pod's ServiceAccount — the chart's `rbac.enabled` creates it with read access to the status of
+`k8s-externalsecrets` and `k8s-certificates`; a named adapter keeps the block's configured `summary`,
+`note` and `ok` too. A `k8s:/apis/…` URL is read from the Kubernetes API as the pod's ServiceAccount — the
+chart's `serviceAccount.name` creates it, `rbac.enabled` gives it read access to the status of
 ExternalSecrets and Certificates, nothing else. `probes` add sub-rows the health service checks itself
-(`http://…` 2xx, or `tcp://host:port` connects). Reads run in parallel, are cached 30 s (5 s when one
-failed), and a failed read is that row's `error`, never a failed answer.
+(`http://…` 2xx, or `tcp://host:port` connects — the name lookup inside the timeout). Reads run in
+parallel; each technology's is kept 30 s (5 s after it failed, and only that one is asked again), and a
+failed read is that row's `error`, never a failed answer. The health half of `/health/all/detailed` is one
+fan-out shared by every caller for 15 s.
 
 `src/test/resources/status/` holds the reference estate's real answers; `StatusFixturesTest` reads
 each through the bundled configuration.

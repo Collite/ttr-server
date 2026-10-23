@@ -85,6 +85,11 @@ data class ContentSummary(
     val agree: Boolean,
     /** Technology → the commit it reports (only those that report one). */
     val byService: Map<String, String> = emptyMap(),
-    /** The most recent content time across the services. */
+    /**
+     * The technologies configured to name the model commit that named none (a boot fixture, no model loaded,
+     * an unreadable status): while any is listed the services do not agree.
+     */
+    val missing: List<String> = emptyList(),
+    /** The newest load among the services that name a commit (a secret's sync is not a model refresh). */
     val lastRefresh: String? = null,
 )

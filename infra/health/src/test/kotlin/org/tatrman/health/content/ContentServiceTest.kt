@@ -15,6 +15,7 @@ import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.headersOf
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
 import java.time.Clock
 import java.util.concurrent.atomic.AtomicInteger
@@ -157,9 +158,11 @@ class ContentServiceTest :
             reads shouldBe 2
         }
 
-        "an answer with a failed read is kept for the failure TTL only" {
-            // Atomic: the two reads run in parallel, and a plain `var` lost an increment in CI.
-            val reads = AtomicInteger()
+        "a failed read is kept for the failure TTL only, and only that technology is asked again" {
+            // Per host, atomically: the reads run in parallel.
+            val reads = java.util.concurrent.ConcurrentHashMap<String, AtomicInteger>()
+
+            fun readsOf(host: String) = reads[host]?.get() ?: 0
             var failing = true
             val clock = TestClock(Instant.parse("2026-10-09T10:00:00Z"))
             val service =
@@ -173,7 +176,7 @@ class ContentServiceTest :
             service.replaceClient(
                 HttpClient(
                     MockEngine { request ->
-                        reads.incrementAndGet()
+                        reads.computeIfAbsent(request.url.host) { AtomicInteger() }.incrementAndGet()
                         if (failing && request.url.host == "translate") {
                             respond("", HttpStatusCode.ServiceUnavailable)
                         } else {
@@ -190,8 +193,9 @@ class ContentServiceTest :
                 .ok shouldBe false
             clock.now = clock.now.plusSeconds(4)
             service.all()
-            reads.get() shouldBe 2
+            (readsOf("veles") to readsOf("translate")) shouldBe (1 to 1)
 
+            // Past the failure TTL: translate is asked again — veles, still fresh, is not.
             failing = false
             clock.now = clock.now.plusSeconds(2)
             service
@@ -199,12 +203,63 @@ class ContentServiceTest :
                 .technologies
                 .getValue("translate")
                 .ok shouldBe true
-            reads.get() shouldBe 4
+            (readsOf("veles") to readsOf("translate")) shouldBe (1 to 2)
 
-            // All read: the full TTL again.
+            // Each on its own full TTL from its own read.
             clock.now = clock.now.plusSeconds(20)
             service.all()
-            reads.get() shouldBe 4
+            (readsOf("veles") to readsOf("translate")) shouldBe (1 to 2)
+            clock.now = clock.now.plusSeconds(5)
+            service.all()
+            (readsOf("veles") to readsOf("translate")) shouldBe (2 to 2)
+        }
+
+        "concurrent viewers share one read" {
+            val reads = AtomicInteger()
+            val service = ContentService(mapOf("veles" to StatusConfig(url = "http://veles/status")))
+            service.replaceClient(
+                HttpClient(
+                    MockEngine {
+                        reads.incrementAndGet()
+                        delay(100)
+                        respond("{}", HttpStatusCode.OK, JSON)
+                    },
+                ),
+            )
+
+            kotlinx.coroutines.coroutineScope {
+                repeat(5) { launch { service.all() } }
+            }
+            reads.get() shouldBe 1
+        }
+
+        "a service that names no commit where one is configured is not ok, and says why" {
+            val config =
+                StatusConfig(
+                    url = "u",
+                    commit = "metadata_version",
+                    commitPattern = "\\|([0-9a-f]{7,40}):",
+                    ok = "ready",
+                    okValues = listOf("true"),
+                )
+
+            val boot =
+                GenericJson.read(
+                    Json.parseToJsonElement("""{"ready":true,"metadata_version":"boot-fixture-v0"}"""),
+                    config,
+                )
+            boot.ok shouldBe false
+            boot.commit shouldBe null
+            boot.note shouldBe GenericJson.NO_COMMIT
+
+            val loaded =
+                GenericJson.read(
+                    Json.parseToJsonElement("""{"ready":true,"metadata_version":"stock-v1|3d54d5e8:b33a"}"""),
+                    config,
+                )
+            loaded.ok shouldBe true
+            loaded.commit shouldBe "3d54d5e8"
+            loaded.note shouldBe null
         }
 
         "a figure the body carries empty is no figure" {
@@ -316,6 +371,7 @@ class ContentServiceTest :
                         "translate" to Content(ok = true, commit = "a0dfb2a91c3e", at = "2026-10-09T10:14:00Z"),
                         "validate" to Content(ok = true),
                     ),
+                    expectsCommit = setOf("veles", "translate"),
                 )
 
             summary.agree shouldBe true
@@ -335,6 +391,50 @@ class ContentServiceTest :
 
             summary.agree shouldBe false
             summary.commit shouldBe null
+        }
+
+        "the last refresh is a model service's, not a secret's sync" {
+            val summary =
+                ContentService.summarize(
+                    mapOf(
+                        "veles" to Content(ok = true, commit = "a0dfb2a", at = "2026-10-09T08:00:00Z"),
+                        "external-secrets" to Content(ok = true, at = "2026-10-09T09:55:00Z"),
+                    ),
+                    expectsCommit = setOf("veles"),
+                )
+
+            summary.lastRefresh shouldBe "2026-10-09T08:00:00Z"
+        }
+
+        "a service that should name the commit and names none means the services do not agree" {
+            val summary =
+                ContentService.summarize(
+                    mapOf(
+                        "veles" to Content(ok = true, commit = "a0dfb2a"),
+                        "translate" to Content(ok = true, commit = "a0dfb2a"),
+                        "validate" to Content(ok = false, note = GenericJson.NO_COMMIT),
+                    ),
+                    expectsCommit = setOf("veles", "translate", "validate"),
+                )
+
+            summary.agree shouldBe false
+            summary.commit shouldBe null
+            summary.missing shouldBe listOf("validate")
+            summary.byService shouldBe mapOf("veles" to "a0dfb2a", "translate" to "a0dfb2a")
+        }
+
+        "the service knows which technologies name the commit: a `commit` path, or the veles adapter" {
+            val service =
+                ContentService(
+                    mapOf(
+                        "veles" to StatusConfig(url = "http://veles/status", adapter = "veles"),
+                        "validate" to StatusConfig(url = "http://validate/status", commit = "metadata_version"),
+                        "dispatch" to StatusConfig(url = "http://dispatch/status"),
+                    ),
+                )
+            service.replaceClient(HttpClient(MockEngine { respond("{}", HttpStatusCode.OK, JSON) }))
+
+            service.all().summary.missing shouldBe listOf("validate", "veles")
         }
 
         "no commit reported at all is agreement about nothing" {

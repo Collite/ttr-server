@@ -15,6 +15,9 @@ fun interface StatusAdapter {
         body: JsonElement,
         config: StatusConfig,
     ): Content
+
+    /** Whether this technology's content names the model commit — the commit summary expects to hear from it. */
+    fun reportsCommit(config: StatusConfig): Boolean = config.commit != null
 }
 
 /**
@@ -23,23 +26,28 @@ fun interface StatusAdapter {
  * `children`). The named adapters start from it.
  */
 object GenericJson : StatusAdapter {
+    const val NO_COMMIT = "names no model commit: a boot fixture or no model loaded"
+
     override fun read(
         body: JsonElement,
         config: StatusConfig,
     ): Content {
-        val ok = okOf(body, config)
+        val fine = okOf(body, config)
+        val commit = config.commit?.let { body.text(it) }?.let { commitOf(it, config.commitPattern) }
+        // A service configured to name the model commit that names none serves no loaded model (its boot
+        // fixture's version matches no pattern) — whatever its own ready flag says.
+        val noCommit = config.commit != null && commit == null
         return Content(
-            ok = ok,
+            ok = fine && !noCommit,
             at = config.at?.let { isoTime(body.at(it)) },
-            commit = config.commit?.let { body.text(it) }?.let { commitOf(it, config.commitPattern) },
+            commit = commit,
             summary = config.summary.mapNotNull { pair(body, it) },
             note =
-                (if (ok) null else config.failNote) ?: config.note
-                    ?.let {
-                        body.text(
-                            it,
-                        )
-                    }?.takeIf { it.isNotBlank() },
+                when {
+                    !fine -> config.failNote
+                    noCommit -> NO_COMMIT
+                    else -> null
+                } ?: config.note?.let { body.text(it) }?.takeIf { it.isNotBlank() },
             children = config.children?.let { childrenOf(body.at(it)) },
         )
     }

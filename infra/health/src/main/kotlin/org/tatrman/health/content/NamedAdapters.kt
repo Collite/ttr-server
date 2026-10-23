@@ -18,6 +18,9 @@ import java.time.Instant
  * the summary line compares with translate and validate); its time is the latest successful load.
  */
 object VelesAdapter : StatusAdapter {
+    /** Veles names the commit of its first source, whatever the block configures. */
+    override fun reportsCommit(config: StatusConfig): Boolean = true
+
     override fun read(
         body: JsonElement,
         config: StatusConfig,
@@ -95,21 +98,47 @@ object NlpAdapter : StatusAdapter {
     }
 }
 
-/** Prometheus `GET /api/v1/targets?state=active`: targets up of all, and which jobs are down. */
+/**
+ * What a named adapter computed, with the status block's own configured fields kept (the header's promise:
+ * a `summary`, `note`, `ok` or `children` configured for the technology still applies): the computed figures
+ * first, then the configured ones; the computed note before the configured one; ok only when both are.
+ */
+private fun Content.withConfigured(
+    body: JsonElement,
+    config: StatusConfig,
+): Content {
+    val base = GenericJson.read(body, config)
+    return copy(
+        ok = ok && base.ok,
+        at = at ?: base.at,
+        commit = commit ?: base.commit,
+        summary = summary + base.summary,
+        note = note ?: base.note,
+        children = children ?: base.children,
+    )
+}
+
+/**
+ * Prometheus `GET /api/v1/targets?state=active`: targets up of all, and which jobs are down. A target
+ * Prometheus has not scraped yet (`health: unknown`, just after a restart or a new pod) is pending, not down.
+ */
 object PrometheusTargetsAdapter : StatusAdapter {
     override fun read(
         body: JsonElement,
         config: StatusConfig,
     ): Content {
         val targets = body.at("data.activeTargets") as? JsonArray ?: return Content.failed("no data.activeTargets")
-        val down = targets.filter { it.text("health") != "up" }
+        val up = targets.count { it.text("health") == "up" }
+        val down = targets.filter { it.text("health") == "down" }
+        val pending = targets.size - up - down.size
         val downJobs = down.mapNotNull { it.text("labels.job") }.distinct()
         return Content(
             ok = down.isEmpty(),
             summary =
-                listOf(
-                    ContentPair("targetsUp", (targets.size - down.size).toString(), "count"),
+                listOfNotNull(
+                    ContentPair("targetsUp", up.toString(), "count"),
                     ContentPair("targets", targets.size.toString(), "count"),
+                    ContentPair("pending", pending.toString(), "count").takeIf { pending > 0 },
                 ),
             note =
                 if (downJobs.isEmpty()) {
@@ -118,7 +147,7 @@ object PrometheusTargetsAdapter : StatusAdapter {
                     "down: " + downJobs.take(3).joinToString(", ") +
                         more(downJobs.size, 3)
                 },
-        )
+        ).withConfigured(body, config)
     }
 }
 
@@ -155,7 +184,7 @@ object ExternalSecretsAdapter : StatusAdapter {
                     "not synced: " + names.take(3).joinToString(", ") +
                         more(names.size, 3)
                 },
-        )
+        ).withConfigured(body, config)
     }
 }
 
@@ -163,8 +192,8 @@ object ExternalSecretsAdapter : StatusAdapter {
  * Kubernetes `GET /apis/cert-manager.io/v1/certificates` (every namespace): how many are ready, the
  * nearest expiry and which certificate it is, and which are not ready. A certificate within
  * [WARN_DAYS] of its expiry makes the content not ok even while it is ready: cert-manager renews well
- * before that, so one that close is one whose renewal is not happening. Status only: the keys and the
- * Secrets are never read.
+ * before that, so one that close is one whose renewal is not happening. One already past its expiry says
+ * so. Status only: the keys and the Secrets are never read.
  */
 object CertificatesAdapter : StatusAdapter {
     const val WARN_DAYS = 14L
@@ -172,7 +201,7 @@ object CertificatesAdapter : StatusAdapter {
     override fun read(
         body: JsonElement,
         config: StatusConfig,
-    ): Content = read(body, Instant.now())
+    ): Content = read(body, Instant.now()).withConfigured(body, config)
 
     fun read(
         body: JsonElement,
@@ -189,10 +218,12 @@ object CertificatesAdapter : StatusAdapter {
                 notAfter?.let { item to it }
             }
         val nearest = expiries.minByOrNull { it.second }
+        val expired = expiries.filter { !it.second.isAfter(now) }.mapNotNull { name(it.first) }
         val soon = nearest?.second?.isBefore(now.plusSeconds(WARN_DAYS * 86_400)) == true
         val names = notReady.mapNotNull { name(it) }
         val note =
             when {
+                expired.isNotEmpty() -> "expired: " + expired.take(3).joinToString(", ") + more(expired.size, 3)
                 names.isNotEmpty() -> "not ready: " + names.take(3).joinToString(", ") + more(names.size, 3)
                 soon -> "${nearest?.first?.let { name(it) }} expires within $WARN_DAYS days and has not been renewed"
                 else -> null

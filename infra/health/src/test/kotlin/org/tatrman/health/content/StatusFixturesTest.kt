@@ -176,6 +176,65 @@ class StatusFixturesTest :
             content.figures()["synced"] shouldBe content.figures()["secrets"]
         }
 
+        "validate on its boot fixture names no commit: not ok, and the summary does not agree" {
+            val boot =
+                GenericJson.read(
+                    Json.parseToJsonElement(
+                        """{"ready":true,"metadata_version":"boot-fixture-v0","dependencies":{"veles":true}}""",
+                    ),
+                    statuses.getValue("validate")!!,
+                )
+
+            boot.ok shouldBe false
+            boot.note shouldBe GenericJson.NO_COMMIT
+            ContentService
+                .summarize(
+                    mapOf("veles" to read("veles"), "validate" to boot),
+                    setOf("veles", "validate"),
+                ).agree shouldBe
+                false
+        }
+
+        "prometheus: a target not scraped yet is pending, not down" {
+            val body =
+                Json.parseToJsonElement(
+                    """{"data":{"activeTargets":[{"labels":{"job":"a"},"health":"up"},{"labels":{"job":"b"},"health":"unknown"}]}}""",
+                )
+
+            val content = PrometheusTargetsAdapter.read(body, statuses.getValue("prometheus")!!)
+            content.ok shouldBe true
+            content.figures() shouldBe mapOf("targetsUp" to "1", "targets" to "2", "pending" to "1")
+
+            val down =
+                Json.parseToJsonElement("""{"data":{"activeTargets":[{"labels":{"job":"b"},"health":"down"}]}}""")
+            PrometheusTargetsAdapter.read(down, statuses.getValue("prometheus")!!).note shouldBe "down: b"
+        }
+
+        "a named adapter keeps the block's own configured figures and note" {
+            val config =
+                org.tatrman.health.config.StatusConfig(
+                    url = "k8s:/apis/external-secrets.io/v1/externalsecrets",
+                    adapter = "k8s-externalsecrets",
+                    note = "kind",
+                    summary =
+                        listOf(
+                            org.tatrman.health.config
+                                .FieldConfig("kind", "kind", "text"),
+                        ),
+                )
+
+            val content = ExternalSecretsAdapter.read(fixture("k8s-externalsecrets"), config)
+            content.figures()["kind"] shouldBe "ExternalSecretList"
+            content.note shouldBe "ExternalSecretList"
+        }
+
+        "certificates: one already past its expiry says expired, not 'expires within'" {
+            val late = CertificatesAdapter.read(fixture("k8s-certificates"), Instant.parse("2026-12-20T08:00:00Z"))
+
+            late.ok shouldBe false
+            late.note shouldBe "expired: auth/hartland-root-ca, gateway/gateway-wildcard"
+        }
+
         "certificates: ready, the nearest expiry and which one; within two weeks of it is not ok" {
             val body = fixture("k8s-certificates")
 

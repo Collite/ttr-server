@@ -24,9 +24,15 @@ class KubernetesReader(
 ) {
     private var client: HttpClient? = null
 
+    // Every access to [client] holds this monitor: two first reads at once (the content reads run in
+    // parallel) would otherwise each build a client, and the one that lost the race would never be closed.
+    private val clientLock = Any()
+
     fun replaceClient(newClient: HttpClient) {
-        client?.close()
-        client = newClient
+        synchronized(clientLock) {
+            client?.close()
+            client = newClient
+        }
     }
 
     val available: Boolean get() = Files.isReadable(serviceAccountDir.resolve("token"))
@@ -39,13 +45,15 @@ class KubernetesReader(
     }
 
     private fun http(): HttpClient =
-        client ?: HttpClient(Apache) {
-            engine {
-                connectTimeout = 5_000
-                socketTimeout = 10_000
-                sslContext = clusterTrust(serviceAccountDir.resolve("ca.crt"))
-            }
-        }.also { client = it }
+        synchronized(clientLock) {
+            client ?: HttpClient(Apache) {
+                engine {
+                    connectTimeout = 5_000
+                    socketTimeout = 10_000
+                    sslContext = clusterTrust(serviceAccountDir.resolve("ca.crt"))
+                }
+            }.also { client = it }
+        }
 
     companion object {
         fun defaultServer(): String {
