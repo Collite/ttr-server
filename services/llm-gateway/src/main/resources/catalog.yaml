@@ -53,9 +53,9 @@ models:
 
   - id: azure-gpt-41
     name: gpt-4.1
-    # Generic tier keys (LlmGatewayPromptExecutor emits these) — baseline routes ALL of Golem's/Themis's
-    # mini/fast/deep asks to this one Azure model; retune per deployment later ("play with configs").
-    aliases: ["mini", "fast", "deep"]
+    # Generic tier keys (LlmGatewayPromptExecutor emits these) — Golem's mini/fast asks land on this one Azure
+    # model; `deep` is the smart row's (azure-gpt-61-sol).
+    aliases: ["mini", "fast"]
     provider: azure
     upstream: "${AZURE_OPENAI_CHAT_DEPLOYMENT:-tatrman-gpt-4.1}"   # per-deployment (olymp env); baked default off-Azure
     reasoning: ${AZURE_OPENAI_REASONING:-false}   # true when the deployment is a reasoning model (gpt-5/o-series):
@@ -70,7 +70,9 @@ models:
   - id: azure-gpt-61-sol
     name: gpt-6.1-sol
     # The "smart" tier (Bora, 2026-10-24): `model: "smart"` or `model_tags: ["smart"]` lands here, nowhere else.
-    aliases: ["smart"]
+    # And the generic `deep` tier (Bora, 2026-10-24): Golem composes the query on `deep` (its ladder's `capable`
+    # rungs ask it too), while mini/fast stay on the chat deployment above.
+    aliases: ["smart", "deep"]
     provider: azure
     upstream: "${AZURE_OPENAI_SMART_DEPLOYMENT:-gpt-6.1-sol}"   # the tatrman deployment's name
     # A reasoning model: Azure answers `max_tokens` with 400 "Use 'max_completion_tokens' instead" (probed

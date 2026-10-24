@@ -47,7 +47,8 @@ class ModelsEndpointSpec :
                 // tier/rules.conf aliases are routing names, NOT models
                 ids shouldContain "gpt-6.1-sol"
                 ids shouldContain "text-embedding-3-small"
-                ids.none { it in setOf("haiku", "sonnet", "gpt-4", "fast", "claude-haiku", "smart") } shouldBe true
+                val aliases = setOf("haiku", "sonnet", "gpt-4", "fast", "deep", "claude-haiku", "smart")
+                ids.none { it in aliases } shouldBe true
 
                 val first = data.first().jsonObject
                 first.containsKey("tags") shouldBe true

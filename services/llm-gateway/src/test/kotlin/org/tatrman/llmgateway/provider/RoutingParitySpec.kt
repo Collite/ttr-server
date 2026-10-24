@@ -30,10 +30,14 @@ class RoutingParitySpec :
                 "claude-haiku" to "claude-haiku-4-5", // Golem cheap alias
                 "sonnet" to "claude-sonnet-4-6", // Themis FAST
                 "gpt-4" to "gpt-4o", // rules.conf: gpt-4 → gpt-4o
-                // Generic tier keys (mini/fast/deep) now route to the one Azure baseline model
-                // (catalog azure-gpt-41, aliases: [mini, fast, deep]); gpt-4o-mini stays reachable by
-                // name. Updated from the 1.x rules.conf target (gpt-4o-mini) to match that remap.
+                // Generic tier keys mini/fast route to the one Azure baseline model (catalog azure-gpt-41,
+                // aliases: [mini, fast]); gpt-4o-mini stays reachable by name. Updated from the 1.x rules.conf
+                // target (gpt-4o-mini) to match that remap.
                 "fast" to "gpt-4.1",
+                "mini" to "gpt-4.1",
+                // `deep` is the smart tier's (Bora, 2026-10-24): Golem composes the query on `deep`, while mini/fast
+                // stay on the chat deployment.
+                "deep" to "gpt-6.1-sol",
                 "gpt-4o" to "gpt-4o", // literal (tier-2) still works
                 "claude-sonnet-4-6" to "claude-sonnet-4-6", // literal
             )
