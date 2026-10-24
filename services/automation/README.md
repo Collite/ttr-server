@@ -24,6 +24,14 @@ The durable evaluation path has atomic pgmq enqueue/acknowledgement, a permanent
 bounded coroutine consumers. `RunRuntime` assembles this path with the pinned sessions, governed Query door,
 staging and typed ledger callbacks. Application installation remains pending with the other P1 lifecycle work.
 
+The bundle reader keeps its own manifest-v3 DTO as an external consumer. It skips unknown fields and uses
+defaults for absent/null optional fields; the compiler's strict internal `RunManifest` reader is not a service
+dependency. `RecipeManifestSpec` compares every published recipe field against all six real Hartland bundles,
+including parts/combines, bindings, golden-test paths and the labels fingerprint. New compiler fixture versions
+must pass that gate when adopted. Recipe detail exposes the golden paths as metadata; it does not execute them.
+The descriptor exposes `fingerprints.labels` beside text/values (empty or omitted for older bundles). Labels
+never enter approval/staleness checks; approval metadata continues to contain only text/values.
+
 The executor requires an explicit `world/storage` → Query world alias map. Query resolves those aliases through
 its existing `QUERY_WORLDS` table. Missing routes fail before a query is issued; there is no fallback to Query's
 default connection. Recipe `:name` bindings are translated lexically to the door's `{name}` syntax. Named runs

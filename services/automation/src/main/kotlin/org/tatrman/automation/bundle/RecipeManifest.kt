@@ -9,7 +9,10 @@ import kotlinx.serialization.json.JsonObject
 /**
  * A recipe bundle's `manifest.json` (ttr-core AU `contracts.md` §5.1, `schemaVersion: 3`) — the fields this
  * service reads, aligned with grammar/v0.17.4 (including D-136 parts/combines). This external DTO remains
- * independent of the compiler's strict internal reader; adoption of the published emitter DTO is tracked in S1.1.
+ * independent of the compiler's strict internal reader by design (AU-server contracts §1.1.1). The published
+ * RunManifest is a within-toolchain contract with required execution fields this service does not consume;
+ * importing it would couple deployment to the compiler's release and dependency closure. RecipeManifestSpec
+ * checks this projection against all six real compiler bundles, including every published recipe field.
  * The reader is LENIENT, as an external reader of the manifest must be
  * (ttr-core contracts §6's reader policy): a key it does not know is skipped and a `null` where it expects a
  * default takes the default, so a toolchain that adds a field never breaks a deployed Server.
@@ -91,6 +94,8 @@ data class ManifestRecipe(
     val protocol: String? = null,
     val bindings: List<ManifestBinding> = emptyList(),
     val parts: List<ManifestPart> = emptyList(),
+    /** D-59: golden fixture paths published by the compiler, exposed for clients; not executed by this reader. */
+    val tests: List<String> = emptyList(),
 )
 
 @Serializable
@@ -142,11 +147,12 @@ data class ManifestVerdictSchema(
     val current: String? = null,
 )
 
-/** D-13/D-60: `text` = the logic, `values` = the parameter values (a value change re-approves `values` only). */
+/** D-13/D-60/D-125: labels are visible metadata; only text/values participate in approval and stale checks. */
 @Serializable
 data class ManifestFingerprints(
     val text: String = "",
     val values: String = "",
+    val labels: String = "",
 )
 
 @Serializable
