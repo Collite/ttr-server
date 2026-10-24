@@ -84,7 +84,6 @@ class PreviewConditionsSpec :
                 "_au_condition_4 > 1",
                 "amount > :missing",
                 "amount / 0 > 1",
-                "amount / 2 > 1",
                 "amount >",
                 "amount > 0; select 1",
                 "amount = \"4.56\"",

@@ -140,9 +140,6 @@ internal object PreviewExpressions {
         expressions.flatMap { NodeExpressions.walk(it).toList() }.forEach {
             when (it) {
                 is FunctionCall -> {
-                    // DuckDB accepts division by zero as infinity. Full validity/reject lowering is
-                    // needed before division can safely participate in action selection.
-                    if (it.function.name == "div") unsupported()
                     if (it.function.name in setOf("eq", "neq", "lt", "lte", "gt", "gte")) {
                         compatible(it.args[0], it.args[1])
                     }
@@ -177,53 +174,64 @@ internal object PreviewExpressions {
                 .setName("au_condition")
                 .build()
         val scan = PlanNode.newBuilder().setTableScan(TableScanNode.newBuilder().setTable(name)).build()
-        val input =
-            if (predicate) {
-                PlanNode
-                    .newBuilder()
-                    .setFilter(
-                        FilterNode
-                            .newBuilder()
-                            .setInput(
-                                scan,
-                            ).setCondition(PlanNodeBuilder().expr(expressions.single())),
-                    ).build()
-            } else {
-                scan
-            }
-        val projection =
-            ProjectNode.newBuilder().setInput(input).addExpressions(
-                NamedExpression.newBuilder().setAlias(index).setExpression(
-                    org.tatrman.plan.v1.Expression.newBuilder().setColumnRef(
-                        org.tatrman.plan.v1.ColumnRef
-                            .newBuilder()
-                            .setName(index),
-                    ),
-                ),
-            )
-        if (!predicate) {
-            expressions.forEachIndexed { i, expression ->
-                projection.addExpressions(
-                    NamedExpression
-                        .newBuilder()
-                        .setAlias(
-                            "_au_value_$i",
-                        ).setExpression(PlanNodeBuilder().expr(expression)),
-                )
-            }
-        }
-        val projected = PlanNode.newBuilder().setProject(projection).build()
         val model = ModelTable(name, staged.columns.mapIndexed { i, c -> modelColumn(c, staged.rows.map { it[i] }) })
-        val sql =
-            SqlTextRender.doubleQuoted(
+
+        fun sqlFor(
+            values: List<org.tatrman.ttrp.expr.Expression>,
+            filter: Boolean = false,
+        ): String {
+            val input =
+                if (filter) {
+                    PlanNode
+                        .newBuilder()
+                        .setFilter(
+                            FilterNode
+                                .newBuilder()
+                                .setInput(
+                                    scan,
+                                ).setCondition(PlanNodeBuilder().expr(values.single())),
+                        ).build()
+                } else {
+                    scan
+                }
+            val projection =
+                ProjectNode.newBuilder().setInput(input).addExpressions(
+                    NamedExpression.newBuilder().setAlias(index).setExpression(
+                        org.tatrman.plan.v1.Expression.newBuilder().setColumnRef(
+                            org.tatrman.plan.v1.ColumnRef
+                                .newBuilder()
+                                .setName(index),
+                        ),
+                    ),
+                )
+            if (!filter) {
+                values.forEachIndexed { i, expression ->
+                    projection.addExpressions(
+                        NamedExpression
+                            .newBuilder()
+                            .setAlias(
+                                "_au_value_$i",
+                            ).setExpression(PlanNodeBuilder().expr(expression)),
+                    )
+                }
+            }
+            val projected = PlanNode.newBuilder().setProject(projection).build()
+            return SqlTextRender.doubleQuoted(
                 SqlTextRender.unqualify(
                     TranslatorFacade(IslandModelHandle(listOf(model)), SqlDialect.DUCKDB).unparse(projected),
                     "dbo",
                 ),
             )
+        }
         return DuckDbCombiner().use { db ->
             db.load("au_condition", staged)
-            db.query(sql, emptyMap()).also { result ->
+            PreviewDivision.validate(
+                expressions,
+                rows = table.rows.size,
+                render = { sqlFor(listOf(it)) },
+                query = { db.query(it, emptyMap()) },
+            )
+            db.query(sqlFor(expressions, predicate), emptyMap()).also { result ->
                 if (!predicate) {
                     if (result.rows.flatten().any { it is Double && !it.isFinite() || it is Float && !it.isFinite() }) {
                         unsupported()

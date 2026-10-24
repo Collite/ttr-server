@@ -87,7 +87,6 @@ class PreviewExpressionsSpec :
                 "sum(id)",
                 "read_csv(\"/secret\")",
                 "amount / 0",
-                "amount / 2",
                 "id = name",
             )) {
                 val error = shouldThrow<AutomationException> { project("value" to expression) }

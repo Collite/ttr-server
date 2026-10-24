@@ -207,6 +207,85 @@ class DryRunSpec :
             }
         }
 
+        "guarded division feeds predicates native effects and would-text without new Query reads" {
+            supervisorScope {
+                val wiring =
+                    ManifestWiring(
+                        listOf("way.hold"),
+                        "hold",
+                        mapOf("order" to "order_number", "department" to "cast(6 / 2 as text)"),
+                        "amount / 2 > 0",
+                    )
+                val f = PreviewFixture(this, previewRecipe().withWiring(listOf(wiring)))
+                f.runner.use { runner ->
+                    runner.evaluate()
+                    val action = f.plan!!.actions.single()
+                    action.arguments["department"] shouldBe JsonPrimitive("3.0")
+                    action.would shouldBe "would hold order 4712 for 3.0"
+                    f.plan!!
+                        .rows
+                        .single { it.op == "update" }
+                        .set shouldBe
+                        buildJsonObject { put("held_for", "3.0") }
+                    f.journals.get() shouldBe 1
+                    f.reads.get() shouldBe 5
+                }
+            }
+        }
+
+        "zero divisions after earlier wiring refuse atomically in predicates and arguments" {
+            for (predicate in listOf(false, true)) {
+                supervisorScope {
+                    val bad =
+                        ManifestWiring(
+                            listOf("way.hold"),
+                            "hold",
+                            mapOf(
+                                "order" to "order_number",
+                                "department" to if (predicate) "department" else "cast(amount / 0 as text)",
+                            ),
+                            if (predicate) "amount / 0 > 1" else null,
+                        )
+                    val recipe =
+                        previewRecipe().withWiring(
+                            listOf(
+                                ManifestWiring(listOf("way.release"), "release", mapOf("order" to "order_number")),
+                                bad,
+                            ),
+                        )
+                    val f = PreviewFixture(this, recipe)
+                    f.runner.use { runner ->
+                        repeat(2) {
+                            shouldThrow<AutomationException> { runner.evaluate() }.code shouldBe
+                                ErrorCode.PREVIEW_UNSUPPORTED
+                        }
+                        f.journals.get() shouldBe 0
+                        f.legacy.get() shouldBe 0
+                        f.reads.get() shouldBe 5
+                    }
+                }
+            }
+        }
+
+        "discarded rows do not execute division arguments" {
+            supervisorScope {
+                val wiring =
+                    ManifestWiring(
+                        listOf("way.release", "way.hold"),
+                        "hold",
+                        mapOf("order" to "order_number", "department" to "cast(amount / 0 as text)"),
+                        "false",
+                    )
+                val f = PreviewFixture(this, previewRecipe().withWiring(listOf(wiring)))
+                f.runner.use { runner ->
+                    runner.evaluate()
+                    f.plan!!.actions shouldBe emptyList()
+                    f.journals.get() shouldBe 1
+                    f.reads.get() shouldBe 5
+                }
+            }
+        }
+
         "compiler scalar arguments feed native effects and authored text with one completion" {
             supervisorScope {
                 val original = previewRecipe()

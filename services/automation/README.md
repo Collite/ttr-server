@@ -310,9 +310,17 @@ can lower them. Only referenced columns/bindings enter the scratch database. Dec
 large integers remain exact typed columns, avoiding the plan literal's Double representation. Incompatible
 scalar kinds require an explicit cast. Invalid predicates refuse even on empty routes; syntax, typing,
 lowering and local execution failures return `501 preview-unsupported` before decision/batch completion.
-Repeated wiring stays repeated and the selected rows retain original route order. Division remains an explicit
-501 until full validity/reject lowering is integrated; DuckDB's infinity for division by zero is never accepted
-as an action predicate or scalar result.
+Repeated wiring stays repeated and the selected rows retain original route order.
+
+Division uses the published ValidityCatalog and RejectGuardSql nonzero guard. The guard's portable SQL subset
+runs over compiler/translator-projected divisors in the same private DuckDB database, before any quotient or
+predicate. Nested divisions validate bottom-up. NULL divisors succeed with NULL results; zero divisors refuse
+the whole preview with generic 501, including in case branches and boolean expressions. No invalid rows are
+silently dropped. Nonfinite divisors/quotients also refuse before a predicate, cast or case can hide them.
+Division follows compiler numeric typing (float/integer operands need explicit casts) and DuckDB true-division
+results. Guards inspect only condition-selected rows for scalar arguments; empty selections create no rows and
+do not evaluate division values, while syntax/type validation still runs. No new Query/model/connector call or
+pin change is involved. Other PostgreSQL-specific guard families are not admitted by this adapter.
 
 Each wiring's scalar arguments run as one projection over only its condition-selected rows. Arithmetic,
 case, null/boolean expressions, explicit casts, literals and bound parameters retain typed results and
@@ -336,7 +344,7 @@ replace authored values or make unknown references resolve. Invalid/overflowing 
 completion, including on empty routes. The compiler's wiring/window spelling `30 days` remains invalid inside
 scalar expressions; use `days(30)` there.
 
-Native writer/obligation synthesis, key lookups, calendar reads/column-date arithmetic and division validity guards
+Native writer/obligation synthesis, key lookups and calendar reads/column-date arithmetic
 still require lowering; selected unsupported operations return `501 preview-unsupported`. P2/P3
 retain dry-run task/delivery rows and performed action outcomes. Durable close/sealing and local staging retention are described below. Application mounting is
 pending. The local Query fixtures do not certify live Hartland behavior.
