@@ -14,8 +14,9 @@ tatrman-ttr-metadata      = "0.18.8"
 # 0.12.6 (#232): `refuseUnconditionedBareJoins` — translate refuses a bare JOIN that stays a Cartesian product.
 # Never 0.12.5 with the option on: it made a WHERE filter reading both sides of an FK-only bare join the join's
 # whole ON, dropping the foreign key (ttr-core#223).
-tatrman-ttr-translator    = "0.12.9"
-tatrman-ttr-plan-proto    = "0.12.9"
+# Grammar 0.18.7's emitter publishes against plan-proto 0.12.11; keep the translator pair aligned.
+tatrman-ttr-translator    = "0.12.11"
+tatrman-ttr-plan-proto    = "0.12.11"
 # SV-P1 S4 — Maven Central publishing via the Central Portal.
 vanniktech-publish        = "0.36.0"
 
@@ -88,6 +89,7 @@ hikaricp                  = "7.0.2"
 pgsql                    = "42.7.9"
 mssql                    = "13.2.1.jre11"
 arrow-java                = "18.3.0"
+duckdb-jdbc               = "1.5.6.0" # AU D-136 embedded combines, aligned with ttr-core grammar/v0.17.4
 apache-poi                = "5.5.1"
 apache-parquet            = "1.14.3"
 hadoop                    = "3.3.6"
@@ -292,6 +294,7 @@ calcite-core                        = { module = "org.apache.calcite:calcite-cor
 
 # Modeler — TTR parser/writer/semantics (third-party Maven artifacts).
 tatrman-ttr-parser                  = { module = "org.tatrman:ttr-parser",                                  version.ref = "tatrman-grammar" }
+tatrman-ttrp-emit                   = { module = "org.tatrman:ttrp-emit",                                   version.ref = "tatrman-grammar" }
 tatrman-ttr-writer                  = { module = "org.tatrman:ttr-writer",                                  version.ref = "tatrman-grammar" }
 tatrman-ttr-semantics               = { module = "org.tatrman:ttr-semantics",                               version.ref = "tatrman-grammar" }
 tatrman-ttr-metadata                = { module = "org.tatrman:ttr-metadata",                                version.ref = "tatrman-ttr-metadata" }
@@ -349,6 +352,7 @@ pgvector                            = { module = "com.pgvector:pgvector",       
 # stable across the move pipe and the worker (workers/polars
 # `_schema_fingerprint` reference impl — charon/contracts.md §6). P2 Stage 2.1
 # adds `arrow-jdbc` + the ADBC drivers when the spike gate runs.
+duckdb-jdbc                         = { module = "org.duckdb:duckdb_jdbc", version.ref = "duckdb-jdbc" }
 arrow-vector                        = { module = "org.apache.arrow:arrow-vector",                           version.ref = "arrow-java" }
 arrow-memory-netty                  = { module = "org.apache.arrow:arrow-memory-netty",                     version.ref = "arrow-java" }
 # BI-P1 — the query service's Arrow Flight SQL edge (BI contracts C-1). `flight-core` brings an UNSHADED

@@ -4,7 +4,7 @@ package org.tatrman.automation
 import com.typesafe.config.Config
 import com.typesafe.config.ConfigFactory
 import io.ktor.server.application.Application
-import io.ktor.server.application.ApplicationStopping
+import io.ktor.server.application.ApplicationStopped
 import io.ktor.server.application.install
 import io.ktor.server.auth.Authentication
 import io.ktor.server.auth.authenticate
@@ -18,6 +18,7 @@ import org.tatrman.automation.api.ServedBundle
 import org.tatrman.automation.api.AutomationException
 import org.tatrman.automation.api.DescriptorSources
 import org.tatrman.automation.api.descriptorRoutes
+import org.tatrman.automation.api.durableRunRoutes
 import org.tatrman.automation.api.healthRoutes
 import org.tatrman.automation.api.installAutomationErrors
 import org.tatrman.automation.bundle.BundleLoader
@@ -34,6 +35,9 @@ import org.tatrman.automation.identity.AutomationBearerProvider
 import org.tatrman.automation.identity.CallerVerifier
 import org.tatrman.automation.identity.ServiceTokens
 import org.tatrman.automation.ledger.Ledger
+import org.tatrman.automation.runner.RunStatusReader
+import org.tatrman.automation.protocol.ProtocolRecorder
+import org.tatrman.automation.staging.StagingStores
 import org.tatrman.automation.ledger.LedgerBundles
 import org.tatrman.automation.obs.AutomationTelemetry
 import org.tatrman.automation.queue.LedgerQueue
@@ -66,14 +70,20 @@ fun main() {
 
 /**
  * The bootstrap (AU-server S0.1): config (fails at load on a missing required key) → OTel → the ledger's
- * database + Flyway (V1 ledger · V2 pgmq · V3 queues · V4 D-98's index) → the pgmq queues checked → the bearer
+ * database + Flyway (V1–V7 ledger, queues, dispatch, subjects and release fences) → queues → bearer
  * check (S0.3: every route under `/automation` but `/automation/health` answers 401 without a verified token) →
- * Ktor → the served bundle loaded in the background (S0.2), then polled. The runner (P1, which resolves `RunAs` at
- * open) and the scheduler (S3.2) join this sequence as they land.
+ * Ktor with durable status/protocol/batch readers → the served bundle loaded in the background (S0.2), then
+ * polled. Execution routes/workers and the scheduler join this sequence with their remaining integration.
  */
 fun Application.module(config: Config) {
     val automation = AutomationConfig.load(config)
     log.info("automation: {}", automation)
+    if (automation.approvalsOff) {
+        log.warn(
+            "automation: DEVELOPMENT MODE — approval checks are OFF; opens approve current fingerprints " +
+                "and record this bypass in the ledger's opening protocol",
+        )
+    }
 
     installKtorServerBase(KtorConfigFactory.fromConfig(config, SERVICE, DEFAULT_PORT))
 
@@ -82,6 +92,11 @@ fun Application.module(config: Config) {
             OtelEndpointConfig(serviceName = SERVICE, protocol = System.getenv("AUTOMATION_OTEL_PROTOCOL") ?: "grpc"),
             enabled = config.hasPath("telemetry.enabled") && config.getBoolean("telemetry.enabled"),
         )
+
+    // Configure storage now; execution routes remain gated on the remaining P1 integration. Stop storage only
+    // after HTTP has drained. The later runtime must join workers before this subscription can close it.
+    val staging = StagingStores.open(automation.staging)
+    monitor.subscribe(ApplicationStopped) { staging.close() }
 
     val db = DatabaseConnection(automation.db).also { it.init() }
     val migrated = migrateLedger(db)
@@ -131,6 +146,7 @@ fun Application.module(config: Config) {
     routing {
         healthRoutes(sources)
         authenticate(AUTOMATION_AUTH) {
+            durableRunRoutes(RunStatusReader(ledger), ProtocolRecorder(ledger))
             descriptorRoutes(
                 DescriptorSources(
                     bundles = bundles,
@@ -158,9 +174,14 @@ fun Application.module(config: Config) {
         }
     }
 
-    monitor.subscribe(ApplicationStopping) {
-        velesStatus.close()
-        db.close()
+    // Stopping is raised before HTTP drain. Durable readers and descriptors still need their ledger /
+    // Veles dependencies then. A later execution runtime must join workers at Stopping, before this point.
+    monitor.subscribe(ApplicationStopped) {
+        try {
+            velesStatus.close()
+        } finally {
+            db.close()
+        }
     }
 }
 

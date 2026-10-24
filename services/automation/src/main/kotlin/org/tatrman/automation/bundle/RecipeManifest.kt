@@ -8,8 +8,12 @@ import kotlinx.serialization.json.JsonObject
 
 /**
  * A recipe bundle's `manifest.json` (ttr-core AU `contracts.md` §5.1, `schemaVersion: 3`) — the fields this
- * service reads. A local mirror until ttr-core P2 publishes `ttrp-emit`'s `RunManifest` with the `recipe` block;
- * it is replaced by the library then (S1.1). The reader is LENIENT, as an external reader of the manifest must be
+ * service reads, aligned with grammar/v0.17.4 (including D-136 parts/combines). This external DTO remains
+ * independent of the compiler's strict internal reader by design (AU-server contracts §1.1.1). The published
+ * RunManifest is a within-toolchain contract with required execution fields this service does not consume;
+ * importing it would couple deployment to the compiler's release and dependency closure. RecipeManifestSpec
+ * checks this projection against all six real compiler bundles, including every published recipe field.
+ * The reader is LENIENT, as an external reader of the manifest must be
  * (ttr-core contracts §6's reader policy): a key it does not know is skipped and a `null` where it expects a
  * default takes the default, so a toolchain that adds a field never breaks a deployed Server.
  */
@@ -55,6 +59,8 @@ data class ManifestIsland(
     val file: String = "",
     val sha256: String = "",
     val outputs: List<ManifestOutput> = emptyList(),
+    val params: List<String> = emptyList(),
+    val schema: String = "er",
 )
 
 @Serializable
@@ -62,6 +68,11 @@ data class ManifestOutput(
     val port: String,
     val file: String,
     val sha256: String = "",
+    val columns: List<ManifestColumn> = emptyList(),
+    val params: List<String> = emptyList(),
+    val keyed: Boolean = false,
+    val storage: String? = null,
+    val combine: ManifestCombine? = null,
 )
 
 /** The `recipe` object of manifest v3 (§5.1). */
@@ -81,6 +92,10 @@ data class ManifestRecipe(
     val objectsRead: List<String> = emptyList(),
     val fingerprints: ManifestFingerprints = ManifestFingerprints(),
     val protocol: String? = null,
+    val bindings: List<ManifestBinding> = emptyList(),
+    val parts: List<ManifestPart> = emptyList(),
+    /** D-59: golden fixture paths published by the compiler, exposed for clients; not executed by this reader. */
+    val tests: List<String> = emptyList(),
 )
 
 @Serializable
@@ -132,9 +147,55 @@ data class ManifestVerdictSchema(
     val current: String? = null,
 )
 
-/** D-13/D-60: `text` = the logic, `values` = the parameter values (a value change re-approves `values` only). */
+/** D-13/D-60/D-125: labels are visible metadata; only text/values participate in approval and stale checks. */
 @Serializable
 data class ManifestFingerprints(
     val text: String = "",
     val values: String = "",
+    val labels: String = "",
+)
+
+@Serializable
+data class ManifestColumn(
+    val name: String,
+    val type: String,
+)
+
+@Serializable
+data class ManifestPart(
+    val name: String,
+    val storage: String,
+    val engine: String = "",
+    val file: String,
+    val sha256: String = "",
+    val columns: List<ManifestColumn> = emptyList(),
+    val params: List<String> = emptyList(),
+    val keyed: Boolean = false,
+    val schema: String = "er",
+)
+
+@Serializable
+data class ManifestCombine(
+    val file: String,
+    val sha256: String = "",
+    val parts: List<String> = emptyList(),
+    val params: List<String> = emptyList(),
+    val engine: String = "duckdb",
+    val dialect: String = "duckdb",
+)
+
+@Serializable
+data class ManifestBinding(
+    val name: String,
+    val type: String,
+    val source: String,
+    val derive: ManifestDerive? = null,
+)
+
+@Serializable
+data class ManifestDerive(
+    val base: String,
+    val op: String,
+    val amount: String,
+    val unit: String,
 )

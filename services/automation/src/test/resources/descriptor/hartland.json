@@ -18,7 +18,8 @@
             ],
             "fingerprints": {
                 "text": "sha256:342e7f3ddc46a16fdd0d5fead95fac64b8f9b90a19ffbba3cbfbfe06fa1a2413",
-                "values": "sha256:9a4bb6b7dee7c6452bae47c1c16d13b8b40de10fc929b57dbfc23bd520553720"
+                "values": "sha256:9a4bb6b7dee7c6452bae47c1c16d13b8b40de10fc929b57dbfc23bd520553720",
+                "labels": ""
             },
             "verdictEntity": "decide_return_verdict",
             "approved": null
@@ -31,7 +32,8 @@
             ],
             "fingerprints": {
                 "text": "sha256:e0e126d8ba3a235512c5a8a1208733789c588a09cd45fa8fd9b67145b4e87ee7",
-                "values": "sha256:41cf7487d63de15f907da445487966310dfe208aec6cc4bb8106760e6a489dcd"
+                "values": "sha256:41cf7487d63de15f907da445487966310dfe208aec6cc4bb8106760e6a489dcd",
+                "labels": ""
             },
             "verdictEntity": "monitor_inbound_verdict",
             "approved": null
@@ -44,7 +46,8 @@
             ],
             "fingerprints": {
                 "text": "sha256:76049a8677a1a57d5264ddbff9ba57037c74eabef4963e0d2ed7d89111da959f",
-                "values": "sha256:6c63016f02df4d40daf1b4cdb247c36d5ec8dad2633083a0608265710d03e126"
+                "values": "sha256:6c63016f02df4d40daf1b4cdb247c36d5ec8dad2633083a0608265710d03e126",
+                "labels": ""
             },
             "verdictEntity": "release_order_verdict",
             "approved": null
@@ -57,7 +60,8 @@
             ],
             "fingerprints": {
                 "text": "sha256:ebf5e9a9789bbff3c2b34f4101c48a1a69e2ffae254b4d6535b987df5dbb6f7c",
-                "values": "sha256:74cdef7d5307c826f30d8f0516f855d6867c0b5667b35a91d6afb4a9a7981337"
+                "values": "sha256:74cdef7d5307c826f30d8f0516f855d6867c0b5667b35a91d6afb4a9a7981337",
+                "labels": ""
             },
             "verdictEntity": "settle_verdict",
             "approved": null

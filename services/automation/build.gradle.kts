@@ -12,19 +12,31 @@ plugins {
 
 application {
     mainClass.set("org.tatrman.automation.ApplicationKt")
+    applicationDefaultJvmArgs = listOf("--add-opens=java.base/java.nio=ALL-UNNAMED")
 }
 
 kotlin {
     jvmToolchain(21)
+    // The real HTTP/JWKS realm is shared test support, never production code or a unit-test classpath
+    // dependency of the component tier. Each tier compiles it independently alongside its own specs.
+    sourceSets.named("test") { kotlin.srcDir("src/testSupport/kotlin") }
+    sourceSets.named("componentTest") { kotlin.srcDir("src/testSupport/kotlin") }
 }
 
 tasks.test {
     useJUnitPlatform()
+    jvmArgs("--add-opens=java.base/java.nio=ALL-UNNAMED")
     // ErrorEnvelopeSpec sweeps the main sources for raising sites, and PgmqVendorSpec reads the vendored
     // migration: inputs the test task does not see on its own, so a change to them must rerun it.
     inputs.dir("src/main/kotlin")
     inputs.dir("src/main/resources")
     // The bundle fixture is copied into a throwaway git repo by the specs (S0.2).
+    inputs.dir("src/test/resources/bundles")
+    inputs.dir("src/test/resources/runner")
+}
+
+tasks.named<Test>("componentTest") {
+    jvmArgs("--add-opens=java.base/java.nio=ALL-UNNAMED")
     inputs.dir("src/test/resources/bundles")
 }
 
@@ -59,6 +71,7 @@ jib {
     container {
         mainClass = "org.tatrman.automation.ApplicationKt"
         ports = listOf("7131")
+        jvmFlags = listOf("--add-opens=java.base/java.nio=ALL-UNNAMED")
     }
     dockerClient {
         executable = "docker"
@@ -101,6 +114,9 @@ dependencies {
     implementation(libs.tatrman.ttr.metadata)
     implementation(libs.tatrman.ttr.metadata.git)
     implementation(libs.tatrman.ttr.parser)
+    // Runtime preview predicates use the compiler's parser, type checker and plan lowering.
+    // The emitter rides the existing grammar pin; no private SQL-expression parser lives here.
+    implementation(libs.tatrman.ttrp.emit)
     implementation(libs.jgit)
     implementation(project(":shared:proto"))
     implementation(libs.grpc.netty.shaded)
@@ -112,6 +128,13 @@ dependencies {
     implementation(libs.ktor.server.content.negotiation)
     implementation(libs.ktor.server.status.pages)
     implementation(libs.ktor.serialization.kotlinx.json)
+
+    implementation(libs.arrow.vector)
+    implementation(libs.arrow.memory.netty)
+    implementation(libs.duckdb.jdbc)
+    implementation(project(":shared:libs:kotlin:transfer-core"))
+    implementation(libs.aws.sdk.s3)
+    implementation(libs.lettuce.core)
 
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.typesafe.config)
@@ -130,6 +153,8 @@ dependencies {
     // Component tier — the ledger over a REAL Postgres (Testcontainers): Flyway migrates clean, pgmq
     // round-trips, the idempotency claim races. `src/componentTest`, so the unit gate stays Docker-free.
     "componentTestImplementation"(libs.testcontainers.postgresql)
+    "componentTestImplementation"(libs.ktor.server.test.host)
+    "componentTestImplementation"(libs.auth0.java.jwt)
     "componentTestImplementation"(project(":shared:libs:kotlin:db-common"))
     "componentTestImplementation"(libs.exposed.core)
     "componentTestImplementation"(libs.exposed.jdbc)
@@ -140,4 +165,11 @@ dependencies {
     "componentTestImplementation"(libs.flyway.pgsql)
     "componentTestImplementation"(libs.typesafe.config)
     "componentTestImplementation"(libs.kotlinx.serialization.json)
+    "componentTestImplementation"(libs.kotlinx.coroutines.core)
+    "componentTestImplementation"(libs.arrow.vector)
+    "componentTestImplementation"(project(":shared:libs:kotlin:transfer-core"))
+    "componentTestImplementation"(libs.aws.sdk.s3)
+    "componentTestImplementation"(libs.lettuce.core)
+    "componentTestImplementation"(libs.tatrman.ttr.metadata)
+    "componentTestImplementation"(project(":shared:proto"))
 }

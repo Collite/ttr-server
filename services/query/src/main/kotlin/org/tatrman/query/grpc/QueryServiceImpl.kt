@@ -158,6 +158,10 @@ class QueryServiceImpl(
                     // fresh on every run — including a cache hit, because the query service re-validates
                     // every call (security depends on `user_id`), so the cache never holds it.
                     val securityApplied = linkedSetOf<SecurityRuleApplied>()
+                    // AU D-92 consumes the validator's warning, independently of the best-effort receipt.
+                    // Validation contexts do not otherwise flow into dispatch's context. Preserve both
+                    // passes' predicate notices, including cache hits, and derive them afresh for this caller.
+                    val securityWarnings = linkedSetOf<Warning>()
                     // ttr-server#232 — the translator's WARNINGs on the plan that runs (a join it left a Cartesian
                     // product), from the DB parse: on the ER path the DB re-entry, which runs on every call.
                     val joinWarnings = mutableListOf<ResponseMessage>()
@@ -184,6 +188,7 @@ class QueryServiceImpl(
                                             ?: run { return@flow }
                                     capNotices += dbValidated.capNotices()
                                     securityApplied += dbValidated.securityAppliedList
+                                    securityWarnings += dbValidated.predicateWarnings()
                                     joinWarnings += cachedHit.joinWarnings
                                     effectiveSchemaLabel = SCHEMA_DB
                                     Triple(PlanNode.getDefaultInstance(), dbValidated.plan, cachedHit.detectionMessages)
@@ -198,7 +203,9 @@ class QueryServiceImpl(
                                         validateDbPlanCompile(dbParsed.plan, context, window) ?: run { return@flow }
                                     capNotices += erValidated.capNotices() + dbValidated.capNotices()
                                     securityApplied += erValidated.securityAppliedList
+                                    securityWarnings += erValidated.predicateWarnings()
                                     securityApplied += dbValidated.securityAppliedList
+                                    securityWarnings += dbValidated.predicateWarnings()
                                     joinWarnings += dbParsed.joinWarnings()
                                     effectiveSchemaLabel = SCHEMA_ER
                                     Triple(erValidated.plan, dbValidated.plan, cachedHit.detectionMessages)
@@ -246,6 +253,7 @@ class QueryServiceImpl(
                                             ?: run { return@flow }
                                     capNotices += dbValidated.capNotices()
                                     securityApplied += dbValidated.securityAppliedList
+                                    securityWarnings += dbValidated.predicateWarnings()
                                     joinWarnings += dbParsed.joinWarnings()
                                     effectiveSchemaLabel = SCHEMA_DB
                                     val requiredParams = dbParsed.context.parametersList.toList()
@@ -283,13 +291,36 @@ class QueryServiceImpl(
                                         validateDbPlanCompile(dbParsed.plan, context, window) ?: run { return@flow }
                                     capNotices += erValidated.capNotices() + dbValidated.capNotices()
                                     securityApplied += erValidated.securityAppliedList
+                                    securityWarnings += erValidated.predicateWarnings()
                                     securityApplied += dbValidated.securityAppliedList
+                                    securityWarnings += dbValidated.predicateWarnings()
                                     joinWarnings += dbParsed.joinWarnings()
                                     effectiveSchemaLabel = SCHEMA_ER
                                     Triple(erValidated.plan, dbValidated.plan, resolution.detectionMessages)
                                 }
                             }
                         }
+
+                    if (request.hasAllowedErReads()) {
+                        val actual =
+                            if (effectiveSchemaLabel ==
+                                SCHEMA_ER
+                            ) {
+                                runCatching { ErReads.inspect(erPlan) }.getOrNull()
+                            } else {
+                                null
+                            }
+                        if (actual == null || !request.allowedErReads.objectsList.containsAll(actual.objectsList)) {
+                            emit(
+                                errorBatch(
+                                    "out-of-scope-read",
+                                    "validated ER reads exceed the declared scope or cannot be inspected",
+                                    context,
+                                ),
+                            )
+                            return@flow
+                        }
+                    }
 
                     // BI (C-11) — a parameter the plan reads with no value would be bound as NULL by the worker and
                     // answer nothing, silently: Run refuses it. (Compile does not: it reports such a parameter in
@@ -306,6 +337,7 @@ class QueryServiceImpl(
                     // them would say each twice to one that adds them up.
                     val firstBatchAnnotations =
                         mutableListOf<Warning>().apply {
+                            addAll(securityWarnings)
                             add(warning("compile_duration_ms", compileMs.toString()))
                             add(warning(if (cachedHit != null) "cache_hit" else "cache_miss", key.sourceHash))
                             detectionMessages.forEach { msg ->
@@ -661,6 +693,13 @@ class QueryServiceImpl(
                                 ),
                             ).build()
                     if (dbValidated.refused()) return dbValidated.refusalResponse(context, cached.detectionMessages)
+                    if (request.hasAllowedErReads()) {
+                        return CompileResponse
+                            .newBuilder()
+                            .setContext(context)
+                            .addMessages(errorMessage("out-of-scope-read", "read scope requires ER compilation"))
+                            .build()
+                    }
                     return CompileResponse
                         .newBuilder()
                         .setPlan(dbValidated.plan)
@@ -733,6 +772,13 @@ class QueryServiceImpl(
                                     ),
                                 ).build()
                     if (dbValidated.refused()) return dbValidated.refusalResponse(context, resolution.detectionMessages)
+                    if (request.hasAllowedErReads()) {
+                        return CompileResponse
+                            .newBuilder()
+                            .setContext(context)
+                            .addMessages(errorMessage("out-of-scope-read", "read scope requires ER compilation"))
+                            .build()
+                    }
 
                     requiredParameters = dbParsed.context.parametersList.toList()
                     predictedSchemaFingerprint = PredictedFingerprintComputer.compute(dbParsed.plan)
@@ -796,6 +842,17 @@ class QueryServiceImpl(
                                 ),
                             ).build()
                     if (erValidated.refused()) return erValidated.refusalResponse(context, resolution.detectionMessages)
+                    val erReads = runCatching { ErReads.inspect(erValidated.plan) }.getOrNull()
+                    if (request.hasAllowedErReads() &&
+                        (erReads == null || !request.allowedErReads.objectsList.containsAll(erReads.objectsList))
+                    ) {
+                        return CompileResponse
+                            .newBuilder()
+                            .setContext(context)
+                            .addMessages(
+                                errorMessage("out-of-scope-read", "validated ER reads exceed the declared scope"),
+                            ).build()
+                    }
 
                     val dbParsed =
                         translateToDbPlain(erValidated.plan, context) ?: return CompileResponse
@@ -844,6 +901,7 @@ class QueryServiceImpl(
                     return CompileResponse
                         .newBuilder()
                         .setPlan(dbValidated.plan)
+                        .apply { erReads?.let { setErReads(it) } }
                         .setContext(dbValidated.context)
                         .addAllRequiredParameters(requiredParameters)
                         .setPredictedSchemaFingerprint(predictedSchemaFingerprint)
@@ -872,6 +930,17 @@ class QueryServiceImpl(
                     ),
                 ).build()
         if (erValidated.refused()) return erValidated.refusalResponse(context, resolution.detectionMessages)
+        val erReads = runCatching { ErReads.inspect(erValidated.plan) }.getOrNull()
+        if (request.hasAllowedErReads() &&
+            (erReads == null || !request.allowedErReads.objectsList.containsAll(erReads.objectsList))
+        ) {
+            return CompileResponse
+                .newBuilder()
+                .setContext(context)
+                .addMessages(
+                    errorMessage("out-of-scope-read", "validated ER reads exceed the declared scope"),
+                ).build()
+        }
 
         val dbParsed =
             translateToDbPlain(erValidated.plan, context) ?: return CompileResponse
@@ -909,6 +978,7 @@ class QueryServiceImpl(
         return CompileResponse
             .newBuilder()
             .setPlan(dbValidated.plan)
+            .apply { erReads?.let { setErReads(it) } }
             .setContext(dbValidated.context)
             .addAllRequiredParameters(requiredParameters)
             .setPredictedSchemaFingerprint(predictedSchemaFingerprint)
@@ -1251,6 +1321,9 @@ class QueryServiceImpl(
             .takeIf { it.nodeCase == PlanNode.NodeCase.LIMIT_OFFSET && it.limitOffset.hasLimit() }
             ?.limitOffset
             ?.limit
+
+    private fun ValidateResponse.predicateWarnings(): List<Warning> =
+        context.warningsList.filter { it.code == "security_predicate_applied" }
 
     private fun ValidateResponse.capNotices(): List<ResponseMessage> = messagesList.filter { it.code == TOP_N_APPLIED }
 

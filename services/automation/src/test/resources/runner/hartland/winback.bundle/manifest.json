@@ -1,0 +1,494 @@
+{
+  "schemaVersion": 3,
+  "ttrpVersion": 2,
+  "toolchain": "org.tatrman:ttrp:0.17.3-au.2",
+  "program": "winback.ttrp",
+  "world": {
+    "qname": "hartland.worlds.demo",
+    "fingerprint": "sha256:e6ed5c4a3be8aa1fc00c13fb32f873e77c478b13ed24f6721a6a70b52904dbd9"
+  },
+  "islands": [
+    {
+      "name": "lapsed",
+      "engine": "erp",
+      "executor": "native",
+      "invocation": "sql-text",
+      "file": "islands/lapsed.customers.sql",
+      "sha256": "sha256:20a3ff63703b15ecd905be909ebc731d99ef79937e8e74410e7fcafb0e26a806",
+      "connections": [
+        "TTR_CONN_ERP"
+      ],
+      "params": [
+        "as_of_minus_quiet_months_months_minus_12_months",
+        "as_of_minus_quiet_months_months",
+        "active_orders",
+        "as_of"
+      ],
+      "outputs": [
+        {
+          "port": "customers",
+          "file": "islands/lapsed.customers.sql",
+          "sha256": "sha256:20a3ff63703b15ecd905be909ebc731d99ef79937e8e74410e7fcafb0e26a806",
+          "columns": [
+            {
+              "name": "sk",
+              "type": "int"
+            },
+            {
+              "name": "hdemo",
+              "type": "int"
+            },
+            {
+              "name": "orders_before",
+              "type": "int"
+            }
+          ],
+          "params": [
+            "as_of_minus_quiet_months_months_minus_12_months",
+            "as_of_minus_quiet_months_months",
+            "active_orders",
+            "as_of"
+          ],
+          "keyed": true,
+          "storage": "erp_db"
+        }
+      ],
+      "schema": "er"
+    },
+    {
+      "name": "band",
+      "engine": "erp",
+      "executor": "native",
+      "invocation": "sql-text",
+      "file": "islands/band.rows.sql",
+      "sha256": "sha256:7f518ca0be7564d12256e22af8b2950cf1589c6b737bb58adc72db963f034052",
+      "connections": [
+        "TTR_CONN_ERP"
+      ],
+      "params": [
+        "as_of_minus_quiet_months_months_minus_12_months",
+        "as_of_minus_quiet_months_months",
+        "active_orders",
+        "as_of"
+      ],
+      "outputs": [
+        {
+          "port": "rows",
+          "file": "islands/band.rows.sql",
+          "sha256": "sha256:7f518ca0be7564d12256e22af8b2950cf1589c6b737bb58adc72db963f034052",
+          "columns": [
+            {
+              "name": "sk",
+              "type": "int"
+            },
+            {
+              "name": "income_band",
+              "type": "int"
+            },
+            {
+              "name": "top_band",
+              "type": "int"
+            }
+          ],
+          "params": [
+            "as_of_minus_quiet_months_months_minus_12_months",
+            "as_of_minus_quiet_months_months",
+            "active_orders",
+            "as_of"
+          ],
+          "keyed": true,
+          "storage": "erp_db"
+        }
+      ],
+      "schema": "er"
+    },
+    {
+      "name": "mailed",
+      "engine": "erp",
+      "executor": "native",
+      "invocation": "sql-text",
+      "file": "islands/mailed.rows.sql",
+      "sha256": "sha256:8586b470bd77b915c1f3d1179862781958e6c44e05db480eb3d6ff9b3a8e51d8",
+      "connections": [
+        "TTR_CONN_ERP"
+      ],
+      "params": [
+        "as_of_minus_quiet_months_months_minus_12_months",
+        "as_of_minus_quiet_months_months",
+        "active_orders",
+        "as_of",
+        "as_of_minus_mail_window_days"
+      ],
+      "outputs": [
+        {
+          "port": "rows",
+          "file": "islands/mailed.rows.sql",
+          "sha256": "sha256:8586b470bd77b915c1f3d1179862781958e6c44e05db480eb3d6ff9b3a8e51d8",
+          "columns": [
+            {
+              "name": "sk",
+              "type": "int"
+            },
+            {
+              "name": "last_mailed",
+              "type": "timestamp"
+            }
+          ],
+          "params": [
+            "as_of_minus_quiet_months_months_minus_12_months",
+            "as_of_minus_quiet_months_months",
+            "active_orders",
+            "as_of",
+            "as_of_minus_mail_window_days"
+          ],
+          "keyed": true,
+          "storage": "erp_db"
+        }
+      ],
+      "schema": "er"
+    },
+    {
+      "name": "offer",
+      "engine": "erp",
+      "executor": "native",
+      "invocation": "sql-text",
+      "file": "islands/offer.premium.sql",
+      "sha256": "sha256:8b7db78621d92b9031c2ebcd0e7d9ea8b23a9c34e7ffad50a5a4d6c3e3f9f382",
+      "connections": [
+        "TTR_CONN_ERP"
+      ],
+      "params": [
+        "quiet_months",
+        "as_of_minus_quiet_months_months_minus_12_months",
+        "as_of_minus_quiet_months_months",
+        "active_orders",
+        "as_of",
+        "as_of_minus_mail_window_days"
+      ],
+      "outputs": [
+        {
+          "port": "premium",
+          "file": "islands/offer.premium.sql",
+          "sha256": "sha256:8b7db78621d92b9031c2ebcd0e7d9ea8b23a9c34e7ffad50a5a4d6c3e3f9f382",
+          "columns": [
+            {
+              "name": "sk",
+              "type": "int"
+            },
+            {
+              "name": "hdemo",
+              "type": "int"
+            },
+            {
+              "name": "orders_before",
+              "type": "int"
+            },
+            {
+              "name": "income_band",
+              "type": "int"
+            },
+            {
+              "name": "top_band",
+              "type": "int"
+            },
+            {
+              "name": "route",
+              "type": "text"
+            },
+            {
+              "name": "verdict_reason",
+              "type": "text"
+            }
+          ],
+          "params": [
+            "quiet_months",
+            "as_of_minus_quiet_months_months_minus_12_months",
+            "as_of_minus_quiet_months_months",
+            "active_orders",
+            "as_of",
+            "as_of_minus_mail_window_days"
+          ],
+          "keyed": true,
+          "storage": "erp_db"
+        },
+        {
+          "port": "standard",
+          "file": "islands/offer.standard.sql",
+          "sha256": "sha256:aa5fae628ceffe96225f011c6e5ee4747dd8e2a73dc550ac53445407594842f8",
+          "columns": [
+            {
+              "name": "sk",
+              "type": "int"
+            },
+            {
+              "name": "hdemo",
+              "type": "int"
+            },
+            {
+              "name": "orders_before",
+              "type": "int"
+            },
+            {
+              "name": "income_band",
+              "type": "int"
+            },
+            {
+              "name": "top_band",
+              "type": "int"
+            },
+            {
+              "name": "route",
+              "type": "text"
+            },
+            {
+              "name": "verdict_reason",
+              "type": "text"
+            }
+          ],
+          "params": [
+            "quiet_months",
+            "as_of_minus_quiet_months_months_minus_12_months",
+            "as_of_minus_quiet_months_months",
+            "active_orders",
+            "as_of",
+            "as_of_minus_mail_window_days"
+          ],
+          "keyed": true,
+          "storage": "erp_db"
+        }
+      ],
+      "schema": "er"
+    }
+  ],
+  "transfers": [],
+  "waves": [
+    [
+      "lapsed"
+    ],
+    [
+      "band",
+      "mailed"
+    ],
+    [
+      "offer"
+    ]
+  ],
+  "connections": [
+    "TTR_CONN_ERP"
+  ],
+  "displays": [],
+  "rejectSites": [],
+  "recipe": {
+    "name": "winback",
+    "key": [
+      "customer.sk"
+    ],
+    "asOf": "now",
+    "document": "win-back.md",
+    "parameters": [
+      {
+        "name": "quiet_months",
+        "type": "int",
+        "value": "12"
+      },
+      {
+        "name": "active_orders",
+        "type": "int",
+        "value": "4"
+      },
+      {
+        "name": "mail_window",
+        "type": "days",
+        "value": "92"
+      }
+    ],
+    "bindings": [
+      {
+        "name": "as_of",
+        "type": "datetime",
+        "source": "run"
+      },
+      {
+        "name": "as_of_minus_quiet_months_months",
+        "type": "datetime",
+        "source": "derived",
+        "derive": {
+          "base": "as_of",
+          "op": "minus",
+          "amount": "quiet_months",
+          "unit": "months"
+        }
+      },
+      {
+        "name": "as_of_minus_quiet_months_months_minus_12_months",
+        "type": "datetime",
+        "source": "derived",
+        "derive": {
+          "base": "as_of_minus_quiet_months_months",
+          "op": "minus",
+          "amount": "12",
+          "unit": "months"
+        }
+      },
+      {
+        "name": "as_of_minus_mail_window_days",
+        "type": "datetime",
+        "source": "derived",
+        "derive": {
+          "base": "as_of",
+          "op": "minus",
+          "amount": "mail_window",
+          "unit": "days"
+        }
+      }
+    ],
+    "roles": {
+      "candidates": "lapsed",
+      "contexts": [
+        {
+          "name": "band",
+          "class": "per-candidate",
+          "kind": "sql"
+        },
+        {
+          "name": "mailed",
+          "class": "per-candidate",
+          "kind": "sql"
+        }
+      ],
+      "decision": "offer",
+      "routes": [
+        {
+          "name": "premium",
+          "because": "lapsed for {quiet_months} months, a top income band",
+          "detail": [],
+          "turnFed": false
+        },
+        {
+          "name": "standard",
+          "because": "lapsed for {quiet_months} months",
+          "detail": [],
+          "turnFed": false
+        }
+      ],
+      "switchMode": "exclusive",
+      "elseRoute": "standard"
+    },
+    "wiring": [
+      {
+        "routes": [
+          "offer.premium"
+        ],
+        "action": "emit",
+        "columns": {
+          "customer": "sk",
+          "offer": "\"premium\""
+        }
+      },
+      {
+        "routes": [
+          "offer.standard"
+        ],
+        "action": "emit",
+        "columns": {
+          "customer": "sk",
+          "offer": "\"standard\""
+        }
+      },
+      {
+        "routes": [
+          "offer.premium"
+        ],
+        "action": "record",
+        "columns": {
+          "customer": "sk",
+          "offer": "\"premium\""
+        }
+      },
+      {
+        "routes": [
+          "offer.standard"
+        ],
+        "action": "record",
+        "columns": {
+          "customer": "sk",
+          "offer": "\"standard\""
+        }
+      }
+    ],
+    "kinds": [
+      "sql"
+    ],
+    "mode": "per-candidate",
+    "windows": [],
+    "verdictSchema": {
+      "entity": "winback_verdict",
+      "columns": [
+        {
+          "name": "run",
+          "type": "text"
+        },
+        {
+          "name": "as_of",
+          "type": "timestamp"
+        },
+        {
+          "name": "sk",
+          "type": "int"
+        },
+        {
+          "name": "route",
+          "type": "text"
+        },
+        {
+          "name": "verdict_reason",
+          "type": "text"
+        },
+        {
+          "name": "parameters_fp",
+          "type": "text"
+        },
+        {
+          "name": "run_as",
+          "type": "text"
+        },
+        {
+          "name": "written_at",
+          "type": "timestamp"
+        }
+      ],
+      "detail": "winback_verdict_detail",
+      "current": "winback_verdict_current"
+    },
+    "objectsRead": [
+      "er.entity.customer",
+      "er.entity.household_demographics",
+      "er.entity.income_band",
+      "er.entity.order",
+      "er.entity.winback_mail"
+    ],
+    "fingerprints": {
+      "text": "sha256:fb62429828a4afe6ec2a02c89e114628b41d7c06ffd3565b48baf7ee1d09f3d9",
+      "values": "sha256:d8352c31b971440aa43d107154959e46256b6f6d981375d8c9e0fd7c9716c86f",
+      "labels": "sha256:bb99d3dfc6f7dccc74217a0b7e925c9a2af77e8d4b4bc4d7a567be4edd083e56"
+    },
+    "protocol": "always",
+    "tests": [
+      "tests/none.yaml",
+      "tests/premium.yaml",
+      "tests/standard.yaml"
+    ]
+  },
+  "files": {
+    "catalog/winback.ttrm": "sha256:5bda2f0f8efae8668582f810602c6e51b2a94886299f064acd3861fcc8af9664",
+    "catalog/winback_verdict.ttrm": "sha256:fc3d78ebb1f947e0b06d3b121fb3b5f8ecb7ee8e1b0f8f475945c5aacea1330d",
+    "islands/band.rows.sql": "sha256:7f518ca0be7564d12256e22af8b2950cf1589c6b737bb58adc72db963f034052",
+    "islands/lapsed.customers.sql": "sha256:20a3ff63703b15ecd905be909ebc731d99ef79937e8e74410e7fcafb0e26a806",
+    "islands/mailed.rows.sql": "sha256:8586b470bd77b915c1f3d1179862781958e6c44e05db480eb3d6ff9b3a8e51d8",
+    "islands/offer.premium.sql": "sha256:8b7db78621d92b9031c2ebcd0e7d9ea8b23a9c34e7ffad50a5a4d6c3e3f9f382",
+    "islands/offer.standard.sql": "sha256:aa5fae628ceffe96225f011c6e5ee4747dd8e2a73dc550ac53445407594842f8",
+    "tests/none.yaml": "sha256:ad6850c6bab916a8671b68ee2faba2b4af923b908330ac169a22ac6606b4dc19",
+    "tests/premium.yaml": "sha256:c8f02026ea616f58695208e4463c9319bcd12e4ed3d111c830587f607dd9e888",
+    "tests/standard.yaml": "sha256:ae4f44dbeda112f0bae89b7ba8fa8a3038b6221ffc87f3adb01194bea5a5178d"
+  }
+}

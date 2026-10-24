@@ -691,6 +691,9 @@ class TtrFlightSqlProducer(
                     root.rowCount = 0
                     out.putNext(metadataBuf(closing))
                 }
+                // Completion lets the client shut down the edge immediately. Release our result buffers
+                // before signalling it, rather than holding them through receipt/telemetry callbacks.
+                root.clear()
                 out.completed()
                 finish(
                     outcomeOf(

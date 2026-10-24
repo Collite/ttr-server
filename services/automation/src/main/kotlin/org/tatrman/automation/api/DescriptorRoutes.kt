@@ -21,6 +21,7 @@ import org.tatrman.automation.bundle.Bundles
 import org.tatrman.automation.bundle.Fingerprints
 import org.tatrman.automation.bundle.LoadedRecipe
 import org.tatrman.automation.bundle.ManifestRecipe
+import org.tatrman.automation.bundle.ManifestFingerprints
 import org.tatrman.automation.bundle.ManifestVerdictSchema
 import org.tatrman.automation.bundle.Registry
 import org.tatrman.automation.bundle.RegistryCell
@@ -76,7 +77,7 @@ data class RecipeDescriptor(
     val name: String,
     val mode: String?,
     val kinds: List<String>,
-    val fingerprints: Fingerprint2,
+    val fingerprints: ManifestFingerprints,
     val verdictEntity: String?,
     val approved: Fingerprint2?,
 )
@@ -268,7 +269,7 @@ private fun recipeOf(r: LoadedRecipe): RecipeDescriptor =
         name = r.name,
         mode = r.recipe.mode,
         kinds = r.recipe.kinds,
-        fingerprints = Fingerprint2(r.recipe.fingerprints.text, r.recipe.fingerprints.values),
+        fingerprints = r.recipe.fingerprints,
         verdictEntity = r.recipe.verdictSchema?.entity,
         approved = null,
     )

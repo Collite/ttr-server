@@ -3,6 +3,12 @@ package org.tatrman.automation.ledger
 
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.JsonUnquotedLiteral
+import kotlinx.serialization.json.booleanOrNull
 import org.jetbrains.exposed.v1.core.Column
 import org.jetbrains.exposed.v1.core.Table
 import org.jetbrains.exposed.v1.core.TextColumnType
@@ -17,7 +23,23 @@ import org.jetbrains.exposed.v1.json.jsonb
  */
 private val ledgerJson = Json { ignoreUnknownKeys = true }
 
-private fun Table.json(name: String): Column<JsonElement> = jsonb(name, ledgerJson, JsonElement.serializer())
+// Generic JsonElement number serialization may pass parsed numeric literals through Double. Keep the
+// original JSON lexemes at the JDBC boundary, and preserve raw numeric leaves for subsequent HTTP encoding.
+private fun Table.json(name: String): Column<JsonElement> =
+    jsonb(name, { it.toString() }, { exactNumbers(ledgerJson.parseToJsonElement(it)) })
+
+@OptIn(kotlinx.serialization.ExperimentalSerializationApi::class)
+private fun exactNumbers(value: JsonElement): JsonElement =
+    when (value) {
+        is JsonObject -> JsonObject(value.mapValues { exactNumbers(it.value) })
+        is JsonArray -> JsonArray(value.map(::exactNumbers))
+        is JsonPrimitive ->
+            if (value == JsonNull || value.isString || value.booleanOrNull != null) {
+                value
+            } else {
+                JsonUnquotedLiteral(value.content)
+            }
+    }
 
 object Bundles : Table("automation.bundles") {
     val id = text("id")
@@ -47,6 +69,7 @@ object Runs : Table("automation.runs") {
     val author = text("author").nullable()
     val runAs = text("run_as").nullable()
     val caller = text("caller").nullable()
+    val callerSubject = text("caller_subject").nullable()
     val origin = text("origin").nullable()
     val status = text("status")
     val dryRun = bool("dry_run")
@@ -57,11 +80,24 @@ object Runs : Table("automation.runs") {
     val protocolRef = text("protocol_ref").nullable()
     val startedAt = timestampWithTimeZone("started_at")
     val endedAt = timestampWithTimeZone("ended_at").nullable()
+    val stagingReleasedAt = timestampWithTimeZone("staging_released_at").nullable()
+    val stagingCheckedAt = timestampWithTimeZone("staging_checked_at").nullable()
     val budgetSync = long("budget_sync").nullable()
     val budgetBatch = long("budget_batch").nullable()
     val error = json("error").nullable()
 
     override val primaryKey = PrimaryKey(id)
+}
+
+/** Internal dispatch journal; the queue is a delivery mechanism, this row fences execution. */
+object RunEvaluations : Table("automation.run_evaluations") {
+    val run = javaUUID("run")
+    val owner = javaUUID("owner")
+    val messageId = long("message_id")
+    val claimedAt = timestampWithTimeZone("claimed_at").nullable()
+    val archivedAt = timestampWithTimeZone("archived_at").nullable()
+
+    override val primaryKey = PrimaryKey(run)
 }
 
 object RunOutputs : Table("automation.run_outputs") {
@@ -216,6 +252,7 @@ val LEDGER_TABLES: List<Table> =
         Bundles,
         Runs,
         RunOutputs,
+        RunEvaluations,
         Tasks,
         Windows,
         WindowEvents,

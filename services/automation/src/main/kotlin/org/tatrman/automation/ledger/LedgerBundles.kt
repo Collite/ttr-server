@@ -4,6 +4,7 @@ package org.tatrman.automation.ledger
 import org.jetbrains.exposed.v1.core.and
 import org.jetbrains.exposed.v1.core.eq
 import org.jetbrains.exposed.v1.core.inList
+import org.jetbrains.exposed.v1.core.SortOrder
 import org.jetbrains.exposed.v1.jdbc.select
 import org.jetbrains.exposed.v1.jdbc.transactions.transaction
 import org.jetbrains.exposed.v1.jdbc.update
@@ -57,6 +58,20 @@ class LedgerBundles :
                 .any()
         }
 
+    override fun latestApproved(
+        kind: String,
+        obj: String,
+    ): String? =
+        transaction {
+            Approvals
+                .select(fpColumn(kind))
+                .where { (Approvals.kind eq kind) and (Approvals.obj eq obj) and (Approvals.status eq "approved") }
+                .orderBy(Approvals.at to SortOrder.DESC, Approvals.id to SortOrder.DESC)
+                .limit(1)
+                .firstOrNull()
+                ?.get(fpColumn(kind))
+        }
+
     /** One query: every approved row of [objects], each under the fingerprint its kind is judged by. */
     override fun snapshot(objects: Collection<String>): ApprovalReader {
         if (objects.isEmpty()) return ApprovalReader { _, _, _ -> false }
@@ -65,12 +80,24 @@ class LedgerBundles :
                 Approvals
                     .select(Approvals.kind, Approvals.obj, Approvals.fpText, Approvals.fpValues, Approvals.fp)
                     .where { (Approvals.status eq "approved") and (Approvals.obj inList objects.distinct()) }
+                    .orderBy(Approvals.at to SortOrder.DESC, Approvals.id to SortOrder.DESC)
                     .mapNotNull { row ->
                         val kind = row[Approvals.kind]
                         row[fpColumn(kind)]?.let { Triple(kind, row[Approvals.obj], it) }
-                    }.toSet()
+                    }
             }
-        return ApprovalReader { kind, obj, fp -> Triple(kind, obj, fp) in approved }
+        return object : ApprovalReader {
+            override fun approved(
+                kind: String,
+                obj: String,
+                fp: String,
+            ): Boolean = Triple(kind, obj, fp) in approved
+
+            override fun latestApproved(
+                kind: String,
+                obj: String,
+            ): String? = approved.firstOrNull { it.first == kind && it.second == obj }?.third
+        }
     }
 
     private fun fpColumn(kind: String) =

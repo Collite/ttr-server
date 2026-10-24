@@ -1,0 +1,11 @@
+SELECT "t0"."item", "t0"."warehouse", COALESCE("t4"."quantity_on_hand", 0) AS "on_hand"
+FROM (SELECT "item", "warehouse", COUNT("line_no") AS "lines"
+        FROM "sales_line"
+        WHERE "sold_date" >= :as_of_minus_demand_period_weeks AND "sold_date" <= :as_of
+        GROUP BY "item", "warehouse") AS "t0"
+    LEFT JOIN (SELECT "t1"."as_of_date", "t1"."item", "t1"."warehouse", "t1"."quantity_on_hand", "t1"."_ttrp_g_n6_0", "t1"."_ttrp_g_n6_1"
+        FROM (SELECT "as_of_date", "item", "warehouse", "quantity_on_hand", CASE WHEN "item" IS NULL THEN 'n' ELSE 'v' || CAST("item" AS VARCHAR) END AS "_ttrp_g_n6_0", CASE WHEN "warehouse" IS NULL THEN 'n' ELSE 'v' || CAST("warehouse" AS VARCHAR) END AS "_ttrp_g_n6_1"
+                FROM "inventory") AS "t1"
+            INNER JOIN (SELECT CASE WHEN "item" IS NULL THEN 'n' ELSE 'v' || CAST("item" AS VARCHAR) END AS "_ttrp_g_n6_0", CASE WHEN "warehouse" IS NULL THEN 'n' ELSE 'v' || CAST("warehouse" AS VARCHAR) END AS "_ttrp_g_n6_1", MAX("as_of_date") AS "_ttrp_latest_n6"
+                FROM "inventory"
+                GROUP BY CASE WHEN "item" IS NULL THEN 'n' ELSE 'v' || CAST("item" AS VARCHAR) END, CASE WHEN "warehouse" IS NULL THEN 'n' ELSE 'v' || CAST("warehouse" AS VARCHAR) END) AS "t3" ON "t1"."_ttrp_g_n6_0" = "t3"."_ttrp_g_n6_0" AND "t1"."_ttrp_g_n6_1" = "t3"."_ttrp_g_n6_1" AND "t1"."as_of_date" = "t3"."_ttrp_latest_n6") AS "t4" ON "t0"."item" = "t4"."item" AND "t0"."warehouse" = "t4"."warehouse"

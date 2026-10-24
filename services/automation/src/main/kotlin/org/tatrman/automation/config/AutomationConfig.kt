@@ -9,6 +9,8 @@ data class DoorConfig(
     val queryUrl: String,
     val velesUrl: String,
     val sidecarUrl: String?,
+    /** Exact logical world/storage → Query world (also configured in Query's QUERY_WORLDS). */
+    val routes: Map<String, String> = emptyMap(),
 )
 
 /**
@@ -50,12 +52,68 @@ data class PreviewsConfig(
     val idleEvictHours: Long,
 )
 
-/** Where island outputs are staged: `local` with a [path], or a store at a [url] (Seaweed/Redis via transfer-core). */
+/** Raw immutable staging; credentials stay in the Redis URL or the AWS provider chain. */
 data class StagingConfig(
     val kind: String,
     val path: String?,
     val url: String?,
-)
+    val bucket: String? = null,
+    val prefix: String = "automation/staging",
+    val region: String = "us-east-1",
+    val anonymous: Boolean = false,
+) {
+    init {
+        require(
+            kind in setOf("local", "redis", "seaweed"),
+        ) { "automation.staging.kind must be local, redis or seaweed" }
+        require(prefix.split('/').all { it.matches(Regex("[A-Za-z0-9_-][A-Za-z0-9_.-]*")) && it != ".." }) {
+            "automation.staging.prefix must be a nonempty relative namespace"
+        }
+        if (kind == "local") {
+            require(!path.isNullOrBlank()) { "automation.staging.path is required for local storage" }
+        } else {
+            val uri = runCatching { java.net.URI(requireNotNull(url)) }.getOrNull()
+            require(
+                uri != null &&
+                    uri.host != null &&
+                    uri.fragment == null &&
+                    uri.query == null &&
+                    (uri.port == -1 || uri.port in 1..65535),
+            ) { "invalid automation.staging.url" }
+            if (kind == "redis") {
+                require(
+                    uri.scheme in setOf("redis", "rediss") &&
+                        uri.path.orEmpty().matches(Regex("(/[0-9]+)?")),
+                ) {
+                    "automation.staging.url must be a redis/rediss URL with an optional database number"
+                }
+            } else {
+                require(
+                    uri.scheme in
+                        setOf(
+                            "http",
+                            "https",
+                        ) &&
+                        uri.userInfo == null &&
+                        uri.path.orEmpty() in setOf("", "/"),
+                ) {
+                    "automation.staging.url must be an HTTP(S) S3 endpoint without credentials or a path"
+                }
+                require(
+                    bucket != null && bucket.matches(Regex("[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]")) && ".." !in bucket,
+                ) {
+                    "automation.staging.bucket is required for seaweed storage"
+                }
+                require(region.matches(Regex("[a-z0-9-]+"))) { "invalid automation.staging.region" }
+            }
+        }
+    }
+
+    // Redis URLs may contain credentials. Never include the URL in bootstrap diagnostics.
+    override fun toString(): String =
+        "StagingConfig(kind=$kind, path=$path, url=${if (url == null) null else "<configured>"}, " +
+            "bucket=$bucket, prefix=$prefix, region=$region, anonymous=$anonymous)"
+}
 
 data class SchedulerConfig(
     val tz: ZoneId,
@@ -67,6 +125,14 @@ data class RetentionConfig(
     val graceHours: Long,
     val protocolDays: Long,
 )
+
+data class RunnerConfig(
+    val workers: Int = 4,
+) {
+    init {
+        require(workers in 1..256) { "automation.runner.workers must be in 1..256" }
+    }
+}
 
 data class BudgetsConfig(
     val syncDefault: Duration,
@@ -99,6 +165,8 @@ data class AutomationConfig(
     val policiesFragment: String?,
     val clockSkew: Duration,
     val connections: Map<String, String>,
+    val approvalsOff: Boolean = false,
+    val runner: RunnerConfig = RunnerConfig(),
 ) {
     companion object {
         const val ROOT = "automation"
@@ -121,6 +189,7 @@ data class AutomationConfig(
                         queryUrl = c.getString("door.queryUrl"),
                         velesUrl = c.getString("door.velesUrl"),
                         sidecarUrl = c.optString("door.sidecarUrl"),
+                        routes = doorRoutes(c.optString("door.routes")),
                     ),
                 auth =
                     AuthConfig(
@@ -159,6 +228,10 @@ data class AutomationConfig(
                         kind = c.getString("staging.kind"),
                         path = c.optString("staging.path"),
                         url = c.optString("staging.url"),
+                        bucket = c.optString("staging.bucket"),
+                        prefix = c.optString("staging.prefix") ?: "automation/staging",
+                        region = c.optString("staging.region") ?: "us-east-1",
+                        anonymous = c.hasPath("staging.anonymous") && c.getBoolean("staging.anonymous"),
                     ),
                 scheduler =
                     SchedulerConfig(
@@ -182,7 +255,28 @@ data class AutomationConfig(
                 policiesFragment = c.optString("policies.fragment"),
                 clockSkew = if (c.hasPath("clock.skew")) c.getDuration("clock.skew") else Duration.ZERO,
                 connections = connections(c, env),
+                approvalsOff = approvalsOff(c),
+                runner = RunnerConfig(if (c.hasPath("runner.workers")) c.getInt("runner.workers") else 4),
             )
+        }
+
+        /** Explicit aliases only; duplicate keys must not silently redirect a storage to another database. */
+        internal fun doorRoutes(raw: String?): Map<String, String> {
+            val routes = linkedMapOf<String, String>()
+            val name = Regex("[A-Za-z_][A-Za-z_0-9.-]*")
+            raw.orEmpty().split(',').map { it.trim() }.filter { it.isNotEmpty() }.forEach { pair ->
+                val parts = pair.split('=')
+                require(parts.size == 2) { "automation.door.routes requires world/storage=query-world pairs" }
+                val key = parts[0].trim()
+                val alias = parts[1].trim()
+                val path = key.split('/')
+                require(path.size == 2 && path.all { name.matches(it) } && name.matches(alias)) {
+                    "automation.door.routes requires world/storage=query-world pairs"
+                }
+                require(key !in routes) { "automation.door.routes repeats $key" }
+                routes[key] = alias
+            }
+            return routes
         }
 
         /** Keycloak's token endpoint beside its JWKS: `…/openid-connect/certs` → `…/openid-connect/token`. */
@@ -238,6 +332,15 @@ data class AutomationConfig(
 
         private fun Config.optString(path: String): String? =
             if (hasPath(path)) getString(path).ifBlank { null } else null
+
+        private fun approvalsOff(c: Config): Boolean {
+            val mode = if (c.hasPath("approvals")) c.getString("approvals") else "required"
+            require(mode in setOf("required", "off")) { "automation.approvals must be required or off" }
+            require(mode != "off" || c.hasPath("development") && c.getBoolean("development")) {
+                "automation.approvals=off requires automation.development=true; development use only"
+            }
+            return mode == "off"
+        }
     }
 
     /** Never prints [connections]' values or the bundle token. */
@@ -246,5 +349,5 @@ data class AutomationConfig(
             token = bundleGit.token?.let { "***" },
         )}, " +
             "previews=$previews, staging=$staging, scheduler=$scheduler, retention=$retention, budgets=$budgets, " +
-            "paused=$paused, policiesFragment=$policiesFragment, clockSkew=$clockSkew, connections=${connections.keys})"
+            "paused=$paused, runner=$runner, policiesFragment=$policiesFragment, clockSkew=$clockSkew, approvalsOff=$approvalsOff, connections=${connections.keys})"
 }

@@ -235,26 +235,42 @@ class BundleLoader(
         }
         if (recipe.name != name) findings += "$where: the manifest's recipe is ${recipe.name}"
         val statements = linkedMapOf<String, String>()
+        val files = mutableListOf<Triple<String, String, String>>()
         for (island in manifest.islands) {
-            val outputs =
-                island.outputs.ifEmpty {
-                    listOf(
-                        ManifestOutput(port = "", file = island.file, sha256 = island.sha256),
-                    )
+            if (island.outputs.isEmpty()) files += Triple(island.name, island.file, island.sha256)
+            for (o in island.outputs) {
+                files += Triple(island.name, o.file, o.sha256)
+                o.combine?.let { c ->
+                    files += Triple(island.name + " combine", c.file, c.sha256)
+                    for (part in c.parts) {
+                        if (recipe.parts.none { it.name == part }) {
+                            findings += "$where: island ${island.name} — combine names unknown part $part"
+                        }
+                    }
                 }
-            for (o in outputs) {
-                val file = bundleDir.resolve(o.file).normalize()
-                if (!file.startsWith(bundleDir) || !Files.isRegularFile(file)) {
-                    findings += "$where: island ${island.name} — ${o.file} is missing"
-                    continue
-                }
-                val text = file.readText()
-                if (o.sha256.isNotEmpty() && Fingerprints.sha256(text) != o.sha256) {
-                    findings += "$where: island ${island.name} — ${o.file} does not match its sha256"
-                    continue
-                }
-                statements[o.file] = text
             }
+        }
+        for (p in recipe.parts) files += Triple("part ${p.name}", p.file, p.sha256)
+        if (recipe.parts
+                .map { it.name }
+                .distinct()
+                .size !=
+            recipe.parts.size
+        ) {
+            findings += "$where: duplicate part names"
+        }
+        for ((owner, relative, hash) in files.distinct()) {
+            val file = bundleDir.resolve(relative).normalize()
+            if (!file.startsWith(bundleDir) || !Files.isRegularFile(file)) {
+                findings += "$where: island $owner — $relative is missing"
+                continue
+            }
+            val text = file.readText()
+            if (hash.isNotEmpty() && Fingerprints.sha256(text) != hash) {
+                findings += "$where: island $owner — $relative does not match its sha256"
+                continue
+            }
+            statements[relative] = text
         }
         return LoadedRecipe(name, manifest, recipe, statements)
     }

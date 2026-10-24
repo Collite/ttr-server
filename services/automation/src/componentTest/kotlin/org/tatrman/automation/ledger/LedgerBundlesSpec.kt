@@ -65,6 +65,7 @@ class LedgerBundlesSpec :
                 obj: String,
                 fp: String,
                 status: String = "approved",
+                at: Instant = Instant.parse("2026-10-19T06:00:00Z"),
             ) = transaction {
                 Approvals.insert {
                     it[id] = UUID.randomUUID()
@@ -77,7 +78,7 @@ class LedgerBundlesSpec :
                     }
                     it[Approvals.kind] = kind
                     it[approver] = "po"
-                    it[Approvals.at] = Instant.parse("2026-10-19T06:00:00Z").atOffset(ZoneOffset.UTC)
+                    it[Approvals.at] = at.atOffset(ZoneOffset.UTC)
                     it[Approvals.status] = status
                 }
             }
@@ -89,5 +90,13 @@ class LedgerBundlesSpec :
             book.approved("values", "release_order", "sha256:v1") shouldBe true
             book.approved("values", "settle", "sha256:v1") shouldBe false
             book.approved("deployment", "release_n8n", "sha256:d1") shouldBe false
+            book.latestApproved("recipe", "release_order") shouldBe "sha256:t1"
+            book.latestApproved("deployment", "release_n8n") shouldBe null
+            val snapshot = book.snapshot(listOf("release_order", "release_n8n"))
+            approve("recipe", "release_order", "sha256:t2", at = Instant.parse("2026-10-20T06:00:00Z"))
+            book.latestApproved("recipe", "release_order") shouldBe "sha256:t2"
+            snapshot.latestApproved("recipe", "release_order") shouldBe "sha256:t1"
+            snapshot.approved("recipe", "release_order", "sha256:t2") shouldBe false
+            snapshot.approved("values", "release_order", "sha256:v1") shouldBe true
         }
     })

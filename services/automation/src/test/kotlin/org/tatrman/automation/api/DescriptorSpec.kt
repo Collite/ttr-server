@@ -23,6 +23,8 @@ import io.ktor.server.testing.testApplication
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -54,8 +56,11 @@ class DescriptorSpec :
             }
         val golden: Path = Path.of("src/test/resources/descriptor/hartland.json")
 
-        fun served(approvals: ApprovalReader = ApprovalReader { _, _, _ -> false }): DescriptorSources {
-            val bundles = BundleFixture.bundles(BundleSource { BundleFixture.checkout(branch = it) })
+        fun served(
+            root: Path = BundleFixture.root,
+            approvals: ApprovalReader = ApprovalReader { _, _, _ -> false },
+        ): DescriptorSources {
+            val bundles = BundleFixture.bundles(BundleSource { BundleFixture.checkout(root, branch = it) })
             runBlocking { bundles.refresh() }
             return BundleFixture.sources(bundles, approvals)
         }
@@ -153,6 +158,58 @@ class DescriptorSpec :
                 val missing = get("/automation/recipes/nope")
                 missing.status shouldBe HttpStatusCode.NotFound
                 missing.errorCode(missing.bodyAsText()) shouldBe "recipe"
+            }
+        }
+
+        "published golden paths and labels survive refresh and authenticated recipe and descriptor reads" {
+            val root = BundleFixture.copy()
+            val path = root.resolve("automation/release_order/release_order.bundle/manifest.json")
+            val manifest = Json.parseToJsonElement(Files.readString(path)).jsonObject
+            val recipe = manifest.getValue("recipe").jsonObject
+            val fingerprints =
+                JsonObject(
+                    recipe.getValue("fingerprints").jsonObject + ("labels" to JsonPrimitive("sha256:labels")),
+                )
+            val tests = JsonArray(listOf(JsonPrimitive("tests/release.yaml")))
+            val updated = JsonObject(recipe + mapOf("tests" to tests, "fingerprints" to fingerprints))
+            Files.writeString(path, JsonObject(manifest + ("recipe" to updated)).toString())
+            testApplication {
+                service(served(root))
+                val detail = get("/automation/recipes/release_order")
+                detail.status shouldBe HttpStatusCode.OK
+                val published =
+                    Json
+                        .parseToJsonElement(detail.bodyAsText())
+                        .jsonObject
+                        .getValue("recipe")
+                        .jsonObject
+                published["tests"] shouldBe tests
+                published["fingerprints"] shouldBe fingerprints
+                val descriptor = get("/automation/")
+                descriptor.status shouldBe HttpStatusCode.OK
+                val described =
+                    Json
+                        .parseToJsonElement(descriptor.bodyAsText())
+                        .jsonObject
+                        .getValue("recipes")
+                        .jsonArray
+                        .single { it.jsonObject["name"] == JsonPrimitive("release_order") }
+                        .jsonObject
+                described["fingerprints"] shouldBe fingerprints
+                // The fixture has no approvals, but only text/values/program/deployment may be unapproved.
+                val deployment = get("/automation/deployments/release_native_event")
+                Json
+                    .parseToJsonElement(deployment.bodyAsText())
+                    .jsonObject
+                    .getValue("unapproved")
+                    .jsonArray
+                    .map { it.jsonPrimitive.content } shouldBe
+                    listOf(
+                        "recipe release_order",
+                        "values release_order",
+                        "program release_on_placement",
+                        "deployment release_native_event",
+                    )
             }
         }
 
