@@ -16,6 +16,12 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+- **resolver — an unbound mention may bind a value label** (md/hop HP-H). The lookup rung asks a G1 mention across
+  categories in the `MODEL_OBJECT`, `OPERATOR` and now `MEMBER` classes. A `MEMBER` row is an authored word for one
+  member (a value label or value alias); a data value carries no class, so lex-matcher still never offers one to a
+  mention. Before, a value label under a measure could bind by no path: „Tržby z tržiště v roce 2025“ left `tržiště`
+  unbound (a measure governs no value, and the rung asked for objects only), and the answer summed every channel.
+  Now `tržiště` binds `er.entity.sales.channel#marketplace`, FILTER.
 - **resolver — a value label binds as a member a door can render** (md/hop HP-H). A declared row whose class is
   `MEMBER` on an er attribute (a `valueLabels` entry; the archive spells it `er.entity.<e>.<a>.<code>`) is now read in
   the lattice's member spelling, `er.entity.<e>.<a>#<code>` — the ref every data member already has — by every place
