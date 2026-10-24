@@ -325,6 +325,47 @@ class DryRunSpec :
             }
         }
 
+        "native writer refuses approximate exact-number assignments before any journal" {
+            for ((type, column) in listOf("int" to "total", "decimal" to "total", "decimal" to "id")) {
+                supervisorScope {
+                    val wiring = writerWiring(total = "1").let { it.copy(columns = it.columns + (column to "3 / 2")) }
+                    val recipe = previewRecipe().withWiring(listOf(wiring))
+                    val f = PreviewFixture(this, recipe, writerMetadata(type))
+                    f.runner.use { runner ->
+                        repeat(2) {
+                            shouldThrow<AutomationException> { runner.evaluate() }.message shouldBe
+                                "unsupported action expression"
+                        }
+                        f.journals.get() shouldBe 0
+                        f.legacy.get() shouldBe 0
+                        f.reads.get() shouldBe 5
+                    }
+                }
+            }
+        }
+
+        "native writer applies temporal widening to inserted values and evidence" {
+            supervisorScope {
+                val wiring = writerWiring(total = "cast(:as_of as date)")
+                val f = PreviewFixture(this, previewRecipe().withWiring(listOf(wiring)), writerMetadata("datetime"))
+                f.runner.use { runner ->
+                    runner.evaluate()
+                    val expected =
+                        JsonPrimitive(
+                            PREVIEW_NOW.atOffset(ZoneOffset.UTC).toLocalDate().toString() + "T00:00Z",
+                        )
+                    val inserted = f.plan!!.rows.single { it.entity == "er.entity.order" }
+                    inserted.row!!["value"] shouldBe expected
+                    f.plan!!
+                        .actions
+                        .single()
+                        .arguments["total"] shouldBe expected
+                    f.journals.get() shouldBe 1
+                    f.reads.get() shouldBe 5
+                }
+            }
+        }
+
         "native writer value refusal after earlier effects leaves no partial journal" {
             supervisorScope {
                 val recipe =

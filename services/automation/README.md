@@ -352,6 +352,11 @@ Selected values retain exact numeric JSON and composite keys. Omitted optional f
 explicit NULLs remain assignments only for nullable non-key fields. State vocabularies and preserved
 text/decimal bounds refuse invalid values without truncation or rounding. Duplicate/unknown/ambiguous target
 mappings, aggregate attributes, mixed effects and canonical entity-name collisions refuse with generic 501.
+Actual JDBC values are checked before JSON conversion: floating-point results cannot enter integer or decimal
+writer fields, even when they look integral. This includes DuckDB true division of compiler-typed integers;
+an authored cast specifies the intended conversion. Decimal casts can carry explicit precision/scale, with
+the target's preserved bounds checked separately. Date widening produces midnight timestamps (UTC for
+`datetime`) in both the insert and action evidence, rather than leaving a date-shaped value.
 Each selected row × wiring gets one insert and the action's effect-row references/would-text; repeated wiring
 stays repeated. Any later refusal leaves no partial decision/batch journal and triggers no extra Query work.
 

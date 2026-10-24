@@ -39,9 +39,12 @@ internal object PreviewExpressions {
                     predicate = false,
                     expectedTypes = expressions.keys.map { expectedTypes[it] },
                 )
-            Table(
-                result.columns.drop(1).mapIndexed { i, c -> c.copy(name = expressions.keys.elementAt(i)) },
-                result.rows.sortedBy { (it.first() as Long) }.map { it.drop(1) },
+            PreviewAssignments.assign(
+                Table(
+                    result.columns.drop(1).mapIndexed { i, c -> c.copy(name = expressions.keys.elementAt(i)) },
+                    result.rows.sortedBy { (it.first() as Long) }.map { it.drop(1) },
+                ),
+                expectedTypes,
             )
         }
 
@@ -145,8 +148,10 @@ internal object PreviewExpressions {
                         expression.location,
                     )
                 val checkedAssignment = checker.check(assignment, schema, aggregatesAllowed = false)
+                // Decimal precision/scale on an authored cast do not change its logical kind;
+                // PreviewWriter separately checks bounds preserved by the target metadata.
                 if (checkedAssignment.diagnostics.any { it.severity == Severity.ERROR } ||
-                    checkedAssignment.type != target
+                    checkedAssignment.type?.canonical != target.canonical
                 ) {
                     unsupported()
                 }

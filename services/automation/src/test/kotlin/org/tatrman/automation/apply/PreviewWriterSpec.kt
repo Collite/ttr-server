@@ -15,6 +15,9 @@ import org.tatrman.automation.runner.BoundValue
 import org.tatrman.automation.runner.Table
 import org.tatrman.ttr.metadata.model.*
 import java.time.Instant
+import java.time.LocalDate
+import java.time.LocalDateTime
+import java.time.OffsetDateTime
 
 class PreviewWriterSpec :
     StringSpec({
@@ -280,6 +283,83 @@ class PreviewWriterSpec :
                 listOf(listOf(null))
         }
 
+        "integer writer assignments refuse floating division results without rounding" {
+            val table = Table(emptyList(), listOf(emptyList()))
+            // Both expressions have the compiler's integer type, but DuckDB executes true division.
+            for (expression in listOf("3 / 2", "4 / 2", "9007199254740993 / 1")) {
+                refuses {
+                    PreviewExpressions.project(mapOf("value" to expression), table, emptyMap(), mapOf("value" to "int"))
+                }
+            }
+            PreviewExpressions
+                .project(
+                    mapOf("value" to "cast(4 / 2 as int)"),
+                    table,
+                    emptyMap(),
+                    mapOf("value" to "int"),
+                ).rows shouldBe listOf(listOf(2L))
+        }
+
+        "decimal writer assignments refuse approximate division unless explicitly cast" {
+            val table = Table(emptyList(), listOf(emptyList()))
+            for (expression in listOf("1.0 / 3.0", "9007199254740993 / 1", "4 / 2")) {
+                refuses {
+                    PreviewExpressions.project(
+                        mapOf("value" to expression),
+                        table,
+                        emptyMap(),
+                        mapOf(
+                            "value" to "decimal",
+                        ),
+                    )
+                }
+            }
+            PreviewExpressions
+                .project(
+                    mapOf("value" to "cast(1.0 / 3.0 as decimal(8,4))"),
+                    table,
+                    emptyMap(),
+                    mapOf("value" to "decimal"),
+                ).rows shouldBe listOf(listOf(java.math.BigDecimal("0.3333")))
+        }
+
+        "unassigned scalar division retains its existing floating result" {
+            PreviewExpressions
+                .project(
+                    mapOf("value" to "3 / 2"),
+                    Table(emptyList(), listOf(emptyList())),
+                    emptyMap(),
+                ).rows shouldBe listOf(listOf(1.5))
+        }
+
+        "writer assignments preserve supported typed values nulls and declared schemas" {
+            val table = Table(emptyList(), listOf(emptyList()))
+            val values =
+                mapOf(
+                    "int" to 9007199254740993L,
+                    "decimal" to java.math.BigDecimal("4.560000000000000001"),
+                    "float" to 1.5,
+                    "text" to "žluťoučký",
+                    "bool" to true,
+                    "date" to LocalDate.parse("2026-10-24"),
+                    "timestamp" to LocalDateTime.parse("2026-10-24T12:34:56"),
+                    "datetime" to OffsetDateTime.parse("2026-10-24T12:34:56Z"),
+                )
+            for ((type, value) in values) {
+                val bindings = mapOf("v" to BoundValue(type, value))
+                val result = PreviewExpressions.project(mapOf("value" to ":v"), table, bindings, mapOf("value" to type))
+                result.columns shouldBe listOf(ManifestColumn("value", type))
+                result.rows shouldBe listOf(listOf(value))
+                PreviewExpressions
+                    .project(
+                        mapOf("value" to ":v"),
+                        table,
+                        mapOf("v" to BoundValue(type, null)),
+                        mapOf("value" to type),
+                    ).rows shouldBe listOf(listOf(null))
+            }
+        }
+
         "compiler temporal widening uses pinned date values and rejects implicit text dates" {
             val table = Table(emptyList(), listOf(emptyList()))
             val bindings = mapOf("as_of" to BoundValue("datetime", Instant.parse("2026-10-24T12:00:00Z")))
@@ -291,8 +371,29 @@ class PreviewWriterSpec :
                     mapOf(
                         "value" to "datetime",
                     ),
-                ).rows.size shouldBe
-                1
+                ).rows shouldBe listOf(listOf(OffsetDateTime.parse("2026-10-24T00:00:00Z")))
+            PreviewExpressions
+                .project(
+                    mapOf("value" to "cast(:as_of as date)"),
+                    table,
+                    bindings,
+                    mapOf("value" to "timestamp"),
+                ).rows shouldBe listOf(listOf(LocalDateTime.parse("2026-10-24T00:00:00")))
+            PreviewExpressions
+                .project(
+                    mapOf("value" to "cast(:as_of as datetime)"),
+                    table,
+                    bindings,
+                    mapOf("value" to "datetime"),
+                ).rows shouldBe listOf(listOf(OffsetDateTime.parse("2026-10-24T12:00:00Z")))
+            refuses {
+                PreviewExpressions.project(
+                    mapOf("value" to ":v"),
+                    table,
+                    mapOf("v" to BoundValue("timestamp", LocalDateTime.parse("2026-10-24T12:00:00"))),
+                    mapOf("value" to "datetime"),
+                )
+            }
             refuses {
                 PreviewExpressions.project(
                     mapOf("value" to "\"2026-10-24\""),
