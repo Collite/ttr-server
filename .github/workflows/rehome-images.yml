@@ -24,8 +24,10 @@ name: Rehome images (GHCR)
 #
 # Two credentials. The SOURCE is read with TATRMAN_PKG_TOKEN (a member's PAT): GITHUB_TOKEN is
 # denied on CollitePerson's private packages. Everything is WRITTEN with GITHUB_TOKEN, so the new
-# package is this repository's. crane keeps one credential per registry, so `stage` hops through a
-# throwaway registry on the runner (source -> localhost:5000 -> ghcr), one DOCKER_CONFIG per side.
+# package is this repository's. crane keeps one credential per registry, so for a source
+# GITHUB_TOKEN cannot read, `stage` hops through a throwaway registry on the runner
+# (source -> localhost:5000 -> ghcr), one DOCKER_CONFIG per side. A readable (public) source is
+# copied directly.
 #
 # Delete this workflow once IM-P1b is done.
 
@@ -130,10 +132,17 @@ jobs:
               stage)
                 n=$(src ls "$old" | wc -l) || fail "$img: cannot read $old with the source credential"
                 [ "$n" -gt 0 ] || fail "$img: $old has no tags"
-                start_hop
-                src copy --all-tags "$old" "$HOP/$img"
-                dst copy --all-tags "$HOP/$img" "$stg"
-                stop_hop
+                if dst ls "$old" >/dev/null 2>&1; then
+                  # A public source needs no second credential: copy ghcr -> ghcr directly. The
+                  # hop also breaks on multi-GB layers (nlp-stanza: HTTP/2 PROTOCOL_ERROR
+                  # uploading to the local registry, three times out of three).
+                  dst copy --all-tags "$old" "$stg"
+                else
+                  start_hop
+                  src copy --all-tags "$old" "$HOP/$img"
+                  dst copy --all-tags "$HOP/$img" "$stg"
+                  stop_hop
+                fi
                 covered src "$old" dst "$stg" || fail "$img: the staged copy differs from $old"
                 say "- \`$img\`: $n tags staged as \`$STAGING_PREFIX$img\`, digests match"
                 ;;
