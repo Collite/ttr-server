@@ -16,6 +16,7 @@ import org.tatrman.ttrp.resolve.MdRepo
 import java.io.ByteArrayOutputStream
 import java.nio.file.Files
 import java.nio.file.Path
+import java.time.Duration
 import kotlin.io.path.isDirectory
 import kotlin.io.path.readBytes
 import kotlin.io.path.relativeTo
@@ -46,30 +47,49 @@ class ModelTree(
  *    unpacked into a private directory once per archive, so both forms load through the same code and hash the same.
  *
  * The tree is reloaded when the path's fingerprint moves (a file's size or mtime, or the archive behind a ConfigMap
- * symlink swap) — never on a timer, and never on a request that finds the same files. A tree that fails to load keeps
+ * symlink swap) — never on a timer, and never on a request that finds the same files. The fingerprint is read at most
+ * once per [recheckEvery]: a call inside that window reuses the loaded tree without walking the files or taking the
+ * lock, so concurrent door calls do not queue behind a directory walk (review-134 F8). A tree that fails to load keeps
  * the one already loaded and says so once; with none loaded, [current] is null and the doors answer
  * `CN_MODEL_UNAVAILABLE`.
  */
 class ConceptModelSource(
     private val path: Path,
     private val workDir: Path = Path.of(System.getProperty("java.io.tmpdir")),
+    private val recheckEvery: Duration = Duration.ofSeconds(2),
 ) {
     private val logger = LoggerFactory.getLogger(ConceptModelSource::class.java)
 
     @Volatile
     private var cached: Pair<String, ModelTree>? = null
 
+    /** `System.nanoTime()` of the last fingerprint that matched or loaded. */
+    @Volatile
+    private var checkedAt: Long = 0
+
     private val reported =
         java.util.concurrent.ConcurrentHashMap
             .newKeySet<String>()
 
     /** The tree at [path] — reloaded when its fingerprint moved; null when none could ever be loaded. */
-    @Synchronized
     fun current(): ModelTree? {
+        val held = cached
+        if (held != null && System.nanoTime() - checkedAt < recheckEvery.toNanos()) return held.second
+        return check()
+    }
+
+    @Synchronized
+    private fun check(): ModelTree? {
         val print = runCatching { fingerprint() }.getOrElse { e -> return keep("unreadable: ${e.message}") }
-        cached?.let { if (it.first == print) return it.second }
+        cached?.let {
+            if (it.first == print) {
+                checkedAt = System.nanoTime()
+                return it.second
+            }
+        }
         val tree = runCatching { load() }.getOrElse { e -> return keep("failed to load: ${e.message}") }
         cached = print to tree
+        checkedAt = System.nanoTime()
         logger.info(
             "cn doors: model {} loaded from {} ({} concept(s), md tier {}, {} load error(s))",
             tree.contentId,

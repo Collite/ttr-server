@@ -222,6 +222,43 @@ class CandidateRoutesSpec :
             }
         }
 
+        test("a term for a rejected concept candidate is refused at submit — it could never be promoted (F10)") {
+            world { _ ->
+                client.submit(EVIDENCE, ischemic)
+                client.postAs(STEWARD, "/v1/cn/candidates/$ischemicId/reject").status shouldBe HttpStatusCode.OK
+                val waiting =
+                    transferTerm.replace(
+                        "\"target_qname\": \"cn.Transfer\"",
+                        "\"proposed_concept_ref\": \"$ischemicId\"",
+                    )
+                val r = client.submit(CATALOGUE, waiting)
+                r.status shouldBe HttpStatusCode.UnprocessableEntity
+                r.json().str("code") shouldBe CandidateService.CN_CANDIDATE_UNKNOWN_REF
+                r.json().str("error").orEmpty() shouldContain "rejected"
+            }
+        }
+
+        test("rejected while its pull request was open, then merged anyway: the load records it promoted (F7)") {
+            world { w ->
+                client.submit(EVIDENCE, ischemic)
+                client.postAs(STEWARD, "/v1/cn/candidates/$ischemicId/promote").status shouldBe HttpStatusCode.OK
+                client.postAs(STEWARD, "/v1/cn/candidates/$ischemicId/reject").status shouldBe HttpStatusCode.OK
+                gitApply(w.dir, w.store.get(ischemicId)!!.promotion!!)
+                w.service.observe(CnTestKit.loadCn(w.dir), "c0ffee4").map { it.id } shouldBe listOf(ischemicId)
+                val got = client.getAs(STEWARD, "/v1/cn/candidates/$ischemicId").json()
+                got.str("state") shouldBe "promoted"
+                got.str("candidate", "resolution", "canon_ref") shouldBe "c0ffee4:cn.IschemicPatient"
+                got.arr("history").map {
+                    it.jsonObject
+                        .getValue("action")
+                        .jsonPrimitive.content
+                } shouldBe
+                    listOf("submitted", "promotion_opened", "rejected", "promoted")
+                // a candidate rejected before any promotion is never watched
+                w.service.observe(CnTestKit.loadCn(w.dir), "c0ffee5").shouldContainExactly(emptyList())
+            }
+        }
+
         test("the queue: filters by status, producer and stereotype; sort=evidence puts the evidence counts first") {
             world { _ ->
                 val few = "2a3b4c5d-6e7f-4a8b-9c0d-1e2f3a4b5c6d"
@@ -471,6 +508,51 @@ class CandidateRoutesSpec :
                     "+model lexicon locale cs",
                     "",
                 )
+        }
+
+        test("a delivery failing after another went out: the promotion stands, the failure beside it (F2)") {
+            val opened = PromotionDelivery { Delivered(pullRequest = "https://example.test/pull/1") }
+            val broken = PromotionDelivery { throw java.io.IOException("No space left on device") }
+            world(World(deliveries = listOf(opened, broken))) { _ ->
+                client.submit(EVIDENCE, ischemic)
+                val r = client.postAs(STEWARD, "/v1/cn/candidates/$ischemicId/promote")
+                r.status shouldBe HttpStatusCode.OK
+                val body = r.json()
+                body.str("state") shouldBe "pending_merge"
+                body.str("promotion", "pull_request_url") shouldBe "https://example.test/pull/1"
+                body
+                    .getValue("promotion")
+                    .jsonObject
+                    .arr("undelivered")
+                    .map { it.jsonPrimitive.content } shouldBe
+                    listOf("${Promoter.CN_PROMOTION_DELIVERY}: a delivery failed: No space left on device")
+                val opening =
+                    client
+                        .getAs(STEWARD, "/v1/cn/candidates/$ischemicId")
+                        .json()
+                        .arr("history")
+                        .map { it.jsonObject }
+                        .single { it.getValue("action").jsonPrimitive.content == "promotion_opened" }
+                opening.getValue("detail").jsonPrimitive.content shouldContain "not delivered"
+            }
+        }
+
+        test("a delivery failing before any went out refuses the promotion: 502, still proposed, in the history (F2)") {
+            val broken = PromotionDelivery { throw java.io.IOException("read-only file system") }
+            world(World(deliveries = listOf(broken))) { _ ->
+                client.submit(EVIDENCE, ischemic)
+                val r = client.postAs(STEWARD, "/v1/cn/candidates/$ischemicId/promote")
+                r.status shouldBe HttpStatusCode.BadGateway
+                r.json().str("code") shouldBe Promoter.CN_PROMOTION_DELIVERY
+                val got = client.getAs(STEWARD, "/v1/cn/candidates/$ischemicId").json()
+                got.str("state") shouldBe "proposed"
+                got.arr("history").map {
+                    it.jsonObject
+                        .getValue("action")
+                        .jsonPrimitive.content
+                } shouldBe
+                    listOf("submitted", "promotion_refused")
+            }
         }
 
         test("promotion off (no promotion source) is 503 CN_PROMOTION_OFF; the rest of the store works") {

@@ -33,7 +33,10 @@ class GitHubPullRequestsSpec :
             val body: JsonObject?,
         )
 
-        fun fake(failRefs: Boolean = false): Pair<HttpServer, MutableList<Call>> {
+        fun fake(
+            failRefs: Boolean = false,
+            failPulls: Boolean = false,
+        ): Pair<HttpServer, MutableList<Call>> {
             val calls = mutableListOf<Call>()
             val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
             server.createContext("/") { ex ->
@@ -58,11 +61,13 @@ class GitHubPullRequestsSpec :
                         path.endsWith("/git/commits") -> 201 to """{"sha":"commit1"}"""
                         path.endsWith("/git/refs") && failRefs -> 422 to """{"message":"Reference already exists"}"""
                         path.endsWith("/git/refs") -> 201 to """{"ref":"x"}"""
+                        path.endsWith("/pulls") && failPulls -> 422 to """{"message":"Validation Failed"}"""
                         path.endsWith("/pulls") -> 201 to """{"html_url":"https://github.com/clinic/model/pull/7"}"""
+                        ex.requestMethod == "DELETE" && path.contains("/git/refs/heads/") -> 204 to ""
                         else -> 404 to """{"message":"Not Found"}"""
                     }
                 val bytes = answer.toByteArray()
-                ex.sendResponseHeaders(status, bytes.size.toLong())
+                ex.sendResponseHeaders(status, if (bytes.isEmpty()) -1 else bytes.size.toLong())
                 ex.responseBody.use { it.write(bytes) }
             }
             server.start()
@@ -131,6 +136,30 @@ class GitHubPullRequestsSpec :
                 e.code shouldBe GitHubPullRequests.CN_PROMOTION_PROVIDER
                 e.message.orEmpty() shouldStartWith "GitHub answered 422 (create the branch)"
                 e.message.orEmpty() shouldContain "Reference already exists"
+            } finally {
+                server.stop(0)
+            }
+        }
+
+        test("a pull request GitHub refuses takes its branch back — a refused promotion leaves nothing (F2)") {
+            val (server, calls) = fake(failPulls = true)
+            try {
+                val gh =
+                    GitHubPullRequests(
+                        "clinic/model",
+                        "t",
+                        "master",
+                        api = URI.create("http://127.0.0.1:${server.address.port}"),
+                    )
+                val e = shouldThrow<CnRefused> { gh.deliver(pending) }
+                e.code shouldBe GitHubPullRequests.CN_PROMOTION_PROVIDER
+                e.message.orEmpty() shouldStartWith "GitHub answered 422 (open the pull request)"
+                calls.map { "${it.method} ${it.path}" }.takeLast(3) shouldBe
+                    listOf(
+                        "POST /repos/clinic/model/git/refs",
+                        "POST /repos/clinic/model/pulls",
+                        "DELETE /repos/clinic/model/git/refs/heads/cn/promote-9a4c7e21-20261023123456",
+                    )
             } finally {
                 server.stop(0)
             }

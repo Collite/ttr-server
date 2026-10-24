@@ -31,7 +31,8 @@ enum class CandidateState(
 /**
  * An opened promotion (cn contracts §6): the def it adds ([qname]), the patch and the pull request's text, the
  * promotion source's version the patch is against ([base]), who opened it, where it went — a provider's pull request,
- * an inbox file, or only this record (the API serves the diff either way) — and the gate's new non-error findings.
+ * an inbox file, or only this record (the API serves the diff either way) — the gate's new non-error findings, and any
+ * delivery that failed after another had gone out ([undelivered], review-134 F2).
  */
 data class PromotionRecord(
     val qname: String,
@@ -44,6 +45,7 @@ data class PromotionRecord(
     val pullRequest: String? = null,
     val inbox: String? = null,
     val findings: List<String> = emptyList(),
+    val undelivered: List<String> = emptyList(),
 )
 
 /** A candidate as the store keeps it: the document, the store's [state], and what the store knows about it. */

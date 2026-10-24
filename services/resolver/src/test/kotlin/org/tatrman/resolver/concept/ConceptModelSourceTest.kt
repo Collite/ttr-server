@@ -18,6 +18,7 @@ import org.tatrman.ttr.snapshot.SnapshotManifest
 import org.tatrman.ttr.snapshot.SnapshotWriter
 import java.nio.file.Files
 import java.nio.file.Path
+import java.time.Duration
 import kotlin.io.path.appendText
 import kotlin.io.path.readText
 import kotlin.io.path.relativeTo
@@ -70,12 +71,20 @@ class ConceptModelSourceTest :
 
         "the same files are the same tree; an edited file reloads" {
             val copy = CnEstate.variant { }.resolve("model")
-            val source = ConceptModelSource(copy)
+            val source = ConceptModelSource(copy, recheckEvery = Duration.ZERO)
             val first = source.current().shouldNotBeNull()
             source.current() shouldBeSameInstanceAs first
             copy.resolve("cn/shop.ttrm").appendText("\n// an edit\n")
             val second = source.current().shouldNotBeNull()
             second.contentId shouldNotBe first.contentId
+        }
+
+        "inside the re-check window the loaded tree is served without reading the files again (review-134 F8)" {
+            val copy = CnEstate.variant { }.resolve("model")
+            val source = ConceptModelSource(copy, recheckEvery = Duration.ofHours(1))
+            val first = source.current().shouldNotBeNull()
+            copy.resolve("cn/shop.ttrm").appendText("\n// an edit\n")
+            source.current() shouldBeSameInstanceAs first
         }
 
         "an unreadable path loads nothing; an archive entry that leaves docs/ refuses the archive" {
@@ -96,6 +105,21 @@ class ConceptModelSourceTest :
             // The golden archive's header names a placeholder model, not this one.
             val state = CnDoors.models(CnEstate.pack()).current().shouldBeInstanceOf<ConceptModels.State.Unavailable>()
             state.code shouldBe ConceptModels.CN_MODEL_SKEW
+        }
+
+        "the pin: a layer of archives names its models comma-joined — the tree must be one of them (review-134 F1)" {
+            val id = ModelContentId.of(shopModel)
+
+            suspend fun pinned(hashes: String) =
+                ConceptModels(
+                    ConceptModelSource(shopModel),
+                    { ResolverRegistry(emptyList(), emptyList(), ResolverThresholds.LIVE, "layer", hashes) },
+                ).current()
+            val ready = pinned("$id,$id").shouldBeInstanceOf<ConceptModels.State.Ready>()
+            ready.model.resolved.snapshotHash shouldBe "layer"
+            pinned("sha256:other, $id").shouldBeInstanceOf<ConceptModels.State.Ready>()
+            val skew = pinned("sha256:other,sha256:another").shouldBeInstanceOf<ConceptModels.State.Unavailable>()
+            skew.code shouldBe ConceptModels.CN_MODEL_SKEW
         }
 
         "the pin: with no archive naming a model, the model's own content id is the snapshot" {

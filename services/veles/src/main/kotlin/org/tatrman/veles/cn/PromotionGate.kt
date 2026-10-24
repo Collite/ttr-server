@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package org.tatrman.veles.cn
 
+import io.ktor.http.HttpStatusCode
 import org.tatrman.concept.CnConceptService
 import org.tatrman.concept.Layer
 import org.tatrman.concept.RenderOptions
@@ -43,8 +44,8 @@ class PromotionGate {
     ): GateResult {
         val temps = mutableListOf<Path>()
         try {
-            val original = load(materialize(before, temps))
-            val patched = load(materialize(after, temps))
+            val original = load(materialize(before, temps), patched = false)
+            val patched = load(materialize(after, temps), patched = true)
             val fresh = patched.findings.keys - original.findings.keys
             val (errors, others) = fresh.sorted().partition { patched.findings.getValue(it) }
             val er = if (renderEr) render(patched.cn, qname) else null
@@ -60,11 +61,31 @@ class PromotionGate {
         val cn: ResolvedCnModel,
     )
 
-    private fun load(dir: Path): Loaded {
+    /**
+     * A model that does not load at all is a refusal, never an exception (review-134 F3): the source's own model is the
+     * source's problem (`503 CN_PROMOTION_SOURCE_UNAVAILABLE`), the patched model the patch's (`422 CN_PROMOTION_GATE`).
+     */
+    private fun load(
+        dir: Path,
+        patched: Boolean,
+    ): Loaded {
         val result =
             MetadataLoader(FileBasedSource("promotion", 100, LocalFsStorage(id = "promotion", rootPath = dir)))
                 .load(LoadOptions(strict = true))
-        val model = requireNotNull(result.model) { "the model did not load: ${result.errors.firstOrNull()?.message}" }
+        val model =
+            result.model ?: throw if (patched) {
+                CnRefused(
+                    HttpStatusCode.UnprocessableEntity,
+                    Promoter.CN_PROMOTION_GATE,
+                    "the patched model does not load: ${result.errors.firstOrNull()?.message}",
+                )
+            } else {
+                CnRefused(
+                    HttpStatusCode.ServiceUnavailable,
+                    Promoter.CN_PROMOTION_SOURCE_UNAVAILABLE,
+                    "the promotion source's model does not load: ${result.errors.firstOrNull()?.message}",
+                )
+            }
         val cn = ResolvedCnModel.of(model, snapshotHash = "promotion", md = MdRepo.loadFrom(dir))
 
         fun clean(text: String) = text.replace("$dir/", "").replace("${dir.fileName}/", "")

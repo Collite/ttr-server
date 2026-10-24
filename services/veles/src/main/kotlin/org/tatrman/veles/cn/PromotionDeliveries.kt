@@ -105,18 +105,24 @@ class GitHubPullRequests(
             "create the branch",
         )
         val pull =
-            call(
-                "POST",
-                "pulls",
-                buildJsonObject {
-                    put("title", p.pullRequest.title)
-                    put("head", branch)
-                    put("base", baseBranch)
-                    put("body", p.pullRequest.body)
-                },
-                "open the pull request",
-            )
-        return Delivered(pullRequest = pull.str("html_url"))
+            try {
+                call(
+                    "POST",
+                    "pulls",
+                    buildJsonObject {
+                        put("title", p.pullRequest.title)
+                        put("head", branch)
+                        put("base", baseBranch)
+                        put("body", p.pullRequest.body)
+                    },
+                    "open the pull request",
+                ).str("html_url")
+            } catch (e: CnRefused) {
+                // No pull request: take the branch back, so a refused promotion leaves nothing behind (review-134 F2).
+                runCatching { call("DELETE", "git/refs/heads/$branch", null, "remove the branch") }
+                throw e
+            }
+        return Delivered(pullRequest = pull)
     }
 
     private fun repoPath(path: String): String = if (pathPrefix.isBlank()) path else "${pathPrefix.trim('/')}/$path"
@@ -157,6 +163,7 @@ class GitHubPullRequests(
                 }.getOrNull() ?: response.body().take(200)
             throw providerFailure("GitHub answered ${response.statusCode()} ($step): $message")
         }
+        if (response.body().isBlank()) return JsonObject(emptyMap())
         return Json.parseToJsonElement(response.body()).jsonObject
     }
 

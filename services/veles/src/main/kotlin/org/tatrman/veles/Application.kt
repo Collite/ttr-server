@@ -547,13 +547,32 @@ internal fun promotionTarget(
     val storage = buildStorage(sub, sourceId, checkoutSuffix = "-promotion") ?: return null
 
     fun str(path: String) = if (sub.hasPath(path)) sub.getString(path) else ""
+    val subdirectory = str("subdirectory")
     return PromotionTarget(
         storage = storage,
         remoteUri = str("remote-uri"),
         branch = str("branch").ifBlank { "main" },
-        subdirectory = str("subdirectory"),
+        subdirectory = subdirectory,
+        localRoot =
+            (storage as? GitArchiveStorage)?.let {
+                gitCheckoutDir(sub, sourceId, "-promotion").let { dir ->
+                    if (subdirectory.isBlank()) dir else dir.resolve(subdirectory.trim('/'))
+                }
+            },
     )
 }
+
+/** Where a git source block clones: `local-checkout-dir` (plus [suffix]), else `<tmp>/metadata-git/<id><suffix>`. */
+private fun gitCheckoutDir(
+    sub: Config,
+    id: String,
+    suffix: String,
+): Path =
+    if (sub.hasPath("local-checkout-dir")) {
+        Path.of(sub.getString("local-checkout-dir") + suffix)
+    } else {
+        Path.of(System.getProperty("java.io.tmpdir"), "metadata-git", id + suffix)
+    }
 
 /** The storage one `metadata.sources.<id>` block reads; null when the block is unbuildable. */
 private fun buildStorage(
@@ -574,12 +593,7 @@ private fun buildStorage(
                 log.warn("git source '{}' has no remote-uri; skipping", id)
                 return null
             }
-            val checkout =
-                if (sub.hasPath("local-checkout-dir")) {
-                    Path.of(sub.getString("local-checkout-dir") + checkoutSuffix)
-                } else {
-                    Path.of(System.getProperty("java.io.tmpdir"), "metadata-git", id + checkoutSuffix)
-                }
+            val checkout = gitCheckoutDir(sub, id, checkoutSuffix)
             GitArchiveStorage(
                 id = id,
                 remoteUri = remoteUri,

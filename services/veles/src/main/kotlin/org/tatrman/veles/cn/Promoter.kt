@@ -11,13 +11,15 @@ import org.tatrman.concept.candidate.PromotionResult
 import org.tatrman.concept.candidate.Proposal
 import org.tatrman.concept.candidate.PullRequest
 import org.tatrman.concept.candidate.Stereo
+import org.slf4j.LoggerFactory
+import org.tatrman.ttr.metadata.source.LocalFsStorage
 import org.tatrman.ttr.metadata.source.ModelStorage
 import java.nio.file.Path
 import java.time.Instant
 import kotlin.io.path.invariantSeparatorsPathString
 import kotlin.io.path.relativeTo
 
-/** The promotion source's model text: every `.ttrm` file by its path under the model root, and the [version] read. */
+/** The promotion source's model text: every model file by its path under the model root, and the [version] read. */
 data class ModelText(
     val version: String,
     val files: Map<String, String>,
@@ -30,21 +32,39 @@ fun interface PromotionFiles {
 
 /**
  * The promotion source's files through a [ModelStorage] of its own (A-CN-93): its own checkout, so reading never races
- * the refresher's pull of the served source. The version is read on both sides of the listing; a commit landing in
- * between is read again, once.
+ * the refresher's pull of the served source. Every file the loader reads (`.ttr` and `.ttrm`), so the gate loads the
+ * whole model; the patch itself edits `.ttrm` only (review-134 F4).
+ *
+ * With [localRoot] — that checkout's working tree at the model's sub-path — one fetch gives the version and the files
+ * are read from the tree: nothing else moves a promotion checkout, and promotions run one at a time (F9: a git storage
+ * fetches on every call, so version · listing · version cost three fetches). Without it, the version is read on both
+ * sides of the listing, and a commit landing in between is read again, once. A source that cannot be read is
+ * `503 CN_PROMOTION_SOURCE_UNAVAILABLE` (F3).
  */
 class StoragePromotionFiles(
     private val storage: ModelStorage,
+    private val localRoot: Path? = null,
 ) : PromotionFiles {
-    override fun read(): ModelText {
+    override fun read(): ModelText =
+        try {
+            localRoot?.let { root ->
+                ModelText(storage.fetchVersion(), files(LocalFsStorage(id = "promotion", rootPath = root)))
+            }
+                ?: readMoving()
+        } catch (e: CnRefused) {
+            throw e
+        } catch (e: Exception) {
+            throw CnRefused(
+                HttpStatusCode.ServiceUnavailable,
+                Promoter.CN_PROMOTION_SOURCE_UNAVAILABLE,
+                "the promotion source could not be read: ${e.message}",
+            )
+        }
+
+    private fun readMoving(): ModelText {
         repeat(2) {
             val version = storage.fetchVersion()
-            val files =
-                storage.listFiles(listOf("ttrm")).associate { f ->
-                    val path = Path.of(f.path)
-                    val rel = f.rootPath?.let { path.relativeTo(it) } ?: path.fileName
-                    rel.invariantSeparatorsPathString to storage.read(f)
-                }
+            val files = files(storage)
             if (storage.fetchVersion() == version) return ModelText(version, files)
         }
         throw CnRefused(
@@ -52,6 +72,18 @@ class StoragePromotionFiles(
             Promoter.CN_PROMOTION_SOURCE_MOVING,
             "the promotion source changed twice while it was read — try again",
         )
+    }
+
+    private fun files(from: ModelStorage): Map<String, String> =
+        from.listFiles(MODEL_EXTENSIONS).associate { f ->
+            val path = Path.of(f.path)
+            val rel = f.rootPath?.let { path.relativeTo(it) } ?: path.fileName
+            rel.invariantSeparatorsPathString to from.read(f)
+        }
+
+    companion object {
+        /** The loader's model extensions (ttr-metadata reads both). */
+        val MODEL_EXTENSIONS = listOf("ttr", "ttrm")
     }
 }
 
@@ -119,8 +151,27 @@ class Promoter(
         val rooted = patch.copy(diff = rootedDiff(patch.diff, modelRoot))
         val pending = PendingPromotion(s.id, rooted, text.version, pr, at)
         var delivered = Delivered()
+        val undelivered = mutableListOf<String>()
         for (d in deliveries) {
-            val r = d.deliver(pending)
+            val r =
+                try {
+                    d.deliver(pending)
+                } catch (e: Exception) {
+                    val refused =
+                        e as? CnRefused
+                            ?: CnRefused(
+                                HttpStatusCode.BadGateway,
+                                CN_PROMOTION_DELIVERY,
+                                "a delivery failed: ${e.message}",
+                            )
+                    // Nothing has gone out: refuse, and a retry starts clean. Something has (a pull request is open):
+                    // the promotion stands with the failure beside it — refusing now would open a second pull request
+                    // on the retry and orphan this one (review-134 F2).
+                    if (delivered.pullRequest == null && delivered.inbox == null) throw refused
+                    log.warn("cn: promotion of {} went out, but a later delivery failed: {}", s.id, refused.message)
+                    undelivered += "${refused.code}: ${refused.message}"
+                    continue
+                }
             delivered = Delivered(delivered.pullRequest ?: r.pullRequest, delivered.inbox ?: r.inbox)
         }
         return PromotionRecord(
@@ -134,6 +185,7 @@ class Promoter(
             pullRequest = delivered.pullRequest,
             inbox = delivered.inbox,
             findings = gated.newWarnings,
+            undelivered = undelivered,
         )
     }
 
@@ -148,6 +200,10 @@ class Promoter(
         const val CN_PROMOTION_REFUSED = "CN_PROMOTION_REFUSED"
         const val CN_PROMOTION_GATE = "CN_PROMOTION_GATE"
         const val CN_PROMOTION_SOURCE_MOVING = "CN_PROMOTION_SOURCE_MOVING"
+        const val CN_PROMOTION_SOURCE_UNAVAILABLE = "CN_PROMOTION_SOURCE_UNAVAILABLE"
+        const val CN_PROMOTION_DELIVERY = "CN_PROMOTION_DELIVERY"
+
+        private val log = LoggerFactory.getLogger(Promoter::class.java)
 
         private val GIT_HEADER = Regex("^diff --git a/(\\S+) b/(\\S+)$")
 

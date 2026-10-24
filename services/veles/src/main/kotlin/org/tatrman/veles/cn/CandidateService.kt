@@ -88,6 +88,14 @@ class CandidateService(
                     "proposed_concept_ref $ref names no concept candidate in the store",
                 )
             }
+            // A term for a rejected concept could never be promoted: refuse it now, not at every promote (F10).
+            if (queued.state == CandidateState.REJECTED) {
+                throw CnRefused(
+                    HttpStatusCode.UnprocessableEntity,
+                    CN_CANDIDATE_UNKNOWN_REF,
+                    "proposed_concept_ref $ref names a rejected concept candidate",
+                )
+            }
         }
         val now = now()
         val stored =
@@ -189,7 +197,14 @@ class CandidateService(
                 }
             val pending = s.copy(state = CandidateState.PENDING_MERGE, updatedAt = now, promotion = record)
             if (!store.replace(pending, CandidateState.PROPOSED)) throw changed(id)
-            event(pending, "promotion_opened", caller.principal, record.pullRequest ?: record.inbox ?: record.qname)
+            val opened = record.pullRequest ?: record.inbox ?: record.qname
+            val undelivered =
+                record.undelivered.takeIf { it.isNotEmpty() }?.joinToString(
+                    "; ",
+                    " (not delivered: ",
+                    ")",
+                )
+            event(pending, "promotion_opened", caller.principal, opened + undelivered.orEmpty())
             pending
         }
     }
@@ -198,13 +213,22 @@ class CandidateService(
      * Every pending promotion whose def [schema] now carries is `promoted` (the merge is what made it canon): the
      * resolution names the steward who promoted it, and `canon_ref` = [version] — the promotion source's commit this
      * load read — `:` the def's qname. Called on every model swap, the boot load included.
+     *
+     * A candidate rejected while its pull request was open is watched too: rejecting does not close the pull request,
+     * and if it is merged anyway the model carries the def, so the store says `promoted` and the history keeps the
+     * rejection (review-134 F7).
      */
     fun observe(
         schema: CnSchema,
         version: String,
     ): List<StoredCandidate> {
         if (version.isBlank()) return emptyList()
-        return store.find(CandidateQuery(state = CandidateState.PENDING_MERGE, limit = Int.MAX_VALUE)).mapNotNull { s ->
+        val watched =
+            store.find(CandidateQuery(state = CandidateState.PENDING_MERGE, limit = Int.MAX_VALUE)) +
+                store
+                    .find(CandidateQuery(state = CandidateState.REJECTED, limit = Int.MAX_VALUE))
+                    .filter { it.promotion != null }
+        return watched.mapNotNull { s ->
             val record = s.promotion ?: return@mapNotNull null
             if (!landed(s.candidate.proposal, record.qname, schema)) return@mapNotNull null
             val canonRef = Promotion.canonRef(version, record.qname)
@@ -219,8 +243,16 @@ class CandidateService(
                     state = CandidateState.PROMOTED,
                     updatedAt = now,
                 )
-            if (!store.replace(promoted, CandidateState.PENDING_MERGE)) return@mapNotNull null
-            event(promoted, "promoted", MODEL_LOAD, canonRef)
+            if (!store.replace(promoted, s.state)) return@mapNotNull null
+            val after =
+                if (s.state ==
+                    CandidateState.REJECTED
+                ) {
+                    " (its pull request was merged after the rejection)"
+                } else {
+                    ""
+                }
+            event(promoted, "promoted", MODEL_LOAD, canonRef + after)
             promoted
         }
     }

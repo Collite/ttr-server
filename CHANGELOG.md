@@ -30,7 +30,8 @@ outside this repo could notice is in.
     merged yet) to the document's three statuses; the document stays `proposed` meanwhile.
   - Every call needs a verified bearer token (RS256 against the realm's JWKS). The caller is the token, never a field:
     `submit` takes a producer the registry admits **and** the caller may speak for (`METADATA_CN_PRODUCERS`,
-    `producer=principal[|…]`; `manual:<p>` only by the steward `p`); `reject` / `promote` need the `cn-steward` realm
+    `producer=principal[|…]`, a principal being a service account's client id or `user:<username>` for a person;
+    `manual:<p>` only by the steward `p`); `reject` / `promote` need the `cn-steward` realm
     role (`METADATA_CN_STEWARD_ROLE`). `import:*` is always refused.
   - Promotion reads the promotion source (`METADATA_CN_PROMOTION_SOURCE`, default the git source) through a checkout of
     its own, writes the patch, and gates it: the model before and after the patch, through the strict load report and

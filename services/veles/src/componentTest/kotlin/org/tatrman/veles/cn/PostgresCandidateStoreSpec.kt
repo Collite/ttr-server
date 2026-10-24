@@ -119,6 +119,7 @@ class PostgresCandidateStoreSpec :
                     at = Instant.parse("2026-10-23T12:10:00Z"),
                     pullRequest = "https://github.com/clinic/model/pull/7",
                     findings = listOf("cn/x warning cn.APatient"),
+                    undelivered = listOf("CN_PROMOTION_DELIVERY: a delivery failed: No space left on device"),
                 )
             val pending = a.copy(state = CandidateState.PENDING_MERGE, promotion = record, updatedAt = record.at)
             store.replace(pending, CandidateState.REJECTED) shouldBe false

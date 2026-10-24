@@ -71,6 +71,9 @@ class CnRefused(
  *   registry's deployments are the ones the map names (`clinic:evidence` registers `clinic`).
  * - **reject / promote** — [stewardRole] (promotion authority: stewards promote concepts and vocabulary, AGEL K §5).
  * - **read the queue** — a steward or a mapped producer principal.
+ *
+ * A principal in the map names a **service account** by its client id; `user:<username>` names a person. The token
+ * says which a caller is, so a person whose username equals a mapped client id is not that service (review-134 F5).
  * - **register a vocabulary version** — [importerRole] (Q15-5: importers register versions, never propose content).
  */
 class CnPolicy(
@@ -95,7 +98,7 @@ class CnPolicy(
 
     fun isImporter(c: CnCaller): Boolean = importerRole in c.roles
 
-    fun mayRead(c: CnCaller): Boolean = isSteward(c) || c.principal in principals
+    fun mayRead(c: CnCaller): Boolean = isSteward(c) || principals.any { names(it, c) }
 
     fun requireSteward(
         c: CnCaller,
@@ -118,7 +121,7 @@ class CnPolicy(
             if (producer.startsWith("manual:")) {
                 caller.person && caller.principal == producer.removePrefix("manual:") && isSteward(caller)
             } else {
-                caller.principal in producerPrincipals[producer].orEmpty()
+                producerPrincipals[producer].orEmpty().any { names(it, caller) }
             }
         if (speaksFor) return null
         return CnRefused(
@@ -132,8 +135,20 @@ class CnPolicy(
         )
     }
 
+    /** Whether [entry] names [c]: a bare entry a service account's client id, `user:<name>` the person `name`. */
+    private fun names(
+        entry: String,
+        c: CnCaller,
+    ): Boolean =
+        if (entry.startsWith(USER_PREFIX)) {
+            c.person && c.principal == entry.removePrefix(USER_PREFIX)
+        } else {
+            !c.person && c.principal == entry
+        }
+
     companion object {
         const val CN_FORBIDDEN = "CN_FORBIDDEN"
+        const val USER_PREFIX = "user:"
         const val CN_PRODUCER_NOT_CALLER = "CN_PRODUCER_NOT_CALLER"
 
         private val ANY_TERM = Proposal.Term("cn.X", null, "en", listOf("x"))
@@ -148,7 +163,8 @@ class CnPolicy(
 
         /**
          * `METADATA_CN_PRODUCERS`: `producer=principal[|principal…]`, comma-separated —
-         * `kleio=kleio,au:synthesizer=automation,clinic:evidence=clinic-evidence`.
+         * `kleio=kleio,au:synthesizer=automation,clinic:evidence=clinic-evidence|user:a.miner`. A bare principal is a
+         * service account's client id, `user:<username>` a person.
          */
         fun parsePrincipals(text: String): Map<String, Set<String>> =
             text

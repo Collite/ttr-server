@@ -353,6 +353,11 @@ class PostgresCandidateStore(
                 p.pullRequest?.let { put("pull_request", it) }
                 p.inbox?.let { put("inbox", it) }
                 putJsonArray("findings") { p.findings.forEach { add(JsonPrimitive(it)) } }
+                if (p.undelivered.isNotEmpty()) {
+                    putJsonArray(
+                        "undelivered",
+                    ) { p.undelivered.forEach { add(JsonPrimitive(it)) } }
+                }
             }
 
         internal fun promotionOf(o: JsonObject): PromotionRecord {
@@ -368,6 +373,11 @@ class PostgresCandidateStore(
                 pullRequest = s("pull_request"),
                 inbox = s("inbox"),
                 findings = (o["findings"] as? JsonArray)?.mapNotNull { (it as? JsonPrimitive)?.content }.orEmpty(),
+                undelivered =
+                    (o["undelivered"] as? JsonArray)
+                        ?.mapNotNull {
+                            (it as? JsonPrimitive)?.content
+                        }.orEmpty(),
             )
         }
     }

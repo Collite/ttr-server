@@ -66,6 +66,30 @@ class CnPolicySpec :
                 CnPolicy.CN_PRODUCER_NOT_CALLER
         }
 
+        test("a bare principal is a service account, user:<name> a person — a username is never a client id (F5)") {
+            val policy =
+                CnPolicy(
+                    producerPrincipals =
+                        mapOf(
+                            "clinic:evidence" to setOf("clinic-evidence", "user:a.miner"),
+                            "clinic:span-catalogue" to setOf("clinic-catalogue"),
+                        ),
+                )
+            val term = Proposal.Term("cn.Transfer", null, "cs", listOf("překlad"))
+            val service = CnCaller("clinic-evidence", person = false, roles = emptySet())
+            val impostor = CnCaller("clinic-evidence", person = true, roles = emptySet())
+            val miner = CnCaller("a.miner", person = true, roles = emptySet())
+            val minerService = CnCaller("a.miner", person = false, roles = emptySet())
+            policy.admit(service, "clinic:evidence", term).shouldBeNull()
+            policy.admit(impostor, "clinic:evidence", term)!!.code shouldBe CnPolicy.CN_PRODUCER_NOT_CALLER
+            policy.admit(miner, "clinic:evidence", term).shouldBeNull()
+            policy.admit(minerService, "clinic:evidence", term)!!.code shouldBe CnPolicy.CN_PRODUCER_NOT_CALLER
+            policy.mayRead(service) shouldBe true
+            policy.mayRead(miner) shouldBe true
+            policy.mayRead(impostor) shouldBe false
+            policy.mayRead(minerService) shouldBe false
+        }
+
         test("off without a database, off without a token issuer — and it says which") {
             fun setup(conf: String) = CnSetup.fromConfig(ConfigFactory.parseString(conf)) { null }
             setup("").surface.shouldBeInstanceOf<CnSurface.Off>().reason shouldContain "METADATA_CN_DB_HOST"

@@ -75,10 +75,14 @@ class ConceptModels(
                     "the cn model could not be loaded (see the resolver log)",
                 )
         val expected = reg.modelSnapshotHash
-        if (expected.isNotBlank() && expected != tree.contentId) {
+        // A layer of archives names every archive's model, comma-joined (`DeclaredLayer.merge`): the tree must be one
+        // of them — several archives compiled from one model name it once per archive (review-134 F1).
+        val named = expected.split(',').map { it.trim() }.filter { it.isNotEmpty() }
+        if (named.isNotEmpty() && tree.contentId !in named) {
+            val compiledFrom = named.distinct().joinToString(" + ")
             return State.Unavailable(
                 CN_MODEL_SKEW,
-                "the cn model is ${tree.contentId}; the resolver's vocabulary was compiled from $expected — " +
+                "the cn model is ${tree.contentId}; the resolver's vocabulary was compiled from $compiledFrom — " +
                     "the doors serve only the model the resolver binds against",
             )
         }

@@ -8,6 +8,7 @@ import org.tatrman.resolver.client.FuzzyClient
 import org.tatrman.resolver.model.ResolverRegistry
 import org.tatrman.resolver.model.conceptFacts
 import org.tatrman.resolver.model.memberEntityByCategory
+import org.tatrman.resolver.model.memberVocabularyOf
 import org.tatrman.resolver.pipeline.Binder
 import org.tatrman.resolver.pipeline.ConceptLifts
 import org.tatrman.resolver.v1.EvidenceClass
@@ -69,14 +70,15 @@ class ConceptSearch(
 
         val kept = Binder.ranked(rows, reg.thresholds, concepts)
 
-        val vocabularies = reg.entityTypes.flatMap { et -> et.categories.map { it to et.ref } }.toMap()
         val owners = reg.entityTypes.memberEntityByCategory()
         val hits = LinkedHashMap<String, Hit>()
         for (c in kept) {
             val m = c.match
             val isMember = m.source == SourceTag.MEMBER
-            val category = if (isMember) vocabularies[m.category] ?: m.category else ""
-            val owner = if (isMember) owners[m.category].orEmpty() else ""
+            // GateSpans' own reading of a member (its vocabulary and the entity that owns it), so search lifts it
+            // from the same refs a binding does.
+            val category = if (isMember) reg.entityTypes.memberVocabularyOf(m.category) else ""
+            val owner = if (isMember) owners[m.category] ?: m.category else ""
             for (lifted in ConceptLifts.of(m, category, owner, emptyList(), concepts)) {
                 val seen = hits[lifted.qname]
                 hits[lifted.qname] =

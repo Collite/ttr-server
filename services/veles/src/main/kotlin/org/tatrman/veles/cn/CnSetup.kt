@@ -9,12 +9,16 @@ import org.tatrman.ttr.metadata.source.ModelStorage
 import java.net.URI
 import java.nio.file.Path
 
-/** The promotion source as the store sees it: a storage of its own, and where the model sits in its repository. */
+/**
+ * The promotion source as the store sees it: a storage of its own, where the model sits in its repository, and — for a
+ * git source — [localRoot], that storage's working tree at the model (read after one fetch; review-134 F9).
+ */
 data class PromotionTarget(
     val storage: ModelStorage,
     val remoteUri: String = "",
     val branch: String = "main",
     val subdirectory: String = "",
+    val localRoot: Path? = null,
 )
 
 /** What `metadata.cn` turns on: the API surface, the vocabulary source for the refresher, the source to watch. */
@@ -120,7 +124,11 @@ class CnSetup(
                 deliveries +=
                     InboxDelivery(Path.of(it))
             }
-            return Promoter(StoragePromotionFiles(target.storage), deliveries, modelRoot = target.subdirectory)
+            return Promoter(
+                StoragePromotionFiles(target.storage, target.localRoot),
+                deliveries,
+                modelRoot = target.subdirectory,
+            )
         }
     }
 }

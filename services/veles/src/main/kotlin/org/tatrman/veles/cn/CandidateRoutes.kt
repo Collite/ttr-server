@@ -13,6 +13,7 @@ import io.ktor.server.routing.Route
 import io.ktor.server.routing.get
 import io.ktor.server.routing.post
 import io.ktor.server.routing.route
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
@@ -97,7 +98,22 @@ fun Route.candidateRoutes(
                     withContext(Dispatchers.IO) {
                         s.service.registerVocabulary(caller, parameters["id"].orEmpty(), version, bundle)
                     }
-                if (registered) onVocabularyRegistered()
+                // The registration is committed: a refresh that fails now is the next scheduled one's to do, never
+                // the importer's error (review-134 F3 — a 503 here made the retry answer `registered: false`).
+                if (registered) {
+                    try {
+                        onVocabularyRegistered()
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        log.warn(
+                            "cn: vocabulary {} {} registered; the refresh after it failed",
+                            v.vocabulary,
+                            v.version,
+                            e,
+                        )
+                    }
+                }
                 respondJson(
                     if (registered) HttpStatusCode.Created else HttpStatusCode.OK,
                     buildJsonObject {
@@ -258,6 +274,7 @@ internal fun stored(
                 }
                 put("diff", p.diff)
                 putJsonArray("findings") { p.findings.forEach { add(it) } }
+                if (p.undelivered.isNotEmpty()) putJsonArray("undelivered") { p.undelivered.forEach { add(it) } }
             }
         }
         history?.let { h ->

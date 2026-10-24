@@ -31,6 +31,20 @@ import java.time.Instant
  */
 class VocabularyVersionsSpec :
     FunSpec({
+        test("a refresh that fails after a registration is logged — the importer still gets its 201 (review-134 F3)") {
+            val service = CandidateService(InMemoryCandidateStore(), CnTestKit.policy, clock = CnTestKit.TickingClock())
+            testApplication {
+                routing {
+                    candidateRoutes(
+                        CnSurface.On(service, CnTestKit.callers),
+                    ) { error("a model source is down") }
+                }
+                val r = client.postAs(IMPORTER, "/v1/vocabularies/icd-10/version", """{"version":"2026"}""")
+                r.status shouldBe HttpStatusCode.Created
+                r.json().str("registered") shouldBe "true"
+            }
+        }
+
         test("an importer registers a version once; a steward is not an importer; GET lists in registration order") {
             val store = InMemoryCandidateStore()
             val service = CandidateService(store, CnTestKit.policy, clock = CnTestKit.TickingClock())
