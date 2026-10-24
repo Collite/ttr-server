@@ -232,7 +232,8 @@ object RoundPlanner {
                 // G1 — nothing in this estate bound the word. Asked cross-category but
                 // CLASS-scoped: a mention names something in the model, and answering
                 // "what is this word?" with a data value that reads alike is where
-                // issues.md started.
+                // issues.md started. A value label is the model naming a member, so it is
+                // in scope (see [MENTION_CLASSES]).
                 Tier.UNBOUND_MENTION -> {
                     if (gap.kind != GapKind.GAP_KIND_G1_UNBOUND) return@mapNotNull null
                     query(gap.span, emptyList(), MENTION_CLASSES, config.maxCandidates, tier)
@@ -276,14 +277,22 @@ object RoundPlanner {
     )
 
     /**
-     * What an unbound mention may be. Members are excluded BY the class filter rather than by a
+     * What an unbound mention may be. Data values are excluded BY the class filter rather than by a
      * category list, which is the whole reason the filter exists: a mention is a name for
      * something in the model, and answering "what is this word?" with a data value that happens to
      * read alike is the failure mode issues.md opened with.
+     *
+     * md/hop HP-H — and MEMBER is in it. A MEMBER row is an AUTHORED word for one member (a value
+     * label, a value alias: `tržiště` → `sales.channel` `marketplace`); a data value carries no class
+     * at all, so lex-matcher's class filter still never offers one here. Without MEMBER a value label
+     * under a measure (`Tržby z tržiště`) could bind by no path: a measure governs no value, so span
+     * proposal never asks it, and this tier asked only for objects — the mention stayed G1 and the
+     * answer summed every channel (ttr-demo#116, reverted by #117).
      */
     private val MENTION_CLASSES =
         listOf(
             FuzzyTargetClass.TARGET_CLASS_MODEL_OBJECT,
             FuzzyTargetClass.TARGET_CLASS_OPERATOR,
+            FuzzyTargetClass.TARGET_CLASS_MEMBER,
         )
 }

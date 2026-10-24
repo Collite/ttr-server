@@ -82,7 +82,7 @@ class RoundPlannerTest :
             RoundPlanner.plan(lattice, listOf(account), emptySet(), config) shouldBe emptyList()
         }
 
-        "a G1 is asked cross-category but CLASS-scoped: a mention is a name, not a data value" {
+        "a G1 is asked cross-category but CLASS-scoped: a mention is a name — an object's or a member's, never data" {
             val plan = RoundPlanner.plan(g1Lattice(), listOf(account), emptySet(), config)
             val query = plan.single()
             query.tier shouldBe RoundPlanner.Tier.UNBOUND_MENTION
@@ -90,10 +90,12 @@ class RoundPlannerTest :
             // EMPTY = every category (contracts §1 addendum) — the deliberate cross-category round
             // a rung runs before it knows the target.
             query.categories shouldBe emptyList()
+            // MEMBER is a value label or alias (HP-H); a data value carries no class, so it stays out
             query.targetClasses shouldContainExactly
                 listOf(
                     FuzzyTargetClass.TARGET_CLASS_MODEL_OBJECT,
                     FuzzyTargetClass.TARGET_CLASS_OPERATOR,
+                    FuzzyTargetClass.TARGET_CLASS_MEMBER,
                 )
         }
 
@@ -109,8 +111,7 @@ class RoundPlannerTest :
             second.map { it.term to it.retry } shouldContainExactly listOf("stanic" to true)
             second.single().tier shouldBe RoundPlanner.Tier.UNBOUND_MENTION
             (second.single().spanStart to second.single().spanEnd) shouldBe (19 to 35)
-            second.single().targetClasses shouldContainExactly
-                listOf(FuzzyTargetClass.TARGET_CLASS_MODEL_OBJECT, FuzzyTargetClass.TARGET_CLASS_OPERATOR)
+            second.single().targetClasses shouldContainExactly first.single().targetClasses
             // two questions, so two keys: asking one must not mark the other asked
             second.single().key shouldNotBe first.single().key
             // …and once both are asked, the tier is dry
