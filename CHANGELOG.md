@@ -36,8 +36,9 @@ outside this repo could notice is in.
     its own, writes the patch, and gates it: the model before and after the patch, through the strict load report and
     the cn definition diagnostics. A new error refuses it (`422 CN_PROMOTION_GATE`); other new findings ride in the pull
     request, and a phase's pull request carries its er rendering. The diff and pull-request text are kept and served
-    by the API. A GitHub pull request opens when `METADATA_CN_PR_TOKEN` is set (REST Git Data API, branched from the
-    gated base commit); `METADATA_CN_INBOX_DIR` also writes `<id>.diff` / `<id>.md`. `canon_ref` = the promotion
+    by the API; the diff's paths are the repository's (the source's sub-path included), so `git apply` takes it at the
+    repository root. A GitHub pull request opens when `METADATA_CN_PR_TOKEN` is set (REST Git Data API, branched from
+    the gated base commit); `METADATA_CN_INBOX_DIR` also writes `<id>.diff` / `<id>.md`. `canon_ref` = the promotion
     source's commit at the load that first carries the def, `:`, the def's qname.
   - `POST /v1/vocabularies/{id}/version` `{"version", "bundle"?}` (the `cn-importer` role) · `GET /v1/vocabularies[/{id}/version]`:
     registered versions are published in the model's `cn.vocabularyVersions` (ttr-server#281 item 1).

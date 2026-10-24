@@ -120,7 +120,7 @@ class CnSetup(
                 deliveries +=
                     InboxDelivery(Path.of(it))
             }
-            return Promoter(StoragePromotionFiles(target.storage), deliveries)
+            return Promoter(StoragePromotionFiles(target.storage), deliveries, modelRoot = target.subdirectory)
         }
     }
 }

@@ -7,6 +7,7 @@ import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
+import io.kotest.matchers.string.shouldEndWith
 import io.kotest.matchers.string.shouldStartWith
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.HttpStatusCode
@@ -51,6 +52,7 @@ class CandidateRoutesSpec :
             val dir: Path = CnTestKit.clinicWorld().also { temps.add(it) },
             deliveries: List<PromotionDelivery> = emptyList(),
             promotion: Boolean = true,
+            modelRoot: String = "",
         ) {
             val heard = mutableListOf<String>()
             val service =
@@ -61,6 +63,7 @@ class CandidateRoutesSpec :
                         Promoter(
                             StoragePromotionFiles(LocalFsStorage(id = "clinic", rootPath = dir)),
                             deliveries,
+                            modelRoot = modelRoot,
                         )
                     } else {
                         null
@@ -404,6 +407,72 @@ class CandidateRoutesSpec :
             }
         }
 
+        test(
+            "under a sub-path every diff it hands out applies at the repository root, as the pull request does (S5.4)",
+        ) {
+            // The walk: a model-relative diff applied in the model's directory of a git checkout is SKIPPED by
+            // `git apply` without an error, and fails at the root — the record, the API and the inbox carry the root.
+            val repo = Files.createTempDirectory("cn-repo").also { temps.add(it) }
+            val model = repo.resolve("model")
+            CnTestKit
+                .clinicWorld()
+                .also { temps.add(it) }
+                .toFile()
+                .copyRecursively(model.toFile())
+            git(repo, "init", "-q")
+            val inbox = Files.createTempDirectory("cn-inbox").also { temps.add(it) }
+            world(World(dir = model, deliveries = listOf(InboxDelivery(inbox)), modelRoot = "/model/")) { w ->
+                client.submit(EVIDENCE, ischemic)
+                val body = client.postAs(STEWARD, "/v1/cn/candidates/$ischemicId/promote").json()
+                val diff = body.str("promotion", "diff").orEmpty()
+                diff shouldStartWith "diff --git a/model/"
+                diff shouldContain "\n+++ b/model/"
+                inbox.resolve("$ischemicId.diff").readText() shouldBe diff
+                inbox.resolve("$ischemicId.md").readText() shouldEndWith
+                    "Against `${body.str(
+                        "promotion",
+                        "base",
+                    )}`. From the repository root: `git apply $ischemicId.diff`.\n"
+                gitApply(repo, w.store.get(ischemicId)!!.promotion!!)
+                model.toFile().walk().filter { it.extension == "ttrm" }.any {
+                    it.readText().contains("def phase IschemicPatient")
+                } shouldBe true
+            }
+        }
+
+        test("rootedDiff prefixes file headers only — never a hunk line that looks like one, never /dev/null") {
+            val diff =
+                listOf(
+                    "diff --git a/cn.ttrm b/cn.ttrm",
+                    "--- a/cn.ttrm",
+                    "+++ b/cn.ttrm",
+                    "@@ -1,2 +1,2 @@",
+                    "--- a/looks-like-a-header",
+                    "+++ b/so-does-this",
+                    "diff --git a/lexicon-cs.ttrm b/lexicon-cs.ttrm",
+                    "--- /dev/null",
+                    "+++ b/lexicon-cs.ttrm",
+                    "@@ -0,0 +1 @@",
+                    "+model lexicon locale cs",
+                ).joinToString("\n", postfix = "\n")
+            Promoter.rootedDiff(diff, "") shouldBe diff
+            Promoter.rootedDiff(diff, "cn-walk/model/").lines() shouldBe
+                listOf(
+                    "diff --git a/cn-walk/model/cn.ttrm b/cn-walk/model/cn.ttrm",
+                    "--- a/cn-walk/model/cn.ttrm",
+                    "+++ b/cn-walk/model/cn.ttrm",
+                    "@@ -1,2 +1,2 @@",
+                    "--- a/looks-like-a-header",
+                    "+++ b/so-does-this",
+                    "diff --git a/cn-walk/model/lexicon-cs.ttrm b/cn-walk/model/lexicon-cs.ttrm",
+                    "--- /dev/null",
+                    "+++ b/cn-walk/model/lexicon-cs.ttrm",
+                    "@@ -0,0 +1 @@",
+                    "+model lexicon locale cs",
+                    "",
+                )
+        }
+
         test("promotion off (no promotion source) is 503 CN_PROMOTION_OFF; the rest of the store works") {
             world(World(promotion = false)) { _ ->
                 client.submit(EVIDENCE, ischemic).status shouldBe HttpStatusCode.Created
@@ -413,6 +482,15 @@ class CandidateRoutesSpec :
             }
         }
     })
+
+private fun git(
+    dir: Path,
+    vararg args: String,
+) {
+    val proc = ProcessBuilder("git", *args).directory(dir.toFile()).redirectErrorStream(true).start()
+    val out = proc.inputStream.bufferedReader().readText()
+    check(proc.waitFor(60, TimeUnit.SECONDS) && proc.exitValue() == 0) { "git ${args.joinToString(" ")} failed: $out" }
+}
 
 /** The steward merging [p]'s pull request: its stored diff, applied to [dir] with `git apply`. */
 private fun gitApply(

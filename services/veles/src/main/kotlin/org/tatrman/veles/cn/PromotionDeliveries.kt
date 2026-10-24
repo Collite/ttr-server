@@ -24,8 +24,9 @@ import kotlin.io.path.createDirectories
 import kotlin.io.path.writeText
 
 /**
- * The inbox (A-CN-93): `<dir>/<candidate id>.diff` (what `git apply` takes, from the model root) and `<id>.md` (the pull
- * request's title and body), for an estate with no provider configured — or beside one, as a copy.
+ * The inbox (A-CN-93): `<dir>/<candidate id>.diff` (what `git apply` takes at the repository root — the [Promoter] puts
+ * the model's sub-path in every path) and `<id>.md` (the pull request's title and body, then the base commit and that
+ * command), for an estate with no provider configured — or beside one, as a copy.
  */
 class InboxDelivery(
     private val dir: Path,
@@ -34,7 +35,10 @@ class InboxDelivery(
         dir.createDirectories()
         val diff = dir.resolve("${p.candidateId}.diff")
         diff.writeText(p.patch.diff)
-        dir.resolve("${p.candidateId}.md").writeText("# ${p.pullRequest.title}\n\n${p.pullRequest.body}")
+        dir.resolve("${p.candidateId}.md").writeText(
+            "# ${p.pullRequest.title}\n\n${p.pullRequest.body}\n---\n\n" +
+                "Against `${p.base}`. From the repository root: `git apply ${diff.fileName}`.\n",
+        )
         return Delivered(inbox = diff.toString())
     }
 }

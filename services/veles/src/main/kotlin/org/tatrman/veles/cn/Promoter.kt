@@ -79,11 +79,17 @@ fun interface PromotionDelivery {
  * Promotion = a model TEXT change (cn contracts §6, A-CN-84): the S5.2 patch against the promotion source's files, the
  * gate (A-CN-88), the pull request's text — a phase's er rendering in it, the gate's new warnings under it — then every
  * configured [deliveries] in order. With none, the store's record is the inbox: the API serves its diff (A-CN-93).
+ *
+ * [modelRoot] is the model's path in its repository (the source's sub-path). Every diff the store hands out — the
+ * record's, so the API's, and the inbox file — carries it, so `git apply` takes it at the repository root, the paths
+ * the pull request shows. A model-relative diff applied in the model's directory is SKIPPED by `git apply`, silently
+ * (it reads patch paths from the repository root and ignores those outside the current directory): the S5.4 walk.
  */
 class Promoter(
     private val files: PromotionFiles,
     private val deliveries: List<PromotionDelivery> = emptyList(),
     private val gate: PromotionGate = PromotionGate(),
+    private val modelRoot: String = "",
 ) {
     fun promote(
         s: StoredCandidate,
@@ -110,7 +116,8 @@ class Promoter(
             )
         }
         val pr = Promotion.pullRequest(s.candidate, patch, gated.erRendering).withFindings(gated.newWarnings)
-        val pending = PendingPromotion(s.id, patch, text.version, pr, at)
+        val rooted = patch.copy(diff = rootedDiff(patch.diff, modelRoot))
+        val pending = PendingPromotion(s.id, rooted, text.version, pr, at)
         var delivered = Delivered()
         for (d in deliveries) {
             val r = d.deliver(pending)
@@ -118,7 +125,7 @@ class Promoter(
         }
         return PromotionRecord(
             qname = patch.qname,
-            diff = patch.diff,
+            diff = rooted.diff,
             title = pr.title,
             body = pr.body,
             base = text.version,
@@ -141,5 +148,35 @@ class Promoter(
         const val CN_PROMOTION_REFUSED = "CN_PROMOTION_REFUSED"
         const val CN_PROMOTION_GATE = "CN_PROMOTION_GATE"
         const val CN_PROMOTION_SOURCE_MOVING = "CN_PROMOTION_SOURCE_MOVING"
+
+        private val GIT_HEADER = Regex("^diff --git a/(\\S+) b/(\\S+)$")
+
+        /**
+         * [diff] with [root] before every path — in the file headers only (`diff --git`, `---`, `+++`, up to a file's
+         * first hunk), never in a hunk line that happens to start the same way. A blank root leaves it as it is.
+         */
+        internal fun rootedDiff(
+            diff: String,
+            root: String,
+        ): String {
+            val prefix = root.trim('/').ifEmpty { return diff } + "/"
+            var header = false
+            return diff.lines().joinToString("\n") { line ->
+                when {
+                    line.startsWith("diff --git ") -> {
+                        header = true
+                        val (from, to) = GIT_HEADER.matchEntire(line)?.destructured ?: return@joinToString line
+                        "diff --git a/$prefix$from b/$prefix$to"
+                    }
+                    line.startsWith("@@") -> {
+                        header = false
+                        line
+                    }
+                    header && (line.startsWith("--- a/") || line.startsWith("+++ b/")) ->
+                        line.substring(0, 6) + prefix + line.substring(6)
+                    else -> line
+                }
+            }
+        }
     }
 }
