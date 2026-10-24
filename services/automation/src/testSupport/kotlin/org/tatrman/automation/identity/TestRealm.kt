@@ -45,12 +45,13 @@ class TestRealm(
         issuer: String = ISSUER,
         signWith: KeyPair = pair,
         kid: String = this.kid,
+        subject: String = "sub-$username",
     ): String =
         JWT
             .create()
             .withKeyId(kid)
             .withIssuer(issuer)
-            .withSubject("sub-$username")
+            .withSubject(subject)
             .withClaim("preferred_username", username)
             .withClaim("realm_access", mapOf("roles" to roles))
             .apply { audience?.let { withAudience(it) } }

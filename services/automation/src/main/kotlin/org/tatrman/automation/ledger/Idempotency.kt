@@ -45,6 +45,8 @@ sealed interface Claim {
     data class Claimed(
         override val runId: UUID,
         val abandoned: UUID? = null,
+        /** The same instant written to runs.started_at, including transaction retry time. */
+        val startedAt: Instant,
     ) : Claim
 
     /** The key's run is done: answer it again rather than run twice. */

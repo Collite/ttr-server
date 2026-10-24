@@ -150,6 +150,29 @@ class ReceiptSinkSpec :
         val session =
             FlightTestKit.SESSION.copy(world = "hartland_cz", client = EdgeSession.CLIENT_JDBC)
 
+        "completed streams release Arrow buffers before a slow receipt listener finishes" {
+            val entered = java.util.concurrent.CountDownLatch(1)
+            val release = java.util.concurrent.CountDownLatch(1)
+            RunningEdge(
+                governedDoor(),
+                session = session,
+                listener =
+                    StatementListener {
+                        entered.countDown()
+                        check(release.await(5, java.util.concurrent.TimeUnit.SECONDS))
+                    },
+            ).use { edge ->
+                try {
+                    val info = edge.sql.execute("SELECT sk, warehouse_name FROM er.entity.warehouse")
+                    edge.sql.getStream(info.endpoints.single().ticket).use { it.readAll() }
+                    entered.await(5, java.util.concurrent.TimeUnit.SECONDS) shouldBe true
+                    edge.allocator.allocatedMemory shouldBe 0L
+                } finally {
+                    release.countDown()
+                }
+            }
+        }
+
         "one row per statement, every C-6 column filled from the session, the stream and the door's ES receipt" {
             val store = MemoryReceipts()
             val sink = ReceiptSink(store, clock = clock)

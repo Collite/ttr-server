@@ -88,6 +88,7 @@ hikaricp                  = "7.0.2"
 pgsql                    = "42.7.9"
 mssql                    = "13.2.1.jre11"
 arrow-java                = "18.3.0"
+duckdb-jdbc               = "1.5.6.0" # AU D-136 embedded combines, aligned with ttr-core grammar/v0.17.4
 apache-poi                = "5.5.1"
 apache-parquet            = "1.14.3"
 hadoop                    = "3.3.6"
@@ -292,6 +293,7 @@ calcite-core                        = { module = "org.apache.calcite:calcite-cor
 
 # Modeler — TTR parser/writer/semantics (third-party Maven artifacts).
 tatrman-ttr-parser                  = { module = "org.tatrman:ttr-parser",                                  version.ref = "tatrman-grammar" }
+tatrman-ttrp-emit                   = { module = "org.tatrman:ttrp-emit",                                   version.ref = "tatrman-grammar" }
 tatrman-ttr-writer                  = { module = "org.tatrman:ttr-writer",                                  version.ref = "tatrman-grammar" }
 tatrman-ttr-semantics               = { module = "org.tatrman:ttr-semantics",                               version.ref = "tatrman-grammar" }
 tatrman-ttr-metadata                = { module = "org.tatrman:ttr-metadata",                                version.ref = "tatrman-ttr-metadata" }
@@ -348,6 +350,7 @@ pgvector                            = { module = "com.pgvector:pgvector",       
 # stable across the move pipe and the worker (workers/polars
 # `_schema_fingerprint` reference impl — charon/contracts.md §6). P2 Stage 2.1
 # adds `arrow-jdbc` + the ADBC drivers when the spike gate runs.
+duckdb-jdbc                         = { module = "org.duckdb:duckdb_jdbc", version.ref = "duckdb-jdbc" }
 arrow-vector                        = { module = "org.apache.arrow:arrow-vector",                           version.ref = "arrow-java" }
 arrow-memory-netty                  = { module = "org.apache.arrow:arrow-memory-netty",                     version.ref = "arrow-java" }
 # BI-P1 — the query service's Arrow Flight SQL edge (BI contracts C-1). `flight-core` brings an UNSHADED

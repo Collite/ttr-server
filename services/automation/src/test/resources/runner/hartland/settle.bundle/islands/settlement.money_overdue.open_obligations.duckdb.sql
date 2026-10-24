@@ -1,0 +1,21 @@
+SELECT "t"."line_id", "t"."obligation_id", "t"."kind", "t"."due", 'money_overdue' AS "route", 'open_obligations' AS "context"
+FROM (SELECT "p_927a867d"."line_id", "p_8124de4c"."id" AS "obligation_id", "p_8124de4c"."kind", "p_8124de4c"."due"
+        FROM "p_927a867d"
+            INNER JOIN "p_8124de4c" ON "p_8124de4c"."entity" = 'return_request_line' AND "p_8124de4c"."key" = CAST("p_927a867d"."line_id" AS VARCHAR(65536))) AS "t"
+    INNER JOIN (SELECT "line_id"
+        FROM (SELECT "p_202d930b"."line_id", "p_202d930b"."request_number", "p_202d930b"."item", "p_202d930b"."quantity", "p_202d930b"."way", "p_202d930b"."customer", "p_202d930b"."credit_note_id", "p_202d930b"."issued_date", "p_202d930b"."payment_id", "p_202d930b"."paid_date", "p_202d930b"."shipment_id", "p_202d930b"."shipped_date", "t6"."max_late", "t6"."kinds_open"
+                FROM "p_202d930b"
+                    LEFT JOIN (SELECT "t0"."line_id", MAX(CASE WHEN "t0"."due" IS NULL THEN NULL ELSE COALESCE("t4"."_ttrp_n_n20_0", 0) END) AS "max_late", COUNT("t0"."kind") AS "kinds_open"
+                        FROM (SELECT "p_927a867d0"."line_id", "p_8124de4c0"."id" AS "obligation_id", "p_8124de4c0"."kind", "p_8124de4c0"."due"
+                                FROM "p_927a867d" AS "p_927a867d0"
+                                    INNER JOIN "p_8124de4c" AS "p_8124de4c0" ON "p_8124de4c0"."entity" = 'return_request_line' AND "p_8124de4c0"."key" = CAST("p_927a867d0"."line_id" AS VARCHAR(65536))) AS "t0"
+                            LEFT JOIN (SELECT "t2"."due" AS "_ttrp_k_n20_0_due", COUNT("p_7e21ab69"."_ttrp_d_n20_0") AS "_ttrp_n_n20_0"
+                                FROM (SELECT "p_8124de4c1"."due"
+                                        FROM "p_927a867d" AS "p_927a867d1"
+                                            INNER JOIN "p_8124de4c" AS "p_8124de4c1" ON "p_8124de4c1"."entity" = 'return_request_line' AND "p_8124de4c1"."key" = CAST("p_927a867d1"."line_id" AS VARCHAR(65536))
+                                        GROUP BY "p_8124de4c1"."due") AS "t2"
+                                    INNER JOIN "p_7e21ab69" ON "t2"."due" < "p_7e21ab69"."_ttrp_d_n20_0" AND "p_7e21ab69"."_ttrp_d_n20_0" <= :as_of
+                                GROUP BY "t2"."due") AS "t4" ON "t0"."due" = "t4"."_ttrp_k_n20_0_due"
+                        GROUP BY "t0"."line_id") AS "t6" ON "p_202d930b"."line_id" = "t6"."line_id") AS "t7"
+        WHERE "t7"."max_late" > 0
+        GROUP BY "line_id") AS "t10" ON "t"."line_id" = "t10"."line_id"

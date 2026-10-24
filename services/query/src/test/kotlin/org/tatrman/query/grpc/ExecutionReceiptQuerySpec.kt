@@ -14,6 +14,7 @@ import org.tatrman.plan.v1.PlanNode
 import org.tatrman.plan.v1.QualifiedName
 import org.tatrman.plan.v1.SchemaCode
 import org.tatrman.plan.v1.TableScanNode
+import org.tatrman.plan.v1.Warning
 import org.tatrman.query.cache.CompiledPlanCache
 import org.tatrman.query.client.DispatcherClient
 import org.tatrman.query.client.TranslatorClient
@@ -84,6 +85,126 @@ class ExecutionReceiptQuerySpec :
             val out = runBlocking { service(validator = validatorApplying(TENANT_RULE)).run(request()).toList() }
 
             out.first().receipt.securityAppliedList shouldContainExactly listOf(TENANT_RULE)
+        }
+
+        "security warnings survive both passes and cache hits; callers remain isolated" {
+            for (schema in listOf(SchemaCode.ER, SchemaCode.DB)) {
+                val calls =
+                    java.util.concurrent.atomic
+                        .AtomicInteger()
+                val common =
+                    Warning
+                        .newBuilder()
+                        .setCode("security_predicate_applied")
+                        .setSourceService("validator")
+                        .setSourceStage("security")
+                        .setMessage("common rule")
+                        .build()
+                val validator =
+                    ValidatorClient { req ->
+                        val pass = calls.incrementAndGet()
+                        val warning =
+                            common
+                                .toBuilder()
+                                .setMessage(
+                                    if (schema == SchemaCode.DB ||
+                                        pass % 2 == 0
+                                    ) {
+                                        "DB rule"
+                                    } else {
+                                        "ER rule"
+                                    },
+                                ).build()
+                        ValidateResponse
+                            .newBuilder()
+                            .setPlan(req.plan)
+                            .setContext(
+                                req.context.toBuilder().apply {
+                                    if (req.context.userId == "narrow") {
+                                        addWarnings(common)
+                                        addWarnings(warning)
+                                    }
+                                },
+                            ).build()
+                    }
+                val svc =
+                    service(
+                        validator = validator,
+                        translatorDetect =
+                            TranslatorDetectClient {
+                                DetectSchemaResponse
+                                    .newBuilder()
+                                    .setDecision(
+                                        SchemaDecision.CONFIRMED,
+                                    ).setEffectiveSchema(schema)
+                                    .build()
+                            },
+                    )
+
+                fun req(user: String) =
+                    request()
+                        .toBuilder()
+                        .setSourceSchema(schema)
+                        .setContext(request().context.toBuilder().setUserId(user))
+                        .build()
+                for (user in listOf("narrow", "narrow", "wide")) {
+                    val out = svc.run(req(user)).toList()
+                    out.first().receipt.effectiveSchema shouldBe schema.name
+                    out.first().receipt.cacheHit shouldBe (calls.get() > if (schema == SchemaCode.ER) 2 else 1)
+                    val warnings =
+                        out.flatMap { it.context.warningsList }.filter {
+                            it.code ==
+                                "security_predicate_applied"
+                        }
+                    warnings.map { it.message }.toSet() shouldBe
+                        when {
+                            user == "wide" -> emptySet()
+                            schema == SchemaCode.ER -> setOf("common rule", "ER rule", "DB rule")
+                            else -> setOf("common rule", "DB rule")
+                        }
+                    warnings.size shouldBe warnings.toSet().size
+                    out
+                        .drop(
+                            1,
+                        ).flatMap { it.context.warningsList }
+                        .none { it.code == "security_predicate_applied" } shouldBe
+                        true
+                }
+                calls.get() shouldBe if (schema == SchemaCode.ER) 6 else 3
+            }
+        }
+
+        "an ER-only restriction survives a later DB validation without warnings" {
+            val calls =
+                java.util.concurrent.atomic
+                    .AtomicInteger()
+            val warning =
+                Warning
+                    .newBuilder()
+                    .setCode("security_predicate_applied")
+                    .setMessage("ER rule")
+                    .build()
+            val svc =
+                service(
+                    validator =
+                        ValidatorClient { req ->
+                            ValidateResponse
+                                .newBuilder()
+                                .setPlan(req.plan)
+                                .setContext(
+                                    req.context.toBuilder().apply {
+                                        if (calls.incrementAndGet() % 2 == 1) addWarnings(warning)
+                                    },
+                                ).build()
+                        },
+                )
+            repeat(2) {
+                svc
+                    .run(request())
+                    .toList()
+                    .flatMap { it.context.warningsList }
+                    .filter { it.code == "security_predicate_applied" } shouldContainExactly listOf(warning)
+            }
         }
 
         "the LAST batch carries the plan half PLUS the worker's statement half, untouched" {

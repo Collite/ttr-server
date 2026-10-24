@@ -147,6 +147,11 @@ message RunRequest {
   // the world picks where a plan runs, never what it is.
   string world = 8;
 
+  // Optional ER read allow-list, checked against this call's validated ER plan before execution.
+  // Presence with no objects means no model reads are permitted. DB/workspace/write plans cannot
+  // satisfy this contract. Revalidated on every call, including cache hits; never inferred from DB tables.
+  ErReadScope allowed_er_reads = 11;
+
   reserved 9, 10;
 }
 
@@ -180,6 +185,13 @@ message RowWindow {
 // Compile response
 // =============================================================================
 
+// Exact canonical ER qnames (er.<namespace>.<name>), including expression subqueries, expanded
+// logical-query bodies and their stamped entity boundaries. Message presence distinguishes an audited
+// constant query (empty list) from absent evidence. Context.used_objects is not this contract.
+message ErReadScope {
+  repeated string objects = 1;
+}
+
 message CompileResponse {
   // The validated PlanNode ready to dispatch. Caller may keep this and submit
   // it directly to Run on a subsequent call by encoding as REL_NODE in source.
@@ -195,6 +207,10 @@ message CompileResponse {
   // execution would produce; matches the worker's first
   // ResultBatch.schema_fingerprint. Runtime mismatch logs at WARNING, never fails.
   string predicted_schema_fingerprint = 4;
+
+  // Present only after successful ER compilation and complete inspection of the validated ER plan.
+  // The `plan` above remains the physical DB plan. Consumers must reject absent evidence.
+  ErReadScope er_reads = 5;
 
   repeated org.tatrman.common.v1.ResponseMessage messages = 99;
   reserved 100 to 104;

@@ -11,6 +11,20 @@ on:
     - cron: '0 3 * * *'
 
 jobs:
+  automation-debug:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: AU debug-run mocked HTTP contracts
+        run: |
+          bash -n scripts/debug-run.sh
+          python3 -m unittest discover -s scripts/tests -p 'test_debug_run.py' -v
+
   # Also the WIRE-COMPATIBILITY gate (RV-P2.1.T7). `:shared:proto:check` runs
   # ProtoCompatSpec, which diffs every in-repo proto against the checked-in baseline
   # `shared/proto/compat/wire-baseline.desc` and fails on anything that is not purely

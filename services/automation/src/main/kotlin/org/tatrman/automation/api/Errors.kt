@@ -14,7 +14,7 @@ import org.slf4j.LoggerFactory
 /**
  * The error codes of the run API (AU contracts §1, plus the legacy A-AG-10 three, §6's `connector-face`, §7's
  * 401 and the envelope's own `internal`). [stage] is the plan stage that first raises the code:
- * `ErrorEnvelopeSpec` holds every code of a delivered stage to exactly one raising site and every other code
+ * `ErrorEnvelopeSpec` holds every code of a delivered stage to at least one raising site and every other code
  * to none, so the catalogue and the code cannot drift apart as the phases land.
  */
 enum class ErrorCode(
@@ -42,6 +42,12 @@ enum class ErrorCode(
     DEPLOYMENT_STALE("deployment-stale", HttpStatusCode.Conflict, "S1.1"),
     PAUSED("paused", HttpStatusCode.ServiceUnavailable, "S3.3"),
     RUN_ABANDONED("run-abandoned", HttpStatusCode.ServiceUnavailable, "S1.3"),
+    PROTOCOL_RENDERER_UNAVAILABLE("protocol-renderer-unavailable", HttpStatusCode.NotImplemented, "S1.3"),
+    PREVIEW_UNSUPPORTED("preview-unsupported", HttpStatusCode.NotImplemented, "S1.3"),
+    RUN_CLOSED("run-closed", HttpStatusCode.Conflict, "S1.3"),
+    CLOSE_NOT_READY("close-not-ready", HttpStatusCode.Conflict, "S1.3"),
+    STAGING_RELEASED("staging-released", HttpStatusCode.Gone, "S1.3"),
+    BATCH_NOT_READY("batch-not-ready", HttpStatusCode.Conflict, "S1.3"),
     RESTRICTED_VIEW("restricted-view", HttpStatusCode.Conflict, "S1.2"),
     CANDIDATES_TRUNCATED("candidates-truncated", HttpStatusCode.Conflict, "S1.2"),
     OUT_OF_SCOPE_READ("out-of-scope-read", HttpStatusCode.UnprocessableEntity, "S1.2"),

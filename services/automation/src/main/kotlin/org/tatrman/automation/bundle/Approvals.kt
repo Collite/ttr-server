@@ -13,6 +13,12 @@ fun interface ApprovalReader {
         fp: String,
     ): Boolean
 
+    /** The most recent approved fingerprint, for a stale response; null when no approval exists. */
+    fun latestApproved(
+        kind: String,
+        obj: String,
+    ): String? = null
+
     /**
      * The approvals of [objects] read once, to answer many questions from (a descriptor asks four per
      * deployment). The default asks each question of this reader.
