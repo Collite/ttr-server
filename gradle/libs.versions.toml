@@ -3,11 +3,11 @@
 # https://docs.gradle.org/current/userguide/version_catalogs.html
 
 [versions]
-tatrman-grammar           = "0.18.2"
+tatrman-grammar           = "0.18.3"
 # Moves WITH the grammar ref, always: they are one `api` closure (ttr-snapshot api's
 # ttr-metadata, ttr-lexicon-compile's POM names it exactly), and the `bundle grammar` lane
 # publishes them at one version. Two versions here is the 0.10.3/0.10.4 failure.
-tatrman-ttr-metadata      = "0.18.2"
+tatrman-ttr-metadata      = "0.18.3"
 # Lockstep pair (`translator/v*` cuts both). DQ: 0.11.4 carries MJ's ModelJoinRewriter — a bare
 # ER `JOIN` with no `ON` (the form the Golem's LLM lane and its query door write) is conditioned
 # from the model's relations; on 0.10.3 Calcite refused it ("join requires a condition").
@@ -307,6 +307,10 @@ tatrman-ttr-metadata-git            = { module = "org.tatrman:ttr-metadata-git",
 tatrman-ttr-snapshot                = { module = "org.tatrman:ttr-snapshot",                                version.ref = "tatrman-grammar" }
 tatrman-ttr-lexicon                 = { module = "org.tatrman:ttr-lexicon",                                 version.ref = "tatrman-grammar" }
 tatrman-ttr-lexicon-compile         = { module = "org.tatrman:ttr-lexicon-compile",                         version.ref = "tatrman-grammar" }
+# CN-P5 S5.1 — the conceptual tier's three function families (statements, assertions, definitions), served by the
+# resolver's cn doors. Grammar bundle (A-CN-1); its POM pins ttr-translator / ttr-plan-proto at its own translator tag.
+tatrman-ttr-lexicon-cli             = { module = "org.tatrman:ttr-lexicon-cli",                             version.ref = "tatrman-grammar" }
+tatrman-ttr-concept                 = { module = "org.tatrman:ttr-concept",                                 version.ref = "tatrman-grammar" }
 # translate.v1 public line (SV-P1 gate 2, kotlin-translator/v0.9.0): the renamed
 # ttr-plan-proto/ttr-translator now resolve from GitHub Packages — the SV-P0
 # 0.0.1-LOCAL/mavenLocal interim is retired. 0.9.0 carries org/tatrman/translate/v1/.

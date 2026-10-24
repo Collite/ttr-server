@@ -36,34 +36,48 @@ class ResolveDoorHandler(
         args: JsonObject?,
         authorizationHeader: String?,
         userIdHeader: String?,
-    ): CallToolResult {
-        val argUserId = args.str("user_id")
-        return when (
-            val decision =
-                IdentityGate.decide(
-                    authorizationHeader,
-                    userIdHeader,
-                    argUserId,
-                    requireIdentity,
-                    policy,
-                )
-        ) {
-            is IdentityGate.Decision.Reject -> identityError(decision.code, decision.message)
-            is IdentityGate.Decision.Allow -> door.call(args, callerSubject = decision.identity?.id.orEmpty())
+    ): CallToolResult =
+        gated(args, authorizationHeader, userIdHeader, requireIdentity, policy) { subject ->
+            door.call(args, callerSubject = subject)
         }
+}
+
+/**
+ * The fail-closed OBO gate every door tool on this server runs first (H-2) — `resolve.bind:v1` and the cn doors
+ * alike. [body] runs only on allow, with the resolved subject id (empty on the dev-network no-identity path).
+ */
+internal suspend fun gated(
+    args: JsonObject?,
+    authorizationHeader: String?,
+    userIdHeader: String?,
+    requireIdentity: Boolean,
+    policy: IdentityPolicy,
+    body: suspend (subject: String) -> CallToolResult,
+): CallToolResult =
+    when (
+        val decision =
+            IdentityGate.decide(
+                authorizationHeader,
+                userIdHeader,
+                args.str("user_id"),
+                requireIdentity,
+                policy,
+            )
+    ) {
+        is IdentityGate.Decision.Reject -> identityError(decision.code, decision.message)
+        is IdentityGate.Decision.Allow -> body(decision.identity?.id.orEmpty())
     }
 
-    private fun identityError(
-        code: String,
-        message: String,
-    ): CallToolResult =
-        CallToolResult(
-            isError = true,
-            content = listOf(TextContent(text = message)),
-            structuredContent =
-                buildJsonObject {
-                    put("errorCode", code)
-                    put("error", message)
-                },
-        )
-}
+private fun identityError(
+    code: String,
+    message: String,
+): CallToolResult =
+    CallToolResult(
+        isError = true,
+        content = listOf(TextContent(text = message)),
+        structuredContent =
+            buildJsonObject {
+                put("errorCode", code)
+                put("error", message)
+            },
+    )

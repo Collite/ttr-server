@@ -1,0 +1,47 @@
+// CN-P3 S3.7 — the md hero's physical binding (copied from ttrp-cli's md-project fixture, `models/md/binding.ttrm`).
+model binding
+
+// sales: wide fact table — one column per measure; grain Customer.name × Time.day.
+def md2db_cubelet sales_binding {
+  cubelet: md.sales,
+  target: { table: db.dbo.f_sales },
+  shape: wide,
+  attributes: {
+    Customer.name: { column: customer_name },
+    Time.day: { column: sale_date },
+    // map-mediated drill column (hop): region reached through name_to_region's backing table.
+    Customer.region: { via: md.name_to_region, from: { table: db.dbo.d_customer, column: region } }
+  },
+  measures: {
+    net: { column: net },
+    gross: { column: gross }
+  }
+}
+
+// plan: long fact table — a measure-code column + a value column; grain Customer.name × Time.month.
+def md2db_cubelet plan_binding {
+  cubelet: md.plan,
+  target: db.dbo.f_plan,
+  shape: { long: { codeColumn: measure_code, valueColumn: amount } },
+  attributes: {
+    Customer.name: { column: customer_name },
+    Time.month: { column: month_num }
+  },
+  measures: {
+    net: { code: NET }
+  },
+  journaling: { invalidate: { validColumn: is_current } }
+}
+
+// bound-domain member source (SELECT DISTINCT cust_name FROM d_customer).
+def md2db_domain name_binding {
+  domain: md.Name,
+  source: { table: db.dbo.d_customer, column: cust_name }
+}
+
+// table-backed calc-map case table (date → month hop join).
+def md2db_map date_month_binding {
+  map: md.date_to_month,
+  target: db.dbo.d_calendar,
+  columns: { md.Date: cal_date, md.Month: cal_month }
+}

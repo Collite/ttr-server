@@ -16,6 +16,12 @@ data class ResolverRegistry(
     val locales: List<String>,
     val thresholds: ResolverThresholds,
     val snapshotHash: String,
+    /**
+     * CN-P5 S5.1 — the content id of the model the lexicon was compiled from (the archive header's
+     * `modelSnapshotHash`; several comma-joined for a layer of archives); the cn doors serve a model only when its own
+     * content id is one of them. `""` without an archive, or from a per-request override.
+     */
+    val modelSnapshotHash: String = "",
 )
 
 /**
@@ -254,6 +260,14 @@ fun List<ResolverEntityType>.kindsByRef(): Map<String, String> =
  */
 fun List<ResolverEntityType>.refByCategory(): Map<String, String> =
     flatMap { et -> et.categories.map { it to et.ref } }.toMap()
+
+/**
+ * A MEMBER row's vocabulary: the first declared type, in registry order, whose categories hold [category], else the
+ * category itself (what a binding's `memberOf` names). One rule for `GateSpans` and `concept.search:v1`, so a door
+ * lifts a member from the refs `resolve.bind:v1` lifts it from (review-134 F6).
+ */
+fun List<ResolverEntityType>.memberVocabularyOf(category: String): String =
+    firstOrNull { category in it.categories }?.ref ?: category
 
 /**
  * MV (member-vocabulary contracts §5.2) — entity ref → the member vocabularies it owns (refs, in

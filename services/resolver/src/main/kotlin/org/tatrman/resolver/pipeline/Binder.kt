@@ -142,6 +142,35 @@ object Binder {
         thresholds: ResolverThresholds,
     ): List<ClassedMatch> = matches.map { ClassedMatch(it, EvidenceClasses.of(it, candidate.anchored, thresholds)) }
 
+    /**
+     * CN-P5 S5.1 — what `concept.search:v1` reads of a span (`ConceptSearch`): every reading that is evidence, strongest
+     * class first; within a class, the concept steps of §1.5 ([ConceptOrder.beforeScore]: a phase yields to its bearer,
+     * then the default sense, then the authored priority), then the score. A search, not a decision — no tie band, no
+     * collapse, nothing binds — but trust (RV-14) and its order are this object's to state, so a search asks here. The
+     * span is unanchored: nothing scoped the lookup to an entity the user named.
+     */
+    fun ranked(
+        matches: List<FuzzyMatch>,
+        thresholds: ResolverThresholds,
+        concepts: ConceptFacts,
+    ): List<ClassedMatch> =
+        matches
+            .map { ClassedMatch(it, EvidenceClasses.of(it, anchored = false, thresholds)) }
+            .filter { it.evidenceClass != EvidenceClass.EVIDENCE_CLASS_WEAK }
+            .groupBy { EvidenceClasses.rank(it.evidenceClass) }
+            .toSortedMap()
+            .values
+            .flatMap { inClass ->
+                // One class, so one scale: the stronger row first, and a stable order between equals.
+                val ordered =
+                    inClass.sortedWith(
+                        compareByDescending<ClassedMatch> { it.match.score }
+                            .thenBy { it.match.targetRef }
+                            .thenBy { it.match.candidateId },
+                    )
+                ConceptOrder.beforeScore(ordered, concepts, mutableListOf())
+            }
+
     /** The pure ordering decision — see the class doc. */
     fun decide(
         classed: List<ClassedMatch>,

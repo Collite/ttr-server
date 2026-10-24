@@ -325,7 +325,8 @@ internal object DeclaredLayer {
         return Merged(
             lexicon =
                 CompiledLexicon(
-                    // Every archive's model, named — the field is provenance, and no reader keys on it.
+                    // Every archive's model, named, comma-joined. The resolver's cn doors read it: they serve a model
+                    // tree only when it is one of these (`ConceptModels`).
                     header = first.copy(modelSnapshotHash = lexicons.joinToString(",") { it.header.modelSnapshotHash }),
                     entries = entries,
                     targets = targets.toSortedMap(),

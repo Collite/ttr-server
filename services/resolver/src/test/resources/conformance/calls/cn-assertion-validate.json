@@ -1,0 +1,125 @@
+{
+  "id": "cn-assertion-validate",
+  "description": "assertion.validate:v1 — the golden Transfer assertion validates on the clinic world; an assertion whose event is still a choice between two candidates is refused.",
+  "surface": "cn",
+  "estate": "clinic",
+  "invariants": [
+    "refusal over guess — an ambiguous slot is a finding, never a choice; a refused frame lowers to nothing",
+    "a refusal is not an error — it is a result with its cn findings (A-CN-57)",
+    "deterministic — the same call on the same snapshot is byte-equal"
+  ],
+  "turns": [
+    {
+      "tool": "assertion.validate:v1",
+      "args": {
+        "assertion": {
+          "event": {
+            "qname": "cn.Transfer"
+          },
+          "identity": {
+            "new": true
+          },
+          "participants": [
+            {
+              "label": "patient",
+              "concept": {
+                "qname": "cn.Patient"
+              },
+              "member": {
+                "label": "P-1001",
+                "resolvedValue": "1001"
+              }
+            },
+            {
+              "label": "from",
+              "concept": {
+                "qname": "cn.Encounter"
+              },
+              "member": {
+                "label": "E-501",
+                "resolvedValue": "501"
+              }
+            },
+            {
+              "label": "to",
+              "concept": {
+                "qname": "cn.Encounter"
+              },
+              "member": {
+                "label": "E-502",
+                "resolvedValue": "502"
+              }
+            }
+          ],
+          "qualities": [
+            {
+              "quality": {
+                "qname": "cn.transfer_kind"
+              },
+              "value": {
+                "stringValue": "step-down"
+              },
+              "verbatim": "moved to the step-down unit"
+            }
+          ],
+          "period": {
+            "start": {
+              "value": "2026-03-14T09:30",
+              "granularity": "MINUTE"
+            }
+          },
+          "assertedAsOf": {
+            "value": "2026-03-14",
+            "granularity": "DAY"
+          },
+          "provenance": {
+            "producer": "manual:steward",
+            "sourceRef": "doc://discharge-0001#p2",
+            "runId": "run-1",
+            "confidence": {
+              "value": 0.9,
+              "producer": "manual:steward",
+              "method": "reading"
+            },
+            "verbatim": "Transferred from ward 5 to the step-down unit at 09:30."
+          },
+          "locale": "en"
+        }
+      },
+      "expect": {
+        "refusal_over_guess": true,
+        "deterministic": true,
+        "outcome": "result"
+      }
+    },
+    {
+      "tool": "assertion.validate:v1",
+      "args": {
+        "assertion": {
+          "event": {
+            "candidates": [
+              {
+                "qname": "cn.Transfer"
+              },
+              {
+                "qname": "cn.Encounter"
+              }
+            ]
+          },
+          "identity": {
+            "new": true
+          },
+          "locale": "en"
+        }
+      },
+      "expect": {
+        "refusal_over_guess": true,
+        "deterministic": true,
+        "outcome": "refused",
+        "slugs": [
+          "cn/ambiguous-assertion"
+        ]
+      }
+    }
+  ]
+}

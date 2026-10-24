@@ -1,0 +1,82 @@
+// CN-P3 S3.7 — the clinical groundings (AM-15). `Transfer`'s three participants are three relation paths — `from` and
+// `to` are two relations between the same pair (G-ER-4's shape: the renderer always writes the ON, never a bare JOIN).
+model binding
+
+def cn2er_role patient_g { role: cn.Patient, target: er.entity.patient }
+def cn2er_kind diagnosis_g {
+    kind: cn.Diagnosis,
+    target: er.entity.diagnosis_code,
+    hierarchy: { closure: er.entity.code_closure, ancestor: ancestor_code, descendant: descendant_code }
+}
+def cn2er_kind diagnosis_text_g {
+    kind: cn.DiagnosisText,
+    target: er.entity.diagnosis_code,
+    hierarchy: { closure: er.entity.code_closure, ancestor: ancestor_code, descendant: descendant_code, ranges: lexical }
+}
+
+def cn2er_event encounter_g {
+    event: cn.Encounter,
+    target: er.entity.encounter,
+    period: { start: er.entity.encounter.admitted_at, end: er.entity.encounter.discharged_at },
+    participants: { patient: [er.relation.encounter_patient] }
+}
+def cn2er_event transfer_g {
+    event: cn.Transfer,
+    target: er.entity.transfer,
+    period: { at: er.entity.transfer.at },
+    participants: {
+        patient: [er.relation.transfer_patient],
+        from: [er.relation.transfer_from],
+        to: [er.relation.transfer_to]
+    }
+}
+def cn2er_event condition_g {
+    event: cn.ConditionRecord,
+    target: er.entity.condition,
+    period: { start: er.entity.condition.onset, end: er.entity.condition.abatement },
+    participants: { patient: [er.relation.condition_patient], encounter: [er.relation.condition_encounter] }
+}
+def cn2er_event condition_onset_g {
+    event: cn.ConditionOnset,
+    target: er.entity.condition,
+    period: { at: er.entity.condition.onset },
+    participants: { patient: [er.relation.condition_patient] }
+}
+def cn2er_event recorded_onset_g {                                               // `at_hi:` — the onset's stored upper bound, exclusive (⚑CN-P10)
+    event: cn.RecordedOnset,
+    target: er.entity.condition,
+    period: { at: er.entity.condition.onset, at_hi: er.entity.condition.onset_hi },
+    participants: { patient: [er.relation.condition_patient] }
+}
+def cn2er_event observation_g {
+    event: cn.Observation,
+    target: er.entity.observation,
+    period: { at: er.entity.observation.observed_at },
+    participants: { patient: [er.relation.observation_patient] }
+}
+def cn2er_event fracture_g {
+    event: cn.FractureEpisode,
+    target: er.entity.fracture_episode,
+    period: { start: er.entity.fracture_episode.period_start, end: er.entity.fracture_episode.period_end },
+    participants: { patient: [er.relation.fracture_patient] }
+}
+
+def cn2er_quality admitted_at_g    { quality: cn.admitted_at, target: er.entity.encounter.admitted_at }
+def cn2er_quality discharged_at_g  { quality: cn.discharged_at, target: er.entity.encounter.discharged_at }
+def cn2er_quality department_g     { quality: cn.department, target: er.entity.encounter.department_id }
+def cn2er_quality transferred_at_g { quality: cn.transferred_at, target: er.entity.transfer.at }
+def cn2er_quality transfer_kind_g  { quality: cn.transfer_kind, target: er.entity.transfer.transfer_kind }
+def cn2er_quality code_g           { quality: cn.code, target: er.entity.condition.code }
+def cn2er_quality certainty_g      { quality: cn.certainty, target: er.entity.condition.certainty }
+def cn2er_quality experiencer_g    { quality: cn.experiencer, target: er.entity.condition.experiencer }
+def cn2er_quality onset_g          { quality: cn.onset, target: er.entity.condition.onset }
+def cn2er_quality abatement_g      { quality: cn.abatement, target: er.entity.condition.abatement }
+def cn2er_quality onset_code_g     { quality: cn.onset_code, target: er.entity.condition.code }
+def cn2er_quality onset_at_g       { quality: cn.onset_at, target: er.entity.condition.onset }
+def cn2er_quality recorded_code_g     { quality: cn.recorded_code, target: er.entity.condition.code }
+def cn2er_quality recorded_onset_at_g { quality: cn.recorded_onset_at, target: er.entity.condition.onset }
+def cn2er_quality observed_at_g    { quality: cn.observed_at, target: er.entity.observation.observed_at }
+def cn2er_quality analyte_g        { quality: cn.analyte, target: er.entity.observation.analyte }
+def cn2er_quality observed_value_g { quality: cn.observed_value, target: er.entity.observation.value, unit: "mmol/L" } // ⚑CN-P10
+def cn2er_quality episode_start_g  { quality: cn.episode_start, target: er.entity.fracture_episode.period_start }
+def cn2er_quality episode_end_g    { quality: cn.episode_end, target: er.entity.fracture_episode.period_end }

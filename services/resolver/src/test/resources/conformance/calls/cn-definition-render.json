@@ -1,0 +1,45 @@
+{
+  "id": "cn-definition-render",
+  "description": "definition.render:v1 — the n8n Logical Query node's phase call (AM-33: a phase, layer er, the estate's dialect): PostStemi renders as SQL over entities reading {as_of}; a phase whose bearer has no E-R landing is refused on er, never rendered partially.",
+  "surface": "cn",
+  "estate": "clinic",
+  "invariants": [
+    "refusal over guess — an ambiguous slot is a finding, never a choice; a refused frame lowers to nothing",
+    "a refusal is not an error — it is a result with its cn findings (A-CN-57)",
+    "deterministic — the same call on the same snapshot is byte-equal"
+  ],
+  "turns": [
+    {
+      "tool": "definition.render:v1",
+      "args": {
+        "concept": "cn.PostStemi",
+        "layer": "er",
+        "dialect": "postgresql"
+      },
+      "expect": {
+        "refusal_over_guess": true,
+        "deterministic": true,
+        "outcome": "result",
+        "text": "SELECT patient.patient_id\nFROM patient\nWHERE EXISTS (\n  SELECT 1\n  FROM \"condition\"\n  WHERE \"condition\".patient_id = patient.patient_id AND \"condition\".code IN (\n    SELECT code_closure.descendant_code\n    FROM code_closure\n    WHERE code_closure.ancestor_code = 'X21'\n  ) AND \"condition\".onset <= {as_of}\n)",
+        "parameters_read": [
+          "as_of"
+        ]
+      }
+    },
+    {
+      "tool": "definition.render:v1",
+      "args": {
+        "concept": "cn.StemiPatient",
+        "layer": "md"
+      },
+      "expect": {
+        "refusal_over_guess": true,
+        "deterministic": true,
+        "outcome": "refused",
+        "slugs": [
+          "cn/definition-unreachable(md)"
+        ]
+      }
+    }
+  ]
+}

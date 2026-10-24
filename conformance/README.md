@@ -12,7 +12,7 @@ demonstrated" gate; the other two tiers seed the fuller E2E coverage that SV-P4 
 
 ## The gating service-level tier — `just conformance-service-level`
 
-Runs eight **hermetic** corpora (zero live services, zero pilot estate) — seven service-level, plus
+Runs nine **hermetic** corpora (zero live services, zero pilot estate) — eight service-level, plus
 the RV-P4 conversation tier that sits above them:
 
 1. **ENTITIES_ONLY** (resolver) — `Q20ParityTest` over
@@ -89,7 +89,16 @@ the RV-P4 conversation tier that sits above them:
    lift with stereotype and every source (A-CN-5/7); the nine-row §1.5 resolution order (A-CN-8); the ungrounded
    concept; clarification options and pins of a concept (A-CN-73); R-cn-6. The cn-estate files are pinned above; the
    clinic's model files below. Provenance: authored 2026-10-23 (CN-P4 S4.4 + review-130).
-8. **Grounding hermetic** — `eval/grounding/tests/` (`test_corpus_valid.py` + `test_report.py`,
+8. **cn doors** (resolver — CN-P5 S5.1) — `CnDoorConformanceTest` over the cn `calls:` seeds
+   (`services/resolver/src/test/resources/conformance/calls/cn-*.json`, 8 seeds, 15 turns): the four cn door families
+   (`statement.*` · `assertion.*` · `concept.search` · `definition.render`, cn contracts §4) driven through the door over
+   the real ttr-concept. One happy call and one refusal-over-guess per family, and the determinism promise: every turn
+   is called twice and the two answers are byte-equal. Estates: the cn estate (`concept.search`, with its archive) and
+   two of ttr-concept's golden worlds (`shared/testdata/cn-worlds/{sales,clinic}`, byte copies at `grammar/v0.18.2`) —
+   the happy paths equal ttr-concept's own goldens (the ActiveCustomer dot-path, the Transfer row payload, PostStemi's
+   er rendering). The runner rejects a seed that states a key it does not assert. Seeds and worlds are pinned below.
+   Provenance: authored 2026-10-23.
+9. **Grounding hermetic** — `eval/grounding/tests/` (`test_corpus_valid.py` + `test_report.py`,
    21 checks): corpus-validity of the 123-case bulk + 21-case e2e corpora, and the pure `report.py`
    scoring logic. The **live** run (`run_eval.py` → grounding-mcp + Golem) is the extended tier, NOT here.
 
@@ -116,6 +125,24 @@ cn-clinic/model/er/clinic.ttrm          d4a6236b844d39b54b854443692d5d800ba1e39d
 cn-clinic/model/cn/clinic.ttrm          47c11d35a6ceb866b58948735ee60200ad4867d35bbb26065abec81d9f7b3e48
 cn-clinic/model/binding/clinic.ttrm     9ee44f0b1d5978b193948ad4129a7ba5316f1bb1c36ee445ed90b445c1532154
 cn-clinic/model/lexicon/cs/terms.ttrm   16126bcfc31313bf7f6f68465226e0d988c5fcccc2476d138e0d7bd2f3a4e7bf
+calls/cn-assertion-explain.json         a4f1310e8e7ded288ebe8593821bee5b4310371aa2c2d13c8bf7863df6b5f2c4
+calls/cn-assertion-lower.json           16f197f84d7b3b663cae318a0d0d88fdf1339b51822c71d8f76d778d40cddec0
+calls/cn-assertion-validate.json        3d74374eed87bc97dfdca530943d4f51217786f348e09f414121852e89834b27
+calls/cn-concept-search.json            684b6b3e01c22dc366dfa73ae67e90f503199ec45699f581165079ddaabd0eb3
+calls/cn-definition-render.json         ae5aff87fc5d9f81b4c1e96553335646674f2df22a25bbce3c28a07f472d405c
+calls/cn-statement-explain.json         76594faaff60d89257921494de7f635f6a6a1a966d7c8a9f6f1d28b4a04d1f75
+calls/cn-statement-lower.json           cef09c59b129297f9273f9c240b64c55f7b22308c6b928e7eb0f1eae19b13274
+calls/cn-statement-validate.json        46591f1676b01a6654a4dea470ae6c1583da57f7c116088af298243749853786
+cn-worlds/clinic/bindings.ttrm          ac00b6f55a697780ef4140c9e5c05dca02b87656cac54d339d80fecc6d4047c6
+cn-worlds/clinic/cn.ttrm                7bfb6a99c38c6389acdb979413e06a0fddec55fa91d2ad9bd506fe5b1cc5aa31
+cn-worlds/clinic/db.ttrm                555ec926400fb565a4aec84da53632abfc5f520093a4233ce7d7f0471135d63e
+cn-worlds/clinic/er.ttrm                872f21d6e258999a18d3dab50e8229dbbcb91fb844eee63dd54329b70d1f2dcc
+cn-worlds/sales/automation.ttrm         dfbf124c1bc3cd36f86c3a6415e7972ba3c994936248b8568f6d51b656e507a0
+cn-worlds/sales/bindings.ttrm           96854254952c3414a283a6f35ac61435b319468327da35956d62f8316f02c112
+cn-worlds/sales/cn.ttrm                 45e8de117c65c1fb419fb741d3bed7052bbc55493517a4266d8232912c50aa38
+cn-worlds/sales/db.ttrm                 e7005b2f6ec7b63240c01e44e861218b78c09a05385abce158a00628bda4dea1
+cn-worlds/sales/md-binding.ttrm         9fd7258683d27cdf57e448d1b436c61659d413861967033cb50b9875bc21349e
+cn-worlds/sales/md.ttrm                 421dcd495ffa076b3ed9fd929b2cb89110a60cc1bb13f3a56feaf1bb1b984521
 ```
 
 The hartland_cz leg pins **three** files, not one: the corpus is authored source compiled at test

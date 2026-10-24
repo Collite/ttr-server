@@ -122,6 +122,8 @@ class LexiconArchiveRegistrySource(
      */
     override fun hash(): String = load()?.archiveId ?: ""
 
+    override fun modelSnapshotHash(): String = load()?.lexicon?.header?.modelSnapshotHash ?: ""
+
     /**
      * Entries grouped by target ref, which **is** the category key — the convention the declared
      * layer already uses (`er.entity.catalog_sales`, `md.measure.net`) and the one

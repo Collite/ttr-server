@@ -16,6 +16,58 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+- **veles — the cn candidate store and promotion** (CN-P5 S5.3, cn contracts §6). Producers submit candidate concepts,
+  terms and relations as `cn-candidate.v1` (ttr-concept 0.18.3, `org.tatrman.concept.candidate`); a steward rejects or
+  promotes them; a promotion is a model-text pull request, and the candidate is `promoted` once a model load carries
+  its def. **Off by default:** on only with both a database (`METADATA_CN_DB_*`) and a token issuer
+  (`METADATA_CN_AUTH_ISSUER`, `METADATA_CN_AUTH_JWKS_URI`); off, every route below answers `503 CN_STORE_OFF` and Veles
+  serves the model as before.
+  - REST on the HTTP port: `POST /v1/cn/candidates` (201 new; 200 for a proposal already stored, which returns the
+    first candidate with `"duplicate": true`) · `GET /v1/cn/candidates?status=&producer=&stereotype=&sort=newest|evidence&limit=`
+    · `GET /v1/cn/candidates/{id}` (with its audit `history`) · `POST /v1/cn/candidates/{id}/reject` `{"note"?}` ·
+    `POST /v1/cn/candidates/{id}/promote`. JSON out wraps the document: `{"candidate", "state", "content_hash",
+    "submitted_by", "submitted_at", "updated_at", "promotion"?}`. `state` adds `pending_merge` (a promotion opened, not
+    merged yet) to the document's three statuses; the document stays `proposed` meanwhile.
+  - Every call needs a verified bearer token (RS256 against the realm's JWKS). The caller is the token, never a field:
+    `submit` takes a producer the registry admits **and** the caller may speak for (`METADATA_CN_PRODUCERS`,
+    `producer=principal[|…]`, a principal being a service account's client id or `user:<username>` for a person;
+    `manual:<p>` only by the steward `p`); `reject` / `promote` need the `cn-steward` realm
+    role (`METADATA_CN_STEWARD_ROLE`). `import:*` is always refused.
+  - Promotion reads the promotion source (`METADATA_CN_PROMOTION_SOURCE`, default the git source) through a checkout of
+    its own, writes the patch, and gates it: the model before and after the patch, through the strict load report and
+    the cn definition diagnostics. A new error refuses it (`422 CN_PROMOTION_GATE`); other new findings ride in the pull
+    request, and a phase's pull request carries its er rendering. The diff and pull-request text are kept and served
+    by the API; the diff's paths are the repository's (the source's sub-path included), so `git apply` takes it at the
+    repository root. A GitHub pull request opens when `METADATA_CN_PR_TOKEN` is set (REST Git Data API, branched from
+    the gated base commit); `METADATA_CN_INBOX_DIR` also writes `<id>.diff` / `<id>.md`. `canon_ref` = the promotion
+    source's commit at the load that first carries the def, `:`, the def's qname.
+  - `POST /v1/vocabularies/{id}/version` `{"version", "bundle"?}` (the `cn-importer` role) · `GET /v1/vocabularies[/{id}/version]`:
+    registered versions are published in the model's `cn.vocabularyVersions` (ttr-server#281 item 1).
+  - `METADATA_CN_NOTIFY_URL`: every candidate event is POSTed there, fire and forget (the steward app's queue seam).
+  - The store: tables in schema `metadata` of the configured database, migrated by Flyway on first use; a database
+    that is down costs the candidate API until it is back, never Veles's start.
+  - The grammar bundle pin moves to 0.18.3 (`tatrman-grammar`, `tatrman-ttr-metadata`).
+
+- **resolver — the four cn door families** (CN-P5 S5.1, cn contracts §4). The resolver's MCP server, beside
+  `resolve.bind:v1` and behind the same fail-closed OBO gate, now answers `statement.validate:v1` · `statement.lower:v1` ·
+  `statement.explain:v1` · `assertion.validate:v1` · `assertion.lower:v1` · `assertion.explain:v1` ·
+  `concept.search:v1` · `definition.render:v1`.
+  - Each frame tool wraps one of ttr-concept's pure functions (`org.tatrman:ttr-concept`, grammar bundle 0.18.2). A frame
+    arrives as protobuf JSON (`org.tatrman.statement.v1.Statement`, `org.tatrman.assertion.v1.Assertion`) and an
+    unknown field is an argument error. A frame the module refuses is a result, `refused: true` with its `cn/*`
+    findings, never a guess; `isError` is for bad arguments, a missing model, or a resume token that does not verify.
+  - `concept.search:v1` reads the vocabulary: one lex-matcher lookup, the resolution order, the lift. It returns
+    concepts only, each with its stereotype, `via` and every source.
+  - The model comes from `RESOLVER_CONCEPT_MODEL_PATH` (`resolver.concept.model-path`): the estate's model tree, or a
+    snapshot archive of it. It is served only when its content id is the one the lexicon archive names
+    (`modelSnapshotHash`); otherwise the frame tools answer `CN_MODEL_SKEW`. Unset, they answer `CN_MODEL_UNAVAILABLE`.
+    Every answer names the snapshot it was read from.
+  - A resume token inside a frame (`Candidate.resume_token`, `MemberRef.resume_token`) is checked with the resolver's
+    codec: signature, age, the caller it was issued to, and that it offered what the slot names (`RG-RES-002`). The
+    doors never mint one.
+  - The resolver image now carries `ttr-concept` and, through it, `ttr-translator` (Calcite). A build guard,
+    `verifyNoDbClient`, keeps any database driver or ADBC client off its runtime classpath: the doors never write.
+
 - **lex-matcher + resolver — the declared layer reads lexicon archive v6** (CN-P4). The grammar bundle pin moves to
   0.18.1, whose `ttr-lexicon` reads `ttr-lexicon-compiled/v6`: concept entries under `cn.*` refs, the reverse index
   (`liftsTo`) on er and md elements, and the default sense on rows. lex-matcher serves a concept's terms as declared

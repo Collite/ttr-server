@@ -403,6 +403,10 @@ conformance-service-level:
     # (CnPeriodsCodesTest, `services/resolver/src/test/resources/cn-clinic`).
     ./gradlew :services:resolver:test --tests '*CnResolutionTest*'
     ./gradlew :services:resolver:test --tests '*CnPeriodsCodesTest*'
+    # CN-P5 S5.1 T1 — the four cn door families, driven through the door over the real ttr-concept: one happy call and one
+    # refusal-over-guess per family, every turn called twice and byte-equal (`conformance/calls/cn-*.json`, over the
+    # cn estate and two of ttr-concept's golden worlds, `shared/testdata/cn-worlds`).
+    ./gradlew :services:resolver:test --tests '*CnDoorConformanceTest*'
     # RV-P7.4 T6 — the LEARNED overlay joins the gating tier, on its recorded promotion
     # criterion: `OverlayDrillTest` is fed by `drill/overlay-final.json`, which is the exact
     # document kantheon's H2H3DrillSpec produced from a real H2 conversation — so this corpus

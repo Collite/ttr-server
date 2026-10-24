@@ -12,6 +12,7 @@ import org.tatrman.resolver.model.ResolverThresholds
 import org.tatrman.resolver.model.conceptFacts
 import org.tatrman.resolver.model.kindsByRef
 import org.tatrman.resolver.model.memberEntityByCategory
+import org.tatrman.resolver.model.memberVocabularyOf
 import org.tatrman.resolver.model.ownersByRef
 import org.tatrman.resolver.model.reachByRef
 
@@ -266,7 +267,7 @@ object GateSpans {
     private fun vocabularyRefOf(
         m: FuzzyMatch,
         entityTypes: List<ResolverEntityType>,
-    ): String = entityTypes.firstOrNull { m.category in it.categories }?.ref ?: m.category
+    ): String = entityTypes.memberVocabularyOf(m.category)
 
     /**
      * The entity a match is about. MV (member-vocabulary contracts §5.3): for a MEMBER row, the

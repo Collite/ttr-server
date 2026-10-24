@@ -91,7 +91,7 @@ class SnapshotRegistry(
                 )
             }
         val locales = (vocab.locales + configLocales).distinct()
-        return ResolverRegistry(entityTypes, locales, thresholds, hash)
+        return ResolverRegistry(entityTypes, locales, thresholds, hash, source.modelSnapshotHash())
     }
 
     /** CN-P4 — an entry registered for its concept facts alone: no term, no member vocabulary. */
