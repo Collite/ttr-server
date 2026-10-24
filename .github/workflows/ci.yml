@@ -177,6 +177,47 @@ jobs:
         working-directory: services/golem-py
         run: uv run pytest -q
 
+  # XM-P2: connector-only Python gate. Keep the workflow's existing cross-repo
+  # gates; scope only this job's tool installation/checks to connector changes.
+  connect-openmetadata:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dorny/paths-filter@v3
+        id: changes
+        with:
+          filters: |
+            connector:
+              - 'connectors/openmetadata/**'
+              - '.github/workflows/ci.yml'
+      - uses: actions/setup-python@v5
+        if: steps.changes.outputs.connector == 'true'
+        with:
+          python-version: '3.13'
+      - uses: astral-sh/setup-uv@v5
+        if: steps.changes.outputs.connector == 'true'
+        with:
+          enable-cache: true
+      - name: Install locked connector
+        if: steps.changes.outputs.connector == 'true'
+        working-directory: connectors/openmetadata
+        run: uv sync --locked
+      - name: ruff
+        if: steps.changes.outputs.connector == 'true'
+        working-directory: connectors/openmetadata
+        run: uv run --locked ruff check .
+      - name: mypy --strict
+        if: steps.changes.outputs.connector == 'true'
+        working-directory: connectors/openmetadata
+        run: uv run --locked mypy
+      - name: pytest
+        if: steps.changes.outputs.connector == 'true'
+        working-directory: connectors/openmetadata
+        run: uv run --locked pytest -q
+
   # NLS-P0.T7 — the Python unit gate for the `ttr-nlp` wheel (ruff + pytest +
   # a real wheel build).
   #

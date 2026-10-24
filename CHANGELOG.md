@@ -16,6 +16,15 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+### Added — XM P2 OpenMetadata connector (S2.1)
+
+- Add the installable `ttr-connect-openmetadata` Python planner: read consistent
+  world exports from a directory or HTTP, retain ETag state, and print deterministic
+  glossary, metric, property, tag, asset-link and deprecation operations as JSON lines.
+- Pin OpenMetadata ingestion 2.0.6 (PyPI 2.0.6.0), record inspected SDK/endpoint facts,
+  and add an isolated Python CI gate. `check`/`sync` remain S2.2 stubs; this cut
+  performs no OpenMetadata writes.
+
 ### Added — XM P1 external metadata export
 
 - Extend `/model/export` with shared graph/definitions/Turtle/XMI projections, model/package/area scopes,
