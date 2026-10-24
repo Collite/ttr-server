@@ -13,7 +13,6 @@ import org.tatrman.automation.runner.*
 import org.tatrman.ttr.metadata.model.AutomationAction
 import org.tatrman.ttr.metadata.model.Entity
 import org.tatrman.ttr.metadata.model.ErSchema
-import java.math.BigDecimal
 import java.time.Clock
 import java.util.UUID
 
@@ -95,6 +94,11 @@ class ApplyPlanner(
                     val detail = tables.getValue("${route.name}.$it")
                     DetailSnapshot(detail, detail.keyValues(keys).zip(detail.rows).groupBy({ it.first }, { it.second }))
                 }
+            val selected =
+                recipe.wiring.filter { "$decision.${route.name}" in it.routes }.map { wiring ->
+                    currentCoroutineContext().ensureActive()
+                    wiring to wiring.whenCondition?.let { PreviewConditions.select(it, table, context.bindings) }
+                }
             for ((index, values) in table.rows.withIndex()) {
                 currentCoroutineContext().ensureActive()
                 val record = table.columns.mapIndexed { i, column -> column.name to scalar(values[i]) }.toMap()
@@ -151,8 +155,8 @@ class ApplyPlanner(
                             )
                     }
                 }
-                for (wiring in recipe.wiring.filter { "$decision.${route.name}" in it.routes }) {
-                    if (!condition(wiring.whenCondition, record, context)) continue
+                for ((wiring, matches) in selected) {
+                    if (matches != null && index !in matches) continue
                     val action = metadata.actions.getValue(wiring.action)
                     val args = linkedMapOf<String, JsonElement>()
                     for ((name, expression) in wiring.columns) {
@@ -312,46 +316,6 @@ class ApplyPlanner(
         }
     }
 
-    private fun condition(
-        expression: String?,
-        row: Map<String, JsonElement>,
-        context: RunContext,
-    ): Boolean {
-        if (expression == null) return true
-        val match = CONDITION.matchEntire(expression.trim()) ?: unsupported("unsupported action condition")
-        val left = row[match.groupValues[1]] ?: unsupported("unknown action condition column")
-        val right = value(match.groupValues[3], row, context, false)
-        if (left == JsonNull || right == JsonNull) return false
-        val a = left.jsonPrimitive
-        val b = right.jsonPrimitive
-        val operator = match.groupValues[2]
-        if (a.isString != b.isString || (a.booleanOrNull != null) != (b.booleanOrNull != null)) {
-            unsupported("action condition needs compatible scalar types")
-        }
-        if ((a.isString || a.booleanOrNull != null) && operator !in setOf("=", "!=", "<>")) {
-            unsupported("text and boolean ordering requires compiler lowering")
-        }
-        val order =
-            if (!a.isString &&
-                !b.isString &&
-                a.content.toBigDecimalOrNull() != null &&
-                b.content.toBigDecimalOrNull() != null
-            ) {
-                BigDecimal(a.content).compareTo(BigDecimal(b.content))
-            } else {
-                a.content.compareTo(b.content)
-            }
-        return when (operator) {
-            "=" -> order == 0
-            "!=", "<>" -> order != 0
-            ">" -> order > 0
-            "<" -> order < 0
-            ">=" -> order >= 0
-            "<=" -> order <= 0
-            else -> error("invalid condition operator")
-        }
-    }
-
     private fun value(
         expression: String,
         row: Map<String, JsonElement>,
@@ -389,7 +353,6 @@ class ApplyPlanner(
     private fun entityName(name: String) = if (name.startsWith("er.entity.")) name else "er.entity.$name"
 
     companion object {
-        private val CONDITION = Regex("([A-Za-z_][A-Za-z_0-9]*)\\s*(<=|>=|!=|<>|=|<|>)\\s*(.+)")
         private val NUMBER = Regex("-?(?:0|[1-9][0-9]*)(?:\\.[0-9]+)?(?:[eE][+-]?[0-9]+)?")
         private val PLACEHOLDER = Regex("\\{([A-Za-z_][A-Za-z_0-9.]*)}")
 

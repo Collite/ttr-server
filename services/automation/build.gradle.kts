@@ -110,6 +110,9 @@ dependencies {
     implementation(libs.tatrman.ttr.metadata)
     implementation(libs.tatrman.ttr.metadata.git)
     implementation(libs.tatrman.ttr.parser)
+    // Runtime preview predicates use the compiler's parser, type checker and plan lowering.
+    // The emitter rides the existing grammar pin; no private SQL-expression parser lives here.
+    implementation(libs.tatrman.ttrp.emit)
     implementation(libs.jgit)
     implementation(project(":shared:proto"))
     implementation(libs.grpc.netty.shaded)

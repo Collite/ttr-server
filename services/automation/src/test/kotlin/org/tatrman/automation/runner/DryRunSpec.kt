@@ -105,8 +105,8 @@ class DryRunSpec :
             }
         }
 
-        "unsupported writer sinks and complex conditions fail once before any decision or preview journal" {
-            for (problem in listOf("writer", "condition", "key-lookup", "expression", "text", "types", "collation")) {
+        "unsupported effects and invalid conditions fail once before any decision or preview journal" {
+            for (problem in listOf("writer", "condition", "key-lookup", "expression", "text", "types", "syntax")) {
                 supervisorScope {
                     val original = PreviewMetadata.from(BundleFixture.load())
                     var metadata = original
@@ -130,17 +130,21 @@ class DryRunSpec :
                         "condition" ->
                             recipe =
                                 recipe.withWiring(
-                                    recipe.recipe.wiring.map { it.copy(whenCondition = "amount > 0 and amount < 9") },
+                                    recipe.recipe.wiring.map {
+                                        it.copy(
+                                            whenCondition = "amount > 0 and unknown_column < 9",
+                                        )
+                                    },
                                 )
                         "types" ->
                             recipe =
                                 recipe.withWiring(
                                     recipe.recipe.wiring.map { it.copy(whenCondition = "amount = \"4.56\"") },
                                 )
-                        "collation" ->
+                        "syntax" ->
                             recipe =
                                 recipe.withWiring(
-                                    recipe.recipe.wiring.map { it.copy(whenCondition = "department > \"AR\"") },
+                                    recipe.recipe.wiring.map { it.copy(whenCondition = "amount > 0; select 1") },
                                 )
                         "key-lookup" ->
                             metadata =
@@ -179,6 +183,26 @@ class DryRunSpec :
                         f.legacy.get() shouldBe 0
                         f.reads.get() shouldBe 5
                     }
+                }
+            }
+        }
+
+        "compound preview predicates preserve repeated wiring and share one atomic completion" {
+            supervisorScope {
+                val wiring =
+                    ManifestWiring(
+                        listOf("way.hold"),
+                        "release",
+                        mapOf("order" to "order_number"),
+                        "amount >= :threshold and (department > \"AR\" or department is null)",
+                    )
+                val f = PreviewFixture(this, previewRecipe().withWiring(listOf(wiring, wiring)))
+                f.runner.use { runner ->
+                    runner.evaluate()
+                    f.plan!!.actions.map { it.action } shouldBe listOf("release", "release")
+                    f.plan!!.actions.map { it.batchRows.size } shouldBe listOf(1, 1)
+                    f.journals.get() shouldBe 1
+                    f.reads.get() shouldBe 5
                 }
             }
         }

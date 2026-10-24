@@ -302,10 +302,21 @@ Unknown/other/legacy subjects answer the same 403; an owned run without a batch 
 Reading never evaluates. In `batch_rows`, inserts store their row directly; update/transition rows store their
 named operation payload in `row`, with key/group in the corresponding columns. Rows remain `staged`.
 
-This foundation supports scalar column/literal/parameter arguments, symbolic role/action arguments and simple
-compatible scalar conditions (numeric ordering and scalar equality). Native writer/obligation synthesis, key
-lookups, calendar/date expressions, general conditions and text ordering require their compiler lowering;
-selected unsupported operations return `501 preview-unsupported` before decision/batch completion. P2/P3
+This foundation supports scalar column/literal/parameter arguments and symbolic role/action arguments.
+Action predicates use the published TTR-P parser/type checker and `ttrp-emit` plan lowering at the existing
+0.17.3 grammar / 0.12.9 translator pins. Each predicate runs once over its verified route snapshot in a private
+DuckDB database, selecting row ordinals without another Query call. Boolean composition, SQL null semantics,
+case, membership, text ordering, addition/subtraction/multiplication and typed date casts are supported where the compiler
+can lower them. Only referenced columns/bindings enter the scratch database. Decimal literals/bindings and
+large integers remain exact typed columns, avoiding the plan literal's Double representation. Incompatible
+scalar kinds require an explicit cast. Invalid predicates refuse even on empty routes; syntax, typing,
+lowering and local execution failures return `501 preview-unsupported` before decision/batch completion.
+Repeated wiring stays repeated and the selected rows retain original route order. Division remains an explicit
+501 until full validity/reject lowering is integrated; DuckDB's infinity for division by zero is never accepted
+as an action predicate result.
+
+Native writer/obligation synthesis, key lookups, calendar/duration expressions and general action argument
+expressions still require lowering; selected unsupported operations return `501 preview-unsupported`. P2/P3
 retain dry-run task/delivery rows and performed action outcomes. Durable close/sealing and local staging retention are described below. Application mounting is
 pending. The local Query fixtures do not certify live Hartland behavior.
 

@@ -293,6 +293,7 @@ calcite-core                        = { module = "org.apache.calcite:calcite-cor
 
 # Modeler — TTR parser/writer/semantics (third-party Maven artifacts).
 tatrman-ttr-parser                  = { module = "org.tatrman:ttr-parser",                                  version.ref = "tatrman-grammar" }
+tatrman-ttrp-emit                   = { module = "org.tatrman:ttrp-emit",                                   version.ref = "tatrman-grammar" }
 tatrman-ttr-writer                  = { module = "org.tatrman:ttr-writer",                                  version.ref = "tatrman-grammar" }
 tatrman-ttr-semantics               = { module = "org.tatrman:ttr-semantics",                               version.ref = "tatrman-grammar" }
 tatrman-ttr-metadata                = { module = "org.tatrman:ttr-metadata",                                version.ref = "tatrman-ttr-metadata" }
