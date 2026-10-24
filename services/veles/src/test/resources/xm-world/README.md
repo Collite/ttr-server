@@ -1,0 +1,1 @@
+Invented XM fixture copied from ttr-core packages/kotlin/ttr-metadata/src/testFixtures/resources/fixtures/xm-world; keep files and xm-goldens in sync. Goldens pin fixture-1; route tests substitute only the actual snapshot header.

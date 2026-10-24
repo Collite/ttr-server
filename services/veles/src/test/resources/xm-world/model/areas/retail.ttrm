@@ -1,0 +1,1 @@
+def area retail { description: "Retail reporting", packages: [er, md, cn], entities: [er.entity.buyer] }

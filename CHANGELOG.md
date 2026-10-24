@@ -16,6 +16,16 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+### Added — XM P1 external metadata export
+
+- Extend `/model/export` with shared graph/definitions/Turtle/XMI projections, model/package/area scopes,
+  bounded snapshot deltas, conditional requests and explicit lossiness/errors; retain legacy TTR and DOT routes.
+- Publish full parsed definitions and captured connection/rename sidecars on initial load and refresh.
+  CLI/HTTP parity tests compare bytes using the invented XM world and the same pinned grammar bundle.
+- Pin the grammar/metadata API closure and parity CLI to internal bundle 0.18.8; Veles is rebuilt because registry and source snapshot JVM APIs changed.
+
+### Other changes
+
 - **resolver — an unbound mention may bind a value label** (md/hop HP-H). The lookup rung asks a G1 mention across
   categories in the `MODEL_OBJECT`, `OPERATOR` and now `MEMBER` classes. A `MEMBER` row is an authored word for one
   member (a value label or value alias); a data value carries no class, so lex-matcher still never offers one to a

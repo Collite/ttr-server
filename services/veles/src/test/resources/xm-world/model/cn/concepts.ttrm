@@ -1,0 +1,14 @@
+package cn
+import er.*
+import db.retail.*
+import md.*
+import cn.*
+model cn
+
+def kind Party { iri: "https://example.org/northline/Party", label: { en: "Party", cs: "Osoba" }, description: { en: "A trading party", cs: "Obchodní partner" } }
+def kind Prospect { abstract: true, is_a: Party }
+def role Customer { of: Party, event: Purchase }
+def event Purchase { extent: instantaneous, involves: [Customer as buyer, Product as item], period: { at: sold_at }, qualities: [sold_at] }
+def phase LargePurchase { of: Purchase, definition: """amount > 100""" }
+def quality sold_at { of: Purchase }
+def relation_type recommends { label: { en: "recommends", cs: "doporučuje" } }

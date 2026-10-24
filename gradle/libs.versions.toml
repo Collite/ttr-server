@@ -3,11 +3,11 @@
 # https://docs.gradle.org/current/userguide/version_catalogs.html
 
 [versions]
-tatrman-grammar           = "0.18.7"
+tatrman-grammar           = "0.18.8"
 # Moves WITH the grammar ref, always: they are one `api` closure (ttr-snapshot api's
 # ttr-metadata, ttr-lexicon-compile's POM names it exactly), and the `bundle grammar` lane
 # publishes them at one version. Two versions here is the 0.10.3/0.10.4 failure.
-tatrman-ttr-metadata      = "0.18.7"
+tatrman-ttr-metadata      = "0.18.8"
 # Lockstep pair (`translator/v*` cuts both). DQ: 0.11.4 carries MJ's ModelJoinRewriter — a bare
 # ER `JOIN` with no `ON` (the form the Golem's LLM lane and its query door write) is conditioned
 # from the model's relations; on 0.10.3 Calcite refused it ("join requires a condition").
@@ -295,6 +295,7 @@ tatrman-ttr-parser                  = { module = "org.tatrman:ttr-parser",      
 tatrman-ttr-writer                  = { module = "org.tatrman:ttr-writer",                                  version.ref = "tatrman-grammar" }
 tatrman-ttr-semantics               = { module = "org.tatrman:ttr-semantics",                               version.ref = "tatrman-grammar" }
 tatrman-ttr-metadata                = { module = "org.tatrman:ttr-metadata",                                version.ref = "tatrman-ttr-metadata" }
+tatrman-ttr-metadata-cli            = { module = "org.tatrman:ttr-metadata-cli", version.ref = "tatrman-ttr-metadata" }
 tatrman-ttr-metadata-git            = { module = "org.tatrman:ttr-metadata-git",                            version.ref = "tatrman-ttr-metadata" }
 # RV-P1.4 T3 — the compiled-lexicon archive: `ttr-snapshot` is the container (tar+zstd reader),
 # `ttr-lexicon` is the artifact model + codec. Both ride the `grammar` bundle, which is why the

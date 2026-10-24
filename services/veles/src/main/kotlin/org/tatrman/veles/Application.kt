@@ -156,7 +156,18 @@ fun Application.module(config: Config) {
         val graph = withContext(Dispatchers.Default) { ModelGraph.build(result.model) }
         // VL V-37: the layouts of this model, from the same loads, in the same swap (the refresher does likewise)
         val layouts = LayoutIndex.build(snapshots, result.model)
-        registry.swap(result.model, graph, lastWarnings = result.warnings + result.errors, layouts = layouts)
+        registry.swap(
+            result.model,
+            graph,
+            lastWarnings = result.warnings + result.errors,
+            layouts = layouts,
+            files = result.files,
+            exportSidecars =
+                snapshots.sortedBy { it.priority }.flatMap { it.exportSidecars.entries }.associate {
+                    it
+                        .toPair()
+                },
+        )
         log.info(
             "Metadata initial snapshot loaded: version={} objects={} warnings={} errors={}",
             result.model.version.value,

@@ -1,0 +1,7 @@
+[[connection]]
+id = "northline-pg"
+type = "postgres"
+database = "northline"
+schema = "retail"
+[connection.locators]
+openmetadata.service = "northline-pg"

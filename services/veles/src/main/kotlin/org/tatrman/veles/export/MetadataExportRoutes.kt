@@ -9,7 +9,7 @@ import io.ktor.server.response.respondBytes
 import io.ktor.server.response.respondText
 import io.ktor.server.routing.Route
 import io.ktor.server.routing.get
-import org.tatrman.ttr.metadata.export.ExportBundle
+import org.tatrman.ttr.metadata.export.*
 import org.tatrman.ttr.metadata.export.GraphDotExporter
 import org.tatrman.ttr.metadata.export.ModelToDefinitions
 import org.tatrman.ttr.metadata.registry.MetadataRegistry
@@ -40,10 +40,129 @@ fun Route.metadataExportRoutes(registry: MetadataRegistry) {
             return@get
         }
 
+        val params = call.request.queryParameters
+        val allowed = setOf("model", "format", "profile", "package", "area", "since", "validate")
+        val request =
+            try {
+                require(params.names().all { it in allowed }) { "Unknown export parameter" }
+                require(params.names().all { params.getAll(it)?.size == 1 }) { "Repeated export parameter" }
+
+                fun selectors(key: String): Set<String>? =
+                    params[key]?.split(",")?.toSet()?.also {
+                        require(it.none(String::isBlank)) { "Empty $key selector" }
+                    }
+                ExportRequest(
+                    models = selectors("model") ?: setOf("world"),
+                    format = params["format"] ?: "ttr",
+                    profile = params["profile"],
+                    packages = selectors("package"),
+                    areas = selectors("area"),
+                    since = params["since"],
+                    previousIds = params["since"]?.let { snap.recentIdSets[it] },
+                ).also { Exporter.validate(it) }
+            } catch (error: IllegalArgumentException) {
+                call.respondText(
+                    errorBody("xm/bad-request", "message" to error.message.orEmpty()),
+                    ContentType.Application.Json,
+                    HttpStatusCode.BadRequest,
+                )
+                return@get
+            }
+        if (request.since != null && request.previousIds == null) {
+            call.respondText(
+                errorBody("xm/since-unknown", "since" to request.since.orEmpty()),
+                ContentType.Application.Json,
+                HttpStatusCode.Conflict,
+            )
+            return@get
+        }
         val etag = snap.model.version.value
-        val ifNoneMatch = call.request.headers[HttpHeaders.IfNoneMatch]
-        if (ifNoneMatch == etag) {
+        call.response.header(HttpHeaders.ETag, etag)
+        val projection = params.names().any { it != "validate" }
+        if (!projection && matchesEtag(call.request.headers[HttpHeaders.IfNoneMatch], etag)) {
             call.response.status(HttpStatusCode.NotModified)
+            return@get
+        }
+        if (projection) {
+            val result =
+                try {
+                    Exporter().export(
+                        snap.definitions,
+                        snap.graph,
+                        request.copy(
+                            connections = readExportConnections(snap.exportSidecars["connections.toml"]),
+                            renames = snap.exportSidecars["renames.yaml"]?.let(Rename::read).orEmpty(),
+                        ),
+                    )
+                } catch (error: Exception) {
+                    log.error("Metadata projection failed", error)
+                    call.respondText(
+                        errorBody("xm/export-failed"),
+                        ContentType.Application.Json,
+                        HttpStatusCode.InternalServerError,
+                    )
+                    return@get
+                }
+            // Conditional success must never hide cannot-carry or reserved-format errors.
+            if ((result is ExportResult.Single || result is ExportResult.Bundle) &&
+                matchesEtag(call.request.headers[HttpHeaders.IfNoneMatch], etag)
+            ) {
+                call.response.status(HttpStatusCode.NotModified)
+                return@get
+            }
+            when (result) {
+                is ExportResult.Single -> {
+                    val contentType =
+                        if (request.format ==
+                            "xmi"
+                        ) {
+                            ContentType.Application.Xml
+                        } else {
+                            ContentType.parse(result.contentType)
+                        }
+                    call.respondBytes(result.bytes, contentType, HttpStatusCode.OK)
+                }
+                is ExportResult.Bundle ->
+                    call.respondBytes(
+                        buildTarGz(result.files),
+                        CONTENT_TYPE_TAR_GZ,
+                        HttpStatusCode.OK,
+                    )
+                is ExportResult.CannotCarry -> {
+                    val model =
+                        request.models.sorted().first {
+                            LossinessLedger.cannotCarry(
+                                it,
+                                request.format,
+                            ) != null
+                        }
+                    call.respondText(
+                        errorBody(
+                            "xm/format-cannot-carry",
+                            "model" to model,
+                            "format" to request.format,
+                            "lossiness" to result.lossinessId,
+                        ),
+                        ContentType.Application.Json,
+                        HttpStatusCode.UnprocessableEntity,
+                    )
+                }
+                ExportResult.NotBuilt ->
+                    call.respondText(
+                        errorBody("xm/format-not-built", "format" to request.format),
+                        ContentType.Application.Json,
+                        HttpStatusCode.NotImplemented,
+                    )
+                ExportResult.SinceUnknown ->
+                    call.respondText(
+                        errorBody(
+                            "xm/since-unknown",
+                            "since" to request.since.orEmpty(),
+                        ),
+                        ContentType.Application.Json,
+                        HttpStatusCode.Conflict,
+                    )
+            }
             return@get
         }
 
@@ -94,7 +213,8 @@ fun Route.metadataExportRoutes(registry: MetadataRegistry) {
         }
         val etag = snap.model.version.value
         val ifNoneMatch = call.request.headers[HttpHeaders.IfNoneMatch]
-        if (ifNoneMatch == etag) {
+        if (matchesEtag(ifNoneMatch, etag)) {
+            call.response.header(HttpHeaders.ETag, etag)
             call.response.status(HttpStatusCode.NotModified)
             return@get
         }
@@ -104,34 +224,64 @@ fun Route.metadataExportRoutes(registry: MetadataRegistry) {
     }
 }
 
-private fun buildTarGz(bundle: ExportBundle): ByteArray {
-    val baos = ByteArrayOutputStream()
-    GZIPOutputStream(baos).use { gzos ->
-        TarArchiveOutputStream(gzos).use { taos ->
-            taos.setLongFileMode(TarArchiveOutputStream.LONGFILE_GNU)
-            for (file in bundle.files) {
-                val content =
-                    TtrRenderer.renderFile(
+private fun errorBody(
+    error: String,
+    vararg fields: Pair<String, String>,
+): String =
+    JsonObject(
+        linkedMapOf("error" to JsonPrimitive(error)) +
+            fields.associate {
+                it.first to JsonPrimitive(it.second)
+            },
+    ).toString()
+
+private fun matchesEtag(
+    header: String?,
+    version: String,
+): Boolean =
+    header?.split(",")?.any {
+        val token = it.trim().removePrefix("W/")
+        token == "*" || token.removeSurrounding("\"") == version
+    } == true
+
+private fun buildTarGz(bundle: ExportBundle): ByteArray =
+    buildTarGz(
+        bundle.files.map { file ->
+            val path =
+                if (file.packageName !=
+                    null
+                ) {
+                    "${bundle.modelId}/${file.packageName}/${file.filename}"
+                } else {
+                    "${bundle.modelId}/${file.filename}"
+                }
+            ExportResult.Single(
+                path,
+                "text/plain",
+                TtrRenderer
+                    .renderFile(
                         file.schemaCode,
                         file.namespace,
                         file.definitions,
                         file.packageName,
                         file.imports,
-                    )
-                val bytes = content.toByteArray(Charsets.UTF_8)
-                // Package = directory (§4.4): place `package er` files under `er/` so the
-                // extracted tree reloads without a package-declaration-mismatch.
-                val entryPath =
-                    if (file.packageName != null) {
-                        "${bundle.modelId}/${file.packageName}/${file.filename}"
-                    } else {
-                        "${bundle.modelId}/${file.filename}"
-                    }
-                val entry = TarArchiveEntry(entryPath)
-                entry.size = bytes.size.toLong()
-                taos.putArchiveEntry(entry)
-                taos.write(bytes)
-                taos.closeArchiveEntry()
+                    ).toByteArray(Charsets.UTF_8),
+            )
+        },
+    )
+
+private fun buildTarGz(files: List<ExportResult.Single>): ByteArray {
+    val baos = ByteArrayOutputStream()
+    GZIPOutputStream(baos).use { gzip ->
+        TarArchiveOutputStream(gzip).use { archive ->
+            archive.setLongFileMode(TarArchiveOutputStream.LONGFILE_GNU)
+            for (file in files) {
+                val entry = TarArchiveEntry(file.name)
+                entry.size = file.bytes.size.toLong()
+                entry.modTime = java.util.Date(0)
+                archive.putArchiveEntry(entry)
+                archive.write(file.bytes)
+                archive.closeArchiveEntry()
             }
         }
     }

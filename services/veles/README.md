@@ -133,3 +133,43 @@ roles only, so every catalog call answers empty — and:
 A fallback is opt-in, for demos that must come up offline: `METADATA_GIT_FALLBACK=local-model`
 with `METADATA_TTR_ROOT=/path/to/model` serves that directory while the repository is unavailable
 (never merged with it), and `/status` reports `serving_fallback: true`.
+
+## `/model/export`
+
+The existing no-parameter response remains a validated TTR tar.gz; `?validate=false` skips self-validation.
+`/model/export/dot` remains available. Explicit projection requests call the same `ttr-metadata` exporter as the CLI.
+
+| Parameter | Default | Values |
+|---|---|---|
+| `model` | `world` | `cn`, `md`, `er`, `db`, `lexicon`, `bindings`, binding families, comma-separated selectors |
+| `format` | `ttr` | `graph.json`, `defs.json`, `ttl`, `xmi`, `dot`, `ttr`; reserved `yaml`, `ossie`, `uc`, `tmdl`, `pdm`, `ldm`, `cdm` |
+| `profile` | format default | Turtle `skos`/`owl`/`both`; XMI `ttr-mdg/1` (`ea-erd/1` reserved); TTR `canonical` |
+| `package` | all | Comma-separated package names |
+| `area` | all | Comma-separated area names |
+| `since` | absent | Version in the snapshot's latest eight id sets; graph adds `delta` |
+| `validate` | `true` | `false` disables the legacy no-projection TTR self-validation |
+
+Single responses use `application/json`, `text/turtle`, `application/xml`, or `text/vnd.graphviz`; multi-file
+TTR responses use `application/x-tar+gzip`. Each response has the current snapshot `ETag`. `If-None-Match`
+accepts that token, quoted/weak tokens, lists or `*`, returning `304` and the ETag for valid requests.
+Invalid or repeated parameters are rejected before conditional matching. Unknown `since` answers `409`.
+
+```text
+/model/export?model=world&format=graph.json
+/model/export?model=world&format=defs.json
+/model/export?model=cn&format=ttl&profile=owl
+/model/export?format=xmi&profile=ttr-mdg/1
+```
+
+Errors are JSON: `400 xm/bad-request`, `409 xm/since-unknown` (with `since`), `422 xm/format-cannot-carry`
+(with `model`, `format`, `lossiness`), `501 xm/format-not-built`, or `503 model not loaded`.
+Internal projection/sidecar failures answer `500 xm/export-failed`; legacy TTR validation failures retain their
+`500 errors[]` body. A cannot-carry example is
+`{"error":"xm/format-cannot-carry","model":"md","format":"ttl","lossiness":"L-TTL-1"}`.
+
+Definitions, connection/rename sidecars and id history come from the captured registry snapshot, on both initial
+load and refresh. Only public connection locator fields enter `defs.json`; credentials are excluded. Deltas describe
+whole-snapshot removals independently of projection scope; current-snapshot deltas have empty arrays. Archives use
+zero entry timestamps. Rebuild Veles against the containing grammar bundle because the registry/source JVM APIs changed.
+The service pins internal grammar/metadata bundle 0.18.8. The copied invented `xm-world` fixture and goldens must stay in sync with ttr-core; `ExportParitySpec` runs the
+published CLI in-process and compares every byte of graph, definitions and OWL outputs.
