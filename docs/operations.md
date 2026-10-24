@@ -182,3 +182,16 @@ Every service's gRPC server has reflection **off** by default. Set `GRPC_REFLECT
 (the service's `extraEnv`) to let `grpcurl` list and call services without the `.proto` files;
 leave it off where the port is reachable from outside the cluster. Without it, pass the protos:
 `grpcurl -import-path shared/proto/src/main/proto -proto org/tatrman/query/v1/query.proto …`.
+
+## External metadata projection
+
+| Image | Operator command | State / prerequisites |
+|---|---|---|
+| ghcr.io/collite/connect-openmetadata:0.1.0 | `check`, `plan`, `sync --export-url … --om-url … --om-token-file /secrets/token --state-file /state/last.json` | OM 2.0.6; scanned existing tables; read-only token file; writable persistent state directory; default CN path glossary |
+
+The [connector manual](../connectors/openmetadata/README.md) covers options, exit
+codes and deprecation; [local conformance](../conformance/openmetadata/README.md)
+verifies scanner-owned table/column links and repeat-sync behavior. The connector
+never creates or deletes tables. Schedule scanning before projection. Supply
+studio-url for viewer deep links. Parent-table metric associations are native;
+exact column bindings are stored in the metric's ttrColumnAssets property.

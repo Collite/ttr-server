@@ -861,3 +861,42 @@ publish *args:
     git push origin "${NEW_TAG}"
     echo "✅ Pushed ${NEW_TAG} — the matching workflow will publish: ${LANES}"
     echo "   Watch it: gh run watch  (or the repo's Actions tab)"
+
+# XM-P2: isolated, disposable OM 2.0.6 + PG + OpenSearch; no deployed estate access.
+om-up:
+    docker compose -f conformance/openmetadata/compose.yaml up -d --wait --wait-timeout 900 openmetadata-server fixture-pg
+    just om-scan
+
+om-token:
+    @uv run --project connectors/openmetadata --locked python conformance/openmetadata/bot_token.py
+
+om-scan:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    export OM_TOKEN="$(just om-token)"
+    docker compose -f conformance/openmetadata/compose.yaml run --rm scan
+
+om-test:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    export OM_URL="${OM_URL:-http://127.0.0.1:${OM_PORT:-18585}/api}"
+    export OM_TOKEN="${OM_TOKEN:-$(just om-token)}"
+    export OM_RESULTS_DIR="${OM_RESULTS_DIR:-$(pwd)/conformance/openmetadata/results}"
+    mkdir -p "$OM_RESULTS_DIR"
+    uv run --project connectors/openmetadata --locked pytest connectors/openmetadata/tests/live -m om_live -v --junitxml="$OM_RESULTS_DIR/junit.xml" | tee "$OM_RESULTS_DIR/pytest.log"
+
+# Removes only this compose project's disposable conformance data.
+om-down:
+    docker compose -f conformance/openmetadata/compose.yaml down -v --remove-orphans
+
+# Exercise the packaged CLI/SDK runtime against the same local catalog as host tests.
+om-image-test image="connect-openmetadata:ci":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    export OM_TOKEN="${OM_TOKEN:-$(just om-token)}"
+    results="${OM_RESULTS_DIR:-$(pwd)/conformance/openmetadata/results}"
+    mkdir -p "$results"
+    docker run --rm --network xm-om-conformance_default --env OM_TOKEN \
+      -v "$(pwd)/connectors/openmetadata/tests/fixtures/export:/export:ro" \
+      -v "$(pwd)/conformance/openmetadata/image_smoke.sh:/image_smoke.sh:ro" \
+      --entrypoint sh "{{image}}" /image_smoke.sh | tee "$results/image-summaries.jsonl"

@@ -1,0 +1,30 @@
+# SPDX-License-Identifier: Apache-2.0
+source:
+  type: postgres
+  serviceName: northline-pg
+  serviceConnection:
+    config:
+      type: Postgres
+      username: fixture
+      authType:
+        password: fixture
+      hostPort: fixture-pg:5432
+      database: northline
+      sslMode: disable
+  sourceConfig:
+    config:
+      type: DatabaseMetadata
+      schemaFilterPattern:
+        includes: ['^retail$']
+      includeViews: true
+      markDeletedTables: true
+sink:
+  type: metadata-rest
+  config: {}
+workflowConfig:
+  loggerLevel: INFO
+  openMetadataServerConfig:
+    hostPort: http://openmetadata-server:8585/api
+    authProvider: openmetadata
+    securityConfig:
+      jwtToken: ${OM_TOKEN}

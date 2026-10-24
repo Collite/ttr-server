@@ -93,6 +93,7 @@ jobs:
           # Names are the FUNCTIONAL image-repo names (== directory basenames);
           # veles is a surviving persona and stays veles.
           declare -A PATHS=(
+            [connect-openmetadata]=connectors/openmetadata
             [veles]=services/veles
             [query]=services/query
             [translate]=services/translate
@@ -133,7 +134,7 @@ jobs:
             # with a local context: the dockerfile lane below.
             [superset]=images/superset
           )
-          ALL="veles query translate validate dispatch charon lex-matcher llm-gateway nlp nlp-stanza nlp-spacy golem-py morph-studio chrono geo money grounding-mcp resolver automation meta-mcp query-mcp lex-matcher-mcp nlp-mcp worker-postgres worker-mssql worker-polars identity health"
+          ALL="connect-openmetadata veles query translate validate dispatch charon lex-matcher llm-gateway nlp nlp-stanza nlp-spacy golem-py morph-studio chrono geo money grounding-mcp resolver automation meta-mcp query-mcp lex-matcher-mcp nlp-mcp worker-postgres worker-mssql worker-polars identity health"
 
           declare -a NAMES
           if [ "${{ github.event_name }}" = "push" ]; then
@@ -242,6 +243,7 @@ jobs:
         with: { distribution: temurin, java-version: '21' }
       - uses: gradle/actions/setup-gradle@v5
       - name: Gradle auth for Collite/ttr-core (TTR toolchain)
+        if: matrix.name != 'connect-openmetadata'
         env:
           GPR_USER: ${{ secrets.TATRMAN_PKG_USER != '' && secrets.TATRMAN_PKG_USER || github.actor }}
           GPR_TOKEN: ${{ secrets.TATRMAN_PKG_TOKEN != '' && secrets.TATRMAN_PKG_TOKEN || secrets.GITHUB_TOKEN }}
@@ -287,9 +289,19 @@ jobs:
           IMG="${REGISTRY}/${IMAGE_ORG}/${{ matrix.name }}:${{ matrix.version }}"
           # The shared-proto Python package is COPYed by the Dockerfile from
           # shared/proto/build/python-package — generate it first.
-          ./gradlew :shared:proto:preparePythonPackage --no-configuration-cache
+          if [ "${{ matrix.name }}" != connect-openmetadata ]; then
+            ./gradlew :shared:proto:preparePythonPackage --no-configuration-cache
+          fi
           # Repo-root context: the Dockerfile COPYs shared/ and services/<x> from root.
-          docker build -f "${{ matrix.path }}/Dockerfile" -t "$IMG" .
+          BUILD_ARGS=()
+          if [ "${{ matrix.name }}" = connect-openmetadata ]; then
+            IMAGE_ENV=$(mktemp)
+            bash conformance/openmetadata/pull-images.sh base "$IMAGE_ENV"
+            source "$IMAGE_ENV"
+            rm -f "$IMAGE_ENV"
+            BUILD_ARGS=(--build-arg OM_BASE_IMAGE="$OM_INGESTION_IMAGE")
+          fi
+          docker build "${BUILD_ARGS[@]}" -f "${{ matrix.path }}/Dockerfile" -t "$IMG" .
           docker push "$IMG"
 
       # ---------- Dockerfile-only, LOCAL context (the NLP backends) ----------

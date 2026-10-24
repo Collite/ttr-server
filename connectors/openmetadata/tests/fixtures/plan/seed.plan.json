@@ -1,0 +1,24 @@
+[
+  {
+    "op": "EnsureGlossary",
+    "name": "northline Concepts"
+  },
+  {
+    "op": "EnsureGlossary",
+    "name": "northline Entities"
+  },
+  {
+    "op": "EnsureClassification",
+    "name": "Tatrman"
+  },
+  {
+    "op": "EnsureTag",
+    "classification": "Tatrman",
+    "name": "Grounded"
+  },
+  {
+    "op": "EnsureTag",
+    "classification": "Tatrman",
+    "name": "Deprecated"
+  }
+]

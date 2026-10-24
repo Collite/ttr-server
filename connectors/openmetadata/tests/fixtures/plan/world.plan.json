@@ -1,0 +1,752 @@
+[
+  {
+    "op": "EnsureGlossary",
+    "name": "northline Concepts"
+  },
+  {
+    "op": "EnsureGlossary",
+    "name": "northline Entities"
+  },
+  {
+    "op": "EnsureClassification",
+    "name": "Tatrman"
+  },
+  {
+    "op": "EnsureTag",
+    "classification": "Tatrman",
+    "name": "Grounded"
+  },
+  {
+    "op": "EnsureTag",
+    "classification": "Tatrman",
+    "name": "Deprecated"
+  },
+  {
+    "op": "EnsureCustomProperty",
+    "entity_type": "table",
+    "name": "ttrQname",
+    "type": "string"
+  },
+  {
+    "op": "EnsureCustomProperty",
+    "entity_type": "table",
+    "name": "ttrUrl",
+    "type": "string"
+  },
+  {
+    "op": "EnsureCustomProperty",
+    "entity_type": "tableColumn",
+    "name": "ttrQname",
+    "type": "string"
+  },
+  {
+    "op": "EnsureCustomProperty",
+    "entity_type": "glossaryTerm",
+    "name": "ttrQname",
+    "type": "string"
+  },
+  {
+    "op": "EnsureCustomProperty",
+    "entity_type": "glossaryTerm",
+    "name": "ttrUrl",
+    "type": "string"
+  },
+  {
+    "op": "EnsureCustomProperty",
+    "entity_type": "glossaryTerm",
+    "name": "ttrKind",
+    "type": "string"
+  },
+  {
+    "op": "EnsureCustomProperty",
+    "entity_type": "glossaryTerm",
+    "name": "ttrIri",
+    "type": "string"
+  },
+  {
+    "op": "EnsureCustomProperty",
+    "entity_type": "metric",
+    "name": "ttrQname",
+    "type": "string"
+  },
+  {
+    "op": "EnsureCustomProperty",
+    "entity_type": "metric",
+    "name": "ttrUrl",
+    "type": "string"
+  },
+  {
+    "op": "EnsureCustomProperty",
+    "entity_type": "metric",
+    "name": "ttrAdditivity",
+    "type": "string"
+  },
+  {
+    "op": "EnsureCustomProperty",
+    "entity_type": "metric",
+    "name": "ttrColumnAssets",
+    "type": "string"
+  },
+  {
+    "op": "ImportRdf",
+    "glossary": "northline Concepts",
+    "turtle": "@prefix ttr: <https://tatrman.org/ns/ttr#> .\n@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .\n@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .\n@prefix owl: <http://www.w3.org/2002/07/owl#> .\n@prefix skos: <http://www.w3.org/2004/02/skos/core#> .\n@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .\n@prefix dct: <http://purl.org/dc/terms/> .\n@prefix w: <urn:ttr:northline:> .\n\n<https://example.org/northline/Party> a owl:Class, ttr:Kind ;\n    ttr:tier \"core\" ;\n    owl:sameAs w:cn.kind.Party ;\n    ttr:groundsTo w:er.entity.buyer ;\n    ttr:groundingLayer \"er\" ;\n    rdfs:label \"Osoba\"@cs, \"Party\"@en ;\n    rdfs:comment \"A trading party\"@en, \"Obchodní partner\"@cs .\n\nttr:involves_buyer a owl:ObjectProperty ;\n    rdfs:domain w:cn.event.Purchase ;\n    rdfs:range w:cn.role.Customer .\n\nttr:involves_item a owl:ObjectProperty ;\n    rdfs:domain w:cn.event.Purchase ;\n    rdfs:range w:cn.kind.Product .\n\nttr:rel_recommends a owl:ObjectProperty ;\n    rdfs:label \"doporučuje\"@cs, \"recommends\"@en .\n\n<urn:ttr:northline> a owl:Ontology ;\n    dct:identifier \"fixture-1\" ;\n    owl:versionInfo \"0.18\" .\n\nw:area.retail a ttr:Area ;\n    ttr:member w:er.entity.buyer, w:pkg.cn, w:pkg.er, w:pkg.md .\n\nw:cn.event.Purchase a owl:Class, ttr:Event ;\n    ttr:tier \"core\" ;\n    ttr:involves [ a ttr:Participation ; ttr:label \"buyer\" ; ttr:concept w:cn.role.Customer ], [ a ttr:Participation ; ttr:label \"item\" ; ttr:concept w:cn.kind.Product ] ;\n    ttr:extent \"instantaneous\" ;\n    ttr:periodAt \"sold_at\" ;\n    ttr:groundsTo w:er.entity.sale ;\n    ttr:groundingLayer \"er\" ;\n    rdfs:label \"Purchase\"@en .\n\nw:cn.kind.Product a owl:Class, ttr:Kind ;\n    ttr:tier \"core\" ;\n    ttr:groundsTo w:er.entity.product ;\n    ttr:groundingLayer \"er\" ;\n    rdfs:label \"Product\"@en .\n\nw:cn.kind.Prospect a owl:Class, ttr:Kind ;\n    ttr:tier \"open\" ;\n    ttr:abstract true ;\n    ttr:is_a <https://example.org/northline/Party> ;\n    rdfs:subClassOf <https://example.org/northline/Party> ;\n    rdfs:label \"Prospect\"@en .\n\nw:cn.phase.LargePurchase a owl:Class, ttr:Phase ;\n    ttr:tier \"core\" ;\n    ttr:definition \"amount > 100\" ;\n    ttr:definitionLanguage \"ttr-pl\" ;\n    rdfs:label \"LargePurchase\"@en .\n\nw:cn.quality.sold_at a owl:Class, ttr:Quality ;\n    ttr:tier \"core\" ;\n    ttr:groundsTo w:er.entity.sale.sold_at ;\n    ttr:groundingLayer \"er\" ;\n    rdfs:label \"sold_at\"@en .\n\nw:cn.relation_type.recommends a owl:Class, ttr:RelationType ;\n    ttr:tier \"open\" ;\n    rdfs:label \"doporučuje\"@cs, \"recommends\"@en .\n\nw:cn.role.Customer a owl:Class, ttr:Role ;\n    ttr:tier \"core\" ;\n    ttr:groundsTo w:md.dimension.Buyer ;\n    ttr:groundingLayer \"md\" ;\n    rdfs:label \"Customer\"@en .\n"
+  },
+  {
+    "op": "UpsertTerm",
+    "qname": "cn.event.Purchase",
+    "fqn": "northline Concepts.Purchase",
+    "glossary": "northline Concepts",
+    "name": "Purchase",
+    "display": "Purchase",
+    "description": "",
+    "synonyms": [],
+    "parent": null,
+    "related": [
+      {
+        "term": "northline Concepts.Product",
+        "relationType": "relatedTo"
+      },
+      {
+        "term": "northline Concepts.Customer",
+        "relationType": "relatedTo"
+      }
+    ],
+    "iri": "urn:ttr:northline:cn.event.Purchase",
+    "props": {
+      "ttrQname": "cn.event.Purchase",
+      "ttrIri": "urn:ttr:northline:cn.event.Purchase"
+    },
+    "cn": true
+  },
+  {
+    "op": "UpsertTerm",
+    "qname": "cn.kind.Party",
+    "fqn": "northline Concepts.Party",
+    "glossary": "northline Concepts",
+    "name": "Party",
+    "display": "Party",
+    "description": "A trading party",
+    "synonyms": [
+      "osoba",
+      "partner",
+      "party"
+    ],
+    "parent": null,
+    "related": [],
+    "iri": "https://example.org/northline/Party",
+    "props": {
+      "ttrQname": "cn.kind.Party",
+      "ttrIri": "https://example.org/northline/Party"
+    },
+    "cn": true
+  },
+  {
+    "op": "UpsertTerm",
+    "qname": "cn.kind.Product",
+    "fqn": "northline Concepts.Product",
+    "glossary": "northline Concepts",
+    "name": "Product",
+    "display": "Product",
+    "description": "",
+    "synonyms": [],
+    "parent": null,
+    "related": [
+      {
+        "term": "northline Concepts.Purchase",
+        "relationType": "relatedTo"
+      }
+    ],
+    "iri": "urn:ttr:northline:cn.kind.Product",
+    "props": {
+      "ttrQname": "cn.kind.Product",
+      "ttrIri": "urn:ttr:northline:cn.kind.Product"
+    },
+    "cn": true
+  },
+  {
+    "op": "UpsertTerm",
+    "qname": "cn.kind.Prospect",
+    "fqn": "northline Concepts.Party.Prospect",
+    "glossary": "northline Concepts",
+    "name": "Prospect",
+    "display": "Prospect",
+    "description": "",
+    "synonyms": [],
+    "parent": "northline Concepts.Party",
+    "related": [],
+    "iri": "urn:ttr:northline:cn.kind.Prospect",
+    "props": {
+      "ttrQname": "cn.kind.Prospect",
+      "ttrIri": "urn:ttr:northline:cn.kind.Prospect"
+    },
+    "cn": true
+  },
+  {
+    "op": "UpsertTerm",
+    "qname": "cn.phase.LargePurchase",
+    "fqn": "northline Concepts.LargePurchase",
+    "glossary": "northline Concepts",
+    "name": "LargePurchase",
+    "display": "LargePurchase",
+    "description": "",
+    "synonyms": [],
+    "parent": null,
+    "related": [],
+    "iri": "urn:ttr:northline:cn.phase.LargePurchase",
+    "props": {
+      "ttrQname": "cn.phase.LargePurchase",
+      "ttrIri": "urn:ttr:northline:cn.phase.LargePurchase"
+    },
+    "cn": true
+  },
+  {
+    "op": "UpsertTerm",
+    "qname": "cn.quality.sold_at",
+    "fqn": "northline Concepts.sold_at",
+    "glossary": "northline Concepts",
+    "name": "sold_at",
+    "display": "sold_at",
+    "description": "",
+    "synonyms": [],
+    "parent": null,
+    "related": [],
+    "iri": "urn:ttr:northline:cn.quality.sold_at",
+    "props": {
+      "ttrQname": "cn.quality.sold_at",
+      "ttrIri": "urn:ttr:northline:cn.quality.sold_at"
+    },
+    "cn": true
+  },
+  {
+    "op": "UpsertTerm",
+    "qname": "cn.relation_type.recommends",
+    "fqn": "northline Concepts.recommends",
+    "glossary": "northline Concepts",
+    "name": "recommends",
+    "display": "recommends",
+    "description": "",
+    "synonyms": [],
+    "parent": null,
+    "related": [],
+    "iri": "urn:ttr:northline:cn.relation_type.recommends",
+    "props": {
+      "ttrQname": "cn.relation_type.recommends",
+      "ttrIri": "urn:ttr:northline:cn.relation_type.recommends"
+    },
+    "cn": true
+  },
+  {
+    "op": "UpsertTerm",
+    "qname": "cn.role.Customer",
+    "fqn": "northline Concepts.Customer",
+    "glossary": "northline Concepts",
+    "name": "Customer",
+    "display": "Customer",
+    "description": "",
+    "synonyms": [
+      "buyer",
+      "customer",
+      "zákazník"
+    ],
+    "parent": null,
+    "related": [
+      {
+        "term": "northline Concepts.Purchase",
+        "relationType": "relatedTo"
+      }
+    ],
+    "iri": "urn:ttr:northline:cn.role.Customer",
+    "props": {
+      "ttrQname": "cn.role.Customer",
+      "ttrIri": "urn:ttr:northline:cn.role.Customer"
+    },
+    "cn": true
+  },
+  {
+    "op": "UpsertTerm",
+    "qname": "er.entity.buyer",
+    "fqn": "northline Entities.buyer",
+    "glossary": "northline Entities",
+    "name": "buyer",
+    "display": "Buyer",
+    "description": "",
+    "synonyms": [],
+    "parent": null,
+    "related": [
+      {
+        "term": "northline Entities.sale",
+        "relationType": "relatedTo"
+      }
+    ],
+    "iri": "urn:ttr:northline:er.entity.buyer",
+    "props": {
+      "ttrQname": "er.entity.buyer",
+      "ttrIri": "urn:ttr:northline:er.entity.buyer"
+    },
+    "cn": false
+  },
+  {
+    "op": "UpsertTerm",
+    "qname": "er.entity.buyer.id",
+    "fqn": "northline Entities.buyer.\"er.entity.buyer.id\"",
+    "glossary": "northline Entities",
+    "name": "er.entity.buyer.id",
+    "display": "id",
+    "description": "",
+    "synonyms": [],
+    "parent": "northline Entities.buyer",
+    "related": [],
+    "iri": "urn:ttr:northline:er.entity.buyer.id",
+    "props": {
+      "ttrQname": "er.entity.buyer.id",
+      "ttrIri": "urn:ttr:northline:er.entity.buyer.id"
+    },
+    "cn": false
+  },
+  {
+    "op": "UpsertTerm",
+    "qname": "er.entity.buyer.name",
+    "fqn": "northline Entities.buyer.\"er.entity.buyer.name\"",
+    "glossary": "northline Entities",
+    "name": "er.entity.buyer.name",
+    "display": "name",
+    "description": "",
+    "synonyms": [],
+    "parent": "northline Entities.buyer",
+    "related": [],
+    "iri": "urn:ttr:northline:er.entity.buyer.name",
+    "props": {
+      "ttrQname": "er.entity.buyer.name",
+      "ttrIri": "urn:ttr:northline:er.entity.buyer.name"
+    },
+    "cn": false
+  },
+  {
+    "op": "UpsertTerm",
+    "qname": "er.entity.product",
+    "fqn": "northline Entities.product",
+    "glossary": "northline Entities",
+    "name": "product",
+    "display": "product",
+    "description": "",
+    "synonyms": [],
+    "parent": null,
+    "related": [],
+    "iri": "urn:ttr:northline:er.entity.product",
+    "props": {
+      "ttrQname": "er.entity.product",
+      "ttrIri": "urn:ttr:northline:er.entity.product"
+    },
+    "cn": false
+  },
+  {
+    "op": "UpsertTerm",
+    "qname": "er.entity.product.id",
+    "fqn": "northline Entities.product.\"er.entity.product.id\"",
+    "glossary": "northline Entities",
+    "name": "er.entity.product.id",
+    "display": "id",
+    "description": "",
+    "synonyms": [],
+    "parent": "northline Entities.product",
+    "related": [],
+    "iri": "urn:ttr:northline:er.entity.product.id",
+    "props": {
+      "ttrQname": "er.entity.product.id",
+      "ttrIri": "urn:ttr:northline:er.entity.product.id"
+    },
+    "cn": false
+  },
+  {
+    "op": "UpsertTerm",
+    "qname": "er.entity.sale",
+    "fqn": "northline Entities.sale",
+    "glossary": "northline Entities",
+    "name": "sale",
+    "display": "sale",
+    "description": "",
+    "synonyms": [],
+    "parent": null,
+    "related": [
+      {
+        "term": "northline Entities.buyer",
+        "relationType": "relatedTo"
+      }
+    ],
+    "iri": "urn:ttr:northline:er.entity.sale",
+    "props": {
+      "ttrQname": "er.entity.sale",
+      "ttrIri": "urn:ttr:northline:er.entity.sale"
+    },
+    "cn": false
+  },
+  {
+    "op": "UpsertTerm",
+    "qname": "er.entity.sale.amount",
+    "fqn": "northline Entities.sale.\"er.entity.sale.amount\"",
+    "glossary": "northline Entities",
+    "name": "er.entity.sale.amount",
+    "display": "amount",
+    "description": "",
+    "synonyms": [],
+    "parent": "northline Entities.sale",
+    "related": [],
+    "iri": "urn:ttr:northline:er.entity.sale.amount",
+    "props": {
+      "ttrQname": "er.entity.sale.amount",
+      "ttrIri": "urn:ttr:northline:er.entity.sale.amount"
+    },
+    "cn": false
+  },
+  {
+    "op": "UpsertTerm",
+    "qname": "er.entity.sale.buyer_id",
+    "fqn": "northline Entities.sale.\"er.entity.sale.buyer_id\"",
+    "glossary": "northline Entities",
+    "name": "er.entity.sale.buyer_id",
+    "display": "buyer_id",
+    "description": "",
+    "synonyms": [],
+    "parent": "northline Entities.sale",
+    "related": [],
+    "iri": "urn:ttr:northline:er.entity.sale.buyer_id",
+    "props": {
+      "ttrQname": "er.entity.sale.buyer_id",
+      "ttrIri": "urn:ttr:northline:er.entity.sale.buyer_id"
+    },
+    "cn": false
+  },
+  {
+    "op": "UpsertTerm",
+    "qname": "er.entity.sale.id",
+    "fqn": "northline Entities.sale.\"er.entity.sale.id\"",
+    "glossary": "northline Entities",
+    "name": "er.entity.sale.id",
+    "display": "id",
+    "description": "",
+    "synonyms": [],
+    "parent": "northline Entities.sale",
+    "related": [],
+    "iri": "urn:ttr:northline:er.entity.sale.id",
+    "props": {
+      "ttrQname": "er.entity.sale.id",
+      "ttrIri": "urn:ttr:northline:er.entity.sale.id"
+    },
+    "cn": false
+  },
+  {
+    "op": "UpsertTerm",
+    "qname": "er.entity.sale.sold_at",
+    "fqn": "northline Entities.sale.\"er.entity.sale.sold_at\"",
+    "glossary": "northline Entities",
+    "name": "er.entity.sale.sold_at",
+    "display": "sold_at",
+    "description": "",
+    "synonyms": [],
+    "parent": "northline Entities.sale",
+    "related": [],
+    "iri": "urn:ttr:northline:er.entity.sale.sold_at",
+    "props": {
+      "ttrQname": "er.entity.sale.sold_at",
+      "ttrIri": "urn:ttr:northline:er.entity.sale.sold_at"
+    },
+    "cn": false
+  },
+  {
+    "op": "UpsertTerm",
+    "qname": "md.dimension.Buyer",
+    "fqn": "northline Entities.\"md.dimension.Buyer\"",
+    "glossary": "northline Entities",
+    "name": "md.dimension.Buyer",
+    "display": "Buyer",
+    "description": "",
+    "synonyms": [
+      "buyer"
+    ],
+    "parent": null,
+    "related": [],
+    "iri": "urn:ttr:northline:md.dimension.Buyer",
+    "props": {
+      "ttrQname": "md.dimension.Buyer",
+      "ttrIri": "urn:ttr:northline:md.dimension.Buyer",
+      "ttrKind": "dimension"
+    },
+    "cn": false
+  },
+  {
+    "op": "UpsertTerm",
+    "qname": "md.dimension.Calendar",
+    "fqn": "northline Entities.\"md.dimension.Calendar\"",
+    "glossary": "northline Entities",
+    "name": "md.dimension.Calendar",
+    "display": "Calendar",
+    "description": "",
+    "synonyms": [],
+    "parent": null,
+    "related": [],
+    "iri": "urn:ttr:northline:md.dimension.Calendar",
+    "props": {
+      "ttrQname": "md.dimension.Calendar",
+      "ttrIri": "urn:ttr:northline:md.dimension.Calendar",
+      "ttrKind": "dimension"
+    },
+    "cn": false
+  },
+  {
+    "op": "UpsertTerm",
+    "qname": "md.hierarchy.CalendarRollup",
+    "fqn": "northline Entities.\"md.hierarchy.CalendarRollup\"",
+    "glossary": "northline Entities",
+    "name": "md.hierarchy.CalendarRollup",
+    "display": "CalendarRollup",
+    "description": "",
+    "synonyms": [],
+    "parent": null,
+    "related": [],
+    "iri": "urn:ttr:northline:md.hierarchy.CalendarRollup",
+    "props": {
+      "ttrQname": "md.hierarchy.CalendarRollup",
+      "ttrIri": "urn:ttr:northline:md.hierarchy.CalendarRollup",
+      "ttrKind": "hierarchy"
+    },
+    "cn": false
+  },
+  {
+    "op": "UpsertMetric",
+    "qname": "md.measure.balance",
+    "name": "balance",
+    "display": "balance",
+    "description": "",
+    "metricExpression": {
+      "code": "sum",
+      "language": "SQL"
+    },
+    "metricType": "SUM",
+    "props": {
+      "ttrQname": "md.measure.balance",
+      "ttrAdditivity": "semiAdditive"
+    }
+  },
+  {
+    "op": "UpsertMetric",
+    "qname": "md.measure.revenue",
+    "name": "revenue",
+    "display": "revenue",
+    "description": "",
+    "metricExpression": {
+      "code": "sum",
+      "language": "SQL"
+    },
+    "metricType": "SUM",
+    "props": {
+      "ttrQname": "md.measure.revenue"
+    }
+  },
+  {
+    "op": "UpsertMetric",
+    "qname": "md.measure.units",
+    "name": "units",
+    "display": "units",
+    "description": "",
+    "metricExpression": {
+      "code": "sum",
+      "language": "SQL"
+    },
+    "metricType": "SUM",
+    "props": {
+      "ttrQname": "md.measure.units"
+    }
+  },
+  {
+    "op": "SetTableProps",
+    "fqn": "northline-pg.northline.retail.buyers",
+    "props": {
+      "ttrQname": "db.retail.buyers"
+    },
+    "tags": [
+      "Tatrman.Grounded"
+    ],
+    "description": ""
+  },
+  {
+    "op": "SetTableProps",
+    "fqn": "northline-pg.northline.retail.products",
+    "props": {
+      "ttrQname": "db.retail.products"
+    },
+    "tags": [],
+    "description": ""
+  },
+  {
+    "op": "SetTableProps",
+    "fqn": "northline-pg.northline.retail.recent_sales",
+    "props": {
+      "ttrQname": "db.retail.recent_sales"
+    },
+    "tags": [],
+    "description": ""
+  },
+  {
+    "op": "SetTableProps",
+    "fqn": "northline-pg.northline.retail.sales",
+    "props": {
+      "ttrQname": "db.retail.sales"
+    },
+    "tags": [
+      "Tatrman.Grounded"
+    ],
+    "description": ""
+  },
+  {
+    "op": "SetColumnTags",
+    "fqn": "northline-pg.northline.retail.buyers",
+    "column": "id",
+    "props": {
+      "ttrQname": "db.retail.buyers.id"
+    },
+    "tags": [
+      "Tatrman.Grounded"
+    ]
+  },
+  {
+    "op": "SetColumnTags",
+    "fqn": "northline-pg.northline.retail.buyers",
+    "column": "name",
+    "props": {
+      "ttrQname": "db.retail.buyers.name"
+    },
+    "tags": []
+  },
+  {
+    "op": "SetColumnTags",
+    "fqn": "northline-pg.northline.retail.products",
+    "column": "id",
+    "props": {
+      "ttrQname": "db.retail.products.id"
+    },
+    "tags": []
+  },
+  {
+    "op": "SetColumnTags",
+    "fqn": "northline-pg.northline.retail.products",
+    "column": "name",
+    "props": {
+      "ttrQname": "db.retail.products.name"
+    },
+    "tags": []
+  },
+  {
+    "op": "SetColumnTags",
+    "fqn": "northline-pg.northline.retail.recent_sales",
+    "column": "id",
+    "props": {
+      "ttrQname": "db.retail.recent_sales.id"
+    },
+    "tags": []
+  },
+  {
+    "op": "SetColumnTags",
+    "fqn": "northline-pg.northline.retail.sales",
+    "column": "amount",
+    "props": {
+      "ttrQname": "db.retail.sales.amount"
+    },
+    "tags": [
+      "Tatrman.Grounded"
+    ]
+  },
+  {
+    "op": "SetColumnTags",
+    "fqn": "northline-pg.northline.retail.sales",
+    "column": "buyer_id",
+    "props": {
+      "ttrQname": "db.retail.sales.buyer_id"
+    },
+    "tags": [
+      "Tatrman.Grounded"
+    ]
+  },
+  {
+    "op": "SetColumnTags",
+    "fqn": "northline-pg.northline.retail.sales",
+    "column": "id",
+    "props": {
+      "ttrQname": "db.retail.sales.id"
+    },
+    "tags": [
+      "Tatrman.Grounded"
+    ]
+  },
+  {
+    "op": "SetColumnTags",
+    "fqn": "northline-pg.northline.retail.sales",
+    "column": "sold_at",
+    "props": {
+      "ttrQname": "db.retail.sales.sold_at"
+    },
+    "tags": [
+      "Tatrman.Grounded"
+    ]
+  },
+  {
+    "op": "LinkMetricToAsset",
+    "metric": "balance",
+    "asset_fqn": "northline-pg.northline.retail.sales.amount",
+    "asset_type": "column"
+  },
+  {
+    "op": "LinkMetricToAsset",
+    "metric": "revenue",
+    "asset_fqn": "northline-pg.northline.retail.sales.amount",
+    "asset_type": "column"
+  },
+  {
+    "op": "LinkMetricToAsset",
+    "metric": "units",
+    "asset_fqn": "northline-pg.northline.retail.sales.id",
+    "asset_type": "column"
+  },
+  {
+    "op": "LinkTermToAsset",
+    "term_fqn": "northline Concepts.Party",
+    "asset_fqn": "northline-pg.northline.retail.buyers",
+    "asset_type": "table"
+  },
+  {
+    "op": "LinkTermToAsset",
+    "term_fqn": "northline Concepts.Purchase",
+    "asset_fqn": "northline-pg.northline.retail.sales",
+    "asset_type": "table"
+  },
+  {
+    "op": "LinkTermToAsset",
+    "term_fqn": "northline Entities.\"md.dimension.Buyer\"",
+    "asset_fqn": "northline-pg.northline.retail.sales.buyer_id",
+    "asset_type": "column"
+  },
+  {
+    "op": "LinkTermToAsset",
+    "term_fqn": "northline Entities.\"md.dimension.Calendar\"",
+    "asset_fqn": "northline-pg.northline.retail.sales.sold_at",
+    "asset_type": "column"
+  },
+  {
+    "op": "LinkTermToAsset",
+    "term_fqn": "northline Entities.buyer",
+    "asset_fqn": "northline-pg.northline.retail.buyers",
+    "asset_type": "table"
+  },
+  {
+    "op": "LinkTermToAsset",
+    "term_fqn": "northline Entities.buyer.\"er.entity.buyer.id\"",
+    "asset_fqn": "northline-pg.northline.retail.buyers.id",
+    "asset_type": "column"
+  },
+  {
+    "op": "LinkTermToAsset",
+    "term_fqn": "northline Entities.sale",
+    "asset_fqn": "northline-pg.northline.retail.sales",
+    "asset_type": "table"
+  }
+]

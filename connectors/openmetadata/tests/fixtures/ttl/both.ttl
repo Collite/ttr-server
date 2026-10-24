@@ -1,0 +1,103 @@
+@prefix ttr: <https://tatrman.org/ns/ttr#> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix skos: <http://www.w3.org/2004/02/skos/core#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+@prefix dct: <http://purl.org/dc/terms/> .
+@prefix w: <urn:ttr:northline:> .
+
+<https://example.org/northline/Party> a owl:Class, skos:Concept, ttr:Kind ;
+    skos:inScheme w:pkg.cn ;
+    ttr:tier "core" ;
+    owl:sameAs w:cn.kind.Party ;
+    ttr:groundsTo w:db.retail.buyers, w:er.entity.buyer ;
+    ttr:groundingLayer "db", "er" ;
+    skos:exactMatch w:db.retail.buyers ;
+    skos:prefLabel "Osoba"@cs, "Party"@en ;
+    skos:altLabel "osoba"@cs, "partner"@cs, "partner"@en, "party"@en ;
+    rdfs:label "Osoba"@cs, "Party"@en ;
+    skos:definition "A trading party"@en, "Obchodní partner"@cs ;
+    rdfs:comment "A trading party"@en, "Obchodní partner"@cs .
+
+ttr:involves_buyer a owl:ObjectProperty ;
+    rdfs:domain w:cn.event.Purchase ;
+    rdfs:range w:cn.role.Customer .
+
+ttr:involves_item a owl:ObjectProperty ;
+    rdfs:domain w:cn.event.Purchase ;
+    rdfs:range w:cn.kind.Product .
+
+ttr:rel_recommends a owl:ObjectProperty ;
+    rdfs:label "doporučuje"@cs, "recommends"@en .
+
+<urn:ttr:northline> a owl:Ontology ;
+    dct:identifier "fixture-1" ;
+    owl:versionInfo "0.18" .
+
+w:area.retail a ttr:Area ;
+    ttr:member w:er.entity.buyer, w:pkg.cn, w:pkg.er, w:pkg.md .
+
+w:cn.event.Purchase a owl:Class, skos:Concept, ttr:Event ;
+    skos:inScheme w:pkg.cn ;
+    ttr:tier "core" ;
+    ttr:involves [ a ttr:Participation ; ttr:label "buyer" ; ttr:concept w:cn.role.Customer ], [ a ttr:Participation ; ttr:label "item" ; ttr:concept w:cn.kind.Product ] ;
+    ttr:extent "instantaneous" ;
+    ttr:periodAt "sold_at" ;
+    ttr:groundsTo w:er.entity.sale ;
+    ttr:groundingLayer "er" ;
+    skos:prefLabel "Purchase"@en ;
+    rdfs:label "Purchase"@en .
+
+w:cn.kind.Product a owl:Class, skos:Concept, ttr:Kind ;
+    skos:inScheme w:pkg.er ;
+    ttr:tier "core" ;
+    ttr:groundsTo w:er.entity.product ;
+    ttr:groundingLayer "er" ;
+    skos:prefLabel "Product"@en ;
+    rdfs:label "Product"@en .
+
+w:cn.kind.Prospect a owl:Class, skos:Concept, ttr:Kind ;
+    skos:inScheme w:pkg.cn ;
+    ttr:tier "open" ;
+    ttr:abstract true ;
+    ttr:is_a <https://example.org/northline/Party> ;
+    rdfs:subClassOf <https://example.org/northline/Party> ;
+    skos:broader <https://example.org/northline/Party> ;
+    skos:prefLabel "Prospect"@en ;
+    rdfs:label "Prospect"@en .
+
+w:cn.phase.LargePurchase a owl:Class, skos:Concept, ttr:Phase ;
+    skos:inScheme w:pkg.cn ;
+    ttr:tier "core" ;
+    ttr:definition "amount > 100" ;
+    ttr:definitionLanguage "ttr-pl" ;
+    skos:prefLabel "LargePurchase"@en ;
+    rdfs:label "LargePurchase"@en .
+
+w:cn.quality.sold_at a owl:Class, skos:Concept, ttr:Quality ;
+    skos:inScheme w:pkg.cn ;
+    ttr:tier "core" ;
+    ttr:groundsTo w:er.entity.sale.sold_at ;
+    ttr:groundingLayer "er" ;
+    skos:prefLabel "sold_at"@en ;
+    rdfs:label "sold_at"@en .
+
+w:cn.relation_type.recommends a owl:Class, skos:Concept, ttr:RelationType ;
+    skos:inScheme w:pkg.cn ;
+    ttr:tier "open" ;
+    skos:prefLabel "doporučuje"@cs, "recommends"@en ;
+    rdfs:label "doporučuje"@cs, "recommends"@en .
+
+w:cn.role.Customer a owl:Class, skos:Concept, ttr:Role ;
+    skos:inScheme w:pkg.cn ;
+    ttr:tier "core" ;
+    ttr:groundsTo w:md.dimension.Buyer ;
+    ttr:groundingLayer "md" ;
+    skos:prefLabel "Customer"@en ;
+    skos:altLabel "buyer"@en, "customer"@en, "zákazník"@cs ;
+    rdfs:label "Customer"@en .
+
+w:pkg.cn a skos:ConceptScheme .
+
+w:pkg.er a skos:ConceptScheme .
