@@ -82,3 +82,6 @@ shared/libs/python/ttr-nlp/generated/
 # false`), so `.venv/` is pure build output — it was simply never ignored, because
 # nothing had run `uv sync` in a tracked checkout before.
 **/.venv/
+
+# XM local conformance evidence (uploaded by CI).
+conformance/openmetadata/results/

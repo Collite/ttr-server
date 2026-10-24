@@ -129,13 +129,14 @@ def test_asset_links_and_column_maps(export: Export) -> None:
         for link in links
     )
     assert any(
-        link.term_fqn == "northline Entities.buyer.id"
+        link.term_fqn == 'northline Entities.buyer."er.entity.buyer.id"'
         and link.asset_fqn.endswith(".buyers.id")
         and link.asset_type == "column"
         for link in links
     )
     assert any(
-        link.term_fqn == "northline Entities.Buyer" and link.asset_fqn.endswith(".sales.buyer_id")
+        link.term_fqn == 'northline Entities."md.dimension.Buyer"'
+        and link.asset_fqn.endswith(".sales.buyer_id")
         for link in links
     )
     metric_links = [op for op in plan.operations if isinstance(op, LinkMetricToAsset)]
@@ -255,3 +256,21 @@ def test_sdk_accepts_metric_and_term_payloads(export: Export) -> None:
                 }
             )
             assert str(term.iri) == op.iri
+
+
+def test_glossary_names_are_unique_across_all_parents(export: Export) -> None:
+    # OM 2.0.6 rejects two leaf names like 'id', even with different parents.
+    terms = [op for op in plan_from_export(export).operations if isinstance(op, UpsertTerm)]
+    names = [(op.glossary, op.name.casefold()) for op in terms]
+    assert len(names) == len(set(names))
+    buyer_id = next(op for op in terms if op.qname == "er.entity.buyer.id")
+    assert buyer_id.name == "er.entity.buyer.id"
+    assert buyer_id.display == "id"
+    assert buyer_id.parent == "northline Entities.buyer"
+
+
+def test_case_insensitive_glossary_name_collision_fails_before_writes(export: Export) -> None:
+    customer = next(n for n in export.graph.nodes if n.id == "cn.role.Customer")
+    customer.label = "party"
+    with pytest.raises(MappingError, match="glossary name collision"):
+        plan_from_export(export)

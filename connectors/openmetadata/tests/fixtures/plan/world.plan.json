@@ -35,7 +35,7 @@
   },
   {
     "op": "EnsureCustomProperty",
-    "entity_type": "column",
+    "entity_type": "tableColumn",
     "name": "ttrQname",
     "type": "string"
   },
@@ -59,6 +59,12 @@
   },
   {
     "op": "EnsureCustomProperty",
+    "entity_type": "glossaryTerm",
+    "name": "ttrIri",
+    "type": "string"
+  },
+  {
+    "op": "EnsureCustomProperty",
     "entity_type": "metric",
     "name": "ttrQname",
     "type": "string"
@@ -73,6 +79,12 @@
     "op": "EnsureCustomProperty",
     "entity_type": "metric",
     "name": "ttrAdditivity",
+    "type": "string"
+  },
+  {
+    "op": "EnsureCustomProperty",
+    "entity_type": "metric",
+    "name": "ttrColumnAssets",
     "type": "string"
   },
   {
@@ -102,7 +114,8 @@
     ],
     "iri": "urn:ttr:northline:cn.event.Purchase",
     "props": {
-      "ttrQname": "cn.event.Purchase"
+      "ttrQname": "cn.event.Purchase",
+      "ttrIri": "urn:ttr:northline:cn.event.Purchase"
     },
     "cn": true
   },
@@ -123,7 +136,8 @@
     "related": [],
     "iri": "https://example.org/northline/Party",
     "props": {
-      "ttrQname": "cn.kind.Party"
+      "ttrQname": "cn.kind.Party",
+      "ttrIri": "https://example.org/northline/Party"
     },
     "cn": true
   },
@@ -145,7 +159,8 @@
     ],
     "iri": "urn:ttr:northline:cn.kind.Product",
     "props": {
-      "ttrQname": "cn.kind.Product"
+      "ttrQname": "cn.kind.Product",
+      "ttrIri": "urn:ttr:northline:cn.kind.Product"
     },
     "cn": true
   },
@@ -162,7 +177,8 @@
     "related": [],
     "iri": "urn:ttr:northline:cn.kind.Prospect",
     "props": {
-      "ttrQname": "cn.kind.Prospect"
+      "ttrQname": "cn.kind.Prospect",
+      "ttrIri": "urn:ttr:northline:cn.kind.Prospect"
     },
     "cn": true
   },
@@ -179,7 +195,8 @@
     "related": [],
     "iri": "urn:ttr:northline:cn.phase.LargePurchase",
     "props": {
-      "ttrQname": "cn.phase.LargePurchase"
+      "ttrQname": "cn.phase.LargePurchase",
+      "ttrIri": "urn:ttr:northline:cn.phase.LargePurchase"
     },
     "cn": true
   },
@@ -196,7 +213,8 @@
     "related": [],
     "iri": "urn:ttr:northline:cn.quality.sold_at",
     "props": {
-      "ttrQname": "cn.quality.sold_at"
+      "ttrQname": "cn.quality.sold_at",
+      "ttrIri": "urn:ttr:northline:cn.quality.sold_at"
     },
     "cn": true
   },
@@ -213,7 +231,8 @@
     "related": [],
     "iri": "urn:ttr:northline:cn.relation_type.recommends",
     "props": {
-      "ttrQname": "cn.relation_type.recommends"
+      "ttrQname": "cn.relation_type.recommends",
+      "ttrIri": "urn:ttr:northline:cn.relation_type.recommends"
     },
     "cn": true
   },
@@ -239,7 +258,8 @@
     ],
     "iri": "urn:ttr:northline:cn.role.Customer",
     "props": {
-      "ttrQname": "cn.role.Customer"
+      "ttrQname": "cn.role.Customer",
+      "ttrIri": "urn:ttr:northline:cn.role.Customer"
     },
     "cn": true
   },
@@ -261,16 +281,17 @@
     ],
     "iri": "urn:ttr:northline:er.entity.buyer",
     "props": {
-      "ttrQname": "er.entity.buyer"
+      "ttrQname": "er.entity.buyer",
+      "ttrIri": "urn:ttr:northline:er.entity.buyer"
     },
     "cn": false
   },
   {
     "op": "UpsertTerm",
     "qname": "er.entity.buyer.id",
-    "fqn": "northline Entities.buyer.id",
+    "fqn": "northline Entities.buyer.\"er.entity.buyer.id\"",
     "glossary": "northline Entities",
-    "name": "id",
+    "name": "er.entity.buyer.id",
     "display": "id",
     "description": "",
     "synonyms": [],
@@ -278,16 +299,17 @@
     "related": [],
     "iri": "urn:ttr:northline:er.entity.buyer.id",
     "props": {
-      "ttrQname": "er.entity.buyer.id"
+      "ttrQname": "er.entity.buyer.id",
+      "ttrIri": "urn:ttr:northline:er.entity.buyer.id"
     },
     "cn": false
   },
   {
     "op": "UpsertTerm",
     "qname": "er.entity.buyer.name",
-    "fqn": "northline Entities.buyer.name",
+    "fqn": "northline Entities.buyer.\"er.entity.buyer.name\"",
     "glossary": "northline Entities",
-    "name": "name",
+    "name": "er.entity.buyer.name",
     "display": "name",
     "description": "",
     "synonyms": [],
@@ -295,7 +317,8 @@
     "related": [],
     "iri": "urn:ttr:northline:er.entity.buyer.name",
     "props": {
-      "ttrQname": "er.entity.buyer.name"
+      "ttrQname": "er.entity.buyer.name",
+      "ttrIri": "urn:ttr:northline:er.entity.buyer.name"
     },
     "cn": false
   },
@@ -312,16 +335,17 @@
     "related": [],
     "iri": "urn:ttr:northline:er.entity.product",
     "props": {
-      "ttrQname": "er.entity.product"
+      "ttrQname": "er.entity.product",
+      "ttrIri": "urn:ttr:northline:er.entity.product"
     },
     "cn": false
   },
   {
     "op": "UpsertTerm",
     "qname": "er.entity.product.id",
-    "fqn": "northline Entities.product.id",
+    "fqn": "northline Entities.product.\"er.entity.product.id\"",
     "glossary": "northline Entities",
-    "name": "id",
+    "name": "er.entity.product.id",
     "display": "id",
     "description": "",
     "synonyms": [],
@@ -329,7 +353,8 @@
     "related": [],
     "iri": "urn:ttr:northline:er.entity.product.id",
     "props": {
-      "ttrQname": "er.entity.product.id"
+      "ttrQname": "er.entity.product.id",
+      "ttrIri": "urn:ttr:northline:er.entity.product.id"
     },
     "cn": false
   },
@@ -351,16 +376,17 @@
     ],
     "iri": "urn:ttr:northline:er.entity.sale",
     "props": {
-      "ttrQname": "er.entity.sale"
+      "ttrQname": "er.entity.sale",
+      "ttrIri": "urn:ttr:northline:er.entity.sale"
     },
     "cn": false
   },
   {
     "op": "UpsertTerm",
     "qname": "er.entity.sale.amount",
-    "fqn": "northline Entities.sale.amount",
+    "fqn": "northline Entities.sale.\"er.entity.sale.amount\"",
     "glossary": "northline Entities",
-    "name": "amount",
+    "name": "er.entity.sale.amount",
     "display": "amount",
     "description": "",
     "synonyms": [],
@@ -368,16 +394,17 @@
     "related": [],
     "iri": "urn:ttr:northline:er.entity.sale.amount",
     "props": {
-      "ttrQname": "er.entity.sale.amount"
+      "ttrQname": "er.entity.sale.amount",
+      "ttrIri": "urn:ttr:northline:er.entity.sale.amount"
     },
     "cn": false
   },
   {
     "op": "UpsertTerm",
     "qname": "er.entity.sale.buyer_id",
-    "fqn": "northline Entities.sale.buyer_id",
+    "fqn": "northline Entities.sale.\"er.entity.sale.buyer_id\"",
     "glossary": "northline Entities",
-    "name": "buyer_id",
+    "name": "er.entity.sale.buyer_id",
     "display": "buyer_id",
     "description": "",
     "synonyms": [],
@@ -385,16 +412,17 @@
     "related": [],
     "iri": "urn:ttr:northline:er.entity.sale.buyer_id",
     "props": {
-      "ttrQname": "er.entity.sale.buyer_id"
+      "ttrQname": "er.entity.sale.buyer_id",
+      "ttrIri": "urn:ttr:northline:er.entity.sale.buyer_id"
     },
     "cn": false
   },
   {
     "op": "UpsertTerm",
     "qname": "er.entity.sale.id",
-    "fqn": "northline Entities.sale.id",
+    "fqn": "northline Entities.sale.\"er.entity.sale.id\"",
     "glossary": "northline Entities",
-    "name": "id",
+    "name": "er.entity.sale.id",
     "display": "id",
     "description": "",
     "synonyms": [],
@@ -402,16 +430,17 @@
     "related": [],
     "iri": "urn:ttr:northline:er.entity.sale.id",
     "props": {
-      "ttrQname": "er.entity.sale.id"
+      "ttrQname": "er.entity.sale.id",
+      "ttrIri": "urn:ttr:northline:er.entity.sale.id"
     },
     "cn": false
   },
   {
     "op": "UpsertTerm",
     "qname": "er.entity.sale.sold_at",
-    "fqn": "northline Entities.sale.sold_at",
+    "fqn": "northline Entities.sale.\"er.entity.sale.sold_at\"",
     "glossary": "northline Entities",
-    "name": "sold_at",
+    "name": "er.entity.sale.sold_at",
     "display": "sold_at",
     "description": "",
     "synonyms": [],
@@ -419,16 +448,17 @@
     "related": [],
     "iri": "urn:ttr:northline:er.entity.sale.sold_at",
     "props": {
-      "ttrQname": "er.entity.sale.sold_at"
+      "ttrQname": "er.entity.sale.sold_at",
+      "ttrIri": "urn:ttr:northline:er.entity.sale.sold_at"
     },
     "cn": false
   },
   {
     "op": "UpsertTerm",
     "qname": "md.dimension.Buyer",
-    "fqn": "northline Entities.Buyer",
+    "fqn": "northline Entities.\"md.dimension.Buyer\"",
     "glossary": "northline Entities",
-    "name": "Buyer",
+    "name": "md.dimension.Buyer",
     "display": "Buyer",
     "description": "",
     "synonyms": [
@@ -439,6 +469,7 @@
     "iri": "urn:ttr:northline:md.dimension.Buyer",
     "props": {
       "ttrQname": "md.dimension.Buyer",
+      "ttrIri": "urn:ttr:northline:md.dimension.Buyer",
       "ttrKind": "dimension"
     },
     "cn": false
@@ -446,9 +477,9 @@
   {
     "op": "UpsertTerm",
     "qname": "md.dimension.Calendar",
-    "fqn": "northline Entities.Calendar",
+    "fqn": "northline Entities.\"md.dimension.Calendar\"",
     "glossary": "northline Entities",
-    "name": "Calendar",
+    "name": "md.dimension.Calendar",
     "display": "Calendar",
     "description": "",
     "synonyms": [],
@@ -457,6 +488,7 @@
     "iri": "urn:ttr:northline:md.dimension.Calendar",
     "props": {
       "ttrQname": "md.dimension.Calendar",
+      "ttrIri": "urn:ttr:northline:md.dimension.Calendar",
       "ttrKind": "dimension"
     },
     "cn": false
@@ -464,9 +496,9 @@
   {
     "op": "UpsertTerm",
     "qname": "md.hierarchy.CalendarRollup",
-    "fqn": "northline Entities.CalendarRollup",
+    "fqn": "northline Entities.\"md.hierarchy.CalendarRollup\"",
     "glossary": "northline Entities",
-    "name": "CalendarRollup",
+    "name": "md.hierarchy.CalendarRollup",
     "display": "CalendarRollup",
     "description": "",
     "synonyms": [],
@@ -475,6 +507,7 @@
     "iri": "urn:ttr:northline:md.hierarchy.CalendarRollup",
     "props": {
       "ttrQname": "md.hierarchy.CalendarRollup",
+      "ttrIri": "urn:ttr:northline:md.hierarchy.CalendarRollup",
       "ttrKind": "hierarchy"
     },
     "cn": false
@@ -688,13 +721,13 @@
   },
   {
     "op": "LinkTermToAsset",
-    "term_fqn": "northline Entities.Buyer",
+    "term_fqn": "northline Entities.\"md.dimension.Buyer\"",
     "asset_fqn": "northline-pg.northline.retail.sales.buyer_id",
     "asset_type": "column"
   },
   {
     "op": "LinkTermToAsset",
-    "term_fqn": "northline Entities.Calendar",
+    "term_fqn": "northline Entities.\"md.dimension.Calendar\"",
     "asset_fqn": "northline-pg.northline.retail.sales.sold_at",
     "asset_type": "column"
   },
@@ -706,7 +739,7 @@
   },
   {
     "op": "LinkTermToAsset",
-    "term_fqn": "northline Entities.buyer.id",
+    "term_fqn": "northline Entities.buyer.\"er.entity.buyer.id\"",
     "asset_fqn": "northline-pg.northline.retail.buyers.id",
     "asset_type": "column"
   },

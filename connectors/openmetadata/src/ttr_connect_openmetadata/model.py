@@ -126,7 +126,7 @@ class EnsureTag(Operation):
 
 class EnsureCustomProperty(Operation):
     op: Literal["EnsureCustomProperty"] = "EnsureCustomProperty"
-    entity_type: Literal["table", "column", "glossaryTerm", "metric"]
+    entity_type: Literal["table", "tableColumn", "glossaryTerm", "metric"]
     name: str
     type: Literal["string"] = "string"
 

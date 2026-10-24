@@ -114,3 +114,50 @@ remain pending for S2.3.
   response. Keep returned typed entities and use `model_copy(deep=True)` instead
   of rebuilding responses through default-filled JSON; otherwise absent default
   arrays can generate a patch addressing an array the server never returned.
+
+## S2.3 live findings (A-XM-9)
+
+Verified against real OM 2.0.6 + PostgreSQL 16 + OpenSearch 3.4.0 on 2026-10-24.
+
+- The registry name is **tableColumn**, not column; eleven string properties are
+  registered across table/tableColumn/glossaryTerm/metric, including metric
+  `ttrColumnAssets`. Read tables with **columns,tags,extension**: without columns,
+  the API returns empty column tag arrays even though tags are persisted. This
+  matters for preserving metadata and no-op detection.
+- Glossary term names are unique **case-insensitively across the whole glossary**,
+  even with different parents. ER attributes and MD terms use their canonical
+  qname as catalog name (quoted as one FQN segment); displayName stays human and
+  parent structure is retained. Other name collisions fail during planning.
+- OM silently drops `tableColumn` from native Metric.assets. The connector uses
+  a native parent-table asset plus sorted JSON column FQNs in registered string
+  property `ttrColumnAssets`; PATCH is followed by independent GET verification.
+  This preserves the precise binding without pretending a native column relation
+  exists. Other extension data and existing native assets are preserved.
+- RDF owl and both profiles are accepted with original IRIs, but hierarchy and
+  language tags are lossy. Default CN path is now **glossary**, as the prepared
+  fallback requires. Explicit owl remains available. [V-OM-1](../../../conformance/openmetadata/V-OM-1.md)
+  records the actual import fields and warnings.
+- ingestion-base:2.0.6 runs Python 3.12.15 / SDK 2.0.6.0 as nonroot user
+  **openmetadata**; there is no airflow user. The Dockerfile uses the actual user.
+- [OM 2.0 minimum requirements](https://docs.open-metadata.org/v2.0.x/deployment/minimum-requirements)
+  require OpenSearch **>=3.4.0** due to older script_score failures. See
+  [V-OM-2](../../../conformance/openmetadata/V-OM-2.md) for both real lane results.
+
+These live observations supersede S2.1/S2.2's SDK-only assumptions about column
+registry naming and native metric-column persistence. Neither fake HTTP success
+nor SDK model validation alone is live acceptance.
+
+The server's term-create mapper ignores iri, and an IRI-only patch can return it
+without persisting it. New terms receive IRI together with registered source
+properties, including ttrIri, in a tracked patch followed by independent GET.
+Deprecation is also GET-verified. The suite observes completed approval instances and a quiet event interval
+before measuring repeat-sync entity versions.
+
+Status PATCHes send `If-Match: W/"<version>"`. OM otherwise consolidates the
+same user's PATCHes for ten minutes, replaying previous metadata changes in a
+status event and retriggering approval after deprecation. Conditional writes
+skip that consolidation, preserve pure status events and reject concurrent edits
+with 412; no 4xx retry or state advance occurs. Deprecation is checked immediately
+and again after a delay in the live suite. Reappearance can be Draft or Approved
+under the catalog's approval policy. Initial approval-instance completion is
+observed before the version/no-op assertions; the suite never disables workflows.

@@ -9,6 +9,7 @@ from pydantic import ValidationError
 
 from .export_reader import DirSource, ExportError, NotModified, UrlSource
 from .mapping import MappingError, deprecations, json_lines, plan_from_export
+from .model import ImportRdf
 from .state import State, read_state, write_state
 
 
@@ -23,6 +24,7 @@ def main(argv: list[str] | None = None) -> int:
             source.add_argument("--export-url", help="full /model/export route URL")
             command.add_argument("--world", help="defaults to the export world; must match it")
             command.add_argument("--studio-url")
+            command.add_argument("--cn-path", choices=("owl", "glossary"), default="glossary")
             command.add_argument("--state-file", type=Path)
             command.add_argument(
                 "--deprecate-missing", action=argparse.BooleanOptionalAction, default=True
@@ -32,7 +34,6 @@ def main(argv: list[str] | None = None) -> int:
             command.add_argument("--om-url")
             command.add_argument("--om-token-file", type=Path)
         if name == "sync":
-            command.add_argument("--cn-path", choices=("owl", "glossary"), default="owl")
             command.add_argument("--dry-run", action="store_true")
     args = parser.parse_args(argv)
     dry = args.command == "plan" or (args.command == "sync" and args.dry_run)
@@ -53,6 +54,10 @@ def main(argv: list[str] | None = None) -> int:
             return 2
         try:
             result = plan_from_export(export, args.world, args.studio_url)
+            if args.cn_path == "glossary":
+                result.operations = [
+                    op for op in result.operations if not isinstance(op, ImportRdf)
+                ]
             current_ids = {n.id for n in export.graph.nodes if not n.external}
             current_ids |= {e.id for e in export.graph.edges if e.id}
             if args.deprecate_missing:

@@ -9,6 +9,7 @@ on:
   workflow_dispatch:
   schedule:
     - cron: '0 3 * * *'
+    - cron: '0 5 * * 1' # XM: weekly OM conformance
 
 jobs:
   # Also the WIRE-COMPATIBILITY gate (RV-P2.1.T7). `:shared:proto:check` runs
@@ -217,6 +218,69 @@ jobs:
         if: steps.changes.outputs.connector == 'true'
         working-directory: connectors/openmetadata
         run: uv run --locked pytest -q
+
+  # XM-P2 / OM-5: real server + PostgreSQL + OpenSearch, explicit migration,
+  # real Postgres ingestion, then CLI and RDF conformance; never all-in-one.
+  om-conformance:
+    if: github.event_name != 'schedule' || github.event.schedule == '0 5 * * 1'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      pull-requests: read
+    strategy:
+      fail-fast: false
+      matrix:
+        opensearch: ['3.4.0', '3.0.0']
+    env:
+      OM_OPENSEARCH_VERSION: ${{ matrix.opensearch }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dorny/paths-filter@v3
+        id: changes
+        with:
+          filters: |
+            om:
+              - 'connectors/openmetadata/**'
+              - 'conformance/openmetadata/**'
+              - '.github/workflows/ci.yml'
+              - '.github/workflows/release-image.yml'
+              - 'justfile'
+      - uses: actions/setup-python@v5
+        if: steps.changes.outputs.om == 'true' || github.event_name == 'workflow_dispatch' || github.event.schedule == '0 5 * * 1'
+        with:
+          python-version: '3.13'
+      - uses: astral-sh/setup-uv@v5
+        if: steps.changes.outputs.om == 'true' || github.event_name == 'workflow_dispatch' || github.event.schedule == '0 5 * * 1'
+      - uses: extractions/setup-just@v2
+        if: steps.changes.outputs.om == 'true' || github.event_name == 'workflow_dispatch' || github.event.schedule == '0 5 * * 1'
+      - name: Build the release Dockerfile and smoke the entrypoint
+        if: steps.changes.outputs.om == 'true' || github.event_name == 'workflow_dispatch' || github.event.schedule == '0 5 * * 1'
+        run: |
+          set -euo pipefail
+          docker build -f connectors/openmetadata/Dockerfile -t connect-openmetadata:ci .
+          docker run --rm connect-openmetadata:ci --help
+      - name: Start, scan and test the conformance lane
+        if: steps.changes.outputs.om == 'true' || github.event_name == 'workflow_dispatch' || github.event.schedule == '0 5 * * 1'
+        run: |
+          set -euo pipefail
+          just om-up
+          just om-test
+          just om-image-test
+      - name: Lane logs
+        if: always()
+        run: |
+          mkdir -p conformance/openmetadata/results
+          docker compose -f conformance/openmetadata/compose.yaml logs --no-color > conformance/openmetadata/results/compose.log 2>&1 || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: om-conformance-${{ matrix.opensearch }}
+          path: conformance/openmetadata/results/
+          retention-days: 7
+      - name: Stop disposable lane
+        if: always()
+        run: docker compose -f conformance/openmetadata/compose.yaml down -v --remove-orphans
 
   # NLS-P0.T7 — the Python unit gate for the `ttr-nlp` wheel (ruff + pytest +
   # a real wheel build).

@@ -111,6 +111,22 @@ def _terms(
                 related[source.id].add(target.id)
                 related[target.id].add(source.id)
 
+    # OM 2.0.6 enforces name uniqueness across the whole glossary, including
+    # children. ER attributes commonly share 'id'/'name'; retain the human label
+    # in displayName and use their canonical qname as the stable catalog name.
+    names = {
+        key: key
+        if (node.model == "er" and node.kind == "attribute") or node.model == "md"
+        else node.label or key.rsplit(".", 1)[-1]
+        for key, node in terms.items()
+    }
+    owners: set[tuple[str, str]] = set()
+    for key, node in terms.items():
+        identity = ("Concepts" if node.model == "cn" else "Entities", names[key].casefold())
+        if identity in owners:
+            raise MappingError(f"glossary name collision at {identity}")
+        owners.add(identity)
+
     addresses: dict[str, str] = {}
     order: list[str] = []
     visiting: set[str] = set()
@@ -124,7 +140,7 @@ def _terms(
         node = terms[key]
         glossary = f"{world} {'Concepts' if node.model == 'cn' else 'Entities'}"
         base = address(parents[key]) if key in parents else _segment(glossary)
-        result = base + "." + _segment(node.label or key.rsplit(".", 1)[-1])
+        result = base + "." + _segment(names[key])
         if result in addresses.values():
             raise MappingError(f"glossary FQN collision at {result}")
         addresses[key] = result
@@ -138,6 +154,8 @@ def _terms(
     for key in order:
         node = terms[key]
         props = _props(node, studio_url)
+        if node.iri:
+            props["ttrIri"] = node.iri
         if node.model == "md":
             props["ttrKind"] = node.kind
         result.append(
@@ -145,7 +163,7 @@ def _terms(
                 qname=key,
                 fqn=addresses[key],
                 glossary=f"{world} {'Concepts' if node.model == 'cn' else 'Entities'}",
-                name=node.label or key.rsplit(".", 1)[-1],
+                name=names[key],
                 display=_display(node),
                 description=_description(node),
                 synonyms=sorted({text for texts in node.synonyms.values() for text in texts}),
@@ -382,9 +400,9 @@ def plan_from_export(
     ]
     registry: dict[str, tuple[str, ...]] = {
         "table": ("ttrQname", "ttrUrl"),
-        "column": ("ttrQname",),
-        "glossaryTerm": ("ttrQname", "ttrUrl", "ttrKind"),
-        "metric": ("ttrQname", "ttrUrl", "ttrAdditivity"),
+        "tableColumn": ("ttrQname",),
+        "glossaryTerm": ("ttrQname", "ttrUrl", "ttrKind", "ttrIri"),
+        "metric": ("ttrQname", "ttrUrl", "ttrAdditivity", "ttrColumnAssets"),
     }
     for entity_type, properties in registry.items():
         for name in properties:

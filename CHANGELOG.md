@@ -16,6 +16,13 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+- **connect-openmetadata 0.1.0 — live OM 2.0.6 conformance and image.** Adds a PostgreSQL/OpenSearch lane,
+  real fixture scanning, RDF/search probes and CI image smoke. Default CN path is glossary after live RDF
+  hierarchy/language loss. Corrects tableColumn custom-property registration and explicit column tag reads;
+  uses stable qname catalog names for ER attributes/MD terms. Native metric parent-table assets plus
+  registered ttrColumnAssets retain exact column FQNs (OM drops native column references). The image runs
+  as the pinned ingestion base's openmetadata user. OpenSearch pin is 3.4.0.
+
 - **llm-gateway — `deep` is the smart tier** (gpt-6.1-sol). The generic `deep` tier — what Golem composes the query
   on, and its ladder's `capable` rungs — moves from the `gpt-4.1` row (`azure-gpt-41`) onto `gpt-6.1-sol`
   (`azure-gpt-61-sol`, alias `smart`, ttr-server#297). `mini` and `fast` stay on the chat deployment

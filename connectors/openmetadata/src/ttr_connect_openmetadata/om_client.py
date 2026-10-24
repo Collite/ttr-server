@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """OM 2.0.6 boundary: typed SDK writes, checked REST, no asset creation/deletion."""
 
+import json
 import time
 from collections.abc import Callable, Iterator
 from typing import Any, TypeVar
@@ -233,6 +234,9 @@ class OmClient:
         before = payload(source)
         if all(before.get(key) == value for key, value in changes.items()):
             return source
+        version = before.get("version")
+        if "entityStatus" in changes and version is None:
+            raise OmError(None, "cannot conditionally patch term status without its version")
         destination = type(source).model_validate({**before, **changes})
         result = self._retry(
             lambda: self.ometa.patch(
@@ -242,6 +246,10 @@ class OmClient:
                 allowed_fields={key: True for key in changes},
                 override_metadata=True,
                 skip_on_failure=False,
+                # Status-only changes must not consolidate earlier metadata edits
+                # into their event and retrigger approval. Weak ETags are the
+                # server's projection-independent conditional-write validator.
+                if_match=(f'W/"{version}"' if "entityStatus" in changes else None),
             )
         )
         if result is None:
@@ -334,9 +342,9 @@ class OmClient:
         self.version = version
         for kind, names in {
             "table": ("ttrQname", "ttrUrl"),
-            "column": ("ttrQname",),
-            "glossaryTerm": ("ttrQname", "ttrUrl", "ttrKind"),
-            "metric": ("ttrQname", "ttrUrl", "ttrAdditivity"),
+            "tableColumn": ("ttrQname",),
+            "glossaryTerm": ("ttrQname", "ttrUrl", "ttrKind", "ttrIri"),
+            "metric": ("ttrQname", "ttrUrl", "ttrAdditivity", "ttrColumnAssets"),
         }.items():
             for name in names:
                 self.ensure_custom_property(
@@ -424,6 +432,7 @@ class OmClient:
 
     def upsert_term(self, op: UpsertTerm) -> None:
         term = self._find_term(op)
+        needs_iri = bool(op.iri and (term is None or not term.iri))
         if term is None:
             parent = self._term_aliases.get(op.parent or "")
             term = self._create(
@@ -435,12 +444,13 @@ class OmClient:
                         "displayName": op.display,
                         "description": op.description,
                         "synonyms": op.synonyms,
-                        "iri": op.iri,
-                        "extension": op.props,
                     }
                 ),
                 GlossaryTerm,
             )
+            # The 2.0.6 request mapper ignores iri. Its updater also does not
+            # track iri-only patches: pair it with registered source properties.
+            term = self._patch(term, {"iri": op.iri, "extension": op.props})
         else:
             before = payload(term)
             changes: Json = {
@@ -462,6 +472,16 @@ class OmClient:
             if before.get("entityStatus") == "Deprecated":
                 changes["entityStatus"] = "Draft"
             term = self._patch(term, changes)
+        if needs_iri:
+            refreshed = self._get(
+                GlossaryTerm,
+                "glossaryTerms",
+                str(term.fullyQualifiedName.root),
+                "extension,parent,relatedTerms,synonyms,tags",
+            )
+            if refreshed is None or str(refreshed.iri) != op.iri:
+                raise OmError(None, f"OM did not retain source IRI for {op.qname}")
+            term = refreshed
         self._remember_term(op, term)
 
     def relate_terms(self, ops: list[UpsertTerm]) -> None:
@@ -536,7 +556,7 @@ class OmClient:
 
     def get_table(self, fqn: str) -> Table | None:
         if fqn not in self._tables:
-            self._tables[fqn] = self._get(Table, "tables", fqn, "tags,extension")
+            self._tables[fqn] = self._get(Table, "tables", fqn, "columns,tags,extension")
             if self._tables[fqn] is None:
                 self.warn(f"OM has not scanned table {fqn}; skipping its properties and links")
         return self._tables[fqn]
@@ -620,7 +640,7 @@ class OmClient:
         ):
             raise OmError(None, "glossary asset link reported failure")
         # Refetch so subsequent column patches preserve the server's glossary tags.
-        self._tables[table_name] = self._get(Table, "tables", table_name, "tags,extension")
+        self._tables[table_name] = self._get(Table, "tables", table_name, "columns,tags,extension")
         refreshed = self._asset(op.asset_fqn, op.asset_type)
         if refreshed is None or not any(
             t["tagFQN"] == fqn and t["source"] == "Glossary" for t in refreshed[2].get("tags") or []
@@ -632,22 +652,48 @@ class OmClient:
         asset = self._asset(op.asset_fqn, op.asset_type)
         if asset is None:
             return
-        _, table, _ = asset
+        table_name, table, _ = asset
         metric = self._metric_aliases[op.metric]
         data = payload(metric)
         assets = data.get("assets") or []
-        if any(a.get("fullyQualifiedName") == op.asset_fqn for a in assets):
-            return
+        # OM 2.0.6 silently drops tableColumn from Metric.assets. Use its
+        # supported parent-table association and retain exact column FQNs in a
+        # registered string property. Never claim a native column relation.
+        native_fqn = table_name if op.asset_type == "column" else op.asset_fqn
         ref = {
             "id": str(table.id.root),
-            "type": "tableColumn" if op.asset_type == "column" else "table",
-            "fullyQualifiedName": op.asset_fqn,
+            "type": "table",
+            "fullyQualifiedName": native_fqn,
         }
-        metric = self._patch(metric, {"assets": [*assets, ref]}, count=False)
-        if not any(
-            a.get("fullyQualifiedName") == op.asset_fqn for a in payload(metric).get("assets") or []
+        changes: Json = {}
+        if not any(a.get("fullyQualifiedName") == native_fqn for a in assets):
+            changes["assets"] = [*assets, ref]
+        column_fqns: list[str] = []
+        if op.asset_type == "column":
+            extension = data.get("extension") or {}
+            try:
+                saved = json.loads(extension.get("ttrColumnAssets", "[]"))
+            except (TypeError, ValueError) as exc:
+                raise OmError(409, "invalid metric ttrColumnAssets JSON") from exc
+            if not isinstance(saved, list) or not all(isinstance(v, str) for v in saved):
+                raise OmError(409, "metric ttrColumnAssets must be an array of column FQNs")
+            column_fqns = sorted(set([*saved, op.asset_fqn]))
+            encoded = json.dumps(column_fqns, ensure_ascii=False, separators=(",", ":"))
+            if extension.get("ttrColumnAssets") != encoded:
+                changes["extension"] = {**extension, "ttrColumnAssets": encoded}
+        if not changes:
+            return
+        metric = self._patch(metric, changes, count=False)
+        # Read independently: a successful PATCH response alone is insufficient.
+        metric = self._get(
+            Metric, "metrics", str(metric.fullyQualifiedName.root), "extension,tags,assets"
+        )
+        if metric is None or not any(
+            a.get("fullyQualifiedName") == native_fqn for a in payload(metric).get("assets") or []
         ):
             raise OmError(None, f"OM did not retain metric asset {op.asset_fqn}")
+        if column_fqns and payload(metric).get("extension", {}).get("ttrColumnAssets") != encoded:
+            raise OmError(None, f"OM did not retain metric column {op.asset_fqn}")
         self._metrics[str(metric.id.root)] = metric
         self._metric_aliases[op.metric] = metric
         self.summary.linked += 1
@@ -655,7 +701,12 @@ class OmClient:
     def deprecate_term(self, term: GlossaryTerm) -> None:
         if payload(term).get("entityStatus") != "Deprecated":
             result = self._patch(term, {"entityStatus": "Deprecated"}, count=False)
-            self._terms[str(result.id.root)] = result
+            persisted = self._get(
+                GlossaryTerm, "glossaryTerms", str(result.fullyQualifiedName.root), "extension"
+            )
+            if persisted is None or payload(persisted).get("entityStatus") != "Deprecated":
+                raise OmError(None, "OM did not retain term deprecation")
+            self._terms[str(persisted.id.root)] = persisted
             self.summary.deprecated += 1
 
     def deprecate_metric(self, metric: Metric) -> None:
@@ -682,7 +733,7 @@ class OmClient:
                     self.deprecate_metric(metric)
         else:
             # Deleted qnames cannot supply an OM address: enumerate all pages, never guess.
-            for table in self._list(Table, "tables", "tags,extension"):
+            for table in self._list(Table, "tables", "columns,tags,extension"):
                 data = payload(table)
                 changed = False
                 for target in [data] if op.kind == "table" else columns(data["columns"]):
@@ -701,7 +752,7 @@ class OmClient:
                     self._tables[str(result.fullyQualifiedName.root)] = result
                     self.summary.deprecated += 1
 
-    def sync(self, plan: Plan, cn_path: str = "owl") -> Summary:
+    def sync(self, plan: Plan, cn_path: str = "glossary") -> Summary:
         self.summary = Summary(snapshot=plan.snapshot)
         self.warnings.clear()
         self._tables.clear()
@@ -713,9 +764,16 @@ class OmClient:
         for warning in plan.warnings:
             self.warn(warning)
         self._load_terms()
-        self._metrics = {
-            str(m.id.root): m for m in self._list(Metric, "metrics", "extension,tags,assets")
-        }
+        self._metrics = {}
+        # OM 2.0.6 list does not populate assets even when requested; get each
+        # metric separately so repeat syncs preserve links and remain no-ops.
+        for listed in self._list(Metric, "metrics", "extension,tags"):
+            metric = self._get(
+                Metric, "metrics", str(listed.fullyQualifiedName.root), "extension,tags,assets"
+            )
+            if metric is None:
+                raise OmError(None, "metric disappeared while loading catalog")
+            self._metrics[str(metric.id.root)] = metric
         terms = [op for op in plan.operations if isinstance(op, UpsertTerm)]
         for op in plan.operations:
             if isinstance(op, EnsureGlossary):

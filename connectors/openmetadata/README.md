@@ -5,9 +5,10 @@ Standalone Python connector for XM design §4.B M-1-β. It consumes Tatrman's ti
 the source of definitions; the catalog receives projections. Scanner-owned tables
 and columns are linked, never created.
 
-S2.1/S2.2 implement the planner, readers, registry check and OM writer. Local OM
-conformance, RDF acceptance (V-OM-1), OpenSearch verification (V-OM-2) and the image
-belong to S2.3. The HTTP fake verifies the writer; it is not live OM acceptance.
+The connector includes readers, planner, checked OM writer, a real local
+[OM conformance lane](../../conformance/openmetadata/README.md) and a release image.
+It targets OM 2.0.6; default CN projection is **glossary** after the RDF acceptance
+probe found meaningful hierarchy/language loss. Explicit `--cn-path owl` remains.
 
 ## Run
 
@@ -35,7 +36,8 @@ make check
 uv build
 ```
 
-`plan` writes one typed operation per JSON line to stdout and warnings to stderr.
+`plan` and `sync --dry-run` honor --cn-path (default glossary); select owl
+to include the RDF import operation. `plan` writes one typed operation per JSON line to stdout and warnings to stderr.
 The directory must contain `graph.json`, `defs.json`, `cn.ttl`, and `.snapshot`.
 The URL is the **full export route**, without query parameters. The reader requests
 world graph + world definitions + CN OWL, and rejects mixed ETags, snapshots,
@@ -59,8 +61,8 @@ failure; 3 mapping failure. Argparse usage failures exit 2.
 | MD measure | Metric, definition's aggregation + expression; SUM/COUNT/AVG → SUM/COUNT/AVERAGE, others → OTHER; `ttrAdditivity` |
 | DB table / view | Properties on an existing scanned OM Table, description, `Tatrman.Grounded` when bound |
 | DB column | `ttrQname`, `Grounded` when bound; applied through the owning table |
-| ER/MD/CN binding | Term-to-table/column link; MD per-field maps determine actual columns; metrics use their own asset relation |
-| Registry | String properties `ttrQname`, `ttrUrl`, `ttrKind`, `ttrAdditivity` on applicable types; classification `Tatrman`, tags `Grounded` / `Deprecated` |
+| ER/MD/CN binding | Term-to-table/column link; MD per-field maps determine actual columns; metrics use native parent-table assets plus exact column FQNs in ttrColumnAssets |
+| Registry | String properties `ttrQname`, `ttrUrl`, `ttrKind`, `ttrIri`, `ttrAdditivity`, `ttrColumnAssets` on applicable types; classification `Tatrman`, tags `Grounded` / `Deprecated` |
 
 Display names prefer English; Czech-only names append `(<cs label>)` to the source
 name. Descriptions prefer English, otherwise retain all language-labelled text.
@@ -116,7 +118,7 @@ input and catalog makes zero PUT/PATCH calls, even without an HTTP 304.
 
 ## OWL import and fallback
 
-Default `--cn-path owl` imports CN Turtle when expected CN terms are missing.
+Opt-in `--cn-path owl` imports CN Turtle when expected CN terms are missing.
 The request explicitly sends `dryRun=false`. Content/endpoint 4xx responses select
 the glossary path; 401/403/429 fail immediately. `--cn-path glossary` always skips
 RDF import. Both paths create parents first, retain all synonyms, preserve source
@@ -130,8 +132,8 @@ receive up to three retries (0.25, 0.5, 1 second backoff). 4xx and transport fai
 are not retried. SDK patches use deep source/destination copies and
 `skip_on_failure=False`. RDF HTTP 200 responses containing failed-term messages,
 failed bulk asset rows, and metric links dropped by the server fail the sync;
-state does not advance. Native metric-to-column round-trip support remains an
-explicit S2.3 live check.
+state does not advance. Metric column FQNs and native parent-table assets are independently read back;
+OM 2.0.6 does not retain native column asset references.
 
 Once P3 has installed the CronJob, trigger the projection for the demo:
 
@@ -161,3 +163,20 @@ golden adds all mappings, while semantic tests independently assert IRI, hierarc
 synonyms, metric code/type, per-column bindings and connection behavior. Golden
 updates are explicit and must be reviewed. Unit tests mock HTTP; no deployed
 environment is contacted.
+
+## Live compatibility and image
+
+Use `just om-up`, `just om-test`, `just om-down` from the repository root. See the
+lane README for isolated local credentials, real Postgres scanning and evidence.
+The offline suite skips live cases unless OM_URL and OM_TOKEN are set.
+
+OM 2.0.6 requires case-insensitively unique term names across a glossary. ER
+attributes and MD terms use canonical qnames as catalog names; human labels and
+parents remain intact. Columns use registry type tableColumn and table reads
+explicitly request columns,tags,extension. Native Metric.assets cannot retain
+columns: the parent table is native, and registered ttrColumnAssets preserves
+sorted exact column FQNs as a JSON string array, verified by a fresh GET.
+
+`docker build -f connectors/openmetadata/Dockerfile -t connect-openmetadata:dev .`
+builds from repository root using ingestion-base:2.0.6 and its nonroot
+openmetadata user. Release image: ghcr.io/collite/connect-openmetadata:0.1.0.

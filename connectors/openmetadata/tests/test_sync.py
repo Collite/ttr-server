@@ -48,10 +48,11 @@ def test_sync_twice_and_deprecate(
             "linked",
             "warnings",
         }
+        assert not any("importRdf" in path for _, path, _ in fake.calls)
         assert len(fake.stores["glossaries"]) == 2
         assert len(fake.stores["glossaryTerms"]) == 21
         assert len(fake.stores["metrics"]) == 3
-        assert sum(len(t["customProperties"]) for t in fake.stores["metadata/types"].values()) == 9
+        assert sum(len(t["customProperties"]) for t in fake.stores["metadata/types"].values()) == 11
         table = fake.stores["tables"]["northline-pg.northline.retail.sales"]
         assert table["extension"]["ttrQname"] == "db.retail.sales"
         assert table["extension"]["ttrUrl"].startswith("https://studio.example/viewer?")
@@ -91,7 +92,7 @@ def test_check_registry_is_idempotent(
     with responses.RequestsMock(assert_all_requests_are_fired=False) as mock:
         fake.install(mock)
         assert main(check) == 0
-        assert json.loads(capsys.readouterr().out)["created"] == 12
+        assert json.loads(capsys.readouterr().out)["created"] == 14
         fake.calls.clear()
         assert main(check) == 0
         assert fake.writes == []
@@ -119,7 +120,7 @@ def test_dry_run_needs_no_credentials_or_writes(
             )
             == 0
         )
-        assert len(capsys.readouterr().out.splitlines()) == 62
+        assert len(capsys.readouterr().out.splitlines()) == 63
         assert fake.calls == []
         assert not (tmp_path / "state").exists()
 
@@ -324,7 +325,7 @@ def test_rdf_auth_and_rate_limit_do_not_fall_back(
     fake.import_status = status
     with responses.RequestsMock(assert_all_requests_are_fired=False) as mock:
         fake.install(mock)
-        assert main(sync_args(tmp_path)) == 1
+        assert main([*sync_args(tmp_path), "--cn-path", "owl"]) == 1
         assert f"OM {status}" in capsys.readouterr().err
         assert fake.stores["glossaryTerms"] == {}
         assert not (tmp_path / "state.json").exists()
@@ -363,12 +364,12 @@ def test_rdf_success_adopts_terms_by_iri(
         }
     ]
     fake.import_result["termsCreated"] = 1
-    args = sync_args(tmp_path)
+    args = [*sync_args(tmp_path), "--cn-path", "owl"]
     with responses.RequestsMock(assert_all_requests_are_fired=False) as mock:
         fake.install(mock)
         assert main(args) == 0
         summary = json.loads(capsys.readouterr().out)
-        assert summary["created"] == 38  # 12 registry, 2 glossaries, 21 terms, 3 metrics
+        assert summary["created"] == 40  # 14 registry, 2 glossaries, 21 terms, 3 metrics
         assert len(fake.stores["glossaryTerms"]) == 21
         actual = fake.stores["glossaryTerms"][fqn]
         assert actual["iri"] == imported.iri
@@ -393,7 +394,7 @@ def test_rdf_200_failure_does_not_advance_state(
     fake.import_result = result
     with responses.RequestsMock(assert_all_requests_are_fired=False) as mock:
         fake.install(mock)
-        assert main(sync_args(tmp_path)) == 1
+        assert main([*sync_args(tmp_path), "--cn-path", "owl"]) == 1
         assert "RDF import" in capsys.readouterr().err
         assert not (tmp_path / "state.json").exists()
 
@@ -511,7 +512,8 @@ def test_glossary_fallback_fields_hierarchy_relations_and_metrics(
                 metric = fake.stores["metrics"][op.name]
                 assert metric["metricType"] == op.metricType
                 assert metric["metricExpression"] == op.metricExpression.model_dump()
-                assert metric["extension"] == op.props
+                assert {k: metric["extension"][k] for k in op.props} == op.props
+                assert json.loads(metric["extension"]["ttrColumnAssets"])
                 assert metric["assets"]  # Native assets, no fictitious measure glossary term.
         assert not any("importRdf" in p for _, p, _ in fake.calls)
 
@@ -602,3 +604,50 @@ def test_health_timeout_fails_once(tmp_path: Path, capsys: pytest.CaptureFixture
         assert len(mock.calls) == 1
         assert "health timeout" in capsys.readouterr().err
         assert not (tmp_path / "state.json").exists()
+
+
+def test_unpersisted_source_iri_fails_without_advancing_state(
+    export: Export, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    fake = FakeOm(export)
+    fake.drop_term_iri = True
+    with responses.RequestsMock(assert_all_requests_are_fired=False) as mock:
+        fake.install(mock)
+        assert main(sync_args(tmp_path)) == 1
+    assert "OM did not retain source IRI" in capsys.readouterr().err
+    assert not (tmp_path / "state.json").exists()
+
+
+def test_stale_conditional_deprecation_preserves_state(
+    export: Export, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    import shutil
+
+    fake = FakeOm(export)
+    args = sync_args(tmp_path)
+    with responses.RequestsMock(assert_all_requests_are_fired=False) as mock:
+        fake.install(mock)
+        assert main(args) == 0
+        capsys.readouterr()
+        state = tmp_path / "state.json"
+        before = state.read_bytes()
+        edited = tmp_path / "export"
+        shutil.copytree(FIXTURE, edited)
+        removed = "cn.quality.sold_at"
+        graph = json.loads((edited / "graph.json").read_text())
+        graph["nodes"] = [n for n in graph["nodes"] if n["id"] != removed]
+        graph["edges"] = [e for e in graph["edges"] if removed not in (e["from"], e["to"])]
+        (edited / "graph.json").write_text(json.dumps(graph))
+        term = next(
+            t
+            for t in fake.stores["glossaryTerms"].values()
+            if t["extension"]["ttrQname"] == removed
+        )
+        path = f"glossaryTerms/{term['id']}"
+        fake.failures[("PATCH", path)] = [412]
+        fake.calls.clear()
+        args[args.index("--export-dir") + 1] = str(edited)
+        assert main(args) == 1
+        assert "OM 412" in capsys.readouterr().err
+        assert sum(method == "PATCH" and name == path for method, name, _ in fake.calls) == 1
+        assert state.read_bytes() == before

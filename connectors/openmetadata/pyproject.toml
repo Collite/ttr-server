@@ -25,6 +25,7 @@ ttr-connect-openmetadata = "ttr_connect_openmetadata.cli:main"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = ["om_live: requires disposable OM_URL and OM_TOKEN; skipped without both"]
 # The SDK advertises a pytest plugin for its own integration tests. Keep our
 # offline suite independent of its database connectors and optional plugins.
 addopts = "-p no:pytest_openmetadata"

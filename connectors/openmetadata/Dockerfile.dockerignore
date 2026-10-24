@@ -1,0 +1,7 @@
+**
+!connectors/
+!connectors/openmetadata/
+!connectors/openmetadata/pyproject.toml
+!connectors/openmetadata/README.md
+!connectors/openmetadata/src/
+!connectors/openmetadata/src/**

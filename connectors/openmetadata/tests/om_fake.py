@@ -46,10 +46,11 @@ class FakeOm:
             "messages": [],
         }
         self.drop_metric_assets = False
+        self.drop_term_iri = False
         self.link_failed = False
         self.failures: dict[tuple[str, str], list[int]] = {}
         self.page_size = 100
-        for name in ("string", "table", "column", "glossaryTerm", "metric"):
+        for name in ("string", "table", "tableColumn", "glossaryTerm", "metric"):
             self.stores["metadata/types"][name] = {
                 "id": uid(name),
                 "name": name,
@@ -170,6 +171,8 @@ class FakeOm:
             query = parse_qs(urlsplit(request.url).query)
             offset = int(query.get("after", ["0"])[0])
             values = list(store.values())
+            if collection == "metrics":
+                values = [{k: v for k, v in m.items() if k != "assets"} for m in values]
             end = offset + self.page_size
             return self.answer(
                 200,
@@ -182,8 +185,16 @@ class FakeOm:
                 },
             )
         if method == "PATCH":
+            if collection == "glossaryTerms" and any(p["path"] == "/entityStatus" for p in data):
+                assert request.headers["If-Match"].startswith('W/"')
             key = next(k for k, v in store.items() if v["id"] == suffix)
             store[key] = jsonpatch.apply_patch(store[key], data)
+            if collection == "glossaryTerms" and self.drop_term_iri:
+                store[key].pop("iri", None)
+            if collection == "metrics":
+                store[key]["assets"] = [
+                    a for a in store[key].get("assets", []) if a["type"] != "tableColumn"
+                ]
             if collection == "metrics" and self.drop_metric_assets:
                 store[key]["assets"] = []
             return self.answer(200, store[key])
@@ -199,9 +210,15 @@ class FakeOm:
         assert not suffix
         name = data["name"]
         if collection == "glossaryTerms":
+            data.pop("iri", None)  # 2.0.6 CreateGlossaryTerm mapper ignores this field.
+            assert not any(
+                t["name"].casefold() == name.casefold()
+                and t["glossary"]["fullyQualifiedName"] == data["glossary"]
+                for t in store.values()
+            ), "OM names are case-insensitively unique across the glossary"
             parent = data.get("parent") or data["glossary"]
             assert parent in store or parent in self.stores["glossaries"]
-            fqn = f"{parent}.{name}"
+            fqn = parent + "." + (f'"{name}"' if "." in name else name)
             glossary = self.stores["glossaries"][data["glossary"]]
             data["glossary"] = {
                 "id": glossary["id"],

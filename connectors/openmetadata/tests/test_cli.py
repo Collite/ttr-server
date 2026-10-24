@@ -12,7 +12,7 @@ FIXTURES = Path(__file__).parent / "fixtures"
 
 
 def test_plan_cli_matches_golden(capsys: pytest.CaptureFixture[str]) -> None:
-    assert main(["plan", "--export-dir", str(FIXTURES / "export")]) == 0
+    assert main(["plan", "--export-dir", str(FIXTURES / "export"), "--cn-path", "owl"]) == 0
     output = capsys.readouterr()
     assert [json.loads(line) for line in output.out.splitlines()] == json.loads(
         (FIXTURES / "plan/world.plan.json").read_text()
@@ -67,3 +67,10 @@ def test_cli_requires_exactly_one_source() -> None:
     assert error.value.code == 2
     with pytest.raises(SystemExit):
         main(["plan", "--export-dir", ".", "--export-url", "http://example.org/model/export"])
+
+
+def test_default_plan_does_not_schedule_rdf_import(capsys: pytest.CaptureFixture[str]) -> None:
+    assert main(["plan", "--export-dir", str(FIXTURES / "export")]) == 0
+    operations = [json.loads(line) for line in capsys.readouterr().out.splitlines()]
+    assert operations
+    assert not any(op["op"] == "ImportRdf" for op in operations)

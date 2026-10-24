@@ -1,0 +1,102 @@
+# SPDX-License-Identifier: Apache-2.0
+name: xm-om-conformance
+x-om-env: &om-env
+  DB_DRIVER_CLASS: org.postgresql.Driver
+  DB_SCHEME: postgresql
+  DB_HOST: pg
+  DB_PORT: "5432"
+  OM_DATABASE: openmetadata
+  DB_USER: openmetadata
+  DB_USER_PASSWORD: openmetadata
+  DB_PARAMS: sslmode=disable
+  SEARCH_TYPE: opensearch
+  ELASTICSEARCH_HOST: opensearch
+  ELASTICSEARCH_PORT: "9200"
+  ELASTICSEARCH_SCHEME: http
+  ELASTICSEARCH_USER: ""
+  ELASTICSEARCH_PASSWORD: ""
+  PIPELINE_SERVICE_CLIENT_ENABLED: "false"
+  AUTHENTICATION_PROVIDER: basic
+  AUTHORIZER_ADMIN_PRINCIPALS: '[admin]'
+  AUTHORIZER_INGESTION_PRINCIPALS: '[ingestion-bot]'
+  AUTHENTICATION_ENABLE_SELF_SIGNUP: "false"
+  OPENMETADATA_HEAP_OPTS: -Xms1G -Xmx2G
+services:
+  pg:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: openmetadata
+      POSTGRES_PASSWORD: openmetadata
+      POSTGRES_DB: openmetadata
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U openmetadata -d openmetadata']
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    volumes:
+      - pg:/var/lib/postgresql/data
+  opensearch:
+    image: opensearchproject/opensearch:${OM_OPENSEARCH_VERSION:-3.4.0}
+    environment:
+      discovery.type: single-node
+      DISABLE_INSTALL_DEMO_CONFIG: "true"
+      DISABLE_SECURITY_PLUGIN: "true"
+      OPENSEARCH_JAVA_OPTS: -Xms1g -Xmx1g
+    ulimits:
+      memlock: {soft: -1, hard: -1}
+      nofile: {soft: 65536, hard: 65536}
+    healthcheck:
+      test: [CMD-SHELL, 'curl -fsS "http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=5s"']
+      interval: 10s
+      timeout: 10s
+      retries: 60
+    volumes:
+      - search:/usr/share/opensearch/data
+  migrate:
+    image: docker.getcollate.io/openmetadata/server:2.0.6
+    command: [./bootstrap/openmetadata-ops.sh, migrate]
+    environment: *om-env
+    depends_on:
+      pg: {condition: service_healthy}
+      opensearch: {condition: service_healthy}
+  openmetadata-server:
+    image: docker.getcollate.io/openmetadata/server:2.0.6
+    environment: *om-env
+    ports:
+      - '127.0.0.1:${OM_PORT:-18585}:8585'
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+    healthcheck:
+      test: [CMD, wget, -q, --spider, 'http://localhost:8586/healthcheck']
+      interval: 10s
+      timeout: 10s
+      retries: 90
+      start_period: 30s
+  fixture-pg:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: fixture
+      POSTGRES_PASSWORD: fixture
+      POSTGRES_DB: northline
+    volumes:
+      - ../../connectors/openmetadata/tests/fixtures/sql:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U fixture -d northline']
+      interval: 5s
+      timeout: 5s
+      retries: 30
+  scan:
+    image: docker.getcollate.io/openmetadata/ingestion-base:2.0.6
+    profiles: [scan]
+    entrypoint: [metadata]
+    command: [ingest, -c, /config/fixture-postgres.yaml]
+    environment:
+      OM_TOKEN: ${OM_TOKEN:-}
+    volumes:
+      - ./fixture-postgres.yaml:/config/fixture-postgres.yaml:ro
+    depends_on:
+      openmetadata-server: {condition: service_healthy}
+      fixture-pg: {condition: service_healthy}
+volumes:
+  pg:
+  search:
