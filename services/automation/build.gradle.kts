@@ -17,6 +17,10 @@ application {
 
 kotlin {
     jvmToolchain(21)
+    // The real HTTP/JWKS realm is shared test support, never production code or a unit-test classpath
+    // dependency of the component tier. Each tier compiles it independently alongside its own specs.
+    sourceSets.named("test") { kotlin.srcDir("src/testSupport/kotlin") }
+    sourceSets.named("componentTest") { kotlin.srcDir("src/testSupport/kotlin") }
 }
 
 tasks.test {
@@ -149,6 +153,8 @@ dependencies {
     // Component tier — the ledger over a REAL Postgres (Testcontainers): Flyway migrates clean, pgmq
     // round-trips, the idempotency claim races. `src/componentTest`, so the unit gate stays Docker-free.
     "componentTestImplementation"(libs.testcontainers.postgresql)
+    "componentTestImplementation"(libs.ktor.server.test.host)
+    "componentTestImplementation"(libs.auth0.java.jwt)
     "componentTestImplementation"(project(":shared:libs:kotlin:db-common"))
     "componentTestImplementation"(libs.exposed.core)
     "componentTestImplementation"(libs.exposed.jdbc)

@@ -14,11 +14,11 @@ in the project folder:
 > atomically with EVALUATED status. Detail snapshots now apply pinned limits per route/context/key before staging,
 > and authenticated route/detail/output readers page the verified Arrow or download Arrow/CSV. Absolute
 > evaluation deadlines, runtime assembly, durable execution evidence and the authenticated raw protocol reader
-> are implemented, along with durable status and native dry-run preview batches. Application installation,
-> owner routing and remaining preview lowering remain. Durable dry-run close/sealing and local staging retention
-> are assembled and tested; Application mounting remains pending.
+> are implemented, along with durable status and native dry-run preview batches. Application now installs the
+> authenticated durable status/protocol/batch readers. Execution runtime installation, owner routing and remaining
+> preview lowering remain. Durable dry-run close/sealing and local staging retention are assembled and tested.
 > Budgeted evaluate, observation-only polling and durable abandonment/cleanup primitives are implemented. Run handlers,
-> including evaluate and route/detail/output readers, are not mounted in Application.
+> Open/evaluate/close and route/detail/output execution handlers are not mounted in Application.
 
 The durable evaluation path has atomic pgmq enqueue/acknowledgement, a permanent execution claim and
 bounded coroutine consumers. `RunRuntime` assembles this path with the pinned sessions, governed Query door,
@@ -229,9 +229,19 @@ Runtime shutdown first fences new opens/reads, then joins worker cancellation an
 Concurrent shutdown calls join the same cleanup; database, Query channel and staging must remain usable until
 it returns. These dependencies belong to the application and are not closed by the runtime.
 
-Deployment owner routing, Application installation and remaining P1 lifecycle integration are pending. No run routes or
-maintenance loop are installed in Application yet. Remaining performed payloads, configured PT/ES links, preview lowering and
-task deadline handoff must be integrated before exposing this path there.
+Application installs only the durable `GET /automation/runs/{id}`, `/protocol` and `/batch` readers inside
+bearer authentication, using the same ledger as the service. They need no served bundle, local executor or
+execution owner, and remain available after restart/seal/expiry. Status polling never starts execution or
+maintenance. Open/evaluate/close, staged output reads and the worker/maintenance loops remain pending with
+deployment owner routing and the remaining P1 lifecycle integration. Performed payloads, configured PT/ES
+links, preview lowering and task deadline handoff still gate that execution installation.
+
+The production-module component specs use the actual bootstrap/migrations and JWT verification against
+the real PostgreSQL fixture, without test-only route assembly. They cover restart reads, pinned metadata,
+exact numeric JSON, authentication/subject ownership, malformed handles, no-preview/PT refusals and the
+absence of execution side effects. Database and Veles cleanup runs at `ApplicationStopped`, after HTTP
+drain, so a stopping notification does not cut off in-flight durable readers. Full runtime shutdown still
+must join its workers and executors before dependency cleanup.
 
 ### Debug-run walkthrough
 
@@ -393,10 +403,11 @@ or elapsed execution budgets refuse publication. A failed source journal prevent
 
 `?render=pt` currently returns `501 protocol-renderer-unavailable` after ownership verification. Configured PT
 proxying, performed action/outcome payloads, stable ES links and remaining preview lowering remain S1.3 work.
-The assembled runtime installs close and its ledger seal; Application routes remain unmounted.
+The assembled runtime installs close and its ledger seal; Application installs durable readers while
+close and the other execution routes remain unmounted.
 ES receipt links still need a stable source reference; the current worker proto supplies an inline receipt.
-Application shutdown must drain durable HTTP readers before closing the ledger; they do not belong to an
-executor's cancellation scope.
+Application keeps the ledger and Veles alive until `ApplicationStopped`, after durable HTTP readers drain;
+they do not belong to an executor's cancellation scope.
 
 Local staging publishes immutable Arrow blobs before journalling their metadata. A journal failure leaves an
 unreferenced blob for the S1.3 retention job; it never deletes content another claimant might reference. The
@@ -437,8 +448,8 @@ live Hartland certification remain pending.
 ### Configured immutable staging
 
 Application selects `local`, `redis` or `seaweed` through `StagingStores.open` at startup and closes the owned
-store after HTTP drain (`ApplicationStopped`). This installs storage only: run routes/workers/maintenance are
-still unmounted pending the remaining P1 integration. RunRuntime continues to accept the application-owned
+store after HTTP drain (`ApplicationStopped`). Durable run readers are installed; execution routes/workers/
+maintenance remain unmounted pending the remaining P1 integration. RunRuntime continues to accept the application-owned
 store and must finish shutdown before its dependencies close.
 
 | setting | use |

@@ -66,7 +66,7 @@ class RunStatusRoutesSpec :
                     routing {
                         authenticate(
                             AUTOMATION_AUTH,
-                        ) { evaluateRoutes(sessions, RunStatusReader(ledger)::read) }
+                        ) { runStatusRoutes(RunStatusReader(ledger)::read) }
                     }
                 }
                 block()

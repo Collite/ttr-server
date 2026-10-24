@@ -246,7 +246,8 @@ class RunReadRoutesSpec :
                                 routing {
                                     authenticate(AUTOMATION_AUTH) {
                                         runReadRoutes(fixture.runs, 2)
-                                        evaluateRoutes(fixture.runs, fixture.runs::progress)
+                                        evaluateRoutes(fixture.runs)
+                                        runStatusRoutes(fixture.runs::progress)
                                     }
                                 }
                             }
@@ -315,7 +316,10 @@ class RunReadRoutesSpec :
                         routing {
                             authenticate(
                                 AUTOMATION_AUTH,
-                            ) { evaluateRoutes(fixture.runs, fixture.runs::progress) }
+                            ) {
+                                evaluateRoutes(fixture.runs)
+                                runStatusRoutes(fixture.runs::progress)
+                            }
                         }
                     }
                     val token = realm.person("maya", listOf("sales_manager"))
@@ -385,7 +389,8 @@ class RunReadRoutesSpec :
                         routing {
                             authenticate(AUTOMATION_AUTH) {
                                 runReadRoutes(fixture.runs, 2)
-                                evaluateRoutes(fixture.runs, fixture.runs::progress)
+                                evaluateRoutes(fixture.runs)
+                                runStatusRoutes(fixture.runs::progress)
                             }
                         }
                     }
