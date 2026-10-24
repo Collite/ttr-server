@@ -92,6 +92,62 @@ class GateSpansTest :
             b.vocabularySource shouldBe "VOCABULARY"
         }
 
+        "HP-H — a value label binds as the member the lattice spells, and names its attribute" {
+            val label = "er.entity.sales.channel.marketplace"
+            val cands = listOf(cand("tržiště", 8, 15, listOf(label)))
+            val resp = batch(fmr(valueLabel(label, "tržiště")))
+            val b =
+                GateSpans
+                    .gate(
+                        cands,
+                        resp,
+                        allTypes,
+                        thresholds,
+                        emptyMap(),
+                        "snap-1",
+                    ).shouldBeInstanceOf<Bound>()
+                    .bindings
+                    .single()
+            // The resolution names the member as the lattice does (`Bindings`), not the archive's five segments.
+            b.targetRef shouldBe "er.entity.sales.channel#marketplace"
+            b.entityTypeRef shouldBe "er.entity.sales.channel"
+        }
+
+        "HP-H — an ask between the store dimension and the store channel offers the channel as the member spelling" {
+            // The bare store word (ttr-demo#62): the dimension and the channel's value label, both exact. A pick resumes
+            // from the option's target ref, so the option must carry the member the door renders.
+            val label = "er.entity.sales.channel.store"
+            val cands = listOf(cand("prodejen", 6, 14, listOf("er.entity.store", label)))
+            val resp =
+                batch(
+                    fmr(
+                        fm(
+                            "lex:er.entity.store",
+                            "prodejen",
+                            0.9999,
+                            "er.entity.store",
+                            SourceTag.DECLARED,
+                            targetRef = "er.entity.store",
+                        ),
+                        valueLabel(label, "prodejen", score = 0.9999),
+                    ),
+                )
+            val clarify =
+                GateSpans
+                    .gate(
+                        cands,
+                        resp,
+                        allTypes,
+                        thresholds,
+                        emptyMap(),
+                        "snap-1",
+                    ).shouldBeInstanceOf<Clarify>()
+            clarify.options.map { it.targetRef } shouldContainExactlyInAnyOrder
+                listOf("er.entity.store", "er.entity.sales.channel#store")
+            clarify.options.single { it.targetRef == "er.entity.sales.channel#store" }.entityTypeRef shouldBe
+                "er.entity.sales.channel"
+        }
+
         "below the bind floor (< 0.5) → no binding" {
             val cands = listOf(cand("roce", 0, 4, listOf("er.product")))
             val resp = batch(fmr(fm("x", "x", 0.40, "er.product", SourceTag.MEMBER)))
@@ -792,6 +848,17 @@ class GateSpansTest :
             if (targetRef.isNotBlank()) b.targetRef = targetRef
             return b.build()
         }
+
+        /** A value label as lex-matcher serves it: METADATA, classed MEMBER, its archive ref as target and category. */
+        private fun valueLabel(
+            archiveRef: String,
+            text: String,
+            score: Double = 1.0,
+        ): FuzzyMatch =
+            fm("lex:$archiveRef", text, score, archiveRef, SourceTag.METADATA, targetRef = archiveRef)
+                .toBuilder()
+                .setTargetClass(org.tatrman.fuzzy.v1.TargetClass.TARGET_CLASS_MEMBER)
+                .build()
 
         private fun fmr(vararg matches: FuzzyMatch): FuzzyMatchResponse =
             FuzzyMatchResponse.newBuilder().addAllMatches(matches.toList()).build()

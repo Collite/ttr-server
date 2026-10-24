@@ -16,6 +16,19 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+- **resolver — a value label binds as a member a door can render** (md/hop HP-H). A declared row whose class is
+  `MEMBER` on an er attribute (a `valueLabels` entry; the archive spells it `er.entity.<e>.<a>.<code>`) is now read in
+  the lattice's member spelling, `er.entity.<e>.<a>#<code>` — the ref every data member already has — by every place
+  it leaves the matcher (one rule, `DeclaredMembers`):
+  - the lattice binding, and a value's attribution to `er.entity.<e>.<a>`;
+  - the resolution's domain binding (`target_ref`, `entity_type_ref` = the attribute) and a clarification option's
+    `target_ref`, so a picked label resumes as the member;
+  - the re-gate: a member-spelled hypothesis is also looked up under the label's archive category, and a hypothesis in
+    the archive spelling confirms the member spelling.
+
+  Before, the five-segment ref reached the query door as the attribute with nothing to compare to, so a question
+  restricted by a value label („tržby z tržiště“ once the channel words are labels of `sales.channel`) could not take
+  the fast path. `md.` members keep their spelling; an empty code or a ref already spelled as a member is left as it is.
 - **veles — the cn candidate store and promotion** (CN-P5 S5.3, cn contracts §6). Producers submit candidate concepts,
   terms and relations as `cn-candidate.v1` (ttr-concept 0.18.3, `org.tatrman.concept.candidate`); a steward rejects or
   promotes them; a promotion is a model-text pull request, and the candidate is `promoted` once a model load carries

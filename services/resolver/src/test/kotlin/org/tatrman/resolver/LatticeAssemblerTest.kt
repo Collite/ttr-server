@@ -63,6 +63,124 @@ class LatticeAssemblerTest :
             binding.producer.snapshotHash shouldBe "snap-1"
         }
 
+        "Binding: a declared er member (a value label) becomes `<attribute>#<code>`, the member ref every member has" {
+            // The archive spells a value label's member `<attribute-ref>.<code>` (ttr-core's member refs); the
+            // lattice's member ref is `<attribute-ref>#<id>`, and the query door writes what follows `#`. Kept as
+            // the archive spells it, „tržiště“ → `er.entity.sales.channel.marketplace` was a member the door could
+            // not render.
+            val match = declared("er.entity.sales.channel.marketplace", "unknown", TargetClass.TARGET_CLASS_MEMBER)
+            val binding = mapped(match, mention("tržiště", 0, 7), "snap-1")
+            binding.ref shouldBe "er.entity.sales.channel#marketplace"
+            binding.targetClass shouldBe LatticeTargetClass.TARGET_CLASS_MEMBER
+            binding.source shouldBe LatticeSourceTag.SOURCE_TAG_DECLARED
+            Bindings.attributeRefOf(match) shouldBe "er.entity.sales.channel"
+
+            // A code with a dot stays whole: the attribute is the first four segments.
+            mapped(
+                declared("er.entity.item.size.5.5", "unknown", TargetClass.TARGET_CLASS_MEMBER),
+                mention("5.5", 0, 3),
+                "snap-1",
+            ).ref shouldBe "er.entity.item.size#5.5"
+
+            // md members are untouched: no door addresses md, and their consumers read them as the archive
+            // spells them.
+            mapped(
+                declared("md.dimension.DistributionCentre.dcCode.5", "unknown", TargetClass.TARGET_CLASS_MEMBER),
+                mention("Brno DC", 0, 7),
+                "snap-1",
+            ).ref shouldBe "md.dimension.DistributionCentre.dcCode.5"
+            // An attribute ref is no member, whatever class a row claims for it.
+            mapped(
+                declared("er.entity.sales.channel", "unknown", TargetClass.TARGET_CLASS_MEMBER),
+                mention("kanál", 0, 5),
+                "snap-1",
+            ).ref shouldBe "er.entity.sales.channel"
+        }
+
+        "Binding: a value label as the METADATA layer serves it — the label itself — binds the same member ref" {
+            // A `valueLabels` entry reaches the matcher from the METADATA layer (ttr-core MetadataExtractor), not the
+            // declared one; the rule is the row's class, not its layer.
+            val label =
+                declared(
+                    "er.entity.sales.channel.marketplace",
+                    "er.entity.sales.channel.marketplace",
+                    TargetClass.TARGET_CLASS_MEMBER,
+                ).toBuilder()
+                    .setSource(SourceTag.METADATA)
+                    .build()
+            val binding = mapped(label, mention("Tržiště", 0, 7), "snap-1")
+            binding.ref shouldBe "er.entity.sales.channel#marketplace"
+            binding.source shouldBe LatticeSourceTag.SOURCE_TAG_METADATA
+            Bindings.attributeRefOf(label) shouldBe "er.entity.sales.channel"
+        }
+
+        "Binding: the member spelling's edges — a `#` in the code, an empty code, a learned pick, a data member" {
+            val member = TargetClass.TARGET_CLASS_MEMBER
+            // A code with `#`: the attribute is the first four segments, the code whole.
+            mapped(declared("er.entity.course.lang.C#", "unknown", member), mention("C#", 0, 2), "snap-1")
+                .ref shouldBe "er.entity.course.lang#C#"
+            // An empty code names no member: the ref stays as written rather than `…lang#`.
+            mapped(declared("er.entity.course.lang.", "unknown", member), mention("x", 0, 1), "snap-1")
+                .ref shouldBe "er.entity.course.lang."
+            // A row already in the member spelling (a learned pick of a value label) attributes to its attribute.
+            val learned =
+                declared(
+                    "er.entity.sales.channel#web",
+                    "unknown",
+                    member,
+                ).toBuilder().setSource(SourceTag.LEARNED).build()
+            mapped(learned, mention("webu", 0, 4), "snap-1").ref shouldBe "er.entity.sales.channel#web"
+            Bindings.attributeRefOf(learned) shouldBe "er.entity.sales.channel"
+            // A data member with no id keeps its own spelling: no value-label split on a MEMBER-source row.
+            val idless =
+                member(
+                    "",
+                    "er.entity.x.y",
+                    1.0,
+                ).toBuilder().setTargetRef("er.entity.x.y.z").setTargetClass(member).build()
+            mapped(idless, literal("z", 0, 1, anchorHead = 0), "snap-1").ref shouldBe "er.entity.x.y.z"
+            Bindings.attributeRefOf(idless) shouldBe "er.entity.x.y"
+        }
+
+        "a declared er member on a value attributes to its attribute and binds `<attribute>#<code>`" {
+            val state =
+                LatticeAssembler.assemble(
+                    parse = AnalyzeResponse.getDefaultInstance(),
+                    gate =
+                        Bound(
+                            emptyList(),
+                            1.0,
+                            listOf(
+                                gatedSpan(
+                                    literal("web", 10, 13, anchorHead = 0),
+                                    listOf(
+                                        declared(
+                                            "er.entity.sales.channel.web",
+                                            "unknown",
+                                            TargetClass.TARGET_CLASS_MEMBER,
+                                        ),
+                                    ),
+                                    ambiguous = false,
+                                ),
+                            ),
+                        ),
+                    ungatedMentions = emptyList(),
+                    universals = emptyList(),
+                    entityTypes = emptyList(),
+                    snapshotHash = "snap-1",
+                    lang = "cs",
+                    preps = FrameRolePreps.shipped(),
+                    batch = BatchMatchResponse.getDefaultInstance(),
+                )
+            val attribution =
+                state.valuesList
+                    .single()
+                    .attributionsList
+                    .single()
+            attribution.attributeRef shouldBe "er.entity.sales.channel"
+            attribution.binding.ref shouldBe "er.entity.sales.channel#web"
+        }
+
         "Binding: a declared row keeps its own ref and class" {
             val binding =
                 mapped(

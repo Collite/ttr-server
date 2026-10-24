@@ -300,14 +300,15 @@ object GateSpans {
      * the object (`Bindings.refOf` reads the target ref), and `op:compare` when the request's operator
      * had claimed the placeholder. The target ref is what the row binds, so it is what the door names
      * — before `#`, the way a resumed pin reads an option with no type. A scoped row's category is a
-     * declared type's, so every broad-pass binding is named exactly as before.
+     * declared type's, so every broad-pass binding is named exactly as before. A value label is read in the
+     * lattice's spelling ([DeclaredMembers]), so it names its attribute, as a VOCABULARY row names its object.
      */
     private fun declaredRefOf(
         m: FuzzyMatch,
         entityTypes: List<ResolverEntityType>,
     ): String =
         entityTypes.firstOrNull { m.category in it.categories }?.ref
-            ?: m.targetRef.substringBefore('#').ifBlank { m.category }
+            ?: DeclaredMembers.spelled(m.targetRef).substringBefore('#').ifBlank { m.category }
 
     private fun toBinding(
         cand: DomainSpanCandidate,
@@ -335,7 +336,8 @@ object GateSpans {
             targetRef =
                 when {
                     conceptTarget != null -> conceptTarget.ifBlank { null }
-                    !isMember && top.targetRef.isNotBlank() -> top.targetRef
+                    // A value label as the lattice spells it, `<attribute>#<code>` (DeclaredMembers).
+                    !isMember && top.targetRef.isNotBlank() -> DeclaredMembers.spelled(top.targetRef)
                     else -> null
                 },
             siblingRefs = siblings[top.category].orEmpty(),
@@ -372,7 +374,8 @@ object GateSpans {
             id = Binder.identityKey(m),
             label = m.candidate,
             resolvedId = if (isMember) m.candidateId else null,
-            targetRef = if (!isMember && m.targetRef.isNotBlank()) m.targetRef else null,
+            // A picked value label resumes as the member ref the door renders (DeclaredMembers).
+            targetRef = if (!isMember && m.targetRef.isNotBlank()) DeclaredMembers.spelled(m.targetRef) else null,
             entityTypeRef =
                 if (concept != null) concepts.erTarget(m.targetRef) else entityRefOf(m, entityTypes, memberEntities),
             spanStart = cand.start,
