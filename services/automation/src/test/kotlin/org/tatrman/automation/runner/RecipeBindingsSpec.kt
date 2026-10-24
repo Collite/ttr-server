@@ -40,6 +40,86 @@ class RecipeBindingsSpec :
             values.getValue("prior_year").value shouldBe Instant.parse("2025-11-02T08:00:00Z")
             values.getValue("prior_week").value shouldBe Instant.parse("2025-10-26T08:00:00Z")
         }
+        "published minute derivations retain exact amounts and original pinned time" {
+            val recipe =
+                ManifestRecipe(
+                    "r",
+                    bindings =
+                        listOf(
+                            ManifestBinding(
+                                "soon",
+                                "datetime",
+                                "derived",
+                                ManifestDerive("as_of", "plus", "15", "minutes"),
+                            ),
+                        ),
+                )
+            RecipeBindings.resolve(recipe, Instant.parse("2026-10-24T12:30:00Z")).getValue("soon").value shouldBe
+                Instant.parse("2026-10-24T12:45:00Z")
+        }
+        "date bindings and subday derivations retain date versus timestamp types" {
+            val recipe =
+                ManifestRecipe(
+                    "r",
+                    parameters = listOf(ManifestParameter("start", "date", "2024-01-31")),
+                    bindings =
+                        listOf(
+                            ManifestBinding("month", "date", "derived", ManifestDerive("start", "plus", "1", "months")),
+                            ManifestBinding(
+                                "hour",
+                                "timestamp",
+                                "derived",
+                                ManifestDerive("start", "plus", "1", "hours"),
+                            ),
+                        ),
+                )
+            val result = RecipeBindings.resolve(recipe, Instant.EPOCH)
+            result.getValue("month").value shouldBe java.time.LocalDate.parse("2024-02-29")
+            result.getValue("hour").value shouldBe java.time.LocalDateTime.parse("2024-01-31T01:00:00")
+        }
+        "published datetime binding tags normalize date parameters before chained derivations" {
+            val recipe =
+                ManifestRecipe(
+                    "r",
+                    parameters = listOf(ManifestParameter("start", "date", "2024-01-31")),
+                    bindings =
+                        listOf(
+                            ManifestBinding(
+                                "month",
+                                "datetime",
+                                "derived",
+                                ManifestDerive("start", "plus", "1", "months"),
+                            ),
+                            ManifestBinding(
+                                "later",
+                                "datetime",
+                                "derived",
+                                ManifestDerive("month", "plus", "15", "minutes"),
+                            ),
+                        ),
+                )
+            val result = RecipeBindings.resolve(recipe, Instant.EPOCH)
+            result.getValue("month").value shouldBe Instant.parse("2024-02-29T00:00:00Z")
+            result.getValue("later").value shouldBe Instant.parse("2024-02-29T00:15:00Z")
+        }
+        "fractional wrong-type overflowing and calendar duration amounts refuse instead of truncating" {
+            val base = mapOf("as_of" to BoundValue("datetime", Instant.EPOCH))
+            for (number in listOf(
+                BoundValue("decimal", BigDecimal("1.5")),
+                BoundValue("int", 1.5),
+                BoundValue("text", "2"),
+            )) {
+                shouldThrow<Exception> {
+                    RecipeBindings.derive(ManifestDerive("as_of", "plus", "n", "days"), base + ("n" to number))
+                }
+            }
+            shouldThrow<IllegalArgumentException> {
+                RecipeBindings.derive(ManifestDerive("as_of", "plus", "2", "working_days"), base)
+            }
+            shouldThrow<ArithmeticException> {
+                RecipeBindings.derive(ManifestDerive("as_of", "minus", Long.MIN_VALUE.toString(), "days"), base)
+            }
+        }
         "cycles, unknown overrides and incompatible override types refuse before a door read" {
             val recipe =
                 ManifestRecipe(

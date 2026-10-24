@@ -325,7 +325,18 @@ results refuse with generic 501 errors. All planning finishes before the atomic
 completion, so any later argument failure leaves no partial decision/batch journal. No extra Query call or
 model/connector write is made.
 
-Native writer/obligation synthesis, key lookups, calendar/duration expressions and division validity guards
+Bound-date durations use the compiler's public `SugarLowering` before predicate/scalar compilation.
+`:as_of - days(30)`, explicit duration parameters such as `days(:lookback)`, integer/day-count parameters,
+weeks/months/hours/minutes and nested bound derivations resolve against pinned values, without reading a
+clock or calendar. Typed dates stay dates for day/week/month arithmetic; subday arithmetic yields timestamps.
+Timestamp offsets normalize to UTC. The shared manifest binding resolver now handles published minute
+bindings and date parameters, including the producer's datetime tag, and refuses fractional/wrong-type counts
+instead of truncating. Authored parameter names validate before synthesis, and fresh private bindings never
+replace authored values or make unknown references resolve. Invalid/overflowing operations refuse before
+completion, including on empty routes. The compiler's wiring/window spelling `30 days` remains invalid inside
+scalar expressions; use `days(30)` there.
+
+Native writer/obligation synthesis, key lookups, calendar reads/column-date arithmetic and division validity guards
 still require lowering; selected unsupported operations return `501 preview-unsupported`. P2/P3
 retain dry-run task/delivery rows and performed action outcomes. Durable close/sealing and local staging retention are described below. Application mounting is
 pending. The local Query fixtures do not certify live Hartland behavior.

@@ -326,6 +326,77 @@ class DryRunSpec :
             }
         }
 
+        "bound-date conditions and arguments share the pinned run time and one atomic completion" {
+            supervisorScope {
+                val recipe =
+                    previewRecipe().withWiring(
+                        listOf(
+                            ManifestWiring(
+                                listOf("way.hold"),
+                                "hold",
+                                mapOf(
+                                    "order" to "order_number",
+                                    "department" to "cast(cast(:as_of - days(30) as date) as text)",
+                                ),
+                                "cast(:as_of - days(30) as date) < cast(:as_of as date)",
+                            ),
+                        ),
+                    )
+                val f = PreviewFixture(this, recipe)
+                f.runner.use { runner ->
+                    runner.evaluate()
+                    val expected =
+                        PREVIEW_NOW
+                            .atOffset(ZoneOffset.UTC)
+                            .minusDays(30)
+                            .toLocalDate()
+                            .toString()
+                    f.plan!!
+                        .actions
+                        .single()
+                        .arguments["department"] shouldBe JsonPrimitive(expected)
+                    f.plan!!
+                        .actions
+                        .single()
+                        .would shouldBe "would hold order 4712 for $expected"
+                    f.plan!!
+                        .rows
+                        .single { it.op == "update" }
+                        .set shouldBe
+                        buildJsonObject { put("held_for", expected) }
+                    f.journals.get() shouldBe 1
+                    f.reads.get() shouldBe 5
+                }
+            }
+        }
+
+        "unsupported calendar durations fail once before any preview completion" {
+            supervisorScope {
+                val recipe =
+                    previewRecipe().withWiring(
+                        listOf(
+                            ManifestWiring(
+                                listOf("way.hold"),
+                                "hold",
+                                mapOf(
+                                    "order" to "order_number",
+                                    "department" to "cast(:as_of + working_days(2) as text)",
+                                ),
+                            ),
+                        ),
+                    )
+                val f = PreviewFixture(this, recipe)
+                f.runner.use { runner ->
+                    repeat(2) {
+                        shouldThrow<AutomationException> { runner.evaluate() }.code shouldBe
+                            ErrorCode.PREVIEW_UNSUPPORTED
+                    }
+                    f.journals.get() shouldBe 0
+                    f.reads.get() shouldBe 5
+                }
+            }
+        }
+
         "each action describes only its own detail limit while the batch keeps the shared snapshot" {
             supervisorScope {
                 val original = PreviewMetadata.from(BundleFixture.load())

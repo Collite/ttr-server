@@ -2,10 +2,13 @@
 package org.tatrman.automation.runner
 
 import org.tatrman.automation.bundle.ManifestRecipe
+import org.tatrman.automation.bundle.ManifestDerive
 import java.math.BigDecimal
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneOffset
+import java.time.LocalDateTime
+import java.time.OffsetDateTime
 
 /** AU-C-4: resolve values at open; Query binds scalars and never computes recipe date arithmetic. */
 object RecipeBindings {
@@ -47,31 +50,105 @@ object RecipeBindings {
             for (b in ready) {
                 require(b.source == "derived") { "unknown binding source ${b.source}" }
                 val d = requireNotNull(b.derive)
-                val base = values.getValue(d.base).value as? Instant ?: error("date binding base is not an instant")
-                val amount =
-                    d.amount.toLongOrNull() ?: (values[d.amount]?.value as? Number)?.toLong()
-                        ?: error("derived binding amount is not an integer")
-                val signed =
-                    when (d.op) {
-                        "minus" -> Math.negateExact(amount)
-                        "plus" -> amount
-                        else -> error("unsupported derive operator ${d.op}")
+                val result = derive(d, values)
+                val value =
+                    when {
+                        b.type in setOf("datetime", "timestamptz") ->
+                            when (val v = result.value) {
+                                is LocalDate -> v.atStartOfDay().toInstant(ZoneOffset.UTC)
+                                is LocalDateTime -> v.toInstant(ZoneOffset.UTC)
+                                is OffsetDateTime -> v.toInstant()
+                                else -> v
+                            }
+                        b.type == "timestamp" && result.value is LocalDate -> result.value.atStartOfDay()
+                        else -> result.value
                     }
-                val date = base.atOffset(ZoneOffset.UTC)
-                val result =
-                    when (d.unit) {
-                        "days", "day" -> date.plusDays(signed)
-                        "weeks", "week" -> date.plusWeeks(signed)
-                        "months", "month" -> date.plusMonths(signed)
-                        "years", "year" -> date.plusYears(signed)
-                        "hours", "hour" -> date.plusHours(signed)
-                        else -> error("unsupported derived date unit ${d.unit}")
-                    }.toInstant()
-                values[b.name] = BoundValue(b.type, result)
+                values[b.name] = BoundValue(b.type, value)
             }
             pending.removeAll(ready.toSet())
         }
         return values.toMap()
+    }
+
+    /** Shared by manifest bindings and compiler-lowered preview date expressions; never reads a clock. */
+    internal fun derive(
+        d: ManifestDerive,
+        values: Map<String, BoundValue>,
+    ): BoundValue {
+        val base = values.getValue(d.base)
+        require(
+            base.type in setOf("date", "datetime", "timestamp", "timestamptz"),
+        ) { "date binding base is not temporal" }
+        val amount =
+            d.amount.toLongOrNull() ?: values.getValue(d.amount).let { value ->
+                require(
+                    value.type in setOf("days", "working_days", "int", "integer", "bigint"),
+                ) { "derived amount is not an integer" }
+                when (val number = value.value) {
+                    is Byte, is Short, is Int, is Long -> (number as Number).toLong()
+                    else -> error("derived binding amount is not an integer")
+                }
+            }
+        val signed =
+            when (d.op) {
+                "minus" -> Math.negateExact(amount)
+                "plus" -> amount
+                else -> error("unsupported derive operator ${d.op}")
+            }
+        require(
+            d.unit in
+                setOf(
+                    "days",
+                    "day",
+                    "weeks",
+                    "week",
+                    "months",
+                    "month",
+                    "years",
+                    "year",
+                    "hours",
+                    "hour",
+                    "minutes",
+                    "minute",
+                ),
+        ) {
+            "unsupported derived date unit"
+        }
+        val resultType =
+            if (base.type == "date" &&
+                d.unit in setOf("minutes", "minute", "hours", "hour")
+            ) {
+                "timestamp"
+            } else {
+                base.type
+            }
+        if (base.value == null) return BoundValue(resultType, null)
+        val date =
+            when (val value = base.value) {
+                is Instant -> value.atOffset(ZoneOffset.UTC)
+                is LocalDate -> value.atStartOfDay().atOffset(ZoneOffset.UTC)
+                is LocalDateTime -> value.atOffset(ZoneOffset.UTC)
+                is OffsetDateTime -> value.withOffsetSameInstant(ZoneOffset.UTC)
+                else -> error("date binding value is not temporal")
+            }
+        val result =
+            when (d.unit) {
+                "days", "day" -> date.plusDays(signed)
+                "weeks", "week" -> date.plusWeeks(signed)
+                "months", "month" -> date.plusMonths(signed)
+                "years", "year" -> date.plusYears(signed)
+                "hours", "hour" -> date.plusHours(signed)
+                else -> date.plusMinutes(signed)
+            }
+        return BoundValue(
+            resultType,
+            when {
+                resultType == "date" -> result.toLocalDate()
+                base.value is Instant -> result.toInstant()
+                base.value is LocalDate || base.value is LocalDateTime -> result.toLocalDateTime()
+                else -> result
+            },
+        )
     }
 
     private fun literal(

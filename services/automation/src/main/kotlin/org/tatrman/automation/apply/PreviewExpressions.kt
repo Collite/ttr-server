@@ -68,6 +68,7 @@ internal object PreviewExpressions {
     ): Table {
         val parsed = sources.map { TtrpParser.parseExpression(it) }
         if (parsed.any { result -> result.diagnostics.any { it.severity == Severity.ERROR } }) unsupported()
+        val timed = PreviewTime.lower(parsed.map { it.expression }, bindings)
         val columns = table.columns.toMutableList()
         val constants = mutableListOf<Any?>()
         val authoredNames =
@@ -94,10 +95,10 @@ internal object PreviewExpressions {
         // Keep literal decimals/large integers out of plan.v1's Double literal arm. Parameters likewise
         // retain their JDBC types rather than the translator's default decimal/timestamp parameter type.
         val expressions =
-            parsed.map { result ->
-                NodeExpressions.rewrite(result.expression) {
+            timed.expressions.map { result ->
+                NodeExpressions.rewrite(result) {
                     when (it) {
-                        is ParamRef -> constant(bindings[it.name] ?: unsupported(), it.location)
+                        is ParamRef -> constant(timed.bindings[it.name] ?: unsupported(), it.location)
                         is Literal ->
                             (it.value as? LiteralValue.Num)?.let { number ->
                                 val decimal = BigDecimal(number.raw)
@@ -244,7 +245,7 @@ internal object PreviewExpressions {
 
     private fun canonical(type: String): String =
         when (type.substringBefore('(').lowercase()) {
-            "integer", "bigint" -> "int"
+            "integer", "bigint", "days", "working_days" -> "int"
             "numeric" -> "decimal"
             "double", "real" -> "float"
             "boolean" -> "bool"
