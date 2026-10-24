@@ -1,0 +1,10 @@
+package lexicon
+import er.*
+import db.retail.*
+import md.*
+import cn.*
+model lexicon locale en
+
+def term party { for: cn.Party, forms: ["party", "partner"] }
+def term customer { for: cn.Customer, forms: ["customer", "buyer"] }
+def term buyer_dimension { for: md.Buyer, forms: ["buyer"] }

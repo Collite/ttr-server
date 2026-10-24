@@ -19,6 +19,15 @@ application {
 
 tasks.test {
     useJUnitPlatform()
+    // CN-P4 S4.4 — the conceptual tier's shared fixture estate, compiled at test time by the real producer
+    // (`CnEstate`). Declared as an input so an edit to it re-runs the tests that read it.
+    val cnEstate = rootProject.file("shared/testdata/cn-estate")
+    inputs.dir(cnEstate).withPropertyName("cnEstate")
+    systemProperty("cnEstate", cnEstate.absolutePath)
+    // CN-P5 S5.1 — two of ttr-concept's golden worlds, the cn doors' seed estates (`shared/testdata/cn-worlds/README.md`).
+    val cnWorlds = rootProject.file("shared/testdata/cn-worlds")
+    inputs.dir(cnWorlds).withPropertyName("cnWorlds")
+    systemProperty("cnWorlds", cnWorlds.absolutePath)
 }
 
 val osArch = System.getProperty("os.arch").lowercase()
@@ -118,6 +127,10 @@ dependencies {
     // stays out of the serving artifact, which is what the P1.2 (a3) ruling buys — and neither
     // is an LLM client, so the zero-LLM classpath guard below is unaffected.
     implementation(libs.tatrman.ttr.snapshot)
+    // CN-P5 S5.1 — the cn doors (`statement.*` · `assertion.*` · `concept.search` · `definition.render`, cn contracts
+    // §4) wrap ttr-concept's pure functions. It brings the typed model, the TTR-P frontend and the translator (the
+    // er renderer's dialects, `ErModelHandle`); none is an LLM client, so the zero-LLM guard below holds.
+    implementation(libs.tatrman.ttr.concept)
 
     testImplementation(libs.bundles.kotest)
     testImplementation(libs.mockk)
@@ -135,6 +148,9 @@ dependencies {
     // lex-matcher's `LexiconArchiveSourceTest` does. Two readers conformant by contract are
     // held together by both being held to the same packer.
     testImplementation(libs.tatrman.ttr.lexicon.compile)
+    // CN-P5 S5.1 — the cn doors pin their model to the lexicon's `modelSnapshotHash`, which ttr-lexicon-cli's
+    // `ModelContentId` computes; the doors hash the tree by the same rule, and a test holds the copy to the producer's.
+    testImplementation(libs.tatrman.ttr.lexicon.cli)
     // MS-P3.S4 — the frame-role corpus derives each mention's `objectKind` through the REAL
     // `MentionKinds` table (contracts §8.5) instead of the fixture stating one. There is exactly
     // ONE implementation of that mapping in the ecosystem and it lives in ttr-semantics; a copy of
@@ -264,4 +280,51 @@ val verifyDeclaredLayerTwin by tasks.registering {
     }
 }
 
-tasks.named("check") { dependsOn(verifyNoLlmDependency, verifyNoKindDerivation, verifyDeclaredLayerTwin) }
+// CN-P5 S5.1 T4 — structural NO-DB-CLIENT guard (cn contracts §2.3: cn never executes a write; A-CN-50). The cn doors
+// co-host here, and `assertion.lower:v1` returns a row payload: nothing on this classpath may be able to store it. Fail the
+// build if the runtime classpath resolves a database driver, a JDBC pool or an ADBC / Arrow Flight SQL client. Calcite and
+// Avatica are allowed and are the reason this is a list rather than "no java.sql": they are the translator's relational
+// algebra (ttr-concept's er renderer and `ErModelHandle`), and reach no database without a driver from this list.
+// `CnDoorPurityTest` is the other half: no door class references JDBC at all.
+val forbiddenDbCoordinates =
+    listOf(
+        "postgresql",
+        "mssql-jdbc",
+        "mysql-connector",
+        "mariadb-java-client",
+        "ojdbc",
+        "sqlite-jdbc",
+        "duckdb_jdbc",
+        "h2database",
+        "hsqldb",
+        "derby",
+        "HikariCP",
+        "r2dbc",
+        "adbc",
+        "flight-sql",
+    )
+
+val verifyNoDbClient by tasks.registering {
+    val runtimeClasspath = configurations.named("runtimeClasspath")
+    doLast {
+        val hits =
+            runtimeClasspath
+                .get()
+                .resolvedConfiguration.resolvedArtifacts
+                .map { it.moduleVersion.id }
+                .filter { id ->
+                    forbiddenDbCoordinates.any { bad ->
+                        id.name.contains(bad, ignoreCase = true) || id.group.contains(bad, ignoreCase = true)
+                    }
+                }.map { "${it.group}:${it.name}:${it.version}" }
+                .distinct()
+        require(hits.isEmpty()) {
+            "NO-DB-CLIENT violation (cn contracts §2.3, A-CN-50): resolver runtimeClasspath resolves database client " +
+                "artifact(s): $hits — the cn doors return rows, they never write them."
+        }
+    }
+}
+
+tasks.named("check") {
+    dependsOn(verifyNoLlmDependency, verifyNoKindDerivation, verifyDeclaredLayerTwin, verifyNoDbClient)
+}

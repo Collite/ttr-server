@@ -1,0 +1,9 @@
+// CN-P3 S3.7 — every concept on md (contracts §1.2's md face): the role on the dimension, the event on the cubelet, the
+// qualities on the measures and the day attribute.
+model binding
+
+def cn2md_role    customer_g { role: cn.Customer, target: md.Customer }
+def cn2md_event   sale_g     { event: cn.Sale, target: md.sales }
+def cn2md_quality revenue_g  { quality: cn.revenue, target: md.net }
+def cn2md_quality gross_g    { quality: cn.gross_revenue, target: md.gross }
+def cn2md_quality sold_on_g  { quality: cn.sold_on, target: md.Time.day }

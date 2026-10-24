@@ -1,0 +1,100 @@
+package shop
+
+model er
+
+// CN-P4 S4.1 T7 — the v6 fixture estate (the S0.2 spike's toy, grown up into grammar 0.17). Invented names,
+// Hartland-shaped. "Praha" is meant to be a data-layer member of TWO cities (customer_address.city and
+// warehouse.city) — Hartland's `TN` shape, so the resolver's tier-M governance has a tie to break (S4.4).
+
+def entity customer {
+    displayLabel: { cs: "Zákazník", en: "Customer" },
+    attributes: [
+        def attribute sk { type: int, isKey: true },
+        def attribute customer_code { type: text },
+        def attribute segment {
+            type: text,
+            valueLabels: { "VIP": { cs: "VIP", en: "VIP" } },
+            search { searchable method: EXACT }
+        }
+    ]
+}
+
+def entity customer_address {
+    displayLabel: { cs: "Adresa zákazníka", en: "Customer address" },
+    attributes: [
+        def attribute sk { type: int, isKey: true },
+        def attribute city { type: text, search { searchable method: TYPOS(1) } },
+        def attribute state { type: text, search { searchable method: EXACT } }
+    ]
+}
+
+def entity warehouse {
+    displayLabel: { cs: "Sklad", en: "Warehouse" },
+    attributes: [
+        def attribute sk { type: int, isKey: true },
+        def attribute city { type: text, search { searchable method: TYPOS(1) } }
+    ]
+}
+
+def entity item {
+    displayLabel: { cs: "Položka", en: "Item" },
+    attributes: [
+        def attribute sk { type: int, isKey: true },
+        def attribute item_name { type: text, search { searchable method: TYPOS(1) } }
+    ]
+}
+
+def entity channel_sales {
+    attributes: [
+        def attribute sk { type: int, isKey: true },
+        def attribute channel {
+            type: text,
+            valueLabels: { "web": { cs: "web", en: "web" }, "store": { cs: "prodejna", en: "store" } },
+            search { searchable method: EXACT }
+        },
+        def attribute customer_sk { type: int },
+        def attribute item_sk { type: int },
+        def attribute ext_sales_price { type: decimal }
+    ]
+}
+
+def entity invoice {
+    attributes: [
+        def attribute sk { type: int, isKey: true },
+        def attribute customer_sk { type: int },
+        def attribute issued { type: date },
+        def attribute due { type: date },
+        def attribute status { type: text }
+    ]
+}
+
+// A stacked entity (LQ's `er.query`): what the phase `TopCustomer` grounds to (AM-2 — a phase grounds only so).
+def query top_customers {
+    sourceText: """sql
+SELECT customer_sk, total_revenue FROM top_customers
+"""
+}
+def entity top_customer {
+    binding: { target: { query: er.query.top_customers } },
+    attributes: [
+        def attribute customer_sk { type: int, isKey: true },
+        def attribute total_revenue { type: decimal }
+    ]
+}
+
+def relation customer_addr {
+    from: er.entity.customer, to: er.entity.customer_address,
+    cardinality: { from: "0..*", to: "1" }
+}
+def relation sale_customer {
+    from: er.entity.channel_sales, to: er.entity.customer,
+    cardinality: { from: "0..*", to: "1" }
+}
+def relation sale_item {
+    from: er.entity.channel_sales, to: er.entity.item,
+    cardinality: { from: "0..*", to: "1" }
+}
+def relation invoice_customer {
+    from: er.entity.invoice, to: er.entity.customer,
+    cardinality: { from: "0..*", to: "1" }
+}

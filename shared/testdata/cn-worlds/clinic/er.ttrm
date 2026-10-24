@@ -1,0 +1,98 @@
+// CN-P3 S3.7 — the invented clinical world (S0.3's clinical entity set, invented): two relations from `transfer` to
+// `encounter` (labels `from` / `to` — the G-ER-4 shape), a code closure, a fracture episode entity.
+model er
+
+def entity patient {
+    binding: { target: { table: db.dbo.table.patient } },
+    attributes: [
+        def attribute patient_id { type: int, isKey: true },
+        def attribute birth_year { type: int }
+    ]
+}
+
+def entity encounter {
+    binding: { target: { table: db.dbo.table.encounter } },
+    attributes: [
+        def attribute encounter_id { type: int, isKey: true },
+        def attribute patient_id { type: int },
+        def attribute department_id { type: int },
+        def attribute admitted_at { type: timestamp },
+        def attribute discharged_at { type: timestamp, optional: true }
+    ]
+}
+
+def entity transfer {
+    binding: { target: { table: db.dbo.table.transfer } },
+    attributes: [
+        def attribute transfer_id { type: int, isKey: true },
+        def attribute patient_id { type: int },
+        def attribute from_encounter { type: int },
+        def attribute to_encounter { type: int },
+        def attribute at { type: timestamp },
+        def attribute transfer_kind { type: text }
+    ]
+}
+
+def entity condition {
+    binding: { target: { table: db.dbo.table.condition } },
+    attributes: [
+        def attribute condition_id { type: int, isKey: true },
+        def attribute patient_id { type: int },
+        def attribute encounter_id { type: int },
+        def attribute code { type: text },
+        def attribute certainty { type: text },
+        def attribute experiencer { type: text },
+        def attribute onset { type: date },
+        def attribute onset_hi { type: date, optional: true },
+        def attribute onset_granularity { type: text },
+        def attribute abatement { type: date, optional: true }
+    ]
+}
+
+def entity diagnosis_code {
+    binding: { target: { table: db.dbo.table.diagnosis_code } },
+    attributes: [
+        def attribute code { type: text, isKey: true },
+        def attribute title { type: text }
+    ]
+}
+
+def entity code_closure {
+    binding: { target: { table: db.dbo.table.code_closure } },
+    attributes: [
+        def attribute ancestor_code { type: text, isKey: true },
+        def attribute descendant_code { type: text, isKey: true }
+    ]
+}
+
+def entity fracture_episode {
+    binding: { target: { table: db.dbo.table.fracture_episode } },
+    attributes: [
+        def attribute episode_id { type: int, isKey: true },
+        def attribute patient_id { type: int },
+        def attribute period_start { type: date },
+        def attribute period_end { type: date, optional: true },
+        def attribute end_state { type: text }
+    ]
+}
+
+def entity observation {
+    binding: { target: { table: db.dbo.table.observation } },
+    attributes: [
+        def attribute observation_id { type: int, isKey: true },
+        def attribute patient_id { type: int },
+        def attribute analyte { type: text },
+        def attribute value { type: decimal },
+        def attribute observed_at { type: timestamp }
+    ]
+}
+
+def relation encounter_patient { from: er.entity.encounter, to: er.entity.patient, join: [{ from: er.entity.encounter.patient_id, to: er.entity.patient.patient_id }] }
+def relation transfer_patient { from: er.entity.transfer, to: er.entity.patient, join: [{ from: er.entity.transfer.patient_id, to: er.entity.patient.patient_id }] }
+def relation transfer_from { from: er.entity.transfer, to: er.entity.encounter, join: [{ from: er.entity.transfer.from_encounter, to: er.entity.encounter.encounter_id }] }
+def relation transfer_to { from: er.entity.transfer, to: er.entity.encounter, join: [{ from: er.entity.transfer.to_encounter, to: er.entity.encounter.encounter_id }] }
+def relation condition_patient { from: er.entity.condition, to: er.entity.patient, join: [{ from: er.entity.condition.patient_id, to: er.entity.patient.patient_id }] }
+def relation condition_encounter { from: er.entity.condition, to: er.entity.encounter, join: [{ from: er.entity.condition.encounter_id, to: er.entity.encounter.encounter_id }] }
+def relation condition_code { from: er.entity.condition, to: er.entity.diagnosis_code, join: [{ from: er.entity.condition.code, to: er.entity.diagnosis_code.code }] }
+def relation fracture_patient { from: er.entity.fracture_episode, to: er.entity.patient, join: [{ from: er.entity.fracture_episode.patient_id, to: er.entity.patient.patient_id }] }
+def relation observation_patient { from: er.entity.observation, to: er.entity.patient, join: [{ from: er.entity.observation.patient_id, to: er.entity.patient.patient_id }] }

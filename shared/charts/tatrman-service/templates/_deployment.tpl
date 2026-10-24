@@ -42,6 +42,12 @@ spec:
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      {{- /* A module that reads the Kubernetes API (health's status of ExternalSecrets and Certificates)
+             runs as its own ServiceAccount, which its chart creates and binds. Unset → the namespace's
+             default account, and every chart without one renders byte-identically to before. */}}
+      {{- if and .Values.serviceAccount .Values.serviceAccount.name }}
+      serviceAccountName: {{ .Values.serviceAccount.name }}
+      {{- end }}
       {{- include "tatrman-service.initContainers" . }}
       containers:
         - name: {{ .Chart.Name }}

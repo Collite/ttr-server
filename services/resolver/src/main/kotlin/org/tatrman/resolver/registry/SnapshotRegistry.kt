@@ -4,6 +4,8 @@ package org.tatrman.resolver.registry
 import org.tatrman.resolver.model.ResolverEntityType
 import org.tatrman.resolver.model.ResolverRegistry
 import org.tatrman.resolver.model.ResolverThresholds
+import org.tatrman.resolver.model.TermSense
+import org.tatrman.ttr.lexicon.TargetFacts
 import java.util.concurrent.atomic.AtomicReference
 
 /**
@@ -52,7 +54,10 @@ class SnapshotRegistry(
             byRef.map { (ref, entries) ->
                 ResolverEntityType(
                     ref = ref,
-                    categories = entries.map { it.category }.distinct(),
+                    // CN-P4 (review-130 R11) — a concept or lifting element with no term and no member vocabulary
+                    // has no rows under its ref, so it registers no category: proposal asks the categories it
+                    // always asked. It is in the registry for its facts (a lift's stereotype, an `of:` chain).
+                    categories = entries.filterNot { it.factsOnly() }.map { it.category }.distinct(),
                     anchors = entries.flatMap { it.values.map { v -> v.value } }.distinct(),
                     // MS: verbatim. The grouping above is by targetRef and the facts are per
                     // ref, so every entry in a group carries the same pair — `first` is not a
@@ -68,9 +73,28 @@ class SnapshotRegistry(
                     codeFormat = entries.first().codeFormat,
                     // MV: per-ref as well.
                     memberVocabulary = entries.first().memberVocabulary,
+                    // CN-P4: per-ref facts again; the senses are per term, kept for the terms
+                    // that state one.
+                    stereotype = entries.first().stereotype,
+                    erTarget = entries.first().erTarget,
+                    via = entries.first().via,
+                    ofRef = entries.first().ofRef,
+                    liftsTo = entries.first().liftsTo,
+                    senses =
+                        entries
+                            .flatMap { it.values }
+                            .filter { it.defaultSense || it.sensePriority != null }
+                            .groupBy { it.value }
+                            .mapValues { (_, vs) ->
+                                TermSense(vs.any { it.defaultSense }, vs.mapNotNull { it.sensePriority }.maxOrNull())
+                            },
                 )
             }
         val locales = (vocab.locales + configLocales).distinct()
-        return ResolverRegistry(entityTypes, locales, thresholds, hash)
+        return ResolverRegistry(entityTypes, locales, thresholds, hash, source.modelSnapshotHash())
     }
+
+    /** CN-P4 — an entry registered for its concept facts alone: no term, no member vocabulary. */
+    private fun DeclaredVocabularyEntry.factsOnly(): Boolean =
+        values.isEmpty() && !memberVocabulary && (objectKind == TargetFacts.CONCEPT || liftsTo.isNotEmpty())
 }

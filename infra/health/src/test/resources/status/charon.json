@@ -1,0 +1,6 @@
+{
+ "service": "charon",
+ "stage": "2.3",
+ "endpoints": "seaweed (live), redis (live), db_table (live); worker_df stubbed",
+ "connections": []
+}

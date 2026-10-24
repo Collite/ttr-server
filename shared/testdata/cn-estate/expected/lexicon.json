@@ -1,0 +1,1098 @@
+{
+  "header": {
+    "schemaVersion": "ttr-lexicon-compiled/v6",
+    "modelSnapshotHash": "sha256:abababababababababababababababababababababababababababababababab",
+    "sourceHashes": {
+      "declared": "sha256:e847e218d393ebe1da1e79be278440cc7e1d4ba2dd944e86ce9b96eeb41cdee0",
+      "metadata": "sha256:8c454b666e1fa40fcd3cc0171e023499e5fb3996eb497b3108ca553450872f57"
+    },
+    "builtAt": "2026-10-22T00:00:00Z"
+  },
+  "entries": [
+    {
+      "termNormalized": "adresa zákazníka",
+      "lemma": null,
+      "lang": "cs",
+      "targetRef": "er.entity.customer_address",
+      "targetClass": "MODEL_OBJECT",
+      "method": "EXACT",
+      "sourceTag": "METADATA",
+      "provenance": {
+        "file": "model/er/shop.ttrm",
+        "line": 0
+      },
+      "matchProfile": null
+    },
+    {
+      "termNormalized": "channel",
+      "lemma": null,
+      "lang": "en",
+      "targetRef": "cn.Channel",
+      "targetClass": "MODEL_OBJECT",
+      "method": "EXACT",
+      "sourceTag": "DECLARED",
+      "provenance": {
+        "file": "model/lexicon/en/terms.ttrm",
+        "line": 7
+      },
+      "matchProfile": {
+        "rules": [
+          {
+            "norm": "canonical",
+            "exact": 1.0,
+            "typos": null,
+            "tokens": false
+          }
+        ]
+      }
+    },
+    {
+      "termNormalized": "customer",
+      "lemma": null,
+      "lang": "cs|en",
+      "targetRef": "cn.Customer",
+      "targetClass": "MODEL_OBJECT",
+      "method": "EXACT",
+      "sourceTag": "DECLARED",
+      "provenance": {
+        "file": "model/cn/shop.ttrm",
+        "line": 18
+      },
+      "matchProfile": {
+        "rules": [
+          {
+            "norm": "canonical",
+            "exact": 1.0,
+            "typos": null,
+            "tokens": false
+          }
+        ]
+      },
+      "defaultSense": true
+    },
+    {
+      "termNormalized": "customer",
+      "lemma": null,
+      "lang": "en",
+      "targetRef": "er.entity.customer",
+      "targetClass": "MODEL_OBJECT",
+      "method": "EXACT",
+      "sourceTag": "METADATA",
+      "provenance": {
+        "file": "model/er/shop.ttrm",
+        "line": 0
+      },
+      "matchProfile": null
+    },
+    {
+      "termNormalized": "customer address",
+      "lemma": null,
+      "lang": "en",
+      "targetRef": "er.entity.customer_address",
+      "targetClass": "MODEL_OBJECT",
+      "method": "EXACT",
+      "sourceTag": "METADATA",
+      "provenance": {
+        "file": "model/er/shop.ttrm",
+        "line": 0
+      },
+      "matchProfile": null
+    },
+    {
+      "termNormalized": "debtor",
+      "lemma": null,
+      "lang": "en",
+      "targetRef": "cn.DebtorCustomer",
+      "targetClass": "MODEL_OBJECT",
+      "method": "EXACT",
+      "sourceTag": "DECLARED",
+      "provenance": {
+        "file": "model/lexicon/en/terms.ttrm",
+        "line": 5
+      },
+      "matchProfile": {
+        "rules": [
+          {
+            "norm": "canonical",
+            "exact": 1.0,
+            "typos": null,
+            "tokens": false
+          }
+        ]
+      }
+    },
+    {
+      "termNormalized": "dlužník",
+      "lemma": null,
+      "lang": "cs",
+      "targetRef": "cn.DebtorCustomer",
+      "targetClass": "MODEL_OBJECT",
+      "method": "EXACT",
+      "sourceTag": "DECLARED",
+      "provenance": {
+        "file": "model/lexicon/cs/terms.ttrm",
+        "line": 9
+      },
+      "matchProfile": {
+        "rules": [
+          {
+            "norm": "canonical",
+            "exact": 1.0,
+            "typos": null,
+            "tokens": false
+          }
+        ]
+      }
+    },
+    {
+      "termNormalized": "dodavatel",
+      "lemma": null,
+      "lang": "cs",
+      "targetRef": "cn.Supplier",
+      "targetClass": "MODEL_OBJECT",
+      "method": "EXACT",
+      "sourceTag": "DECLARED",
+      "provenance": {
+        "file": "model/lexicon/cs/terms.ttrm",
+        "line": 13
+      },
+      "matchProfile": {
+        "rules": [
+          {
+            "norm": "canonical",
+            "exact": 1.0,
+            "typos": null,
+            "tokens": false
+          }
+        ]
+      }
+    },
+    {
+      "termNormalized": "item",
+      "lemma": null,
+      "lang": "en",
+      "targetRef": "cn.Item",
+      "targetClass": "MODEL_OBJECT",
+      "method": "EXACT",
+      "sourceTag": "DECLARED",
+      "provenance": {
+        "file": "model/lexicon/en/terms.ttrm",
+        "line": 6
+      },
+      "matchProfile": {
+        "rules": [
+          {
+            "norm": "canonical",
+            "exact": 1.0,
+            "typos": null,
+            "tokens": false
+          }
+        ]
+      }
+    },
+    {
+      "termNormalized": "item",
+      "lemma": null,
+      "lang": "en",
+      "targetRef": "er.entity.item",
+      "targetClass": "MODEL_OBJECT",
+      "method": "EXACT",
+      "sourceTag": "METADATA",
+      "provenance": {
+        "file": "model/er/shop.ttrm",
+        "line": 0
+      },
+      "matchProfile": null
+    },
+    {
+      "termNormalized": "kanál",
+      "lemma": null,
+      "lang": "cs",
+      "targetRef": "cn.Channel",
+      "targetClass": "MODEL_OBJECT",
+      "method": "EXACT",
+      "sourceTag": "DECLARED",
+      "provenance": {
+        "file": "model/lexicon/cs/terms.ttrm",
+        "line": 12
+      },
+      "matchProfile": {
+        "rules": [
+          {
+            "norm": "canonical",
+            "exact": 1.0,
+            "typos": null,
+            "tokens": false
+          }
+        ]
+      }
+    },
+    {
+      "termNormalized": "kanál",
+      "lemma": null,
+      "lang": "cs",
+      "targetRef": "er.entity.channel_sales",
+      "targetClass": "MODEL_OBJECT",
+      "method": "EXACT",
+      "sourceTag": "DECLARED",
+      "provenance": {
+        "file": "model/lexicon/cs/terms.ttrm",
+        "line": 17
+      },
+      "matchProfile": {
+        "rules": [
+          {
+            "norm": "canonical",
+            "exact": 1.0,
+            "typos": null,
+            "tokens": false
+          }
+        ]
+      }
+    },
+    {
+      "termNormalized": "obrat",
+      "lemma": null,
+      "lang": "cs",
+      "targetRef": "md.measure.revenue",
+      "targetClass": "MODEL_OBJECT",
+      "method": "EXACT",
+      "sourceTag": "DECLARED",
+      "provenance": {
+        "file": "model/lexicon/cs/terms.ttrm",
+        "line": 16
+      },
+      "matchProfile": {
+        "rules": [
+          {
+            "norm": "canonical",
+            "exact": 1.0,
+            "typos": null,
+            "tokens": false
+          }
+        ]
+      }
+    },
+    {
+      "termNormalized": "overdue customer",
+      "lemma": null,
+      "lang": "en",
+      "targetRef": "cn.DebtorCustomer",
+      "targetClass": "MODEL_OBJECT",
+      "method": "EXACT",
+      "sourceTag": "DECLARED",
+      "provenance": {
+        "file": "model/lexicon/en/terms.ttrm",
+        "line": 5
+      },
+      "matchProfile": {
+        "rules": [
+          {
+            "norm": "canonical",
+            "exact": 1.0,
+            "typos": null,
+            "tokens": false
+          }
+        ]
+      }
+    },
+    {
+      "termNormalized": "položka",
+      "lemma": null,
+      "lang": "cs",
+      "targetRef": "cn.Item",
+      "targetClass": "MODEL_OBJECT",
+      "method": "EXACT",
+      "sourceTag": "DECLARED",
+      "provenance": {
+        "file": "model/lexicon/cs/terms.ttrm",
+        "line": 10
+      },
+      "matchProfile": {
+        "rules": [
+          {
+            "norm": "canonical",
+            "exact": 1.0,
+            "typos": null,
+            "tokens": false
+          }
+        ]
+      },
+      "sensePriority": 1.0
+    },
+    {
+      "termNormalized": "položka",
+      "lemma": null,
+      "lang": "cs",
+      "targetRef": "er.entity.item",
+      "targetClass": "MODEL_OBJECT",
+      "method": "EXACT",
+      "sourceTag": "METADATA",
+      "provenance": {
+        "file": "model/er/shop.ttrm",
+        "line": 0
+      },
+      "matchProfile": null
+    },
+    {
+      "termNormalized": "prodejna",
+      "lemma": null,
+      "lang": "cs",
+      "targetRef": "er.entity.channel_sales.channel.store",
+      "targetClass": "MEMBER",
+      "method": "EXACT",
+      "sourceTag": "METADATA",
+      "provenance": {
+        "file": "model/er/shop.ttrm",
+        "line": 0
+      },
+      "matchProfile": null
+    },
+    {
+      "termNormalized": "prodejní kanál",
+      "lemma": null,
+      "lang": "cs",
+      "targetRef": "cn.Channel",
+      "targetClass": "MODEL_OBJECT",
+      "method": "EXACT",
+      "sourceTag": "DECLARED",
+      "provenance": {
+        "file": "model/lexicon/cs/terms.ttrm",
+        "line": 12
+      },
+      "matchProfile": {
+        "rules": [
+          {
+            "norm": "canonical",
+            "exact": 1.0,
+            "typos": null,
+            "tokens": false
+          }
+        ]
+      }
+    },
+    {
+      "termNormalized": "revenue",
+      "lemma": null,
+      "lang": "en",
+      "targetRef": "cn.revenue",
+      "targetClass": "MODEL_OBJECT",
+      "method": "EXACT",
+      "sourceTag": "DECLARED",
+      "provenance": {
+        "file": "model/lexicon/en/terms.ttrm",
+        "line": 9
+      },
+      "matchProfile": {
+        "rules": [
+          {
+            "norm": "canonical",
+            "exact": 1.0,
+            "typos": null,
+            "tokens": false
+          }
+        ]
+      }
+    },
+    {
+      "termNormalized": "segment",
+      "lemma": null,
+      "lang": "cs",
+      "targetRef": "cn.Segment",
+      "targetClass": "MODEL_OBJECT",
+      "method": "EXACT",
+      "sourceTag": "DECLARED",
+      "provenance": {
+        "file": "model/lexicon/cs/terms.ttrm",
+        "line": 11
+      },
+      "matchProfile": {
+        "rules": [
+          {
+            "norm": "canonical",
+            "exact": 1.0,
+            "typos": null,
+            "tokens": false
+          }
+        ]
+      }
+    },
+    {
+      "termNormalized": "sklad",
+      "lemma": null,
+      "lang": "cs",
+      "targetRef": "er.entity.warehouse",
+      "targetClass": "MODEL_OBJECT",
+      "method": "EXACT",
+      "sourceTag": "METADATA",
+      "provenance": {
+        "file": "model/er/shop.ttrm",
+        "line": 0
+      },
+      "matchProfile": null
+    },
+    {
+      "termNormalized": "store",
+      "lemma": null,
+      "lang": "en",
+      "targetRef": "er.entity.channel_sales.channel.store",
+      "targetClass": "MEMBER",
+      "method": "EXACT",
+      "sourceTag": "METADATA",
+      "provenance": {
+        "file": "model/er/shop.ttrm",
+        "line": 0
+      },
+      "matchProfile": null
+    },
+    {
+      "termNormalized": "supplier",
+      "lemma": null,
+      "lang": "en",
+      "targetRef": "cn.Supplier",
+      "targetClass": "MODEL_OBJECT",
+      "method": "EXACT",
+      "sourceTag": "DECLARED",
+      "provenance": {
+        "file": "model/lexicon/en/terms.ttrm",
+        "line": 8
+      },
+      "matchProfile": {
+        "rules": [
+          {
+            "norm": "canonical",
+            "exact": 1.0,
+            "typos": null,
+            "tokens": false
+          }
+        ]
+      }
+    },
+    {
+      "termNormalized": "tržby",
+      "lemma": null,
+      "lang": "cs",
+      "targetRef": "cn.revenue",
+      "targetClass": "MODEL_OBJECT",
+      "method": "EXACT",
+      "sourceTag": "DECLARED",
+      "provenance": {
+        "file": "model/lexicon/cs/terms.ttrm",
+        "line": 14
+      },
+      "matchProfile": {
+        "rules": [
+          {
+            "norm": "canonical",
+            "exact": 1.0,
+            "typos": null,
+            "tokens": false
+          }
+        ]
+      }
+    },
+    {
+      "termNormalized": "tržby",
+      "lemma": null,
+      "lang": "cs",
+      "targetRef": "md.measure.revenue",
+      "targetClass": "MODEL_OBJECT",
+      "method": "EXACT",
+      "sourceTag": "DECLARED",
+      "provenance": {
+        "file": "model/lexicon/cs/terms.ttrm",
+        "line": 16
+      },
+      "matchProfile": {
+        "rules": [
+          {
+            "norm": "canonical",
+            "exact": 1.0,
+            "typos": null,
+            "tokens": false
+          }
+        ]
+      }
+    },
+    {
+      "termNormalized": "vip",
+      "lemma": null,
+      "lang": "cs",
+      "targetRef": "er.entity.customer.segment.VIP",
+      "targetClass": "MEMBER",
+      "method": "EXACT",
+      "sourceTag": "METADATA",
+      "provenance": {
+        "file": "model/er/shop.ttrm",
+        "line": 0
+      },
+      "matchProfile": null
+    },
+    {
+      "termNormalized": "vip",
+      "lemma": null,
+      "lang": "en",
+      "targetRef": "er.entity.customer.segment.VIP",
+      "targetClass": "MEMBER",
+      "method": "EXACT",
+      "sourceTag": "METADATA",
+      "provenance": {
+        "file": "model/er/shop.ttrm",
+        "line": 0
+      },
+      "matchProfile": null
+    },
+    {
+      "termNormalized": "warehouse",
+      "lemma": null,
+      "lang": "en",
+      "targetRef": "er.entity.warehouse",
+      "targetClass": "MODEL_OBJECT",
+      "method": "EXACT",
+      "sourceTag": "METADATA",
+      "provenance": {
+        "file": "model/er/shop.ttrm",
+        "line": 0
+      },
+      "matchProfile": null
+    },
+    {
+      "termNormalized": "web",
+      "lemma": null,
+      "lang": "cs",
+      "targetRef": "er.entity.channel_sales.channel.web",
+      "targetClass": "MEMBER",
+      "method": "EXACT",
+      "sourceTag": "METADATA",
+      "provenance": {
+        "file": "model/er/shop.ttrm",
+        "line": 0
+      },
+      "matchProfile": null
+    },
+    {
+      "termNormalized": "web",
+      "lemma": null,
+      "lang": "en",
+      "targetRef": "er.entity.channel_sales.channel.web",
+      "targetClass": "MEMBER",
+      "method": "EXACT",
+      "sourceTag": "METADATA",
+      "provenance": {
+        "file": "model/er/shop.ttrm",
+        "line": 0
+      },
+      "matchProfile": null
+    },
+    {
+      "termNormalized": "zboží",
+      "lemma": null,
+      "lang": "cs",
+      "targetRef": "cn.Item",
+      "targetClass": "MODEL_OBJECT",
+      "method": "EXACT",
+      "sourceTag": "DECLARED",
+      "provenance": {
+        "file": "model/lexicon/cs/terms.ttrm",
+        "line": 10
+      },
+      "matchProfile": {
+        "rules": [
+          {
+            "norm": "canonical",
+            "exact": 1.0,
+            "typos": null,
+            "tokens": false
+          }
+        ]
+      },
+      "sensePriority": 1.0
+    },
+    {
+      "termNormalized": "zákazník",
+      "lemma": null,
+      "lang": "cs",
+      "targetRef": "er.entity.customer",
+      "targetClass": "MODEL_OBJECT",
+      "method": "EXACT",
+      "sourceTag": "METADATA",
+      "provenance": {
+        "file": "model/er/shop.ttrm",
+        "line": 0
+      },
+      "matchProfile": null
+    },
+    {
+      "termNormalized": "zákazník",
+      "lemma": null,
+      "lang": "cs|en",
+      "targetRef": "cn.Customer",
+      "targetClass": "MODEL_OBJECT",
+      "method": "EXACT",
+      "sourceTag": "DECLARED",
+      "provenance": {
+        "file": "model/cn/shop.ttrm",
+        "line": 18
+      },
+      "matchProfile": {
+        "rules": [
+          {
+            "norm": "canonical",
+            "exact": 1.0,
+            "typos": null,
+            "tokens": false
+          }
+        ]
+      },
+      "defaultSense": true
+    },
+    {
+      "termNormalized": "zákazník po splatnosti",
+      "lemma": null,
+      "lang": "cs",
+      "targetRef": "cn.DebtorCustomer",
+      "targetClass": "MODEL_OBJECT",
+      "method": "EXACT",
+      "sourceTag": "DECLARED",
+      "provenance": {
+        "file": "model/lexicon/cs/terms.ttrm",
+        "line": 9
+      },
+      "matchProfile": {
+        "rules": [
+          {
+            "norm": "canonical",
+            "exact": 1.0,
+            "typos": null,
+            "tokens": false
+          }
+        ]
+      }
+    }
+  ],
+  "targets": {
+    "cn.Channel": {
+      "objectKind": "concept",
+      "ownerRef": "er.entity.channel_sales",
+      "reachedFrom": [],
+      "nameRef": null,
+      "codeRef": null,
+      "codeFormat": null,
+      "memberVocabulary": false,
+      "stereotype": "kind",
+      "erTarget": "er.entity.channel_sales.channel",
+      "via": "direct",
+      "ofRef": null,
+      "liftsTo": []
+    },
+    "cn.Customer": {
+      "objectKind": "concept",
+      "ownerRef": "er.entity.customer",
+      "reachedFrom": [],
+      "nameRef": null,
+      "codeRef": null,
+      "codeFormat": null,
+      "memberVocabulary": false,
+      "stereotype": "role",
+      "erTarget": "er.entity.customer",
+      "via": "direct",
+      "ofRef": "cn.Party",
+      "liftsTo": []
+    },
+    "cn.DebtorCustomer": {
+      "objectKind": "concept",
+      "ownerRef": "er.entity.customer",
+      "reachedFrom": [],
+      "nameRef": null,
+      "codeRef": null,
+      "codeFormat": null,
+      "memberVocabulary": false,
+      "stereotype": "phase",
+      "erTarget": "er.entity.customer",
+      "via": "direct",
+      "ofRef": "cn.Customer",
+      "liftsTo": []
+    },
+    "cn.Invoice": {
+      "objectKind": "concept",
+      "ownerRef": "er.entity.invoice",
+      "reachedFrom": [],
+      "nameRef": null,
+      "codeRef": null,
+      "codeFormat": null,
+      "memberVocabulary": false,
+      "stereotype": "event",
+      "erTarget": "er.entity.invoice",
+      "via": "direct",
+      "ofRef": null,
+      "liftsTo": []
+    },
+    "cn.Item": {
+      "objectKind": "concept",
+      "ownerRef": "er.entity.item",
+      "reachedFrom": [],
+      "nameRef": null,
+      "codeRef": null,
+      "codeFormat": null,
+      "memberVocabulary": false,
+      "stereotype": "kind",
+      "erTarget": "er.entity.item",
+      "via": "direct",
+      "ofRef": null,
+      "liftsTo": []
+    },
+    "cn.OverdueInvoice": {
+      "objectKind": "concept",
+      "ownerRef": "er.entity.invoice",
+      "reachedFrom": [],
+      "nameRef": null,
+      "codeRef": null,
+      "codeFormat": null,
+      "memberVocabulary": false,
+      "stereotype": "phase",
+      "erTarget": "er.entity.invoice",
+      "via": "direct",
+      "ofRef": "cn.Invoice",
+      "liftsTo": []
+    },
+    "cn.Party": {
+      "objectKind": "concept",
+      "ownerRef": null,
+      "reachedFrom": [],
+      "nameRef": null,
+      "codeRef": null,
+      "codeFormat": null,
+      "memberVocabulary": false,
+      "stereotype": "kind",
+      "erTarget": null,
+      "via": null,
+      "ofRef": null,
+      "liftsTo": []
+    },
+    "cn.Sale": {
+      "objectKind": "concept",
+      "ownerRef": "er.entity.channel_sales",
+      "reachedFrom": [],
+      "nameRef": null,
+      "codeRef": null,
+      "codeFormat": null,
+      "memberVocabulary": false,
+      "stereotype": "event",
+      "erTarget": "er.entity.channel_sales",
+      "via": "md-hop",
+      "ofRef": null,
+      "liftsTo": []
+    },
+    "cn.Segment": {
+      "objectKind": "concept",
+      "ownerRef": "er.entity.customer",
+      "reachedFrom": [],
+      "nameRef": null,
+      "codeRef": null,
+      "codeFormat": null,
+      "memberVocabulary": false,
+      "stereotype": "kind",
+      "erTarget": "er.entity.customer.segment",
+      "via": "direct",
+      "ofRef": null,
+      "liftsTo": []
+    },
+    "cn.Supplier": {
+      "objectKind": "concept",
+      "ownerRef": null,
+      "reachedFrom": [],
+      "nameRef": null,
+      "codeRef": null,
+      "codeFormat": null,
+      "memberVocabulary": false,
+      "stereotype": "kind",
+      "erTarget": null,
+      "via": null,
+      "ofRef": null,
+      "liftsTo": []
+    },
+    "cn.TopCustomer": {
+      "objectKind": "concept",
+      "ownerRef": "er.entity.top_customer",
+      "reachedFrom": [],
+      "nameRef": null,
+      "codeRef": null,
+      "codeFormat": null,
+      "memberVocabulary": false,
+      "stereotype": "phase",
+      "erTarget": "er.entity.top_customer",
+      "via": "direct",
+      "ofRef": "cn.Customer",
+      "liftsTo": []
+    },
+    "cn.revenue": {
+      "objectKind": "concept",
+      "ownerRef": null,
+      "reachedFrom": [],
+      "nameRef": null,
+      "codeRef": null,
+      "codeFormat": null,
+      "memberVocabulary": false,
+      "stereotype": "quality",
+      "erTarget": null,
+      "via": "md-hop",
+      "ofRef": "cn.Sale",
+      "liftsTo": []
+    },
+    "er.entity.channel_sales": {
+      "objectKind": "entity",
+      "ownerRef": null,
+      "reachedFrom": [],
+      "nameRef": null,
+      "codeRef": null,
+      "codeFormat": null,
+      "memberVocabulary": false,
+      "stereotype": null,
+      "erTarget": null,
+      "via": null,
+      "ofRef": null,
+      "liftsTo": [
+        {
+          "qname": "cn.Sale",
+          "via": "md-hop"
+        }
+      ]
+    },
+    "er.entity.channel_sales.channel": {
+      "objectKind": "attribute",
+      "ownerRef": "er.entity.channel_sales",
+      "reachedFrom": [],
+      "nameRef": null,
+      "codeRef": null,
+      "codeFormat": null,
+      "memberVocabulary": true,
+      "stereotype": null,
+      "erTarget": null,
+      "via": null,
+      "ofRef": null,
+      "liftsTo": [
+        {
+          "qname": "cn.Channel",
+          "via": "direct"
+        }
+      ]
+    },
+    "er.entity.customer": {
+      "objectKind": "entity",
+      "ownerRef": null,
+      "reachedFrom": [
+        {
+          "factRef": "er.entity.channel_sales",
+          "mandatory": true
+        },
+        {
+          "factRef": "er.entity.invoice",
+          "mandatory": true
+        }
+      ],
+      "nameRef": null,
+      "codeRef": null,
+      "codeFormat": null,
+      "memberVocabulary": false,
+      "stereotype": null,
+      "erTarget": null,
+      "via": null,
+      "ofRef": null,
+      "liftsTo": [
+        {
+          "qname": "cn.Customer",
+          "via": "direct"
+        }
+      ]
+    },
+    "er.entity.customer.segment": {
+      "objectKind": "attribute",
+      "ownerRef": "er.entity.customer",
+      "reachedFrom": [],
+      "nameRef": null,
+      "codeRef": null,
+      "codeFormat": null,
+      "memberVocabulary": true,
+      "stereotype": null,
+      "erTarget": null,
+      "via": null,
+      "ofRef": null,
+      "liftsTo": [
+        {
+          "qname": "cn.Segment",
+          "via": "direct"
+        }
+      ]
+    },
+    "er.entity.customer_address": {
+      "objectKind": "entity",
+      "ownerRef": null,
+      "reachedFrom": [
+        {
+          "factRef": "er.entity.customer",
+          "mandatory": true
+        }
+      ],
+      "nameRef": null,
+      "codeRef": null,
+      "codeFormat": null,
+      "memberVocabulary": false,
+      "stereotype": null,
+      "erTarget": null,
+      "via": null,
+      "ofRef": null,
+      "liftsTo": []
+    },
+    "er.entity.customer_address.city": {
+      "objectKind": "attribute",
+      "ownerRef": "er.entity.customer_address",
+      "reachedFrom": [],
+      "nameRef": null,
+      "codeRef": null,
+      "codeFormat": null,
+      "memberVocabulary": true,
+      "stereotype": null,
+      "erTarget": null,
+      "via": null,
+      "ofRef": null,
+      "liftsTo": []
+    },
+    "er.entity.customer_address.state": {
+      "objectKind": "attribute",
+      "ownerRef": "er.entity.customer_address",
+      "reachedFrom": [],
+      "nameRef": null,
+      "codeRef": null,
+      "codeFormat": null,
+      "memberVocabulary": true,
+      "stereotype": null,
+      "erTarget": null,
+      "via": null,
+      "ofRef": null,
+      "liftsTo": []
+    },
+    "er.entity.invoice": {
+      "objectKind": "entity",
+      "ownerRef": null,
+      "reachedFrom": [],
+      "nameRef": null,
+      "codeRef": null,
+      "codeFormat": null,
+      "memberVocabulary": false,
+      "stereotype": null,
+      "erTarget": null,
+      "via": null,
+      "ofRef": null,
+      "liftsTo": [
+        {
+          "qname": "cn.Invoice",
+          "via": "direct"
+        }
+      ]
+    },
+    "er.entity.item": {
+      "objectKind": "entity",
+      "ownerRef": null,
+      "reachedFrom": [
+        {
+          "factRef": "er.entity.channel_sales",
+          "mandatory": true
+        }
+      ],
+      "nameRef": null,
+      "codeRef": null,
+      "codeFormat": null,
+      "memberVocabulary": false,
+      "stereotype": null,
+      "erTarget": null,
+      "via": null,
+      "ofRef": null,
+      "liftsTo": [
+        {
+          "qname": "cn.Item",
+          "via": "direct"
+        }
+      ]
+    },
+    "er.entity.item.item_name": {
+      "objectKind": "attribute",
+      "ownerRef": "er.entity.item",
+      "reachedFrom": [],
+      "nameRef": null,
+      "codeRef": null,
+      "codeFormat": null,
+      "memberVocabulary": true,
+      "stereotype": null,
+      "erTarget": null,
+      "via": null,
+      "ofRef": null,
+      "liftsTo": []
+    },
+    "er.entity.warehouse": {
+      "objectKind": "entity",
+      "ownerRef": null,
+      "reachedFrom": [],
+      "nameRef": null,
+      "codeRef": null,
+      "codeFormat": null,
+      "memberVocabulary": false,
+      "stereotype": null,
+      "erTarget": null,
+      "via": null,
+      "ofRef": null,
+      "liftsTo": []
+    },
+    "er.entity.warehouse.city": {
+      "objectKind": "attribute",
+      "ownerRef": "er.entity.warehouse",
+      "reachedFrom": [],
+      "nameRef": null,
+      "codeRef": null,
+      "codeFormat": null,
+      "memberVocabulary": true,
+      "stereotype": null,
+      "erTarget": null,
+      "via": null,
+      "ofRef": null,
+      "liftsTo": []
+    },
+    "md.cubelet.channelSales": {
+      "objectKind": "",
+      "ownerRef": null,
+      "reachedFrom": [],
+      "nameRef": null,
+      "codeRef": null,
+      "codeFormat": null,
+      "memberVocabulary": false,
+      "stereotype": null,
+      "erTarget": null,
+      "via": null,
+      "ofRef": null,
+      "liftsTo": [
+        {
+          "qname": "cn.Sale",
+          "via": "md-hop"
+        }
+      ]
+    },
+    "md.measure.revenue": {
+      "objectKind": "",
+      "ownerRef": null,
+      "reachedFrom": [],
+      "nameRef": null,
+      "codeRef": null,
+      "codeFormat": null,
+      "memberVocabulary": false,
+      "stereotype": null,
+      "erTarget": null,
+      "via": null,
+      "ofRef": null,
+      "liftsTo": [
+        {
+          "qname": "cn.revenue",
+          "via": "md-hop"
+        }
+      ]
+    }
+  }
+}

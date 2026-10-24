@@ -168,9 +168,19 @@ object Bindings {
         match.source != FuzzySourceTag.MEMBER &&
             match.targetClassValue == FuzzyTargetClass.TARGET_CLASS_MODEL_OBJECT_VALUE
 
-    /** The attribute a value is attributed to: its category — the member index is keyed by it. */
+    /**
+     * The attribute a value is attributed to: its category for a data member — the member index is keyed by it — and
+     * for any other row the part of its binding ref before a member part. So a value label (`…channel#marketplace`) and a
+     * row already spelled as a member (a learned pick of one) attribute to their attribute, and every other row to its
+     * target, as before.
+     */
     fun attributeRefOf(match: FuzzyMatch): String =
-        if (match.source == FuzzySourceTag.MEMBER) match.category else match.targetRef.ifBlank { match.category }
+        if (match.source == FuzzySourceTag.MEMBER) {
+            match.category
+        } else {
+            val ref = refOf(match, isMember = false)
+            if (match.targetClassValue == FuzzyTargetClass.TARGET_CLASS_MEMBER_VALUE) ref.substringBefore('#') else ref
+        }
 
     private fun refOf(
         match: FuzzyMatch,
@@ -178,8 +188,12 @@ object Bindings {
     ): String =
         when {
             isMember && match.candidateId.isNotBlank() -> "${match.category}#${match.candidateId}"
-            match.targetRef.isNotBlank() -> match.targetRef
-            else -> match.category
+            isMember -> match.targetRef.ifBlank { match.category }
+            // A value label binds as `<attribute>#<code>`, the member ref every data member has (DeclaredMembers).
+            else -> {
+                val label = DeclaredMembers.of(match)
+                if (label != null) "${label.first}#${label.second}" else match.targetRef.ifBlank { match.category }
+            }
         }
 
     /**

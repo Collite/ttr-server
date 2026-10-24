@@ -39,13 +39,16 @@ class ModelsEndpointSpec :
                 val body = Json.parseToJsonElement(res.bodyAsText()).jsonObject
                 body["object"]!!.jsonPrimitive.content shouldBe "list"
                 val data = body["data"]!!.jsonArray
-                data.size shouldBe 7 // one per concrete catalog model
+                data.size shouldBe 9 // one per concrete catalog model
 
                 val ids = data.map { it.jsonObject["id"]!!.jsonPrimitive.content }
                 ids shouldContain "gpt-4o"
                 ids shouldContain "claude-haiku-4-5"
                 // tier/rules.conf aliases are routing names, NOT models
-                ids.none { it in setOf("haiku", "sonnet", "gpt-4", "fast", "claude-haiku") } shouldBe true
+                ids shouldContain "gpt-6.1-sol"
+                ids shouldContain "text-embedding-3-small"
+                val aliases = setOf("haiku", "sonnet", "gpt-4", "fast", "deep", "claude-haiku", "smart")
+                ids.none { it in aliases } shouldBe true
 
                 val first = data.first().jsonObject
                 first.containsKey("tags") shouldBe true

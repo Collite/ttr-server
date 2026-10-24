@@ -222,6 +222,40 @@ class ReGateTest :
             response.updatedGapsList.any { it.kind == GapKind.GAP_KIND_G1_UNBOUND }.shouldBeTrue()
         }
 
+        "HP-H — a value label gated back in the member spelling is looked up under its archive category, and confirms" {
+            // A picked value label returns as `…channel#marketplace`; lex-matcher indexes the label under its archive
+            // ref, `…channel.marketplace`, which is no category of the attribute's. Scoped to the attribute alone, the
+            // lookup found nothing (NO_CANDIDATE).
+            val (h2, span) = stanicSpan()
+            val fuzzy = ScopedGateFuzzy(mapOf(span.text to listOf(valueLabel(MARKETPLACE_LABEL))))
+            val response =
+                gate(
+                    fuzzy,
+                    h2,
+                    hypothesis(span.text, span.start, span.end, ref = "$CHANNEL#marketplace", rung = "capable"),
+                )
+
+            fuzzy.lookups.single().categoriesList shouldContainExactly listOf(CHANNEL, MARKETPLACE_LABEL)
+            response.outcomesList
+                .single()
+                .accepted
+                .shouldBeTrue()
+            response.gatedBindingsList.single().ref shouldBe "$CHANNEL#marketplace"
+        }
+
+        "HP-H — …and proposed as the archive spells it, it confirms the member the lattice spells" {
+            val (h2, span) = stanicSpan()
+            val fuzzy = ScopedGateFuzzy(mapOf(span.text to listOf(valueLabel(MARKETPLACE_LABEL))))
+            val response =
+                gate(fuzzy, h2, hypothesis(span.text, span.start, span.end, ref = MARKETPLACE_LABEL, rung = "capable"))
+
+            response.outcomesList
+                .single()
+                .accepted
+                .shouldBeTrue()
+            response.gatedBindingsList.single().ref shouldBe "$CHANNEL#marketplace"
+        }
+
         "(d) a mixed batch partially succeeds, and every hypothesis gets its own verdict" {
             val fuzzy = GateFuzzy(answers = mapOf("501001" to listOf(member("501001", ACCOUNT_CODE))))
             val response =
@@ -590,6 +624,23 @@ class ReGateTest :
                 .setSource(SourceTag.MEMBER)
                 .build()
 
+        private const val CHANNEL = "er.entity.sales.channel"
+        private const val MARKETPLACE_LABEL = "$CHANNEL.marketplace"
+
+        /** h2's „čerpacích stanic“ mention: a span the lattice has, for a hypothesis whose words do not matter here. */
+        private fun stanicSpan(): Pair<ResolutionState, Span> {
+            val h2 = h2Lattice()
+            return h2 to h2.mentionsList.single { it.span.text == "čerpacích stanic" }.span
+        }
+
+        /** A value label as lex-matcher serves it: METADATA, classed MEMBER, its archive ref as target and category. */
+        private fun valueLabel(archiveRef: String): FuzzyMatch =
+            declared(archiveRef)
+                .toBuilder()
+                .setSource(SourceTag.METADATA)
+                .setTargetClass(TargetClass.TARGET_CLASS_MEMBER)
+                .build()
+
         private fun declared(targetRef: String): FuzzyMatch =
             FuzzyMatch
                 .newBuilder()
@@ -665,6 +716,24 @@ class ReGateTest :
                 )
             }
             return builder.build()
+        }
+
+        override suspend fun getStatus(): FuzzyStatusResponse = FuzzyStatusResponse.getDefaultInstance()
+    }
+
+    /** A matcher that answers a lookup only from the categories it was scoped to, as lex-matcher does. */
+    private class ScopedGateFuzzy(
+        private val answers: Map<String, List<FuzzyMatch>>,
+    ) : FuzzyClient {
+        val lookups: MutableList<LookupRequest> = mutableListOf()
+
+        override suspend fun batchMatch(request: BatchMatchRequest): BatchMatchResponse =
+            BatchMatchResponse.getDefaultInstance()
+
+        override suspend fun lookup(request: LookupRequest): LookupResponse {
+            lookups += request
+            val scoped = answers[request.term].orEmpty().filter { it.category in request.categoriesList }
+            return LookupResponse.newBuilder().addAllCandidates(scoped).build()
         }
 
         override suspend fun getStatus(): FuzzyStatusResponse = FuzzyStatusResponse.getDefaultInstance()

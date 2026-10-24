@@ -1,0 +1,17 @@
+{
+ "service": "workers-polars",
+ "version": "0.1.0",
+ "engine": "polars",
+ "engine_version": "polars 1.13",
+ "supports_stateful_sessions": true,
+ "grpc_port": 7301,
+ "http_port": 7300,
+ "workspace": {
+  "sessions": 0,
+  "dfs": 0,
+  "bytes": 0,
+  "max_sessions": 1000,
+  "max_dfs_per_session": 50,
+  "max_total_bytes": 8589934592
+ }
+}

@@ -117,3 +117,48 @@ Every fixture asserts it: the door must **never** surface a domain binding whose
 below the bind threshold, and must **never** turn an ambiguous or below-threshold span into a guessed
 binding. Ambiguity resolves to `clarification`; no-confident-match resolves to `empty`. This is the
 door's signature guarantee (RS-27) and the gate the SV-P3 parity bar checks.
+
+## The cn doors (CN-P5 S5.1) — `cn-*.json`
+
+The four cn door families (cn contracts §4) share this directory and the `id` · `description` · `turns[]` · `tool` ·
+`args` · `expect` vocabulary; a cn seed adds `surface: "cn"` and the `estate` it runs over, and its `expect` keys are its
+own, because a cn door answers a frame, not a question. `CnDoorConformanceTest` drives them; like the conversation tier's
+runner it **rejects a seed that states a key it does not assert**.
+
+```jsonc
+{
+  "id": "cn-statement-lower",            // = the file name
+  "surface": "cn",
+  "estate": "sales",                     // cn-estate (shared/testdata/cn-estate, with its lexicon archive) |
+                                         // sales | clinic (shared/testdata/cn-worlds — ttr-concept's golden worlds)
+  "invariants": ["…"],                   // the words, so a second shell inherits them
+  "turns": [
+    {
+      "tool": "statement.lower:v1",      // one of the eight cn tool ids
+      "args": { "statement": { … } },    // the MCP args verbatim — a frame as protobuf JSON
+      "expect": {
+        "outcome": "result",             // result | refused | error
+        "refusal_over_guess": true,      // every turn: refused ⇔ an ERROR finding; a refused lower has no plan, a
+                                         //   refused assertion.lower no rows, a refused render no text
+        "deterministic": true,           // every turn: called twice, the answers byte-equal (the determinism promise)
+        "slugs": ["cn/ambiguous-statement"],   // refused: each is an ERROR finding's slug
+        "error_code": "CN_MODEL_SKEW",   // error: the structured errorCode
+        "dot_path": "…",                 // statement.lower: the lowered dot-path
+        "rows": [ { "entity": "…", "values": { … } } ],   // assertion.lower: the row payload, exactly
+        "text": "…",                     // explain / render: the text, exactly
+        "text_contains": ["…"],          // explain: substrings of the text
+        "parameters_read": ["as_of"],    // definition.render: the parameters read, in order
+        "concepts": ["cn.Segment"],      // concept.search: the candidates' qnames, in order
+        "concepts_only": true,           // concept.search: every candidate is a concept (a `cn.` ref with a stereotype)
+        "sources": { "cn.revenue": ["term:cn.revenue", "lift:md.measure.revenue"] }  // concept.search: per candidate
+      }
+    }
+  ]
+}
+```
+
+**A refusal is not an error.** A frame the module refuses is a *result* with `refused: true` and its cn findings
+(A-CN-57); `outcome: "error"` is for what is not the frame's fault — bad arguments (`INVALID_ARGUMENT`), no model
+(`CN_MODEL_UNAVAILABLE`), a model the resolver's vocabulary was not compiled from (`CN_MODEL_SKEW`), a resume token that
+does not verify (`RG-RES-002`). The seeds cover one happy call and one refusal per frame family; the error paths are
+unit-level (`CnDoorTest`).

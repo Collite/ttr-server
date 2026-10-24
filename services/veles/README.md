@@ -51,6 +51,30 @@ each omitted when empty (ttr-server#185):
 Veles picks no locale here. The reader chooses the language and applies the D7 chain to descriptions:
 requested locale → plain form → `en` → first by language code.
 
+## The cn candidate store (`cn/`, off by default)
+
+Producers propose concepts, terms and relations as `cn-candidate.v1` documents (ttr-concept's
+`org.tatrman.concept.candidate`). A steward rejects or promotes them, and a promotion is a pull request against
+the model text: canon stays text, and the steward merges. The routes live under `/v1/cn/candidates` and
+`/v1/vocabularies` on the HTTP port.
+
+| Env | Meaning |
+|---|---|
+| `METADATA_CN_DB_HOST` · `_PORT` · `_NAME` · `_USER` · `_PASSWORD` | The store's Postgres. Tables go in schema `metadata`, migrated on first use. No host: the store is off. |
+| `METADATA_CN_AUTH_ISSUER` · `METADATA_CN_AUTH_JWKS_URI` · `METADATA_CN_AUTH_AUDIENCE` | Bearer verification. Every call needs a token; without an issuer the store is off. |
+| `METADATA_CN_STEWARD_ROLE` · `METADATA_CN_IMPORTER_ROLE` | The realm roles that reject and promote (`cn-steward`) and that register vocabulary versions (`cn-importer`). |
+| `METADATA_CN_PRODUCERS` | Who submits as which producer: `producer=principal[\|principal…]`, comma-separated. A principal is a service account's client id, or `user:<username>` for a person. |
+| `METADATA_CN_PROMOTION_SOURCE` | The `metadata.sources` block that a promotion patches (default `github-model`). Its loads decide merges. |
+| `METADATA_CN_PR_TOKEN` · `METADATA_CN_PR_REPOSITORY` · `METADATA_CN_PR_API_URL` | Optional: open GitHub pull requests. The token needs contents and pull-request write access; the repository defaults to the source's `github.com` remote. |
+| `METADATA_CN_INBOX_DIR` | Optional: write each promotion's `<id>.diff` and `<id>.md` there. Every diff the store hands out (this file and the API's `promotion.diff`) has the repository's paths, the source's sub-path included: `git apply <id>.diff` at the repository root. |
+| `METADATA_CN_NOTIFY_URL` | Optional: every candidate event is POSTed here. |
+
+A promotion is checked by a gate before it goes anywhere. The gate loads the model before and after the patch,
+through the strict load report and the cn definition diagnostics. A new error refuses the promotion; other new
+findings and a phase's er rendering go into the pull request. The candidate then waits in `pending_merge`. It
+becomes `promoted` when a model load carries the def, with `canon_ref` = that load's commit `:` the def's qname.
+Contract: cn contracts §6 in `project/tatrman/features/conceptual/plan/contracts.md`.
+
 ## Run
 
 ```bash
@@ -109,3 +133,43 @@ roles only, so every catalog call answers empty — and:
 A fallback is opt-in, for demos that must come up offline: `METADATA_GIT_FALLBACK=local-model`
 with `METADATA_TTR_ROOT=/path/to/model` serves that directory while the repository is unavailable
 (never merged with it), and `/status` reports `serving_fallback: true`.
+
+## `/model/export`
+
+The existing no-parameter response remains a validated TTR tar.gz; `?validate=false` skips self-validation.
+`/model/export/dot` remains available. Explicit projection requests call the same `ttr-metadata` exporter as the CLI.
+
+| Parameter | Default | Values |
+|---|---|---|
+| `model` | `world` | `cn`, `md`, `er`, `db`, `lexicon`, `bindings`, binding families, comma-separated selectors |
+| `format` | `ttr` | `graph.json`, `defs.json`, `ttl`, `xmi`, `dot`, `ttr`; reserved `yaml`, `ossie`, `uc`, `tmdl`, `pdm`, `ldm`, `cdm` |
+| `profile` | format default | Turtle `skos`/`owl`/`both`; XMI `ttr-mdg/1` (`ea-erd/1` reserved); TTR `canonical` |
+| `package` | all | Comma-separated package names |
+| `area` | all | Comma-separated area names |
+| `since` | absent | Version in the snapshot's latest eight id sets; graph adds `delta` |
+| `validate` | `true` | `false` disables the legacy no-projection TTR self-validation |
+
+Single responses use `application/json`, `text/turtle`, `application/xml`, or `text/vnd.graphviz`; multi-file
+TTR responses use `application/x-tar+gzip`. Each response has the current snapshot `ETag`. `If-None-Match`
+accepts that token, quoted/weak tokens, lists or `*`, returning `304` and the ETag for valid requests.
+Invalid or repeated parameters are rejected before conditional matching. Unknown `since` answers `409`.
+
+```text
+/model/export?model=world&format=graph.json
+/model/export?model=world&format=defs.json
+/model/export?model=cn&format=ttl&profile=owl
+/model/export?format=xmi&profile=ttr-mdg/1
+```
+
+Errors are JSON: `400 xm/bad-request`, `409 xm/since-unknown` (with `since`), `422 xm/format-cannot-carry`
+(with `model`, `format`, `lossiness`), `501 xm/format-not-built`, or `503 model not loaded`.
+Internal projection/sidecar failures answer `500 xm/export-failed`; legacy TTR validation failures retain their
+`500 errors[]` body. A cannot-carry example is
+`{"error":"xm/format-cannot-carry","model":"md","format":"ttl","lossiness":"L-TTL-1"}`.
+
+Definitions, connection/rename sidecars and id history come from the captured registry snapshot, on both initial
+load and refresh. Only public connection locator fields enter `defs.json`; credentials are excluded. Deltas describe
+whole-snapshot removals independently of projection scope; current-snapshot deltas have empty arrays. Archives use
+zero entry timestamps. Rebuild Veles against the containing grammar bundle because the registry/source JVM APIs changed.
+The service pins internal grammar/metadata bundle 0.18.8. The copied invented `xm-world` fixture and goldens must stay in sync with ttr-core; `ExportParitySpec` runs the
+published CLI in-process and compares every byte of graph, definitions and OWL outputs.

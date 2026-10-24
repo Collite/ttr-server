@@ -3,6 +3,8 @@ package org.tatrman.resolver.pipeline
 
 import org.tatrman.fuzzy.v1.FuzzyMatch
 import org.tatrman.fuzzy.v1.SourceTag
+import org.tatrman.resolver.model.ConceptFacts
+import org.tatrman.resolver.model.KIND_CONCEPT
 import org.tatrman.resolver.model.Reach
 import org.tatrman.resolver.model.ResolverThresholds
 import org.tatrman.resolver.v1.EvidenceClass
@@ -116,6 +118,9 @@ object Binder {
         kinds: Map<String, String> = emptyMap(),
         reach: Map<String, List<Reach>> = emptyMap(),
         memberOwners: Map<String, String> = emptyMap(),
+        // CN-P4 — the concept tier the §1.5 ordering reads (`conceptFacts`). Like the MH maps above, all
+        // three producers pass it, and NONE leaves every decision as it was.
+        concepts: ConceptFacts = ConceptFacts.NONE,
     ): Verdict =
         // MH: the slot rides the CANDIDATE, because this function never sees the parse
         // (architecture A3). A re-gated synthetic candidate therefore carries `SlotHint.NONE`,
@@ -128,6 +133,7 @@ object Binder {
             kinds,
             reach,
             memberOwners,
+            concepts,
         )
 
     fun classify(
@@ -135,6 +141,35 @@ object Binder {
         candidate: DomainSpanCandidate,
         thresholds: ResolverThresholds,
     ): List<ClassedMatch> = matches.map { ClassedMatch(it, EvidenceClasses.of(it, candidate.anchored, thresholds)) }
+
+    /**
+     * CN-P5 S5.1 — what `concept.search:v1` reads of a span (`ConceptSearch`): every reading that is evidence, strongest
+     * class first; within a class, the concept steps of §1.5 ([ConceptOrder.beforeScore]: a phase yields to its bearer,
+     * then the default sense, then the authored priority), then the score. A search, not a decision — no tie band, no
+     * collapse, nothing binds — but trust (RV-14) and its order are this object's to state, so a search asks here. The
+     * span is unanchored: nothing scoped the lookup to an entity the user named.
+     */
+    fun ranked(
+        matches: List<FuzzyMatch>,
+        thresholds: ResolverThresholds,
+        concepts: ConceptFacts,
+    ): List<ClassedMatch> =
+        matches
+            .map { ClassedMatch(it, EvidenceClasses.of(it, anchored = false, thresholds)) }
+            .filter { it.evidenceClass != EvidenceClass.EVIDENCE_CLASS_WEAK }
+            .groupBy { EvidenceClasses.rank(it.evidenceClass) }
+            .toSortedMap()
+            .values
+            .flatMap { inClass ->
+                // One class, so one scale: the stronger row first, and a stable order between equals.
+                val ordered =
+                    inClass.sortedWith(
+                        compareByDescending<ClassedMatch> { it.match.score }
+                            .thenBy { it.match.targetRef }
+                            .thenBy { it.match.candidateId },
+                    )
+                ConceptOrder.beforeScore(ordered, concepts, mutableListOf())
+            }
 
     /** The pure ordering decision — see the class doc. */
     fun decide(
@@ -150,6 +185,8 @@ object Binder {
         // MH tier M — fuzzy category → the entity whose member it is (`owner(m)`; MV §5.3,
         // `memberEntityByCategory`). Defaulted and no-op when absent, like the three above it.
         memberOwners: Map<String, String> = emptyMap(),
+        // CN-P4 — the concept tier (cn contracts §1.5, [ConceptOrder]). NONE on an estate with no `model cn`.
+        concepts: ConceptFacts = ConceptFacts.NONE,
     ): Verdict {
         val rejected = mutableListOf<ClassedMatch>()
         val eligible = mutableListOf<ClassedMatch>()
@@ -164,8 +201,14 @@ object Binder {
         val (inTopClass, belowTopClass) = eligible.partition { EvidenceClasses.rank(it.evidenceClass) == topRank }
         rejected += belowTopClass
 
+        // CN-P4 — the ordering table's steps 1, 3 and 4 (a phase yields to its bearer; the default
+        // sense; the authored priority), inside the class and BEFORE its scores are compared: a sense
+        // the estate authored outranks a score the matcher computed (§1.5 row 9). No-ops without a
+        // concept tier.
+        val sensed = ConceptOrder.beforeScore(inTopClass, concepts, rejected)
+
         // Scores are comparable HERE and only here — one class, so one scale.
-        val ranked = inTopClass.sortedByDescending { it.match.score }
+        val ranked = sensed.sortedByDescending { it.match.score }
         val top = ranked.first()
         val (contenders, outOfBand) = ranked.partition { top.match.score - it.match.score <= thresholds.ambiguityGap }
         rejected += outOfBand
@@ -213,7 +256,7 @@ object Binder {
         // Asking the user to choose between one thing is the failure the containment collapse
         // exists to remove; producing it from malformed data is no better than producing it from
         // good data.
-        val admitted0 =
+        val admittedContained =
             if (survived.isEmpty()) {
                 distinct
             } else {
@@ -221,6 +264,12 @@ object Binder {
                 rejected += collapsed
                 survived
             }
+
+        // CN-P4 — R-cn-1, the table's last step (§1.5 step 6): a concept and the element readings it
+        // grounds to are one thing, and the concept speaks. Before the MH object rules, which then see
+        // whatever the concept steps left — and which read a concept as kind-less ([kindOf]): which
+        // concept a word names is the ordering table's question, not the slot's.
+        val (admitted0, grounded) = ConceptOrder.groundedConcept(admittedContained, concepts, rejected)
 
         // MH T2 — the slot preference (contracts §7.3, ✅MH-D2 preference, not admissibility).
         //
@@ -262,7 +311,7 @@ object Binder {
         return if (admitted.size > 1) {
             Ambiguous(admitted, rejected)
         } else {
-            Bind(admitted.single(), admitted, rejected, equivalents)
+            Bind(admitted.single(), admitted, rejected, grounded + equivalents)
         }
     }
 
@@ -559,10 +608,15 @@ object Binder {
             Slot.SUBJECT, Slot.NONE -> emptySet()
         }
 
+    /**
+     * A reading's mention kind, for the MH object rules. CN-P4 — a concept reads as kind-less: it is not
+     * a model object, so no slot prefers or disprefers it, and a concept-vs-element band the ordering
+     * table left as a question stays one (silence is not a species, review-087 F1).
+     */
     private fun kindOf(
         c: ClassedMatch,
         kinds: Map<String, String>,
-    ): String = kinds[c.match.targetRef] ?: ""
+    ): String = kinds[c.match.targetRef]?.takeUnless { it == KIND_CONCEPT } ?: ""
 
     private const val KIND_ENTITY = "entity"
 

@@ -1,0 +1,5 @@
+{
+ "service": "resolver",
+ "grpc_port": 7276,
+ "llm": false
+}

@@ -19,6 +19,7 @@ import io.ktor.server.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.server.testing.testApplication
 import org.tatrman.health.config.HealthConfig
 import org.tatrman.health.config.TechnologyConfig
+import org.tatrman.health.content.ContentService
 import org.tatrman.health.service.HealthCheckService
 
 /**
@@ -90,5 +91,5 @@ class HealthRollupComponentSpec :
 /** Test-local wiring: ContentNegotiation + the health routes, in one Application extension. */
 private fun Application.mountHealth(service: HealthCheckService) {
     install(ContentNegotiation) { json() }
-    healthRoutes(service)
+    healthRoutes(service, ContentService(emptyMap()))
 }

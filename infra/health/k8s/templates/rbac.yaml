@@ -1,0 +1,53 @@
+{{- /*
+The content rows of External Secrets and cert-manager read the Kubernetes API (ContentService `k8s:`
+URLs): the STATUS of every ExternalSecret and Certificate, never a Secret.
+
+- `serviceAccount.name` set: the chart creates that ServiceAccount, and the pod runs as it (the library
+  deployment names it). It is created whenever it is named — a pod naming an account nobody created is
+  never scheduled.
+- `rbac.enabled`: a ClusterRole that may get/list exactly those two kinds, bound to that account. It needs
+  the account: the namespace's `default` account is every other pod's too.
+*/}}
+{{- $sa := .Values.serviceAccount.name }}
+{{- if .Values.rbac.enabled }}
+{{- $sa = required "rbac.enabled needs serviceAccount.name (the account the pod runs as)" .Values.serviceAccount.name }}
+{{- end }}
+{{- if $sa }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ $sa }}
+  labels:
+    {{- include "tatrman-service.labels" . | nindent 4 }}
+{{- end }}
+{{- if .Values.rbac.enabled }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "tatrman-service.fullname" . }}-status-reader
+  labels:
+    {{- include "tatrman-service.labels" . | nindent 4 }}
+rules:
+  - apiGroups: ["external-secrets.io"]
+    resources: ["externalsecrets"]
+    verbs: ["get", "list"]
+  - apiGroups: ["cert-manager.io"]
+    resources: ["certificates"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "tatrman-service.fullname" . }}-status-reader
+  labels:
+    {{- include "tatrman-service.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "tatrman-service.fullname" . }}-status-reader
+subjects:
+  - kind: ServiceAccount
+    name: {{ $sa }}
+    namespace: {{ .Release.Namespace }}
+{{- end }}

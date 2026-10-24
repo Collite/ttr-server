@@ -1,0 +1,40 @@
+{
+  "id": "9a4c7e21-3f58-4b06-a1d7-e2b5c80f6d19",
+  "proposal": {
+    "concept": {
+      "stereo": "phase",
+      "name": "IschemicPatient",
+      "label": { "en": "Ischemic heart disease patient", "cs": "Pacient s ischemickou chorobou srdeční" },
+      "of": "cn.Patient",
+      "definition_text": "exists ConditionRecord involving this where code in descendants(Diagnosis, 'X20-X25')"
+    }
+  },
+  "provenance": {
+    "producer": "clinic:evidence",
+    "source_ref": "doc://clinic/du-48213#s4",
+    "confidence": { "value": 0.82, "producer": "clinic:evidence", "method": "code-set-frequency" },
+    "evidence": {
+      "question_count": 14,
+      "document_count": 9,
+      "examples": [
+        {
+          "kind": "question",
+          "ref": "question://clinic/q-2031",
+          "text": "kolik pacientů s ischemickou chorobou srdeční bylo loni přeloženo?"
+        },
+        {
+          "kind": "document",
+          "ref": "doc://clinic/du-48213#s4",
+          "text": "Dg.: X21.9 akutní infarkt myokardu, st.p. X25.2"
+        },
+        {
+          "kind": "processor_output",
+          "ref": "doc://clinic/du-50077#c118-164",
+          "text": "ischemická choroba srdeční, chronická forma"
+        }
+      ]
+    },
+    "created_at": "2026-10-23T09:31:07Z"
+  },
+  "status": "proposed"
+}

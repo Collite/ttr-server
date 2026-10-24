@@ -1,0 +1,144 @@
+// CN-P3 S3.7 — the invented clinical world (S0.3's clinical rows, invented names and X-codes — never client content):
+// a patient's encounters, transfers between them (labels `from` / `to`), condition records over a coded vocabulary with
+// a closure, fracture episodes (consolidation's eras — S0.3 §5 a). The 0.5 spellings (A-CN-25…31).
+model cn
+
+// ---- kinds and roles ----
+def kind Person    { label: { en: "Person", cs: "Osoba" } }
+def role Patient   { of: Person, event: Encounter, label: { en: "Patient", cs: "Pacient" } }
+def kind Diagnosis {                                                            // the vocabulary — node-form ranges (A-CN-13)
+    label: { en: "Diagnosis", cs: "Diagnóza" }
+}
+def kind DiagnosisText {                                                        // the same codes read with LEXICAL ranges
+    label: { en: "Diagnosis (lexical ranges)", cs: "Diagnóza (lexikální rozsahy)" }
+}
+
+// ---- events ----
+def event Encounter {
+    label: { en: "Encounter", cs: "Hospitalizace" },
+    extent: durative,
+    involves: [Patient],
+    period: { start: admitted_at, end: discharged_at, end_open: open },
+    qualities: [admitted_at, discharged_at, department]
+}
+def event Transfer {
+    label: { en: "Transfer", cs: "Překlad" },
+    involves: [Patient, Encounter as from, Encounter as to],
+    period: { at: transferred_at },
+    qualities: [transferred_at, transfer_kind]
+}
+def event ConditionRecord {                                                      // the act: onset / abatement on the record itself (S0.3 §5 b)
+    label: { en: "Condition record", cs: "Záznam o diagnóze" },
+    extent: durative,
+    involves: [Patient, Encounter],
+    period: { start: onset, end: abatement, end_open: open },
+    qualities: [code, certainty, experiencer, onset, abatement]
+}
+def event ConditionOnset {                                                       // the same records read as an onset instant of month precision
+    label: { en: "Onset", cs: "Začátek onemocnění" },
+    involves: [Patient],
+    period: { at: onset_at, precision: month },
+    qualities: [onset_code, onset_at]
+}
+def event RecordedOnset {                                                        // the same records with the onset's stored upper bound (⚑CN-P10)
+    label: { en: "Recorded onset", cs: "Zaznamenaný začátek" },
+    involves: [Patient],
+    period: { at: recorded_onset_at, precision: month },
+    qualities: [recorded_code, recorded_onset_at]
+}
+def event Observation {                                                          // a measured value — its unit on the grounding (⚑CN-P10)
+    label: { en: "Observation", cs: "Pozorování" },
+    involves: [Patient],
+    period: { at: observed_at },
+    qualities: [observed_at, analyte, observed_value]
+}
+def event FractureEpisode {
+    label: { en: "Fracture episode", cs: "Epizoda zlomeniny" },
+    extent: durative,
+    involves: [Patient],
+    period: { start: episode_start, end: episode_end, end_open: open },
+    qualities: [episode_start, episode_end]
+}
+
+// ---- qualities (grounded in `bindings.ttrm`) ----
+def quality admitted_at    { of: Encounter }
+def quality discharged_at  { of: Encounter }
+def quality department     { of: Encounter }
+def quality transferred_at { of: Transfer }
+def quality transfer_kind  { of: Transfer, label: { en: "kind of transfer", cs: "druh překladu" } }
+def quality code           { of: ConditionRecord, value_space: Diagnosis }
+def quality certainty      { of: ConditionRecord }
+def quality experiencer    { of: ConditionRecord }
+def quality onset          { of: ConditionRecord }
+def quality abatement      { of: ConditionRecord }
+def quality onset_code     { of: ConditionOnset, value_space: Diagnosis }
+def quality onset_at       { of: ConditionOnset }
+def quality recorded_code     { of: RecordedOnset, value_space: Diagnosis }
+def quality recorded_onset_at { of: RecordedOnset }
+def quality observed_at    { of: Observation }
+def quality analyte        { of: Observation }
+def quality observed_value { of: Observation, label: { en: "observed value", cs: "naměřená hodnota" } }
+def quality episode_start  { of: FractureEpisode }
+def quality episode_end    { of: FractureEpisode }
+
+// ---- qualities (defined) — G-ER-2: datetime difference is not on the plan.v1 wire ----
+def quality transfer_delay { of: Transfer, definition: """this.period.at - this.from.period.end""" }
+def quality length_of_stay { of: Encounter, definition: """period.end - period.start""" }
+
+// ---- phases ----
+def phase StemiPatient {
+    of: Patient,
+    label: { en: "STEMI patient", cs: "Pacient se STEMI" },
+    definition: """exists ConditionRecord involving this where code in descendants(Diagnosis, 'X21') and certainty = 'confirmed' and experiencer = 'patient'"""
+}
+def phase PostStemi {
+    of: Patient,
+    basis: occurrence,
+    label: { en: "After a STEMI", cs: "Po STEMI" },
+    definition: """exists ConditionRecord involving this where code in descendants(Diagnosis, 'X21') and period.start at_or_before :as_of"""
+}
+def phase PostStemiPossibly {                                                    // a month-precision onset, read POSSIBLY (S0.3 §4)
+    of: Patient,
+    basis: occurrence,
+    imprecision: possibly,
+    definition: """exists ConditionOnset involving this where onset_code in descendants(Diagnosis, 'X21') and period.at at_or_before :as_of"""
+}
+def phase PostStemiCertainly {                                                   // the same CERTAINLY: the upper bound from the granularity (G-ER-1)
+    of: Patient,
+    basis: occurrence,
+    imprecision: certainly,
+    definition: """exists ConditionOnset involving this where onset_code in descendants(Diagnosis, 'X21') and period.at at_or_before :as_of"""
+}
+def phase PostStemiStoredBound {                                                 // CERTAINLY over the stored upper bound (`at_hi:`, ⚑CN-P10)
+    of: Patient,
+    basis: occurrence,
+    imprecision: certainly,
+    definition: """exists RecordedOnset involving this where recorded_code in descendants(Diagnosis, 'X21') and period.at at_or_before :as_of"""
+}
+def phase IschemicRecord        { of: ConditionRecord, definition: """code in descendants(Diagnosis, 'X20-X25')""" }
+def phase IschemicRecordLexical { of: ConditionRecord, definition: """code in descendants(DiagnosisText, 'X20-X25')""" }
+def phase HasBrokenLeg {
+    of: Patient,
+    basis: current_state,
+    label: { en: "Has a broken leg", cs: "Má zlomenou nohu" },
+    definition: """exists FractureEpisode e involving this where e.period contains :as_of"""
+}
+def phase HistoryOfLegFracture {
+    of: Patient,
+    basis: past_state,
+    label: { en: "History of a leg fracture", cs: "Zlomenina nohy v anamnéze" },
+    definition: """exists FractureEpisode e involving this where e.period ended_before :as_of"""
+}
+def phase FrequentPatient {                                                      // DC-4: a count as JOIN + GROUP BY + HAVING
+    of: Patient,
+    basis: occurrence,
+    definition: """count(Encounter involving this where within(period.start, last: days(30))) >= 2"""
+}
+def phase TransferredWithin24h {                                                 // DC-3 over columns: G-ER-1
+    of: Patient,
+    definition: """exists Transfer t involving this where within(t.period.at, from: t.from.period.start, to: t.from.period.start + hours(24))"""
+}
+def phase Rehospitalized30d {                                                    // DC-7 + DC-6: G-ER-2
+    of: Patient,
+    definition: """exists Encounter e1, Encounter e2 involving this where e1 <> e2 and e2.period.start - e1.period.end <= days(30)"""
+}

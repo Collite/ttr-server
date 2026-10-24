@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package org.tatrman.resolver.model
 
+import org.tatrman.text.Normalization
+import org.tatrman.ttr.lexicon.TargetFacts
+
 /**
  * The resolver-side registry (RG-P5, RS-24) — the plain-Kotlin view of the
  * declared vocabulary the pipeline gates against. Built from either the snapshot
@@ -13,6 +16,12 @@ data class ResolverRegistry(
     val locales: List<String>,
     val thresholds: ResolverThresholds,
     val snapshotHash: String,
+    /**
+     * CN-P5 S5.1 — the content id of the model the lexicon was compiled from (the archive header's
+     * `modelSnapshotHash`; several comma-joined for a layer of archives); the cn doors serve a model only when its own
+     * content id is one of them. `""` without an archive, or from a per-request override.
+     */
+    val modelSnapshotHash: String = "",
 )
 
 /**
@@ -94,7 +103,47 @@ data class ResolverEntityType(
      * as it was before MV.
      */
     val memberVocabulary: Boolean = false,
+    /**
+     * CN-P4 (cn contracts §5, v6) — a concept's facts, verbatim from the archive's `targets[ref]`:
+     * its stereotype (`kind` · `role` · `event` · `quality` · `phase`), its ER landing (an entity, or
+     * the attribute for a value kind or a quality; `""` when it has none), how that landing is reached
+     * (`direct` | `md-hop`) and its `of:` (`cn.<Name>`). `""` on every element and on every pre-v6
+     * archive. A concept's [objectKind] is [KIND_CONCEPT], and its [ownerRef] (the entity around the
+     * landing) is NOT containment: [ownersByRef] leaves it out.
+     *
+     * ⛔ Read, never derived: which concept grounds where is the model's binding, projected at compile time.
+     */
+    val stereotype: String = "",
+    val erTarget: String = "",
+    val via: String = "",
+    val ofRef: String = "",
+    /** CN-P4 (A-CN-4) — the concepts this er or md element lifts to, from the archive's reverse index. */
+    val liftsTo: List<Lift> = emptyList(),
+    /**
+     * CN-P4 (cn contracts §1.5 steps 3–4) — the authored sense of this type's terms, by term as the
+     * archive spells it ([anchors]' spelling): `default: true` and `sense_priority:`. Only terms that
+     * state one are here, so an estate with none carries an empty map.
+     */
+    val senses: Map<String, TermSense> = emptyMap(),
 )
+
+/** CN-P4 (A-CN-4) — one entry of the reverse index: a concept an element lifts to, and how it lands. */
+data class Lift(
+    val qname: String,
+    val via: String,
+)
+
+/** CN-P4 (§1.5) — a term's authored sense: the default sense of its form, and its priority (higher wins). */
+data class TermSense(
+    val default: Boolean = false,
+    val priority: Double? = null,
+)
+
+/** CN-P4 — the [ResolverEntityType.objectKind] of a concept. Never a mention kind. */
+const val KIND_CONCEPT = TargetFacts.CONCEPT
+
+/** CN-P4 — the stereotype the ordering and the lift treat apart (L17-2, L17-3). */
+const val STEREOTYPE_PHASE = "phase"
 
 /**
  * MH — one declared relation, seen from the object it points AT: the ref of the object that
@@ -126,9 +175,55 @@ data class Reach(
  * ⛔ A derivation, not a parse: the pairs come from [ResolverEntityType.ownerRef], which the
  * archive carries because the model declared it. Splitting a ref on dots to guess a parent would
  * be a second rule, and the two would eventually disagree.
+ *
+ * CN-P4 — a concept is left out. Its `ownerRef` is the entity around its ER landing, which a concept
+ * is not CONTAINED in: read as containment, the Binder would collapse `cn.Channel` onto
+ * `channel_sales` as if the concept were its attribute, where the ordering asks (§1.5 row 7). A
+ * concept governs as its landing through [governingRefByRef] instead.
  */
 fun List<ResolverEntityType>.ownersByRef(): Map<String, String> =
-    filter { it.ownerRef.isNotBlank() }.associate { it.ref to it.ownerRef }
+    filter { it.ownerRef.isNotBlank() && it.objectKind != KIND_CONCEPT }.associate { it.ref to it.ownerRef }
+
+/**
+ * CN-P4 (cn contracts §5, A-CN-6) — concept → its ER landing (`erTarget`): **a concept governs as its
+ * ER landing**. The one normalization member gating under a concept needs, read where a governor is
+ * named: the governed scope ([valueCategoriesByRef]), and the refs `SpanProposal` gates a governed value
+ * to — which the governor stamp (`SlotHints`), the Binder's tier-M rule (governor, its entity, the
+ * reach test) and a dual reading's scope (`UniversalSeam`) read as given — and the anchors a named
+ * member's reach is read against (`NamedMembers`). "zákazníci po splatnosti z Prahy" then gates
+ * "Praha" as "zákazníci z Prahy" does, and "web" under `Channel` is looked up in
+ * `channel_sales.channel` alone.
+ *
+ * A concept with no landing (ungrounded, or md-grounded with the hop missing) is ABSENT, so it
+ * normalizes to nothing: its values resolve as open values, exactly as before P4.
+ */
+fun List<ResolverEntityType>.governingRefByRef(): Map<String, String> =
+    filter { it.objectKind == KIND_CONCEPT && it.erTarget.isNotBlank() }.associate { it.ref to it.erTarget }
+
+/**
+ * CN-P4 (⚑R130-a, A-CN-72) — what a ref STANDS FOR as an object: a grounded concept's ER landing
+ * ([governingRefByRef]), any other ref itself. A-CN-6 says a concept governs as its landing; the same holds
+ * wherever the resolver asks what an object IS — its kind (a quality landing on a measure is a measure),
+ * its entity type (a quoted literal's head facet), its slot facts, whether it owns values. Read at two points:
+ * span proposal maps every candidate's gated refs through it, and the readers that start from a binding's ref
+ * (the lattice's heads and kinds, the door's options) call it. The concept itself stays the binding's ref.
+ */
+fun List<ResolverEntityType>.standsFor(): (String) -> String {
+    val governing = governingRefByRef()
+    return if (governing.isEmpty()) { ref -> ref } else { ref -> governing[ref] ?: ref }
+}
+
+/**
+ * CN-P4 (A-CN-72) — concept → the declared type of its ER landing, for a reader that needs the landing's own
+ * facts (its kind, its owner) rather than its ref. A landing the registry does not list is ABSENT, so a reader
+ * learns nothing about it — the "nothing declared" shape the other maps here use.
+ */
+fun List<ResolverEntityType>.landingTypeByRef(): Map<String, ResolverEntityType> {
+    val governing = governingRefByRef()
+    if (governing.isEmpty()) return emptyMap()
+    val byRef = associateBy { it.ref }
+    return governing.mapNotNull { (concept, landing) -> byRef[landing]?.let { concept to it } }.toMap()
+}
 
 /**
  * MH — ref → its declared reach, for the Binder's reachability rule.
@@ -167,6 +262,14 @@ fun List<ResolverEntityType>.refByCategory(): Map<String, String> =
     flatMap { et -> et.categories.map { it to et.ref } }.toMap()
 
 /**
+ * A MEMBER row's vocabulary: the first declared type, in registry order, whose categories hold [category], else the
+ * category itself (what a binding's `memberOf` names). One rule for `GateSpans` and `concept.search:v1`, so a door
+ * lifts a member from the refs `resolve.bind:v1` lifts it from (review-134 F6).
+ */
+fun List<ResolverEntityType>.memberVocabularyOf(category: String): String =
+    firstOrNull { category in it.categories }?.ref ?: category
+
+/**
  * MV (member-vocabulary contracts §5.2) — entity ref → the member vocabularies it owns (refs, in
  * ref order). An entity with none is ABSENT, the shape the other maps here use for "nothing
  * declared", and every entity on a pre-v5 archive is absent — which is what makes the governed
@@ -195,13 +298,98 @@ fun List<ResolverEntityType>.membersOf(): Map<String, List<String>> =
  * (the governed block of path (a)), `RoundPlanner` (the anchored tier re-asks a value inside what
  * its anchor bound) and `ReGate` (a hypothesis scoped by a ref or by the value's anchor). The own
  * categories come FIRST, so a registry with no member vocabularies yields byte-identical scopes.
+ *
+ * CN-P4 (A-CN-6, ⚑R130-c) — a concept's scope is its own categories first (its terms: a hypothesis naming
+ * the concept must still reach its row), then its ER landing's ([governingRefByRef]): a value it governs is
+ * a value of the landing. A scope is never empty — an empty category list is the matcher's unscoped ask — so
+ * a type with no category of its own (a term-less concept or landing) falls back to its ref, the convention
+ * every category here follows.
  */
 fun List<ResolverEntityType>.valueCategoriesByRef(): Map<String, List<String>> {
     val members = membersOf()
     val categoriesByRef = associate { it.ref to it.categories }
+    val governing = governingRefByRef()
+
+    fun scopeOf(
+        ref: String,
+        own: List<String>,
+    ): List<String> = (own + members[ref].orEmpty().flatMap { categoriesByRef[it].orEmpty() }).distinct()
     return associate { et ->
-        et.ref to (et.categories + members[et.ref].orEmpty().flatMap { categoriesByRef[it].orEmpty() }).distinct()
+        val landing = governing[et.ref]
+        val scope =
+            if (landing == null) {
+                scopeOf(et.ref, et.categories)
+            } else {
+                (et.categories + scopeOf(landing, categoriesByRef[landing].orEmpty())).distinct()
+            }
+        et.ref to scope.ifEmpty { listOf(et.ref) }
     }
+}
+
+/**
+ * CN-P4 — the concept tier as the Binder's ordering (cn contracts §1.5) and the lift (A-CN-5/7) read
+ * it, built from the registry once per gate call, beside the maps above. [NONE] on a registry with no
+ * concept and no lift, which is every estate without a `model cn`: each rule reading it is then a
+ * no-op.
+ */
+class ConceptFacts internal constructor(
+    private val byRef: Map<String, ResolverEntityType>,
+) {
+    /** No concept, no lift and no authored sense — nothing for the ordering or the lift to read. */
+    val isEmpty: Boolean get() = byRef.isEmpty()
+
+    fun isConcept(ref: String): Boolean = byRef[ref]?.objectKind == KIND_CONCEPT
+
+    fun stereotype(ref: String): String = byRef[ref]?.stereotype.orEmpty()
+
+    fun isPhase(ref: String): Boolean = isConcept(ref) && stereotype(ref) == STEREOTYPE_PHASE
+
+    fun erTarget(ref: String): String = byRef[ref]?.erTarget.orEmpty()
+
+    fun via(ref: String): String = byRef[ref]?.via.orEmpty()
+
+    fun liftsTo(ref: String): List<Lift> = byRef[ref]?.liftsTo.orEmpty()
+
+    /** The `of:` chain above [ref], nearest first — what "a phase yields to its bearer" walks. Cycle-safe. */
+    fun bearers(ref: String): List<String> {
+        val out = LinkedHashSet<String>()
+        var at = byRef[ref]?.ofRef.orEmpty()
+        while (at.isNotBlank() && at != ref && out.add(at)) at = byRef[at]?.ofRef.orEmpty()
+        return out.toList()
+    }
+
+    /** [form]'s authored sense under [ref], matched as the archive spells its terms (folded); null when none. */
+    fun sense(
+        ref: String,
+        form: String,
+    ): TermSense? {
+        val senses = byRef[ref]?.senses ?: return null
+        if (senses.isEmpty()) return null
+        val folded = Normalization.fold(form)
+        return senses[form] ?: senses.entries.firstOrNull { (term, _) -> Normalization.fold(term) == folded }?.value
+    }
+
+    /**
+     * R-cn-1 — [concept] grounds to [element]: the element is the concept's ER landing, or a target the
+     * concept is grounded on (the element lifts to it — an md target, or the hop's E-R image).
+     */
+    fun groundsTo(
+        concept: String,
+        element: String,
+    ): Boolean =
+        (erTarget(concept).isNotBlank() && erTarget(concept) == element) ||
+            liftsTo(element).any { it.qname == concept }
+
+    companion object {
+        val NONE = ConceptFacts(emptyMap())
+    }
+}
+
+/** CN-P4 — [ConceptFacts] over this registry: its concepts, its lifting elements and its authored senses. */
+fun List<ResolverEntityType>.conceptFacts(): ConceptFacts {
+    val relevant =
+        filter { it.objectKind == KIND_CONCEPT || it.liftsTo.isNotEmpty() || it.senses.isNotEmpty() }
+    return if (relevant.isEmpty()) ConceptFacts.NONE else ConceptFacts(relevant.associateBy { it.ref })
 }
 
 /**

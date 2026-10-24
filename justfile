@@ -400,6 +400,18 @@ conformance-service-level:
     ./gradlew :services:resolver:test --tests '*IssuesRegressionTest*'
     ./gradlew :services:lex-matcher:test --tests '*MatchQualityCorpusTest*'
     ./gradlew :services:lex-matcher:test --tests '*LexiconConformanceTest*'
+    # CN-P4 S4.3 — the conceptual tier's terms in the declared layer: the shared cn estate, compiled by the
+    # real producer at the pinned grammar (archive v6), read back through the archive reader.
+    ./gradlew :services:lex-matcher:test --tests '*CnConformanceTest*'
+    # CN-P4 S4.5 T1 — and the resolver over the same estate: concepts bind, lift and gate as their ER landing, the
+    # §1.5 resolution order, the ungrounded concept (CnResolutionTest), and R-cn-6 over an invented clinic estate
+    # (CnPeriodsCodesTest, `services/resolver/src/test/resources/cn-clinic`).
+    ./gradlew :services:resolver:test --tests '*CnResolutionTest*'
+    ./gradlew :services:resolver:test --tests '*CnPeriodsCodesTest*'
+    # CN-P5 S5.1 T1 — the four cn door families, driven through the door over the real ttr-concept: one happy call and one
+    # refusal-over-guess per family, every turn called twice and byte-equal (`conformance/calls/cn-*.json`, over the
+    # cn estate and two of ttr-concept's golden worlds, `shared/testdata/cn-worlds`).
+    ./gradlew :services:resolver:test --tests '*CnDoorConformanceTest*'
     # RV-P7.4 T6 — the LEARNED overlay joins the gating tier, on its recorded promotion
     # criterion: `OverlayDrillTest` is fed by `drill/overlay-final.json`, which is the exact
     # document kantheon's H2H3DrillSpec produced from a real H2 conversation — so this corpus

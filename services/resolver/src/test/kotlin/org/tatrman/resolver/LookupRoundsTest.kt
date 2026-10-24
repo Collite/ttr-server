@@ -103,9 +103,14 @@ class LookupRoundsTest :
             resolve(fuzzy)
 
             val tiers = fuzzy.lookups.map { it.categoriesList.isEmpty() to it.targetClassesList }
-            // The unbound MENTION (`účtu`) is asked before anything widens, and it is class-scoped.
+            // The unbound MENTION (`účtu`) is asked before anything widens, and it is class-scoped: an object, an
+            // operator, or an authored word for a member (HP-H) — never a data value, which carries no class.
             tiers.first().second shouldContainExactly
-                listOf(FuzzyTargetClass.TARGET_CLASS_MODEL_OBJECT, FuzzyTargetClass.TARGET_CLASS_OPERATOR)
+                listOf(
+                    FuzzyTargetClass.TARGET_CLASS_MODEL_OBJECT,
+                    FuzzyTargetClass.TARGET_CLASS_OPERATOR,
+                    FuzzyTargetClass.TARGET_CLASS_MEMBER,
+                )
             // The broad round comes last, unscoped and capped.
             val broad = fuzzy.lookups.last()
             broad.categoriesList shouldBe emptyList()

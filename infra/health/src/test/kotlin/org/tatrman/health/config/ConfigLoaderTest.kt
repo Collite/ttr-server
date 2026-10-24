@@ -1,70 +1,66 @@
 // SPDX-License-Identifier: Apache-2.0
 package org.tatrman.health.config
 
-import com.typesafe.config.ConfigFactory
+import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldContainAll
 import io.kotest.matchers.collections.shouldNotContainAnyOf
 import io.kotest.matchers.ints.shouldBeGreaterThan
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.string.shouldContain
+import org.tatrman.health.content.Adapters
 import org.tatrman.health.service.HealthCheckService
+import com.typesafe.config.Config
+import com.typesafe.config.ConfigFactory
 
 class ConfigLoaderTest :
     StringSpec({
 
-        "bundled config parses and exposes the kantheon + fabric dashboard technologies" {
+        "the bundled roster is the reference estate's: agents, the spine, the platform tiers" {
             val config = ConfigLoader.load()
 
-            config.technologies.size shouldBeGreaterThan 30
-            // A representative slice across the shared-cluster estate and the kantheon
-            // constellation (agents, platform services, workers, MCP wrappers, technical
-            // wave), plus the two host-based checker types (native HTTP, TCP).
+            config.technologies.size shouldBeGreaterThan 50
             config.technologies.keys shouldContainAll
                 setOf(
-                    // shared cluster estate
-                    "seaweed",
-                    "kantheon-postgres",
-                    "keycloak-postgres",
-                    "neo4j",
-                    "keycloak",
-                    "grafana",
-                    "loki",
-                    "prometheus",
-                    "tempo",
-                    "nats",
-                    // kantheon constellation
+                    // agents and front doors
+                    "golem-hartland",
+                    "pythia",
+                    "iris",
                     "iris-bff",
-                    "themis",
+                    // the model & query path
                     "veles",
-                    "query",
-                    "fuzzy",
-                    "nlp",
+                    "translate",
                     "validate",
+                    "query",
                     "dispatch",
-                    "mssql",
-                    "capabilities-mcp",
-                    "query-mcp",
-                    // technical wave (infra/)
-                    "whois",
-                    "backstage",
+                    "worker-postgres",
+                    // understanding
+                    "resolver",
+                    "nlp",
+                    "fuzzy",
+                    "chrono",
+                    // platform tiers
+                    "keycloak",
+                    "identity",
+                    "kantheon-postgres",
+                    "prometheus",
+                    "external-secrets",
+                    "cert-manager",
                 )
         }
 
-        "no legacy predecessor-platform / erp-sql check targets survive the re-point" {
+        "no target of a service this estate does not run" {
             val keys = ConfigLoader.load().technologies.keys
-            // Stage 5.2 T3: targets re-pointed to the kantheon estate; the legacy line is gone.
             keys.none { it.startsWith("sql-") } shouldBe true
-            // SV-P0 S4: `fuzzy-mcp` and `llm-gateway` were removed from this legacy guard —
-            // the J-v2 service renames make these functional names our OWN
-            // spine services' health-check targets, colliding with the predecessor platform's names.
             keys shouldNotContainAnyOf
-                setOf("metadata", "fuzzy-matcher", "meta-mcp", "erp-data-mcp", "erp-sql")
+                setOf("themis", "opensearch", "qdrant", "neo4j", "nats", "whois", "backstage")
         }
 
-        "Postgres checks are TCP and Keycloak hits its management port" {
+        "Postgres checks are TCP on the CNPG primary and Keycloak hits its management port" {
             val config = ConfigLoader.load()
 
             config.technologies.getValue("kantheon-postgres").type shouldBe "tcp"
+            config.technologies.getValue("kantheon-postgres").host shouldBe "postgres-rw.data"
             config.technologies.getValue("kantheon-postgres").port shouldBe 5432
             config.technologies.getValue("keycloak").type shouldBe "native"
             config.technologies.getValue("keycloak").url shouldBe "http://auth-keycloak-keycloakx-http.auth:9000"
@@ -74,24 +70,57 @@ class ConfigLoaderTest :
             // Exercises HealthCheckService.createChecker for every entry — catches a
             // missing host/port (tcp) or url (native) in the config before deploy.
             val service = HealthCheckService(ConfigLoader.load())
-            service.getSupportedTechnologies().size shouldBeGreaterThan 30
+            service.getSupportedTechnologies().size shouldBeGreaterThan 50
         }
 
-        "env/system-property overrides win over the bundled defaults" {
-            // `${?HEALTH_*}` substitutions resolve against the full config stack, which
-            // includes system properties — proves the config is retunable without a rebuild.
-            // (A string-valued port must still parse to Int via the config transformer.)
-            System.setProperty("HEALTH_REDIS_HOST", "redis-override.data")
-            System.setProperty("HEALTH_REDIS_PORT", "6380")
-            ConfigFactory.invalidateCaches()
-            try {
-                val redis = ConfigLoader.load().technologies.getValue("redis")
-                redis.host shouldBe "redis-override.data"
-                redis.port shouldBe 6380
-            } finally {
-                System.clearProperty("HEALTH_REDIS_HOST")
-                System.clearProperty("HEALTH_REDIS_PORT")
-                ConfigFactory.invalidateCaches()
-            }
+        "every status block names an adapter that exists" {
+            val statuses =
+                ConfigLoader.load().technologies.mapNotNull { (k, t) ->
+                    t.status?.let {
+                        k to
+                            it
+                    }
+                }
+
+            statuses.size shouldBeGreaterThan 10
+            statuses.filterNot { (_, status) -> status.adapter in Adapters.byName } shouldBe emptyList()
+        }
+
+        "a roster block replaces the bundled technologies; everything else stays" {
+            // What the chart's config fragment hands the service: the fragment over the bundled conf.
+            val config =
+                ConfigLoader.load(
+                    withBundled(
+                        """
+                        health-check-service.roster {
+                          technologies {
+                            only-one {
+                              type = tcp
+                              host = "db.data"
+                              port = 5432
+                              port = ${'$'}{?ROSTER_TEST_UNSET_PORT}
+                            }
+                          }
+                        }
+                        """.trimIndent(),
+                    ),
+                )
+
+            config.technologies.keys shouldBe setOf("only-one")
+            config.technologies.getValue("only-one").port shouldBe 5432
+            // The bundled `prometheus` block is not part of the roster and survives it.
+            config.prometheus.url shouldBe "http://mon-prometheus-server.monitoring"
+        }
+
+        "a roster without a technologies block is refused rather than serving the bundled estate's" {
+            val fragment =
+                "health-check-service.roster { prometheus { url = \"http://p\", timeout = 1, queryInterval = 1 } }"
+
+            shouldThrow<IllegalArgumentException> { ConfigLoader.load(withBundled(fragment)) }.message!! shouldContain
+                "no `technologies` block"
         }
     })
+
+/** A config fragment over the bundled `application.conf`, resolved — as `-Dconfig.file` + its include do. */
+private fun withBundled(fragment: String): Config =
+    ConfigFactory.parseString(fragment).withFallback(ConfigFactory.parseResources("application.conf")).resolve()

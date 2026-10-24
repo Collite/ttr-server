@@ -1,0 +1,15 @@
+package binding
+import er.*
+import db.retail.*
+import md.*
+import cn.*
+model binding
+
+def er2db_entity buyer_table { entity: er.entity.buyer, target: { table: db.retail.buyers } }
+def er2db_entity sale_table { entity: er.entity.sale, target: { table: db.retail.sales } }
+def er2db_attribute buyer_id { attribute: er.entity.buyer.id, target: { column: db.retail.buyers.id } }
+def md2db_cubelet purchases_table { cubelet: md.purchases, target: db.retail.sales, attributes: { Buyer.id: buyer_id, Calendar.day: sold_at }, measures: { revenue: amount, units: id, balance: amount } }
+def cn2md_role customer_dimension { role: cn.Customer, target: md.Buyer }
+def cn2er_kind party_entity { kind: cn.Party, target: er.entity.buyer }
+def cn2er_event purchase_entity { event: cn.Purchase, target: er.entity.sale, period: { at: er.entity.sale.sold_at }, participants: { buyer: [er.relation.sale_buyer] } }
+def cn2er_quality sold_at_attribute { quality: cn.sold_at, target: er.entity.sale.sold_at }

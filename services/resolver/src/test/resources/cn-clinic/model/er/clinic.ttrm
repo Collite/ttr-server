@@ -1,0 +1,37 @@
+package clinic
+
+model er
+
+// CN-P4 S4.4 T6 — R-cn-6's estate: two code entities, each code attribute an indexed member vocabulary. The code
+// list's own label is not the concept's word, so "diagnóza" anchors the concept alone and only its governance
+// (A-CN-6) can scope a code beside it.
+
+def entity diagnosis {
+    displayLabel: { cs: "Číselník diagnóz", en: "Diagnosis codes" },
+    attributes: [
+        def attribute sk { type: int, isKey: true },
+        def attribute code { type: text, search { searchable method: EXACT } },
+        def attribute title { type: text }
+    ]
+}
+
+def entity procedure {
+    displayLabel: { cs: "Výkon", en: "Procedure" },
+    attributes: [
+        def attribute sk { type: int, isKey: true },
+        def attribute code { type: text, search { searchable method: EXACT } }
+    ]
+}
+
+def entity admission {
+    attributes: [
+        def attribute sk { type: int, isKey: true },
+        def attribute diagnosis_sk { type: int },
+        def attribute admitted { type: date }
+    ]
+}
+
+def relation admission_diagnosis {
+    from: er.entity.admission, to: er.entity.diagnosis,
+    cardinality: { from: "0..*", to: "1" }
+}

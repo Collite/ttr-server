@@ -1,0 +1,67 @@
+{
+ "status": "success",
+ "data": {
+  "activeTargets": [
+   {
+    "labels": {
+     "job": "kubernetes-api-servers"
+    },
+    "health": "up"
+   },
+   {
+    "labels": {
+     "job": "kubernetes-nodes"
+    },
+    "health": "up"
+   },
+   {
+    "labels": {
+     "job": "kubernetes-nodes-cadvisor"
+    },
+    "health": "up"
+   },
+   {
+    "labels": {
+     "job": "kubernetes-pods"
+    },
+    "health": "up"
+   },
+   {
+    "labels": {
+     "job": "kubernetes-pods"
+    },
+    "health": "up"
+   },
+   {
+    "labels": {
+     "job": "kubernetes-service-endpoints"
+    },
+    "health": "up"
+   },
+   {
+    "labels": {
+     "job": "kubernetes-service-endpoints"
+    },
+    "health": "up"
+   },
+   {
+    "labels": {
+     "job": "kubernetes-service-endpoints"
+    },
+    "health": "up"
+   },
+   {
+    "labels": {
+     "job": "kubernetes-service-endpoints"
+    },
+    "health": "up"
+   },
+   {
+    "labels": {
+     "job": "prometheus"
+    },
+    "health": "up"
+   }
+  ]
+ }
+}

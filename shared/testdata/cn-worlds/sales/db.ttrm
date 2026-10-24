@@ -1,0 +1,36 @@
+// CN-P3 S3.7 — the md hero's physical tables (the ones its `md2db_*` bindings target; columns as ttrp-conform's
+// `md_seed.sql` creates them).
+model db schema dbo
+
+def table f_sales {
+    columns: [
+        def column customer_name { type: text },
+        def column sale_date { type: date },
+        def column net { type: decimal },
+        def column gross { type: decimal }
+    ]
+}
+
+def table f_plan {
+    columns: [
+        def column customer_name { type: text },
+        def column month_num { type: int },
+        def column measure_code { type: text },
+        def column amount { type: decimal },
+        def column is_current { type: bool }
+    ]
+}
+
+def table d_customer {
+    columns: [
+        def column cust_name { type: text },
+        def column region { type: text }
+    ]
+}
+
+def table d_calendar {
+    columns: [
+        def column cal_date { type: date },
+        def column cal_month { type: int }
+    ]
+}
