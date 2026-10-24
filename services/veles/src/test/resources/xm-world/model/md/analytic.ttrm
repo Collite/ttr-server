@@ -1,0 +1,15 @@
+package md
+import er.*
+import db.retail.*
+import md.*
+import cn.*
+model md
+
+def domain Money { type: decimal }
+def dimension Buyer { key: id, attributes: [def attribute id { domain: md.Money, isKey: true }] }
+def dimension Calendar { key: day, attributes: [def attribute day { domain: md.Money, isKey: true }, def attribute month { domain: md.Money }] }
+def hierarchy CalendarRollup { dimension: md.Calendar, levels: [day, month] }
+def measure revenue { domain: md.Money, aggregation: sum }
+def measure units { domain: md.Money, aggregation: sum }
+def measure balance { domain: md.Money, class: semiAdditive, aggregation: { default: sum, Calendar: last }, validBy: Calendar.day }
+def cubelet purchases { grain: [md.Buyer.id, md.Calendar.day], measures: [md.revenue, md.units, md.balance] }

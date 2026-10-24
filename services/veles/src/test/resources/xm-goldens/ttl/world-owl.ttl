@@ -1,0 +1,78 @@
+@prefix ttr: <https://tatrman.org/ns/ttr#> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix skos: <http://www.w3.org/2004/02/skos/core#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+@prefix dct: <http://purl.org/dc/terms/> .
+@prefix w: <urn:ttr:northline:> .
+
+<https://example.org/northline/Party> a owl:Class, ttr:Kind ;
+    ttr:tier "core" ;
+    owl:sameAs w:cn.kind.Party ;
+    ttr:groundsTo w:er.entity.buyer ;
+    ttr:groundingLayer "er" ;
+    rdfs:label "Osoba"@cs, "Party"@en ;
+    rdfs:comment "A trading party"@en, "Obchodní partner"@cs .
+
+ttr:involves_buyer a owl:ObjectProperty ;
+    rdfs:domain w:cn.event.Purchase ;
+    rdfs:range w:cn.role.Customer .
+
+ttr:involves_item a owl:ObjectProperty ;
+    rdfs:domain w:cn.event.Purchase ;
+    rdfs:range w:cn.kind.Product .
+
+ttr:rel_recommends a owl:ObjectProperty ;
+    rdfs:label "doporučuje"@cs, "recommends"@en .
+
+<urn:ttr:northline> a owl:Ontology ;
+    dct:identifier "fixture-1" ;
+    owl:versionInfo "0.18" .
+
+w:area.retail a ttr:Area ;
+    ttr:member w:er.entity.buyer, w:pkg.cn, w:pkg.er, w:pkg.md .
+
+w:cn.event.Purchase a owl:Class, ttr:Event ;
+    ttr:tier "core" ;
+    ttr:involves [ a ttr:Participation ; ttr:label "buyer" ; ttr:concept w:cn.role.Customer ], [ a ttr:Participation ; ttr:label "item" ; ttr:concept w:cn.kind.Product ] ;
+    ttr:extent "instantaneous" ;
+    ttr:periodAt "sold_at" ;
+    ttr:groundsTo w:er.entity.sale ;
+    ttr:groundingLayer "er" ;
+    rdfs:label "Purchase"@en .
+
+w:cn.kind.Product a owl:Class, ttr:Kind ;
+    ttr:tier "core" ;
+    ttr:groundsTo w:er.entity.product ;
+    ttr:groundingLayer "er" ;
+    rdfs:label "Product"@en .
+
+w:cn.kind.Prospect a owl:Class, ttr:Kind ;
+    ttr:tier "open" ;
+    ttr:abstract true ;
+    ttr:is_a <https://example.org/northline/Party> ;
+    rdfs:subClassOf <https://example.org/northline/Party> ;
+    rdfs:label "Prospect"@en .
+
+w:cn.phase.LargePurchase a owl:Class, ttr:Phase ;
+    ttr:tier "core" ;
+    ttr:definition "amount > 100" ;
+    ttr:definitionLanguage "ttr-pl" ;
+    rdfs:label "LargePurchase"@en .
+
+w:cn.quality.sold_at a owl:Class, ttr:Quality ;
+    ttr:tier "core" ;
+    ttr:groundsTo w:er.entity.sale.sold_at ;
+    ttr:groundingLayer "er" ;
+    rdfs:label "sold_at"@en .
+
+w:cn.relation_type.recommends a owl:Class, ttr:RelationType ;
+    ttr:tier "open" ;
+    rdfs:label "doporučuje"@cs, "recommends"@en .
+
+w:cn.role.Customer a owl:Class, ttr:Role ;
+    ttr:tier "core" ;
+    ttr:groundsTo w:md.dimension.Buyer ;
+    ttr:groundingLayer "md" ;
+    rdfs:label "Customer"@en .

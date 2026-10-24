@@ -62,6 +62,7 @@ dependencies {
     // ttr-parser/writer/semantics as `api`, so those three are NOT declared here
     // (MetadataExportRoutes still imports them — they arrive transitively).
     implementation(libs.tatrman.ttr.metadata)
+    implementation(libs.tomlj)
     // GitArchiveStorage (jgit) behind the ModelStorage SPI (MD3) — jgit +
     // commons-compress ride this transitively; Veles must not re-declare them.
     implementation(libs.tatrman.ttr.metadata.git)
@@ -116,6 +117,7 @@ dependencies {
     api(libs.otel.logback.appender)
 
     testImplementation(libs.bundles.kotest)
+    testImplementation(libs.tatrman.ttr.metadata.cli)
     testImplementation(libs.mockk)
     // In-process gRPC server (review-004 R3.2 — live GetPrompts round-trip).
     testImplementation(libs.grpc.inprocess)

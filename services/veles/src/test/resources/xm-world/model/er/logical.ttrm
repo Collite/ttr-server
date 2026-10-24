@@ -1,0 +1,11 @@
+package er
+import er.*
+import db.retail.*
+import md.*
+import cn.*
+model er
+
+def entity buyer { displayLabel: { en: "Buyer", cs: "Kupující" }, attributes: [def attribute id { type: int, isKey: true }, def attribute name { type: text }] }
+def entity product { attributes: [def attribute id { type: int, isKey: true }], concept: { kind: Product } }
+def entity sale { attributes: [def attribute id { type: int, isKey: true }, def attribute buyer_id { type: int }, def attribute amount { type: decimal }, def attribute sold_at { type: date }] }
+def relation sale_buyer { from: er.entity.sale, to: er.entity.buyer, cardinality: { from: "0..*", to: "1" }, join: [{ from: er.entity.sale.buyer_id, to: er.entity.buyer.id }] }

@@ -1,0 +1,9 @@
+package lexicon
+import er.*
+import db.retail.*
+import md.*
+import cn.*
+model lexicon locale cs
+
+def term party_cs { for: cn.Party, forms: ["osoba", "partner"] }
+def term customer_cs { for: cn.Customer, forms: ["zákazník"] }
