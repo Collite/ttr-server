@@ -344,8 +344,23 @@ replace authored values or make unknown references resolve. Invalid/overflowing 
 completion, including on empty routes. The compiler's wiring/window spelling `30 days` remains invalid inside
 scalar expressions; use `days(30)` there.
 
-Native writer/obligation synthesis, key lookups and calendar reads/column-date arithmetic
-still require lowering; selected unsupported operations return `501 preview-unsupported`. P2/P3
+Explicit native `writer` actions now produce insert previews. Each declared action column must name one
+attribute of the same pinned ER entity; every declared key and non-nullable field must be mapped and supplied.
+Arguments use compiler assignment unification, allowing lossless integer/decimal and date/timestamp widening
+while requiring authored casts for incompatible kinds. This check also runs on empty/unselected routes.
+Selected values retain exact numeric JSON and composite keys. Omitted optional fields remain omitted;
+explicit NULLs remain assignments only for nullable non-key fields. State vocabularies and preserved
+text/decimal bounds refuse invalid values without truncation or rounding. Duplicate/unknown/ambiguous target
+mappings, aggregate attributes, mixed effects and canonical entity-name collisions refuse with generic 501.
+Each selected row × wiring gets one insert and the action's effect-row references/would-text; repeated wiring
+stays repeated. Any later refusal leaves no partial decision/batch journal and triggers no extra Query work.
+
+Generated/default fields and obligation/key-lookup/calendar/column-date synthesis remain unsupported.
+The published metadata has no executable writer-default mapping, and its attribute reader can omit structured
+precision/length; the preview checks bounds only when preserved, without inventing defaults for bare types.
+P2 must validate actual physical bounds and writable policies before applying anything. Hartland's proposal ID,
+state and mailing quarter/run/time comments therefore do not yet certify those native writer paths. Selected
+unsupported operations return `501 preview-unsupported`. P2/P3
 retain dry-run task/delivery rows and performed action outcomes. Durable close/sealing and local staging retention are described below. Application mounting is
 pending. The local Query fixtures do not certify live Hartland behavior.
 

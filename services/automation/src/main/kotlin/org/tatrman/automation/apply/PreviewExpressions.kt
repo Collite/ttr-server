@@ -28,9 +28,17 @@ internal object PreviewExpressions {
         expressions: Map<String, String>,
         table: Table,
         bindings: Map<String, BoundValue>,
+        expectedTypes: Map<String, String> = emptyMap(),
     ): Table =
         guarded("unsupported action expression") {
-            val result = execute(expressions.values.toList(), table, bindings, predicate = false)
+            val result =
+                execute(
+                    expressions.values.toList(),
+                    table,
+                    bindings,
+                    predicate = false,
+                    expectedTypes = expressions.keys.map { expectedTypes[it] },
+                )
             Table(
                 result.columns.drop(1).mapIndexed { i, c -> c.copy(name = expressions.keys.elementAt(i)) },
                 result.rows.sortedBy { (it.first() as Long) }.map { it.drop(1) },
@@ -65,6 +73,7 @@ internal object PreviewExpressions {
         table: Table,
         bindings: Map<String, BoundValue>,
         predicate: Boolean,
+        expectedTypes: List<String?> = emptyList(),
     ): Table {
         val parsed = sources.map { TtrpParser.parseExpression(it) }
         if (parsed.any { result -> result.diagnostics.any { it.severity == Severity.ERROR } }) unsupported()
@@ -117,13 +126,30 @@ internal object PreviewExpressions {
             }
         val schema = mapOf("" to columns.map { Column(it.name, expressionType(it.type)) })
         val checker = ExpressionTypechecker()
-        expressions.forEach { expression ->
+        expressions.forEachIndexed { i, expression ->
             val checked = checker.check(expression, schema, aggregatesAllowed = false, predicateExpected = predicate)
             if (checked.diagnostics.any { it.severity == Severity.ERROR } ||
                 predicate &&
                 checked.type != TtrpType.Bool
             ) {
                 unsupported()
+            }
+            expectedTypes.getOrNull(i)?.let { type ->
+                // Reuse the compiler's result unification, including lossless integer/decimal and
+                // date/timestamp widening. A case with a typed NULL is only checked, never executed.
+                val target = expressionType(type)
+                val assignment =
+                    CaseWhen(
+                        listOf(Literal(LiteralValue.Bool(true), expression.location) to expression),
+                        Cast(Literal(LiteralValue.Null, expression.location), target, expression.location),
+                        expression.location,
+                    )
+                val checkedAssignment = checker.check(assignment, schema, aggregatesAllowed = false)
+                if (checkedAssignment.diagnostics.any { it.severity == Severity.ERROR } ||
+                    checkedAssignment.type != target
+                ) {
+                    unsupported()
+                }
             }
         }
 

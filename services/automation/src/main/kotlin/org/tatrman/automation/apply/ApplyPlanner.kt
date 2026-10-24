@@ -47,6 +47,7 @@ class ApplyPlanner(
     private data class PreparedWiring(
         val wiring: ManifestWiring,
         val arguments: Map<Int, Map<String, JsonElement>>,
+        val writer: PreviewWriter?,
     )
 
     suspend fun preview(runner: PartRunner): PreviewPlan {
@@ -106,6 +107,15 @@ class ApplyPlanner(
                     val matches = wiring.whenCondition?.let { PreviewConditions.select(it, table, context.bindings) }
                     val indices = table.rows.indices.filter { matches == null || it in matches }
                     val action = metadata.actions.getValue(wiring.action)
+                    val writer =
+                        if (action.sinks[Bundle.NATIVE] ==
+                            "writer"
+                        ) {
+                            PreviewWriter.resolve(action, metadata.entities)
+                        } else {
+                            null
+                        }
+                    writer?.validateArguments(wiring.columns.keys)
                     require(action.columns.filterNot { it.optional }.all { it.name in wiring.columns }) {
                         "missing required action argument"
                     }
@@ -132,6 +142,7 @@ class ApplyPlanner(
                             scalarExpressions,
                             table.copy(rows = indices.map { table.rows[it] }),
                             context.bindings,
+                            expectedTypes = writer?.expectedTypes.orEmpty(),
                         )
                     PreparedWiring(
                         wiring,
@@ -144,6 +155,7 @@ class ApplyPlanner(
                                         }.toMap()
                                 index to arguments
                             }.toMap(),
+                        writer,
                     )
                 }
             for ((index, values) in table.rows.withIndex()) {
@@ -202,7 +214,7 @@ class ApplyPlanner(
                             )
                     }
                 }
-                for ((wiring, arguments) in selected) {
+                for ((wiring, arguments, writer) in selected) {
                     val scalarArguments = arguments[index] ?: continue
                     val action = metadata.actions.getValue(wiring.action)
                     val args = linkedMapOf<String, JsonElement>()
@@ -227,6 +239,7 @@ class ApplyPlanner(
                     val start = rows.size
                     when (sink) {
                         "transition" -> effects(action, args, metadata, rows)
+                        "writer" -> rows += requireNotNull(writer).insert(rows.size + 1, args)
                         "deliver", "task", "start", "emit" -> Unit
                         else -> unsupported("native $sink preview requires its writer lowering")
                     }

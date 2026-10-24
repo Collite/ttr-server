@@ -12,6 +12,7 @@ import org.tatrman.automation.apply.*
 import org.tatrman.automation.bundle.*
 import org.tatrman.automation.staging.*
 import org.tatrman.ttr.metadata.model.LocalizedText
+import org.tatrman.ttr.metadata.model.AutomationColumn
 import java.math.BigDecimal
 import java.nio.file.Files
 import java.time.Clock
@@ -22,6 +23,52 @@ import java.util.concurrent.atomic.AtomicInteger
 
 class DryRunSpec :
     StringSpec({
+        fun writerMetadata(amountType: String = "decimal"): PreviewMetadata {
+            val original = PreviewMetadata.from(BundleFixture.load())
+            val order = original.entities.single { it.qname.name == "order" }
+            val key = order.attributes.single { it.isKey }
+            val target =
+                order.copy(
+                    attributes =
+                        listOf(
+                            key.copy(nullable = false),
+                            key.copy(
+                                internalId = "tenant",
+                                qname = key.qname.copy(name = "order.tenant"),
+                                nullable = false,
+                            ),
+                            order.attributes
+                                .single {
+                                    it.qname.name.endsWith(
+                                        ".value",
+                                    )
+                                }.copy(type = amountType, nullable = false),
+                            order.attributes.single { it.qname.name.endsWith(".held_for") }.copy(nullable = true),
+                            order.attributes.single { it.qname.name.endsWith(".state") }.copy(nullable = true),
+                        ),
+                )
+            val action =
+                original.actions.getValue("hold").copy(
+                    columns =
+                        listOf(
+                            AutomationColumn("id", "order.order_number"),
+                            AutomationColumn("tenant", "order.tenant"),
+                            AutomationColumn("total", "order.value"),
+                            AutomationColumn("label", "order.held_for", optional = true),
+                        ),
+                    sinks = mapOf("native" to "writer"),
+                    transition = null,
+                    set = null,
+                    dryRun = LocalizedText(mapOf("en" to "would insert order {id} for {tenant}")),
+                )
+            return original.copy(actions = original.actions + ("hold" to action), entities = listOf(target))
+        }
+
+        fun writerWiring(
+            routes: List<String> = listOf("way.hold"),
+            total: String = "amount + 1.5",
+        ) = ManifestWiring(routes, "hold", mapOf("id" to "order_number", "tenant" to "tenant", "total" to total))
+
         "calling the planner before staging refuses without starting Query or evaluation" {
             supervisorScope {
                 val f = PreviewFixture(this)
@@ -202,6 +249,118 @@ class DryRunSpec :
                     f.plan!!.actions.map { it.action } shouldBe listOf("release", "release")
                     f.plan!!.actions.map { it.batchRows.size } shouldBe listOf(1, 1)
                     f.journals.get() shouldBe 1
+                    f.reads.get() shouldBe 5
+                }
+            }
+        }
+
+        "native writer inserts use compiler arguments and declared composite keys in route order" {
+            supervisorScope {
+                val wiring = writerWiring(listOf("way.release", "way.hold"))
+                val f = PreviewFixture(this, previewRecipe().withWiring(listOf(wiring)), writerMetadata())
+                f.runner.use { runner ->
+                    runner.evaluate()
+                    val plan = f.plan!!
+                    val inserted = plan.rows.filter { it.entity == "er.entity.order" }
+                    inserted.map { it.op } shouldBe listOf("insert", "insert")
+                    inserted.map { it.key } shouldBe
+                        listOf(
+                            buildJsonObject {
+                                put("order_number", "4711")
+                                put("tenant", "a")
+                            },
+                            buildJsonObject {
+                                put("order_number", "4712")
+                                put("tenant", "a")
+                            },
+                        )
+                    inserted.map {
+                        it.row!!
+                            .getValue("value")
+                            .jsonPrimitive.content
+                            .toBigDecimal()
+                    } shouldBe
+                        listOf(BigDecimal("2.73"), BigDecimal("6.06"))
+                    inserted.all { !it.row!!.containsKey("held_for") } shouldBe true
+                    plan.actions.map { it.batchRows } shouldBe inserted.map { listOf(it.seq) }
+                    plan.actions.map { it.would } shouldBe
+                        listOf("would insert order 4711 for a", "would insert order 4712 for a")
+                    f.journals.get() shouldBe 1
+                    f.reads.get() shouldBe 5
+                }
+            }
+        }
+
+        "native writer preserves explicit null and repeated wiring without inventing defaults" {
+            supervisorScope {
+                val wiring = writerWiring().let { it.copy(columns = it.columns + ("label" to "null")) }
+                val f = PreviewFixture(this, previewRecipe().withWiring(listOf(wiring, wiring)), writerMetadata())
+                f.runner.use { runner ->
+                    runner.evaluate()
+                    val inserted = f.plan!!.rows.filter { it.entity == "er.entity.order" }
+                    inserted.size shouldBe 2
+                    inserted.forEach { it.row!!["held_for"] shouldBe JsonNull }
+                    inserted.map { it.key }.distinct().size shouldBe 1
+                    f.plan!!.actions.map { it.batchRows } shouldBe inserted.map { listOf(it.seq) }
+                    f.journals.get() shouldBe 1
+                    f.reads.get() shouldBe 5
+                }
+            }
+        }
+
+        "native writer target types validate even on empty or unselected routes" {
+            for (route in listOf("way.hold", "way.empty")) {
+                supervisorScope {
+                    val wiring = writerWiring(listOf(route), total = "\"secret amount\"").copy(whenCondition = "false")
+                    val f = PreviewFixture(this, previewRecipe().withWiring(listOf(wiring)), writerMetadata())
+                    f.runner.use { runner ->
+                        repeat(2) {
+                            shouldThrow<AutomationException> { runner.evaluate() }.message shouldBe
+                                "unsupported action expression"
+                        }
+                        f.journals.get() shouldBe 0
+                        f.reads.get() shouldBe 5
+                    }
+                }
+            }
+        }
+
+        "native writer value refusal after earlier effects leaves no partial journal" {
+            supervisorScope {
+                val recipe =
+                    previewRecipe().withWiring(
+                        listOf(
+                            ManifestWiring(
+                                listOf("way.release"),
+                                "release",
+                                mapOf(
+                                    "order" to "order_number",
+                                    "scope" to "tenant",
+                                ),
+                            ),
+                            writerWiring(total = "amount + 100"),
+                        ),
+                    )
+                val original = writerMetadata("decimal(4,2)")
+                val release = original.actions.getValue("release")
+                val metadata =
+                    original.copy(
+                        actions =
+                            original.actions + (
+                                "release" to
+                                    release.copy(
+                                        columns = release.columns + AutomationColumn("scope", "order.tenant"),
+                                    )
+                            ),
+                    )
+                val f = PreviewFixture(this, recipe, metadata)
+                f.runner.use { runner ->
+                    repeat(2) {
+                        shouldThrow<AutomationException> { runner.evaluate() }.message shouldBe
+                            "unsupported native writer mapping or value"
+                    }
+                    f.journals.get() shouldBe 0
+                    f.legacy.get() shouldBe 0
                     f.reads.get() shouldBe 5
                 }
             }
