@@ -16,6 +16,11 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+- **llm-gateway — `deep` is the smart tier** (gpt-6.1-sol). The generic `deep` tier — what Golem composes the query
+  on, and its ladder's `capable` rungs — moves from the `gpt-4.1` row (`azure-gpt-41`) onto `gpt-6.1-sol`
+  (`azure-gpt-61-sol`, alias `smart`, ttr-server#297). `mini` and `fast` stay on the chat deployment
+  (`AZURE_OPENAI_CHAT_DEPLOYMENT`); `AZURE_OPENAI_SMART_DEPLOYMENT` moves `deep` with `smart`.
+
 ### Added — XM P2 OpenMetadata writer (S2.2)
 
 - Add `check` and `sync`: ensure string custom properties and Tatrman tags, import
