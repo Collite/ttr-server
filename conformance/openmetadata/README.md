@@ -82,3 +82,17 @@ observed before the version/no-op assertions; the suite never disables workflows
 compose network against the same scanned fixture and checks two real syncs. Run
 it **after** om-test (both mutate the catalog); CI preserves this order and uploads
 image-summaries.jsonl. Override its image parameter for a local tag.
+
+## Registry availability on shared CI runners
+
+The first GitHub run was rejected by docker.getcollate.io with HTTP429 before the
+build. OM's vendor, Docker Hub and Google cache return the **identical** ingestion
+index b7228ccffde7e5d0eb89e48d2c5247476d7b0e87924e11de0c929150a28668b9;
+the cached server index is likewise the vendor's
+87706a33003a65b850e1ec832735bddcf0d4a5ab680a79922b0556d4cfc1d359.
+Both are pinned in the Dockerfile/compose, so a registry override cannot change
+OM's bytes. CI and the connector release build use mirror.gcr.io (the existing
+repo base-image workflow uses that cache too). Local default remains the vendor.
+Set OM_IMAGE_REGISTRY for OM images and OM_DEPENDENCY_REGISTRY for the public
+Postgres/OpenSearch cache; both CI variables are mirror.gcr.io. Build an identical
+cached image with `--build-arg OM_IMAGE_REGISTRY=mirror.gcr.io`.

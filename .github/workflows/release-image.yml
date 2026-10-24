@@ -293,7 +293,12 @@ jobs:
             ./gradlew :shared:proto:preparePythonPackage --no-configuration-cache
           fi
           # Repo-root context: the Dockerfile COPYs shared/ and services/<x> from root.
-          docker build -f "${{ matrix.path }}/Dockerfile" -t "$IMG" .
+          BUILD_ARGS=()
+          if [ "${{ matrix.name }}" = connect-openmetadata ]; then
+            # Same pinned OCI index as docker.getcollate.io; public-runner rate-limit fallback.
+            BUILD_ARGS=(--build-arg OM_IMAGE_REGISTRY=mirror.gcr.io)
+          fi
+          docker build "${BUILD_ARGS[@]}" -f "${{ matrix.path }}/Dockerfile" -t "$IMG" .
           docker push "$IMG"
 
       # ---------- Dockerfile-only, LOCAL context (the NLP backends) ----------
