@@ -31,18 +31,22 @@ models:
   # ⚠ The tatrman Azure resource (every cluster's AZURE_OPENAI_ENDPOINT) has NO text-embedding-ada-002 deployment:
   # this row answers 400 "The API deployment for this resource does not exist" there (2026-10-24). Use
   # text-embedding-3-small below — same 1536 dimensions, but a different vector space: re-embed, never mix.
+  # Reachable by its name only: no tag, so `model_tags=[embedding]` can't land here on the name tie-break.
   - id: azure-ada-002
     name: ada-002
     provider: azure
     upstream: text-embedding-ada-002
     type: embedding
-    tags: ["embedding"]
+    tags: []
     pricing: { input: 1.0 }                   # interim (1.x cost=1); embeddings are input-only
     cacheTtlSeconds: 0
     fallback: []
 
+  # The embeddings tier: callers ask for `embedding`, never a model name, so the model can change here alone. They
+  # must key stored vectors by the `model` the reply names, not by `embedding`: two models' vectors don't mix.
   - id: azure-text-embedding-3-small
     name: text-embedding-3-small
+    aliases: ["embedding"]
     provider: azure
     upstream: "${AZURE_OPENAI_EMBEDDING_DEPLOYMENT:-text-embedding-3-small}"   # the tatrman deployment's name
     type: embedding

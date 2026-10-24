@@ -79,6 +79,17 @@ class RoutingParitySpec :
                 ).shouldBeInstanceOf<Resolution.Invalid>()
         }
 
+        "embeddings tier: 'embedding' and model_tags=[embedding] → text-embedding-3-small, never ada-002 (2026-10-24)" {
+            fun embeddingModel(
+                name: String?,
+                tags: List<String> = emptyList(),
+            ): String? = (resolver.resolve(name, tags, RequestedType.EMBEDDING) as? Resolution.Resolved)?.model?.name
+            embeddingModel("embedding") shouldBe "text-embedding-3-small"
+            embeddingModel(null, listOf("embedding")) shouldBe "text-embedding-3-small"
+            embeddingModel("ada-002") shouldBe "ada-002" // still reachable by name
+            resolver.resolve("embedding", emptyList(), RequestedType.CHAT).shouldBeInstanceOf<Resolution.Invalid>()
+        }
+
         "case-insensitive parity: 'HAIKU' and 'GPT-4' resolve identically to lowercase (1.x equalsIgnoreCase)" {
             landsOn("HAIKU") shouldBe "claude-haiku-4-5"
             landsOn("GPT-4") shouldBe "gpt-4o"
