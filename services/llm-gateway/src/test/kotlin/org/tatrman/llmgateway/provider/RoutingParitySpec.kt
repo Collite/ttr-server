@@ -3,6 +3,7 @@ package org.tatrman.llmgateway.provider
 
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.types.shouldBeInstanceOf
 import org.tatrman.llmgateway.config.ConfigLoader
 
 /**
@@ -45,6 +46,33 @@ class RoutingParitySpec :
 
         "tag live contract: model_tags=[tatrman] (no name) → gpt-4.1" {
             landsOn(null, listOf("tatrman")) shouldBe "gpt-4.1"
+        }
+
+        "the smart tier: 'smart' and model_tags=[smart] → gpt-6.1-sol, a reasoning model (2026-10-24)" {
+            landsOn("smart") shouldBe "gpt-6.1-sol"
+            landsOn(null, listOf("smart")) shouldBe "gpt-6.1-sol"
+            val sol = catalog.single { it.name == "gpt-6.1-sol" }
+            // the tatrman deployment, unless AZURE_OPENAI_SMART_DEPLOYMENT says otherwise
+            sol.upstream shouldBe "gpt-6.1-sol"
+            sol.reasoning shouldBe true // Azure refuses max_tokens for it
+        }
+
+        "embeddings: text-embedding-3-small is served by the tatrman deployment of that name" {
+            val m =
+                (
+                    resolver.resolve(
+                        "text-embedding-3-small",
+                        emptyList(),
+                        RequestedType.EMBEDDING,
+                    ) as Resolution.Resolved
+                ).model
+            m.upstream shouldBe "text-embedding-3-small"
+            resolver
+                .resolve(
+                    "text-embedding-3-small",
+                    emptyList(),
+                    RequestedType.CHAT,
+                ).shouldBeInstanceOf<Resolution.Invalid>()
         }
 
         "case-insensitive parity: 'HAIKU' and 'GPT-4' resolve identically to lowercase (1.x equalsIgnoreCase)" {
