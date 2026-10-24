@@ -85,14 +85,25 @@ image-summaries.jsonl. Override its image parameter for a local tag.
 
 ## Registry availability on shared CI runners
 
-The first GitHub run was rejected by docker.getcollate.io with HTTP429 before the
-build. OM's vendor, Docker Hub and Google cache return the **identical** ingestion
-index b7228ccffde7e5d0eb89e48d2c5247476d7b0e87924e11de0c929150a28668b9;
-the cached server index is likewise the vendor's
-87706a33003a65b850e1ec832735bddcf0d4a5ab680a79922b0556d4cfc1d359.
-Both are pinned in the Dockerfile/compose, so a registry override cannot change
-OM's bytes. CI and the connector release build use mirror.gcr.io (the existing
-repo base-image workflow uses that cache too). Local default remains the vendor.
-Set OM_IMAGE_REGISTRY for OM images and OM_DEPENDENCY_REGISTRY for the public
-Postgres/OpenSearch cache; both CI variables are mirror.gcr.io. Build an identical
-cached image with `--build-arg OM_IMAGE_REGISTRY=mirror.gcr.io`.
+Vendor pulls can return HTTP429, and Google cache availability varies by region.
+`pull-images.sh` explicitly pulls from Google cache, Docker Hub, then the vendor,
+verifies the OM index digest and exports resolved digest URIs before build/compose.
+It never switches OM contents: ingestion index is
+b7228ccffde7e5d0eb89e48d2c5247476d7b0e87924e11de0c929150a28668b9,
+server index is 87706a33003a65b850e1ec832735bddcf0d4a5ab680a79922b0556d4cfc1d359.
+Local defaults remain vendor/digest; CI and release use the same resolver. It
+also resolves Postgres16 and the selected OpenSearch version to installed digests.
+
+To reproduce with the resolver (requires jq):
+
+```sh
+bash conformance/openmetadata/pull-images.sh lane /tmp/om-images.env
+set -a; source /tmp/om-images.env; set +a
+just om-up && just om-test
+just om-image-test
+just om-down
+```
+
+Overrides are OM_SERVER_IMAGE, OM_INGESTION_IMAGE, OM_POSTGRES_IMAGE and
+OM_OPENSEARCH_IMAGE; the Dockerfile accepts OM_BASE_IMAGE (default pinned vendor).
+The resolver's base mode only pulls ingestion-base, for the release build.

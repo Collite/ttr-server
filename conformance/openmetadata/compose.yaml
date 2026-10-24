@@ -23,7 +23,7 @@ x-om-env: &om-env
   OPENMETADATA_HEAP_OPTS: -Xms1G -Xmx2G
 services:
   pg:
-    image: ${OM_DEPENDENCY_REGISTRY:-docker.io}/library/postgres:16
+    image: ${OM_POSTGRES_IMAGE:-postgres:16}
     environment:
       POSTGRES_USER: openmetadata
       POSTGRES_PASSWORD: openmetadata
@@ -36,7 +36,7 @@ services:
     volumes:
       - pg:/var/lib/postgresql/data
   opensearch:
-    image: ${OM_DEPENDENCY_REGISTRY:-docker.io}/opensearchproject/opensearch:${OM_OPENSEARCH_VERSION:-3.4.0}
+    image: ${OM_OPENSEARCH_IMAGE:-opensearchproject/opensearch:${OM_OPENSEARCH_VERSION:-3.4.0}}
     environment:
       discovery.type: single-node
       DISABLE_INSTALL_DEMO_CONFIG: "true"
@@ -53,14 +53,14 @@ services:
     volumes:
       - search:/usr/share/opensearch/data
   migrate:
-    image: ${OM_IMAGE_REGISTRY:-docker.getcollate.io}/openmetadata/server:2.0.6@sha256:87706a33003a65b850e1ec832735bddcf0d4a5ab680a79922b0556d4cfc1d359
+    image: ${OM_SERVER_IMAGE:-docker.getcollate.io/openmetadata/server:2.0.6@sha256:87706a33003a65b850e1ec832735bddcf0d4a5ab680a79922b0556d4cfc1d359}
     command: [./bootstrap/openmetadata-ops.sh, migrate]
     environment: *om-env
     depends_on:
       pg: {condition: service_healthy}
       opensearch: {condition: service_healthy}
   openmetadata-server:
-    image: ${OM_IMAGE_REGISTRY:-docker.getcollate.io}/openmetadata/server:2.0.6@sha256:87706a33003a65b850e1ec832735bddcf0d4a5ab680a79922b0556d4cfc1d359
+    image: ${OM_SERVER_IMAGE:-docker.getcollate.io/openmetadata/server:2.0.6@sha256:87706a33003a65b850e1ec832735bddcf0d4a5ab680a79922b0556d4cfc1d359}
     environment: *om-env
     ports:
       - '127.0.0.1:${OM_PORT:-18585}:8585'
@@ -73,7 +73,7 @@ services:
       retries: 90
       start_period: 30s
   fixture-pg:
-    image: ${OM_DEPENDENCY_REGISTRY:-docker.io}/library/postgres:16
+    image: ${OM_POSTGRES_IMAGE:-postgres:16}
     environment:
       POSTGRES_USER: fixture
       POSTGRES_PASSWORD: fixture
@@ -86,7 +86,7 @@ services:
       timeout: 5s
       retries: 30
   scan:
-    image: ${OM_IMAGE_REGISTRY:-docker.getcollate.io}/openmetadata/ingestion-base:2.0.6@sha256:b7228ccffde7e5d0eb89e48d2c5247476d7b0e87924e11de0c929150a28668b9
+    image: ${OM_INGESTION_IMAGE:-docker.getcollate.io/openmetadata/ingestion-base:2.0.6@sha256:b7228ccffde7e5d0eb89e48d2c5247476d7b0e87924e11de0c929150a28668b9}
     profiles: [scan]
     entrypoint: [metadata]
     command: [ingest, -c, /config/fixture-postgres.yaml]

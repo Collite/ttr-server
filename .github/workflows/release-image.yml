@@ -295,8 +295,11 @@ jobs:
           # Repo-root context: the Dockerfile COPYs shared/ and services/<x> from root.
           BUILD_ARGS=()
           if [ "${{ matrix.name }}" = connect-openmetadata ]; then
-            # Same pinned OCI index as docker.getcollate.io; public-runner rate-limit fallback.
-            BUILD_ARGS=(--build-arg OM_IMAGE_REGISTRY=mirror.gcr.io)
+            IMAGE_ENV=$(mktemp)
+            bash conformance/openmetadata/pull-images.sh base "$IMAGE_ENV"
+            source "$IMAGE_ENV"
+            rm -f "$IMAGE_ENV"
+            BUILD_ARGS=(--build-arg OM_BASE_IMAGE="$OM_INGESTION_IMAGE")
           fi
           docker build "${BUILD_ARGS[@]}" -f "${{ matrix.path }}/Dockerfile" -t "$IMG" .
           docker push "$IMG"

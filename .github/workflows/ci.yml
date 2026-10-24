@@ -234,9 +234,6 @@ jobs:
         opensearch: ['3.4.0', '3.0.0']
     env:
       OM_OPENSEARCH_VERSION: ${{ matrix.opensearch }}
-      # Avoid shared-runner/vendor pull quotas; OM images remain digest-identical.
-      OM_IMAGE_REGISTRY: mirror.gcr.io
-      OM_DEPENDENCY_REGISTRY: mirror.gcr.io
     steps:
       - uses: actions/checkout@v5
       - uses: dorny/paths-filter@v3
@@ -257,11 +254,14 @@ jobs:
         if: steps.changes.outputs.om == 'true' || github.event_name == 'workflow_dispatch' || github.event.schedule == '0 5 * * 1'
       - uses: extractions/setup-just@v2
         if: steps.changes.outputs.om == 'true' || github.event_name == 'workflow_dispatch' || github.event.schedule == '0 5 * * 1'
+      - name: Resolve and verify public lane images
+        if: steps.changes.outputs.om == 'true' || github.event_name == 'workflow_dispatch' || github.event.schedule == '0 5 * * 1'
+        run: bash conformance/openmetadata/pull-images.sh lane "$GITHUB_ENV"
       - name: Build the release Dockerfile and smoke the entrypoint
         if: steps.changes.outputs.om == 'true' || github.event_name == 'workflow_dispatch' || github.event.schedule == '0 5 * * 1'
         run: |
           set -euo pipefail
-          docker build --build-arg OM_IMAGE_REGISTRY="$OM_IMAGE_REGISTRY" -f connectors/openmetadata/Dockerfile -t connect-openmetadata:ci .
+          docker build --build-arg OM_BASE_IMAGE="$OM_INGESTION_IMAGE" -f connectors/openmetadata/Dockerfile -t connect-openmetadata:ci .
           docker run --rm connect-openmetadata:ci --help
       - name: Start, scan and test the conformance lane
         if: steps.changes.outputs.om == 'true' || github.event_name == 'workflow_dispatch' || github.event.schedule == '0 5 * * 1'
