@@ -5,9 +5,9 @@ Standalone Python connector for XM design §4.B M-1-β. It consumes Tatrman's ti
 the source of definitions; the catalog receives projections. Scanner-owned tables
 and columns are linked, never created.
 
-S2.1 implements the offline planner and readers. `check` and `sync` explicitly raise
-`NotImplementedError` until S2.2. Local OM conformance, RDF acceptance (V-OM-1),
-OpenSearch verification (V-OM-2) and the image belong to S2.3.
+S2.1/S2.2 implement the planner, readers, registry check and OM writer. Local OM
+conformance, RDF acceptance (V-OM-1), OpenSearch verification (V-OM-2) and the image
+belong to S2.3. The HTTP fake verifies the writer; it is not live OM acceptance.
 
 ## Run
 
@@ -22,6 +22,15 @@ uv run --locked ttr-connect-openmetadata plan \
   --export-url https://metadata.example/model/export \
   --world northline --studio-url https://studio.example \
   --state-file /tmp/northline-om.json
+# Ensure health + custom-property/classification/tag registry (writes when absent).
+uv run --locked ttr-connect-openmetadata check \
+  --om-url http://localhost:8585/api --om-token-file /secrets/token
+uv run --locked ttr-connect-openmetadata sync \
+  --export-dir tests/fixtures/export --world northline \
+  --om-url http://localhost:8585/api --om-token-file /secrets/token \
+  --studio-url https://studio.example --state-file /tmp/northline-om.json
+# Same operations as plan: no OM credentials, SDK initialization, writes or state advance.
+uv run --locked ttr-connect-openmetadata sync --export-dir tests/fixtures/export --dry-run
 make check
 uv build
 ```
@@ -36,8 +45,8 @@ preserved for forward compatibility. Requests have a 30-second timeout.
 `--world` defaults to the export's world and must match it. `--studio-url` adds
 `<url>/viewer?qname=<encoded-qname>`. `--no-deprecate-missing` suppresses stale
 operations. `plan` never calls OM and never updates the state file. Exit codes:
-0 success/304; 2 export/state read failure; 3 mapping failure. Exit 1 for OM errors
-is reserved for the S2.2 writer. Argparse usage failures exit 2.
+0 success/304; 1 OM/credential/success-state-write failure; 2 export/state read
+failure; 3 mapping failure. Argparse usage failures exit 2.
 
 ## Mapping (C-15/C-16)
 
@@ -57,7 +66,8 @@ Display names prefer English; Czech-only names append `(<cs label>)` to the sour
 name. Descriptions prefer English, otherwise retain all language-labelled text.
 Names are deterministic; OM FQN collisions, ambiguous bindings, multiple CN parents
 and cyclic hierarchies fail explicitly. Terms are ordered with parents first.
-Related-term references are finalized after all terms exist by the S2.2 writer.
+Related-term references are added after all terms exist. Existing unrelated
+properties, tags, related terms and metric asset links are retained.
 CN operations carry `cn: true` so that writer can apply custom properties after OWL
 import or use the fallback payload when `--cn-path glossary` is selected.
 
@@ -66,7 +76,8 @@ Table FQNs come from each `defs.json.connections[]` descriptor:
 participate. Dot-containing name segments are quoted. Multiple connections yield
 separate asset operations. Missing service/database locators produce one warning
 per connection and no links for that connection. The planner does not know which
-assets OM has scanned: S2.2 will warn on a missing OM table and continue.
+assets OM has scanned: sync emits one warning per missing OM table and continues
+without creating it. Missing columns are also skipped with a warning.
 
 ## State and deprecation
 
@@ -79,9 +90,56 @@ part of a new export is an export error.
 Missing ids plus `delta.removed` yield `Deprecate` operations; live rename targets
 suppress deprecation of their old names. The writer resolves candidates by
 `ttrQname`; `kind` is a target-type hint, never an invented OM FQN. Only materialized
-targets are changed. Term deprecation, metric `Tatrman.Deprecated`, and removal of
-managed table/column tags belong to S2.2. **Deprecate, never delete**: the operation
-schema has no delete variant. This Stage does not claim a successful OM sync.
+targets are changed: term `entityStatus: Deprecated`, metric tag
+`Tatrman.Deprecated`, table/column `Tatrman.Grounded` removed. Other tags, glossary
+links and custom properties remain. Reappearing terms return to Draft and metrics
+lose the Deprecated tag. **Deprecate, never delete**: neither the operation schema
+nor the writer has a delete action. Qnames resolve across all response pages;
+term lookup/deprecation is scoped to this world's glossaries.
+
+`sync` calls `check` first, reconciles entities, finalizes term relations, then
+links and deprecations. State advances only after every operation succeeds.
+Missing scanned assets count as warnings and are skipped; other write failures
+fail the run. OM writes are not a transaction: a failed run can have partial
+catalog changes, while the previous state remains available for an idempotent retry.
+A saved URL snapshot receiving 304 is a complete no-op, including the registry
+check; a later source snapshot or a directory sync is needed to retry skipped
+assets after a scanner has discovered them.
+
+Successful sync prints exactly one JSON line with `snapshot`, `created`,
+`updated`, `deprecated`, `linked`, and `warnings`. Counts record successful entity
+and registry-property creations, successful update patches, deprecation actions,
+and asset links. An entity patched more than once can contribute multiple updates;
+these are action counts, not unique entity counts. `check` prints the same counters
+with an empty snapshot. WARN lines go to stderr. A repeat sync against unchanged
+input and catalog makes zero PUT/PATCH calls, even without an HTTP 304.
+
+## OWL import and fallback
+
+Default `--cn-path owl` imports CN Turtle when expected CN terms are missing.
+The request explicitly sends `dryRun=false`. Content/endpoint 4xx responses select
+the glossary path; 401/403/429 fail immediately. `--cn-path glossary` always skips
+RDF import. Both paths create parents first, retain all synonyms, preserve source
+IRIs, and attach `ttrQname`. Imported terms are matched by IRI within the target
+glossary, so importer-chosen names do not produce duplicates. Existing nonempty
+IRIs are never overwritten. Missing IRIs are filled. Existing terms are reconciled
+directly instead of reimporting on every sync.
+
+REST calls check HTTP status. All calls have a 30-second timeout; 5xx responses
+receive up to three retries (0.25, 0.5, 1 second backoff). 4xx and transport failures
+are not retried. SDK patches use deep source/destination copies and
+`skip_on_failure=False`. RDF HTTP 200 responses containing failed-term messages,
+failed bulk asset rows, and metric links dropped by the server fail the sync;
+state does not advance. Native metric-to-column round-trip support remains an
+explicit S2.3 live check.
+
+Once P3 has installed the CronJob, trigger the projection for the demo:
+
+```sh
+kubectl -n openmetadata create job om-project-tatrman-demo \
+  --from=cronjob/om-project-tatrman
+kubectl -n openmetadata logs -f job/om-project-tatrman-demo
+```
 
 ## Fixture provenance and goldens
 

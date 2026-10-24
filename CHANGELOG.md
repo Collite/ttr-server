@@ -16,14 +16,25 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+### Added — XM P2 OpenMetadata writer (S2.2)
+
+- Add `check` and `sync`: ensure string custom properties and Tatrman tags, import
+  CN OWL with glossary fallback, upsert terms and native metrics, and attach
+  properties, tags and asset links to scanned tables/columns.
+- Reconcile by stored TTR qname (imported CN terms by IRI), preserve established
+  IRIs and catalog metadata, and deprecate missing objects without deleting them.
+  Unchanged repeat syncs perform no writes; dry runs and 304s do not advance state.
+- Surface failed SDK patches and partial HTTP 200 import/link failures, retry 5xx
+  responses with bounded backoff, and atomically save state only after success.
+  Live OpenMetadata conformance remains the following Stage's gate.
+
 ### Added — XM P2 OpenMetadata connector (S2.1)
 
 - Add the installable `ttr-connect-openmetadata` Python planner: read consistent
   world exports from a directory or HTTP, retain ETag state, and print deterministic
   glossary, metric, property, tag, asset-link and deprecation operations as JSON lines.
 - Pin OpenMetadata ingestion 2.0.6 (PyPI 2.0.6.0), record inspected SDK/endpoint facts,
-  and add an isolated Python CI gate. `check`/`sync` remain S2.2 stubs; this cut
-  performs no OpenMetadata writes.
+  and add an isolated Python CI gate. The S2.1 planner performs no OpenMetadata writes.
 
 ### Added — XM P1 external metadata export
 

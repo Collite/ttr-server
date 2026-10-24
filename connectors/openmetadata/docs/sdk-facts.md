@@ -83,3 +83,34 @@ MIN/MAX enums. `MetricExpression` uses `Language.SQL`, code text, and no granula
 S2.1 tests instantiate all fixture metric and term request payloads with these
 actual SDK classes. Live RDF behavior (punning/language tags) and OpenSearch minima
 remain pending for S2.3.
+
+## S2.2 writer facts
+
+- `GlossaryTerm.entityStatus` accepts `Deprecated` (and `Draft` on reappearance);
+  the SDK has no writable `status` field on the term entity. Metrics use the
+  `Tatrman.Deprecated` tag. Other metadata is retained.
+- `AddGlossaryToAssetsRequest.dryRun` also defaults **true**. The writer sends
+  `false` in the body, checks failed-row counts/status and reads back the tag.
+  [GlossaryTermRepository.java](https://github.com/open-metadata/OpenMetadata/blob/2.0.6-release/openmetadata-service/src/main/java/org/openmetadata/service/jdbi3/GlossaryTermRepository.java#L1082)
+  special-cases `tableColumn` assets by column FQN; column references carry the
+  parent table ID, `type: tableColumn` and the column FQN.
+- [OntologyImportResult.java](https://github.com/open-metadata/OpenMetadata/blob/2.0.6-release/openmetadata-service/src/main/java/org/openmetadata/service/rdf/OntologyImportResult.java)
+  is the RDF import response (not the CSV bulk result). It has `dryRun`, counters
+  and `messages`. [GlossaryRdfImporter.java](https://github.com/open-metadata/OpenMetadata/blob/2.0.6-release/openmetadata-service/src/main/java/org/openmetadata/service/rdf/GlossaryRdfImporter.java#L684)
+  catches some per-term exceptions and appends `Failed ...` messages in an HTTP 200
+  result. The writer fails on those messages; other messages become WARNs.
+- Content/endpoint 4xx RDF failures fall back to term creation; authentication,
+  authorization and rate limits (401/403/429) fail without fallback. A repeat sync
+  skips import once all CN terms resolve by qname/IRI/FQN in the target glossary.
+- [MetricRepository.java](https://github.com/open-metadata/OpenMetadata/blob/2.0.6-release/openmetadata-service/src/main/java/org/openmetadata/service/jdbi3/MetricRepository.java#L127)
+  populates asset references before storing them. The writer checks that a metric
+  patch retains the requested asset; it fails if the server drops it. Actual
+  metric-to-column persistence is a mandatory S2.3 round-trip check, not proved by
+  SDK validation or the stateful HTTP fake.
+- SDK retries are disabled in this wrapper. One retry boundary covers REST and
+  SDK calls: three retries after the first 5xx, exponential 0.25/0.5/1s backoff,
+  no 4xx/transport retry. Patch exception causes retain the HTTP response status.
+- SDK JSON-patch generation observes Pydantic fields explicitly present in the
+  response. Keep returned typed entities and use `model_copy(deep=True)` instead
+  of rebuilding responses through default-filled JSON; otherwise absent default
+  arrays can generate a patch addressing an array the server never returned.

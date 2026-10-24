@@ -55,9 +55,10 @@ def test_mapping_exit(capsys: pytest.CaptureFixture[str]) -> None:
 
 
 @pytest.mark.parametrize("command", ["check", "sync"])
-def test_writer_commands_are_explicit_stubs(command: str) -> None:
-    with pytest.raises(NotImplementedError, match="S2.2"):
+def test_writer_commands_require_arguments(command: str) -> None:
+    with pytest.raises(SystemExit) as error:
         main([command])
+    assert error.value.code == 2
 
 
 def test_cli_requires_exactly_one_source() -> None:
