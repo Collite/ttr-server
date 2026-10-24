@@ -302,8 +302,7 @@ Unknown/other/legacy subjects answer the same 403; an owned run without a batch 
 Reading never evaluates. In `batch_rows`, inserts store their row directly; update/transition rows store their
 named operation payload in `row`, with key/group in the corresponding columns. Rows remain `staged`.
 
-This foundation supports scalar column/literal/parameter arguments and symbolic role/action arguments.
-Action predicates use the published TTR-P parser/type checker and `ttrp-emit` plan lowering at the existing
+Scalar action arguments and predicates share the published TTR-P parser/type checker and `ttrp-emit` plan lowering at the existing
 0.17.3 grammar / 0.12.9 translator pins. Each predicate runs once over its verified route snapshot in a private
 DuckDB database, selecting row ordinals without another Query call. Boolean composition, SQL null semantics,
 case, membership, text ordering, addition/subtraction/multiplication and typed date casts are supported where the compiler
@@ -313,10 +312,21 @@ scalar kinds require an explicit cast. Invalid predicates refuse even on empty r
 lowering and local execution failures return `501 preview-unsupported` before decision/batch completion.
 Repeated wiring stays repeated and the selected rows retain original route order. Division remains an explicit
 501 until full validity/reject lowering is integrated; DuckDB's infinity for division by zero is never accepted
-as an action predicate result.
+as an action predicate or scalar result.
 
-Native writer/obligation synthesis, key lookups, calendar/duration expressions and general action argument
-expressions still require lowering; selected unsupported operations return `501 preview-unsupported`. P2/P3
+Each wiring's scalar arguments run as one projection over only its condition-selected rows. Arithmetic,
+case, null/boolean expressions, explicit casts, literals and bound parameters retain typed results and
+original route order. The projection carries a private row ordinal and checks one output per input row.
+Bare/dotted symbolic names remain supported for role/action/text arguments; an exact route-column name
+wins. Expressions with operators must compile; invalid syntax is never treated as symbolic text. Rows/detail
+arguments keep their bounded references. Invalid scalar expressions refuse even on empty/unselected routes;
+execution errors in discarded rows do not affect selected rows. Local execution errors and non-finite scalar
+results refuse with generic 501 errors. All planning finishes before the atomic
+completion, so any later argument failure leaves no partial decision/batch journal. No extra Query call or
+model/connector write is made.
+
+Native writer/obligation synthesis, key lookups, calendar/duration expressions and division validity guards
+still require lowering; selected unsupported operations return `501 preview-unsupported`. P2/P3
 retain dry-run task/delivery rows and performed action outcomes. Durable close/sealing and local staging retention are described below. Application mounting is
 pending. The local Query fixtures do not certify live Hartland behavior.
 

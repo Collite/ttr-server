@@ -9,6 +9,7 @@ import org.tatrman.automation.api.ErrorCode
 import org.tatrman.automation.api.scalar
 import org.tatrman.automation.bundle.Bundle
 import org.tatrman.automation.bundle.ManifestRoute
+import org.tatrman.automation.bundle.ManifestWiring
 import org.tatrman.automation.runner.*
 import org.tatrman.ttr.metadata.model.AutomationAction
 import org.tatrman.ttr.metadata.model.Entity
@@ -41,6 +42,11 @@ class ApplyPlanner(
     private data class DetailSnapshot(
         val table: Table,
         val byKey: Map<List<Any>, List<List<Any?>>>,
+    )
+
+    private data class PreparedWiring(
+        val wiring: ManifestWiring,
+        val arguments: Map<Int, Map<String, JsonElement>>,
     )
 
     suspend fun preview(runner: PartRunner): PreviewPlan {
@@ -97,7 +103,48 @@ class ApplyPlanner(
             val selected =
                 recipe.wiring.filter { "$decision.${route.name}" in it.routes }.map { wiring ->
                     currentCoroutineContext().ensureActive()
-                    wiring to wiring.whenCondition?.let { PreviewConditions.select(it, table, context.bindings) }
+                    val matches = wiring.whenCondition?.let { PreviewConditions.select(it, table, context.bindings) }
+                    val indices = table.rows.indices.filter { matches == null || it in matches }
+                    val action = metadata.actions.getValue(wiring.action)
+                    require(action.columns.filterNot { it.optional }.all { it.name in wiring.columns }) {
+                        "missing required action argument"
+                    }
+                    val scalarExpressions =
+                        wiring.columns
+                            .filterKeys { name ->
+                                action.columns.singleOrNull { it.name == name }?.type != "rows"
+                            }.mapValues { (name, expression) ->
+                                val column = action.columns.singleOrNull { it.name == name }
+                                val symbolic = column == null || column.type in setOf("role", "action", "text")
+                                val text = expression.trim()
+                                if (symbolic &&
+                                    SYMBOL.matches(text) &&
+                                    table.columns.none { it.name == text } &&
+                                    text !in setOf("true", "false", "null")
+                                ) {
+                                    JsonPrimitive(text).toString()
+                                } else {
+                                    expression
+                                }
+                            }
+                    val projected =
+                        PreviewExpressions.project(
+                            scalarExpressions,
+                            table.copy(rows = indices.map { table.rows[it] }),
+                            context.bindings,
+                        )
+                    PreparedWiring(
+                        wiring,
+                        indices
+                            .mapIndexed { i, index ->
+                                val arguments =
+                                    projected.rows[i]
+                                        .mapIndexed { j, value ->
+                                            projected.columns[j].name to scalar(value)
+                                        }.toMap()
+                                index to arguments
+                            }.toMap(),
+                    )
                 }
             for ((index, values) in table.rows.withIndex()) {
                 currentCoroutineContext().ensureActive()
@@ -155,8 +202,8 @@ class ApplyPlanner(
                             )
                     }
                 }
-                for ((wiring, matches) in selected) {
-                    if (matches != null && index !in matches) continue
+                for ((wiring, arguments) in selected) {
+                    val scalarArguments = arguments[index] ?: continue
                     val action = metadata.actions.getValue(wiring.action)
                     val args = linkedMapOf<String, JsonElement>()
                     for ((name, expression) in wiring.columns) {
@@ -173,19 +220,9 @@ class ApplyPlanner(
                                     actionDetailLimit(action, context.detailLimit),
                                 )
                             } else {
-                                value(
-                                    expression,
-                                    record,
-                                    context,
-                                    column?.type in setOf("role", "action") ||
-                                        column == null ||
-                                        column.type == "text",
-                                )
+                                scalarArguments.getValue(name)
                             }
                     }
-                    require(
-                        action.columns.filterNot { it.optional }.all { it.name in args },
-                    ) { "missing required action argument" }
                     val sink = action.sinks[Bundle.NATIVE] ?: unsupported("action ${wiring.action} has no native sink")
                     val start = rows.size
                     when (sink) {
@@ -316,25 +353,6 @@ class ApplyPlanner(
         }
     }
 
-    private fun value(
-        expression: String,
-        row: Map<String, JsonElement>,
-        context: RunContext,
-        symbolic: Boolean,
-    ): JsonElement {
-        val text = expression.trim()
-        row[text]?.let { return it }
-        if (text.startsWith(':')) {
-            return context.bindings[text.drop(1)]?.let { scalar(it.value) }
-                ?: unsupported("unknown action parameter")
-        }
-        if (text.startsWith('"') || text in setOf("true", "false", "null") || NUMBER.matches(text)) {
-            return Json.parseToJsonElement(text)
-        }
-        if (symbolic) return JsonPrimitive(text)
-        unsupported("unsupported action expression")
-    }
-
     private fun render(
         template: String?,
         arguments: Map<String, JsonElement>,
@@ -353,7 +371,7 @@ class ApplyPlanner(
     private fun entityName(name: String) = if (name.startsWith("er.entity.")) name else "er.entity.$name"
 
     companion object {
-        private val NUMBER = Regex("-?(?:0|[1-9][0-9]*)(?:\\.[0-9]+)?(?:[eE][+-]?[0-9]+)?")
+        private val SYMBOL = Regex("[A-Za-z_][A-Za-z_0-9]*(?:\\.[A-Za-z_][A-Za-z_0-9]*)*")
         private val PLACEHOLDER = Regex("\\{([A-Za-z_][A-Za-z_0-9.]*)}")
 
         private fun unsupported(reason: String): Nothing =

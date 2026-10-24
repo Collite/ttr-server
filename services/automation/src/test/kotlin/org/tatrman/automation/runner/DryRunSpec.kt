@@ -207,6 +207,125 @@ class DryRunSpec :
             }
         }
 
+        "compiler scalar arguments feed native effects and authored text with one completion" {
+            supervisorScope {
+                val original = previewRecipe()
+                val recipe =
+                    original.withWiring(
+                        listOf(
+                            ManifestWiring(
+                                listOf("way.hold"),
+                                "hold",
+                                mapOf(
+                                    "order" to "cast(cast(order_number as int) + 1 as text)",
+                                    "department" to "case when amount >= :threshold then \"AR\" else department end",
+                                ),
+                            ),
+                        ),
+                    )
+                val f = PreviewFixture(this, recipe)
+                f.runner.use { runner ->
+                    runner.evaluate()
+                    val action = f.plan!!.actions.single()
+                    action.arguments shouldBe
+                        buildJsonObject {
+                            put("order", "4713")
+                            put("department", "AR")
+                        }
+                    action.would shouldBe "would hold order 4713 for AR"
+                    f.plan!!.rows.filter { it.entity == "er.entity.order" }.forEach {
+                        it.key shouldBe buildJsonObject { put("order_number", "4713") }
+                    }
+                    f.journals.get() shouldBe 1
+                    f.reads.get() shouldBe 5
+                }
+            }
+        }
+
+        "action arguments evaluate only condition-selected rows" {
+            supervisorScope {
+                val recipe =
+                    previewRecipe().withWiring(
+                        listOf(
+                            ManifestWiring(
+                                listOf("way.release", "way.hold"),
+                                "release",
+                                mapOf(
+                                    "order" to "cast(cast(department as int) as text)",
+                                ),
+                                "false",
+                            ),
+                        ),
+                    )
+                val f = PreviewFixture(this, recipe)
+                f.runner.use { runner ->
+                    runner.evaluate()
+                    f.plan!!.actions shouldBe emptyList()
+                    f.journals.get() shouldBe 1
+                    f.reads.get() shouldBe 5
+                }
+            }
+        }
+
+        "invalid scalar expressions refuse before journals even on empty or unselected routes" {
+            for (route in listOf("way.hold", "way.empty")) {
+                supervisorScope {
+                    val recipe =
+                        previewRecipe().withWiring(
+                            listOf(
+                                ManifestWiring(
+                                    listOf(route),
+                                    "hold",
+                                    mapOf(
+                                        "order" to "order_number",
+                                        "department" to "department +",
+                                    ),
+                                    "false",
+                                ),
+                            ),
+                        )
+                    val f = PreviewFixture(this, recipe)
+                    f.runner.use { runner ->
+                        repeat(2) {
+                            shouldThrow<AutomationException> { runner.evaluate() }.code shouldBe
+                                ErrorCode.PREVIEW_UNSUPPORTED
+                        }
+                        f.journals.get() shouldBe 0
+                        f.reads.get() shouldBe 5
+                    }
+                }
+            }
+        }
+
+        "scalar argument failures after earlier wiring leave no partial decision or preview" {
+            supervisorScope {
+                val recipe =
+                    previewRecipe().withWiring(
+                        listOf(
+                            ManifestWiring(listOf("way.release"), "release", mapOf("order" to "order_number")),
+                            ManifestWiring(
+                                listOf("way.hold"),
+                                "hold",
+                                mapOf(
+                                    "order" to "order_number",
+                                    "department" to "cast(cast(department as int) as text)",
+                                ),
+                            ),
+                        ),
+                    )
+                val f = PreviewFixture(this, recipe)
+                f.runner.use { runner ->
+                    repeat(2) {
+                        shouldThrow<AutomationException> { runner.evaluate() }.code shouldBe
+                            ErrorCode.PREVIEW_UNSUPPORTED
+                    }
+                    f.journals.get() shouldBe 0
+                    f.legacy.get() shouldBe 0
+                    f.reads.get() shouldBe 5
+                }
+            }
+        }
+
         "each action describes only its own detail limit while the batch keeps the shared snapshot" {
             supervisorScope {
                 val original = PreviewMetadata.from(BundleFixture.load())
