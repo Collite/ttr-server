@@ -418,6 +418,8 @@ Client/connection/credential resources are owned and closed on shutdown or faile
 8.2.2 and SeaweedFS 4.48 component tests cover racing immutable writes, Arrow/client restart, scan/pagination,
 no implicit Redis TTL, sibling isolation and grace/abandoned/late-orphan retention. These tests run in the
 ordinary component tier without an opt-in switch. They do not certify the live Hartland storage deployment.
+The Redis fixture uses Google's public Docker Hub cache with the same explicit official version tag. Its digest
+matches the former ECR image; ECR's shared-runner data quota refused pulls before any Redis test could start.
 
 ## Operating it
 

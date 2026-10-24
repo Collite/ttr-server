@@ -33,7 +33,9 @@ import io.lettuce.core.RedisClient
 class RemoteStagingSpec :
     StringSpec({
         val redis =
-            GenericContainer(DockerImageName.parse("public.ecr.aws/docker/library/redis:8.2.2-alpine"))
+            // ECR's shared runner data quota refused this pull. The preferred public mirror serves
+            // the same official 8.2.2-alpine image (verified index digest in the AU progress record).
+            GenericContainer(DockerImageName.parse("mirror.gcr.io/library/redis:8.2.2-alpine"))
                 .withExposedPorts(6379)
         val seaweed =
             GenericContainer(DockerImageName.parse("chrislusf/seaweedfs:4.48"))
