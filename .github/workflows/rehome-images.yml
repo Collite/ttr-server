@@ -1,0 +1,158 @@
+name: Rehome images (GHCR)
+
+# IM (project/common/image-registry) — move this repository's container packages from the
+# CollitePerson USER into the Collite ORG without changing an image reference, a tag or a digest.
+#
+# Why this exists: GitHub cannot transfer a package between accounts. Every package first pushed
+# before the 2026-09-14 org move still belongs to CollitePerson: its settings need that login, it
+# cannot grant Actions access to this repository, and a public one can never be made private
+# again. A package that a WORKFLOW creates with GITHUB_TOKEN instead takes this repository's
+# visibility (ttr-server: PUBLIC) and makes this repository its admin — "visibility follows the
+# building repo", with nothing to click.
+#
+# Dispatch with `images` = space-separated package names, one phase at a time:
+#   list    — print each image's tag count as the source credential sees it. Writes nothing.
+#   stage   — copy every tag of ghcr.io/collite/<img> to ghcr.io/collite/rehome-<img> (a new
+#             org package). Every tag is digest-checked. Nothing is deleted.
+#   (Bora)  — delete the CollitePerson package <img> (its package settings, as CollitePerson).
+#   restore — copy every tag of rehome-<img> to ghcr.io/collite/<img>, which now lands in the org.
+#             Never overwrites a tag already there. Digest-checked.
+#   cleanup — delete rehome-<img> once every one of its tags is in <img> with the same digest.
+# Between the delete and the restore a pull of <img> fails; pods already running are unaffected.
+# Do not release one of these modules between its stage and its restore: the release would land
+# in the old package and be deleted with it (re-running stage just before the delete is cheap).
+#
+# Two credentials. The SOURCE is read with TATRMAN_PKG_TOKEN (a member's PAT): GITHUB_TOKEN is
+# denied on CollitePerson's private packages. Everything is WRITTEN with GITHUB_TOKEN, so the new
+# package is this repository's. crane keeps one credential per registry, so `stage` hops through a
+# throwaway registry on the runner (source -> localhost:5000 -> ghcr), one DOCKER_CONFIG per side.
+#
+# Delete this workflow once IM-P1b is done.
+
+on:
+  workflow_dispatch:
+    inputs:
+      phase:
+        description: "list | stage | restore | cleanup"
+        type: choice
+        options: [list, stage, restore, cleanup]
+        required: true
+      images:
+        description: 'Space-separated package names, e.g. "veles query"'
+        type: string
+        required: true
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: rehome-images
+  cancel-in-progress: false
+
+jobs:
+  rehome:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    env:
+      NS: ghcr.io/collite
+      ORG: Collite
+      STAGING_PREFIX: rehome-
+      CRANE_VERSION: v0.20.2
+      PHASE: ${{ inputs.phase }}
+      IMAGES: ${{ inputs.images }}
+    steps:
+      - name: Install crane
+        run: |
+          set -euo pipefail
+          base="https://github.com/google/go-containerregistry/releases/download/${CRANE_VERSION}"
+          cd "$RUNNER_TEMP"
+          curl -fsSL -o crane.tgz "$base/go-containerregistry_Linux_x86_64.tar.gz"
+          curl -fsSL -o checksums.txt "$base/checksums.txt"
+          grep ' go-containerregistry_Linux_x86_64.tar.gz$' checksums.txt | sed 's/ go-containerregistry_Linux_x86_64.tar.gz$/ crane.tgz/' | sha256sum -c -
+          tar -xzf crane.tgz crane
+          sudo install crane /usr/local/bin/crane
+          crane version
+
+      - name: Log in (source = TATRMAN_PKG_TOKEN, destination = GITHUB_TOKEN)
+        env:
+          SRC_TOKEN: ${{ secrets.TATRMAN_PKG_TOKEN != '' && secrets.TATRMAN_PKG_TOKEN || secrets.GITHUB_TOKEN }}
+          DST_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/src" "$RUNNER_TEMP/dst"
+          DOCKER_CONFIG="$RUNNER_TEMP/src" crane auth login ghcr.io -u "${{ github.actor }}" --password-stdin <<<"$SRC_TOKEN"
+          DOCKER_CONFIG="$RUNNER_TEMP/dst" crane auth login ghcr.io -u "${{ github.actor }}" --password-stdin <<<"$DST_TOKEN"
+
+      - name: ${{ inputs.phase }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          src() { DOCKER_CONFIG="$RUNNER_TEMP/src" crane "$@"; }
+          dst() { DOCKER_CONFIG="$RUNNER_TEMP/dst" crane "$@"; }
+          say() { echo "$*"; echo "$*" >>"$GITHUB_STEP_SUMMARY"; }
+          fail() { echo "::error::$*"; echo "**FAILED:** $*" >>"$GITHUB_STEP_SUMMARY"; exit 1; }
+
+          # "<tag> <digest>" per tag, read through crane wrapper $1. The index digest for a
+          # multi-arch tag, so a match means every platform matches.
+          digests() {
+            local t
+            for t in $("$1" ls "$2"); do echo "$t $("$1" digest "$2:$t")"; done | sort
+          }
+          # Every tag of A must be in B with the same digest (B may hold more, e.g. a release
+          # cut after the restore).
+          covered() {
+            local missing
+            missing=$(comm -23 <(digests "$1" "$2") <(digests "$3" "$4"))
+            [ -z "$missing" ] || { echo "$missing" | sed 's/^/  missing or different: /'; return 1; }
+          }
+
+          HOP=localhost:5000
+          start_hop() {
+            rm -rf "$RUNNER_TEMP/hop" && mkdir -p "$RUNNER_TEMP/hop"
+            crane registry serve --address "$HOP" --disk "$RUNNER_TEMP/hop" >"$RUNNER_TEMP/hop.log" 2>&1 &
+            HOP_PID=$!
+            for _ in $(seq 50); do curl -fsS "http://$HOP/v2/" >/dev/null 2>&1 && return 0; sleep 0.2; done
+            fail "the local hop registry did not start: $(cat "$RUNNER_TEMP/hop.log")"
+          }
+          stop_hop() { kill "$HOP_PID" 2>/dev/null || true; wait "$HOP_PID" 2>/dev/null || true; }
+
+          say "### $PHASE"
+          for img in $IMAGES; do
+            old="$NS/$img"
+            stg="$NS/$STAGING_PREFIX$img"
+            case "$PHASE" in
+              list)
+                n=$(src ls "$old" | wc -l) && n="$n tags" || n="UNREADABLE with the source credential"
+                say "- \`$img\`: $n"
+                ;;
+              stage)
+                n=$(src ls "$old" | wc -l) || fail "$img: cannot read $old with the source credential"
+                [ "$n" -gt 0 ] || fail "$img: $old has no tags"
+                start_hop
+                src copy --all-tags "$old" "$HOP/$img"
+                dst copy --all-tags "$HOP/$img" "$stg"
+                stop_hop
+                covered src "$old" dst "$stg" || fail "$img: the staged copy differs from $old"
+                say "- \`$img\`: $n tags staged as \`$STAGING_PREFIX$img\`, digests match"
+                ;;
+              restore)
+                # GITHUB_TOKEN is denied on CollitePerson's packages, so while the old package
+                # still exists this copy fails rather than writing into it.
+                dst copy --all-tags --no-clobber "$stg" "$old" \
+                  || fail "$img: push refused — is the CollitePerson package deleted yet?"
+                covered dst "$stg" dst "$old" || fail "$img: $old does not hold every staged tag"
+                say "- \`$img\`: $(dst ls "$stg" | wc -l) tags restored to \`$old\` (now the org's), digests match"
+                ;;
+              cleanup)
+                covered dst "$stg" dst "$old" || fail "$img: $old does not hold every staged tag — keeping $STAGING_PREFIX$img"
+                # This repository created the staging package, so its token is the package's admin.
+                if gh api -X DELETE "/orgs/$ORG/packages/container/$STAGING_PREFIX$img" --silent; then
+                  say "- \`$img\`: \`$STAGING_PREFIX$img\` deleted"
+                else
+                  say "- \`$img\`: could not delete \`$STAGING_PREFIX$img\` — delete it in the org's package settings"
+                fi
+                ;;
+            esac
+          done
