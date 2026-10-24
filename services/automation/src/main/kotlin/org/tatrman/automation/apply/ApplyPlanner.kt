@@ -46,6 +46,7 @@ class ApplyPlanner(
 
     private data class PreparedWiring(
         val wiring: ManifestWiring,
+        val argumentNames: Set<String>,
         val arguments: Map<Int, Map<String, JsonElement>>,
         val writer: PreviewWriter?,
     )
@@ -107,6 +108,10 @@ class ApplyPlanner(
                     val matches = wiring.whenCondition?.let { PreviewConditions.select(it, table, context.bindings) }
                     val indices = table.rows.indices.filter { matches == null || it in matches }
                     val action = metadata.actions.getValue(wiring.action)
+                    val defaults = PreviewWriterDefaults.resolve(action, context)
+                    // Presence wins, including explicit NULL. Defaults do not read other arguments.
+                    val columns = defaults.expressions + wiring.columns
+                    val argumentNames = columns.keys + defaults.values.keys
                     val writer =
                         if (action.sinks[Bundle.NATIVE] ==
                             "writer"
@@ -115,12 +120,27 @@ class ApplyPlanner(
                         } else {
                             null
                         }
-                    writer?.validateArguments(wiring.columns.keys)
+                    writer?.validateArguments(argumentNames)
                     require(action.columns.filterNot { it.optional }.all { it.name in wiring.columns }) {
                         "missing required action argument"
                     }
+                    val contextValues =
+                        PreviewExpressions
+                            .constants(defaults.values, writer?.expectedTypes.orEmpty())
+                            .filterKeys { it !in wiring.columns }
+                            .mapValues { scalar(it.value) }
+                    val overridden = defaults.expressions.filterKeys { it in wiring.columns }
+                    if (overridden.isNotEmpty()) {
+                        // Check names/types even when overridden; unused values never execute.
+                        PreviewExpressions.project(
+                            overridden,
+                            table.copy(rows = emptyList()),
+                            context.bindings,
+                            expectedTypes = writer?.expectedTypes.orEmpty(),
+                        )
+                    }
                     val scalarExpressions =
-                        wiring.columns
+                        columns
                             .filterKeys { name ->
                                 action.columns.singleOrNull { it.name == name }?.type != "rows"
                             }.mapValues { (name, expression) ->
@@ -146,13 +166,15 @@ class ApplyPlanner(
                         )
                     PreparedWiring(
                         wiring,
+                        argumentNames,
                         indices
                             .mapIndexed { i, index ->
                                 val arguments =
                                     projected.rows[i]
                                         .mapIndexed { j, value ->
                                             projected.columns[j].name to scalar(value)
-                                        }.toMap()
+                                        }.toMap() +
+                                        contextValues
                                 index to arguments
                             }.toMap(),
                         writer,
@@ -214,16 +236,16 @@ class ApplyPlanner(
                             )
                     }
                 }
-                for ((wiring, arguments, writer) in selected) {
+                for ((wiring, argumentNames, arguments, writer) in selected) {
                     val scalarArguments = arguments[index] ?: continue
                     val action = metadata.actions.getValue(wiring.action)
                     val args = linkedMapOf<String, JsonElement>()
-                    for ((name, expression) in wiring.columns) {
+                    for (name in argumentNames) {
                         val column = action.columns.singleOrNull { it.name == name }
                         args[name] =
                             if (column?.type == "rows") {
                                 detailArgument(
-                                    expression,
+                                    wiring.columns.getValue(name),
                                     details,
                                     routeKeys[index],
                                     context,

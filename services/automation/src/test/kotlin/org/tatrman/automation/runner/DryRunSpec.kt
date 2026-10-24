@@ -10,6 +10,7 @@ import org.tatrman.automation.api.AutomationException
 import org.tatrman.automation.api.ErrorCode
 import org.tatrman.automation.apply.*
 import org.tatrman.automation.bundle.*
+import org.tatrman.automation.bundle.BundleFixture.edit
 import org.tatrman.automation.staging.*
 import org.tatrman.ttr.metadata.model.LocalizedText
 import org.tatrman.ttr.metadata.model.AutomationColumn
@@ -18,6 +19,7 @@ import java.nio.file.Files
 import java.time.Clock
 import java.time.Instant
 import java.time.ZoneOffset
+import java.time.OffsetDateTime
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicInteger
 
@@ -68,6 +70,320 @@ class DryRunSpec :
             routes: List<String> = listOf("way.hold"),
             total: String = "amount + 1.5",
         ) = ManifestWiring(routes, "hold", mapOf("id" to "order_number", "tenant" to "tenant", "total" to total))
+
+        fun defaultMetadata(defaults: String): PreviewMetadata {
+            val root = BundleFixture.copy()
+            try {
+                root.edit("model/er/automation-entities.ttrm") {
+                    it.replace(
+                        "def attribute order_number",
+                        """
+                        def attribute tenant { type: text },
+                        def attribute run { type: text, optional: true },
+                        def attribute opened { type: datetime, optional: true },
+                        def attribute order_number
+                        """.trimIndent(),
+                    )
+                }
+                root.edit("automation/automation.ttrm") {
+                    it +
+                        """
+
+                        def action default_writer {
+                            columns: [
+                                def column id { type: order.order_number },
+                                def column tenant { type: order.tenant },
+                                def column total { type: order.value, optional: true },
+                                def column label { type: order.held_for, optional: true },
+                                def column state { type: order.state, optional: true },
+                                def column run { type: order.run, optional: true },
+                                def column opened { type: order.opened, optional: true }
+                            ],
+                            sinks: { native: writer },
+                            $defaults
+                            dry_run: { en: "would insert order {id} for {tenant}" }
+                        }
+                        """.trimIndent()
+                }
+                val loaded = PreviewMetadata.from(BundleFixture.load(root)).actions.getValue("default_writer")
+                val original = writerMetadata()
+                val target = original.entities.single()
+                val field = target.attributes.first()
+                return original.copy(
+                    actions = original.actions + ("hold" to loaded),
+                    entities =
+                        listOf(
+                            target.copy(
+                                attributes =
+                                    target.attributes +
+                                        listOf(
+                                            field.copy(
+                                                qname = field.qname.copy(name = "order.run"),
+                                                type = "text",
+                                                isKey = false,
+                                                nullable = true,
+                                            ),
+                                            field.copy(
+                                                qname = field.qname.copy(name = "order.opened"),
+                                                type = "datetime",
+                                                isKey = false,
+                                                nullable = true,
+                                            ),
+                                        ),
+                            ),
+                        ),
+                )
+            } finally {
+                root.toFile().deleteRecursively()
+            }
+        }
+
+        "authored defaults survive real metadata loading and supply pinned context and exact scalar values" {
+            supervisorScope {
+                val metadata =
+                    defaultMetadata(
+                        """
+                        writer_defaults: {
+                            total: { expression: ":threshold + 1.5" },
+                            label: { expression: "department" },
+                            state: { expression: "\"placed\"" },
+                            run: { context: run_id },
+                            opened: { context: started_at }
+                        },
+                        """.trimIndent(),
+                    )
+                val wiring =
+                    writerWiring(listOf("way.release", "way.hold")).let {
+                        it.copy(columns = it.columns - "total")
+                    }
+                val f = PreviewFixture(this, previewRecipe().withWiring(listOf(wiring, wiring)), metadata)
+                f.runner.use { runner ->
+                    runner.evaluate()
+                    val inserted = f.plan!!.rows.filter { it.entity == "er.entity.order" }
+                    inserted.size shouldBe 4
+                    for (row in inserted) {
+                        row.row!!["value"]!!
+                            .jsonPrimitive.content
+                            .toBigDecimal() shouldBe BigDecimal("6.060")
+                        row.row!!["held_for"] shouldBe JsonPrimitive("Sales")
+                        row.row!!["state"] shouldBe JsonPrimitive("placed")
+                        row.row!!["run"] shouldBe JsonPrimitive(runner.context.id.toString())
+                        OffsetDateTime.parse(row.row!!["opened"]!!.jsonPrimitive.content).toInstant() shouldBe
+                            runner.context.startedAt
+                    }
+                    f.plan!!
+                        .actions
+                        .map { it.arguments["run"] }
+                        .distinct() shouldBe
+                        listOf(JsonPrimitive(runner.context.id.toString()))
+                    f.plan!!.actions.map { it.batchRows } shouldBe inserted.map { listOf(it.seq) }
+                    runner.evaluate()
+                    f.journals.get() shouldBe 1
+                    f.reads.get() shouldBe 5
+                }
+            }
+        }
+
+        "explicit values and explicit null override defaults without evaluating unused results" {
+            supervisorScope {
+                val metadata =
+                    defaultMetadata(
+                        """
+                        writer_defaults: {
+                            total: { expression: "cast(1 / 0 as decimal)" },
+                            label: { expression: "\"fallback\"" },
+                            run: { context: run_id },
+                            opened: { expression: ":as_of" }
+                        },
+                        """.trimIndent(),
+                    )
+                val wiring = writerWiring().let { it.copy(columns = it.columns + ("label" to "null")) }
+                val f = PreviewFixture(this, previewRecipe().withWiring(listOf(wiring)), metadata)
+                f.runner.use { runner ->
+                    runner.evaluate()
+                    val row =
+                        f.plan!!
+                            .rows
+                            .single { it.entity == "er.entity.order" }
+                            .row!!
+                    row["value"]!!.jsonPrimitive.content.toBigDecimal() shouldBe BigDecimal("6.06")
+                    row["held_for"] shouldBe JsonNull
+                    OffsetDateTime.parse(row["opened"]!!.jsonPrimitive.content).toInstant() shouldBe PREVIEW_NOW
+                    f.plan!!
+                        .actions
+                        .single()
+                        .arguments["label"] shouldBe JsonNull
+                    f.journals.get() shouldBe 1
+                    f.reads.get() shouldBe 5
+                }
+            }
+        }
+
+        "malformed or unknown defaults refuse even on an unselected route with explicit overrides" {
+            for (declaration in listOf(
+                "writer_defaults: null,",
+                "writer_defaults: { label: \"fallback\" },",
+                "writer_defaults: { missing: { expression: \"1\" } },",
+                "writer_defaults: { id: { expression: \"1\" } },",
+                "writer_defaults: { label: { context: clock_now } },",
+                "writer_defaults: { label: { expression: \"1\", context: run_id } },",
+                "writer_defaults: { label: { unknown: \"1\" } },",
+                "writer_defaults: { label: { expression: 1 } },",
+                "writer_defaults: { label: { expression: \"\" } },",
+                "writer_defaults: { label: { context: run_id }, label: { context: run_id } },",
+                "writer_defaults: { total: { expression: \"missing_column\" } },",
+                "writer_defaults: { total: { expression: \"\\\"text\\\"\" } },",
+                "writer_defaults: { total: { expression: \"now()\" } },",
+                "writer_defaults: { total: { expression: \"random()\" } },",
+                "writer_defaults: { label: { expression: \":run\" }, run: { context: run_id } },",
+                "writer_defaults: { label: { context: started_at } },",
+            )) {
+                supervisorScope {
+                    val metadata = defaultMetadata(declaration)
+                    val wiring = writerWiring().copy(whenCondition = "false")
+                    val f = PreviewFixture(this, previewRecipe().withWiring(listOf(wiring)), metadata)
+                    f.runner.use { runner ->
+                        repeat(2) {
+                            shouldThrow<AutomationException> { runner.evaluate() }.code shouldBe
+                                ErrorCode.PREVIEW_UNSUPPORTED
+                        }
+                        f.journals.get() shouldBe 0
+                        f.legacy.get() shouldBe 0
+                        f.reads.get() shouldBe 5
+                    }
+                }
+            }
+        }
+
+        "defaults on non-writer actions cannot be silently ignored" {
+            supervisorScope {
+                val original = PreviewMetadata.from(BundleFixture.load())
+                val action = original.actions.getValue("hold")
+                val metadata =
+                    original.copy(
+                        actions =
+                            original.actions + (
+                                "hold" to
+                                    action.copy(
+                                        properties =
+                                            defaultMetadata(
+                                                "writer_defaults: {},",
+                                            ).actions.getValue("hold").properties,
+                                    )
+                            ),
+                    )
+                val f = PreviewFixture(this, metadata = metadata)
+                f.runner.use { runner ->
+                    shouldThrow<AutomationException> { runner.evaluate() }.code shouldBe
+                        ErrorCode.PREVIEW_UNSUPPORTED
+                    f.journals.get() shouldBe 0
+                }
+            }
+        }
+
+        "invalid defaults fail atomically and discarded rows do not evaluate division" {
+            for ((expression, condition, succeeds) in listOf(
+                Triple("null", null, false),
+                Triple("cast(1 / 0 as decimal)", null, false),
+                Triple("cast(1 / (amount - 4.56) as decimal)", "amount < 4", true),
+            )) {
+                supervisorScope {
+                    val metadata = defaultMetadata("writer_defaults: { total: { expression: \"$expression\" } },")
+                    val wiring =
+                        writerWiring(listOf("way.release", "way.hold")).let {
+                            it.copy(columns = it.columns - "total", whenCondition = condition)
+                        }
+                    val f = PreviewFixture(this, previewRecipe().withWiring(listOf(wiring)), metadata)
+                    f.runner.use { runner ->
+                        if (succeeds) {
+                            runner.evaluate()
+                            f.plan!!.actions.size shouldBe 1
+                            f.journals.get() shouldBe 1
+                        } else {
+                            repeat(2) {
+                                shouldThrow<AutomationException> { runner.evaluate() }.code shouldBe
+                                    ErrorCode.PREVIEW_UNSUPPORTED
+                            }
+                            f.journals.get() shouldBe 0
+                            f.legacy.get() shouldBe 0
+                        }
+                        f.reads.get() shouldBe 5
+                    }
+                }
+            }
+        }
+
+        "valid defaults permit empty selections and explicit context overrides" {
+            for (route in listOf("way.empty", "way.hold")) {
+                supervisorScope {
+                    val metadata =
+                        defaultMetadata(
+                            """
+                            writer_defaults: {
+                                total: { expression: ":threshold" },
+                                run: { context: run_id }
+                            },
+                            """.trimIndent(),
+                        )
+                    val wiring =
+                        writerWiring(listOf(route)).let {
+                            it.copy(columns = (it.columns - "total") + ("run" to "\"explicit-run\""))
+                        }
+                    val f = PreviewFixture(this, previewRecipe().withWiring(listOf(wiring)), metadata)
+                    f.runner.use { runner ->
+                        runner.evaluate()
+                        f.plan!!.actions.map { it.arguments["run"] } shouldBe
+                            if (route == "way.empty") emptyList() else listOf(JsonPrimitive("explicit-run"))
+                        f.journals.get() shouldBe 1
+                        f.reads.get() shouldBe 5
+                    }
+                }
+            }
+        }
+
+        "default values obey target decimal text and state constraints before completion" {
+            for (source in listOf(
+                "total: { expression: \"100\" }",
+                "label: { expression: \"\\\"😀a\\\"\" }",
+                "state: { expression: \"\\\"unknown-state\\\"\" }",
+            )) {
+                supervisorScope {
+                    val original = defaultMetadata("writer_defaults: { $source },")
+                    val metadata =
+                        original.copy(
+                            entities =
+                                original.entities.map { target ->
+                                    target.copy(
+                                        attributes =
+                                            target.attributes.map {
+                                                when {
+                                                    it.qname.name.endsWith(
+                                                        ".value",
+                                                    ) -> it.copy(length = 4, precision = 2)
+                                                    it.qname.name.endsWith(".held_for") -> it.copy(length = 1)
+                                                    else -> it
+                                                }
+                                            },
+                                    )
+                                },
+                        )
+                    val wiring =
+                        writerWiring().let {
+                            if (source.startsWith("total:")) it.copy(columns = it.columns - "total") else it
+                        }
+                    val f = PreviewFixture(this, previewRecipe().withWiring(listOf(wiring)), metadata)
+                    f.runner.use { runner ->
+                        repeat(2) {
+                            shouldThrow<AutomationException> { runner.evaluate() }.code shouldBe
+                                ErrorCode.PREVIEW_UNSUPPORTED
+                        }
+                        f.journals.get() shouldBe 0
+                        f.legacy.get() shouldBe 0
+                        f.reads.get() shouldBe 5
+                    }
+                }
+            }
+        }
 
         "calling the planner before staging refuses without starting Query or evaluation" {
             supervisorScope {

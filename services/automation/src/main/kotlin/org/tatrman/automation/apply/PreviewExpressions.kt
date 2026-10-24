@@ -24,6 +24,26 @@ import java.time.ZoneOffset
 
 /** Compiler-lowered scalar expressions over verified route rows; no door or model connection. */
 internal object PreviewExpressions {
+    /** Check context constants through the compiler without round-tripping their precision through JDBC. */
+    fun constants(
+        values: Map<String, BoundValue>,
+        expectedTypes: Map<String, String>,
+    ): Map<String, Any?> {
+        if (values.isEmpty()) return emptyMap()
+        project(values.keys.associateWith { ":$it" }, Table(emptyList(), emptyList()), values, expectedTypes)
+        val assigned =
+            PreviewAssignments.assign(
+                Table(
+                    values.map { (name, value) ->
+                        ManifestColumn(name, value.type)
+                    },
+                    listOf(values.values.map { it.value }),
+                ),
+                expectedTypes,
+            )
+        return values.keys.zip(assigned.rows.single()).toMap()
+    }
+
     fun project(
         expressions: Map<String, String>,
         table: Table,

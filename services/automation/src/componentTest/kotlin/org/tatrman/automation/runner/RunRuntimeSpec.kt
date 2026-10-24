@@ -26,6 +26,13 @@ import org.tatrman.query.v1.CompileResponse
 import org.tatrman.query.v1.ErReadScope
 import org.tatrman.query.v1.RunRequest
 import org.tatrman.worker.v1.ResultBatch
+import org.tatrman.ttr.metadata.model.AutomationColumn
+import org.tatrman.ttr.metadata.model.ErSchema
+import org.tatrman.ttr.parser.model.AutoValue
+import org.tatrman.ttr.parser.model.AutoEntry
+import org.tatrman.ttr.parser.model.Reference
+import org.tatrman.ttr.parser.model.SourceLocation
+import java.time.OffsetDateTime
 import java.nio.file.Files
 import java.nio.file.Path
 import java.time.Clock
@@ -41,6 +48,98 @@ class RunRuntimeComponentSpec :
     StringSpec({
         LedgerTestDb.ready()
         beforeEach { LedgerTestDb.reset() }
+
+        "writer defaults persist across clock movement close and restart" {
+            val loc = SourceLocation.UNKNOWN
+
+            fun context(name: String) =
+                AutoValue.Obj(
+                    listOf(AutoEntry("context", AutoValue.Id(Reference(name), listOf(name), loc), loc)),
+                    loc,
+                )
+            val f =
+                DurableRuntimeFixture(transformBundle = { bundle ->
+                    val er = bundle.model.schemas.getValue("er") as ErSchema
+                    val order = er.entities.values.single { it.qname.name == "order" }
+                    val key = order.attributes.single { it.isKey }
+                    val target =
+                        order.copy(
+                            attributes =
+                                listOf(
+                                    key,
+                                    key.copy(qname = key.qname.copy(name = "order.run"), isKey = false, type = "text"),
+                                    key.copy(
+                                        qname = key.qname.copy(name = "order.opened"),
+                                        isKey = false,
+                                        type = "datetime",
+                                    ),
+                                ),
+                        )
+                    val action =
+                        bundle.actions.getValue("release").copy(
+                            columns =
+                                listOf(
+                                    AutomationColumn("order", "order.order_number"),
+                                    AutomationColumn("run", "order.run", optional = true),
+                                    AutomationColumn("opened", "order.opened", optional = true),
+                                ),
+                            sinks = mapOf("native" to "writer"),
+                            transition = null,
+                            set = null,
+                            properties =
+                                listOf(
+                                    "writer_defaults" to
+                                        AutoValue.Obj(
+                                            listOf(
+                                                AutoEntry("run", context("run_id"), loc),
+                                                AutoEntry("opened", context("started_at"), loc),
+                                            ),
+                                            loc,
+                                        ),
+                                ),
+                        )
+                    bundle.copy(
+                        actions = bundle.actions + ("release" to action),
+                        model =
+                            bundle.model.copy(
+                                schemas =
+                                    bundle.model.schemas +
+                                        ("er" to er.copy(entities = mapOf(target.qname to target))),
+                            ),
+                    )
+                })
+            f.base.now = Instant.parse("2000-01-01T12:00:00.123456Z")
+            val runtime = f.start()
+            try {
+                val opened = runtime.sessions.open("release_order", f.request, f.caller)
+                val id = UUID.fromString(opened.response.runId)
+                val startedAt = opened.context!!.startedAt
+                f.base.now = f.base.now.plusSeconds(1)
+                runtime.sessions.evaluate(id, f.caller)
+                val batch = runtime.status.batch(id, f.caller)
+                val row = batch.rows.single { it.entity == "er.entity.order" }.row!!
+                row["run"] shouldBe JsonPrimitive(id.toString())
+                OffsetDateTime.parse(row.getValue("opened").jsonPrimitive.content).toInstant() shouldBe startedAt
+                val progress = runtime.status.read(id, f.caller)
+                progress.actions.single().arguments["run"] shouldBe row["run"]
+                progress.actions.single().arguments["opened"] shouldBe row["opened"]
+                runtime.closer.close(id, f.caller)
+                val protocol = runtime.protocol.read(id, f.caller)
+                runtime.shutdown()
+                val restarted = f.start()
+                try {
+                    restarted.status.batch(id, f.caller) shouldBe batch
+                    restarted.protocol.read(id, f.caller) shouldBe protocol
+                    f.reads.get() shouldBe 2
+                    transaction { Batches.selectAll().count() } shouldBe 1L
+                } finally {
+                    restarted.shutdown()
+                }
+            } finally {
+                runtime.shutdown()
+                f.close()
+            }
+        }
 
         "runtime maintenance collects abandoned orphans and closed previews release only after grace" {
             val f = DurableRuntimeFixture()
@@ -285,6 +384,7 @@ private class RuntimeClock(
 private class DurableRuntimeFixture(
     sync: String = "60s",
     private val beforeRead: suspend () -> Unit = {},
+    transformBundle: (Bundle) -> Bundle = { it },
 ) {
     // Far from the system clock: a queue/session accidentally using wall time would immediately refuse.
     val base = RuntimeClock(Instant.parse("2000-01-01T12:00:00Z"))
@@ -381,14 +481,16 @@ private class DurableRuntimeFixture(
             )
         }
     private val bundle =
-        source.copy(
-            recipes = source.recipes + ("release_order" to recipe),
-            deployments =
-                source.deployments +
-                    (
-                        "release_native_event" to
-                            source.deployments.getValue("release_native_event").copy(runAs = ModelRunAs.Caller)
-                    ),
+        transformBundle(
+            source.copy(
+                recipes = source.recipes + ("release_order" to recipe),
+                deployments =
+                    source.deployments +
+                        (
+                            "release_native_event" to
+                                source.deployments.getValue("release_native_event").copy(runAs = ModelRunAs.Caller)
+                        ),
+            ),
         )
     private val query =
         object : QueryRun {

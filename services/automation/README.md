@@ -379,11 +379,37 @@ declarations refuse when the writer mapping is prepared, including empty selecti
 type spellings remain supported. All consumers must rebuild because the Attribute JVM signatures changed.
 The translator and plan-proto pins move together to 0.12.11, the version required by the published emitter.
 
-Generated/default fields and obligation/key-lookup/calendar/column-date synthesis remain unsupported.
-The published action metadata has no executable writer-default mapping.
-P2 must validate actual physical bounds and writable policies before applying anything. Hartland's proposal ID,
-state and mailing quarter/run/time comments therefore do not yet certify those native writer paths. Selected
-unsupported operations return `501 preview-unsupported`. P2/P3
+Native writer actions can explicitly declare `writer_defaults` for optional action columns. For example,
+with columns mapped to `proposal.state`, `proposal.run` and `proposal.created`:
+
+```ttrm
+writer_defaults: {
+    state: { expression: "\"proposed\"" },
+    run: { context: run_id },
+    created: { context: started_at }
+}
+```
+
+Each entry names an existing `optional: true` action column and contains exactly one source: a nonempty
+TTR-P scalar `expression` string, or `context: run_id | started_at`. Expressions use verified staged route
+columns and existing pinned bindings such as `:as_of`; they cannot reference another action argument or
+context default. A literal string needs quotes inside the expression. The context sources are the pinned
+run UUID as text and the committed Open instant as datetime; neither reads a clock nor allocates an ID.
+Context values retain their full precision, with compiler assignment checks before direct serialization.
+An explicit wiring argument overrides its default, including explicit NULL; NULL does not trigger fallback.
+Defaults do not relax target key/nullability, type, state or bound checks. Declarations and expression types
+validate even for empty/unselected routes and overridden defaults; unused expression results do not execute.
+Only condition-selected rows evaluate used defaults. Effective values appear in the batch, action arguments
+and authored would-text, and share the same atomic completion/refusal as explicit arguments.
+Duplicate/unknown/malformed entries, unsupported context names and defaults on non-writer actions refuse.
+
+This contract uses the published metadata's free-form `AutomationAction.properties` lane; grammar/metadata
+remain 0.18.7 and translator/plan-proto 0.12.11. The current generic semantics validator warns about the new
+property; the Server consumer owns its strict validation. No grammar syntax or typed library API changed.
+Generated writer IDs and Hartland's authored default mappings/bundles remain pending, as do obligation/
+key-lookup/calendar/column-date synthesis. P2 must validate actual physical bounds and writable policies
+before applying anything. H-3/H-5 are not certified by these defaults. Selected unsupported operations return
+`501 preview-unsupported`. P2/P3
 retain dry-run task/delivery rows and performed action outcomes. Durable close/sealing and local staging retention are described below. Application mounting is
 pending. The local Query fixtures do not certify live Hartland behavior.
 

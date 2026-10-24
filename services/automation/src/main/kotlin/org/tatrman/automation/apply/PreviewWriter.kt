@@ -10,7 +10,7 @@ import org.tatrman.ttr.metadata.model.Entity
 import org.tatrman.ttrp.resolve.ColumnType
 import java.math.BigDecimal
 
-/** Explicit action-column → ER attribute insert mapping. No generated/default values or model reads. */
+/** Resolved action-column → ER attribute insert mapping. Defaults resolve upstream; no model reads. */
 internal class PreviewWriter private constructor(
     private val entity: Entity,
     private val attributes: Map<String, Attribute>,
