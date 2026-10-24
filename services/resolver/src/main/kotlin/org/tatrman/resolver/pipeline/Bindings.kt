@@ -170,7 +170,10 @@ object Bindings {
 
     /** The attribute a value is attributed to: its category — the member index is keyed by it. */
     fun attributeRefOf(match: FuzzyMatch): String =
-        if (match.source == FuzzySourceTag.MEMBER) match.category else match.targetRef.ifBlank { match.category }
+        when {
+            match.source == FuzzySourceTag.MEMBER -> match.category
+            else -> declaredMember(match)?.first ?: match.targetRef.ifBlank { match.category }
+        }
 
     private fun refOf(
         match: FuzzyMatch,
@@ -178,9 +181,32 @@ object Bindings {
     ): String =
         when {
             isMember && match.candidateId.isNotBlank() -> "${match.category}#${match.candidateId}"
-            match.targetRef.isNotBlank() -> match.targetRef
-            else -> match.category
-        }
+            else -> declaredMember(match)?.let { (attribute, code) -> "$attribute#$code" }
+        } ?: match.targetRef.ifBlank { match.category }
+
+    /**
+     * A declared MEMBER row on an er attribute — a value label, `er.entity.<e>.<a>.<code>` as the archive spells it —
+     * split into its attribute and its code; null for anything else.
+     *
+     * The lattice spells every member `<attribute-ref>#<id>`, and the code IS the id: a value label is keyed by the
+     * value the estate stores. Left as the archive spells it, the member reached the query door as a five-segment
+     * ref the door read as its attribute, with nothing after a `#` to compare to — „tržiště“ bound
+     * `er.entity.sales.channel.marketplace` and no fast path could restrict by it. `md.` members keep their spelling:
+     * no door addresses md, and their readers take them as the archive gives them.
+     */
+    private fun declaredMember(match: FuzzyMatch): Pair<String, String>? {
+        if (match.targetClassValue != FuzzyTargetClass.TARGET_CLASS_MEMBER_VALUE) return null
+        val ref = match.targetRef
+        if (!ref.startsWith("er.") || '#' in ref) return null
+        val parts = ref.split('.')
+        if (parts.size < ER_ATTRIBUTE_SEGMENTS + 1) return null
+        val attribute = parts.take(ER_ATTRIBUTE_SEGMENTS).joinToString(".")
+        val code = parts.drop(ER_ATTRIBUTE_SEGMENTS).joinToString(".")
+        return attribute to code
+    }
+
+    /** `er.entity.<entity>.<attribute>`. */
+    private const val ER_ATTRIBUTE_SEGMENTS = 4
 
     /**
      * The binding's class as a WIRE NUMBER — the two protos number their classes alike.
