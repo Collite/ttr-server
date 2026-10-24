@@ -382,7 +382,23 @@ class DryRunSpec :
                             writerWiring(total = "amount + 100"),
                         ),
                     )
-                val original = writerMetadata("decimal(4,2)")
+                val unbounded = writerMetadata()
+                val original =
+                    unbounded.copy(
+                        entities =
+                            unbounded.entities.map { entity ->
+                                entity.copy(
+                                    attributes =
+                                        entity.attributes.map {
+                                            if (it.qname.name.endsWith(".value")) {
+                                                it.copy(length = 4, precision = 2)
+                                            } else {
+                                                it
+                                            }
+                                        },
+                                )
+                            },
+                    )
                 val release = original.actions.getValue("release")
                 val metadata =
                     original.copy(
@@ -403,6 +419,47 @@ class DryRunSpec :
                     f.journals.get() shouldBe 0
                     f.legacy.get() shouldBe 0
                     f.reads.get() shouldBe 5
+                }
+            }
+        }
+
+        "native writer enforces declared text bounds before completing a batch" {
+            for (label in listOf("😀", "😀a")) {
+                supervisorScope {
+                    val original = writerMetadata()
+                    val metadata =
+                        original.copy(
+                            entities =
+                                original.entities.map { entity ->
+                                    entity.copy(
+                                        attributes =
+                                            entity.attributes.map {
+                                                if (it.qname.name.endsWith(".held_for")) it.copy(length = 1) else it
+                                            },
+                                    )
+                                },
+                        )
+                    val wiring = writerWiring().let { it.copy(columns = it.columns + ("label" to "\"$label\"")) }
+                    val f = PreviewFixture(this, previewRecipe().withWiring(listOf(wiring)), metadata)
+                    f.runner.use { runner ->
+                        if (label == "😀") {
+                            runner.evaluate()
+                            f.plan!!
+                                .rows
+                                .single { it.entity == "er.entity.order" }
+                                .row!!["held_for"] shouldBe
+                                JsonPrimitive(label)
+                            f.journals.get() shouldBe 1
+                        } else {
+                            repeat(2) {
+                                shouldThrow<AutomationException> { runner.evaluate() }.code shouldBe
+                                    ErrorCode.PREVIEW_UNSUPPORTED
+                            }
+                            f.journals.get() shouldBe 0
+                        }
+                        f.legacy.get() shouldBe 0
+                        f.reads.get() shouldBe 5
+                    }
                 }
             }
         }

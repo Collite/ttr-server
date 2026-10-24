@@ -16,6 +16,8 @@ internal class PreviewWriter private constructor(
     private val attributes: Map<String, Attribute>,
     private val required: Set<String>,
 ) {
+    private val bounds = attributes.mapValues { (_, attribute) -> Bounds.of(attribute) }
+
     val expectedTypes: Map<String, String> =
         attributes.mapValues { (_, attribute) ->
             when (ColumnType.parse(attribute.type)?.kind) {
@@ -56,32 +58,9 @@ internal class PreviewWriter private constructor(
                 ) {
                     unsupported()
                 }
-                // The compiler checks logical assignment types before projection. Check declared
-                // decimal precision/scale and text bounds without casting/rounding/truncating data.
-                // Attribute metadata can lose structured precision/length. Never infer a bound
-                // from ColumnType's bare-decimal default; P2 must validate the physical target.
-                if ('(' in attribute.type || '{' in attribute.type) {
-                    ColumnType.parse(attribute.type)?.let { type ->
-                        when (type.kind) {
-                            ColumnType.Kind.DECIMAL -> {
-                                val number = BigDecimal(value.content).stripTrailingZeros()
-                                val scale = type.scale ?: 0
-                                val precision = type.precision ?: error("missing decimal precision")
-                                val integerDigits = if (number.signum() == 0) 0 else number.precision() - number.scale()
-                                if (number.scale().coerceAtLeast(0) > scale ||
-                                    integerDigits > precision - scale
-                                ) {
-                                    unsupported()
-                                }
-                            }
-                            ColumnType.Kind.TEXT ->
-                                type.length?.let { max ->
-                                    if (value.content.codePointCount(0, value.content.length) > max) unsupported()
-                                }
-                            else -> Unit
-                        }
-                    }
-                }
+                // Logical assignment was checked before projection. Enforce only declared bounds;
+                // ColumnType's defaults for bare decimals are not authored ER constraints.
+                bounds.getValue(argument).validate(value)
             }
             row[attribute.qname.name.substringAfterLast('.')] = value
         }
@@ -91,6 +70,65 @@ internal class PreviewWriter private constructor(
                 name to (row[name]?.takeUnless { it == JsonNull } ?: unsupported())
             }
         return ApplyRow(seq, entity.qname.dotted(), "insert", JsonObject(key), row = JsonObject(row))
+    }
+
+    private data class Bounds(
+        val kind: ColumnType.Kind,
+        val length: Int?,
+        val scale: Int?,
+    ) {
+        fun validate(value: JsonPrimitive) {
+            when (kind) {
+                ColumnType.Kind.TEXT ->
+                    length?.let { if (value.content.codePointCount(0, value.content.length) > it) unsupported() }
+                ColumnType.Kind.DECIMAL -> {
+                    if (length == null && scale == null) return
+                    val number = BigDecimal(value.content).stripTrailingZeros()
+                    val fractionalDigits = number.scale().toLong().coerceAtLeast(0)
+                    val integerDigits =
+                        if (number.signum() == 0) {
+                            0L
+                        } else {
+                            (number.precision().toLong() - number.scale()).coerceAtLeast(0)
+                        }
+                    if (scale != null && fractionalDigits > scale) unsupported()
+                    length?.let { total ->
+                        // With both bounds, reserve the declared scale. With length alone, check
+                        // total occupied digit positions without inventing a scale of zero.
+                        if (integerDigits + (scale?.toLong() ?: fractionalDigits) > total) unsupported()
+                    }
+                }
+                else -> Unit
+            }
+        }
+
+        companion object {
+            fun of(attribute: Attribute): Bounds {
+                val type = ColumnType.parse(attribute.type) ?: unsupported()
+                val legacy =
+                    attribute.length == null &&
+                        attribute.precision == null &&
+                        ('(' in attribute.type || '{' in attribute.type)
+                val length = attribute.length ?: if (legacy) type.length ?: type.precision else null
+                val scale = attribute.precision ?: if (legacy) type.scale else null
+                when (type.kind) {
+                    ColumnType.Kind.DECIMAL ->
+                        if (length != null &&
+                            length < 1 ||
+                            scale != null &&
+                            scale < 0 ||
+                            length != null &&
+                            scale != null &&
+                            scale > length
+                        ) {
+                            unsupported()
+                        }
+                    ColumnType.Kind.TEXT -> if (length != null && length < 0) unsupported()
+                    else -> Unit
+                }
+                return Bounds(type.kind, length, scale)
+            }
+        }
     }
 
     companion object {

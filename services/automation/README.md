@@ -313,7 +313,7 @@ Reading never evaluates. In `batch_rows`, inserts store their row directly; upda
 named operation payload in `row`, with key/group in the corresponding columns. Rows remain `staged`.
 
 Scalar action arguments and predicates share the published TTR-P parser/type checker and `ttrp-emit` plan lowering at the existing
-0.17.3 grammar / 0.12.9 translator pins. Each predicate runs once over its verified route snapshot in a private
+0.18.7 grammar / 0.12.11 translator pins. Each predicate runs once over its verified route snapshot in a private
 DuckDB database, selecting row ordinals without another Query call. Boolean composition, SQL null semantics,
 case, membership, text ordering, addition/subtraction/multiplication and typed date casts are supported where the compiler
 can lower them. Only referenced columns/bindings enter the scratch database. Decimal literals/bindings and
@@ -370,9 +370,17 @@ the target's preserved bounds checked separately. Date widening produces midnigh
 Each selected row × wiring gets one insert and the action's effect-row references/would-text; repeated wiring
 stays repeated. Any later refusal leaves no partial decision/batch journal and triggers no extra Query work.
 
+The 0.18.7 metadata API preserves authored attribute bounds separately from the bare type name. For decimal
+attributes, `length` is total digits and `precision` is scale; for text, `length` counts Unicode codepoints.
+Preview validates these declarations without rounding or truncation, including scale zero and declarations
+containing only one bound. A length-only decimal limits occupied digit positions; a scale-only decimal limits
+fractional digits without a total-digit default. Bare types acquire no bounds from compiler defaults. Invalid
+declarations refuse when the writer mapping is prepared, including empty selections. Existing inline bounded
+type spellings remain supported. All consumers must rebuild because the Attribute JVM signatures changed.
+The translator and plan-proto pins move together to 0.12.11, the version required by the published emitter.
+
 Generated/default fields and obligation/key-lookup/calendar/column-date synthesis remain unsupported.
-The published metadata has no executable writer-default mapping, and its attribute reader can omit structured
-precision/length; the preview checks bounds only when preserved, without inventing defaults for bare types.
+The published action metadata has no executable writer-default mapping.
 P2 must validate actual physical bounds and writable policies before applying anything. Hartland's proposal ID,
 state and mailing quarter/run/time comments therefore do not yet certify those native writer paths. Selected
 unsupported operations return `501 preview-unsupported`. P2/P3

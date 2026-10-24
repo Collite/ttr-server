@@ -10,6 +10,7 @@ import kotlinx.serialization.json.*
 import org.tatrman.automation.api.AutomationException
 import org.tatrman.automation.api.ErrorCode
 import org.tatrman.automation.bundle.BundleFixture
+import org.tatrman.automation.bundle.BundleFixture.edit
 import org.tatrman.automation.bundle.ManifestColumn
 import org.tatrman.automation.runner.BoundValue
 import org.tatrman.automation.runner.Table
@@ -229,6 +230,112 @@ class PreviewWriterSpec :
             ).insert(1, arguments + ("comment" to JsonPrimitive("😀"))).row!!["note"] shouldBe
                 JsonPrimitive("😀")
             refuses { writer(entities = listOf(bounded)).insert(1, arguments + ("comment" to JsonPrimitive("ab"))) }
+        }
+
+        "published metadata carries structured decimal and Unicode text bounds into the writer" {
+            val root = BundleFixture.copy()
+            try {
+                root.edit("model/er/automation-entities.ttrm") {
+                    it +
+                        """
+
+                        def entity bounded_order {
+                            attributes: [
+                                def attribute id { type: int, isKey: true },
+                                def attribute amount { type: { type: decimal, length: 4, precision: 2 } },
+                                def attribute note { type: { type: text, length: 1 }, optional: true }
+                            ]
+                        }
+                        """.trimIndent()
+                }
+                val metadata = PreviewMetadata.from(BundleFixture.load(root))
+                val target = metadata.entities.single { it.qname.name == "bounded_order" }
+                val amount = target.attributes.single { it.qname.name.endsWith(".amount") }
+                Triple(amount.type, amount.length, amount.precision) shouldBe Triple("decimal", 4, 2)
+                val bounded =
+                    PreviewWriter.resolve(
+                        action.copy(
+                            columns =
+                                listOf(
+                                    AutomationColumn("id", "bounded_order.id"),
+                                    AutomationColumn("total", "bounded_order.amount"),
+                                    AutomationColumn("comment", "bounded_order.note", optional = true),
+                                ),
+                        ),
+                        metadata.entities,
+                    )
+                val values = mapOf("id" to JsonPrimitive(1), "total" to JsonUnquotedLiteral("99.9900"))
+                bounded.insert(1, values + ("comment" to JsonPrimitive("😀"))).row!!["amount"] shouldBe
+                    JsonUnquotedLiteral("99.9900")
+                for (value in listOf("100", "1.001", "-100", "1e2")) {
+                    refuses { bounded.insert(1, values + ("total" to JsonUnquotedLiteral(value))) }
+                }
+                refuses { bounded.insert(1, values + ("comment" to JsonPrimitive("😀a"))) }
+            } finally {
+                root.toFile().deleteRecursively()
+            }
+        }
+
+        "declared partial decimal bounds stay independent and bare decimals acquire no defaults" {
+            fun bounded(
+                length: Int?,
+                scale: Int?,
+            ) = writer(
+                entities =
+                    listOf(
+                        entity.copy(
+                            attributes =
+                                entity.attributes.map {
+                                    if (it.qname.name.endsWith(".amount")) {
+                                        it.copy(length = length, precision = scale)
+                                    } else {
+                                        it
+                                    }
+                                },
+                        ),
+                    ),
+            )
+
+            fun insert(
+                w: PreviewWriter,
+                value: String,
+            ) = w.insert(1, arguments + ("total" to JsonUnquotedLiteral(value))).row!!["amount"]
+
+            insert(bounded(4, null), "12.34") shouldBe JsonUnquotedLiteral("12.34")
+            refuses { insert(bounded(4, null), "123.45") }
+            refuses { insert(bounded(4, null), "0.00001") }
+            insert(bounded(null, 2), "123456789012345678901234567890.12") shouldBe
+                JsonUnquotedLiteral("123456789012345678901234567890.12")
+            refuses { insert(bounded(null, 2), "0.001") }
+            insert(bounded(2, 0), "99.000") shouldBe JsonUnquotedLiteral("99.000")
+            refuses { insert(bounded(2, 0), "0.1") }
+            insert(bounded(2, 2), "0.9900") shouldBe JsonUnquotedLiteral("0.9900")
+            insert(bounded(2, 2), "0") shouldBe JsonUnquotedLiteral("0")
+            refuses { insert(bounded(2, 2), "1") }
+            insert(bounded(null, null), "123456789012345678901234567890.123456789") shouldBe
+                JsonUnquotedLiteral("123456789012345678901234567890.123456789")
+        }
+
+        "invalid declared bounds refuse during mapping even without selected rows" {
+            for ((length, scale) in listOf(0 to null, -1 to null, null to -1, 2 to 3)) {
+                refuses {
+                    writer(
+                        entities =
+                            listOf(
+                                entity.copy(
+                                    attributes =
+                                        entity.attributes.map {
+                                            if (it.qname.name.endsWith(".amount")) {
+                                                it.copy(length = length, precision = scale)
+                                            } else {
+                                                it
+                                            }
+                                        },
+                                ),
+                            ),
+                    )
+                }
+            }
         }
 
         "compiler assignment unification allows integer decimal widening without converting through Double" {
