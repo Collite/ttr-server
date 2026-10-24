@@ -379,6 +379,13 @@ declarations refuse when the writer mapping is prepared, including empty selecti
 type spellings remain supported. All consumers must rebuild because the Attribute JVM signatures changed.
 The translator and plan-proto pins move together to 0.12.11, the version required by the published emitter.
 
+Writer defaults currently require the existing explicit development mode (`automation.development=true`
+and `automation.approvals=off`). Governed Open returns `501 preview-unsupported` before claiming a run
+when any wired action declares `writer_defaults`, even when old approvals/fingerprints match. Current
+recipe/program/deployment fingerprints do not cover action defaults; the producer must add and publish
+that approval dependency and coordinate consumer/export fingerprints before this refusal can be removed.
+An unrelated, unwired action does not block a recipe. No new approvals bypass is added.
+
 Native writer actions can explicitly declare `writer_defaults` for optional action columns. For example,
 with columns mapped to `proposal.state`, `proposal.run` and `proposal.created`:
 

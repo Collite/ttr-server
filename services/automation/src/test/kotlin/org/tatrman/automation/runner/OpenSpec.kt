@@ -70,6 +70,60 @@ class OpenSpec :
             detailLimit,
         )
 
+        "governed opens refuse action defaults that current fingerprints cannot approve" {
+            for (value in listOf<AutoValue>(
+                AutoValue.Obj(emptyList(), SourceLocation.UNKNOWN),
+                AutoValue.Null(SourceLocation.UNKNOWN),
+            )) {
+                val b = bundle()
+                val r = b.recipes.getValue(recipe)
+                val metadata =
+                    r.recipe.copy(
+                        wiring =
+                            listOf(
+                                ManifestWiring(listOf("way.release"), "release", mapOf("order" to "order_number")),
+                            ),
+                    )
+                val changed =
+                    b.copy(
+                        recipes =
+                            b.recipes + (
+                                recipe to
+                                    r.copy(
+                                        recipe = metadata,
+                                        manifest = r.manifest.copy(recipe = metadata),
+                                    )
+                            ),
+                        actions =
+                            b.actions + (
+                                "release" to
+                                    b.actions.getValue("release").copy(
+                                        properties = listOf("writer_defaults" to value),
+                                    )
+                            ),
+                    )
+                changed.recipes
+                    .getValue(recipe)
+                    .recipe.fingerprints shouldBe r.recipe.fingerprints
+                changed.programFps shouldBe b.programFps
+                changed.deploymentFps shouldBe b.deploymentFps
+                refused(ErrorCode.PREVIEW_UNSUPPORTED) {
+                    service(changed, claim = { error("must not claim unapproved defaults") })
+                        .open(recipe, request(), caller)
+                }
+                val dev = service(changed, devOff = true).open(recipe, request(), caller)
+                dev.httpStatus shouldBe 201
+                dev.approvalsBypassed shouldBe true
+                val unrelated =
+                    changed.copy(
+                        recipes =
+                            changed.recipes +
+                                (recipe to r.copy(recipe = r.recipe.copy(wiring = emptyList()))),
+                    )
+                service(unrelated).open(recipe, request(), caller).httpStatus shouldBe 201
+            }
+        }
+
         "open pins the bundle, model, fingerprints, verified identity, bindings and dry-run before claiming" {
             var recorded: RunOpen? = null
             val id = UUID.randomUUID()

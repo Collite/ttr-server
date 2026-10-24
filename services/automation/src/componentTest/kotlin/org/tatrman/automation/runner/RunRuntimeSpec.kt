@@ -58,7 +58,7 @@ class RunRuntimeComponentSpec :
                     loc,
                 )
             val f =
-                DurableRuntimeFixture(transformBundle = { bundle ->
+                DurableRuntimeFixture(development = true, transformBundle = { bundle ->
                     val er = bundle.model.schemas.getValue("er") as ErSchema
                     val order = er.entities.values.single { it.qname.name == "order" }
                     val key = order.attributes.single { it.isKey }
@@ -384,6 +384,7 @@ private class RuntimeClock(
 private class DurableRuntimeFixture(
     sync: String = "60s",
     private val beforeRead: suspend () -> Unit = {},
+    development: Boolean = false,
     transformBundle: (Bundle) -> Bundle = { it },
 ) {
     // Far from the system clock: a queue/session accidentally using wall time would immediately refuse.
@@ -403,6 +404,8 @@ private class DurableRuntimeFixture(
                     automation.budgets.syncDefault = $sync
                     automation.budgets.batchDefault = 10s
                     automation.runner.workers = 1
+                    automation.development = $development
+                    automation.approvals = ${if (development) "off" else "required"}
                     """.trimIndent(),
                 ).withFallback(ConfigFactory.parseResources("application.conf"))
                 .resolve(),

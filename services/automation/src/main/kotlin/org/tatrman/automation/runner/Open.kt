@@ -87,6 +87,19 @@ class Open(
             bundle.programsOf(d).singleOrNull { bundle.programs[it]?.recipe == recipeName }
                 ?: portRefused("deployment does not select exactly one program for recipe $recipeName")
         val program = bundle.programs.getValue(programName)
+        // Recipe text/values and program/deployment fingerprints do not cover action defaults yet.
+        // Until the producer emits that approval dependency, only the explicit development mode may
+        // exercise this preview feature. Even a matching old approval cannot authorize new defaults.
+        if (!approvalsOff &&
+            recipe.recipe.wiring.any { wiring ->
+                bundle.actions[wiring.action]?.properties?.any { it.first == "writer_defaults" } == true
+            }
+        ) {
+            throw AutomationException(
+                ErrorCode.PREVIEW_UNSUPPORTED,
+                "writer default approval fingerprints are unavailable",
+            )
+        }
         val world = bundle.worldOf(d) ?: error("loaded deployment has no world")
         val identity =
             RunAs(GrantMap(world.grants, world.identities), world.identities, tokens).resolve(
