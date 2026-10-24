@@ -1,4 +1,11 @@
 <?xml version="1.0" encoding="UTF-8"?>
+<!--
+  INFO by default. LLM_GATEWAY_LOG_LEVEL (env or -D) moves the root for a diagnosis; Exposed stays at INFO
+  whatever the root says. Up to llm-gateway 0.11.2 the root was DEBUG, and the OTEL appender shipped every
+  line on: Exposed logs each SQL statement with its values at DEBUG, the prompt_logs INSERT (prompt and
+  response text) included, so callers' prompts and answers went to the log pipeline. Lettuce and HikariCP
+  added a few lines a second of connection chatter.
+-->
 <configuration>
     <appender name="JSON_CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
         <encoder class="net.logstash.logback.encoder.LogstashEncoder">
@@ -14,7 +21,9 @@
         <captureMdcAttributes>*</captureMdcAttributes>
     </appender>
 
-    <root level="DEBUG">
+    <logger name="Exposed" level="INFO"/>
+
+    <root level="${LLM_GATEWAY_LOG_LEVEL:-INFO}">
         <appender-ref ref="JSON_CONSOLE"/>
         <appender-ref ref="OTEL"/>
     </root>
