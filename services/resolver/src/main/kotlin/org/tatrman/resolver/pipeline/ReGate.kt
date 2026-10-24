@@ -463,6 +463,10 @@ object ReGate {
      * entity's member columns" true on a v5 archive: there the entity is gated by its own ref and
      * its values live in its attributes' member vocabularies, so its own categories alone reached
      * none of them.
+     *
+     * A member ref on an er attribute (`…sales.channel#marketplace`) is also looked for as a value label: lex-matcher
+     * indexes one under its archive spelling (`…sales.channel.marketplace`, [DeclaredMembers]), which is no category of
+     * the attribute's — so a picked value label, gated back as the lattice spelled it, found nothing.
      */
     private fun scopeFor(
         hypothesis: Hypothesis,
@@ -472,7 +476,9 @@ object ReGate {
     ): List<String> {
         if (hypothesis.ref.isNotBlank()) {
             val base = hypothesis.ref.substringBefore('#')
-            return categoriesByRef[base] ?: listOf(base)
+            val scope = categoriesByRef[base] ?: listOf(base)
+            val label = DeclaredMembers.archiveSpelling(hypothesis.ref) ?: return scope
+            return (scope + label).distinct()
         }
         val anchorId = value?.anchorMentionId.orEmpty()
         if (anchorId.isBlank()) return emptyList()
@@ -495,18 +501,23 @@ object ReGate {
      * attribute as the hypothesis' binding, so the proposer would be told "yes" and handed something
      * it did not ask for — which is [Reason.REF_MISMATCH] in person. Specific ⊂ general confirms;
      * general ⊅ specific does not.
+     *
+     * A value label proposed as the archive spells it (`…channel.marketplace`) is the member the lattice spells
+     * `…channel#marketplace` ([DeclaredMembers]): the proposal is compared in the lattice's spelling.
      */
     private fun confirms(
         bound: String,
-        proposed: String,
+        proposedAsWritten: String,
         memberEntities: Map<String, String>,
-    ): Boolean =
-        bound == proposed ||
+    ): Boolean {
+        val proposed = DeclaredMembers.spelled(proposedAsWritten)
+        return bound == proposed ||
             bound.startsWith("$proposed#") ||
             // MV §5.3 — a member of a vocabulary the proposed ENTITY owns is a member of that
             // entity: `…Account.code#501001` confirms `…Account`. Still one direction only — it is
             // the member's category that is looked up, never the proposal widened.
             (bound.contains('#') && memberEntities[bound.substringBefore('#')] == proposed)
+    }
 
     /**
      * The span as the gate needs to see it. Only [DomainSpanCandidate.anchored] is load-bearing

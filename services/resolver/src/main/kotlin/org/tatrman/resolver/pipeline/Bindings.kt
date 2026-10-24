@@ -168,11 +168,18 @@ object Bindings {
         match.source != FuzzySourceTag.MEMBER &&
             match.targetClassValue == FuzzyTargetClass.TARGET_CLASS_MODEL_OBJECT_VALUE
 
-    /** The attribute a value is attributed to: its category — the member index is keyed by it. */
+    /**
+     * The attribute a value is attributed to: its category for a data member — the member index is keyed by it — and
+     * for any other row the part of its binding ref before a member part. So a value label (`…channel#marketplace`) and a
+     * row already spelled as a member (a learned pick of one) attribute to their attribute, and every other row to its
+     * target, as before.
+     */
     fun attributeRefOf(match: FuzzyMatch): String =
-        when {
-            match.source == FuzzySourceTag.MEMBER -> match.category
-            else -> declaredMember(match)?.first ?: match.targetRef.ifBlank { match.category }
+        if (match.source == FuzzySourceTag.MEMBER) {
+            match.category
+        } else {
+            val ref = refOf(match, isMember = false)
+            if (match.targetClassValue == FuzzyTargetClass.TARGET_CLASS_MEMBER_VALUE) ref.substringBefore('#') else ref
         }
 
     private fun refOf(
@@ -181,32 +188,13 @@ object Bindings {
     ): String =
         when {
             isMember && match.candidateId.isNotBlank() -> "${match.category}#${match.candidateId}"
-            else -> declaredMember(match)?.let { (attribute, code) -> "$attribute#$code" }
-        } ?: match.targetRef.ifBlank { match.category }
-
-    /**
-     * A declared MEMBER row on an er attribute — a value label, `er.entity.<e>.<a>.<code>` as the archive spells it —
-     * split into its attribute and its code; null for anything else.
-     *
-     * The lattice spells every member `<attribute-ref>#<id>`, and the code IS the id: a value label is keyed by the
-     * value the estate stores. Left as the archive spells it, the member reached the query door as a five-segment
-     * ref the door read as its attribute, with nothing after a `#` to compare to — „tržiště“ bound
-     * `er.entity.sales.channel.marketplace` and no fast path could restrict by it. `md.` members keep their spelling:
-     * no door addresses md, and their readers take them as the archive gives them.
-     */
-    private fun declaredMember(match: FuzzyMatch): Pair<String, String>? {
-        if (match.targetClassValue != FuzzyTargetClass.TARGET_CLASS_MEMBER_VALUE) return null
-        val ref = match.targetRef
-        if (!ref.startsWith("er.") || '#' in ref) return null
-        val parts = ref.split('.')
-        if (parts.size < ER_ATTRIBUTE_SEGMENTS + 1) return null
-        val attribute = parts.take(ER_ATTRIBUTE_SEGMENTS).joinToString(".")
-        val code = parts.drop(ER_ATTRIBUTE_SEGMENTS).joinToString(".")
-        return attribute to code
-    }
-
-    /** `er.entity.<entity>.<attribute>`. */
-    private const val ER_ATTRIBUTE_SEGMENTS = 4
+            isMember -> match.targetRef.ifBlank { match.category }
+            // A value label binds as `<attribute>#<code>`, the member ref every data member has (DeclaredMembers).
+            else -> {
+                val label = DeclaredMembers.of(match)
+                if (label != null) "${label.first}#${label.second}" else match.targetRef.ifBlank { match.category }
+            }
+        }
 
     /**
      * The binding's class as a WIRE NUMBER — the two protos number their classes alike.
