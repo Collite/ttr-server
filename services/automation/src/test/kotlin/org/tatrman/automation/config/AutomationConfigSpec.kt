@@ -17,7 +17,7 @@ class AutomationConfigSpec :
             """
             automation.db.host = "pg"
             automation.door.queryUrl = "query:7240"
-            automation.door.velesUrl = "veles:7212"
+            automation.door.metadataUrl = "metadata:7212"
             automation.auth.jwksUrl = "http://keycloak:8080/realms/r/protocol/openid-connect/certs"
             automation.auth.issuer = "https://id.example/realms/r"
             """.trimIndent()
@@ -37,7 +37,7 @@ class AutomationConfigSpec :
 
         "the defaults of application.conf type cleanly once the required keys are set" {
             val c = load(required)
-            c.door shouldBe DoorConfig("query:7240", "veles:7212", sidecarUrl = null)
+            c.door shouldBe DoorConfig("query:7240", "metadata:7212", sidecarUrl = null)
             c.auth.jwksUrl shouldBe "http://keycloak:8080/realms/r/protocol/openid-connect/certs"
             c.auth.issuer shouldBe "https://id.example/realms/r"
             c.auth.audience shouldBe null
@@ -58,7 +58,7 @@ class AutomationConfigSpec :
         "a missing required key fails at load, and the message names every missing key at once" {
             val e = shouldThrow<IllegalArgumentException> { load("""automation.door.queryUrl = "query:7240"""") }
             e.message shouldContain "automation.db.host"
-            e.message shouldContain "automation.door.velesUrl"
+            e.message shouldContain "automation.door.metadataUrl"
             e.message shouldContain "automation.auth.jwksUrl"
             e.message shouldContain "automation.auth.issuer"
             e.message shouldNotContain "automation.door.queryUrl"

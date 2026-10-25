@@ -12,7 +12,7 @@ import org.tatrman.plan.v1.SchemaCode
  * Domain fake for the [MoneyDiscovery] port (RG-P3.S0 metadata seam). Backs money's discovery/recipe
  * tests from an in-memory object list, answering [amountColumns]/[fxTable]/[eventDateColumn] with the
  * recipe layer's domain types directly — **no metadata protos** (the real proto mapping lives in
- * `MetaV1MoneyDiscovery`, proven by its component spec against in-process Veles).
+ * `MetaV1MoneyDiscovery`, proven by its component spec against in-process Metadata).
  */
 class FakeMetadataClient(
     private val objects: List<Obj>,

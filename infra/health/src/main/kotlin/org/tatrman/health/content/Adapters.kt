@@ -62,7 +62,7 @@ object GenericJson : StatusAdapter {
         return config.okValues.isEmpty() || config.okValues.any { it.equals(value, ignoreCase = true) }
     }
 
-    /** `{"veles": true, "metadata": false}` → one sub-row each, ready or down. */
+    /** `{"metadata": true, "translate": false}` → one sub-row each, ready or down. */
     private fun childrenOf(node: JsonElement?): List<ContentChild>? =
         (node as? JsonObject)?.mapNotNull { (name, up) ->
             (up as? JsonPrimitive)?.booleanOrNull?.let {
@@ -120,7 +120,7 @@ object Adapters {
     val byName: Map<String, StatusAdapter> =
         mapOf(
             "generic-json" to GenericJson,
-            "veles" to VelesAdapter,
+            "metadata" to MetadataAdapter,
             "nlp" to NlpAdapter,
             "prometheus-targets" to PrometheusTargetsAdapter,
             "k8s-externalsecrets" to ExternalSecretsAdapter,

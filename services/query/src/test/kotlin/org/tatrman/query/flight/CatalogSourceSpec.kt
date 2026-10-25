@@ -52,10 +52,10 @@ class CatalogSourceSpec :
         }
 
         fun source(
-            veles: VelesCatalogClient = RecordedVeles(),
+            metadata: MetadataCatalogClient = RecordedMetadata(),
             probe: SchemaProbe = Probe(),
             clock: AtomicLong = AtomicLong(0),
-        ) = CatalogSource(veles, probe, ttlSeconds = 30, nanoClock = { clock.get() })
+        ) = CatalogSource(metadata, probe, ttlSeconds = 30, nanoClock = { clock.get() })
 
         // `order` relates to `date_dim` twice: placed and delivered (a star schema's role-playing dates).
         fun roleplayingDates(): org.tatrman.meta.v1.ModelBundle {
@@ -78,7 +78,7 @@ class CatalogSourceSpec :
                             .setFromAttr(qn("order.$attribute"))
                             .setToAttr(qn("date_dim.sk")),
                     ).build()
-            return RecordedVeles
+            return RecordedMetadata
                 .hartlandModel()
                 .toBuilder()
                 .addRelations(dated("placed_date"))
@@ -112,12 +112,12 @@ class CatalogSourceSpec :
 
         "one load reads ListObjects for entities, queries, tables and views (paged) and GetModel once" {
             runBlocking {
-                val veles = RecordedVeles()
-                source(veles).tables(session, null, null, null)
-                veles.modelCalls.get() shouldBe 1
+                val metadata = RecordedMetadata()
+                source(metadata).tables(session, null, null, null)
+                metadata.modelCalls.get() shouldBe 1
                 // 36 entities, 1 query, 33 tables and 3 views at 20 per page: 2 + 1 + 2 + 1 pages.
-                veles.listCalls.get() shouldBe 6
-                veles.requestedPackages.single() shouldContainExactly listOf("hartland")
+                metadata.listCalls.get() shouldBe 6
+                metadata.requestedPackages.single() shouldContainExactly listOf("hartland")
             }
         }
 
@@ -155,9 +155,9 @@ class CatalogSourceSpec :
         "a logical query's columns come from a one-row probe as the caller, cached per model version" {
             runBlocking {
                 val probe = Probe()
-                val veles = RecordedVeles()
+                val metadata = RecordedMetadata()
                 val clock = AtomicLong(0)
-                val catalog = source(veles, probe, clock)
+                val catalog = source(metadata, probe, clock)
                 val query = catalog.tables(session, null, "obj.query", null).single()
                 query.type shouldBe CatalogTable.Type.VIEW
                 query.arrowSchema.fields.map { it.name } shouldContainExactly listOf("customer_id", "revenue")
@@ -165,7 +165,7 @@ class CatalogSourceSpec :
                 catalog.tables(session, null, "obj.query", null)
                 probe.calls.get() shouldBe 1
                 // A new model version is a new catalog, and the probe runs again.
-                veles.version = "01HARTLAND-2"
+                metadata.version = "01HARTLAND-2"
                 clock.addAndGet(31_000_000_000)
                 catalog.tables(session, null, "obj.query", null)
                 probe.calls.get() shouldBe 2
@@ -180,19 +180,19 @@ class CatalogSourceSpec :
             }
         }
 
-        "within the TTL a second call touches no Veles; after it, an unchanged version reloads nothing" {
+        "within the TTL a second call touches no Metadata; after it, an unchanged version reloads nothing" {
             runBlocking {
-                val veles = RecordedVeles()
+                val metadata = RecordedMetadata()
                 val clock = AtomicLong(0)
-                val catalog = source(veles, clock = clock)
+                val catalog = source(metadata, clock = clock)
                 catalog.schemas(session, null, null)
                 catalog.tables(session, null, null, null, withFields = false)
-                veles.versionCalls.get() shouldBe 1
-                veles.modelCalls.get() shouldBe 1
+                metadata.versionCalls.get() shouldBe 1
+                metadata.modelCalls.get() shouldBe 1
                 clock.addAndGet(31_000_000_000)
                 catalog.schemas(session, null, null)
-                veles.versionCalls.get() shouldBe 2
-                veles.modelCalls.get() shouldBe 1
+                metadata.versionCalls.get() shouldBe 2
+                metadata.modelCalls.get() shouldBe 1
                 catalog.loads shouldBe 1
             }
         }
@@ -231,7 +231,7 @@ class CatalogSourceSpec :
                         .setName(name)
                         .build()
                 val related =
-                    RecordedVeles
+                    RecordedMetadata
                         .hartlandModel()
                         .toBuilder()
                         .addRelations(
@@ -247,7 +247,7 @@ class CatalogSourceSpec :
                                         ).setToAttr(qn("warehouse.sk")),
                                 ),
                         ).build()
-                val key = source(RecordedVeles(model = related)).foreignKeys(session).single()
+                val key = source(RecordedMetadata(model = related)).foreignKeys(session).single()
                 key shouldBe
                     CatalogForeignKey(
                         "er.entity",
@@ -264,7 +264,7 @@ class CatalogSourceSpec :
 
         "R13 — two relations from one entity to another are two keys, each named, each from key_sequence 1" {
             runBlocking {
-                val keys = source(RecordedVeles(model = roleplayingDates())).foreignKeys(session)
+                val keys = source(RecordedMetadata(model = roleplayingDates())).foreignKeys(session)
                 keys.map { Triple(it.name, it.fkColumn, it.keySequence) } shouldContainExactly
                     listOf(
                         Triple("order_placed_date_fkey", "placed_date", 1),
@@ -276,7 +276,7 @@ class CatalogSourceSpec :
 
         "R9 — a package holding only a saved query is loaded too" {
             runBlocking {
-                val base = RecordedVeles.hartlandModel()
+                val base = RecordedMetadata.hartlandModel()
                 val query = base.namedQueriesList.single()
                 val elsewhere =
                     query
@@ -291,10 +291,13 @@ class CatalogSourceSpec :
                                         .setName("monthly"),
                                 ),
                         ).build()
-                val veles = RecordedVeles(model = base.toBuilder().addNamedQueries(elsewhere).build())
-                val names = source(veles).tables(session, null, "obj.query", null, withFields = false).map { it.name }
+                val metadata = RecordedMetadata(model = base.toBuilder().addNamedQueries(elsewhere).build())
+                val names =
+                    source(
+                        metadata,
+                    ).tables(session, null, "obj.query", null, withFields = false).map { it.name }
                 names shouldContainExactly listOf("monthly", "revenue_per_customer")
-                veles.requestedPackages.single() shouldContainExactly listOf("hartland", "reports")
+                metadata.requestedPackages.single() shouldContainExactly listOf("hartland", "reports")
             }
         }
 
@@ -354,7 +357,7 @@ class CatalogSourceSpec :
 
         "R4 — one listing probes its uncached queries four at a time" {
             runBlocking {
-                val base = RecordedVeles.hartlandModel()
+                val base = RecordedMetadata.hartlandModel()
                 val query = base.namedQueriesList.single()
                 val five =
                     base
@@ -383,7 +386,7 @@ class CatalogSourceSpec :
                         running.decrementAndGet()
                         revenueSchema
                     }
-                val catalog = source(RecordedVeles(model = five), probe)
+                val catalog = source(RecordedMetadata(model = five), probe)
                 val took = measureTimeMillis { catalog.tables(session, null, "obj.query", null) shouldHaveSize 5 }
                 most.get() shouldBe CatalogSource.PROBE_CONCURRENCY
                 // Serially, five probes take 1 000 ms; four at a time, about 400.
@@ -391,12 +394,12 @@ class CatalogSourceSpec :
             }
         }
 
-        "a Veles with no model loaded is UNAVAILABLE, not an empty catalog" {
+        "a Metadata with no model loaded is UNAVAILABLE, not an empty catalog" {
             runBlocking {
                 val e =
                     shouldThrow<FlightRuntimeException> {
                         source(
-                            RecordedVeles(version = ""),
+                            RecordedMetadata(version = ""),
                         ).schemas(session, null, null)
                     }
                 e.status().code() shouldBe FlightStatusCode.UNAVAILABLE

@@ -13,7 +13,7 @@ import java.io.File
 
 /**
  * Load the `ToolCapability` manifests under `src/main/resources/manifests/tools/`
- * and build one [Capability] per manifest. Same pattern as veles-mcp / fuzzy-mcp.
+ * and build one [Capability] per manifest. Same pattern as meta-mcp / fuzzy-mcp.
  *
  * The shared `ManifestYamlLoader` lives in `:tools:capabilities-mcp` — a peer
  * module that nlp-mcp must not depend on — so we parse the manifests directly.

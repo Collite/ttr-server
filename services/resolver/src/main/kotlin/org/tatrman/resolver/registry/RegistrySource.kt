@@ -99,7 +99,7 @@ data class DeclaredVocabulary(
  * The seam (RS-24). Three implementers over time, all satisfying this interface
  * (rule 6 — name them, don't invent couplings):
  *  - [StubRegistrySource] — the fixture used until the snapshot archive lands;
- *  - [LiveMetadataRegistryAdapter] — the E3-β *step-one* dev-mode reader off Veles
+ *  - [LiveMetadataRegistryAdapter] — the E3-β *step-one* dev-mode reader off Metadata
  *    (`meta.v1`), the same interface;
  *  - the real snapshot-archive reader (RO-13), later.
  *
@@ -129,7 +129,7 @@ class StubRegistrySource(
 
 /**
  * E3-β step one (RS-24): the dev-mode live-metadata adapter. Named per rule 6 so
- * the coupling to Veles/`meta.v1` is explicit rather than invented ad hoc. The
+ * the coupling to Metadata/`meta.v1` is explicit rather than invented ad hoc. The
  * body (a `meta.v1` read projected into [DeclaredVocabulary]) lands with the
  * capability-matrix work; until then it yields an empty snapshot with a stable
  * hash, so the pipeline runs against a caller-supplied `Registry` override.

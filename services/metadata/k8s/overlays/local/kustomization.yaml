@@ -1,0 +1,30 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: kantheon
+
+resources:
+  - ../../base
+
+patches:
+  - target:
+      kind: Deployment
+      name: metadata
+    patch: |
+      - op: replace
+        path: /spec/template/spec/containers/0/imagePullPolicy
+        value: Never
+      # Local cluster has no Alloy/Tempo endpoint — disable OTel export so the
+      # pod doesn't spam connection errors on startup. Re-enable once the
+      # observability stack is provisioned locally.
+      - op: replace
+        path: /spec/template/spec/containers/0/env
+        value:
+          - name: METADATA_HTTP_PORT
+            value: "7260"
+          - name: METADATA_GRPC_PORT
+            value: "7261"
+          - name: OTEL_SERVICE_NAME
+            value: metadata
+          - name: OTEL_ENABLED_METADATA
+            value: "false"

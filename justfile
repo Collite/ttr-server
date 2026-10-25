@@ -3,8 +3,8 @@
 #
 # Recipe conventions (synced across kantheon/modeler/tatrman/tatrman-server,
 # 2026-07-16 — see project/ for the cross-repo decision):
-#   lint / build / test    bare = everything; `just build veles` (name) or
-#                           `just build services/veles` (path) = one module.
+#   lint / build / test    bare = everything; `just build metadata` (name) or
+#                           `just build services/metadata` (path) = one module.
 #   lint-kt/build-kt/test-kt, lint-py/build-py/test-py   same name/path/bare
 #                           rules, scoped to one language lane.
 #   publish                 unified release entry point — see its own doc comment.
@@ -18,7 +18,7 @@ set shell := ["bash", "-uc"]
 # CI cannot build them without its URL. All four: `just nlp-backend-image`.
 # `superset` (images/superset) is not here either: its version is Superset's plus `-ttr<N>`, not ours, so it is
 # released by tag only — `superset/v6.1.0-ttr1` (images/superset/README.md).
-image_modules := "veles query translate validate dispatch charon lex-matcher llm-gateway nlp nlp-stanza nlp-spacy golem-py morph-studio chrono geo money grounding-mcp resolver automation meta-mcp query-mcp lex-matcher-mcp nlp-mcp worker-postgres worker-mssql worker-polars identity health"
+image_modules := "metadata query translate validate dispatch charon lex-matcher llm-gateway nlp nlp-stanza nlp-spacy golem-py morph-studio chrono geo money grounding-mcp resolver automation meta-mcp query-mcp lex-matcher-mcp nlp-mcp worker-postgres worker-mssql worker-polars identity health"
 
 # The pure-Python wheels publish-python.yml builds (`python-<lane>/v*` tag →
 # PyPI). Kept in lockstep with that workflow's tag map — the wheel-name → tag-
@@ -67,7 +67,7 @@ _lang path:
 
 # ── lint / build / test — bare = everything, name/path = one module ───────────
 
-# Lint everything (Kotlin + Python). One module: `just lint veles`.
+# Lint everything (Kotlin + Python). One module: `just lint metadata`.
 lint module="":
     #!/usr/bin/env bash
     set -euo pipefail
@@ -83,7 +83,7 @@ lint module="":
         py) just lint-py "$path" ;;
     esac
 
-# Build everything (Kotlin + Python). One module: `just build veles`.
+# Build everything (Kotlin + Python). One module: `just build metadata`.
 build module="":
     #!/usr/bin/env bash
     set -euo pipefail
@@ -99,7 +99,7 @@ build module="":
         py) just build-py "$path" ;;
     esac
 
-# Test everything (Kotlin + Python). One module: `just test veles`.
+# Test everything (Kotlin + Python). One module: `just test metadata`.
 test module="":
     #!/usr/bin/env bash
     set -euo pipefail
@@ -117,7 +117,7 @@ test module="":
 
 # ── Kotlin lane ──────────────────────────────────────────────────────────────
 
-# ktlint check across every module, or one: `just lint-kt` / `just lint-kt veles`.
+# ktlint check across every module, or one: `just lint-kt` / `just lint-kt metadata`.
 # Autofix: `just fmt` (whole repo) — see below.
 lint-kt module="":
     #!/usr/bin/env bash
@@ -134,7 +134,7 @@ fmt:
     ./gradlew ktlintFormat
 
 # Full Gradle build (compile + the mocked `test` gate + ktlint — what CI runs),
-# or one module: `just build-kt` / `just build-kt veles` / `just build-kt services/veles`.
+# or one module: `just build-kt` / `just build-kt metadata` / `just build-kt services/metadata`.
 build-kt module="":
     #!/usr/bin/env bash
     set -euo pipefail
@@ -692,8 +692,8 @@ _release-guard:
 #   confirm prompt names which one you are about to cut — read it.
 #
 # Usage:
-#   just publish veles                          # internal (GHCR), patch bump
-#   just publish veles set 0.9.2                 # internal, explicit version
+#   just publish metadata                          # internal (GHCR), patch bump
+#   just publish metadata set 0.9.2                 # internal, explicit version
 #   just publish services/query patch          # image module, path form
 #   just publish bundle server-libs                 # internal, patch bump
 #   just publish bundle server-libs release set 0.9.2  # + Maven Central, explicit

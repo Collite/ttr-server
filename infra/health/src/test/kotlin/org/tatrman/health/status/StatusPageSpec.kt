@@ -37,7 +37,7 @@ class StatusPageSpec :
                 summary = HealthSummary(total = 2, healthy = 2, unhealthy = 0),
                 technologies =
                     listOf(
-                        TechnologyStatus(name = "veles", status = "healthy"),
+                        TechnologyStatus(name = "metadata", status = "healthy"),
                         TechnologyStatus(name = "query", status = "healthy"),
                     ),
             )
@@ -60,7 +60,7 @@ class StatusPageSpec :
                 val body = resp.bodyAsText()
                 body shouldContain "\"serverVersion\":\"1.2.3\""
                 body shouldContain "\"modelFingerprint\":\"model@abc123\""
-                body shouldContain "\"veles\""
+                body shouldContain "\"metadata\""
                 body shouldContain "\"query\""
             }
         }
@@ -75,7 +75,7 @@ class StatusPageSpec :
                 html shouldContain "Tatrman Server"
                 html shouldContain "1.2.3"
                 html shouldContain "model@abc123"
-                html shouldContain "veles"
+                html shouldContain "metadata"
                 // The page states the no-management-app stance (FO-28).
                 html shouldContain "Read-only"
             }

@@ -53,7 +53,7 @@ message CategoryStatus {
   int32 size = 3;           // candidate count
   int64 loaded_at_epoch_ms = 4;
   // MV-T2 — the match method the category's MEMBER rows carry ("EXACT" | "TYPOS(n)" | "TOKENS"):
-  // a member vocabulary's own, from Veles. "" when the category has no member rows (declared terms
+  // a member vocabulary's own, from Metadata. "" when the category has no member rows (declared terms
   // carry a method per row).
   string match_method = 5;
   // UD-P3 — what the NER makes of this MEMBER vocabulary's values: run over each value at load,

@@ -344,7 +344,7 @@ construction — the Stage 2.6 Themis gate builds on this. A numeric baseline is
 recorded at the first live deployment (the predecessor original shipped no
 recorded `eval/reports` metrics, and the harness needs a running service +
 remote UFAL endpoints to score; live infra was unavailable in the fork session,
-deferred to the deployment pipeline — Veles/Echo precedent). Reports land in
+deferred to the deployment pipeline — Metadata/Echo precedent). Reports land in
 `eval/reports/` (`metrics.json` + `report.md`).
 
 ## Container & deployment

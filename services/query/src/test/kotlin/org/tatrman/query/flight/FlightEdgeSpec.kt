@@ -125,7 +125,7 @@ class FlightEdgeSpec :
                     FlightEdge.create(
                         config = taken,
                         runner = door,
-                        veles = FlightTestKit.NoVeles,
+                        metadata = FlightTestKit.NoMetadata,
                         identity = IdentityWorldMiddleware.Factory(FlightAuthenticator(AuthTestKit.verifier)),
                     )
                 val e = shouldThrow<IllegalStateException> { second.start() }
@@ -143,7 +143,7 @@ class FlightEdgeSpec :
                 FlightEdge.create(
                     config = FlightTestKit.testConfig(),
                     runner = door,
-                    veles = FlightTestKit.NoVeles,
+                    metadata = FlightTestKit.NoMetadata,
                     identity = IdentityWorldMiddleware.Factory(FlightAuthenticator(AuthTestKit.verifier)),
                 )
             FlightEdge.ready(doorReady = true, edge = stopped) shouldBe false
@@ -164,7 +164,7 @@ class FlightEdgeSpec :
                 .create(
                     config = config,
                     runner = door,
-                    veles = FlightTestKit.NoVeles,
+                    metadata = FlightTestKit.NoMetadata,
                     identity = IdentityWorldMiddleware.Factory(FlightAuthenticator(AuthTestKit.verifier)),
                 ).start()
                 .use { edge ->

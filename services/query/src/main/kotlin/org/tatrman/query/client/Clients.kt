@@ -5,7 +5,7 @@ import org.tatrman.dispatch.v1.DispatchRequest
 import org.tatrman.dispatch.v1.DispatchServiceGrpcKt
 import org.tatrman.meta.v1.GetQueryRequest
 import org.tatrman.meta.v1.GetQueryResponse
-import org.tatrman.meta.v1.VelesServiceGrpcKt
+import org.tatrman.meta.v1.MetadataServiceGrpcKt
 import org.tatrman.translate.v1.DetectSchemaRequest
 import org.tatrman.translate.v1.DetectSchemaResponse
 import org.tatrman.translate.v1.ParseRequest
@@ -116,7 +116,7 @@ class GrpcSavedQueryClient(
 ) : SavedQueryClient,
     AutoCloseable {
     private val channel: ManagedChannel = openChannel(host, port)
-    private val stub = VelesServiceGrpcKt.VelesServiceCoroutineStub(channel)
+    private val stub = MetadataServiceGrpcKt.MetadataServiceCoroutineStub(channel)
 
     override suspend fun getQuery(request: GetQueryRequest): GetQueryResponse =
         stub.withDeadlineAfter(deadlineSeconds, TimeUnit.SECONDS).getQuery(request)

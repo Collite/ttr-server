@@ -102,10 +102,10 @@ dependencies {
     testImplementation(libs.mockk)
     // InMemoryMetricReader for the MoneyMetrics assertions.
     testImplementation(libs.opentelemetry.sdk.testing)
-    // RG-P3.S0 metadata-seam component test — stands up an in-process Veles
+    // RG-P3.S0 metadata-seam component test — stands up an in-process Metadata
     // (MetadataServiceImpl) over the semantics fixture to prove MetaV1MoneyDiscovery
     // maps the real meta.v1 projection to the discovery domain types.
-    testImplementation(project(":services:veles"))
+    testImplementation(project(":services:metadata"))
     testImplementation(libs.tatrman.ttr.metadata)
     testImplementation(libs.grpc.inprocess)
 }

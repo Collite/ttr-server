@@ -9,14 +9,14 @@ import org.tatrman.meta.v1.GetSnapshotRequest
 import org.tatrman.meta.v1.GetSnapshotResponse
 import org.tatrman.meta.v1.GetStatusRequest
 import org.tatrman.meta.v1.GetStatusResponse
-import org.tatrman.meta.v1.VelesServiceGrpcKt
+import org.tatrman.meta.v1.MetadataServiceGrpcKt
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * GH #112 — the version `validate` checks a plan against is `GetStatus.model_version`, not the
  * GetSnapshot ETag.
  *
- * The ETag is a cache validator: while Veles parses queries it is `<version>.q<n>`, so reading it
+ * The ETag is a cache validator: while Metadata parses queries it is `<version>.q<n>`, so reading it
  * as the version would report every plan as compiled against a different model. The old read was
  * also an unconditional GetSnapshot — the whole model over the wire per Validate for one string.
  */
@@ -24,8 +24,8 @@ class GrpcMetadataClientVersionSpec :
     StringSpec({
 
         val snapshotCalls = AtomicInteger()
-        val veles =
-            object : VelesServiceGrpcKt.VelesServiceCoroutineImplBase() {
+        val metadata =
+            object : MetadataServiceGrpcKt.MetadataServiceCoroutineImplBase() {
                 override suspend fun getStatus(request: GetStatusRequest): GetStatusResponse =
                     GetStatusResponse
                         .newBuilder()
@@ -44,7 +44,7 @@ class GrpcMetadataClientVersionSpec :
             server =
                 ServerBuilder
                     .forPort(0)
-                    .addService(veles)
+                    .addService(metadata)
                     .build()
                     .start()
         }

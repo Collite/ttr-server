@@ -1,7 +1,7 @@
 Tatrman Server {{ .Chart.AppVersion }} installed as release "{{ .Release.Name }}" in namespace "{{ .Release.Namespace }}".
 
 Enabled services (this install):
-{{- range $name := (list "veles" "query" "translate" "validate" "dispatch" "llm-gateway" "mssql" "postgres" "polars" "whois" "health" "query-mcp" "veles-mcp" "fuzzy" "fuzzy-mcp" "nlp" "nlp-mcp" "chrono" "geo" "money" "grounding-mcp" "resolver" "backstage") }}
+{{- range $name := (list "metadata" "query" "translate" "validate" "dispatch" "llm-gateway" "mssql" "postgres" "polars" "whois" "health" "query-mcp" "meta-mcp" "fuzzy" "fuzzy-mcp" "nlp" "nlp-mcp" "chrono" "geo" "money" "grounding-mcp" "resolver" "backstage") }}
 {{- $cfg := index $.Values $name }}
 {{- if and $cfg $cfg.enabled }}
   - {{ $name }}

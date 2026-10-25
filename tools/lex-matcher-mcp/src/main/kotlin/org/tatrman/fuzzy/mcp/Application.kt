@@ -123,7 +123,7 @@ fun main(): Unit =
  * Builds the gRPC client (default) or REST client (opt-in) from the
  * `fuzzy.client.*` HOCON block. Returns `null` when the gRPC host is blank
  * (local no-backend mode) — the [Tools] then surfaces a "not wired" error
- * on every invocation rather than crashing boot. Mirrors the veles-mcp
+ * on every invocation rather than crashing boot. Mirrors the meta-mcp
  * pattern (Stage 2.1 R2 re-review, 2026-06-13).
  */
 internal fun buildFuzzyClient(

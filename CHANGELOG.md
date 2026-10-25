@@ -16,6 +16,28 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+- **metadata — the model-graph service is renamed from `veles` (MR).**
+  `services/metadata`, package `org.tatrman.metadata` (including `cn` and `export`),
+  gRPC `org.tatrman.meta.v1.MetadataService`, charts `metadata` and `meta-mcp`, and
+  image `ghcr.io/collite/metadata` replace their previous names. Rebuild JVM consumers
+  for the moved `org.tatrman.metadata.client` API and regenerated gRPC stubs.
+  Environment variables use `METADATA_*`, `META_MCP_SERVER_PORT` and
+  `OTEL_ENABLED_METADATA` / `OTEL_ENABLED_META_MCP`; configuration keys use
+  `metadata.*` / `upstream.metadata.*` (including automation's `door.metadataUrl`
+  and `bundle.metadataSource`). This is a hard cut, with no legacy aliases.
+  Source-load metrics change from `veles_model_source_load_failures_total` /
+  `veles_model_source_loaded` to `metadata_model_source_load_failures_total` /
+  `metadata_model_source_loaded`; update dashboards accordingly. The meta-mcp telemetry /
+  OTel service name changes from `veles-mcp` to `meta-mcp`; the metadata chart’s default
+  OTel service name changes from `veles` to `metadata`. Query retry logs use the
+  operation label `metadata.get_query` instead of `veles.get_query`. The health
+  status-adapter key changes from `veles` to `metadata` (roster `adapter = metadata`);
+  update the health image and roster together. Ports 7260/7261/7262, proto package and message
+  layouts, database schema, CN routes, and `METADATA_GIT_*` stay unchanged.
+  **One-wave rollout per cluster:** the server and all consumers in ttr-server, kantheon
+  and tatrman-platform (studio-bff) must roll together; the previous gRPC service path is removed (MR-2).
+  No release is cut by this PR; publishing belongs to MW-P0.2.
+
 - **resolver — the er statement lane places; it does not re-decide (grammar 0.18.12, ttr-core#308).** The er lane
   now refuses whatever md's validator refuses, and for the same reasons. It also refuses a phase whose join would fan
   out the event's rows, and a negated phase that needs a join. A negated phase reads `NOT COALESCE((…), FALSE)`. A

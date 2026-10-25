@@ -20,7 +20,7 @@ import java.util.Properties
 
 /**
  * C-1 — the stock Arrow Flight SQL JDBC driver (18.3.0) against the edge, making the calls DBeaver makes when it
- * connects: catalogs, schemas, tables, columns, then one query. The door and Veles are stubs (the recorded hartland
+ * connects: catalogs, schemas, tables, columns, then one query. The door and Metadata are stubs (the recorded hartland
  * catalog). The metadata cases run the authenticator in allow-all TEST mode; the C-2/C-3 cases at the end run the real
  * identity middleware, as a DBeaver user would meet it: `user`/`password`, `token`, `catalog`, `world`.
  */
@@ -69,7 +69,7 @@ class FlightJdbcRoundTripSpec :
         afterSpec { allocator.close() }
 
         "DatabaseMetaData: the world is the one catalog; the schemas are er.entity, obj.query, db.dbo" {
-            RunningEdge(door(), RecordedVeles(), session).use { edge ->
+            RunningEdge(door(), RecordedMetadata(), session).use { edge ->
                 connect(edge).use { conn ->
                     val meta = conn.metaData
                     meta.catalogs.column("TABLE_CAT") shouldContainExactly listOf("hartland_cz")
@@ -82,7 +82,7 @@ class FlightJdbcRoundTripSpec :
         }
 
         "getTables lists entities, the logical query and bound tables; getColumns types an entity's attributes" {
-            RunningEdge(door(), RecordedVeles(), session).use { edge ->
+            RunningEdge(door(), RecordedMetadata(), session).use { edge ->
                 connect(edge).use { conn ->
                     val meta = conn.metaData
                     meta.getTables(null, "er.entity", "%", null).column("TABLE_NAME").size shouldBe 36
@@ -127,13 +127,13 @@ class FlightJdbcRoundTripSpec :
                             .setToAttr(qn("date_dim.sk")),
                     ).build()
             val model =
-                RecordedVeles
+                RecordedMetadata
                     .hartlandModel()
                     .toBuilder()
                     .addRelations(dated("placed_date"))
                     .addRelations(dated("delivered_date"))
                     .build()
-            RunningEdge(door(), RecordedVeles(model = model), session).use { edge ->
+            RunningEdge(door(), RecordedMetadata(model = model), session).use { edge ->
                 connect(edge).use { conn ->
                     val keys = mutableListOf<Triple<String?, String?, Int>>()
                     conn.metaData.getImportedKeys(null, "er.entity", "order").use { rs ->
@@ -164,7 +164,7 @@ class FlightJdbcRoundTripSpec :
                             ).build(),
                     )
                 }
-            RunningEdge(empty, RecordedVeles(), session).use { edge ->
+            RunningEdge(empty, RecordedMetadata(), session).use { edge ->
                 connect(edge).use { conn ->
                     conn.createStatement().use { st ->
                         st.executeQuery("SELECT * FROM er.entity.warehouse WHERE 1 = 0").use { rs ->
@@ -181,7 +181,7 @@ class FlightJdbcRoundTripSpec :
 
         "executeQuery returns the door's rows" {
             val door = door()
-            RunningEdge(door, RecordedVeles(), session).use { edge ->
+            RunningEdge(door, RecordedMetadata(), session).use { edge ->
                 connect(edge).use { conn ->
                     conn.createStatement().use { st ->
                         val got = mutableListOf<Pair<Int, String?>>()
@@ -200,7 +200,7 @@ class FlightJdbcRoundTripSpec :
 
         "a PreparedStatement runs the door once per execution" {
             val door = door()
-            RunningEdge(door, RecordedVeles(), session).use { edge ->
+            RunningEdge(door, RecordedMetadata(), session).use { edge ->
                 connect(edge).use { conn ->
                     conn.prepareStatement("SELECT * FROM er.entity.warehouse").use { ps ->
                         repeat(2) {
@@ -222,7 +222,7 @@ class FlightJdbcRoundTripSpec :
                         FlightAuthenticator(AuthTestKit.verifier, KeycloakPasswordGrant(keycloak.tokenUrl, "jdbc")),
                         worlds,
                     )
-                RunningEdge(door, RecordedVeles(), identity = identity, worlds = worlds).use { edge ->
+                RunningEdge(door, RecordedMetadata(), identity = identity, worlds = worlds).use { edge ->
                     connect(edge, "user" to "petr", "password" to "petr-secret").use { conn ->
                         conn.count("SELECT * FROM er.entity.warehouse") shouldBe 3
                         conn.count("SELECT * FROM er.entity.warehouse") shouldBe 3
@@ -239,7 +239,7 @@ class FlightJdbcRoundTripSpec :
         "C-2 — the token property is a bearer; without one the connection is refused" {
             val door = door()
             val identity = IdentityWorldMiddleware.Factory(FlightAuthenticator(AuthTestKit.verifier), worlds)
-            RunningEdge(door, RecordedVeles(), identity = identity, worlds = worlds).use { edge ->
+            RunningEdge(door, RecordedMetadata(), identity = identity, worlds = worlds).use { edge ->
                 connect(edge, "token" to AuthTestKit.token(user = "marketa")).use { conn ->
                     conn.count("SELECT * FROM er.entity.warehouse") shouldBe 3
                 }
@@ -254,7 +254,7 @@ class FlightJdbcRoundTripSpec :
         "C-3 — the catalog property (SetSessionOptions) and the world property (a header) pick the world" {
             val door = door()
             val identity = IdentityWorldMiddleware.Factory(FlightAuthenticator(AuthTestKit.verifier), worlds)
-            RunningEdge(door, RecordedVeles(), identity = identity, worlds = worlds).use { edge ->
+            RunningEdge(door, RecordedMetadata(), identity = identity, worlds = worlds).use { edge ->
                 val token = AuthTestKit.token()
                 val conn = connect(edge, "token" to token, "catalog" to "hartland_us")
                 conn.metaData.catalogs.column("TABLE_CAT") shouldContainExactly listOf("hartland_us")

@@ -41,7 +41,7 @@ import org.tatrman.automation.identity.RunAsRef as GrantRunAs
  * automation half —
  * a file under `automation/`, a `model world` file, an automation-validator or `ttr/automation-*` / `ttr/states-*`
  * finding (a malformed grant or deployment is DROPPED by `ttr-metadata` and reported, so it refuses here: a
- * deployment must never vanish silently). The model's other issues are warnings: Veles serves that model and
+ * deployment must never vanish silently). The model's other issues are warnings: Metadata serves that model and
  * owns its diagnostics. The package-layout codes are never findings — the hartland convention (one flat package
  * per area, `layout = "off"`) declares packages that differ from the directory by design.
  */

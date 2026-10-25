@@ -357,7 +357,7 @@ object MvEstate {
     }
 
     /**
-     * lex-matcher as MV-T2 left it: the member rows keyed by ATTRIBUTE ref (the category Veles
+     * lex-matcher as MV-T2 left it: the member rows keyed by ATTRIBUTE ref (the category Metadata
      * lists), each carrying its vocabulary's method; plus one DECLARED row per object whose anchors
      * the query stems to. Categories are an exact-key filter (the leak guard): a span answers only
      * about what it asked. `Lookup` with no categories is the cross-category ask, and a class-scoped

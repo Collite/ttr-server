@@ -938,7 +938,7 @@ class TtrFlightSqlProducer(
     ): FlightInfo =
         FlightInfo(schema, descriptor, listOf(FlightEndpoint(Ticket(Any.pack(command).toByteArray()))), -1, -1)
 
-    /** A catalog read, or null after failing [listener] with why Veles could not answer. */
+    /** A catalog read, or null after failing [listener] with why Metadata could not answer. */
     private fun <T> catalogCall(
         listener: ServerStreamListener,
         read: suspend () -> T,

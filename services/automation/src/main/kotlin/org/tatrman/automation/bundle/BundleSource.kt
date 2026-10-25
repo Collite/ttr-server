@@ -23,7 +23,7 @@ class CheckoutFailedException(
 
 /**
  * The automation repo over git (D-62: git is the source, the catalog the compiled view) — `ttr-metadata-git`'s
- * [GitArchiveStorage], Veles's refresh mechanism: clone once per branch under [baseDir], then fetch + hard reset to
+ * [GitArchiveStorage], Metadata's refresh mechanism: clone once per branch under [baseDir], then fetch + hard reset to
  * `origin/<branch>`. The commit's author is read here (the deployer, D-90). A GitHub token is passed the
  * `x-access-token` way.
  */

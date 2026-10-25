@@ -110,7 +110,7 @@ dependencies {
 
     // The bundle (S0.2): the automation repo's model + automation package through ttr-metadata (grammar 0.16's
     // automation tier), checked out by ttr-metadata-git's GitArchiveStorage; jgit reads the commit's author.
-    // Veles's GetStatus (the drift handshake) over the shared protos.
+    // Metadata's GetStatus (the drift handshake) over the shared protos.
     implementation(libs.tatrman.ttr.metadata)
     implementation(libs.tatrman.ttr.metadata.git)
     implementation(libs.tatrman.ttr.parser)

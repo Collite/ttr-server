@@ -41,8 +41,8 @@ class StatusFixturesTest :
 
         val commit = "3d54d5e8327902f38e996d9e895507fb6d8622f5"
 
-        "veles: the model source's commit and load time, objects and queries, one row per source" {
-            val content = read("veles")
+        "metadata: the model source's commit and load time, objects and queries, one row per source" {
+            val content = read("metadata")
 
             content.ok shouldBe true
             content.commit shouldBe commit
@@ -52,7 +52,7 @@ class StatusFixturesTest :
             content.sources!!.single().note!! shouldContain "Collite/ttr-demo.git"
         }
 
-        "veles with two sources: a row each; one that failed its refresh makes the content not ok" {
+        "metadata with two sources: a row each; one that failed its refresh makes the content not ok" {
             val body =
                 Json.parseToJsonElement(
                     """
@@ -66,7 +66,7 @@ class StatusFixturesTest :
                     """.trimIndent(),
                 )
 
-            val content = VelesAdapter.read(body, statuses.getValue("veles")!!)
+            val content = MetadataAdapter.read(body, statuses.getValue("metadata")!!)
 
             content.ok shouldBe false
             content.commit shouldBe commit
@@ -74,17 +74,17 @@ class StatusFixturesTest :
             content.sources!!.map { it.name to it.ok } shouldContainExactly
                 listOf("github-model" to true, "invest-model" to false)
             // The git client's own error (hosts, credentials) never reaches the page.
-            content.sources!![1].note shouldBe "the last refresh failed: see the veles log"
+            content.sources!![1].note shouldBe "the last refresh failed: see the metadata log"
             content.note shouldBe "invest-model: the last load failed · invest-model: serving the fallback model"
         }
 
-        "translate and validate: the commit out of the version string, the same one veles serves" {
+        "translate and validate: the commit out of the version string, the same one metadata serves" {
             read("translate").commit shouldBe commit
             read("validate").commit shouldBe commit
             ContentService
                 .summarize(
                     mapOf(
-                        "veles" to read("veles"),
+                        "metadata" to read("metadata"),
                         "translate" to read("translate"),
                         "validate" to read("validate"),
                     ),
@@ -115,7 +115,7 @@ class StatusFixturesTest :
             val content = read("validate")
 
             content.ok shouldBe true
-            content.children shouldBe listOf(ContentChild("veles", null, "ready"))
+            content.children shouldBe listOf(ContentChild("metadata", null, "ready"))
             content.figures() shouldBe mapOf("maxRows" to "200")
         }
 
@@ -180,7 +180,7 @@ class StatusFixturesTest :
             val boot =
                 GenericJson.read(
                     Json.parseToJsonElement(
-                        """{"ready":true,"metadata_version":"boot-fixture-v0","dependencies":{"veles":true}}""",
+                        """{"ready":true,"metadata_version":"boot-fixture-v0","dependencies":{"metadata":true}}""",
                     ),
                     statuses.getValue("validate")!!,
                 )
@@ -189,8 +189,8 @@ class StatusFixturesTest :
             boot.note shouldBe GenericJson.NO_COMMIT
             ContentService
                 .summarize(
-                    mapOf("veles" to read("veles"), "validate" to boot),
-                    setOf("veles", "validate"),
+                    mapOf("metadata" to read("metadata"), "validate" to boot),
+                    setOf("metadata", "validate"),
                 ).agree shouldBe
                 false
         }

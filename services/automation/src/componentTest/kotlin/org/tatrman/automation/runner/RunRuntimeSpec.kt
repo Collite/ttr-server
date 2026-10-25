@@ -615,7 +615,7 @@ private class DurableRuntimeFixture(
                     """
                     automation.db.host = "unused"
                     automation.door.queryUrl = "unused"
-                    automation.door.velesUrl = "unused"
+                    automation.door.metadataUrl = "unused"
                     automation.door.routes = "demo/erp_db=us-erp"
                     automation.auth.jwksUrl = "http://unused/certs"
                     automation.auth.issuer = "unused"

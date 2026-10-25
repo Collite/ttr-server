@@ -25,7 +25,7 @@ message ResponseMessage {
   // config / fixture file a loader raised a warning against). Domain-neutral on
   // purpose — any file-loading service may set it; empty when there is no source.
   // Kept as a typed field (not folded into human_message) so UIs can render the
-  // offending path distinctly. First consumer: Veles source-load warnings (2.1).
+  // offending path distinctly. First consumer: Metadata source-load warnings (2.1).
   string source_file    = 4;
   // Optional position the message points at, 1-based; 0 = none. In `source_file` when that is set, else in
   // the request's source text: translate sets it for a refusal of a SQL statement (BI C-11), so the

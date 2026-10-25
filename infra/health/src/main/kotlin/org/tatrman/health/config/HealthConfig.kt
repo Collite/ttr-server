@@ -59,7 +59,7 @@ data class StatusConfig(
     /** A fixed sentence shown when the content is not fine (rather than the service's own free text). */
     val failNote: String? = null,
     val summary: List<FieldConfig> = emptyList(),
-    /** Path of an object of booleans, one sub-row each (`{"veles": true}`). */
+    /** Path of an object of booleans, one sub-row each (`{"metadata": true}`). */
     val children: String? = null,
     /** Extra request headers (e.g. a Loki tenant). */
     val headers: Map<String, String> = emptyMap(),

@@ -1,9 +1,8 @@
 apiVersion: v2
-name: veles-mcp
+name: meta-mcp
 description: |
-  The Kantheon veles-mcp wrapper — the MCP edge over Veles (the metadata / model-graph
-  service). Env-agnostic Helm chart: image, replicas, resources, telemetry endpoint and the
-  downstream gRPC wiring to Veles are all values. Per-environment values live in the deploying
+  The Kantheon meta-mcp wrapper — the MCP edge over the metadata (model-graph) service. Env-agnostic Helm chart: image, replicas, resources, telemetry endpoint and the
+  downstream gRPC wiring to Metadata are all values. Per-environment values live in the deploying
   repo. Converted from the kustomize base/overlays, mirroring query-mcp (D2).
 type: application
 # Chart version: the packaging. appVersion tracks the default image tag.

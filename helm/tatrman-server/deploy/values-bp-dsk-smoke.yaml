@@ -24,7 +24,7 @@ devIdp:
     requests: { cpu: 100m, memory: 512Mi }
 
 # ── Enabled subset — low requests so they schedule alongside the pilot ─────────
-veles:     { enabled: true, resources: { requests: { cpu: 25m, memory: 256Mi } } }
+metadata:     { enabled: true, resources: { requests: { cpu: 25m, memory: 256Mi } } }
 query:     { enabled: true, resources: { requests: { cpu: 25m, memory: 256Mi } } }
 translate: { enabled: true, resources: { requests: { cpu: 25m, memory: 256Mi } } }
 validate:  { enabled: true, resources: { requests: { cpu: 25m, memory: 256Mi } } }
@@ -46,7 +46,7 @@ postgres: { enabled: false }
 polars: { enabled: false }
 llm-gateway: { enabled: false }
 query-mcp: { enabled: false }
-veles-mcp: { enabled: false }
+meta-mcp: { enabled: false }
 fuzzy-mcp: { enabled: false }
 nlp-mcp: { enabled: false }
 grounding-mcp: { enabled: false }

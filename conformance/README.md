@@ -71,7 +71,7 @@ the RV-P4 conversation tier that sits above them:
 6. **cn-estate declared layer** (fuzzy — CN-P4 S4.3) — `CnConformanceTest` over
    `services/lex-matcher/src/test/resources/conformance/cn-estate/cases.jsonl` (3 cases). The estate is
    `shared/testdata/cn-estate` (an invented `shop` package with a `model cn` of twelve concepts, the copy
-   veles and the resolver read too), compiled at test time by the real producer at the pinned grammar
+   metadata and the resolver read too), compiled at test time by the real producer at the pinned grammar
    (`LexiconBuild.run` → lexicon archive **v6**) and read back through `LexiconArchiveSource`. Each case
    runs through Lookup and through Match, which must give the same exact-form targets, and Match
    narrowed to one reading's category returns that reading alone. Classes: `concept` (a concept's
@@ -176,5 +176,5 @@ keeps a private fold.** Call-site status:
 | chrono / money recognizers | ✅ shared (RG-P3) |
 | geo span parser (`GeoSpanParser`) | ✅ shared |
 | geo `PlaceResolver` / `BoundaryStore.foldPlaceKey` / `GeoCorpusSpec` | ✅ **converged in RG-P6.S2.T4** — private folds removed; `trim()` kept as geo's visible input pre-step; `FoldParitySpec` locks byte-identity to the shared spec. (The old private copies stripped `\p{M}` vs the shared `\p{Mn}` — output-neutral on Czech place names.) |
-| **meta.search** `ttr-metadata` `Tokenizer.fold` (tatrman repo → consumed by veles) | ⚠️ **documented characterization bridge — the one remaining copy.** It folds in a **different operation order** (NFD → strip → lowercase, vs the shared lower → NFD → strip), and lives in a *different repo* + a *published* artifact. Converging it requires: (1) a characterization test over veles's keyword corpus proving the op-order swap is output-neutral there; (2) a `ttr-metadata → org.tatrman:text` dependency; (3) a `ttr-metadata` republish. Tracked as the T4 follow-up — not swapped blind (behavior + cross-repo + release risk). |
+| **meta.search** `ttr-metadata` `Tokenizer.fold` (tatrman repo → consumed by metadata) | ⚠️ **documented characterization bridge — the one remaining copy.** It folds in a **different operation order** (NFD → strip → lowercase, vs the shared lower → NFD → strip), and lives in a *different repo* + a *published* artifact. Converging it requires: (1) a characterization test over metadata's keyword corpus proving the op-order swap is output-neutral there; (2) a `ttr-metadata → org.tatrman:text` dependency; (3) a `ttr-metadata` republish. Tracked as the T4 follow-up — not swapped blind (behavior + cross-repo + release risk). |
 

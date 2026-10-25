@@ -6,7 +6,7 @@ cs + en lexicon units. Three consumers read this one copy, so the three read the
 
 | Consumer | Reads | Since |
 |---|---|---|
-| veles | `model/`: the registry carries the cn tier, and the wire survives it | CN-P4 S4.2 |
+| metadata | `model/`: the registry carries the cn tier, and the wire survives it | CN-P4 S4.2 |
 | lex-matcher | `model/`, compiled at test time and held to `expected/lexicon.json`: the v6 concept rows load as declared vocabulary (`CnArchiveLoadTest`, and the gating `CnConformanceTest`) | CN-P4 S4.3 |
 | resolver | `model/`, compiled at test time the same way: concepts bind and gate as their landing, lifts, the §1.5 resolution order (`CnResolutionTest`, `CnArchiveRegistryTest`) | CN-P4 S4.4 |
 

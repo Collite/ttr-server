@@ -52,7 +52,7 @@ class ApplicationReadersSpec :
                         password = "automation"
                     }
                     automation.door.queryUrl = "127.0.0.1:1"
-                    automation.door.velesUrl = "127.0.0.1:1"
+                    automation.door.metadataUrl = "127.0.0.1:1"
                     automation.auth.jwksUrl = "${realm.jwksUrl}"
                     automation.auth.issuer = "${TestRealm.ISSUER}"
                     automation.auth.audience = "${TestRealm.AUDIENCE}"

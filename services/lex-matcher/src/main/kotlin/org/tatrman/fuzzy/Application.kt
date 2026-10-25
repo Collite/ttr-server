@@ -55,7 +55,7 @@ fun main() {
 }
 
 /**
- * Runs a read plan — a member vocabulary's `read_sql` from Veles, or a composed alias-table
+ * Runs a read plan — a member vocabulary's `read_sql` from Metadata, or a composed alias-table
  * `SELECT pk, alias` — and returns its rows. Used by the `metadata` loader, which builds each
  * candidate once from them; relies on the Exposed connection opened by [DatabaseFactory.connect].
  * Column order is `(key, value)`.
@@ -125,11 +125,11 @@ fun Application.module(serverConfig: KtorServerConfig) {
 
     // Loader source selection.
     //   static   (default): read the in-repo JSON catalog — no DB, local/CI-friendly.
-    //   metadata          : ask Veles for the member vocabularies (one per indexed
+    //   metadata          : ask Metadata for the member vocabularies (one per indexed
     //                       attribute, each with its read plan rendered for this
     //                       warehouse's dialect), run the plans against the
     //                       warehouse, populate the catalog. Opens a DB pool + a
-    //                       Veles gRPC channel, both owned here and torn down in
+    //                       Metadata gRPC channel, both owned here and torn down in
     //                       ApplicationStopping.
     val metadataChannel: io.grpc.ManagedChannel? =
         if (config.loaderSource.source == "metadata") {
@@ -151,7 +151,7 @@ fun Application.module(serverConfig: KtorServerConfig) {
                     )
             DatabaseFactory.connect(database)
             log.info(
-                "Loader source: metadata — veles at {}:{} sourceNamespace='{}' (member vocabularies, {} read plans)",
+                "Loader source: metadata — metadata at {}:{} sourceNamespace='{}' (member vocabularies, {} read plans)",
                 config.metadata.host,
                 config.metadata.port,
                 config.metadata.namespace,
