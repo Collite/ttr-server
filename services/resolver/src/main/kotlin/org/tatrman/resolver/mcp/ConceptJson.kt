@@ -78,9 +78,16 @@ internal object ConceptJson {
     ): JsonObject =
         buildJsonObject {
             put("snapshotHash", snapshotHash)
-            put("refused", r.plan == null || refused(r.diagnostics))
+            put("refused", (r.plan == null && r.erSql.isEmpty()) || refused(r.diagnostics))
+            // CN-P6 ⚑S62-1 (A-CN-101): md first; a statement md carries no single read of is read on E-R — SQL over
+            // entities, every placeholder bound, which the query door runs as it is (`source_schema: er`)
+            when {
+                r.plan != null -> put("lane", "md")
+                r.erSql.isNotEmpty() -> put("lane", "er")
+            }
             r.plan?.let { put("plan", proto(it)) }
             if (r.dotPath.isNotEmpty()) put("dotPath", r.dotPath)
+            if (r.erSql.isNotEmpty()) put("erSql", r.erSql)
             put("provenance", provenance(r.provenance))
             put("diagnostics", diagnostics(r.diagnostics))
         }
