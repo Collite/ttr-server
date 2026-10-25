@@ -21,8 +21,9 @@ describe('webhook lifecycle', () => {
   });
   it('checks the remote registry rather than trusting stale local state', async () => {
     const h = hooks(() => ({ webhooks: [] }));
-    h.state.webhookId = 'gone';
+    h.state.webhookId = 'gone'; h.state.secret = 'secret';
     expect(await trigger.webhookMethods.default.checkExists.call(h.context)).toBe(false);
+    expect(h.request).toHaveBeenCalledWith('tatrmanAutomationApi', expect.objectContaining({ url: 'https://fake.test/automation/webhooks' }));
   });
 });
 function incoming(body: string, signature?: string, kinds = ['signal']) {
@@ -58,25 +59,19 @@ describe('event signature and delivery', () => {
     expect(result.workflowData).toBeUndefined();
     expect(h.request).not.toHaveBeenCalled();
   });
-  it('expands run_closed into route rows', async () => {
-    const raw = JSON.stringify({ kind: 'run_closed', deployment: params.deployment, runId: 'r1', payload: {} });
-    const h = incoming(raw, sign(raw), ['route_rows']);
-    const result = await trigger.webhook.call(h.context);
-    expect(result.workflowData?.[0].map(x => x.json.key)).toEqual([4711, 4712]);
-  });
   it('ignores an authenticated event for another deployment', async () => {
     const raw = JSON.stringify({ kind: 'signal', deployment: 'other', payload: {} });
     const h = incoming(raw, sign(raw));
-    expect((await trigger.webhook.call(h.context)).workflowData?.[0] ?? []).toEqual([]);
+    expect((await trigger.webhook.call(h.context)).workflowData).toBeUndefined();
   });
 });
 describe('polling fallback', () => {
-  it('lists runs by deployment and since, deduplicates, and expands closed route rows', async () => {
+  it('lists closed runs by deployment and since, then deduplicates', async () => {
     const h = harness({}, options => options.url.endsWith('/runs') ? { runs: [{ runId: 'r1', status: 'closed', createdAt: '2026-10-23T01:00:00Z', closedAt: '2026-10-23T02:00:00Z' }] } : { rows: [{ key: 4711 }], rowCount: 1 });
-    const p = { mode: 'poll', kinds: ['route_rows'], route: 'release', deployment: params.deployment, since: '2026-10-23T00:00:00Z' };
+    const p = { mode: 'poll', kinds: ['run_closed'], route: 'release', deployment: params.deployment, since: '2026-10-23T00:00:00Z' };
     const context = Object.assign(h.context, { getNodeParameter: (key: string, fallback?: unknown) => (p as Record<string, unknown>)[key] ?? fallback }) as unknown as IPollFunctions;
-    expect((await trigger.poll.call(context))?.[0][0].json.key).toBe(4711);
-    expect(h.request.mock.calls[0][1].qs).toMatchObject({ deployment: params.deployment, since: p.since });
+    expect((await trigger.poll.call(context))?.[0][0].json.runId).toBe('r1');
+    expect(h.request.mock.calls[0][1].qs).toMatchObject({ deployment: params.deployment, since: new Date(p.since).toISOString() });
     expect(await trigger.poll.call(context)).toBeNull();
   });
   it('does no polling work in webhook mode', async () => {
@@ -89,7 +84,7 @@ it('tracks an open run across creation-time cursor advancement until it closes',
   let tick = 0;
   const h = harness({}, options => {
     if (options.url.endsWith('/runs')) return ++tick === 1 ? { runs: [{ runId: 'r1', status: 'running', createdAt: '2026-10-23T01:00:00Z' }, { runId: 'r2', status: 'closed', createdAt: '2026-10-23T02:00:00Z' }] } : { runs: [] };
-    return { status: 'closed' };
+    return { status: 'closed', createdAt: '2026-10-23T01:00:00Z' };
   });
   const p = { mode: 'poll', kinds: ['run_closed'], deployment: params.deployment, since: '2026-10-23T00:00:00Z' };
   const context = Object.assign(h.context, { getNodeParameter: (key: string, fallback?: unknown) => (p as Record<string, unknown>)[key] ?? fallback }) as unknown as IPollFunctions;
@@ -97,21 +92,7 @@ it('tracks an open run across creation-time cursor advancement until it closes',
   expect((await trigger.poll.call(context))?.[0][0].json.runId).toBe('r1');
   expect(await trigger.poll.call(context)).toBeNull();
 });
-it('retains polling state after a failed route expansion so the next tick can retry', async () => {
-  const h = harness({}, options => {
-    if (options.url.endsWith('/runs')) return { runs: [{ runId: 'r1', status: 'closed' }] };
-    throw new Error('Unavailable');
-  });
-  const p = { mode: 'poll', kinds: ['route_rows'], route: 'release', deployment: params.deployment, since: '2026-10-23T00:00:00Z' };
-  const context = Object.assign(h.context, { getNodeParameter: (key: string, fallback?: unknown) => (p as Record<string, unknown>)[key] ?? fallback }) as unknown as IPollFunctions;
-  await expect(trigger.poll.call(context)).rejects.toThrow();
-  expect(h.state.pollSeen).toBeUndefined();
-  expect(h.state.pollSince).toBeUndefined();
-});
-it('maps route_rows to the wire run_closed subscription without duplicates', async () => {
-  const h = hooks(() => ({ id: 'hook-1' }));
-  const original = h.context.getNodeParameter;
-  h.context.getNodeParameter = ((name: string, fallback?: unknown) => name === 'kinds' ? ['route_rows', 'run_closed'] : original(name, fallback)) as IHookFunctions['getNodeParameter'];
-  await trigger.webhookMethods.default.create.call(h.context);
-  expect(h.request.mock.calls[0][1].body).toMatchObject({ kinds: ['run_closed'] });
+it('has no Route Rows option or expansion properties in P0', () => {
+  expect(JSON.stringify(trigger.description)).not.toContain('route_rows');
+  expect(trigger.description.properties.map(property => property.name)).not.toContain('route');
 });

@@ -1,6 +1,6 @@
-import { NodeApiError, NodeConnectionTypes, NodeOperationError } from 'n8n-workflow';
-import type { IDataObject, IExecuteFunctions, INodeExecutionData, INodeProperties, INodeType, INodeTypeDescription, JsonObject } from 'n8n-workflow';
-import { AutomationClient } from '../../src/client';
+import { NodeConnectionTypes, NodeOperationError } from 'n8n-workflow';
+import type { IDataObject, IExecuteFunctions, INodeExecutionData, INodeProperties, INodeType, INodeTypeDescription } from 'n8n-workflow';
+import { AutomationClient, rethrowDoorError } from '../../src/client';
 import { loadOptions } from '../../src/options';
 const operations = ['open', 'part', 'islands', 'evaluate', 'routes', 'perform', 'outcome', 'digests', 'close', 'answer', 'task'];
 const show = (...operation: string[]) => ({ show: { operation } });
@@ -43,6 +43,7 @@ export class TatrmanRun implements INodeType {
     for (let i = 0; i < this.getInputData().length; i++) {
       const value = (name: string, fallback: unknown = '') => this.getNodeParameter(name, i, fallback);
       const str = (name: string) => String(value(name));
+      const supplied = (name: string) => ![undefined, null, ''].includes(value(name) as undefined | null | string);
       const json = (name: string, kind?: 'array' | 'object'): unknown => {
         const raw = value(name);
         let parsed;
@@ -55,7 +56,7 @@ export class TatrmanRun implements INodeType {
       };
       try {
         const id = str('runId');
-        let result: IDataObject | IDataObject[];
+        let result: unknown;
         switch (str('operation')) {
           case 'open': {
             const body = { deployment: str('deployment'), port: json('port', 'object') as IDataObject, dryRun: Boolean(value('dryRun', false)), origin: 'engine' };
@@ -69,8 +70,9 @@ export class TatrmanRun implements INodeType {
           case 'routes': result = await client.routeRows(id, str('route')); break;
           case 'perform': {
             const body: IDataObject = {};
-            if (str('keys')) body.keys = json('keys', 'array') as IDataObject[];
-            if (str('group')) body.group = json('group') as IDataObject;
+            if (supplied('keys')) body.keys = json('keys', 'array') as IDataObject[];
+            if (Array.isArray(body.keys) && body.keys.length === 0) { result = { performed: [], skipped: [] }; break; }
+            if (supplied('group')) body.group = json('group') as IDataObject;
             if (str('callbackUrl')) body.callbackUrl = str('callbackUrl');
             result = await client.perform(id, str('action'), body); break;
           }
@@ -80,15 +82,20 @@ export class TatrmanRun implements INodeType {
           case 'answer': {
             const body: IDataObject = { answer: str('answer') };
             if (str('note')) body.note = str('note');
-            if (str('rows')) body.rows = json('rows', 'array') as IDataObject[];
+            if (supplied('rows')) body.rows = json('rows', 'array') as IDataObject[];
             result = await client.answer(str('taskId'), body); break;
           }
           case 'task': result = await client.task(str('taskId')); break;
           default: throw new NodeOperationError(this.getNode(), 'Unknown Tatrman Run operation', { itemIndex: i });
         }
-        for (const row of Array.isArray(result) ? result : [result]) output.push({ json: row ?? {}, pairedItem: { item: i } });
+        const object = (value: unknown): value is IDataObject => typeof value === 'object' && value !== null && [Object.prototype, null].includes(Object.getPrototypeOf(value));
+        for (const row of Array.isArray(result) ? result : [result]) {
+          output.push({ json: object(row) ? row : Array.isArray(result) ? { value: row as IDataObject } : {}, pairedItem: { item: i } });
+        }
       } catch (error) {
-        if (!this.continueOnFail()) throw new NodeApiError(this.getNode(), error as JsonObject, { itemIndex: i });
+        if (!this.continueOnFail()) {
+          rethrowDoorError(this.getNode(), error, i);
+        }
         const fault = error as Error & { context?: IDataObject };
         output.push({ json: { error: fault.message, code: fault.context?.code, detail: fault.context?.detail }, pairedItem: { item: i } });
       }

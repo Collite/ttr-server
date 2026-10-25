@@ -1,12 +1,11 @@
 import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
-import { NodeApiError, NodeConnectionTypes, NodeOperationError } from 'n8n-workflow';
-import type { IHookFunctions, INodeExecutionData, INodeType, INodeTypeDescription, IPollFunctions, IWebhookFunctions, IWebhookResponseData, JsonObject } from 'n8n-workflow';
-import { AutomationClient } from '../../src/client';
+import { NodeConnectionTypes, NodeOperationError } from 'n8n-workflow';
+import type { IHookFunctions, INodeExecutionData, INodeType, INodeTypeDescription, IPollFunctions, IWebhookFunctions, IWebhookResponseData } from 'n8n-workflow';
+import { AutomationClient, rethrowDoorError } from '../../src/client';
 import type { AutomationEvent } from '../../src/client';
 import { loadOptions } from '../../src/options';
 type EventContext = IWebhookFunctions | IPollFunctions;
 const requestedKinds = (context: IHookFunctions | EventContext) => context.getNodeParameter('kinds', []) as string[];
-const wireKinds = (kinds: string[]) => [...new Set(kinds.map(kind => kind === 'route_rows' ? 'run_closed' : kind))];
 const record = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value);
 function isEvent(value: unknown): value is AutomationEvent {
   return record(value) && typeof value.kind === 'string' && typeof value.deployment === 'string' && value.deployment.length > 0 && record(value.payload)
@@ -16,10 +15,6 @@ function isEvent(value: unknown): value is AutomationEvent {
 async function eventItems(context: EventContext, event: AutomationEvent): Promise<INodeExecutionData[]> {
   if (event.deployment !== context.getNodeParameter('deployment')) return [];
   const kinds = requestedKinds(context);
-  if (event.kind === 'run_closed' && kinds.includes('route_rows') && event.runId) {
-    const rows = await new AutomationClient(context).routeRows(event.runId, String(context.getNodeParameter('route')));
-    return rows.map(json => ({ json: { ...json, _tatrman: { runId: event.runId, deployment: event.deployment, route: context.getNodeParameter('route') as string } } }));
-  }
   return kinds.includes(event.kind) ? [{ json: event }] : [];
 }
 export class TatrmanTrigger implements INodeType {
@@ -32,11 +27,9 @@ export class TatrmanTrigger implements INodeType {
       { displayName: 'Mode', name: 'mode', type: 'options', noDataExpression: true, default: 'webhook', options: [{ name: 'Webhook', value: 'webhook' }, { name: 'Poll', value: 'poll' }] },
       { displayName: 'Deployment Name or ID', name: 'deployment', type: 'options', typeOptions: { loadOptionsMethod: 'getDeployments' }, default: '', required: true, description: 'Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>' },
       { displayName: 'Events', name: 'kinds', type: 'multiOptions', default: ['run_closed'], required: true, options: [
-        { name: 'Answer', value: 'answer' }, { name: 'Route Rows', value: 'route_rows' }, { name: 'Run Closed', value: 'run_closed' }, { name: 'Signal', value: 'signal' }, { name: 'Window Closed', value: 'window_closed' },
-      ], description: 'Events to receive. Poll mode supports Run Closed and Route Rows only.' },
-      { displayName: 'Recipe Name or ID', name: 'recipe', type: 'options', typeOptions: { loadOptionsMethod: 'getRecipes' }, default: '', required: true, displayOptions: { show: { kinds: ['route_rows'] } }, description: 'Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>' },
-      { displayName: 'Route Name or ID', name: 'route', type: 'options', typeOptions: { loadOptionsMethod: 'getRoutes', loadOptionsDependsOn: ['recipe'] }, default: '', required: true, displayOptions: { show: { kinds: ['route_rows'] } }, description: 'Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>' },
-      { displayName: 'Since', name: 'since', type: 'dateTime', default: '', displayOptions: { show: { mode: ['poll'] } }, description: 'Optional creation-time lower bound for the first poll. Defaults to activation time.' },
+        { name: 'Answer', value: 'answer' }, { name: 'Run Closed', value: 'run_closed' }, { name: 'Signal', value: 'signal' }, { name: 'Window Closed', value: 'window_closed' },
+      ], description: 'Events to receive. Poll mode supports Run Closed only.' },
+      { displayName: 'Since', name: 'since', type: 'dateTime', default: '', displayOptions: { show: { mode: ['poll'] } }, description: 'Optional creation-time lower bound for the first poll. Defaults to the first poll.' },
     ],
   };
   methods = { loadOptions };
@@ -49,14 +42,11 @@ export class TatrmanTrigger implements INodeType {
     },
     async create(this: IHookFunctions) {
       const state = this.getWorkflowStaticData('node');
-      if (this.getNodeParameter('mode') === 'poll') {
-        state.pollSince = String(this.getNodeParameter('since', '') || new Date().toISOString());
-        return true;
-      }
+      if (this.getNodeParameter('mode') === 'poll') return true;
       const url = this.getNodeWebhookUrl('default');
       if (!url) throw new NodeOperationError(this.getNode(), 'No n8n webhook URL is available');
       state.secret = randomBytes(32).toString('hex');
-      const hook = await new AutomationClient(this).createWebhook({ deployment: String(this.getNodeParameter('deployment')), url, secret: state.secret, kinds: wireKinds(requestedKinds(this)) });
+      const hook = await new AutomationClient(this).createWebhook({ deployment: String(this.getNodeParameter('deployment')), url, secret: state.secret, kinds: [...new Set(requestedKinds(this))] });
       state.webhookId = hook.id;
       return true;
     },
@@ -64,9 +54,9 @@ export class TatrmanTrigger implements INodeType {
       const state = this.getWorkflowStaticData('node');
       if (state.webhookId) {
         try { await new AutomationClient(this).deleteWebhook(String(state.webhookId)); }
-        catch (error) { if ((error as { httpCode?: string }).httpCode !== '404') throw new NodeApiError(this.getNode(), error as JsonObject); }
+        catch (error) { if ((error as { httpCode?: string }).httpCode !== '404') rethrowDoorError(this.getNode(), error); }
       }
-      for (const key of ['webhookId', 'secret', 'pollSince', 'pollSeen', 'pollPending']) delete state[key];
+      for (const key of ['webhookId', 'secret']) delete state[key];
       return true;
     },
   } };
@@ -92,39 +82,65 @@ export class TatrmanTrigger implements INodeType {
       this.getResponseObject().status(400).json({ error: 'Invalid event envelope' });
       return { noWebhookResponse: true };
     }
-    return { workflowData: [await eventItems(this, event)] };
+    const items = await eventItems(this, event);
+    return items.length ? { workflowData: [items] } : {};
   }
   async poll(this: IPollFunctions): Promise<INodeExecutionData[][] | null> {
     if (this.getNodeParameter('mode') !== 'poll') return null;
-    if (requestedKinds(this).some(kind => !['run_closed', 'route_rows'].includes(kind))) {
-      throw new NodeOperationError(this.getNode(), 'Poll mode supports Run Closed and Route Rows; other events require a webhook');
+    if (requestedKinds(this).some(kind => kind !== 'run_closed')) {
+      throw new NodeOperationError(this.getNode(), 'Poll mode supports Run Closed; other events require a webhook');
     }
     const state = this.getWorkflowStaticData('node');
-    const since = String(state.pollSince ?? (this.getNodeParameter('since', '') || new Date().toISOString()));
-    const client = new AutomationClient(this);
     const deployment = String(this.getNodeParameter('deployment'));
+    const configured = String(this.getNodeParameter('since', '') || '');
+    const date = (value: string) => {
+      const parsed = Date.parse(value);
+      if (!Number.isFinite(parsed)) throw new NodeOperationError(this.getNode(), 'Invalid polling timestamp');
+      return parsed;
+    };
+    const fingerprint = JSON.stringify([deployment, configured ? new Date(date(configured)).toISOString() : '']);
+    const same = state.pollFingerprint === fingerprint;
+    const start = same ? date(String(state.pollStart)) : configured ? date(configured) : Date.now();
+    let cursor = same ? date(String(state.pollSince)) : start;
+    const overlap = 5 * 60_000; // Creation can precede commit: re-read a bounded overlap and deduplicate.
+    const since = new Date(Math.max(start, cursor - overlap)).toISOString();
+    const seen = { ...((same ? state.pollSeen : {}) as Record<string, string>) };
+    const pending = { ...((same ? state.pollPending : {}) as Record<string, string>) };
+    const client = new AutomationClient(this);
     const response = await client.runs({ deployment, since });
     if (response.truncated) throw new NodeOperationError(this.getNode(), 'Run list is truncated; narrow the Since date or use webhook mode');
-    const seen = new Set((state.pollSeen ?? []) as string[]);
-    const pending = new Set((state.pollPending ?? []) as string[]);
     const listed = new Map(response.runs.map(run => [String(run.runId ?? run.id), run]));
-    // Runs opened on previous ticks may close after the creation-time cursor has advanced.
-    for (const id of pending) if (!listed.has(id)) listed.set(id, { ...(await client.run(id)), runId: id });
-    const output: INodeExecutionData[] = [];
-    let cursor = since;
-    for (const [id, run] of listed) {
-      if (id === 'undefined') throw new NodeOperationError(this.getNode(), 'Run list entry has no ID');
-      if (String(run.createdAt ?? '') > cursor) cursor = String(run.createdAt);
-      if (run.status === 'closed' && !seen.has(id)) {
-        output.push(...await eventItems(this, { kind: 'run_closed', deployment, runId: id, payload: run }));
-        seen.add(id); pending.delete(id);
-      } else if (['failed', 'abandoned'].includes(String(run.status))) pending.delete(id);
-      else if (run.status !== 'closed') pending.add(id);
+    for (const [id, createdAt] of Object.entries(pending)) {
+      if (listed.has(id)) continue;
+      try { listed.set(id, { ...(await client.run(id)), runId: id, createdAt }); }
+      catch (error) {
+        if (['403', '404'].includes(String((error as { httpCode?: string }).httpCode))) {
+          delete pending[id];
+          this.logger.warn(`Dropping unreadable polled run ${id}`);
+        } else rethrowDoorError(this.getNode(), error);
+      }
     }
-    if (seen.size + pending.size > 10_000) throw new NodeOperationError(this.getNode(), 'Polling state exceeded 10000 runs; use webhook mode for this deployment');
-    // Commit only after every fetch/expansion succeeds, so failures can be retried.
-    state.pollSince = cursor;
-    state.pollSeen = [...seen]; state.pollPending = [...pending];
+    const output: INodeExecutionData[] = [];
+    for (const [id, run] of listed) {
+      if (!id || id === 'undefined') throw new NodeOperationError(this.getNode(), 'Run list entry has no ID');
+      const createdAt = new Date(date(String(run.createdAt))).toISOString();
+      cursor = Math.max(cursor, date(createdAt));
+      if (run.status === 'closed') {
+        if (!seen[id]) output.push(...await eventItems(this, { kind: 'run_closed', deployment, runId: id, payload: run }));
+        seen[id] = createdAt;
+        delete pending[id];
+      } else if (['failed', 'abandoned'].includes(String(run.status))) {
+        delete pending[id];
+        this.logger.warn(`Dropping terminal polled run ${id}: ${String(run.status)}`);
+      } else pending[id] = createdAt;
+    }
+    for (const [id, createdAt] of Object.entries(seen)) if (date(createdAt) < cursor - overlap) delete seen[id];
+    // Commit only after all reads succeed. Deactivation never owns or resets this state.
+    state.pollFingerprint = fingerprint;
+    state.pollStart = new Date(start).toISOString();
+    state.pollSince = new Date(cursor).toISOString();
+    state.pollSeen = seen;
+    state.pollPending = pending;
     return output.length ? [output] : null;
   }
 }

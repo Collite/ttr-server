@@ -433,17 +433,13 @@ exports[`n8n descriptions > defines a valid Trigger description and stable param
     "default": [
       "run_closed",
     ],
-    "description": "Events to receive. Poll mode supports Run Closed and Route Rows only.",
+    "description": "Events to receive. Poll mode supports Run Closed only.",
     "displayName": "Events",
     "name": "kinds",
     "options": [
       {
         "name": "Answer",
         "value": "answer",
-      },
-      {
-        "name": "Route Rows",
-        "value": "route_rows",
       },
       {
         "name": "Run Closed",
@@ -463,46 +459,7 @@ exports[`n8n descriptions > defines a valid Trigger description and stable param
   },
   {
     "default": "",
-    "description": "Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>",
-    "displayName": "Recipe Name or ID",
-    "displayOptions": {
-      "show": {
-        "kinds": [
-          "route_rows",
-        ],
-      },
-    },
-    "name": "recipe",
-    "required": true,
-    "type": "options",
-    "typeOptions": {
-      "loadOptionsMethod": "getRecipes",
-    },
-  },
-  {
-    "default": "",
-    "description": "Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>",
-    "displayName": "Route Name or ID",
-    "displayOptions": {
-      "show": {
-        "kinds": [
-          "route_rows",
-        ],
-      },
-    },
-    "name": "route",
-    "required": true,
-    "type": "options",
-    "typeOptions": {
-      "loadOptionsDependsOn": [
-        "recipe",
-      ],
-      "loadOptionsMethod": "getRoutes",
-    },
-  },
-  {
-    "default": "",
-    "description": "Optional creation-time lower bound for the first poll. Defaults to activation time.",
+    "description": "Optional creation-time lower bound for the first poll. Defaults to the first poll.",
     "displayName": "Since",
     "displayOptions": {
       "show": {

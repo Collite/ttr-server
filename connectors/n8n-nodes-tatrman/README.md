@@ -28,16 +28,20 @@ just build-n8n-image n8n-tatrman:2.44.6-0.1.0
 just test-n8n-image n8n-tatrman:2.44.6-0.1.0
 ```
 
-The image is Linux/amd64, based on the official `n8nio/n8n:2.44.6` Docker Hub image.
-The existing Docker Hub source is retained: the equivalent `docker.n8n.io` endpoint returned HTTP 429
-during the 2026-10-25 image proof. Both approved official source names are accepted by the release guard. Its build context is the unpacked
-package tarball; it copies `package.json`, `README.md` and `dist/` into
-`/opt/tatrman-nodes/node_modules/@collite/n8n-nodes-tatrman`, sets
-`N8N_CUSTOM_EXTENSIONS=/opt/tatrman-nodes`, and resolves the runtime's own SDK via `NODE_PATH`.
-It runs as the upstream `node` user and needs no npm credential in any layer. n8n's custom-directory
-loader registers the nodes as `CUSTOM.tatrmanRun` and `CUSTOM.tatrmanTrigger`; the credential is
-`tatrmanAutomationApi`. Package metadata retains the scoped package name. The olymp image switch and
-live Server/hartland certification remain pending.
+The image is Linux/amd64, based on the approved `ghcr.io/collite/n8n` mirror. The Dockerfile is the
+single source of the n8n version; release metadata and test recipes read it. The mirror preserves the
+upstream multi-platform digest. The dedicated manual mirror job in `release-image.yml` uses Kantheon's
+workflow token to create the package and establish repository Actions access; PR and release jobs log
+in to GHCR before pulling it. The connector image remains `ghcr.io/collite/n8n-tatrman:<runtime>-<package>`.
+
+The build context is the unpacked package tarball. Package metadata and compiled files live in
+`/opt/tatrman-nodes/node_modules/@collite/n8n-nodes-tatrman`, outside the persistent `.n8n` volume.
+An unprivileged entrypoint creates only a symlink under n8n's scanned
+`.n8n/nodes/node_modules/@collite` directory, then delegates to the upstream entrypoint. It refuses
+to overwrite an existing physical npm installation. n8n's package loader therefore uses the same
+`@collite/n8n-nodes-tatrman.tatrmanRun` and `@collite/n8n-nodes-tatrman.tatrmanTrigger` IDs as npm.
+No npm credential is baked into a layer. `N8N_CUSTOM_EXTENSIONS` must not point at this package.
+The olymp image switch and live Server/hartland certification remain pending.
 
 ## Credentials
 
@@ -47,7 +51,7 @@ Create **Tatrman Automation API** with:
 - **Token**: a deployment/service bearer for automation, or the answerer's personal bearer for task answers.
 - **Iris BFF URL**: reserved for P1's Golem Question.
 
-The credential test calls `GET /automation/health`. n8n applies bearer authentication to every service request.
+The credential test calls the authenticated descriptor `GET /automation/`. n8n applies bearer authentication to every service request.
 Door grants, approvals, dry-run restrictions and row-level security apply under this identity.
 
 ## Tatrman Run
@@ -75,43 +79,44 @@ optional `detail`. Keys/Rows/Outcomes must be arrays, and Port must be an object
 
 Items retain their n8n input pairing. Enable n8n's Continue On Fail to receive `{ error, code, detail }` per failed
 item. Otherwise a NodeApiError includes the Server's code; fingerprint `differs` survives in its description
-and context. Async Open/Evaluate follow a same-origin `/automation/` Location, honoring Retry-After (seconds or
-HTTP date) with a 15-second minimum interval within a 30-second total budget. Both `open` and `running` progress
-remain pending. A budget error does not cancel the server run; inspect its progress at the returned Location.
-The client never repeats the mutation or restarts a refusal.
+and context. Each HTTP attempt allows 90 seconds, exceeding the Server's default 60-second synchronous budget.
+Only Evaluate polls after a 202, with a separate 30-second polling budget and a 15-second Retry-After
+floor. Poll errors retain the run ID and Location; a timed-out evaluation may still be running, and
+retrying Evaluate with that run ID joins the existing evaluation.
+
+Always set an Idempotency Key on Open. An Open 202 is returned immediately as a replay handle;
+continue to Evaluate. If the original session is still registering, Evaluate can briefly return
+RUN_ABANDONED: retry Evaluate with the same run ID. A lost Open response without an idempotency key
+may have created a run; repeating Open can create another. Server Locations beginning `/automation/`
+are rebased beneath a Base URL path prefix; other origins and paths remain refused.
+
+Omitted Keys means unrestricted candidates. An explicit `[]` means perform nothing: the connector
+emits `{ performed: [], skipped: [] }` without calling the Server. Empty Rows on Answer is preserved.
+Read Routes before Close; the connector omits `limit`, accepting the Server's configured page size.
 
 ## Tatrman Trigger
 
-Choose Deployment and Events: Signal, Answer, Window Closed, Run Closed, or Route Rows.
+Choose Deployment and Events: Signal, Answer, Window Closed, or Run Closed. Route Rows is removed
+from P0 because the current Server releases route sessions on close; restoration is tracked in
+[kantheon#257](https://github.com/Collite/kantheon/issues/257). Use Run → Routes before Close instead.
+A run-closed notification can open a fresh follow-up run for action work; never mutate the sealed source.
 
-**Webhook** registers the node's URL and a generated secret on activation. The service must support:
+Webhook activation registers `{ deployment, url, secret, kinds }` via `POST /automation/webhooks`.
+GET `/automation/webhooks` must return `{ webhooks: [{id,...}] }`; DELETE `/automation/webhooks/{id}`
+unregisters it on deactivation (already-gone 404 is accepted). GET/DELETE and exact HMAC/event shapes
+remain proposed Server P3 contracts. The receiver checks hex HMAC-SHA256 (`X-Tatrman-Signature`, optional
+`sha256=` prefix) over raw JSON bytes; bad signatures return 401 and malformed envelopes return 400.
+Filtered events produce no execution. Signature freshness/timestamp binding remains a Server handoff
+follow-up; current signatures alone do not prevent replay of a captured event.
 
-```text
-POST   /automation/webhooks   { deployment, url, secret, kinds } -> { id }
-GET    /automation/webhooks   -> { webhooks: [{ id, ... }] }
-DELETE /automation/webhooks/{id}
-```
-
-GET/DELETE remain a dependency of Server P3. The receiver requires `X-Tatrman-Signature` as a hex HMAC-SHA256
-(optional `sha256=` prefix) over the exact raw body bytes. Invalid signatures return 401 before any workflow data
-is emitted. Deactivation unregisters the webhook. The public URL must be reachable from the automation service.
-
-Events emit `{ kind, deployment, runId?, taskId?, payload }`. Route Rows subscribes to Run Closed, fetches the
-selected route's rows, and emits each row with `_tatrman: { runId, deployment, route }`. If Route Rows and Run Closed
-are both selected, row expansion takes precedence for Run Closed events.
-
-Run Closed describes a completed source run. For new action work, open and evaluate a **separate** run, perform
-or report its outcomes, then close that new run. Close seals the source protocol; new actions on a sealed run
-are not an established Server guarantee. The planned H-1 certification sequence awaits P3 lifecycle confirmation.
-
-**Poll** supports Run Closed and Route Rows. Signal, Answer and Window Closed require webhook mode because the
-runs list is not an event log. Use n8n's Poll Times to set the interval and optional Since for the first tick.
-Polling calls `GET /automation/runs?deployment&since`; it expects `{ runs: [{ runId (or id), status, createdAt }],
-truncated? }` in ascending or arbitrary order. The Server must interpret `since` inclusively by creation time.
-Open runs remain tracked through `GET /automation/runs/{id}` until closed. Equal timestamps are deduplicated;
-truncated lists and excessive state fail explicitly. Polling stores at most 10,000 run IDs; use webhooks for
-long-running/high-volume deployments. Server list filtering/timestamps are pending P3 contract confirmation.
-As with n8n polling triggers generally, workflow retries can redeliver items; keep downstream actions idempotent.
+Poll supports Run Closed only. Since defaults to the first poll. The proposed list endpoint is
+`GET /automation/runs?deployment&since` → `{ runs: [{ runId (or id), status, createdAt }], truncated? }`.
+Timestamps are compared numerically; the cursor is canonical ISO. A five-minute creation-time overlap
+catches bounded late commits, with seen IDs pruned to that window. Pending runs are tracked separately;
+403/404 and terminal runs are dropped and logged. Transport/5xx failures do not commit partial state;
+truncated lists fail explicitly. Poll state survives re-publication and resets only when deployment or
+configured Since changes. Server P3 still needs to confirm durable terminal reads, inclusive time filtering,
+creation-versus-commit ordering and the maximum late-commit delay. These client tests do not certify that API.
 
 ## Development and checks
 
@@ -126,23 +131,22 @@ just lint-n8n
 just test-n8n-runtime
 just build-n8n-image
 just test-n8n-image
+just test-n8n-install-parity
 ```
 
-Vitest uses fake service responses and checked-in Server descriptor/manifest fixtures. Recorded H-1 P3 run fixtures
-and hartland certification are pending. `scripts/smoke.cjs` is the small loader/context-adapter check.
-`scripts/workflow-smoke.cjs` runs two complete workflows in a fresh n8n database inside the pinned container,
-with outbound networking disabled. It imports a credential and workflows, publishes them, checks persisted signing
-state, sends actual HTTP webhook requests, rejects invalid HMACs with 401, follows two route pages, opens/evaluates
-fresh action runs, performs/reports outcomes/closes them, checks successful persisted executions, and deactivates
-both workflows through the authenticated local n8n API, asserting remote webhook deletion. One branch uses
-Run(routes); the other expands route_rows in the Trigger. Expressions traverse the actual paired item chain.
-The fake refuses action writes to the closed source run. All state is temporary and removed after the check.
-`test-n8n-image` additionally checks the actual built package manifest, compiled entry points, runtime/SDK
-pairing, unprivileged user and loader contents, then runs the same persisted-workflow proof against that
-image. Both checks use a fresh `.n8n` tmpfs and mount only the harness scripts, never the node distribution.
-This proves n8n runtime mechanics; it does not certify Server P3 or its event lifecycle. See the shared
-[P3 handoff](https://github.com/Collite/project/blob/master/kantheon/features/automation-agents/implementation/n8n-nodes/server-p3-handoff.md)
-in the planning workspace for unconfirmed API shapes and the sealed-run lifecycle question.
+Vitest uses fake service responses constrained by the checked Server source: route limits/defaults,
+closed-session refusal, request budgets and idempotent replay handles. Recorded H-1 P3 fixtures and
+hartland certification remain pending. The old adapter-only smoke script was removed.
+
+`test-n8n-image` checks the actual package manifest, compiled entry points, runtime/SDK pairing,
+unprivileged user and scoped package loader with a fresh `.n8n` mount. Its persisted workflow proof
+exercises authenticated credential testing (including a bad token), scoped workflow IDs, a 450-row
+route in server-default 200/200/50 pages, HMAC delivery, filtered-event suppression, expressions,
+perform/outcome/close, closed-route refusal, persisted success and webhook deactivation. A separate
+real poll-mode workflow is edited, saved and re-published while active: deduplication and pending-run
+state must survive. Only the Automation service is fake; outbound networking is disabled and only
+harness scripts are mounted. `test-n8n-install-parity` installs the tarball with npm in a fresh runtime
+and runs the same scoped workflow JSON. This proves installation/runtime mechanics, not Server P3.
 
 `scan` runs the official `@n8n/scan-community-package` rules on source and shipped JS, including `src/` (the public
 scanner's default source glob omits it). Two **package-metadata-only** exceptions are explicit in `scripts/scan.mjs`:
@@ -164,7 +168,7 @@ checks that the tag equals the package version, derives the image tag from the D
 plus that version, and runs the package/image proofs. The publishing job rebuilds from the checked
 package artifact and repeats the actual-image proof before pushing that exact local image as
 `ghcr.io/collite/n8n-tatrman:2.44.6-0.1.0`; it then publishes the private scoped npm package to GitHub
-Packages. Both writes use the job's `GITHUB_TOKEN` with `packages: write`. No public registry release
+Packages. Both writes use the job's `GITHUB_TOKEN` with `packages: write`; base pulls authenticate before builds. No public registry release
 is required. The generic `release-image.yml` excludes these tags to avoid a competing publisher.
 Local build/test recipes do not cut tags or publish.
 

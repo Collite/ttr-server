@@ -1,5 +1,5 @@
 import { NodeApiError, NodeOperationError, sleep } from 'n8n-workflow';
-import type { IDataObject, IExecuteFunctions, IHookFunctions, IHttpRequestOptions, ILoadOptionsFunctions, IPollFunctions, IWebhookFunctions, JsonObject } from 'n8n-workflow';
+import type { IDataObject, IExecuteFunctions, IHookFunctions, IHttpRequestOptions, ILoadOptionsFunctions, IPollFunctions, IWebhookFunctions, INode, JsonObject } from 'n8n-workflow';
 
 type Context = IExecuteFunctions | ILoadOptionsFunctions | IHookFunctions | IWebhookFunctions | IPollFunctions;
 export interface Page extends IDataObject { rows: IDataObject[]; rowCount: number; truncated?: boolean }
@@ -7,6 +7,9 @@ export interface OpenInput extends IDataObject { deployment: string; port: IData
 export interface OpenResult extends IDataObject { runId: string; replayed?: boolean; status?: string }
 export interface Descriptor extends IDataObject { deployments: IDataObject[]; recipes: IDataObject[]; programs: IDataObject[] }
 export interface AutomationEvent extends IDataObject { kind: string; deployment: string; runId?: string; taskId?: string; payload: IDataObject }
+// Server budgets.syncDefault is 60 s; allow transport/headroom before a 202 starts polling.
+const HTTP_TIMEOUT_MS = 90_000;
+const POLLING_BUDGET_MS = 30_000;
 const enc = encodeURIComponent;
 function pollingDelay(headers: Record<string, unknown> | undefined): number {
   const raw = headers?.['retry-after'] ?? headers?.['Retry-After'];
@@ -15,15 +18,24 @@ function pollingDelay(headers: Record<string, unknown> | undefined): number {
   return Math.max(15_000, Number.isFinite(delay) ? delay : 15_000);
 }
 
+/** Preserve typed n8n errors (including item context); wrap only untyped failures. */
+export function rethrowDoorError(node: INode, error: unknown, itemIndex?: number): never {
+  if (error instanceof NodeApiError || error instanceof NodeOperationError) {
+    if (itemIndex !== undefined) error.context.itemIndex = itemIndex;
+    throw error;
+  }
+  throw new NodeApiError(node, error as JsonObject, { itemIndex });
+}
+
 /** Client of the governed door; n8n owns authentication and credential storage. */
 export class AutomationClient {
   constructor(private readonly context: Context) {}
 
-  async request<T = IDataObject>(method: IHttpRequestOptions['method'], path: string, body?: IDataObject, qs?: IDataObject, awaitCompletion = false): Promise<T> {
+  async request<T = IDataObject>(method: IHttpRequestOptions['method'], path: string, body?: IDataObject, qs?: IDataObject, awaitCompletion = false, flight: { runId?: string; opening?: boolean; idempotencyKey?: string } = {}): Promise<T> {
     const credentials = await this.context.getCredentials('tatrmanAutomationApi');
     const root = new URL(`${String(credentials.baseUrl).replace(/\/+$/, '')}/automation/`);
     let url = new URL(path.replace(/^\//, ''), root);
-    const deadline = Date.now() + 30_000;
+    let deadline = Infinity;
     let polling = false;
     let initial: IDataObject = {};
     for (let attempt = 0; attempt <= 6; attempt++) {
@@ -33,11 +45,17 @@ export class AutomationClient {
           method: polling ? 'GET' : method, url: url.toString(), json: true,
           ...(polling ? {} : { ...(body === undefined ? {} : { body }), ...(qs ? { qs } : {}) }),
           returnFullResponse: true, ignoreHttpStatusErrors: true, disableFollowRedirect: true,
-          timeout: Math.max(1, deadline - Date.now()),
+          timeout: polling ? Math.max(1, Math.min(HTTP_TIMEOUT_MS, deadline - Date.now())) : HTTP_TIMEOUT_MS,
         });
       } catch {
         // Do not expose a helper error's request configuration, which may contain the bearer.
-        throw new NodeApiError(this.context.getNode(), {}, { message: 'Tatrman request failed', description: 'The automation door could not be reached' });
+        const description = flight.runId
+          ? `The evaluation for run ${flight.runId} continues on the server if accepted. Retry Evaluate with this run ID to join it.`
+          : flight.opening ? 'The run may already exist. Always set an Idempotency Key; retry Open only with the same key to avoid another run.'
+            : 'The automation door could not be reached';
+        const error = new NodeApiError(this.context.getNode(), {}, { message: 'Tatrman request failed', description });
+        error.context = { runId: flight.runId ?? initial.runId, location: url.toString() };
+        throw error;
       }
       const status = Number(response.statusCode);
       const value = response.body as IDataObject;
@@ -54,6 +72,10 @@ export class AutomationClient {
       if (status >= 300 && status < 400) {
         throw new NodeOperationError(this.context.getNode(), 'Unexpected redirect from the automation door');
       }
+      if (status === 202 && flight.opening) {
+        const location = response.headers?.location ?? response.headers?.Location ?? value?.location;
+        return { ...value, replayed: true, ...(location ? { location: this.location(String(location), root, url).toString() } : {}) } as T;
+      }
       const pending = awaitCompletion && (status === 202 || (polling && ['open', 'running'].includes(String(value?.status))));
       if (!pending) {
         if (polling && ['failed', 'abandoned'].includes(String(value?.status))) {
@@ -61,9 +83,9 @@ export class AutomationClient {
         }
         return (polling ? { ...initial, ...value } : value) as T;
       }
-      if (!polling) initial = value ?? {};
+      if (!polling) { initial = value ?? {}; deadline = Date.now() + POLLING_BUDGET_MS; }
       const location = response.headers?.location ?? response.headers?.Location ?? (typeof value?.location === 'string' ? value.location : undefined);
-      if (location) url = new URL(String(location), url);
+      if (location) url = this.location(String(location), root, url);
       else if (!polling) throw new NodeOperationError(this.context.getNode(), 'Async response has no Location');
       if (url.origin !== root.origin || !url.pathname.startsWith(root.pathname) || url.username || url.password) {
         throw new NodeOperationError(this.context.getNode(), 'Unsafe async Location from automation door');
@@ -73,17 +95,29 @@ export class AutomationClient {
       polling = true;
       await sleep(delay);
     }
-    throw new NodeOperationError(this.context.getNode(), 'Automation request exceeded its 30 second polling budget');
+    const error = new NodeOperationError(this.context.getNode(), 'Automation request exceeded its 30 second polling budget');
+    error.context = { runId: flight.runId ?? initial.runId, location: url.toString() };
+    throw error;
+  }
+
+  private location(location: string, root: URL, current: URL): URL {
+    // The server emits root-relative /automation Locations even behind a gateway prefix.
+    const target = location.startsWith('/automation/')
+      ? new URL(location.slice('/automation/'.length), root) : new URL(location, current);
+    if (target.origin !== root.origin || !target.pathname.startsWith(root.pathname) || target.username || target.password) {
+      throw new NodeOperationError(this.context.getNode(), 'Unsafe async Location from automation door');
+    }
+    return target;
   }
 
   descriptor() { return this.request<Descriptor>('GET', ''); }
   recipe(recipe: string) { return this.request('GET', `recipes/${enc(recipe)}`); }
-  open(recipe: string, input: OpenInput) { return this.request<OpenResult>('POST', `recipes/${enc(recipe)}/runs`, input, undefined, true); }
+  open(recipe: string, input: OpenInput) { return this.request<OpenResult>('POST', `recipes/${enc(recipe)}/runs`, input, undefined, false, { opening: true, idempotencyKey: input.idempotencyKey }); }
   part(id: string, name: string) { return this.request('POST', `runs/${enc(id)}/parts/${enc(name)}`); }
   island(id: string, name: string) { return this.request('POST', `runs/${enc(id)}/islands/${enc(name)}`); }
-  evaluate(id: string) { return this.request('POST', `runs/${enc(id)}/evaluate`, undefined, undefined, true); }
+  evaluate(id: string) { return this.request('POST', `runs/${enc(id)}/evaluate`, undefined, undefined, true, { runId: id }); }
   run(id: string) { return this.request('GET', `runs/${enc(id)}`); }
-  route(id: string, route: string, offset = 0, limit = 1000) { return this.request<Page>('GET', `runs/${enc(id)}/routes/${enc(route)}`, undefined, { offset, limit }); }
+  route(id: string, route: string, offset = 0) { return this.request<Page>('GET', `runs/${enc(id)}/routes/${enc(route)}`, undefined, { offset }); }
   async routeRows(id: string, route: string): Promise<IDataObject[]> {
     const rows: IDataObject[] = [];
     for (let page = 0; page < 10_000; page++) {
@@ -94,6 +128,7 @@ export class AutomationClient {
     }
     throw new NodeOperationError(this.context.getNode(), 'Route pagination exceeded its page budget');
   }
+  // Reserved client surface for P1; not currently exposed as Run operations.
   routeDetails(id: string, route: string, context: string, query: IDataObject = {}) { return this.request<Page>('GET', `runs/${enc(id)}/routes/${enc(route)}/details/${enc(context)}`, undefined, query); }
   output(id: string, output: string, query: IDataObject = {}) { return this.request('GET', `runs/${enc(id)}/outputs/${enc(output)}`, undefined, { ...query, format: 'json' }); }
   perform(id: string, action: string, input: IDataObject = {}) { return this.request('POST', `runs/${enc(id)}/actions/${enc(action)}/perform`, input); }

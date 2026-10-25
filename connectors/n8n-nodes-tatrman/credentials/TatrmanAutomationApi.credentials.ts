@@ -11,5 +11,5 @@ export class TatrmanAutomationApi implements ICredentialType {
     { displayName: 'Iris BFF URL', name: 'irisBffUrl', type: 'string', default: '', description: 'Optional Iris BFF URL for Golem Question (P1)' },
   ];
   authenticate: IAuthenticateGeneric = { type: 'generic', properties: { headers: { Authorization: '=Bearer {{$credentials.token}}' } } };
-  test: ICredentialTestRequest = { request: { baseURL: '={{$credentials.baseUrl}}', url: '/automation/health', method: 'GET' } };
+  test: ICredentialTestRequest = { request: { baseURL: '={{$credentials.baseUrl}}', url: '/automation/', method: 'GET' } };
 }

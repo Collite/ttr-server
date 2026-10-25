@@ -85,14 +85,14 @@ it('exhausts the async budget without retrying the mutation', async () => {
     expect(h.request.mock.calls.length).toBeLessThanOrEqual(7);
   } finally { vi.useRealTimers(); }
 });
-it('keeps the initial runId when asynchronous Open finishes', async () => {
+it('returns an accepted Open handle without waiting for evaluation', async () => {
   vi.useFakeTimers();
   try {
     let count = 0;
     const h = harness({}, () => ++count === 1 ? { statusCode: 202, headers: { location: '/automation/runs/r1' }, body: { runId: 'r1', status: 'running' } } : { status: 'closed', protocolRef: 'p1' });
     const result = new AutomationClient(h.context).open('release_order', { deployment: 'release_native_event', port: { key: 4711 } });
     await vi.runAllTimersAsync();
-    await expect(result).resolves.toMatchObject({ runId: 'r1', status: 'closed' });
+    await expect(result).resolves.toMatchObject({ runId: 'r1', status: 'running', replayed: true });
   } finally { vi.useRealTimers(); }
 });
 it('omits optional selectors rather than turning omitted keys into an empty selection', async () => {

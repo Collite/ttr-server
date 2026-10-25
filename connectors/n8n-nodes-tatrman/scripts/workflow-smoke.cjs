@@ -1,9 +1,10 @@
 // Run in the pinned n8n or derived image with --network none. Uses real n8n persistence and execution;
 // only the Automation service is fake. All data and credentials are temporary.
 const assert = require('node:assert/strict');
-const { spawn } = require('node:child_process');
+const { spawn, execFile } = require('node:child_process');
+const { promisify } = require('node:util');
 const { createHmac, randomUUID } = require('node:crypto');
-const { mkdtemp, writeFile, rm } = require('node:fs/promises');
+const { mkdtemp, mkdir, writeFile, rm } = require('node:fs/promises');
 const http = require('node:http');
 const { tmpdir } = require('node:os');
 const { join } = require('node:path');
@@ -11,17 +12,27 @@ const { setTimeout: delay } = require('node:timers/promises');
 
 async function main() {
   const directory = await mkdtemp(join(tmpdir(), 'tatrman-workflow-'));
+  const runtimeCommand = process.env.N8N_TEST_PACKAGE_ARCHIVE ? 'n8n' : '/opt/tatrman-entrypoint.sh';
+  if (process.env.N8N_TEST_PACKAGE_ARCHIVE) {
+    const installation = join(directory, '.n8n', 'nodes');
+    await mkdir(installation, { recursive: true });
+    await writeFile(join(installation, 'package.json'), JSON.stringify({ private: true }));
+    await promisify(execFile)('npm', ['install', '--prefix', installation, '--offline', '--ignore-scripts', '--legacy-peer-deps', '--no-audit', '--no-fund', process.env.N8N_TEST_PACKAGE_ARCHIVE]);
+  }
   const hooks = new Map();
   const calls = [];
   const failures = [];
   const runs = new Map([['source-run', { status: 'closed', keys: [4711, 4712] }]]);
   let freshRuns = 0;
+  let pollPhase = 0;
+  const keys = Array.from({ length: 450 }, (_, i) => i + 1);
+  const createdAt = '2026-10-23T01:00:00.000Z';
   let runtime;
   let runtimeLog = '';
   let env;
   const fake = http.createServer(async (req, res) => {
     try {
-      assert.equal(req.headers.authorization, 'Bearer local-workflow-token');
+      if (req.headers.authorization !== 'Bearer local-workflow-token') { res.writeHead(401); res.end(); return; }
       let raw = '';
       for await (const chunk of req) raw += chunk;
       const body = raw ? JSON.parse(raw) : undefined;
@@ -30,7 +41,11 @@ async function main() {
       const runId = url.pathname.split('/')[3];
       const run = runs.get(runId);
       let result;
-      if (url.pathname === '/automation/webhooks' && req.method === 'GET') result = { webhooks: [...hooks.keys()].map(id => ({ id })) };
+      if (url.pathname === '/automation/') result = { deployments: [], recipes: [], programs: [] };
+      else if (url.pathname === '/automation/runs') result = { runs: [{ runId: 'poll-closed', status: 'closed', createdAt }, ...(pollPhase ? [] : [{ runId: 'poll-pending', status: 'open', createdAt }])] };
+      else if (url.pathname === '/automation/runs/poll-pending') result = { runId: 'poll-pending', status: pollPhase ? 'closed' : 'open', createdAt };
+      else if (url.pathname.startsWith('/automation/tasks/polled-')) result = { id: url.pathname.split('/').pop() };
+      else if (url.pathname === '/automation/webhooks' && req.method === 'GET') result = { webhooks: [...hooks.keys()].map(id => ({ id })) };
       else if (url.pathname === '/automation/webhooks' && req.method === 'POST') {
         assert.equal(body.deployment, 'release_native_event');
         assert.deepEqual(body.kinds, ['run_closed']);
@@ -57,10 +72,14 @@ async function main() {
         result = { verdict: { routes: { release: { rowCount: run.keys.length } }, none: 0 }, guards: [] };
       } else if (url.pathname.endsWith('/routes/release') && run) {
         assert.equal(req.method, 'GET');
-        assert.ok(['evaluated', 'closed'].includes(run.status));
+        if (run.status === 'closed') { res.writeHead(503, { 'content-type': 'application/json' }); res.end(JSON.stringify({ error: { code: 'run-abandoned' } })); return; }
+        assert.equal(run.status, 'evaluated');
+        const limit = Number(url.searchParams.get('limit') ?? 200);
+        if (!(limit >= 1 && limit <= 200)) { res.writeHead(400); res.end(); return; }
+        assert.equal(url.searchParams.has('limit'), false, 'Use server default page size');
         const offset = Number(url.searchParams.get('offset'));
         assert.ok(offset >= 0 && offset < run.keys.length);
-        result = { rows: [{ key: run.keys[offset], verdict_reason: 'fixture' }], rowCount: run.keys.length, truncated: offset + 1 < run.keys.length };
+        result = { rows: run.keys.slice(offset, offset + limit).map(key => ({ key, verdict_reason: 'fixture' })), rowCount: run.keys.length, truncated: offset + limit < run.keys.length };
       } else if (url.pathname.endsWith('/actions/notify/perform') && run) {
         assert.equal(req.method, 'POST');
         assert.equal(run.status, 'evaluated', 'Never perform new work on the sealed source run');
@@ -70,7 +89,7 @@ async function main() {
         assert.equal(req.method, 'POST');
         assert.equal(run.status, 'evaluated');
         assert.deepEqual(body.outcomes, [{ key: body.outcomes[0].key, status: 'delivered', at: '2026-10-23T00:00:00Z' }]);
-        assert.ok([4711, 4712].includes(body.outcomes[0].key));
+        assert.ok(keys.includes(body.outcomes[0].key));
         result = {};
       } else if (url.pathname.endsWith('/close') && run) {
         assert.equal(req.method, 'POST');
@@ -91,14 +110,14 @@ async function main() {
   const n8nUrl = 'http://127.0.0.1:5678';
   env = {
     ...process.env, N8N_USER_FOLDER: directory, N8N_ENCRYPTION_KEY: 'ephemeral-local-workflow-key',
-    N8N_CUSTOM_EXTENSIONS: process.env.N8N_CUSTOM_EXTENSIONS ?? '/opt/tatrman', N8N_LISTEN_ADDRESS: '127.0.0.1', N8N_PORT: '5678',
+    N8N_LISTEN_ADDRESS: '127.0.0.1', N8N_PORT: '5678',
     N8N_WEBHOOK_URL: `${n8nUrl}/`, N8N_SECURE_COOKIE: 'false', N8N_DIAGNOSTICS_ENABLED: 'false',
     N8N_VERSION_NOTIFICATIONS_ENABLED: 'false', N8N_TEMPLATES_ENABLED: 'false', N8N_RUNNERS_MODE: 'external',
     N8N_RUNNERS_AUTH_TOKEN: 'ephemeral-runner-token-no-code-nodes-used',
     N8N_SSRF_ALLOWED_IP_RANGES: '127.0.0.0/8', EXECUTIONS_DATA_SAVE_ON_SUCCESS: 'all',
   };
   async function cli(...args) {
-    const child = spawn('n8n', args, { env, stdio: ['ignore', 'pipe', 'pipe'] });
+    const child = spawn(runtimeCommand, args, { env, stdio: ['ignore', 'pipe', 'pipe'] });
     let log = '';
     child.stdout.on('data', chunk => { log += chunk; });
     child.stderr.on('data', chunk => { log += chunk; });
@@ -107,8 +126,8 @@ async function main() {
     clearTimeout(watchdog);
     assert.equal(code, 0, `n8n ${args[0]} failed:\n${log}`);
   }
-  async function until(predicate, description) {
-    const deadline = Date.now() + 45_000;
+  async function until(predicate, description, timeout = 45_000) {
+    const deadline = Date.now() + timeout;
     while (Date.now() < deadline) {
       if (failures.length) throw failures[0];
       if (runtime?.exitCode !== null && runtime?.exitCode !== undefined) throw new Error(`n8n exited:\n${runtimeLog}`);
@@ -119,7 +138,7 @@ async function main() {
   }
   const credentials = { tatrmanAutomationApi: { id: 'local-automation', name: 'Local Automation' } };
   function node(name, parameters, trigger = false) {
-    return { id: randomUUID(), name, type: `CUSTOM.${trigger ? 'tatrmanTrigger' : 'tatrmanRun'}`, typeVersion: 1,
+    return { id: randomUUID(), name, type: `@collite/n8n-nodes-tatrman.${trigger ? 'tatrmanTrigger' : 'tatrmanRun'}`, typeVersion: 1,
       position: [0, 0], parameters, credentials, ...(trigger ? { webhookId: randomUUID() } : {}) };
   }
   const workflow = {
@@ -136,52 +155,49 @@ async function main() {
     ],
     connections: Object.fromEntries([['Trigger', 'Open'], ['Open', 'Evaluate'], ['Evaluate', 'Routes'], ['Routes', 'Perform'], ['Perform', 'Outcome'], ['Outcome', 'Close']].map(([source, target]) => [source, { main: [[{ node: target, type: 'main', index: 0 }]] }])),
   };
-  const expandedWorkflow = JSON.parse(JSON.stringify(workflow));
-  expandedWorkflow.id = 'tatrman-rows-proof';
-  expandedWorkflow.name = 'Tatrman route rows proof';
-  expandedWorkflow.versionId = randomUUID();
-  expandedWorkflow.nodes = expandedWorkflow.nodes.filter(node => node.name !== 'Routes');
-  for (const node of expandedWorkflow.nodes) {
-    node.id = randomUUID();
-    if (node.name === 'Trigger') {
-      node.webhookId = randomUUID();
-      Object.assign(node.parameters, { kinds: ['route_rows'], recipe: 'release_order', route: 'release' });
-    }
-    if (node.name === 'Open') {
-      node.parameters.port = '={{ { key: $json.key } }}';
-      node.parameters.idempotencyKey = "={{ $workflow.id + ':' + $json._tatrman.runId + ':' + $json.key }}";
-    }
-    if (node.name === 'Perform') node.parameters.keys = "={{ [$('Trigger').item.json.key] }}";
-    if (node.name === 'Outcome') node.parameters.outcomes = "={{ [{ key: $('Trigger').item.json.key, status: 'delivered', at: '2026-10-23T00:00:00Z' }] }}";
-  }
-  delete expandedWorkflow.connections.Routes;
-  expandedWorkflow.connections.Evaluate = { main: [[{ node: 'Perform', type: 'main', index: 0 }]] };
+  const pollWorkflow = {
+    id: 'tatrman-poll-proof', name: 'Tatrman polling proof', active: false, versionId: randomUUID(),
+    settings: { executionOrder: 'v1' },
+    nodes: [node('Trigger', { mode: 'poll', deployment: 'release_native_event', kinds: ['run_closed'], since: '2026-10-23T00:00:00Z', pollTimes: { item: [{ mode: 'custom', cronExpression: '* * * * *' }] } }, true),
+      node('Task', { operation: 'task', taskId: '={{ "polled-" + $json.runId }}' })],
+    connections: { Trigger: { main: [[{ node: 'Task', type: 'main', index: 0 }]] } },
+  };
   try {
     await writeFile(join(directory, 'credentials.json'), JSON.stringify([{ id: 'local-automation', name: 'Local Automation', type: 'tatrmanAutomationApi', data: { baseUrl, token: 'local-workflow-token' } }]));
-    await writeFile(join(directory, 'workflow.json'), JSON.stringify([workflow, expandedWorkflow]));
+    await writeFile(join(directory, 'workflow.json'), JSON.stringify([workflow, pollWorkflow]));
     await cli('import:credentials', `--input=${join(directory, 'credentials.json')}`);
     await cli('import:workflow', `--input=${join(directory, 'workflow.json')}`);
     await cli('publish:workflow', `--id=${workflow.id}`);
-    await cli('publish:workflow', `--id=${expandedWorkflow.id}`);
-    runtime = spawn('n8n', ['start'], { env, stdio: ['ignore', 'pipe', 'pipe'] });
+    await cli('publish:workflow', `--id=${pollWorkflow.id}`);
+    runtime = spawn(runtimeCommand, ['start'], { env, stdio: ['ignore', 'pipe', 'pipe'] });
     runtime.stdout.on('data', chunk => { runtimeLog += chunk; });
     runtime.stderr.on('data', chunk => { runtimeLog += chunk; });
     await until(async () => {
-      try { return hooks.size === 2 && (await fetch(`${n8nUrl}/healthz/readiness`)).ok; } catch { return false; }
+      try { return hooks.size === 1 && (await fetch(`${n8nUrl}/healthz/readiness`)).ok; } catch { return false; }
     }, 'workflow activation');
     const setup = await fetch(`${n8nUrl}/rest/owner/setup`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: 'runtime@example.test', firstName: 'Runtime', lastName: 'Proof', password: 'LocalRuntimeProof123!' }) });
     assert.equal(setup.status, 200, await setup.text());
     const cookie = setup.headers.getSetCookie().map(value => value.split(';')[0]).join('; ');
-    const names = ['CUSTOM.tatrmanRun', 'CUSTOM.tatrmanTrigger'];
+    const names = ['@collite/n8n-nodes-tatrman.tatrmanRun', '@collite/n8n-nodes-tatrman.tatrmanTrigger'];
     const types = await fetch(`${n8nUrl}/rest/node-types`, {
       method: 'POST', headers: { cookie, 'content-type': 'application/json' },
       body: JSON.stringify({ nodeInfos: names.map(name => ({ name, version: 1 })) }),
     });
     assert.equal(types.status, 200, await types.clone().text());
     assert.deepEqual((await types.json()).data.map(type => type.name).sort(), ['tatrmanRun', 'tatrmanTrigger']);
+    async function api(path, method = 'GET', body) {
+      const response = await fetch(`${n8nUrl}/rest/${path}`, { method, headers: { cookie, 'content-type': 'application/json' }, ...(body ? { body: JSON.stringify(body) } : {}) });
+      assert.equal(response.status, 200, await response.clone().text());
+      return (await response.json()).data;
+    }
+    for (const [token, status] of [['wrong-token', 'Error'], ['local-workflow-token', 'OK']]) {
+      const tested = await api('credentials/test', 'POST', { credentials: { id: '', name: 'Local test', type: 'tatrmanAutomationApi', data: { baseUrl, token } } });
+      assert.equal(tested.status, status);
+    }
+    await until(() => calls.some(call => call.path === '/automation/tasks/polled-poll-closed'), 'first real poll execution', 70_000);
     const hook = [...hooks.values()].find(hook => hook.url.includes(workflow.nodes[0].webhookId));
     assert.ok(hook, `Missing first workflow hook; got ${JSON.stringify([...hooks.values()].map(hook => hook.url))}`);
-    const raw = '{ "kind":"run_closed", "deployment":"release_native_event", "runId":"source-run", "payload":{"keys":[4711,4712]} }';
+    const raw = JSON.stringify({ kind: 'run_closed', deployment: 'release_native_event', runId: 'source-run', payload: { keys } });
     const deliver = signature => fetch(hook.url, { method: 'POST', headers: { 'content-type': 'application/json', 'x-tatrman-signature': signature }, body: raw });
     const before = calls.length;
     assert.equal((await deliver('0'.repeat(64))).status, 401);
@@ -190,38 +206,46 @@ async function main() {
     const signature = createHmac('sha256', hook.secret).update(raw).digest('hex');
     const accepted = await deliver(`sha256=${signature}`);
     assert.equal(accepted.status, 200, await accepted.text());
-    await until(() => calls.filter(call => call.path.endsWith('/close')).length === 2, 'two route items completing');
-    assert.deepEqual(calls.filter(call => call.path.endsWith('/perform')).map(call => call.body.keys), [[4711], [4712]]);
-    assert.deepEqual(calls.filter(call => call.path.endsWith('/outcome')).map(call => call.body.outcomes[0].key), [4711, 4712]);
-    assert.deepEqual(calls.filter(call => call.path.endsWith('/routes/release')).map(call => call.query.offset), ['0', '1']);
-    const secondHook = [...hooks.values()].find(hook => hook.url.includes(expandedWorkflow.nodes[0].webhookId));
-    assert.ok(secondHook, 'Missing expanded workflow hook');
-    assert.notEqual(hook.url, secondHook.url);
-    for (const [id, callback] of [[workflow.id, hook], [expandedWorkflow.id, secondHook]]) {
-      const response = await fetch(`${n8nUrl}/rest/workflows/${id}`, { headers: { cookie } });
-      const saved = await response.json();
-      assert.ok(saved.data.staticData?.['node:Trigger']?.secret === callback.secret, `Stored signing secret differs for ${id}; static data keys: ${Object.keys(saved.data.staticData ?? {})}`);
-    }
-    const secondSignature = createHmac('sha256', secondHook.secret).update(raw).digest('hex');
-    const expanded = await fetch(secondHook.url, { method: 'POST', headers: { 'content-type': 'application/json', 'x-tatrman-signature': secondSignature }, body: raw });
-    assert.equal(expanded.status, 200, await expanded.text());
-    await until(() => calls.filter(call => call.path.endsWith('/close')).length === 4, 'expanded trigger items completing');
-    assert.deepEqual(calls.filter(call => call.path.endsWith('/perform')).map(call => call.body.keys), [[4711], [4712], [4711], [4712]]);
+    await until(() => calls.filter(call => call.path.endsWith('/close')).length === keys.length, '450 route items completing');
+    assert.deepEqual(calls.filter(call => call.path.endsWith('/perform')).map(call => call.body.keys), keys.map(key => [key]));
+    assert.deepEqual(calls.filter(call => call.path.endsWith('/outcome')).map(call => call.body.outcomes[0].key), keys);
+    assert.deepEqual(calls.filter(call => call.path.endsWith('/routes/release')).map(call => call.query.offset), ['0', '200', '400']);
+    // Closed sessions are released by the real Server; the fake must enforce that too.
+    const closed = await fetch(`${baseUrl}/automation/runs/source-run/routes/release`, { headers: { authorization: 'Bearer local-workflow-token' } });
+    assert.equal(closed.status, 503);
+    assert.equal((await closed.json()).error.code, 'run-abandoned');
+    await delay(1500);
+    const executionsBefore = (await api('executions')).results.length;
+    const ignored = JSON.stringify({ kind: 'run_closed', deployment: 'other', runId: 'source-run', payload: {} });
+    assert.equal((await fetch(hook.url, { method: 'POST', headers: { 'content-type': 'application/json', 'x-tatrman-signature': createHmac('sha256', hook.secret).update(ignored).digest('hex') }, body: ignored })).status, 200);
+    await delay(1500);
+    assert.equal((await api('executions')).results.length, executionsBefore, 'Filtered event must not create an execution');
+    const saved = await api(`workflows/${pollWorkflow.id}`);
+    assert.ok(saved.staticData?.['node:Trigger']?.pollPending?.['poll-pending'], 'Pending poll run must be persisted before edit');
+    saved.nodes[0].notes = 'Edited while active for review-160';
+    const edited = await api(`workflows/${pollWorkflow.id}`, 'PATCH', { name: 'Edited active poll', nodes: saved.nodes, connections: saved.connections, settings: saved.settings, versionId: saved.versionId });
+    assert.notEqual(edited.versionId, saved.activeVersionId, 'The edit must create a new version to republish');
+    await api(`workflows/${pollWorkflow.id}/activate`, 'POST', { versionId: edited.versionId });
+    pollPhase = 1;
+    await until(() => calls.some(call => call.path === '/automation/tasks/polled-poll-pending'), 'pending run completion after active edit/save/republish', 70_000);
+    await delay(1500);
+    assert.equal(calls.filter(call => call.path === '/automation/tasks/polled-poll-closed').length, 1, 'Republish must preserve deduplication');
+    assert.equal(calls.filter(call => call.path === '/automation/tasks/polled-poll-pending').length, 1, 'Pending run is emitted once');
     // Exercise real runtime deactivation through the local owner's authenticated editor API.
     await until(async () => {
       const response = await fetch(`${n8nUrl}/rest/executions`, { headers: { cookie } });
       assert.equal(response.status, 200, await response.clone().text());
       const body = await response.json();
       const successes = body.data.results.filter(execution => execution.status === 'success');
-      return [workflow.id, expandedWorkflow.id].every(id => successes.some(execution => execution.workflowId === id));
+      return [workflow.id, pollWorkflow.id].every(id => successes.some(execution => execution.workflowId === id));
     }, 'persisted successful executions');
-    for (const id of [workflow.id, expandedWorkflow.id]) {
+    for (const id of [workflow.id, pollWorkflow.id]) {
       const deactivate = await fetch(`${n8nUrl}/rest/workflows/${id}/deactivate`, { method: 'POST', headers: { cookie, 'content-type': 'application/json' }, body: '{}' });
       assert.equal(deactivate.status, 200, await deactivate.text());
     }
     await until(() => hooks.size === 0, 'remote webhook removal');
-    assert.equal(calls.filter(call => call.method === 'DELETE').length, 2);
-    console.log('PASS: two real n8n workflows, persisted credential/executions, HMAC HTTP dispatch, paged Routes + route_rows, fresh Open/Evaluate → Perform → Outcome → Close, paired expressions and deactivation');
+    assert.equal(calls.filter(call => call.method === 'DELETE').length, 1);
+    console.log('PASS: scoped package IDs, credential auth, 450-row server-default paging, closed-route refusal, filtered-event suppression, real poll state across active edit/save/republish, paired workflows and deactivation');
   } catch (error) {
     console.error(runtimeLog);
     throw error;
