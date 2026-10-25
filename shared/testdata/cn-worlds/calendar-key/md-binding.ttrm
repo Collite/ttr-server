@@ -1,0 +1,3 @@
+model binding
+def md2db_cubelet store_sales_binding { cubelet: md.storeSales, target: db.dbo.store_sales, shape: wide, measures: { revenue: ext_sales_price } }
+def md2db_cubelet web_sales_binding { cubelet: md.webSales, target: db.dbo.web_sales, shape: wide, measures: { revenue: ext_sales_price } }

@@ -16,6 +16,11 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+- **resolver — the er statement lane on `statement.lower:v1` (CN-P6 ⚑S62-1, A-CN-101).** Grammar 0.18.10's
+  `ttr-concept` reads a statement on E-R when md carries no single read of it. The door's JSON now carries `lane`
+  (`md` | `er`), and for an er read `erSql` — SQL over entities, every placeholder bound, which the query door runs as
+  it is (`source_schema: er`) — with no `plan`; `refused` is true only when neither lane reads the statement. The
+  advisory `cn/lowered-on-er` names md's reason. Pin: `tatrman-grammar` / `tatrman-ttr-metadata` 0.18.9 → 0.18.10.
 - **connect-openmetadata 0.1.2 — complete sync and cache identity.** Skipped scanned
   tables/columns or mapping omissions retain the old state for retry. Summaries add
   `not_modified` to distinguish304 from a real sync. State fingerprints mapping

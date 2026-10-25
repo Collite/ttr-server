@@ -101,6 +101,40 @@ class CnDoorTest :
                 "cn/snapshot-mismatch"
         }
 
+        "md first; a statement md carries no single read of is read on E-R — `lane`, `erSql`, no plan (A-CN-101)" {
+            val january = """"time":{"periodCode":"2026-01"}"""
+
+            suspend fun lower(
+                door: ConceptDoor,
+                statement: String,
+            ): JsonObject = door.call("statement.lower:v1", args("""{"statement":$statement}""")).structuredContent!!
+            // the md hero carries E-0 on one cubelet: md reads it
+            val e0 = """{"ask":"ASK_VALUE","measures":[{"qname":"cn.revenue"}],$january}"""
+            val md = lower(CnDoors.world("sales"), e0)
+            md["lane"]!!.jsonPrimitive.content shouldBe "md"
+            md["refused"]!!.jsonPrimitive.boolean shouldBe false
+            md.containsKey("plan") shouldBe true
+            md.containsKey("erSql") shouldBe false
+            // two channel cubelets carry revenue and none has a date: E-R reads it, the day through the calendar key
+            val er =
+                lower(
+                    CnDoors.world("calendar-key"),
+                    """{"ask":"ASK_VALUE","measures":[{"qname":"cn.revenue"}],""" +
+                        """"filters":[{"phase":{"phase":{"qname":"cn.WebSale"}}}],$january}""",
+                )
+            er["lane"]!!.jsonPrimitive.content shouldBe "er"
+            er["refused"]!!.jsonPrimitive.boolean shouldBe false
+            er.containsKey("plan") shouldBe false
+            er["erSql"]!!.jsonPrimitive.content shouldBe
+                "SELECT SUM(sales.ext_sales_price) AS revenue\n" +
+                "FROM sales\n" +
+                "JOIN date_dim ON date_dim.sk = sales.sold_date\n" +
+                "WHERE sales.channel = 'web' AND date_dim.cal_date >= DATE '2026-01-01' " +
+                "AND date_dim.cal_date < DATE '2026-02-01'"
+            er["diagnostics"]!!.jsonArray.map { it.jsonObject["slug"]!!.jsonPrimitive.content } shouldContain
+                "cn/lowered-on-er"
+        }
+
         // ----- resume tokens (architecture §8, C-Δ3): verified with the resolver's codec, never minted -----
 
         fun token(

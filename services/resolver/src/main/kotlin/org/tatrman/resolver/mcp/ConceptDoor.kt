@@ -169,12 +169,10 @@ class ConceptDoor(
                         result(
                             summary(
                                 r.diagnostics,
-                                if (r.plan !=
-                                    null
-                                ) {
-                                    "Lowered: ${r.dotPath}"
-                                } else {
-                                    null
+                                when {
+                                    r.plan != null -> "Lowered: ${r.dotPath}"
+                                    r.erSql.isNotEmpty() -> "Lowered on E-R: ${r.erSql.lineSequence().first()} …"
+                                    else -> null
                                 },
                             ),
                             ConceptJson.lowering(snapshot, r),

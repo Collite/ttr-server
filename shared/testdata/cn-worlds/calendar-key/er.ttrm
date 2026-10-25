@@ -1,0 +1,44 @@
+model er
+
+def entity store_sales {
+    binding: { target: db.dbo.store_sales, columns: { sale_id: sale_id, sold_date: sold_date, ext_sales_price: ext_sales_price } },
+    attributes: [
+        def attribute sale_id { type: int, isKey: true },
+        def attribute sold_date { type: int },
+        def attribute ext_sales_price { type: decimal }
+    ]
+}
+
+def entity web_sales {
+    binding: { target: db.dbo.web_sales, columns: { sale_id: sale_id, sold_date: sold_date, ext_sales_price: ext_sales_price } },
+    attributes: [
+        def attribute sale_id { type: int, isKey: true },
+        def attribute sold_date { type: int },
+        def attribute ext_sales_price { type: decimal }
+    ]
+}
+
+def entity date_dim {
+    binding: { target: db.dbo.date_dim, columns: { sk: sk, cal_date: cal_date } },
+    attributes: [
+        def attribute sk { type: int, isKey: true },
+        def attribute cal_date { type: date, semantics { role: event_date } }
+    ]
+}
+
+def query sales_union { sourceText: """sql
+SELECT sale_id, 'store' AS channel, sold_date, ext_sales_price FROM store_sales
+UNION ALL SELECT sale_id, 'web' AS channel, sold_date, ext_sales_price FROM web_sales
+""" }
+
+def entity sales {
+    binding: { target: { query: er.query.sales_union } },
+    attributes: [
+        def attribute sale_id { type: int, isKey: true },
+        def attribute channel { type: text },
+        def attribute sold_date { type: int },
+        def attribute ext_sales_price { type: decimal }
+    ]
+}
+
+def relation rel_sales_date { from: er.entity.sales, to: er.entity.date_dim, cardinality: { from: "0..*", to: "1" }, join: [{ from: er.entity.sales.sold_date, to: er.entity.date_dim.sk }] }
