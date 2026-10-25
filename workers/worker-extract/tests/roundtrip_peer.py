@@ -5,12 +5,14 @@ cross-language legs::
 
     python tests/roundtrip_peer.py setup    --dsn URL
     python tests/roundtrip_peer.py produce  --dsn URL --queue work_noop --file tests/fixtures/contracts/workItem.json
-    python tests/roundtrip_peer.py consume  --dsn URL --queue work_noop --vt 2 [--crash-before-ack]
+    python tests/roundtrip_peer.py consume  --dsn URL --queue work_noop --vt 5 [--crash-before-ack]
 
 ``consume`` is a ``noop`` step: it "writes annotations" (one ``fake_silver`` row keyed by
 ``run_id``, ``ON CONFLICT DO NOTHING`` — the idempotency the real writes get from
 ``run_id``) and commits; then, unless told to crash, it posts the ``Completion`` on
-``done`` and acks the work item IN ONE TRANSACTION, so a crash there leaves neither.
+``done`` and acks the work item IN ONE TRANSACTION, so a crash there leaves neither. A work
+item holding a value this release does not know (an ``*_UNSPECIFIED`` after the tolerant
+read) is failed — released for a retry, dead-lettered after ``RETRIES`` — and writes nothing.
 Each command prints one JSON line.
 """
 
@@ -25,7 +27,9 @@ from typing import Any
 import psycopg
 
 from aristarchos.bus import DONE, PgmqBus
-from aristarchos.sdk.models import Completion, CompletionStatus, Usage, WorkItem
+from aristarchos.sdk.models import Completion, CompletionStatus, Usage, WorkItem, unspecified_fields
+
+RETRIES = 3  # a failed work item is released this many times, then dead-lettered (PgmqBus.fail)
 
 FAKE_SILVER = (
     "CREATE TABLE IF NOT EXISTS fake_silver ("
@@ -45,7 +49,7 @@ def setup(dsn: str, queue: str = "work_noop") -> None:
 
 
 def produce(dsn: str, queue: str, item_json: str) -> dict[str, Any]:
-    item = WorkItem.model_validate_json(item_json)
+    item = WorkItem.strict(item_json)  # a fixture: the strict twin
     bus = PgmqBus(dsn)
     try:
         return {"status": "sent", "msgId": bus.send(queue, item.dump())}
@@ -60,7 +64,12 @@ def consume(dsn: str, queue: str, vt_s: int, crash_before_ack: bool = False, wri
         if not msgs:
             return {"status": "empty"}
         [msg] = msgs
-        item = WorkItem.model_validate(msg.body)
+        item = WorkItem.model_validate(msg.body)  # the tolerant reader (review-158 ⚑R158-B)
+        if unknown := unspecified_fields(item):
+            # a value this release does not know: fail the message once, never act on a guess
+            print(f"work item {item.run_id}: unknown value in {unknown}; failing msg {msg.msg_id}", file=sys.stderr)
+            bus.fail(msg, retries=RETRIES)
+            return {"status": "failed", "readCt": msg.read_ct, "unspecified": unknown}
         with psycopg.connect(dsn) as c:  # the step's writes, committed on their own
             c.execute(
                 "INSERT INTO fake_silver (run_id, writer, read_ct) VALUES (%s, %s, %s) ON CONFLICT (run_id) DO NOTHING",

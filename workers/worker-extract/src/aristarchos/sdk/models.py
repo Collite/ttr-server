@@ -3,25 +3,95 @@
 
 The JSON rules every model follows — the same as the Kotlin side (``dx-protocol``) and
 the proto3 JSON mapping: camelCase keys; a field at its default (None, "", 0, an empty
-list) is ABSENT, never written out; unknown keys are refused. ``dump`` produces that
+list, an enum's ``*_UNSPECIFIED``) is ABSENT, never written out. ``dump`` produces that
 form; ``canonical`` the fixture text (sorted keys, 2-space indent, trailing newline).
+
+Readers are tolerant (review-158 ⚑R158-B): ``model_validate`` ignores an unknown key and
+reads an unknown enum value as the enum's ``*_UNSPECIFIED`` member, so a field or value a
+newer producer adds never makes a message undecodable for this release (at-least-once
+delivery would redeliver every message of a rolling deploy until the retry rule archived
+the backlog). ``strict`` is the twin the fixture tests decode with: unknown keys and
+unknown enum values are refused, so a typo in a fixture still fails CI. A consumer that
+reads an ``*_UNSPECIFIED`` (``unspecified_fields``) fails that message once with a log —
+the retry rule redelivers or dead-letters it — and never acts on a guess.
 """
 
 from __future__ import annotations
 
 import json
 from enum import StrEnum
-from typing import Any, Self
+from typing import Any, Self, get_args
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator, model_validator
 from pydantic.alias_generators import to_camel
+
+_STRICT = "dx_strict"
+
+
+class DxEnum(StrEnum):
+    """A DX enum. Its FIRST member is the proto's ``*_UNSPECIFIED`` zero value."""
+
+    @classmethod
+    def unspecified(cls) -> Self:
+        return next(iter(cls))
+
+
+def _dx_enum(annotation: Any) -> type[DxEnum] | None:
+    for t in (annotation, *get_args(annotation)):
+        if isinstance(t, type) and issubclass(t, DxEnum):
+            return t
+    return None
+
+
+def _strict(info: ValidationInfo) -> bool:
+    return isinstance(info.context, dict) and info.context.get(_STRICT) is True
 
 
 class DxModel(BaseModel):
-    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True, extra="forbid")
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True, extra="ignore")
 
     def dump(self) -> dict[str, Any]:
         return self.model_dump(by_alias=True, exclude_defaults=True, mode="json")
+
+    @classmethod
+    def strict(cls, data: Any) -> Self:
+        """The strict twin of ``model_validate`` / ``model_validate_json`` (a ``str``/``bytes`` is JSON text)."""
+        if isinstance(data, str | bytes):
+            return cls.model_validate_json(data, context={_STRICT: True})
+        return cls.model_validate(data, context={_STRICT: True})
+
+    @model_validator(mode="before")
+    @classmethod
+    def _no_unknown_keys_when_strict(cls, data: Any, info: ValidationInfo) -> Any:
+        if _strict(info) and isinstance(data, dict):
+            known = set(cls.model_fields) | {f.alias for f in cls.model_fields.values() if f.alias}
+            unknown = sorted(set(data) - known)
+            if unknown:
+                raise ValueError(f"unknown keys {unknown}")
+        return data
+
+    @field_validator("*", mode="before")
+    @classmethod
+    def _unknown_enum_value(cls, value: Any, info: ValidationInfo) -> Any:
+        if info.field_name is None or _strict(info) or not isinstance(value, str):
+            return value
+        enum = _dx_enum(cls.model_fields[info.field_name].annotation)
+        if enum is not None and value not in enum.__members__.values():
+            return enum.unspecified()
+        return value
+
+
+def unspecified_fields(model: DxModel, prefix: str = "") -> list[str]:
+    """The (dotted, wire-named) fields of ``model`` holding an ``*_UNSPECIFIED`` — values this release does not know."""
+    out: list[str] = []
+    for name, field in type(model).model_fields.items():
+        value = getattr(model, name)
+        wire = prefix + (field.alias or name)
+        if isinstance(value, DxEnum) and value is type(value).unspecified():
+            out.append(wire)
+        elif isinstance(value, DxModel):
+            out += unspecified_fields(value, wire + ".")
+    return out
 
 
 def canonical(obj: Any) -> str:
@@ -29,13 +99,15 @@ def canonical(obj: Any) -> str:
     return json.dumps(obj, sort_keys=True, indent=2, ensure_ascii=False) + "\n"
 
 
-class RunVisibility(StrEnum):
+class RunVisibility(DxEnum):
+    RUN_VISIBILITY_UNSPECIFIED = "RUN_VISIBILITY_UNSPECIFIED"
     CANDIDATE = "CANDIDATE"
     ACTIVE = "ACTIVE"
     SHADOW = "SHADOW"
 
 
-class CompletionStatus(StrEnum):
+class CompletionStatus(DxEnum):
+    COMPLETION_STATUS_UNSPECIFIED = "COMPLETION_STATUS_UNSPECIFIED"
     SUCCEEDED = "SUCCEEDED"
     FAILED = "FAILED"
     ABSTAINED = "ABSTAINED"
@@ -63,7 +135,7 @@ class WorkItem(DxModel):
     unit_ids: list[int]
     consume: InputSelector
     bundle_ref: str | None = None
-    visibility: RunVisibility
+    visibility: RunVisibility = RunVisibility.RUN_VISIBILITY_UNSPECIFIED
     priority: str  # "hi" | "lo"
     deadline_at: str
 
@@ -91,7 +163,7 @@ class Completion(DxModel):
 
     run_id: str
     step_id: str
-    status: CompletionStatus
+    status: CompletionStatus = CompletionStatus.COMPLETION_STATUS_UNSPECIFIED
     annotation_ids: list[int] = []
     child_unit_ids: list[int] = []
     artefact_ref: str = ""
@@ -105,13 +177,15 @@ class Completion(DxModel):
 # a span is [start, end) in Unicode code points of the unit's NFC text — which is how a Python `str` indexes.
 
 
-class UnitKind(StrEnum):
+class UnitKind(DxEnum):
+    UNIT_KIND_UNSPECIFIED = "UNIT_KIND_UNSPECIFIED"
     DOCUMENT = "DOCUMENT"
     SECTION = "SECTION"
     CHUNK = "CHUNK"
 
 
-class AnnotationTier(StrEnum):
+class AnnotationTier(DxEnum):
+    ANNOTATION_TIER_UNSPECIFIED = "ANNOTATION_TIER_UNSPECIFIED"
     STRUCTURAL = "STRUCTURAL"
     MODEL = "MODEL"
 
@@ -184,7 +258,8 @@ class AnnotationType(DxModel):
     version: str = ""
 
 
-class Severity(StrEnum):
+class Severity(DxEnum):
+    SEVERITY_UNSPECIFIED = "SEVERITY_UNSPECIFIED"
     INFO = "INFO"
     WARNING = "WARNING"
     ERROR = "ERROR"

@@ -28,14 +28,15 @@ def test_ensure_queue_is_idempotent(bus: PgmqBus) -> None:
 
 
 def test_fetch_extend_ack(bus: PgmqBus) -> None:
+    vt = 5  # wide enough that a GC pause or a throttled runner cannot expose the message early (review-158 F13)
     bus.ensure_queue("work_py_vt")
     sent = bus.send("work_py_vt", {"n": 1})
-    [m] = bus.fetch("work_py_vt", vt_s=1)
+    [m] = bus.fetch("work_py_vt", vt_s=vt)
     assert (m.msg_id, m.read_ct, m.body) == (sent, 1, {"n": 1})
-    assert bus.fetch("work_py_vt", vt_s=1) == []
+    assert bus.fetch("work_py_vt", vt_s=vt) == []
     assert bus.extend(m, vt_s=60) is True  # the heartbeat outlives the first vt
-    time.sleep(1.5)
-    assert bus.fetch("work_py_vt", vt_s=1) == []
+    time.sleep(vt + 0.5)
+    assert bus.fetch("work_py_vt", vt_s=vt) == []
     assert bus.ack(m) is True
     assert bus.ack(m) is False
 

@@ -7,6 +7,7 @@ kantheon's ``WorkItemRoundTripSpec`` runs the same peer across the language boun
 
 from __future__ import annotations
 
+import json
 import time
 
 import psycopg
@@ -19,7 +20,7 @@ from tests.conftest import CONTRACTS
 
 pytestmark = pytest.mark.component
 
-VT = 2
+VT = 5  # outlasts a consumer start between "crashed" and the "still hidden" read (review-158 F13)
 
 
 def test_crash_before_ack_is_redelivered_and_completes_once(pg_url: str) -> None:
@@ -48,3 +49,22 @@ def test_crash_before_ack_is_redelivered_and_completes_once(pg_url: str) -> None
     with psycopg.connect(pg_url) as conn:
         rows = conn.execute("SELECT writer, read_ct FROM fake_silver WHERE run_id = 'step-1/1'").fetchall()
     assert rows == [("python", 1)]  # written once, by the first (crashed) attempt
+
+
+def test_a_work_item_with_an_unknown_value_is_failed_once_not_crashed(pg_url: str) -> None:
+    """review-158 F5 — a value a newer producer added reads as *_UNSPECIFIED; the consumer fails the message (released
+    for a retry, dead-lettered after its retries) instead of acting on a guess or crashing on the decode."""
+    peer.setup(pg_url, "work_noop_unknown")
+    text = (CONTRACTS / "workItem.json").read_text(encoding="utf-8").replace('"CANDIDATE"', '"ARCHIVED"')
+    bus = PgmqBus(pg_url)
+    try:
+        bus.send("work_noop_unknown", json.loads(text))
+    finally:
+        bus.close()
+    assert peer.consume(pg_url, "work_noop_unknown", VT) == {
+        "status": "failed",
+        "readCt": 1,
+        "unspecified": ["visibility"],
+    }
+    with psycopg.connect(pg_url) as conn:
+        assert conn.execute("SELECT count(*) FROM fake_silver WHERE run_id = 'step-1/1'").fetchone() == (0,)

@@ -48,7 +48,7 @@ def dump(m: BaseModel) -> dict[str, Any]:
 @pytest.mark.parametrize(("name", "model"), SINGLE)
 def test_fixture_round_trips_byte_equal(name: str, model: type[BaseModel]) -> None:
     text = (CONTRACTS / name).read_text(encoding="utf-8")
-    assert canonical(dump(model.model_validate_json(text))) == text
+    assert canonical(dump(model.strict(text))) == text  # type: ignore[attr-defined]
 
 
 @pytest.mark.parametrize(("name", "request_model", "response_model"), PAIRS)
@@ -59,15 +59,15 @@ def test_request_response_fixture_round_trips(
     o = json.loads(text)
     assert set(o) == {"request", "response"}
     back = {
-        "request": dump(request_model.model_validate(o["request"])),
-        "response": dump(response_model.model_validate(o["response"])),
+        "request": dump(request_model.strict(o["request"])),  # type: ignore[attr-defined]
+        "response": dump(response_model.strict(o["response"])),  # type: ignore[attr-defined]
     }
     assert canonical(back) == text
 
 
 def test_spans_are_code_points_of_the_nfc_text() -> None:
-    unit = Unit.model_validate_json((CONTRACTS / "unit.json").read_text(encoding="utf-8"))
-    mention = Annotation.model_validate_json((CONTRACTS / "annotation.mention.json").read_text(encoding="utf-8"))
+    unit = Unit.strict((CONTRACTS / "unit.json").read_text(encoding="utf-8"))
+    mention = Annotation.strict((CONTRACTS / "annotation.mention.json").read_text(encoding="utf-8"))
     assert unicodedata.is_normalized("NFC", unit.content_text)
     assert unit.kind is UnitKind.SECTION and unit.parent_id == 100
     assert unit.slice(mention.spans[0]) == mention.payload()["surface"] == "pozastavená"
@@ -75,20 +75,31 @@ def test_spans_are_code_points_of_the_nfc_text() -> None:
 
 
 def test_payload_json_is_a_string_and_round_trips() -> None:
-    a = Annotation.model_validate_json((CONTRACTS / "annotation.statement.json").read_text(encoding="utf-8"))
+    a = Annotation.strict((CONTRACTS / "annotation.statement.json").read_text(encoding="utf-8"))
     p = a.payload()
     assert p["concept"] == "cn.Review" and p["modifiers"]["verification"] == "verified_purchase"
     assert payload_text(p) == a.payload_json  # compact, sorted, non-ASCII verbatim — the producer's form
     assert a.derived_from == [5001]
 
 
-def test_defaults_absent_and_unknown_keys_refused() -> None:
-    imp = Annotation.model_validate_json((CONTRACTS / "annotation.import.json").read_text(encoding="utf-8"))
+def test_defaults_absent_and_unknown_keys_refused_by_the_strict_twin() -> None:
+    imp = Annotation.strict((CONTRACTS / "annotation.import.json").read_text(encoding="utf-8"))
     assert imp.producer_version == "" and "producerVersion" not in imp.dump()  # import: no processor version
-    t = AnnotationType.model_validate_json((CONTRACTS / "annotationType.json").read_text(encoding="utf-8"))
+    t = AnnotationType.strict((CONTRACTS / "annotationType.json").read_text(encoding="utf-8"))
     assert t.tier is AnnotationTier.STRUCTURAL and t.feeds_gold is False and "feedsGold" not in t.dump()
     with pytest.raises(ValidationError):
-        Annotation.model_validate({"unitId": 1, "payload": {}})
+        Annotation.strict({"unitId": 1, "payload": {}})
+
+
+def test_a_newer_kallimachos_response_still_reads() -> None:
+    """review-158 F5 — the REST client decodes responses tolerantly: a new key, a new enum value."""
+    o = json.loads((CONTRACTS / "unit.json").read_text(encoding="utf-8"))
+    o["embeddingRef"] = "vec://1"
+    o["kind"] = "PARAGRAPH"
+    unit = Unit.model_validate(o)
+    assert unit.kind is UnitKind.UNIT_KIND_UNSPECIFIED and unit.content_text
+    with pytest.raises(ValidationError):
+        Unit.strict(o)
 
 
 def test_list_request_query_string() -> None:
