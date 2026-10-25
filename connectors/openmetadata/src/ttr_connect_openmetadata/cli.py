@@ -30,6 +30,9 @@ def main(argv: list[str] | None = None) -> int:
             source.add_argument("--export-url", help="full /model/export route URL")
             command.add_argument("--world", help="defaults to the export world; must match it")
             command.add_argument("--studio-url")
+            command.add_argument(
+                "--studio-workspace", help="modeler.toml project.name; defaults to the export world"
+            )
             command.add_argument("--cn-path", choices=("owl", "glossary"), default="glossary")
             command.add_argument("--cn-name-mode", choices=("label", "qname"), default="label")
             command.add_argument("--state-file", type=Path)
@@ -81,6 +84,7 @@ def run(args: argparse.Namespace, dry: bool, client: "OmClient | None") -> int:
                     args.deprecate_missing,
                     version("ttr-connect-openmetadata"),
                     client.version,
+                    args.studio_workspace,
                 )
                 if client is not None
                 else None
@@ -113,7 +117,11 @@ def run(args: argparse.Namespace, dry: bool, client: "OmClient | None") -> int:
             return 2
         try:
             result = plan_from_export(
-                export, args.world, args.studio_url, cn_name_mode=args.cn_name_mode
+                export,
+                args.world,
+                args.studio_url,
+                cn_name_mode=args.cn_name_mode,
+                studio_workspace=args.studio_workspace,
             )
             if args.cn_path == "glossary":
                 result.operations = [

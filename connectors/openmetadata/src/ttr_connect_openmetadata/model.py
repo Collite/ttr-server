@@ -155,6 +155,8 @@ class UpsertTerm(Operation):
     related: list[RelatedTerm]
     iri: str | None
     props: dict[str, str]
+    # Explicitly remove an obsolete connector-owned link; preserve other extensions.
+    remove_props: list[Literal["ttrUrl"]] = Field(default_factory=list)
     # Always present for qname/custom-property updates; S2.2 uses the fallback
     # payload for creation when OWL import refuses the graph.
     cn: bool = False
