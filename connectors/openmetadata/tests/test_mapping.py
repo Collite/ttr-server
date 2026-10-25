@@ -201,6 +201,24 @@ def test_invalid_physical_schema_locator_fails(export: Export, schema: JsonValue
         plan_from_export(export)
 
 
+def test_qname_cn_names_allow_case_insensitive_cross_kind_names(export: Export) -> None:
+    export.graph.nodes.append(
+        Node(id="cn.quality.party", kind="quality", model="cn", label="party")
+    )
+    with pytest.raises(MappingError, match="collision"):
+        plan_from_export(export)
+    plan = plan_from_export(export, cn_name_mode="qname")
+    terms = [op for op in plan.operations if isinstance(op, UpsertTerm) and op.cn]
+    assert len({op.name.casefold() for op in terms}) == len(terms)
+    party = next(op for op in terms if op.qname == "cn.kind.Party")
+    assert party.name == "cn.kind.Party" and party.display == "Party"
+    child = next(op for op in terms if op.qname == "cn.kind.Prospect")
+    assert child.parent == party.fqn
+    assert child.fqn == party.fqn + '."cn.kind.Prospect"'
+    with pytest.raises(MappingError, match="CN name mode"):
+        plan_from_export(export, cn_name_mode="invalid")
+
+
 def test_cycle_multiple_parents_and_address_collision(export: Export) -> None:
     cycle = Edge.model_validate({"from": "cn.kind.Party", "to": "cn.kind.Prospect", "kind": "is_a"})
     export.graph.edges.append(cycle)

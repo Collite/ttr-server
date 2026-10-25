@@ -66,6 +66,11 @@ failure; 3 mapping failure. Argparse usage failures exit 2.
 
 Display names prefer English; Czech-only names append `(<cs label>)` to the source
 name. Descriptions prefer English, otherwise retain all language-labelled text.
+OM names are case-insensitive across a whole glossary. For models with distinct
+CN kinds/qualities sharing a label (such as `Channel` and `channel`), select
+`--cn-name-mode qname` to use canonical CN names while retaining labels in
+`displayName`. Default `label` preserves existing catalog naming. Keep the selected
+mode stable for that catalog; the writer adopts existing terms by `ttrQname`.
 Names are deterministic; OM FQN collisions, ambiguous bindings, multiple CN parents
 and cyclic hierarchies fail explicitly. Terms are ordered with parents first.
 Related-term references are added after all terms exist. Existing unrelated

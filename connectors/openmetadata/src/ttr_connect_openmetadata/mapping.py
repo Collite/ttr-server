@@ -82,6 +82,7 @@ def _terms(
     nodes: dict[str, Node],
     world: str,
     studio_url: str | None,
+    cn_name_mode: str,
 ) -> tuple[list[UpsertTerm], dict[str, str]]:
     terms = _term_nodes(nodes)
     parents: dict[str, str] = {}
@@ -116,7 +117,9 @@ def _terms(
     # in displayName and use their canonical qname as the stable catalog name.
     names = {
         key: key
-        if (node.model == "er" and node.kind == "attribute") or node.model == "md"
+        if (node.model == "er" and node.kind == "attribute")
+        or node.model == "md"
+        or (node.model == "cn" and cn_name_mode == "qname")
         else node.label or key.rsplit(".", 1)[-1]
         for key, node in terms.items()
     }
@@ -389,7 +392,10 @@ def plan_from_export(
     world: str | None = None,
     studio_url: str | None = None,
     connections: list[Connection] | None = None,
+    cn_name_mode: str = "label",
 ) -> Plan:
+    if cn_name_mode not in {"label", "qname"}:
+        raise MappingError("CN name mode must be label or qname")
     world = world or export.graph.world
     if world != export.graph.world:
         raise MappingError(f"world {world} differs from export world {export.graph.world}")
@@ -420,7 +426,7 @@ def plan_from_export(
                 )
             )
     operations.append(ImportRdf(glossary=f"{world} Concepts", turtle=export.ttl))
-    terms, addresses = _terms(export, nodes, world, studio_url)
+    terms, addresses = _terms(export, nodes, world, studio_url, cn_name_mode)
     operations.extend(terms)
     metrics = _metrics(export, nodes, studio_url)
     operations.extend(metrics)
