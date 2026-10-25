@@ -16,6 +16,13 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+- **resolver — the er statement lane places; it does not re-decide (grammar 0.18.12, ttr-core#308).** The er lane
+  now refuses whatever md's validator refuses, and for the same reasons. It also refuses a phase whose join would fan
+  out the event's rows, and a negated phase that needs a join. A negated phase reads `NOT COALESCE((…), FALSE)`. A
+  member value must match its key's type (`cn/slot-mismatch`). `latest` is capped at the evaluation day, a period
+  instant is read on its day through the calendar, and an instant compares as an interval. A refusal reports md's
+  finding with "— and on E-R: …" appended. The door's JSON shape is unchanged. Pin: `tatrman-grammar` /
+  `tatrman-ttr-metadata` 0.18.11 → 0.18.12; translator/plan-proto stay 0.12.11.
 - **automation — `concat` in writer defaults.** Grammar 0.18.11's two-operand,
   NULL-strict `concat` is accepted in native writer-default and argument expressions (e.g. a `YYYY-Qn` label from
   `:as_of`). Pin: `tatrman-grammar` / `tatrman-ttr-metadata` 0.18.10 → 0.18.11; translator/plan-proto stay 0.12.11.
