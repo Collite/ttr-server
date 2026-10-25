@@ -42,9 +42,11 @@ def test_check_sync_idempotency_and_deprecation(om: LiveOm, tmp_path: Path) -> N
             "deprecated",
             "linked",
             "warnings",
+            "not_modified",
         }
         om.record("summaries", summary)
         assert summary["warnings"] == 0, run.stderr
+        assert summary["not_modified"] is False
         return summary
 
     cli("check", *credentials)

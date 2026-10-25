@@ -10,11 +10,25 @@ object ApprovalFixture {
     fun copyTo(
         root: Path,
         unqualified: Boolean = false,
+        generatedIds: Boolean = false,
     ): Path {
         val base = Path.of("src/test/resources/approval-evidence")
-        val resource = if (unqualified) base.resolve("unqualified") else base
+        require(!unqualified || !generatedIds)
+        val resource =
+            when {
+                unqualified -> base.resolve("unqualified")
+                generatedIds -> base.resolve("generated-ids")
+                else -> base
+            }
 
         copyFixtureTree(Path.of("src/test/resources/bundles/hartland"), root)
+        if (generatedIds) {
+            Files.copy(
+                resource.resolve("proposal.ttrm"),
+                root.resolve("model/er/proposal.ttrm"),
+                StandardCopyOption.REPLACE_EXISTING,
+            )
+        }
         Files.copy(
             resource.resolve("automation.ttrm"),
             root.resolve("automation/automation.ttrm"),

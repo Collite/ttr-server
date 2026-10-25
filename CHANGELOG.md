@@ -21,6 +21,11 @@ outside this repo could notice is in.
   (`md` | `er`), and for an er read `erSql` — SQL over entities, every placeholder bound, which the query door runs as
   it is (`source_schema: er`) — with no `plan`; `refused` is true only when neither lane reads the statement. The
   advisory `cn/lowered-on-er` names md's reason. Pin: `tatrman-grammar` / `tatrman-ttr-metadata` 0.18.9 → 0.18.10.
+- **connect-openmetadata 0.1.2 — complete sync and cache identity.** Skipped scanned
+  tables/columns or mapping omissions retain the old state for retry. Summaries add
+  `not_modified` to distinguish304 from a real sync. State fingerprints mapping
+  options plus connector/current OM versions; legacy state forces a full sync.
+  Rollback to0.1.1 requires a fresh state path.
 
 - **connect-openmetadata 0.1.1 — Hartland catalog integration.** Optional
   `locators.openmetadata.schema` maps a model schema handle to the scanner's physical
