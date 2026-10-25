@@ -74,7 +74,12 @@ CN operations carry `cn: true` so that writer can apply custom properties after 
 import or use the fallback payload when `--cn-path glossary` is selected.
 
 Table FQNs come from each `defs.json.connections[]` descriptor:
-`<locators.openmetadata.service>.<database>.<schema>.<table>`. Only matching schemas
+`<locators.openmetadata.service>.<database>.<schema>.<table>`. Optional
+`locators.openmetadata.schema` supplies the physical catalog schema when the model
+uses a handle (for example model `dbo` → PostgreSQL `public`). The descriptor's
+`schema` still selects model objects; the locator changes only their OM addresses.
+An absent override retains the original behavior; an empty/non-string override fails.
+Only matching schemas
 participate. Dot-containing name segments are quoted. Multiple connections yield
 separate asset operations. Missing service/database locators produce one warning
 per connection and no links for that connection. The planner does not know which
@@ -86,7 +91,8 @@ without creating it. Missing columns are also skipped with a warning.
 State JSON has `snapshot`, `ids` (TTR qnames), and `om_version`. State is written
 only after successful sync, using a same-directory temporary file, fsync and atomic
 rename. IDs are sorted and deduplicated. The URL reader sends `If-None-Match` from
-state; an initial 304 ends the run with no operations. A 304 without state or after
+state; an initial 304 ends the run with no operations and a zero-counter sync summary
+(plan/dry-run remain silent). A 304 without state or after
 part of a new export is an export error.
 
 Missing ids plus `delta.removed` yield `Deprecate` operations; live rename targets

@@ -3,6 +3,7 @@ import json
 from pathlib import Path
 
 import pytest
+from pydantic import JsonValue
 
 from ttr_connect_openmetadata.export_reader import DirSource
 from ttr_connect_openmetadata.mapping import MappingError, plan_from_export
@@ -173,6 +174,31 @@ def test_multiple_connections_and_schema_filter(export: Export) -> None:
         ).operations
     )
     assert plan_from_export(export, connections=[]).warnings
+
+
+def test_physical_schema_locator_keeps_model_handle_and_bindings(export: Export) -> None:
+    connection = export.defs.connections[0]
+    original = connection.schema_name
+    connection.locators = {"openmetadata": {"service": "northline-pg", "schema": "public"}}
+    plan = plan_from_export(export)
+    tables = [op for op in plan.operations if isinstance(op, SetTableProps)]
+    links = [op for op in plan.operations if isinstance(op, LinkTermToAsset)]
+    assert tables and links
+    assert all(".public." in op.fqn for op in tables)
+    assert all(".public." in op.asset_fqn for op in links)
+    assert connection.schema_name == original == "retail"
+    # Physical names never broaden which model schemas this connection owns.
+    connection.schema_name = "other"
+    assert not any(isinstance(op, SetTableProps) for op in plan_from_export(export).operations)
+
+
+@pytest.mark.parametrize("schema", ["", 7, {}, []])
+def test_invalid_physical_schema_locator_fails(export: Export, schema: JsonValue) -> None:
+    export.defs.connections[0].locators = {
+        "openmetadata": {"service": "northline-pg", "schema": schema}
+    }
+    with pytest.raises(MappingError, match="OM schema locator"):
+        plan_from_export(export)
 
 
 def test_cycle_multiple_parents_and_address_collision(export: Export) -> None:

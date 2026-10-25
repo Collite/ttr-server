@@ -16,6 +16,11 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+- **connect-openmetadata 0.1.1 — Hartland catalog integration.** Optional
+  `locators.openmetadata.schema` maps a model schema handle to the scanner's physical
+  schema without changing model identities or ownership filters. HTTP304 syncs print
+  a zero-counter summary while retaining state and making no OM calls.
+
 - **connect-openmetadata 0.1.0 — live OM 2.0.6 conformance and image.** Adds a PostgreSQL/OpenSearch lane,
   real fixture scanning, RDF/search probes and CI image smoke. Default CN path is glossary after live RDF
   hierarchy/language loss. Corrects tableColumn custom-property registration and explicit column tag reads;

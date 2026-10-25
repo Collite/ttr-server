@@ -291,7 +291,7 @@ def _assets(
     table_addresses: dict[str, list[str]] = defaultdict(list)
     addresses: dict[str, list[tuple[str, str, str | None]]] = defaultdict(list)
     operations: list[PlanOperation] = []
-    usable: list[tuple[Connection, str]] = []
+    usable: list[tuple[Connection, str, str | None]] = []
     if not connections and any(n.model == "db" for n in nodes.values()):
         warnings.add("db assets have no connection locator; asset links omitted")
     for connection in sorted(connections, key=lambda c: c.id):
@@ -302,16 +302,21 @@ def _assets(
                 f"connection {connection.id} has no OM service/database locator; links omitted"
             )
             continue
-        usable.append((connection, service))
+        physical_schema = locator.get("schema") if isinstance(locator, dict) else None
+        if physical_schema is not None and (
+            not isinstance(physical_schema, str) or not physical_schema
+        ):
+            raise MappingError(f"connection {connection.id} has invalid OM schema locator")
+        usable.append((connection, service, physical_schema))
     owned_fqns: dict[str, str] = {}
     for key, node in sorted(nodes.items()):
         if node.model != "db" or node.kind not in {"table", "view"}:
             continue
         schema = node.schema_name
-        for connection, service in usable:
+        for connection, service, physical_schema in usable:
             if connection.schema_name and schema and connection.schema_name != schema:
                 continue
-            schema_name = schema or connection.schema_name
+            schema_name = physical_schema or schema or connection.schema_name
             if not schema_name:
                 warnings.add(f"db asset {key} has no schema; links omitted")
                 continue

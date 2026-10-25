@@ -2,6 +2,7 @@
 """C-14 CLI: offline plan, registry check, and successful-sync state boundary."""
 
 import argparse
+import json
 import sys
 from pathlib import Path
 
@@ -48,6 +49,19 @@ def main(argv: list[str] | None = None) -> int:
                 else UrlSource(args.export_url).read(state)
             )
             if isinstance(export, NotModified):
+                if not dry:
+                    print(
+                        json.dumps(
+                            {
+                                "snapshot": export.snapshot,
+                                "created": 0,
+                                "updated": 0,
+                                "deprecated": 0,
+                                "linked": 0,
+                                "warnings": 0,
+                            }
+                        )
+                    )
                 return 0
         except (ExportError, OSError, ValidationError) as exc:
             print(f"export error: {exc}", file=sys.stderr)

@@ -440,7 +440,14 @@ def test_sync_304_is_no_op_even_with_unreadable_token(
             == 0
         )
         assert len(mock.calls) == 1
-        assert capsys.readouterr().out == ""
+        assert json.loads(capsys.readouterr().out) == {
+            "snapshot": "fixture-1",
+            "created": 0,
+            "updated": 0,
+            "deprecated": 0,
+            "linked": 0,
+            "warnings": 0,
+        }
     assert path.read_bytes() == before
 
 
