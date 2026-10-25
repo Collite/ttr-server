@@ -381,14 +381,17 @@ The translator and plan-proto pins move together to 0.12.11, the version require
 
 Governed writer defaults use the published 0.18.9 approval verifier. At load, the Server keeps
 `recipe.approvalDependencies` as JSON, checks its version first, and then strictly reads the v1 fields.
-Missing/null/renamed v1 fields or future versions refuse only that recipe with `409 recipe-stale` at Open;
+Missing/null/renamed v1 fields, unknown v1 keys, non-object evidence or future versions refuse only
+that recipe with `409 recipe-stale` at Open;
 the refreshed bundle and unrelated recipes stay available. Recorded imports use complete reconciled loader
 files (including injected stdlib). Every file in a governed recipe's scope must declare `package`, because
 the producer and Server use different loader roots. A checkout under `/tmp/automation-bundles/<branch>` works.
 
 Coverage resolves once per loaded recipe. Open checks grants before revealing coverage details, then uses
 that stored result to verify approval eligibility before claiming. Preview uses the exact resolved actions,
-entities and attributes that passed the verifier; it does not match qualified writer names again. Mapping
+entities and attributes that passed the verifier for every native effect: writer, set, transition and
+their key columns. Both paths choose pinned or legacy explicitly; missing pins never fall back to names.
+The ER entity list is pinned once in the bundle. Mapping
 completeness and default validity remain preview-preparation checks. The descriptor and registry reuse the
 same stored resolution. Optional exported text/values/program/deployment fingerprints still must match.
 
@@ -402,7 +405,9 @@ Default-free legacy bundles retain text/1. Without recorded scope, action names 
 refuse as ambiguous: rename the action or adopt evidence; rebuilding the same legacy recipe alone cannot
 fix the ambiguity. Existing startup-gated explicit development mode (`automation.development=true`,
 `automation.approvals=off`) can exercise defaults without evidence; present evidence always verifies and
-opening policy records the bypass. No new bypass is added. These dependencies cover native preview only;
+opening policy records the bypass. The descriptor/registry always report governed approval and coverage
+status, even in development mode; a missing-coverage refusal there does not gate the explicit development
+Open bypass. Unprepared coverage still refuses in both modes. No new bypass is added. These dependencies cover native preview only;
 physical writes, connector configuration and deferred actions need their own closure. Core#294 can replace
 a stdlib entity with a same-qname project entity; an unavailable qualified target refuses safely.
 The published fixture and real Open/evaluate/ledger proofs are under `src/test/resources/approval-evidence`.

@@ -32,9 +32,9 @@ def action audit_state {
     approval: none
 }
 def action hold {
-    columns:    [def column order { type: order.order_number }, def column department { type: text }]
-    set:        order.held_for = department
-    transition: order.state -> held { from: placed }            // held → held is an implicit silent self-transition (D-85)
+    columns:    [def column order { type: hartland.order.order_number }, def column department { type: text }]
+    set:        hartland.order.held_for = department
+    transition: hartland.order.state -> held { from: placed }            // held → held is an implicit silent self-transition (D-85)
     sinks:      { native: transition, n8n: door, camunda: door }
     approval:   none
     dry_run:    { en: "would hold order {order} for {department}" }

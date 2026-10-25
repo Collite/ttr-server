@@ -135,7 +135,7 @@ internal class PreviewWriter private constructor(
         fun resolve(
             action: AutomationAction,
             entities: List<Entity>,
-            pinnedTargets: Map<String, org.tatrman.ttrp.resolve.TargetResolution.Resolved>? = null,
+            pinnedTargets: Map<String, org.tatrman.ttrp.resolve.TargetResolution.Resolved>?,
         ): PreviewWriter {
             if (action.columns.isEmpty() || action.set != null || action.transition != null) unsupported()
             if (action.columns

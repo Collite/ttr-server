@@ -7,8 +7,12 @@ import java.nio.file.StandardCopyOption
 
 /** Overlay the released CLI's evidence-bearing writer bundle onto the real Server metadata fixture. */
 object ApprovalFixture {
-    fun copyTo(root: Path): Path {
-        val resource = Path.of("src/test/resources/approval-evidence")
+    fun copyTo(
+        root: Path,
+        unqualified: Boolean = false,
+    ): Path {
+        val base = Path.of("src/test/resources/approval-evidence")
+        val resource = if (unqualified) base.resolve("unqualified") else base
 
         copyFixtureTree(Path.of("src/test/resources/bundles/hartland"), root)
         Files.copy(

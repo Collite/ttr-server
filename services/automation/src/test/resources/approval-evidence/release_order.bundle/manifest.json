@@ -141,6 +141,16 @@
         "routes": [
           "verdict.release"
         ],
+        "action": "hold",
+        "columns": {
+          "order": "order_number",
+          "department": "\"Sales\""
+        }
+      },
+      {
+        "routes": [
+          "verdict.release"
+        ],
         "action": "audit_state",
         "columns": {
           "state": "\"open\""
@@ -195,9 +205,9 @@
       "er.entity.order"
     ],
     "fingerprints": {
-      "text": "sha256:73fc94f1c9f2e7d2c12823d663331e0e8eb46e54df52746bd922e11122d305dc",
+      "text": "sha256:bc553dab99efd0d219025e1fc6b5b9e3069cedf74ed1e1fa0cddfd8655b6ef5a",
       "values": "sha256:54e165c4463646ed8b9ae490dc1a830b34e76dda883caa0f3df407699c7ae888",
-      "labels": "sha256:a98947d4cc95aba7d79abefd7c12d5e655a00f891b6a006dd865e0f7c84fb2be"
+      "labels": "sha256:bcf48e2c164b2a0175b5c310c4d8b77541a13ffcd1e6aee76b495b316a9f454b"
     },
     "protocol": "always",
     "approvalDependencies": {
@@ -206,16 +216,17 @@
         "hartland",
         "hartland.automation"
       ],
-      "textBase": "sha256:f7068aa308d6b98ce2fe10f1b96373102197ce3b1198df54932c793cca292cde",
+      "textBase": "sha256:e0cf9ae6fb770c0af57d3ed18bdd674709e59c76afe653b1b2c7d5c5a19e45d2",
       "actions": {
         "audit_state": "sha256:0efef8f3023fac2595a688a586fe10990209e892d5db7c73534f3251463bc7fe",
+        "hold": "sha256:609a9e29ea8652f35e7ee6de8d664336be186d326a9b5d5191299008cb67acb5",
         "release": "sha256:d3ec475aa4de523f17414f89a47e9c22adcddd28013a40a1142397d9a953cb40"
       }
     }
   },
   "files": {
-    "README.md": "sha256:6c1e0acd4a20ca046bcf7bb2f2dab9474e79e3fbedbd5c98518a4bec147360a5",
-    "catalog/release_order.ttrm": "sha256:399830ebe5fcfa5c2c81216f6dfc595582d72e48209fa75a8ed69e1ef86e982a",
+    "README.md": "sha256:f7daf3a20518a62fbdf78afad7e795f54601b8238f477f4addff77a675b3777a",
+    "catalog/release_order.ttrm": "sha256:ac32370e211d2e8715ff18096f1b251b48581b91348b579add6dea742e569564",
     "catalog/release_order_verdict.ttrm": "sha256:e1a40f72485615093cb5e77d59ccd8cc3757eb2d6685f5037c37ebd2f63f867f",
     "islands/placed_orders.orders.sql": "sha256:92e6ca45d0d5661a54757dfcbca7d1f2e9d57345d45d7d2b5529500a317a603b",
     "islands/verdict.release.sql": "sha256:6e1b136e5f80929303cc0142923e923da081a326314606b4ff0ce1067864b01b"

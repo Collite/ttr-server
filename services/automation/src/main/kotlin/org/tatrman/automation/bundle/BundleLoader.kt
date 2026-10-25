@@ -84,7 +84,6 @@ class BundleLoader(
         val automation = model.schemas["automation"] as? AutomationSchema ?: AutomationSchema()
         val worlds = (model.schemas["world"] as? WorldSchema)?.worlds?.values.orEmpty()
         val programs = automation.programs.associateBy { it.qname.name }
-        val actions = automation.actions.associateBy { it.qname.name }
         val recipes = loadRecipes(automationRoot, findings)
 
         val deployments = linkedMapOf<String, org.tatrman.ttr.metadata.model.WorldDeployment>()
@@ -130,7 +129,6 @@ class BundleLoader(
                     model = model,
                     recipes = recipes,
                     programs = programs,
-                    actions = actions,
                     deployments = deployments,
                     deploymentWorlds = deploymentWorlds,
                     worlds = scopes,

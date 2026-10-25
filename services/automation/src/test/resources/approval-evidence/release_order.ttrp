@@ -16,6 +16,7 @@ recipe {
  }
  actions {
   verdict.release -> release { order: order_number, customer: 42, value: 100.00, held_for: "Sales" }
+  verdict.release -> hold { order: order_number, department: "Sales" }
   verdict.release -> audit_state { state: "open" }
  }
 }

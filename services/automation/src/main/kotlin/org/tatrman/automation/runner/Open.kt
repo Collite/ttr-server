@@ -184,11 +184,7 @@ class Open(
                 previewMetadata =
                     org.tatrman.automation.apply.PreviewMetadata(
                         pinnedActions,
-                        (bundle.model.schemas["er"] as? org.tatrman.ttr.metadata.model.ErSchema)
-                            ?.entities
-                            ?.values
-                            .orEmpty()
-                            .toList(),
+                        bundle.entities,
                         coverage.targets,
                     ),
             )

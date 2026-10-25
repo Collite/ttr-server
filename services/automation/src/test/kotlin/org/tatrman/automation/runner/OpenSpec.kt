@@ -85,23 +85,24 @@ class OpenSpec :
                             ),
                     )
                 val changed =
-                    b.copy(
-                        recipes =
-                            b.recipes + (
-                                recipe to
-                                    r.copy(
-                                        recipe = metadata,
-                                        manifest = r.manifest.copy(recipe = metadata),
-                                    )
-                            ),
-                        actions =
+                    b
+                        .copy(
+                            recipes =
+                                b.recipes + (
+                                    recipe to
+                                        r.copy(
+                                            recipe = metadata,
+                                            manifest = r.manifest.copy(recipe = metadata),
+                                        )
+                                ),
+                        ).withActions(
                             b.actions + (
                                 "release" to
                                     b.actions.getValue("release").copy(
                                         properties = listOf("writer_defaults" to value),
                                     )
                             ),
-                    )
+                        )
                 changed.recipes
                     .getValue(recipe)
                     .recipe.fingerprints shouldBe r.recipe.fingerprints
@@ -114,6 +115,10 @@ class OpenSpec :
                 val dev = service(changed, devOff = true).open(recipe, request(), caller)
                 dev.httpStatus shouldBe 201
                 dev.approvalsBypassed shouldBe true
+                Staleness.of(changed, deployment, ApprovalReader { _, _, _ -> true }).coverage shouldBe
+                    mapOf(recipe to CoverageKind.MISSING)
+                Registry(ExecutorType.builtin()).cell(changed, changed.deployments.getValue(deployment)).status shouldBe
+                    Registry.REFUSED
                 val unrelated =
                     changed.copy(
                         recipes =
@@ -208,9 +213,10 @@ class OpenSpec :
                     wiring = listOf(ManifestWiring(listOf("release"), action.qname.name)),
                 )
             val limited =
-                b.copy(
-                    recipes = b.recipes + (recipe to loaded.copy(recipe = metadata)),
-                    actions =
+                b
+                    .copy(
+                        recipes = b.recipes + (recipe to loaded.copy(recipe = metadata)),
+                    ).withActions(
                         b.actions + (
                             action.qname.name to
                                 action.copy(
@@ -220,7 +226,7 @@ class OpenSpec :
                                         ),
                                 )
                         ),
-                )
+                    )
             var recorded: RunOpen? = null
             val result =
                 service(limited, claim = {
@@ -231,17 +237,16 @@ class OpenSpec :
             result.context!!.detailLimits shouldBe mapOf("release" to 3)
             recorded!!.openingProtocol!!.jsonObject["detailLimits"] shouldBe buildJsonObject { put("release", 3) }
             val invalid =
-                limited.copy(
-                    actions =
-                        limited.actions + (
-                            action.qname.name to
-                                action.copy(
-                                    properties =
-                                        listOf(
-                                            "detail_limit" to AutoValue.Num(0.0, SourceLocation.UNKNOWN, "0"),
-                                        ),
-                                )
-                        ),
+                limited.withActions(
+                    limited.actions + (
+                        action.qname.name to
+                            action.copy(
+                                properties =
+                                    listOf(
+                                        "detail_limit" to AutoValue.Num(0.0, SourceLocation.UNKNOWN, "0"),
+                                    ),
+                            )
+                    ),
                 )
             shouldThrow<IllegalArgumentException> {
                 service(invalid, claim = { error("must not claim") }).open(recipe, request(), caller)

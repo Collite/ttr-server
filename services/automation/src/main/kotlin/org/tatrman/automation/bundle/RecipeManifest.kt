@@ -5,6 +5,7 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonElement
 
 /**
  * A recipe bundle's `manifest.json` (ttr-core AU `contracts.md` §5.1, `schemaVersion: 3`) — the fields this
@@ -97,7 +98,7 @@ data class ManifestRecipe(
     /** D-59: golden fixture paths published by the compiler, exposed for clients; not executed by this reader. */
     val tests: List<String> = emptyList(),
     /** Preserve future evidence fields; load dispatches on version before strictly reading v1. */
-    val approvalDependencies: JsonObject? = null,
+    val approvalDependencies: JsonElement? = null,
 )
 
 @Serializable

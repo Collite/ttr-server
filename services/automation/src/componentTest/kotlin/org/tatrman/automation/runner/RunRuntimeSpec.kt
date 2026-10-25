@@ -52,87 +52,99 @@ class RunRuntimeComponentSpec :
         LedgerTestDb.ready()
         beforeEach { LedgerTestDb.reset() }
 
-        "released governed qualified writer evaluates its default while stale pinned metadata creates no ledger work" {
-            val root = ApprovalFixture.copyTo(tempdir(prefix = "automation-bundles-").toPath().resolve("branch"))
-            val source =
-                BundleLoader(AuthorMap(emptyMap())).load(
-                    Checkout(root, "master", "0123456789abcdef", "po", "po@example.org"),
-                    BundleKind.SERVED,
-                )
+        for (unqualified in listOf(false, true)) {
+            "governed ${if (unqualified) "unqualified" else "qualified"} effects evaluate and stale metadata refuses" {
+                val root =
+                    ApprovalFixture.copyTo(
+                        tempdir(prefix = "automation-bundles-").toPath().resolve("branch"),
+                        unqualified,
+                    )
+                val source =
+                    BundleLoader(AuthorMap(emptyMap())).load(
+                        Checkout(root, "master", "0123456789abcdef", "po", "po@example.org"),
+                        BundleKind.SERVED,
+                    )
 
-            fun selected(bundle: Bundle) =
-                bundle.copy(
-                    deployments =
-                        bundle.deployments + (
-                            "release_native_event" to
-                                bundle.deployments.getValue("release_native_event").copy(runAs = ModelRunAs.Caller)
-                        ),
-                )
-            val f =
-                DurableRuntimeFixture(transformBundle = { selected(source) }, queryTable = { request ->
-                    if ("approved writer fixture" in request.source) {
-                        Table(
-                            listOf(
-                                ManifestColumn("order_number", "text"),
-                                ManifestColumn("route", "text"),
-                                ManifestColumn("verdict_reason", "text"),
+                fun selected(bundle: Bundle) =
+                    bundle.copy(
+                        deployments =
+                            bundle.deployments + (
+                                "release_native_event" to
+                                    bundle.deployments.getValue("release_native_event").copy(runAs = ModelRunAs.Caller)
                             ),
-                            listOf(listOf("4711", "release", "approved writer fixture")),
-                        )
-                    } else {
-                        Table(listOf(ManifestColumn("order_number", "text")), listOf(listOf("4711")))
-                    }
-                })
-            val runtime = f.start()
-            try {
-                val opened = runtime.sessions.open("release_order", f.request, f.caller)
-                opened.httpStatus shouldBe 201
-                opened.approvalsBypassed shouldBe false
-                transaction { Runs.selectAll().count() } shouldBe 1L
-                val id = UUID.fromString(opened.response.runId)
-                runtime.sessions.evaluate(id, f.caller)
-                val batch = runtime.status.batch(id, f.caller)
-                val effect = batch.rows.single { it.entity == "er.entity.order" }
-                effect.row!!.getValue("state") shouldBe JsonPrimitive("released")
-                effect.row!!.keys shouldBe setOf("order_number", "state", "customer", "value", "held_for")
-                runtime.status
-                    .read(id, f.caller)
-                    .actions
-                    .single { it.action == "release" }
-                    .would shouldBe
-                    "would release order 4711 as released"
-                transaction { Batches.selectAll().count() } shouldBe 1L
-                f.reads.get() shouldBe 2
-            } finally {
-                runtime.shutdown()
-                f.close()
-            }
-            val actions = root.resolve("automation/automation.ttrm")
-            actions.writeText(actions.readText().replace("'released'", "'held'"))
-            val changed =
-                BundleLoader(AuthorMap(emptyMap())).load(
-                    Checkout(root, "master", "fedcba9876543210", "po", "po@example.org"),
-                    BundleKind.SERVED,
-                )
-            changed.recipes
-                .getValue("release_order")
-                .recipe.fingerprints shouldBe
-                source.recipes
+                    )
+                val f =
+                    DurableRuntimeFixture(transformBundle = { selected(source) }, queryTable = { request ->
+                        if ("approved writer fixture" in request.source) {
+                            Table(
+                                listOf(
+                                    ManifestColumn("order_number", "text"),
+                                    ManifestColumn("route", "text"),
+                                    ManifestColumn("verdict_reason", "text"),
+                                ),
+                                listOf(listOf("4711", "release", "approved writer fixture")),
+                            )
+                        } else {
+                            Table(listOf(ManifestColumn("order_number", "text")), listOf(listOf("4711")))
+                        }
+                    })
+                val runtime = f.start()
+                try {
+                    val opened = runtime.sessions.open("release_order", f.request, f.caller)
+                    opened.httpStatus shouldBe 201
+                    opened.approvalsBypassed shouldBe false
+                    transaction { Runs.selectAll().count() } shouldBe 1L
+                    val id = UUID.fromString(opened.response.runId)
+                    runtime.sessions.evaluate(id, f.caller)
+                    val batch = runtime.status.batch(id, f.caller)
+                    val effect = batch.rows.single { it.entity == "er.entity.order" && it.op == "insert" }
+                    val transition = batch.rows.single { it.entity == "er.entity.order" && it.op == "transition" }
+                    transition.key shouldBe buildJsonObject { put("order_number", "4711") }
+                    transition.to shouldBe JsonPrimitive("held")
+                    val update = batch.rows.single { it.entity == "er.entity.order" && it.op == "update" }
+                    update.key shouldBe transition.key
+                    update.set shouldBe buildJsonObject { put("held_for", "Sales") }
+                    effect.row!!.getValue("state") shouldBe JsonPrimitive("released")
+                    effect.row!!.keys shouldBe setOf("order_number", "state", "customer", "value", "held_for")
+                    runtime.status
+                        .read(id, f.caller)
+                        .actions
+                        .single { it.action == "release" }
+                        .would shouldBe
+                        "would release order 4711 as released"
+                    transaction { Batches.selectAll().count() } shouldBe 1L
+                    f.reads.get() shouldBe 2
+                } finally {
+                    runtime.shutdown()
+                    f.close()
+                }
+                val actions = root.resolve("automation/automation.ttrm")
+                actions.writeText(actions.readText().replace("'released'", "'held'"))
+                val changed =
+                    BundleLoader(AuthorMap(emptyMap())).load(
+                        Checkout(root, "master", "fedcba9876543210", "po", "po@example.org"),
+                        BundleKind.SERVED,
+                    )
+                changed.recipes
                     .getValue("release_order")
-                    .recipe.fingerprints
-            val stale = DurableRuntimeFixture(transformBundle = { selected(changed) })
-            val refused = stale.start()
-            try {
-                shouldThrow<AutomationException> {
-                    refused.sessions.open("release_order", stale.request, stale.caller)
-                }.code shouldBe ErrorCode.RECIPE_STALE
-                transaction { Runs.selectAll().count() } shouldBe 1L
-                transaction { RunOutputs.selectAll().count() } shouldBe 2L
-                transaction { Batches.selectAll().count() } shouldBe 1L
-                stale.reads.get() shouldBe 0
-            } finally {
-                refused.shutdown()
-                stale.close()
+                    .recipe.fingerprints shouldBe
+                    source.recipes
+                        .getValue("release_order")
+                        .recipe.fingerprints
+                val stale = DurableRuntimeFixture(transformBundle = { selected(changed) })
+                val refused = stale.start()
+                try {
+                    shouldThrow<AutomationException> {
+                        refused.sessions.open("release_order", stale.request, stale.caller)
+                    }.code shouldBe ErrorCode.RECIPE_STALE
+                    transaction { Runs.selectAll().count() } shouldBe 1L
+                    transaction { RunOutputs.selectAll().count() } shouldBe 2L
+                    transaction { Batches.selectAll().count() } shouldBe 1L
+                    stale.reads.get() shouldBe 0
+                } finally {
+                    refused.shutdown()
+                    stale.close()
+                }
             }
         }
 
@@ -185,15 +197,15 @@ class RunRuntimeComponentSpec :
                                         ),
                                 ),
                         )
-                    bundle.copy(
-                        actions = bundle.actions + ("release" to action),
-                        model =
-                            bundle.model.copy(
-                                schemas =
-                                    bundle.model.schemas +
-                                        ("er" to er.copy(entities = mapOf(target.qname to target))),
-                            ),
-                    )
+                    bundle
+                        .copy(
+                            model =
+                                bundle.model.copy(
+                                    schemas =
+                                        bundle.model.schemas +
+                                            ("er" to er.copy(entities = mapOf(target.qname to target))),
+                                ),
+                        ).withActions(bundle.actions + ("release" to action))
                 })
             f.base.now = Instant.parse("2000-01-01T12:00:00.123456Z")
             val runtime = f.start()

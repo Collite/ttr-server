@@ -40,7 +40,9 @@ enum class CoverageKind(
 
 /** Resolve once at load; approval and execution consume these same pinned objects. */
 object ApprovalDependencies {
-    private val evidenceJson = Json { ignoreUnknownKeys = true }
+    private val evidenceJson = Json
+
+    fun unprepared() = Checked(refusal = "approval coverage was not prepared", coverage = CoverageKind.MISSING)
 
     data class Checked(
         val actions: Map<String, AutomationAction> = emptyMap(),
@@ -54,6 +56,12 @@ object ApprovalDependencies {
     fun prepare(bundle: Bundle): Bundle {
         val resolver = Resolver(bundle)
         return bundle.copy(
+            entities =
+                (bundle.model.schemas["er"] as? org.tatrman.ttr.metadata.model.ErSchema)
+                    ?.entities
+                    ?.values
+                    .orEmpty()
+                    .toList(),
             recipes =
                 bundle.recipes.mapValues { (_, recipe) ->
                     recipe.copy(coverage = resolver.check(recipe.recipe))
@@ -84,15 +92,26 @@ object ApprovalDependencies {
                 kind: CoverageKind,
                 reason: String,
             ) = Checked(refusal = reason, coverage = kind)
-            val raw = recipe.approvalDependencies
+            val raw =
+                when (val value = recipe.approvalDependencies) {
+                    null, JsonNull -> null
+                    is JsonObject -> value
+                    else -> return refuse(CoverageKind.UNSUPPORTED, "approval evidence is not an object")
+                }
             var evidence: RecipeApprovalDependencies? = null
             if (raw != null) {
                 val version = raw["version"] as? JsonPrimitive
-                if (version == null || version.isString || version.intOrNull != 1) {
+                if (version == null || version.isString || version.intOrNull == null) {
                     return refuse(
                         CoverageKind.UNSUPPORTED,
-                        "unsupported approval evidence version ${version?.content ?: "missing"}",
+                        "unsupported approval evidence version: version must be the integer 1",
                     )
+                }
+                if (version.intOrNull != 1) {
+                    return refuse(CoverageKind.UNSUPPORTED, "unsupported approval evidence version ${version.content}")
+                }
+                (raw.keys - setOf("version", "imports", "textBase", "actions")).sorted().firstOrNull()?.let {
+                    return refuse(CoverageKind.MALFORMED, "unknown approval evidence field `$it`")
                 }
                 val valid =
                     mapOf(
@@ -136,7 +155,13 @@ object ApprovalDependencies {
                     is ActionResolution.Resolved -> actions[name] = resolution.action
                     is ActionResolution.Unresolved -> return refuse(
                         CoverageKind.UNRESOLVED,
-                        "unresolved wired action `$name` in the pinned approval scope",
+                        if (scope ==
+                            null
+                        ) {
+                            "legacy wired action `$name` is not declared in the model; declare it or correct the wiring"
+                        } else {
+                            "unresolved wired action `$name` in the pinned approval scope"
+                        },
                     )
                     is ActionResolution.Ambiguous -> return refuse(
                         CoverageKind.AMBIGUOUS,

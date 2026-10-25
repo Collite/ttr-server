@@ -28,7 +28,6 @@ fun Bundle.withActions(actions: Map<String, AutomationAction>): Bundle {
     val schema = model.schemas.getValue("automation") as AutomationSchema
     return ApprovalDependencies.prepare(
         copy(
-            actions = actions,
             model =
                 model.copy(
                     schemas =
@@ -45,3 +44,7 @@ fun Bundle.withActions(actions: Map<String, AutomationAction>): Bundle {
         ),
     )
 }
+
+/** Convenience for constructing altered test snapshots; production consumes per-recipe scoped coverage. */
+val Bundle.actions: Map<String, AutomationAction>
+    get() = (model.schemas.getValue("automation") as AutomationSchema).actions.associateBy { it.qname.name }

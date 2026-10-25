@@ -141,11 +141,13 @@ class ApprovalDependenciesSpec :
             val b = load(root)
             val r = b.recipes.getValue(recipeName).recipe
             r.approvalDependencies!!
+                .jsonObject
                 .getValue("version")
                 .jsonPrimitive.int shouldBe 1
             r.approvalDependencies!!
+                .jsonObject
                 .getValue("actions")
-                .jsonObject.keys shouldBe setOf("release", "audit_state")
+                .jsonObject.keys shouldBe setOf("release", "hold", "audit_state")
             val request =
                 OpenRequest(
                     deployment,
@@ -197,7 +199,8 @@ class ApprovalDependenciesSpec :
                     old.recipes
                         .getValue(recipeName)
                         .recipe.fingerprints
-                refuses(changed, "stale for `release`", approvals(old), CoverageKind.STALE)
+                val staleAction = if (change == "target") "hold" else "release"
+                refuses(changed, "stale for `$staleAction`", approvals(old), CoverageKind.STALE)
             }
         }
 
@@ -316,6 +319,88 @@ class ApprovalDependenciesSpec :
             result.httpStatus shouldBe 201
         }
 
+        "non-object evidence stays local to its recipe and null remains absent" {
+            for (value in listOf<JsonElement>(JsonArray(emptyList()), JsonPrimitive("future"), JsonPrimitive(2))) {
+                val root = fixture()
+                editRecipe(root) { JsonObject(it + ("approvalDependencies" to value)) }
+                val b = load(root)
+                refuses(b, "approval evidence is not an object", kind = CoverageKind.UNSUPPORTED)
+                val deploymentName = "decide_native_batch"
+                val neighbor =
+                    b.copy(
+                        deployments =
+                            b.deployments + (
+                                deploymentName to b.deployments.getValue(deploymentName).copy(runAs = ModelRunAs.Caller)
+                            ),
+                    )
+                Open(
+                    { neighbor },
+                    ApprovalReader { _, _, _ -> true },
+                    ServiceTokens(emptyMap(), { error("unused") }),
+                    { Claim.Claimed(UUID.randomUUID(), startedAt = BundleFixture.LOADED_AT) },
+                    { null },
+                    { false },
+                    Duration.ofSeconds(60),
+                    Duration.ofMinutes(30),
+                    BundleFixture.clock,
+                ).open("decide_return", OpenRequest(deploymentName, buildJsonObject { put("none", true) }), caller)
+                    .httpStatus shouldBe 201
+            }
+            val root = fixture()
+            editRecipe(root) { JsonObject(it + ("approvalDependencies" to JsonNull)) }
+            refuses(load(root), "evidence is missing", kind = CoverageKind.MISSING)
+        }
+
+        "v1 extra fields and non-integer version spellings refuse explicitly" {
+            val root = fixture()
+            editEvidence(root) { JsonObject(it + ("coverage" to JsonPrimitive("physical"))) }
+            refuses(load(root), "unknown approval evidence field `coverage`", kind = CoverageKind.MALFORMED)
+            for (version in listOf(JsonPrimitive("1"), JsonPrimitive(1.0))) {
+                val other = fixture()
+                editEvidence(other) { JsonObject(it + ("version" to version)) }
+                refuses(load(other), "version must be the integer 1", kind = CoverageKind.UNSUPPORTED)
+            }
+        }
+
+        "unprepared recipes refuse before claim even in development mode" {
+            val b = load(fixture())
+            val current = b.recipes.getValue(recipeName)
+            val unprepared = LoadedRecipe(current.name, current.manifest, current.recipe, current.statements)
+            val pending = b.copy(recipes = b.recipes + (recipeName to unprepared))
+            for (development in listOf(false, true)) {
+                val e =
+                    shouldThrow<AutomationException> {
+                        Open(
+                            { pending },
+                            approvals(b),
+                            ServiceTokens(emptyMap(), { error("unused") }),
+                            { error("unprepared coverage must not claim") },
+                            { null },
+                            { false },
+                            Duration.ofSeconds(60),
+                            Duration.ofMinutes(30),
+                            BundleFixture.clock,
+                            approvalsOff = development,
+                        ).open(recipeName, OpenRequest(deployment, buildJsonObject { put("key", "4711") }), caller)
+                    }
+                e.code shouldBe ErrorCode.RECIPE_STALE
+                e.message shouldBe "approval coverage was not prepared"
+            }
+        }
+
+        "legacy unresolved action does not claim a recorded scope" {
+            val b = load(fixture())
+            val legacy =
+                b.recipes.getValue(recipeName).recipe.copy(
+                    approvalDependencies = null,
+                    wiring = listOf(ManifestWiring(action = "absent")),
+                )
+            val result = ApprovalDependencies.check(b, legacy)
+            result.coverage shouldBe CoverageKind.UNRESOLVED
+            result.refusal shouldBe
+                "legacy wired action `absent` is not declared in the model; declare it or correct the wiring"
+        }
+
         "project shadowing cannot silently rebind explicit stdlib evidence" {
             val root = fixture()
             root.edit("model/er/automation-entities.ttrm") {
@@ -431,19 +516,10 @@ def action release { columns: [def column order { type: text }] sinks: { native:
                 ).open(recipeName, OpenRequest(deployment, buildJsonObject { put("key", "4711") }), caller)
             (result.context!!.previewMetadata!!.targets === cached.targets) shouldBe true
             Staleness.of(pinned, deployment, approvals(b)).stale shouldBe false
-            val misleading =
-                pinned.copy(
-                    actions =
-                        pinned.actions +
-                            (
-                                "release" to
-                                    pinned.actions.getValue("release").copy(sinks = mapOf("native" to "unsupported"))
-                            ),
-                )
             val native = ExecutorType.builtin().getValue("native").copy(family = "external")
             Registry(
                 mapOf("native" to native),
-            ).cell(misleading, misleading.deployments.getValue(deployment)).status shouldBe
+            ).cell(pinned, pinned.deployments.getValue(deployment)).status shouldBe
                 Registry.OK
         }
 

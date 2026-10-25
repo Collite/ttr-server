@@ -9,6 +9,7 @@ import io.kotest.matchers.shouldBe
 import kotlinx.serialization.json.*
 import org.tatrman.automation.api.AutomationException
 import org.tatrman.automation.api.ErrorCode
+import org.tatrman.automation.bundle.legacyPreviewMetadata
 import org.tatrman.automation.bundle.BundleFixture
 import org.tatrman.automation.bundle.BundleFixture.edit
 import org.tatrman.automation.bundle.ManifestColumn
@@ -22,7 +23,7 @@ import java.time.OffsetDateTime
 
 class PreviewWriterSpec :
     StringSpec({
-        val original = PreviewMetadata.from(BundleFixture.load())
+        val original = legacyPreviewMetadata(BundleFixture.load())
         val loaded = original.entities.single { it.qname.name == "order" }
         val base = loaded.copy(qname = loaded.qname.copy(`package` = "hartland"))
 
@@ -71,7 +72,7 @@ class PreviewWriterSpec :
         fun writer(
             a: AutomationAction = action,
             entities: List<Entity> = listOf(entity),
-        ) = PreviewWriter.resolve(a, entities)
+        ) = PreviewWriter.resolve(a, entities, null)
 
         fun refuses(block: () -> Unit) {
             shouldThrow<AutomationException> { block() }.code shouldBe ErrorCode.PREVIEW_UNSUPPORTED
@@ -248,7 +249,7 @@ class PreviewWriterSpec :
                         }
                         """.trimIndent()
                 }
-                val metadata = PreviewMetadata.from(BundleFixture.load(root))
+                val metadata = legacyPreviewMetadata(BundleFixture.load(root))
                 val target = metadata.entities.single { it.qname.name == "bounded_order" }
                 val amount = target.attributes.single { it.qname.name.endsWith(".amount") }
                 Triple(amount.type, amount.length, amount.precision) shouldBe Triple("decimal", 4, 2)
@@ -263,6 +264,7 @@ class PreviewWriterSpec :
                                 ),
                         ),
                         metadata.entities,
+                        null,
                     )
                 val values = mapOf("id" to JsonPrimitive(1), "total" to JsonUnquotedLiteral("99.9900"))
                 bounded.insert(1, values + ("comment" to JsonPrimitive("😀"))).row!!["amount"] shouldBe

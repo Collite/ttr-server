@@ -3,7 +3,6 @@ package org.tatrman.automation.bundle
 
 import org.tatrman.automation.identity.GrantDecl
 import org.tatrman.automation.identity.IdentityDecl
-import org.tatrman.ttr.metadata.model.AutomationAction
 import org.tatrman.ttr.metadata.model.AutomationProgram
 import org.tatrman.ttr.metadata.model.Model
 import org.tatrman.ttr.metadata.model.WorldDeployment
@@ -40,7 +39,7 @@ data class LoadedRecipe(
     val manifest: RecipeManifest,
     val recipe: ManifestRecipe,
     val statements: Map<String, String>,
-    val coverage: ApprovalDependencies.Checked = ApprovalDependencies.Checked(),
+    val coverage: ApprovalDependencies.Checked = ApprovalDependencies.unprepared(),
 )
 
 /**
@@ -77,7 +76,6 @@ data class Bundle(
     val model: Model,
     val recipes: Map<String, LoadedRecipe>,
     val programs: Map<String, AutomationProgram>,
-    val actions: Map<String, AutomationAction>,
     val deployments: Map<String, WorldDeployment>,
     val deploymentWorlds: Map<String, String>,
     val worlds: Map<String, WorldScope>,
@@ -86,6 +84,8 @@ data class Bundle(
     val warnings: List<String>,
     /** Complete reconciled loader package map, including injected stdlib; never inferred from paths. */
     val packages: Map<String, String> = emptyMap(),
+    /** Entity list pinned once alongside the loaded coverage results. */
+    val entities: List<org.tatrman.ttr.metadata.model.Entity> = emptyList(),
 ) {
     /** The world that declares [deployment]. */
     fun worldOf(deployment: WorldDeployment): WorldScope? = deploymentWorlds[deployment.qname.name]?.let { worlds[it] }
