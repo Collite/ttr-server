@@ -1,6 +1,8 @@
 # SPDX-License-Identifier: Apache-2.0
 """Successful-sync state. Reading/plan never advances it."""
 
+import hashlib
+import json
 import os
 import tempfile
 from pathlib import Path
@@ -13,6 +15,29 @@ class State(BaseModel):
     snapshot: str = Field(min_length=1)
     ids: list[str]
     om_version: str
+    options: str | None = None
+
+
+def options_fingerprint(
+    world: str | None,
+    studio_url: str | None,
+    cn_path: str,
+    cn_name_mode: str,
+    deprecate_missing: bool,
+    connector_version: str,
+    om_version: str,
+) -> str:
+    """Invalidate the export cache when any projection input changes."""
+    values = [
+        world,
+        studio_url,
+        cn_path,
+        cn_name_mode,
+        deprecate_missing,
+        connector_version,
+        om_version,
+    ]
+    return hashlib.sha256(json.dumps(values, separators=(",", ":")).encode()).hexdigest()
 
 
 def read_state(path: Path) -> State | None:

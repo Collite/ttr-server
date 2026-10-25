@@ -48,6 +48,7 @@ def test_sync_twice_and_deprecate(
             "deprecated",
             "linked",
             "warnings",
+            "not_modified",
         }
         assert not any("importRdf" in path for _, path, _ in fake.calls)
         assert len(fake.stores["glossaries"]) == 2
@@ -413,43 +414,6 @@ def test_200_link_failure_is_not_success(
         assert "OM error" in capsys.readouterr().err
         assert not (tmp_path / "state.json").exists()
 
-
-def test_sync_304_is_no_op_even_with_unreadable_token(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
-    from ttr_connect_openmetadata.state import State, write_state
-
-    path = tmp_path / "state.json"
-    write_state(path, State(snapshot="fixture-1", ids=[], om_version="2.0.6"))
-    before = path.read_bytes()
-    with responses.RequestsMock() as mock:
-        mock.get("http://export.example/model/export", status=304)
-        assert (
-            main(
-                [
-                    "sync",
-                    "--export-url",
-                    "http://export.example/model/export",
-                    "--om-url",
-                    URL,
-                    "--om-token-file",
-                    str(tmp_path / "does-not-exist"),
-                    "--state-file",
-                    str(path),
-                ]
-            )
-            == 0
-        )
-        assert len(mock.calls) == 1
-        assert json.loads(capsys.readouterr().out) == {
-            "snapshot": "fixture-1",
-            "created": 0,
-            "updated": 0,
-            "deprecated": 0,
-            "linked": 0,
-            "warnings": 0,
-        }
-    assert path.read_bytes() == before
 
 
 def test_no_deprecate_missing_is_honored(

@@ -6,6 +6,7 @@ import pytest
 import responses
 
 from ttr_connect_openmetadata.cli import main
+from ttr_connect_openmetadata.model import Export
 from ttr_connect_openmetadata.state import State, write_state
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -74,3 +75,179 @@ def test_default_plan_does_not_schedule_rdf_import(capsys: pytest.CaptureFixture
     operations = [json.loads(line) for line in capsys.readouterr().out.splitlines()]
     assert operations
     assert not any(op["op"] == "ImportRdf" for op in operations)
+
+
+@pytest.mark.parametrize("existing", [False, True])
+@pytest.mark.parametrize("missing", ["table", "column"])
+def test_skipped_assets_preserve_state_then_retry(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    export: Export,
+    existing: bool,
+    missing: str,
+) -> None:
+    from copy import deepcopy
+
+    from om_fake import FakeOm
+    from test_sync import sync_args
+
+    fake = FakeOm(export)
+    name = "northline-pg.northline.retail.sales"
+    saved = deepcopy(fake.stores["tables"][name])
+    if missing == "table":
+        del fake.stores["tables"][name]
+    else:
+        fake.stores["tables"][name]["columns"] = []
+    path = tmp_path / "state.json"
+    if existing:
+        write_state(path, State(snapshot="older", ids=["cn.kind.Old"], om_version="2.0.6"))
+    before = path.read_bytes() if existing else None
+    with responses.RequestsMock(assert_all_requests_are_fired=False) as mock:
+        fake.install(mock)
+        for _ in range(2):
+            assert main(sync_args(tmp_path)) == 0
+            output = capsys.readouterr()
+            assert json.loads(output.out)["warnings"] >= 1
+            assert "WARN state not advanced:" in output.err
+            assert (path.read_bytes() if path.exists() else None) == before
+        fake.stores["tables"][name] = saved
+        assert main(sync_args(tmp_path)) == 0
+        output = json.loads(capsys.readouterr().out)
+        assert output["warnings"] == 0 and output["linked"] > 0
+        assert json.loads(path.read_text())["options"]
+        assert json.loads(path.read_text())["snapshot"] == "fixture-1"
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        None,
+        "studio-url",
+        "cn-name-mode",
+        "cn-path",
+        "world",
+        "no-deprecate-missing",
+        "om-version",
+        "connector-version",
+        "legacy",
+    ],
+)
+def test_conditional_export_respects_options(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    export: Export,
+    monkeypatch: pytest.MonkeyPatch,
+    change: str | None,
+) -> None:
+    from om_fake import FakeOm
+    from test_export_reader import URL, register_export
+    from test_sync import sync_args
+
+    fake = FakeOm(export)
+    args = sync_args(tmp_path)
+    index = args.index("--export-dir")
+    args[index : index + 2] = ["--export-url", URL]
+    path = tmp_path / "state.json"
+    with responses.RequestsMock(assert_all_requests_are_fired=False) as mock:
+        fake.install(mock)
+        register_export(mock)
+        assert main(args) == 0
+        assert json.loads(capsys.readouterr().out)["not_modified"] is False
+        before = path.read_bytes()
+        if change == "legacy":
+            state = json.loads(path.read_text())
+            del state["options"]
+            path.write_text(json.dumps(state))
+        elif change == "om-version":
+            from ttr_connect_openmetadata.om_client import OmClient
+
+            original = OmClient.read_version
+
+            def upgraded(client: OmClient) -> str:
+                original(client)
+                client.version = "2.0.7"
+                return client.version
+
+            monkeypatch.setattr(OmClient, "read_version", upgraded)
+        elif change == "connector-version":
+            monkeypatch.setattr("ttr_connect_openmetadata.cli.version", lambda _: "0.1.3")
+        elif change == "no-deprecate-missing":
+            args += ["--no-deprecate-missing"]
+        elif change:
+            value = {
+                "studio-url": "https://new-studio.example",
+                "cn-name-mode": "qname",
+                "cn-path": "owl",
+                "world": export.graph.world,
+            }[change]
+            flag = "--" + change
+            if flag in args:
+                args[args.index(flag) + 1] = value
+            else:
+                args += [flag, value]
+        fake.calls.clear()
+        mock.reset()
+        fake.install(mock)
+        register_export(mock)
+        if change is None:
+            # Replace the export route; the OM version probe must still run.
+            mock.replace(responses.GET, URL, status=304)
+        assert main(args) == 0
+        output = json.loads(capsys.readouterr().out)
+        export_calls = [c for c in mock.calls if c.request.url and c.request.url.startswith(URL)]
+        assert bool(export_calls)
+        assert all(("If-None-Match" in c.request.headers) == (change is None) for c in export_calls)
+        assert output["not_modified"] is (change is None)
+        if change is None:
+            assert fake.calls == [("GET", "system/version", None)]
+            assert path.read_bytes() == before
+            assert all(
+                output[k] == 0 for k in ("created", "updated", "linked", "deprecated", "warnings")
+            )
+        else:
+            assert json.loads(path.read_text())["options"]
+            if change == "studio-url":
+                assert all(
+                    t["extension"]["ttrUrl"].startswith("https://new-studio.example/")
+                    for t in fake.stores["glossaryTerms"].values()
+                )
+
+
+def test_retry_recomputes_deprecations_without_repatching(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], export: Export
+) -> None:
+    from copy import deepcopy
+
+    from om_fake import FakeOm, uid
+    from test_sync import sync_args
+
+    fake = FakeOm(export)
+    args = sync_args(tmp_path)
+    path = tmp_path / "state.json"
+    with responses.RequestsMock(assert_all_requests_are_fired=False) as mock:
+        fake.install(mock)
+        assert main(args) == 0
+        capsys.readouterr()
+        stale = deepcopy(next(iter(fake.stores["glossaryTerms"].values())))
+        stale.update(
+            id=uid("old-term"),
+            name="Old",
+            fullyQualifiedName="northline Entities.Old",
+            extension={"ttrQname": "er.entity.Old"},
+        )
+        stale.pop("parent", None)
+        stale["entityStatus"] = "Draft"
+        fake.stores["glossaryTerms"][stale["fullyQualifiedName"]] = stale
+        state = json.loads(path.read_text())
+        state["ids"].append("er.entity.Old")
+        path.write_text(json.dumps(state))
+        before = path.read_bytes()
+        missing = fake.stores["tables"].pop("northline-pg.northline.retail.sales")
+        for expected in [1, 0]:
+            assert main(args) == 0
+            assert json.loads(capsys.readouterr().out)["deprecated"] == expected
+            assert path.read_bytes() == before
+        fake.stores["tables"][missing["fullyQualifiedName"]] = missing
+        assert main(args) == 0
+        assert json.loads(capsys.readouterr().out)["deprecated"] == 0
+        assert path.read_bytes() != before
