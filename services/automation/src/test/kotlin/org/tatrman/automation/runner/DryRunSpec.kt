@@ -138,6 +138,204 @@ class DryRunSpec :
             }
         }
 
+        fun generatedMetadata(
+            type: String = "bigint",
+            source: String = "bigint_id_v1",
+        ): PreviewMetadata {
+            val original = defaultMetadata("writer_defaults: { id: { generated: $source } },")
+            return original.copy(
+                actions =
+                    original.actions.mapValues { (_, action) ->
+                        action.copy(
+                            columns =
+                                action.columns.map {
+                                    if (it.name ==
+                                        "id"
+                                    ) {
+                                        it.copy(optional = true)
+                                    } else {
+                                        it
+                                    }
+                                },
+                        )
+                    },
+                entities =
+                    original.entities.map { entity ->
+                        entity.copy(
+                            attributes =
+                                entity.attributes.map {
+                                    if (it.qname.name.endsWith(".order_number")) it.copy(type = type) else it
+                                },
+                        )
+                    },
+            )
+        }
+
+        "generated bigint defaults distinguish repeated wiring and routes and replay the same run" {
+            supervisorScope {
+                val metadata = generatedMetadata()
+                val wiring =
+                    writerWiring(listOf("way.release", "way.hold")).let {
+                        it.copy(columns = it.columns - "id")
+                    }
+                val f = PreviewFixture(this, previewRecipe().withWiring(listOf(wiring, wiring)), metadata)
+                f.runner.use { runner ->
+                    runner.evaluate()
+                    val plan = f.plan!!
+                    val ids =
+                        plan.actions.map {
+                            it.arguments
+                                .getValue("id")
+                                .jsonPrimitive.long
+                        }
+                    ids.distinct().size shouldBe 4
+                    ids.all { it < 0 } shouldBe true
+                    plan.rows.filter { it.entity == "er.entity.order" }.map {
+                        it.key!!
+                            .getValue("order_number")
+                            .jsonPrimitive.long
+                    } shouldBe ids
+                    ApplyPlanner(
+                        Clock.fixed(PREVIEW_NOW.plusSeconds(100), ZoneOffset.UTC),
+                    ).preview(runner).actions shouldBe
+                        plan.actions
+                    runner.evaluate()
+                    f.journals.get() shouldBe 1
+                    f.reads.get() shouldBe 5
+                }
+            }
+        }
+
+        "generated defaults validate on empty and unselected routes even with an explicit override" {
+            for ((type, source) in listOf(
+                "text" to "bigint_id_v1",
+                "bigint" to "bigint_id_v2",
+                "bigint" to "\"bigint_id_v1\"",
+            )) {
+                supervisorScope {
+                    val metadata = generatedMetadata(type, source)
+                    val wiring = writerWiring(listOf("way.empty", "way.hold")).copy(whenCondition = "false")
+                    val f = PreviewFixture(this, previewRecipe().withWiring(listOf(wiring)), metadata)
+                    f.runner.use { runner ->
+                        repeat(2) {
+                            shouldThrow<AutomationException> { runner.evaluate() }.code shouldBe
+                                ErrorCode.PREVIEW_UNSUPPORTED
+                        }
+                        f.journals.get() shouldBe 0
+                        f.reads.get() shouldBe 5
+                    }
+                }
+            }
+        }
+
+        "generated defaults honor explicit values and null never triggers generation" {
+            for (value in listOf("9007199254740993", "null")) {
+                supervisorScope {
+                    val wiring = writerWiring().let { it.copy(columns = it.columns + ("id" to value)) }
+                    val f = PreviewFixture(this, previewRecipe().withWiring(listOf(wiring)), generatedMetadata())
+                    f.runner.use { runner ->
+                        if (value == "null") {
+                            shouldThrow<AutomationException> { runner.evaluate() }.code shouldBe
+                                ErrorCode.PREVIEW_UNSUPPORTED
+                            f.journals.get() shouldBe 0
+                        } else {
+                            runner.evaluate()
+                            f.plan!!
+                                .actions
+                                .single()
+                                .arguments["id"] shouldBe JsonPrimitive(9007199254740993L)
+                            f.journals.get() shouldBe 1
+                        }
+                        f.reads.get() shouldBe 5
+                    }
+                }
+            }
+        }
+
+        "generated collisions with an explicit insert refuse the assembled preview atomically" {
+            for (generatedFirst in listOf(true, false)) {
+                supervisorScope {
+                    val id = UUID.fromString("01234567-89ab-cdef-0123-456789abcdef")
+                    val candidate =
+                        buildJsonObject {
+                            put("order_number", "4712")
+                            put("tenant", "a")
+                        }
+                    val collision = PreviewWriterIds.bigintV1(id, if (generatedFirst) 0 else 1, "hold", "id", candidate)
+                    val generated = writerWiring().let { it.copy(columns = it.columns - "id") }
+                    val explicit = writerWiring().let { it.copy(columns = it.columns + ("id" to collision.toString())) }
+                    val wirings = if (generatedFirst) listOf(generated, explicit) else listOf(explicit, generated)
+                    val f = PreviewFixture(this, previewRecipe().withWiring(wirings), generatedMetadata(), runId = id)
+                    f.runner.use { runner ->
+                        repeat(2) {
+                            shouldThrow<AutomationException> { runner.evaluate() }.code shouldBe
+                                ErrorCode.PREVIEW_UNSUPPORTED
+                        }
+                        f.journals.get() shouldBe 0
+                        f.legacy.get() shouldBe 0
+                        f.reads.get() shouldBe 5
+                    }
+                }
+            }
+        }
+
+        "a generated key alone needs no explicit scalar expressions" {
+            supervisorScope {
+                val original = generatedMetadata()
+                val metadata =
+                    original.copy(
+                        entities =
+                            original.entities.map {
+                                it.copy(
+                                    attributes =
+                                        it.attributes.filter { a ->
+                                            a.qname.name.endsWith(".order_number")
+                                        },
+                                )
+                            },
+                        actions =
+                            original.actions.mapValues { (_, action) ->
+                                action.copy(
+                                    columns = action.columns.filter { it.name == "id" },
+                                    dryRun =
+                                        LocalizedText(
+                                            mapOf(
+                                                "en" to "would insert {id}",
+                                            ),
+                                        ),
+                                )
+                            },
+                    )
+                val wiring = writerWiring().copy(columns = emptyMap())
+                val f = PreviewFixture(this, previewRecipe().withWiring(listOf(wiring)), metadata)
+                f.runner.use { runner ->
+                    runner.evaluate()
+                    f.plan!!
+                        .actions
+                        .single()
+                        .arguments
+                        .getValue("id")
+                        .jsonPrimitive.long
+                        .let { it < 0 } shouldBe true
+                    f.journals.get() shouldBe 1
+                    f.reads.get() shouldBe 5
+                }
+            }
+        }
+
+        "valid generated defaults permit empty routes without allocating an ID" {
+            supervisorScope {
+                val wiring = writerWiring(listOf("way.empty")).let { it.copy(columns = it.columns - "id") }
+                val f = PreviewFixture(this, previewRecipe().withWiring(listOf(wiring)), generatedMetadata())
+                f.runner.use { runner ->
+                    runner.evaluate()
+                    f.plan!!.actions shouldBe emptyList()
+                    f.journals.get() shouldBe 1
+                    f.reads.get() shouldBe 5
+                }
+            }
+        }
+
         "authored defaults survive real metadata loading and supply pinned context and exact scalar values" {
             supervisorScope {
                 val metadata =
@@ -1338,6 +1536,7 @@ private class PreviewFixture(
     recipe: LoadedRecipe = previewRecipe(),
     metadata: PreviewMetadata = legacyPreviewMetadata(BundleFixture.load()),
     refuseJournal: Boolean = false,
+    runId: UUID = UUID.randomUUID(),
     store: StagingStore = LocalStagingStore(Files.createTempDirectory("au-preview")),
 ) {
     val reads = AtomicInteger()
@@ -1347,6 +1546,7 @@ private class PreviewFixture(
     val runner =
         PartRunner(
             runnerContext(recipe).copy(
+                id = runId,
                 keys = null,
                 detailLimit = 2,
                 previewMetadata = metadata,

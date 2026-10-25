@@ -1,0 +1,11 @@
+package hartland
+model er
+
+def entity reorder_proposal {
+    attributes: [
+        def attribute proposal_id { type: bigint, isKey: true },
+        def attribute item { type: text },
+        def attribute run { type: text },
+        def attribute state { type: text, states: [proposed, approved, rejected, started] }
+    ]
+}

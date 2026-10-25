@@ -14,6 +14,7 @@ internal object PreviewWriterDefaults {
     data class Defaults(
         val expressions: Map<String, String>,
         val values: Map<String, BoundValue>,
+        val generated: Set<String> = emptySet(),
     )
 
     fun resolve(
@@ -27,6 +28,7 @@ internal object PreviewWriterDefaults {
         if (defaults.map { it.key }.distinct().size != defaults.size) unsupported()
         val expressions = linkedMapOf<String, String>()
         val values = linkedMapOf<String, BoundValue>()
+        val generated = linkedSetOf<String>()
         for (entry in defaults) {
             // Optional at the call site; target key/nullability requirements still apply after defaults.
             val column = action.columns.singleOrNull { it.name == entry.key } ?: unsupported()
@@ -44,10 +46,14 @@ internal object PreviewWriterDefaults {
                             "started_at" -> BoundValue("datetime", context.startedAt.atOffset(ZoneOffset.UTC))
                             else -> unsupported()
                         }
+                "generated" -> {
+                    if ((source.value as? AutoValue.Id)?.parts != listOf("bigint_id_v1")) unsupported()
+                    generated += entry.key
+                }
                 else -> unsupported()
             }
         }
-        return Defaults(expressions, values)
+        return Defaults(expressions, values, generated)
     }
 
     private fun unsupported(): Nothing =

@@ -148,6 +148,125 @@ class RunRuntimeComponentSpec :
             }
         }
 
+        "governed generated bigint keys persist through retry close restart and reject stale declarations" {
+            val root =
+                ApprovalFixture.copyTo(
+                    tempdir(prefix = "automation-bundles-").toPath().resolve("generated"),
+                    generatedIds = true,
+                )
+
+            fun load() =
+                BundleLoader(AuthorMap(emptyMap())).load(
+                    Checkout(root, "master", "0123456789abcdef", "po", "po@example.org"),
+                    BundleKind.SERVED,
+                )
+
+            fun selected(bundle: Bundle) =
+                bundle.copy(
+                    deployments =
+                        bundle.deployments + (
+                            "release_native_event" to
+                                bundle.deployments.getValue("release_native_event").copy(runAs = ModelRunAs.Caller)
+                        ),
+                )
+            val source = load()
+            val f =
+                DurableRuntimeFixture(transformBundle = { selected(source) }, queryTable = { request ->
+                    if ("approved writer fixture" in request.source) {
+                        Table(
+                            listOf(
+                                ManifestColumn("order_number", "text"),
+                                ManifestColumn("route", "text"),
+                                ManifestColumn("verdict_reason", "text"),
+                            ),
+                            listOf(listOf("4711", "release", "approved writer fixture")),
+                        )
+                    } else {
+                        Table(listOf(ManifestColumn("order_number", "text")), listOf(listOf("4711")))
+                    }
+                })
+            val runtime = f.start()
+            val request = f.request.copy(idempotencyKey = "generated-writer-once")
+            try {
+                val opened = runtime.sessions.open("release_order", request, f.caller)
+                opened.httpStatus shouldBe 201
+                opened.approvalsBypassed shouldBe false
+                val id = UUID.fromString(opened.response.runId)
+                runtime.sessions.evaluate(id, f.caller)
+                val batch = runtime.status.batch(id, f.caller)
+                val inserts = batch.rows.filter { it.entity == "er.entity.reorder_proposal" }
+                inserts.size shouldBe 2
+                val ids =
+                    inserts.map {
+                        it.key!!
+                            .getValue("proposal_id")
+                            .jsonPrimitive.long
+                    }
+                ids.distinct().size shouldBe 2
+                ids.all { it < 0 } shouldBe true
+                val actions = runtime.status.read(id, f.caller).actions
+                actions.map {
+                    it.arguments
+                        .getValue("id")
+                        .jsonPrimitive.long
+                } shouldBe ids
+                actions.map { it.batchRows } shouldBe inserts.map { listOf(it.seq) }
+                for (row in inserts) {
+                    row.row!!["proposal_id"] shouldBe row.key!!["proposal_id"]
+                    row.row!!["run"] shouldBe JsonPrimitive(id.toString())
+                    row.row!!["state"] shouldBe JsonPrimitive("proposed")
+                    row.row!!["item"] shouldBe JsonPrimitive("4711")
+                }
+                actions.map { it.would } shouldBe ids.map { "would propose $it for 4711 as proposed" }
+                runtime.sessions.evaluate(id, f.caller)
+                runtime.sessions
+                    .open("release_order", request, f.caller)
+                    .response.runId shouldBe id.toString()
+                f.reads.get() shouldBe 2
+                transaction { Batches.selectAll().count() } shouldBe 1L
+                runtime.closer.close(id, f.caller)
+                val protocol = runtime.protocol.read(id, f.caller)
+                runtime.shutdown()
+                val restarted = f.start()
+                try {
+                    restarted.status.batch(id, f.caller) shouldBe batch
+                    restarted.protocol.read(id, f.caller) shouldBe protocol
+                    restarted.status.read(id, f.caller).actions shouldBe actions
+                    restarted.sessions
+                        .open("release_order", request, f.caller)
+                        .response.runId shouldBe id.toString()
+                    f.reads.get() shouldBe 2
+                    transaction { Runs.selectAll().count() } shouldBe 1L
+                    transaction { Batches.selectAll().count() } shouldBe 1L
+                } finally {
+                    restarted.shutdown()
+                }
+            } finally {
+                runtime.shutdown()
+                f.close()
+            }
+            val path = root.resolve("automation/automation.ttrm")
+            path.writeText(path.readText().replace("generated: bigint_id_v1", "generated: bigint_id_v2"))
+            val changed = load()
+            changed.recipes
+                .getValue("release_order")
+                .coverage.refusal!!
+                .contains("stale") shouldBe true
+            val stale = DurableRuntimeFixture(transformBundle = { selected(changed) })
+            val refused = stale.start()
+            try {
+                shouldThrow<AutomationException> {
+                    refused.sessions.open("release_order", stale.request, stale.caller)
+                }.code shouldBe ErrorCode.RECIPE_STALE
+                transaction { Runs.selectAll().count() } shouldBe 1L
+                transaction { Batches.selectAll().count() } shouldBe 1L
+                stale.reads.get() shouldBe 0
+            } finally {
+                refused.shutdown()
+                stale.close()
+            }
+        }
+
         "writer defaults persist across clock movement close and restart" {
             val loc = SourceLocation.UNKNOWN
 

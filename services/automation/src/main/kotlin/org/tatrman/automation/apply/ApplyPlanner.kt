@@ -39,6 +39,7 @@ class ApplyPlanner(
         val arguments: Map<Int, Map<String, JsonElement>>,
         val writer: PreviewWriter?,
         val targets: Map<String, TargetResolution.Resolved>?,
+        val generated: Boolean,
     )
 
     suspend fun preview(runner: PartRunner): PreviewPlan {
@@ -46,6 +47,7 @@ class ApplyPlanner(
         val recipe = context.recipe.recipe
         val rows = mutableListOf<ApplyRow>()
         val actions = mutableListOf<DryRunAction>()
+        val writerKeys = PreviewWriterIds.Keys()
         val metadata = requireNotNull(context.previewMetadata) { "preview metadata was not pinned at open" }
         val roles = recipe.roles
         val decision = roles?.decision
@@ -93,85 +95,109 @@ class ApplyPlanner(
                     DetailSnapshot(detail, detail.keyValues(keys).zip(detail.rows).groupBy({ it.first }, { it.second }))
                 }
             val selected =
-                recipe.wiring.filter { "$decision.${route.name}" in it.routes }.map { wiring ->
-                    currentCoroutineContext().ensureActive()
-                    val matches = wiring.whenCondition?.let { PreviewConditions.select(it, table, context.bindings) }
-                    val indices = table.rows.indices.filter { matches == null || it in matches }
-                    val action = metadata.actions.getValue(wiring.action)
-                    val targets = metadata.targets[wiring.action]
-                    val defaults = PreviewWriterDefaults.resolve(action, context)
-                    // Presence wins, including explicit NULL. Defaults do not read other arguments.
-                    val columns = defaults.expressions + wiring.columns
-                    val argumentNames = columns.keys + defaults.values.keys
-                    val writer =
-                        if (action.sinks[Bundle.NATIVE] ==
-                            "writer"
-                        ) {
-                            PreviewWriter.resolve(action, metadata.entities, targets)
-                        } else {
-                            null
-                        }
-                    writer?.validateArguments(argumentNames)
-                    require(action.columns.filterNot { it.optional }.all { it.name in wiring.columns }) {
-                        "missing required action argument"
-                    }
-                    val contextValues =
-                        PreviewExpressions
-                            .constants(defaults.values, writer?.expectedTypes.orEmpty())
-                            .filterKeys { it !in wiring.columns }
-                            .mapValues { scalar(it.value) }
-                    val overridden = defaults.expressions.filterKeys { it in wiring.columns }
-                    if (overridden.isNotEmpty()) {
-                        // Check names/types even when overridden; unused values never execute.
-                        PreviewExpressions.project(
-                            overridden,
-                            table.copy(rows = emptyList()),
-                            context.bindings,
-                            expectedTypes = writer?.expectedTypes.orEmpty(),
-                        )
-                    }
-                    val scalarExpressions =
-                        columns
-                            .filterKeys { name ->
-                                action.columns.singleOrNull { it.name == name }?.type != "rows"
-                            }.mapValues { (name, expression) ->
-                                val column = action.columns.singleOrNull { it.name == name }
-                                val symbolic = column == null || column.type in setOf("role", "action", "text")
-                                val text = expression.trim()
-                                if (symbolic &&
-                                    SYMBOL.matches(text) &&
-                                    table.columns.none { it.name == text } &&
-                                    text !in setOf("true", "false", "null")
-                                ) {
-                                    JsonPrimitive(text).toString()
-                                } else {
-                                    expression
-                                }
+                recipe.wiring
+                    .withIndex()
+                    .filter {
+                        "$decision.${route.name}" in it.value.routes
+                    }.map { (wiringIndex, wiring) ->
+                        currentCoroutineContext().ensureActive()
+                        val matches =
+                            wiring.whenCondition?.let {
+                                PreviewConditions.select(
+                                    it,
+                                    table,
+                                    context.bindings,
+                                )
                             }
-                    val projected =
-                        PreviewExpressions.project(
-                            scalarExpressions,
-                            table.copy(rows = indices.map { table.rows[it] }),
-                            context.bindings,
-                            expectedTypes = writer?.expectedTypes.orEmpty(),
+                        val indices = table.rows.indices.filter { matches == null || it in matches }
+                        val action = metadata.actions.getValue(wiring.action)
+                        val targets = metadata.targets[wiring.action]
+                        val defaults = PreviewWriterDefaults.resolve(action, context)
+                        // Presence wins, including explicit NULL. Defaults do not read other arguments.
+                        val columns = defaults.expressions + wiring.columns
+                        val argumentNames = columns.keys + defaults.values.keys + defaults.generated
+                        val writer =
+                            if (action.sinks[Bundle.NATIVE] ==
+                                "writer"
+                            ) {
+                                PreviewWriter.resolve(action, metadata.entities, targets)
+                            } else {
+                                null
+                            }
+                        writer?.validateArguments(argumentNames)
+                        writer?.validateGenerated(defaults.generated)
+                        require(action.columns.filterNot { it.optional }.all { it.name in wiring.columns }) {
+                            "missing required action argument"
+                        }
+                        val contextValues =
+                            PreviewExpressions
+                                .constants(defaults.values, writer?.expectedTypes.orEmpty())
+                                .filterKeys { it !in wiring.columns }
+                                .mapValues { scalar(it.value) }
+                        val overridden = defaults.expressions.filterKeys { it in wiring.columns }
+                        if (overridden.isNotEmpty()) {
+                            // Check names/types even when overridden; unused values never execute.
+                            PreviewExpressions.project(
+                                overridden,
+                                table.copy(rows = emptyList()),
+                                context.bindings,
+                                expectedTypes = writer?.expectedTypes.orEmpty(),
+                            )
+                        }
+                        val scalarExpressions =
+                            columns
+                                .filterKeys { name ->
+                                    action.columns.singleOrNull { it.name == name }?.type != "rows"
+                                }.mapValues { (name, expression) ->
+                                    val column = action.columns.singleOrNull { it.name == name }
+                                    val symbolic = column == null || column.type in setOf("role", "action", "text")
+                                    val text = expression.trim()
+                                    if (symbolic &&
+                                        SYMBOL.matches(text) &&
+                                        table.columns.none { it.name == text } &&
+                                        text !in setOf("true", "false", "null")
+                                    ) {
+                                        JsonPrimitive(text).toString()
+                                    } else {
+                                        expression
+                                    }
+                                }
+                        val projected =
+                            PreviewExpressions.project(
+                                scalarExpressions,
+                                table.copy(rows = indices.map { table.rows[it] }),
+                                context.bindings,
+                                expectedTypes = writer?.expectedTypes.orEmpty(),
+                            )
+                        PreparedWiring(
+                            wiring,
+                            argumentNames,
+                            indices
+                                .mapIndexed { i, index ->
+                                    val arguments =
+                                        projected.rows[i]
+                                            .mapIndexed { j, value ->
+                                                projected.columns[j].name to scalar(value)
+                                            }.toMap() +
+                                            contextValues +
+                                            (defaults.generated - wiring.columns.keys).associateWith { column ->
+                                                JsonPrimitive(
+                                                    PreviewWriterIds.bigintV1(
+                                                        context.id,
+                                                        wiringIndex,
+                                                        route.name,
+                                                        column,
+                                                        JsonObject(keys.zip(routeKeys[index].map(::scalar)).toMap()),
+                                                    ),
+                                                )
+                                            }
+                                    index to arguments
+                                }.toMap(),
+                            writer,
+                            targets,
+                            (defaults.generated - wiring.columns.keys).isNotEmpty(),
                         )
-                    PreparedWiring(
-                        wiring,
-                        argumentNames,
-                        indices
-                            .mapIndexed { i, index ->
-                                val arguments =
-                                    projected.rows[i]
-                                        .mapIndexed { j, value ->
-                                            projected.columns[j].name to scalar(value)
-                                        }.toMap() +
-                                        contextValues
-                                index to arguments
-                            }.toMap(),
-                        writer,
-                        targets,
-                    )
-                }
+                    }
             for ((index, values) in table.rows.withIndex()) {
                 currentCoroutineContext().ensureActive()
                 val record = table.columns.mapIndexed { i, column -> column.name to scalar(values[i]) }.toMap()
@@ -228,7 +254,7 @@ class ApplyPlanner(
                             )
                     }
                 }
-                for ((wiring, argumentNames, arguments, writer, targets) in selected) {
+                for ((wiring, argumentNames, arguments, writer, targets, generated) in selected) {
                     val scalarArguments = arguments[index] ?: continue
                     val action = metadata.actions.getValue(wiring.action)
                     val args = linkedMapOf<String, JsonElement>()
@@ -253,7 +279,11 @@ class ApplyPlanner(
                     val start = rows.size
                     when (sink) {
                         "transition" -> effects(action, args, metadata, targets, rows)
-                        "writer" -> rows += requireNotNull(writer).insert(rows.size + 1, args)
+                        "writer" -> {
+                            val insert = requireNotNull(writer).insert(rows.size + 1, args)
+                            writerKeys.record(insert, generated)
+                            rows += insert
+                        }
                         "deliver", "task", "start", "emit" -> Unit
                         else -> unsupported("native $sink preview requires its writer lowering")
                     }
