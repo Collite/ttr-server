@@ -1,0 +1,56 @@
+{
+  "request": {
+    "activeOnly": true,
+    "notebookId": "hartland-reviews",
+    "pageSize": 50,
+    "types": [
+      "Mention",
+      "Statement[review]"
+    ],
+    "unitId": 101
+  },
+  "response": {
+    "annotations": [
+      {
+        "confidence": 0.91,
+        "createdAt": "2026-10-25T10:00:00Z",
+        "id": 5001,
+        "payloadJson": "{\"candidates\":[{\"code\":\"cn.HeldOrder\",\"label\":\"Pozastavená objednávka\",\"score\":0.91,\"source\":\"lexicon\",\"system\":\"cn\"}],\"concept\":\"cn.HeldOrder\",\"lemma\":\"pozastavený\",\"linkMethod\":\"lexicon\",\"surface\":\"pozastavená\"}",
+        "producer": "cz-mentions",
+        "producerVersion": "sha256:5d1f8a03c2e94b7a6f0c1d2e3b4a59687c6d5e4f3a2b1c0d9e8f7a6b5c4d3e2f",
+        "runId": "step-1/1",
+        "spans": [
+          {
+            "end": 79,
+            "start": 68,
+            "unitId": 101
+          }
+        ],
+        "type": "Mention",
+        "unitId": 101
+      },
+      {
+        "confidence": 0.8,
+        "createdAt": "2026-10-25T10:00:05Z",
+        "derivedFrom": [
+          5001
+        ],
+        "id": 5002,
+        "payloadJson": "{\"attributes\":{\"item\":{\"display\":\"Sluchátka Voltaic\",\"qname\":\"AAAAAAAABHBAAAAA\"},\"sentiment\":\"positive\"},\"concept\":\"cn.Review\",\"confidence\":0.8,\"modifiers\":{\"temporal_context\":\"current\",\"verification\":\"verified_purchase\"},\"spans\":[{\"end\":40,\"start\":11,\"unitId\":101}],\"verbatim\":\"Sluchátka Voltaic jsou skvělá\"}",
+        "producer": "review-extract",
+        "producerVersion": "sha256:8a2b4c6d8e0f1a3b5c7d9e1f2a4b6c8d0e2f4a6b8c0d2e4f6a8b0c2d4e6f8a0b",
+        "runId": "step-2/1",
+        "spans": [
+          {
+            "end": 40,
+            "start": 11,
+            "unitId": 101
+          }
+        ],
+        "type": "Statement[review]",
+        "unitId": 101
+      }
+    ],
+    "nextPageToken": "eyJhZnRlciI6NTAwMn0"
+  }
+}

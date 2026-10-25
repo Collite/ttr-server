@@ -1,0 +1,13 @@
+{
+  "createdAt": "2026-10-25T10:00:05Z",
+  "derivedFrom": [
+    5002
+  ],
+  "id": 5003,
+  "payloadJson": "{\"message\":\"span [79, 92) ends past the unit's end (80 code points)\",\"ok\":false,\"rule\":\"span_within_unit\"}",
+  "producer": "review-extract",
+  "producerVersion": "sha256:8a2b4c6d8e0f1a3b5c7d9e1f2a4b6c8d0e2f4a6b8c0d2e4f6a8b0c2d4e6f8a0b",
+  "runId": "step-2/1",
+  "type": "Verdict",
+  "unitId": 101
+}
