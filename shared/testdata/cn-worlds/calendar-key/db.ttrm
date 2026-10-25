@@ -1,0 +1,7 @@
+// CN-P6 ⚑S62-1 — the er lane's calendar-key world: Hartland's shape where it matters to an E-R statement read — one
+// fact per channel, md with no Channel grain and no date grain, a stacked `sales` over their union, and every sale dated
+// by an integer KEY into a calendar whose date carries `semantics { role: event_date }`.
+model db schema dbo
+def table store_sales { columns: [def column sale_id { type: int, isKey: true }, def column sold_date { type: int }, def column ext_sales_price { type: decimal }] }
+def table web_sales { columns: [def column sale_id { type: int, isKey: true }, def column sold_date { type: int }, def column ext_sales_price { type: decimal }] }
+def table date_dim { columns: [def column sk { type: int, isKey: true }, def column cal_date { type: date }] }

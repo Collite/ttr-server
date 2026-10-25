@@ -1,0 +1,6 @@
+model cn
+def event Sale { involves: [Channel], period: { at: sold_date }, qualities: [revenue, sold_date] }
+def kind Channel {}
+def quality revenue { of: Sale }
+def quality sold_date { of: Sale }
+def phase WebSale { of: Sale, definition: """channel = 'web'""" }

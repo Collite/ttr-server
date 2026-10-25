@@ -16,6 +16,12 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+- **resolver — the er statement lane on `statement.lower:v1` (CN-P6 ⚑S62-1, A-CN-101).** Grammar 0.18.10's
+  `ttr-concept` reads a statement on E-R when md carries no single read of it. The door's JSON now carries `lane`
+  (`md` | `er`), and for an er read `erSql` — SQL over entities, every placeholder bound, which the query door runs as
+  it is (`source_schema: er`) — with no `plan`; `refused` is true only when neither lane reads the statement. The
+  advisory `cn/lowered-on-er` names md's reason. Pin: `tatrman-grammar` / `tatrman-ttr-metadata` 0.18.9 → 0.18.10.
+
 - **connect-openmetadata 0.1.1 — Hartland catalog integration.** Optional
   `locators.openmetadata.schema` maps a model schema handle to the scanner's physical
   schema without changing model identities or ownership filters. HTTP304 syncs print

@@ -42,3 +42,9 @@ dfbf124c1bc3cd36f86c3a6415e7972ba3c994936248b8568f6d51b656e507a0  shared/testdat
 e7005b2f6ec7b63240c01e44e861218b78c09a05385abce158a00628bda4dea1  shared/testdata/cn-worlds/sales/db.ttrm
 9fd7258683d27cdf57e448d1b436c61659d413861967033cb50b9875bc21349e  shared/testdata/cn-worlds/sales/md-binding.ttrm
 421dcd495ffa076b3ed9fd929b2cb89110a60cc1bb13f3a56feaf1bb1b984521  shared/testdata/cn-worlds/sales/md.ttrm
+c42725c553e3f0141ba4d3a561f7656254f63878e810bb434f9aa15f3f03ab30  shared/testdata/cn-worlds/calendar-key/bindings.ttrm
+805916b4b0b7aac16b4eb03bdaa2a7dcc665405024cb6aec022d2fb8a2c572da  shared/testdata/cn-worlds/calendar-key/cn.ttrm
+4eb964d7af648faa3954e530d7180d9256a6589c306c2685fe5957d3701e101b  shared/testdata/cn-worlds/calendar-key/db.ttrm
+43bb63354f94cd608ebafc7ced8b8f51a9fcd207eefb5bba287e7c5e7f63444a  shared/testdata/cn-worlds/calendar-key/er.ttrm
+498acb0ceb0245f8f52952e6f7a2afafca562fe0e8831e516dae4d2793565ad5  shared/testdata/cn-worlds/calendar-key/md-binding.ttrm
+59af1a5681195a2bdbf17cf7cb3ddeda49fd20dcff9ca4f55807b9a581d91b47  shared/testdata/cn-worlds/calendar-key/md.ttrm

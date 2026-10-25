@@ -1,0 +1,5 @@
+model binding
+def cn2er_event sale_g { event: cn.Sale, target: er.entity.sales, period: { at: er.entity.sales.sold_date } }
+def cn2er_kind channel_g { kind: cn.Channel, target: er.entity.sales.channel }
+def cn2md_quality revenue_g { quality: cn.revenue, target: md.revenue }
+def cn2er_quality sold_date_g { quality: cn.sold_date, target: er.entity.sales.sold_date }

@@ -1,0 +1,5 @@
+model md
+def domain Money { type: decimal }
+def measure revenue { domain: md.Money, class: additive, aggregation: sum }
+def cubelet storeSales { measures: [revenue] }
+def cubelet webSales { measures: [revenue] }
