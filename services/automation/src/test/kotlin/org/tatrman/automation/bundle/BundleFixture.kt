@@ -121,13 +121,13 @@ object BundleFixture {
     fun sources(
         bundles: Bundles,
         approvals: ApprovalReader = ApprovalReader { _, _, _ -> false },
-        veles: VelesHandshake? = null,
+        metadata: MetadataHandshake? = null,
     ) = DescriptorSources(
         bundles = bundles,
         registry = Registry(ExecutorType.builtin()),
         approvals = approvals,
         tokens = ServiceTokens(emptyMap(), { error("no token exchange in a descriptor") }),
-        veles = veles,
+        metadata = metadata,
         paused = { false },
         refreshRoles = setOf("ops"),
     )

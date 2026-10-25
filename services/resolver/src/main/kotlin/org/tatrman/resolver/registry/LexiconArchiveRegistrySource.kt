@@ -20,7 +20,7 @@ import java.nio.file.Path
  * identity**."* Both services now read the **same file**, delivered the same way (olymp renders
  * the archive as a ConfigMap from the `lexicon` Application and mounts it read-only).
  *
- * ⚑ **Why not veles `meta.v1`**, which [LiveMetadataRegistryAdapter]'s KDoc promised: `ListObjects`
+ * ⚑ **Why not metadata `meta.v1`**, which [LiveMetadataRegistryAdapter]'s KDoc promised: `ListObjects`
  * returns `ObjectDescriptor`, which carries `kind`/`semantics_kind` but **no aliases** — those
  * hang off the per-object *detail* reads, so anchors that way mean an N+1 sweep over the whole
  * model at boot, to obtain terms this file already carries **with the authored match method

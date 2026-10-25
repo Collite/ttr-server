@@ -6,7 +6,7 @@ name: Release Image (GHCR)
 # with the N1 rename folded in: image repository names are publish-adjacent, so
 # they use FUNCTIONAL names (query, validate, …) per the J-v2 guardrail —
 # personas are legal only in Helm *release* names + k8s labels, NOT image repos.
-# `veles` is a SURVIVING persona and keeps its name.
+# metadata — formerly `veles` (2026-06-13 → 2026-10); image name follows the module.
 #
 # DORMANT THROUGH SV-P0: rename-before-publish is the phase invariant (plan
 # §SV-P0) — nothing is published to any registry in SV-P0. This workflow only
@@ -35,7 +35,7 @@ name: Release Image (GHCR)
 #                            only for packages this workflow created itself (see the ⚑ on the
 #                            GHCR login step — per-package Actions access is the whole story).
 #   TATRMAN_PKG_USER/TOKEN - the GHCR push credentials when set, and the Collite/ttr-core
-#                            GitHub Packages reader (org.tatrman:ttr-*, needed by Veles +
+#                            GitHub Packages reader (org.tatrman:ttr-*, needed by metadata +
 #                            Translate). Scopes: `read:packages` + `write:packages`.
 #                            Still optional — unset, both uses fall back to GITHUB_TOKEN.
 
@@ -69,7 +69,7 @@ on:
         required: true
         default: '0.9.0'
       modules:
-        description: '"all" for every deployable module, or a space-separated list (e.g. "query veles")'
+        description: '"all" for every deployable module, or a space-separated list (e.g. "query metadata")'
         required: true
         default: 'all'
 
@@ -91,10 +91,9 @@ jobs:
 
           # Exact name -> buildable path map for the deployable (k8s-overlay) set.
           # Names are the FUNCTIONAL image-repo names (== directory basenames);
-          # veles is a surviving persona and stays veles.
           declare -A PATHS=(
             [connect-openmetadata]=connectors/openmetadata
-            [veles]=services/veles
+            [metadata]=services/metadata
             [query]=services/query
             [translate]=services/translate
             [validate]=services/validate
@@ -134,7 +133,7 @@ jobs:
             # with a local context: the dockerfile lane below.
             [superset]=images/superset
           )
-          ALL="connect-openmetadata veles query translate validate dispatch charon lex-matcher llm-gateway nlp nlp-stanza nlp-spacy golem-py morph-studio chrono geo money grounding-mcp resolver automation meta-mcp query-mcp lex-matcher-mcp nlp-mcp worker-postgres worker-mssql worker-polars identity health"
+          ALL="connect-openmetadata metadata query translate validate dispatch charon lex-matcher llm-gateway nlp nlp-stanza nlp-spacy golem-py morph-studio chrono geo money grounding-mcp resolver automation meta-mcp query-mcp lex-matcher-mcp nlp-mcp worker-postgres worker-mssql worker-polars identity health"
 
           declare -a NAMES
           if [ "${{ github.event_name }}" = "push" ]; then

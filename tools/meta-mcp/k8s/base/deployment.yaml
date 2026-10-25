@@ -1,41 +1,41 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: veles-mcp
+  name: meta-mcp
   namespace: kantheon
   labels:
-    app: veles-mcp
+    app: meta-mcp
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: veles-mcp
+      app: meta-mcp
   template:
     metadata:
       labels:
-        app: veles-mcp
+        app: meta-mcp
     spec:
       containers:
-        - name: veles-mcp
-          image: veles-mcp:dev
+        - name: meta-mcp
+          image: meta-mcp:dev
           ports:
             - containerPort: 7262
           env:
-            - name: VELES_MCP_SERVER_PORT
+            - name: META_MCP_SERVER_PORT
               value: "7262"
-            # In-cluster DNS points at the veles service's gRPC port. The
-            # host's gRPC channel target is the veles Deployment's Service.
-            - name: VELES_PROTOCOL
+            # In-cluster DNS points at the metadata service's gRPC port. The
+            # host's gRPC channel target is the metadata Deployment's Service.
+            - name: METADATA_PROTOCOL
               value: grpc
-            - name: VELES_GRPC_HOST
-              value: veles
-            - name: VELES_GRPC_PORT
+            - name: METADATA_GRPC_HOST
+              value: metadata
+            - name: METADATA_GRPC_PORT
               value: "7261"
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
               value: http://alloy.observability.svc.cluster.local:4317
             - name: OTEL_SERVICE_NAME
-              value: veles-mcp
-            - name: OTEL_ENABLED_VELES_MCP
+              value: meta-mcp
+            - name: OTEL_ENABLED_META_MCP
               value: "true"
           readinessProbe:
             httpGet:
@@ -61,13 +61,13 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: veles-mcp
+  name: meta-mcp
   namespace: kantheon
   labels:
-    app: veles-mcp
+    app: meta-mcp
 spec:
   selector:
-    app: veles-mcp
+    app: meta-mcp
   ports:
     - name: http
       port: 7262

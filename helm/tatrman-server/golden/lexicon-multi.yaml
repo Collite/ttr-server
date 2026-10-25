@@ -215,6 +215,53 @@ spec:
       targetPort: 9090
 
 ---
+# Source: tatrman-server/charts/meta-mcp/templates/service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: meta-mcp
+  labels:
+    app.kubernetes.io/name: meta-mcp
+    app.kubernetes.io/instance: tatrman-server
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/version: "dev"
+    helm.sh/chart: meta-mcp-0.1.0
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: meta-mcp
+    app.kubernetes.io/instance: tatrman-server
+  ports:
+    - name: http
+      port: 7262
+      targetPort: 7262
+
+---
+# Source: tatrman-server/charts/metadata/templates/service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: metadata
+  labels:
+    app.kubernetes.io/name: metadata
+    app.kubernetes.io/instance: tatrman-server
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/version: "dev"
+    helm.sh/chart: metadata-0.1.0
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: metadata
+    app.kubernetes.io/instance: tatrman-server
+  ports:
+    - name: http
+      port: 7260
+      targetPort: 7260
+    - name: grpc
+      port: 7261
+      targetPort: 7261
+
+---
 # Source: tatrman-server/charts/money/templates/service.yaml
 apiVersion: v1
 kind: Service
@@ -519,53 +566,6 @@ spec:
       targetPort: 7286
 
 ---
-# Source: tatrman-server/charts/veles-mcp/templates/service.yaml
-apiVersion: v1
-kind: Service
-metadata:
-  name: veles-mcp
-  labels:
-    app.kubernetes.io/name: veles-mcp
-    app.kubernetes.io/instance: tatrman-server
-    app.kubernetes.io/managed-by: Helm
-    app.kubernetes.io/version: "dev"
-    helm.sh/chart: veles-mcp-0.1.0
-spec:
-  type: ClusterIP
-  selector:
-    app.kubernetes.io/name: veles-mcp
-    app.kubernetes.io/instance: tatrman-server
-  ports:
-    - name: http
-      port: 7262
-      targetPort: 7262
-
----
-# Source: tatrman-server/charts/veles/templates/service.yaml
-apiVersion: v1
-kind: Service
-metadata:
-  name: veles
-  labels:
-    app.kubernetes.io/name: veles
-    app.kubernetes.io/instance: tatrman-server
-    app.kubernetes.io/managed-by: Helm
-    app.kubernetes.io/version: "dev"
-    helm.sh/chart: veles-0.1.0
-spec:
-  type: ClusterIP
-  selector:
-    app.kubernetes.io/name: veles
-    app.kubernetes.io/instance: tatrman-server
-  ports:
-    - name: http
-      port: 7260
-      targetPort: 7260
-    - name: grpc
-      port: 7261
-      targetPort: 7261
-
----
 # Source: tatrman-server/charts/whois/templates/service.yaml
 apiVersion: v1
 kind: Service
@@ -699,7 +699,7 @@ spec:
             - name: CHRONO_SERVER_GRPC_PORT
               value: "7220"
             - name: METADATA_HOST
-              value: "veles"
+              value: "metadata"
             - name: METADATA_GRPC_PORT
               value: "7261"
             - name: CHRONO_USE_FIXTURE_MODEL
@@ -997,7 +997,7 @@ spec:
             - name: GEO_SERVER_GRPC_PORT
               value: "7221"
             - name: METADATA_HOST
-              value: "veles"
+              value: "metadata"
             - name: METADATA_GRPC_PORT
               value: "7261"
             - name: GEO_NOMINATIM_USER_AGENT
@@ -1256,6 +1256,154 @@ spec:
               memory: 768Mi
 
 ---
+# Source: tatrman-server/charts/meta-mcp/templates/deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: meta-mcp
+  labels:
+    app.kubernetes.io/name: meta-mcp
+    app.kubernetes.io/instance: tatrman-server
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/version: "dev"
+    helm.sh/chart: meta-mcp-0.1.0
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: meta-mcp
+      app.kubernetes.io/instance: tatrman-server
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: meta-mcp
+        app.kubernetes.io/instance: tatrman-server
+    spec:
+      containers:
+        - name: meta-mcp
+          image: "ghcr.io/collite/meta-mcp:0.9.0"
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 7262
+          env:
+            - name: META_MCP_SERVER_PORT
+              value: "7262"
+            - name: OTEL_SERVICE_NAME
+              value: "meta-mcp"
+            - name: OTEL_ENABLED_META_MCP
+              value: "false"
+            - name: METADATA_PROTOCOL
+              value: grpc
+            - name: METADATA_GRPC_HOST
+              value: metadata
+            - name: METADATA_GRPC_PORT
+              value: "7261"
+            - name: CAPABILITIES_MCP_URL
+              value: http://capabilities-mcp.kantheon:7501
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 7262
+            initialDelaySeconds: 2
+            periodSeconds: 3
+            failureThreshold: 20
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 7262
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            limits:
+              cpu: 500m
+              memory: 512Mi
+            requests:
+              cpu: 100m
+              memory: 256Mi
+
+---
+# Source: tatrman-server/charts/metadata/templates/deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: metadata
+  labels:
+    app.kubernetes.io/name: metadata
+    app.kubernetes.io/instance: tatrman-server
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/version: "dev"
+    helm.sh/chart: metadata-0.1.0
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: metadata
+      app.kubernetes.io/instance: tatrman-server
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: metadata
+        app.kubernetes.io/instance: tatrman-server
+    spec:
+      containers:
+        - name: metadata
+          image: "ghcr.io/collite/metadata:0.9.0"
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 7260
+            - name: grpc
+              containerPort: 7261
+          env:
+            - name: METADATA_HTTP_PORT
+              value: "7260"
+            - name: METADATA_GRPC_PORT
+              value: "7261"
+            - name: METADATA_GIT_REMOTE_URI
+              value: "https://github.com/Collite/ttr-demo.git"
+            - name: METADATA_GIT_BRANCH
+              value: "master"
+            - name: METADATA_GIT_SUBDIR
+              value: "model"
+            - name: OTEL_SERVICE_NAME
+              value: "metadata"
+            - name: OTEL_ENABLED_METADATA
+              value: "false"
+            - name: METADATA_GIT_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: metadata-github-pat
+                  key: token
+                  optional: true
+            - name: PROMPTS_GIT_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: metadata-github-pat
+                  key: token
+                  optional: true
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 7260
+            initialDelaySeconds: 2
+            periodSeconds: 3
+            failureThreshold: 20
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 7260
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            limits:
+              cpu: "1"
+              memory: 1Gi
+            requests:
+              cpu: 250m
+              memory: 512Mi
+
+---
 # Source: tatrman-server/charts/money/templates/deployment.yaml
 apiVersion: apps/v1
 kind: Deployment
@@ -1294,7 +1442,7 @@ spec:
             - name: MONEY_SERVER_GRPC_PORT
               value: "7222"
             - name: METADATA_HOST
-              value: "veles"
+              value: "metadata"
             - name: METADATA_GRPC_PORT
               value: "7261"
             - name: MONEY_DEFAULT_CURRENCY
@@ -1789,8 +1937,8 @@ spec:
               value: translate
             - name: VALIDATE_SERVER
               value: validate
-            - name: VELES_SERVER
-              value: veles
+            - name: METADATA_SERVER
+              value: metadata
           readinessProbe:
             httpGet:
               path: /ready
@@ -2028,9 +2176,9 @@ spec:
               value: "translate"
             - name: OTEL_ENABLED_TRANSLATE
               value: "false"
-            - name: VELES_GRPC_HOST
-              value: veles
-            - name: VELES_GRPC_PORT
+            - name: METADATA_GRPC_HOST
+              value: metadata
+            - name: METADATA_GRPC_PORT
               value: "7261"
           readinessProbe:
             httpGet:
@@ -2095,9 +2243,9 @@ spec:
               value: "validate"
             - name: OTEL_ENABLED_VALIDATE
               value: "false"
-            - name: VELES_HOST
-              value: veles
-            - name: VELES_GRPC_PORT
+            - name: METADATA_HOST
+              value: metadata
+            - name: METADATA_GRPC_PORT
               value: "7261"
           readinessProbe:
             httpGet:
@@ -2112,154 +2260,6 @@ spec:
               port: 7285
             initialDelaySeconds: 10
             periodSeconds: 15
-          resources:
-            limits:
-              cpu: "1"
-              memory: 1Gi
-            requests:
-              cpu: 250m
-              memory: 512Mi
-
----
-# Source: tatrman-server/charts/veles-mcp/templates/deployment.yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: veles-mcp
-  labels:
-    app.kubernetes.io/name: veles-mcp
-    app.kubernetes.io/instance: tatrman-server
-    app.kubernetes.io/managed-by: Helm
-    app.kubernetes.io/version: "dev"
-    helm.sh/chart: veles-mcp-0.1.0
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app.kubernetes.io/name: veles-mcp
-      app.kubernetes.io/instance: tatrman-server
-  template:
-    metadata:
-      labels:
-        app.kubernetes.io/name: veles-mcp
-        app.kubernetes.io/instance: tatrman-server
-    spec:
-      containers:
-        - name: veles-mcp
-          image: "ghcr.io/collite/meta-mcp:0.9.0"
-          imagePullPolicy: IfNotPresent
-          ports:
-            - name: http
-              containerPort: 7262
-          env:
-            - name: VELES_MCP_SERVER_PORT
-              value: "7262"
-            - name: OTEL_SERVICE_NAME
-              value: "veles-mcp"
-            - name: OTEL_ENABLED_VELES_MCP
-              value: "false"
-            - name: VELES_PROTOCOL
-              value: grpc
-            - name: VELES_GRPC_HOST
-              value: veles
-            - name: VELES_GRPC_PORT
-              value: "7261"
-            - name: CAPABILITIES_MCP_URL
-              value: http://capabilities-mcp.kantheon:7501
-          readinessProbe:
-            httpGet:
-              path: /ready
-              port: 7262
-            initialDelaySeconds: 2
-            periodSeconds: 3
-            failureThreshold: 20
-          livenessProbe:
-            httpGet:
-              path: /health
-              port: 7262
-            initialDelaySeconds: 5
-            periodSeconds: 10
-          resources:
-            limits:
-              cpu: 500m
-              memory: 512Mi
-            requests:
-              cpu: 100m
-              memory: 256Mi
-
----
-# Source: tatrman-server/charts/veles/templates/deployment.yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: veles
-  labels:
-    app.kubernetes.io/name: veles
-    app.kubernetes.io/instance: tatrman-server
-    app.kubernetes.io/managed-by: Helm
-    app.kubernetes.io/version: "dev"
-    helm.sh/chart: veles-0.1.0
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app.kubernetes.io/name: veles
-      app.kubernetes.io/instance: tatrman-server
-  template:
-    metadata:
-      labels:
-        app.kubernetes.io/name: veles
-        app.kubernetes.io/instance: tatrman-server
-    spec:
-      containers:
-        - name: veles
-          image: "ghcr.io/collite/veles:0.9.0"
-          imagePullPolicy: IfNotPresent
-          ports:
-            - name: http
-              containerPort: 7260
-            - name: grpc
-              containerPort: 7261
-          env:
-            - name: VELES_HTTP_PORT
-              value: "7260"
-            - name: VELES_GRPC_PORT
-              value: "7261"
-            - name: METADATA_GIT_REMOTE_URI
-              value: "https://github.com/Collite/ttr-demo.git"
-            - name: METADATA_GIT_BRANCH
-              value: "master"
-            - name: METADATA_GIT_SUBDIR
-              value: "model"
-            - name: OTEL_SERVICE_NAME
-              value: "veles"
-            - name: OTEL_ENABLED_METADATA
-              value: "false"
-            - name: METADATA_GIT_TOKEN
-              valueFrom:
-                secretKeyRef:
-                  name: veles-github-pat
-                  key: token
-                  optional: true
-            - name: PROMPTS_GIT_TOKEN
-              valueFrom:
-                secretKeyRef:
-                  name: veles-github-pat
-                  key: token
-                  optional: true
-          readinessProbe:
-            httpGet:
-              path: /ready
-              port: 7260
-            initialDelaySeconds: 2
-            periodSeconds: 3
-            failureThreshold: 20
-          livenessProbe:
-            httpGet:
-              path: /health
-              port: 7260
-            initialDelaySeconds: 5
-            periodSeconds: 10
           resources:
             limits:
               cpu: "1"

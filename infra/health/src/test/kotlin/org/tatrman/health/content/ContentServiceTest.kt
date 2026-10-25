@@ -138,7 +138,7 @@ class ContentServiceTest :
             var reads = 0
             val clock = TestClock(Instant.parse("2026-10-09T10:00:00Z"))
             val service =
-                ContentService(mapOf("veles" to StatusConfig(url = "http://veles/status")), clock = clock)
+                ContentService(mapOf("metadata" to StatusConfig(url = "http://metadata/status")), clock = clock)
             service.replaceClient(
                 HttpClient(
                     MockEngine {
@@ -168,7 +168,7 @@ class ContentServiceTest :
             val service =
                 ContentService(
                     mapOf(
-                        "veles" to StatusConfig(url = "http://veles/status"),
+                        "metadata" to StatusConfig(url = "http://metadata/status"),
                         "translate" to StatusConfig(url = "http://translate/status"),
                     ),
                     clock = clock,
@@ -193,9 +193,9 @@ class ContentServiceTest :
                 .ok shouldBe false
             clock.now = clock.now.plusSeconds(4)
             service.all()
-            (readsOf("veles") to readsOf("translate")) shouldBe (1 to 1)
+            (readsOf("metadata") to readsOf("translate")) shouldBe (1 to 1)
 
-            // Past the failure TTL: translate is asked again — veles, still fresh, is not.
+            // Past the failure TTL: translate is asked again — metadata, still fresh, is not.
             failing = false
             clock.now = clock.now.plusSeconds(2)
             service
@@ -203,20 +203,20 @@ class ContentServiceTest :
                 .technologies
                 .getValue("translate")
                 .ok shouldBe true
-            (readsOf("veles") to readsOf("translate")) shouldBe (1 to 2)
+            (readsOf("metadata") to readsOf("translate")) shouldBe (1 to 2)
 
             // Each on its own full TTL from its own read.
             clock.now = clock.now.plusSeconds(20)
             service.all()
-            (readsOf("veles") to readsOf("translate")) shouldBe (1 to 2)
+            (readsOf("metadata") to readsOf("translate")) shouldBe (1 to 2)
             clock.now = clock.now.plusSeconds(5)
             service.all()
-            (readsOf("veles") to readsOf("translate")) shouldBe (2 to 2)
+            (readsOf("metadata") to readsOf("translate")) shouldBe (2 to 2)
         }
 
         "concurrent viewers share one read" {
             val reads = AtomicInteger()
-            val service = ContentService(mapOf("veles" to StatusConfig(url = "http://veles/status")))
+            val service = ContentService(mapOf("metadata" to StatusConfig(url = "http://metadata/status")))
             service.replaceClient(
                 HttpClient(
                     MockEngine {
@@ -367,16 +367,16 @@ class ContentServiceTest :
             val summary =
                 ContentService.summarize(
                     mapOf(
-                        "veles" to Content(ok = true, commit = "a0dfb2a", at = "2026-10-09T10:12:00Z"),
+                        "metadata" to Content(ok = true, commit = "a0dfb2a", at = "2026-10-09T10:12:00Z"),
                         "translate" to Content(ok = true, commit = "a0dfb2a91c3e", at = "2026-10-09T10:14:00Z"),
                         "validate" to Content(ok = true),
                     ),
-                    expectsCommit = setOf("veles", "translate"),
+                    expectsCommit = setOf("metadata", "translate"),
                 )
 
             summary.agree shouldBe true
             summary.commit shouldBe "a0dfb2a91c3e"
-            summary.byService shouldBe mapOf("veles" to "a0dfb2a", "translate" to "a0dfb2a91c3e")
+            summary.byService shouldBe mapOf("metadata" to "a0dfb2a", "translate" to "a0dfb2a91c3e")
             summary.lastRefresh shouldBe "2026-10-09T10:14:00Z"
         }
 
@@ -384,7 +384,7 @@ class ContentServiceTest :
             val summary =
                 ContentService.summarize(
                     mapOf(
-                        "veles" to Content(ok = true, commit = "a0dfb2a"),
+                        "metadata" to Content(ok = true, commit = "a0dfb2a"),
                         "translate" to Content(ok = true, commit = "527d04f"),
                     ),
                 )
@@ -397,10 +397,10 @@ class ContentServiceTest :
             val summary =
                 ContentService.summarize(
                     mapOf(
-                        "veles" to Content(ok = true, commit = "a0dfb2a", at = "2026-10-09T08:00:00Z"),
+                        "metadata" to Content(ok = true, commit = "a0dfb2a", at = "2026-10-09T08:00:00Z"),
                         "external-secrets" to Content(ok = true, at = "2026-10-09T09:55:00Z"),
                     ),
-                    expectsCommit = setOf("veles"),
+                    expectsCommit = setOf("metadata"),
                 )
 
             summary.lastRefresh shouldBe "2026-10-09T08:00:00Z"
@@ -410,31 +410,31 @@ class ContentServiceTest :
             val summary =
                 ContentService.summarize(
                     mapOf(
-                        "veles" to Content(ok = true, commit = "a0dfb2a"),
+                        "metadata" to Content(ok = true, commit = "a0dfb2a"),
                         "translate" to Content(ok = true, commit = "a0dfb2a"),
                         "validate" to Content(ok = false, note = GenericJson.NO_COMMIT),
                     ),
-                    expectsCommit = setOf("veles", "translate", "validate"),
+                    expectsCommit = setOf("metadata", "translate", "validate"),
                 )
 
             summary.agree shouldBe false
             summary.commit shouldBe null
             summary.missing shouldBe listOf("validate")
-            summary.byService shouldBe mapOf("veles" to "a0dfb2a", "translate" to "a0dfb2a")
+            summary.byService shouldBe mapOf("metadata" to "a0dfb2a", "translate" to "a0dfb2a")
         }
 
-        "the service knows which technologies name the commit: a `commit` path, or the veles adapter" {
+        "the service knows which technologies name the commit: a `commit` path, or the metadata adapter" {
             val service =
                 ContentService(
                     mapOf(
-                        "veles" to StatusConfig(url = "http://veles/status", adapter = "veles"),
+                        "metadata" to StatusConfig(url = "http://metadata/status", adapter = "metadata"),
                         "validate" to StatusConfig(url = "http://validate/status", commit = "metadata_version"),
                         "dispatch" to StatusConfig(url = "http://dispatch/status"),
                     ),
                 )
             service.replaceClient(HttpClient(MockEngine { respond("{}", HttpStatusCode.OK, JSON) }))
 
-            service.all().summary.missing shouldBe listOf("validate", "veles")
+            service.all().summary.missing shouldBe listOf("metadata", "validate")
         }
 
         "no commit reported at all is agreement about nothing" {

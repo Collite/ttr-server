@@ -1,0 +1,93 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: metadata
+  namespace: kantheon
+  labels:
+    app: metadata
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: metadata
+  template:
+    metadata:
+      labels:
+        app: metadata
+    spec:
+      containers:
+        - name: metadata
+          image: metadata:dev
+          ports:
+            - name: http
+              containerPort: 7260
+            - name: grpc
+              containerPort: 7261
+          env:
+            - name: METADATA_HTTP_PORT
+              value: "7260"
+            - name: METADATA_GRPC_PORT
+              value: "7261"
+            # The public Hartland demo model (the metadata service's own default); a deploying env overrides all three.
+            - name: METADATA_GIT_REMOTE_URI
+              value: "https://github.com/Collite/ttr-demo.git"
+            - name: METADATA_GIT_BRANCH
+              value: "master"
+            - name: METADATA_GIT_SUBDIR
+              value: "model"
+            - name: METADATA_GIT_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: metadata-github-pat
+                  key: token
+                  optional: true
+            - name: PROMPTS_GIT_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: metadata-github-pat
+                  key: token
+                  optional: true
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: http://alloy.observability.svc.cluster.local:4317
+            - name: OTEL_SERVICE_NAME
+              value: metadata
+            - name: OTEL_ENABLED_METADATA
+              value: "true"
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 7260
+            initialDelaySeconds: 2
+            periodSeconds: 3
+            failureThreshold: 20
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 7260
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests:
+              memory: 512Mi
+              cpu: 250m
+            limits:
+              memory: 1Gi
+              cpu: 1000m
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: metadata
+  namespace: kantheon
+  labels:
+    app: metadata
+spec:
+  selector:
+    app: metadata
+  ports:
+    - name: http
+      port: 7260
+      targetPort: 7260
+    - name: grpc
+      port: 7261
+      targetPort: 7261

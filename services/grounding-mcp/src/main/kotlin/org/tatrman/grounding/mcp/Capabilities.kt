@@ -24,7 +24,7 @@ private val log = LoggerFactory.getLogger("grounding-mcp.capabilities")
  * the MCP tool names stay `ground_time` / `ground_geo` / `ground_money`; the registry
  * capability ids are the kind-named `grounding.time:v1` / `grounding.geo:v1` /
  * `grounding.money:v1` (RS-28 — ergonomic outside, each delegating to Ground(kind=…)
- * on the generic proto inside). Mirrors the query-mcp / veles-mcp pattern.
+ * on the generic proto inside). Mirrors the query-mcp / meta-mcp pattern.
  */
 internal class ManifestLoader {
     private val mapper =

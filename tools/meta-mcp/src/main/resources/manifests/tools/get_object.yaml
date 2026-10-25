@@ -2,13 +2,13 @@ capability_id: "meta.get_object:v1"
 category: "meta"
 version: "1.0.0"
 description: |
-  Fetch a single veles object by qualified name. The MCP wrapper takes the
+  Fetch a single metadata object by qualified name. The MCP wrapper takes the
   `id` argument (e.g. "er.entity.item" or "db.dbo.customer_address"), parses it
   into a `QualifiedName` proto, and returns the typed detail (table / view /
   column / entity / attribute / relation / role / procedure / etc.).
-service_endpoint: "http://veles-mcp.kantheon.svc.cluster.local:7262"
+service_endpoint: "http://meta-mcp.kantheon.svc.cluster.local:7262"
 search_tags:
-  - veles
+  - metadata
   - model
   - detail
 cost_hints:

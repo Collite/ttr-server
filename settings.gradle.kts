@@ -88,7 +88,7 @@ include(":shared:libs:kotlin:fuzzy-common")
 include(":shared:libs:kotlin:whois-common")
 include(":shared:libs:kotlin:keycloak-auth")
 include(":shared:libs:kotlin:meta-client")
-// MV-T1 — the Veles-snapshot → translator ModelHandle adapter, shared by translate + Veles.
+// MV-T1 — the metadata-snapshot → translator ModelHandle adapter, shared by translate + metadata.
 include(":shared:libs:kotlin:translate-snapshot")
 include(":shared:libs:kotlin:llm-client")
 // CH-D5 — the published Charon transfer seam (MoveExecutor + Plan + Either +
@@ -104,7 +104,7 @@ include(":shared:libs:kotlin:component-testkit")
 include(":shared:libs:kotlin:integration-harness")
 
 // Spine services
-include(":services:veles")
+include(":services:metadata")
 include(":services:query")
 include(":services:translate")
 include(":services:validate")

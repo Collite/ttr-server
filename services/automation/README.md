@@ -239,7 +239,7 @@ links, preview lowering and task deadline handoff still gate that execution inst
 The production-module component specs use the actual bootstrap/migrations and JWT verification against
 the real PostgreSQL fixture, without test-only route assembly. They cover restart reads, pinned metadata,
 exact numeric JSON, authentication/subject ownership, malformed handles, no-preview/PT refusals and the
-absence of execution side effects. Database and Veles cleanup runs at `ApplicationStopped`, after HTTP
+absence of execution side effects. Database and Metadata cleanup runs at `ApplicationStopped`, after HTTP
 drain, so a stopping notification does not cut off in-flight durable readers. Full runtime shutdown still
 must join its workers and executors before dependency cleanup.
 
@@ -488,7 +488,7 @@ proxying, performed action/outcome payloads, stable ES links and remaining previ
 The assembled runtime installs close and its ledger seal; Application installs durable readers while
 close and the other execution routes remain unmounted.
 ES receipt links still need a stable source reference; the current worker proto supplies an inline receipt.
-Application keeps the ledger and Veles alive until `ApplicationStopped`, after durable HTTP readers drain;
+Application keeps the ledger and Metadata alive until `ApplicationStopped`, after durable HTTP readers drain;
 they do not belong to an executor's cancellation scope.
 
 Local staging publishes immutable Arrow blobs before journalling their metadata. A journal failure leaves an
@@ -578,7 +578,7 @@ matches the former ECR image; ECR's shared-runner data quota refused pulls befor
 
 **Configuration** is `automation.*` in `src/main/resources/application.conf`, every key overridable by an
 `AUTOMATION_*` variable (AU contracts §8). Five keys have no default, and a pod missing one fails at start
-naming all of them: `db.host`, `door.queryUrl`, `door.velesUrl`, `auth.jwksUrl`, `auth.issuer`. The chart
+naming all of them: `db.host`, `door.queryUrl`, `door.metadataUrl`, `auth.jwksUrl`, `auth.issuer`. The chart
 (`k8s/`, also the `automation` key of the umbrella `helm/tatrman-server`) renders them from values and fails
 the render by key when one is missing.
 

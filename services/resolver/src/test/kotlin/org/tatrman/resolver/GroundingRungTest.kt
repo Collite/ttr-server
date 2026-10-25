@@ -139,14 +139,14 @@ class GroundingRungTest :
             g.normalizedValue shouldBe "2025-01-01/2026-01-01"
         }
 
-        // The live regression (hartland, 2026-08-31). veles hands back
+        // The live regression (hartland, 2026-08-31). metadata hands back
         // `namespace = "entity.date_dim"`, and the ref used to be built as
         // "er.entity.${namespace}.${name}" — one `entity.` too many. Golem read the extra
         // segment as a second entity, found no relation to it, and refused a question it had
         // otherwise resolved perfectly. Asserted on the RAW QualifiedName rather than through
         // the `erColumn` helper, so a future edit to that helper cannot quietly restate the bug.
         "the anchor ref is built from the wire's namespace, not by re-prefixing it" {
-            val fromVeles =
+            val fromMetadata =
                 QualifiedName
                     .newBuilder()
                     .setPackage("hartland")
@@ -154,7 +154,7 @@ class GroundingRungTest :
                     .setNamespace("entity")
                     .setName("date_dim.cal_date")
                     .build()
-            val kernel = FakeKernel { okWith("2025-01-01", "2026-01-01", fromVeles) }
+            val kernel = FakeKernel { okWith("2025-01-01", "2026-01-01", fromMetadata) }
             val g =
                 runBlocking {
                     GroundingRung.ground(kernel, listOf(date("2025", 0, 4)), "q", "hartland", "")

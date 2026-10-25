@@ -9,7 +9,7 @@ resources:
 patches:
   - target:
       kind: Deployment
-      name: veles-mcp
+      name: meta-mcp
     patch: |
       - op: replace
         path: /spec/template/spec/containers/0/imagePullPolicy
@@ -17,17 +17,17 @@ patches:
       - op: replace
         path: /spec/template/spec/containers/0/env
         value:
-          - name: VELES_MCP_SERVER_PORT
+          - name: META_MCP_SERVER_PORT
             value: "7262"
-          - name: VELES_PROTOCOL
+          - name: METADATA_PROTOCOL
             value: grpc
-          # Local cluster: point at the veles service's NodePort/port-forward.
-          # Default to localhost:7261 which works with `kubectl port-forward svc/veles 7261:7261`.
-          - name: VELES_GRPC_HOST
+          # Local cluster: point at the metadata service's NodePort/port-forward.
+          # Default to localhost:7261 which works with `kubectl port-forward svc/metadata 7261:7261`.
+          - name: METADATA_GRPC_HOST
             value: localhost
-          - name: VELES_GRPC_PORT
+          - name: METADATA_GRPC_PORT
             value: "7261"
           - name: OTEL_SERVICE_NAME
-            value: veles-mcp
-          - name: OTEL_ENABLED_VELES_MCP
+            value: meta-mcp
+          - name: OTEL_ENABLED_META_MCP
             value: "false"

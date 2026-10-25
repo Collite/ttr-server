@@ -3,7 +3,7 @@ package org.tatrman.query.mcp.upstream
 
 import org.tatrman.meta.v1.GetSnapshotRequest
 import org.tatrman.meta.v1.GetSnapshotResponse
-import org.tatrman.meta.v1.VelesServiceGrpcKt
+import org.tatrman.meta.v1.MetadataServiceGrpcKt
 import org.tatrman.meta.v1.ObjectEntry
 import org.tatrman.query.v1.CompileResponse
 import org.tatrman.query.v1.QueryServiceGrpcKt
@@ -150,7 +150,7 @@ class GrpcMetadataClient(
 ) : MetadataServiceClient,
     AutoCloseable {
     private val channel: ManagedChannel = openChannel(cfg.host, cfg.port, maxMessageBytes)
-    private val stub = VelesServiceGrpcKt.VelesServiceCoroutineStub(channel)
+    private val stub = MetadataServiceGrpcKt.MetadataServiceCoroutineStub(channel)
 
     private val cache: MetadataDecorationCache =
         MetadataDecorationCache(

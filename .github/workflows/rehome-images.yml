@@ -40,7 +40,7 @@ on:
         options: [list, stage, restore, cleanup]
         required: true
       images:
-        description: 'Space-separated package names, e.g. "veles query"'
+        description: 'Space-separated package names, e.g. "metadata query"'
         type: string
         required: true
 

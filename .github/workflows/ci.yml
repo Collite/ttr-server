@@ -65,7 +65,7 @@ jobs:
   #
   # Until this job existed, `./gradlew build` compiled these specs and ktlint linted
   # them, and nothing ran them: 30 specs across 9 modules (llm-gateway,
-  # translate, validate, veles, geo, both workers, and two shared libs) were
+  # translate, validate, metadata, geo, both workers, and two shared libs) were
   # written, maintained, and dark. Found while reviewing the PT arc, whose gateway
   # inspect surface has no other integration coverage.
   #
@@ -637,6 +637,12 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@v5
+      - name: metadata rename guard — formerly `veles` (MR)
+        run: bash scripts/guard-metadata-rename.sh
+
+      - name: self-test metadata rename guard with binary and path probes
+        run: bash scripts/guard-metadata-rename.selftest.sh
+
       - name: enforce SPDX license headers
         run: bash scripts/check-spdx.sh
 

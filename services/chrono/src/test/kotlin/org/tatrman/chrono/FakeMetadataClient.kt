@@ -12,7 +12,7 @@ import org.tatrman.plan.v1.SchemaCode
  * Domain fake for the [SemanticDiscovery] port (RG-P3.S0 metadata seam). Backs chrono's
  * discovery/recipe tests from an in-memory object list, answering [periodTable]/[anchorColumn]
  * with the recipe layer's domain types directly — **no metadata protos** (the real proto mapping
- * lives in `MetaV1SemanticDiscovery`, proven by its component spec against in-process Veles).
+ * lives in `MetaV1SemanticDiscovery`, proven by its component spec against in-process Metadata).
  */
 class FakeMetadataClient(
     private val objects: List<Obj>,

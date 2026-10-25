@@ -25,7 +25,7 @@ import org.tatrman.nlp.mcp.telemetry.NlpMcpTelemetry
  * nlp-mcp exposes `Analyze` only; the predecessor platform's `parse` convenience shorthand
  * is dropped in the lean fork). [client] is nullable: a blank backend host →
  * `null` and every invocation surfaces a "not wired" error rather than crashing
- * boot (local-without-cluster mode, mirroring veles-mcp / fuzzy-mcp).
+ * boot (local-without-cluster mode, mirroring meta-mcp / fuzzy-mcp).
  */
 class Tools(
     private val client: NlpClient?,

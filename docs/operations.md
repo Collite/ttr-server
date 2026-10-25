@@ -24,18 +24,18 @@ Every route is **read-only** — the open surface exposes no mutating verb.
 | `GET /health/all` | Liveness rollup across every configured target (`200` healthy / `503` otherwise). |
 | `GET /health/all/detailed` | The rollup with each target's **content** (the model commit it serves, what it loaded and when — `infra/health/README.md` "Content") and whether the model-serving services agree on one commit. What a landing page polls. |
 | `GET /status/all` | The content alone. |
-| `GET /health/{service}` | One target's liveness (e.g. `/health/veles`). |
+| `GET /health/{service}` | One target's liveness (e.g. `/health/metadata`). |
 | `GET /healthz` | The aggregator's own self-probe (use this as the pod liveness probe, not `/health/all`). |
 
 - **Server version** is the single release-train version (`tatrman-server.version`) — the
   whole open Server is built and released together, so there is one version, not a
   per-service matrix.
-- **Model fingerprint** is Veles's `model_version` (the loaded model's identity), read
-  from `veles /status`. If Veles is unreachable it renders `unavailable` — the page
+- **Model fingerprint** is the metadata service's `model_version` (the loaded model's identity), read
+  from `metadata /status`. If metadata is unreachable it renders `unavailable` — the page
   never fails because a downstream is down.
 
 Each individual service also serves its own `GET /health`, `GET /ready`, and
-`GET /status` (Veles additionally exposes `GET /metrics` in Prometheus format).
+`GET /status` (metadata additionally exposes `GET /metrics` in Prometheus format).
 
 ## Configuration reference
 
@@ -47,7 +47,7 @@ a running UI.
 | Variable | Default | Meaning |
 | --- | --- | --- |
 | `HEALTH_CHECK_SERVICE_PORT` | `7000` | The health service HTTP port. |
-| `VELES_STATUS_URL` | `http://veles:7260/status` | Where the status page reads the model fingerprint. |
+| `METADATA_STATUS_URL` | `http://metadata:7260/status` | Where the status page reads the model fingerprint. |
 | `HEALTH_CACHE_TTL_SECONDS` | `30` | How long one target's own check (`/health/{service}`) is cached. |
 | `HEALTH_PROMETHEUS_URL` | `http://mon-prometheus-server.monitoring` | Prometheus, for `prometheus`-type checks. |
 
@@ -60,7 +60,7 @@ The target inventory is a **roster**: the bundled one (the reference estate's) l
 without rebuilding the image (`infra/health/README.md` "Per-cluster roster").
 
 **Per-service wiring** — each service reads its peers from its own `application.conf`
-with `${?ENV}` overrides (e.g. `TRANSLATE_SERVER`, `VALIDATE_SERVER`, `VELES_GRPC_HOST`).
+with `${?ENV}` overrides (e.g. `TRANSLATE_SERVER`, `VALIDATE_SERVER`, `METADATA_GRPC_HOST`).
 See each service's `src/main/resources/application.conf`.
 
 ## Running it
@@ -85,7 +85,7 @@ The open tier ships **no operator web application** — and this is not a gap:
   version control, applied by your CD (olymp/ArgoCD in the reference estate).
 - **Day-2 tasks** (model refresh, cache clear) are **governed cluster-internal verbs**,
   not an operator console. Routes such as `POST /refresh` (query/translate) and
-  `POST /admin/reload-stop-words` (Veles, shared-secret gated) are reached *inside the
+  `POST /admin/reload-stop-words` (metadata, shared-secret gated) are reached *inside the
   cluster* by the platform's own reconciliation, not exposed as an operator admin
   surface. They are intentionally absent from the health page above.
 - **There is no write path to your data** on the open operator surface. Data writes,

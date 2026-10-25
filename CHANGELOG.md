@@ -16,12 +16,27 @@ outside this repo could notice is in.
 
 ## Unreleased
 
-- **connect-openmetadata0.1.3 — Studio model links.** Replace unsupported `/viewer?qname=…`
-  links with `/m/<workspace>/s/db|er|md`. `--studio-workspace` defaults to the export
-  world and can name a different manifest project. Concepts stay in OM; sync with
-  a Studio origin removes their obsolete Studio URL while preserving other custom
-  properties. Links open whole models; exact-object navigation and new-CN diagram
-  support remain follow-ups. Upgrade forces full projection through the options fingerprint.
+- **metadata — the model-graph service is renamed from `veles` (MR).**
+  `services/metadata`, package `org.tatrman.metadata` (including `cn` and `export`),
+  gRPC `org.tatrman.meta.v1.MetadataService`, charts `metadata` and `meta-mcp`, and
+  image `ghcr.io/collite/metadata` replace their previous names. Rebuild JVM consumers
+  for the moved `org.tatrman.metadata.client` API and regenerated gRPC stubs.
+  Environment variables use `METADATA_*`, `META_MCP_SERVER_PORT` and
+  `OTEL_ENABLED_METADATA` / `OTEL_ENABLED_META_MCP`; configuration keys use
+  `metadata.*` / `upstream.metadata.*` (including automation's `door.metadataUrl`
+  and `bundle.metadataSource`). This is a hard cut, with no legacy aliases.
+  Source-load metrics change from `veles_model_source_load_failures_total` /
+  `veles_model_source_loaded` to `metadata_model_source_load_failures_total` /
+  `metadata_model_source_loaded`; update dashboards accordingly. The meta-mcp telemetry /
+  OTel service name changes from `veles-mcp` to `meta-mcp`; the metadata chart’s default
+  OTel service name changes from `veles` to `metadata`. Query retry logs use the
+  operation label `metadata.get_query` instead of `veles.get_query`. The health
+  status-adapter key changes from `veles` to `metadata` (roster `adapter = metadata`);
+  update the health image and roster together. Ports 7260/7261/7262, proto package and message
+  layouts, database schema, CN routes, and `METADATA_GIT_*` stay unchanged.
+  **One-wave rollout per cluster:** the server and all consumers in ttr-server, kantheon
+  and tatrman-platform (studio-bff) must roll together; the previous gRPC service path is removed (MR-2).
+  No release is cut by this PR; publishing belongs to MW-P0.2.
 
 - **resolver — the er statement lane places; it does not re-decide (grammar 0.18.12, ttr-core#308).** The er lane
   now refuses whatever md's validator refuses, and for the same reasons. It also refuses a phase whose join would fan
@@ -1721,3 +1736,10 @@ artifact.
   named, so a chart that has never heard of a rule pack renders byte-identically.
 - **New diagnostics** — `NLS-NLP-011` (op unrouted in the active lane),
   `NLS-PACK-010` (reload refused), `LM-MORPH-007` (token report not sunk).
+
+- **connect-openmetadata0.1.3 — Studio model links.** Replace unsupported `/viewer?qname=…`
+  links with `/m/<workspace>/s/db|er|md`. `--studio-workspace` defaults to the export
+  world and can name a different manifest project. Concepts stay in OM; sync with
+  a Studio origin removes their obsolete Studio URL while preserving other custom
+  properties. Links open whole models; exact-object navigation and new-CN diagram
+  support remain follow-ups. Upgrade forces full projection through the options fingerprint.

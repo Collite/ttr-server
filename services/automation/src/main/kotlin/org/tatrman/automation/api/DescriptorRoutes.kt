@@ -26,7 +26,7 @@ import org.tatrman.automation.bundle.ManifestVerdictSchema
 import org.tatrman.automation.bundle.Registry
 import org.tatrman.automation.bundle.RegistryCell
 import org.tatrman.automation.bundle.Staleness
-import org.tatrman.automation.bundle.VelesHandshake
+import org.tatrman.automation.bundle.MetadataHandshake
 import org.tatrman.automation.identity.Caller
 import org.tatrman.automation.identity.DeploymentIdentity
 import org.tatrman.automation.identity.GrantMap
@@ -40,7 +40,7 @@ import org.tatrman.ttr.metadata.model.WorldDeployment
 /**
  * `GET /automation/` (AU contracts §1.1): what is served, and what may run where. The shape is frozen at S0.2 —
  * fields a later stage fills are present now as `null` / empty (`approved` until P2, `connectors` until S3.1),
- * so the Studio contract reads one shape throughout. [modelDrift] (T6) = Veles serves another commit of the
+ * so the Studio contract reads one shape throughout. [modelDrift] (T6) = Metadata serves another commit of the
  * model than the served bundle's (null = not known). [version] is the run API's.
  */
 @Serializable
@@ -155,7 +155,7 @@ class DescriptorSources(
     val registry: Registry,
     val approvals: ApprovalReader,
     val tokens: ServiceTokens,
-    val veles: VelesHandshake?,
+    val metadata: MetadataHandshake?,
     val paused: () -> Boolean,
     val refreshRoles: Set<String>,
 )
@@ -259,7 +259,7 @@ suspend fun describe(
                 }.orEmpty(),
         connectors = emptyList(),
         registry = bundle?.let { sources.registry.grid(it) }.orEmpty(),
-        modelDrift = bundle?.let { sources.veles?.drift(it.commit) },
+        modelDrift = bundle?.let { sources.metadata?.drift(it.commit) },
         warnings = bundle?.warnings.orEmpty(),
         paused = sources.paused(),
         version = RUN_API_VERSION,

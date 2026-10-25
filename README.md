@@ -1,5 +1,7 @@
 # Tatrman Server
 
+The model-graph service is `metadata` — formerly `veles` (2026-06-13 → 2026-10), originally `ai-platform/infra/metadata`.
+
 Tatrman Server — the open runtime of the Tatrman ecosystem: the deployable
 product an organization installs to make its modeled data available for AI
 consumption (metadata serving, a deterministic governed query path, and the MCP
@@ -30,7 +32,7 @@ sign off on "an LLM can now query production."
 
 ## What's here
 
-- **Services** — metadata serving (Veles), the governed query path (translate →
+- **Services** — metadata serving (`metadata`), the governed query path (translate →
   validate → dispatch), fuzzy match, NLP, and the LLM gateway.
 - **The MCP surface** — the tool contract that fronts the server for any MCP
   agent (per-user identity pass-through, provenance on every answer).

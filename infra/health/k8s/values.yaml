@@ -44,7 +44,7 @@ extraEnv: []
 #   configFragment:
 #     content: |
 #       health-check-service.roster {
-#         technologies { veles { type = native, url = "http://veles.ttr-server:7260", healthEndpoint = "/ready" } … }
+#         technologies { metadata { type = native, url = "http://metadata.ttr-server:7260", healthEndpoint = "/ready" } … }
 #       }
 #
 # A `roster` block REPLACES the bundled technologies (a merge would keep every target the estate does

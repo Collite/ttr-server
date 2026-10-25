@@ -7,7 +7,7 @@ replicaCount: 1
 image:
   # The published coordinate (CH-P2·T5a / review-074·F9b). CH-D7 ratified the image *name* `charon`;
   # this is the *registry-qualified* coordinate every sibling subchart carries (ghcr.io/collite/query,
-  # veles, …). A bare `charon` would render `docker.io/library/charon` — the Jib local name leaking into
+  # metadata, …). A bare `charon` would render `docker.io/library/charon` — the Jib local name leaking into
   # the chart. Publishes to GHCR beside the siblings.
   repository: ghcr.io/collite/charon
   # Defaults to .Chart.appVersion when empty.

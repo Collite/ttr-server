@@ -28,7 +28,7 @@ class ConfigLoaderTest :
                     "iris",
                     "iris-bff",
                     // the model & query path
-                    "veles",
+                    "metadata",
                     "translate",
                     "validate",
                     "query",

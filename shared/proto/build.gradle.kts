@@ -52,7 +52,7 @@ protobuf {
         artifact = "com.google.protobuf:protoc:$protobufVersion"
     }
     plugins {
-        // Phase 2.1 — gRPC Java + Kotlin codegen so service modules (veles, dispatcher,
+        // Phase 2.1 — gRPC Java + Kotlin codegen so service modules (metadata, dispatcher,
         // worker, etc.) get `*ServiceGrpcKt` base classes from the in-repo protos. Aligned
         // to the predecessor platform's protoc-gen-grpc-java 1.78.0 / protoc-gen-grpc-kotlin 1.5.0.
         id("grpc") {

@@ -1,7 +1,7 @@
 # SV-P4·S2·T7 — kind CI install-gate overlay (the `helm-install` job).
 #
 # A light, backing-free subset that reaches Ready on a fresh throwaway kind cluster,
-# proving the umbrella actually installs and comes up (not just templates): veles
+# proving the umbrella actually installs and comes up (not just templates): metadata
 # (loads its default model, the public Hartland demo repository — no token needed;
 # it is Ready only once that model has loaded), the query spine sample, identity,
 # health, and the dev IdP. Low requests keep it inside a
@@ -16,7 +16,7 @@ devIdp:
   enabled: true
   resources: { requests: { cpu: 100m, memory: 512Mi } }
 
-veles:     { enabled: true, resources: { requests: { cpu: 50m, memory: 384Mi } } }
+metadata:     { enabled: true, resources: { requests: { cpu: 50m, memory: 384Mi } } }
 query:     { enabled: true, resources: { requests: { cpu: 25m, memory: 256Mi } } }
 translate: { enabled: true, resources: { requests: { cpu: 25m, memory: 256Mi } } }
 validate:  { enabled: true, resources: { requests: { cpu: 25m, memory: 256Mi } } }
@@ -42,7 +42,7 @@ geo: { enabled: false }
 money: { enabled: false }
 resolver: { enabled: false }
 query-mcp: { enabled: false }
-veles-mcp: { enabled: false }
+meta-mcp: { enabled: false }
 fuzzy-mcp: { enabled: false }
 nlp-mcp: { enabled: false }
 grounding-mcp: { enabled: false }

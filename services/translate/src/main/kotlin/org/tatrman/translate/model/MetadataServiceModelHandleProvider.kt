@@ -23,7 +23,7 @@ import java.util.concurrent.atomic.AtomicReference
  * captures `current()` once at entry, satisfying the per-request snapshot-capture rule.
  *
  * [getSnapshot] is injected so tests can supply a canned response without a real channel; in
- * production it's a thin wrapper over `VelesServiceCoroutineStub.getSnapshot(...)`.
+ * production it's a thin wrapper over `MetadataServiceCoroutineStub.getSnapshot(...)`.
  */
 class MetadataServiceModelHandleProvider(
     private val getSnapshot: suspend (GetSnapshotRequest) -> GetSnapshotResponse,

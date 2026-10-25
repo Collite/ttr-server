@@ -40,7 +40,7 @@ fun main(): Unit =
         // from `nlp.{host,port}` (HOCON resolves the NLP_GRPC_* env overrides
         // the k8s manifest sets). A blank host → `null` and the tool surfaces a
         // "not wired" error rather than crashing boot — local-without-cluster
-        // mode (veles-mcp / fuzzy-mcp pattern).
+        // mode (meta-mcp / fuzzy-mcp pattern).
         val nlpClient: NlpClient? = buildNlpClient(config)
         val tools = Tools(nlpClient, telemetry)
 

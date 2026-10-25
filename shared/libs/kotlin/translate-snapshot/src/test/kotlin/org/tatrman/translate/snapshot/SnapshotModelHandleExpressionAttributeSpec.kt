@@ -30,7 +30,7 @@ import org.tatrman.translator.orchestrator.Translator
  * GH #113 — an attribute mapped to an expression no longer takes its whole entity down.
  *
  * `store` sits on `stores(id, name, state, label)`; `display` is mapped to an expression, which
- * Veles sends with the mapping's target UNSET (the raw text has no `plan.v1.Expression` form yet).
+ * Metadata sends with the mapping's target UNSET (the raw text has no `plan.v1.Expression` form yet).
  * Kept in the ER catalog it rode along in every scan of `store`, MAP_TO_PHYSICAL asked `stores`
  * for a `display` column, and every ER query over the entity failed with
  * `field [display] not found` — including one that never named it.
@@ -41,7 +41,7 @@ class SnapshotModelHandleExpressionAttributeSpec :
         val stores = qname(SchemaCode.DB, "dbo", "stores")
         val store = qname(SchemaCode.ER, "entity", "store")
 
-        /** The mapping of `store.<attr>`: a column of `stores`, an expression, or — as Veles sends an expression — nothing. */
+        /** The mapping of `store.<attr>`: a column of `stores`, an expression, or — as Metadata sends an expression — nothing. */
         fun attributeMapping(
             attr: String,
             target: (Er2DbAttributeMappingDetail.Builder) -> Unit,
@@ -107,7 +107,7 @@ class SnapshotModelHandleExpressionAttributeSpec :
                 .addObjects(attributeMapping("display", displayTarget))
                 .build()
 
-        val asVelesSendsIt: (Er2DbAttributeMappingDetail.Builder) -> Unit = { }
+        val asMetadataSendsIt: (Er2DbAttributeMappingDetail.Builder) -> Unit = { }
 
         fun translate(
             handle: SnapshotModelHandle,
@@ -123,7 +123,7 @@ class SnapshotModelHandleExpressionAttributeSpec :
             )
 
         "the expression-mapped attribute is not in its entity's ER catalog; the column-mapped ones are" {
-            val handle = SnapshotModelHandle.from(snapshot(asVelesSendsIt))
+            val handle = SnapshotModelHandle.from(snapshot(asMetadataSendsIt))
             handle.attributes(store).map { it.name } shouldContainExactly listOf("store_id", "state", "label")
             handle.attributeColumnRenames(store) shouldNotContainKey "display"
         }
@@ -139,7 +139,7 @@ class SnapshotModelHandleExpressionAttributeSpec :
         "every query over the entity that does not name it translates" {
             val result =
                 translate(
-                    SnapshotModelHandle.from(snapshot(asVelesSendsIt)),
+                    SnapshotModelHandle.from(snapshot(asMetadataSendsIt)),
                     "SELECT \"store_id\", \"state\" FROM \"store\"",
                 )
             val sql = result.shouldBeInstanceOf<TranslateResult.Success>().output
@@ -149,7 +149,7 @@ class SnapshotModelHandleExpressionAttributeSpec :
 
         "a query naming it fails as an unknown column — not as an unparse failure of the whole entity" {
             val result =
-                translate(SnapshotModelHandle.from(snapshot(asVelesSendsIt)), "SELECT \"display\" FROM \"store\"")
+                translate(SnapshotModelHandle.from(snapshot(asMetadataSendsIt)), "SELECT \"display\" FROM \"store\"")
             val failure = result.shouldBeInstanceOf<TranslateResult.Failure>()
             failure.code shouldNotBe "sql_unparse_failed"
             failure.message shouldContain "display"
@@ -187,7 +187,7 @@ private fun descriptor(
     ObjectDescriptor
         .newBuilder()
         .setQualifiedName(qn)
-        // As Veles sends it (`MetadataServiceImpl.toObjectDescriptor`): the last dotted segment only.
+        // As Metadata sends it (`MetadataServiceImpl.toObjectDescriptor`): the last dotted segment only.
         .setLocalName(qn.name.substringAfterLast('.'))
         .setSchemaCode(qn.schemaCode)
         .setKind(kind)
