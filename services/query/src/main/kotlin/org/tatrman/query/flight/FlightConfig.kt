@@ -25,7 +25,7 @@ data class FlightConfig(
      * time its first batch took is not counted.
      */
     val pendingTtlSeconds: Long = 60,
-    /** How long a catalog snapshot is trusted before Veles is asked for its model version again. */
+    /** How long a catalog snapshot is trusted before Metadata is asked for its model version again. */
     val catalogTtlSeconds: Long = 30,
     /** The largest gRPC message the edge's loopback channel to the door accepts (`grpc.max-message-size-bytes`). */
     val maxMessageSizeBytes: Int = 32 * 1024 * 1024,

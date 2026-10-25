@@ -73,7 +73,7 @@ dependencies {
 
     // Load the manifest YAMLs for capabilities-mcp registration. We don't
     // depend on `:tools:capabilities-mcp` (peers), so we parse the manifests
-    // directly with Jackson (same as veles-mcp / fuzzy-mcp).
+    // directly with Jackson (same as meta-mcp / fuzzy-mcp).
     implementation(libs.jackson.databind)
     implementation(libs.jackson.module.kotlin)
     implementation(libs.jackson.dataformat.yaml)

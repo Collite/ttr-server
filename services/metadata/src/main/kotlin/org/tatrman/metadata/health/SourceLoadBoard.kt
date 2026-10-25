@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-package org.tatrman.veles.health
+package org.tatrman.metadata.health
 
 import io.micrometer.core.instrument.Counter
 import io.micrometer.core.instrument.Gauge
@@ -15,11 +15,11 @@ import java.util.concurrent.CopyOnWriteArrayList
  * ttr-server#180 — what every configured model source has done so far, for `/ready`, `/status`
  * and `/metrics`.
  *
- * Readiness is about the model Veles was told to serve, not about having *a* model: Veles is
+ * Readiness is about the model Metadata was told to serve, not about having *a* model: Metadata is
  * ready once every configured source has loaded at least once and that model is swapped in. A load counts when it returns a
  * snapshot with at least one model object; a load that throws (bad token, wrong branch, no
  * network) or that finds nothing (an empty repository or a wrong sub-path) is a failure, and the
- * failure stays visible in `/status` and in `veles_model_source_load_failures_total`. Once a
+ * failure stays visible in `/status` and in `metadata_model_source_load_failures_total`. Once a
  * source has loaded, a later failed refresh does not take readiness away: the refresher keeps
  * serving that source's last good snapshot.
  *
@@ -61,13 +61,13 @@ class SourceLoadBoard(
             order += id
             meterRegistry?.let { registry ->
                 Gauge
-                    .builder("veles.model.source.loaded") { if (states[id]?.loadedOnce == true) 1.0 else 0.0 }
+                    .builder("metadata.model.source.loaded") { if (states[id]?.loadedOnce == true) 1.0 else 0.0 }
                     .description("1 once the configured model source has loaded at least once")
                     .tag("source", id)
                     .register(registry)
                 failureCounters[id] =
                     Counter
-                        .builder("veles.model.source.load.failures")
+                        .builder("metadata.model.source.load.failures")
                         .description("Model source loads that threw or found no model objects")
                         .tag("source", id)
                         .register(registry)

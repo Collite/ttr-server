@@ -63,7 +63,7 @@ data class WorldScope(
  * refuses the commit); [deploymentWorlds] names each one's world, and [worlds] holds what each world declares.
  * [programFps]/[deploymentFps] are D-60's program and deployment fingerprints ([Fingerprints]); a recipe's two are
  * in its manifest. [author] is the deployer's principal (the commit author through `AUTOMATION_AUTHOR_MAP`).
- * [warnings] are the load findings that do not refuse the bundle (the model's own issues are Veles's to serve).
+ * [warnings] are the load findings that do not refuse the bundle (the model's own issues are Metadata's to serve).
  */
 data class Bundle(
     val id: String,

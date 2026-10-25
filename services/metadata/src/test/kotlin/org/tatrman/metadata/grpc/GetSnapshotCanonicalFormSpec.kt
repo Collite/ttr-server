@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-package org.tatrman.veles.grpc
+package org.tatrman.metadata.grpc
 
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
@@ -22,8 +22,8 @@ import org.tatrman.ttr.metadata.model.QualifiedName
 import org.tatrman.ttr.metadata.model.Query
 import org.tatrman.ttr.metadata.model.SchemaCode
 import org.tatrman.ttr.metadata.registry.MetadataRegistry
-import org.tatrman.veles.parse.QueryParseState
-import org.tatrman.veles.parse.QueryParseWorker
+import org.tatrman.metadata.parse.QueryParseState
+import org.tatrman.metadata.parse.QueryParseWorker
 import java.time.Instant
 
 /**

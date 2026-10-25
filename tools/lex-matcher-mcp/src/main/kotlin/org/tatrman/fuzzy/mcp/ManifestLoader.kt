@@ -14,7 +14,7 @@ import java.io.File
 /**
  * Stage 2.2 T6 — load the `ToolCapability` manifests under
  * `src/main/resources/manifests/tools/` and build one [Capability] per
- * manifest. Same pattern as veles-mcp (Review-004 R5.1).
+ * manifest. Same pattern as meta-mcp (Review-004 R5.1).
  *
  * The shared `ManifestYamlLoader` lives in `:tools:capabilities-mcp` —
  * a peer module that fuzzy-mcp must not depend on (and vice-versa), so we

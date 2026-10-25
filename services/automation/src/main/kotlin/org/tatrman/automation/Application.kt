@@ -25,9 +25,9 @@ import org.tatrman.automation.bundle.BundleLoader
 import org.tatrman.automation.bundle.Bundles
 import org.tatrman.automation.bundle.ExecutorType
 import org.tatrman.automation.bundle.GitBundleSource
-import org.tatrman.automation.bundle.GrpcVelesStatus
+import org.tatrman.automation.bundle.GrpcMetadataStatus
 import org.tatrman.automation.bundle.Registry
-import org.tatrman.automation.bundle.VelesHandshake
+import org.tatrman.automation.bundle.MetadataHandshake
 import org.tatrman.automation.config.AutomationConfig
 import org.tatrman.automation.identity.AUTOMATION_AUTH
 import org.tatrman.automation.identity.AuthorMap
@@ -139,7 +139,7 @@ fun Application.module(config: Config) {
             ),
         )
     install(Authentication) { AutomationBearerProvider.register(this, callers) }
-    val velesStatus = GrpcVelesStatus(automation.door.velesUrl)
+    val metadataStatus = GrpcMetadataStatus(automation.door.metadataUrl)
     val tokens = ServiceTokens.keycloak(automation.connections, automation.auth.tokenUrl)
 
     install(StatusPages) { installAutomationErrors() }
@@ -153,7 +153,7 @@ fun Application.module(config: Config) {
                     registry = Registry(ExecutorType.builtin()),
                     approvals = ledgerBundles,
                     tokens = tokens,
-                    veles = VelesHandshake(velesStatus, automation.bundleGit.velesSource),
+                    metadata = MetadataHandshake(metadataStatus, automation.bundleGit.metadataSource),
                     paused = { automation.paused },
                     refreshRoles = automation.auth.refreshRoles,
                 ),
@@ -175,10 +175,10 @@ fun Application.module(config: Config) {
     }
 
     // Stopping is raised before HTTP drain. Durable readers and descriptors still need their ledger /
-    // Veles dependencies then. A later execution runtime must join workers at Stopping, before this point.
+    // Metadata dependencies then. A later execution runtime must join workers at Stopping, before this point.
     monitor.subscribe(ApplicationStopped) {
         try {
-            velesStatus.close()
+            metadataStatus.close()
         } finally {
             db.close()
         }

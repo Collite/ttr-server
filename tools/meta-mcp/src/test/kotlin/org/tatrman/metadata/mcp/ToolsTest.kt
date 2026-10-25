@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-package org.tatrman.veles.mcp
+package org.tatrman.metadata.mcp
 
 import org.tatrman.meta.v1.ListObjectsResponse
 import org.tatrman.meta.v1.ListQueriesResponse
@@ -15,7 +15,7 @@ import io.mockk.coEvery
 import io.mockk.mockk
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
-import org.tatrman.veles.client.MetadataGrpcClient
+import org.tatrman.metadata.client.MetadataGrpcClient
 
 /**
  * Covers the list-tool callbacks now that every metadata read routes through the gRPC

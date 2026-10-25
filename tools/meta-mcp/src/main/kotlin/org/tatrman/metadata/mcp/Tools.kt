@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-package org.tatrman.veles.mcp
+package org.tatrman.metadata.mcp
 
 import org.tatrman.plan.v1.QualifiedName
 import org.tatrman.plan.v1.SchemaCode
@@ -15,7 +15,7 @@ import kotlinx.serialization.json.putJsonObject
 import org.slf4j.LoggerFactory
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonArray
-import org.tatrman.veles.client.MetadataGrpcClient
+import org.tatrman.metadata.client.MetadataGrpcClient
 import org.tatrman.plan.v1.parseSchemaCode
 
 private fun buildOutputSchema(
@@ -530,7 +530,7 @@ class Tools(
     // ---------------------------------------------------------------------
     // Golem P4 S4.2 — resolve a subject `area` to its package set. A Golem Shem
     // declaring `areas: [hartland]` resolves it here to the concrete packages
-    // it must pull (via get_model). Zero-logic wrapper over veles's
+    // it must pull (via get_model). Zero-logic wrapper over metadata's
     // ResolveArea RPC.
     // ---------------------------------------------------------------------
 
@@ -540,7 +540,7 @@ class Tools(
             description =
                 "Resolve a subject area (e.g. 'hartland') to the package set it spans, plus its " +
                     "description and tags. A Golem Shem uses this to expand its `areas: [...]` list " +
-                    "into the concrete Veles packages to fetch via get_model. " +
+                    "into the concrete Metadata packages to fetch via get_model. " +
                     "`found=false` when the area is unknown.",
             inputSchema =
                 ToolSchema(
@@ -597,10 +597,10 @@ class Tools(
                 resp.found,
                 resp.packagesList.size,
             )
-            // Surface veles-side warnings (e.g. area_not_found) as MCP text so callers can log them.
+            // Surface metadata-side warnings (e.g. area_not_found) as MCP text so callers can log them.
             val warningText =
                 if (resp.messagesList.isNotEmpty()) {
-                    "\n\n[veles messages] " +
+                    "\n\n[metadata messages] " +
                         resp.messagesList.joinToString("; ") { "[${it.code}] ${it.humanMessage}" }
                 } else {
                     ""

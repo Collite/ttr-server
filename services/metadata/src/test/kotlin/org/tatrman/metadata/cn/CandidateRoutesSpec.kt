@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-package org.tatrman.veles.cn
+package org.tatrman.metadata.cn
 
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.collections.shouldContain
@@ -19,17 +19,17 @@ import kotlinx.serialization.json.jsonPrimitive
 import org.tatrman.concept.candidate.CandidateLoad
 import org.tatrman.concept.candidate.CnCandidates
 import org.tatrman.ttr.metadata.source.LocalFsStorage
-import org.tatrman.veles.cn.CnTestKit.CATALOGUE
-import org.tatrman.veles.cn.CnTestKit.EVIDENCE
-import org.tatrman.veles.cn.CnTestKit.READER
-import org.tatrman.veles.cn.CnTestKit.STEWARD
-import org.tatrman.veles.cn.CnTestKit.arr
-import org.tatrman.veles.cn.CnTestKit.getAs
-import org.tatrman.veles.cn.CnTestKit.ids
-import org.tatrman.veles.cn.CnTestKit.json
-import org.tatrman.veles.cn.CnTestKit.postAs
-import org.tatrman.veles.cn.CnTestKit.str
-import org.tatrman.veles.cn.CnTestKit.submit
+import org.tatrman.metadata.cn.CnTestKit.CATALOGUE
+import org.tatrman.metadata.cn.CnTestKit.EVIDENCE
+import org.tatrman.metadata.cn.CnTestKit.READER
+import org.tatrman.metadata.cn.CnTestKit.STEWARD
+import org.tatrman.metadata.cn.CnTestKit.arr
+import org.tatrman.metadata.cn.CnTestKit.getAs
+import org.tatrman.metadata.cn.CnTestKit.ids
+import org.tatrman.metadata.cn.CnTestKit.json
+import org.tatrman.metadata.cn.CnTestKit.postAs
+import org.tatrman.metadata.cn.CnTestKit.str
+import org.tatrman.metadata.cn.CnTestKit.submit
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.concurrent.TimeUnit

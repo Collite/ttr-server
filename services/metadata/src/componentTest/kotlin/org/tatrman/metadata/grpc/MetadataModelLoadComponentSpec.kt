@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-package org.tatrman.veles.grpc
+package org.tatrman.metadata.grpc
 
 import io.kotest.core.annotation.Tags
 import io.kotest.core.spec.style.StringSpec
@@ -25,24 +25,24 @@ import java.nio.file.Path
  * query set and the areas resolve. Two trees, two models: both are TPC-DS, so their table names
  * overlap, and one model holds one definition per qualified name.
  *
- * Veles bundles no model since ttr-server#180 — the served model comes from the configured git
+ * Metadata bundles no model since ttr-server#180 — the served model comes from the configured git
  * source — so this tree is a test fixture, not a shipped resource.
  *
  * No container — but it drives the real reconciler over a whole model tree rather than a mock, so
  * it belongs to the component tier, out of the mocked `test` gate.
  */
 @Tags("component")
-class VelesModelLoadComponentSpec :
+class MetadataModelLoadComponentSpec :
     StringSpec({
 
         // Root each source at a fixture tree under `src/test/resources`, so the WHOLE tree — every
         // package + the `areas/*.ttrm` — reconciles exactly as the service loads a checkout at
-        // runtime. The dir is injected by the build (`veles.modelRoot`) because `LocalFsStorage`
+        // runtime. The dir is injected by the build (`metadata.modelRoot`) because `LocalFsStorage`
         // needs a real directory, not a classpath resource URI.
         val resourcesRoot: Path =
             Path.of(
-                checkNotNull(System.getProperty("veles.modelRoot")) {
-                    "veles.modelRoot not set — see services/veles/build.gradle.kts componentTest config"
+                checkNotNull(System.getProperty("metadata.modelRoot")) {
+                    "metadata.modelRoot not set — see services/metadata/build.gradle.kts componentTest config"
                 },
             )
 

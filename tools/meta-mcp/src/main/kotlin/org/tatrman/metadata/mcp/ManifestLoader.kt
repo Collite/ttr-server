@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-package org.tatrman.veles.mcp
+package org.tatrman.metadata.mcp
 
 import com.fasterxml.jackson.databind.DeserializationFeature
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory
@@ -17,7 +17,7 @@ import java.io.File
  * manifest.
  *
  * The shared `ManifestYamlLoader` lives in `:tools:capabilities-mcp` — a
- * peer module that veles-mcp must not depend on (and vice-versa), so
+ * peer module that meta-mcp must not depend on (and vice-versa), so
  * we parse the manifests directly. The shapes are simple: a top-level
  * `ToolCapability` with `capability_id` + `category` + `version` +
  * `description` + `service_endpoint` + `search_tags` + `cost_hints`.
@@ -60,7 +60,7 @@ internal class ManifestLoader {
     /**
      * Load all tool manifests from the given classpath-relative base
      * directory. The base defaults to `manifests/tools` (matching the
-     * veles-mcp's `src/main/resources/manifests/tools/` tree).
+     * meta-mcp's `src/main/resources/manifests/tools/` tree).
      */
     fun loadAll(classpathBase: String = "manifests/tools"): List<Capability> {
         // `javaClass.classLoader.getResource` works for classpath resources;

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-package org.tatrman.veles.grpc
+package org.tatrman.metadata.grpc
 
 import java.util.Base64
 

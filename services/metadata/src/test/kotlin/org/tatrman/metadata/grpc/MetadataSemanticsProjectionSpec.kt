@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-package org.tatrman.veles.grpc
+package org.tatrman.metadata.grpc
 
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldNotContain
@@ -19,11 +19,11 @@ import org.tatrman.ttr.metadata.reconcile.ModelReconciler
 import org.tatrman.ttr.metadata.registry.MetadataRegistry
 import org.tatrman.ttr.metadata.source.FileBasedSource
 import org.tatrman.ttr.metadata.source.LocalFsStorage
-import org.tatrman.veles.grpc.MetadataServiceImpl
+import org.tatrman.metadata.grpc.MetadataServiceImpl
 import java.nio.file.Path
 
 /**
- * RG-P3.S0.T2 — the semantics projection spec (test-first). Pins that Veles projects
+ * RG-P3.S0.T2 — the semantics projection spec (test-first). Pins that Metadata projects
  * the `semantics { }` surface onto `meta.v1` — BOTH facets of ttr-semantics vocabulary
  * v3: grounding (`kind:` / `role:`, RG-P3.S0) and mention (`name:` / `code:` /
  * `measures:`, MS-P2·S1):
@@ -40,7 +40,7 @@ import java.nio.file.Path
  *
  * RED until RG-P3.S0.T3 adds the proto fields and T4 populates them.
  */
-class VelesSemanticsProjectionSpec :
+class MetadataSemanticsProjectionSpec :
     StringSpec({
 
         fun serviceFrom(resourceDir: String): MetadataServiceImpl {
@@ -178,7 +178,7 @@ class VelesSemanticsProjectionSpec :
             // Customer declares `semantics { name: customer_name, code: customer_no }` and
             // nothing else. name/code have been on the wire since long before MS, so the
             // mention facet reaches consumers through them (fed by the model-side D2 merge
-            // in MS-P1·S2 — this asserts the chain, not new veles code) and the semantics
+            // in MS-P1·S2 — this asserts the chain, not new metadata code) and the semantics
             // message stays absent rather than appearing empty.
             detail.nameAttribute shouldBe "customer_name"
             detail.codeAttribute shouldBe "customer_no"

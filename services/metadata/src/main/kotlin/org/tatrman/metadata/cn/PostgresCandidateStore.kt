@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-package org.tatrman.veles.cn
+package org.tatrman.metadata.cn
 
 import com.typesafe.config.Config
 import com.zaxxer.hikari.HikariConfig
@@ -27,7 +27,7 @@ import javax.sql.DataSource
 /**
  * The candidate store in schema `metadata` of the service's database (A-CN-90), migrated by Flyway on first use
  * (`classpath:db/cn`, its history in the same schema) — the BI receipts pattern: a database that is down at boot costs
- * the candidate API until it is back, never Veles's start. The migration is retried at most once per [retryMillis].
+ * the candidate API until it is back, never Metadata's start. The migration is retried at most once per [retryMillis].
  * The schema is `metadata`, the name the service takes at MR-P1, so the rename moves no table.
  */
 class PostgresCandidateStore(

@@ -64,7 +64,7 @@ fun Application.module(
         if (config.hasPath("status-page.model-fingerprint-url")) {
             config.getString("status-page.model-fingerprint-url")
         } else {
-            "http://veles:7260/status"
+            "http://metadata:7260/status"
         }
     val fingerprintProbe = ModelFingerprintProbe(fingerprintUrl, HttpClient(Apache))
     val statusService =

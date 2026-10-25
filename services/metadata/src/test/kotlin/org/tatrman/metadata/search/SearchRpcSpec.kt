@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-package org.tatrman.veles.search
+package org.tatrman.metadata.search
 
 import org.tatrman.meta.v1.PageRequest
 import org.tatrman.meta.v1.SearchRequest
@@ -7,8 +7,8 @@ import org.tatrman.ttr.metadata.model.QualifiedName
 import org.tatrman.ttr.metadata.model.SchemaCode
 import org.tatrman.ttr.metadata.model.parseSchemaCode
 import org.tatrman.ttr.metadata.graph.ModelGraph
-import org.tatrman.veles.grpc.MetadataServiceImpl
-import org.tatrman.veles.grpc.PackageIndex
+import org.tatrman.metadata.grpc.MetadataServiceImpl
+import org.tatrman.metadata.grpc.PackageIndex
 import org.tatrman.ttr.metadata.model.LocalizedTextList
 import org.tatrman.ttr.metadata.model.Model
 import org.tatrman.ttr.metadata.model.ModelDescriptor

@@ -13,7 +13,7 @@
         <captureMdcAttributes>*</captureMdcAttributes>
     </appender>
 
-    <logger name="org.tatrman.veles.mcp" level="DEBUG"/>
+    <logger name="org.tatrman.metadata.mcp" level="DEBUG"/>
     <logger name="shared.mcp.server" level="INFO"/>
     <logger name="infra.erp.sql" level="INFO"/>
     <logger name="io.modelcontextprotocol" level="INFO"/>

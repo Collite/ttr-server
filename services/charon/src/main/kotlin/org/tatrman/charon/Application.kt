@@ -151,7 +151,7 @@ fun main() {
             .forPort(grpcPort)
             .permitKeepAliveTime(20, TimeUnit.SECONDS)
             .permitKeepAliveWithoutCalls(true)
-            .maxInboundMessageSize(33554432) // 32 MiB; matches veles
+            .maxInboundMessageSize(33554432) // 32 MiB; matches metadata
             .addService(service)
             .build()
     Runtime.getRuntime().addShutdownHook(Thread { grpcServer.shutdownNow() })

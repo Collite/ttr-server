@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-package org.tatrman.veles
+package org.tatrman.metadata
 
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldBeEmpty
@@ -21,11 +21,11 @@ import org.tatrman.ttr.metadata.model.ParseStatus
 import org.tatrman.ttr.metadata.model.QualifiedName
 import org.tatrman.ttr.metadata.model.SchemaCode
 import org.tatrman.ttr.metadata.registry.MetadataRegistry
-import org.tatrman.veles.grpc.MetadataServiceImpl
-import org.tatrman.veles.grpc.PackageIndex
-import org.tatrman.veles.parse.QueryParseState
-import org.tatrman.veles.parse.QueryParseWorker
-import org.tatrman.veles.parse.queryPathHandle
+import org.tatrman.metadata.grpc.MetadataServiceImpl
+import org.tatrman.metadata.grpc.PackageIndex
+import org.tatrman.metadata.parse.QueryParseState
+import org.tatrman.metadata.parse.QueryParseWorker
+import org.tatrman.metadata.parse.queryPathHandle
 import kotlinx.coroutines.runBlocking
 
 /**

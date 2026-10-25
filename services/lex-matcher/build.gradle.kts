@@ -19,7 +19,7 @@ tasks.test {
     listOf("regenGoldens", "includePerf").forEach { key ->
         System.getProperty(key)?.let { systemProperty(key, it) }
     }
-    // CN-P4 S4.3 — the conceptual tier's shared fixture estate (`shared/testdata/cn-estate`, one copy for veles,
+    // CN-P4 S4.3 — the conceptual tier's shared fixture estate (`shared/testdata/cn-estate`, one copy for metadata,
     // lex-matcher and the resolver), compiled at test time. Declared as an input too: a system property naming a
     // directory is not one.
     val cnEstate = rootProject.file("shared/testdata/cn-estate")
@@ -81,7 +81,7 @@ dependencies {
     // Stage 2.2 lean: no SQL backend at v1 (the catalog is an in-repo JSON).
     // exposed / hikaricp / mssql / pgsql are dropped from the kantheon fuzzy
     // fork per the lean carve-out. Re-add when the metadata-driven loader
-    // (veles + SQL warehouse) is wired in a later stage.
+    // (metadata + SQL warehouse) is wired in a later stage.
     implementation(libs.typesafe.config)
 
     implementation(libs.java.string.similarity)
@@ -113,14 +113,14 @@ dependencies {
     implementation(libs.micrometer.registry.prometheus)
 
     // gRPC — :shared:proto generates the FuzzyService coroutine base class
-    // and the VelesService stub the metadata loader calls.
+    // and the MetadataService stub the metadata loader calls.
     implementation(project(":shared:proto"))
     implementation(libs.grpc.kotlin.stub)
     implementation(libs.grpc.netty.shaded)
     implementation(libs.grpc.services)
     implementation(libs.kotlinx.serialization.json)
 
-    // SQL backend for the `metadata` loader source (Veles → SELECT pk,col → DB
+    // SQL backend for the `metadata` loader source (Metadata → SELECT pk,col → DB
     // → catalog). Off the path for the `static` (in-repo JSON catalog) source;
     // DatabaseFactory.connect runs only when fuzzy.loader.source = "metadata".
     implementation(libs.exposed.core)

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-package org.tatrman.veles.read
+package org.tatrman.metadata.read
 
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.routing.Route
@@ -18,7 +18,7 @@ import org.tatrman.ttr.parser.model.LayoutDocument
  *
  * Every field of both bodies is always present — an empty list as `[]`, empty positions as `{}`, no skin /
  * positionsFrom as `null` (A-VL-2): the viewer reads the body as given, and its fixtures pin the key set. The
- * error bodies are the other read routes' (`respondError`, `respondModelNotLoaded` in VelesReadRoutes.kt).
+ * error bodies are the other read routes' (`respondError`, `respondModelNotLoaded` in MetadataReadRoutes.kt).
  */
 fun Route.layoutRoutes(registry: MetadataRegistry) {
     get("/model/layouts") {

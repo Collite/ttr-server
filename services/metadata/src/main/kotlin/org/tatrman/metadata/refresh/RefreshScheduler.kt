@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-package org.tatrman.veles.refresh
+package org.tatrman.metadata.refresh
 
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers

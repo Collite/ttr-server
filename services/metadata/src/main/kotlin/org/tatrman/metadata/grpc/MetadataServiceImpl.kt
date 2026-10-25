@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-package org.tatrman.veles.grpc
+package org.tatrman.metadata.grpc
 
 import org.tatrman.meta.v1.AttributeDetail
 import org.tatrman.meta.v1.AttributeSemantics
@@ -62,7 +62,7 @@ import org.tatrman.meta.v1.RelationDetail
 import org.tatrman.meta.v1.RoleEntry
 import org.tatrman.meta.v1.LocalizedString as ProtoLocalizedString
 import org.tatrman.meta.v1.LocalizedStringList as ProtoLocalizedStringList
-import org.tatrman.meta.v1.VelesServiceGrpcKt
+import org.tatrman.meta.v1.MetadataServiceGrpcKt
 import org.tatrman.meta.v1.SearchHints as ProtoSearchHints
 import org.tatrman.meta.v1.SearchRequest
 import org.tatrman.meta.v1.SearchResponse
@@ -116,7 +116,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.security.MessageDigest
 import java.time.Instant
-import org.tatrman.veles.parse.QueryParseState
+import org.tatrman.metadata.parse.QueryParseState
 import org.tatrman.ttr.metadata.search.SearchQuery
 import io.opentelemetry.api.trace.Tracer
 import org.tatrman.ttr.metadata.registry.MetadataRegistry
@@ -134,7 +134,7 @@ import org.tatrman.ttr.semantics.semanticsblock.ResolvedEntitySemantics
  * (v1 gap closure Phase 07).
  *
  * When a [QueryParseState] is supplied, `parse_status` / `parse_error_*` for queries are read
- * live from the background [org.tatrman.veles.parse.QueryParseWorker]; otherwise they reflect the
+ * live from the background [org.tatrman.metadata.parse.QueryParseWorker]; otherwise they reflect the
  * model's stored (initial PENDING) state.
  *
  * Package scoping (GetModel, the `package` filters of ListObjects / ListQueries) reads
@@ -151,7 +151,7 @@ class MetadataServiceImpl(
     private val parseState: QueryParseState? = null,
     private val refresher: MetadataRefresher? = null,
     private val packageIndex: PackageIndex,
-) : VelesServiceGrpcKt.VelesServiceCoroutineImplBase() {
+) : MetadataServiceGrpcKt.MetadataServiceCoroutineImplBase() {
     private val logger = org.slf4j.LoggerFactory.getLogger(MetadataServiceImpl::class.java)
 
     /**
@@ -1040,7 +1040,7 @@ class MetadataServiceImpl(
     /**
      * Golem P4 S4.2 — resolve a subject area (`def area accounting { ... }`) to its
      * package set + description + tags. A Golem Shem with `areas: [accounting]` calls
-     * this to discover which Veles packages it must pull (via GetModel) for the area.
+     * this to discover which Metadata packages it must pull (via GetModel) for the area.
      *
      * Unknown area → `found = false`, empty packages, plus a Rule-6 WARNING
      * (`area_not_found`) — never a gRPC error. Referenced packages are returned
@@ -1186,7 +1186,7 @@ private fun ModelObject.selectDescription(locale: String): String {
 }
 
 /**
- * [packageOf] is required, not defaulted: every descriptor veles serves states its package
+ * [packageOf] is required, not defaulted: every descriptor metadata serves states its package
  * (`ObjectDescriptor.package_name`), and a default would let a new call site serve one without it
  * — which a caller gating on packages reads as "no package", i.e. as unplaceable.
  */
@@ -1240,7 +1240,7 @@ private fun toProtoBinding(b: DomainBinding): BindingProto =
 // Projects the typed model's grammar-4.2 semantics onto meta.v1. kind/role stay
 // strings (open vocabulary in ttr-semantics); an unresolved/invalid block is
 // dropped upstream (semantics == null / semanticsKind == null) and surfaces as a
-// TTR-SEM load issue — Veles serves the object WITHOUT semantics, never guesses.
+// TTR-SEM load issue — Metadata serves the object WITHOUT semantics, never guesses.
 
 /**
  * The entity/table-side semantics message, or null when there is nothing to say.
@@ -1275,7 +1275,7 @@ private fun objectSemanticsProto(
  * (same-model refs — the period table lives beside the fact entity).
  *
  * MS: `aggregation` is declared on the OWNER (`semantics { measures: [...] }`) and
- * denormalised onto the member here — veles owns the join so that a consumer holding one
+ * denormalised onto the member here — metadata owns the join so that a consumer holding one
  * AttributeDetail needs no second lookup. It can be the ONLY reason this message exists:
  * a measure attribute routinely carries no grounding `role:` at all.
  */
@@ -1703,7 +1703,7 @@ private fun Er2DbAttributeMapping.toEr2DbAttributeMappingDetail(): Er2DbAttribut
  * The objects of a model snapshot (GetSnapshot's `objects`): every object of [model] with its per-kind detail, as
  * GetObject serves it (DbProcedure stays descriptor-only). [parseStatusOf] gives each query the status its
  * canonical form is read from. Also what the query-parse worker reads the model through
- * ([org.tatrman.veles.parse.queryPathHandle]), so a saved query parses against the model exactly as the
+ * ([org.tatrman.metadata.parse.queryPathHandle]), so a saved query parses against the model exactly as the
  * translate service sees it.
  */
 internal fun snapshotObjects(

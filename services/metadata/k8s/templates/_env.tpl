@@ -1,12 +1,12 @@
-{{/* veles container env — lifted verbatim from the pre-library chart (D1). */}}
-{{- define "veles.env" -}}
+{{/* metadata container env — lifted verbatim from the pre-library chart (D1). */}}
+{{- define "metadata.env" -}}
 {{- /* extraEnv may already carry the branch / sub-path (deploying envs did before these keys existed): never render a duplicate. */ -}}
 {{- $extraNames := list -}}
 {{- range .Values.extraEnv }}{{ $extraNames = append $extraNames .name }}{{ end -}}
-- name: VELES_HTTP_PORT
+- name: METADATA_HTTP_PORT
   value: {{ .Values.ports.http | quote }}
 {{- if .Values.ports.grpc }}
-- name: VELES_GRPC_PORT
+- name: METADATA_GRPC_PORT
   value: {{ .Values.ports.grpc | quote }}
 {{- end }}
 - name: METADATA_GIT_REMOTE_URI

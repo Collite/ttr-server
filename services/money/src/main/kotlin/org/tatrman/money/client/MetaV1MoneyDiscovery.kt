@@ -9,7 +9,7 @@ import org.tatrman.meta.v1.GetStatusRequest
 import org.tatrman.meta.v1.ListObjectsRequest
 import org.tatrman.meta.v1.ObjectDescriptor
 import org.tatrman.meta.v1.PageRequest
-import org.tatrman.meta.v1.VelesServiceGrpcKt
+import org.tatrman.meta.v1.MetadataServiceGrpcKt
 import org.tatrman.money.discover.AmountColumns
 import org.tatrman.money.discover.ColumnRef
 import org.tatrman.money.discover.FxTable
@@ -20,14 +20,14 @@ import java.util.concurrent.TimeUnit
 
 /**
  * The **one** place that reads `org.tatrman.meta.v1` for money (RG-P3.S0 metadata seam / G2 closure).
- * Implements the domain-typed [MoneyDiscovery] port over Veles: tatrman's `meta.v1` carries no
+ * Implements the domain-typed [MoneyDiscovery] port over Metadata: tatrman's `meta.v1` carries no
  * server-side semantic filters, so discovery is client-side — `list_objects` surfaces the attribute
  * descriptors, `get_object` reads each attribute's [org.tatrman.meta.v1.AttributeDetail.getSemantics]
  * role, and the fx-rate table is found via `ObjectDescriptor.semantics_kind == "fx_rate"`. Keeping
  * this behind the port means the recipe layer and every grounding test stay proto-free.
  */
 class MetaV1MoneyDiscovery internal constructor(
-    private val stub: VelesServiceGrpcKt.VelesServiceCoroutineStub,
+    private val stub: MetadataServiceGrpcKt.MetadataServiceCoroutineStub,
     private val ownedChannel: ManagedChannel?,
     private val deadlineSeconds: Long = 30,
     private val probeDeadlineSeconds: Long = 5,
@@ -50,7 +50,7 @@ class MetaV1MoneyDiscovery internal constructor(
                     .intercept(OutgoingCallLoggingInterceptor())
                     .build()
             return MetaV1MoneyDiscovery(
-                VelesServiceGrpcKt.VelesServiceCoroutineStub(channel),
+                MetadataServiceGrpcKt.MetadataServiceCoroutineStub(channel),
                 ownedChannel = channel,
             )
         }
@@ -58,7 +58,7 @@ class MetaV1MoneyDiscovery internal constructor(
         /** Test wiring — borrows an existing (e.g. in-process) channel; does not own it. */
         fun forChannel(channel: Channel): MetaV1MoneyDiscovery =
             MetaV1MoneyDiscovery(
-                VelesServiceGrpcKt.VelesServiceCoroutineStub(channel),
+                MetadataServiceGrpcKt.MetadataServiceCoroutineStub(channel),
                 ownedChannel = null,
             )
     }

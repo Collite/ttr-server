@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-package org.tatrman.veles
+package org.tatrman.metadata
 
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldBeEmpty
@@ -24,16 +24,16 @@ import org.tatrman.ttr.metadata.reconcile.ModelReconciler
 import org.tatrman.ttr.metadata.registry.MetadataRegistry
 import org.tatrman.ttr.metadata.source.FileBasedSource
 import org.tatrman.ttr.metadata.source.LocalFsStorage
-import org.tatrman.veles.grpc.MetadataServiceImpl
-import org.tatrman.veles.grpc.servedIndex
+import org.tatrman.metadata.grpc.MetadataServiceImpl
+import org.tatrman.metadata.grpc.servedIndex
 import java.nio.file.Path
 import kotlin.io.path.readText
 
 /**
- * CN-P4 S4.2 (cn contracts §5) — the metadata service's snapshot carries the cn tier. veles loads the shared cn estate
+ * CN-P4 S4.2 (cn contracts §5) — the metadata service's snapshot carries the cn tier. metadata loads the shared cn estate
  * (`shared/testdata/cn-estate`), swaps it into its registry, and the registry holds the tier the v6 lexicon archive was
  * compiled from: the same concepts with the same landings, and a reverse index equal to the archive's `liftsTo`. That
- * is one estate read by three consumers that agree (veles here, lex-matcher S4.3, the resolver S4.4). The tier is
+ * is one estate read by three consumers that agree (metadata here, lex-matcher S4.3, the resolver S4.4). The tier is
  * library-only, so the wire must survive it. Concepts page out as `SCHEMA_CODE_UNSPECIFIED`, the automation tier's
  * posture, and never fail an RPC.
  */

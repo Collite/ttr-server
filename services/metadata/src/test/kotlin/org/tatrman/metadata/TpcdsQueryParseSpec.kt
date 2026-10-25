@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
-package org.tatrman.veles
+package org.tatrman.metadata
 
 import io.kotest.assertions.withClue
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.types.shouldBeInstanceOf
-import org.tatrman.veles.parse.queryPathHandle
+import org.tatrman.metadata.parse.queryPathHandle
 import org.tatrman.translate.v1.Language as TranslatorLanguage
 import org.tatrman.translator.orchestrator.ParseResult
 import org.tatrman.translator.orchestrator.Translator

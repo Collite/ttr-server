@@ -42,8 +42,8 @@ telemetry:
 # in-cluster service names (env-agnostic — every cluster names them the same). A deploying
 # env REPLACES this list to retarget (e.g. a test context points the LLM upstream at WireMock).
 extraEnv:
-  - { name: VELES_HOST, value: "veles" }
-  - { name: VELES_GRPC_PORT, value: "7261" }
+  - { name: METADATA_HOST, value: "metadata" }
+  - { name: METADATA_GRPC_PORT, value: "7261" }
 
 # Probes (HTTP on the http port).
 readinessProbe:

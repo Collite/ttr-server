@@ -28,7 +28,9 @@ option java_multiple_files = true;
 // Service
 // =============================================================================
 
-service VelesService {
+// Renamed from VelesService 2026-10 (MR), formerly `veles`. Wire path changes:
+// /org.tatrman.meta.v1.MetadataService/<Rpc>. All callers in ttr-server + kantheon roll in one wave.
+service MetadataService {
   // -------- Model overview --------
   rpc GetModel(GetModelRequest) returns (GetModelResponse);
 
@@ -574,7 +576,7 @@ message AttributeSemantics {               // serves er attributes AND db column
   map<string, string> extras = 5;          // future role keys (4.2: always empty)
   // MS: "sum" | "avg" | "min" | "max" | "count" | "last" — set ONLY on attributes
   // listed in their OWNER's `measures:`, empty otherwise. Declared entity-side and
-  // denormalised onto the attribute by veles (the join is veles' job, not the
+  // denormalised onto the attribute by metadata (the join is metadata' job, not the
   // consumer's). A bare `measures: [amount]` item means "sum". Orthogonal to
   // `role:` above: an attribute is routinely both a grounding amount and a measure.
   // ⛑ The membership predicate is spelled `measure.attribute.path == <local name of
@@ -921,7 +923,7 @@ message GetSnapshotRequest {
 message GetSnapshotResponse {
   bool not_modified = 1;                                    // true → snapshot field is empty
   // Opaque cache validator — NOT the model version (read that from `snapshot.model.version` or
-  // GetStatus.model_version). It is ModelVersion.value, suffixed `.q<n>` while Veles tracks live
+  // GetStatus.model_version). It is ModelVersion.value, suffixed `.q<n>` while Metadata tracks live
   // query-parse state: canonical forms land after the model swap, and the ETag moves with them.
   string etag = 2;
   ModelSnapshot snapshot = 3;                               // populated only if not_modified = false

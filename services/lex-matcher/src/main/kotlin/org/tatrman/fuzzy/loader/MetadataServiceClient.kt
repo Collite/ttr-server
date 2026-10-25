@@ -7,7 +7,7 @@ import io.grpc.StatusRuntimeException
 import org.tatrman.meta.v1.ListMemberVocabulariesRequest
 import org.tatrman.meta.v1.MemberVocabulary
 import org.tatrman.meta.v1.PageRequest
-import org.tatrman.meta.v1.VelesServiceGrpc
+import org.tatrman.meta.v1.MetadataServiceGrpc
 import java.util.concurrent.TimeUnit
 
 /** What `ListMemberVocabularies` answered: every vocabulary, or why there is no listing to load. */
@@ -19,8 +19,8 @@ sealed interface MemberVocabularyListing {
 
     /**
      * No listing to load from — the loader keeps its previous cache (RG-FUZ-004). [reason] is
-     * `unimplemented` (a Veles that predates member vocabularies, contracts §6), or the code of the
-     * message Veles answered with instead of items (`metadata_not_ready`, `unknown_dialect`).
+     * `unimplemented` (a Metadata that predates member vocabularies, contracts §6), or the code of the
+     * message Metadata answered with instead of items (`metadata_not_ready`, `unknown_dialect`).
      */
     data class Unavailable(
         val reason: String,
@@ -29,10 +29,10 @@ sealed interface MemberVocabularyListing {
 }
 
 /**
- * Thin gRPC client over Veles (`VelesService`, the metadata service) for the member loader. The
+ * Thin gRPC client over Metadata (`MetadataService`, the metadata service) for the member loader. The
  * channel is owned by the caller (`Application.module`); this class never builds or shuts it.
  *
- * MV-T2 — one call: `ListMemberVocabularies`. Veles decides which vocabularies exist and renders
+ * MV-T2 — one call: `ListMemberVocabularies`. Metadata decides which vocabularies exist and renders
  * each one's read plan for the warehouse's [dialect]; this client never learns what a table or a
  * primary key is. (It used to list fuzzy-tagged columns and fetch each table's detail, and the
  * loader composed the SQL — keyed by the column, so two entities over one table shared an index.)
@@ -46,10 +46,10 @@ class MetadataServiceClient(
     private val timeoutMs: Long,
     private val pageSize: Int = 100,
 ) {
-    private val stub: VelesServiceGrpc.VelesServiceBlockingStub =
-        VelesServiceGrpc.newBlockingStub(channel)
+    private val stub: MetadataServiceGrpc.MetadataServiceBlockingStub =
+        MetadataServiceGrpc.newBlockingStub(channel)
 
-    private fun deadlined(): VelesServiceGrpc.VelesServiceBlockingStub =
+    private fun deadlined(): MetadataServiceGrpc.MetadataServiceBlockingStub =
         stub.withDeadlineAfter(timeoutMs, TimeUnit.MILLISECONDS)
 
     /**
@@ -74,14 +74,14 @@ class MetadataServiceClient(
                     if (e.status.code == Status.Code.UNIMPLEMENTED) {
                         return MemberVocabularyListing.Unavailable(
                             reason = "unimplemented",
-                            detail = "Veles does not serve ListMemberVocabularies",
+                            detail = "Metadata does not serve ListMemberVocabularies",
                         )
                     }
                     throw e
                 }
-            // Not ready / dialect refused: Veles answers with a message and no items. That empty
+            // Not ready / dialect refused: Metadata answers with a message and no items. That empty
             // page is NOT "the estate has no member vocabularies" — loading it would wipe the member
-            // layer on every Veles restart. (A page that has items is a listing, whatever else it says.)
+            // layer on every Metadata restart. (A page that has items is a listing, whatever else it says.)
             if (response.itemsCount == 0) {
                 response.messagesList.firstOrNull()?.let {
                     return MemberVocabularyListing.Unavailable(reason = it.code, detail = it.humanMessage)

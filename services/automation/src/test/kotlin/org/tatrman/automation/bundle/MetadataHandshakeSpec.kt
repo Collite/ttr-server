@@ -9,31 +9,31 @@ import java.time.Instant
 import java.time.ZoneOffset
 
 /**
- * AU-server S0.2 T6 — does Veles serve the model the bundle was built against: the served commit against Veles's
+ * AU-server S0.2 T6 — does Metadata serve the model the bundle was built against: the served commit against Metadata's
  * source versions (`GetStatus.sources[].version` — a git source's commit). A drift is a warning (`modelDrift`),
- * an unreachable Veles is "not known" (null), never a refusal.
+ * an unreachable Metadata is "not known" (null), never a refusal.
  */
-class VelesHandshakeSpec :
+class MetadataHandshakeSpec :
     StringSpec({
         val commit = "c0ffee"
 
         fun handshake(
             versions: Map<String, String>?,
             source: String? = null,
-        ) = VelesHandshake({ versions }, source)
+        ) = MetadataHandshake({ versions }, source)
 
-        "Veles at the bundle's commit: no drift; at another one: drift" {
+        "Metadata at the bundle's commit: no drift; at another one: drift" {
             handshake(mapOf("builtin-stock" to "stock", "hartland" to commit)).drift(commit) shouldBe false
             handshake(mapOf("builtin-stock" to "stock", "hartland" to "beef")).drift(commit) shouldBe true
         }
 
-        "a configured source is the one compared; a source Veles does not have is not known" {
+        "a configured source is the one compared; a source Metadata does not have is not known" {
             handshake(mapOf("a" to commit, "hartland" to "beef"), source = "hartland").drift(commit) shouldBe true
             handshake(mapOf("a" to "beef", "hartland" to commit), source = "hartland").drift(commit) shouldBe false
             handshake(mapOf("a" to commit), source = "hartland").drift(commit) shouldBe null
         }
 
-        "Veles unreachable: not known" {
+        "Metadata unreachable: not known" {
             handshake(null).drift(commit) shouldBe null
         }
 
@@ -49,7 +49,7 @@ class VelesHandshakeSpec :
                     override fun instant() = now
                 }
             val h =
-                VelesHandshake({
+                MetadataHandshake({
                     calls++
                     mapOf("hartland" to commit)
                 }, null, Duration.ofSeconds(30), clock)

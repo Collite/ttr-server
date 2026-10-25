@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-package org.tatrman.veles.read
+package org.tatrman.metadata.read
 
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
@@ -22,7 +22,7 @@ import org.tatrman.ttr.metadata.layout.ResolvedLayout
 import org.tatrman.ttr.metadata.registry.MetadataRegistry
 import org.tatrman.ttr.metadata.search.SearchAlgorithmRegistry
 import org.tatrman.ttr.parser.model.LayoutPoint
-import org.tatrman.veles.grpc.PackageIndex
+import org.tatrman.metadata.grpc.PackageIndex
 import java.nio.file.Files
 import java.nio.file.Path
 
@@ -62,7 +62,7 @@ class LayoutRoutesSpec :
             environment { config = MapApplicationConfig() }
             application {
                 routing {
-                    velesReadRoutes(
+                    metadataReadRoutes(
                         registry,
                         SearchAlgorithmRegistry(emptyMap()),
                         null,

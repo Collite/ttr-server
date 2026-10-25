@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-package org.tatrman.veles
+package org.tatrman.metadata
 
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldBeEmpty
@@ -20,14 +20,14 @@ import org.tatrman.ttr.metadata.reconcile.ModelReconciler
 import org.tatrman.ttr.metadata.registry.MetadataRegistry
 import org.tatrman.ttr.metadata.source.FileBasedSource
 import org.tatrman.ttr.metadata.source.LocalFsStorage
-import org.tatrman.veles.grpc.MetadataServiceImpl
-import org.tatrman.veles.grpc.servedIndex
+import org.tatrman.metadata.grpc.MetadataServiceImpl
+import org.tatrman.metadata.grpc.servedIndex
 import java.nio.file.Path
 
 /**
  * Grammar 0.16 (ttr-core#207) — a model carrying the automation half: `states:`/`transitions:` on attributes, a
  * world with `writable:` storages and its `def identity` / `def grant` / `def deployment` / `def process` members,
- * and `model automation` files (the hartland demo world of AU, design `17` §1–§2). Veles must load it clean and
+ * and `model automation` files (the hartland demo world of AU, design `17` §1–§2). Metadata must load it clean and
  * serve it: the world members go out as world objects (kind `deployment`, …), the automation tier — which the
  * frozen proto `SchemaCode` has no member for — as `SCHEMA_CODE_UNSPECIFIED`, never a failed RPC.
  */

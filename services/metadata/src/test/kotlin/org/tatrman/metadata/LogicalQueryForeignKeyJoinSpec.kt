@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-package org.tatrman.veles
+package org.tatrman.metadata
 
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.string.shouldContain
@@ -13,8 +13,8 @@ import org.tatrman.ttr.metadata.model.SchemaCode
 import org.tatrman.ttr.metadata.reconcile.ModelReconciler
 import org.tatrman.ttr.metadata.source.FileBasedSource
 import org.tatrman.ttr.metadata.source.LocalFsStorage
-import org.tatrman.veles.parse.QueryParseState
-import org.tatrman.veles.parse.QueryParseWorker
+import org.tatrman.metadata.parse.QueryParseState
+import org.tatrman.metadata.parse.QueryParseWorker
 import java.nio.file.Files
 
 /**

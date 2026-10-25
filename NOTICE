@@ -6,7 +6,7 @@ Licensed under the Apache License, Version 2.0; see the LICENSE file for the ful
 ---
 
 This product includes Apache Calcite, transitively distributed via `ttr-translator` into the
-chrono, geo, money, veles, and validate service images:
+chrono, geo, money, metadata, and validate service images:
 
 Apache Calcite
 Copyright 2012-2026 The Apache Software Foundation

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-package org.tatrman.veles.mcp
+package org.tatrman.metadata.mcp
 
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
@@ -37,7 +37,7 @@ class CapabilitiesRegistrationSpec :
             val loader = ManifestLoader()
             val capabilities = loader.loadAll()
             capabilities.forEach { cap ->
-                cap.tool.serviceEndpoint shouldBe "http://veles-mcp.kantheon.svc.cluster.local:7262"
+                cap.tool.serviceEndpoint shouldBe "http://meta-mcp.kantheon.svc.cluster.local:7262"
             }
         }
     })

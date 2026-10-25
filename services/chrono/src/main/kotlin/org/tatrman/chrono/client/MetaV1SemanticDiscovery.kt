@@ -14,21 +14,21 @@ import org.tatrman.meta.v1.GetStatusRequest
 import org.tatrman.meta.v1.ListObjectsRequest
 import org.tatrman.meta.v1.ObjectDescriptor
 import org.tatrman.meta.v1.PageRequest
-import org.tatrman.meta.v1.VelesServiceGrpcKt
+import org.tatrman.meta.v1.MetadataServiceGrpcKt
 import org.tatrman.plan.v1.QualifiedName
 import shared.logging.OutgoingCallLoggingInterceptor
 import java.util.concurrent.TimeUnit
 
 /**
  * The **one** place that reads `org.tatrman.meta.v1` (RG-P3.S0 metadata seam / G2 closure).
- * Implements the domain-typed [SemanticDiscovery] port over Veles: tatrman's `meta.v1` carries no
+ * Implements the domain-typed [SemanticDiscovery] port over Metadata: tatrman's `meta.v1` carries no
  * server-side semantic filters, so discovery is client-side — `list_objects` surfaces
  * `ObjectDescriptor.semantics_kind` to find the period table, then `get_object` reads each
  * attribute's [AttributeDetail.getSemantics] role. Keeping this behind the port means the recipe
  * layer and every grounding test stay proto-free.
  */
 class MetaV1SemanticDiscovery internal constructor(
-    private val stub: VelesServiceGrpcKt.VelesServiceCoroutineStub,
+    private val stub: MetadataServiceGrpcKt.MetadataServiceCoroutineStub,
     private val ownedChannel: ManagedChannel?,
     private val deadlineSeconds: Long = 30,
     private val probeDeadlineSeconds: Long = 5,
@@ -53,7 +53,7 @@ class MetaV1SemanticDiscovery internal constructor(
                     .intercept(OutgoingCallLoggingInterceptor())
                     .build()
             return MetaV1SemanticDiscovery(
-                VelesServiceGrpcKt.VelesServiceCoroutineStub(channel),
+                MetadataServiceGrpcKt.MetadataServiceCoroutineStub(channel),
                 ownedChannel = channel,
                 defaultCodeFormat = defaultCodeFormat,
             )
@@ -65,7 +65,7 @@ class MetaV1SemanticDiscovery internal constructor(
             defaultCodeFormat: String = "yyyyMM",
         ): MetaV1SemanticDiscovery =
             MetaV1SemanticDiscovery(
-                VelesServiceGrpcKt.VelesServiceCoroutineStub(channel),
+                MetadataServiceGrpcKt.MetadataServiceCoroutineStub(channel),
                 ownedChannel = null,
                 defaultCodeFormat = defaultCodeFormat,
             )

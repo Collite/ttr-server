@@ -26,14 +26,14 @@ import org.tatrman.meta.v1.ListMemberVocabulariesRequest
 import org.tatrman.meta.v1.ListMemberVocabulariesResponse
 import org.tatrman.meta.v1.MemberVocabulary
 import org.tatrman.meta.v1.PageInfo
-import org.tatrman.meta.v1.VelesServiceGrpc
+import org.tatrman.meta.v1.MetadataServiceGrpc
 import org.tatrman.plan.v1.QualifiedName
 import org.tatrman.plan.v1.SchemaCode
 import java.nio.file.Files
 import java.nio.file.Path
 
 /**
- * MV-T2 T7 — the hartland shape, end to end on the lex-matcher side: Veles' listing as T1 recorded it
+ * MV-T2 T7 — the hartland shape, end to end on the lex-matcher side: Metadata' listing as T1 recorded it
  * for hartland (the four member vocabularies, their methods, their read plans byte for byte), run
  * through the real loader and the real JDBC row mapping against an H2 warehouse in PostgreSQL mode,
  * read back through `GetStatus`. `MV_STATUS_DUMP=<file>` writes the response — the reference the
@@ -71,8 +71,8 @@ class HartlandShapedStatusTest :
                 ),
             )
 
-        val veles =
-            object : VelesServiceGrpc.VelesServiceImplBase() {
+        val metadata =
+            object : MetadataServiceGrpc.MetadataServiceImplBase() {
                 override fun listMemberVocabularies(
                     request: ListMemberVocabulariesRequest,
                     responseObserver: StreamObserver<ListMemberVocabulariesResponse>,
@@ -130,7 +130,7 @@ class HartlandShapedStatusTest :
                 InProcessServerBuilder
                     .forName("mv-hartland")
                     .directExecutor()
-                    .addService(veles)
+                    .addService(metadata)
                     .build()
                     .start()
             val channel = InProcessChannelBuilder.forName("mv-hartland").directExecutor().build()

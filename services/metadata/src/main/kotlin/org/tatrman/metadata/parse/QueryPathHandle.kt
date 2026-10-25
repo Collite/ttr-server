@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-package org.tatrman.veles.parse
+package org.tatrman.metadata.parse
 
 import org.tatrman.meta.v1.ModelDescriptor
 import org.tatrman.meta.v1.ModelSnapshot
@@ -8,7 +8,7 @@ import org.tatrman.translator.framework.ModelHandle
 import org.tatrman.ttr.metadata.model.Model
 import org.tatrman.ttr.metadata.model.ParseStatus
 import org.tatrman.ttr.metadata.model.Query
-import org.tatrman.veles.grpc.snapshotObjects
+import org.tatrman.metadata.grpc.snapshotObjects
 
 /**
  * [model] as the query path reads it: the translate service's own adapter ([SnapshotModelHandle]) over this model's

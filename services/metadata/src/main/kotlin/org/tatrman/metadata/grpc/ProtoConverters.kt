@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-package org.tatrman.veles.grpc
+package org.tatrman.metadata.grpc
 
 import org.tatrman.meta.v1.Direction as ProtoDirection
 import org.tatrman.meta.v1.EdgeType as ProtoEdgeType
@@ -13,11 +13,11 @@ import org.tatrman.ttr.metadata.model.SchemaCode as DomainSchemaCode
 /**
  * The proto ↔ library boundary (MD2). The `ttr-metadata` library is de-proto'd —
  * its model owns `QualifiedName`/`SchemaCode` and the graph owns `EdgeType`/
- * `Direction`. The Veles gRPC facade converts here at the edge; proto types
+ * `Direction`. The Metadata gRPC facade converts here at the edge; proto types
  * never cross into a library call, and library types never reach the wire raw.
  *
  * The proto surface is FROZEN (MD7): proto `SchemaCode` has no `WORLD` member, so a
- * library `WORLD` qname (never produced by the Veles model, but mapped defensively)
+ * library `WORLD` qname (never produced by the Metadata model, but mapped defensively)
  * degrades to `SCHEMA_CODE_UNSPECIFIED`. So does grammar 0.16's `AUTOMATION` tier (`model automation`
  * objects): the automation service reads them from its own bundle, not over this wire. And grammar 0.17's `CN`
  * (the conceptual tier, CN-P2), which ttr-metadata documents as never sent over the metadata wire either.

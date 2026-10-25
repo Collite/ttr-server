@@ -18,8 +18,8 @@ The gRPC service proto is forked as `org.tatrman.translate.v1` / `TranslateServi
 (RPC names kept; `com.tatrman.translator.v1` is gone). The `Language` /
 `SqlDialect` enums live in the library-only `translator.proto` (same package,
 Stage 1.3) and are imported by the service proto. Model data comes from
-**Veles** (formerly the metadata service): translate polls `GetSnapshot` and
-calls `GetQuery`, via `org.tatrman.meta.v1.VelesServiceGrpcKt`.
+**Metadata** (formerly the metadata service): translate polls `GetSnapshot` and
+calls `GetQuery`, via `org.tatrman.meta.v1.MetadataServiceGrpcKt`.
 
 Kotlin source root: `org.tatrman.translate`. Ports: **7275** (HTTP) /
 **7276** (gRPC). No MCP wrapper — translate is an internal pipeline service called
@@ -34,4 +34,4 @@ just deploy-kt translate        # Jib image + k8s/overlays/local
 ```
 
 `translate.use-fixture-model = true` (env `TRANSLATE_USE_FIXTURE_MODEL`) boots
-against the in-process boot fixture when no Veles is reachable (local/test).
+against the in-process boot fixture when no Metadata is reachable (local/test).

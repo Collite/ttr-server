@@ -69,7 +69,7 @@ service QueryService {
   rpc Translate(org.tatrman.translate.v1.TranslateRequest)
       returns (org.tatrman.translate.v1.TranslateResponse);
 
-  // Service-level status (mirrors veles / dispatch / worker shape).
+  // Service-level status (mirrors metadata / dispatch / worker shape).
   rpc GetStatus(GetStatusRequest) returns (GetStatusResponse);
 
   // Run a saved query by name, from its stored plan (LQ, contract L-31): no re-parse, and any saved query it reads
@@ -120,7 +120,7 @@ message RunRequest {
   //     reads with no value is refused by Run with code "parameter_unbound"
   //     (an explicit NULL is a value: `is_null = true`). Compile reports it
   //     in `required_parameters` instead.
-  //   - model_version: may be empty; Query fills from current Veles snapshot
+  //   - model_version: may be empty; Query fills from current Metadata snapshot
   org.tatrman.plan.v1.PipelineContext context = 3;
 
   // Execution options forwarded to the worker.
@@ -226,7 +226,7 @@ message GetStatusResponse {
   bool ready = 1;
   int32 active_runs = 2;
   CacheStatus compiled_cache = 3;
-  // Per-dependency health, mirroring the veles status shape.
+  // Per-dependency health, mirroring the metadata status shape.
   repeated org.tatrman.meta.v1.DependencyStatus dependencies = 4;
   org.tatrman.meta.v1.OverallStatus overall_status = 5;
   repeated org.tatrman.common.v1.ResponseMessage messages = 99;

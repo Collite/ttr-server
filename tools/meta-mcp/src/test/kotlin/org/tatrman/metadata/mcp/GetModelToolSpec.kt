@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-package org.tatrman.veles.mcp
+package org.tatrman.metadata.mcp
 
 import org.tatrman.meta.v1.EntityDetail
 import org.tatrman.meta.v1.ModelBundleEntity
@@ -29,7 +29,7 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonPrimitive
-import org.tatrman.veles.client.MetadataGrpcClient
+import org.tatrman.metadata.client.MetadataGrpcClient
 
 /**
  * C1.5: covers the MCP-layer behaviour of `get_model` and the `package` filter on

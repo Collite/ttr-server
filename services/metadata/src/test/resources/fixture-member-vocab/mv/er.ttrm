@@ -10,7 +10,7 @@ def entity store {
         // a bare `searchable` is a hint, not a vocabulary
         def attribute label { type: text, search { searchable } },
         // indexed but expression-mapped: listed, not renderable (RG-FUZ-003). Its entity's other
-        // vocabularies still render — Veles sends the mapping with its target unset, and the
+        // vocabularies still render — Metadata sends the mapping with its target unset, and the
         // translator's catalog leaves such an attribute out (#113)
         def attribute display { type: text, search { searchable method: TOKENS } }
     ]

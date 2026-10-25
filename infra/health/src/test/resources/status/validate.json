@@ -10,6 +10,6 @@
  },
  "ready": true,
  "dependencies": {
-  "veles": true
+  "metadata": true
  }
 }

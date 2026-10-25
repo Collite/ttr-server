@@ -72,6 +72,6 @@ forwarded OBO bearer) | `whois` (opt-in ERP role-enrichment, fork Phase 5).
 ## Status (Stage 3.2 — validate whole)
 
 Validator core + the in-process policy engine in one pod, both forked suites green
-(98 tests). Readiness gates on **Veles** only (the policy engine is in-process — no
+(98 tests). Readiness gates on **Metadata** only (the policy engine is in-process — no
 sql-security hop). Ports: HTTP 7285 (health/ready/status) · gRPC 7286 (`Validate`).
 Tag: `validate/v0.1.0`.

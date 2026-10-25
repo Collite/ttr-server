@@ -23,7 +23,7 @@ data class ReadRow(
 /**
  * Metadata-driven member loader (MV-T2, member-vocabulary contracts §4).
  *
- * Asks Veles for the estate's **member vocabularies** — one per indexed attribute, each with the
+ * Asks Metadata for the estate's **member vocabularies** — one per indexed attribute, each with the
  * read plan the translator rendered from its entity for this warehouse's dialect — runs every plan
  * via [fetchRows], and returns the member load for `StringRepository.refreshCache` to swap in
  * atomically. The category is the vocabulary's own (`er.<ns>.<entity>.<attribute>`, or
@@ -41,16 +41,16 @@ data class ReadRow(
  * over the entity's population.
  *
  * This loader knows nothing about tables, keys or SQL any more. Which vocabularies exist, whose rows
- * they read and how to spell that in SQL are Veles' and the translator's decisions — the same ones a
+ * they read and how to spell that in SQL are Metadata' and the translator's decisions — the same ones a
  * query over the entity is subject to. (It used to walk fuzzy-tagged COLUMNS and compose
  * `SELECT pk, col FROM table`, so two entities over one table shared one index, and a view- or
  * query-backed entity was indexed over its whole base table.)
  *
  * **An outage never wipes a vocabulary (review-104 F5).** No listing at all is `null`: the
  * repository keeps its whole member layer. And one vocabulary that is listed but cannot be read this
- * time — no read plan yet (a query-backed entity in Veles' parse window), or a read plan the
+ * time — no read plan yet (a query-backed entity in Metadata' parse window), or a read plan the
  * warehouse refused — keeps the rows, plan version and method of its last load. Only a vocabulary
- * Veles no longer LISTS leaves the layer.
+ * Metadata no longer LISTS leaves the layer.
  *
  * The gRPC channel and the [MetadataServiceClient] are constructed and owned by
  * `Application.module(...)` — this class never builds or closes them.
@@ -66,7 +66,7 @@ class MetadataLoaderSource(
     private val fetchRows: (String) -> List<ReadRow>,
     private val telemetry: FuzzyTelemetry? = null,
     // RS-12-γ alias tables (`semantics{kind: alias_table}`). PENDING COUPLING
-    // (rule 6): Veles does not yet report alias-table declarations (no
+    // (rule 6): Metadata does not yet report alias-table declarations (no
     // `semantics` in `org.tatrman.meta.v1`); this provider is stubbed to empty
     // until the RG-P4 metadata work lands. The ingestion + merge logic is live
     // and tested (composeAliasCandidates); only the source of `decls` is stubbed.
@@ -81,12 +81,12 @@ class MetadataLoaderSource(
         val method: String,
     )
 
-    // Loader report: why a declared vocabulary is not loaded (Veles' RG-FUZ-001/003 per item), or
+    // Loader report: why a declared vocabulary is not loaded (Metadata' RG-FUZ-001/003 per item), or
     // why nothing was (RG-FUZ-004). Retrievable via GetStatus.
     @Volatile
     private var lastWarnings: List<LoaderWarningInfo> = emptyList()
 
-    // The last load, by category as Veles spells it (F5's carry-over). Written only at the end of a
+    // The last load, by category as Metadata spells it (F5's carry-over). Written only at the end of a
     // load; the repository serialises refreshes, so no two loads interleave here.
     @Volatile
     private var previous: Map<String, Loaded> = emptyMap()
@@ -106,7 +106,7 @@ class MetadataLoaderSource(
                 client.listMemberVocabularies(dialect.translatorDialect())
             } catch (e: Exception) {
                 telemetry?.recordMetadataFailure()
-                logger.error("Metadata (veles) call failed; preserving previous cache", e)
+                logger.error("Metadata (metadata) call failed; preserving previous cache", e)
                 return unavailable("the ListMemberVocabularies call failed (${e.message})")
             }
         val items =
@@ -115,7 +115,7 @@ class MetadataLoaderSource(
                 is MemberVocabularyListing.Unavailable -> {
                     telemetry?.recordMetadataFailure()
                     logger.warn(
-                        "Veles lists no member vocabularies ({}: {}); preserving previous cache",
+                        "Metadata lists no member vocabularies ({}: {}); preserving previous cache",
                         listing.reason,
                         listing.detail,
                     )
@@ -142,14 +142,14 @@ class MetadataLoaderSource(
             val carried = previous[category]
 
             // Listed but not loadable: no single key (RG-FUZ-001) or no read plan (RG-FUZ-003).
-            // Veles says which and why; the loader passes it on and never reads the rows another way.
+            // Metadata says which and why; the loader passes it on and never reads the rows another way.
             if (item.readSql.isEmpty()) {
                 val suffix = if (carried != null) " $SERVING_PREVIOUS" else ""
                 val diagnostics =
                     item.diagnosticsList.map { LoaderWarningInfo(it.code, category, it.humanMessage + suffix) }
                 warnings +=
                     diagnostics.ifEmpty {
-                        listOf(LoaderWarningInfo(NO_READ_PLAN, category, "Veles listed it with no read plan$suffix"))
+                        listOf(LoaderWarningInfo(NO_READ_PLAN, category, "Metadata listed it with no read plan$suffix"))
                     }
                 telemetry?.recordSkipped(if (diagnostics.any { it.code == NO_KEY }) "no_key" else "no_read_plan")
                 logger.debug("Skipping member vocabulary {} — {}", category, diagnostics.map { it.code })
@@ -272,7 +272,7 @@ class MetadataLoaderSource(
     }
 
     /**
-     * The vocabulary's match method, as the dispatcher will parse it. Veles always sends one (an
+     * The vocabulary's match method, as the dispatcher will parse it. Metadata always sends one (an
      * indexed attribute with no authored method is `EXACT`); a method this matcher does not know is
      * matched EXACT with a WARN (contracts §8, `ttr/unknown-match-method`), never left unauthored —
      * unauthored rows pass the dispatcher unrestricted, which is partial matching nobody declared.
@@ -291,7 +291,7 @@ class MetadataLoaderSource(
      * A-MV-10, refined (review-104 F8) — what identifies how this vocabulary's rows were read and are
      * matched: its read plan, key and effective method.
      *
-     * NOT Veles' `MemberVocabulary.version`, which also hashes the whole MODEL version: any unrelated
+     * NOT Metadata' `MemberVocabulary.version`, which also hashes the whole MODEL version: any unrelated
      * edit (a new measure, a changed description) moved every member category's version on the next
      * refresh although nothing about its rows, plan or method had changed — and `member_index_versions`
      * is read as "did this layer change?".
@@ -344,7 +344,7 @@ internal object MatchMethodNames {
 }
 
 /**
- * The translator's name for this warehouse's dialect — what Veles renders a read plan for. Always
+ * The translator's name for this warehouse's dialect — what Metadata renders a read plan for. Always
  * sent: `""` would mean the translator's default, MSSQL, whatever the warehouse is (A-MV-7).
  */
 internal fun DatabaseConfig.translatorDialect(): String =

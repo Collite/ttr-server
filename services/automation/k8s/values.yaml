@@ -50,11 +50,11 @@ db:
     name: ""
     key: password
 
-# The door (query), the model (veles) and the Python sidecar (P4). In-cluster names and gRPC ports,
+# The door (query), the model (metadata) and the Python sidecar (P4). In-cluster names and gRPC ports,
 # the same in every cluster (the spine shares a namespace).
 door:
   queryUrl: "query:7306"
-  velesUrl: "veles:7261"
+  metadataUrl: "metadata:7261"
   sidecarUrl: ""
 
 # Bearer verification (§7, LR-14): RS256 against the realm's JWKS; `iss` must equal `issuer`; `aud`

@@ -16,6 +16,23 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+- **metadata — the model-graph service is renamed from `veles` (MR).**
+  `services/metadata`, package `org.tatrman.metadata` (including `cn` and `export`),
+  gRPC `org.tatrman.meta.v1.MetadataService`, charts `metadata` and `meta-mcp`, and
+  image `ghcr.io/collite/metadata` replace their previous names. Rebuild JVM consumers
+  for the moved `org.tatrman.metadata.client` API and regenerated gRPC stubs.
+  Environment variables use `METADATA_*`, `META_MCP_SERVER_PORT` and
+  `OTEL_ENABLED_METADATA` / `OTEL_ENABLED_META_MCP`; configuration keys use
+  `metadata.*` / `upstream.metadata.*` (including automation's `door.metadataUrl`
+  and `bundle.metadataSource`). This is a hard cut, with no legacy aliases.
+  Query-MCP metrics are `metadata.requests.map` and `metadata.error`; source-load
+  metrics are `metadata_model_source_load_failures_total` and `metadata_model_source_loaded`.
+  Update dashboards to those names. Ports 7260/7261/7262, proto package and message
+  layouts, database schema, CN routes, and `METADATA_GIT_*` stay unchanged.
+  **One-wave rollout per cluster:** the server and all ttr-server + kantheon consumers
+  must roll together; the previous gRPC service path is removed (MR-2).
+  No release is cut by this PR; publishing belongs to MW-P0.2.
+
 - **resolver — the er statement lane on `statement.lower:v1` (CN-P6 ⚑S62-1, A-CN-101).** Grammar 0.18.10's
   `ttr-concept` reads a statement on E-R when md carries no single read of it. The door's JSON now carries `lane`
   (`md` | `er`), and for an er read `erSql` — SQL over entities, every placeholder bound, which the query door runs as

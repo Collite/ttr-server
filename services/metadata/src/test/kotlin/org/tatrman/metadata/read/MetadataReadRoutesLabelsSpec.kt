@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-package org.tatrman.veles.read
+package org.tatrman.metadata.read
 
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
@@ -36,7 +36,7 @@ import org.tatrman.ttr.metadata.registry.MetadataRegistry
 import org.tatrman.ttr.metadata.search.SearchAlgorithmRegistry
 import org.tatrman.ttr.metadata.search.SearchIndexHolder
 import org.tatrman.ttr.metadata.search.substring.SubstringAlgorithm
-import org.tatrman.veles.grpc.PackageIndex
+import org.tatrman.metadata.grpc.PackageIndex
 import java.time.Instant
 
 /**
@@ -45,7 +45,7 @@ import java.time.Instant
  * Every field is additive and omitted when empty. The fixture is shaped like the Hartland demo
  * model's `item` / `store` / `store_sales` corner.
  */
-class VelesReadRoutesLabelsSpec :
+class MetadataReadRoutesLabelsSpec :
     StringSpec({
 
         "an entity carries displayLabel in every language, labelPlural and its localized description" {
@@ -140,7 +140,7 @@ private suspend fun withRoutes(block: suspend (get: suspend (String) -> JsonObje
         val substring = SubstringAlgorithm()
         val search = SearchAlgorithmRegistry(mapOf(substring.name to substring))
         application {
-            routing { velesReadRoutes(registry, search, SearchIndexHolder(search, listOf("en")), PackageIndex()) }
+            routing { metadataReadRoutes(registry, search, SearchIndexHolder(search, listOf("en")), PackageIndex()) }
         }
         block { path ->
             val res = client.get(path)

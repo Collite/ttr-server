@@ -31,9 +31,9 @@ telemetry:
   endpoint: ""
   serviceName: money
 
-# Metadata (Veles) gRPC target — money discovers amount/currency columns + the fx_rate table.
+# Metadata (Metadata) gRPC target — money discovers amount/currency columns + the fx_rate table.
 metadata:
-  host: veles
+  host: metadata
   grpcPort: 7261
 
 # Fallback currency when the request context carries no default_currency (DF v1 reality: CZK).

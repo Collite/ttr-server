@@ -637,6 +637,9 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@v5
+      - name: metadata rename guard — formerly `veles` (MR)
+        run: bash scripts/guard-no-veles.sh # formerly `veles`
+
       - name: enforce SPDX license headers
         run: bash scripts/check-spdx.sh
 

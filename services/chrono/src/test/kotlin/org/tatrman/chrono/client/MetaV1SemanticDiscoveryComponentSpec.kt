@@ -14,13 +14,13 @@ import org.tatrman.ttr.metadata.reconcile.ModelReconciler
 import org.tatrman.ttr.metadata.registry.MetadataRegistry
 import org.tatrman.ttr.metadata.source.FileBasedSource
 import org.tatrman.ttr.metadata.source.LocalFsStorage
-import org.tatrman.veles.grpc.MetadataServiceImpl
-import org.tatrman.veles.grpc.PackageIndex
+import org.tatrman.metadata.grpc.MetadataServiceImpl
+import org.tatrman.metadata.grpc.PackageIndex
 import java.nio.file.Path
 
 /**
  * RG-P3.S0.T5 — the MetaV1 adapter component test (the seam's real path). Stands up an in-process
- * **Veles** ([MetadataServiceImpl]) over the grammar semantics goldens, then drives
+ * **Metadata** ([MetadataServiceImpl]) over the grammar semantics goldens, then drives
  * [MetaV1SemanticDiscovery] over an in-process channel: proves the adapter maps the real `meta.v1`
  * projection (RS-33 `semantics_kind` descriptors + `AttributeSemantics`) to chrono's discovery
  * domain types — identical to what [org.tatrman.chrono.FakeMetadataClient] returns for the seam spec.

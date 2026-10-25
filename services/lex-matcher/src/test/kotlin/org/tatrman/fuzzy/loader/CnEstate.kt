@@ -22,7 +22,7 @@ import kotlin.io.path.writeText
  * CN-P4 S4.3 — the conceptual tier's shared fixture estate (`shared/testdata/cn-estate`), compiled HERE by the real
  * producer at the pinned grammar: `LexiconBuild.run`, as `ttr-lexicon build` runs it, without the stdlib (the golden's
  * own setting). So the archive this service reads is the v6 archive ttr-core's golden holds, never a hand-written one.
- * veles loads the same estate's model (S4.2), and the resolver reads the same archive (S4.4).
+ * metadata loads the same estate's model (S4.2), and the resolver reads the same archive (S4.4).
  */
 internal object CnEstate {
     /** What the golden was compiled with: `expected/lexicon.json`'s header. */

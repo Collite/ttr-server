@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-package org.tatrman.veles.mcp
+package org.tatrman.metadata.mcp
 
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
@@ -22,7 +22,7 @@ import org.tatrman.common.v1.Severity
  * Verifies the zero-logic wrapper contract:
  *  - argument forwarding (`area`)
  *  - shape of the structured response (`packages[]`, `description`, `tags[]`, `found`)
- *  - veles's Rule-6 warnings (e.g. `area_not_found`) surfaced in the text payload
+ *  - metadata's Rule-6 warnings (e.g. `area_not_found`) surfaced in the text payload
  *  - the missing-area guard short-circuits before the gRPC call
  */
 class ResolveAreaToolSpec :
@@ -31,13 +31,13 @@ class ResolveAreaToolSpec :
         fun request(args: JsonObject = JsonObject(emptyMap())): CallToolRequest =
             CallToolRequest(CallToolRequestParams(name = "resolve_area", arguments = args))
 
-        fun stubGrpc(): org.tatrman.veles.client.MetadataGrpcClient {
-            val grpc = mockk<org.tatrman.veles.client.MetadataGrpcClient>(relaxed = true)
+        fun stubGrpc(): org.tatrman.metadata.client.MetadataGrpcClient {
+            val grpc = mockk<org.tatrman.metadata.client.MetadataGrpcClient>(relaxed = true)
             coEvery { grpc.resolveArea(any()) } returns ResolveAreaResponse.getDefaultInstance()
             return grpc
         }
 
-        fun tools(grpc: org.tatrman.veles.client.MetadataGrpcClient): Tools = Tools(grpc)
+        fun tools(grpc: org.tatrman.metadata.client.MetadataGrpcClient): Tools = Tools(grpc)
 
         "resolve_area forwards area and returns packages/description/tags/found" {
             val grpc = stubGrpc()
@@ -76,7 +76,7 @@ class ResolveAreaToolSpec :
         }
 
         "area_not_found: found=false and the warning is surfaced in the text payload" {
-            val grpc = mockk<org.tatrman.veles.client.MetadataGrpcClient>(relaxed = true)
+            val grpc = mockk<org.tatrman.metadata.client.MetadataGrpcClient>(relaxed = true)
             coEvery { grpc.resolveArea("nonexistent") } returns
                 ResolveAreaResponse
                     .newBuilder()

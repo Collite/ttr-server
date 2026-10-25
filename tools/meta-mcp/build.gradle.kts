@@ -10,7 +10,7 @@ plugins {
 }
 
 application {
-    mainClass.set("org.tatrman.veles.mcp.ApplicationKt")
+    mainClass.set("org.tatrman.metadata.mcp.ApplicationKt")
 }
 
 val osArch = System.getProperty("os.arch").lowercase()
@@ -39,10 +39,10 @@ jib {
         }
     }
     to {
-        image = "veles-mcp:latest"
+        image = "meta-mcp:latest"
     }
     container {
-        mainClass = "org.tatrman.veles.mcp.ApplicationKt"
+        mainClass = "org.tatrman.metadata.mcp.ApplicationKt"
         ports = listOf("7154")
     }
     dockerClient {
@@ -87,10 +87,10 @@ dependencies {
     implementation(project(":shared:libs:kotlin:logging-config"))
     implementation(project(":shared:libs:kotlin:capabilities-client"))
     // `erp-sql-{common,metadata}` and `:infra:sql-metadata` were dropped from the
-    // kantheon fork per contracts §6 (out of scope; the lean-veles is TTR-only).
+    // kantheon fork per contracts §6 (out of scope; the lean-metadata is TTR-only).
 
-    // gRPC client to the veles service — the client now lives in the shared
-    // veles-client lib (extracted 2026-06-18, Golem Stage 2.2); it carries the
+    // gRPC client to the metadata service — the client now lives in the shared
+    // metadata-client lib (extracted 2026-06-18, Golem Stage 2.2); it carries the
     // grpc-kotlin-stub + netty transport transitively, so they're dropped here.
     implementation(project(":shared:proto"))
     implementation(project(":services:metadata"))

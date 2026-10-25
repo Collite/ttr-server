@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-package org.tatrman.veles.cn
+package org.tatrman.metadata.cn
 
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
@@ -41,12 +41,12 @@ sealed interface CnSurface {
     ) : CnSurface
 }
 
-private val log = LoggerFactory.getLogger("org.tatrman.veles.cn.CandidateRoutes")
+private val log = LoggerFactory.getLogger("org.tatrman.metadata.cn.CandidateRoutes")
 
 /**
  * CN-P5 S5.3 T3 — the candidate store over HTTP (cn contracts §6; A-CN-90…95). JSON in is `cn-candidate.v1`; JSON out
  * wraps it: `{"candidate": <cn-candidate.v1>, "state", "content_hash", "submitted_by", "submitted_at", "promotion"?}`.
- * Errors are Veles's `{"error": …}` with a `code` (and `violations` / `findings` where there are some). Every route
+ * Errors are Metadata's `{"error": …}` with a `code` (and `violations` / `findings` where there are some). Every route
  * needs a verified bearer (401 without); what each caller may do is [CnPolicy]'s.
  *
  * - `POST /v1/cn/candidates` — submit: 201 new, 200 a duplicate (the first candidate, `"duplicate": true`).

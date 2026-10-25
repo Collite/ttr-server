@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-package org.tatrman.veles.grpc
+package org.tatrman.metadata.grpc
 
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldContainExactly
@@ -21,13 +21,13 @@ import org.tatrman.ttr.metadata.registry.MetadataRegistry
 import org.tatrman.ttr.metadata.source.BuiltinStockSource
 import org.tatrman.ttr.metadata.source.FileBasedSource
 import org.tatrman.ttr.metadata.source.LocalFsStorage
-import org.tatrman.veles.parse.QueryParseState
-import org.tatrman.veles.parse.QueryParseWorker
+import org.tatrman.metadata.parse.QueryParseState
+import org.tatrman.metadata.parse.QueryParseWorker
 import java.nio.file.Files
 import java.nio.file.Path
 
 /**
- * MV-T1 T4–T6 (member-vocabulary contracts §3, §9) — Veles publishes member vocabularies.
+ * MV-T1 T4–T6 (member-vocabulary contracts §3, §9) — Metadata publishes member vocabularies.
  *
  * One item per carrier with a member vocabulary, keyed by the ATTRIBUTE, with a read plan the
  * translator rendered from the entity — so two entities over one table are two vocabularies, a
@@ -176,7 +176,7 @@ class ListMemberVocabulariesSpec :
         }
 
         "RG-FUZ-003 — an expression-mapped attribute: listed, no read plan, reason named; its entity renders" {
-            // `store.display` maps to an expression, which Veles sends with the mapping's target unset.
+            // `store.display` maps to an expression, which Metadata sends with the mapping's target unset.
             // The translator's catalog leaves it out (#113), so every other `store` vocabulary renders —
             // the pins above and below are the same with and without it.
             val items = service().all().associateBy { it.category }

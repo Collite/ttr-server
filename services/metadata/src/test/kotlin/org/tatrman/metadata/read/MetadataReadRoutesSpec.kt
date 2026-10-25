@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-package org.tatrman.veles.read
+package org.tatrman.metadata.read
 
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
@@ -34,7 +34,7 @@ import org.tatrman.ttr.metadata.search.substring.SubstringAlgorithm
 import org.tatrman.ttr.metadata.source.LoadedFile
 import org.tatrman.ttr.metadata.source.SourceSnapshot
 import org.tatrman.ttr.metadata.source.StorageFile
-import org.tatrman.veles.grpc.PackageIndex
+import org.tatrman.metadata.grpc.PackageIndex
 import java.time.Instant
 
 /**
@@ -43,14 +43,14 @@ import java.time.Instant
  * registry + search stack, so the assertions exercise the same domain APIs the routes
  * call in production.
  */
-class VelesReadRoutesSpec :
+class MetadataReadRoutesSpec :
     StringSpec({
 
         "index reports schemas, packages, counts and version" {
             testApplication {
                 environment { config = MapApplicationConfig() }
                 val (registry, sr, holder, packages) = wire(populatedModel())
-                application { routing { velesReadRoutes(registry, sr, holder, packages) } }
+                application { routing { metadataReadRoutes(registry, sr, holder, packages) } }
 
                 client.get("/model/index").let {
                     it.status shouldBe HttpStatusCode.OK
@@ -69,7 +69,7 @@ class VelesReadRoutesSpec :
                 environment { config = MapApplicationConfig() }
                 val registry = MetadataRegistry()
                 val (sr, holder) = searchStack()
-                application { routing { velesReadRoutes(registry, sr, holder, PackageIndex()) } }
+                application { routing { metadataReadRoutes(registry, sr, holder, PackageIndex()) } }
 
                 client.get("/model/index").let {
                     it.status shouldBe HttpStatusCode.ServiceUnavailable
@@ -82,7 +82,7 @@ class VelesReadRoutesSpec :
             testApplication {
                 environment { config = MapApplicationConfig() }
                 val (registry, sr, holder, packages) = wire(populatedModel())
-                application { routing { velesReadRoutes(registry, sr, holder, packages) } }
+                application { routing { metadataReadRoutes(registry, sr, holder, packages) } }
 
                 client.get("/model/graph").let {
                     it.status shouldBe HttpStatusCode.OK
@@ -100,7 +100,7 @@ class VelesReadRoutesSpec :
             testApplication {
                 environment { config = MapApplicationConfig() }
                 val (registry, sr, holder, packages) = wire(populatedModel())
-                application { routing { velesReadRoutes(registry, sr, holder, packages) } }
+                application { routing { metadataReadRoutes(registry, sr, holder, packages) } }
 
                 client.get("/model/graph?package=sales").let {
                     it.status shouldBe HttpStatusCode.OK
@@ -119,7 +119,7 @@ class VelesReadRoutesSpec :
             testApplication {
                 environment { config = MapApplicationConfig() }
                 val (registry, sr, holder, packages) = wire(populatedModel())
-                application { routing { velesReadRoutes(registry, sr, holder, packages) } }
+                application { routing { metadataReadRoutes(registry, sr, holder, packages) } }
 
                 client.get("/model/object?qname=er.sales.order").let {
                     it.status shouldBe HttpStatusCode.OK
@@ -140,7 +140,7 @@ class VelesReadRoutesSpec :
             testApplication {
                 environment { config = MapApplicationConfig() }
                 val (registry, sr, holder, packages) = wire(populatedModel())
-                application { routing { velesReadRoutes(registry, sr, holder, packages) } }
+                application { routing { metadataReadRoutes(registry, sr, holder, packages) } }
 
                 client.get("/model/search?query=ordersList").let {
                     it.status shouldBe HttpStatusCode.OK

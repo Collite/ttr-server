@@ -1,17 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
-package org.tatrman.veles
+package org.tatrman.metadata
 
 import org.tatrman.meta.v1.GetQueryRequest
 import org.tatrman.meta.v1.ListQueriesRequest
 import org.tatrman.meta.v1.ParseStatus as ProtoParseStatus
 import org.tatrman.meta.v1.ParseStatusFilter
-import org.tatrman.veles.grpc.toProto
+import org.tatrman.metadata.grpc.toProto
 import org.tatrman.ttr.metadata.model.QualifiedName
 import org.tatrman.ttr.metadata.model.SchemaCode
 import org.tatrman.ttr.metadata.model.parseSchemaCode
 import org.tatrman.ttr.metadata.graph.ModelGraph
-import org.tatrman.veles.grpc.MetadataServiceImpl
-import org.tatrman.veles.grpc.PackageIndex
+import org.tatrman.metadata.grpc.MetadataServiceImpl
+import org.tatrman.metadata.grpc.PackageIndex
 import org.tatrman.ttr.metadata.model.DbColumn
 import org.tatrman.ttr.metadata.model.DbSchema
 import org.tatrman.ttr.metadata.model.DbTable
@@ -21,9 +21,9 @@ import org.tatrman.ttr.metadata.model.ModelVersion
 import org.tatrman.ttr.metadata.model.ParseStatus
 import org.tatrman.ttr.metadata.model.Query
 import org.tatrman.ttr.metadata.model.QueryParameterDef
-import org.tatrman.veles.parse.QueryParseState
-import org.tatrman.veles.parse.QueryParseWorker
-import org.tatrman.veles.parse.queryPathHandle
+import org.tatrman.metadata.parse.QueryParseState
+import org.tatrman.metadata.parse.QueryParseWorker
+import org.tatrman.metadata.parse.queryPathHandle
 import org.tatrman.ttr.metadata.registry.MetadataRegistry
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder

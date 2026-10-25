@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-package org.tatrman.veles
+package org.tatrman.metadata
 
 import io.kotest.assertions.withClue
 import io.kotest.core.spec.style.StringSpec
@@ -11,8 +11,8 @@ import org.tatrman.ttr.metadata.model.ParseStatus
 import org.tatrman.ttr.metadata.reconcile.ModelReconciler
 import org.tatrman.ttr.metadata.source.FileBasedSource
 import org.tatrman.ttr.metadata.source.LocalFsStorage
-import org.tatrman.veles.parse.QueryParseState
-import org.tatrman.veles.parse.QueryParseWorker
+import org.tatrman.metadata.parse.QueryParseState
+import org.tatrman.metadata.parse.QueryParseWorker
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.concurrent.TimeUnit
@@ -21,14 +21,14 @@ import java.util.concurrent.TimeUnit
  * Calcite freezes its literal charset when it first loads, so a body with a literal outside Latin-1 (`'Poštovné'`, a
  * `TRANSLATE` over `čšž`) parses only if Calcite was promoted to UTF-8 before anything touched it. In this test JVM
  * some earlier spec has always loaded Calcite already, so the worker runs in a JVM of its own
- * ([CalciteCharsetFirstUseMain]) where it is the first to use Calcite — as in veles at start-up, where the reference
+ * ([CalciteCharsetFirstUseMain]) where it is the first to use Calcite — as in metadata at start-up, where the reference
  * pass of the dependency order (`Translator.savedQueryReferences`) ran before any parse and left Calcite on
  * ISO-8859-1: every such body failed, with a validation error that does not mention the charset.
  */
 class CalciteCharsetFirstUseSpec :
     StringSpec({
         "the worker, first to use Calcite in its JVM: bodies with literals outside Latin-1 parse" {
-            val root = Files.createTempDirectory("veles-charset")
+            val root = Files.createTempDirectory("metadata-charset")
             Files.writeString(root.resolve("db.ttrm"), DB)
             Files.writeString(root.resolve("queries.ttrm"), QUERIES)
             val java = Path.of(System.getProperty("java.home"), "bin", "java").toString()

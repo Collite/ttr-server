@@ -9,7 +9,7 @@ resources:
 patches:
   - target:
       kind: Deployment
-      name: veles
+      name: metadata
     patch: |
       - op: replace
         path: /spec/template/spec/containers/0/imagePullPolicy
@@ -20,11 +20,11 @@ patches:
       - op: replace
         path: /spec/template/spec/containers/0/env
         value:
-          - name: VELES_HTTP_PORT
+          - name: METADATA_HTTP_PORT
             value: "7260"
-          - name: VELES_GRPC_PORT
+          - name: METADATA_GRPC_PORT
             value: "7261"
           - name: OTEL_SERVICE_NAME
-            value: veles
-          - name: OTEL_ENABLED_VELES
+            value: metadata
+          - name: OTEL_ENABLED_METADATA
             value: "false"

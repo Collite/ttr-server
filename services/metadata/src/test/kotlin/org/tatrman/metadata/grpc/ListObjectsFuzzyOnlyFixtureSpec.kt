@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-package org.tatrman.veles.grpc
+package org.tatrman.metadata.grpc
 
 import org.tatrman.meta.v1.GetObjectRequest
 import org.tatrman.meta.v1.ListObjectsRequest

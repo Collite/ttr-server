@@ -1,6 +1,6 @@
 model er
 
-// MS-P2·S1 — a veles-LOCAL fixture, deliberately not a vendored tatrman golden.
+// MS-P2·S1 — a metadata-LOCAL fixture, deliberately not a vendored tatrman golden.
 //
 // `fixture-semantics/59-semantics.ttrm` is a conformance golden copied verbatim, so it
 // cannot be edited from this repo. It covers the mention facet on its own (Customer,
@@ -8,7 +8,7 @@ model er
 // a grounding `role: amount` AND a place in its owner's `measures:`. That case is the
 // whole reason the mention facet is declared entity-side rather than as another `role:`
 // (design.md: one column is routinely both an amount to convert and the measure people
-// ask for), so veles must prove the two project side by side without interfering.
+// ask for), so metadata must prove the two project side by side without interfering.
 
 def entity Invoice {
     semantics {

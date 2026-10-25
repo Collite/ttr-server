@@ -42,11 +42,11 @@ import org.tatrman.translator.framework.HartlandStackModel
 /**
  * LQ-T7·S1 (contract L-28) — at run time translate fills in a saved-query reference from its stored plan. The Golem's
  * pattern lane, the lattice and free SQL send a saved query's TEXT through `query.Run`, so a query that reads another
- * one (`FROM obj.dbo.store_revenue`, `FROM obj.query.shopper_revenue`) has to parse here as it did in veles: the handle
+ * one (`FROM obj.dbo.store_revenue`, `FROM obj.query.shopper_revenue`) has to parse here as it did in metadata: the handle
  * serves every PARSED saved query under its obj name, and the plan carries the body inlined, so validate secures the
  * tables it really reads. FAILED and PENDING queries carry no stored plan in the snapshot and are not served.
  *
- * The snapshot is built the way veles serves one: the queries' stored plans are what the translator itself produces
+ * The snapshot is built the way metadata serves one: the queries' stored plans are what the translator itself produces
  * for their bodies over the same model.
  */
 class SavedQueryRunTimeSpec :
@@ -122,7 +122,7 @@ class SavedQueryRunTimeSpec :
                 .addObjects(query(qn(SchemaCode.DB, "dbo", "not_yet"), ParseStatus.PARSE_STATUS_PENDING))
                 .build()
 
-        // What translate runs on: the handle the provider builds from veles' GetSnapshot.
+        // What translate runs on: the handle the provider builds from metadata' GetSnapshot.
         val provider =
             MetadataServiceModelHandleProvider(
                 getSnapshot = {

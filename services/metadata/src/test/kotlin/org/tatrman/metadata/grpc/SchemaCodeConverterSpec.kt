@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-package org.tatrman.veles.grpc
+package org.tatrman.metadata.grpc
 
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
@@ -9,7 +9,7 @@ import org.tatrman.ttr.metadata.model.SchemaCode as DomainSchemaCode
 /**
  * The frozen proto `SchemaCode` (MD7) against the library's, which grows with the grammar: the five wire codes
  * round-trip; the tiers that never cross the metadata wire — WORLD, AUTOMATION (grammar 0.16), CN (0.17, the
- * conceptual tier) — degrade to unspecified. Grammar 0.17.3 added CN and veles stopped compiling on master.
+ * conceptual tier) — degrade to unspecified. Grammar 0.17.3 added CN and metadata stopped compiling on master.
  */
 class SchemaCodeConverterSpec :
     StringSpec({

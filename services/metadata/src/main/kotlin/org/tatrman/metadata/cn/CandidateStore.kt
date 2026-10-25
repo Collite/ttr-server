@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-package org.tatrman.veles.cn
+package org.tatrman.metadata.cn
 
 import org.tatrman.concept.candidate.CnCandidate
 import org.tatrman.concept.candidate.CnCandidates

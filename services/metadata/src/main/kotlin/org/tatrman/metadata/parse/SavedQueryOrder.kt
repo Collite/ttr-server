@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-package org.tatrman.veles.parse
+package org.tatrman.metadata.parse
 
 import org.tatrman.plan.v1.QualifiedName as ProtoQualifiedName
 import org.tatrman.plan.v1.schemaCodeToToken
@@ -9,7 +9,7 @@ import org.tatrman.translator.orchestrator.Translator
 import org.tatrman.ttr.metadata.model.ParseStatus
 import org.tatrman.ttr.metadata.model.QualifiedName
 import org.tatrman.ttr.metadata.model.Query
-import org.tatrman.veles.grpc.toProto
+import org.tatrman.metadata.grpc.toProto
 
 /**
  * LQ §8 (contracts L-20, L-21) — the order a model's saved queries parse in, when one reads another as

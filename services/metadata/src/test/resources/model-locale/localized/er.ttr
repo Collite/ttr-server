@@ -1,6 +1,6 @@
 package localized
 
-// NLS-P10 T6 fixture (grammar 0.13, ⚑GXP-D7) — the four description shapes Veles'
+// NLS-P10 T6 fixture (grammar 0.13, ⚑GXP-D7) — the four description shapes Metadata'
 // D7 chain has to tell apart. Kept OUT of the bundled `model-ttr/` production tree
 // on purpose: this is a locale matrix, not estate content.
 def entity bilingual {

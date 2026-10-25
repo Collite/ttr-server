@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-package org.tatrman.veles.parse
+package org.tatrman.metadata.parse
 
 import org.tatrman.translate.v1.Language as TranslatorLanguage
 import org.tatrman.plan.v1.QualifiedName as ProtoQualifiedName
@@ -26,8 +26,8 @@ import org.tatrman.translator.joiner.JoinerMessages
 import org.tatrman.translator.orchestrator.ParseResult
 import org.tatrman.translator.orchestrator.Translator
 import org.tatrman.translator.params.SqlParam
-import org.tatrman.veles.grpc.toDomain
-import org.tatrman.veles.grpc.toProto
+import org.tatrman.metadata.grpc.toDomain
+import org.tatrman.metadata.grpc.toProto
 
 /**
  * Section F (DF-M05) — background query-parse worker. On every model swap it

@@ -12,7 +12,7 @@ Yarn toolchain (a documented build exception, like llm-gateway's Spring Boot), i
 - `app-config.yaml`: `organization.name` → **Kantheon**; `app.title` → **Kantheon Developer Portal**.
 - `examples/kantheon-catalog.yaml` (new): the constellation as a Backstage catalog — a `kantheon`
   System + Group and a `Component` per pantheon citizen (agents Iris-BFF/Themis/Golem/Pythia/Hebe;
-  platform services Veles/query/lex-matcher/nlp/translate/dispatch/validate/llm-gateway/Charon/Metis;
+  platform services Metadata/query/lex-matcher/nlp/translate/dispatch/validate/llm-gateway/Charon/Metis;
   workers worker-mssql/worker-polars/worker-postgres; `capabilities-mcp`; technical wave identity/health/landing). Wired as
   a `catalog.locations` file entry; replaces the predecessor's example catalog.
 - `docs/catalog-info.yaml`, `templates/agent-starter/template.yaml`, `app-config.local.yaml`

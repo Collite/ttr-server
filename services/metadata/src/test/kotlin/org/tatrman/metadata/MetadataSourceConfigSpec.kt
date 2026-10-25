@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-package org.tatrman.veles
+package org.tatrman.metadata
 
 import com.typesafe.config.Config
 import com.typesafe.config.ConfigFactory
@@ -15,9 +15,9 @@ import org.tatrman.ttr.metadata.model.ModelDescriptor
 import org.tatrman.ttr.metadata.reconcile.ModelReconciler
 import org.tatrman.ttr.metadata.source.BuiltinStockSource
 import org.tatrman.ttr.metadata.source.SourceSnapshot
-import org.tatrman.veles.grpc.PackageIndex
-import org.tatrman.veles.health.SourceLoadBoard
-import org.tatrman.veles.read.LAYOUT_FIXTURE
+import org.tatrman.metadata.grpc.PackageIndex
+import org.tatrman.metadata.health.SourceLoadBoard
+import org.tatrman.metadata.read.LAYOUT_FIXTURE
 import java.nio.file.Files
 import java.nio.file.Path
 import java.time.Instant
@@ -27,7 +27,7 @@ import java.time.Instant
  * git source that can't be loaded serves no model and is not ready, instead of quietly serving
  * some other model and reporting UP.
  */
-class VelesSourceConfigSpec :
+class MetadataSourceConfigSpec :
     StringSpec({
 
         val noEnv = ConfigResolveOptions.defaults().setUseSystemEnvironment(false)
@@ -64,7 +64,7 @@ class VelesSourceConfigSpec :
         }
 
         "a git source that can't be loaded serves no model, is not ready, and says why" {
-            val dir = Files.createTempDirectory("veles-src")
+            val dir = Files.createTempDirectory("metadata-src")
             val (board, snapshots) =
                 loadAll(
                     config(
@@ -90,7 +90,7 @@ class VelesSourceConfigSpec :
         }
 
         "an explicitly configured fallback serves, counts as loaded, and is reported" {
-            val dir = Files.createTempDirectory("veles-src")
+            val dir = Files.createTempDirectory("metadata-src")
             val local =
                 Path
                     .of(
@@ -122,7 +122,7 @@ class VelesSourceConfigSpec :
         }
 
         "credentials in the remote-uri never reach the source description" {
-            val dir = Files.createTempDirectory("veles-src")
+            val dir = Files.createTempDirectory("metadata-src")
             val (board, _) =
                 loadAll(
                     config(
@@ -139,7 +139,7 @@ class VelesSourceConfigSpec :
         }
 
         "the second git source is off unless its repository is set" {
-            val dir = Files.createTempDirectory("veles-src")
+            val dir = Files.createTempDirectory("metadata-src")
             val resolved = shipped.resolve(noEnv)
             resolved.getString("metadata.sources.second-model.remote-uri") shouldBe ""
             val (board, _) =
@@ -155,7 +155,7 @@ class VelesSourceConfigSpec :
         }
 
         "a second git repository is a source of its own, merged into one model" {
-            val dir = Files.createTempDirectory("veles-src")
+            val dir = Files.createTempDirectory("metadata-src")
             val shop =
                 Path.of(checkNotNull(this::class.java.classLoader.getResource("fixture-model/shop")).toURI())
             val first =
@@ -190,8 +190,8 @@ class VelesSourceConfigSpec :
             served.any { "Book" in it } shouldBe true
         }
 
-        "a configured git source is read for its layouts — the files Veles serves (VL V-37)" {
-            val dir = Files.createTempDirectory("veles-src")
+        "a configured git source is read for its layouts — the files Metadata serves (VL V-37)" {
+            val dir = Files.createTempDirectory("metadata-src")
             val repo = gitRepo(dir.resolve("repo")) { model -> LAYOUT_FIXTURE.toFile().copyRecursively(model.toFile()) }
             val (_, snapshots) =
                 loadAll(

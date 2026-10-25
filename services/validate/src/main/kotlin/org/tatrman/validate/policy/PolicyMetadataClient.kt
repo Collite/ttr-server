@@ -3,7 +3,7 @@ package org.tatrman.validate.policy
 
 import org.tatrman.meta.v1.GetObjectRequest
 import org.tatrman.meta.v1.GetStatusRequest
-import org.tatrman.meta.v1.VelesServiceGrpcKt
+import org.tatrman.meta.v1.MetadataServiceGrpcKt
 import org.tatrman.plan.v1.QualifiedName
 import io.grpc.ManagedChannel
 import io.grpc.ManagedChannelBuilder
@@ -41,7 +41,7 @@ class GrpcPolicyMetadataClient(
             .keepAliveTimeout(10, TimeUnit.SECONDS)
             .keepAliveWithoutCalls(true)
             .build()
-    private val stub = VelesServiceGrpcKt.VelesServiceCoroutineStub(channel)
+    private val stub = MetadataServiceGrpcKt.MetadataServiceCoroutineStub(channel)
 
     override suspend fun objectExists(qname: QualifiedName): Boolean =
         try {

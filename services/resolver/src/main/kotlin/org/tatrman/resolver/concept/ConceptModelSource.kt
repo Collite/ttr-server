@@ -41,7 +41,7 @@ class ModelTree(
  * CN-P5 S5.1 (cn contracts §4; architecture §2: the doors are pure functions of resolved, cached inputs) — where the
  * cn doors read their model from: ONE path, either
  *
- *  - a **model source tree**: a directory of `.ttrm` files (an estate's `model/`), loaded the way Veles and `ttr cn`
+ *  - a **model source tree**: a directory of `.ttrm` files (an estate's `model/`), loaded the way Metadata and `ttr cn`
  *    load one source — every file under the root, reconciled over the built-in stock; or
  *  - a **snapshot archive** (`*.tar.zst`, ttr-snapshot's format), whose `docs/` IS that tree, file for file. It is
  *    unpacked into a private directory once per archive, so both forms load through the same code and hash the same.

@@ -80,7 +80,7 @@ class FuzzyTelemetry {
      * MV-T2 — a member vocabulary the loader did not load, by reason: `no_key` (RG-FUZ-001),
      * `no_read_plan` (RG-FUZ-003), `wrong_source`, `sql_failed`, `alias_sql_failed`. Renamed from
      * `fuzzy_loader_skipped_total{no_pk|composite_pk|…}`: what is skipped is a vocabulary, and the
-     * key rule is Veles' now, not a table's primary key.
+     * key rule is Metadata' now, not a table's primary key.
      */
     fun recordSkipped(reason: String) {
         Counter

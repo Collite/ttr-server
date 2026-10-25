@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-package org.tatrman.veles.grpc
+package org.tatrman.metadata.grpc
 
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
@@ -18,7 +18,7 @@ import org.tatrman.translator.orchestrator.ParseResult
 import org.tatrman.translator.orchestrator.Translator
 import org.tatrman.ttr.metadata.graph.ModelGraph
 import org.tatrman.ttr.metadata.registry.MetadataRegistry
-import org.tatrman.veles.LogicalQueryFixture
+import org.tatrman.metadata.LogicalQueryFixture
 
 /**
  * GetSnapshot / GetObject serve a relation WITH its detail — the entities it joins and its `join:` pairs.

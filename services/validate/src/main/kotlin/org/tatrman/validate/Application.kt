@@ -210,9 +210,9 @@ fun Application.module(config: Config) {
         grpcServer.awaitTermination()
     }
 
-    // Readiness gate: Veles (model graph) is the one hard dependency — policy evaluation is
+    // Readiness gate: Metadata (model graph) is the one hard dependency — policy evaluation is
     // in-process since the 3.2 fold, so there is no sql-security hop to probe. The monitor probes
-    // Veles on a background scope with exponential backoff and drives /ready so K8s holds traffic
+    // Metadata on a background scope with exponential backoff and drives /ready so K8s holds traffic
     // until it recovers. Fixture boots have no channel, so the probe reports ready immediately.
     val dependencyMonitor = buildDependencyMonitor(config, metadataClient)
     val monitorScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -275,13 +275,13 @@ private fun buildDependencyMonitor(
     val pollIntervalMs = longOr("validate.dependency-monitor.poll-interval-seconds", 30L) * 1000
     val backoffBaseMs = longOr("validate.dependency-monitor.backoff-base-ms", 1_000L)
     val backoffMaxMs = longOr("validate.dependency-monitor.backoff-max-ms", 60_000L)
-    // Veles (model graph) is the only hard readiness dependency. Since the
+    // Metadata (model graph) is the only hard readiness dependency. Since the
     // Stage 3.2 fold, the policy engine runs in-process (no sql-security service
     // to probe), so there is no security dependency in the gate.
     return DependencyMonitor(
         dependencies =
             listOf(
-                DependencyMonitor.Dependency("veles") { metadataClient.probeReady() },
+                DependencyMonitor.Dependency("metadata") { metadataClient.probeReady() },
             ),
         pollIntervalMs = pollIntervalMs,
         backoffBaseMs = backoffBaseMs,
@@ -331,8 +331,8 @@ private fun pickSecurityClient(
     val registry = PolicyRegistry(PolicyConfigLoader.load(config))
     val policyMetadata =
         GrpcPolicyMetadataClient(
-            host = config.getString("veles.host"),
-            port = config.getInt("veles.port"),
+            host = config.getString("metadata.host"),
+            port = config.getInt("metadata.port"),
         )
     log.info("Validate policy engine loaded {} in-process policies", registry.size())
     return LocalPolicyClient(PolicyEngine(registry, policyMetadata))
@@ -346,14 +346,14 @@ private fun pickMetadataClient(
         return StaticMetadataClient(version = "boot-fixture-v0")
     }
     val deadlineSeconds =
-        if (config.hasPath("veles.deadline-seconds")) {
-            config.getLong("veles.deadline-seconds")
+        if (config.hasPath("metadata.deadline-seconds")) {
+            config.getLong("metadata.deadline-seconds")
         } else {
             30L
         }
     return GrpcMetadataClient(
-        host = config.getString("veles.host"),
-        port = config.getInt("veles.port"),
+        host = config.getString("metadata.host"),
+        port = config.getInt("metadata.port"),
         deadlineSeconds = deadlineSeconds,
     )
 }

@@ -141,7 +141,7 @@ val pomMeta: Map<String, Triple<String, String, String>> =
         ":shared:libs:kotlin:fuzzy-common" to Triple("fuzzy-common", "TTR Server Fuzzy Common", "Shared fuzzy-matching types for the TTR services."),
         ":shared:libs:kotlin:whois-common" to Triple("whois-common", "TTR Server Whois Common", "Shared identity/role-source (roleSource: bearer|whois) types for the TTR services."),
         ":shared:libs:kotlin:keycloak-auth" to Triple("keycloak-auth", "TTR Server Keycloak Auth", "Shared Keycloak/OBO bearer-auth helpers for the TTR services."),
-        ":shared:libs:kotlin:meta-client" to Triple("meta-client", "TTR Meta Client", "gRPC client for the Veles metadata service (meta.v1)."),
+        ":shared:libs:kotlin:meta-client" to Triple("meta-client", "TTR Meta Client", "gRPC client for the Metadata metadata service (meta.v1)."),
         ":shared:libs:kotlin:llm-client" to Triple("llm-client", "TTR LLM Client", "Client for the llm-gateway service (llm.v1)."),
         ":shared:libs:kotlin:transfer-core" to Triple("transfer-core", "TTR Transfer Core", "The Charon transfer seam (MoveExecutor + Plan + CharonError over transfer.v1) for in-process embedding behind a TransferMover."),
     )

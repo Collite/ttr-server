@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-package org.tatrman.veles.health
+package org.tatrman.metadata.health
 
 import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode

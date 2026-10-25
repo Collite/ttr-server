@@ -418,7 +418,7 @@ private class RuntimeFixture(
                     """
                     automation.db.host = "unused"
                     automation.door.queryUrl = "unused"
-                    automation.door.velesUrl = "unused"
+                    automation.door.metadataUrl = "unused"
                     automation.door.routes = "$routes"
                     automation.auth.jwksUrl = "http://unused/certs"
                     automation.auth.issuer = "unused"

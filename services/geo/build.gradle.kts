@@ -117,7 +117,7 @@ dependencies {
     testImplementation(libs.wiremock)
     // InMemoryMetricReader for the GeoMetrics assertions.
     testImplementation(libs.opentelemetry.sdk.testing)
-    // RG-P3.S0 metadata-seam component test — stands up an in-process Veles
+    // RG-P3.S0 metadata-seam component test — stands up an in-process Metadata
     // (MetadataServiceImpl) over the semantics fixture to prove MetaV1GeoDiscovery
     // maps the real meta.v1 projection to the discovery domain types.
     testImplementation(project(":services:metadata"))

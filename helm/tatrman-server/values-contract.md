@@ -32,7 +32,7 @@ directory names for several services. Use the key in the left column in your val
 
 | Value key | Image (`ghcr.io/collite/…`) | Source dir | Role |
 |---|---|---|---|
-| `veles` | `veles` | `services/veles` | model graph / metadata |
+| `metadata` | `metadata` | `services/metadata` | model graph / metadata |
 | `query` | `query` | `services/query` | query spine |
 | `translate` | `translate` | `services/translate` | query spine |
 | `validate` | `validate` | `services/validate` | query spine |
@@ -44,7 +44,7 @@ directory names for several services. Use the key in the left column in your val
 | `whois` | `identity` | `infra/identity` | identity resolver |
 | `health` | `health` | `infra/health` | health aggregator |
 | `query-mcp` | `query-mcp` | `tools/query-mcp` | MCP door |
-| `veles-mcp` | `meta-mcp` | `tools/meta-mcp` | MCP door |
+| `meta-mcp` | `meta-mcp` | `tools/meta-mcp` | MCP door |
 | `fuzzy` | `lex-matcher` | `services/lex-matcher` | vocabulary matcher (understanding layer) |
 | `fuzzy-mcp` | `lex-matcher-mcp` | `tools/lex-matcher-mcp` | MCP door |
 | `nlp` | `nlp` | `services/nlp` | NLP front + backends (understanding layer) |
@@ -57,7 +57,7 @@ directory names for several services. Use the key in the left column in your val
 | `automation` | `automation` | `services/automation` | the automation service — run API, ledger, protocol (AU; opt-in) |
 | `backstage` | `backstage` (upstream) | `infra/backstage` | developer portal (RO-22, opt-in) |
 
-> **Designer viewer (RO-9):** ships in-chart but is **not yet a subchart** — its Veles
+> **Designer viewer (RO-9):** ships in-chart but is **not yet a subchart** — its Metadata
 > adapter is not built (S0·T4). Tracked in S2·T5. It is outside the acceptance bar.
 
 ---
@@ -82,7 +82,7 @@ Every service defaults **on** except `backstage`, `devIdp` and `automation`. `<n
 
 | Group | Keys (all `.enabled`) | Default |
 |---|---|---|
-| Query spine | `veles`, `query`, `translate`, `validate`, `dispatch`, `llm-gateway`, `mssql`, `postgres`, `polars`, `whois`, `health`, `query-mcp`, `veles-mcp` | `true` |
+| Query spine | `metadata`, `query`, `translate`, `validate`, `dispatch`, `llm-gateway`, `mssql`, `postgres`, `polars`, `whois`, `health`, `query-mcp`, `meta-mcp` | `true` |
 | Understanding layer | `fuzzy`, `fuzzy-mcp`, `nlp`, `nlp-mcp`, `chrono`, `geo`, `money`, `grounding-mcp`, `resolver` | `true` |
 | Automation | `automation` | `false` (pre-release, opt-in; §5.4) |
 | Developer portal | `backstage` | `false` (upstream image, opt-in) |
@@ -214,7 +214,7 @@ extension, no custom Postgres image). Four keys have no default and fail the ren
 | `automation.auth.tokenUrl` | string | the JWKS URL's sibling | The realm's token endpoint, for the named identities' client credentials. |
 | `automation.auth.authorMap` | string | `""` | `author=principal` pairs, comma-separated: a commit author (e-mail, else name) → the deployment's `author` principal. |
 | `automation.credentials` | list | `[]` | Credentials by **Secret ref**, each rendered as `TTR_CONN_<name>` — e.g. `{ name: AUTOMATION, secretName: automation-identities, secretKey: automation }`. A named identity's value is `<client id>:<client secret>`. |
-| `automation.door.{queryUrl,velesUrl}` | string | `query:7306` / `veles:7261` | The door and the model, in-namespace gRPC. |
+| `automation.door.{queryUrl,metadataUrl}` | string | `query:7306` / `metadata:7261` | The door and the model, in-namespace gRPC. |
 | `automation.bundle.git.{url,branch,path}` · `.tokenSecret.{name,key}` | | `""` / `master` / `""` | The repository the recipe bundles are read from; its token by Secret ref. |
 | `automation.policies.fragment` | string | `""` | The `automation.ops` policy fragment, rendered as ConfigMap `<fullname>-policies` for validate to include. Empty → none. |
 | `automation.configFragment.content` | string | `""` | A HOCON delta over the service's `application.conf` (the library's config fragment). |
@@ -244,31 +244,31 @@ The BI row ceiling is validate's, set through `validate.extraEnv` (no chart key)
 
 ---
 
-## 6. Model source (`veles.metadata.*`)
+## 6. Model source (`metadata.metadata.*`)
 
-Veles serves the model of one git repository, cloned at install and re-fetched every 5 minutes.
+Metadata serves the model of one git repository, cloned at install and re-fetched every 5 minutes.
 
 | Key | Type | Default | Notes |
 |---|---|---|---|
-| `veles.metadata.gitRemoteUri` | string | `https://github.com/Collite/ttr-demo.git` | The **public Hartland demo model**, so a fresh install has a model to explore with no token. `""` ⇒ no model source: Veles logs an error and never turns ready. |
-| `veles.metadata.gitBranch` | string | `master` | Hartland's branch. **Set it together with `gitRemoteUri`.** `""` renders no env var (Veles' own default applies). |
-| `veles.metadata.gitSubdirectory` | string | `model` | The model's directory inside the repository — Hartland's. **Set it together with `gitRemoteUri`.** |
-| `veles.secretEnv` | list | `METADATA_GIT_TOKEN` from Secret `veles-github-pat` (key `token`, optional) | A read token for a private repository. |
+| `metadata.metadata.gitRemoteUri` | string | `https://github.com/Collite/ttr-demo.git` | The **public Hartland demo model**, so a fresh install has a model to explore with no token. `""` ⇒ no model source: Metadata logs an error and never turns ready. |
+| `metadata.metadata.gitBranch` | string | `master` | Hartland's branch. **Set it together with `gitRemoteUri`.** `""` renders no env var (Metadata' own default applies). |
+| `metadata.metadata.gitSubdirectory` | string | `model` | The model's directory inside the repository — Hartland's. **Set it together with `gitRemoteUri`.** |
+| `metadata.secretEnv` | list | `METADATA_GIT_TOKEN` from Secret `metadata-github-pat` (key `token`, optional) | A read token for a private repository. |
 
-`gitBranch` / `gitSubdirectory` render nothing when `veles.extraEnv` already sets `METADATA_GIT_BRANCH` /
+`gitBranch` / `gitSubdirectory` render nothing when `metadata.extraEnv` already sets `METADATA_GIT_BRANCH` /
 `METADATA_GIT_SUBDIR` (the older way to set them), so an existing install keeps its values and gets no
 duplicate env var.
 
 **The cn candidate store (CN-P5 S5.3) has no chart keys yet.** It is off unless a database and a token
-issuer are set. Turn it on through `veles.extraEnv`: `METADATA_CN_DB_HOST` / `_PORT` / `_NAME` / `_USER`,
+issuer are set. Turn it on through `metadata.extraEnv`: `METADATA_CN_DB_HOST` / `_PORT` / `_NAME` / `_USER`,
 `METADATA_CN_AUTH_ISSUER`, `METADATA_CN_AUTH_JWKS_URI`, and `METADATA_CN_PRODUCERS`. Pass the secrets through
-`veles.secretEnv`: `METADATA_CN_DB_PASSWORD`, and `METADATA_CN_PR_TOKEN` when promotions should open pull
-requests. The full list is in `services/veles/README.md`. Off, its routes answer 503 `CN_STORE_OFF` and the
+`metadata.secretEnv`: `METADATA_CN_DB_PASSWORD`, and `METADATA_CN_PR_TOKEN` when promotions should open pull
+requests. The full list is in `services/metadata/README.md`. Off, its routes answer 503 `CN_STORE_OFF` and the
 model is served as before.
 
-**No fallback model (ttr-server#180).** Veles bundles no model. If the repository can't be loaded (a
-bad token, a wrong branch or sub-path, no network), Veles serves no model and its `/ready` answers 503
-until the source has loaded once; `GET /status` on Veles shows the source and its last error. A
+**No fallback model (ttr-server#180).** Metadata bundles no model. If the repository can't be loaded (a
+bad token, a wrong branch or sub-path, no network), Metadata serves no model and its `/ready` answers 503
+until the source has loaded once; `GET /status` on Metadata shows the source and its last error. A
 source that loads but finds no model objects has not loaded.
 
 ---
@@ -283,7 +283,7 @@ source that loads but finds no model objects has not loaded.
   (`missing_user_identity`). Trusted-network shortcuts are off (§4.1).
 - **Resolver fail-closed** on an empty resume-key set (§5.3) unless `allowEphemeralKey`.
 - **Geo dark-by-policy** with no Nominatim endpoint (§5.2): honest degrade, never a wrong answer.
-- **No silent model substitution** (§6): a model source that fails to load leaves Veles not ready
+- **No silent model substitution** (§6): a model source that fails to load leaves Metadata not ready
   and serving nothing, never another model.
 
 ---

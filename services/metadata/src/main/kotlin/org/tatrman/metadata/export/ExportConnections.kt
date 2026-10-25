@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-package org.tatrman.veles.export
+package org.tatrman.metadata.export
 
 import org.tomlj.Toml
 import org.tomlj.TomlTable

@@ -1,11 +1,11 @@
-# Default values for veles. Env-agnostic: sane defaults, NO cluster knowledge. Deploying
+# Default values for metadata. Env-agnostic: sane defaults, NO cluster knowledge. Deploying
 # environments (Olymp cluster values, or test-context values) override image, telemetry, the
 # model/prompt git source + PAT, and any extra wiring.
 
 replicaCount: 1
 
 image:
-  repository: ghcr.io/collite/veles
+  repository: ghcr.io/collite/metadata
   # Defaults to .Chart.appVersion when empty.
   tag: ""
   pullPolicy: IfNotPresent
@@ -28,21 +28,21 @@ resources:
     memory: 1Gi
     cpu: "1"
 
-# OpenTelemetry. OTEL_SERVICE_NAME + the per-service OTEL_ENABLED_VELES flag; point `endpoint`
+# OpenTelemetry. OTEL_SERVICE_NAME + the per-service OTEL_ENABLED_METADATA flag; point `endpoint`
 # at a collector and set enabled where one exists (leave disabled for test runs).
 telemetry:
   enabled: false
   endpoint: ""
-  serviceName: veles
+  serviceName: metadata
 
-# The model Veles serves: a git repository (cloned at boot, re-fetched for live reload). The default
+# The model Metadata serves: a git repository (cloned at boot, re-fetched for live reload). The default
 # is the PUBLIC Hartland demo model — Collite/ttr-demo, branch `master`, sub-path `model` — which needs
 # no token, so a fresh install has a model to explore. To serve your own model set all three keys
 # (the branch and sub-path defaults are Hartland's); a private repository also needs the PAT
-# (`secretEnv` METADATA_GIT_TOKEN). An empty `gitRemoteUri` configures no source: Veles logs an
-# error and never turns ready. Veles bundles no fallback model (ttr-server#180): until the source
+# (`secretEnv` METADATA_GIT_TOKEN). An empty `gitRemoteUri` configures no source: Metadata logs an
+# error and never turns ready. Metadata bundles no fallback model (ttr-server#180): until the source
 # has loaded once, /ready answers 503 and /status says why. An empty `gitBranch`/`gitSubdirectory`
-# renders no env var (Veles' own defaults apply), and so does one that `extraEnv` already sets.
+# renders no env var (Metadata' own defaults apply), and so does one that `extraEnv` already sets.
 metadata:
   gitRemoteUri: "https://github.com/Collite/ttr-demo.git"
   gitBranch: "master"
@@ -51,8 +51,8 @@ metadata:
 # Secret-backed env (valueFrom.secretKeyRef). `optional: true` mirrors the kustomize base — the
 # pod boots without the PAT (public/fixture remotes need none).
 secretEnv:
-  - { name: METADATA_GIT_TOKEN, secretName: veles-github-pat, secretKey: token, optional: true }
-  - { name: PROMPTS_GIT_TOKEN, secretName: veles-github-pat, secretKey: token, optional: true }
+  - { name: METADATA_GIT_TOKEN, secretName: metadata-github-pat, secretKey: token, optional: true }
+  - { name: PROMPTS_GIT_TOKEN, secretName: metadata-github-pat, secretKey: token, optional: true }
 
 # Any other env (a deploying env REPLACES this list). e.g. a fixture-model toggle for tests.
 extraEnv: []

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-package org.tatrman.veles.read
+package org.tatrman.metadata.read
 
 import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
@@ -26,24 +26,24 @@ import org.tatrman.ttr.metadata.registry.MetadataRegistry
 import org.tatrman.ttr.metadata.search.SearchAlgorithmRegistry
 import org.tatrman.ttr.metadata.search.SearchIndexHolder
 import org.tatrman.ttr.metadata.search.SearchQuery
-import org.tatrman.veles.grpc.PackageIndex
+import org.tatrman.metadata.grpc.PackageIndex
 
 /**
  * Read-only JSON projection of the in-memory model for a browser catalog viewer.
  *
  * These routes mirror the gRPC read handlers in
- * [org.tatrman.veles.grpc.MetadataServiceImpl] but emit a small, stable JSON shape
+ * [org.tatrman.metadata.grpc.MetadataServiceImpl] but emit a small, stable JSON shape
  * (a TypeScript contract keys on these exact field names). Everything is derived
  * from a single [org.tatrman.ttr.metadata.registry.MetadataRegistry.read] snapshot;
  * a `null` snapshot degrades to `503 {"error":"model not loaded"}` — the same
- * fail-closed convention [org.tatrman.veles.export.metadataExportRoutes] uses.
+ * fail-closed convention [org.tatrman.metadata.export.metadataExportRoutes] uses.
  *
  * JSON is built with kotlinx.serialization `buildJsonObject { … }` and serialised
  * via `respondText(obj.toString(), Application.Json, status)` (the sibling export
  * file's pattern), so the routes carry no dependency on a ContentNegotiation plugin.
  *
  * NOTE ON THE SIGNATURE — the task's canonical signature is
- * `velesReadRoutes(registry)`, but `/model/search` must reuse the *same* search
+ * `metadataReadRoutes(registry)`, but `/model/search` must reuse the *same* search
  * path the gRPC `search` RPC uses (`MetadataQuery(snap, searchRegistry, indexHolder)`,
  * MetadataServiceImpl.kt:688), which needs the already-built algorithm registry
  * (incl. the "all" merge algorithm) and the per-language index holder. Those are
@@ -56,7 +56,7 @@ import org.tatrman.veles.grpc.PackageIndex
  * `package` clause, else the package its directory implies. The loader never sets
  * `QualifiedName.package`, so these routes must not read it.
  */
-fun Route.velesReadRoutes(
+fun Route.metadataReadRoutes(
     registry: MetadataRegistry,
     searchRegistry: SearchAlgorithmRegistry,
     searchIndexHolder: SearchIndexHolder?,

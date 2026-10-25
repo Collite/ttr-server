@@ -4,7 +4,7 @@ description: |
   The Tatrman grounding-mcp grounding service (RG-P3 workstream D) — an env-agnostic Helm chart.
   Holds no cluster knowledge: image, replicas, resources, telemetry endpoint, the metadata/
   llm-gateway wiring are all values. Per-environment values live in the deploying repo.
-  Reuses the tatrman-service library chart, mirroring services/veles/k8s.
+  Reuses the tatrman-service library chart, mirroring services/metadata/k8s.
 type: application
 version: 0.1.0
 appVersion: "dev"

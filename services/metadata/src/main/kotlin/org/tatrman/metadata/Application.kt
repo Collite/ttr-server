@@ -1,15 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
-package org.tatrman.veles
+package org.tatrman.metadata
 
 import com.typesafe.config.Config
 import com.typesafe.config.ConfigFactory
 import org.tatrman.ttr.metadata.graph.ModelGraph
-import org.tatrman.veles.grpc.MetadataServiceImpl
-import org.tatrman.veles.grpc.PackageIndex
+import org.tatrman.metadata.grpc.MetadataServiceImpl
+import org.tatrman.metadata.grpc.PackageIndex
 import org.tatrman.ttr.metadata.model.CnSchema
 import org.tatrman.ttr.metadata.model.ModelDescriptor
-import org.tatrman.veles.parse.QueryParseState
-import org.tatrman.veles.parse.QueryParseWorker
+import org.tatrman.metadata.parse.QueryParseState
+import org.tatrman.metadata.parse.QueryParseWorker
 import org.tatrman.ttr.metadata.reconcile.ModelReconciler
 import org.tatrman.ttr.metadata.registry.MetadataRegistry
 import org.tatrman.ttr.metadata.search.SearchAlgorithmRegistry
@@ -23,7 +23,7 @@ import org.tatrman.ttr.metadata.search.substring.SubstringAlgorithm
 import org.tatrman.ttr.metadata.source.ClasspathStorage
 import org.tatrman.ttr.metadata.layout.LayoutIndex
 import org.tatrman.ttr.metadata.refresh.MetadataRefresher
-import org.tatrman.veles.refresh.RefreshScheduler
+import org.tatrman.metadata.refresh.RefreshScheduler
 import org.tatrman.ttr.metadata.source.BuiltinStockSource
 import org.tatrman.ttr.metadata.source.FallbackSource
 import org.tatrman.ttr.metadata.source.FileBasedSource
@@ -33,15 +33,15 @@ import org.tatrman.ttr.metadata.source.logModelLoadIssues
 import org.tatrman.ttr.metadata.source.ModelSource
 import org.tatrman.ttr.metadata.source.ModelStorage
 import org.tatrman.ttr.metadata.source.SourceSnapshot
-import org.tatrman.veles.cn.CnSetup
-import org.tatrman.veles.cn.PromotionTarget
-import org.tatrman.veles.cn.VocabularySource
-import org.tatrman.veles.cn.candidateRoutes
-import org.tatrman.veles.export.metadataExportRoutes
-import org.tatrman.veles.health.SourceLoadBoard
-import org.tatrman.veles.health.modelHealthRoutes
-import org.tatrman.veles.health.redactCredentials
-import org.tatrman.veles.read.velesReadRoutes
+import org.tatrman.metadata.cn.CnSetup
+import org.tatrman.metadata.cn.PromotionTarget
+import org.tatrman.metadata.cn.VocabularySource
+import org.tatrman.metadata.cn.candidateRoutes
+import org.tatrman.metadata.export.metadataExportRoutes
+import org.tatrman.metadata.health.SourceLoadBoard
+import org.tatrman.metadata.health.modelHealthRoutes
+import org.tatrman.metadata.health.redactCredentials
+import org.tatrman.metadata.read.metadataReadRoutes
 // YamlImportSource was removed in Phase 2.1 — kantheon is TTR-only (see buildSourceFromConfig).
 import io.grpc.netty.shaded.io.grpc.netty.NettyServerBuilder
 import java.util.concurrent.TimeUnit
@@ -74,7 +74,7 @@ import shared.ktor.KtorServerBootstrap
 import shared.ktor.installKtorServerBase
 import java.nio.file.Path
 
-private val log = LoggerFactory.getLogger("org.tatrman.veles.Application")
+private val log = LoggerFactory.getLogger("org.tatrman.metadata.Application")
 
 fun main() {
     val config = ConfigFactory.load()
@@ -95,7 +95,7 @@ fun Application.module(config: Config) {
             ),
             enabled = config.hasPath("telemetry.enabled") && config.getBoolean("telemetry.enabled"),
         )
-    val tracer = otel.getTracer("org.tatrman.veles")
+    val tracer = otel.getTracer("org.tatrman.metadata")
 
     // Phase 09 B4 / DF-M16 — Prometheus meter registry. The metadata service was the only v1
     // service without `/metrics`; other services scrape from a comparable mount point.
@@ -146,7 +146,7 @@ fun Application.module(config: Config) {
         if (loadBoard.states().isEmpty()) {
             log.error(
                 "No model source configured: METADATA_GIT_REMOTE_URI is empty and no other source is enabled. " +
-                    "Veles serves no model and /ready answers 503 until one is configured — set " +
+                    "Metadata serves no model and /ready answers 503 until one is configured — set " +
                     "METADATA_GIT_REMOTE_URI, METADATA_GIT_BRANCH and METADATA_GIT_SUBDIR.",
             )
         }
@@ -356,7 +356,7 @@ fun Application.module(config: Config) {
             )
         }
         metadataExportRoutes(registry)
-        velesReadRoutes(registry, searchRegistryWithAll, searchIndexHolder, packageIndex)
+        metadataReadRoutes(registry, searchRegistryWithAll, searchIndexHolder, packageIndex)
         // CN-P5 S5.3 — the candidate store and the vocabulary versions; a registration is in the model at once.
         candidateRoutes(cn.surface) {
             withContext(Dispatchers.IO) { refresher.refresh(sourceId = VocabularySource.SOURCE_ID, force = true) }
@@ -421,7 +421,7 @@ private fun configuredSources(config: Config): List<SourceSlot> {
             // `fallback`. The two are served mutually-exclusively via FallbackSource — never
             // merged — so a stale fallback can't resurrect defs the primary has deleted.
             // ttr-server#180: no source has a fallback unless one is configured explicitly
-            // (`METADATA_GIT_FALLBACK` for the git source); Veles bundles no model of its own.
+            // (`METADATA_GIT_FALLBACK` for the git source); Metadata bundles no model of its own.
             val fallbackId = if (sub.hasPath("fallback")) sub.getString("fallback").ifBlank { null } else null
             if (fallbackId == null) {
                 return@mapNotNull buildSourceFromConfig(sub, id)?.let { SourceSlot(id, it, describeSource(sub)) }
@@ -532,11 +532,11 @@ private fun buildSourceFromConfig(
     val storage = buildStorage(sub, id) ?: return null
 
     return when (kind) {
-        // VL V-37: Veles serves the layouts committed next to the model — a source collects them only when asked
+        // VL V-37: Metadata serves the layouts committed next to the model — a source collects them only when asked
         "ttr" -> FileBasedSource(sourceId = id, priority = priority, storage = storage, layouts = true)
         // Phase 2.1 (fork) — `yaml-legacy` source kind removed: kantheon is TTR-only
         // (`org.tatrman.ttr.*` modeler artifacts, no erp-sql legacy YAML parse path).
-        // See docs/implementation/v1/fork/tasks-p2-s2.1-veles.md T2 note.
+        // See docs/implementation/v1/fork/tasks-p2-s2.1-metadata.md T2 note.
         else -> {
             log.warn("Unknown source kind '{}' for '{}' — skipping", kind, id)
             null

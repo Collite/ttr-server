@@ -21,8 +21,8 @@ import org.tatrman.testkit.integration.contextHandle
  * repeatable integration spec; it is the convergence demo that lands MP-4.
  *
  * Gated by `@RequiresContext("tpcds-query")` — compiles + skips until olymp stands the context up
- * (C2 T2: services query/query-mcp/translate/validate/dispatch/postgres/veles + platform `test-pg`,
- * with Postgres pointed at `pg-tpcds` and Veles serving the TPC-DS model).
+ * (C2 T2: services query/query-mcp/translate/validate/dispatch/postgres/metadata + platform `test-pg`,
+ * with Postgres pointed at `pg-tpcds` and Metadata serving the TPC-DS model).
  *
  * ## The oracle (SF1, year 2002 — as proven live in the MP-2 run)
  *  | query                   | shape                   | rows |
@@ -45,8 +45,8 @@ class TpcdsQueryIntegrationSpec :
 
         val analyst = unsignedJwt("alice", roles = listOf("analyst"))
 
-        // The four curated shapes, verbatim from the Veles tpcds fixture
-        // (`services/veles/src/test/resources/model-tpcds/tpcds/db.ttr`),
+        // The four curated shapes, verbatim from the Metadata tpcds fixture
+        // (`services/metadata/src/test/resources/model-tpcds/tpcds/db.ttr`),
         // with `{year}` inlined to the oracle year 2002.
         val storeSalesByMonth =
             """

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-package org.tatrman.veles.cn
+package org.tatrman.metadata.cn
 
 import com.sun.net.httpserver.HttpServer
 import io.kotest.assertions.throwables.shouldThrow

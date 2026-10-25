@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-package org.tatrman.veles.grpc
+package org.tatrman.metadata.grpc
 
 import org.tatrman.meta.v1.GetModelRequest
 import org.tatrman.meta.v1.Language
@@ -332,7 +332,7 @@ class GetModelSpec :
 
         // Drill-map LOADING test removed at fork Stage 2.1 (2026-06-13): drill-map
         // definition & usage is being revisited from the product side before the loaded
-        // shape is worth asserting. Deferred to kantheon-v1.1 §8 (Veles / model graph).
+        // shape is worth asserting. Deferred to kantheon-v1.1 §8 (Metadata / model graph).
         // The proto (`DrillMapDetail`) and loader stay in tree; only the load assertion is
         // dropped. The flag-gating test below (include_drill_map=false) is kept.
 

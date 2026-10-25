@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-package org.tatrman.veles.mcp
+package org.tatrman.metadata.mcp
 
 import com.typesafe.config.ConfigFactory
 import io.ktor.http.HttpHeaders
@@ -23,19 +23,19 @@ import shared.ktor.mcp.McpKtorConfig
 import shared.ktor.mcp.installMcpKtorBase
 import shared.ktor.mcp.safeMcpTool
 import shared.ktor.mcp.McpTelemetry
-import org.tatrman.veles.client.GrpcMetadataGrpcClient
-import org.tatrman.veles.client.MetadataGrpcClient
+import org.tatrman.metadata.client.GrpcMetadataGrpcClient
+import org.tatrman.metadata.client.MetadataGrpcClient
 import org.tatrman.capabilities.client.CapabilitiesClient
 import org.tatrman.capabilities.v1.Capability
 
-val logger = LoggerFactory.getLogger("veles-mcp")
+val logger = LoggerFactory.getLogger("meta-mcp")
 
 fun main(args: Array<String>): Unit =
     runBlocking {
-        logger.info("Starting veles-mcp")
+        logger.info("Starting meta-mcp")
 
         val config = ConfigFactory.load()
-        val telemetry = McpTelemetry("veles-mcp", "grpc")
+        val telemetry = McpTelemetry("meta-mcp", "grpc")
         val serverPort = config.getString("server.port").toInt()
 
         // All metadata reads go over gRPC to the metadata service (the service exposes no REST
@@ -55,7 +55,7 @@ fun main(args: Array<String>): Unit =
 
         val mcpConfig =
             McpKtorConfig(
-                serviceName = "veles-mcp",
+                serviceName = "meta-mcp",
                 serverPort = serverPort,
                 shutdownUrlPath = "/shutdown",
                 connectionIdleTimeoutSeconds = 120,
@@ -80,7 +80,7 @@ fun main(args: Array<String>): Unit =
                     mcpStreamableHttp {
                         val server =
                             Server(
-                                serverInfo = Implementation(name = "veles-mcp", version = "0.1.0"),
+                                serverInfo = Implementation(name = "meta-mcp", version = "0.1.0"),
                                 options =
                                     ServerOptions(
                                         capabilities =
@@ -232,7 +232,7 @@ fun main(args: Array<String>): Unit =
                             }(request)
                         }
 
-                        // Golem P4 S4.2 — resolve_area tool (zero-logic wrapper over veles's
+                        // Golem P4 S4.2 — resolve_area tool (zero-logic wrapper over metadata's
                         // ResolveArea RPC; resolves a Shem's `areas: [...]` to package sets).
                         server.addTool(
                             name = tools.resolveAreaTool.name,
@@ -249,7 +249,7 @@ fun main(args: Array<String>): Unit =
                 }
             }
 
-        println("veles-mcp server running and listening on port $serverPort")
+        println("meta-mcp server running and listening on port $serverPort")
 
         embeddedServer(
             factory = CIO,
@@ -271,14 +271,14 @@ fun main(args: Array<String>): Unit =
 // =============================================================================
 
 /**
- * Review-004 R2 — resolve the veles gRPC client target from the
+ * Review-004 R2 — resolve the metadata gRPC client target from the
  * `metadata{}` block in `application.conf`. `metadata.host` / `metadata.port`
- * default to `"meta"` / `7261` and are overridden by the `VELES_GRPC_HOST`
- * / `VELES_GRPC_PORT` env vars (HOCON `${?…}` substitution) — the exact env
+ * default to `"meta"` / `7261` and are overridden by the `METADATA_GRPC_HOST`
+ * / `METADATA_GRPC_PORT` env vars (HOCON `${?…}` substitution) — the exact env
  * vars the k8s deployment sets.
  *
  * A blank host returns `null` so the tools report "not wired" rather than the
- * process crashing — the local no-backend mode (`VELES_GRPC_HOST=""`).
+ * process crashing — the local no-backend mode (`METADATA_GRPC_HOST=""`).
  *
  * The previous bug read `METADATA_GRPC_HOST` / `METADATA_GRPC_PORT` (which
  * nothing sets) with a stale `7204` default, so the in-cluster pod never
@@ -314,7 +314,7 @@ internal fun buildGrpcClient(config: com.typesafe.config.Config): MetadataGrpcCl
  * `CapabilitiesClientHandle` and the background heartbeat loop runs
  * per-handle. Failures on any one tool don't block the others.
  */
-private fun velesMcpCapabilities(): List<Capability> {
+private fun metadataMcpCapabilities(): List<Capability> {
     val loader = ManifestLoader()
     return loader.loadAll()
 }
@@ -334,17 +334,17 @@ internal fun registerWithCapabilities(config: com.typesafe.config.Config) {
     val endpoint =
         System.getenv("CAPABILITIES_MCP_URL")
             ?: config.getString("capabilities-mcp.url")
-    val capabilities = velesMcpCapabilities()
+    val capabilities = metadataMcpCapabilities()
     if (capabilities.isEmpty()) {
         logger.info(
-            "No veles-mcp capabilities to register (manifests dir empty or missing). " +
+            "No meta-mcp capabilities to register (manifests dir empty or missing). " +
                 "If you expected capabilities here, check the build's classpath for the manifests/ tree.",
         )
         return
     }
     if (endpoint.isBlank()) {
         logger.info(
-            "CAPABILITIES_MCP_URL not set — {} veles-mcp capabilities are not registered " +
+            "CAPABILITIES_MCP_URL not set — {} meta-mcp capabilities are not registered " +
                 "with capabilities-mcp. The registry search will not find them until registration is configured.",
             capabilities.size,
         )
@@ -361,15 +361,15 @@ internal fun registerWithCapabilities(config: com.typesafe.config.Config) {
             )
         if (handle.registrationId != null) {
             registered++
-            logger.info("veles-mcp registered '{}' with capabilities-mcp at {}", id, endpoint)
+            logger.info("meta-mcp registered '{}' with capabilities-mcp at {}", id, endpoint)
         } else {
             logger.warn(
-                "veles-mcp startup register for '{}' at {} not yet complete (registry may be " +
+                "meta-mcp startup register for '{}' at {} not yet complete (registry may be " +
                     "unreachable); background retry will continue.",
                 id,
                 endpoint,
             )
         }
     }
-    logger.info("veles-mcp: {}/{} capabilities registered", registered, capabilities.size)
+    logger.info("meta-mcp: {}/{} capabilities registered", registered, capabilities.size)
 }

@@ -9,7 +9,7 @@ plugins {
 }
 
 application {
-    mainClass.set("org.tatrman.veles.ApplicationKt")
+    mainClass.set("org.tatrman.metadata.ApplicationKt")
 }
 
 jib {
@@ -17,10 +17,10 @@ jib {
         image = "ghcr.io/collite/eclipse-temurin:21-jre" // mirror of the Docker official image (mirror-base-images.yml)
     }
     to {
-        image = "veles:dev"
+        image = "metadata:dev"
     }
     container {
-        mainClass = "org.tatrman.veles.ApplicationKt"
+        mainClass = "org.tatrman.metadata.ApplicationKt"
         ports = listOf("7260", "7261")
     }
 }
@@ -31,7 +31,7 @@ kotlin {
 
 tasks.test {
     useJUnitPlatform()
-    // CN-P4 S4.2 — the conceptual tier's shared fixture estate (`shared/testdata/cn-estate`, one copy for veles,
+    // CN-P4 S4.2 — the conceptual tier's shared fixture estate (`shared/testdata/cn-estate`, one copy for metadata,
     // lex-matcher and the resolver). Declared as an input too: a system property naming a directory is not one.
     val cnEstate = rootProject.file("shared/testdata/cn-estate")
     inputs.dir(cnEstate).withPropertyName("cnEstate")
@@ -42,13 +42,13 @@ tasks.test {
     systemProperty("cnWorlds", cnWorlds.absolutePath)
 }
 
-// VelesModelLoadComponentSpec reconciles the `model-seed` and `model-tpcds` fixture trees through
+// MetadataModelLoadComponentSpec reconciles the `model-seed` and `model-tpcds` fixture trees through
 // the live ttr-metadata reconciler (LocalFsStorage → a real directory), so hand it their parent
 // directory on disk.
-// Veles bundles no model (ttr-server#180): the model comes from the configured git source.
+// Metadata bundles no model (ttr-server#180): the model comes from the configured git source.
 tasks.named<Test>("componentTest") {
     systemProperty(
-        "veles.modelRoot",
+        "metadata.modelRoot",
         layout.projectDirectory
             .dir("src/test/resources")
             .asFile.absolutePath,
@@ -56,7 +56,7 @@ tasks.named<Test>("componentTest") {
 }
 
 dependencies {
-    // TTR metadata library (third-party, Collite/ttr-core) — Veles runs on this
+    // TTR metadata library (third-party, Collite/ttr-core) — Metadata runs on this
     // after the M4.1 swap (MD2): typed model, sources, reconcile, resolve, graph,
     // search, registry, refresher mechanism, world resolution. It re-exports
     // ttr-parser/writer/semantics as `api`, so those three are NOT declared here
@@ -64,7 +64,7 @@ dependencies {
     implementation(libs.tatrman.ttr.metadata)
     implementation(libs.tomlj)
     // GitArchiveStorage (jgit) behind the ModelStorage SPI (MD3) — jgit +
-    // commons-compress ride this transitively; Veles must not re-declare them.
+    // commons-compress ride this transitively; Metadata must not re-declare them.
     implementation(libs.tatrman.ttr.metadata.git)
     // `erp-sql-metadata` was a declared-but-unused dep in the predecessor platform's build (no `shared.erp.*`
     // imports in any source). Dropped from the kantheon fork.
@@ -93,7 +93,7 @@ dependencies {
     implementation(libs.grpc.services)
 
     // jgrapht (ModelGraph) rides ttr-metadata transitively; jgit/commons-compress
-    // ride ttr-metadata-git (MD3). Veles no longer declares any of them directly.
+    // ride ttr-metadata-git (MD3). Metadata no longer declares any of them directly.
 
     implementation(libs.ktor.server.core)
     implementation(libs.ktor.server.netty)
@@ -121,7 +121,7 @@ dependencies {
     testImplementation(libs.mockk)
     // In-process gRPC server (review-004 R3.2 — live GetPrompts round-trip).
     testImplementation(libs.grpc.inprocess)
-    // Ktor testApplication host — drives VelesReadRoutes over HTTP (the llm-gateway pattern).
+    // Ktor testApplication host — drives MetadataReadRoutes over HTTP (the llm-gateway pattern).
     testImplementation(libs.ktor.server.test.host)
 
     // Component tier (WS-C1 T4) — loads the whole `model-tpcds/` and `model-seed/` fixture trees

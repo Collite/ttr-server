@@ -32,9 +32,9 @@ telemetry:
   endpoint: ""
   serviceName: chrono
 
-# Metadata (Veles) gRPC target — chrono discovers period tables / date-role columns over meta.v1.
+# Metadata (Metadata) gRPC target — chrono discovers period tables / date-role columns over meta.v1.
 metadata:
-  host: veles
+  host: metadata
   grpcPort: 7261
 
 # Rules-only by default; set url (+ enabled) to arm the llm-gateway fallback for spans the rules

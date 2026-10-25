@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
-package org.tatrman.veles.client
+package org.tatrman.metadata.client
 
 import io.grpc.ManagedChannel
 import io.grpc.ManagedChannelBuilder
-import org.tatrman.meta.v1.VelesServiceGrpcKt
+import org.tatrman.meta.v1.MetadataServiceGrpcKt
 import org.tatrman.meta.v1.GetModelRequest
 import org.tatrman.meta.v1.GetModelResponse
 import org.tatrman.meta.v1.GetObjectRequest
@@ -28,8 +28,8 @@ import java.util.concurrent.TimeUnit
 private const val PAGE_SIZE = 1000
 
 /**
- * Suspend client over the Veles model-graph gRPC service. Shared across the
- * constellation (veles-mcp, Golem `PackageContext`/`PromptStore`, Pythia).
+ * Suspend client over the Metadata model-graph gRPC service. Shared across the
+ * constellation (meta-mcp, Golem `PackageContext`/`PromptStore`, Pythia).
  * Callers do their own caching on top of the model `content_hash` / prompt
  * `tree_hash`; this client is a thin, stateless RPC bridge.
  */
@@ -78,7 +78,7 @@ class GrpcMetadataGrpcClient(
             .keepAliveWithoutCalls(true)
             .build()
 
-    private val stub = VelesServiceGrpcKt.VelesServiceCoroutineStub(channel)
+    private val stub = MetadataServiceGrpcKt.MetadataServiceCoroutineStub(channel)
 
     override suspend fun listRoles(pageSize: Int): ListRolesResponse =
         stub

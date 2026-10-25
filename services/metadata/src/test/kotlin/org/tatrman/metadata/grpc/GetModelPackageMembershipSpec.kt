@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-package org.tatrman.veles.grpc
+package org.tatrman.metadata.grpc
 
 import com.typesafe.config.ConfigFactory
 import org.tatrman.meta.v1.GetModelRequest
@@ -13,7 +13,7 @@ import org.tatrman.ttr.metadata.refresh.MetadataRefresher
 import org.tatrman.ttr.metadata.registry.MetadataRegistry
 import org.tatrman.ttr.metadata.source.FileBasedSource
 import org.tatrman.ttr.metadata.source.LocalFsStorage
-import org.tatrman.veles.buildSources
+import org.tatrman.metadata.buildSources
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
@@ -63,7 +63,7 @@ class GetModelPackageMembershipSpec :
 
         /** The model root, `<checkout>/a/model`. */
         fun estate(): Path {
-            val root = Files.createTempDirectory("veles-111-").resolve("a").resolve("model")
+            val root = Files.createTempDirectory("metadata-111-").resolve("a").resolve("model")
 
             fun write(
                 path: String,

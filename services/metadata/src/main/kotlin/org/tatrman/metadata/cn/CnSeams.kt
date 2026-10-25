@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-package org.tatrman.veles.cn
+package org.tatrman.metadata.cn
 
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
@@ -71,7 +71,7 @@ class WebhookNotifier(
 
 /**
  * T5 (A-CN-67, A-CN-94) — the registered vocabulary versions as a model source: its snapshot carries only
- * `cn.vocabularyVersions`, which the reconciler concatenates into the published `CnSchema`, so the model Veles serves
+ * `cn.vocabularyVersions`, which the reconciler concatenates into the published `CnSchema`, so the model Metadata serves
  * states every registration and nothing in the model text has to. Its version is a hash of the registrations, so a
  * refresh swaps only when one was added. A store that does not answer keeps the last registrations it read (a refresh
  * never drops them) and says so in the log.

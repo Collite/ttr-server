@@ -1,4 +1,4 @@
-# The hartland demo model's catalog as Veles served it on 2026-10-20 (BI-0 spike): ListObjects(ER, entity) → 36,
+# The hartland demo model's catalog as Metadata served it on 2026-10-20 (BI-0 spike): ListObjects(ER, entity) → 36,
 # ListObjects(DB, table) → 33, GetModel(packages=[hartland]) → 73 objects.
 # One object per line: <schema>.<namespace>.<name> [table|view] <column>:<model type>[* = key], ...
 er.entity.date_dim [table] sk:int*, cal_date:date, year:int, month:int, quarter:int, week_seq:int, day_name:text, holiday:char, weekend:char, working_day:bool

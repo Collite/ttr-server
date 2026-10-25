@@ -10,7 +10,7 @@
 #
 # The ConfigMap itself is NOT rendered here and never is: olymp generates it from the estate
 # repo's `generated/lexicon.tar.zst` (kustomize configMapGenerator, ArgoCD multi-source at the
-# same ref veles serves the model from). The chart only consumes a name.
+# same ref metadata serves the model from). The chart only consumes a name.
 fuzzy:
   lexicon:
     configMapName: hartland-lexicon

@@ -1,7 +1,7 @@
 apiVersion: v2
-name: veles
+name: metadata
 description: |
-  The Kantheon veles service (model graph / metadata) — an env-agnostic Helm chart.
+  The metadata service (model graph) — formerly `veles` (2026-06-13 → 2026-10).
   Holds no cluster knowledge: image, replicas, resources, telemetry endpoint, the model/prompt
   git source and its PAT are all values. Per-environment values live in the deploying repo
   (Olymp clusters via ArgoCD multi-source D3'; test contexts via the Olymp scripted harness).

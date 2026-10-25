@@ -6,28 +6,28 @@ import io.grpc.ManagedChannelBuilder
 import kotlinx.coroutines.withTimeoutOrNull
 import org.slf4j.LoggerFactory
 import org.tatrman.meta.v1.GetStatusRequest
-import org.tatrman.meta.v1.VelesServiceGrpcKt
+import org.tatrman.meta.v1.MetadataServiceGrpcKt
 import java.time.Clock
 import java.time.Duration
 import java.time.Instant
 import java.util.concurrent.TimeUnit
 
-/** Veles's model sources as `GetStatus` reports them: source id → the version it loaded (a git source: the commit). */
-fun interface VelesStatus {
-    /** Null when Veles cannot be asked. */
+/** Metadata's model sources as `GetStatus` reports them: source id → the version it loaded (a git source: the commit). */
+fun interface MetadataStatus {
+    /** Null when Metadata cannot be asked. */
     suspend fun sourceVersions(): Map<String, String>?
 }
 
-/** `GetStatus` over gRPC at `door.velesUrl` (`host:port`, a scheme tolerated). */
-class GrpcVelesStatus(
+/** `GetStatus` over gRPC at `door.metadataUrl` (`host:port`, a scheme tolerated). */
+class GrpcMetadataStatus(
     target: String,
-) : VelesStatus,
+) : MetadataStatus,
     AutoCloseable {
     private val channel: ManagedChannel =
         target.substringAfter("://").trimEnd('/').let { hostPort ->
             ManagedChannelBuilder.forTarget(hostPort).usePlaintext().build()
         }
-    private val stub = VelesServiceGrpcKt.VelesServiceCoroutineStub(channel)
+    private val stub = MetadataServiceGrpcKt.MetadataServiceCoroutineStub(channel)
 
     override suspend fun sourceVersions(): Map<String, String>? =
         try {
@@ -37,7 +37,7 @@ class GrpcVelesStatus(
                 .sourcesList
                 .associate { it.id to it.version }
         } catch (e: Exception) {
-            log.debug("automation: veles GetStatus failed: {}", e.message)
+            log.debug("automation: metadata GetStatus failed: {}", e.message)
             null
         }
 
@@ -46,21 +46,21 @@ class GrpcVelesStatus(
     }
 
     private companion object {
-        val log = LoggerFactory.getLogger(GrpcVelesStatus::class.java)
+        val log = LoggerFactory.getLogger(GrpcMetadataStatus::class.java)
     }
 }
 
 /**
- * The Veles handshake (S0.2 T6): does Veles serve the model this bundle was built against? Veles's own
+ * The Metadata handshake (S0.2 T6): does Metadata serve the model this bundle was built against? Metadata's own
  * `model_version` carries a random suffix per reconcile, so the comparable stamp is a source's version — for a git
- * source, its commit. `modelDrift` = Veles serves another commit than the served bundle's: [source] (the
- * `bundle.velesSource` config) names Veles's source of this repo; unset, any Veles source at the bundle's commit
- * counts as in sync. Null = not known (Veles unreachable, or no such source). A drift is a descriptor warning,
+ * source, its commit. `modelDrift` = Metadata serves another commit than the served bundle's: [source] (the
+ * `bundle.metadataSource` config) names Metadata's source of this repo; unset, any Metadata source at the bundle's commit
+ * counts as in sync. Null = not known (Metadata unreachable, or no such source). A drift is a descriptor warning,
  * never a refusal — the model repo and the automation package may be one repo or two (with two, set no source and
- * read `modelDrift` as "Veles serves none of this repo's commits"). The answer is cached for [ttl].
+ * read `modelDrift` as "Metadata serves none of this repo's commits"). The answer is cached for [ttl].
  */
-class VelesHandshake(
-    private val veles: VelesStatus,
+class MetadataHandshake(
+    private val metadata: MetadataStatus,
     private val source: String?,
     private val ttl: Duration = Duration.ofSeconds(30),
     private val clock: Clock = Clock.systemUTC(),
@@ -80,7 +80,7 @@ class VelesHandshake(
     private suspend fun versions(): Map<String, String>? {
         val now = clock.instant()
         cached?.let { (at, v) -> if (Duration.between(at, now) < ttl) return v }
-        val v = withTimeoutOrNull(6_000) { veles.sourceVersions() }
+        val v = withTimeoutOrNull(6_000) { metadata.sourceVersions() }
         cached = now to v
         return v
     }

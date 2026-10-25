@@ -22,16 +22,16 @@ import org.tatrman.plan.v1.SchemaCode
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
- * Veles answering from the hartland catalog BI-0 recorded (`flight/hartland-catalog.txt`): the four `ListObjects`
+ * Metadata answering from the hartland catalog BI-0 recorded (`flight/hartland-catalog.txt`): the four `ListObjects`
  * and the one `GetModel` the edge's catalog makes, with call counters. [version] is the model version it serves.
  * `GetModel` answers the objects of the packages asked for.
  */
-class RecordedVeles(
+class RecordedMetadata(
     var version: String = "01HARTLAND",
     private val model: ModelBundle = hartlandModel(),
     /** Page size for `ListObjects`, to exercise paging. */
     private val pageSize: Int = 20,
-) : VelesCatalogClient {
+) : MetadataCatalogClient {
     val versionCalls = AtomicInteger()
     val listCalls = AtomicInteger()
     val modelCalls = AtomicInteger()
@@ -95,7 +95,7 @@ class RecordedVeles(
 
         fun hartlandModel(): ModelBundle {
             val lines =
-                RecordedVeles::class.java
+                RecordedMetadata::class.java
                     .getResource("/flight/hartland-catalog.txt")!!
                     .readText()
                     .lines()

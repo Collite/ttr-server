@@ -1,34 +1,34 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: veles
+  name: metadata
   namespace: kantheon
   labels:
-    app: veles
+    app: metadata
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: veles
+      app: metadata
   template:
     metadata:
       labels:
-        app: veles
+        app: metadata
     spec:
       containers:
-        - name: veles
-          image: veles:dev
+        - name: metadata
+          image: metadata:dev
           ports:
             - name: http
               containerPort: 7260
             - name: grpc
               containerPort: 7261
           env:
-            - name: VELES_HTTP_PORT
+            - name: METADATA_HTTP_PORT
               value: "7260"
-            - name: VELES_GRPC_PORT
+            - name: METADATA_GRPC_PORT
               value: "7261"
-            # The public Hartland demo model (Veles' own default); a deploying env overrides all three.
+            # The public Hartland demo model (Metadata' own default); a deploying env overrides all three.
             - name: METADATA_GIT_REMOTE_URI
               value: "https://github.com/Collite/ttr-demo.git"
             - name: METADATA_GIT_BRANCH
@@ -38,20 +38,20 @@ spec:
             - name: METADATA_GIT_TOKEN
               valueFrom:
                 secretKeyRef:
-                  name: veles-github-pat
+                  name: metadata-github-pat
                   key: token
                   optional: true
             - name: PROMPTS_GIT_TOKEN
               valueFrom:
                 secretKeyRef:
-                  name: veles-github-pat
+                  name: metadata-github-pat
                   key: token
                   optional: true
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
               value: http://alloy.observability.svc.cluster.local:4317
             - name: OTEL_SERVICE_NAME
-              value: veles
-            - name: OTEL_ENABLED_VELES
+              value: metadata
+            - name: OTEL_ENABLED_METADATA
               value: "true"
           readinessProbe:
             httpGet:
@@ -77,13 +77,13 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: veles
+  name: metadata
   namespace: kantheon
   labels:
-    app: veles
+    app: metadata
 spec:
   selector:
-    app: veles
+    app: metadata
   ports:
     - name: http
       port: 7260

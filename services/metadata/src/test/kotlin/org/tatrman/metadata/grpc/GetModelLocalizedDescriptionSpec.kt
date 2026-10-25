@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-package org.tatrman.veles.grpc
+package org.tatrman.metadata.grpc
 
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
@@ -14,7 +14,7 @@ import org.tatrman.ttr.metadata.source.LocalFsStorage
 import java.nio.file.Path
 
 /**
- * NLS-P10 T6 (⚑GXP-D7) — Veles serves `ObjectDescriptor.description` in the locale
+ * NLS-P10 T6 (⚑GXP-D7) — Metadata serves `ObjectDescriptor.description` in the locale
  * the caller asked for.
  *
  * **The wire is unchanged**: `description` is still a single `string`, and the

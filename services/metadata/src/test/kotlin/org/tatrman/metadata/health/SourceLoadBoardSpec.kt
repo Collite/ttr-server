@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-package org.tatrman.veles.health
+package org.tatrman.metadata.health
 
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
@@ -137,8 +137,8 @@ class SourceLoadBoardSpec :
             runCatching { source.load() }
 
             val scrape = metrics.scrape()
-            scrape shouldContain """veles_model_source_load_failures_total{source="github-model"} 1.0"""
-            scrape shouldContain """veles_model_source_loaded{source="github-model"} 0.0"""
+            scrape shouldContain """metadata_model_source_load_failures_total{source="github-model"} 1.0"""
+            scrape shouldContain """metadata_model_source_loaded{source="github-model"} 0.0"""
         }
 
         "credentials in a URI never reach the recorded error" {

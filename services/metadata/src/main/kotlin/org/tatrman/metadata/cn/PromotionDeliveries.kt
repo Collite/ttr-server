@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-package org.tatrman.veles.cn
+package org.tatrman.metadata.cn
 
 import io.ktor.http.HttpStatusCode
 import kotlinx.serialization.json.Json

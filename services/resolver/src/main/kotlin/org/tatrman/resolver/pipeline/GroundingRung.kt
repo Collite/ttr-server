@@ -185,7 +185,7 @@ object GroundingRung {
      * Ground every time-typed universal, keyed by span, in ONE pass — and keep what the kernel ASKED.
      *
      * Sequential rather than concurrent, deliberately: a question carries one or two dates, the
-     * kernel talks to veles per call, and a fan-out here would trade a bounded cost for an
+     * kernel talks to metadata per call, and a fan-out here would trade a bounded cost for an
      * unbounded one against a service the resolver does not own.
      *
      * ✅ ttr-server#231 — an `AWAITING_CLARIFICATION` used to be dropped here as "not grounded", on
@@ -412,7 +412,7 @@ object GroundingRung {
      *
      * First it read `"er.entity.\${q.namespace}.\${q.name}"`, because the unit test's fake set
      * `namespace = "date_dim"` — the assumption the code was written from, restated as the input
-     * that would confirm it. Against veles that produced `er.entity.entity.date_dim.cal_date`;
+     * that would confirm it. Against metadata that produced `er.entity.entity.date_dim.cal_date`;
      * golem read the doubled segment as a SECOND entity and refused for want of a relation.
      *
      * The fix then guessed again — `namespace` was assumed to be `entity.<entity>`, since either

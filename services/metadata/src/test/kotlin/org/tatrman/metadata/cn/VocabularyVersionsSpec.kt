@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-package org.tatrman.veles.cn
+package org.tatrman.metadata.cn
 
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
@@ -15,13 +15,13 @@ import org.tatrman.ttr.metadata.reconcile.ModelReconciler
 import org.tatrman.ttr.metadata.refresh.MetadataRefresher
 import org.tatrman.ttr.metadata.registry.MetadataRegistry
 import org.tatrman.ttr.metadata.source.BuiltinStockSource
-import org.tatrman.veles.cn.CnTestKit.IMPORTER
-import org.tatrman.veles.cn.CnTestKit.STEWARD
-import org.tatrman.veles.cn.CnTestKit.arr
-import org.tatrman.veles.cn.CnTestKit.getAs
-import org.tatrman.veles.cn.CnTestKit.json
-import org.tatrman.veles.cn.CnTestKit.postAs
-import org.tatrman.veles.cn.CnTestKit.str
+import org.tatrman.metadata.cn.CnTestKit.IMPORTER
+import org.tatrman.metadata.cn.CnTestKit.STEWARD
+import org.tatrman.metadata.cn.CnTestKit.arr
+import org.tatrman.metadata.cn.CnTestKit.getAs
+import org.tatrman.metadata.cn.CnTestKit.json
+import org.tatrman.metadata.cn.CnTestKit.postAs
+import org.tatrman.metadata.cn.CnTestKit.str
 import java.time.Instant
 
 /**

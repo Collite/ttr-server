@@ -27,9 +27,9 @@ import org.tatrman.testkit.integration.contextHandle
  * that turns LLM-guard on.
  *
  * ## Context requirements (T6 — reconciled with olymp `test-contexts/query-runquery/` as wired in Stage 2.3)
- *  - Services (real): query-mcp, query, translate, validate, dispatch, mssql. **Veles is NOT
+ *  - Services (real): query-mcp, query, translate, validate, dispatch, mssql. **Metadata is NOT
  *    deployed** — Validate runs its fixture model (`VALIDATE_USE_FIXTURE_MODEL=true`); the raw-SQL
- *    `query` path resolves no metadata through Veles.
+ *    `query` path resolves no metadata through Metadata.
  *  - Platform: `mssql` (the base `mssql-init` Job seeds the sample dataset) + `wiremock` (empty;
  *    unused on this path). The suite expects `dbo.sample_orders` with 4 rows incl. `tenant_id`
  *    `t-alpha` — **coordinate the olymp mssql seed with this shape (Stage 2.3 T5 live check).**
@@ -43,7 +43,7 @@ import org.tatrman.testkit.integration.contextHandle
  * `modelAlignedContext` (see the body) until the context's Model matches its seed: Translate' fixture
  * model has no `dbo.sample_orders` (→ `detection_failed`), and the deployed Validate policy is
  * `tenant_isolation` (row-level), not the column-DENY the RLS case assumed. Re-enabling is the
- * Phase 3 follow-up (plan.md): an Veles model — or a fixture model — aligned with the seed.
+ * Phase 3 follow-up (plan.md): an Metadata model — or a fixture model — aligned with the seed.
  */
 @RequiresContext("query-runquery")
 @ApplyExtension(RequiresContextExtension::class)
@@ -70,9 +70,9 @@ class RunQueryIntegrationSpec :
         // all** ("no row-level policies applied", Validate Application.kt) — so neither the column-DENY
         // the deny-case assumes NOR row-level tenant_isolation is enforced (the earlier "fixture
         // policy is tenant_isolation" note was wrong — that policy loads only in NON-fixture mode).
-        // Real RLS needs Validate non-fixture + a metadata source (Veles) + loaded policies + role-
+        // Real RLS needs Validate non-fixture + a metadata source (Metadata) + loaded policies + role-
         // based column rules (the engine's column rules are unconditional today) — a richer,
-        // Veles-backed context. Deferred beyond C2 (tracking: testing plan.md Phase 3).
+        // Metadata-backed context. Deferred beyond C2 (tracking: testing plan.md Phase 3).
         val resultAlignedContext = true
         val rlsPolicyContext = false
 
@@ -118,7 +118,7 @@ class RunQueryIntegrationSpec :
         }
 
         // T4 — RLS negative path. Assumes a column-DENY Validate policy. GATED (rlsPolicyContext):
-        // fixture-mode Validate applies no policies, so this needs an Veles-backed non-fixture context.
+        // fixture-mode Validate applies no policies, so this needs an Metadata-backed non-fixture context.
         "a role denied a column gets a column_denied error envelope (no leaked data)"
             .config(enabled = rlsPolicyContext) {
                 val handle = contextHandle()

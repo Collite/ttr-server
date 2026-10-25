@@ -55,7 +55,7 @@ import org.tatrman.plan.v1.parseSchemaCode
  * carrying a structured [ResponseMessage]; gRPC status codes are reserved for transport failures.
  *
  * [getQuery] is injected so tests can supply a canned response without a real channel; in
- * production it's a thin wrapper over `VelesServiceCoroutineStub.getQuery(...)`. `null` (the
+ * production it's a thin wrapper over `MetadataServiceCoroutineStub.getQuery(...)`. `null` (the
  * fixture / no-metadata path) disables `query_ref` resolution — `query_ref` sources then fall
  * back to the codec's placeholder behaviour.
  *

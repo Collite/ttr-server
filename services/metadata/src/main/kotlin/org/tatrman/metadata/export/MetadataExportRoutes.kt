@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-package org.tatrman.veles.export
+package org.tatrman.metadata.export
 
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
@@ -24,7 +24,7 @@ import org.tatrman.ttr.writer.TtrRenderer
 import java.io.ByteArrayOutputStream
 import java.util.zip.GZIPOutputStream
 
-private val log = LoggerFactory.getLogger("org.tatrman.veles.export.MetadataExportRoutes")
+private val log = LoggerFactory.getLogger("org.tatrman.metadata.export.MetadataExportRoutes")
 
 private val CONTENT_TYPE_TAR_GZ = ContentType.parse("application/x-tar+gzip")
 
