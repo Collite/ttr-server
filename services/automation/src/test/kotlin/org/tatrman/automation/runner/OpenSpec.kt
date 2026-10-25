@@ -70,7 +70,7 @@ class OpenSpec :
             detailLimit,
         )
 
-        "governed opens refuse action defaults that current fingerprints cannot approve" {
+        "governed opens refuse missing writer-default evidence while development retains its explicit bypass" {
             for (value in listOf<AutoValue>(
                 AutoValue.Obj(emptyList(), SourceLocation.UNKNOWN),
                 AutoValue.Null(SourceLocation.UNKNOWN),
@@ -107,7 +107,7 @@ class OpenSpec :
                     .recipe.fingerprints shouldBe r.recipe.fingerprints
                 changed.programFps shouldBe b.programFps
                 changed.deploymentFps shouldBe b.deploymentFps
-                refused(ErrorCode.PREVIEW_UNSUPPORTED) {
+                refused(ErrorCode.RECIPE_STALE) {
                     service(changed, claim = { error("must not claim unapproved defaults") })
                         .open(recipe, request(), caller)
                 }

@@ -8,7 +8,7 @@ import kotlinx.serialization.json.JsonObject
 
 /**
  * A recipe bundle's `manifest.json` (ttr-core AU `contracts.md` §5.1, `schemaVersion: 3`) — the fields this
- * service reads, aligned with grammar/v0.17.4 (including D-136 parts/combines). This external DTO remains
+ * service reads, aligned with grammar/v0.18.9 (including versioned approval evidence). This external DTO remains
  * independent of the compiler's strict internal reader by design (AU-server contracts §1.1.1). The published
  * RunManifest is a within-toolchain contract with required execution fields this service does not consume;
  * importing it would couple deployment to the compiler's release and dependency closure. RecipeManifestSpec
@@ -96,6 +96,8 @@ data class ManifestRecipe(
     val parts: List<ManifestPart> = emptyList(),
     /** D-59: golden fixture paths published by the compiler, exposed for clients; not executed by this reader. */
     val tests: List<String> = emptyList(),
+    /** Required fields inside present evidence never acquire lenient defaults. */
+    val approvalDependencies: ManifestApprovalDependencies? = null,
 )
 
 @Serializable
@@ -198,4 +200,13 @@ data class ManifestDerive(
     val op: String,
     val amount: String,
     val unit: String,
+)
+
+/** External projection of the versioned approval evidence; absent only for legacy default-free recipes. */
+@Serializable
+data class ManifestApprovalDependencies(
+    val version: Int,
+    val imports: List<String>,
+    val textBase: String,
+    val actions: Map<String, String>,
 )

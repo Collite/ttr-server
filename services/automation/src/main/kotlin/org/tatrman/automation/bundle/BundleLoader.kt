@@ -135,6 +135,9 @@ class BundleLoader(
             programFps = programs.mapValues { Fingerprints.program(it.value) },
             deploymentFps = deployments.mapValues { Fingerprints.deployment(it.value) },
             warnings = warnings,
+            packageOf =
+                org.tatrman.ttr.metadata.layout.LayoutResolver
+                    .packagesFromFiles(result.files),
         ).also {
             log.info(
                 "automation: loaded {} — {} recipe(s), {} program(s), {} deployment(s), {} warning(s)",

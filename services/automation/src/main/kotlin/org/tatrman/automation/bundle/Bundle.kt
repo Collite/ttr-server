@@ -83,6 +83,8 @@ data class Bundle(
     val programFps: Map<String, String>,
     val deploymentFps: Map<String, String>,
     val warnings: List<String>,
+    /** Complete reconciled loader package map, including injected stdlib; never inferred from paths. */
+    val packageOf: (org.tatrman.ttr.metadata.model.ModelObject) -> String = { "" },
 ) {
     /** The world that declares [deployment]. */
     fun worldOf(deployment: WorldDeployment): WorldScope? = deploymentWorlds[deployment.qname.name]?.let { worlds[it] }

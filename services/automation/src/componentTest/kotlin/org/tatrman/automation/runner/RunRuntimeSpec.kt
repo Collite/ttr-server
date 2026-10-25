@@ -5,6 +5,9 @@ import com.google.protobuf.ByteString
 import com.typesafe.config.ConfigFactory
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
+import io.kotest.engine.spec.tempdir
+import kotlin.io.path.readText
+import kotlin.io.path.writeText
 import io.kotest.matchers.shouldBe
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.flow
@@ -48,6 +51,63 @@ class RunRuntimeComponentSpec :
     StringSpec({
         LedgerTestDb.ready()
         beforeEach { LedgerTestDb.reset() }
+
+        "released governed writer evidence claims once while stale pinned metadata creates no ledger work" {
+            val root = ApprovalFixture.copyTo(tempdir(prefix = "automation-bundles-").toPath().resolve("branch"))
+            val source =
+                BundleLoader(AuthorMap(emptyMap())).load(
+                    Checkout(root, "master", "0123456789abcdef", "po", "po@example.org"),
+                    BundleKind.SERVED,
+                )
+
+            fun selected(bundle: Bundle) =
+                bundle.copy(
+                    deployments =
+                        bundle.deployments + (
+                            "release_native_event" to
+                                bundle.deployments.getValue("release_native_event").copy(runAs = ModelRunAs.Caller)
+                        ),
+                )
+            val f = DurableRuntimeFixture(transformBundle = { selected(source) })
+            val runtime = f.start()
+            try {
+                val opened = runtime.sessions.open("release_order", f.request, f.caller)
+                opened.httpStatus shouldBe 201
+                opened.approvalsBypassed shouldBe false
+                transaction { Runs.selectAll().count() } shouldBe 1L
+                f.reads.get() shouldBe 0
+            } finally {
+                runtime.shutdown()
+                f.close()
+            }
+            val actions = root.resolve("automation/automation.ttrm")
+            actions.writeText(actions.readText().replace("'released'", "'held'"))
+            val changed =
+                BundleLoader(AuthorMap(emptyMap())).load(
+                    Checkout(root, "master", "fedcba9876543210", "po", "po@example.org"),
+                    BundleKind.SERVED,
+                )
+            changed.recipes
+                .getValue("release_order")
+                .recipe.fingerprints shouldBe
+                source.recipes
+                    .getValue("release_order")
+                    .recipe.fingerprints
+            val stale = DurableRuntimeFixture(transformBundle = { selected(changed) })
+            val refused = stale.start()
+            try {
+                shouldThrow<AutomationException> {
+                    refused.sessions.open("release_order", stale.request, stale.caller)
+                }.code shouldBe ErrorCode.RECIPE_STALE
+                transaction { Runs.selectAll().count() } shouldBe 1L
+                transaction { RunOutputs.selectAll().count() } shouldBe 0L
+                transaction { Batches.selectAll().count() } shouldBe 0L
+                stale.reads.get() shouldBe 0
+            } finally {
+                refused.shutdown()
+                stale.close()
+            }
+        }
 
         "writer defaults persist across clock movement close and restart" {
             val loc = SourceLocation.UNKNOWN

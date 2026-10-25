@@ -1,0 +1,220 @@
+{
+  "schemaVersion": 3,
+  "ttrpVersion": 2,
+  "toolchain": "org.tatrman:ttrp:0.18.9",
+  "program": "release_order.ttrp",
+  "world": {
+    "qname": "hartland.worlds.demo",
+    "fingerprint": "sha256:f22d2996de19a569dbcd5c0b6ab9a3dbda56440b652dfdbe851eebfeb5bba676"
+  },
+  "islands": [
+    {
+      "name": "placed_orders",
+      "engine": "erp",
+      "executor": "native",
+      "invocation": "sql-text",
+      "file": "islands/placed_orders.orders.sql",
+      "sha256": "sha256:92e6ca45d0d5661a54757dfcbca7d1f2e9d57345d45d7d2b5529500a317a603b",
+      "connections": [
+        "TTR_CONN_ERP"
+      ],
+      "outputs": [
+        {
+          "port": "orders",
+          "file": "islands/placed_orders.orders.sql",
+          "sha256": "sha256:92e6ca45d0d5661a54757dfcbca7d1f2e9d57345d45d7d2b5529500a317a603b",
+          "columns": [
+            {
+              "name": "order_number",
+              "type": "text"
+            }
+          ],
+          "keyed": true,
+          "storage": "erp_db"
+        }
+      ],
+      "schema": "er"
+    },
+    {
+      "name": "verdict",
+      "engine": "erp",
+      "executor": "native",
+      "invocation": "sql-text",
+      "file": "islands/verdict.release.sql",
+      "sha256": "sha256:6e1b136e5f80929303cc0142923e923da081a326314606b4ff0ce1067864b01b",
+      "connections": [
+        "TTR_CONN_ERP"
+      ],
+      "outputs": [
+        {
+          "port": "release",
+          "file": "islands/verdict.release.sql",
+          "sha256": "sha256:6e1b136e5f80929303cc0142923e923da081a326314606b4ff0ce1067864b01b",
+          "columns": [
+            {
+              "name": "order_number",
+              "type": "text"
+            },
+            {
+              "name": "route",
+              "type": "text"
+            },
+            {
+              "name": "verdict_reason",
+              "type": "text"
+            }
+          ],
+          "keyed": true,
+          "storage": "erp_db"
+        }
+      ],
+      "schema": "er"
+    }
+  ],
+  "transfers": [],
+  "waves": [
+    [
+      "placed_orders"
+    ],
+    [
+      "verdict"
+    ]
+  ],
+  "connections": [
+    "TTR_CONN_ERP"
+  ],
+  "displays": [],
+  "rejectSites": [],
+  "recipe": {
+    "name": "release_order",
+    "key": [
+      "order.order_number"
+    ],
+    "asOf": "now",
+    "parameters": [
+      {
+        "name": "tolerance",
+        "type": "decimal",
+        "value": "0.01"
+      },
+      {
+        "name": "confirmation_threshold",
+        "type": "decimal",
+        "value": "50000"
+      }
+    ],
+    "bindings": [
+      {
+        "name": "as_of",
+        "type": "datetime",
+        "source": "run"
+      }
+    ],
+    "roles": {
+      "candidates": "placed_orders",
+      "contexts": [],
+      "decision": "verdict",
+      "routes": [
+        {
+          "name": "release",
+          "because": "approved writer fixture",
+          "detail": [],
+          "turnFed": false
+        }
+      ],
+      "switchMode": "overlapping"
+    },
+    "wiring": [
+      {
+        "routes": [
+          "verdict.release"
+        ],
+        "action": "release",
+        "columns": {
+          "order": "order_number"
+        }
+      },
+      {
+        "routes": [
+          "verdict.release"
+        ],
+        "action": "audit_state",
+        "columns": {
+          "state": "\"open\""
+        }
+      }
+    ],
+    "kinds": [
+      "sql"
+    ],
+    "mode": "per-candidate",
+    "windows": [],
+    "verdictSchema": {
+      "entity": "release_order_verdict",
+      "columns": [
+        {
+          "name": "run",
+          "type": "text"
+        },
+        {
+          "name": "as_of",
+          "type": "timestamp"
+        },
+        {
+          "name": "order_number",
+          "type": "text"
+        },
+        {
+          "name": "route",
+          "type": "text"
+        },
+        {
+          "name": "verdict_reason",
+          "type": "text"
+        },
+        {
+          "name": "parameters_fp",
+          "type": "text"
+        },
+        {
+          "name": "run_as",
+          "type": "text"
+        },
+        {
+          "name": "written_at",
+          "type": "timestamp"
+        }
+      ],
+      "detail": "release_order_verdict_detail",
+      "current": "release_order_verdict_current"
+    },
+    "objectsRead": [
+      "er.entity.order"
+    ],
+    "fingerprints": {
+      "text": "sha256:22cc07b95cf97b734c93ddef0d110cb498e7751868e9634b27b4837f4325a189",
+      "values": "sha256:54e165c4463646ed8b9ae490dc1a830b34e76dda883caa0f3df407699c7ae888",
+      "labels": "sha256:0693ccf44f12b0945db0390ec4465c445a6e3326b164d3d8e2536a3d0459cfe3"
+    },
+    "protocol": "always",
+    "approvalDependencies": {
+      "version": 1,
+      "imports": [
+        "hartland",
+        "hartland.automation"
+      ],
+      "textBase": "sha256:de6042b93e96a6ef85ee455f8aa4bf8ba8b63272f5c6e562e321afc66c4b5160",
+      "actions": {
+        "audit_state": "sha256:0efef8f3023fac2595a688a586fe10990209e892d5db7c73534f3251463bc7fe",
+        "release": "sha256:dd78174705e29434cd4770e47decc0823c7dfc8f57fed332551a683f90ec88ed"
+      }
+    }
+  },
+  "files": {
+    "README.md": "sha256:108ce46531a5df3cf8efff8de45bdb3faf3931abba98e9f137cbedbe8c7400b2",
+    "catalog/release_order.ttrm": "sha256:eec60ac2c3768bbabd574e0f9e2742de72e07ff9b300cec4718e3ef713b8ac78",
+    "catalog/release_order_verdict.ttrm": "sha256:e1a40f72485615093cb5e77d59ccd8cc3757eb2d6685f5037c37ebd2f63f867f",
+    "islands/placed_orders.orders.sql": "sha256:92e6ca45d0d5661a54757dfcbca7d1f2e9d57345d45d7d2b5529500a317a603b",
+    "islands/verdict.release.sql": "sha256:6e1b136e5f80929303cc0142923e923da081a326314606b4ff0ce1067864b01b"
+  }
+}

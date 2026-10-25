@@ -46,7 +46,11 @@ data class Staleness(
                 val recipe = program?.recipe?.let { bundle.recipes[it] }
                 if (recipe != null) {
                     val fps = recipe.recipe.fingerprints
-                    if (!approvals.approved("recipe", recipe.name, fps.text)) missing += "recipe ${recipe.name}"
+                    if (ApprovalDependencies.check(bundle, recipe.recipe).refusal != null ||
+                        !approvals.approved("recipe", recipe.name, fps.text)
+                    ) {
+                        missing += "recipe ${recipe.name}"
+                    }
                     if (!approvals.approved("values", recipe.name, fps.values)) missing += "values ${recipe.name}"
                 }
                 val fp = bundle.programFps[p]

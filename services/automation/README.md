@@ -313,7 +313,7 @@ Reading never evaluates. In `batch_rows`, inserts store their row directly; upda
 named operation payload in `row`, with key/group in the corresponding columns. Rows remain `staged`.
 
 Scalar action arguments and predicates share the published TTR-P parser/type checker and `ttrp-emit` plan lowering at the existing
-0.18.7 grammar / 0.12.11 translator pins. Each predicate runs once over its verified route snapshot in a private
+0.18.9 grammar / 0.12.11 translator pins. Each predicate runs once over its verified route snapshot in a private
 DuckDB database, selecting row ordinals without another Query call. Boolean composition, SQL null semantics,
 case, membership, text ordering, addition/subtraction/multiplication and typed date casts are supported where the compiler
 can lower them. Only referenced columns/bindings enter the scratch database. Decimal literals/bindings and
@@ -379,12 +379,23 @@ declarations refuse when the writer mapping is prepared, including empty selecti
 type spellings remain supported. All consumers must rebuild because the Attribute JVM signatures changed.
 The translator and plan-proto pins move together to 0.12.11, the version required by the published emitter.
 
-Writer defaults currently require the existing explicit development mode (`automation.development=true`
-and `automation.approvals=off`). Governed Open returns `501 preview-unsupported` before claiming a run
-when any wired action declares `writer_defaults`, even when old approvals/fingerprints match. Current
-recipe/program/deployment fingerprints do not cover action defaults; the producer must add and publish
-that approval dependency and coordinate consumer/export fingerprints before this refusal can be removed.
-An unrelated, unwired action does not block a recipe. No new approvals bypass is added.
+Governed writer defaults use the published 0.18.9 approval verifier. The Server reads required versioned
+`recipe.approvalDependencies`, reconstructs its recorded imports from the complete reconciled loader files
+(including injected stdlib), verifies every distinct wired action and logical ER target, and recomputes the
+text/2 binding before an atomic run claim. Package membership uses declared/model-root-relative packages,
+so a checkout under `/tmp/automation-bundles/<branch>` works. Unknown versions, malformed or missing required
+evidence, unresolved/ambiguous scope, stale metadata and a changed text binding return `409 recipe-stale`.
+The deployment descriptor also marks invalid coverage unapproved, even when the old approval row matches.
+Optional exported text/values/program/deployment fingerprints still have to match the current bundle.
+The verified scoped action objects are the ones pinned for preview execution and detail limits.
+
+Default-free legacy bundles retain text/1. The existing startup-gated explicit development mode
+(`automation.development=true`, `automation.approvals=off`) can still exercise defaults without evidence;
+present evidence is always verified and opening policy records the bypass. No new bypass is added.
+These dependencies cover native preview only; physical writes, connector configuration and deferred actions
+need their own closure. A same-qname project entity may replace a stdlib entity in the current metadata
+reconciler (Core#294); an unavailable qualified stdlib target refuses instead of binding the wrong entity.
+The published producer fixture and real-loader/Open/ledger proofs live under `src/test/resources/approval-evidence`.
 
 Native writer actions can explicitly declare `writer_defaults` for optional action columns. For example,
 with columns mapped to `proposal.state`, `proposal.run` and `proposal.created`:
@@ -411,7 +422,7 @@ and authored would-text, and share the same atomic completion/refusal as explici
 Duplicate/unknown/malformed entries, unsupported context names and defaults on non-writer actions refuse.
 
 This contract uses the published metadata's free-form `AutomationAction.properties` lane; grammar/metadata
-remain 0.18.7 and translator/plan-proto 0.12.11. The current generic semantics validator warns about the new
+are now 0.18.9 and translator/plan-proto 0.12.11. The current generic semantics validator warns about the new
 property; the Server consumer owns its strict validation. No grammar syntax or typed library API changed.
 Generated writer IDs and Hartland's authored default mappings/bundles remain pending, as do obligation/
 key-lookup/calendar/column-date synthesis. P2 must validate actual physical bounds and writable policies

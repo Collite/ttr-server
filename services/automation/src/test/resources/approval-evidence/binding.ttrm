@@ -1,0 +1,4 @@
+package hartland
+model binding
+def er2db_entity order_map { entity: er.entity.order, target: { table: db.dbo.sales_order } }
+def er2db_attribute number_map { attribute: er.entity.order.order_number, target: { column: db.dbo.sales_order.order_number } }

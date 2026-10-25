@@ -1,0 +1,3 @@
+package hartland
+model db schema dbo
+def table sales_order { primaryKey: [order_number] columns: [def column order_number { type: text, isKey: true }] }
