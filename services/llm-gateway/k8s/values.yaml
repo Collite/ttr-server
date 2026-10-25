@@ -95,6 +95,11 @@ keySeed:
     name: ""
     kind: ClusterSecretStore
   refreshInterval: 1h
+  # The Job's hard deadline. A PostSync hook that never finishes keeps the app's sync operation running and every later
+  # sync waiting behind it, so the Job gives up instead: a team whose vault key is missing fails at once (the Secret is
+  # mounted optional and the script names the team), and the wait for the gateway's tables stops after 10 minutes. A
+  # hook that is stuck anyway is cleared with `argocd app terminate-op <app>`.
+  deadlineSeconds: 600
   # One entry per caller team: the governance team id and the vault secret that holds its key, e.g.
   #   - { team: golem, vaultKey: ttrk-golem }
   teams: []

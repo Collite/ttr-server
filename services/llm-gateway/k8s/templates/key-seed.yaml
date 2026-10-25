@@ -6,7 +6,8 @@ Caller-key seed (values `keySeed`): the vault's `ttrk-` keys → sha256 rows in 
 {{- if not $ks.secretStore.name }}{{ fail "keySeed.secretStore.name is required when keySeed.enabled" }}{{ end }}
 {{- if not $ks.teams }}{{ fail "keySeed.teams must name at least one team when keySeed.enabled" }}{{ end }}
 {{- $teams := list }}
-{{- range $ks.teams }}{{ $teams = append $teams .team }}{{ end }}
+{{- $vaultKeys := list }}
+{{- range $ks.teams }}{{ $teams = append $teams .team }}{{ $vaultKeys = append $vaultKeys (printf "%s=%s" .team .vaultKey) }}{{ end }}
 apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
@@ -40,6 +41,8 @@ metadata:
     argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
 spec:
   backoffLimit: 6
+  # Never wedge the sync: a hook that cannot finish fails within the deadline (values keySeed.deadlineSeconds).
+  activeDeadlineSeconds: {{ $ks.deadlineSeconds }}
   template:
     metadata:
       labels:
@@ -50,6 +53,9 @@ spec:
         - name: keys
           secret:
             secretName: {{ .Release.Name }}-caller-keys
+            # A team whose vault key is missing makes ESO create no Secret at all; mounted optional, the pod starts
+            # and the script names the team, instead of the pod waiting in ContainerCreating for ever.
+            optional: true
       containers:
         - name: seed
           image: {{ $ks.image }}
@@ -64,6 +70,7 @@ spec:
               valueFrom:
                 secretKeyRef: { name: {{ $ks.db.passwordSecret }}, key: {{ $ks.db.passwordKey }} }
             - { name: TEAMS, value: {{ join " " $teams | quote }} }
+            - { name: VAULT_KEYS, value: {{ join " " $vaultKeys | quote }} }
             - { name: REVOKE_STALE, value: {{ $ks.revokeStale | quote }} }
           command: ["bash", "-c"]
           args:
