@@ -37,6 +37,13 @@ internal class PreviewWriter private constructor(
         if (!attributes.keys.containsAll(names) || !names.containsAll(required)) unsupported()
     }
 
+    fun validateGenerated(names: Set<String>) {
+        for (name in names) {
+            val attribute = attributes[name] ?: unsupported()
+            if (!attribute.isKey || ColumnType.parse(attribute.type)?.kind != ColumnType.Kind.BIGINT) unsupported()
+        }
+    }
+
     fun insert(
         seq: Int,
         arguments: Map<String, JsonElement>,

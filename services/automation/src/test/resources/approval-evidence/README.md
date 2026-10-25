@@ -30,3 +30,15 @@ model and generated bundle. Native preview remains separate from physical writes
 A same-qname project entity can replace a stdlib entity in today's reconciler
 (Core#294 package-identity limitation); that missing qualified dependency refuses
 approval rather than falling back to the project entity.
+
+The `generated-ids/` variant adds a qualified `reorder_proposal` bigint key and two identical writer
+wirings with `generated: bigint_id_v1`, pinned run and explicit state defaults. Its checked-in v1 evidence
+is produced unchanged by the released CLI. Regenerate with:
+
+```sh
+python3 regenerate.py /path/to/ttrp-cli-0.18.9/bin/ttrp-cli --generated-ids
+```
+
+The real-ledger test goes through governed Open/evaluate, checks key/row/action/would-text agreement and
+idempotent retry, then close/restart persistence. Editing the source under old evidence refuses before
+another claim. This fixture does not perform physical model writes or certify the live H-3 recipe.

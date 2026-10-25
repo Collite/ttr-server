@@ -424,7 +424,7 @@ writer_defaults: {
 ```
 
 Each entry names an existing `optional: true` action column and contains exactly one source: a nonempty
-TTR-P scalar `expression` string, or `context: run_id | started_at`. Expressions use verified staged route
+TTR-P scalar `expression` string, `context: run_id | started_at`, or `generated: bigint_id_v1`. Expressions use verified staged route
 columns and existing pinned bindings such as `:as_of`; they cannot reference another action argument or
 context default. A literal string needs quotes inside the expression. The context sources are the pinned
 run UUID as text and the committed Open instant as datetime; neither reads a clock nor allocates an ID.
@@ -439,7 +439,20 @@ Duplicate/unknown/malformed entries, unsupported context names and defaults on n
 This contract uses the published metadata's free-form `AutomationAction.properties` lane; grammar/metadata
 are now 0.18.9 and translator/plan-proto 0.12.11. The current generic semantics validator warns about the new
 property; the Server consumer owns its strict validation. No grammar syntax or typed library API changed.
-Generated writer IDs and Hartland's authored default mappings/bundles remain pending, as do obligation/
+`generated: bigint_id_v1` requires a mapped ER **bigint key** and derives an exact negative long from
+SHA-256 of length-prefixed UTF-8 fields: `automation/writer/bigint_id_v1`, pinned run UUID, zero-based full
+manifest wiring ordinal, route name, action column and canonical candidate-key JSON (sorted names, exact
+normalized numeric scalars). The first eight digest bytes are a big-endian long with the sign bit set.
+This versioned format preserves IDs across retries and candidate row reordering, distinguishes repeated
+wirings, and stays separate from positive sequence IDs. It uses no row ordinal, clock or sequence read.
+Generated values enter insert keys/rows, action arguments and would-text together, preserving long precision.
+Explicit arguments still override; NULL keys refuse. Wrong target types refuse even on empty/unselected
+routes or with overrides. Duplicate native writer entity/keys refuse atomically when either insert used
+generation. The finite 63-bit hash space does not guarantee global uniqueness: P2 must refuse an existing
+physical primary-key conflict transactionally, without overwriting/skipping/regenerating. Preview never
+queries or writes the target model to allocate an ID. Published 0.18.9 evidence covers the authored source.
+
+Hartland's authored default mappings/bundles remain pending, as do obligation/
 key-lookup/calendar/column-date synthesis. P2 must validate actual physical bounds and writable policies
 before applying anything. H-3/H-5 are not certified by these defaults. Selected unsupported operations return
 `501 preview-unsupported`. P2/P3

@@ -109,6 +109,23 @@ class PreviewWriterSpec :
             }
         }
 
+        "generated defaults require the exact mapped bigint key attribute" {
+            writer().validateGenerated(setOf("number"))
+            for (name in listOf("scope", "total", "comment", "absent")) {
+                refuses { writer().validateGenerated(setOf(name)) }
+            }
+            for (type in listOf("int", "smallint", "tinyint", "decimal", "text", "float")) {
+                val narrowed =
+                    entity.copy(
+                        attributes =
+                            entity.attributes.map {
+                                if (it.qname.name.endsWith(".id")) it.copy(type = type) else it
+                            },
+                    )
+                refuses { writer(entities = listOf(narrowed)).validateGenerated(setOf("number")) }
+            }
+        }
+
         "missing generated keys and required attributes never acquire inferred defaults" {
             refuses { writer(action.copy(columns = columns.filterNot { it.name == "number" })) }
             refuses { writer(action.copy(columns = columns.filterNot { it.name == "total" })) }
