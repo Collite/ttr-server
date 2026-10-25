@@ -103,6 +103,7 @@ class Registry(
             val recipe =
                 bundle.recipes[recipeName]
                     ?: return refused("recipe $recipeName of program ${p.qname.name} has no bundle")
+            recipe.coverage.refusal?.let { return refused("coverage ${recipe.coverage.coverage?.wire}: $it") }
             for (k in recipe.recipe.kinds) {
                 val how = type.kinds[k]
                 if (how == null ||
@@ -112,7 +113,9 @@ class Registry(
                 }
             }
             for (w in recipe.recipe.wiring) {
-                val action = bundle.actions[w.action] ?: continue
+                val action =
+                    recipe.coverage.actions[w.action]
+                        ?: return refused("wired action ${w.action} was not resolved for recipe ${recipe.name}")
                 val own = action.sinks[type.family]
                 val how =
                     when {

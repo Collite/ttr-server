@@ -379,23 +379,33 @@ declarations refuse when the writer mapping is prepared, including empty selecti
 type spellings remain supported. All consumers must rebuild because the Attribute JVM signatures changed.
 The translator and plan-proto pins move together to 0.12.11, the version required by the published emitter.
 
-Governed writer defaults use the published 0.18.9 approval verifier. The Server reads required versioned
-`recipe.approvalDependencies`, reconstructs its recorded imports from the complete reconciled loader files
-(including injected stdlib), verifies every distinct wired action and logical ER target, and recomputes the
-text/2 binding before an atomic run claim. Package membership uses declared/model-root-relative packages,
-so a checkout under `/tmp/automation-bundles/<branch>` works. Unknown versions, malformed or missing required
-evidence, unresolved/ambiguous scope, stale metadata and a changed text binding return `409 recipe-stale`.
-The deployment descriptor also marks invalid coverage unapproved, even when the old approval row matches.
-Optional exported text/values/program/deployment fingerprints still have to match the current bundle.
-The verified scoped action objects are the ones pinned for preview execution and detail limits.
+Governed writer defaults use the published 0.18.9 approval verifier. At load, the Server keeps
+`recipe.approvalDependencies` as JSON, checks its version first, and then strictly reads the v1 fields.
+Missing/null/renamed v1 fields or future versions refuse only that recipe with `409 recipe-stale` at Open;
+the refreshed bundle and unrelated recipes stay available. Recorded imports use complete reconciled loader
+files (including injected stdlib). Every file in a governed recipe's scope must declare `package`, because
+the producer and Server use different loader roots. A checkout under `/tmp/automation-bundles/<branch>` works.
 
-Default-free legacy bundles retain text/1. The existing startup-gated explicit development mode
-(`automation.development=true`, `automation.approvals=off`) can still exercise defaults without evidence;
-present evidence is always verified and opening policy records the bypass. No new bypass is added.
-These dependencies cover native preview only; physical writes, connector configuration and deferred actions
-need their own closure. A same-qname project entity may replace a stdlib entity in the current metadata
-reconciler (Core#294); an unavailable qualified stdlib target refuses instead of binding the wrong entity.
-The published producer fixture and real-loader/Open/ledger proofs live under `src/test/resources/approval-evidence`.
+Coverage resolves once per loaded recipe. Open checks grants before revealing coverage details, then uses
+that stored result to verify approval eligibility before claiming. Preview uses the exact resolved actions,
+entities and attributes that passed the verifier; it does not match qualified writer names again. Mapping
+completeness and default validity remain preview-preparation checks. The descriptor and registry reuse the
+same stored resolution. Optional exported text/values/program/deployment fingerprints still must match.
+
+Coverage refusals retain `differs:[text]`, `approved.text:null` and `current.text`, and add
+`coverage: missing|malformed|unsupported|unresolved|ambiguous|stale`. On deployment detail,
+`coverage: {recipe: kind}` is separate from `unapproved`; either makes `deployment.stale` true. An approval
+of the displayed text cannot repair invalid coverage: rebuild/correct metadata or scope, or upgrade the
+consumer for unsupported evidence. Only valid coverage can progress to normal fingerprint approvals.
+
+Default-free legacy bundles retain text/1. Without recorded scope, action names shared across packages
+refuse as ambiguous: rename the action or adopt evidence; rebuilding the same legacy recipe alone cannot
+fix the ambiguity. Existing startup-gated explicit development mode (`automation.development=true`,
+`automation.approvals=off`) can exercise defaults without evidence; present evidence always verifies and
+opening policy records the bypass. No new bypass is added. These dependencies cover native preview only;
+physical writes, connector configuration and deferred actions need their own closure. Core#294 can replace
+a stdlib entity with a same-qname project entity; an unavailable qualified target refuses safely.
+The published fixture and real Open/evaluate/ledger proofs are under `src/test/resources/approval-evidence`.
 
 Native writer actions can explicitly declare `writer_defaults` for optional action columns. For example,
 with columns mapped to `proposal.state`, `proposal.run` and `proposal.created`:

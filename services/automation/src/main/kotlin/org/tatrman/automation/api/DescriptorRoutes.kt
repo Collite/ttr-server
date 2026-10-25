@@ -133,6 +133,7 @@ data class DeploymentDetail(
     val unapproved: List<String>,
     val lastRun: JsonObject?,
     val nextRun: String?,
+    val coverage: Map<String, org.tatrman.automation.bundle.CoverageKind> = emptyMap(),
 )
 
 /** `POST /automation/refresh` → 200. [changed] = false when the commit was already loaded (a no-op). */
@@ -195,6 +196,7 @@ fun Route.descriptorRoutes(sources: DescriptorSources) {
                     ),
                 registry = sources.registry.cell(bundle, deployment),
                 unapproved = staleness.unapproved,
+                coverage = staleness.coverage,
                 lastRun = null,
                 nextRun = null,
             ),

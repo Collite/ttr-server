@@ -52,7 +52,7 @@ class RunRuntimeComponentSpec :
         LedgerTestDb.ready()
         beforeEach { LedgerTestDb.reset() }
 
-        "released governed writer evidence claims once while stale pinned metadata creates no ledger work" {
+        "released governed qualified writer evaluates its default while stale pinned metadata creates no ledger work" {
             val root = ApprovalFixture.copyTo(tempdir(prefix = "automation-bundles-").toPath().resolve("branch"))
             val source =
                 BundleLoader(AuthorMap(emptyMap())).load(
@@ -68,14 +68,41 @@ class RunRuntimeComponentSpec :
                                 bundle.deployments.getValue("release_native_event").copy(runAs = ModelRunAs.Caller)
                         ),
                 )
-            val f = DurableRuntimeFixture(transformBundle = { selected(source) })
+            val f =
+                DurableRuntimeFixture(transformBundle = { selected(source) }, queryTable = { request ->
+                    if ("approved writer fixture" in request.source) {
+                        Table(
+                            listOf(
+                                ManifestColumn("order_number", "text"),
+                                ManifestColumn("route", "text"),
+                                ManifestColumn("verdict_reason", "text"),
+                            ),
+                            listOf(listOf("4711", "release", "approved writer fixture")),
+                        )
+                    } else {
+                        Table(listOf(ManifestColumn("order_number", "text")), listOf(listOf("4711")))
+                    }
+                })
             val runtime = f.start()
             try {
                 val opened = runtime.sessions.open("release_order", f.request, f.caller)
                 opened.httpStatus shouldBe 201
                 opened.approvalsBypassed shouldBe false
                 transaction { Runs.selectAll().count() } shouldBe 1L
-                f.reads.get() shouldBe 0
+                val id = UUID.fromString(opened.response.runId)
+                runtime.sessions.evaluate(id, f.caller)
+                val batch = runtime.status.batch(id, f.caller)
+                val effect = batch.rows.single { it.entity == "er.entity.order" }
+                effect.row!!.getValue("state") shouldBe JsonPrimitive("released")
+                effect.row!!.keys shouldBe setOf("order_number", "state", "customer", "value", "held_for")
+                runtime.status
+                    .read(id, f.caller)
+                    .actions
+                    .single { it.action == "release" }
+                    .would shouldBe
+                    "would release order 4711 as released"
+                transaction { Batches.selectAll().count() } shouldBe 1L
+                f.reads.get() shouldBe 2
             } finally {
                 runtime.shutdown()
                 f.close()
@@ -100,8 +127,8 @@ class RunRuntimeComponentSpec :
                     refused.sessions.open("release_order", stale.request, stale.caller)
                 }.code shouldBe ErrorCode.RECIPE_STALE
                 transaction { Runs.selectAll().count() } shouldBe 1L
-                transaction { RunOutputs.selectAll().count() } shouldBe 0L
-                transaction { Batches.selectAll().count() } shouldBe 0L
+                transaction { RunOutputs.selectAll().count() } shouldBe 2L
+                transaction { Batches.selectAll().count() } shouldBe 1L
                 stale.reads.get() shouldBe 0
             } finally {
                 refused.shutdown()
@@ -446,6 +473,7 @@ private class DurableRuntimeFixture(
     private val beforeRead: suspend () -> Unit = {},
     development: Boolean = false,
     transformBundle: (Bundle) -> Bundle = { it },
+    private val queryTable: ((RunRequest) -> Table)? = null,
 ) {
     // Far from the system clock: a queue/session accidentally using wall time would immediately refuse.
     val base = RuntimeClock(Instant.parse("2000-01-01T12:00:00Z"))
@@ -554,7 +582,7 @@ private class DurableRuntimeFixture(
                                 source.deployments.getValue("release_native_event").copy(runAs = ModelRunAs.Caller)
                         ),
             ),
-        )
+        ).let { it.withActions(it.actions) }
     private val query =
         object : QueryRun {
             override suspend fun compile(request: RunRequest) =
@@ -569,7 +597,7 @@ private class DurableRuntimeFixture(
                     request.world shouldBe "us-erp"
                     reads.incrementAndGet()
                     beforeRead()
-                    val table = Table(columns, listOf(listOf("4711", "SQL reason")))
+                    val table = queryTable?.invoke(request) ?: Table(columns, listOf(listOf("4711", "SQL reason")))
                     emit(
                         ResultBatch
                             .newBuilder()

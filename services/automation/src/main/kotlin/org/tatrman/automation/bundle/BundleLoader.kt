@@ -117,37 +117,42 @@ class BundleLoader(
                 null
             }
         if (findings.isNotEmpty() || author == null) throw BundleInvalidException(findings)
-        return Bundle(
-            id = "${kind.wire}:${checkout.branch}@${checkout.commit.take(12)}",
-            kind = kind,
-            branch = checkout.branch,
-            commit = checkout.commit,
-            author = author,
-            modelFp = modelFingerprint(modelRoot),
-            loadedAt = clock.instant(),
-            model = model,
-            recipes = recipes,
-            programs = programs,
-            actions = actions,
-            deployments = deployments,
-            deploymentWorlds = deploymentWorlds,
-            worlds = scopes,
-            programFps = programs.mapValues { Fingerprints.program(it.value) },
-            deploymentFps = deployments.mapValues { Fingerprints.deployment(it.value) },
-            warnings = warnings,
-            packageOf =
-                org.tatrman.ttr.metadata.layout.LayoutResolver
-                    .packagesFromFiles(result.files),
-        ).also {
-            log.info(
-                "automation: loaded {} — {} recipe(s), {} program(s), {} deployment(s), {} warning(s)",
-                it.id,
-                it.recipes.size,
-                it.programs.size,
-                it.deployments.size,
-                warnings.size,
-            )
-        }
+        return ApprovalDependencies
+            .prepare(
+                Bundle(
+                    id = "${kind.wire}:${checkout.branch}@${checkout.commit.take(12)}",
+                    kind = kind,
+                    branch = checkout.branch,
+                    commit = checkout.commit,
+                    author = author,
+                    modelFp = modelFingerprint(modelRoot),
+                    loadedAt = clock.instant(),
+                    model = model,
+                    recipes = recipes,
+                    programs = programs,
+                    actions = actions,
+                    deployments = deployments,
+                    deploymentWorlds = deploymentWorlds,
+                    worlds = scopes,
+                    programFps = programs.mapValues { Fingerprints.program(it.value) },
+                    deploymentFps = deployments.mapValues { Fingerprints.deployment(it.value) },
+                    warnings = warnings,
+                    packages =
+                        result.files.associate {
+                            it.storageFile.path to
+                                (it.declaredPackage ?: it.computedPackage)
+                        },
+                ),
+            ).also {
+                log.info(
+                    "automation: loaded {} — {} recipe(s), {} program(s), {} deployment(s), {} warning(s)",
+                    it.id,
+                    it.recipes.size,
+                    it.programs.size,
+                    it.deployments.size,
+                    warnings.size,
+                )
+            }
     }
 
     private fun checkDeployment(

@@ -21,6 +21,7 @@ import java.util.UUID
 data class PreviewMetadata(
     val actions: Map<String, AutomationAction>,
     val entities: List<Entity>,
+    val targets: Map<String, Map<String, org.tatrman.ttrp.resolve.TargetResolution.Resolved>> = emptyMap(),
 ) {
     companion object {
         fun from(bundle: Bundle) =
@@ -116,7 +117,7 @@ class ApplyPlanner(
                         if (action.sinks[Bundle.NATIVE] ==
                             "writer"
                         ) {
-                            PreviewWriter.resolve(action, metadata.entities)
+                            PreviewWriter.resolve(action, metadata.entities, metadata.targets[wiring.action])
                         } else {
                             null
                         }

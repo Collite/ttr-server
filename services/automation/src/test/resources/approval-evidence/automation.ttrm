@@ -17,11 +17,14 @@ def parameter settlement             { type: working_days, value: 5 }
 // ---- actions (sinks per target; `native` = the Server writer or a connector) ----
 def action release {
     columns: [def column order { type: hartland.order.order_number },
-              def column state { type: hartland.order.state, optional: true }]
+              def column state { type: hartland.order.state, optional: true },
+              def column customer { type: hartland.order.customer },
+              def column value { type: hartland.order.value },
+              def column held_for { type: hartland.order.held_for }]
     sinks: { native: writer }
     writer_defaults: { state: { expression: "'released'" } }
     approval: none
-    dry_run: { en: "would release order {order}" }
+    dry_run: { en: "would release order {order} as {state}" }
 }
 def action audit_state {
     columns: [def column state { type: automation.obligation.state }]

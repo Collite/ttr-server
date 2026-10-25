@@ -2,6 +2,8 @@
 package org.tatrman.automation.api
 
 import io.kotest.core.spec.style.StringSpec
+import io.kotest.engine.spec.tempdir
+import org.tatrman.automation.bundle.ApprovalFixture
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.shouldBe
 import io.ktor.client.request.get
@@ -210,6 +212,29 @@ class DescriptorSpec :
                         "program release_on_placement",
                         "deployment release_native_event",
                     )
+            }
+        }
+
+        "deployment coverage failures are distinct from missing approvals on the wire" {
+            val root = ApprovalFixture.copyTo(tempdir(prefix = "automation-bundles-").toPath().resolve("branch"))
+            val path = root.resolve("automation/release_order/release_order.bundle/manifest.json")
+            val original = Json.parseToJsonElement(Files.readString(path)).jsonObject
+            val recipe = original.getValue("recipe").jsonObject
+            val broken =
+                JsonObject(
+                    recipe + ("approvalDependencies" to JsonObject(mapOf("version" to JsonPrimitive(2)))),
+                )
+            Files.writeString(path, JsonObject(original + ("recipe" to broken)).toString())
+            testApplication {
+                service(served(root, ApprovalReader { _, _, _ -> true }))
+                val response = get("/automation/deployments/release_native_event")
+                response.status shouldBe HttpStatusCode.OK
+                val body = Json.parseToJsonElement(response.bodyAsText()).jsonObject
+                body.getValue("unapproved").jsonArray shouldBe JsonArray(emptyList())
+                body.getValue("coverage").jsonObject shouldBe
+                    JsonObject(mapOf("release_order" to JsonPrimitive("unsupported")))
+                body.getValue("deployment").jsonObject.getValue("stale") shouldBe JsonPrimitive(true)
+                body.getValue("registry").jsonObject.getValue("status") shouldBe JsonPrimitive("refused")
             }
         }
 

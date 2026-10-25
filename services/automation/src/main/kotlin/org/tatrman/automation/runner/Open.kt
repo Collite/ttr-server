@@ -87,8 +87,15 @@ class Open(
             bundle.programsOf(d).singleOrNull { bundle.programs[it]?.recipe == recipeName }
                 ?: portRefused("deployment does not select exactly one program for recipe $recipeName")
         val program = bundle.programs.getValue(programName)
-        val coverage = ApprovalDependencies.check(bundle, recipe.recipe, allowUncovered = approvalsOff)
-        coverage.refusal?.let { reason ->
+        val world = bundle.worldOf(d) ?: error("loaded deployment has no world")
+        val identity =
+            RunAs(GrantMap(world.grants, world.identities), world.identities, tokens).resolve(
+                caller,
+                DeploymentIdentity(request.deployment, programName, BundleLoader.runAs(d.runAs), bundle.author),
+                if (d.debug) DebugAs.CALLER else null,
+            )
+        val coverage = recipe.coverage
+        coverage.refusal?.takeUnless { approvalsOff && coverage.defaultsWithoutEvidence }?.let { reason ->
             throw AutomationException(
                 ErrorCode.RECIPE_STALE,
                 reason,
@@ -98,17 +105,11 @@ class Open(
                     putJsonObject("approved") { put("text", JsonNull) }
                     putJsonObject("current") { put("text", recipe.recipe.fingerprints.text) }
                     put("reason", reason)
+                    put("coverage", requireNotNull(coverage.coverage).wire)
                 },
             )
         }
-        val pinnedActions = bundle.actions + coverage.actions
-        val world = bundle.worldOf(d) ?: error("loaded deployment has no world")
-        val identity =
-            RunAs(GrantMap(world.grants, world.identities), world.identities, tokens).resolve(
-                caller,
-                DeploymentIdentity(request.deployment, programName, BundleLoader.runAs(d.runAs), bundle.author),
-                if (d.debug) DebugAs.CALLER else null,
-            )
+        val pinnedActions = coverage.actions
         val fps = recipe.recipe.fingerprints
         val programFp = bundle.programFps.getValue(programName)
         val deploymentFp = bundle.deploymentFps.getValue(request.deployment)
@@ -181,9 +182,15 @@ class Open(
                 detailLimits = detailLimits(recipe.recipe, pinnedActions, detailLimit),
                 syncBudget = sync,
                 previewMetadata =
-                    org.tatrman.automation.apply.PreviewMetadata
-                        .from(bundle)
-                        .copy(actions = pinnedActions),
+                    org.tatrman.automation.apply.PreviewMetadata(
+                        pinnedActions,
+                        (bundle.model.schemas["er"] as? org.tatrman.ttr.metadata.model.ErSchema)
+                            ?.entities
+                            ?.values
+                            .orEmpty()
+                            .toList(),
+                        coverage.targets,
+                    ),
             )
         if (port.keys != null &&
             port.keys.size > context.readCeiling

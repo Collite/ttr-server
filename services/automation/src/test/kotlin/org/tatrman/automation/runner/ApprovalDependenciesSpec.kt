@@ -6,7 +6,6 @@ import io.kotest.core.spec.style.StringSpec
 import io.kotest.engine.spec.tempdir
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
-import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.*
 import org.tatrman.automation.api.AutomationException
 import org.tatrman.automation.api.ErrorCode
@@ -67,9 +66,10 @@ class ApprovalDependenciesSpec :
             approved: ApprovalReader,
             claim: (RunOpen) -> Claim,
             request: OpenRequest? = null,
+            principal: Caller = caller,
         ): OpenResult =
             Open(
-                { b },
+                { ApprovalDependencies.prepare(b) },
                 approved,
                 ServiceTokens(emptyMap(), { error("no token exchange") }),
                 claim,
@@ -78,7 +78,7 @@ class ApprovalDependenciesSpec :
                 Duration.ofSeconds(60),
                 Duration.ofMinutes(30),
                 BundleFixture.clock,
-            ).open(recipeName, request ?: OpenRequest(deployment, buildJsonObject { put("key", "4711") }), caller)
+            ).open(recipeName, request ?: OpenRequest(deployment, buildJsonObject { put("key", "4711") }), principal)
 
         fun approvals(b: Bundle): ApprovalReader {
             val fp =
@@ -99,6 +99,7 @@ class ApprovalDependenciesSpec :
             b: Bundle,
             reason: String,
             approved: ApprovalReader = ApprovalReader { _, _, _ -> true },
+            kind: CoverageKind = CoverageKind.MALFORMED,
         ) {
             val e =
                 shouldThrow<AutomationException> {
@@ -125,7 +126,13 @@ class ApprovalDependenciesSpec :
                         .getValue(recipeName)
                         .recipe.fingerprints.text,
                 )
-            Staleness.of(b, deployment, approved).unapproved shouldBe listOf("recipe $recipeName")
+            val stale = Staleness.of(ApprovalDependencies.prepare(b), deployment, approved)
+            stale.unapproved shouldBe emptyList()
+            e.detail!!
+                .jsonObject
+                .getValue("coverage")
+                .jsonPrimitive.content shouldBe kind.wire
+            stale.coverage shouldBe mapOf(recipeName to kind)
         }
 
         "released text2 evidence approves qualified project and injected stdlib targets after relocation" {
@@ -133,8 +140,12 @@ class ApprovalDependenciesSpec :
             root.toString().contains("/hartland/") shouldBe false
             val b = load(root)
             val r = b.recipes.getValue(recipeName).recipe
-            r.approvalDependencies!!.version shouldBe 1
-            r.approvalDependencies!!.actions.keys shouldBe setOf("release", "audit_state")
+            r.approvalDependencies!!
+                .getValue("version")
+                .jsonPrimitive.int shouldBe 1
+            r.approvalDependencies!!
+                .getValue("actions")
+                .jsonObject.keys shouldBe setOf("release", "audit_state")
             val request =
                 OpenRequest(
                     deployment,
@@ -186,7 +197,7 @@ class ApprovalDependenciesSpec :
                     old.recipes
                         .getValue(recipeName)
                         .recipe.fingerprints
-                refuses(changed, "stale for `release`", approvals(old))
+                refuses(changed, "stale for `release`", approvals(old), CoverageKind.STALE)
             }
         }
 
@@ -195,13 +206,13 @@ class ApprovalDependenciesSpec :
             root.edit("automation/automation.ttrm") {
                 it.replace("    writer_defaults: { state: { expression: \"'released'\" } }\n", "")
             }
-            refuses(load(root), "stale for `release`")
+            refuses(load(root), "stale for `release`", kind = CoverageKind.STALE)
         }
 
         "missing evidence cannot inherit legacy approval and text2 cannot bind a tampered base" {
             val root = fixture()
             editRecipe(root) { JsonObject(it - "approvalDependencies") }
-            refuses(load(root), "evidence is missing")
+            refuses(load(root), "evidence is missing", kind = CoverageKind.MISSING)
             val other = fixture()
             editEvidence(other) { JsonObject(it + ("textBase" to JsonPrimitive("sha256:" + "0".repeat(64)))) }
             refuses(load(other), "not bound to recipe text/2")
@@ -228,24 +239,81 @@ class ApprovalDependenciesSpec :
             for ((reason, edit) in edits) {
                 val root = fixture()
                 editEvidence(root, edit)
-                refuses(load(root), reason)
+                refuses(
+                    load(root),
+                    reason,
+                    kind =
+                        when (reason) {
+                            "unsupported approval evidence version 99" -> CoverageKind.UNSUPPORTED
+                            "resolves to no loader package" -> CoverageKind.UNRESOLVED
+                            else -> CoverageKind.MALFORMED
+                        },
+                )
             }
         }
 
-        "present evidence requires all fields even though other manifest extensions are lenient" {
-            val original = resource.resolve("release_order.bundle/manifest.json").readText()
+        "missing null or renamed evidence fields refuse only that recipe after version dispatch" {
             for (field in listOf("version", "imports", "textBase", "actions")) {
-                val json = RecipeManifest.JSON.parseToJsonElement(original).jsonObject
-                val r = json.getValue("recipe").jsonObject
-                val evidence = r.getValue("approvalDependencies").jsonObject
-                for (bad in listOf(JsonObject(evidence - field), JsonObject(evidence + (field to JsonNull)))) {
-                    val text =
-                        JsonObject(
-                            json + ("recipe" to JsonObject(r + ("approvalDependencies" to bad))),
-                        ).toString()
-                    shouldThrow<SerializationException> { RecipeManifest.parse(text) }
+                for (nullValue in listOf(false, true)) {
+                    val root = fixture()
+                    editEvidence(
+                        root,
+                    ) { if (nullValue) JsonObject(it + (field to JsonNull)) else JsonObject(it - field) }
+                    refuses(
+                        load(root),
+                        if (field ==
+                            "version"
+                        ) {
+                            "unsupported approval evidence version"
+                        } else {
+                            "field `$field`"
+                        },
+                        kind = if (field == "version") CoverageKind.UNSUPPORTED else CoverageKind.MALFORMED,
+                    )
                 }
             }
+            val root = fixture()
+            editEvidence(root) {
+                JsonObject(
+                    mapOf(
+                        "version" to JsonPrimitive(2),
+                        "futureImports" to JsonArray(emptyList()),
+                    ),
+                )
+            }
+            val loaded = load(root)
+            val b =
+                loaded.copy(
+                    deployments =
+                        loaded.deployments + (
+                            "decide_native_batch" to
+                                loaded.deployments.getValue("decide_native_batch").copy(runAs = ModelRunAs.Caller)
+                        ),
+                )
+            refuses(b, "unsupported approval evidence version 2", kind = CoverageKind.UNSUPPORTED)
+            // The unrelated legacy recipe in the same refreshed commit remains independently usable.
+            val result =
+                Open(
+                    { b },
+                    ApprovalReader { _, _, _ -> true },
+                    ServiceTokens(emptyMap(), { error("unused") }),
+                    { Claim.Claimed(UUID.randomUUID(), startedAt = BundleFixture.LOADED_AT) },
+                    { null },
+                    { false },
+                    Duration.ofSeconds(60),
+                    Duration.ofMinutes(30),
+                    BundleFixture.clock,
+                ).open(
+                    "decide_return",
+                    OpenRequest(
+                        "decide_native_batch",
+                        buildJsonObject {
+                            put("none", true)
+                        },
+                    ),
+                    caller.copy(roles = setOf("ops")),
+                )
+            result.httpStatus shouldBe 201
         }
 
         "project shadowing cannot silently rebind explicit stdlib evidence" {
@@ -256,7 +324,11 @@ class ApprovalDependenciesSpec :
             }
             // The current ER model loses package identity (#294), so reconciliation may drop the stdlib
             // entity with the same qname. Refuse that missing qualified target, never approve the project one.
-            refuses(load(root), "unresolved action approval dependency `automation.obligation.state`")
+            refuses(
+                load(root),
+                "unresolved action approval dependency `automation.obligation.state`",
+                kind = CoverageKind.UNRESOLVED,
+            )
         }
 
         "scoped verified action is pinned for execution even when an out-of-scope action shares its name" {
@@ -279,19 +351,25 @@ def action release {
                 .previewMetadata!!
                 .actions
                 .getValue("release")
-                .columns.size shouldBe 2
+                .columns.size shouldBe 5
             val withoutScope =
                 b.recipes
                     .getValue(recipeName)
                     .recipe
                     .copy(approvalDependencies = null)
-            ApprovalDependencies.check(b, withoutScope).refusal!! shouldContain "ambiguous wired action"
+            val legacy = ApprovalDependencies.check(b, withoutScope)
+            legacy.refusal!! shouldContain "declared in several packages; rename it or adopt evidence"
+            legacy.coverage shouldBe CoverageKind.AMBIGUOUS
+            Registry(ExecutorType.builtin()).cell(b, b.deployments.getValue(deployment)).status shouldBe Registry.OK
         }
 
         "a correctly rebound evidence map must still name exactly the wired actions" {
             val b = load(fixture())
             val loaded = b.recipes.getValue(recipeName)
-            val e = loaded.recipe.approvalDependencies!!
+            val e =
+                RecipeManifest.JSON.decodeFromJsonElement<ManifestApprovalDependencies>(
+                    loaded.recipe.approvalDependencies!!,
+                )
             val changed = e.copy(actions = e.actions + ("unwired" to e.actions.getValue("release")))
             val text =
                 RecipeActionDependencies.text(
@@ -299,7 +377,7 @@ def action release {
                 )
             val recipe =
                 loaded.recipe.copy(
-                    approvalDependencies = changed,
+                    approvalDependencies = RecipeManifest.JSON.encodeToJsonElement(changed).jsonObject,
                     fingerprints = loaded.recipe.fingerprints.copy(text = text),
                 )
             refuses(
@@ -316,7 +394,57 @@ model automation
 def action release { columns: [def column order { type: text }] sinks: { native: writer } approval: none }
 """,
             )
-            refuses(load(root), "ambiguous wired action `release`")
+            refuses(load(root), "ambiguous wired action `release`", kind = CoverageKind.AMBIGUOUS)
+        }
+
+        "ungranted callers receive identity refusal before coverage details" {
+            val root = fixture()
+            editEvidence(root) { JsonObject(mapOf("version" to JsonPrimitive(9))) }
+            val b = BundleFixture.load(root)
+            val e =
+                shouldThrow<AutomationException> {
+                    open(b, approvals(b), { error("must not claim") }, principal = caller.copy(roles = emptySet()))
+                }
+            e.code shouldBe ErrorCode.IDENTITY
+        }
+
+        "request consumers reuse the loaded resolution without consulting package maps" {
+            val b = load(fixture())
+            val cached = b.recipes.getValue(recipeName).coverage
+            // Access to a package index after load would expose a second request-path resolution.
+            val forbidden =
+                object : Map<String, String> by emptyMap() {
+                    override fun get(key: String): String = error("package lookup must happen only during load")
+                }
+            val pinned = b.copy(packages = forbidden)
+            val result =
+                Open(
+                    { pinned },
+                    approvals(b),
+                    ServiceTokens(emptyMap(), { error("unused") }),
+                    { Claim.Claimed(UUID.randomUUID(), startedAt = BundleFixture.LOADED_AT) },
+                    { null },
+                    { false },
+                    Duration.ofSeconds(60),
+                    Duration.ofMinutes(30),
+                    BundleFixture.clock,
+                ).open(recipeName, OpenRequest(deployment, buildJsonObject { put("key", "4711") }), caller)
+            (result.context!!.previewMetadata!!.targets === cached.targets) shouldBe true
+            Staleness.of(pinned, deployment, approvals(b)).stale shouldBe false
+            val misleading =
+                pinned.copy(
+                    actions =
+                        pinned.actions +
+                            (
+                                "release" to
+                                    pinned.actions.getValue("release").copy(sinks = mapOf("native" to "unsupported"))
+                            ),
+                )
+            val native = ExecutorType.builtin().getValue("native").copy(family = "external")
+            Registry(
+                mapOf("native" to native),
+            ).cell(misleading, misleading.deployments.getValue(deployment)).status shouldBe
+                Registry.OK
         }
 
         "exported text must still match after dependency verification" {

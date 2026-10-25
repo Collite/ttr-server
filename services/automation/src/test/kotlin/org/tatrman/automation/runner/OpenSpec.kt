@@ -52,7 +52,7 @@ class OpenSpec :
             detailLimit: Int = 200,
         ) = Open(
             {
-                b
+                b.withActions(b.actions)
             },
             approved,
             ServiceTokens(emptyMap(), {

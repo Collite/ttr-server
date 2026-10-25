@@ -29,8 +29,9 @@ fun interface ApprovalReader {
 /** Which of a deployment's fingerprints lack an approval — empty = not stale. */
 data class Staleness(
     val unapproved: List<String>,
+    val coverage: Map<String, CoverageKind> = emptyMap(),
 ) {
-    val stale: Boolean get() = unapproved.isNotEmpty()
+    val stale: Boolean get() = unapproved.isNotEmpty() || coverage.isNotEmpty()
 
     companion object {
         /** D-60's three: the recipe (text + values), the program, the deployment itself. */
@@ -41,16 +42,14 @@ data class Staleness(
         ): Staleness {
             val d = bundle.deployments[deployment] ?: return Staleness(listOf("deployment"))
             val missing = mutableListOf<String>()
+            val coverage = linkedMapOf<String, CoverageKind>()
             for (p in bundle.programsOf(d)) {
                 val program = bundle.programs[p]
                 val recipe = program?.recipe?.let { bundle.recipes[it] }
                 if (recipe != null) {
                     val fps = recipe.recipe.fingerprints
-                    if (ApprovalDependencies.check(bundle, recipe.recipe).refusal != null ||
-                        !approvals.approved("recipe", recipe.name, fps.text)
-                    ) {
-                        missing += "recipe ${recipe.name}"
-                    }
+                    recipe.coverage.coverage?.let { coverage[recipe.name] = it }
+                    if (!approvals.approved("recipe", recipe.name, fps.text)) missing += "recipe ${recipe.name}"
                     if (!approvals.approved("values", recipe.name, fps.values)) missing += "values ${recipe.name}"
                 }
                 val fp = bundle.programFps[p]
@@ -58,7 +57,7 @@ data class Staleness(
             }
             val fp = bundle.deploymentFps[deployment]
             if (fp == null || !approvals.approved("deployment", deployment, fp)) missing += "deployment $deployment"
-            return Staleness(missing.distinct())
+            return Staleness(missing.distinct(), coverage)
         }
     }
 }

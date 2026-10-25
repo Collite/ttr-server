@@ -40,6 +40,7 @@ data class LoadedRecipe(
     val manifest: RecipeManifest,
     val recipe: ManifestRecipe,
     val statements: Map<String, String>,
+    val coverage: ApprovalDependencies.Checked = ApprovalDependencies.Checked(),
 )
 
 /**
@@ -84,7 +85,7 @@ data class Bundle(
     val deploymentFps: Map<String, String>,
     val warnings: List<String>,
     /** Complete reconciled loader package map, including injected stdlib; never inferred from paths. */
-    val packageOf: (org.tatrman.ttr.metadata.model.ModelObject) -> String = { "" },
+    val packages: Map<String, String> = emptyMap(),
 ) {
     /** The world that declares [deployment]. */
     fun worldOf(deployment: WorldDeployment): WorldScope? = deploymentWorlds[deployment.qname.name]?.let { worlds[it] }

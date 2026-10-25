@@ -96,8 +96,8 @@ data class ManifestRecipe(
     val parts: List<ManifestPart> = emptyList(),
     /** D-59: golden fixture paths published by the compiler, exposed for clients; not executed by this reader. */
     val tests: List<String> = emptyList(),
-    /** Required fields inside present evidence never acquire lenient defaults. */
-    val approvalDependencies: ManifestApprovalDependencies? = null,
+    /** Preserve future evidence fields; load dispatches on version before strictly reading v1. */
+    val approvalDependencies: JsonObject? = null,
 )
 
 @Serializable
