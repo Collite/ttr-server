@@ -19,16 +19,25 @@ cd ~/.n8n/nodes
 npm install @collite/n8n-nodes-tatrman@0.1.0
 ```
 
-Restart n8n. For an image without registry access, build the package and use the included Dockerfile:
+Restart n8n. Hartland uses the derived image instead, keeping the package outside its persistent `.n8n` volume.
+Build and verify it from the packed package (repository root, Docker required):
 
 ```sh
 pnpm install --frozen-lockfile
-pnpm --filter @collite/n8n-nodes-tatrman build
-docker build -t n8n-tatrman:2.44.6-0.1.0 connectors/n8n-nodes-tatrman
+just build-n8n-image n8n-tatrman:2.44.6-0.1.0
+just test-n8n-image n8n-tatrman:2.44.6-0.1.0
 ```
 
-It copies the built node package into `/opt/tatrman`, sets `N8N_CUSTOM_EXTENSIONS`, and uses the n8n runtime's
-SDK. This image is prepared for hartland P4 S4.1; the olymp app, deployment and live certification remain pending.
+The image is Linux/amd64, based on the official `n8nio/n8n:2.44.6` Docker Hub image.
+The existing Docker Hub source is retained: the equivalent `docker.n8n.io` endpoint returned HTTP 429
+during the 2026-10-25 image proof. Both approved official source names are accepted by the release guard. Its build context is the unpacked
+package tarball; it copies `package.json`, `README.md` and `dist/` into
+`/opt/tatrman-nodes/node_modules/@collite/n8n-nodes-tatrman`, sets
+`N8N_CUSTOM_EXTENSIONS=/opt/tatrman-nodes`, and resolves the runtime's own SDK via `NODE_PATH`.
+It runs as the upstream `node` user and needs no npm credential in any layer. n8n's custom-directory
+loader registers the nodes as `CUSTOM.tatrmanRun` and `CUSTOM.tatrmanTrigger`; the credential is
+`tatrmanAutomationApi`. Package metadata retains the scoped package name. The olymp image switch and
+live Server/hartland certification remain pending.
 
 ## Credentials
 
@@ -115,6 +124,8 @@ pnpm --filter @collite/n8n-nodes-tatrman scan
 # From the repository root, with Docker available:
 just lint-n8n
 just test-n8n-runtime
+just build-n8n-image
+just test-n8n-image
 ```
 
 Vitest uses fake service responses and checked-in Server descriptor/manifest fixtures. Recorded H-1 P3 run fixtures
@@ -126,6 +137,9 @@ fresh action runs, performs/reports outcomes/closes them, checks successful pers
 both workflows through the authenticated local n8n API, asserting remote webhook deletion. One branch uses
 Run(routes); the other expands route_rows in the Trigger. Expressions traverse the actual paired item chain.
 The fake refuses action writes to the closed source run. All state is temporary and removed after the check.
+`test-n8n-image` additionally checks the actual built package manifest, compiled entry points, runtime/SDK
+pairing, unprivileged user and loader contents, then runs the same persisted-workflow proof against that
+image. Both checks use a fresh `.n8n` tmpfs and mount only the harness scripts, never the node distribution.
 This proves n8n runtime mechanics; it does not certify Server P3 or its event lifecycle. See the shared
 [P3 handoff](https://github.com/Collite/project/blob/master/kantheon/features/automation-agents/implementation/n8n-nodes/server-p3-handoff.md)
 in the planning workspace for unconfirmed API shapes and the sealed-run lifecycle question.
@@ -136,5 +150,27 @@ scanner's default source glob omits it). Two **package-metadata-only** exception
 `valid-peer-dependencies` (AU S0.1 requires the exact runtime SDK pin). Security rules remain enabled; this is not
 a claim of public n8n community verification. The package uses `UNLICENSED` pending the Platform licence decision.
 
-CI builds, checks and packs PR changes. Tags `n8n-nodes-tatrman/vX.Y.Z` publish the matching manifest version to
-GitHub Packages. No tag or publication is performed by the local development scripts.
+## Internal release
+
+PRs build, check, scan and pack the connector, then build/test the derived image. PRs never publish.
+After review and merge, from a clean current master with the tag still free, the agent cuts the exact tag:
+
+```sh
+just publish n8n-nodes-tatrman set 0.1.0
+```
+
+`n8n-nodes-tatrman/v0.1.0` runs the dedicated `n8n-nodes.yml` workflow. Before any registry write it
+checks that the tag equals the package version, derives the image tag from the Dockerfile runtime pin
+plus that version, and runs the package/image proofs. The publishing job rebuilds from the checked
+package artifact and repeats the actual-image proof before pushing that exact local image as
+`ghcr.io/collite/n8n-tatrman:2.44.6-0.1.0`; it then publishes the private scoped npm package to GitHub
+Packages. Both writes use the job's `GITHUB_TOKEN` with `packages: write`. No public registry release
+is required. The generic `release-image.yml` excludes these tags to avoid a competing publisher.
+Local build/test recipes do not cut tags or publish.
+
+After publication, verify the digest and a pulled image, then confirm `collite-registry` has Read on
+this new package (via `registry-read` where necessary) before the separate olymp P4 PR changes
+Hartland. Existing private-package access does not establish access to this new package. A failed
+release can leave one artifact published; inspect both registries before rerunning or cutting another
+version. Server P3 endpoint/lifecycle agreement, recorded H-1 fixtures and live AU certification remain
+open independently of this image release.

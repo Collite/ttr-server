@@ -1,4 +1,4 @@
-// Run in n8nio/n8n:2.44.6 with --network none. Uses real n8n persistence and execution;
+// Run in the pinned n8n or derived image with --network none. Uses real n8n persistence and execution;
 // only the Automation service is fake. All data and credentials are temporary.
 const assert = require('node:assert/strict');
 const { spawn } = require('node:child_process');
@@ -91,7 +91,7 @@ async function main() {
   const n8nUrl = 'http://127.0.0.1:5678';
   env = {
     ...process.env, N8N_USER_FOLDER: directory, N8N_ENCRYPTION_KEY: 'ephemeral-local-workflow-key',
-    N8N_CUSTOM_EXTENSIONS: '/opt/tatrman', N8N_LISTEN_ADDRESS: '127.0.0.1', N8N_PORT: '5678',
+    N8N_CUSTOM_EXTENSIONS: process.env.N8N_CUSTOM_EXTENSIONS ?? '/opt/tatrman', N8N_LISTEN_ADDRESS: '127.0.0.1', N8N_PORT: '5678',
     N8N_WEBHOOK_URL: `${n8nUrl}/`, N8N_SECURE_COOKIE: 'false', N8N_DIAGNOSTICS_ENABLED: 'false',
     N8N_VERSION_NOTIFICATIONS_ENABLED: 'false', N8N_TEMPLATES_ENABLED: 'false', N8N_RUNNERS_MODE: 'external',
     N8N_RUNNERS_AUTH_TOKEN: 'ephemeral-runner-token-no-code-nodes-used',
@@ -172,6 +172,13 @@ async function main() {
     const setup = await fetch(`${n8nUrl}/rest/owner/setup`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: 'runtime@example.test', firstName: 'Runtime', lastName: 'Proof', password: 'LocalRuntimeProof123!' }) });
     assert.equal(setup.status, 200, await setup.text());
     const cookie = setup.headers.getSetCookie().map(value => value.split(';')[0]).join('; ');
+    const names = ['CUSTOM.tatrmanRun', 'CUSTOM.tatrmanTrigger'];
+    const types = await fetch(`${n8nUrl}/rest/node-types`, {
+      method: 'POST', headers: { cookie, 'content-type': 'application/json' },
+      body: JSON.stringify({ nodeInfos: names.map(name => ({ name, version: 1 })) }),
+    });
+    assert.equal(types.status, 200, await types.clone().text());
+    assert.deepEqual((await types.json()).data.map(type => type.name).sort(), ['tatrmanRun', 'tatrmanTrigger']);
     const hook = [...hooks.values()].find(hook => hook.url.includes(workflow.nodes[0].webhookId));
     assert.ok(hook, `Missing first workflow hook; got ${JSON.stringify([...hooks.values()].map(hook => hook.url))}`);
     const raw = '{ "kind":"run_closed", "deployment":"release_native_event", "runId":"source-run", "payload":{"keys":[4711,4712]} }';
