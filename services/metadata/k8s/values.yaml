@@ -42,7 +42,7 @@ telemetry:
 # (`secretEnv` METADATA_GIT_TOKEN). An empty `gitRemoteUri` configures no source: Metadata logs an
 # error and never turns ready. Metadata bundles no fallback model (ttr-server#180): until the source
 # has loaded once, /ready answers 503 and /status says why. An empty `gitBranch`/`gitSubdirectory`
-# renders no env var (Metadata' own defaults apply), and so does one that `extraEnv` already sets.
+# renders no env var (the metadata service's own defaults apply), and so does one that `extraEnv` already sets.
 metadata:
   gitRemoteUri: "https://github.com/Collite/ttr-demo.git"
   gitBranch: "master"

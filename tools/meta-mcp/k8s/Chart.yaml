@@ -1,8 +1,7 @@
 apiVersion: v2
 name: meta-mcp
 description: |
-  The Kantheon meta-mcp wrapper — the MCP edge over Metadata (the metadata / model-graph
-  service). Env-agnostic Helm chart: image, replicas, resources, telemetry endpoint and the
+  The Kantheon meta-mcp wrapper — the MCP edge over the metadata (model-graph) service. Env-agnostic Helm chart: image, replicas, resources, telemetry endpoint and the
   downstream gRPC wiring to Metadata are all values. Per-environment values live in the deploying
   repo. Converted from the kustomize base/overlays, mirroring query-mcp (D2).
 type: application

@@ -41,14 +41,14 @@ data class ReadRow(
  * over the entity's population.
  *
  * This loader knows nothing about tables, keys or SQL any more. Which vocabularies exist, whose rows
- * they read and how to spell that in SQL are Metadata' and the translator's decisions — the same ones a
+ * they read and how to spell that in SQL are decisions made by metadata and the translator — the same ones a
  * query over the entity is subject to. (It used to walk fuzzy-tagged COLUMNS and compose
  * `SELECT pk, col FROM table`, so two entities over one table shared one index, and a view- or
  * query-backed entity was indexed over its whole base table.)
  *
  * **An outage never wipes a vocabulary (review-104 F5).** No listing at all is `null`: the
  * repository keeps its whole member layer. And one vocabulary that is listed but cannot be read this
- * time — no read plan yet (a query-backed entity in Metadata' parse window), or a read plan the
+ * time — no read plan yet (a query-backed entity in the metadata service's parse window), or a read plan the
  * warehouse refused — keeps the rows, plan version and method of its last load. Only a vocabulary
  * Metadata no longer LISTS leaves the layer.
  *
@@ -81,7 +81,7 @@ class MetadataLoaderSource(
         val method: String,
     )
 
-    // Loader report: why a declared vocabulary is not loaded (Metadata' RG-FUZ-001/003 per item), or
+    // Loader report: why a declared vocabulary is not loaded (the metadata service's RG-FUZ-001/003 per item), or
     // why nothing was (RG-FUZ-004). Retrievable via GetStatus.
     @Volatile
     private var lastWarnings: List<LoaderWarningInfo> = emptyList()
@@ -291,7 +291,7 @@ class MetadataLoaderSource(
      * A-MV-10, refined (review-104 F8) — what identifies how this vocabulary's rows were read and are
      * matched: its read plan, key and effective method.
      *
-     * NOT Metadata' `MemberVocabulary.version`, which also hashes the whole MODEL version: any unrelated
+     * NOT the metadata service's `MemberVocabulary.version`, which also hashes the whole MODEL version: any unrelated
      * edit (a new measure, a changed description) moved every member category's version on the next
      * refresh although nothing about its rows, plan or method had changed — and `member_index_versions`
      * is read as "did this layer change?".

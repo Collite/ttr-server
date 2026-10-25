@@ -28,7 +28,8 @@ outside this repo could notice is in.
   Source-load metrics change from `veles_model_source_load_failures_total` /
   `veles_model_source_loaded` to `metadata_model_source_load_failures_total` /
   `metadata_model_source_loaded`; update dashboards accordingly. The meta-mcp telemetry /
-  OTel service name changes from `veles-mcp` to `meta-mcp`. Query retry logs use the
+  OTel service name changes from `veles-mcp` to `meta-mcp`; the metadata chart’s default
+  OTel service name changes from `veles` to `metadata`. Query retry logs use the
   operation label `metadata.get_query` instead of `veles.get_query`. The health
   status-adapter key changes from `veles` to `metadata` (roster `adapter = metadata`);
   update the health image and roster together. Ports 7260/7261/7262, proto package and message

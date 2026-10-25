@@ -28,7 +28,7 @@ option java_multiple_files = true;
 // Service
 // =============================================================================
 
-// Renamed from VelesService 2026-10 (MR), formerly `veles`. Wire path changes:
+// Service renamed 2026-10 (MR), formerly `veles`. Wire path changes:
 // /org.tatrman.meta.v1.MetadataService/<Rpc>. All callers in ttr-server, kantheon and
 // tatrman-platform (studio-bff) roll with the server in one wave per cluster.
 service MetadataService {

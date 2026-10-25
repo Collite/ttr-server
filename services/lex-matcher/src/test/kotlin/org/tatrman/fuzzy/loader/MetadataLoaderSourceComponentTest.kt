@@ -679,7 +679,7 @@ class MetadataLoaderSourceComponentTest :
                     runBlocking { repo.forceRefresh() }
                     val before = version()
 
-                    // Metadata' item version hashes the whole model version: a new measure moves it.
+                    // The metadata service's item version hashes the whole model version: a new measure moves it.
                     metadata.pages =
                         mapOf("" to page(listOf(vocabulary("er.entity.store.state", stateSql, version = "model-2"))))
                     runBlocking { repo.forceRefresh() }

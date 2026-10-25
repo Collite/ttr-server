@@ -111,7 +111,7 @@ class FlightEdge(
         val DISABLED_STATUS: JsonObject = buildJsonObject { put("enabled", false) }
 
         /**
-         * The edge with its production collaborators: the loopback runner, Metadata' catalog and the schema probe, every
+         * The edge with its production collaborators: the loopback runner, the metadata service's catalog and the schema probe, every
          * call authenticated and placed in its world by [identity] — the door behind the edge trusts the identity it
          * is handed, so the edge never answers an unverified caller.
          */

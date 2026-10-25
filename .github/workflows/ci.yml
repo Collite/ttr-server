@@ -638,7 +638,10 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - name: metadata rename guard — formerly `veles` (MR)
-        run: bash scripts/guard-metadata-rename.sh # formerly `veles`
+        run: bash scripts/guard-metadata-rename.sh
+
+      - name: self-test metadata rename guard with binary and path probes
+        run: bash scripts/guard-metadata-rename.selftest.sh
 
       - name: enforce SPDX license headers
         run: bash scripts/check-spdx.sh

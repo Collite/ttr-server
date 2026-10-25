@@ -105,7 +105,7 @@ fun interface SchemaProbe {
 /**
  * BI (contracts C-4) — the Flight SQL catalog, from Metadata: four `ListObjects` (entities, queries, tables, views) name
  * the model's packages and one `GetModel(packages)` carries every entity, query, table and view in them (BI-0 memo §4:
- * 73 objects in 0.14 s on hartland). The answer is cached by Metadata' model version, which is itself re-read at most
+ * 73 objects in 0.14 s on hartland). The answer is cached by the metadata service's model version, which is itself re-read at most
  * once per [ttlSeconds]: within that window a catalog call touches no Metadata at all.
  *
  * A saved logical query declares no columns; they are probed through the door as the caller ([SchemaProbe]) and kept
@@ -590,7 +590,7 @@ object ModelArrowTypes {
     }
 }
 
-/** The production [MetadataCatalogClient]: Metadata' gRPC (7261). */
+/** The production [MetadataCatalogClient]: the metadata service's gRPC (7261). */
 class GrpcMetadataCatalogClient(
     host: String,
     port: Int,

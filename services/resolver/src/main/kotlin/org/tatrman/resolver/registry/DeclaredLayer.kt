@@ -23,7 +23,7 @@ import kotlin.io.path.readBytes
 /**
  * ttr-server#209 — several compiled lexicon archives, served as ONE declared layer.
  *
- * An estate whose packages come from two sources (Metadata' `METADATA_GIT2_*`) gets one archive per
+ * An estate whose packages come from two sources (the metadata service's `METADATA_GIT2_*`) gets one archive per
  * source: each source's own model gate builds and publishes it, and the deployment mounts all of
  * them. This object is where they become one layer again, and the bar it is held to is exact:
  * **the merge of the archives equals the archive ONE build over all of those packages packs** —

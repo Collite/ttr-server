@@ -33,7 +33,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 
 /**
- * MV-T2 T7 — the hartland shape, end to end on the lex-matcher side: Metadata' listing as T1 recorded it
+ * MV-T2 T7 — the hartland shape, end to end on the lex-matcher side: the metadata service's listing as T1 recorded it
  * for hartland (the four member vocabularies, their methods, their read plans byte for byte), run
  * through the real loader and the real JDBC row mapping against an H2 warehouse in PostgreSQL mode,
  * read back through `GetStatus`. `MV_STATUS_DUMP=<file>` writes the response — the reference the

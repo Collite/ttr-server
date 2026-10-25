@@ -251,7 +251,7 @@ Metadata serves the model of one git repository, cloned at install and re-fetche
 | Key | Type | Default | Notes |
 |---|---|---|---|
 | `metadata.metadata.gitRemoteUri` | string | `https://github.com/Collite/ttr-demo.git` | The **public Hartland demo model**, so a fresh install has a model to explore with no token. `""` ⇒ no model source: Metadata logs an error and never turns ready. |
-| `metadata.metadata.gitBranch` | string | `master` | Hartland's branch. **Set it together with `gitRemoteUri`.** `""` renders no env var (Metadata' own default applies). |
+| `metadata.metadata.gitBranch` | string | `master` | Hartland's branch. **Set it together with `gitRemoteUri`.** `""` renders no env var (the metadata service's own default applies). |
 | `metadata.metadata.gitSubdirectory` | string | `model` | The model's directory inside the repository — Hartland's. **Set it together with `gitRemoteUri`.** |
 | `metadata.secretEnv` | list | `METADATA_GIT_TOKEN` from Secret `metadata-github-pat` (key `token`, optional) | A read token for a private repository. |
 

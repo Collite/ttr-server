@@ -273,14 +273,14 @@ fun main(args: Array<String>): Unit =
 /**
  * Review-004 R2 — resolve the metadata gRPC client target from the
  * `metadata{}` block in `application.conf`. `metadata.host` / `metadata.port`
- * default to `"meta"` / `7261` and are overridden by the `METADATA_GRPC_HOST`
+ * default to `"metadata"` / `7261` and are overridden by the `METADATA_GRPC_HOST`
  * / `METADATA_GRPC_PORT` env vars (HOCON `${?…}` substitution) — the exact env
  * vars the k8s deployment sets.
  *
  * A blank host returns `null` so the tools report "not wired" rather than the
  * process crashing — the local no-backend mode (`METADATA_GRPC_HOST=""`).
  *
- * Before the rename, the manifest set `VELES_GRPC_HOST` / `VELES_GRPC_PORT` (formerly `veles`).
+ * Before the rename, the manifest used the former service prefix for host/port (formerly `veles`).
  * The previous bug read the different `METADATA_GRPC_*` names directly, with a stale `7204`
  * default, so the pod never connected and every tool returned not-wired. These names are now
  * the supported HOCON overrides. `main()` and the wiring test both go through this function
