@@ -1,0 +1,18 @@
+{
+  "confidence": 0.91,
+  "createdAt": "2026-10-25T10:00:00Z",
+  "id": 5001,
+  "payloadJson": "{\"candidates\":[{\"code\":\"cn.HeldOrder\",\"label\":\"Pozastavená objednávka\",\"score\":0.91,\"source\":\"lexicon\",\"system\":\"cn\"}],\"concept\":\"cn.HeldOrder\",\"lemma\":\"pozastavený\",\"linkMethod\":\"lexicon\",\"surface\":\"pozastavená\"}",
+  "producer": "cz-mentions",
+  "producerVersion": "sha256:5d1f8a03c2e94b7a6f0c1d2e3b4a59687c6d5e4f3a2b1c0d9e8f7a6b5c4d3e2f",
+  "runId": "step-1/1",
+  "spans": [
+    {
+      "end": 79,
+      "start": 68,
+      "unitId": 101
+    }
+  ],
+  "type": "Mention",
+  "unitId": 101
+}

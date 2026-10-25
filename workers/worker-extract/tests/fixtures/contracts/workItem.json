@@ -1,0 +1,26 @@
+{
+  "attempt": 1,
+  "consume": {
+    "types": [
+      "Section",
+      "SectionKind"
+    ],
+    "visibility": "active"
+  },
+  "deadlineAt": "2026-10-25T12:00:00Z",
+  "documentId": "hartland-review-000123",
+  "family": "cz-mentions",
+  "generation": "g1",
+  "kind": "nlp-pipeline",
+  "planId": "plan-hartland-review-000123-1",
+  "priority": "lo",
+  "runId": "step-1/1",
+  "stepId": "step-1",
+  "unitIds": [
+    101,
+    102
+  ],
+  "version": "1",
+  "versionHash": "sha256:3b6f0c1e9a4d2b7c8e5f1a0d9c6b3e2f4a7d0c9b8e1f2a3d4c5b6e7f8a9b0c1d",
+  "visibility": "CANDIDATE"
+}
