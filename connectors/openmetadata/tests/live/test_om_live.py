@@ -64,6 +64,8 @@ def test_check_sync_idempotency_and_deprecation(om: LiveOm, tmp_path: Path) -> N
         str(FIXTURE),
         "--world",
         "northline",
+        "--cn-name-mode",
+        "qname",
         "--studio-url",
         "https://studio.example",
         "--state-file",

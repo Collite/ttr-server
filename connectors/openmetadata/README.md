@@ -66,6 +66,11 @@ failure; 3 mapping failure. Argparse usage failures exit 2.
 
 Display names prefer English; Czech-only names append `(<cs label>)` to the source
 name. Descriptions prefer English, otherwise retain all language-labelled text.
+OM names are case-insensitive across a whole glossary. For models with distinct
+CN kinds/qualities sharing a label (such as `Channel` and `channel`), select
+`--cn-name-mode qname` to use canonical CN names while retaining labels in
+`displayName`. Default `label` preserves existing catalog naming. Keep the selected
+mode stable for that catalog; the writer adopts existing terms by `ttrQname`.
 Names are deterministic; OM FQN collisions, ambiguous bindings, multiple CN parents
 and cyclic hierarchies fail explicitly. Terms are ordered with parents first.
 Related-term references are added after all terms exist. Existing unrelated
@@ -74,7 +79,12 @@ CN operations carry `cn: true` so that writer can apply custom properties after 
 import or use the fallback payload when `--cn-path glossary` is selected.
 
 Table FQNs come from each `defs.json.connections[]` descriptor:
-`<locators.openmetadata.service>.<database>.<schema>.<table>`. Only matching schemas
+`<locators.openmetadata.service>.<database>.<schema>.<table>`. Optional
+`locators.openmetadata.schema` supplies the physical catalog schema when the model
+uses a handle (for example model `dbo` → PostgreSQL `public`). The descriptor's
+`schema` still selects model objects; the locator changes only their OM addresses.
+An absent override retains the original behavior; an empty/non-string override fails.
+Only matching schemas
 participate. Dot-containing name segments are quoted. Multiple connections yield
 separate asset operations. Missing service/database locators produce one warning
 per connection and no links for that connection. The planner does not know which
@@ -86,7 +96,8 @@ without creating it. Missing columns are also skipped with a warning.
 State JSON has `snapshot`, `ids` (TTR qnames), and `om_version`. State is written
 only after successful sync, using a same-directory temporary file, fsync and atomic
 rename. IDs are sorted and deduplicated. The URL reader sends `If-None-Match` from
-state; an initial 304 ends the run with no operations. A 304 without state or after
+state; an initial 304 ends the run with no operations and a zero-counter sync summary
+(plan/dry-run remain silent). A 304 without state or after
 part of a new export is an export error.
 
 Missing ids plus `delta.removed` yield `Deprecate` operations; live rename targets

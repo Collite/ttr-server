@@ -2,6 +2,7 @@
 """C-14 CLI: offline plan, registry check, and successful-sync state boundary."""
 
 import argparse
+import json
 import sys
 from pathlib import Path
 
@@ -25,6 +26,7 @@ def main(argv: list[str] | None = None) -> int:
             command.add_argument("--world", help="defaults to the export world; must match it")
             command.add_argument("--studio-url")
             command.add_argument("--cn-path", choices=("owl", "glossary"), default="glossary")
+            command.add_argument("--cn-name-mode", choices=("label", "qname"), default="label")
             command.add_argument("--state-file", type=Path)
             command.add_argument(
                 "--deprecate-missing", action=argparse.BooleanOptionalAction, default=True
@@ -48,12 +50,27 @@ def main(argv: list[str] | None = None) -> int:
                 else UrlSource(args.export_url).read(state)
             )
             if isinstance(export, NotModified):
+                if not dry:
+                    print(
+                        json.dumps(
+                            {
+                                "snapshot": export.snapshot,
+                                "created": 0,
+                                "updated": 0,
+                                "deprecated": 0,
+                                "linked": 0,
+                                "warnings": 0,
+                            }
+                        )
+                    )
                 return 0
         except (ExportError, OSError, ValidationError) as exc:
             print(f"export error: {exc}", file=sys.stderr)
             return 2
         try:
-            result = plan_from_export(export, args.world, args.studio_url)
+            result = plan_from_export(
+                export, args.world, args.studio_url, cn_name_mode=args.cn_name_mode
+            )
             if args.cn_path == "glossary":
                 result.operations = [
                     op for op in result.operations if not isinstance(op, ImportRdf)

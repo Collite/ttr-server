@@ -31,11 +31,12 @@ def sync_args(tmp_path: Path) -> list[str]:
     ]
 
 
+@pytest.mark.parametrize("cn_name_mode", ["label", "qname"])
 def test_sync_twice_and_deprecate(
-    export: Export, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    export: Export, tmp_path: Path, capsys: pytest.CaptureFixture[str], cn_name_mode: str
 ) -> None:
     fake = FakeOm(export)
-    args = sync_args(tmp_path)
+    args = [*sync_args(tmp_path), "--cn-name-mode", cn_name_mode]
     with responses.RequestsMock(assert_all_requests_are_fired=False) as mock:
         fake.install(mock)
         assert main(args) == 0
@@ -440,7 +441,14 @@ def test_sync_304_is_no_op_even_with_unreadable_token(
             == 0
         )
         assert len(mock.calls) == 1
-        assert capsys.readouterr().out == ""
+        assert json.loads(capsys.readouterr().out) == {
+            "snapshot": "fixture-1",
+            "created": 0,
+            "updated": 0,
+            "deprecated": 0,
+            "linked": 0,
+            "warnings": 0,
+        }
     assert path.read_bytes() == before
 
 
