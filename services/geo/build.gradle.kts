@@ -120,13 +120,13 @@ dependencies {
     // RG-P3.S0 metadata-seam component test — stands up an in-process Veles
     // (MetadataServiceImpl) over the semantics fixture to prove MetaV1GeoDiscovery
     // maps the real meta.v1 projection to the discovery domain types.
-    testImplementation(project(":services:veles"))
+    testImplementation(project(":services:metadata"))
     testImplementation(libs.tatrman.ttr.metadata)
     testImplementation(libs.grpc.inprocess)
 
     // Component tier — the durable Postgres boundary cache round-trips over a REAL
     // Postgres (Testcontainers). Physically separated into `src/componentTest` (repo
-    // convention, mirror :services:veles) so the mocked-only unit `test` gate stays
+    // convention, mirror :services:metadata) so the mocked-only unit `test` gate stays
     // Docker-free and green offline. The convention suite (root build) already carries
     // project()/kotest/testcontainers; these are geo-main `implementation` deps the
     // spec imports directly (not on the componentTest compile classpath transitively).

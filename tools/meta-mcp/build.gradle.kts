@@ -93,7 +93,7 @@ dependencies {
     // veles-client lib (extracted 2026-06-18, Golem Stage 2.2); it carries the
     // grpc-kotlin-stub + netty transport transitively, so they're dropped here.
     implementation(project(":shared:proto"))
-    implementation(project(":services:veles"))
+    implementation(project(":services:metadata"))
     implementation(project(":shared:libs:kotlin:meta-client"))
 
     implementation(libs.ktor.opentelemetry)

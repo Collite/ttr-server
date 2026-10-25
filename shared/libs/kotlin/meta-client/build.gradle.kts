@@ -3,7 +3,7 @@
 // (GetModel / GetPrompts / list*). Extracted from tools/veles-mcp (2026-06-18,
 // Golem Stage 2.2) so Golem's PackageContext + PromptStore and Pythia consume one
 // client, not per-module copies. Depends only on :shared:proto (which generates the
-// grpc + grpckt stubs) + the netty transport — NOT on :services:veles (the server).
+// grpc + grpckt stubs) + the netty transport — NOT on :services:metadata (the server).
 plugins {
     base
     alias(libs.plugins.kotlin.jvm)

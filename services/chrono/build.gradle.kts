@@ -105,7 +105,7 @@ dependencies {
     // RG-P3.S0 metadata-seam component test — stands up an in-process Veles
     // (MetadataServiceImpl) over the semantics fixture to prove MetaV1SemanticDiscovery
     // maps the real meta.v1 projection to the discovery domain types.
-    testImplementation(project(":services:veles"))
+    testImplementation(project(":services:metadata"))
     testImplementation(libs.tatrman.ttr.metadata)
     testImplementation(libs.grpc.inprocess)
 }
