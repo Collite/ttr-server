@@ -1,0 +1,22 @@
+uses world "hartland.worlds.demo"
+import hartland.*
+import hartland.automation.*
+recipe {
+ key: order.order_number
+ as of: now
+ parameters: [tolerance, confirmation_threshold]
+ candidates placed_orders(out orders) target erp """sql
+ SELECT o.order_number FROM er.entity.order o
+ """
+ decision verdict(in orders) {
+  orders -> switch {
+   mode: overlapping
+   release: true because: "approved writer fixture"
+  }
+ }
+ actions {
+  verdict.release -> release { order: order_number, customer: 42, value: 100.00, held_for: "Sales" }
+  verdict.release -> hold { order: order_number, department: "Sales" }
+  verdict.release -> audit_state { state: "open" }
+ }
+}

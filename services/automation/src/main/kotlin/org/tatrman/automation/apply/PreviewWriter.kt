@@ -135,6 +135,7 @@ internal class PreviewWriter private constructor(
         fun resolve(
             action: AutomationAction,
             entities: List<Entity>,
+            pinnedTargets: Map<String, org.tatrman.ttrp.resolve.TargetResolution.Resolved>?,
         ): PreviewWriter {
             if (action.columns.isEmpty() || action.set != null || action.transition != null) unsupported()
             if (action.columns
@@ -146,16 +147,34 @@ internal class PreviewWriter private constructor(
             }
             val targets =
                 action.columns.map { column ->
-                    val entityName = column.type.substringBeforeLast('.', "")
-                    val attributeName = column.type.substringAfterLast('.')
-                    val entity =
-                        entities.singleOrNull {
-                            entityName in
-                                setOf(it.qname.name, it.qname.dotted(), "${it.qname.`package`}.${it.qname.name}")
-                        } ?: unsupported()
-                    val attribute =
-                        entity.attributes.singleOrNull { it.qname.name.substringAfterLast('.') == attributeName }
-                            ?: unsupported()
+                    val pinned = pinnedTargets?.get(column.type)
+                    val (entity, attribute) =
+                        if (pinnedTargets != null) {
+                            val target = pinned ?: unsupported()
+                            target.entity to target.attribute
+                        } else {
+                            // Legacy recipes have no recorded scope: retain their existing name matching.
+                            val entityName = column.type.substringBeforeLast('.', "")
+                            val attributeName = column.type.substringAfterLast('.')
+                            val entity =
+                                entities.singleOrNull {
+                                    entityName in
+                                        setOf(
+                                            it.qname.name,
+                                            it.qname.dotted(),
+                                            "${it.qname.`package`}.${it.qname.name}",
+                                        )
+                                } ?: unsupported()
+                            entity to
+                                (
+                                    entity.attributes.singleOrNull {
+                                        it.qname.name.substringAfterLast(
+                                            '.',
+                                        ) == attributeName
+                                    }
+                                        ?: unsupported()
+                                )
+                        }
                     if (attribute.aggregated) unsupported()
                     Triple(column.name, entity, attribute)
                 }

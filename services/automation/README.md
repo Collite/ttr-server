@@ -313,7 +313,7 @@ Reading never evaluates. In `batch_rows`, inserts store their row directly; upda
 named operation payload in `row`, with key/group in the corresponding columns. Rows remain `staged`.
 
 Scalar action arguments and predicates share the published TTR-P parser/type checker and `ttrp-emit` plan lowering at the existing
-0.18.7 grammar / 0.12.11 translator pins. Each predicate runs once over its verified route snapshot in a private
+0.18.9 grammar / 0.12.11 translator pins. Each predicate runs once over its verified route snapshot in a private
 DuckDB database, selecting row ordinals without another Query call. Boolean composition, SQL null semantics,
 case, membership, text ordering, addition/subtraction/multiplication and typed date casts are supported where the compiler
 can lower them. Only referenced columns/bindings enter the scratch database. Decimal literals/bindings and
@@ -379,12 +379,38 @@ declarations refuse when the writer mapping is prepared, including empty selecti
 type spellings remain supported. All consumers must rebuild because the Attribute JVM signatures changed.
 The translator and plan-proto pins move together to 0.12.11, the version required by the published emitter.
 
-Writer defaults currently require the existing explicit development mode (`automation.development=true`
-and `automation.approvals=off`). Governed Open returns `501 preview-unsupported` before claiming a run
-when any wired action declares `writer_defaults`, even when old approvals/fingerprints match. Current
-recipe/program/deployment fingerprints do not cover action defaults; the producer must add and publish
-that approval dependency and coordinate consumer/export fingerprints before this refusal can be removed.
-An unrelated, unwired action does not block a recipe. No new approvals bypass is added.
+Governed writer defaults use the published 0.18.9 approval verifier. At load, the Server keeps
+`recipe.approvalDependencies` as JSON, checks its version first, and then strictly reads the v1 fields.
+Missing/null/renamed v1 fields, unknown v1 keys, non-object evidence or future versions refuse only
+that recipe with `409 recipe-stale` at Open;
+the refreshed bundle and unrelated recipes stay available. Recorded imports use complete reconciled loader
+files (including injected stdlib). Every file in a governed recipe's scope must declare `package`, because
+the producer and Server use different loader roots. A checkout under `/tmp/automation-bundles/<branch>` works.
+
+Coverage resolves once per loaded recipe. Open checks grants before revealing coverage details, then uses
+that stored result to verify approval eligibility before claiming. Preview uses the exact resolved actions,
+entities and attributes that passed the verifier for every native effect: writer, set, transition and
+their key columns. Both paths choose pinned or legacy explicitly; missing pins never fall back to names.
+The ER entity list is pinned once in the bundle. Mapping
+completeness and default validity remain preview-preparation checks. The descriptor and registry reuse the
+same stored resolution. Optional exported text/values/program/deployment fingerprints still must match.
+
+Coverage refusals retain `differs:[text]`, `approved.text:null` and `current.text`, and add
+`coverage: missing|malformed|unsupported|unresolved|ambiguous|stale`. On deployment detail,
+`coverage: {recipe: kind}` is separate from `unapproved`; either makes `deployment.stale` true. An approval
+of the displayed text cannot repair invalid coverage: rebuild/correct metadata or scope, or upgrade the
+consumer for unsupported evidence. Only valid coverage can progress to normal fingerprint approvals.
+
+Default-free legacy bundles retain text/1. Without recorded scope, action names shared across packages
+refuse as ambiguous: rename the action or adopt evidence; rebuilding the same legacy recipe alone cannot
+fix the ambiguity. Existing startup-gated explicit development mode (`automation.development=true`,
+`automation.approvals=off`) can exercise defaults without evidence; present evidence always verifies and
+opening policy records the bypass. The descriptor/registry always report governed approval and coverage
+status, even in development mode; a missing-coverage refusal there does not gate the explicit development
+Open bypass. Unprepared coverage still refuses in both modes. No new bypass is added. These dependencies cover native preview only;
+physical writes, connector configuration and deferred actions need their own closure. Core#294 can replace
+a stdlib entity with a same-qname project entity; an unavailable qualified target refuses safely.
+The published fixture and real Open/evaluate/ledger proofs are under `src/test/resources/approval-evidence`.
 
 Native writer actions can explicitly declare `writer_defaults` for optional action columns. For example,
 with columns mapped to `proposal.state`, `proposal.run` and `proposal.created`:
@@ -411,7 +437,7 @@ and authored would-text, and share the same atomic completion/refusal as explici
 Duplicate/unknown/malformed entries, unsupported context names and defaults on non-writer actions refuse.
 
 This contract uses the published metadata's free-form `AutomationAction.properties` lane; grammar/metadata
-remain 0.18.7 and translator/plan-proto 0.12.11. The current generic semantics validator warns about the new
+are now 0.18.9 and translator/plan-proto 0.12.11. The current generic semantics validator warns about the new
 property; the Server consumer owns its strict validation. No grammar syntax or typed library API changed.
 Generated writer IDs and Hartland's authored default mappings/bundles remain pending, as do obligation/
 key-lookup/calendar/column-date synthesis. P2 must validate actual physical bounds and writable policies

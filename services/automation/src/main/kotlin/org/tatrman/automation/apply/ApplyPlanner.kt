@@ -13,7 +13,7 @@ import org.tatrman.automation.bundle.ManifestWiring
 import org.tatrman.automation.runner.*
 import org.tatrman.ttr.metadata.model.AutomationAction
 import org.tatrman.ttr.metadata.model.Entity
-import org.tatrman.ttr.metadata.model.ErSchema
+import org.tatrman.ttrp.resolve.TargetResolution
 import java.time.Clock
 import java.util.UUID
 
@@ -21,19 +21,8 @@ import java.util.UUID
 data class PreviewMetadata(
     val actions: Map<String, AutomationAction>,
     val entities: List<Entity>,
-) {
-    companion object {
-        fun from(bundle: Bundle) =
-            PreviewMetadata(
-                bundle.actions.toMap(),
-                (bundle.model.schemas["er"] as? ErSchema)
-                    ?.entities
-                    ?.values
-                    .orEmpty()
-                    .toList(),
-            )
-    }
-}
+    val targets: Map<String, Map<String, org.tatrman.ttrp.resolve.TargetResolution.Resolved>> = emptyMap(),
+)
 
 /** Pure synthesis over verified staged results. No model connection, writer, connector or new Query reads. */
 class ApplyPlanner(
@@ -49,6 +38,7 @@ class ApplyPlanner(
         val argumentNames: Set<String>,
         val arguments: Map<Int, Map<String, JsonElement>>,
         val writer: PreviewWriter?,
+        val targets: Map<String, TargetResolution.Resolved>?,
     )
 
     suspend fun preview(runner: PartRunner): PreviewPlan {
@@ -108,6 +98,7 @@ class ApplyPlanner(
                     val matches = wiring.whenCondition?.let { PreviewConditions.select(it, table, context.bindings) }
                     val indices = table.rows.indices.filter { matches == null || it in matches }
                     val action = metadata.actions.getValue(wiring.action)
+                    val targets = metadata.targets[wiring.action]
                     val defaults = PreviewWriterDefaults.resolve(action, context)
                     // Presence wins, including explicit NULL. Defaults do not read other arguments.
                     val columns = defaults.expressions + wiring.columns
@@ -116,7 +107,7 @@ class ApplyPlanner(
                         if (action.sinks[Bundle.NATIVE] ==
                             "writer"
                         ) {
-                            PreviewWriter.resolve(action, metadata.entities)
+                            PreviewWriter.resolve(action, metadata.entities, targets)
                         } else {
                             null
                         }
@@ -178,6 +169,7 @@ class ApplyPlanner(
                                 index to arguments
                             }.toMap(),
                         writer,
+                        targets,
                     )
                 }
             for ((index, values) in table.rows.withIndex()) {
@@ -236,7 +228,7 @@ class ApplyPlanner(
                             )
                     }
                 }
-                for ((wiring, argumentNames, arguments, writer) in selected) {
+                for ((wiring, argumentNames, arguments, writer, targets) in selected) {
                     val scalarArguments = arguments[index] ?: continue
                     val action = metadata.actions.getValue(wiring.action)
                     val args = linkedMapOf<String, JsonElement>()
@@ -260,7 +252,7 @@ class ApplyPlanner(
                     val sink = action.sinks[Bundle.NATIVE] ?: unsupported("action ${wiring.action} has no native sink")
                     val start = rows.size
                     when (sink) {
-                        "transition" -> effects(action, args, metadata, rows)
+                        "transition" -> effects(action, args, metadata, targets, rows)
                         "writer" -> rows += requireNotNull(writer).insert(rows.size + 1, args)
                         "deliver", "task", "start", "emit" -> Unit
                         else -> unsupported("native $sink preview requires its writer lowering")
@@ -281,23 +273,25 @@ class ApplyPlanner(
         return PreviewPlan(batch, context.id.toString(), rows, actions)
     }
 
-    private fun effects(
+    internal fun effects(
         action: AutomationAction,
         args: Map<String, JsonElement>,
         metadata: PreviewMetadata,
+        pinned: Map<String, TargetResolution.Resolved>?,
         rows: MutableList<ApplyRow>,
     ) {
         require(action.set != null || action.transition != null) { "transition sink has no effects" }
 
-        fun target(attribute: String): Pair<Entity, String> {
-            val entity = attribute.substringBeforeLast('.')
+        fun target(ref: String): TargetResolution.Resolved {
+            if (pinned != null) return pinned[ref] ?: unsupported("effect target was not pinned")
+            val entity = ref.substringBeforeLast('.')
             val found =
                 metadata.entities.singleOrNull { it.qname.name == entity || it.qname.dotted() == entity }
                     ?: unsupported("effect target is missing or ambiguous")
-            require(
-                found.attributes.any { it.qname.name.substringAfterLast('.') == attribute.substringAfterLast('.') },
-            ) { "unknown effect attribute" }
-            return found to attribute.substringAfterLast('.')
+            val attribute =
+                found.attributes.singleOrNull { it.qname.name.substringAfterLast('.') == ref.substringAfterLast('.') }
+                    ?: unsupported("unknown effect attribute")
+            return TargetResolution.Resolved(found, attribute)
         }
 
         fun key(entity: Entity): JsonObject {
@@ -306,9 +300,12 @@ class ApplyPlanner(
             return JsonObject(
                 columns.associate { attribute ->
                     val source =
-                        action.columns.singleOrNull {
-                            it.type ==
-                                "${entity.qname.name}.${attribute.qname.name.substringAfterLast('.')}"
+                        action.columns.singleOrNull { column ->
+                            if (pinned != null) {
+                                pinned[column.type]?.let { it.entity == entity && it.attribute == attribute } == true
+                            } else {
+                                column.type == "${entity.qname.name}.${attribute.qname.name.substringAfterLast('.')}"
+                            }
                         }
                             ?: unsupported("effect requires a key lookup")
                     attribute.qname.name.substringAfterLast('.') to (
@@ -321,7 +318,11 @@ class ApplyPlanner(
         action.set?.let { set ->
             // An omitted optional argument means no assignment; an explicit null remains an assignment.
             if (set.column in args) {
-                val (entity, attribute) = target(set.attribute)
+                val resolved = target(set.attribute)
+                val entity = resolved.entity
+                val attribute =
+                    resolved.attribute.qname.name
+                        .substringAfterLast('.')
                 rows +=
                     ApplyRow(
                         rows.size + 1,
@@ -333,12 +334,16 @@ class ApplyPlanner(
             }
         }
         action.transition?.let { transition ->
-            val (entity, attribute) = target(transition.attribute)
+            val resolved = target(transition.attribute)
+            val entity = resolved.entity
+            val attribute =
+                resolved.attribute.qname.name
+                    .substringAfterLast('.')
             val to =
                 transition.to?.let(::JsonPrimitive) ?: args[transition.toColumn]
                     ?: unsupported("transition target is missing")
             require(to is JsonPrimitive && to.isString) { "transition target must be a state" }
-            val states = entity.attributes.single { it.qname.name.substringAfterLast('.') == attribute }.states
+            val states = resolved.attribute.states
             require(states.isEmpty() || to.content in states) { "unknown transition target state" }
             rows +=
                 ApplyRow(

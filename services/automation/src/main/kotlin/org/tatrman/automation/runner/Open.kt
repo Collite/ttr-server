@@ -87,19 +87,6 @@ class Open(
             bundle.programsOf(d).singleOrNull { bundle.programs[it]?.recipe == recipeName }
                 ?: portRefused("deployment does not select exactly one program for recipe $recipeName")
         val program = bundle.programs.getValue(programName)
-        // Recipe text/values and program/deployment fingerprints do not cover action defaults yet.
-        // Until the producer emits that approval dependency, only the explicit development mode may
-        // exercise this preview feature. Even a matching old approval cannot authorize new defaults.
-        if (!approvalsOff &&
-            recipe.recipe.wiring.any { wiring ->
-                bundle.actions[wiring.action]?.properties?.any { it.first == "writer_defaults" } == true
-            }
-        ) {
-            throw AutomationException(
-                ErrorCode.PREVIEW_UNSUPPORTED,
-                "writer default approval fingerprints are unavailable",
-            )
-        }
         val world = bundle.worldOf(d) ?: error("loaded deployment has no world")
         val identity =
             RunAs(GrantMap(world.grants, world.identities), world.identities, tokens).resolve(
@@ -107,6 +94,22 @@ class Open(
                 DeploymentIdentity(request.deployment, programName, BundleLoader.runAs(d.runAs), bundle.author),
                 if (d.debug) DebugAs.CALLER else null,
             )
+        val coverage = recipe.coverage
+        coverage.refusal?.takeUnless { approvalsOff && coverage.defaultsWithoutEvidence }?.let { reason ->
+            throw AutomationException(
+                ErrorCode.RECIPE_STALE,
+                reason,
+                buildJsonObject {
+                    put("differs", JsonArray(listOf(JsonPrimitive("text"))))
+                    // Invalid coverage cannot establish an approved text, even if a ledger row matches the manifest.
+                    putJsonObject("approved") { put("text", JsonNull) }
+                    putJsonObject("current") { put("text", recipe.recipe.fingerprints.text) }
+                    put("reason", reason)
+                    put("coverage", requireNotNull(coverage.coverage).wire)
+                },
+            )
+        }
+        val pinnedActions = coverage.actions
         val fps = recipe.recipe.fingerprints
         val programFp = bundle.programFps.getValue(programName)
         val deploymentFp = bundle.deploymentFps.getValue(request.deployment)
@@ -176,11 +179,14 @@ class Open(
                 batch,
                 allowRestrictedView = d.allowRestrictedView,
                 detailLimit = detailLimit,
-                detailLimits = detailLimits(recipe.recipe, bundle.actions, detailLimit),
+                detailLimits = detailLimits(recipe.recipe, pinnedActions, detailLimit),
                 syncBudget = sync,
                 previewMetadata =
-                    org.tatrman.automation.apply.PreviewMetadata
-                        .from(bundle),
+                    org.tatrman.automation.apply.PreviewMetadata(
+                        pinnedActions,
+                        bundle.entities,
+                        coverage.targets,
+                    ),
             )
         if (port.keys != null &&
             port.keys.size > context.readCeiling

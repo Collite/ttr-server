@@ -26,7 +26,7 @@ import java.util.concurrent.atomic.AtomicInteger
 class DryRunSpec :
     StringSpec({
         fun writerMetadata(amountType: String = "decimal"): PreviewMetadata {
-            val original = PreviewMetadata.from(BundleFixture.load())
+            val original = legacyPreviewMetadata(BundleFixture.load())
             val order = original.entities.single { it.qname.name == "order" }
             val key = order.attributes.single { it.isKey }
             val target =
@@ -105,7 +105,7 @@ class DryRunSpec :
                         }
                         """.trimIndent()
                 }
-                val loaded = PreviewMetadata.from(BundleFixture.load(root)).actions.getValue("default_writer")
+                val loaded = legacyPreviewMetadata(BundleFixture.load(root)).actions.getValue("default_writer")
                 val original = writerMetadata()
                 val target = original.entities.single()
                 val field = target.attributes.first()
@@ -257,7 +257,7 @@ class DryRunSpec :
 
         "defaults on non-writer actions cannot be silently ignored" {
             supervisorScope {
-                val original = PreviewMetadata.from(BundleFixture.load())
+                val original = legacyPreviewMetadata(BundleFixture.load())
                 val action = original.actions.getValue("hold")
                 val metadata =
                     original.copy(
@@ -471,7 +471,7 @@ class DryRunSpec :
         "unsupported effects and invalid conditions fail once before any decision or preview journal" {
             for (problem in listOf("writer", "condition", "key-lookup", "expression", "text", "types", "syntax")) {
                 supervisorScope {
-                    val original = PreviewMetadata.from(BundleFixture.load())
+                    val original = legacyPreviewMetadata(BundleFixture.load())
                     var metadata = original
                     var recipe = previewRecipe()
                     when (problem) {
@@ -1051,7 +1051,7 @@ class DryRunSpec :
 
         "each action describes only its own detail limit while the batch keeps the shared snapshot" {
             supervisorScope {
-                val original = PreviewMetadata.from(BundleFixture.load())
+                val original = legacyPreviewMetadata(BundleFixture.load())
                 val notify = original.actions.getValue("notify")
                 val limited =
                     notify.copy(
@@ -1152,7 +1152,7 @@ class DryRunSpec :
 
         "model metadata and action texts come from the pinned context, and numeric conditions preserve decimals" {
             supervisorScope {
-                val original = PreviewMetadata.from(BundleFixture.load())
+                val original = legacyPreviewMetadata(BundleFixture.load())
                 val release =
                     original.actions.getValue("release").copy(
                         dryRun =
@@ -1217,7 +1217,7 @@ class DryRunSpec :
 
         "qualified manifest wiring applies the action's authored detail limit before previewing" {
             val recipe = previewRecipe().recipe
-            val actions = PreviewMetadata.from(BundleFixture.load()).actions
+            val actions = legacyPreviewMetadata(BundleFixture.load()).actions
             val notify = actions.getValue("notify")
             val source =
                 org.tatrman.ttr.parser.model
@@ -1336,7 +1336,7 @@ private fun previewRecipe(): LoadedRecipe {
 private class PreviewFixture(
     scope: CoroutineScope,
     recipe: LoadedRecipe = previewRecipe(),
-    metadata: PreviewMetadata = PreviewMetadata.from(BundleFixture.load()),
+    metadata: PreviewMetadata = legacyPreviewMetadata(BundleFixture.load()),
     refuseJournal: Boolean = false,
     store: StagingStore = LocalStagingStore(Files.createTempDirectory("au-preview")),
 ) {

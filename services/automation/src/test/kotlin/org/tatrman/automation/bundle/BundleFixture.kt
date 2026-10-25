@@ -9,7 +9,6 @@ import org.tatrman.automation.identity.AuthorMap
 import org.tatrman.automation.identity.ServiceTokens
 import java.nio.file.Files
 import java.nio.file.Path
-import java.nio.file.StandardCopyOption
 import java.time.Clock
 import java.time.Instant
 import java.time.ZoneOffset
@@ -33,19 +32,7 @@ object BundleFixture {
 
     fun copy(): Path {
         val target = Files.createTempDirectory("automation-fixture")
-        Files.walk(root).use { s ->
-            s.forEach { src ->
-                val dst = target.resolve(root.relativize(src).toString())
-                if (Files.isDirectory(
-                        src,
-                    )
-                ) {
-                    Files.createDirectories(dst)
-                } else {
-                    Files.copy(src, dst, StandardCopyOption.REPLACE_EXISTING)
-                }
-            }
-        }
+        copyFixtureTree(root, target)
         return target
     }
 

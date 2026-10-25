@@ -1,0 +1,234 @@
+{
+  "schemaVersion": 3,
+  "ttrpVersion": 2,
+  "toolchain": "org.tatrman:ttrp:0.18.9",
+  "program": "release_order.ttrp",
+  "world": {
+    "qname": "hartland.worlds.demo",
+    "fingerprint": "sha256:f22d2996de19a569dbcd5c0b6ab9a3dbda56440b652dfdbe851eebfeb5bba676"
+  },
+  "islands": [
+    {
+      "name": "placed_orders",
+      "engine": "erp",
+      "executor": "native",
+      "invocation": "sql-text",
+      "file": "islands/placed_orders.orders.sql",
+      "sha256": "sha256:92e6ca45d0d5661a54757dfcbca7d1f2e9d57345d45d7d2b5529500a317a603b",
+      "connections": [
+        "TTR_CONN_ERP"
+      ],
+      "outputs": [
+        {
+          "port": "orders",
+          "file": "islands/placed_orders.orders.sql",
+          "sha256": "sha256:92e6ca45d0d5661a54757dfcbca7d1f2e9d57345d45d7d2b5529500a317a603b",
+          "columns": [
+            {
+              "name": "order_number",
+              "type": "text"
+            }
+          ],
+          "keyed": true,
+          "storage": "erp_db"
+        }
+      ],
+      "schema": "er"
+    },
+    {
+      "name": "verdict",
+      "engine": "erp",
+      "executor": "native",
+      "invocation": "sql-text",
+      "file": "islands/verdict.release.sql",
+      "sha256": "sha256:6e1b136e5f80929303cc0142923e923da081a326314606b4ff0ce1067864b01b",
+      "connections": [
+        "TTR_CONN_ERP"
+      ],
+      "outputs": [
+        {
+          "port": "release",
+          "file": "islands/verdict.release.sql",
+          "sha256": "sha256:6e1b136e5f80929303cc0142923e923da081a326314606b4ff0ce1067864b01b",
+          "columns": [
+            {
+              "name": "order_number",
+              "type": "text"
+            },
+            {
+              "name": "route",
+              "type": "text"
+            },
+            {
+              "name": "verdict_reason",
+              "type": "text"
+            }
+          ],
+          "keyed": true,
+          "storage": "erp_db"
+        }
+      ],
+      "schema": "er"
+    }
+  ],
+  "transfers": [],
+  "waves": [
+    [
+      "placed_orders"
+    ],
+    [
+      "verdict"
+    ]
+  ],
+  "connections": [
+    "TTR_CONN_ERP"
+  ],
+  "displays": [],
+  "rejectSites": [],
+  "recipe": {
+    "name": "release_order",
+    "key": [
+      "order.order_number"
+    ],
+    "asOf": "now",
+    "parameters": [
+      {
+        "name": "tolerance",
+        "type": "decimal",
+        "value": "0.01"
+      },
+      {
+        "name": "confirmation_threshold",
+        "type": "decimal",
+        "value": "50000"
+      }
+    ],
+    "bindings": [
+      {
+        "name": "as_of",
+        "type": "datetime",
+        "source": "run"
+      }
+    ],
+    "roles": {
+      "candidates": "placed_orders",
+      "contexts": [],
+      "decision": "verdict",
+      "routes": [
+        {
+          "name": "release",
+          "because": "approved writer fixture",
+          "detail": [],
+          "turnFed": false
+        }
+      ],
+      "switchMode": "overlapping"
+    },
+    "wiring": [
+      {
+        "routes": [
+          "verdict.release"
+        ],
+        "action": "release",
+        "columns": {
+          "order": "order_number",
+          "customer": "42",
+          "value": "100.00",
+          "held_for": "\"Sales\""
+        }
+      },
+      {
+        "routes": [
+          "verdict.release"
+        ],
+        "action": "hold",
+        "columns": {
+          "order": "order_number",
+          "department": "\"Sales\""
+        }
+      },
+      {
+        "routes": [
+          "verdict.release"
+        ],
+        "action": "audit_state",
+        "columns": {
+          "state": "\"open\""
+        }
+      }
+    ],
+    "kinds": [
+      "sql"
+    ],
+    "mode": "per-candidate",
+    "windows": [],
+    "verdictSchema": {
+      "entity": "release_order_verdict",
+      "columns": [
+        {
+          "name": "run",
+          "type": "text"
+        },
+        {
+          "name": "as_of",
+          "type": "timestamp"
+        },
+        {
+          "name": "order_number",
+          "type": "text"
+        },
+        {
+          "name": "route",
+          "type": "text"
+        },
+        {
+          "name": "verdict_reason",
+          "type": "text"
+        },
+        {
+          "name": "parameters_fp",
+          "type": "text"
+        },
+        {
+          "name": "run_as",
+          "type": "text"
+        },
+        {
+          "name": "written_at",
+          "type": "timestamp"
+        }
+      ],
+      "detail": "release_order_verdict_detail",
+      "current": "release_order_verdict_current"
+    },
+    "objectsRead": [
+      "er.entity.order"
+    ],
+    "fingerprints": {
+      "text": "sha256:bc553dab99efd0d219025e1fc6b5b9e3069cedf74ed1e1fa0cddfd8655b6ef5a",
+      "values": "sha256:54e165c4463646ed8b9ae490dc1a830b34e76dda883caa0f3df407699c7ae888",
+      "labels": "sha256:bcf48e2c164b2a0175b5c310c4d8b77541a13ffcd1e6aee76b495b316a9f454b"
+    },
+    "protocol": "always",
+    "approvalDependencies": {
+      "version": 1,
+      "imports": [
+        "hartland",
+        "hartland.automation"
+      ],
+      "textBase": "sha256:e0cf9ae6fb770c0af57d3ed18bdd674709e59c76afe653b1b2c7d5c5a19e45d2",
+      "actions": {
+        "audit_state": "sha256:0efef8f3023fac2595a688a586fe10990209e892d5db7c73534f3251463bc7fe",
+        "hold": "sha256:609a9e29ea8652f35e7ee6de8d664336be186d326a9b5d5191299008cb67acb5",
+        "release": "sha256:d3ec475aa4de523f17414f89a47e9c22adcddd28013a40a1142397d9a953cb40"
+      }
+    }
+  },
+  "files": {
+    "README.md": "sha256:f7daf3a20518a62fbdf78afad7e795f54601b8238f477f4addff77a675b3777a",
+    "catalog/release_order.ttrm": "sha256:ac32370e211d2e8715ff18096f1b251b48581b91348b579add6dea742e569564",
+    "catalog/release_order_verdict.ttrm": "sha256:e1a40f72485615093cb5e77d59ccd8cc3757eb2d6685f5037c37ebd2f63f867f",
+    "islands/placed_orders.orders.sql": "sha256:92e6ca45d0d5661a54757dfcbca7d1f2e9d57345d45d7d2b5529500a317a603b",
+    "islands/verdict.release.sql": "sha256:6e1b136e5f80929303cc0142923e923da081a326314606b4ff0ce1067864b01b"
+  }
+}
