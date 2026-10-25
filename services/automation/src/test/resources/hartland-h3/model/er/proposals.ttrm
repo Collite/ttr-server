@@ -1,0 +1,54 @@
+package hartland
+
+model er
+
+// AU (automation agents) — the H-3 / H-5 write-back entities. Empty at build: the recipes write them
+// (`writable:` in the world file, D-79), the n8n purchasing workflow moves a proposal to `started`.
+
+def entity reorder_proposal {
+    description: "Reorder proposals — a product to reorder at a distribution center, proposed by the reorder recipe from stock on hand and weekly demand. State: proposed · approved · rejected · started."
+    labelPlural: "Reorder Proposals"
+    roles: [transaction]
+    displayLabel: { en: "Reorder Proposal", cs: "Návrh na doobjednání" }
+    attributes: [
+        def attribute proposal_id   { type: bigint, isKey: true, description: "Proposal number." },
+        def attribute run           { type: text, description: "The automation run that made the proposal." },
+        def attribute item          { type: int, description: "Product to reorder — FK to the 'sk' attribute of the Product (item) entity." },
+        def attribute warehouse     { type: int, description: "Distribution center to reorder for — FK to the 'sk' attribute of the Distribution Center (warehouse) entity." },
+        def attribute on_hand       { type: int, description: "Units on hand when the proposal was made." },
+        def attribute weekly_demand { type: { type: decimal, length: 12, precision: 2 }, description: "Average units sold per week at that center." },
+        def attribute proposed_qty  { type: int, description: "Units proposed for reorder." },
+        def attribute state {
+            type: text,
+            description: "Proposal state: 'proposed', 'approved', 'rejected' or 'started' (handed to purchasing).",
+            states: [proposed, approved, rejected, started],         // AU D-67 — the writer proposes, the buyer's ask and purchasing move it
+            valueLabels: {
+                "proposed": { en: "Proposed",             cs: "Navrženo" },
+                "approved": { en: "Approved",             cs: "Schváleno" },
+                "rejected": { en: "Rejected",             cs: "Zamítnuto" },
+                "started":  { en: "Handed to purchasing", cs: "Předáno nákupu" }
+            }
+        }
+    ]
+}
+
+def entity winback_mail {
+    description: "Win-back mailings — a lapsed customer the win-back recipe mailed an offer to, one per customer and quarter. Offer: premium · standard."
+    labelPlural: "Win-back Mailings"
+    roles: [transaction]
+    displayLabel: { en: "Win-back Mailing", cs: "Win-back e-mail" }
+    attributes: [
+        def attribute customer  { type: int, isKey: true, description: "Mailed customer — FK to the 'sk' attribute of the Customer entity." },
+        def attribute quarter   { type: text, isKey: true, description: "The quarter of the mailing, e.g. '2026-Q4'." },
+        def attribute offer {
+            type: text,
+            description: "The offer mailed: 'premium' or 'standard'.",
+            valueLabels: {
+                "premium":  { en: "Premium offer",  cs: "Prémiová nabídka" },
+                "standard": { en: "Standard offer", cs: "Standardní nabídka" }
+            }
+        },
+        def attribute run       { type: text, description: "The automation run that mailed it." },
+        def attribute mailed_at { type: datetime, description: "When the mail was sent." }
+    ]
+}

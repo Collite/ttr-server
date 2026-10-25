@@ -1,0 +1,134 @@
+package hartland
+
+model lexicon locale cs
+
+// CN-P6 S6.1 T6 — the Czech words of the conceptual package (model/cn/*.ttrm), design `11` §1's forms. A concept's
+// `label:` is no term; these are its words. A multi-word form is matched as written (the resolver's lemma lookup reads
+// one-word mentions only — cs/automation.ttrm), so the cases a question uses are declared.
+//
+// What a concept term does (cn contracts §1.5): a span that matches it binds the CONCEPT, its landing as the binding's
+// domain and the concept as `EntityBinding.concepts[]` (resolver ≥ 0.11.23). A phase phrase is longer than its
+// bearer's word («pozastavené objednávky» against «objednávky»), so it wins the span (the longest covered span).
+//
+// No term repeats a word an element already carries, but «zákazník» (below): a word on an element lifts to the concepts
+// grounded there (the archive's `liftsTo`), so «reklamace» reads `ReturnRequest`, «faktura» `Invoicing`, «tržby»
+// `revenue` already, and a second term would only claim the word twice. «zákazník» is declared because S6.1 puts the
+// bare word's DEFAULT sense on it: the role, never one of its phases.
+//
+// Held back, deliberately:
+//   - the three channel phases (`StoreSale`, `WebSale`, `MarketplaceSale`): their words are the value labels of
+//     `sales.channel` («tržiště», «web», «kanál prodejen»), which the Golem honours as a FILTER (md/hop HP-H). A phase
+//     phrase would take the span from the label, and a Golem that reads no concept reading would lose the channel;
+//   - `Return` ← «vratka»: the bare word is no term (lexicon/tests/store-family.test.mjs, until there is an all-channel
+//     returns OBJECT to ask), and `channel_returns`, its landing, is not one yet (model/er/channel_returns.ttrm).
+//
+// `default: true` on «zákazník» only (S6.1 T6): a bare «zákazník» is the role, never a phase of it (AM-36).
+//
+// ⚑ For Bora's review — the Czech wording.
+
+// ---- the role, and the revenue verb ----
+def term customer_cn_cs {
+    description: "zákazník — the customer role (the default sense of the bare word)"
+    for: cn.Customer
+    // The element's own word, deliberately (A-CN-8): cn.Customer grounds to er.entity.customer through the hop, so the
+    // compiler suppresses the collision (RG-LEXC-004) and the resolver reads the pair as one sense (R-cn-1). This rule
+    // has no cn view yet.
+    // ttr-disable-next-line lexicon-form-collides-with-name
+    forms: ["zákazník"]
+    default: true
+}
+def term revenue_verb_cs {
+    description: "utržit — what was taken in: the revenue quality (S6.2 T0's «utržili»)"
+    for: cn.revenue
+    forms: ["utržit", "utržili", "utržil", "utržila", "utržilo", "utržíme"]
+}
+
+// ---- orders (H-1) ----
+def term pending_order_cs {
+    description: "čekající objednávka — placed or held, waiting for its (re-)check"
+    for: cn.PendingOrder
+    forms: [
+        "čekající objednávka", "čekající objednávky", "čekajících objednávek", "čekajícím objednávkám",
+        "objednávka ke kontrole", "objednávky ke kontrole", "objednávek ke kontrole"
+    ]
+}
+def term held_order_cs {
+    description: "pozastavená objednávka — held"
+    for: cn.HeldOrder
+    forms: [
+        "pozastavená objednávka", "pozastavené objednávky", "pozastavených objednávek", "pozastavenou objednávku",
+        "blokovaná objednávka", "blokované objednávky", "blokovaných objednávek"
+    ]
+}
+// Not «zadaná objednávka» (the phase's label): «objednávky zadané ve 3. čtvrtletí» are orders PLACED in a period, of
+// any state (the corpus's d1), and a state phase would answer a different question.
+def term placed_order_cs {
+    description: "nezkontrolovaná objednávka — placed, not checked yet"
+    for: cn.PlacedOrder
+    forms: ["nezkontrolovaná objednávka", "nezkontrolované objednávky", "nezkontrolovaných objednávek"]
+}
+def term short_line_cs {
+    description: "řádek bez krytí — a line its center cannot cover today"
+    for: cn.ShortLine
+    forms: [
+        "řádek bez krytí", "řádky bez krytí", "řádků bez krytí", "řádku bez krytí",
+        "nekrytý řádek", "nekryté řádky", "nekrytých řádků", "bez krytí"
+    ]
+}
+def term mispriced_line_cs {
+    description: "cenová odchylka — a line whose price is off the applicable one"
+    for: cn.MispricedLine
+    forms: [
+        "cenová odchylka", "cenové odchylky", "cenových odchylek", "cenovou odchylkou", "cenovou odchylku",
+        "řádek s odchylkou ceny", "řádky s odchylkou ceny", "řádků s odchylkou ceny"
+    ]
+}
+def term overdue_invoice_cs {
+    description: "faktura po splatnosti — open and past its due date"
+    for: cn.OverdueInvoice
+    forms: ["faktura po splatnosti", "faktury po splatnosti", "faktur po splatnosti", "fakturu po splatnosti", "fakturami po splatnosti"]
+}
+def term debtor_customer_cs {
+    description: "zákazník po splatnosti, dlužník — a customer with an overdue invoice"
+    for: cn.DebtorCustomer
+    forms: [
+        "zákazník po splatnosti", "zákazníci po splatnosti", "zákazníků po splatnosti", "zákazníky po splatnosti",
+        "zákazníkům po splatnosti", "zákazník s fakturami po splatnosti", "zákazníci s fakturami po splatnosti",
+        "zákazníků s fakturami po splatnosti", "dlužník", "dlužníci", "dlužníků", "dlužníky"
+    ]
+}
+
+// ---- returns (H-2) ----
+def term abusive_returner_cs {
+    description: "zákazník s nadměrnými vratkami — whose return share is above the limit"
+    for: cn.AbusiveReturner
+    forms: [
+        "nadměrné vratky", "nadměrných vratek", "zákazník s nadměrnými vratkami", "zákazníci s nadměrnými vratkami",
+        "zákazníků s nadměrnými vratkami"
+    ]
+}
+def term received_return_line_cs {
+    description: "přijatý řádek reklamace — a return line waiting for its decision"
+    for: cn.ReceivedReturnLine
+    forms: ["přijatý řádek reklamace", "přijaté řádky reklamace", "přijatých řádků reklamace"]
+}
+def term bought_here_cs {
+    description: "koupeno u nás — the returned item is on the order the request names"
+    for: cn.BoughtHereLine
+    forms: ["koupeno u nás", "koupené u nás", "zboží koupené u nás"]
+}
+def term late_return_line_cs {
+    description: "reklamace po lhůtě — delivered longer ago than the return window"
+    for: cn.LateReturnLine
+    forms: ["reklamace po lhůtě", "řádek reklamace po lhůtě", "řádky reklamace po lhůtě", "řádků reklamace po lhůtě"]
+}
+def term small_value_line_cs {
+    description: "řádek nízké hodnoty — a return line worth less than the small-value limit"
+    for: cn.SmallValueLine
+    forms: ["řádek nízké hodnoty", "řádky nízké hodnoty", "řádků nízké hodnoty"]
+}
+def term in_stock_at_center_cs {
+    description: "skladem v centru zákazníka — the returned item is in stock at the customer's distribution center"
+    for: cn.InStockAtCenter
+    forms: ["skladem v centru zákazníka", "skladem v distribučním centru zákazníka"]
+}

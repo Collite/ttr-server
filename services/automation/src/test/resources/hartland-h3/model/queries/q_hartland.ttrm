@@ -1,0 +1,756 @@
+package hartland
+
+model query
+
+// q.hartland.* #1-15 (D-2). Every query is literal `language: SQL` sourceText against the
+// physical db layer (Stage 2.1) — the grammar has no "language: MD"/dot-path query form
+// (languageValue: SQL | TRANSFORMATION_DSL | DATAFRAME_DSL | REL_NODE), and Stage 2.3
+// already found the MD dot-path drill notation is unimplemented design-stage sugar. The
+// "re-expressed on the md star" framing in the plan is a future-state aspiration, not
+// buildable against the current grammar — noted here rather than silently deviating.
+//
+// "channel?" (optional) params from the D-2 table are NOT baked into the SQL as a
+// parameter — per D-2's own note, chip amendments ("only Marketplace") ride the
+// Filter/Project/Sort STACK over a channel-labeled UNION ALL result, not a new query or a
+// required param. Where D-2 marks channel REQUIRED (no "?": #3/#6/#11/#12/#13), the SQL
+// takes a required `:channel` param filtering a channel-labeled CTE instead. Year params
+// default 2021-2026 (post-redate) at the caller/UI layer, not encoded in sourceText.
+//
+// No query touches profit/cost (D-6a) — the physical columns aren't modeled (Stage 2.1 T4)
+// so there is nothing to join/select even if a query tried.
+
+def query channel_revenue_monthly {
+    // Demo notes (not shown to users): beats 1-2 charts, Metis input series.
+    //
+    // LR 2026-10-10 — `channel` is REQUIRED (D-2 had it optional, riding a chip stack nobody built).
+    // Without it the query could only answer every channel, and the composer used it for a
+    // one-channel question (the Czech demo's 1.4a, „trzby z trziste … po mesicich“ → 36 rows for
+    // store, web AND marketplace). TTR-M query parameters have no default, so "all channels" is the
+    // explicit value `all`: a broader answer is now a decision the plan states, never an accident,
+    // and an unstated channel asks the user (param_fill) instead of answering a wider question.
+    description: {
+        en: "Monthly revenue by channel. One row per channel, year and month, for a range of years; channel is store, web, marketplace, or all for every channel.",
+        cs: "Měsíční tržby podle kanálu. Jeden řádek za kanál, rok a měsíc pro zvolený rozsah let; kanál je store, web, marketplace, nebo all pro všechny kanály."
+    }
+    language: SQL
+    sourceText: """
+        WITH monthly AS (
+            SELECT CAST('store' AS VARCHAR(16)) AS channel, d.d_year, d.d_moy, SUM(ss.ss_ext_sales_price) AS revenue
+            FROM store_sales ss JOIN date_dim d ON ss.ss_sold_date_sk = d.d_date_sk
+            WHERE d.d_year BETWEEN {year_from} AND {year_to}
+            GROUP BY d.d_year, d.d_moy
+            UNION ALL
+            SELECT CAST('web' AS VARCHAR(16)), d.d_year, d.d_moy, SUM(ws.ws_ext_sales_price)
+            FROM web_sales ws JOIN date_dim d ON ws.ws_sold_date_sk = d.d_date_sk
+            WHERE d.d_year BETWEEN {year_from} AND {year_to}
+            GROUP BY d.d_year, d.d_moy
+            UNION ALL
+            SELECT CAST('marketplace' AS VARCHAR(16)), d.d_year, d.d_moy, SUM(cs.cs_ext_sales_price)
+            FROM catalog_sales cs JOIN date_dim d ON cs.cs_sold_date_sk = d.d_date_sk
+            WHERE d.d_year BETWEEN {year_from} AND {year_to}
+            GROUP BY d.d_year, d.d_moy
+        )
+        SELECT channel, d_year, d_moy, revenue
+        FROM monthly
+        WHERE {channel} = 'all' OR channel = {channel}
+        ORDER BY d_year, d_moy, channel
+    """
+    search {
+        patterns: [
+            "(monthly|month by month) revenue (per|by) channel",
+            "revenue by channel over time",
+            "(mesicni|měsíční) trzby (podle|dle) kanalu",
+            "vyvoj trzeb (podle|dle) kanalu (v case|po mesicich)"
+        ],
+        examples: [
+            "Monthly revenue by channel",
+            "Měsíční tržby podle kanálu"
+        ]
+    }
+    parameters: [
+        { name: channel, type: text, label: "Channel" },
+        { name: year_from, type: int, label: "From year" },
+        { name: year_to, type: int, label: "To year" }
+    ]
+}
+
+def query channel_revenue_yoy {
+    // Demo notes (not shown to users): the briefing KPI (the -11%-ish tile).
+    description: {
+        en: "Year-over-year revenue by channel. Each channel's revenue in a year and in the year before, with the change in percent.",
+        cs: "Meziroční tržby podle kanálu. Tržby každého kanálu v daném a v předchozím roce a změna v procentech."
+    }
+    language: SQL
+    sourceText: """
+        WITH cur AS (
+            SELECT CAST('store' AS VARCHAR(16)) AS channel, SUM(ss_ext_sales_price) AS revenue FROM store_sales ss JOIN date_dim d ON ss.ss_sold_date_sk = d.d_date_sk WHERE d.d_year = {year}
+            UNION ALL SELECT CAST('web' AS VARCHAR(16)), SUM(ws_ext_sales_price) FROM web_sales ws JOIN date_dim d ON ws.ws_sold_date_sk = d.d_date_sk WHERE d.d_year = {year}
+            UNION ALL SELECT CAST('marketplace' AS VARCHAR(16)), SUM(cs_ext_sales_price) FROM catalog_sales cs JOIN date_dim d ON cs.cs_sold_date_sk = d.d_date_sk WHERE d.d_year = {year}
+        ), prior AS (
+            SELECT CAST('store' AS VARCHAR(16)) AS channel, SUM(ss_ext_sales_price) AS revenue FROM store_sales ss JOIN date_dim d ON ss.ss_sold_date_sk = d.d_date_sk WHERE d.d_year = {prior_year}
+            UNION ALL SELECT CAST('web' AS VARCHAR(16)), SUM(ws_ext_sales_price) FROM web_sales ws JOIN date_dim d ON ws.ws_sold_date_sk = d.d_date_sk WHERE d.d_year = {prior_year}
+            UNION ALL SELECT CAST('marketplace' AS VARCHAR(16)), SUM(cs_ext_sales_price) FROM catalog_sales cs JOIN date_dim d ON cs.cs_sold_date_sk = d.d_date_sk WHERE d.d_year = {prior_year}
+        )
+        SELECT cur.channel, cur.revenue AS revenue_current, prior.revenue AS revenue_prior,
+               (cur.revenue - prior.revenue) / NULLIF(prior.revenue, 0) * 100 AS yoy_pct
+        FROM cur JOIN prior ON cur.channel = prior.channel
+        ORDER BY cur.channel
+    """
+    search {
+        patterns: [
+            "(year over year|year-over-year|yoy) revenue (per|by) channel",
+            "compare (revenue|sales) {prior_year} (vs|versus|and) {year}",
+            "how did (marketplace |web |store |)revenue develop in {year}",
+            "mezirocni trzby (podle|dle) kanalu",
+            "porovnej trzby {prior_year} (vs|a) {year}",
+            "jak se vyvijela trzba (z trziste |z webu |z prodejen |)(v roce|za rok) {year}"
+        ],
+        examples: [
+            "Compare Web and Marketplace revenue, 2024 vs 2025",
+            "How did Marketplace revenue develop in 2025?",
+            "Porovnej tržby z webu a tržiště, 2024 vs 2025",
+            "Jak se vyvíjela tržba z tržiště v roce 2025?"
+        ]
+    }
+    parameters: [
+        { name: year, type: int, label: "Year" },
+        { name: prior_year, type: int, label: "Prior year" }
+    ]
+}
+
+// One channel, month by month: this year against the prior one, the largest decline first. The
+// yearly per-channel query above cannot say WHICH months fell, and the composer used it for exactly
+// that question (the Czech demo, 3.2: „Které měsíce roku 2025 měly na tržišti největší meziroční
+// pokles?“), answering a different one. Aliases keep clear of SQL keywords (no `month`/`year`).
+def query channel_revenue_monthly_yoy {
+    // Demo notes (not shown to users): which months fell (the H2 dip).
+    description: {
+        en: "Month-by-month year-over-year revenue for one channel. Each month of a year against the same month a year earlier, the largest decline first.",
+        cs: "Meziroční tržby jednoho kanálu po měsících. Každý měsíc roku proti stejnému měsíci předchozího roku, největší pokles první."
+    }
+    language: SQL
+    sourceText: """
+        WITH by_channel AS (
+            SELECT CAST('store' AS VARCHAR(16)) AS channel, d.d_year AS yr, d.d_moy AS moy, ss.ss_ext_sales_price AS amount
+            FROM store_sales ss JOIN date_dim d ON ss.ss_sold_date_sk = d.d_date_sk
+            WHERE d.d_year IN ({year}, {prior_year})
+            UNION ALL
+            SELECT CAST('web' AS VARCHAR(16)), d.d_year, d.d_moy, ws.ws_ext_sales_price
+            FROM web_sales ws JOIN date_dim d ON ws.ws_sold_date_sk = d.d_date_sk
+            WHERE d.d_year IN ({year}, {prior_year})
+            UNION ALL
+            SELECT CAST('marketplace' AS VARCHAR(16)), d.d_year, d.d_moy, cs.cs_ext_sales_price
+            FROM catalog_sales cs JOIN date_dim d ON cs.cs_sold_date_sk = d.d_date_sk
+            WHERE d.d_year IN ({year}, {prior_year})
+        ), monthly AS (
+            SELECT moy,
+                   SUM(CASE WHEN yr = {year} THEN amount ELSE 0 END) AS revenue_current,
+                   SUM(CASE WHEN yr = {prior_year} THEN amount ELSE 0 END) AS revenue_prior
+            FROM by_channel
+            WHERE channel = {channel}
+            GROUP BY moy
+        )
+        SELECT moy AS month_of_year, revenue_current, revenue_prior,
+               (revenue_current - revenue_prior) / NULLIF(revenue_prior, 0) * 100 AS yoy_pct
+        FROM monthly
+        ORDER BY yoy_pct
+    """
+    search {
+        patterns: [
+            "which months (of {year} |)(had|saw) the (largest|biggest) (year over year |yoy |)(drop|decline)",
+            "(monthly|month by month) (year over year|yoy) (revenue|change) (for |on |)(the |){channel}",
+            "ktere mesice (roku {year} |)mely (na trzisti |na webu |v prodejnach |)(nejvetsi|nejhorsi) mezirocni (pokles|propad)",
+            "mezirocni (pokles|propad|zmena) (trzeb |)po mesicich"
+        ],
+        examples: [
+            "Which months of 2025 saw the biggest year-over-year drop on the marketplace?",
+            "Které měsíce roku 2025 měly na tržišti největší meziroční pokles?"
+        ]
+    }
+    parameters: [
+        { name: channel, type: text, label: "Channel" },
+        { name: year, type: int, label: "Year" },
+        { name: prior_year, type: int, label: "Prior year" }
+    ]
+}
+
+def query category_revenue {
+    // Demo notes (not shown to users): category drill (drop spans categories).
+    //
+    // 2026-10-14 — the examples and patterns say what the query answers: revenue per category for ONE
+    // channel in ONE whole year. It computes no drop and takes no half-year, so "which categories drove
+    // the H2 2025 drop" / „které kategorie způsobily propad v 2. pol. 2025“ is gone from both (its premise
+    // is false in both worlds, too: H2 2025 is ~2.3× H1). Every example names a channel and a year — both
+    // are required — and golem shows the FIRST example as a follow-up chip, verbatim. Guarded by
+    // model/queries/tests/queries.test.mjs T6.7; the corpus case p-category-revenue asks the examples (T6.8).
+    // Each pattern names a placeholder once and ends with its last one: veles (ttr-metadata RegexAlgorithm)
+    // refuses a group named twice, and only a placeholder that ends the pattern captures greedily, so an
+    // optional `( in {year}|)` tail left `{channel}` one character long. The year-and-channel pattern comes
+    // first because veles keeps the first of two whole matches (T6.9, T6.10).
+    description: {
+        en: "Revenue by product category for one channel. One row per category in a year, the largest first.",
+        cs: "Tržby podle kategorie produktu pro jeden kanál. Jeden řádek za kategorii v daném roce, největší první."
+    }
+    language: SQL
+    sourceText: """
+        WITH by_channel AS (
+            SELECT CAST('store' AS VARCHAR(16)) AS channel, i.i_category AS category, ss.ss_ext_sales_price AS ext_sales_price
+            FROM store_sales ss JOIN item i ON ss.ss_item_sk = i.i_item_sk JOIN date_dim d ON ss.ss_sold_date_sk = d.d_date_sk
+            WHERE d.d_year = {year}
+            UNION ALL
+            SELECT CAST('web' AS VARCHAR(16)), i.i_category, ws.ws_ext_sales_price
+            FROM web_sales ws JOIN item i ON ws.ws_item_sk = i.i_item_sk JOIN date_dim d ON ws.ws_sold_date_sk = d.d_date_sk
+            WHERE d.d_year = {year}
+            UNION ALL
+            SELECT CAST('marketplace' AS VARCHAR(16)), i.i_category, cs.cs_ext_sales_price
+            FROM catalog_sales cs JOIN item i ON cs.cs_item_sk = i.i_item_sk JOIN date_dim d ON cs.cs_sold_date_sk = d.d_date_sk
+            WHERE d.d_year = {year}
+        )
+        SELECT category, SUM(ext_sales_price) AS revenue
+        FROM by_channel
+        WHERE channel = {channel}
+        GROUP BY category
+        ORDER BY revenue DESC
+    """
+    search {
+        patterns: [
+            "revenue by (product |)category (for |)(channel |){channel} in {year}",
+            "revenue by (product |)category (for |)(channel |){channel}",
+            "trzby (podle|dle) kategorie (pro |)(kanal |){channel} (v roce|za rok) {year}",
+            "trzby (podle|dle) kategorie (pro |)(kanal |){channel}"
+        ],
+        examples: [
+            "Revenue by category for Web in 2025",
+            "Tržby podle kategorie pro web v roce 2025"
+        ]
+    }
+    parameters: [
+        { name: channel, type: text, label: "Channel" },
+        { name: year, type: int, label: "Year" }
+    ]
+}
+
+def query marketplace_revenue_by_warehouse {
+    // Demo notes (not shown to users): beat-3 pivot; the meltdown DC stands out (Memphis DC in the US world, Brno DC in the CZ world).
+    description: {
+        en: "Marketplace revenue by distribution center. One row per distribution center and year.",
+        cs: "Tržby z tržiště podle distribučního centra. Jeden řádek za distribuční centrum a rok."
+    }
+    language: SQL
+    sourceText: """
+        SELECT w.w_warehouse_name AS warehouse, d.d_year, SUM(cs.cs_ext_sales_price) AS revenue
+        FROM catalog_sales cs
+        JOIN warehouse w ON cs.cs_warehouse_sk = w.w_warehouse_sk
+        JOIN date_dim d ON cs.cs_sold_date_sk = d.d_date_sk
+        WHERE d.d_year BETWEEN {year_from} AND {year_to}
+        GROUP BY w.w_warehouse_name, d.d_year
+        ORDER BY d.d_year, revenue DESC
+    """
+    search {
+        patterns: [
+            "marketplace revenue by (warehouse|distribution center|DC)",
+            "which (DC|warehouse|distribution center) drives marketplace",
+            "trzby z trziste (podle|dle) (skladu|distribucniho centra|DC)",
+            "ktere (DC|sklad) tahne trziste"
+        ],
+        examples: [
+            "Marketplace revenue by distribution center",
+            "Tržby z tržiště podle skladu"
+        ]
+    }
+    parameters: [
+        { name: year_from, type: int, label: "From year" },
+        { name: year_to, type: int, label: "To year" }
+    ]
+}
+
+def query top_items_by_revenue {
+    // Demo notes (not shown to users): drill (seed heritage).
+    description: {
+        en: "Top products by marketplace revenue. The best-selling products of a year, as many as asked for.",
+        cs: "Nejprodávanější produkty podle tržeb z tržiště. Produkty s nejvyššími tržbami v daném roce, kolik jich je požadováno."
+    }
+    language: SQL
+    sourceText: """
+        SELECT i.i_item_id, i.i_product_name, SUM(cs.cs_ext_sales_price) AS revenue
+        FROM catalog_sales cs
+        JOIN item i ON cs.cs_item_sk = i.i_item_sk
+        JOIN date_dim d ON cs.cs_sold_date_sk = d.d_date_sk
+        WHERE d.d_year = {year}
+        GROUP BY i.i_item_id, i.i_product_name
+        ORDER BY revenue DESC
+        LIMIT {limit}
+    """
+    search {
+        patterns: [
+            "top (products|items) by revenue",
+            "best selling (products|items)",
+            "nej(prodavanejsi|lepe prodavane) (produkty|polozky)",
+            "top (produkty|polozky) (podle|dle) trzeb"
+        ],
+        examples: [
+            "Top products by revenue last year",
+            "Nejprodávanější produkty za loňský rok"
+        ]
+    }
+    parameters: [
+        { name: year, type: int, label: "Year" },
+        { name: limit, type: int, label: "Limit" }
+    ]
+}
+
+def query returns_by_reason {
+    // Demo notes (not shown to users): S3 evidence — the late-delivery reason, stored in the world's language (US "Did not get it on time", CZ "Nedorazilo včas").
+    description: {
+        en: "Returns by reason for one channel. Returned units and amount per return reason in a year, the largest amount first.",
+        cs: "Reklamace podle důvodu pro jeden kanál. Vrácené kusy a částka za každý důvod reklamace v daném roce, největší částka první."
+    }
+    language: SQL
+    sourceText: """
+        WITH by_channel AS (
+            SELECT CAST('store' AS VARCHAR(16)) AS channel, r.r_reason_desc AS reason, sr.sr_return_quantity AS return_quantity, sr.sr_return_amt AS return_amt
+            FROM store_returns sr JOIN reason r ON sr.sr_reason_sk = r.r_reason_sk JOIN date_dim d ON sr.sr_returned_date_sk = d.d_date_sk
+            WHERE d.d_year = {year}
+            UNION ALL
+            SELECT CAST('web' AS VARCHAR(16)), r.r_reason_desc, wr.wr_return_quantity, wr.wr_return_amt
+            FROM web_returns wr JOIN reason r ON wr.wr_reason_sk = r.r_reason_sk JOIN date_dim d ON wr.wr_returned_date_sk = d.d_date_sk
+            WHERE d.d_year = {year}
+            UNION ALL
+            SELECT CAST('marketplace' AS VARCHAR(16)), r.r_reason_desc, cr.cr_return_quantity, cr.cr_return_amount
+            FROM catalog_returns cr JOIN reason r ON cr.cr_reason_sk = r.r_reason_sk JOIN date_dim d ON cr.cr_returned_date_sk = d.d_date_sk
+            WHERE d.d_year = {year}
+        )
+        SELECT reason, SUM(return_quantity) AS return_qty, SUM(return_amt) AS return_amt
+        FROM by_channel
+        WHERE channel = {channel}
+        GROUP BY reason
+        ORDER BY return_amt DESC
+    """
+    search {
+        patterns: [
+            "returns by reason (for |)(channel |){channel}",
+            "why (are|were) (products|items) returned",
+            "(reklamace|vraceni) (podle|dle) duvodu (pro |)(kanal |){channel}",
+            "proc (se vraci|byly vraceny) (produkty|polozky)"
+        ],
+        examples: [
+            "Returns by reason for Marketplace",
+            // ⚑AU-H-5 (2026-10-18): not the bare „Reklamace podle důvodu“ — the bare word is the return-request document
+            // (⚑AU-H-3); „Reklamace z tržiště“ is the fact, as the en example names Marketplace.
+            "Reklamace z tržiště podle důvodu"
+        ]
+    }
+    parameters: [
+        { name: channel, type: text, label: "Channel" },
+        { name: year, type: int, label: "Year" }
+    ]
+}
+
+def query returns_rate_by_channel {
+    // Demo notes (not shown to users): returns branch.
+    description: {
+        en: "Return rate by channel. Returned amount divided by revenue, per channel in a year.",
+        cs: "Míra reklamací podle kanálu. Vrácená částka vydělená tržbami, za každý kanál v daném roce."
+    }
+    language: SQL
+    sourceText: """
+        WITH sales AS (
+            SELECT CAST('store' AS VARCHAR(16)) AS channel, SUM(ss_ext_sales_price) AS revenue FROM store_sales ss JOIN date_dim d ON ss.ss_sold_date_sk = d.d_date_sk WHERE d.d_year = {year}
+            UNION ALL SELECT CAST('web' AS VARCHAR(16)), SUM(ws_ext_sales_price) FROM web_sales ws JOIN date_dim d ON ws.ws_sold_date_sk = d.d_date_sk WHERE d.d_year = {year}
+            UNION ALL SELECT CAST('marketplace' AS VARCHAR(16)), SUM(cs_ext_sales_price) FROM catalog_sales cs JOIN date_dim d ON cs.cs_sold_date_sk = d.d_date_sk WHERE d.d_year = {year}
+        ), rets AS (
+            SELECT CAST('store' AS VARCHAR(16)) AS channel, SUM(sr_return_amt) AS return_amt FROM store_returns sr JOIN date_dim d ON sr.sr_returned_date_sk = d.d_date_sk WHERE d.d_year = {year}
+            UNION ALL SELECT CAST('web' AS VARCHAR(16)), SUM(wr_return_amt) FROM web_returns wr JOIN date_dim d ON wr.wr_returned_date_sk = d.d_date_sk WHERE d.d_year = {year}
+            UNION ALL SELECT CAST('marketplace' AS VARCHAR(16)), SUM(cr_return_amount) FROM catalog_returns cr JOIN date_dim d ON cr.cr_returned_date_sk = d.d_date_sk WHERE d.d_year = {year}
+        )
+        SELECT sales.channel, sales.revenue, rets.return_amt,
+               rets.return_amt / NULLIF(sales.revenue, 0) * 100 AS return_rate_pct
+        FROM sales JOIN rets ON sales.channel = rets.channel
+        ORDER BY sales.channel
+    """
+    search {
+        patterns: [
+            "return rate (per|by) channel",
+            "what is (our |the |)return rate",
+            "mira (vraceni|reklamaci) (podle|dle) kanalu",
+            "jaka je mira vraceni (podle|dle) kanalu"
+        ],
+        examples: [
+            "What is our return rate by channel?",
+            "Jaká je míra vrácení podle kanálu?"
+        ]
+    }
+    parameters: [
+        { name: year, type: int, label: "Year" }
+    ]
+}
+
+def query warehouse_stockout_weeks {
+    // Demo notes (not shown to users): the smoking gun (17-week streak, S1).
+    description: {
+        en: "Weekly zero-stock incidence per distribution center. For each distribution center and week of a year, how many inventory rows were at zero out of all rows.",
+        cs: "Výskyt nulových zásob po týdnech podle distribučního centra. Pro každé distribuční centrum a týden roku počet záznamů zásob s nulovým stavem ze všech záznamů."
+    }
+    language: SQL
+    sourceText: """
+        SELECT w.w_warehouse_name AS warehouse, d.d_week_seq,
+               SUM(CASE WHEN inv.inv_quantity_on_hand = 0 THEN 1 ELSE 0 END) AS zero_rows,
+               COUNT(*) AS total_rows
+        FROM inventory inv
+        JOIN warehouse w ON inv.inv_warehouse_sk = w.w_warehouse_sk
+        JOIN date_dim d ON inv.inv_date_sk = d.d_date_sk
+        WHERE d.d_year = {year}
+        GROUP BY w.w_warehouse_name, d.d_week_seq
+        ORDER BY w.w_warehouse_name, d.d_week_seq
+    """
+    search {
+        patterns: [
+            "(weekly |)stockout (weeks |)(per|by) warehouse",
+            "which (items|products) were out of stock",
+            "vyprodane (tydny |)(zasoby |)(podle|dle) skladu",
+            "ktere (polozky|produkty) byly vyprodane"
+        ],
+        examples: [
+            "Which items were out of stock at Memphis DC in October 2025?",
+            "Které položky byly vyprodané v Brno DC v říjnu 2025?"
+        ]
+    }
+    parameters: [
+        { name: year, type: int, label: "Year" }
+    ]
+}
+
+def query warehouse_stockout_week_count {
+    // Demo notes (not shown to users): the Czech demo's 3.5 („Kolik týdnů v roce 2025 mělo Brno DC
+    // výpadky zásob?“ → 17, weeks 31–47). LR ruling 1 (2026-10-11): the question asked „nulové
+    // zásoby“, read literally — the DC's TOTAL stock at zero — which never happens (0 weeks). A
+    // stockout week is the seed's own definition (data/seed/02-seed-incident/tests/verify-story.sql
+    // §3): at least half of the DC's inventory rows for the week are at zero. Baseline weeks sit
+    // near 0.1 %, the incident weeks far above half, so the line is not a close call.
+    description: {
+        en: "Stockout weeks of one distribution center in a year. A stockout week is a week in which at least half of the center's inventory rows were at zero; also the first and the last such week of the year.",
+        cs: "Týdny s výpadky zásob jednoho distribučního centra v daném roce. Týden s výpadkem je týden, kdy byla nejméně polovina záznamů zásob centra nulová; také první a poslední takový týden roku."
+    }
+    language: SQL
+    sourceText: """
+        WITH weekly AS (
+            SELECT w.w_warehouse_name AS warehouse, d.d_week_seq,
+                   SUM(CASE WHEN inv.inv_quantity_on_hand = 0 THEN 1 ELSE 0 END) AS zero_rows,
+                   COUNT(*) AS total_rows
+            FROM inventory inv
+            JOIN warehouse w ON inv.inv_warehouse_sk = w.w_warehouse_sk
+            JOIN date_dim d ON inv.inv_date_sk = d.d_date_sk
+            WHERE w.w_warehouse_name = {warehouse} AND d.d_year = {year}
+            GROUP BY w.w_warehouse_name, d.d_week_seq
+        ),
+        base AS (
+            SELECT MIN(d.d_week_seq) AS first_seq FROM date_dim d WHERE d.d_year = {year}
+        )
+        SELECT weekly.warehouse,
+               SUM(CASE WHEN 2 * weekly.zero_rows >= weekly.total_rows THEN 1 ELSE 0 END) AS stockout_weeks,
+               MIN(CASE WHEN 2 * weekly.zero_rows >= weekly.total_rows THEN weekly.d_week_seq - base.first_seq + 1 END) AS first_week,
+               MAX(CASE WHEN 2 * weekly.zero_rows >= weekly.total_rows THEN weekly.d_week_seq - base.first_seq + 1 END) AS last_week
+        FROM weekly CROSS JOIN base
+        GROUP BY weekly.warehouse
+    """
+    search {
+        patterns: [
+            "(how many |)stockout weeks (at|for|did) {warehouse}",
+            "(how many |)weeks (did |){warehouse} (have |)(a |)stock( |)out(s|)",
+            "kolik tydnu (melo |mel |mela |)(dc |sklad |){warehouse} vypadky zasob",
+            "vypadky zasob (v |ve |)(dc |skladu |){warehouse}"
+        ],
+        examples: [
+            "How many stockout weeks did Memphis DC have in 2025?",
+            "Kolik týdnů v roce 2025 mělo Brno DC výpadky zásob?"
+        ]
+    }
+    // {warehouse} is the DC NAME („Brno DC“, „Memphis DC“), as in inventory_on_hand_series.
+    parameters: [
+        { name: warehouse, type: text, label: "Warehouse (DC name)" },
+        { name: year, type: int, label: "Year" }
+    ]
+}
+def query inventory_on_hand_series {
+    // Demo notes (not shown to users): evidence chart behind #8.
+    description: {
+        en: "Weekly stock on hand for one distribution center. Total on-hand quantity per week of a year.",
+        cs: "Týdenní stav zásob jednoho distribučního centra. Celkové množství na skladě po týdnech daného roku."
+    }
+    language: SQL
+    sourceText: """
+        SELECT w.w_warehouse_name AS warehouse, d.d_week_seq, SUM(inv.inv_quantity_on_hand) AS on_hand_qty
+        FROM inventory inv
+        JOIN warehouse w ON inv.inv_warehouse_sk = w.w_warehouse_sk
+        JOIN date_dim d ON inv.inv_date_sk = d.d_date_sk
+        WHERE w.w_warehouse_name = {warehouse} AND d.d_year = {year}
+        GROUP BY w.w_warehouse_name, d.d_week_seq
+        ORDER BY d.d_week_seq
+    """
+    search {
+        patterns: [
+            "(weekly |)inventory (on hand|level) (for|at) (warehouse |){warehouse}",
+            "on hand (quantity|stock) series",
+            "(tydenni |)stav zasob (pro|ve skladu) (sklad |){warehouse}",
+            "vyvoj zasob (skladu |){warehouse}"
+        ],
+        examples: [
+            "Weekly inventory on hand for Memphis DC",
+            "Stav zásob v Brno DC"
+        ]
+    }
+    // {warehouse} is the DC NAME („Brno DC“, „Memphis DC“) — what the examples above say and what a
+    // caller passes. It filtered `w_warehouse_id` (a TPC-DS surrogate code) until 2026-10-10, so every
+    // call with a name answered „Žádné řádky“ (the Czech demo, 3.5).
+    parameters: [
+        { name: warehouse, type: text, label: "Warehouse (DC name)" },
+        { name: year, type: int, label: "Year" }
+    ]
+}
+
+def query customer_channel_overlap {
+    // Demo notes (not shown to users): cannibalization branch (dies: flat).
+    description: {
+        en: "Customers by the combination of channels they bought in. One row per combination of store, web and marketplace in a year, with the number of customers.",
+        cs: "Zákazníci podle kombinace kanálů, ve kterých nakupovali. Jeden řádek za kombinaci prodejny, webu a tržiště v daném roce s počtem zákazníků."
+    }
+    language: SQL
+    sourceText: """
+        WITH touches AS (
+            SELECT ss_customer_sk AS customer_sk, CAST('store' AS VARCHAR(16)) AS channel FROM store_sales ss JOIN date_dim d ON ss.ss_sold_date_sk = d.d_date_sk WHERE d.d_year = {year}
+            UNION ALL
+            SELECT ws_bill_customer_sk, CAST('web' AS VARCHAR(16)) FROM web_sales ws JOIN date_dim d ON ws.ws_sold_date_sk = d.d_date_sk WHERE d.d_year = {year}
+            UNION ALL
+            SELECT cs_bill_customer_sk, CAST('marketplace' AS VARCHAR(16)) FROM catalog_sales cs JOIN date_dim d ON cs.cs_sold_date_sk = d.d_date_sk WHERE d.d_year = {year}
+        ), per_customer AS (
+            SELECT customer_sk,
+                bool_or(channel = 'store') AS bought_store,
+                bool_or(channel = 'web') AS bought_web,
+                bool_or(channel = 'marketplace') AS bought_marketplace
+            FROM touches
+            GROUP BY customer_sk
+        )
+        SELECT bought_store, bought_web, bought_marketplace, COUNT(*) AS customers
+        FROM per_customer
+        GROUP BY bought_store, bought_web, bought_marketplace
+        ORDER BY customers DESC
+    """
+    search {
+        patterns: [
+            "customer channel overlap",
+            "customers (buy|shop) across (multiple |)channels",
+            "prekryv (zakazniku|kanalu)",
+            "kteri zakaznici nakupuji napric kanaly"
+        ],
+        examples: [
+            "Customer channel overlap",
+            "Překryv zákazníků mezi kanály"
+        ]
+    }
+    parameters: [
+        { name: year, type: int, label: "Year" }
+    ]
+}
+
+def query revenue_by_customer_state {
+    // Demo notes (not shown to users): regional branch (dies: even).
+    description: {
+        en: "Revenue by the customer's billing region for one channel. One row per region of the billing address in a year.",
+        cs: "Tržby podle regionu fakturační adresy zákazníka pro jeden kanál. Jeden řádek za region fakturační adresy v daném roce."
+    }
+    language: SQL
+    sourceText: """
+        WITH by_channel AS (
+            SELECT CAST('store' AS VARCHAR(16)) AS channel, ca.ca_state AS state, ss.ss_ext_sales_price AS ext_sales_price
+            FROM store_sales ss JOIN customer_address ca ON ss.ss_addr_sk = ca.ca_address_sk JOIN date_dim d ON ss.ss_sold_date_sk = d.d_date_sk
+            WHERE d.d_year = {year}
+            UNION ALL
+            SELECT CAST('web' AS VARCHAR(16)), ca.ca_state, ws.ws_ext_sales_price
+            FROM web_sales ws JOIN customer_address ca ON ws.ws_bill_addr_sk = ca.ca_address_sk JOIN date_dim d ON ws.ws_sold_date_sk = d.d_date_sk
+            WHERE d.d_year = {year}
+            UNION ALL
+            SELECT CAST('marketplace' AS VARCHAR(16)), ca.ca_state, cs.cs_ext_sales_price
+            FROM catalog_sales cs JOIN customer_address ca ON cs.cs_bill_addr_sk = ca.ca_address_sk JOIN date_dim d ON cs.cs_sold_date_sk = d.d_date_sk
+            WHERE d.d_year = {year}
+        )
+        SELECT state, SUM(ext_sales_price) AS revenue
+        FROM by_channel
+        WHERE channel = {channel}
+        GROUP BY state
+        ORDER BY revenue DESC
+    """
+    search {
+        patterns: [
+            "revenue by (customer |billing |)state (for |)(channel |){channel}",
+            "(regional|geographic) revenue",
+            "trzby (podle|dle) (statu|kraje) (pro |)(kanal |){channel}",
+            "regionalni trzby"
+        ],
+        examples: [
+            "Revenue by state for Web",
+            "Tržby podle státu"
+        ]
+    }
+    parameters: [
+        { name: channel, type: text, label: "Channel" },
+        { name: year, type: int, label: "Year" }
+    ]
+}
+
+def query buyer_age_profile {
+    // Demo notes (not shown to users): demographic branch (dies: flat).
+    description: {
+        en: "Buyer age profile for one channel. Order lines per buyer age in a year.",
+        cs: "Věkový profil kupujících pro jeden kanál. Počet řádků objednávek podle věku kupujícího v daném roce."
+    }
+    language: SQL
+    sourceText: """
+        WITH by_channel AS (
+            SELECT CAST('store' AS VARCHAR(16)) AS channel, c.c_birth_year AS birth_year
+            FROM store_sales ss JOIN customer c ON ss.ss_customer_sk = c.c_customer_sk JOIN date_dim d ON ss.ss_sold_date_sk = d.d_date_sk
+            WHERE d.d_year = {year}
+            UNION ALL
+            SELECT CAST('web' AS VARCHAR(16)), c.c_birth_year
+            FROM web_sales ws JOIN customer c ON ws.ws_bill_customer_sk = c.c_customer_sk JOIN date_dim d ON ws.ws_sold_date_sk = d.d_date_sk
+            WHERE d.d_year = {year}
+            UNION ALL
+            SELECT CAST('marketplace' AS VARCHAR(16)), c.c_birth_year
+            FROM catalog_sales cs JOIN customer c ON cs.cs_bill_customer_sk = c.c_customer_sk JOIN date_dim d ON cs.cs_sold_date_sk = d.d_date_sk
+            WHERE d.d_year = {year}
+        )
+        -- NOTE (2026-07-20): grouping by the raw `birth_year` column is the only form
+        -- that serves rows through the translator for this query. Grouping by a same-level
+        -- SELECT alias fails Calcite parse; wrapping in a derived table + GROUP BY the
+        -- subquery column parses but returns 0 rows through the pipeline (translator quirk,
+        -- valid in raw Postgres). The translator also appears to drop the birth_year filter
+        -- here (a null-age bucket surfaces) — tracked as a demo-polish follow-up.
+        SELECT ({year} - birth_year) AS buyer_age, COUNT(*) AS order_lines
+        FROM by_channel
+        WHERE channel = {channel} AND birth_year IS NOT NULL
+        GROUP BY birth_year
+        ORDER BY birth_year DESC
+    """
+    search {
+        patterns: [
+            "buyer age (profile|distribution) (for |)(channel |){channel}",
+            "customer age (breakdown|demographics)",
+            "vekovy profil (kupujicich|zakazniku) (pro |)(kanal |){channel}",
+            "demografie zakazniku (podle|dle) veku"
+        ],
+        examples: [
+            "Buyer age profile for Marketplace",
+            "Věkový profil kupujících"
+        ]
+    }
+    parameters: [
+        { name: channel, type: text, label: "Channel" },
+        { name: year, type: int, label: "Year" }
+    ]
+}
+
+def query promo_share {
+    // Demo notes (not shown to users): promo branch (dies: dense as always).
+    description: {
+        en: "Promoted versus unpromoted revenue for one channel. The share of a year's revenue sold with and without a promotion.",
+        cs: "Tržby s promoakcí a bez ní pro jeden kanál. Podíl tržeb roku prodaných s promoakcí a bez ní."
+    }
+    language: SQL
+    sourceText: """
+        WITH by_channel AS (
+            SELECT CAST('store' AS VARCHAR(16)) AS channel, ss.ss_promo_sk AS promo_sk, ss.ss_ext_sales_price AS ext_sales_price
+            FROM store_sales ss JOIN date_dim d ON ss.ss_sold_date_sk = d.d_date_sk
+            WHERE d.d_year = {year}
+            UNION ALL
+            SELECT CAST('web' AS VARCHAR(16)), ws.ws_promo_sk, ws.ws_ext_sales_price
+            FROM web_sales ws JOIN date_dim d ON ws.ws_sold_date_sk = d.d_date_sk
+            WHERE d.d_year = {year}
+            UNION ALL
+            SELECT CAST('marketplace' AS VARCHAR(16)), cs.cs_promo_sk, cs.cs_ext_sales_price
+            FROM catalog_sales cs JOIN date_dim d ON cs.cs_sold_date_sk = d.d_date_sk
+            WHERE d.d_year = {year}
+        )
+        SELECT
+            SUM(CASE WHEN promo_sk IS NOT NULL THEN ext_sales_price ELSE 0 END) AS promo_revenue,
+            SUM(ext_sales_price) AS total_revenue,
+            SUM(CASE WHEN promo_sk IS NOT NULL THEN ext_sales_price ELSE 0 END) / NULLIF(SUM(ext_sales_price), 0) * 100 AS promo_share_pct
+        FROM by_channel
+        WHERE channel = {channel}
+    """
+    search {
+        patterns: [
+            "promo (share|revenue share) (for |)(channel |){channel}",
+            "promoted (vs|versus) unpromoted (revenue|sales)",
+            "podil (promo|akcnich) trzeb (pro |)(kanal |){channel}",
+            "akcni (vs|versus) neakcni trzby"
+        ],
+        examples: [
+            "Promo share for Web",
+            "Podíl akčních tržeb"
+        ]
+    }
+    parameters: [
+        { name: channel, type: text, label: "Channel" },
+        { name: year, type: int, label: "Year" }
+    ]
+}
+
+def query store_sales_by_month {
+    // Demo notes (not shown to users): Stores-channel texture (seed heritage).
+    // ttr-demo#62: the Czech wording names the channel by the declared phrase «tržby z prodejen». A bare
+    // «tržby prodejen» is a restriction by the store word, and that asks (dimension or channel?).
+    description: {
+        en: "Store revenue by month. One row per year and month, over all years.",
+        cs: "Tržby z prodejen po měsících. Jeden řádek za rok a měsíc, za všechny roky."
+    }
+    language: SQL
+    sourceText: """
+        SELECT d.d_year, d.d_moy, SUM(ss.ss_ext_sales_price) AS revenue
+        FROM store_sales ss
+        JOIN date_dim d ON ss.ss_sold_date_sk = d.d_date_sk
+        GROUP BY d.d_year, d.d_moy
+        ORDER BY d.d_year, d.d_moy
+    """
+    search {
+        patterns: [
+            "store (channel |)revenue by month",
+            "monthly store sales",
+            "trzby z prodejen (podle|po) (mesici|mesicich)",
+            "mesicni trzby z prodejen"
+        ],
+        examples: [
+            "Store revenue by month",
+            "Měsíční tržby z prodejen"
+        ]
+    }
+    parameters: []
+}
+
+def query customer_running_total {
+    // Demo notes (not shown to users): top-customer drill, window coverage (seed heritage).
+    description: {
+        en: "Running total of each customer's store spend. Cumulative store spend per customer, date by date.",
+        cs: "Průběžný součet útraty zákazníka v prodejnách. Kumulovaná útrata každého zákazníka v prodejnách den po dni."
+    }
+    language: SQL
+    sourceText: """
+        SELECT c.c_customer_id, d.d_date,
+               SUM(ss.ss_ext_sales_price) OVER (PARTITION BY c.c_customer_sk ORDER BY d.d_date) AS running_total
+        FROM store_sales ss
+        JOIN customer c ON ss.ss_customer_sk = c.c_customer_sk
+        JOIN date_dim d ON ss.ss_sold_date_sk = d.d_date_sk
+        ORDER BY c.c_customer_id, d.d_date
+    """
+    search {
+        patterns: [
+            "running total (of |)(customer |)spend",
+            "cumulative (spend|sales) per customer",
+            "kumulativni (utrata|trzby) zakaznika",
+            "prubezny soucet utrat zakazniku"
+        ],
+        examples: [
+            "Running total of customer spend",
+            "Kumulativní útrata zákazníka"
+        ]
+    }
+    parameters: []
+}

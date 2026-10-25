@@ -1,0 +1,35 @@
+package hartland
+
+model er
+
+// Calendar (D-5) — everything joins through it; holiday/seasonality live here.
+// Not listed in the Stage 2.2 task file's suggested layout (it groups date_dim into no
+// named file) — broken out into its own file since it backs the md Calendar dimension
+// (Stage 2.3), which is calc-backed rather than table-backed like the others.
+
+def entity date_dim {
+    description: "Calendar."
+    codeAttribute: sk
+    nameAttribute: cal_date
+    roles: [dimension]
+    displayLabel: { en: "Calendar", cs: "Kalendář" }
+    attributes: [
+        def attribute sk        { type: int, isKey: true, description: "Sequence key; the primary key for this entity, not bearing any meaning." },
+        // `event_date` is what chrono's anchor-column discovery looks for (MetaV1SemanticDiscovery):
+    // it scans the package for an attribute carrying the role and filters the grounded interval
+    // on it. It lives HERE and not on a fact's `sold_date` because every fact dates itself by a
+    // surrogate key (`type: int` -> date_dim.sk), and the role carries `typeConstraint: 'date'`
+    // — an int FK is rejected by the validator, correctly. Every fact reaches this column through
+    // its declared `rel_*_date` relation, so one role annotation dates the whole estate.
+    def attribute cal_date  { type: date, semantics { role: event_date }, description: "Calendar date. The primary grain of the calendar." },
+        def attribute year      { type: int, description: "Derived Year of the calendar date." },
+        def attribute month     { type: int, description: "Derived Month of the calendar date." },
+        def attribute quarter   { type: int, description: "Derived Quarter of the calendar date." },
+        def attribute week_seq  { type: int, description: "Absolute  week number from the beginning of this calendar." },
+        def attribute day_name  { type: text, description: "Name of the day of the week. English only" },
+        def attribute holiday   { type: { type: char, length: 1 }, description: "Is this a holiday? Y/N" },
+        def attribute weekend   { type: { type: char, length: 1 }, description: "Is this a weekend? Y/N" },
+        // AU D-82 — what working_days(…) counts in the automation recipes.
+        def attribute working_day { type: bool, description: "Is this a working day? True when the day is neither a holiday nor a weekend." }
+    ]
+}

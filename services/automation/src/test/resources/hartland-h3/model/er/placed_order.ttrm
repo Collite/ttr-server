@@ -1,0 +1,24 @@
+// Materialized from cn.PlacedOrder by `ttr cn materialize` (CN-D1): the phase's er rendering as a logical query,
+// and the entity stacked on it. Replace the phase's `definition:` by a `cn2er_phase` grounding on the entity (AM-2).
+//
+// CN-P6 S6.1 T4 — written by `ttr cn materialize` (grammar/v0.18.3) from `def phase PlacedOrder { of: Order,
+// definition: """state = 'placed'""" }`, verbatim but for the description below (the Golem's composer reads every
+// entity's). No label: a label is a lexicon term, and «zadaná objednávka» is the phase's own word (lexicon/cn.ttrm).
+// The phase now grounds here (model/cn/phases.ttrm); to change what a placed order is, change the definition there
+// back, re-run the command and commit its text.
+package hartland
+
+model er
+
+def query placed_order_q {
+    sourceText: """sql
+SELECT "order".order_number
+FROM "order"
+WHERE "order".state = 'placed'
+"""
+}
+def entity placed_order {
+    description: "Placed orders — the numbers of the orders waiting for their release check (state 'placed'): the conceptual model's PlacedOrder, materialized. For anything else about an order, ask the Order entity."
+    binding: { target: { query: er.query.placed_order_q } },
+    attributes: [ def attribute order_number { type: int, isKey: true } ]
+}

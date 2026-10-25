@@ -1,0 +1,93 @@
+package hartland
+
+model lexicon locale en
+
+// CN-P6 S6.1 T6 — the English words of the conceptual package, twin of cs/cn.ttrm (which says what a concept term
+// does, why no term repeats an element's word, and why the three channel phases and `Return` have none).
+//
+// Not "placed order(s)" for `PlacedOrder`: "orders placed in Q3" are orders of any state, dated by when they were placed.
+
+def term customer_cn_en {
+    description: "customer — the customer role (the default sense of the bare word)"
+    for: cn.Customer
+    // The element's own word, deliberately (A-CN-8): cn.Customer grounds to er.entity.customer through the hop, so the
+    // compiler suppresses the collision (RG-LEXC-004) and the resolver reads the pair as one sense (R-cn-1). This rule
+    // has no cn view yet.
+    // ttr-disable-next-line lexicon-form-collides-with-name
+    forms: ["customer"]
+    default: true
+}
+def term revenue_verb_en {
+    description: "earned — what was taken in: the revenue quality"
+    for: cn.revenue
+    forms: ["earned", "took in"]
+}
+
+def term pending_order_en {
+    description: "pending order — placed or held, waiting for its (re-)check"
+    for: cn.PendingOrder
+    forms: ["pending order", "pending orders", "order awaiting the check", "orders awaiting the check"]
+}
+def term held_order_en {
+    description: "held order"
+    for: cn.HeldOrder
+    forms: ["held order", "held orders", "order on hold", "orders on hold", "blocked order", "blocked orders"]
+}
+def term placed_order_en {
+    description: "unchecked order — placed, not checked yet"
+    for: cn.PlacedOrder
+    forms: ["unchecked order", "unchecked orders"]
+}
+def term short_line_en {
+    description: "line short of stock"
+    for: cn.ShortLine
+    forms: ["line short of stock", "lines short of stock", "short line", "short lines", "uncovered line", "uncovered lines"]
+}
+def term mispriced_line_en {
+    description: "mispriced line"
+    for: cn.MispricedLine
+    forms: ["mispriced line", "mispriced lines", "price deviation", "price deviations"]
+}
+def term overdue_invoice_en {
+    description: "overdue invoice"
+    for: cn.OverdueInvoice
+    forms: ["overdue invoice", "overdue invoices"]
+}
+def term debtor_customer_en {
+    description: "customer with overdue invoices, debtor"
+    for: cn.DebtorCustomer
+    forms: [
+        "customer with overdue invoices", "customers with overdue invoices", "overdue customer", "overdue customers",
+        "debtor", "debtors"
+    ]
+}
+def term abusive_returner_en {
+    description: "abusive returner"
+    for: cn.AbusiveReturner
+    forms: ["abusive returner", "abusive returners", "excessive returns", "customer with excessive returns", "customers with excessive returns"]
+}
+def term received_return_line_en {
+    description: "received return line"
+    for: cn.ReceivedReturnLine
+    forms: ["received return line", "received return lines"]
+}
+def term bought_here_en {
+    description: "bought from us — the returned item is on the order the request names"
+    for: cn.BoughtHereLine
+    forms: ["bought from us", "item bought from us", "items bought from us"]
+}
+def term late_return_line_en {
+    description: "late return — delivered longer ago than the return window"
+    for: cn.LateReturnLine
+    forms: ["late return", "late returns", "late return line", "late return lines"]
+}
+def term small_value_line_en {
+    description: "small-value return line"
+    for: cn.SmallValueLine
+    forms: ["small-value line", "small-value lines", "low-value return line", "low-value return lines"]
+}
+def term in_stock_at_center_en {
+    description: "in stock at the customer's center"
+    for: cn.InStockAtCenter
+    forms: ["in stock at the customer's center", "in stock at the customer's distribution center"]
+}

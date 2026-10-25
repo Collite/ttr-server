@@ -1,0 +1,119 @@
+package hartland
+
+model cn
+
+// CN-P6 S6.1 T3 — the qualities. Grounded ones by the `grounds:` sugar, one line each; defined ones in the 0.5
+// spellings (A-CN-25…31: `:as_of`, `:<parameter>`, `days(n)`, `within(x, last: …)`, `period contains …`).
+//
+// The md-grounded measures reach er through their BEARER (L16-6, AM-29): `revenue` is a measure of three cubelets, and
+// the hop restricted to `Sale`'s entity lands on `sales.ext_sales_price` — the stacked entity's column whose lineage
+// is the three facts' (md/hop R7). `return_amount` likewise on `channel_returns.return_amt`.
+
+// ---- Sale ----
+def quality revenue   { of: Sale, label: { en: "Revenue", cs: "Tržby" },        grounds: md.revenue }
+def quality quantity  { of: Sale, label: { en: "Units sold", cs: "Prodané kusy" }, grounds: md.quantity }
+def quality sold_date { of: Sale,                                                grounds: er.entity.sales.sold_date }
+
+// ---- Return ----
+def quality return_amount     { of: Return, label: { en: "Returned amount", cs: "Hodnota vratek" }, grounds: md.returnAmount }
+def quality returned_quantity { of: Return, label: { en: "Units returned", cs: "Vrácené kusy" },   grounds: md.quantity }
+def quality returned_date     { of: Return,                                                         grounds: er.entity.channel_returns.returned_date }
+
+// ---- Inventory ----
+def quality quantity_on_hand { of: Inventory, grounds: er.entity.inventory.quantity_on_hand }
+def quality as_of_date       { of: Inventory, grounds: er.entity.inventory.as_of_date }
+
+// ---- Order ----
+def quality order_value    { of: Order, label: { en: "Order value", cs: "Hodnota objednávky" }, grounds: er.entity.order.value }
+def quality state          { of: Order, grounds: er.entity.order.state }          // placed · held · released · cancelled
+def quality held_for       { of: Order, grounds: er.entity.order.held_for }       // Sales · AR · both
+def quality channel        { of: Order, grounds: er.entity.order.channel }        // web · marketplace
+def quality placed_date    { of: Order, grounds: er.entity.order.placed_date }
+def quality delivered_date { of: Order, grounds: er.entity.order.delivered_date }
+
+// ---- OrderLine ----
+def quality line_quantity { of: OrderLine, grounds: er.entity.sales_line.quantity }
+def quality unit_price    { of: OrderLine, grounds: er.entity.sales_line.unit_price }
+def quality line_value    { of: OrderLine, grounds: er.entity.sales_line.ext_sales_price }
+def quality line_date     { of: OrderLine, grounds: er.entity.sales_line.sold_date }
+
+// ---- Invoicing ----
+def quality amount         { of: Invoicing, grounds: er.entity.invoice.amount }
+def quality paid           { of: Invoicing, grounds: er.entity.invoice.paid }
+def quality invoice_status { of: Invoicing, grounds: er.entity.invoice.status }  // open · paid
+def quality issued         { of: Invoicing, grounds: er.entity.invoice.issued }
+def quality due            { of: Invoicing, grounds: er.entity.invoice.due }
+
+// ---- WarehouseOutage, PriceList, CustomerPrice ----
+def quality outage_from   { of: WarehouseOutage, grounds: er.entity.warehouse_outage.from_date }
+def quality outage_to     { of: WarehouseOutage, grounds: er.entity.warehouse_outage.to_date }
+def quality outage_reason { of: WarehouseOutage, grounds: er.entity.warehouse_outage.reason }
+def quality pl_price      { of: PriceList,       grounds: er.entity.price_list.price }
+def quality pl_channel    { of: PriceList,       grounds: er.entity.price_list.channel }
+def quality pl_from       { of: PriceList,       grounds: er.entity.price_list.valid_from }
+def quality pl_to         { of: PriceList,       grounds: er.entity.price_list.valid_to }
+def quality cp_price      { of: CustomerPrice,   grounds: er.entity.customer_price.price }
+def quality cp_from       { of: CustomerPrice,   grounds: er.entity.customer_price.valid_from }
+def quality cp_to         { of: CustomerPrice,   grounds: er.entity.customer_price.valid_to }
+
+// ---- ReturnRequest, ReturnLine ----
+def quality request_state        { of: ReturnRequest, grounds: er.entity.return_request.state }   // received · decided · closed
+def quality requested_date       { of: ReturnRequest, grounds: er.entity.return_request.requested_date }
+def quality return_quantity      { of: ReturnLine,    grounds: er.entity.return_request_line.quantity }
+def quality return_unit_price    { of: ReturnLine,    grounds: er.entity.return_request_line.unit_price }
+def quality return_reason        { of: ReturnLine,    grounds: er.entity.return_request_line.reason }
+def quality requested_resolution { of: ReturnLine,    grounds: er.entity.return_request_line.requested_resolution }
+def quality line_state           { of: ReturnLine,    grounds: er.entity.return_request_line.state }
+def quality way                  { of: ReturnLine,    grounds: er.entity.return_request_line.way }
+
+// ---- Customer ----
+// D-83: the distribution center that ships most of the customer's orders — a quality valued in a kind (AM-17), so a
+// definition can name it as a participant (`InStockAtCenter`). NULL for a customer with no web or marketplace order.
+def quality center { of: Customer, label: { en: "Customer's distribution center", cs: "Distribuční centrum zákazníka" }, value_space: Warehouse, grounds: er.entity.customer.center }
+
+// ---- defined ----
+def quality open_amount {
+    of: Invoicing,
+    label: { en: "Open amount", cs: "Neuhrazená částka" },
+    definition: """amount - paid"""
+}
+// DC-9: the latest stock reading of the line's item at the line's center; no reading is nothing on hand.
+def quality on_hand {
+    of: OrderLine,
+    label: { en: "On hand", cs: "Skladem" },
+    definition: """coalesce(latest(Inventory involving this.item, this.warehouse, by: as_of_date).quantity_on_hand, 0)"""
+}
+def quality short {
+    of: OrderLine,
+    label: { en: "Short", cs: "Chybí" },
+    definition: """line_quantity - on_hand"""
+}
+// A boolean: the line's center is out on the evaluation day.
+def quality outage {
+    of: OrderLine,
+    label: { en: "Center out", cs: "Výpadek centra" },
+    definition: """exists WarehouseOutage involving this.warehouse where period contains :as_of"""
+}
+// DC-2 as a lookup: the customer's individual price beats the channel's list price, each valid on the day the order
+// was placed (AU H-1's `applicable`).
+def quality applicable_price {
+    of: OrderLine,
+    label: { en: "List price", cs: "Ceníková cena" },
+    definition: """coalesce(
+        max(CustomerPrice involving this.item, this.order.customer where period contains this.order.period.start).cp_price,
+        max(PriceList involving this.item where pl_channel = this.order.channel and period contains this.order.period.start).pl_price)"""
+}
+// A return line's value as AU H-2 counts it: quantity × the unit price the customer paid.
+def quality line_amount {
+    of: ReturnLine,
+    label: { en: "Line value", cs: "Hodnota řádku" },
+    definition: """return_quantity * return_unit_price"""
+}
+// DC-4, AU H-2's `return_share`: what the customer asked to return in the last 365 days (rejected lines left out) over
+// what they ordered in the same window — the recipe world's two sums, not the analytical Return / Sale.
+def quality return_share {
+    of: Customer,
+    label: { en: "Return share", cs: "Podíl vratek" },
+    definition: """sum(ReturnLine involving this where within(request.period.at, last: days(365)) and line_state <> 'rejected').line_amount
+        / sum(OrderLine involving this where within(period.at, last: days(365))).line_value"""
+}

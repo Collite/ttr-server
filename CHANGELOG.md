@@ -16,6 +16,11 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+- **automation — partial action and relative duration preview.** Full H3 can preview its proposal and
+  buyer ask. Action-typed calls retain supplied arguments as `deferred: true` intent; `due` preserves exact
+  `amount`/`unit` evidence, including pinned working-day counts. No nested dispatch, grouped task creation
+  or absolute/calendar deadline is performed. Invalid values refuse atomically even on empty routes.
+
 - **resolver — the er statement lane places; it does not re-decide (grammar 0.18.12, ttr-core#308).** The er lane
   now refuses whatever md's validator refuses, and for the same reasons. It also refuses a phase whose join would fan
   out the event's rows, and a negated phase that needs a join. A negated phase reads `NOT COALESCE((…), FALSE)`. A

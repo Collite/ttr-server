@@ -1,0 +1,44 @@
+package hartland
+
+model md
+
+// One cubelet per fact (D-5/BM-5), shape wide (md2db in binding/md2db.ttrm). Grains
+// reference the Stage 2.3 conformed dimensions — Product/Calendar/Customer are shared
+// across every sales+returns cubelet, which is what makes a category drill span
+// Store+Web+Marketplace uniformly (T6 checks this sharing).
+
+def cubelet storeSales {
+    grain: [Product.itemCode, Customer.customerCode, Calendar.day, Store.storeCode, Promotion.promoCode],
+    measures: [revenue, quantity, orderCount, lineCount]
+}
+
+def cubelet webSales {
+    grain: [Product.itemCode, Customer.customerCode, Calendar.day, Promotion.promoCode],
+    measures: [revenue, quantity, orderCount, lineCount]
+}
+
+def cubelet marketplaceSales {
+    grain: [Product.itemCode, Customer.customerCode, Calendar.day, DistributionCentre.dcCode, Promotion.promoCode],
+    measures: [revenue, quantity, orderCount, lineCount]
+}
+
+def cubelet storeReturns {
+    grain: [Product.itemCode, Customer.customerCode, Calendar.day, Store.storeCode, ReturnReason.reasonCode],
+    measures: [returnAmount, quantity]
+}
+
+def cubelet webReturns {
+    grain: [Product.itemCode, Customer.customerCode, Calendar.day, ReturnReason.reasonCode],
+    measures: [returnAmount, quantity]
+}
+
+def cubelet catalogReturns {
+    grain: [Product.itemCode, Customer.customerCode, Calendar.day, DistributionCentre.dcCode, ReturnReason.reasonCode],
+    measures: [returnAmount, quantity]
+}
+
+// The smoking gun (S1): weekly warehouse-level on-hand snapshots.
+def cubelet inventory {
+    grain: [Product.itemCode, DistributionCentre.dcCode, Calendar.week],
+    measures: [onHandQty]
+}

@@ -1276,6 +1276,142 @@ class DryRunSpec :
             }
         }
 
+        "nested action and working-day duration preview preserve partial intent" {
+            supervisorScope {
+                val original = legacyPreviewMetadata(BundleFixture.load())
+                val ask =
+                    original.actions.getValue("ask").copy(
+                        dryRun =
+                            LocalizedText(
+                                mapOf(
+                                    "en" to "would ask {who} to approve {action} for {about}, due {due}",
+                                ),
+                            ),
+                    )
+                val wiring =
+                    ManifestWiring(
+                        listOf("way.hold"),
+                        "ask",
+                        mapOf(
+                            "who" to "role.buyer",
+                            "about" to "department",
+                            "action" to "start { process: concat('purchase-', tenant) }",
+                            "group_by" to "tenant",
+                            "due" to "2 working_days",
+                        ),
+                    )
+                val f =
+                    PreviewFixture(
+                        this,
+                        previewRecipe().withWiring(listOf(wiring)),
+                        original.copy(
+                            actions =
+                                original.actions + ("ask" to ask),
+                        ),
+                    )
+                f.runner.use { runner ->
+                    runner.evaluate()
+                    val action = f.plan!!.actions.single()
+                    action.arguments["action"] shouldBe
+                        buildJsonObject {
+                            put("action", "start")
+                            put("arguments", buildJsonObject { put("process", "purchase-a") })
+                            put("deferred", true)
+                        }
+                    action.arguments["due"] shouldBe
+                        buildJsonObject {
+                            put("amount", 2)
+                            put("unit", "working_days")
+                        }
+                    action.arguments["group_by"] shouldBe JsonPrimitive("a")
+                    action.batchRows shouldBe emptyList()
+                    action.would shouldBe
+                        "would ask role.buyer to approve start { process: \"purchase-a\" } for Sales, due 2 working_days"
+                    runner.evaluate()
+                    f.journals.get() shouldBe 1
+                    f.reads.get() shouldBe 5
+                    f.legacy.get() shouldBe 0
+                }
+            }
+        }
+
+        "empty routes accept nested action intents without creating tasks or deadlines" {
+            supervisorScope {
+                val wiring =
+                    ManifestWiring(
+                        listOf("way.empty"),
+                        "ask",
+                        mapOf(
+                            "who" to "role.buyer",
+                            "about" to "department",
+                            "action" to "start { process: \"purchasing\" }",
+                            "due" to "2 working_days",
+                        ),
+                    )
+                val f = PreviewFixture(this, previewRecipe().withWiring(listOf(wiring)))
+                f.runner.use { runner ->
+                    runner.evaluate()
+                    f.plan!!.actions shouldBe emptyList()
+                    f.journals.get() shouldBe 1
+                    f.reads.get() shouldBe 5
+                }
+            }
+        }
+
+        "invalid deferred intent after earlier writer work refuses atomically on nonempty and empty routes" {
+            for (route in listOf("way.hold", "way.empty")) {
+                supervisorScope {
+                    val ask =
+                        ManifestWiring(
+                            listOf(route),
+                            "ask",
+                            mapOf(
+                                "who" to "role.buyer",
+                                "about" to "department",
+                                "action" to "start { process: \"private\", process: \"duplicate\" }",
+                                "due" to "2 working_days",
+                            ),
+                        )
+                    val recipe = previewRecipe().withWiring(listOf(writerWiring(listOf("way.release")), ask))
+                    val f = PreviewFixture(this, recipe, writerMetadata())
+                    f.runner.use { runner ->
+                        repeat(2) {
+                            shouldThrow<AutomationException> { runner.evaluate() }.code shouldBe
+                                ErrorCode.PREVIEW_UNSUPPORTED
+                        }
+                        f.plan shouldBe null
+                        f.journals.get() shouldBe 0
+                        f.reads.get() shouldBe 5
+                        f.legacy.get() shouldBe 0
+                    }
+                }
+            }
+        }
+
+        "unselected deferred scalar arguments validate without executing their casts" {
+            supervisorScope {
+                val wiring =
+                    ManifestWiring(
+                        listOf("way.hold"),
+                        "ask",
+                        mapOf(
+                            "who" to "role.buyer",
+                            "about" to "department",
+                            "action" to "start { process: cast('private' as int) }",
+                            "due" to "2 working_days",
+                        ),
+                        "false",
+                    )
+                val f = PreviewFixture(this, previewRecipe().withWiring(listOf(wiring)))
+                f.runner.use { runner ->
+                    runner.evaluate()
+                    f.plan!!.actions shouldBe emptyList()
+                    f.journals.get() shouldBe 1
+                    f.reads.get() shouldBe 5
+                }
+            }
+        }
+
         "bound-date conditions and arguments share the pinned run time and one atomic completion" {
             supervisorScope {
                 val recipe =

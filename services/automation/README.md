@@ -323,6 +323,23 @@ scalar kinds require an explicit cast. Invalid predicates refuse even on empty r
 lowering and local execution failures return `501 preview-unsupported` before decision/batch completion.
 Repeated wiring stays repeated and the selected rows retain original route order.
 
+Action-typed wiring calls and explicit `on_due` calls now produce deferred preview evidence, for example
+`{"action":"start","arguments":{"process":"purchasing"},"deferred":true}`. Supplied scalar leaves use
+that same compiler projection over condition-selected rows; omitted partial-call arguments remain absent.
+Relative `due` values preserve an exact count and unit, e.g. `{"amount":2,"unit":"working_days"}` or a
+nonnegative integral pinned parameter via `working_days(:settlement)`. This is duration evidence, not an
+absolute deadline: preview does not consult a calendar or turn working days into elapsed days.
+
+The published wiring parser checks the entire value, including nested calls. Malformed/duplicate keys,
+unknown parameters, wrong/fractional/null/negative counts, overflow, excessive call depth and unsupported
+row/detail capture refuse even on empty/unselected routes. Unused casts are checked without executing.
+Would-text renders deferred calls and relative durations alongside existing scalars. The full Hartland H3
+fixture now previews both the proposal and buyer ask. `group_by` remains evidence on each selected row;
+no task grouping/creation, row capture or nested dispatch occurs here. A callee is not resolved/defaulted or
+executed. Future dispatch must establish its own dependency/approval closure before interpreting any
+`deferred:true` object; these objects are not executable action envelopes. Root bounded detail refs keep
+their existing form. All evidence retains the existing atomic completion, retry and durable read behavior.
+
 Division uses the published ValidityCatalog and RejectGuardSql nonzero guard. The guard's portable SQL subset
 runs over compiler/translator-projected divisors in the same private DuckDB database, before any quotient or
 predicate. Nested divisions validate bottom-up. NULL divisors succeed with NULL results; zero divisors refuse

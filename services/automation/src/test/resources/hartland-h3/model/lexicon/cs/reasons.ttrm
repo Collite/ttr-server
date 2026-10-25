@@ -1,0 +1,20 @@
+package hartland
+
+model lexicon locale cs
+
+// The return-reason dimension's bare head word, Czech form. Attested by `returns_by_reason`'s
+// pattern «reklamace podle důvodu» and the Czech demo's «… s důvodem Nedorazilo včas» (LR,
+// 2026-10-11).
+//
+// `displayLabel.cs` ("Důvod reklamace") already names the entity, but only as the whole phrase:
+// a bare «důvodem» bound nothing, so the composer was told the word was unknown and the reason
+// value beside it had no head. One word, one target — `er.entity.reason` is the only reason.
+//
+// No en twin, deliberately: "reason" is the entity's own name, which already binds it
+// (`ttr/lexicon-form-collides-with-name` refuses restating it as a form).
+
+def term return_reason_cs {
+    description: "důvod — the return-reason dimension"
+    for: er.entity.reason
+    forms: ["důvod"]
+}

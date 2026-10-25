@@ -1,0 +1,132 @@
+package hartland
+
+model lexicon locale cs
+
+// AU (automation agents) — the Czech words of the extension's documents (D-21), beside the labels the entities
+// already carry (model/er/{orders,returns-flow,proposals}.ttrm). The states, ways and conditions are the
+// attributes' `valueLabels`, not terms here: a value label is a property of its attribute.
+//
+// Why case forms are declared: an entity's `displayLabel` is ONE term, its citation form. The resolver looks a
+// mention up by its dictionary form only when the mention is one word (`LemmaLookup`, and 0.1 lower), so a
+// multi-word label is matched as written and the estate declares the forms it means (cs/warehouses.ttrm). Each
+// document gets its plural and genitive plural («kolik faktur», «seznam dobropisů»); one-word labels reach their
+// other cases through the lemma.
+//
+// ⛔ The rule for «reklamace» and «objednávka» (⚑AU-H-3, Bora 2026-10-17: keep the labels, with a rule).
+// Hartland's Czech used both words before AU without binding either: the returns FACTS are labelled
+// „Reklamace z prodejen / z webu / z tržiště“ and two sales facts „Objednávky z tržiště“ / „Webové objednávky“,
+// while the bare words had no term at all (the corpus's «Reklamace podle důvodu» ended in EMPTY_ASK:Reklamace).
+// The labels now give the bare words to the AU documents, and the rule says how the two meanings part:
+//   1. the bare word, in every case and number, is the DOCUMENT — `return_request` / `order` — and nothing else.
+//      Declared below as written, so every form meets it in the EXACT class (the #62 lesson: a form reached only
+//      through the lemma drops out of the tie band);
+//   2. the FACTS are named with their channel — the labels above, a longer span than the bare word, and
+//      «vratky z …» (#62); their saved queries keep the pattern path. (The two SALES facts lost their labels at
+//      md/hop HP-H — they are sources of `sales` only — so «objednávky z tržiště» is now the bare word, the AU
+//      order, beside the marketplace channel word; the returns facts keep theirs.)
+//   3. no TOKENS phrase may hold either word: a TOKENS phrase is reached by one of its words, so the bare word
+//      would gain a second target and bind nothing (#62's «webu» trap).
+// lexicon/tests/automation-lexicon.test.mjs asserts all three against the committed archive. The corpus cases
+// that ask the bare word about the facts (p-returns-by-reason, a3-3, a3-4) are re-measured at the P0 exit.
+//
+// „Výpadek skladu“, not „Výpadek“, and „Příjemka vratky“, not „Vratka“: there the bare word is already an
+// estate word (the stockout «výpadky zásob», act 3.5; #62's «vratky»), so the label is a phrase and the bare word
+// stays unclaimed. Nothing in this file may claim a word the pre-AU vocabulary binds (the same suite).
+//
+// ⚑ For Bora's review — the Czech wording: the forms below and the value labels on the attributes.
+
+def term order_cs {
+    description: "objednávka (všechny pády) — the order document (⚑AU-H-3 rule 1)"
+    for: er.entity.order
+    forms: [
+        "objednávky", "objednávce", "objednávku", "objednávkou",
+        "objednávek", "objednávkám", "objednávkách", "objednávkami"
+    ]
+}
+
+def term sales_line_cs {
+    description: "řádky objednávky — the order's lines"
+    for: er.entity.sales_line
+    forms: ["řádky objednávky", "řádků objednávky", "řádky objednávek", "řádků objednávek"]
+}
+
+def term price_list_cs {
+    description: "ceníky — the channel price list"
+    for: er.entity.price_list
+    forms: ["ceníky", "ceníků"]
+}
+
+def term customer_price_cs {
+    description: "individuální ceny — a customer's own price"
+    for: er.entity.customer_price
+    forms: ["individuální ceny", "individuálních cen", "individuální cenu"]
+}
+
+def term invoice_cs {
+    description: "faktury — the invoice"
+    for: er.entity.invoice
+    forms: ["faktury", "faktur"]
+}
+
+def term warehouse_outage_cs {
+    description: "výpadky skladu — a distribution center that cannot ship (never the bare «výpadky»: the stockout word)"
+    for: er.entity.warehouse_outage
+    forms: ["výpadku skladu", "výpadky skladu", "výpadků skladu", "výpadky skladů", "výpadků skladů"]
+}
+
+def term return_request_cs {
+    description: "reklamace (všechny pády) — the return request document (⚑AU-H-3 rule 1)"
+    for: er.entity.return_request
+    forms: ["reklamaci", "reklamací", "reklamacím", "reklamacích", "reklamacemi"]
+}
+
+def term return_request_line_cs {
+    description: "řádek reklamace — one returned product of a request"
+    for: er.entity.return_request_line
+    forms: [
+        "řádku reklamace", "řádkem reklamace", "řádky reklamace", "řádků reklamace", "řádkům reklamace",
+        "řádcích reklamace", "řádky reklamací", "řádků reklamací"
+    ]
+}
+
+def term return_receipt_cs {
+    description: "příjemky vratek — the warehouse receipt of returned goods"
+    for: er.entity.return_receipt
+    forms: ["příjemku vratky", "příjemky vratky", "příjemky vratek", "příjemek vratek"]
+}
+
+def term credit_note_cs {
+    description: "dobropisy — the credit note"
+    for: er.entity.credit_note
+    forms: ["dobropisy", "dobropisů"]
+}
+
+def term refund_payment_cs {
+    description: "úhrady — the refund paid against a credit note"
+    for: er.entity.refund_payment
+    forms: ["úhrady", "úhrad"]
+}
+
+def term replacement_shipment_cs {
+    description: "náhradní zásilky — replacement goods shipped"
+    for: er.entity.replacement_shipment
+    forms: ["náhradní zásilku", "náhradní zásilky", "náhradních zásilek"]
+}
+
+def term document_flow_cs {
+    description: "toky dokladů — which document followed which"
+    for: er.entity.document_flow
+    forms: ["toku dokladů", "toky dokladů"]
+}
+
+def term reorder_proposal_cs {
+    description: "návrhy na doobjednání — the reorder recipe's proposals"
+    for: er.entity.reorder_proposal
+    forms: ["návrhy na doobjednání", "návrhů na doobjednání"]
+}
+
+def term winback_mail_cs {
+    description: "win-back e-maily — the win-back recipe's mailings"
+    for: er.entity.winback_mail
+    forms: ["win-back e-maily", "win-back e-mailů"]
+}

@@ -144,27 +144,13 @@ class ApplyPlanner(
                                 expectedTypes = writer?.expectedTypes.orEmpty(),
                             )
                         }
-                        val scalarExpressions =
-                            columns
-                                .filterKeys { name ->
-                                    action.columns.singleOrNull { it.name == name }?.type != "rows"
-                                }.mapValues { (name, expression) ->
-                                    val column = action.columns.singleOrNull { it.name == name }
-                                    val symbolic = column == null || column.type in setOf("role", "action", "text")
-                                    val text = expression.trim()
-                                    if (symbolic &&
-                                        SYMBOL.matches(text) &&
-                                        table.columns.none { it.name == text } &&
-                                        text !in setOf("true", "false", "null")
-                                    ) {
-                                        JsonPrimitive(text).toString()
-                                    } else {
-                                        expression
-                                    }
-                                }
                         val projected =
-                            PreviewExpressions.project(
-                                scalarExpressions,
+                            PreviewWiringValues.project(
+                                columns.filterKeys { name ->
+                                    action.columns.singleOrNull { it.name == name }?.type !=
+                                        "rows"
+                                },
+                                action,
                                 table.copy(rows = indices.map { table.rows[it] }),
                                 context.bindings,
                                 expectedTypes = writer?.expectedTypes.orEmpty(),
@@ -175,10 +161,7 @@ class ApplyPlanner(
                             indices
                                 .mapIndexed { i, index ->
                                     val arguments =
-                                        projected.rows[i]
-                                            .mapIndexed { j, value ->
-                                                projected.columns[j].name to scalar(value)
-                                            }.toMap() +
+                                        projected[i] +
                                             contextValues +
                                             (defaults.generated - wiring.columns.keys).associateWith { column ->
                                                 JsonPrimitive(
@@ -434,14 +417,13 @@ class ApplyPlanner(
                     value = (value as? JsonObject)?.get(part)
                         ?: unsupported("unknown dry-run text argument")
                 }
-                if (value is JsonPrimitive) value.content else unsupported("dry-run text requires a scalar")
+                PreviewWiringValues.display(value)
             }
         }
 
     private fun entityName(name: String) = if (name.startsWith("er.entity.")) name else "er.entity.$name"
 
     companion object {
-        private val SYMBOL = Regex("[A-Za-z_][A-Za-z_0-9]*(?:\\.[A-Za-z_][A-Za-z_0-9]*)*")
         private val PLACEHOLDER = Regex("\\{([A-Za-z_][A-Za-z_0-9.]*)}")
 
         private fun unsupported(reason: String): Nothing =

@@ -1,0 +1,45 @@
+package hartland
+
+model er
+
+// CN-P6 S6.1 T5 (design `11` Q16-2, the hartland lane's call) — the three channel returns as ONE entity, the ground
+// of the analytical `Return` event (model/cn/concepts.ttrm). The cousin of `sales` (model/er/sales.ttrm): a stacked
+// entity over a LOGICAL union query, not a database view. Why not the view the design named: a view's columns are its
+// own, so no model reader could see that `return_amt` here IS the three facts' — and the md/hop bearer rule (L16-6)
+// needs exactly that to land `md.returnAmount` on this entity for `Return`'s `return_amount`.
+//
+// ⛔ Not a conversational object yet: no label, no labelPlural, no `semantics { measures }`, no lexicon term. A label
+// is a METADATA term and the returns words are guarded — the three returns facts keep their labels („Reklamace z
+// prodejen“ …), «vratky z <kanálu>» stays their measure, and the bare «vratky» is no term (lexicon/tests/
+// store-family.test.mjs). Making this the object the Golem asks about «vratky» is a vocabulary change of its own —
+// the HP-H shape (the facts become sources, a re-baselined corpus) — and not a cn one.
+//
+// The channel literals are CAST to VARCHAR for the reason sales_union's are (bare, the union pads them to CHAR(11)).
+// `store` is a store return's, `warehouse` a marketplace return's; each is NULL on the other channels.
+def query returns_union {
+    description: "Every return line of the three channels — store, web and marketplace — labelled by channel: the lines the entity `channel_returns` reads."
+    tags: ["returns"]
+    sourceText: """sql
+SELECT CAST('store' AS VARCHAR(16)) AS channel, item, customer, returned_date, reason, return_quantity, return_amt, ticket_number AS line_ref, store, NULL AS warehouse FROM store_returns
+UNION ALL SELECT CAST('web' AS VARCHAR(16)) AS channel, item, customer, returned_date, reason, return_quantity, return_amt, order_number AS line_ref, NULL AS store, NULL AS warehouse FROM web_returns
+UNION ALL SELECT CAST('marketplace' AS VARCHAR(16)) AS channel, item, customer, returned_date, reason, return_quantity, return_amt, order_number AS line_ref, NULL AS store, warehouse FROM catalog_returns
+"""
+}
+
+def entity channel_returns {
+    description: "Return lines of all three channels — store, web and marketplace — one object, labelled by channel: the analytical returns (the concept Return). Returned amount = SUM(return_amt), units = return_quantity, dated by returned_date. For returns by one channel the channel's own returns facts are the objects to ask; for return requests and their handling, the return-request family."
+    roles: [fact]
+    binding: { target: { query: er.query.returns_union } },
+    attributes: [
+        def attribute channel         { type: text, description: "Sales channel of the return — 'store', 'web' or 'marketplace'." },
+        def attribute item            { type: int, description: "Returned product — FK to the 'sk' attribute of the Product (item) entity." },
+        def attribute customer        { type: int, description: "Returning customer — FK to the 'sk' attribute of the Customer entity." },
+        def attribute returned_date   { type: int, description: "Return date — FK to the 'sk' attribute of the Calendar (date_dim) entity." },
+        def attribute reason          { type: int, description: "Return reason — FK to the 'sk' attribute of the Return Reason entity." },
+        def attribute return_quantity { type: int, description: "Units returned on this line." },
+        def attribute return_amt      { type: { type: decimal, length: 10, precision: 2 }, description: "Refunded amount of the line — SUM this for the return value, in any channel." },
+        def attribute line_ref        { type: int, description: "The original basket: the ticket number of a store return, the order number of a web or marketplace return. Not unique across channels." },
+        def attribute store           { type: int, description: "Store accepting a store return — the 'sk' attribute of the Store entity; empty for a web or marketplace return." },
+        def attribute warehouse       { type: int, description: "Distribution center processing a marketplace return — FK to the 'sk' attribute of the Distribution Center (warehouse) entity; empty otherwise." }
+    ]
+}
