@@ -16,6 +16,12 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+- **connect-openmetadata 0.1.2 — complete sync and cache identity.** Skipped scanned
+  tables/columns or mapping omissions retain the old state for retry. Summaries add
+  `not_modified` to distinguish304 from a real sync. State fingerprints mapping
+  options plus connector/current OM versions; legacy state forces a full sync.
+  Rollback to0.1.1 requires a fresh state path.
+
 - **connect-openmetadata 0.1.1 — Hartland catalog integration.** Optional
   `locators.openmetadata.schema` maps a model schema handle to the scanner's physical
   schema without changing model identities or ownership filters. HTTP304 syncs print

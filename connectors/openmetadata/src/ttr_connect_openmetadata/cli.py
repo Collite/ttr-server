@@ -4,14 +4,19 @@
 import argparse
 import json
 import sys
+from importlib.metadata import version
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from pydantic import ValidationError
 
 from .export_reader import DirSource, ExportError, NotModified, UrlSource
 from .mapping import MappingError, deprecations, json_lines, plan_from_export
 from .model import ImportRdf
-from .state import State, read_state, write_state
+from .state import State, options_fingerprint, read_state, write_state
+
+if TYPE_CHECKING:
+    from .om_client import OmClient
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -41,13 +46,51 @@ def main(argv: list[str] | None = None) -> int:
     dry = args.command == "plan" or (args.command == "sync" and args.dry_run)
     if not dry and (not args.om_url or not args.om_token_file):
         parser.error("check/sync require --om-url and --om-token-file (except sync --dry-run)")
+    # Offline commands never initialize the SDK or read credentials.
+    if dry:
+        return run(args, dry, None)
+    from .om_client import OmClient, OmError
+
+    client: OmClient | None = None
+    try:
+        token = args.om_token_file.read_text(encoding="utf-8").strip()
+        client = OmClient(args.om_url, token)
+        if args.command != "check":
+            client.read_version()
+        return run(args, dry, client)
+    except (OmError, OSError, ValidationError) as exc:
+        print(f"OM error: {exc}", file=sys.stderr)
+        return 1
+    finally:
+        if client is not None:
+            for warning in client.warnings:
+                print(f"WARN {warning}", file=sys.stderr)
+            client.close()
+
+
+def run(args: argparse.Namespace, dry: bool, client: "OmClient | None") -> int:
     if args.command != "check":
         try:
             state = read_state(args.state_file) if args.state_file else None
+            fingerprint = (
+                options_fingerprint(
+                    args.world,
+                    args.studio_url,
+                    args.cn_path,
+                    args.cn_name_mode,
+                    args.deprecate_missing,
+                    version("ttr-connect-openmetadata"),
+                    client.version,
+                )
+                if client is not None
+                else None
+            )
+            # Keep old ids for deprecations, but never send an incompatible ETag.
+            cached = state if client is None or (state and state.options == fingerprint) else None
             export = (
-                DirSource(args.export_dir).read(state)
+                DirSource(args.export_dir).read(cached)
                 if args.export_dir
-                else UrlSource(args.export_url).read(state)
+                else UrlSource(args.export_url).read(cached)
             )
             if isinstance(export, NotModified):
                 if not dry:
@@ -60,6 +103,7 @@ def main(argv: list[str] | None = None) -> int:
                                 "deprecated": 0,
                                 "linked": 0,
                                 "warnings": 0,
+                                "not_modified": True,
                             }
                         )
                     )
@@ -91,35 +135,35 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"WARN {warning}", file=sys.stderr)
             print(json_lines(result), end="")
             return 0
-    # Lazy import: plan/dry-run do not initialize the SDK, read credentials, or contact OM.
-    from .om_client import OmClient, OmError
-
-    client: OmClient | None = None
-    try:
-        token = args.om_token_file.read_text(encoding="utf-8").strip()
-        client = OmClient(args.om_url, token)
-        if args.command == "check":
-            client.check()
-            print(client.summary.model_dump_json())
-        else:
-            summary = client.sync(result, args.cn_path)
-            if args.state_file:
-                write_state(
-                    args.state_file,
-                    State(
-                        snapshot=export.snapshot, ids=sorted(current_ids), om_version=client.version
-                    ),
-                )
-            print(summary.model_dump_json())
-        return 0
-    except (OmError, OSError, ValidationError) as exc:
-        print(f"OM error: {exc}", file=sys.stderr)
-        return 1
-    finally:
-        if client is not None:
-            for warning in client.warnings:
-                print(f"WARN {warning}", file=sys.stderr)
-            client.close()
+    assert client is not None
+    if args.command == "check":
+        client.check()
+        print(client.summary.model_dump_json())
+    else:
+        summary = client.sync(result, args.cn_path)
+        # Exhaustive warning classification: get_table, set_column_tags and _asset
+        # skip unscanned assets; plan.warnings omit unmappable assets. RDF import
+        # messages and successful glossary fallback do not omit operations.
+        incomplete = bool(client.skipped_tables or client.skipped_columns or result.warnings)
+        if incomplete:
+            print(
+                f"WARN state not advanced: {len(client.skipped_tables)} tables not scanned; "
+                f"{len(client.skipped_columns)} columns not scanned; "
+                f"{len(result.warnings)} mapping skips",
+                file=sys.stderr,
+            )
+        elif args.state_file:
+            write_state(
+                args.state_file,
+                State(
+                    snapshot=export.snapshot,
+                    ids=sorted(current_ids),
+                    om_version=client.version,
+                    options=fingerprint,
+                ),
+            )
+        print(summary.model_dump_json())
+    return 0
 
 
 if __name__ == "__main__":

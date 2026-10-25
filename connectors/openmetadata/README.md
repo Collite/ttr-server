@@ -93,12 +93,17 @@ without creating it. Missing columns are also skipped with a warning.
 
 ## State and deprecation
 
-State JSON has `snapshot`, `ids` (TTR qnames), and `om_version`. State is written
-only after successful sync, using a same-directory temporary file, fsync and atomic
-rename. IDs are sorted and deduplicated. The URL reader sends `If-None-Match` from
-state; an initial 304 ends the run with no operations and a zero-counter sync summary
-(plan/dry-run remain silent). A 304 without state or after
-part of a new export is an export error.
+State JSON has `snapshot`, `ids` (TTR qnames), `om_version` and optional `options`.
+`options` fingerprints world, Studio URL, CN path/name mode, deprecation mode,
+connector version and the current OM version. Sync probes OM's version before
+reading the export. Only an exact options match permits `If-None-Match`; a legacy
+state without `options` loads successfully but forces a full sync. Offline plan
+and dry-run remain independent of OM and credentials. A 304 sync prints zero
+counters with `not_modified: true`; a real sync prints `not_modified: false`.
+A 304 without compatible state or after part of a new export is an export error.
+**Rollback to0.1.1 requires a fresh state path**: that version rejects the new field.
+State uses a same-directory temporary file, fsync and atomic rename; ids are sorted
+and deduplicated.
 
 Missing ids plus `delta.removed` yield `Deprecate` operations; live rename targets
 suppress deprecation of their old names. The writer resolves candidates by
@@ -112,15 +117,19 @@ term lookup/deprecation is scoped to this world's glossaries.
 
 `sync` calls `check` first, reconciles entities, finalizes term relations, then
 links and deprecations. State advances only after every operation succeeds.
-Missing scanned assets count as warnings and are skipped; other write failures
-fail the run. OM writes are not a transaction: a failed run can have partial
-catalog changes, while the previous state remains available for an idempotent retry.
-A saved URL snapshot receiving 304 is a complete no-op, including the registry
-check; a later source snapshot or a directory sync is needed to retry skipped
-assets after a scanner has discovered them.
+Missing scanned tables/columns and planner omissions prevent state advancement,
+with a loud `WARN state not advanced: N tables not scanned` diagnostic (plus column
+and mapping counts). The next run re-plans from the older ids and rechecks every
+deprecation by GET, so an already-deprecated object remains a no-op. A permanently
+unscannable object therefore causes a full sync every night until repaired. RDF
+import informational messages and a successful glossary fallback do not skip
+operations and do not prevent state advancement. Other write failures fail the run.
+OM writes are not a transaction: partial changes can remain for an idempotent retry.
+A compatible saved snapshot receiving304 skips registry/writes, but still checks
+the current OM version. Use two fresh state paths to prove actual writer idempotency.
 
 Successful sync prints exactly one JSON line with `snapshot`, `created`,
-`updated`, `deprecated`, `linked`, and `warnings`. Counts record successful entity
+`updated`, `deprecated`, `linked`, `warnings`, and `not_modified`. Counts record successful entity
 and registry-property creations, successful update patches, deprecation actions,
 and asset links. An entity patched more than once can contribute multiple updates;
 these are action counts, not unique entity counts. `check` prints the same counters

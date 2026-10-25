@@ -63,6 +63,7 @@ class Summary(BaseModel):
     deprecated: int = 0
     linked: int = 0
     warnings: int = 0
+    not_modified: bool = False
 
 
 class _Paging(BaseModel):
@@ -131,6 +132,8 @@ class OmClient:
         )
         self.summary = Summary(snapshot="")
         self.warnings: list[str] = []
+        self.skipped_tables: set[str] = set()
+        self.skipped_columns: set[str] = set()
         self._tables: dict[str, Table | None] = {}
         self._terms: dict[str, GlossaryTerm] = {}
         self._metrics: dict[str, Metric] = {}
@@ -334,12 +337,17 @@ class OmClient:
         entity["customProperties"] = [*properties, prop]
         self.summary.created += 1
 
-    def check(self) -> str:
+    def read_version(self) -> str:
+        """Read-only version probe, also used before conditional export requests."""
         response = self._rest("GET", "system/version")
         version = response.get("version") if isinstance(response, dict) else response
         if not isinstance(version, str) or not version.strip():
             raise OmError(None, "OM health response contains no version")
         self.version = version
+        return version
+
+    def check(self) -> str:
+        self.read_version()
         for kind, names in {
             "table": ("ttrQname", "ttrUrl"),
             "tableColumn": ("ttrQname",),
@@ -558,6 +566,7 @@ class OmClient:
         if fqn not in self._tables:
             self._tables[fqn] = self._get(Table, "tables", fqn, "columns,tags,extension")
             if self._tables[fqn] is None:
+                self.skipped_tables.add(fqn)
                 self.warn(f"OM has not scanned table {fqn}; skipping its properties and links")
         return self._tables[fqn]
 
@@ -581,6 +590,7 @@ class OmClient:
         data = payload(table)
         column = next((c for c in columns(data["columns"]) if c["name"] == op.column), None)
         if column is None:
+            self.skipped_columns.add(f"{op.fqn}.{op.column}")
             self.warn(f"OM has not scanned column {op.fqn}.{op.column}; skipping")
             return
         column["extension"] = {**column.get("extension", {}), **op.props}
@@ -608,6 +618,7 @@ class OmClient:
             table is None and fqn.startswith(name + ".") for name, table in self._tables.items()
         ):
             return None
+        self.skipped_columns.add(fqn)
         self.warn(f"OM has not scanned column {fqn}; skipping its links")
         return None
 
@@ -755,6 +766,8 @@ class OmClient:
     def sync(self, plan: Plan, cn_path: str = "glossary") -> Summary:
         self.summary = Summary(snapshot=plan.snapshot)
         self.warnings.clear()
+        self.skipped_tables.clear()
+        self.skipped_columns.clear()
         self._tables.clear()
         self._types.clear()
         self._term_aliases.clear()
