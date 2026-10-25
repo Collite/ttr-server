@@ -1,0 +1,75 @@
+{{- /*
+Caller-key seed (values `keySeed`): the vault's `ttrk-` keys → sha256 rows in `virtual_keys`. See values.yaml.
+*/ -}}
+{{- if .Values.keySeed.enabled }}
+{{- $ks := .Values.keySeed }}
+{{- if not $ks.secretStore.name }}{{ fail "keySeed.secretStore.name is required when keySeed.enabled" }}{{ end }}
+{{- if not $ks.teams }}{{ fail "keySeed.teams must name at least one team when keySeed.enabled" }}{{ end }}
+{{- $teams := list }}
+{{- range $ks.teams }}{{ $teams = append $teams .team }}{{ end }}
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: {{ .Release.Name }}-caller-keys
+  labels:
+    app.kubernetes.io/name: {{ .Release.Name }}-key-seed
+spec:
+  refreshInterval: {{ $ks.refreshInterval }}
+  secretStoreRef:
+    name: {{ $ks.secretStore.name }}
+    kind: {{ $ks.secretStore.kind }}
+  target:
+    name: {{ .Release.Name }}-caller-keys
+    creationPolicy: Owner
+  data:
+    {{- range $ks.teams }}
+    - secretKey: {{ .team }}
+      remoteRef:
+        key: {{ .vaultKey }}
+    {{- end }}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ .Release.Name }}-key-seed
+  labels:
+    app.kubernetes.io/name: {{ .Release.Name }}-key-seed
+  annotations:
+    # Runs after every sync of this app; the finished Job and its log stay until the next run replaces it.
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+spec:
+  backoffLimit: 6
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ .Release.Name }}-key-seed
+    spec:
+      restartPolicy: OnFailure
+      volumes:
+        - name: keys
+          secret:
+            secretName: {{ .Release.Name }}-caller-keys
+      containers:
+        - name: seed
+          image: {{ $ks.image }}
+          volumeMounts:
+            - { name: keys, mountPath: /keys, readOnly: true }
+          env:
+            - { name: PGHOST, value: {{ $ks.db.host | quote }} }
+            - { name: PGPORT, value: {{ $ks.db.port | quote }} }
+            - { name: PGDATABASE, value: {{ $ks.db.name | quote }} }
+            - { name: PGUSER, value: {{ $ks.db.user | quote }} }
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef: { name: {{ $ks.db.passwordSecret }}, key: {{ $ks.db.passwordKey }} }
+            - { name: TEAMS, value: {{ join " " $teams | quote }} }
+            - { name: REVOKE_STALE, value: {{ $ks.revokeStale | quote }} }
+          command: ["bash", "-c"]
+          args:
+            - |
+{{ .Files.Get "files/key-seed.sh" | indent 14 }}
+          resources:
+            requests: { cpu: 10m, memory: 32Mi }
+            limits: { memory: 128Mi }
+{{- end }}

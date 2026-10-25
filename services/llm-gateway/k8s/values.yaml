@@ -80,3 +80,30 @@ podAnnotations: {}
 nodeSelector: {}
 tolerations: []
 affinity: {}
+
+# Caller-key seed (off by default; a cluster turns it on in its own values). Registers each caller team's `ttrk-` key
+# with this gateway: the plaintext keys come from the cluster's vault through an ExternalSecret (they never sit in
+# git), and an ArgoCD PostSync Job writes sha256(key) into `virtual_keys` on every sync, which is the lookup the
+# data plane's PgKeyValidator makes. Rows are matched by the hash itself, so a row inserted by hand before (the
+# runbook's direct SQL) is taken over, not duplicated. With `revokeStale`, a team's other seeded keys are revoked
+# once its current one is in, so a key rotated in the vault stops working at the next sync; keys minted through
+# the admin API (`seeded = false`) are never touched. Needs External Secrets Operator.
+keySeed:
+  enabled: false
+  image: ghcr.io/cloudnative-pg/postgresql:18-standard-bookworm
+  secretStore:
+    name: ""
+    kind: ClusterSecretStore
+  refreshInterval: 1h
+  # One entry per caller team: the governance team id and the vault secret that holds its key, e.g.
+  #   - { team: golem, vaultKey: ttrk-golem }
+  teams: []
+  revokeStale: true
+  # The gateway's own database (the Postgres target its LLM_GATEWAY_DB_* env names), written as its owner role.
+  db:
+    host: postgres-rw.data.svc.cluster.local
+    port: 5432
+    name: llm_gateway
+    user: llm_gateway
+    passwordSecret: pg-llm-gateway-cred
+    passwordKey: password
