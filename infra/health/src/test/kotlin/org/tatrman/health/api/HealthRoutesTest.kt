@@ -30,13 +30,13 @@ import kotlinx.serialization.json.jsonPrimitive
 class HealthRoutesTest :
     StringSpec({
 
-        // `veles` reports its content; `postgres` has none. Both fail their health check (nothing
+        // `metadata` reports its content; `postgres` has none. Both fail their health check (nothing
         // listens on port 1), which is beside the point here.
         val config =
             HealthConfig(
                 technologies =
                     mapOf(
-                        "veles" to
+                        "metadata" to
                             TechnologyConfig(
                                 type = "tcp",
                                 host = "127.0.0.1",
@@ -44,7 +44,7 @@ class HealthRoutesTest :
                                 timeout = 500,
                                 status =
                                     StatusConfig(
-                                        url = "http://veles/status",
+                                        url = "http://metadata/status",
                                         commit = "commit",
                                         summary = listOf(FieldConfig("objects", "object_count", "count")),
                                     ),
@@ -83,14 +83,14 @@ class HealthRoutesTest :
                             .jsonPrimitive.content
                     }
 
-                val veles =
+                val metadata =
                     byName
-                        .getValue("veles")
+                        .getValue("metadata")
                         .jsonObject
                         .getValue("content")
                         .jsonObject
-                veles.getValue("commit").jsonPrimitive.content shouldBe "a0dfb2a"
-                veles
+                metadata.getValue("commit").jsonPrimitive.content shouldBe "a0dfb2a"
+                metadata
                     .getValue("summary")
                     .jsonArray[0]
                     .jsonObject
@@ -115,7 +115,7 @@ class HealthRoutesTest :
                 val response = client.get("/status/all")
                 response.status shouldBe HttpStatusCode.OK
                 val body = Json.parseToJsonElement(response.bodyAsText()).jsonObject
-                body.getValue("technologies").jsonObject.keys shouldBe setOf("veles")
+                body.getValue("technologies").jsonObject.keys shouldBe setOf("metadata")
                 body
                     .getValue("summary")
                     .jsonObject

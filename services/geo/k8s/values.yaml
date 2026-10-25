@@ -35,9 +35,9 @@ telemetry:
   endpoint: ""
   serviceName: geo
 
-# Metadata (Veles) gRPC target — geo discovers geo_lat/geo_lon columns + the POI entity.
+# Metadata gRPC target — geo discovers geo_lat/geo_lon columns + the POI entity.
 metadata:
-  host: veles
+  host: metadata
   grpcPort: 7261
 
 # Nominatim geocoder — NO default (see Q-19 above). Self-host and set baseUrl to enable geocoding.

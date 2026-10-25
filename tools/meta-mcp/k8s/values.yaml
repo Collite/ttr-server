@@ -1,4 +1,4 @@
-# Default values for veles-mcp. Env-agnostic: sane defaults, NO cluster knowledge. Deploying
+# Default values for meta-mcp. Env-agnostic: sane defaults, NO cluster knowledge. Deploying
 # environments (Olymp cluster values, or test-context values) override image, telemetry, and the
 # downstream wiring in extraEnv.
 
@@ -12,7 +12,7 @@ image:
 
 imagePullSecrets: []
 
-# veles-mcp serves its MCP tools over a single HTTP port — the container port AND the service
+# meta-mcp serves its MCP tools over a single HTTP port — the container port AND the service
 # port AND the probe target.
 ports:
   http: 7262
@@ -28,20 +28,20 @@ resources:
     memory: 512Mi
     cpu: 500m
 
-# OpenTelemetry. Reads OTEL_EXPORTER_OTLP_ENDPOINT + the per-service OTEL_ENABLED_VELES_MCP flag.
+# OpenTelemetry. Reads OTEL_EXPORTER_OTLP_ENDPOINT + the per-service OTEL_ENABLED_META_MCP flag.
 # Point `endpoint` at a collector and set enabled; leave disabled where none exists (e.g. test runs).
 telemetry:
   enabled: false
   # e.g. http://alloy.observability.svc.cluster.local:4317
   endpoint: ""
-  serviceName: veles-mcp
+  serviceName: meta-mcp
 
-# Downstream wiring. Defaults match Veles's stable in-cluster service name + gRPC port
+# Downstream wiring. Defaults match Metadata's stable in-cluster service name + gRPC port
 # (env-agnostic — every cluster names them the same). A deploying env REPLACES this list to retarget.
 extraEnv:
-  - { name: VELES_PROTOCOL, value: "grpc" }
-  - { name: VELES_GRPC_HOST, value: "veles" }
-  - { name: VELES_GRPC_PORT, value: "7261" }
+  - { name: METADATA_PROTOCOL, value: "grpc" }
+  - { name: METADATA_GRPC_HOST, value: "metadata" }
+  - { name: METADATA_GRPC_PORT, value: "7261" }
   # capabilities-mcp registration endpoint (the query-path registry). For the three wrappers whose
   # application.conf lacks a capabilities-mcp{} default block, this env is REQUIRED — without it
   # registerWithCapabilities() throws ConfigException at boot.

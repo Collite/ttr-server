@@ -2,13 +2,13 @@ capability_id: "meta.search:v1"
 category: "meta"
 version: "1.0.0"
 description: |
-  Fuzzy search across veles objects. The `query` argument is matched
+  Fuzzy search across metadata objects. The `query` argument is matched
   against the model object's `name`, `localized labels`, `aliases`, and
   search-keyword tables. Returns the top-N `SearchResult`s with relevance
   scores and snippets.
-service_endpoint: "http://veles-mcp.kantheon.svc.cluster.local:7262"
+service_endpoint: "http://meta-mcp.kantheon.svc.cluster.local:7262"
 search_tags:
-  - veles
+  - metadata
   - search
   - fuzzy
 cost_hints:

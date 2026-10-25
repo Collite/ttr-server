@@ -47,7 +47,7 @@ translate {
 ```
 
 `adapter` picks code for what a path cannot say (`content/Adapters.kt`): `generic-json` (the default),
-`veles` (one row per model source), `nlp` (languages and engines from `/version`), `prometheus-targets`,
+`metadata` (one row per model source), `nlp` (languages and engines from `/version`), `prometheus-targets`,
 `k8s-externalsecrets` and `k8s-certificates`; a named adapter keeps the block's configured `summary`,
 `note` and `ok` too. A `k8s:/apis/…` URL is read from the Kubernetes API as the pod's ServiceAccount — the
 chart's `serviceAccount.name` creates it, `rbac.enabled` gives it read access to the status of
@@ -87,7 +87,7 @@ configFragment:
   content: |
     health-check-service.roster {
       technologies {
-        veles { type = native, url = "http://veles.ttr-server:7260", healthEndpoint = "/ready" }
+        metadata { type = native, url = "http://metadata.ttr-server:7260", healthEndpoint = "/ready" }
         # …
       }
     }

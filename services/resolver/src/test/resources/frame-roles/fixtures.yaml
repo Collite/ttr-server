@@ -199,7 +199,7 @@ fixtures:
       - {span: "220", anchor: "střediska"}
       - {span: "12", anchor: "měsíců"}
 
-  - id: imperativeless-cs
+  - id: imperatimetadatas-cs
     lang: cs
     world: pilot
     source: "task list T1 — the imperative-less hard class, verbatim"
@@ -1006,7 +1006,7 @@ fixtures:
         binding: {ref: "md.dimension.Calendar.month", target_class: MODEL_OBJECT}
         roles: [FILTER]
 
-  - id: hl-imperativeless-en
+  - id: hl-imperatimetadatas-en
     lang: en
     world: hartland
     source: fresh

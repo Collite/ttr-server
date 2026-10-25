@@ -22,8 +22,8 @@ incomplete values file is a diff in olymp, not a crash loop on the cluster.
       key: {{ .Values.db.passwordSecret.key }}
 - name: AUTOMATION_DOOR_QUERY_URL
   value: {{ .Values.door.queryUrl | quote }}
-- name: AUTOMATION_DOOR_VELES_URL
-  value: {{ .Values.door.velesUrl | quote }}
+- name: AUTOMATION_DOOR_METADATA_URL
+  value: {{ .Values.door.metadataUrl | quote }}
 {{- with .Values.door.sidecarUrl }}
 - name: AUTOMATION_DOOR_SIDECAR_URL
   value: {{ . | quote }}

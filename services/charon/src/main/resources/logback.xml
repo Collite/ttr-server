@@ -5,7 +5,7 @@
         </encoder>
     </appender>
 
-    <!-- PL-P3.S1.T2: OTEL logback appender dropped on the platform (Veles precedent —
+    <!-- PL-P3.S1.T2: OTEL logback appender dropped on the platform (platform precedent —
          observability is inline micrometer/prometheus; no otel transplant). -->
     <root level="INFO">
         <appender-ref ref="STDOUT"/>

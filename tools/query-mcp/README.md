@@ -1,5 +1,7 @@
 # query-mcp
 
+The model-graph service is `metadata` — formerly `veles` (2026-06-13 → 2026-10), originally `ai-platform/infra/metadata`.
+
 > **forked-from:** the legacy predecessor platform (`tools/query-mcp/`, its HEAD at the time), forked 2026-06-15 (Stage 3.5).
 > *Forked from HEAD, not the fork-point tag:* query-mcp saw a post-fork-point, proto-compatible "pattern query parametrization" improvement (Conversions + tests) worth carrying; `shared/proto/.../plan` was unchanged between the tag and HEAD, so there is no proto drift.
 > Maintained independently since the fork; do not assume parity with the original.
@@ -47,4 +49,4 @@ startup (warn-and-continue; opt in with `CAPABILITIES_MCP_URL`).
 ## Status (Stage 3.5)
 
 Port: HTTP 7307 (MCP `/mcp` + `/health` + `/ready`). Upstreams: query-runner (gRPC
-7306) + translate/validate/Veles for compile/decoration. Tag: `query-mcp/v0.1.0`.
+7306) + translate/validate/Metadata for compile/decoration. Tag: `query-mcp/v0.1.0`.

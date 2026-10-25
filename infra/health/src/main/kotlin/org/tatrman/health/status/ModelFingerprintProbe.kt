@@ -11,8 +11,8 @@ import kotlinx.serialization.json.jsonPrimitive
 import org.slf4j.LoggerFactory
 
 /**
- * FO-P5.S2.T1 — reads the model fingerprint (`model_version`) from veles `GET /status`. Fails soft:
- * any error (veles down, undeployed, malformed) yields null, so the status page still renders. Read-only
+ * FO-P5.S2.T1 — reads the model fingerprint (`model_version`) from metadata `GET /status`. Fails soft:
+ * any error (metadata down, undeployed, malformed) yields null, so the status page still renders. Read-only
  * — a plain GET, no write path.
  */
 class ModelFingerprintProbe(

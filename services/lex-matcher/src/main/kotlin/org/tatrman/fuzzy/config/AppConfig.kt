@@ -26,7 +26,7 @@ data class AppConfig(
      * Warehouse connection for the `metadata` loader source. Null for the
      * default `static` (in-repo JSON catalog) source, which needs no DB.
      * Required (non-null) when `loaderSource.source = "metadata"` — the loader
-     * runs each member vocabulary's read plan (rendered by Veles) here.
+     * runs each member vocabulary's read plan (rendered by Metadata) here.
      */
     val database: DatabaseConfig? = null,
 )
@@ -68,7 +68,7 @@ data class LoaderSourceConfig(
  * a lexicon yet is a supported deployment rather than a broken one.
  *
  * A local path, not a URL: the estate build writes the archive and the deployment mounts it.
- * Pulling it over the snapshot channel from veles is the RO-13 step and is deliberately not this.
+ * Pulling it over the snapshot channel from metadata is the RO-13 step and is deliberately not this.
  */
 data class LexiconConfig(
     val archivePath: String = "",
@@ -119,7 +119,7 @@ data class LexiconConfig(
 }
 
 data class MetadataConfig(
-    val host: String = "veles",
+    val host: String = "metadata",
     val port: Int = 7261,
     val timeoutMs: Long = 10_000,
     /**
@@ -130,7 +130,7 @@ data class MetadataConfig(
      * asserted not solved" behaviour. Multi-source deployments should set
      * this explicitly.
      *
-     * (MV-T2: `schema` / `FUZZY_METADATA_SCHEMA` is gone — Veles lists member vocabularies
+     * (MV-T2: `schema` / `FUZZY_METADATA_SCHEMA` is gone — Metadata lists member vocabularies
      * by attribute, whatever schema their rows live in.)
      */
     val namespace: String = "",

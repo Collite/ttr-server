@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Charon (Arrow data mover, strangler ④) — history-preserving transplant from kantheon (pin 860fd90),
 // re-homed onto the platform build (PL-P3.S1.T2). Reworked off kantheon's shared:proto + published
-// tatrman ktor/otel/logging helper libs onto :proto:hall-proto + inline micrometer (Veles precedent);
+// tatrman ktor/otel/logging helper libs onto :proto:hall-proto + inline micrometer (platform precedent);
 // jib dropped (T6 packages via installDist + a house Dockerfile like radegast). Behavior-unchanged:
 // the transplanted Kotest suites stay green; the Arrow --add-opens and the bench entry point are kept.
 plugins {
@@ -13,7 +13,7 @@ plugins {
 }
 
 // CH-P1.T7 (CH-D4/D7): the server builds Kotlin service images with Jib (release-image.yml
-// `./gradlew :path:jib`), the veles precedent — the platform's installDist + Dockerfile is
+// `./gradlew :path:jib`), the platform precedent — the platform's installDist + Dockerfile is
 // dropped. Image named `charon` (CH-D7 ratified). Arrow's netty allocator needs the NIO
 // opens at runtime, carried here as container jvmFlags (the installDist launcher's
 // applicationDefaultJvmArgs above stays for `just`/local dist runs).
@@ -105,7 +105,7 @@ dependencies {
     implementation(libs.ktor.serialization.json)
     implementation(libs.ktor.server.status.pages)
     implementation(libs.ktor.server.call.logging)
-    // Metrics — Prometheus scrape. Observability is inline micrometer (no otel transplant; Veles precedent).
+    // Metrics — Prometheus scrape. Observability is inline micrometer (no otel transplant; platform precedent).
     implementation(libs.micrometer.registry.prometheus)
     implementation(libs.slf4j.api)
     implementation(libs.logback.classic)
@@ -146,7 +146,7 @@ dependencies {
     // dialect fidelity is the separate integration suite).
     testImplementation(libs.h2)
     // Testcontainers PG — the real query source for the T3 frozen contract tests (postgres:16-alpine,
-    // the platform's veles/radegast image).
+    // the platform services' image).
     testImplementation(libs.testcontainers)
     testImplementation(libs.testcontainers.postgresql)
 }

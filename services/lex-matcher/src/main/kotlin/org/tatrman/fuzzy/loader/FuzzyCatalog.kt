@@ -28,7 +28,7 @@ import org.slf4j.LoggerFactory
  * ```
  *
  * MV-T2 — `methods` gives a category's member rows their match method (`EXACT` · `TYPOS(n)` ·
- * `TOKENS`), as Veles gives a member vocabulary its own. A category it does not name is `EXACT`: a
+ * `TOKENS`), as Metadata gives a member vocabulary its own. A category it does not name is `EXACT`: a
  * member value nobody declared a slack for is matched exactly, the same rule an indexed attribute
  * with no authored method follows (above, `customer`). Declared-term rows (`targetRef`) are not
  * member rows and carry no category method.

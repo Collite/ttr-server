@@ -6,9 +6,9 @@ description: |
   queries, named queries, roles, drill maps, package versions) for one or
   more packages in a single round-trip. This is the heavy tool — the
   MCP-side timeout is 30s to accommodate fixture load.
-service_endpoint: "http://veles-mcp.kantheon.svc.cluster.local:7262"
+service_endpoint: "http://meta-mcp.kantheon.svc.cluster.local:7262"
 search_tags:
-  - veles
+  - metadata
   - model
   - bundle
   - full

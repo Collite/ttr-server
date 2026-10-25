@@ -1140,7 +1140,7 @@ class QueryServiceImpl(
         val shown = name.joinToString(".")
         if (qname.name.isEmpty()) return SavedQueryResolution.Refused("saved_query_not_found", "no saved query named")
         val outcome =
-            retry.execute("veles.get_query") {
+            retry.execute("metadata.get_query") {
                 client.getQuery(
                     GetQueryRequest
                         .newBuilder()

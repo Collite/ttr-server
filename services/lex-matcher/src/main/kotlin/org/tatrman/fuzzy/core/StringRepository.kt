@@ -26,7 +26,7 @@ data class CategoryStatusInfo(
     val entityProfile: EntityProfile? = null,
 )
 
-/** Loader-report entry: `RG-FUZ-001`/`003` for a vocabulary Veles could not plan, `RG-FUZ-004` for no listing. */
+/** Loader-report entry: `RG-FUZ-001`/`003` for a vocabulary Metadata could not plan, `RG-FUZ-004` for no listing. */
 data class LoaderWarningInfo(
     val code: String,
     val category: String,
@@ -166,7 +166,7 @@ class StringRepository(
 
     // review-104 F1 — the member layer as last LOADED (lower-cased keys, lemmatised). A refresh with
     // no member load to take keeps it and still runs the declared and overlay clocks on top: the
-    // member layer is the one Veles can take away, and it must not take the other two with it.
+    // member layer is the one Metadata can take away, and it must not take the other two with it.
     @Volatile
     private var memberCache: Map<String, List<Candidate>> = emptyMap()
 
@@ -225,7 +225,7 @@ class StringRepository(
      * review-104 F1 — the refresh interval, except while no member layer has EVER loaded: then a
      * short doubling retry (5 s, 10 s, 20 s, … never past the interval).
      *
-     * A lex-matcher that boots while Veles is still loading its model is told "not ready", and used
+     * A lex-matcher that boots while Metadata is still loading its model is told "not ready", and used
      * to wait out the whole interval (600 s on hartland, 3600 s by default) before asking again.
      * Once any member layer is served, a miss keeps it and the interval stands.
      */
@@ -245,8 +245,8 @@ class StringRepository(
 
         // review-104 F1 — no member load is not the end of the refresh. It used to return here,
         // before the declared lexicon and the overlay were loaded and before readiness was set: on
-        // a first boot racing Veles the whole matcher stayed NotReady for an interval, and against a
-        // Veles without ListMemberVocabularies it never came up. Now the member layer is kept as it
+        // a first boot racing Metadata the whole matcher stayed NotReady for an interval, and against a
+        // Metadata without ListMemberVocabularies it never came up. Now the member layer is kept as it
         // was — empty on a first boot, which GetStatus' RG-FUZ-004 says — and the rest proceeds.
         var nextMembers = memberCache
         var nextMemberVersions = memberVersions
@@ -387,10 +387,10 @@ class StringRepository(
      * A category's content signature: its candidates by id+value, order-independent. Same content
      * ⇒ same version across refreshes; one added row changes it.
      *
-     * MV-T2 — and the read plan that produced them, when the loader has one ([planVersion], Veles'
+     * MV-T2 — and the read plan that produced them, when the loader has one ([planVersion], Metadata'
      * `MemberVocabulary.version`). Content alone cannot see a changed plan that happens to read the
      * same rows today (a new filter, a different key, another match method); the plan alone cannot
-     * see the warehouse's rows change — the loader reads those, Veles never does. The version moves
+     * see the warehouse's rows change — the loader reads those, Metadata never does. The version moves
      * when either does. Without a plan the digest is exactly the content one it always was.
      *
      * Streamed, never materialised. The first cut of this concatenated every `id`+`value` into ONE

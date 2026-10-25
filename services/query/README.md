@@ -49,7 +49,7 @@ loopback channel to the gRPC port, carrying the caller's identity.
 - **Port 7308**, opt-in (`QUERY_FLIGHT_ENABLED=true`), bound to `QUERY_FLIGHT_BIND` (default
   `127.0.0.1`; a deployment behind the gateway sets `0.0.0.0`). The door's own gRPC 7306 has no
   authentication; the edge is the BI entry that verifies callers.
-- **Catalog** from Veles (two `ListObjects` + one `GetModel`, cached by model version for
+- **Catalog** from Metadata (two `ListObjects` + one `GetModel`, cached by model version for
   `QUERY_FLIGHT_CATALOG_TTL_SECONDS`): catalog = the connection's world; schemas `er.entity`
   (entities), `obj.query` (parameterless saved logical queries, columns by a one-row probe as the
   caller) and `db.dbo` (bound tables and views). Primary keys from the model; foreign keys only from

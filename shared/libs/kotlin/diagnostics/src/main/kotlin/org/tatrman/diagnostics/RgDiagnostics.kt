@@ -66,7 +66,7 @@ object RgDiagnostics {
                 "Explicit but unknown fuzzy category '{category}' — leak guard returns EMPTY (never a global match).",
                 "Use a category advertised by GetStatus, or omit the category for a global match.",
             ),
-            // MV-T1 — Veles cannot render a member vocabulary's read plan. Listed, `read_sql` empty:
+            // MV-T1 — Metadata cannot render a member vocabulary's read plan. Listed, `read_sql` empty:
             // an index the translator cannot read is skipped loudly, never composed some other way.
             RgDiagnostic(
                 "RG-FUZ-003",
@@ -81,7 +81,7 @@ object RgDiagnostics {
                 "RG-FUZ-004",
                 Severity.WARNING,
                 "Member vocabularies unavailable — {reason}; {served}.",
-                "A Veles that predates ListMemberVocabularies answers UNIMPLEMENTED: release Veles and lex-matcher together. Otherwise check that Veles is reachable and has a model loaded.",
+                "A Metadata that predates ListMemberVocabularies answers UNIMPLEMENTED: release Metadata and lex-matcher together. Otherwise check that Metadata is reachable and has a model loaded.",
             ),
             RgDiagnostic(
                 "RG-GND-001",

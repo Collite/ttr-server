@@ -55,7 +55,7 @@ import java.util.concurrent.ConcurrentHashMap
  * tests (Materialize / byte-faithful Stage-Copy / Evict-idempotent / named-conn-fail) are joined by the
  * S2 run-scoped prefix Evict (3b, FQ-6) — the run-staging reclaim the lifecycle depends on.
  *
- * Component tier: a **Testcontainers Postgres** (postgres:16-alpine, the platform's veles/radegast image)
+ * Component tier: a **Testcontainers Postgres** (postgres:16-alpine, the platform services' image)
  * is the real query source; a **stateful in-memory S3** ([InMemoryS3]) is the object-store staging tier —
  * the "local files" of the plan's task note (the suite deliberately keeps no live SeaweedFS/MinIO; the
  * fake round-trips PUT→GET/HEAD/COPY/DELETE so materialize-then-read-back and no-partial-write are real).

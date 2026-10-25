@@ -60,7 +60,7 @@ spec: { type: service, lifecycle: experimental, owner: kantheon, system: kantheo
 apiVersion: backstage.io/v1alpha1
 kind: Component
 metadata:
-  name: veles
+  name: metadata
   description: Model graph / metadata + prompt serving (Kotlin).
 spec: { type: service, lifecycle: production, owner: kantheon, system: kantheon }
 ---

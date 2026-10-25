@@ -36,7 +36,7 @@ import org.tatrman.mcp.identity.JwksBearerVerifier
 import org.tatrman.query.flight.FlightAuthenticator
 import org.tatrman.query.flight.FlightConfig
 import org.tatrman.query.flight.FlightEdge
-import org.tatrman.query.flight.GrpcVelesCatalogClient
+import org.tatrman.query.flight.GrpcMetadataCatalogClient
 import org.tatrman.query.flight.IdentityWorldMiddleware
 import org.tatrman.query.flight.KeycloakPasswordGrant
 import org.tatrman.query.flight.LoopbackStatementRunner
@@ -100,15 +100,15 @@ fun Application.module(config: Config) {
     val translatorTranslateClient = translatorClient as TranslatorTranslateClient
     val validatorClient = pickValidatorClient(config, useFixture)
     val dispatcherClient = pickDispatcherClient(config, useFixture)
-    // LQ (L-31): RunSavedQuery reads a saved query's stored plan from veles; no fixture stands in for it.
+    // LQ (L-31): RunSavedQuery reads a saved query's stored plan from metadata; no fixture stands in for it.
     val savedQueryClient =
         if (useFixture) {
             null
         } else {
             GrpcSavedQueryClient(
-                host = config.getString("veles.host"),
-                port = config.getInt("veles.port"),
-                deadlineSeconds = config.getLong("veles.deadline-seconds"),
+                host = config.getString("metadata.host"),
+                port = config.getInt("metadata.port"),
+                deadlineSeconds = config.getLong("metadata.deadline-seconds"),
             )
         }
 
@@ -153,7 +153,7 @@ fun Application.module(config: Config) {
             .build()
 
     // BI (contracts C-1…C-6) — the Flight SQL edge, a client of this door over loopback. Never in fixture mode: it
-    // reads its catalog from Veles, which the fixture clients do not stand in for. Every caller is verified (C-2) —
+    // reads its catalog from Metadata, which the fixture clients do not stand in for. Every caller is verified (C-2) —
     // an enabled edge without an issuer to verify against does not start — and every statement leaves a receipt
     // when the receipts database is configured (C-6).
     val flightConfig = FlightConfig.fromConfig(config)
@@ -198,23 +198,23 @@ fun Application.module(config: Config) {
                     flightConfig.loopbackPort,
                     flightConfig.maxMessageSizeBytes,
                 )
-            val veles =
-                GrpcVelesCatalogClient(
-                    host = config.getString("veles.host"),
-                    port = config.getInt("veles.port"),
-                    deadlineSeconds = config.getLong("veles.deadline-seconds"),
+            val metadata =
+                GrpcMetadataCatalogClient(
+                    host = config.getString("metadata.host"),
+                    port = config.getInt("metadata.port"),
+                    deadlineSeconds = config.getLong("metadata.deadline-seconds"),
                 )
             val edge =
                 FlightEdge.create(
                     config = flightConfig,
                     runner = runner,
-                    veles = veles,
+                    metadata = metadata,
                     identity = IdentityWorldMiddleware.Factory(FlightAuthenticator(verifier, passwords), worlds),
                     worlds = worlds,
                     outcomes = receiptSink ?: StatementListener { },
                     openTelemetry = openTelemetry,
                     // In order: the sink drains into the store before the store's pool closes.
-                    closeables = listOfNotNull(runner, veles, receiptSink, receiptStore),
+                    closeables = listOfNotNull(runner, metadata, receiptSink, receiptStore),
                 )
             FlightWiring(edge, verifier, receiptStore)
         } else {

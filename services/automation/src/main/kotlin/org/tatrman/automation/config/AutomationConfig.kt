@@ -7,7 +7,7 @@ import java.time.ZoneId
 
 data class DoorConfig(
     val queryUrl: String,
-    val velesUrl: String,
+    val metadataUrl: String,
     val sidecarUrl: String?,
     /** Exact logical world/storage → Query world (also configured in Query's QUERY_WORLDS). */
     val routes: Map<String, String> = emptyMap(),
@@ -35,7 +35,7 @@ data class AuthConfig(
 /**
  * The automation repo (§8): [path] = where `model/` and `automation/` sit in the work tree; [pollSeconds] = the
  * refresh poll (0 = off; the CI call and the manual `POST /refresh` remain); [checkoutDir] = the clones' root;
- * [velesSource] = the Veles source id serving this repo's model, for the drift handshake (unset = any source).
+ * [metadataSource] = the Metadata source id serving this repo's model, for the drift handshake (unset = any source).
  */
 data class BundleGitConfig(
     val url: String?,
@@ -44,7 +44,7 @@ data class BundleGitConfig(
     val token: String?,
     val pollSeconds: Long = 0,
     val checkoutDir: String = "/tmp/automation-bundles",
-    val velesSource: String? = null,
+    val metadataSource: String? = null,
 )
 
 data class PreviewsConfig(
@@ -143,7 +143,7 @@ data class BudgetsConfig(
 
 /**
  * The service's configuration (AU contracts §8), typed from `automation.*` of HOCON. [load] fails on the first
- * read when a required key is missing — `db.host`, `door.queryUrl`, `door.velesUrl`, `auth.jwksUrl`,
+ * read when a required key is missing — `db.host`, `door.queryUrl`, `door.metadataUrl`, `auth.jwksUrl`,
  * `auth.issuer` — and
  * names every missing key at once, so a misconfigured pod dies at start with the whole list, not one key per
  * restart. [db] stays a raw [Config]: it is `DatabaseConnection`'s shape (type/host/port/database/user/password).
@@ -170,7 +170,7 @@ data class AutomationConfig(
 ) {
     companion object {
         const val ROOT = "automation"
-        val REQUIRED = listOf("db.host", "door.queryUrl", "door.velesUrl", "auth.jwksUrl", "auth.issuer")
+        val REQUIRED = listOf("db.host", "door.queryUrl", "door.metadataUrl", "auth.jwksUrl", "auth.issuer")
         const val CONNECTION_ENV_PREFIX = "TTR_CONN_"
 
         fun load(
@@ -187,7 +187,7 @@ data class AutomationConfig(
                 door =
                     DoorConfig(
                         queryUrl = c.getString("door.queryUrl"),
-                        velesUrl = c.getString("door.velesUrl"),
+                        metadataUrl = c.getString("door.metadataUrl"),
                         sidecarUrl = c.optString("door.sidecarUrl"),
                         routes = doorRoutes(c.optString("door.routes")),
                     ),
@@ -216,7 +216,7 @@ data class AutomationConfig(
                                 0
                             },
                         checkoutDir = c.optString("bundle.git.checkoutDir") ?: "/tmp/automation-bundles",
-                        velesSource = c.optString("bundle.velesSource"),
+                        metadataSource = c.optString("bundle.metadataSource"),
                     ),
                 previews =
                     PreviewsConfig(

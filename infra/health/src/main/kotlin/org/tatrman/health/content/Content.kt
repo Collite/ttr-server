@@ -20,7 +20,7 @@ data class Content(
     val summary: List<ContentPair> = emptyList(),
     /** One sentence the page shows as it is (e.g. why the content is not there yet). */
     val note: String? = null,
-    /** Per-source rows (veles: one per model source). */
+    /** Per-source rows (metadata: one per model source). */
     val sources: List<ContentSource>? = null,
     /** The largest parts, biggest first. */
     val top: List<ContentBar>? = null,

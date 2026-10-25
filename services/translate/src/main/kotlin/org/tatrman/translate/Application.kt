@@ -6,7 +6,7 @@ import com.typesafe.config.ConfigFactory
 import org.tatrman.meta.v1.GetQueryRequest
 import org.tatrman.meta.v1.GetQueryResponse
 import org.tatrman.meta.v1.GetSnapshotRequest
-import org.tatrman.meta.v1.VelesServiceGrpcKt
+import org.tatrman.meta.v1.MetadataServiceGrpcKt
 import org.tatrman.plan.v1.SchemaCode
 import org.tatrman.translate.v1.Language
 import org.tatrman.translate.v1.SqlDialect
@@ -128,7 +128,7 @@ fun Application.module(config: Config) {
 
     // Production: a MetadataServiceModelHandleProvider polling the metadata service's GetSnapshot
     // (ETag-skip; first fetch swaps in the real model, boot fixture used until then). Tests / no
-    // Veles reachable: the static boot fixture (translate.use-fixture-model = true).
+    // Metadata reachable: the static boot fixture (translate.use-fixture-model = true).
     var metadataChannel: ManagedChannel? = null
     var getQueryFn: (suspend (GetQueryRequest) -> GetQueryResponse)? = null
     val modelProvider: ModelHandleProvider =
@@ -136,14 +136,14 @@ fun Application.module(config: Config) {
             log.warn("Translate booting with fixture model (translate.use-fixture-model = true)")
             StaticModelHandleProvider(BootFixtureModel.handle())
         } else {
-            val host = config.getString("veles.host")
-            val port = config.getInt("veles.port")
+            val host = config.getString("metadata.host")
+            val port = config.getInt("metadata.port")
             val pollSeconds =
                 if (config.hasPath(
-                        "veles.poll-interval-seconds",
+                        "metadata.poll-interval-seconds",
                     )
                 ) {
-                    config.getInt("veles.poll-interval-seconds")
+                    config.getInt("metadata.poll-interval-seconds")
                 } else {
                     600
                 }
@@ -158,21 +158,21 @@ fun Application.module(config: Config) {
                     .build()
             metadataChannel = channel
             val snapshotDeadlineSeconds =
-                if (config.hasPath("veles.snapshot-deadline-seconds")) {
-                    config.getInt("veles.snapshot-deadline-seconds")
+                if (config.hasPath("metadata.snapshot-deadline-seconds")) {
+                    config.getInt("metadata.snapshot-deadline-seconds")
                 } else {
                     30
                 }
             val initialRetrySeconds =
-                if (config.hasPath("veles.initial-retry-seconds")) {
-                    config.getInt("veles.initial-retry-seconds")
+                if (config.hasPath("metadata.initial-retry-seconds")) {
+                    config.getInt("metadata.initial-retry-seconds")
                 } else {
                     5
                 }
-            val stub = VelesServiceGrpcKt.VelesServiceCoroutineStub(channel)
+            val stub = MetadataServiceGrpcKt.MetadataServiceCoroutineStub(channel)
             getQueryFn = { req: GetQueryRequest -> stub.withDeadlineAfter(10, TimeUnit.SECONDS).getQuery(req) }
             log.info(
-                "Translate using Veles at {}:{} (poll every {}s, snapshot deadline {}s, initial retry {}s)",
+                "Translate using Metadata at {}:{} (poll every {}s, snapshot deadline {}s, initial retry {}s)",
                 host,
                 port,
                 pollSeconds,

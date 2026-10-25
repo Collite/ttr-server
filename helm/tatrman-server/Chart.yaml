@@ -24,10 +24,10 @@ appVersion: "0.9.4"
 # each — the resulting charts/ + Chart.lock are gitignored build artifacts.
 dependencies:
   # ── Query spine ─────────────────────────────────────────────────────────────
-  - name: veles
+  - name: metadata
     version: "0.1.0"
-    repository: "file://../../services/veles/k8s"
-    condition: veles.enabled
+    repository: "file://../../services/metadata/k8s"
+    condition: metadata.enabled
   - name: query
     version: "0.1.0"
     repository: "file://../../services/query/k8s"
@@ -104,10 +104,10 @@ dependencies:
     version: "0.1.0"
     repository: "file://../../tools/query-mcp/k8s"
     condition: query-mcp.enabled
-  - name: veles-mcp
+  - name: meta-mcp
     version: "0.1.0"
     repository: "file://../../tools/meta-mcp/k8s"
-    condition: veles-mcp.enabled
+    condition: meta-mcp.enabled
   - name: fuzzy-mcp
     version: "0.1.0"
     repository: "file://../../tools/lex-matcher-mcp/k8s"

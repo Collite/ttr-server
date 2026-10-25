@@ -240,7 +240,7 @@ class SnapshotModelHandle(
                     else -> Unit
                 }
             }
-            // GH #113 — an attribute mapped to something other than a column (an expression; Veles
+            // GH #113 — an attribute mapped to something other than a column (an expression; Metadata
             // sends those with the target unset, as the raw text has no plan.v1 form yet) has no
             // physical column behind it, and nothing here can compute it. Left in the ER catalog, it
             // rode along in every scan of its entity, so MAP_TO_PHYSICAL asked the table for a column
@@ -314,8 +314,8 @@ class SnapshotModelHandle(
 
 /**
  * Best-effort mapping from a raw SQL `data_type` string to a DSL [SurfaceType]. Mirrors the
- * in-process mapping in Veles (the metadata/model-graph service, `MetadataModelHandle`); kept
- * local rather than shared to avoid a Translate → Veles dependency.
+ * in-process mapping in Metadata (the metadata/model-graph service, `MetadataModelHandle`); kept
+ * local rather than shared to avoid a Translate → Metadata dependency.
  */
 internal fun surfaceTypeOf(dataType: String): SurfaceType {
     val base =

@@ -175,14 +175,14 @@ object FlightTestKit {
                 .asFlow()
     }
 
-    /** A Veles that never answers — for specs that do not read the catalog. */
-    object NoVeles : VelesCatalogClient {
-        override suspend fun modelVersion(): String = error("no Veles in this spec")
+    /** A Metadata that never answers — for specs that do not read the catalog. */
+    object NoMetadata : MetadataCatalogClient {
+        override suspend fun modelVersion(): String = error("no Metadata in this spec")
 
         override suspend fun listObjects(request: ListObjectsRequest): ListObjectsResponse =
-            error("no Veles in this spec")
+            error("no Metadata in this spec")
 
-        override suspend fun getModel(request: GetModelRequest): GetModelResponse = error("no Veles in this spec")
+        override suspend fun getModel(request: GetModelRequest): GetModelResponse = error("no Metadata in this spec")
     }
 
     /**
@@ -192,7 +192,7 @@ object FlightTestKit {
      */
     class RunningEdge(
         door: StatementRunner,
-        veles: VelesCatalogClient = NoVeles,
+        metadata: MetadataCatalogClient = NoMetadata,
         session: EdgeSession? = SESSION,
         val outcomes: MutableList<StatementOutcome> = CopyOnWriteArrayList(),
         config: FlightConfig = testConfig(),
@@ -202,7 +202,7 @@ object FlightTestKit {
         nanoClock: () -> Long = System::nanoTime,
     ) : AutoCloseable {
         val allocator: BufferAllocator = RootAllocator()
-        val catalog = CatalogSource(veles, RunnerSchemaProbe(door, allocator), ttlSeconds = 30)
+        val catalog = CatalogSource(metadata, RunnerSchemaProbe(door, allocator), ttlSeconds = 30)
         val producer =
             TtrFlightSqlProducer(
                 runner = door,

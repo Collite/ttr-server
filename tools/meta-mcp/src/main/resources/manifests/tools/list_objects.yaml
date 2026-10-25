@@ -2,13 +2,13 @@ capability_id: "meta.list_objects:v1"
 category: "meta"
 version: "1.0.0"
 description: |
-  List veles objects (tables, views, entities, attributes, relations,
+  List metadata objects (tables, views, entities, attributes, relations,
   queries, …) filtered by kind, package, and binding. Paginated; the MCP
   wrapper drains every page server-side and returns a single `objects[]`
   array.
-service_endpoint: "http://veles-mcp.kantheon.svc.cluster.local:7262"
+service_endpoint: "http://meta-mcp.kantheon.svc.cluster.local:7262"
 search_tags:
-  - veles
+  - metadata
   - model
   - list
 cost_hints:

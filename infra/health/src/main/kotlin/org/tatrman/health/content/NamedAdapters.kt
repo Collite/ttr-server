@@ -12,13 +12,13 @@ import java.time.Instant
 // paths still apply) and adds what it computes.
 
 /**
- * veles `GET /status`: one row per model source (`sources[]` — an estate may serve two repositories),
+ * metadata `GET /status`: one row per model source (`sources[]` — an estate may serve two repositories),
  * each with the commit it loaded, when, and its object count; a source that failed its last load is
  * red, one serving a fallback amber in the note. The content's commit is the FIRST source's (the one
  * the summary line compares with translate and validate); its time is the latest successful load.
  */
-object VelesAdapter : StatusAdapter {
-    /** Veles names the commit of its first source, whatever the block configures. */
+object MetadataAdapter : StatusAdapter {
+    /** Metadata names the commit of its first source, whatever the block configures. */
     override fun reportsCommit(config: StatusConfig): Boolean = true
 
     override fun read(
@@ -61,15 +61,15 @@ object VelesAdapter : StatusAdapter {
                     ) as? JsonPrimitive
                 )?.longOrNull?.let { ContentPair("objects", it.toString(), "count") },
             )
-        // veles' own `source` line names the repository, branch and sub-path; `last_error` is free text
+        // the metadata service's own `source` line names the repository, branch and sub-path; `last_error` is free text
         // from a git client (hosts, credentials), so a failed source gets a fixed sentence.
         val where = node.text("source")?.removePrefix("git ")?.takeIf { it.isNotBlank() }
         return when {
             node.text(
                 "loaded",
-            ) != "true" -> ContentSource(id, ok = false, summary = summary, note = "not loaded: see the veles log")
+            ) != "true" -> ContentSource(id, ok = false, summary = summary, note = "not loaded: see the metadata log")
             (node.at("consecutive_failures") as? JsonPrimitive)?.longOrNull?.let { it > 0 } == true ->
-                ContentSource(id, ok = false, summary = summary, note = "the last refresh failed: see the veles log")
+                ContentSource(id, ok = false, summary = summary, note = "the last refresh failed: see the metadata log")
             else -> ContentSource(id, ok = true, summary = summary, note = where)
         }
     }

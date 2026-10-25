@@ -72,7 +72,7 @@ data class QueryMcpConfig(
                         queryRunner = endpointOf(root.getConfig("upstream.query")),
                         translator = endpointOf(root.getConfig("upstream.translate")),
                         validator = endpointOf(root.getConfig("upstream.validate")),
-                        metadata = endpointOf(root.getConfig("upstream.veles")),
+                        metadata = endpointOf(root.getConfig("upstream.metadata")),
                     ),
                 limits =
                     Limits(
@@ -101,8 +101,8 @@ data class QueryMcpConfig(
                                     .toLong()
                         },
                 metadataDecorationCacheTtlSeconds =
-                    if (root.hasPath("upstream.veles.decoration-cache-ttl-seconds")) {
-                        root.getLong("upstream.veles.decoration-cache-ttl-seconds")
+                    if (root.hasPath("upstream.metadata.decoration-cache-ttl-seconds")) {
+                        root.getLong("upstream.metadata.decoration-cache-ttl-seconds")
                     } else {
                         30L
                     },

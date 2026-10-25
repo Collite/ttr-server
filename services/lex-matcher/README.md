@@ -17,7 +17,7 @@ Proto `org.tatrman.fuzzy.v1` / `FuzzyService` (`com.tatrman.fuzzy.v1` /
 - **Match** — fuzzy-match a term against the entity catalog; the algorithm is a
   request arg (`TATRMAN | LEVENSHTEIN | JARO_WINKLER`). Returns scored matches
   (`FuzzyMatchResponse`). The proto carries no Rule-6 add — the fork principle is
-  "wire shapes fork unchanged"; the only additive exception is the Veles hop.
+  "wire shapes fork unchanged"; the only additive exception is the Metadata hop.
 
 `tools/lex-matcher-mcp` wraps this as the single `match` tool (capability id
 `fuzzy.match:v1`).
@@ -29,7 +29,7 @@ The entity catalog populates from one of two loader sources (opt-in via config):
 - **Static** (default; local/CI) — reads an in-repo JSON catalog. No external
   dependency; the lean carve-out the fork landed on.
 - **DB-backed** (`FUZZY_LOADER_SOURCE=metadata`) — the estate's **member vocabularies**.
-  Veles lists one per indexed **attribute** (`ListMemberVocabularies`), keyed by the
+  Metadata lists one per indexed **attribute** (`ListMemberVocabularies`), keyed by the
   attribute's ref (`er.<ns>.<entity>.<attribute>`), each with its match method and a
   read plan the translator rendered from the entity for this warehouse's dialect. The
   loader runs the plans against the warehouse and keeps each vocabulary's DISTINCT values,
@@ -37,9 +37,9 @@ The entity catalog populates from one of two loader sources (opt-in via config):
   matched exactly. It composes no SQL of its own (alias tables aside)
   and knows nothing of tables or primary keys: two entities over one table are two
   vocabularies, and a view- or query-backed entity reads its own population. A
-  vocabulary Veles cannot plan is listed in `GetStatus` warnings (`RG-FUZ-001` no single
+  vocabulary Metadata cannot plan is listed in `GetStatus` warnings (`RG-FUZ-001` no single
   key, `RG-FUZ-003` no read plan) and keeps its previous load if it had one; no listing at
-  all (`RG-FUZ-004`, e.g. a Veles older than member vocabularies) keeps the previous
+  all (`RG-FUZ-004`, e.g. a Metadata older than member vocabularies) keeps the previous
   member layer. A first boot with no listing still comes up, serving its declared lexicon,
   and retries the listing within seconds rather than a whole refresh interval.
 

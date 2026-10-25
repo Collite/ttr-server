@@ -77,7 +77,7 @@ dependencies {
     // Stage 2.2 T6 — load the manifest YAMLs for capabilities-mcp
     // registration. We don't depend on `:tools:capabilities-mcp` (they're
     // peers) so we parse the manifests directly with Jackson (same as
-    // veles-mcp).
+    // meta-mcp).
     implementation(libs.jackson.databind)
     implementation(libs.jackson.module.kotlin)
     implementation(libs.jackson.dataformat.yaml)

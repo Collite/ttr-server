@@ -4,7 +4,7 @@ package org.tatrman.validate.client
 import org.tatrman.meta.v1.GetSnapshotRequest
 import org.tatrman.meta.v1.GetSnapshotResponse
 import org.tatrman.meta.v1.GetStatusRequest
-import org.tatrman.meta.v1.VelesServiceGrpcKt
+import org.tatrman.meta.v1.MetadataServiceGrpcKt
 import io.grpc.ManagedChannel
 import io.grpc.ManagedChannelBuilder
 import shared.logging.OutgoingCallLoggingInterceptor
@@ -47,7 +47,7 @@ class GrpcMetadataClient(
             .intercept(OutgoingCallLoggingInterceptor())
             .build()
 
-    private val stub = VelesServiceGrpcKt.VelesServiceCoroutineStub(channel)
+    private val stub = MetadataServiceGrpcKt.MetadataServiceCoroutineStub(channel)
 
     override suspend fun getSnapshot(ifNoneMatch: String): GetSnapshotResponse =
         stub

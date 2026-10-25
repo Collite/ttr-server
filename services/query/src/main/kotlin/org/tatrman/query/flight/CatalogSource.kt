@@ -32,7 +32,7 @@ import org.tatrman.meta.v1.ListObjectsResponse
 import org.tatrman.meta.v1.ModelBundle
 import org.tatrman.meta.v1.ObjectDescriptor
 import org.tatrman.meta.v1.PageRequest
-import org.tatrman.meta.v1.VelesServiceGrpcKt
+import org.tatrman.meta.v1.MetadataServiceGrpcKt
 import org.tatrman.plan.v1.SchemaCode
 import org.tatrman.query.v1.RowWindow
 import java.util.UUID
@@ -81,9 +81,9 @@ data class CatalogForeignKey(
     val name: String = "",
 )
 
-/** The three Veles reads the catalog needs. */
-interface VelesCatalogClient {
-    /** The model version Veles currently serves; empty when it has none loaded. */
+/** The three Metadata reads the catalog needs. */
+interface MetadataCatalogClient {
+    /** The model version Metadata currently serves; empty when it has none loaded. */
     suspend fun modelVersion(): String
 
     suspend fun listObjects(request: ListObjectsRequest): ListObjectsResponse
@@ -103,10 +103,10 @@ fun interface SchemaProbe {
 }
 
 /**
- * BI (contracts C-4) — the Flight SQL catalog, from Veles: four `ListObjects` (entities, queries, tables, views) name
+ * BI (contracts C-4) — the Flight SQL catalog, from Metadata: four `ListObjects` (entities, queries, tables, views) name
  * the model's packages and one `GetModel(packages)` carries every entity, query, table and view in them (BI-0 memo §4:
- * 73 objects in 0.14 s on hartland). The answer is cached by Veles' model version, which is itself re-read at most
- * once per [ttlSeconds]: within that window a catalog call touches no Veles at all.
+ * 73 objects in 0.14 s on hartland). The answer is cached by the metadata service's model version, which is itself re-read at most
+ * once per [ttlSeconds]: within that window a catalog call touches no Metadata at all.
  *
  * A saved logical query declares no columns; they are probed through the door as the caller ([SchemaProbe]) and kept
  * per model version and **role set**: callers with the same roles share a probe, and a caller with other roles gets
@@ -118,7 +118,7 @@ fun interface SchemaProbe {
  * pairs yields none (hartland's relations state none, so hartland lists no keys between entities).
  */
 class CatalogSource(
-    private val veles: VelesCatalogClient,
+    private val metadata: MetadataCatalogClient,
     private val probe: SchemaProbe,
     private val ttlSeconds: Long = 30,
     private val nanoClock: () -> Long = System::nanoTime,
@@ -254,7 +254,7 @@ class CatalogSource(
             val cached = current
             val now = nanoClock()
             if (cached != null && now - checkedAtNanos < JTimeUnit.SECONDS.toNanos(ttlSeconds)) return cached
-            val version = veles.modelVersion()
+            val version = metadata.modelVersion()
             if (version.isEmpty()) {
                 throw CallStatus.UNAVAILABLE
                     .withDescription("catalog_unavailable: the metadata service has no model loaded yet; retry shortly")
@@ -281,7 +281,7 @@ class CatalogSource(
                 .distinct()
                 .sorted()
         if (packages.isEmpty()) return Snapshot(version, emptyList(), emptyList())
-        val response = veles.getModel(GetModelRequest.newBuilder().addAllPackages(packages).build())
+        val response = metadata.getModel(GetModelRequest.newBuilder().addAllPackages(packages).build())
         response.messagesList.firstOrNull { it.severity == Severity.ERROR }?.let {
             throw CallStatus.UNAVAILABLE
                 .withDescription("catalog_unavailable: ${it.code}: ${it.humanMessage}")
@@ -306,7 +306,7 @@ class CatalogSource(
         var token = ""
         do {
             val page =
-                veles.listObjects(
+                metadata.listObjects(
                     ListObjectsRequest
                         .newBuilder()
                         .setSchema(schema)
@@ -590,12 +590,12 @@ object ModelArrowTypes {
     }
 }
 
-/** The production [VelesCatalogClient]: Veles' gRPC (7261). */
-class GrpcVelesCatalogClient(
+/** The production [MetadataCatalogClient]: the metadata service's gRPC (7261). */
+class GrpcMetadataCatalogClient(
     host: String,
     port: Int,
     private val deadlineSeconds: Long = 30,
-) : VelesCatalogClient,
+) : MetadataCatalogClient,
     AutoCloseable {
     private val channel: ManagedChannel =
         ManagedChannelBuilder
@@ -603,7 +603,7 @@ class GrpcVelesCatalogClient(
             .usePlaintext()
             .maxInboundMessageSize(256 * 1024 * 1024)
             .build()
-    private val stub = VelesServiceGrpcKt.VelesServiceCoroutineStub(channel)
+    private val stub = MetadataServiceGrpcKt.MetadataServiceCoroutineStub(channel)
 
     override suspend fun modelVersion(): String =
         stub
