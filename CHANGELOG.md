@@ -38,6 +38,17 @@ outside this repo could notice is in.
   and tatrman-platform (studio-bff) must roll together; the previous gRPC service path is removed (MR-2).
   No release is cut by this PR; publishing belongs to MW-P0.2.
 
+- **resolver — the er statement lane places; it does not re-decide (grammar 0.18.12, ttr-core#308).** The er lane
+  now refuses whatever md's validator refuses, and for the same reasons. It also refuses a phase whose join would fan
+  out the event's rows, and a negated phase that needs a join. A negated phase reads `NOT COALESCE((…), FALSE)`. A
+  member value must match its key's type (`cn/slot-mismatch`). `latest` is capped at the evaluation day, a period
+  instant is read on its day through the calendar, and an instant compares as an interval. A refusal reports md's
+  finding with "— and on E-R: …" appended. The door's JSON shape is unchanged. Pin: `tatrman-grammar` /
+  `tatrman-ttr-metadata` 0.18.11 → 0.18.12; translator/plan-proto stay 0.12.11.
+- **automation — `concat` in writer defaults.** Grammar 0.18.11's two-operand,
+  NULL-strict `concat` is accepted in native writer-default and argument expressions (e.g. a `YYYY-Qn` label from
+  `:as_of`). Pin: `tatrman-grammar` / `tatrman-ttr-metadata` 0.18.10 → 0.18.11; translator/plan-proto stay 0.12.11.
+
 - **resolver — the er statement lane on `statement.lower:v1` (CN-P6 ⚑S62-1, A-CN-101).** Grammar 0.18.10's
   `ttr-concept` reads a statement on E-R when md carries no single read of it. The door's JSON now carries `lane`
   (`md` | `er`), and for an er read `erSql` — SQL over entities, every placeholder bound, which the query door runs as

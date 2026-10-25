@@ -1,23 +1,37 @@
-# Caller-key seed (values `keySeed`, templates/key-seed.yaml). Env: TEAMS (space-separated team ids), REVOKE_STALE,
-# PG* (the gateway's database); /keys/<team> holds each team's ttrk- key from the vault. Prints hashes' first 12
-# hex digits only, never a key.
+# Caller-key seed (values `keySeed`, templates/key-seed.yaml). Env: TEAMS (space-separated team ids), VAULT_KEYS
+# (team=vaultKey pairs, for the messages), REVOKE_STALE, PG* (the gateway's database); $KEYS_DIR/<team> (default
+# /keys) holds each team's ttrk- key from the vault. Prints hashes' first 12 hex digits only, never a key.
 set -euo pipefail
+KEYS_DIR="${KEYS_DIR:-/keys}"
 
+vault_key() { for pair in ${VAULT_KEYS:-}; do [ "${pair%%=*}" = "$1" ] && { echo "${pair#*=}"; return; }; done; echo "?"; }
+
+# A missing key fails at once, naming the team: ESO creates no Secret while any of its keys is missing from the vault.
 for team in $TEAMS; do
-  case "$(cat "/keys/$team")" in ttrk-*) ;; *) echo "✖ the vault key for team $team does not hold a ttrk- key"; exit 1 ;; esac
+  [ -f "$KEYS_DIR/$team" ] || {
+    echo "✖ no key for team $team (vault key $(vault_key "$team")): the caller-keys Secret is missing or incomplete"
+    exit 1
+  }
+  case "$(cat "$KEYS_DIR/$team")" in ttrk-*) ;; *) echo "✖ the vault key for team $team does not hold a ttrk- key"; exit 1 ;; esac
 done
 
 # The gateway's first boot runs Flyway (virtual_keys) and upserts the governance teams (virtual_keys.team_id → teams).
 want=$(printf "'%s'," $TEAMS); want="${want%,}"
 n=$(echo $TEAMS | wc -w)
 echo "waiting for virtual_keys and the teams: $TEAMS"
-for _ in $(seq 1 120); do
+for _ in $(seq 1 "${WAIT_TRIES:-40}"); do
   if psql -X -tAc "SELECT to_regclass('public.virtual_keys') IS NOT NULL AND (SELECT count(*) FROM teams WHERE id IN ($want)) = $n" 2>/dev/null | grep -qx t; then
     ready=1; break
   fi
-  sleep 15
+  sleep "${WAIT_SECONDS:-15}"
 done
-[ "${ready:-0}" = 1 ] || { echo "✖ no virtual_keys, or a team missing from governance (want: $TEAMS) — is the gateway up?"; exit 1; }
+if [ "${ready:-0}" != 1 ]; then
+  have=$(psql -X -tAc "SELECT string_agg(id, ' ') FROM teams WHERE id IN ($want)" 2>/dev/null || true)
+  missing=""
+  for team in $TEAMS; do case " $have " in *" $team "*) ;; *) missing="$missing $team" ;; esac; done
+  echo "✖ no virtual_keys, or teams missing from governance:${missing:- (none; virtual_keys is absent)} — is the gateway up?"
+  exit 1
+fi
 
 for team in $TEAMS; do
   # Lowercase hex over the exact bytes, no trailing newline: what PgKeyValidator computes.

@@ -313,9 +313,10 @@ Reading never evaluates. In `batch_rows`, inserts store their row directly; upda
 named operation payload in `row`, with key/group in the corresponding columns. Rows remain `staged`.
 
 Scalar action arguments and predicates share the published TTR-P parser/type checker and `ttrp-emit` plan lowering at the existing
-0.18.9 grammar / 0.12.11 translator pins. Each predicate runs once over its verified route snapshot in a private
+0.18.11 grammar / 0.12.11 translator pins. Each predicate runs once over its verified route snapshot in a private
 DuckDB database, selecting row ordinals without another Query call. Boolean composition, SQL null semantics,
-case, membership, text ordering, addition/subtraction/multiplication and typed date casts are supported where the compiler
+case, membership, text ordering, two-operand `concat` (0.18.11; strict NULL; cast numbers and dates explicitly),
+addition/subtraction/multiplication and typed date casts are supported where the compiler
 can lower them. Only referenced columns/bindings enter the scratch database. Decimal literals/bindings and
 large integers remain exact typed columns, avoiding the plan literal's Double representation. Incompatible
 scalar kinds require an explicit cast. Invalid predicates refuse even on empty routes; syntax, typing,
@@ -379,7 +380,7 @@ declarations refuse when the writer mapping is prepared, including empty selecti
 type spellings remain supported. All consumers must rebuild because the Attribute JVM signatures changed.
 The translator and plan-proto pins move together to 0.12.11, the version required by the published emitter.
 
-Governed writer defaults use the published 0.18.9 approval verifier. At load, the Server keeps
+Governed writer defaults use the published approval verifier from 0.18.9, unchanged through 0.18.11. At load, the Server keeps
 `recipe.approvalDependencies` as JSON, checks its version first, and then strictly reads the v1 fields.
 Missing/null/renamed v1 fields, unknown v1 keys, non-object evidence or future versions refuse only
 that recipe with `409 recipe-stale` at Open;
@@ -426,7 +427,8 @@ writer_defaults: {
 Each entry names an existing `optional: true` action column and contains exactly one source: a nonempty
 TTR-P scalar `expression` string, `context: run_id | started_at`, or `generated: bigint_id_v1`. Expressions use verified staged route
 columns and existing pinned bindings such as `:as_of`; they cannot reference another action argument or
-context default. A literal string needs quotes inside the expression. The context sources are the pinned
+context default. `cast(:as_of as text)` renders the UTC instant (`YYYY-MM-DD hh:mm:ss+00`), so a label
+built from it uses the UTC quarter. A literal string needs quotes inside the expression. The context sources are the pinned
 run UUID as text and the committed Open instant as datetime; neither reads a clock nor allocates an ID.
 Context values retain their full precision, with compiler assignment checks before direct serialization.
 An explicit wiring argument overrides its default, including explicit NULL; NULL does not trigger fallback.
@@ -437,7 +439,7 @@ and authored would-text, and share the same atomic completion/refusal as explici
 Duplicate/unknown/malformed entries, unsupported context names and defaults on non-writer actions refuse.
 
 This contract uses the published metadata's free-form `AutomationAction.properties` lane; grammar/metadata
-are now 0.18.9 and translator/plan-proto 0.12.11. The current generic semantics validator warns about the new
+are now 0.18.11 and translator/plan-proto 0.12.11. The current generic semantics validator warns about the new
 property; the Server consumer owns its strict validation. No grammar syntax or typed library API changed.
 `generated: bigint_id_v1` requires a mapped ER **bigint key** and derives an exact negative long from
 SHA-256 of length-prefixed UTF-8 fields: `automation/writer/bigint_id_v1`, pinned run UUID, zero-based full
@@ -450,7 +452,7 @@ Explicit arguments still override; NULL keys refuse. Wrong target types refuse e
 routes or with overrides. Duplicate native writer entity/keys refuse atomically when either insert used
 generation. The finite 63-bit hash space does not guarantee global uniqueness: P2 must refuse an existing
 physical primary-key conflict transactionally, without overwriting/skipping/regenerating. Preview never
-queries or writes the target model to allocate an ID. Published 0.18.9 evidence covers the authored source.
+queries or writes the target model to allocate an ID. The evidence format from 0.18.9, unchanged through 0.18.11, covers the authored source.
 
 Hartland's authored default mappings/bundles remain pending, as do obligation/
 key-lookup/calendar/column-date synthesis. P2 must validate actual physical bounds and writable policies
