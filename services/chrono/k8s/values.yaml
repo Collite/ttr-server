@@ -32,7 +32,7 @@ telemetry:
   endpoint: ""
   serviceName: chrono
 
-# Metadata (Metadata) gRPC target — chrono discovers period tables / date-role columns over meta.v1.
+# Metadata gRPC target — chrono discovers period tables / date-role columns over meta.v1.
 metadata:
   host: metadata
   grpcPort: 7261

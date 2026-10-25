@@ -12,8 +12,7 @@ import io.kotest.matchers.shouldNotBe
  * Exercises the **production** [buildGrpcClient] helper (the same function
  * `main()` calls) so the test cannot drift from the wiring it claims to
  * cover. The previous bug: `main()` read `System.getenv("METADATA_GRPC_HOST")`,
- * which is always empty because the k8s manifest sets `METADATA_GRPC_HOST`
- * instead — so the pod never connected. The fix reads `metadata.host` /
+ * while the manifest then set `VELES_GRPC_HOST` (formerly `veles`), so the pod never connected. The fix reads `metadata.host` /
  * `metadata.port` from `application.conf` (where HOCON resolves the
  * `METADATA_GRPC_*` overrides).
  *

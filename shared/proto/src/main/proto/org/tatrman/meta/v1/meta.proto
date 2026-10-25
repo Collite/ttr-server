@@ -29,7 +29,8 @@ option java_multiple_files = true;
 // =============================================================================
 
 // Renamed from VelesService 2026-10 (MR), formerly `veles`. Wire path changes:
-// /org.tatrman.meta.v1.MetadataService/<Rpc>. All callers in ttr-server + kantheon roll in one wave.
+// /org.tatrman.meta.v1.MetadataService/<Rpc>. All callers in ttr-server, kantheon and
+// tatrman-platform (studio-bff) roll with the server in one wave per cluster.
 service MetadataService {
   // -------- Model overview --------
   rpc GetModel(GetModelRequest) returns (GetModelResponse);
@@ -576,7 +577,7 @@ message AttributeSemantics {               // serves er attributes AND db column
   map<string, string> extras = 5;          // future role keys (4.2: always empty)
   // MS: "sum" | "avg" | "min" | "max" | "count" | "last" — set ONLY on attributes
   // listed in their OWNER's `measures:`, empty otherwise. Declared entity-side and
-  // denormalised onto the attribute by metadata (the join is metadata' job, not the
+  // denormalised onto the attribute by metadata (the join is the metadata service's job, not the
   // consumer's). A bare `measures: [amount]` item means "sum". Orthogonal to
   // `role:` above: an attribute is routinely both a grounding amount and a measure.
   // ⛑ The membership predicate is spelled `measure.attribute.path == <local name of

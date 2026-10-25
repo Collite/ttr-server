@@ -35,7 +35,7 @@ telemetry:
   endpoint: ""
   serviceName: geo
 
-# Metadata (Metadata) gRPC target — geo discovers geo_lat/geo_lon columns + the POI entity.
+# Metadata gRPC target — geo discovers geo_lat/geo_lon columns + the POI entity.
 metadata:
   host: metadata
   grpcPort: 7261

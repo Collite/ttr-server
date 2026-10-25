@@ -106,7 +106,7 @@ class MetadataLoaderSource(
                 client.listMemberVocabularies(dialect.translatorDialect())
             } catch (e: Exception) {
                 telemetry?.recordMetadataFailure()
-                logger.error("Metadata (metadata) call failed; preserving previous cache", e)
+                logger.error("Metadata call failed; preserving previous cache", e)
                 return unavailable("the ListMemberVocabularies call failed (${e.message})")
             }
         val items =

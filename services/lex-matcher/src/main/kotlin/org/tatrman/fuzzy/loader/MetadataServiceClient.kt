@@ -19,7 +19,7 @@ sealed interface MemberVocabularyListing {
 
     /**
      * No listing to load from — the loader keeps its previous cache (RG-FUZ-004). [reason] is
-     * `unimplemented` (a Metadata that predates member vocabularies, contracts §6), or the code of the
+     * `unimplemented` (an older server or a client/server service-name mismatch), or the code of the
      * message Metadata answered with instead of items (`metadata_not_ready`, `unknown_dialect`).
      */
     data class Unavailable(
@@ -74,7 +74,9 @@ class MetadataServiceClient(
                     if (e.status.code == Status.Code.UNIMPLEMENTED) {
                         return MemberVocabularyListing.Unavailable(
                             reason = "unimplemented",
-                            detail = "Metadata does not serve ListMemberVocabularies",
+                            detail =
+                                "Metadata does not serve ListMemberVocabularies (server predates it, or " +
+                                    "client and server straddle the MetadataService rename — roll them in one wave)",
                         )
                     }
                     throw e

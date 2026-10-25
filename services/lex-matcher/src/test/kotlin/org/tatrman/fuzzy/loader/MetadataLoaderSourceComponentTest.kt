@@ -384,7 +384,7 @@ class MetadataLoaderSourceComponentTest :
             }
         }
 
-        "§9.8 — a Metadata that predates member vocabularies (UNIMPLEMENTED): null, RG-FUZ-004" {
+        "§9.8 — an older server or mixed rename wave (UNIMPLEMENTED): null, RG-FUZ-004" {
             // The bare base class IS what a pre-MV Metadata answers: UNIMPLEMENTED for an unknown method.
             harness(object : MetadataServiceGrpc.MetadataServiceImplBase() {}).use { h ->
                 val l = loader(h)
@@ -393,6 +393,8 @@ class MetadataLoaderSourceComponentTest :
                 warning.code shouldBe "RG-FUZ-004"
                 warning.category shouldBe ""
                 warning.message shouldContain "unimplemented"
+                warning.message shouldContain "server predates it"
+                warning.message shouldContain "straddle the MetadataService rename — roll them in one wave"
             }
         }
 

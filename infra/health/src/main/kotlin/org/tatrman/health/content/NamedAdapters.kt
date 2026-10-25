@@ -61,7 +61,7 @@ object MetadataAdapter : StatusAdapter {
                     ) as? JsonPrimitive
                 )?.longOrNull?.let { ContentPair("objects", it.toString(), "count") },
             )
-        // metadata' own `source` line names the repository, branch and sub-path; `last_error` is free text
+        // the metadata service's own `source` line names the repository, branch and sub-path; `last_error` is free text
         // from a git client (hosts, credentials), so a failed source gets a fixed sentence.
         val where = node.text("source")?.removePrefix("git ")?.takeIf { it.isNotBlank() }
         return when {

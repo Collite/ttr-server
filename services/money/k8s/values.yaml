@@ -31,7 +31,7 @@ telemetry:
   endpoint: ""
   serviceName: money
 
-# Metadata (Metadata) gRPC target — money discovers amount/currency columns + the fx_rate table.
+# Metadata gRPC target — money discovers amount/currency columns + the fx_rate table.
 metadata:
   host: metadata
   grpcPort: 7261

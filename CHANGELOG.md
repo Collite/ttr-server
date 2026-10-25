@@ -25,12 +25,16 @@ outside this repo could notice is in.
   `OTEL_ENABLED_METADATA` / `OTEL_ENABLED_META_MCP`; configuration keys use
   `metadata.*` / `upstream.metadata.*` (including automation's `door.metadataUrl`
   and `bundle.metadataSource`). This is a hard cut, with no legacy aliases.
-  Query-MCP metrics are `metadata.requests.map` and `metadata.error`; source-load
-  metrics are `metadata_model_source_load_failures_total` and `metadata_model_source_loaded`.
-  Update dashboards to those names. Ports 7260/7261/7262, proto package and message
+  Source-load metrics change from `veles_model_source_load_failures_total` /
+  `veles_model_source_loaded` to `metadata_model_source_load_failures_total` /
+  `metadata_model_source_loaded`; update dashboards accordingly. The meta-mcp telemetry /
+  OTel service name changes from `veles-mcp` to `meta-mcp`. Query retry logs use the
+  operation label `metadata.get_query` instead of `veles.get_query`. The health
+  status-adapter key changes from `veles` to `metadata` (roster `adapter = metadata`);
+  update the health image and roster together. Ports 7260/7261/7262, proto package and message
   layouts, database schema, CN routes, and `METADATA_GIT_*` stay unchanged.
-  **One-wave rollout per cluster:** the server and all ttr-server + kantheon consumers
-  must roll together; the previous gRPC service path is removed (MR-2).
+  **One-wave rollout per cluster:** the server and all consumers in ttr-server, kantheon
+  and tatrman-platform (studio-bff) must roll together; the previous gRPC service path is removed (MR-2).
   No release is cut by this PR; publishing belongs to MW-P0.2.
 
 - **resolver — the er statement lane on `statement.lower:v1` (CN-P6 ⚑S62-1, A-CN-101).** Grammar 0.18.10's

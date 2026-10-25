@@ -122,7 +122,7 @@ class SavedQueryRunTimeSpec :
                 .addObjects(query(qn(SchemaCode.DB, "dbo", "not_yet"), ParseStatus.PARSE_STATUS_PENDING))
                 .build()
 
-        // What translate runs on: the handle the provider builds from metadata' GetSnapshot.
+        // What translate runs on: the handle the provider builds from the metadata service's GetSnapshot.
         val provider =
             MetadataServiceModelHandleProvider(
                 getSnapshot = {

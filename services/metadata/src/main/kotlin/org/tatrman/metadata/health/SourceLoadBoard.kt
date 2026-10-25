@@ -20,7 +20,7 @@ import java.util.concurrent.CopyOnWriteArrayList
  * snapshot with at least one model object; a load that throws (bad token, wrong branch, no
  * network) or that finds nothing (an empty repository or a wrong sub-path) is a failure, and the
  * failure stays visible in `/status` and in `metadata_model_source_load_failures_total`. Once a
- * source has loaded, a later failed refresh does not take readiness away: the refresher keeps
+ * source has loaded (`metadata_model_source_loaded` is 1), a later failed refresh does not take readiness away: the refresher keeps
  * serving that source's last good snapshot.
  *
  * A source whose fallback is explicitly configured counts as loaded when the fallback served,
