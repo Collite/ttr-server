@@ -16,7 +16,12 @@ devIdp:
   enabled: true
   resources: { requests: { cpu: 100m, memory: 512Mi } }
 
-metadata:     { enabled: true, resources: { requests: { cpu: 50m, memory: 384Mi } } }
+metadata:
+  enabled: true
+  resources: { requests: { cpu: 50m, memory: 384Mi } }
+  # Reflection is opt-in only in the disposable CI cluster, for the published-image wire check.
+  extraEnv:
+    - { name: GRPC_REFLECTION_ENABLED, value: "true" }
 query:     { enabled: true, resources: { requests: { cpu: 25m, memory: 256Mi } } }
 translate: { enabled: true, resources: { requests: { cpu: 25m, memory: 256Mi } } }
 validate:  { enabled: true, resources: { requests: { cpu: 25m, memory: 256Mi } } }

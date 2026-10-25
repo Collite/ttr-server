@@ -705,3 +705,16 @@ jobs:
         run: |
           kubectl -n ttr-umbrella get pods
           kubectl -n ttr-umbrella get deploy
+      - name: install grpcurl for the published metadata wire check
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/grpcurl"
+          cd "$RUNNER_TEMP/grpcurl"
+          base=https://github.com/fullstorydev/grpcurl/releases/download/v1.9.4
+          curl -fsSLO "$base/grpcurl_1.9.4_linux_x86_64.tar.gz"
+          curl -fsSLO "$base/grpcurl_1.9.4_checksums.txt"
+          grep ' grpcurl_1.9.4_linux_x86_64.tar.gz$' grpcurl_1.9.4_checksums.txt | sha256sum -c -
+          tar -xzf grpcurl_1.9.4_linux_x86_64.tar.gz grpcurl
+          echo "$RUNNER_TEMP/grpcurl" >> "$GITHUB_PATH"
+      - name: verify anonymous metadata pull and published MetadataService
+        run: bash scripts/verify-metadata-image.sh ttr-umbrella

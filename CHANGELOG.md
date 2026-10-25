@@ -16,6 +16,12 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+- **Umbrella metadata release cohort:** pin metadata and its in-repo consumers to
+  `0.11.30`, including health, charon and opt-in automation. The server and regenerated
+  clients use `MetadataService` together; a pre-rename consumer image cannot call it.
+  Other images retain their existing tags. The disposable kind gate verifies an
+  anonymous metadata image pull and the published service's gRPC status call.
+
 - **metadata — the model-graph service is renamed from `veles` (MR).**
   `services/metadata`, package `org.tatrman.metadata` (including `cn` and `export`),
   gRPC `org.tatrman.meta.v1.MetadataService`, charts `metadata` and `meta-mcp`, and
