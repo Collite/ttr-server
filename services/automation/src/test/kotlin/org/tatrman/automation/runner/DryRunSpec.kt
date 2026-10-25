@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package org.tatrman.automation.runner
 
+import io.kotest.assertions.withClue
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
@@ -382,49 +383,101 @@ class DryRunSpec :
             }
         }
 
-        "quarter-label defaults use the published concat catalog and pinned as-of during preview" {
-            for (route in listOf("way.hold", "way.empty")) {
-                supervisorScope {
-                    val quarter =
-                        listOf(
-                            "concat(concat(substring(cast(:as_of as text), 1, 4), '-Q'),",
-                            "case when substring(cast(:as_of as text), 6, 2) <= '03' then '1'",
-                            "when substring(cast(:as_of as text), 6, 2) <= '06' then '2'",
-                            "when substring(cast(:as_of as text), 6, 2) <= '09' then '3' else '4' end)",
-                        ).joinToString(" ")
-                    val metadata =
-                        defaultMetadata(
-                            """
-                            writer_defaults: {
-                                label: { expression: "$quarter" },
-                                run: { context: run_id },
-                                opened: { context: started_at }
-                            },
-                            """.trimIndent(),
-                        )
-                    val wiring = writerWiring(listOf(route))
-                    val f = PreviewFixture(this, previewRecipe().withWiring(listOf(wiring)), metadata)
-                    f.runner.use { runner ->
-                        runner.evaluate()
-                        val plan = f.plan!!
-                        if (route == "way.empty") {
-                            plan.actions shouldBe emptyList()
-                        } else {
+        val quarter =
+            listOf(
+                "concat(concat(substring(cast(:as_of as text), 1, 4), '-Q'),",
+                "case when substring(cast(:as_of as text), 6, 2) <= '03' then '1'",
+                "when substring(cast(:as_of as text), 6, 2) <= '06' then '2'",
+                "when substring(cast(:as_of as text), 6, 2) <= '09' then '3' else '4' end)",
+            ).joinToString(" ")
+        val quarterMetadata by lazy {
+            defaultMetadata(
+                """
+                writer_defaults: {
+                    label: { expression: "$quarter" },
+                    run: { context: run_id },
+                    opened: { context: started_at }
+                },
+                """.trimIndent(),
+            )
+        }
+
+        "quarter-label defaults use pinned as-of at UTC quarter boundaries and preserve replay rows" {
+            val startedAt = Instant.parse("2031-08-15T12:00:00Z")
+            val cases =
+                listOf(
+                    "2019-02-14T12:00:00Z" to "2019-Q1",
+                    "2026-03-31T23:59:59Z" to "2026-Q1",
+                    "2026-04-01T00:00:00Z" to "2026-Q2",
+                    "2026-06-30T23:59:59Z" to "2026-Q2",
+                    "2026-07-01T00:00:00Z" to "2026-Q3",
+                    "2026-09-30T23:59:59Z" to "2026-Q3",
+                    "2026-10-01T00:00:00Z" to "2026-Q4",
+                    "2026-12-31T23:59:59Z" to "2026-Q4",
+                    "2027-01-01T00:00:00Z" to "2027-Q1",
+                )
+            for ((instant, expected) in cases) {
+                withClue("as-of $instant, Open $startedAt") {
+                    supervisorScope {
+                        val f =
+                            PreviewFixture(
+                                this,
+                                previewRecipe().withWiring(listOf(writerWiring())),
+                                quarterMetadata,
+                                asOf = Instant.parse(instant),
+                                startedAt = startedAt,
+                            )
+                        f.runner.use { runner ->
+                            runner.evaluate()
+                            val plan = f.plan!!
                             val row = plan.rows.single { it.entity == "er.entity.order" }.row!!
-                            row["held_for"] shouldBe JsonPrimitive("2026-Q4")
+                            row["held_for"] shouldBe JsonPrimitive(expected)
                             row["run"] shouldBe JsonPrimitive(runner.context.id.toString())
-                            OffsetDateTime.parse(row["opened"]!!.jsonPrimitive.content).toInstant() shouldBe
-                                runner.context.startedAt
+                            OffsetDateTime.parse(row["opened"]!!.jsonPrimitive.content).toInstant() shouldBe startedAt
                             plan.actions.single().arguments["label"] shouldBe row["held_for"]
-                            ApplyPlanner(
-                                Clock.fixed(Instant.parse("2030-01-01T00:00:00Z"), ZoneOffset.UTC),
-                            ).preview(runner).actions shouldBe plan.actions
+                            val replay =
+                                ApplyPlanner(
+                                    Clock.fixed(Instant.parse("2030-01-01T00:00:00Z"), ZoneOffset.UTC),
+                                ).preview(runner)
+                            replay.actions shouldBe plan.actions
+
+                            fun withoutWrittenAt(rows: List<ApplyRow>) =
+                                rows.map { it.copy(row = it.row?.let { row -> JsonObject(row - "written_at") }) }
+                            withoutWrittenAt(replay.rows) shouldBe withoutWrittenAt(plan.rows)
+                            runner.evaluate()
+                            f.journals.get() shouldBe 1
+                            f.reads.get() shouldBe 5
+                            f.legacy.get() shouldBe 0
                         }
-                        runner.evaluate()
-                        f.journals.get() shouldBe 1
-                        f.reads.get() shouldBe 5
-                        f.legacy.get() shouldBe 0
                     }
+                }
+            }
+        }
+
+        "empty routes validate quarter-label defaults with the published concat catalog" {
+            supervisorScope {
+                val recipe = previewRecipe().withWiring(listOf(writerWiring(listOf("way.empty"))))
+                val f = PreviewFixture(this, recipe, quarterMetadata)
+                f.runner.use { runner ->
+                    runner.evaluate()
+                    f.plan!!.actions shouldBe emptyList()
+                    f.journals.get() shouldBe 1
+                    f.reads.get() shouldBe 5
+                    f.legacy.get() shouldBe 0
+                }
+                // The valid case alone cannot detect accidentally skipping validation over zero rows.
+                val invalid =
+                    defaultMetadata(
+                        """writer_defaults: { label: { expression: "concat('Q', 1)" } },""",
+                    )
+                val refused = PreviewFixture(this, recipe, invalid)
+                refused.runner.use { runner ->
+                    val error = shouldThrow<AutomationException> { runner.evaluate() }
+                    error.code shouldBe ErrorCode.PREVIEW_UNSUPPORTED
+                    error.message shouldBe "unsupported action expression"
+                    refused.journals.get() shouldBe 0
+                    refused.reads.get() shouldBe 5
+                    refused.legacy.get() shouldBe 0
                 }
             }
         }
@@ -1584,6 +1637,8 @@ private class PreviewFixture(
     metadata: PreviewMetadata = legacyPreviewMetadata(BundleFixture.load()),
     refuseJournal: Boolean = false,
     runId: UUID = UUID.randomUUID(),
+    asOf: Instant = PREVIEW_NOW,
+    startedAt: Instant = PREVIEW_NOW,
     store: StagingStore = LocalStagingStore(Files.createTempDirectory("au-preview")),
 ) {
     val reads = AtomicInteger()
@@ -1594,12 +1649,13 @@ private class PreviewFixture(
         PartRunner(
             runnerContext(recipe).copy(
                 id = runId,
+                startedAt = startedAt,
                 keys = null,
                 detailLimit = 2,
                 previewMetadata = metadata,
                 bindings =
                     mapOf(
-                        "as_of" to BoundValue("datetime", PREVIEW_NOW),
+                        "as_of" to BoundValue("datetime", asOf),
                         "threshold" to BoundValue("decimal", BigDecimal("4.560")),
                         "unused_secret" to BoundValue("text", "must-not-forward"),
                     ),
