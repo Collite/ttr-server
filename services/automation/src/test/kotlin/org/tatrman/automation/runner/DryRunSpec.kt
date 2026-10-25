@@ -382,6 +382,53 @@ class DryRunSpec :
             }
         }
 
+        "quarter-label defaults use the published concat catalog and pinned as-of during preview" {
+            for (route in listOf("way.hold", "way.empty")) {
+                supervisorScope {
+                    val quarter =
+                        listOf(
+                            "concat(concat(substring(cast(:as_of as text), 1, 4), '-Q'),",
+                            "case when substring(cast(:as_of as text), 6, 2) <= '03' then '1'",
+                            "when substring(cast(:as_of as text), 6, 2) <= '06' then '2'",
+                            "when substring(cast(:as_of as text), 6, 2) <= '09' then '3' else '4' end)",
+                        ).joinToString(" ")
+                    val metadata =
+                        defaultMetadata(
+                            """
+                            writer_defaults: {
+                                label: { expression: "$quarter" },
+                                run: { context: run_id },
+                                opened: { context: started_at }
+                            },
+                            """.trimIndent(),
+                        )
+                    val wiring = writerWiring(listOf(route))
+                    val f = PreviewFixture(this, previewRecipe().withWiring(listOf(wiring)), metadata)
+                    f.runner.use { runner ->
+                        runner.evaluate()
+                        val plan = f.plan!!
+                        if (route == "way.empty") {
+                            plan.actions shouldBe emptyList()
+                        } else {
+                            val row = plan.rows.single { it.entity == "er.entity.order" }.row!!
+                            row["held_for"] shouldBe JsonPrimitive("2026-Q4")
+                            row["run"] shouldBe JsonPrimitive(runner.context.id.toString())
+                            OffsetDateTime.parse(row["opened"]!!.jsonPrimitive.content).toInstant() shouldBe
+                                runner.context.startedAt
+                            plan.actions.single().arguments["label"] shouldBe row["held_for"]
+                            ApplyPlanner(
+                                Clock.fixed(Instant.parse("2030-01-01T00:00:00Z"), ZoneOffset.UTC),
+                            ).preview(runner).actions shouldBe plan.actions
+                        }
+                        runner.evaluate()
+                        f.journals.get() shouldBe 1
+                        f.reads.get() shouldBe 5
+                        f.legacy.get() shouldBe 0
+                    }
+                }
+            }
+        }
+
         "explicit values and explicit null override defaults without evaluating unused results" {
             supervisorScope {
                 val metadata =
