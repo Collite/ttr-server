@@ -16,6 +16,10 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+- **automation — `concat` in writer defaults.** Grammar 0.18.11's two-operand,
+  NULL-strict `concat` is accepted in native writer-default and argument expressions (e.g. a `YYYY-Qn` label from
+  `:as_of`). Pin: `tatrman-grammar` / `tatrman-ttr-metadata` 0.18.10 → 0.18.11; translator/plan-proto stay 0.12.11.
+
 - **resolver — the er statement lane on `statement.lower:v1` (CN-P6 ⚑S62-1, A-CN-101).** Grammar 0.18.10's
   `ttr-concept` reads a statement on E-R when md carries no single read of it. The door's JSON now carries `lane`
   (`md` | `er`), and for an er read `erSql` — SQL over entities, every placeholder bound, which the query door runs as
