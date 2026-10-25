@@ -662,6 +662,9 @@ jobs:
       # Values a chart must refuse to render (the query chart's single-replica Flight edge).
       - name: render guards
         run: scripts/helm-guards.sh
+      # The llm-gateway caller-key seed: the PostSync Job cannot wedge a sync, and a missing key fails at once, named.
+      - name: llm-gateway key seed
+        run: services/llm-gateway/k8s/tests/key-seed-test.sh
 
   # SV-P4·S2·T7 — the kind install gate. Proves the umbrella actually INSTALLS and a
   # light subset reaches Ready (not just templates). Heavy, so it does NOT run on every
