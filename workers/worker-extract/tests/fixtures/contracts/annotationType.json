@@ -1,0 +1,7 @@
+{
+  "key": "Mention",
+  "schemaJson": "{\"$id\":\"ttr:types/Mention\",\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"additionalProperties\":false,\"properties\":{\"candidates\":{\"items\":{\"type\":\"object\"},\"type\":\"array\"},\"concept\":{\"type\":\"string\"},\"lemma\":{\"type\":\"string\"},\"linkMethod\":{\"type\":\"string\"},\"surface\":{\"type\":\"string\"}},\"required\":[\"surface\"],\"type\":\"object\"}",
+  "tier": "STRUCTURAL",
+  "unitLevel": "chunk",
+  "version": "1"
+}

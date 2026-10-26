@@ -1,0 +1,15 @@
+{
+  "annotationIds": [
+    5001,
+    5002,
+    5003
+  ],
+  "artefactRef": "pipeline://run_artefacts/step-1/1",
+  "runId": "step-1/1",
+  "status": "SUCCEEDED",
+  "stepId": "step-1",
+  "usage": {
+    "latencyMs": 1840,
+    "nlpCalls": 2
+  }
+}

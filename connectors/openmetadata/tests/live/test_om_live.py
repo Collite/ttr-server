@@ -102,7 +102,7 @@ def test_check_sync_idempotency_and_deprecation(om: LiveOm, tmp_path: Path) -> N
     assert set(tables) == {"buyers", "products", "sales", "recent_sales"}
     for name, table in tables.items():
         assert table["extension"]["ttrQname"] == f"db.retail.{name}"
-        assert table["extension"]["ttrUrl"].startswith("https://studio.example/viewer?")
+        assert table["extension"]["ttrUrl"] == "https://studio.example/m/northline/s/db"
     sales = tables["sales"]
     assert "Tatrman.Grounded" in {t["tagFQN"] for t in sales["tags"]}
     assert "Tatrman.Grounded" in {t["tagFQN"] for t in tables["buyers"]["tags"]}
@@ -134,6 +134,44 @@ def test_check_sync_idempotency_and_deprecation(om: LiveOm, tmp_path: Path) -> N
     assert before == state.read_bytes()
     entities = om.entities("glossaryTerms") + om.entities("metrics") + om.entities("tables")
     assert all(e["version"] == versions[e["id"]] for e in entities if e["id"] in versions)
+    # Migrate actual 0.1.2-style links through OM's real JSON-patch boundary.
+    er_term = by_qname["er.entity.buyer"]
+    revenue = next(m for m in metrics if m["name"] == "revenue")
+    legacy_targets = [
+        ("glossaryTerms", party, None),
+        ("glossaryTerms", er_term, "er"),
+        ("tables", sales, "db"),
+        ("metrics", revenue, "md"),
+    ]
+    for resource, legacy_entity, _ in legacy_targets:
+        om.call(
+            "PATCH",
+            f"{resource}/{legacy_entity['id']}",
+            json=[
+                {
+                    "op": "add",
+                    "path": "/extension/ttrUrl",
+                    "value": "https://studio.example/viewer?qname=legacy",
+                }
+            ],
+            headers={"Content-Type": "application/json-patch+json"},
+        )
+    migrated = cli(*args)
+    assert migrated["updated"] >= len(legacy_targets)
+    for resource, legacy_entity, model in legacy_targets:
+        retained = om.call(
+            "GET", f"{resource}/{legacy_entity['id']}", params={"fields": "extension"}
+        )
+        extension = retained["extension"]
+        assert extension["ttrQname"] == legacy_entity["extension"]["ttrQname"]
+        if model is None:
+            assert "ttrUrl" not in extension
+            assert extension["ttrIri"] == party["extension"]["ttrIri"]
+        else:
+            assert extension["ttrUrl"] == f"https://studio.example/m/northline/s/{model}"
+    om.settle_initial_approvals()
+    clean = cli(*args)
+    assert all(clean[k] == 0 for k in ("created", "updated", "deprecated", "linked", "warnings"))
     # Remove an isolated quality from a coherent export; keep all scanner-owned assets.
     edited = tmp_path / "export"
     shutil.copytree(FIXTURE, edited)

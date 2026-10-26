@@ -2,8 +2,9 @@
 """Pure tier 1 + tier 0 projection into ordered OpenMetadata operations."""
 
 import json
+import re
 from collections import defaultdict
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit
 
 from pydantic import JsonValue
 
@@ -60,10 +61,12 @@ def _description(node: Node) -> str:
     )
 
 
-def _props(node: Node, studio_url: str | None) -> dict[str, str]:
+def _props(node: Node, studio_url: str | None, workspace: str) -> dict[str, str]:
     result = {"ttrQname": node.id}
-    if studio_url:
-        result["ttrUrl"] = f"{studio_url.rstrip('/')}/viewer?qname={quote(node.id, safe='')}"
+    # Studio subjects are model graphs, not arbitrary exported object qnames.
+    # New cn is not the legacy cnc renderer: keep concepts in the OM glossary.
+    if studio_url and node.model in {"db", "er", "md"}:
+        result["ttrUrl"] = f"{studio_url.rstrip('/')}/m/{quote(workspace, safe='')}/s/{node.model}"
     return result
 
 
@@ -83,6 +86,7 @@ def _terms(
     world: str,
     studio_url: str | None,
     cn_name_mode: str,
+    workspace: str,
 ) -> tuple[list[UpsertTerm], dict[str, str]]:
     terms = _term_nodes(nodes)
     parents: dict[str, str] = {}
@@ -156,7 +160,7 @@ def _terms(
     result = []
     for key in order:
         node = terms[key]
-        props = _props(node, studio_url)
+        props = _props(node, studio_url, workspace)
         if node.iri:
             props["ttrIri"] = node.iri
         if node.model == "md":
@@ -174,13 +178,16 @@ def _terms(
                 related=[RelatedTerm(term=addresses[t]) for t in sorted(related[key])],
                 iri=node.iri,
                 props=props,
+                remove_props=["ttrUrl"] if studio_url and node.model == "cn" else [],
                 cn=node.model == "cn",
             )
         )
     return result, addresses
 
 
-def _metrics(export: Export, nodes: dict[str, Node], studio_url: str | None) -> list[UpsertMetric]:
+def _metrics(
+    export: Export, nodes: dict[str, Node], studio_url: str | None, workspace: str
+) -> list[UpsertMetric]:
     result: list[UpsertMetric] = []
     names: set[str] = set()
     for key, node in sorted(nodes.items()):
@@ -202,7 +209,7 @@ def _metrics(export: Export, nodes: dict[str, Node], studio_url: str | None) -> 
         if isinstance(expression, dict):
             expression = expression.get("block", "")
         code = " ".join(str(value) for value in (aggregation, expression) if value)
-        extensions = _props(node, studio_url)
+        extensions = _props(node, studio_url, workspace)
         additivity = props.get("class") or node.props.get("additivity")
         if additivity:
             extensions["ttrAdditivity"] = str(additivity)
@@ -277,6 +284,7 @@ def _assets(
     metrics: list[UpsertMetric],
     studio_url: str | None,
     connections: list[Connection],
+    workspace: str,
 ) -> tuple[list[PlanOperation], list[str]]:
     warnings: set[str] = set()
     targets = _binding_targets(export, nodes)
@@ -336,7 +344,7 @@ def _assets(
             operations.append(
                 SetTableProps(
                     fqn=fqn,
-                    props=_props(node, studio_url),
+                    props=_props(node, studio_url, workspace),
                     description=_description(node),
                     tags=["Tatrman.Grounded"] if key in bound_tables else [],
                 )
@@ -393,14 +401,35 @@ def plan_from_export(
     studio_url: str | None = None,
     connections: list[Connection] | None = None,
     cn_name_mode: str = "label",
+    studio_workspace: str | None = None,
 ) -> Plan:
     if cn_name_mode not in {"label", "qname"}:
         raise MappingError("CN name mode must be label or qname")
     world = world or export.graph.world
     if world != export.graph.world:
         raise MappingError(f"world {world} differs from export world {export.graph.world}")
-    if studio_url and not studio_url.startswith(("http://", "https://")):
-        raise MappingError("studio URL must use HTTP(S)")
+    workspace = world if studio_workspace is None else studio_workspace
+    if studio_url:
+        parsed = urlsplit(studio_url)
+        if (
+            parsed.scheme not in {"http", "https"}
+            or not parsed.netloc
+            or parsed.username is not None
+            or parsed.password is not None
+            or parsed.path not in {"", "/"}
+            or parsed.query
+            or parsed.fragment
+        ):
+            raise MappingError(
+                "studio URL must be an HTTP(S) origin without credentials/query/path"
+            )
+        if not re.fullmatch(r"[A-Za-z0-9._~-]+", workspace) or workspace in {
+            ".",
+            "..",
+            "c",
+            "_designer",
+        }:
+            raise MappingError("invalid Studio workspace (use modeler.toml project.name)")
     nodes = {n.id: n for n in export.graph.nodes if not n.external}
     operations: list[PlanOperation] = [
         EnsureGlossary(name=f"{world} Concepts"),
@@ -426,9 +455,9 @@ def plan_from_export(
                 )
             )
     operations.append(ImportRdf(glossary=f"{world} Concepts", turtle=export.ttl))
-    terms, addresses = _terms(export, nodes, world, studio_url, cn_name_mode)
+    terms, addresses = _terms(export, nodes, world, studio_url, cn_name_mode, workspace)
     operations.extend(terms)
-    metrics = _metrics(export, nodes, studio_url)
+    metrics = _metrics(export, nodes, studio_url, workspace)
     operations.extend(metrics)
     assets, warnings = _assets(
         export,
@@ -437,6 +466,7 @@ def plan_from_export(
         metrics,
         studio_url,
         export.defs.connections if connections is None else connections,
+        workspace,
     )
     operations.extend(assets)
     return Plan(snapshot=export.snapshot, operations=operations, warnings=warnings)

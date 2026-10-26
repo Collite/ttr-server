@@ -26,6 +26,12 @@ outside this repo could notice is in.
   `amount`/`unit` evidence, including pinned working-day counts. No nested dispatch, grouped task creation
   or absolute/calendar deadline is performed. Invalid values refuse atomically even on empty routes.
 
+- **Umbrella metadata release cohort:** pin metadata and its in-repo consumers to
+  `0.11.30`, including health, charon and opt-in automation. The server and regenerated
+  clients use `MetadataService` together; a pre-rename consumer image cannot call it.
+  Other images retain their existing tags. The disposable kind gate verifies an
+  anonymous metadata image pull and the published service's gRPC status call.
+
 - **metadata — the model-graph service is renamed from `veles` (MR).**
   `services/metadata`, package `org.tatrman.metadata` (including `cn` and `export`),
   gRPC `org.tatrman.meta.v1.MetadataService`, charts `metadata` and `meta-mcp`, and
@@ -1746,3 +1752,10 @@ artifact.
   named, so a chart that has never heard of a rule pack renders byte-identically.
 - **New diagnostics** — `NLS-NLP-011` (op unrouted in the active lane),
   `NLS-PACK-010` (reload refused), `LM-MORPH-007` (token report not sunk).
+
+- **connect-openmetadata0.1.3 — Studio model links.** Replace unsupported `/viewer?qname=…`
+  links with `/m/<workspace>/s/db|er|md`. `--studio-workspace` defaults to the export
+  world and can name a different manifest project. Concepts stay in OM; sync with
+  a Studio origin removes their obsolete Studio URL while preserving other custom
+  properties. Links open whole models; exact-object navigation and new-CN diagram
+  support remain follow-ups. Upgrade forces full projection through the options fingerprint.
