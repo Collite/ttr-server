@@ -12,7 +12,7 @@ import io.kotest.matchers.shouldBe
  * LG-P0·S2·T3 — well-formedness of the git-tracked consumer corpus. Guards the DATA the LG-P6
  * contract diff depends on: a thin/synthetic corpus that "diffs clean" is a false pass (design
  * §Risks), so every consumer×shape must be present and complete, and the known hard hits the SQ-2
- * sweep surfaced (pinakes/iris field-surface reads) must stay recorded.
+ * sweep surfaced (docwh-pipeline/iris field-surface reads) must stay recorded.
  */
 class ContractCorpusSpec :
     StringSpec({
@@ -34,12 +34,12 @@ class ContractCorpusSpec :
             }
         }
 
-        "the SQ-2 field-surface hard hits stay recorded (pinakes + iris)" {
+        "the SQ-2 field-surface hard hits stay recorded (docwh-pipeline + iris)" {
             val entries = ContractCorpus.load()
 
-            val pinakes = entries.single { it.consumer.startsWith("pinakes") }
-            withClue("pinakes must be recorded as reading top-level content") {
-                pinakes.readsResponseFields shouldContainAll listOf("content")
+            val pipeline = entries.single { it.consumer.startsWith("docwh-pipeline") }
+            withClue("docwh-pipeline must be recorded as reading top-level content") {
+                pipeline.readsResponseFields shouldContainAll listOf("content")
             }
 
             val iris = entries.single { it.consumer.startsWith("iris") }

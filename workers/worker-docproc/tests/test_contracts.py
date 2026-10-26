@@ -12,7 +12,7 @@ from typing import Any
 import pytest
 from pydantic import BaseModel, ValidationError
 
-from aristarchos.sdk.models import (
+from docproc.sdk.models import (
     Annotation,
     AnnotationTier,
     AnnotationType,
@@ -91,7 +91,7 @@ def test_defaults_absent_and_unknown_keys_refused_by_the_strict_twin() -> None:
         Annotation.strict({"unitId": 1, "payload": {}})
 
 
-def test_a_newer_kallimachos_response_still_reads() -> None:
+def test_a_newer_store_response_still_reads() -> None:
     """review-158 F5 — the REST client decodes responses tolerantly: a new key, a new enum value."""
     o = json.loads((CONTRACTS / "unit.json").read_text(encoding="utf-8"))
     o["embeddingRef"] = "vec://1"

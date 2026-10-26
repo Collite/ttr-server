@@ -1,9 +1,9 @@
 # SPDX-License-Identifier: Apache-2.0
-"""The warehouse client (Kallimachos REST+JSON; the worker's only door to silver).
+"""The warehouse client (docwh-store REST+JSON; the worker's only door to silver).
 
 The worker reads units and annotations by id and writes annotations through ``LoadApi`` —
 pointers travel on the bus, content is fetched here. Errors come back as the
-Kallimachos routes' envelope: today ``{"error": "<code>", "detail": "<text>"}`` (the
+docwh-store routes' envelope: today ``{"error": "<code>", "detail": "<text>"}`` (the
 service's ``ErrorDto``); the nested ``{"error": {"code", "message", "detail"}}`` is read
 too, so the P1 routes may use either.
 """
@@ -14,7 +14,7 @@ from typing import Any
 
 import httpx
 
-from aristarchos.sdk.models import (
+from docproc.sdk.models import (
     ListAnnotationsPage,
     ListAnnotationsRequest,
     LoadAnnotationsRequest,
@@ -23,7 +23,7 @@ from aristarchos.sdk.models import (
 )
 
 
-class KallimachosError(RuntimeError):
+class StoreError(RuntimeError):
     def __init__(self, status: int, code: str, message: str) -> None:
         super().__init__(f"{status} {code}: {message}")
         self.status = status
@@ -31,15 +31,15 @@ class KallimachosError(RuntimeError):
         self.message = message
 
 
-class MartForbidden(KallimachosError):
+class MartForbidden(StoreError):
     """403 — the unit's source is in no mart the caller may read (RLS at the store)."""
 
 
-class SchemaRejected(KallimachosError):
+class SchemaRejected(StoreError):
     """422 `annotation/schema` — a payload did not validate against its type's JSON Schema."""
 
 
-def _error(r: httpx.Response) -> KallimachosError:
+def _error(r: httpx.Response) -> StoreError:
     code, message = "", r.text
     try:
         body: Any = r.json()
@@ -54,10 +54,10 @@ def _error(r: httpx.Response) -> KallimachosError:
         return MartForbidden(r.status_code, code, message)
     if r.status_code == 422 and code == "annotation/schema":
         return SchemaRejected(r.status_code, code, message)
-    return KallimachosError(r.status_code, code, message)
+    return StoreError(r.status_code, code, message)
 
 
-class KallimachosClient:
+class StoreClient:
     def __init__(self, base_url: str, client: httpx.Client | None = None, timeout_s: float = 30.0) -> None:
         self._http = client or httpx.Client(base_url=base_url, timeout=timeout_s)
 

@@ -21,13 +21,24 @@ teams:
     costCenterPrefix: "kleio/"
     budget: { id: kleio-monthly, usdPerMonth: 100.0, mode: soft }   # interim
     rateLimit: { id: kleio-rl, requestsPerMinute: 120 }             # interim
-  - id: kallimachos                                                 # P6 consumer: /v1/embeddings
+  - id: docwh-store                                                 # P6 consumer: /v1/embeddings (was kallimachos)
+    costCenterPrefix: "docwh-store/"
+    budget: { id: docwh-store-monthly, usdPerMonth: 100.0, mode: soft }  # interim
+    rateLimit: { id: docwh-store-rl, requestsPerMinute: 120 }            # interim
+  - id: docwh-pipeline                                              # P6 consumer: /v1/chat/completions (was pinakes)
+    costCenterPrefix: "docwh-pipeline/"
+    budget: { id: docwh-pipeline-monthly, usdPerMonth: 100.0, mode: soft } # interim
+    rateLimit: { id: docwh-pipeline-rl, requestsPerMinute: 120 }           # interim
+  # DX-RN transition: the pre-rename ids stay until every cluster seeds docwh-store/docwh-pipeline under
+  # their new vault keys (rn-renames T6). The seeder never moves a key between teams, so a cluster that runs
+  # this image before its olymp cut-over keeps its kallimachos/pinakes keys working. Removed at RN T8.
+  - id: kallimachos
     costCenterPrefix: "kallimachos/"
     budget: { id: kallimachos-monthly, usdPerMonth: 100.0, mode: soft }  # interim
     rateLimit: { id: kallimachos-rl, requestsPerMinute: 120 }            # interim
-  - id: pinakes                                                     # P6 consumer: /v1/chat/completions
+  - id: pinakes
     costCenterPrefix: "pinakes/"
-    budget: { id: pinakes-monthly, usdPerMonth: 100.0, mode: soft } # interim
-    rateLimit: { id: pinakes-rl, requestsPerMinute: 120 }           # interim
+    budget: { id: pinakes-monthly, usdPerMonth: 100.0, mode: soft }      # interim
+    rateLimit: { id: pinakes-rl, requestsPerMinute: 120 }                # interim
 
 keys: []   # seeded at cutover (G-3) — hashes from k8s secrets, never committed
