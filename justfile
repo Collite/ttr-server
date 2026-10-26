@@ -18,7 +18,7 @@ set shell := ["bash", "-uc"]
 # CI cannot build them without its URL. All four: `just nlp-backend-image`.
 # `superset` (images/superset) is not here either: its version is Superset's plus `-ttr<N>`, not ours, so it is
 # released by tag only — `superset/v6.1.0-ttr1` (images/superset/README.md).
-image_modules := "metadata query translate validate dispatch charon lex-matcher llm-gateway nlp nlp-stanza nlp-spacy golem-py morph-studio chrono geo money grounding-mcp resolver automation meta-mcp query-mcp lex-matcher-mcp nlp-mcp worker-postgres worker-mssql worker-polars identity health"
+image_modules := "connect-openmetadata metadata query translate validate dispatch charon lex-matcher llm-gateway nlp nlp-stanza nlp-spacy golem-py morph-studio chrono geo money grounding-mcp resolver automation meta-mcp query-mcp lex-matcher-mcp nlp-mcp worker-postgres worker-mssql worker-polars identity health"
 
 # The pure-Python wheels publish-python.yml builds (`python-<lane>/v*` tag →
 # PyPI). Kept in lockstep with that workflow's tag map — the wheel-name → tag-
@@ -695,6 +695,7 @@ _release-guard:
 #   just publish metadata                          # internal (GHCR), patch bump
 #   just publish metadata set 0.9.2                 # internal, explicit version
 #   just publish services/query patch          # image module, path form
+#   just publish connect-openmetadata set 0.1.3     # connector image (also: connectors/openmetadata)
 #   just publish bundle server-libs                 # internal, patch bump
 #   just publish bundle server-libs release set 0.9.2  # + Maven Central, explicit
 #   just publish wheel ttr-nlp                   # build-only proof, no upload
@@ -760,10 +761,13 @@ publish *args:
         esac
         DESC="the ${WHEEL_NAME} wheel (shared/libs/python/${WHEEL_NAME}) → PyPI"
     else
-        # The NLP backends live one level deeper than every other module and their
-        # image name is `nlp-<dir>`, so `_resolve`'s one-level search cannot find
-        # them and `basename` would give the wrong name. Map them explicitly.
+        # Map image names that differ from their directory basenames explicitly.
+        # The connector also lives outside `_resolve`'s search roots; the NLP
+        # backends live one level deeper than its one-level search.
         case "$WHAT" in
+            connect-openmetadata|connectors/openmetadata)
+                MOD_NAME=connect-openmetadata
+                MOD_PATH=connectors/openmetadata ;;
             nlp-stanza|nlp-spacy)
                 MOD_NAME="$WHAT"
                 MOD_PATH="services/nlp/backends/${WHAT#nlp-}" ;;
