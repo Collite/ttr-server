@@ -12,6 +12,7 @@ import org.tatrman.automation.bundle.ManifestColumn
 import org.tatrman.automation.bundle.legacyPreviewMetadata
 import org.tatrman.automation.runner.BoundValue
 import org.tatrman.automation.runner.Table
+import org.tatrman.ttr.metadata.model.AutomationDuration
 
 class PreviewWiringValuesSpec :
     StringSpec({
@@ -133,5 +134,150 @@ class PreviewWiringValuesSpec :
             shouldThrow<AutomationException> {
                 PreviewWiringValues.project(mapOf("action" to nested), ask, table.copy(rows = emptyList()), emptyMap())
             }.code shouldBe ErrorCode.PREVIEW_UNSUPPORTED
+        }
+
+        "nested context and candidate names refuse at every depth while root and non-context columns project" {
+            val roles = setOf("on_hand", "weekly_demand", "candidates")
+            val route = Table(listOf(ManifestColumn("on_hand", "int")), listOf(listOf(2)))
+            for ((name, source) in listOf(
+                "action" to "escalate { lines: on_hand }",
+                "action" to "escalate { items: candidates }",
+                "on_due" to "hold { next: escalate { items: weekly_demand } }",
+                "action" to "start { next: escalate { items: on_hand } }",
+            )) {
+                for (rows in listOf(route, route.copy(rows = emptyList()))) {
+                    shouldThrow<AutomationException> {
+                        PreviewWiringValues.project(mapOf(name to source), ask, rows, emptyMap(), roleNames = roles)
+                    }.code shouldBe ErrorCode.PREVIEW_UNSUPPORTED
+                }
+            }
+            PreviewWiringValues
+                .project(
+                    mapOf("on_hand" to "on_hand"),
+                    ask,
+                    route,
+                    emptyMap(),
+                    roleNames = roles,
+                ).single()["on_hand"] shouldBe
+                JsonPrimitive(2)
+            val safe =
+                PreviewWiringValues
+                    .project(
+                        mapOf("action" to "start { process: \"purchasing\", quantity: id }"),
+                        ask,
+                        table,
+                        emptyMap(),
+                        roleNames = roles,
+                    ).single()
+                    .getValue("action")
+                    .jsonObject
+                    .getValue("arguments")
+                    .jsonObject
+            safe["quantity"] shouldBe JsonPrimitive(9007199254740993L)
+        }
+
+        "pinned due defaults equal explicit evidence with presence wins and declared-column protection" {
+            val action = ask.copy(due = AutomationDuration(2.0, "working_days"))
+            val implicit = PreviewWiringValues.project(emptyMap(), action, table, emptyMap())
+            implicit shouldBe PreviewWiringValues.project(mapOf("due" to "2 working_days"), action, table, emptyMap())
+            implicit.single()["due"] shouldBe
+                buildJsonObject {
+                    put("amount", 2)
+                    put("unit", "working_days")
+                }
+            PreviewWiringValues.project(emptyMap(), action, table, emptyMap()) shouldBe implicit
+            PreviewWiringValues.project(mapOf("due" to "5 days"), action, table, emptyMap()).single()["due"] shouldBe
+                buildJsonObject {
+                    put("amount", 5)
+                    put("unit", "days")
+                }
+            PreviewWiringValues.project(mapOf("due" to "null"), action, table, emptyMap()).single()["due"] shouldBe
+                JsonNull
+            PreviewWiringValues
+                .project(
+                    emptyMap(),
+                    ask.copy(due = null),
+                    table,
+                    emptyMap(),
+                ).single()
+                .containsKey("due") shouldBe
+                false
+            val declared =
+                action.copy(
+                    columns =
+                        action.columns + action.columns.first().copy(name = "due", type = "text"),
+                )
+            PreviewWiringValues.project(emptyMap(), declared, table, emptyMap()).single().containsKey("due") shouldBe
+                false
+        }
+
+        "invalid default durations refuse even empty and exact integral bounds remain valid" {
+            for ((amount, unit) in listOf(
+                2.5 to "days",
+                -1.0 to "days",
+                Double.NaN to "days",
+                Double.POSITIVE_INFINITY to "days",
+                Long.MAX_VALUE.toDouble() to "days",
+                2.0 to "unknown",
+            )) {
+                val action = ask.copy(due = AutomationDuration(amount, unit))
+                shouldThrow<AutomationException> {
+                    PreviewWiringValues.project(emptyMap(), action, table.copy(rows = emptyList()), emptyMap())
+                }.code shouldBe
+                    ErrorCode.PREVIEW_UNSUPPORTED
+                PreviewWiringValues.project(mapOf("due" to "null"), action, table, emptyMap()).single()["due"] shouldBe
+                    JsonNull
+            }
+            for (amount in listOf(0.0, Math.nextDown(Long.MAX_VALUE.toDouble()))) {
+                PreviewWiringValues
+                    .project(
+                        emptyMap(),
+                        ask.copy(due = AutomationDuration(amount, "days")),
+                        table,
+                        emptyMap(),
+                    ).single()
+                    .getValue("due")
+                    .jsonObject
+                    .getValue("amount")
+                    .jsonPrimitive.long shouldBe
+                    amount.toLong()
+            }
+        }
+
+        "nested literals retain original backslashes and code-point spans after emoji" {
+            val literal = "\"a\\\\b\""
+            val values =
+                PreviewWiringValues
+                    .project(
+                        mapOf(
+                            "about" to literal,
+                            "action" to "start { first: \"😀\", path: $literal, last: \"c\\d\" }",
+                        ),
+                        ask,
+                        table,
+                        emptyMap(),
+                    ).single()
+            val args =
+                values
+                    .getValue("action")
+                    .jsonObject
+                    .getValue("arguments")
+                    .jsonObject
+            args["path"] shouldBe values["about"]
+            args["first"] shouldBe JsonPrimitive("😀")
+            args["last"] shouldBe JsonPrimitive("c\\d")
+        }
+
+        "argumentless intent renders without doubled spaces" {
+            val value =
+                PreviewWiringValues
+                    .project(
+                        mapOf("action" to "start {}"),
+                        ask,
+                        table,
+                        emptyMap(),
+                    ).single()
+                    .getValue("action")
+            PreviewWiringValues.display(value) shouldBe "start {}"
         }
     })

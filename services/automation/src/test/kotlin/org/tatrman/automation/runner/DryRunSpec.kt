@@ -15,6 +15,7 @@ import org.tatrman.automation.bundle.BundleFixture.edit
 import org.tatrman.automation.staging.*
 import org.tatrman.ttr.metadata.model.LocalizedText
 import org.tatrman.ttr.metadata.model.AutomationColumn
+import org.tatrman.ttr.metadata.model.AutomationDuration
 import java.math.BigDecimal
 import java.nio.file.Files
 import java.time.Clock
@@ -1331,6 +1332,103 @@ class DryRunSpec :
                     f.journals.get() shouldBe 1
                     f.reads.get() shouldBe 5
                     f.legacy.get() shouldBe 0
+                }
+            }
+        }
+
+        "pinned action due default matches explicit wiring through evaluate and replay" {
+            val original = legacyPreviewMetadata(BundleFixture.load())
+            val ask = original.actions.getValue("ask").copy(due = AutomationDuration(2.0, "working_days"))
+            val metadata = original.copy(actions = original.actions + ("ask" to ask))
+            val columns = mapOf("who" to "role.buyer", "about" to "department", "action" to "start {}")
+            var expected: Map<String, JsonElement>? = null
+            for (arguments in listOf(columns + ("due" to "2 working_days"), columns)) {
+                supervisorScope {
+                    val recipe =
+                        previewRecipe().withWiring(
+                            listOf(ManifestWiring(listOf("way.hold"), "ask", arguments)),
+                        )
+                    val f = PreviewFixture(this, recipe, metadata)
+                    f.runner.use { runner ->
+                        runner.evaluate()
+                        val result =
+                            f.plan!!
+                                .actions
+                                .single()
+                                .arguments
+                        result["due"] shouldBe
+                            buildJsonObject {
+                                put("amount", 2)
+                                put("unit", "working_days")
+                            }
+                        expected?.let { result shouldBe it }
+                        expected = result
+                        ApplyPlanner(
+                            Clock.fixed(Instant.parse("2040-01-01T00:00:00Z"), ZoneOffset.UTC),
+                        ).preview(runner).actions.single().arguments shouldBe
+                            result
+                        runner.evaluate()
+                        f.journals.get() shouldBe 1
+                    }
+                }
+            }
+        }
+
+        "nested role references refuse before any preview journal" {
+            for (reference in listOf("lines", "candidates")) {
+                supervisorScope {
+                    val columns =
+                        mapOf(
+                            "who" to "role.buyer",
+                            "about" to "department",
+                            "action" to "escalate { items: $reference }",
+                        )
+                    val recipe =
+                        previewRecipe().withWiring(
+                            listOf(ManifestWiring(listOf("way.hold", "way.empty"), "ask", columns)),
+                        )
+                    val f = PreviewFixture(this, recipe)
+                    f.runner.use { runner ->
+                        shouldThrow<AutomationException> { runner.evaluate() }.code shouldBe
+                            ErrorCode.PREVIEW_UNSUPPORTED
+                        f.journals.get() shouldBe 0
+                        f.plan shouldBe null
+                    }
+                }
+            }
+        }
+
+        "rows placeholder refusal identifies the dry-run text" {
+            supervisorScope {
+                val original = legacyPreviewMetadata(BundleFixture.load())
+                val notify =
+                    original.actions.getValue("notify").copy(
+                        dryRun =
+                            LocalizedText(
+                                mapOf(
+                                    "en" to "would notify {detail}",
+                                ),
+                            ),
+                    )
+                val recipe =
+                    previewRecipe().withWiring(
+                        listOf(
+                            ManifestWiring(
+                                listOf("way.hold"),
+                                "notify",
+                                mapOf(
+                                    "who" to "role.buyer",
+                                    "detail" to "lines",
+                                ),
+                            ),
+                        ),
+                    )
+                val f = PreviewFixture(this, recipe, original.copy(actions = original.actions + ("notify" to notify)))
+                f.runner.use { runner ->
+                    val error = shouldThrow<AutomationException> { runner.evaluate() }
+                    error.code shouldBe ErrorCode.PREVIEW_UNSUPPORTED
+                    error.message shouldBe "dry-run text requires a scalar or deferred-call/duration evidence"
+                    f.journals.get() shouldBe 0
                 }
             }
         }

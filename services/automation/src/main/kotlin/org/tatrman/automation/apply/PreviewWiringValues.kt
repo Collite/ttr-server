@@ -6,27 +6,74 @@ import org.tatrman.automation.api.AutomationException
 import org.tatrman.automation.api.ErrorCode
 import org.tatrman.automation.api.scalar
 import org.tatrman.automation.runner.BoundValue
+import org.tatrman.automation.runner.RecipeBindings
 import org.tatrman.automation.runner.Table
 import org.tatrman.ttr.metadata.model.AutomationAction
 import org.tatrman.ttrp.ast.ActionsBlock
 import org.tatrman.ttrp.ast.RecipeDecl
 import org.tatrman.ttrp.ast.WiringValue
 import org.tatrman.ttrp.diagnostics.Severity
+import org.tatrman.ttrp.expr.ColumnRef
 import org.tatrman.ttrp.expr.DurationLiteral
 import org.tatrman.ttrp.expr.DurationParam
-import org.tatrman.ttrp.expr.ExprText
+import org.tatrman.ttrp.expr.DurationUnit
 import org.tatrman.ttrp.parser.TtrpParser
 
 /** Wiring data, not dispatch: partial calls and relative durations never execute or resolve a deadline. */
 internal object PreviewWiringValues {
+    internal data class Prepared(
+        val sources: Map<String, String>,
+        val parsed: Map<String, WiringValue>,
+        val defaultDue: JsonObject?,
+    )
+
+    /** Parse pinned syntax once per wiring, independently of routes and selected rows. */
+    fun prepare(
+        sources: Map<String, String>,
+        action: AutomationAction,
+    ): Prepared =
+        guarded {
+            val parsed =
+                sources
+                    .filterKeys { name ->
+                        val column = action.columns.singleOrNull { it.name == name }
+                        column?.type == "action" || column == null && name in setOf("due", "on_due")
+                    }.mapValues { parse(it.value) }
+            val defaultDue =
+                if ("due" !in sources && action.columns.none { it.name == "due" }) {
+                    action.due?.let {
+                        // MAX_VALUE rounds up to 2^63 as a Double; the upper bound must be strict.
+                        require(it.amount.isFinite() && it.amount >= 0 && it.amount < Long.MAX_VALUE.toDouble())
+                        require(it.amount == kotlin.math.floor(it.amount))
+                        require(it.unit in DurationUnit.entries.map { unit -> unit.spelling })
+                        duration(it.amount.toLong(), it.unit)
+                    }
+                } else {
+                    null
+                }
+            Prepared(sources.toMap(), parsed, defaultDue)
+        }
+
     fun project(
         sources: Map<String, String>,
         action: AutomationAction,
         table: Table,
         bindings: Map<String, BoundValue>,
         expectedTypes: Map<String, String> = emptyMap(),
+        roleNames: Set<String> = emptySet(),
+    ): List<Map<String, JsonElement>> =
+        project(prepare(sources, action), action, table, bindings, expectedTypes, roleNames)
+
+    fun project(
+        prepared: Prepared,
+        action: AutomationAction,
+        table: Table,
+        bindings: Map<String, BoundValue>,
+        expectedTypes: Map<String, String> = emptyMap(),
+        roleNames: Set<String> = emptySet(),
     ): List<Map<String, JsonElement>> =
         guarded {
+            val sources = prepared.sources
             val scalars = linkedMapOf<String, String>()
             val reserved = (sources.keys + table.columns.map { it.name } + bindings.keys).toMutableSet()
             var ordinal = 0
@@ -54,6 +101,7 @@ internal object PreviewWiringValues {
             fun value(
                 node: WiringValue,
                 depth: Int,
+                source: String,
             ): (Map<String, JsonElement>) -> JsonElement {
                 require(depth <= 16)
                 return when (node) {
@@ -64,47 +112,51 @@ internal object PreviewWiringValues {
                                 .distinct()
                                 .size == node.args.size,
                         )
-                        // Row/detail capture needs the later task/dispatch closure; an omitted rows parameter is partial.
+                        // Until P3 pins callees, neither named capture nor a bare role reference is safe.
                         require(node.args.none { it.name in setOf("rows", "detail") })
-                        val args = node.args.associate { it.name to value(it.value, depth + 1) }
-                        val result: (Map<String, JsonElement>) -> JsonElement = { row ->
+                        val args = node.args.associate { it.name to value(it.value, depth + 1, source) }
+                        return { row ->
                             buildJsonObject {
                                 put("action", node.action)
                                 put("arguments", JsonObject(args.mapValues { it.value(row) }))
                                 put("deferred", true)
                             }
                         }
-                        result
                     }
                     is WiringValue.Expr -> {
                         val expression = node.expression
-                        val duration =
+                        require(
+                            !(
+                                depth >= 1 &&
+                                    expression is ColumnRef &&
+                                    expression.port == null &&
+                                    expression.column in roleNames
+                            ),
+                        )
+                        val count =
                             when (expression) {
                                 is DurationLiteral -> expression.amount to expression.unit.spelling
-                                is DurationParam -> {
-                                    val bound = bindings.getValue(expression.param)
-                                    require(bound.type in setOf("int", "integer", "bigint", "days", "working_days"))
-                                    require(
-                                        bound.value is Byte ||
-                                            bound.value is Short ||
-                                            bound.value is Int ||
-                                            bound.value is Long,
-                                    )
-                                    (bound.value as Number).toLong() to expression.unit.spelling
-                                }
+                                is DurationParam ->
+                                    requireNotNull(
+                                        RecipeBindings.integralAmount(bindings.getValue(expression.param)),
+                                    ) to
+                                        expression.unit.spelling
                                 else -> null
                             }
-                        if (duration == null) {
-                            leaf(ExprText.render(expression))
+                        if (count == null) {
+                            // Locations are ANTLR code-point offsets, not JVM UTF-16 indices.
+                            val start = expression.location.offsetStart - PREFIX.length
+                            val end = expression.location.offsetEnd - PREFIX.length
+                            leaf(
+                                source.substring(
+                                    source.offsetByCodePoints(0, start),
+                                    source.offsetByCodePoints(0, end),
+                                ),
+                            )
                         } else {
-                            require(duration.first >= 0)
-                            val data =
-                                buildJsonObject {
-                                    put("amount", duration.first)
-                                    put("unit", duration.second)
-                                }
-                            val result: (Map<String, JsonElement>) -> JsonElement = { data }
-                            result
+                            require(count.first >= 0)
+                            val data = duration(count.first, count.second)
+                            return { data }
                         }
                     }
                     is WiringValue.Values -> error("deferred lists require row/detail lowering")
@@ -112,24 +164,26 @@ internal object PreviewWiringValues {
             }
 
             val outputs =
-                sources.mapValues { (name, source) ->
-                    val column = action.columns.singleOrNull { it.name == name }
-                    val isAction = column?.type == "action" || column == null && name == "on_due"
-                    val isDue = column == null && name == "due"
-                    val parsed = if (isAction || isDue) parse(source) else null
-                    when {
-                        parsed is WiringValue.Call -> {
-                            require(isAction)
-                            value(parsed, 0)
+                sources
+                    .mapValues { (name, source) ->
+                        val column = action.columns.singleOrNull { it.name == name }
+                        val isAction = column?.type == "action" || column == null && name == "on_due"
+                        val isDue = column == null && name == "due"
+                        val parsed = prepared.parsed[name]
+                        when {
+                            parsed is WiringValue.Call -> {
+                                require(isAction)
+                                value(parsed, 0, source)
+                            }
+                            parsed is WiringValue.Expr &&
+                                (parsed.expression is DurationLiteral || parsed.expression is DurationParam) -> {
+                                require(isDue)
+                                value(parsed, 0, source)
+                            }
+                            else -> leaf(source, name, column == null || column.type in setOf("role", "action", "text"))
                         }
-                        parsed is WiringValue.Expr &&
-                            (parsed.expression is DurationLiteral || parsed.expression is DurationParam) -> {
-                            require(isDue)
-                            value(parsed, 0)
-                        }
-                        else -> leaf(source, name, column == null || column.type in setOf("role", "action", "text"))
-                    }
-                }
+                    }.toMutableMap()
+            prepared.defaultDue?.let { data -> outputs["due"] = { data } }
             val projected =
                 PreviewExpressions.project(
                     scalars,
@@ -146,13 +200,10 @@ internal object PreviewWiringValues {
             }
         }
 
-    /** The published wiring grammar is the only parser. Check the wrapper shape so no input tail is ignored. */
+    /** Check the full wrapper shape so no input tail is ignored. */
     private fun parse(source: String): WiringValue {
         require(source.length <= 16_384)
-        val result =
-            TtrpParser.parseString(
-                "recipe { key: preview.id as of: now actions { way.preview -> _preview_action { payload: $source\n } } }",
-            )
+        val result = TtrpParser.parseString("$PREFIX$source\n } } }")
         require(result.diagnostics.none { it.severity == Severity.ERROR })
         val recipe = result.document.statements.single() as RecipeDecl
         val block = recipe.members.single() as ActionsBlock
@@ -165,12 +216,12 @@ internal object PreviewWiringValues {
             .value
     }
 
-    /** Only our two structured evidence forms can replace an authored would-text placeholder. */
+    /** Unsupported placeholder shapes belong to the dry-run template diagnostic. */
     fun display(
         value: JsonElement,
         quoted: Boolean = false,
-    ): String =
-        when (value) {
+    ): String? {
+        return when (value) {
             is JsonPrimitive -> if (quoted) value.toString() else value.content
             is JsonObject ->
                 when {
@@ -180,20 +231,37 @@ internal object PreviewWiringValues {
                             "arguments",
                             "deferred",
                         ) &&
-                        value["deferred"] == JsonPrimitive(true) ->
-                        value.getValue("action").jsonPrimitive.content + " { " +
-                            value
-                                .getValue(
-                                    "arguments",
-                                ).jsonObject.entries
-                                .joinToString(", ") { (key, item) -> "$key: ${display(item, true)}" } +
-                            " }"
-                    value.keys == setOf("amount", "unit") ->
-                        value.getValue("amount").jsonPrimitive.content + " " +
-                            value.getValue("unit").jsonPrimitive.content
-                    else -> unsupported()
+                        value["deferred"] == JsonPrimitive(true) -> {
+                        val action = (value["action"] as? JsonPrimitive)?.content ?: return null
+                        val args = value["arguments"] as? JsonObject ?: return null
+                        if (args.isEmpty()) {
+                            "$action {}"
+                        } else {
+                            val rendered =
+                                args.entries.map { (key, item) ->
+                                    "$key: ${display(item, true) ?: return null}"
+                                }
+                            "$action { ${rendered.joinToString(", ")} }"
+                        }
+                    }
+                    value.keys == setOf("amount", "unit") -> {
+                        val amount = value["amount"] as? JsonPrimitive ?: return null
+                        val unit = value["unit"] as? JsonPrimitive ?: return null
+                        "${amount.content} ${unit.content}"
+                    }
+                    else -> null
                 }
-            else -> unsupported()
+            else -> null
+        }
+    }
+
+    private fun duration(
+        amount: Long,
+        unit: String,
+    ): JsonObject =
+        buildJsonObject {
+            put("amount", amount)
+            put("unit", unit)
         }
 
     private inline fun <T> guarded(block: () -> T): T =
@@ -205,6 +273,9 @@ internal object PreviewWiringValues {
             unsupported()
         }
 
+    private const val PREFIX =
+        "recipe { key: preview.id as of: now actions { " +
+            "way.preview -> _preview_action { payload: "
     private val SYMBOL = Regex("[A-Za-z_][A-Za-z_0-9]*(?:\\.[A-Za-z_][A-Za-z_0-9]*)*")
 
     private fun unsupported(): Nothing =

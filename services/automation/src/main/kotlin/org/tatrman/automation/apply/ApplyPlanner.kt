@@ -84,6 +84,18 @@ class ApplyPlanner(
             require(wiring.routes.all { it in knownRoutes }) { "action wiring names an unknown decision route" }
             require(wiring.action in metadata.actions) { "action was not pinned at open" }
         }
+        val wiringValues =
+            recipe.wiring.map { wiring ->
+                val action = metadata.actions.getValue(wiring.action)
+                val defaults = PreviewWriterDefaults.resolve(action, context)
+                val scalarSources =
+                    (defaults.expressions + wiring.columns).filterKeys { name ->
+                        val column = action.columns.singleOrNull { it.name == name }
+                        column?.type != "rows"
+                    }
+                defaults to PreviewWiringValues.prepare(scalarSources, action)
+            }
+        val roleNames = roles.contexts.map { it.name }.toSet() + listOfNotNull(roles.candidates)
         val writtenAt = clock.instant()
         for (route in roles.routes) {
             currentCoroutineContext().ensureActive()
@@ -112,10 +124,11 @@ class ApplyPlanner(
                         val indices = table.rows.indices.filter { matches == null || it in matches }
                         val action = metadata.actions.getValue(wiring.action)
                         val targets = metadata.targets[wiring.action]
-                        val defaults = PreviewWriterDefaults.resolve(action, context)
+                        val (defaults, values) = wiringValues[wiringIndex]
                         // Presence wins, including explicit NULL. Defaults do not read other arguments.
-                        val columns = defaults.expressions + wiring.columns
-                        val argumentNames = columns.keys + defaults.values.keys + defaults.generated
+                        val argumentNames =
+                            (defaults.expressions.keys + wiring.columns.keys) + defaults.values.keys +
+                                defaults.generated + if (values.defaultDue != null) setOf("due") else emptySet()
                         val writer =
                             if (action.sinks[Bundle.NATIVE] ==
                                 "writer"
@@ -146,14 +159,12 @@ class ApplyPlanner(
                         }
                         val projected =
                             PreviewWiringValues.project(
-                                columns.filterKeys { name ->
-                                    action.columns.singleOrNull { it.name == name }?.type !=
-                                        "rows"
-                                },
+                                values,
                                 action,
                                 table.copy(rows = indices.map { table.rows[it] }),
                                 context.bindings,
                                 expectedTypes = writer?.expectedTypes.orEmpty(),
+                                roleNames = roleNames,
                             )
                         PreparedWiring(
                             wiring,
@@ -418,6 +429,7 @@ class ApplyPlanner(
                         ?: unsupported("unknown dry-run text argument")
                 }
                 PreviewWiringValues.display(value)
+                    ?: unsupported("dry-run text requires a scalar or deferred-call/duration evidence")
             }
         }
 

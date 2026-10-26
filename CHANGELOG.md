@@ -16,6 +16,11 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+- **automation — preview review repairs.** Nested context/candidate references fail closed pending
+  callee pinning, action-level `due` defaults match explicit durations, and nested literals retain their
+  original escapes. Invalid would-text placeholders identify the template. Fixture verification rejects
+  extra files. Action-level `on_due` default application remains an explicit P3 obligation.
+
 - **automation — partial action and relative duration preview.** Full H3 can preview its proposal and
   buyer ask. Action-typed calls retain supplied arguments as `deferred: true` intent; `due` preserves exact
   `amount`/`unit` evidence, including pinned working-day counts. No nested dispatch, grouped task creation

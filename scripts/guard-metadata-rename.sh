@@ -25,30 +25,10 @@ check_frozen() {
     printf 'Frozen compatibility bytes changed: %s\n' "$path" >> "$unexpected"
   fi
 }
-# Frozen pre-semantics message; its historical source path is part of the wire bytes.
-check_frozen services/metadata/src/test/resources/wire-golden/get_object_table.bin \
-  951d78b8e60f0934c94adac6e64cf36be71a2f256d13b2a68d5d2f3f92ed0d8d
-# Frozen pre-semantics message listing, including historical source paths.
-check_frozen services/metadata/src/test/resources/wire-golden/list_objects.bin \
-  dec5f503c5d9c28bd363fcb7ddedd83b5748504ae6a0ffe45d08d15c08906f34
-# Frozen pre-LP contract, including the former service name.
-check_frozen shared/proto/compat/fuzzy-v1-pre-lp.desc \
-  baa60f2c000ff000e1a8d4ee21fb43ace4300e5fd3beb3bd117b33e1acbc21fe
-# Frozen pre-lattice contract, including the former service name.
-check_frozen shared/proto/compat/resolver-v1-pre-lattice.desc \
-  38378e7d81c5a2a62c953980f7cb6359a5e98d32cebdd2b561d0f55aa8530ea6
-
-# Frozen accepted Hartland 9f6fff1 source; historical comments remain byte-identical.
-check_frozen services/automation/src/test/resources/hartland-h3/model/er/catalog.ttrm \
-  2a9d3485518fd3652ef9664a78c9d86875893c732f6b4c6535960f7a26a40c20
-check_frozen services/automation/src/test/resources/hartland-h3/model/er/customer_revenue.ttrm \
-  f7756f0158dfd927b68684e0c3eccceb450395a211fbd772bf45317fa9620cc7
-check_frozen services/automation/src/test/resources/hartland-h3/model/er/parties.ttrm \
-  223829f246210a0a83ea9622d5e2364924a109c4fa19e39f26fda0e64d2d6a8f
-check_frozen services/automation/src/test/resources/hartland-h3/model/er/sales.ttrm \
-  e1528801b1aa36839c964712793e09ef3ac58ec7f6d3619e84a91961fb7195bc
-check_frozen services/automation/src/test/resources/hartland-h3/model/queries/q_hartland.ttrm \
-  6f5fb6fafcf8e6af129a7f8862cbf15123aadfb6a13cc986ca84bc1b3ab71ffd
+source scripts/metadata-rename-frozen.sh
+for i in "${!FROZEN_PATHS[@]}"; do
+  check_frozen "${FROZEN_PATHS[$i]}" "${FROZEN_HASHES[$i]}"
+done
 
 # No path exemptions, including history paths. Check the file list in one pass.
 git ls-files --cached --others --exclude-standard -z > "$work/files"
@@ -67,16 +47,10 @@ if (( rc > 1 )); then exit "$rc"; fi
 while IFS= read -r -d '' path; do
   case "$path" in
     CHANGELOG.md|*/CHANGELOG.md) continue ;; # Published history (MR-8).
-    services/metadata/src/test/resources/wire-golden/get_object_table.bin|\
-    services/metadata/src/test/resources/wire-golden/list_objects.bin|\
-    shared/proto/compat/fuzzy-v1-pre-lp.desc|\
-    shared/proto/compat/resolver-v1-pre-lattice.desc|\
-    services/automation/src/test/resources/hartland-h3/model/er/catalog.ttrm|\
-    services/automation/src/test/resources/hartland-h3/model/er/customer_revenue.ttrm|\
-    services/automation/src/test/resources/hartland-h3/model/er/parties.ttrm|\
-    services/automation/src/test/resources/hartland-h3/model/er/sales.ttrm|\
-    services/automation/src/test/resources/hartland-h3/model/queries/q_hartland.ttrm) continue ;; # Hash-checked frozen bytes.
   esac
+  for frozen in "${FROZEN_PATHS[@]}"; do
+    if [[ "$path" == "$frozen" ]]; then continue 2; fi # Hash-checked bytes only.
+  done
   grep -a -n -i "$old_name" "$path" > "$work/lines"
   # Only the marker substring is allowed; another occurrence on the same line still fails.
   sed "s/$history_marker//g" "$work/lines" > "$work/without-marker"

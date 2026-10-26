@@ -15,16 +15,9 @@ git init -q "$work/repo"
 cd "$work/repo"
 mkdir -p scripts
 cp "$guard_source" scripts/guard-metadata-rename.sh
-for path in \
-  services/metadata/src/test/resources/wire-golden/get_object_table.bin \
-  services/metadata/src/test/resources/wire-golden/list_objects.bin \
-  shared/proto/compat/fuzzy-v1-pre-lp.desc \
-  shared/proto/compat/resolver-v1-pre-lattice.desc \
-  services/automation/src/test/resources/hartland-h3/model/er/catalog.ttrm \
-  services/automation/src/test/resources/hartland-h3/model/er/customer_revenue.ttrm \
-  services/automation/src/test/resources/hartland-h3/model/er/parties.ttrm \
-  services/automation/src/test/resources/hartland-h3/model/er/sales.ttrm \
-  services/automation/src/test/resources/hartland-h3/model/queries/q_hartland.ttrm; do
+cp "$source_root/scripts/metadata-rename-frozen.sh" scripts/metadata-rename-frozen.sh
+source scripts/metadata-rename-frozen.sh
+for path in "${FROZEN_PATHS[@]}"; do
   mkdir -p "$(dirname "$path")"
   cp "$source_root/$path" "$path"
 done
@@ -79,16 +72,7 @@ expect_rejected 'Latin-1 in the corpus filtering pass'
 rm "$corpus"
 
 # Every exempt fixture must retain its exact hash, even without a matching new name.
-for path in \
-  services/metadata/src/test/resources/wire-golden/get_object_table.bin \
-  services/metadata/src/test/resources/wire-golden/list_objects.bin \
-  shared/proto/compat/fuzzy-v1-pre-lp.desc \
-  shared/proto/compat/resolver-v1-pre-lattice.desc \
-  services/automation/src/test/resources/hartland-h3/model/er/catalog.ttrm \
-  services/automation/src/test/resources/hartland-h3/model/er/customer_revenue.ttrm \
-  services/automation/src/test/resources/hartland-h3/model/er/parties.ttrm \
-  services/automation/src/test/resources/hartland-h3/model/er/sales.ttrm \
-  services/automation/src/test/resources/hartland-h3/model/queries/q_hartland.ttrm; do
+for path in "${FROZEN_PATHS[@]}"; do
   cp "$path" "$work/original"
   printf '\0changed' >> "$path"
   expect_rejected "frozen hash: $path"

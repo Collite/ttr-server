@@ -30,7 +30,13 @@ class HartlandH3PreviewSpec :
         val root = Path.of(requireNotNull(HartlandH3PreviewSpec::class.java.getResource("/hartland-h3")).toURI())
         val bundle by lazy {
             BundleLoader(AuthorMap(emptyMap())).load(
-                Checkout(root, "fixture", "9f6fff1aa4bc0aadb1452f469ebe417bc732c933", "bora", "bora@post.cz"),
+                Checkout(
+                    root,
+                    "fixture",
+                    "9f6fff1aa4bc0aadb1452f469ebe417bc732c933",
+                    "fixture",
+                    "fixture@example.invalid",
+                ),
                 BundleKind.SERVED,
             )
         }

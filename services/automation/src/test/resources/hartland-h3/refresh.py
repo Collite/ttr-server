@@ -22,6 +22,11 @@ for name, digest in source['sha256'].items():
     if hashlib.sha256(data).hexdigest() != digest:
         parser.error(f'pinned source hash differs: {name}')
     blobs[path] = data
+if args.check:
+    actual = {path.relative_to(root) for path in root.rglob('*') if path.is_file()}
+    expected = set(blobs) | {Path('README.md'), Path('SOURCE.json'), Path('refresh.py')}
+    if actual != expected:
+        parser.error(f'fixture file set differs: extra={sorted(map(str, actual - expected))}, missing={sorted(map(str, expected - actual))}')
 for path, data in blobs.items():
     destination = root / path
     if args.check:
