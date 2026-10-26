@@ -18,7 +18,7 @@ from .mapping import (
     plan_from_export,
     resolve_studio_workspace,
 )
-from .model import Export, ImportRdf
+from .model import EnsureGlossary, Export, ImportRdf
 from .state import State, options_fingerprint, read_state, write_state
 from .urls import http_origin
 
@@ -86,8 +86,11 @@ def run(args: argparse.Namespace, dry: bool, client: "OmClient | None") -> int:
             studio_origin = (
                 http_origin(args.studio_url, allow_path=False) if args.studio_url else None
             )
-            if studio_origin and args.studio_workspace is not None:
+            workspace = (
                 resolve_studio_workspace("", args.studio_workspace)
+                if studio_origin and args.studio_workspace is not None
+                else None
+            )
         except (ValueError, MappingError) as exc:
             print(f"mapping error: studio URL/workspace: {exc}", file=sys.stderr)
             return 3
@@ -102,9 +105,7 @@ def run(args: argparse.Namespace, dry: bool, client: "OmClient | None") -> int:
                     args.deprecate_missing,
                     version("ttr-connect-openmetadata"),
                     client.version,
-                    (args.studio_workspace if args.studio_workspace is not None else world)
-                    if studio_origin
-                    else None,
+                    workspace,
                 )
                 if client is not None
                 else None
@@ -112,7 +113,10 @@ def run(args: argparse.Namespace, dry: bool, client: "OmClient | None") -> int:
 
         try:
             state = read_state(args.state_file) if args.state_file else None
-            fingerprint = fingerprint_for(args.world or (state.world if state else None))
+            known_world = args.world or (state.world if state else None)
+            if studio_origin and workspace is None and known_world is not None:
+                workspace = resolve_studio_workspace(known_world, None)
+            fingerprint = fingerprint_for(known_world)
             # Keep old ids for deprecations, but never send an incompatible ETag.
             cached = state if client is None or (state and state.options == fingerprint) else None
             export = (
@@ -140,13 +144,14 @@ def run(args: argparse.Namespace, dry: bool, client: "OmClient | None") -> int:
             print(f"export error: {exc}", file=sys.stderr)
             return 2
         try:
+            if studio_origin and workspace is None:
+                workspace = resolve_studio_workspace(export.graph.world, None)
             fingerprint = fingerprint_for(args.world or export.graph.world)
             result = plan_from_export(
                 export,
                 args.world,
-                args.studio_url,
                 cn_name_mode=args.cn_name_mode,
-                studio_workspace=args.studio_workspace,
+                studio_base=f"{studio_origin}/m/{workspace}/s/" if studio_origin else None,
             )
             if args.cn_path == "glossary":
                 result.operations = [
@@ -164,6 +169,15 @@ def run(args: argparse.Namespace, dry: bool, client: "OmClient | None") -> int:
             print(f"mapping error: {exc}", file=sys.stderr)
             return 3
         if dry:
+            if result.studio_links:
+                glossaries = ", ".join(
+                    op.name for op in result.operations if isinstance(op, EnsureGlossary)
+                )
+                print(
+                    "INFO sync also normalizes Studio links on out-of-plan, "
+                    f"non-deprecated terms in {glossaries}",
+                    file=sys.stderr,
+                )
             for warning in result.warnings:
                 print(f"WARN {warning}", file=sys.stderr)
             print(json_lines(result), end="")

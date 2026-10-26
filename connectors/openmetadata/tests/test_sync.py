@@ -424,6 +424,7 @@ def test_rdf_success_adopts_terms_by_iri(
             "iri": imported.iri,
             "glossary": {
                 "id": uid(imported.glossary),
+                "name": imported.glossary,
                 "type": "glossary",
                 "fullyQualifiedName": imported.glossary,
             },
@@ -779,19 +780,36 @@ def test_native_builtin_lookup_rejects_wrong_name_or_uuid(
 
 
 @pytest.mark.parametrize("with_studio", [False, True])
-def test_untouched_term_link_sweep_is_world_scoped_and_idempotent(
-    export: Export, tmp_path: Path, capsys: pytest.CaptureFixture[str], with_studio: bool
+@pytest.mark.parametrize("dotted_world", [False, True])
+@pytest.mark.parametrize("mode", ["retire", "fresh-state", "no-deprecate"])
+def test_out_of_plan_links_preserve_deprecation_and_normalize_live_orphans(
+    export: Export,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    with_studio: bool,
+    dotted_world: bool,
+    mode: str,
 ) -> None:
     from copy import deepcopy
 
     from om_fake import uid
 
     fake = FakeOm(export)
+    fake.approval_workflow = True
     args = sync_args(tmp_path)
+    if dotted_world:
+        edited = tmp_path / "export"
+        edited.mkdir()
+        for name in ("graph.json", "defs.json", "cn.ttl", ".snapshot"):
+            text = (
+                (FIXTURE / name).read_text().replace('"world":"northline"', '"world":"acme.retail"')
+            )
+            (edited / name).write_text(text)
+        args[args.index("--export-dir") + 1] = str(edited)
+    world = "acme.retail" if dotted_world else "northline"
     if not with_studio:
         index = args.index("--studio-url")
         del args[index : index + 2]
-    args.append("--no-deprecate-missing")
     stale = {
         "ttrUrl": "https://studio.example/viewer?qname=legacy",
         "ttrStudioLink": {"url": "https://studio.example/obsolete", "displayText": "Old"},
@@ -800,67 +818,141 @@ def test_untouched_term_link_sweep_is_world_scoped_and_idempotent(
     with responses.RequestsMock(assert_all_requests_are_fired=False) as mock:
         fake.install(mock)
         assert main(args) == 0
+        fake.finish_approvals()
         capsys.readouterr()
         template = next(iter(fake.stores["glossaryTerms"].values()))
         for name, qname, glossary, deprecated in (
-            ("Retired", "er.entity.Retired", "northline Entities", True),
-            ("Orphan", "md.dimension.Orphan", "northline Entities", False),
-            ("Concept", "cn.kind.Old", "northline Concepts", True),
+            ("Retired", "er.entity.Retired", f"{world} Entities", True),
+            ("Retiring", "er.entity.Retiring", f"{world} Entities", False),
+            ("Orphan", "er.entity.Orphan", f"{world} Entities", False),
+            ("Dimension", "md.dimension.Orphan", f"{world} Entities", False),
+            ("StringOnly", "er.entity.StringOnly", f"{world} Entities", False),
+            ("Concept", "cn.kind.Old", f"{world} Concepts", False),
+            ("Unknown", "other.Old", f"{world} Entities", False),
             ("Foreign", "er.entity.Foreign", "other Entities", False),
-            ("Unowned", None, "northline Entities", False),
+            ("Unowned", None, f"{world} Entities", False),
         ):
             term = deepcopy(template)
             term.pop("parent", None)
+            fqn_glossary = f'"{glossary}"' if "." in glossary else glossary
             term.update(
                 id=uid(name),
                 name=name,
-                fullyQualifiedName=f"{glossary}.{name}",
-                glossary={"id": uid(glossary), "type": "glossary", "fullyQualifiedName": glossary},
-                entityStatus="Deprecated" if deprecated else "Draft",
+                fullyQualifiedName=f"{fqn_glossary}.{name}",
+                glossary={
+                    "id": uid(fqn_glossary),
+                    "type": "glossary",
+                    "name": glossary,
+                    "fullyQualifiedName": fqn_glossary,
+                },
+                entityStatus="Deprecated" if deprecated else "Approved",
                 extension={**stale, **({"ttrQname": qname} if qname else {})},
             )
+            if name == "StringOnly":
+                term["extension"].pop("ttrStudioLink")
             fake.stores["glossaryTerms"][term["fullyQualifiedName"]] = term
-        metric = deepcopy(next(iter(fake.stores["metrics"].values())))
-        metric.update(
-            id=uid("orphan-metric"),
-            name="orphan",
-            fullyQualifiedName="orphan",
-            extension={**stale, "ttrQname": "md.measure.Orphan"},
-        )
-        fake.stores["metrics"]["orphan"] = metric
-        table = deepcopy(next(iter(fake.stores["tables"].values())))
-        table.update(
-            id=uid("orphan-table"),
-            name="orphan",
-            fullyQualifiedName="foreign.db.public.orphan",
-            extension={**stale, "ttrQname": "db.public.orphan"},
-        )
-        fake.stores["tables"][table["fullyQualifiedName"]] = table
+        # Missing from this export but still in saved ownership: retire this run.
+        path = tmp_path / "state.json"
+        state = json.loads(path.read_text())
+        state["ids"].append("er.entity.Retiring")
+        path.write_text(json.dumps(state))
+        if mode == "fresh-state":
+            path.unlink()
+        elif mode == "no-deprecate":
+            args.append("--no-deprecate-missing")
+        for resource, qname in (("metrics", "md.measure.Orphan"), ("tables", "db.public.orphan")):
+            entity = deepcopy(next(iter(fake.stores[resource].values())))
+            entity.update(
+                id=uid(resource + "orphan"),
+                name="orphan",
+                fullyQualifiedName="orphan",
+                extension={**stale, "ttrQname": qname},
+            )
+            fake.stores[resource]["orphan"] = entity
         before = deepcopy(fake.stores)
         fake.calls.clear()
         assert main(args) == 0
+        fake.finish_approvals()  # A late workflow would undo a status-only retirement.
         summary = json.loads(capsys.readouterr().out)
-        assert summary["updated"] == (3 if with_studio else 0)
+        assert summary["deprecated"] == (1 if mode == "retire" else 0)
+        assert summary["updated"] == ((5 if mode == "retire" else 6) if with_studio else 0)
         for fqn, term in fake.stores["glossaryTerms"].items():
             old = before["glossaryTerms"][fqn]
-            if term["name"] in {"Retired", "Orphan", "Concept"} and with_studio:
-                assert term["extension"] == {
+            patches = [
+                body
+                for method, url, body in fake.calls
+                if method == "PATCH" and url == f"glossaryTerms/{term['id']}"
+            ]
+            if term["name"] == "Retired" or (term["name"] == "Retiring" and mode == "retire"):
+                assert term["entityStatus"] == "Deprecated"
+                assert term["extension"] == old["extension"]
+                assert patches == (
+                    []
+                    if term["name"] == "Retired"
+                    else [[{"op": "replace", "path": "/entityStatus", "value": "Deprecated"}]]
+                )
+            elif (
+                term["name"]
+                in {"Orphan", "Dimension", "StringOnly", "Concept", "Unknown", "Retiring"}
+                and with_studio
+            ):
+                expected = {
                     k: v
                     for k, v in old["extension"].items()
                     if k not in {"ttrUrl", "ttrStudioLink"}
                 }
-                assert term["entityStatus"] == old["entityStatus"]
+                if term["name"] in {"Orphan", "Dimension", "StringOnly", "Retiring"}:
+                    model = "md" if term["name"] == "Dimension" else "er"
+                    url = f"https://studio.example/m/{world}/s/{model}"
+                    label = "dimensional" if model == "md" else "E-R"
+                    expected.update(
+                        ttrUrl=url,
+                        ttrStudioLink={"url": url, "displayText": f"Open {label} model in Studio"},
+                    )
+                assert term["extension"] == expected
+                assert term["entityStatus"] == "Approved"
             else:
                 assert term == old
         assert fake.stores["metrics"] == before["metrics"]
         assert fake.stores["tables"] == before["tables"]
         fake.calls.clear()
         assert main(args) == 0
+        fake.finish_approvals()
         summary = json.loads(capsys.readouterr().out)
         assert all(
             summary[k] == 0 for k in ("created", "updated", "deprecated", "linked", "warnings")
         )
         assert fake.writes == []
+
+
+def test_normalized_orphan_extension_is_independently_verified(
+    export: Export,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    from copy import deepcopy
+
+    from om_fake import uid
+
+    fake = FakeOm(export)
+    args = sync_args(tmp_path)
+    with responses.RequestsMock(assert_all_requests_are_fired=False) as mock:
+        fake.install(mock)
+        assert main(args) == 0
+        capsys.readouterr()
+        orphan = deepcopy(next(iter(fake.stores["glossaryTerms"].values())))
+        orphan.update(
+            id=uid("orphan"),
+            name="orphan",
+            fullyQualifiedName="northline Entities.orphan",
+            extension={"ttrQname": "er.entity.orphan", "ttrUrl": "https://old.example"},
+        )
+        fake.stores["glossaryTerms"][orphan["fullyQualifiedName"]] = orphan
+        fake.drop_term_extension = True
+        before = (tmp_path / "state.json").read_bytes()
+        assert main(args) == 1
+        assert "did not retain Studio links" in capsys.readouterr().err
+        assert (tmp_path / "state.json").read_bytes() == before
 
 
 @pytest.mark.parametrize(

@@ -321,6 +321,17 @@ def test_studio_workspace_must_be_a_valid_nonreserved_manifest_name(
         "https://studio.example\t",
         "https://studio.example\x00",
         "https://studio.example\x80",
+        "https://studio.example\u202e",
+        "https://studio.example\u200b",
+        "https://studio.example\ufeff",
+        "https://studio.example\ud800",
+        "https://studio.example\ue000",
+        "https://studio.example\u0378",
+        "https://studio.example:0",
+        "https://studio.example:",
+        "https://studio%2Fexample",
+        "https://studio%40example",
+        "https://stüdio.example",
         "https://studio.example space",
         "https://@studio.example",
         "https://:80",
@@ -422,3 +433,21 @@ def test_string_properties_reject_structured_values(
     data["props"]["ttrQname"] = {"url": "https://wrong.example"}
     with pytest.raises(ValidationError):
         operation.model_validate(data)
+
+
+@pytest.mark.parametrize(
+    "origin,expected",
+    [
+        ("HTTPS://Studio.EXAMPLE:443/", "https://studio.example"),
+        ("http://Studio.EXAMPLE:80", "http://studio.example"),
+        ("https://Studio.EXAMPLE:8443", "https://studio.example:8443"),
+        ("http://[2001:DB8::1]:80/", "http://[2001:db8::1]"),
+        ("https://xn--stdio-kva.example", "https://xn--stdio-kva.example"),
+    ],
+)
+def test_studio_origins_are_canonical(export: Export, origin: str, expected: str) -> None:
+    from ttr_connect_openmetadata.urls import http_origin
+
+    assert http_origin(origin, allow_path=False) == expected
+    plan = plan_from_export(export, studio_url=origin)
+    assert plan.studio_base == f"{expected}/m/northline/s/"

@@ -20,8 +20,11 @@ outside this repo could notice is in.
   `ttrStudioLink` hyperlinks to projected tables, ER/MD terms and metrics while
   retaining the existing `ttrUrl` string and foreign metadata. Both links use one
   validated Studio origin. Concepts stay in OM; with Studio configured, remove
-  both link keys from CN and from owned glossary terms absent from the current
-  plan, including previously deprecated and orphaned terms. Metric and table links
+  both link keys from planned CN terms. After deprecations, normalize non-deprecated
+  out-of-plan owned terms: ER/MD get both model links; CN/other prefixes get neither.
+  Deprecated terms retain their links, including retired `/viewer?qname=` links from
+  0.1.2 or earlier: editing metadata re-runs OM approval and can un-deprecate them.
+  Dry-run discloses the additional normalization on stderr; stdout stays JSON-lines. Metric and table links
   outside the current export (both keys) are not migrated (follow-up #325). Without Studio, existing
   links remain unchanged. The version fingerprint forces a real projection on
   upgrade from 0.1.3; equivalent resolved workspaces share the cache identity.

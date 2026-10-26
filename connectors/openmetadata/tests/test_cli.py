@@ -126,6 +126,7 @@ def test_skipped_assets_preserve_state_then_retry(
         "studio-workspace",
         "same-workspace",
         "same-origin",
+        "canonical-origin",
         "cn-name-mode",
         "cn-path",
         "world",
@@ -184,13 +185,16 @@ def test_conditional_export_respects_options(
                 "studio-workspace": "catalog-demo",
                 "same-workspace": export.graph.world,
                 "same-origin": "https://studio.example/",
+                "canonical-origin": "https://Studio.EXAMPLE:443/",
                 "cn-name-mode": "qname",
                 "cn-path": "owl",
                 "world": export.graph.world,
             }[change]
-            flag = "--" + {"same-workspace": "studio-workspace", "same-origin": "studio-url"}.get(
-                change, change
-            )
+            flag = "--" + {
+                "same-workspace": "studio-workspace",
+                "same-origin": "studio-url",
+                "canonical-origin": "studio-url",
+            }.get(change, change)
             if flag in args:
                 args[args.index(flag) + 1] = value
             else:
@@ -199,7 +203,7 @@ def test_conditional_export_respects_options(
         mock.reset()
         fake.install(mock)
         register_export(mock)
-        equivalent = change in {None, "same-workspace", "same-origin", "world"}
+        equivalent = change in {None, "same-workspace", "same-origin", "canonical-origin", "world"}
         if equivalent:
             # Replace the export route; the OM version probe must still run.
             mock.replace(responses.GET, URL, status=304)
@@ -293,3 +297,55 @@ def test_invalid_workspace_cannot_short_circuit_on_saved_export(
         assert main([*args, "--studio-workspace", workspace]) == 3
         assert "invalid Studio workspace" in capsys.readouterr().err
         assert fake.writes == []
+
+
+@pytest.mark.parametrize("command", ["plan", "sync"])
+def test_dry_plan_discloses_out_of_plan_normalization(
+    command: str,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from ttr_connect_openmetadata.mapping import resolve_studio_workspace
+    from ttr_connect_openmetadata.urls import http_origin
+
+    origins: list[str] = []
+    workspaces: list[str | None] = []
+
+    def origin(url: str, *, allow_path: bool) -> str:
+        origins.append(url)
+        return http_origin(url, allow_path=allow_path)
+
+    def workspace(world: str, value: str | None) -> str:
+        workspaces.append(value)
+        return resolve_studio_workspace(world, value)
+
+    monkeypatch.setattr("ttr_connect_openmetadata.cli.http_origin", origin)
+    monkeypatch.setattr("ttr_connect_openmetadata.cli.resolve_studio_workspace", workspace)
+
+    def unexpected(*args: object, **kwargs: object) -> str:
+        raise AssertionError("Studio configuration parsed twice")
+
+    monkeypatch.setattr("ttr_connect_openmetadata.mapping.http_origin", unexpected)
+    monkeypatch.setattr("ttr_connect_openmetadata.mapping.resolve_studio_workspace", unexpected)
+    args = [command, "--export-dir", str(FIXTURES / "export")]
+    if command == "sync":
+        args += ["--dry-run"]
+    assert (
+        main([*args, "--studio-url", "https://Studio.EXAMPLE:443/", "--studio-workspace", "demo"])
+        == 0
+    )
+    output = capsys.readouterr()
+    assert origins == ["https://Studio.EXAMPLE:443/"]
+    assert workspaces == ["demo"]
+    assert output.err == (
+        "INFO sync also normalizes Studio links on out-of-plan, non-deprecated terms "
+        "in northline Concepts, northline Entities\n"
+    )
+    operations = [json.loads(line) for line in output.out.splitlines()]
+    assert any(
+        op["studio_link"]["url"] == "https://studio.example/m/demo/s/er"
+        for op in operations
+        if op.get("studio_link")
+    )
+    assert main(args) == 0
+    assert "INFO" not in capsys.readouterr().err

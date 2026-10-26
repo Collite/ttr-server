@@ -196,7 +196,87 @@ def test_check_sync_idempotency_and_deprecation(om: LiveOm, tmp_path: Path) -> N
                 "url": extension["ttrUrl"],
                 "displayText": f"Open {label} model in Studio",
             }
+    # Exercise out-of-plan links under the real default approval workflow.
+    # Editing a Deprecated term's extension would asynchronously re-approve it.
+    orphan_seeds = {}
+    for name, qname, glossary in (
+        ("review-retired", "er.entity.review-retired", "northline Entities"),
+        ("review-retiring", "er.entity.review-retiring", "northline Entities"),
+        ("review-orphan", "er.entity.review-orphan", "northline Entities"),
+        ("review-cn-orphan", "cn.kind.review-orphan", "northline Concepts"),
+    ):
+        seed = om.call(
+            "PUT",
+            "glossaryTerms",
+            json={
+                "name": name,
+                "glossary": glossary,
+                "description": "Link migration regression",
+            },
+        )
+        extension = {
+            "ttrQname": qname,
+            "ttrUrl": "https://studio.example/viewer?qname=legacy",
+            "ttrStudioLink": {"url": "https://studio.example/obsolete", "displayText": "Old"},
+        }
+        om.call(
+            "PATCH",
+            f"glossaryTerms/{seed['id']}",
+            json=[
+                {"op": "add", "path": "/extension", "value": extension},
+            ],
+            headers={"Content-Type": "application/json-patch+json"},
+        )
+        orphan_seeds[name] = (seed, extension)
     om.settle_initial_approvals()
+    retired, retired_extension = orphan_seeds["review-retired"]
+    retired = om.call("GET", f"glossaryTerms/{retired['id']}")
+    om.call(
+        "PATCH",
+        f"glossaryTerms/{retired['id']}",
+        json=[
+            {"op": "replace", "path": "/entityStatus", "value": "Deprecated"},
+        ],
+        headers={
+            "Content-Type": "application/json-patch+json",
+            "If-Match": f'W/"{retired["version"]}"',
+        },
+    )
+    # A second linked term is retired by this very sync, then must be skipped.
+    saved = json.loads(state.read_text())
+    saved["ids"].append("er.entity.review-retiring")
+    state.write_text(json.dumps(saved))
+    normalized = cli(*args)
+    assert normalized["deprecated"] == 1 and normalized["updated"] == 2
+    om.settle_initial_approvals()
+    time.sleep(2)
+    for name in ("review-retired", "review-retiring", "review-orphan", "review-cn-orphan"):
+        seed, old_extension = orphan_seeds[name]
+        retained = om.call("GET", f"glossaryTerms/{seed['id']}", params={"fields": "extension"})
+        extension = retained["extension"]
+        if name in {"review-retired", "review-retiring"}:
+            assert retained["entityStatus"] == "Deprecated"
+            assert extension == old_extension
+        elif name == "review-orphan":
+            assert retained["entityStatus"] == "Approved"
+            assert extension == {
+                "ttrQname": old_extension["ttrQname"],
+                "ttrUrl": "https://studio.example/m/northline/s/er",
+                "ttrStudioLink": {
+                    "url": "https://studio.example/m/northline/s/er",
+                    "displayText": "Open E-R model in Studio",
+                },
+            }
+        else:
+            assert extension == {"ttrQname": old_extension["ttrQname"]}
+        om.record(
+            "out-of-plan-links",
+            {
+                "name": name,
+                "entityStatus": retained["entityStatus"],
+                "extension": extension,
+            },
+        )
     clean = cli(*args)
     assert all(clean[k] == 0 for k in ("created", "updated", "deprecated", "linked", "warnings"))
     # Remove an isolated quality from a coherent export; keep all scanner-owned assets.

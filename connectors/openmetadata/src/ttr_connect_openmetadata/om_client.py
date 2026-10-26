@@ -30,6 +30,7 @@ from metadata.generated.schema.type.customProperty import CustomProperty
 from metadata.ingestion.ometa.ometa_api import OpenMetadata
 from pydantic import BaseModel
 
+from .mapping import studio_link
 from .model import (
     REGISTRY,
     Deprecate,
@@ -387,7 +388,7 @@ class OmClient:
         scoped = [
             t
             for t in self._terms.values()
-            if (payload(t).get("glossary") or {}).get("fullyQualifiedName") == op.glossary
+            if (payload(t).get("glossary") or {}).get("name") == op.glossary
         ]
         candidates = [
             t for t in scoped if payload(t).get("extension", {}).get("ttrQname") == op.qname
@@ -397,7 +398,7 @@ class OmClient:
                 t
                 for t in scoped
                 if str(t.iri or "") == op.iri
-                and (payload(t).get("glossary") or {}).get("fullyQualifiedName") == op.glossary
+                and (payload(t).get("glossary") or {}).get("name") == op.glossary
             ]
         if not candidates:
             candidates = [
@@ -479,6 +480,11 @@ class OmClient:
                 term, {"iri": op.iri, "extension": self._extensions(op.props, op.studio_link)}
             )
         else:
+            # Reappearing model terms reactivate through a pure status event first.
+            # Never send metadata edits while a term is still Deprecated.
+            reactivated = payload(term).get("entityStatus") == "Deprecated"
+            if reactivated:
+                term = self._patch(term, {"entityStatus": "Draft"})
             before = payload(term)
             extension = {
                 **before.get("extension", {}),
@@ -502,9 +508,7 @@ class OmClient:
                     changes["parent"] = self._reference(desired_parent, "glossaryTerm")
             elif current_parent is not None and op.parent is None:
                 changes["parent"] = None
-            if before.get("entityStatus") == "Deprecated":
-                changes["entityStatus"] = "Draft"
-            term = self._patch(term, changes)
+            term = self._patch(term, changes, count=not reactivated)
         if needs_iri:
             refreshed = self._get(
                 GlossaryTerm,
@@ -740,21 +744,41 @@ class OmClient:
         self._metric_aliases[op.metric] = metric
         self.summary.linked += 1
 
-    def prune_stale_term_links(self, terms: list[UpsertTerm]) -> None:
+    def normalize_out_of_plan_term_links(self, plan: Plan, terms: list[UpsertTerm]) -> None:
         current = {op.qname for op in terms}
+        retiring = {
+            op.qname
+            for op in plan.operations
+            if isinstance(op, Deprecate) and op.kind == "glossaryTerm"
+        }
         for term in list(self._terms.values()):
             data = payload(term)
             extension = data.get("extension") or {}
             qname = extension.get("ttrQname")
+            # A non-status edit to a Deprecated term re-runs approval in OM 2.0.6.
+            # Skip planned retirements too, even if the cache predates that status.
             if (
-                (data.get("glossary") or {}).get("fullyQualifiedName") in self._glossaries
-                and qname
-                and qname not in current
-                and {"ttrUrl", "ttrStudioLink"} & extension.keys()
+                (data.get("glossary") or {}).get("name") not in self._glossaries
+                or data.get("entityStatus") == "Deprecated"
+                or not isinstance(qname, str)
+                or not qname
+                or qname in current | retiring
             ):
-                kept = {k: v for k, v in extension.items() if k not in {"ttrUrl", "ttrStudioLink"}}
-                result = self._patch(term, {"extension": kept})
-                self._terms[str(result.id.root)] = result
+                continue
+            desired = {k: v for k, v in extension.items() if k not in {"ttrUrl", "ttrStudioLink"}}
+            model = qname.split(".", 1)[0]
+            link = studio_link(model, plan.studio_base) if model in {"er", "md"} else None
+            if link is not None:
+                desired.update(ttrUrl=link.url, ttrStudioLink=payload(link))
+            if desired == extension:
+                continue
+            result = self._patch(term, {"extension": desired})
+            persisted = self._get(
+                GlossaryTerm, "glossaryTerms", str(result.fullyQualifiedName.root), "extension"
+            )
+            if persisted is None or payload(persisted).get("extension", {}) != desired:
+                raise OmError(None, f"OM did not retain Studio links for {qname}")
+            self._terms[str(persisted.id.root)] = persisted
 
     def deprecate_term(self, term: GlossaryTerm) -> None:
         if payload(term).get("entityStatus") != "Deprecated":
@@ -781,8 +805,7 @@ class OmClient:
             for term in list(self._terms.values()):
                 if (
                     payload(term).get("extension", {}).get("ttrQname") == op.qname
-                    and (payload(term).get("glossary") or {}).get("fullyQualifiedName")
-                    in self._glossaries
+                    and (payload(term).get("glossary") or {}).get("name") in self._glossaries
                 ):
                     self.deprecate_term(term)
         elif op.kind == "metric":
@@ -853,8 +876,6 @@ class OmClient:
             elif isinstance(op, SetColumnTags):
                 self.set_column_tags(op)
             # Registry operations have already run in check; links follow all entity writes.
-        if plan.studio_links:
-            self.prune_stale_term_links(terms)
         self.relate_terms(terms)
         for op in plan.operations:
             if isinstance(op, LinkTermToAsset):
@@ -863,4 +884,6 @@ class OmClient:
                 self.link_metric_to_asset(op)
             elif isinstance(op, Deprecate):
                 self.deprecate(op)
+        if plan.studio_links:
+            self.normalize_out_of_plan_term_links(plan, terms)
         return self.summary

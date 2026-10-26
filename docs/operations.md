@@ -199,3 +199,9 @@ Add `--studio-workspace` when the served manifest's `project.name` differs from 
 export world; it requires `--studio-url`. Concepts stay in OM.
 Parent-table metric associations are native;
 exact column bindings are stored in the metric's ttrColumnAssets property.
+
+
+With Studio configured, post-deprecation normalization also visits owned terms
+outside the export in this world's two glossaries. Non-deprecated ER/MD terms get
+model links and CN terms get neither link. Deprecated terms retain their old links:
+a non-status edit would rerun OM approval and could un-deprecate them.

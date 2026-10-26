@@ -269,5 +269,6 @@ type PlanOperation = Annotated[
 class Plan(BaseModel):
     snapshot: str
     studio_links: bool = False
+    studio_base: str | None = None
     operations: list[PlanOperation]
     warnings: list[str] = Field(default_factory=list)

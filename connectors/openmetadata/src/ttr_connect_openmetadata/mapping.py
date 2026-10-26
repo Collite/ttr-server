@@ -65,14 +65,20 @@ def _description(node: Node) -> str:
 
 def _props(node: Node, studio_base: str | None) -> tuple[dict[str, str], StudioLink | None]:
     result = {"ttrQname": node.id}
-    # Studio subjects are model graphs; new CN stays in the OM glossary.
-    link = None
-    if studio_base and node.model in {"db", "er", "md"}:
-        url = studio_base + node.model
-        result["ttrUrl"] = url
-        label = {"db": "database", "er": "E-R", "md": "dimensional"}[node.model]
-        link = StudioLink(url=url, displayText=f"Open {label} model in Studio")
+    link = studio_link(node.model, studio_base)
+    if link is not None:
+        result["ttrUrl"] = link.url
     return result, link
+
+
+def studio_link(model: str | None, studio_base: str | None) -> StudioLink | None:
+    """One desired value for in-plan entities and eligible out-of-plan terms."""
+    labels = {"db": "database", "er": "E-R", "md": "dimensional"}
+    if studio_base and model is not None and model in labels:
+        return StudioLink(
+            url=studio_base + model, displayText=f"Open {labels[model]} model in Studio"
+        )
+    return None
 
 
 def _term_nodes(nodes: dict[str, Node]) -> dict[str, Node]:
@@ -416,13 +422,18 @@ def plan_from_export(
     connections: list[Connection] | None = None,
     cn_name_mode: str = "label",
     studio_workspace: str | None = None,
+    *,
+    studio_base: str | None = None,
 ) -> Plan:
+    # CLI supplies its already validated/resolved base, also used for the cache.
+    # Library callers supply the raw URL/workspace and validate them here once.
+    if studio_base is not None and (studio_url is not None or studio_workspace is not None):
+        raise MappingError("supply a prepared Studio base or a raw URL/workspace, not both")
     if cn_name_mode not in {"label", "qname"}:
         raise MappingError("CN name mode must be label or qname")
     world = world or export.graph.world
     if world != export.graph.world:
         raise MappingError(f"world {world} differs from export world {export.graph.world}")
-    studio_base = None
     if studio_workspace is not None and not studio_url:
         raise MappingError("Studio workspace requires a studio URL")
     if studio_url:
@@ -462,6 +473,7 @@ def plan_from_export(
     return Plan(
         snapshot=export.snapshot,
         studio_links=studio_base is not None,
+        studio_base=studio_base,
         operations=operations,
         warnings=warnings,
     )

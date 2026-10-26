@@ -38,6 +38,8 @@ uv build
 
 `plan` and `sync --dry-run` honor --cn-path (default glossary); select owl
 to include the RDF import operation. `plan` writes one typed operation per JSON line to stdout and warnings to stderr.
+With Studio configured, an INFO line on stderr also discloses sync's normalization
+of out-of-plan, non-deprecated terms; those terms are discovered only at sync time.
 The directory must contain `graph.json`, `defs.json`, `cn.ttl`, and `.snapshot`.
 The URL is the **full export route**, without query parameters. The reader requests
 world graph + world definitions + CN OWL, and rejects mixed ETags, snapshots,
@@ -55,16 +57,22 @@ Links open the **whole model** at
 object. `--studio-workspace` is the manifest `modeler.toml` `project.name` and
 defaults to the export world; set it when those names differ. The workspace is
 validated against Studio's manifest/route restrictions. Credentials, query strings,
-fragments, backslashes, whitespace, control characters, invalid ports and route
-paths are not accepted in the origin. `--studio-workspace` requires `--studio-url`.
+fragments, backslashes, whitespace, Unicode control/format characters, encoded or
+non-ASCII hosts, empty/zero/invalid ports and route paths are not accepted in the
+origin. Use punycode for IDNs. Scheme/host case and default ports are canonicalized. `--studio-workspace` requires `--studio-url`.
 
 New `cn` concepts remain in the OM glossary: Studio's legacy `cnc` renderer is a
 different model. With `--studio-url` configured, sync removes the obsolete
 connector-owned `ttrUrl` and `ttrStudioLink` from CN terms while retaining other custom properties,
 IRIs, definitions and asset links. Without that option it leaves existing URLs
-untouched. With Studio configured, sync also strips both keys from every owned
-term in this world's Concepts/Entities glossaries that is absent from the current
-plan, including already-deprecated terms and orphans under `--no-deprecate-missing`.
+untouched. After deprecations, sync also normalizes links on non-deprecated owned
+terms absent from the current plan in this world's Concepts/Entities glossaries,
+including orphans from a fresh state or `--no-deprecate-missing`: ER/MD get the same
+model URL and native label as planned terms; CN and other prefixes have neither key.
+Deprecated terms retain whatever links they had, including retired `/viewer?qname=`
+links from 0.1.2 or earlier. Editing their metadata re-runs OM's approval workflow
+and can un-deprecate them, so they are never swept. Reappearing model terms first
+reactivate through a pure status change before metadata is reconciled.
 Other glossaries and unrelated extension keys are preserved. Metric and table links
 outside the current export (both keys) are not migrated; general reconciliation
 of connector-owned links across entity types is tracked in

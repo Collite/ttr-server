@@ -158,13 +158,16 @@ same user's PATCHes for ten minutes, replaying previous metadata changes in a
 status event and retriggering approval after deprecation. Conditional writes
 skip that consolidation, preserve pure status events and reject concurrent edits
 with 412; no 4xx retry or state advance occurs. Deprecation is checked immediately
-and again after a delay in the live suite. Reappearance can be Draft or Approved
+and again after a delay in the live suite. The connector never sends a non-status
+PATCH to a Deprecated term; a reappearing term first gets a pure status reactivation.
+Out-of-plan Deprecated terms retain their links to avoid re-triggering approval.
+Reappearance can be Draft or Approved
 under the catalog's approval policy. Initial approval-instance completion is
 observed before the version/no-op assertions; the suite never disables workflows.
 
 ## Native clickable Studio link — 0.1.4
 
-OM2.0.6 supports the native `hyperlink-cp` custom-property type. Its value is
+OM 2.0.6 supports the native `hyperlink-cp` custom-property type. Its value is
 `{"url":"https://studio.example/m/northline/s/er","displayText":"Open E-R model in Studio"}`.
 The renderer emits an HTTP(S) `href`, `target="_blank"` and `rel="noopener noreferrer"`.
 The connector registers a new `ttrStudioLink` on table/glossaryTerm/metric and
