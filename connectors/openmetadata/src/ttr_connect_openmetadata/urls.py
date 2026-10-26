@@ -1,11 +1,12 @@
 # SPDX-License-Identifier: Apache-2.0
 """Shared strict HTTP origin parsing; callers never construct links from raw input."""
 
+from unicodedata import category
 from urllib.parse import urlsplit
 
 
 def http_origin(url: str, *, allow_path: bool) -> str:
-    if any(c in "?#\\" or c.isspace() or ord(c) < 32 or ord(c) == 127 for c in url):
+    if any(c in "?#\\" or c.isspace() or category(c) == "Cc" for c in url):
         raise ValueError(
             "URL contains a query, fragment, backslash, whitespace or control character"
         )

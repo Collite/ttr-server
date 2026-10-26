@@ -320,6 +320,7 @@ def test_studio_workspace_must_be_a_valid_nonreserved_manifest_name(
         "https://studio.example:65536",
         "https://studio.example\t",
         "https://studio.example\x00",
+        "https://studio.example\x80",
         "https://studio.example space",
         "https://@studio.example",
         "https://:80",
