@@ -29,9 +29,9 @@ teams:
     costCenterPrefix: "docwh-pipeline/"
     budget: { id: docwh-pipeline-monthly, usdPerMonth: 100.0, mode: soft } # interim
     rateLimit: { id: docwh-pipeline-rl, requestsPerMinute: 120 }           # interim
-  # DX-RN transition: the pre-rename ids stay until every cluster seeds docwh-store/docwh-pipeline under
-  # their new vault keys (rn-renames T6). The seeder never moves a key between teams, so a cluster that runs
-  # this image before its olymp cut-over keeps its kallimachos/pinakes keys working. Removed at RN T8.
+  # Transitional: the pre-rename team ids stay until every deployment has seeded docwh-store/docwh-pipeline
+  # under new keys (the seeder never moves a key between teams), so a deployment that runs this image before
+  # it re-seeds keeps its kallimachos/pinakes keys working. Removed in a later release.
   - id: kallimachos
     costCenterPrefix: "kallimachos/"
     budget: { id: kallimachos-monthly, usdPerMonth: 100.0, mode: soft }  # interim

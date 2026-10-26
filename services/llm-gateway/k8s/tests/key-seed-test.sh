@@ -50,7 +50,7 @@ grep -q "no key for team docwh-pipeline (vault key ttrk-docwh-pipeline)" <<<"$ou
   fail "the missing-key message: $out"
 grep -q "waiting for virtual_keys" <<<"$out" && fail "it waited for the gateway before checking the keys" || true
 
-printf 'ttrk-%s' "pinakessecret" >"$work/keys/docwh-pipeline"
+printf 'ttrk-%s' "docwhpipelinesecret" >"$work/keys/docwh-pipeline"
 out=$(run) && fail "a team missing from governance exited 0" || true
 grep -q "teams missing from governance: docwh-pipeline" <<<"$out" && pass "the bounded wait fails naming the missing team" ||
   fail "the missing-team message: $out"

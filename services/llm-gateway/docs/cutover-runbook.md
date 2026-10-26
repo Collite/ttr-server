@@ -201,7 +201,7 @@ legacy `prometheus` host value is retired. Four callers on this path, in two key
    `virtual_keys` (Flyway V2). NOT a sibling DB (iris/pythia/golem/…) on the same cluster.
 
    ⚠ **Run this AFTER the 2.0 pod is Ready** — that boot applies Flyway V1–V3 (creates `virtual_keys`) and
-   upserts the six teams (`virtual_keys.team_id` FKs `teams`). Too early ⇒ `relation "virtual_keys" does
+   upserts every team in the image's `governance.yaml` (`virtual_keys.team_id` FKs `teams`). Too early ⇒ `relation "virtual_keys" does
    not exist` or an FK violation. Gate on `kubectl -n ttr-server rollout status deploy/llm-gateway`.
 
    ```bash
@@ -286,7 +286,7 @@ legacy `prometheus` host value is retired. Four callers on this path, in two key
    metadata: { name: llm-gateway-governance, namespace: ttr-server }
    data:
      governance.yaml: |
-       teams:            # the 6 teams verbatim from the image's governance.yaml
+       teams:            # every team verbatim from the image's governance.yaml
          - { id: golem,  costCenterPrefix: "golem/",  budget: { id: golem-monthly,  usdPerMonth: 100.0, mode: soft }, rateLimit: { id: golem-rl,  requestsPerMinute: 120 } }
          # … hebe, themis, kleio, docwh-store, docwh-pipeline …
        keys:
