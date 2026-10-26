@@ -137,7 +137,7 @@ class ApplyPlanner(
                             } else {
                                 null
                             }
-                        writer?.validateArguments(argumentNames)
+                        writer?.validateArguments(assignmentNames(action, argumentNames))
                         writer?.validateGenerated(defaults.generated)
                         require(action.columns.filterNot { it.optional }.all { it.name in wiring.columns }) {
                             "missing required action argument"
@@ -274,7 +274,8 @@ class ApplyPlanner(
                     when (sink) {
                         "transition" -> effects(action, args, metadata, targets, rows)
                         "writer" -> {
-                            val insert = requireNotNull(writer).insert(rows.size + 1, args)
+                            val fields = assignmentNames(action, args.keys)
+                            val insert = requireNotNull(writer).insert(rows.size + 1, args.filterKeys { it in fields })
                             writerKeys.record(insert, generated)
                             rows += insert
                         }
@@ -416,6 +417,12 @@ class ApplyPlanner(
             put("truncated", refs.any { it.getValue("truncated").jsonPrimitive.boolean })
         }
     }
+
+    /** Undeclared due is wiring evidence, never a database assignment. Declared columns remain assignments. */
+    private fun assignmentNames(
+        action: AutomationAction,
+        names: Set<String>,
+    ): Set<String> = if (action.columns.none { it.name == "due" }) names - "due" else names
 
     private fun render(
         template: String?,

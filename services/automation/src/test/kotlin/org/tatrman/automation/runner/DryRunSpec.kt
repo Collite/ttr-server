@@ -1374,6 +1374,56 @@ class DryRunSpec :
             }
         }
 
+        "writer due evidence never becomes a database assignment" {
+            val original = writerMetadata()
+            val action = original.actions.getValue("hold").copy(due = AutomationDuration(2.0, "working_days"))
+            val metadata = original.copy(actions = original.actions + ("hold" to action))
+            val defaultDue =
+                buildJsonObject {
+                    put("amount", 2)
+                    put("unit", "working_days")
+                }
+            for ((source, expected) in listOf(
+                null to defaultDue,
+                "2 working_days" to defaultDue,
+                "5 days" to
+                    buildJsonObject {
+                        put("amount", 5)
+                        put("unit", "days")
+                    },
+                "null" to JsonNull,
+            )) {
+                supervisorScope {
+                    val wiring =
+                        writerWiring().let {
+                            if (source ==
+                                null
+                            ) {
+                                it
+                            } else {
+                                it.copy(columns = it.columns + ("due" to source))
+                            }
+                        }
+                    val f = PreviewFixture(this, previewRecipe().withWiring(listOf(wiring)), metadata)
+                    f.runner.use { runner ->
+                        runner.evaluate()
+                        f.plan!!
+                            .actions
+                            .single()
+                            .arguments["due"] shouldBe expected
+                        val inserted =
+                            f.plan!!
+                                .rows
+                                .single { it.entity == "er.entity.order" }
+                                .row!!
+                        inserted.keys shouldBe setOf("order_number", "tenant", "value")
+                        inserted["value"] shouldBe JsonPrimitive(BigDecimal("6.06"))
+                        f.journals.get() shouldBe 1
+                    }
+                }
+            }
+        }
+
         "nested role references refuse before any preview journal" {
             for (reference in listOf("lines", "candidates")) {
                 supervisorScope {
