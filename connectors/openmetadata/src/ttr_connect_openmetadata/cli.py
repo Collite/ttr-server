@@ -105,7 +105,7 @@ def run(args: argparse.Namespace, dry: bool, client: "OmClient | None") -> int:
                     args.deprecate_missing,
                     version("ttr-connect-openmetadata"),
                     client.version,
-                    workspace,
+                    workspace if workspace is not None else world if studio_origin else None,
                 )
                 if client is not None
                 else None
@@ -114,8 +114,6 @@ def run(args: argparse.Namespace, dry: bool, client: "OmClient | None") -> int:
         try:
             state = read_state(args.state_file) if args.state_file else None
             known_world = args.world or (state.world if state else None)
-            if studio_origin and workspace is None and known_world is not None:
-                workspace = resolve_studio_workspace(known_world, None)
             fingerprint = fingerprint_for(known_world)
             # Keep old ids for deprecations, but never send an incompatible ETag.
             cached = state if client is None or (state and state.options == fingerprint) else None

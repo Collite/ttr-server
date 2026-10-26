@@ -349,3 +349,55 @@ def test_dry_plan_discloses_out_of_plan_normalization(
     )
     assert main(args) == 0
     assert "INFO" not in capsys.readouterr().err
+
+
+def test_invalid_implicit_workspace_is_a_mapping_error(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    assert (
+        main(
+            [
+                "plan",
+                "--export-dir",
+                str(FIXTURES / "export"),
+                "--studio-url",
+                "https://studio.example",
+                "--world",
+                ".",
+            ]
+        )
+        == 3
+    )
+    assert "mapping error" in capsys.readouterr().err
+
+
+def test_default_workspace_follows_new_export_world_after_saved_state(
+    export: Export,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    from om_fake import FakeOm
+    from test_sync import sync_args
+
+    fake = FakeOm(export)
+    args = sync_args(tmp_path)
+    with responses.RequestsMock(assert_all_requests_are_fired=False) as mock:
+        fake.install(mock)
+        assert main(args) == 0
+        capsys.readouterr()
+        changed = tmp_path / "changed-world"
+        changed.mkdir()
+        for name in ("graph.json", "defs.json", "cn.ttl", ".snapshot"):
+            text = (
+                (FIXTURES / "export" / name)
+                .read_text()
+                .replace('"world":"northline"', '"world":"acme.retail"')
+            )
+            (changed / name).write_text(text)
+        args[args.index("--export-dir") + 1] = str(changed)
+        assert main(args) == 0
+        assert json.loads(capsys.readouterr().out)["warnings"] == 0
+        table = fake.stores["tables"]["northline-pg.northline.retail.sales"]
+        assert table["extension"]["ttrUrl"] == "https://studio.example/m/acme.retail/s/db"
+        assert table["extension"]["ttrStudioLink"]["url"] == table["extension"]["ttrUrl"]
+        assert json.loads((tmp_path / "state.json").read_text())["world"] == "acme.retail"
