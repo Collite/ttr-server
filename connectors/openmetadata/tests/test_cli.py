@@ -124,6 +124,8 @@ def test_skipped_assets_preserve_state_then_retry(
         None,
         "studio-url",
         "studio-workspace",
+        "same-workspace",
+        "same-origin",
         "cn-name-mode",
         "cn-path",
         "world",
@@ -180,11 +182,15 @@ def test_conditional_export_respects_options(
             value = {
                 "studio-url": "https://new-studio.example",
                 "studio-workspace": "catalog-demo",
+                "same-workspace": export.graph.world,
+                "same-origin": "https://studio.example/",
                 "cn-name-mode": "qname",
                 "cn-path": "owl",
                 "world": export.graph.world,
             }[change]
-            flag = "--" + change
+            flag = "--" + {"same-workspace": "studio-workspace", "same-origin": "studio-url"}.get(
+                change, change
+            )
             if flag in args:
                 args[args.index(flag) + 1] = value
             else:
@@ -193,16 +199,17 @@ def test_conditional_export_respects_options(
         mock.reset()
         fake.install(mock)
         register_export(mock)
-        if change is None:
+        equivalent = change in {None, "same-workspace", "same-origin", "world"}
+        if equivalent:
             # Replace the export route; the OM version probe must still run.
             mock.replace(responses.GET, URL, status=304)
         assert main(args) == 0
         output = json.loads(capsys.readouterr().out)
         export_calls = [c for c in mock.calls if c.request.url and c.request.url.startswith(URL)]
         assert bool(export_calls)
-        assert all(("If-None-Match" in c.request.headers) == (change is None) for c in export_calls)
-        assert output["not_modified"] is (change is None)
-        if change is None:
+        assert all(("If-None-Match" in c.request.headers) == equivalent for c in export_calls)
+        assert output["not_modified"] is equivalent
+        if equivalent:
             assert fake.calls == [("GET", "system/version", None)]
             assert path.read_bytes() == before
             assert all(
@@ -216,6 +223,10 @@ def test_conditional_export_respects_options(
                     for t in fake.stores["glossaryTerms"].values()
                     if not t["extension"]["ttrQname"].startswith("cn.")
                 )
+                for term in fake.stores["glossaryTerms"].values():
+                    if term["extension"]["ttrQname"].startswith("cn."):
+                        assert "ttrUrl" not in term["extension"]
+                        assert "ttrStudioLink" not in term["extension"]
 
 
 def test_retry_recomputes_deprecations_without_repatching(
@@ -256,3 +267,29 @@ def test_retry_recomputes_deprecations_without_repatching(
         assert main(args) == 0
         assert json.loads(capsys.readouterr().out)["deprecated"] == 0
         assert path.read_bytes() != before
+
+
+@pytest.mark.parametrize("command", ["plan", "sync"])
+def test_workspace_requires_studio_origin(command: str) -> None:
+    with pytest.raises(SystemExit) as error:
+        main([command, "--export-dir", str(FIXTURES / "export"), "--studio-workspace", "x"])
+    assert error.value.code == 2
+
+
+@pytest.mark.parametrize("workspace", ["", ".."])
+def test_invalid_workspace_cannot_short_circuit_on_saved_export(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], export: Export, workspace: str
+) -> None:
+    from om_fake import FakeOm
+    from test_sync import sync_args
+
+    fake = FakeOm(export)
+    args = sync_args(tmp_path)
+    with responses.RequestsMock(assert_all_requests_are_fired=False) as mock:
+        fake.install(mock)
+        assert main(args) == 0
+        capsys.readouterr()
+        fake.calls.clear()
+        assert main([*args, "--studio-workspace", workspace]) == 3
+        assert "invalid Studio workspace" in capsys.readouterr().err
+        assert fake.writes == []

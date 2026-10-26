@@ -12,6 +12,8 @@ from typing import Any
 
 import pytest
 
+from ttr_connect_openmetadata.model import REGISTRY
+
 from .conftest import LiveOm
 
 pytestmark = pytest.mark.om_live
@@ -50,21 +52,17 @@ def test_check_sync_idempotency_and_deprecation(om: LiveOm, tmp_path: Path) -> N
         return summary
 
     cli("check", *credentials)
-    for entity, names in {
-        "table": {"ttrQname", "ttrUrl", "ttrStudioLink"},
-        "tableColumn": {"ttrQname"},
-        "glossaryTerm": {"ttrQname", "ttrUrl", "ttrStudioLink", "ttrKind", "ttrIri"},
-        "metric": {"ttrQname", "ttrUrl", "ttrStudioLink", "ttrAdditivity", "ttrColumnAssets"},
-    }.items():
+    field_ids = {
+        name: om.call("GET", f"metadata/types/name/{name}")["id"]
+        for name in ("string", "hyperlink-cp")
+    }
+    for entity, properties in REGISTRY.items():
         registry = om.call(
             "GET", f"metadata/types/name/{entity}", params={"fields": "customProperties"}
         )
-        assert names <= {p["name"] for p in registry["customProperties"]}
-        for prop in registry["customProperties"]:
-            if prop["name"] in names:
-                expected_type = "hyperlink-cp" if prop["name"] == "ttrStudioLink" else "string"
-                type_info = om.call("GET", f"metadata/types/name/{expected_type}")
-                assert prop["propertyType"]["id"] == type_info["id"]
+        actual = {p["name"]: p["propertyType"]["id"] for p in registry["customProperties"]}
+        for name, field_type in properties:
+            assert actual[name] == field_ids[field_type]
     args = [
         "sync",
         "--export-dir",
@@ -163,11 +161,11 @@ def test_check_sync_idempotency_and_deprecation(om: LiveOm, tmp_path: Path) -> N
                     "value": "https://studio.example/viewer?qname=legacy",
                 },
                 {
-                    "op": "remove" if model else "add",
+                    "op": "remove" if model and resource != "tables" else "add",
                     "path": "/extension/ttrStudioLink",
                     **(
                         {}
-                        if model
+                        if model and resource != "tables"
                         else {
                             "value": {
                                 "url": "https://studio.example/obsolete",
@@ -193,7 +191,11 @@ def test_check_sync_idempotency_and_deprecation(om: LiveOm, tmp_path: Path) -> N
             assert extension["ttrIri"] == party["extension"]["ttrIri"]
         else:
             assert extension["ttrUrl"] == f"https://studio.example/m/northline/s/{model}"
-            assert extension["ttrStudioLink"]["url"] == extension["ttrUrl"]
+            label = {"db": "database", "er": "E-R", "md": "dimensional"}[model]
+            assert extension["ttrStudioLink"] == {
+                "url": extension["ttrUrl"],
+                "displayText": f"Open {label} model in Studio",
+            }
     om.settle_initial_approvals()
     clean = cli(*args)
     assert all(clean[k] == 0 for k in ("created", "updated", "deprecated", "linked", "warnings"))

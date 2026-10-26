@@ -31,19 +31,23 @@ from metadata.ingestion.ometa.ometa_api import OpenMetadata
 from pydantic import BaseModel
 
 from .model import (
+    REGISTRY,
     Deprecate,
     EnsureCustomProperty,
     EnsureGlossary,
     EnsureTag,
+    FieldType,
     ImportRdf,
     LinkMetricToAsset,
     LinkTermToAsset,
     Plan,
     SetColumnTags,
     SetTableProps,
+    StudioLink,
     UpsertMetric,
     UpsertTerm,
 )
+from .urls import http_origin
 
 T = TypeVar("T")
 M = TypeVar("M", bound=BaseModel)
@@ -105,20 +109,13 @@ def columns(items: list[Json]) -> Iterator[Json]:
 
 class OmClient:
     def __init__(self, url: str, token: str) -> None:
-        parsed = urlsplit(url)
-        if (
-            parsed.scheme not in ("http", "https")
-            or not parsed.netloc
-            or parsed.query
-            or parsed.fragment
-            or parsed.username
-        ):
-            raise OmError(
-                None, "--om-url must be an HTTP(S) API URL without credentials/query/fragment"
-            )
+        try:
+            origin = http_origin(url, allow_path=True)
+        except ValueError as exc:
+            raise OmError(None, f"--om-url: {exc}") from exc
         if not token.strip():
             raise OmError(None, "empty OM token")
-        self.url = url.rstrip("/")
+        self.url = (origin + urlsplit(url).path).rstrip("/")
         self.session = requests.Session()
         self.session.headers["Authorization"] = f"Bearer {token.strip()}"
         config = OpenMetadataConnection.model_validate(
@@ -314,24 +311,31 @@ class OmClient:
                 Tag,
             )
 
-    def ensure_custom_property(self, op: EnsureCustomProperty) -> None:
-        def get_type(name: str) -> Json:
-            if name not in self._types:
-                response = self._rest(
+    def _entity_type(self, name: str) -> Json:
+        if name not in self._types:
+            value = Type.model_validate(
+                self._rest(
                     "GET", f"metadata/types/name/{name}", params={"fields": "customProperties"}
                 )
-                value = (
-                    NativeHyperlinkType.model_validate(response)
-                    if name == "hyperlink-cp"
-                    else Type.model_validate(response)
-                )
-                if value.id is None:
-                    raise OmError(None, f"OM type {name} has no id")
-                self._types[name] = payload(value)
-            return self._types[name]
+            )
+            if value.id is None:
+                raise OmError(None, f"OM type {name} has no id")
+            self._types[name] = payload(value)
+        return self._types[name]
 
-        entity = get_type(op.entity_type)
-        property_type = get_type(op.type)
+    def _field_type(self, name: FieldType) -> Json:
+        if name == "string":
+            return self._entity_type(name)
+        if name not in self._types:
+            value = NativeHyperlinkType.model_validate(
+                self._rest("GET", f"metadata/types/name/{name}")
+            )
+            self._types[name] = payload(value)
+        return self._types[name]
+
+    def ensure_custom_property(self, op: EnsureCustomProperty) -> None:
+        entity = self._entity_type(op.entity_type)
+        property_type = self._field_type(op.type)
         properties = entity.get("customProperties") or []
         existing = next((p for p in properties if p["name"] == op.name), None)
         if existing is not None:
@@ -359,21 +363,10 @@ class OmClient:
 
     def check(self) -> str:
         self.read_version()
-        for kind, names in {
-            "table": ("ttrQname", "ttrUrl", "ttrStudioLink"),
-            "tableColumn": ("ttrQname",),
-            "glossaryTerm": ("ttrQname", "ttrUrl", "ttrStudioLink", "ttrKind", "ttrIri"),
-            "metric": ("ttrQname", "ttrUrl", "ttrStudioLink", "ttrAdditivity", "ttrColumnAssets"),
-        }.items():
-            for name in names:
+        for kind, properties in REGISTRY.items():
+            for name, field_type in properties:
                 self.ensure_custom_property(
-                    EnsureCustomProperty.model_validate(
-                        {
-                            "entity_type": kind,
-                            "name": name,
-                            "type": "hyperlink-cp" if name == "ttrStudioLink" else "string",
-                        }
-                    )
+                    EnsureCustomProperty(entity_type=kind, name=name, type=field_type)
                 )
         self.ensure_classification("Tatrman")
         for name in ("Grounded", "Deprecated"):
@@ -455,6 +448,13 @@ class OmClient:
         self._terms[str(term.id.root)] = term
         self._term_aliases[op.fqn] = term
 
+    @staticmethod
+    def _extensions(props: dict[str, str], studio_link: StudioLink | None) -> Json:
+        result: Json = dict(props)
+        if studio_link is not None:
+            result["ttrStudioLink"] = payload(studio_link)
+        return result
+
     def upsert_term(self, op: UpsertTerm) -> None:
         term = self._find_term(op)
         needs_iri = bool(op.iri and (term is None or not term.iri))
@@ -475,10 +475,15 @@ class OmClient:
             )
             # The 2.0.6 request mapper ignores iri. Its updater also does not
             # track iri-only patches: pair it with registered source properties.
-            term = self._patch(term, {"iri": op.iri, "extension": op.props})
+            term = self._patch(
+                term, {"iri": op.iri, "extension": self._extensions(op.props, op.studio_link)}
+            )
         else:
             before = payload(term)
-            extension = {**before.get("extension", {}), **op.props}
+            extension = {
+                **before.get("extension", {}),
+                **self._extensions(op.props, op.studio_link),
+            }
             for name in op.remove_props:
                 extension.pop(name, None)
             changes: Json = {
@@ -564,7 +569,10 @@ class OmClient:
                 metric,
                 {
                     **fields,
-                    "extension": {**data.get("extension", {}), **op.props},
+                    "extension": {
+                        **data.get("extension", {}),
+                        **self._extensions(op.props, op.studio_link),
+                    },
                     "tags": merge_tags(data.get("tags") or [], [], remove="Tatrman.Deprecated"),
                 },
             )
@@ -574,7 +582,7 @@ class OmClient:
                     {
                         "name": op.name,
                         **fields,
-                        "extension": op.props,
+                        "extension": self._extensions(op.props, op.studio_link),
                     }
                 ),
                 Metric,
@@ -596,7 +604,10 @@ class OmClient:
             return
         data = payload(table)
         changes: Json = {
-            "extension": {**data.get("extension", {}), **op.props},
+            "extension": {
+                **data.get("extension", {}),
+                **self._extensions(op.props, op.studio_link),
+            },
             "tags": merge_tags(data.get("tags") or [], op.tags),
         }
         if op.description:
@@ -729,6 +740,22 @@ class OmClient:
         self._metric_aliases[op.metric] = metric
         self.summary.linked += 1
 
+    def prune_stale_term_links(self, terms: list[UpsertTerm]) -> None:
+        current = {op.qname for op in terms}
+        for term in list(self._terms.values()):
+            data = payload(term)
+            extension = data.get("extension") or {}
+            qname = extension.get("ttrQname")
+            if (
+                (data.get("glossary") or {}).get("fullyQualifiedName") in self._glossaries
+                and qname
+                and qname not in current
+                and {"ttrUrl", "ttrStudioLink"} & extension.keys()
+            ):
+                kept = {k: v for k, v in extension.items() if k not in {"ttrUrl", "ttrStudioLink"}}
+                result = self._patch(term, {"extension": kept})
+                self._terms[str(result.id.root)] = result
+
     def deprecate_term(self, term: GlossaryTerm) -> None:
         if payload(term).get("entityStatus") != "Deprecated":
             result = self._patch(term, {"entityStatus": "Deprecated"}, count=False)
@@ -826,6 +853,8 @@ class OmClient:
             elif isinstance(op, SetColumnTags):
                 self.set_column_tags(op)
             # Registry operations have already run in check; links follow all entity writes.
+        if plan.studio_links:
+            self.prune_stale_term_links(terms)
         self.relate_terms(terms)
         for op in plan.operations:
             if isinstance(op, LinkTermToAsset):

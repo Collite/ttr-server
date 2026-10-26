@@ -13,7 +13,7 @@ import requests
 import responses
 
 from ttr_connect_openmetadata.mapping import plan_from_export
-from ttr_connect_openmetadata.model import Export, SetColumnTags, SetTableProps
+from ttr_connect_openmetadata.model import REGISTRY, Export, SetColumnTags, SetTableProps
 
 URL = "http://om.example/api"
 
@@ -203,7 +203,7 @@ class FakeOm:
             from metadata.generated.schema.type.customProperty import CustomProperty
 
             CustomProperty.model_validate(data)
-            expected_type = "hyperlink-cp" if data["name"] == "ttrStudioLink" else "string"
+            expected_type = dict(REGISTRY[entity["name"]])[data["name"]]
             assert data["propertyType"]["id"] == uid(expected_type)
             assert not any(p["name"] == data["name"] for p in entity["customProperties"])
             entity["customProperties"].append(data)

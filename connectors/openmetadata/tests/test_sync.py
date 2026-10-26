@@ -119,9 +119,15 @@ def test_legacy_link_migration_removes_only_cn_studio_urls_and_is_idempotent(
                 externalOwner="retained",
             )
         for table in fake.stores["tables"].values():
-            table["extension"]["ttrUrl"] = "https://studio.example/viewer?qname=legacy"
+            table["extension"].update(
+                ttrUrl="https://studio.example/viewer?qname=legacy",
+                ttrStudioLink={"url": "https://studio.example/obsolete", "displayText": "Old"},
+            )
         for metric in fake.stores["metrics"].values():
-            metric["extension"]["ttrUrl"] = "https://studio.example/viewer?qname=legacy"
+            metric["extension"].update(
+                ttrUrl="https://studio.example/viewer?qname=legacy",
+                ttrStudioLink={"url": "https://studio.example/obsolete", "displayText": "Old"},
+            )
         fake.calls.clear()
         assert main(args) == 0
         migrated = json.loads(capsys.readouterr().out)
@@ -143,10 +149,22 @@ def test_legacy_link_migration_removes_only_cn_studio_urls_and_is_idempotent(
             m["extension"]["ttrUrl"] == "https://studio.example/m/catalog-demo/s/md"
             for m in fake.stores["metrics"].values()
         )
+        for resource, model, label in (
+            ("tables", "db", "database"),
+            ("metrics", "md", "dimensional"),
+        ):
+            for entity in fake.stores[resource].values():
+                assert entity["extension"]["ttrStudioLink"] == {
+                    "url": f"https://studio.example/m/catalog-demo/s/{model}",
+                    "displayText": f"Open {label} model in Studio",
+                }
         fake.calls.clear()
         assert main(args) == 0
         assert fake.writes == []
-        assert json.loads(capsys.readouterr().out)["updated"] == 0
+        result = json.loads(capsys.readouterr().out)
+        assert all(
+            result[k] == 0 for k in ("created", "updated", "deprecated", "linked", "warnings")
+        )
 
 
 def test_dry_run_needs_no_credentials_or_writes(
@@ -758,3 +776,116 @@ def test_native_builtin_lookup_rejects_wrong_name_or_uuid(
         assert "validation error" in capsys.readouterr().err
         assert fake.stores["glossaryTerms"] == {}
         assert not (tmp_path / "state.json").exists()
+
+
+@pytest.mark.parametrize("with_studio", [False, True])
+def test_untouched_term_link_sweep_is_world_scoped_and_idempotent(
+    export: Export, tmp_path: Path, capsys: pytest.CaptureFixture[str], with_studio: bool
+) -> None:
+    from copy import deepcopy
+
+    from om_fake import uid
+
+    fake = FakeOm(export)
+    args = sync_args(tmp_path)
+    if not with_studio:
+        index = args.index("--studio-url")
+        del args[index : index + 2]
+    args.append("--no-deprecate-missing")
+    stale = {
+        "ttrUrl": "https://studio.example/viewer?qname=legacy",
+        "ttrStudioLink": {"url": "https://studio.example/obsolete", "displayText": "Old"},
+        "externalOwner": "retained",
+    }
+    with responses.RequestsMock(assert_all_requests_are_fired=False) as mock:
+        fake.install(mock)
+        assert main(args) == 0
+        capsys.readouterr()
+        template = next(iter(fake.stores["glossaryTerms"].values()))
+        for name, qname, glossary, deprecated in (
+            ("Retired", "er.entity.Retired", "northline Entities", True),
+            ("Orphan", "md.dimension.Orphan", "northline Entities", False),
+            ("Concept", "cn.kind.Old", "northline Concepts", True),
+            ("Foreign", "er.entity.Foreign", "other Entities", False),
+            ("Unowned", None, "northline Entities", False),
+        ):
+            term = deepcopy(template)
+            term.pop("parent", None)
+            term.update(
+                id=uid(name),
+                name=name,
+                fullyQualifiedName=f"{glossary}.{name}",
+                glossary={"id": uid(glossary), "type": "glossary", "fullyQualifiedName": glossary},
+                entityStatus="Deprecated" if deprecated else "Draft",
+                extension={**stale, **({"ttrQname": qname} if qname else {})},
+            )
+            fake.stores["glossaryTerms"][term["fullyQualifiedName"]] = term
+        metric = deepcopy(next(iter(fake.stores["metrics"].values())))
+        metric.update(
+            id=uid("orphan-metric"),
+            name="orphan",
+            fullyQualifiedName="orphan",
+            extension={**stale, "ttrQname": "md.measure.Orphan"},
+        )
+        fake.stores["metrics"]["orphan"] = metric
+        table = deepcopy(next(iter(fake.stores["tables"].values())))
+        table.update(
+            id=uid("orphan-table"),
+            name="orphan",
+            fullyQualifiedName="foreign.db.public.orphan",
+            extension={**stale, "ttrQname": "db.public.orphan"},
+        )
+        fake.stores["tables"][table["fullyQualifiedName"]] = table
+        before = deepcopy(fake.stores)
+        fake.calls.clear()
+        assert main(args) == 0
+        summary = json.loads(capsys.readouterr().out)
+        assert summary["updated"] == (3 if with_studio else 0)
+        for fqn, term in fake.stores["glossaryTerms"].items():
+            old = before["glossaryTerms"][fqn]
+            if term["name"] in {"Retired", "Orphan", "Concept"} and with_studio:
+                assert term["extension"] == {
+                    k: v
+                    for k, v in old["extension"].items()
+                    if k not in {"ttrUrl", "ttrStudioLink"}
+                }
+                assert term["entityStatus"] == old["entityStatus"]
+            else:
+                assert term == old
+        assert fake.stores["metrics"] == before["metrics"]
+        assert fake.stores["tables"] == before["tables"]
+        fake.calls.clear()
+        assert main(args) == 0
+        summary = json.loads(capsys.readouterr().out)
+        assert all(
+            summary[k] == 0 for k in ("created", "updated", "deprecated", "linked", "warnings")
+        )
+        assert fake.writes == []
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://om.example/api?",
+        "https://om.example/api#",
+        "https://om.example:abc/api",
+        "https://om.example\\evil/api",
+        "https://om.example/api\t",
+        "https://@om.example/api",
+    ],
+)
+def test_om_url_uses_shared_strict_validation(url: str) -> None:
+    from ttr_connect_openmetadata.om_client import OmClient, OmError
+
+    with pytest.raises(OmError, match="--om-url"):
+        OmClient(url, "fixture-token")
+
+
+def test_om_url_retains_valid_api_path() -> None:
+    from ttr_connect_openmetadata.om_client import OmClient
+
+    client = OmClient("https://om.example:8585/api/", "fixture-token")
+    try:
+        assert client.url == "https://om.example:8585/api"
+    finally:
+        client.close()

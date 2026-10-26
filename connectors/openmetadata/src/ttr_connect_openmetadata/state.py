@@ -15,6 +15,7 @@ class State(BaseModel):
     snapshot: str = Field(min_length=1)
     ids: list[str]
     om_version: str
+    world: str | None = None
     options: str | None = None
 
 

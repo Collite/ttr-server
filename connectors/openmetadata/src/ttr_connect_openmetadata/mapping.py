@@ -4,11 +4,11 @@
 import json
 import re
 from collections import defaultdict
-from urllib.parse import quote, urlsplit
 
 from pydantic import JsonValue
 
 from .model import (
+    REGISTRY,
     Connection,
     Delta,
     Deprecate,
@@ -27,9 +27,11 @@ from .model import (
     RelatedTerm,
     SetColumnTags,
     SetTableProps,
+    StudioLink,
     UpsertMetric,
     UpsertTerm,
 )
+from .urls import http_origin
 
 
 class MappingError(Exception):
@@ -61,16 +63,16 @@ def _description(node: Node) -> str:
     )
 
 
-def _props(node: Node, studio_url: str | None, workspace: str) -> dict[str, str | dict[str, str]]:
-    result: dict[str, str | dict[str, str]] = {"ttrQname": node.id}
-    # Studio subjects are model graphs, not arbitrary exported object qnames.
-    # New cn is not the legacy cnc renderer: keep concepts in the OM glossary.
-    if studio_url and node.model in {"db", "er", "md"}:
-        url = f"{studio_url.rstrip('/')}/m/{quote(workspace, safe='')}/s/{node.model}"
+def _props(node: Node, studio_base: str | None) -> tuple[dict[str, str], StudioLink | None]:
+    result = {"ttrQname": node.id}
+    # Studio subjects are model graphs; new CN stays in the OM glossary.
+    link = None
+    if studio_base and node.model in {"db", "er", "md"}:
+        url = studio_base + node.model
         result["ttrUrl"] = url
         label = {"db": "database", "er": "E-R", "md": "dimensional"}[node.model]
-        result["ttrStudioLink"] = {"url": url, "displayText": f"Open {label} model in Studio"}
-    return result
+        link = StudioLink(url=url, displayText=f"Open {label} model in Studio")
+    return result, link
 
 
 def _term_nodes(nodes: dict[str, Node]) -> dict[str, Node]:
@@ -87,9 +89,8 @@ def _terms(
     export: Export,
     nodes: dict[str, Node],
     world: str,
-    studio_url: str | None,
+    studio_base: str | None,
     cn_name_mode: str,
-    workspace: str,
 ) -> tuple[list[UpsertTerm], dict[str, str]]:
     terms = _term_nodes(nodes)
     parents: dict[str, str] = {}
@@ -163,7 +164,7 @@ def _terms(
     result = []
     for key in order:
         node = terms[key]
-        props = _props(node, studio_url, workspace)
+        props, studio_link = _props(node, studio_base)
         if node.iri:
             props["ttrIri"] = node.iri
         if node.model == "md":
@@ -181,8 +182,9 @@ def _terms(
                 related=[RelatedTerm(term=addresses[t]) for t in sorted(related[key])],
                 iri=node.iri,
                 props=props,
+                studio_link=studio_link,
                 remove_props=["ttrUrl", "ttrStudioLink"]
-                if studio_url and node.model == "cn"
+                if studio_base and node.model == "cn"
                 else [],
                 cn=node.model == "cn",
             )
@@ -190,9 +192,7 @@ def _terms(
     return result, addresses
 
 
-def _metrics(
-    export: Export, nodes: dict[str, Node], studio_url: str | None, workspace: str
-) -> list[UpsertMetric]:
+def _metrics(export: Export, nodes: dict[str, Node], studio_base: str | None) -> list[UpsertMetric]:
     result: list[UpsertMetric] = []
     names: set[str] = set()
     for key, node in sorted(nodes.items()):
@@ -214,7 +214,7 @@ def _metrics(
         if isinstance(expression, dict):
             expression = expression.get("block", "")
         code = " ".join(str(value) for value in (aggregation, expression) if value)
-        extensions = _props(node, studio_url, workspace)
+        extensions, studio_link = _props(node, studio_base)
         additivity = props.get("class") or node.props.get("additivity")
         if additivity:
             extensions["ttrAdditivity"] = str(additivity)
@@ -231,6 +231,7 @@ def _metrics(
                     "metricExpression": MetricExpression(code=code),
                     "metricType": metric_type,
                     "props": extensions,
+                    "studio_link": studio_link,
                 }
             )
         )
@@ -287,9 +288,8 @@ def _assets(
     nodes: dict[str, Node],
     terms: dict[str, str],
     metrics: list[UpsertMetric],
-    studio_url: str | None,
+    studio_base: str | None,
     connections: list[Connection],
-    workspace: str,
 ) -> tuple[list[PlanOperation], list[str]]:
     warnings: set[str] = set()
     targets = _binding_targets(export, nodes)
@@ -346,10 +346,12 @@ def _assets(
             owned_fqns[fqn] = key
             table_addresses[key].append(fqn)
             addresses[key].append((fqn, "table", None))
+            props, studio_link = _props(node, studio_base)
             operations.append(
                 SetTableProps(
                     fqn=fqn,
-                    props=_props(node, studio_url, workspace),
+                    props=props,
+                    studio_link=studio_link,
                     description=_description(node),
                     tags=["Tatrman.Grounded"] if key in bound_tables else [],
                 )
@@ -400,6 +402,13 @@ def _assets(
     return operations, sorted(warnings)
 
 
+def resolve_studio_workspace(world: str, workspace: str | None) -> str:
+    result = world if workspace is None else workspace
+    if not re.fullmatch(r"[A-Za-z0-9._~-]+", result) or result in {".", "..", "c", "_designer"}:
+        raise MappingError("invalid Studio workspace (use modeler.toml project.name)")
+    return result
+
+
 def plan_from_export(
     export: Export,
     world: str | None = None,
@@ -413,28 +422,16 @@ def plan_from_export(
     world = world or export.graph.world
     if world != export.graph.world:
         raise MappingError(f"world {world} differs from export world {export.graph.world}")
-    workspace = world if studio_workspace is None else studio_workspace
+    studio_base = None
+    if studio_workspace is not None and not studio_url:
+        raise MappingError("Studio workspace requires a studio URL")
     if studio_url:
-        parsed = urlsplit(studio_url)
-        if (
-            parsed.scheme not in {"http", "https"}
-            or not parsed.netloc
-            or parsed.username is not None
-            or parsed.password is not None
-            or parsed.path not in {"", "/"}
-            or parsed.query
-            or parsed.fragment
-        ):
-            raise MappingError(
-                "studio URL must be an HTTP(S) origin without credentials/query/path"
-            )
-        if not re.fullmatch(r"[A-Za-z0-9._~-]+", workspace) or workspace in {
-            ".",
-            "..",
-            "c",
-            "_designer",
-        }:
-            raise MappingError("invalid Studio workspace (use modeler.toml project.name)")
+        try:
+            origin = http_origin(studio_url, allow_path=False)
+        except ValueError as exc:
+            raise MappingError(f"studio URL: {exc}") from exc
+        workspace = resolve_studio_workspace(world, studio_workspace)
+        studio_base = f"{origin}/m/{workspace}/s/"
     nodes = {n.id: n for n in export.graph.nodes if not n.external}
     operations: list[PlanOperation] = [
         EnsureGlossary(name=f"{world} Concepts"),
@@ -443,39 +440,31 @@ def plan_from_export(
         EnsureTag(classification="Tatrman", name="Grounded"),
         EnsureTag(classification="Tatrman", name="Deprecated"),
     ]
-    registry: dict[str, tuple[str, ...]] = {
-        "table": ("ttrQname", "ttrUrl", "ttrStudioLink"),
-        "tableColumn": ("ttrQname",),
-        "glossaryTerm": ("ttrQname", "ttrUrl", "ttrStudioLink", "ttrKind", "ttrIri"),
-        "metric": ("ttrQname", "ttrUrl", "ttrStudioLink", "ttrAdditivity", "ttrColumnAssets"),
-    }
-    for entity_type, properties in registry.items():
-        for name in properties:
+    for entity_type, properties in REGISTRY.items():
+        for name, field_type in properties:
             operations.append(
-                EnsureCustomProperty.model_validate(
-                    {
-                        "entity_type": entity_type,
-                        "name": name,
-                        "type": "hyperlink-cp" if name == "ttrStudioLink" else "string",
-                    }
-                )
+                EnsureCustomProperty(entity_type=entity_type, name=name, type=field_type)
             )
     operations.append(ImportRdf(glossary=f"{world} Concepts", turtle=export.ttl))
-    terms, addresses = _terms(export, nodes, world, studio_url, cn_name_mode, workspace)
+    terms, addresses = _terms(export, nodes, world, studio_base, cn_name_mode)
     operations.extend(terms)
-    metrics = _metrics(export, nodes, studio_url, workspace)
+    metrics = _metrics(export, nodes, studio_base)
     operations.extend(metrics)
     assets, warnings = _assets(
         export,
         nodes,
         addresses,
         metrics,
-        studio_url,
+        studio_base,
         export.defs.connections if connections is None else connections,
-        workspace,
     )
     operations.extend(assets)
-    return Plan(snapshot=export.snapshot, operations=operations, warnings=warnings)
+    return Plan(
+        snapshot=export.snapshot,
+        studio_links=studio_base is not None,
+        operations=operations,
+        warnings=warnings,
+    )
 
 
 def deprecations(

@@ -114,10 +114,6 @@ def test_asset_links_and_column_maps(export: Export) -> None:
     assert sales.props == {
         "ttrQname": "db.retail.sales",
         "ttrUrl": "https://studio.example/m/northline/s/db",
-        "ttrStudioLink": {
-            "url": "https://studio.example/m/northline/s/db",
-            "displayText": "Open database model in Studio",
-        },
     }
     assert sales.tags == ["Tatrman.Grounded"]
     assert next(t for t in tables if t.fqn.endswith(".products")).tags == []
@@ -317,6 +313,16 @@ def test_studio_workspace_must_be_a_valid_nonreserved_manifest_name(
         "https://",
         "https://studio.example/viewer",
         "https://studio.example?x=y",
+        "https://studio.example?",
+        "https://studio.example#",
+        "https://studio.example\\evil",
+        "https://studio.example:abc",
+        "https://studio.example:65536",
+        "https://studio.example\t",
+        "https://studio.example\x00",
+        "https://studio.example space",
+        "https://@studio.example",
+        "https://:80",
         "https://studio.example#fragment",
         "https://user:fixture@studio.example",
     ],
@@ -391,14 +397,27 @@ def test_native_studio_links_match_urls_and_registry_types(export: Export) -> No
     assert all(op.type == "string" for op in properties if op.name != "ttrStudioLink")
     for op in plan.operations:
         if isinstance(op, (SetTableProps, UpsertTerm, UpsertMetric)) and "ttrUrl" in op.props:
-            link = op.props["ttrStudioLink"]
-            assert isinstance(link, dict)
-            assert link["url"] == op.props["ttrUrl"]
-            assert link["url"].startswith("https://studio.example/m/demo/s/")
-            assert link["displayText"].startswith("Open ")
-            assert link["displayText"].endswith(" model in Studio")
+            link = op.studio_link
+            assert link is not None
+            assert link.url == op.props["ttrUrl"]
+            assert link.url.startswith("https://studio.example/m/demo/s/")
+            assert link.displayText.startswith("Open ")
+            assert link.displayText.endswith(" model in Studio")
     assert all(
-        "ttrStudioLink" not in op.props
+        op.studio_link is None
         for op in plan_from_export(export).operations
         if isinstance(op, (SetTableProps, UpsertTerm, UpsertMetric))
     )
+
+
+@pytest.mark.parametrize("operation", [SetTableProps, UpsertTerm, UpsertMetric])
+def test_string_properties_reject_structured_values(
+    export: Export, operation: type[SetTableProps] | type[UpsertTerm] | type[UpsertMetric]
+) -> None:
+    from pydantic import ValidationError
+
+    op = next(o for o in plan_from_export(export).operations if isinstance(o, operation))
+    data = op.model_dump()
+    data["props"]["ttrQname"] = {"url": "https://wrong.example"}
+    with pytest.raises(ValidationError):
+        operation.model_validate(data)

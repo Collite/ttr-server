@@ -124,11 +124,39 @@ class EnsureTag(Operation):
     name: str
 
 
+type EntityType = Literal["table", "tableColumn", "glossaryTerm", "metric"]
+type FieldType = Literal["string", "hyperlink-cp"]
+
+REGISTRY: dict[EntityType, tuple[tuple[str, FieldType], ...]] = {
+    "table": (("ttrQname", "string"), ("ttrUrl", "string"), ("ttrStudioLink", "hyperlink-cp")),
+    "tableColumn": (("ttrQname", "string"),),
+    "glossaryTerm": (
+        ("ttrQname", "string"),
+        ("ttrUrl", "string"),
+        ("ttrStudioLink", "hyperlink-cp"),
+        ("ttrKind", "string"),
+        ("ttrIri", "string"),
+    ),
+    "metric": (
+        ("ttrQname", "string"),
+        ("ttrUrl", "string"),
+        ("ttrStudioLink", "hyperlink-cp"),
+        ("ttrAdditivity", "string"),
+        ("ttrColumnAssets", "string"),
+    ),
+}
+
+
+class StudioLink(Operation):
+    url: str
+    displayText: str
+
+
 class EnsureCustomProperty(Operation):
     op: Literal["EnsureCustomProperty"] = "EnsureCustomProperty"
-    entity_type: Literal["table", "tableColumn", "glossaryTerm", "metric"]
+    entity_type: EntityType
     name: str
-    type: Literal["string", "hyperlink-cp"] = "string"
+    type: FieldType = "string"
 
 
 class ImportRdf(Operation):
@@ -154,7 +182,8 @@ class UpsertTerm(Operation):
     parent: str | None
     related: list[RelatedTerm]
     iri: str | None
-    props: dict[str, str | dict[str, str]]
+    props: dict[str, str]
+    studio_link: StudioLink | None = None
     # Explicitly remove an obsolete connector-owned link; preserve other extensions.
     remove_props: list[Literal["ttrUrl", "ttrStudioLink"]] = Field(default_factory=list)
     # Always present for qname/custom-property updates; S2.2 uses the fallback
@@ -175,13 +204,15 @@ class UpsertMetric(Operation):
     description: str
     metricExpression: MetricExpression
     metricType: Literal["SUM", "COUNT", "AVERAGE", "OTHER"]
-    props: dict[str, str | dict[str, str]]
+    props: dict[str, str]
+    studio_link: StudioLink | None = None
 
 
 class SetTableProps(Operation):
     op: Literal["SetTableProps"] = "SetTableProps"
     fqn: str
-    props: dict[str, str | dict[str, str]]
+    props: dict[str, str]
+    studio_link: StudioLink | None = None
     tags: list[str]
     description: str = ""
 
@@ -237,5 +268,6 @@ type PlanOperation = Annotated[
 
 class Plan(BaseModel):
     snapshot: str
+    studio_links: bool = False
     operations: list[PlanOperation]
     warnings: list[str] = Field(default_factory=list)

@@ -16,6 +16,24 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+- **connect-openmetadata 0.1.4 — clickable Studio model links.** Add native
+  `ttrStudioLink` hyperlinks to projected tables, ER/MD terms and metrics while
+  retaining the existing `ttrUrl` string and foreign metadata. Both links use one
+  validated Studio origin. Concepts stay in OM; with Studio configured, remove
+  both link keys from CN and from owned glossary terms absent from the current
+  plan, including previously deprecated and orphaned terms. Metric and table links
+  outside the current export (both keys) are not migrated (follow-up #325). Without Studio, existing
+  links remain unchanged. The version fingerprint forces a real projection on
+  upgrade from 0.1.3; equivalent resolved workspaces share the cache identity.
+  State now saves the export world; rollback to 0.1.3 or earlier needs a fresh state path.
+
+- **connect-openmetadata 0.1.3 — Studio model links.** Replace unsupported `/viewer?qname=…`
+  links with `/m/<workspace>/s/db|er|md`. `--studio-workspace` defaults to the export
+  world and can name a different manifest project. Concepts stay in OM; sync with
+  a Studio origin removes their obsolete Studio URL while preserving other custom
+  properties. Links open whole models; exact-object navigation and new-CN diagram
+  support remain follow-ups. Upgrade forces full projection through the options fingerprint.
+
 - **Umbrella metadata release cohort:** pin metadata and its in-repo consumers to
   `0.11.30`, including health, charon and opt-in automation. The server and regenerated
   clients use `MetadataService` together; a pre-rename consumer image cannot call it.
@@ -62,13 +80,13 @@ outside this repo could notice is in.
   advisory `cn/lowered-on-er` names md's reason. Pin: `tatrman-grammar` / `tatrman-ttr-metadata` 0.18.9 → 0.18.10.
 - **connect-openmetadata 0.1.2 — complete sync and cache identity.** Skipped scanned
   tables/columns or mapping omissions retain the old state for retry. Summaries add
-  `not_modified` to distinguish304 from a real sync. State fingerprints mapping
+  `not_modified` to distinguish 304 from a real sync. State fingerprints mapping
   options plus connector/current OM versions; legacy state forces a full sync.
-  Rollback to0.1.1 requires a fresh state path.
+  Rollback to 0.1.1 requires a fresh state path.
 
 - **connect-openmetadata 0.1.1 — Hartland catalog integration.** Optional
   `locators.openmetadata.schema` maps a model schema handle to the scanner's physical
-  schema without changing model identities or ownership filters. HTTP304 syncs print
+  schema without changing model identities or ownership filters. HTTP 304 syncs print
   a zero-counter summary while retaining state and making no OM calls.
   Optional `--cn-name-mode qname` supports concept kinds/qualities with equal labels
   under OM's case-insensitive glossary-wide name constraint; existing label mode remains default.
@@ -1742,16 +1760,3 @@ artifact.
   named, so a chart that has never heard of a rule pack renders byte-identically.
 - **New diagnostics** — `NLS-NLP-011` (op unrouted in the active lane),
   `NLS-PACK-010` (reload refused), `LM-MORPH-007` (token report not sunk).
-
-- **connect-openmetadata0.1.3 — Studio model links.** Replace unsupported `/viewer?qname=…`
-  links with `/m/<workspace>/s/db|er|md`. `--studio-workspace` defaults to the export
-  world and can name a different manifest project. Concepts stay in OM; sync with
-  a Studio origin removes their obsolete Studio URL while preserving other custom
-  properties. Links open whole models; exact-object navigation and new-CN diagram
-  support remain follow-ups. Upgrade forces full projection through the options fingerprint.
-
-- **connect-openmetadata 0.1.4 — clickable Studio model links.** Add native
-  `ttrStudioLink` hyperlinks to projected tables, ER/MD terms and metrics while
-  retaining the existing `ttrUrl` string and foreign metadata. Concepts stay in OM;
-  stale connector-owned CN links are removed only with Studio configured. The
-  version fingerprint forces a real projection on upgrade from0.1.3.
