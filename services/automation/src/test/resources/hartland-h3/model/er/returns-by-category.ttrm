@@ -1,0 +1,65 @@
+package hartland
+
+model er
+
+// BI-4 (project platform/features/bi, ⚑BI-4-A ruled by Bora 2026-10-22) — the logical query behind Superset's "Returns
+// by category" dashboard, and the entity stacked on it (the LQ shape of customer_revenue.ttrm). One row per item
+// category per month, over the return family: the request (its date), its lines (what is returned, for how much, where
+// its handling stands) and the item (its category).
+//
+// BI's own, not SO's: the plan read the dashboard over `returns_review`, SO beat E's stacked entity, but SO keeps that
+// on its pre-authored branch `demo/returns-review` and authors it live in the demo — a master object of that name would
+// leave beat E's change nothing to add. So the name is this query's own, and SO's report joins the "one number" check
+// when it reaches master.
+//
+// Parameterless (D-23), every month on record. No row rule narrows the return family (DC scope is on the stock and
+// sales facts), so every persona reads the same rows: the persona contrast is the stock-out dashboard's.
+//
+// `requests` counts each request once per category and month: a request with lines in two categories counts in both,
+// so it does not add up across categories (220,027 lines, 219,487 requests in either world). The month is its first
+// day, the spelling stockouts.ttrm uses (DATE_TRUNC is not lowered yet, ttr-core#244).
+//
+// No declared phrase: the Golem answers returns questions over the return family itself («reklamace» is
+// return_request's label), and a returns phrase here would take them from it. The label names the object.
+
+def query returns_monthly_by_category {
+    description: "Returns per item category per month, from the return requests: requests, lines, units, their value, and the lines still open. One row per category and month, every month on record."
+    tags: ["returns", "categories"]
+    sourceText: """sql
+SELECT item.category AS category,
+       CAST(CAST(EXTRACT(YEAR FROM return_request.requested_date) AS VARCHAR(4)) || '-' || CAST(EXTRACT(MONTH FROM return_request.requested_date) AS VARCHAR(2)) || '-01' AS DATE) AS month_start,
+       COUNT(DISTINCT return_request_line.request_number) AS requests,
+       COUNT(*) AS lines,
+       SUM(return_request_line.quantity) AS units,
+       SUM(return_request_line.quantity * return_request_line.unit_price) AS amount,
+       SUM(CASE WHEN return_request_line.state IN ('closed', 'rejected') THEN 0 ELSE 1 END) AS open_lines
+FROM return_request_line JOIN return_request JOIN item
+GROUP BY item.category, CAST(CAST(EXTRACT(YEAR FROM return_request.requested_date) AS VARCHAR(4)) || '-' || CAST(EXTRACT(MONTH FROM return_request.requested_date) AS VARCHAR(2)) || '-01' AS DATE)
+"""
+}
+
+// Stacked on the query: unbound attributes, each naming the output column of its own name. The category is a label,
+// not a key of item, so the one relation is to the calendar day the month starts on.
+def entity category_return_month {
+    description: "Returns per item category per month — one row per category and month, from the return requests: how many requests and lines, units, their value (quantity × unit price) and the lines still open. Requests count once per category, so they do not add up across categories; lines, units and amount do. The month is its first day, so a year or a quarter narrows the months."
+    roles: [fact]
+    displayLabel: { en: "Monthly Returns by Category", cs: "Měsíční přehled reklamací podle kategorií" }
+    semantics { measures: [ requests, amount ] }
+    binding: { target: { query: er.query.returns_monthly_by_category } },
+    attributes: [
+        def attribute category    { type: text, isKey: true, description: "The returned item's category (Books, Music, …); empty for the few items with none." },
+        def attribute month_start { type: date, isKey: true, description: "The month the return was requested, as its first day: 2026-07-01 is July 2026." },
+        def attribute requests    { type: int, description: "Return requests with a line in this category, requested in the month." },
+        def attribute lines       { type: int, description: "Returned lines in this category, requested in the month." },
+        def attribute units       { type: int, description: "Units asked to be returned." },
+        def attribute amount      { type: { type: decimal, length: 14, precision: 2 }, description: "Value of the returned lines: quantity × the unit price the customer paid." },
+        def attribute open_lines  { type: int, description: "Lines still being handled: neither closed nor rejected." }
+    ]
+}
+
+def relation rel_category_return_month_date {
+    description: "A month's returns are dated by the first day of the month they were requested in."
+    from: er.entity.category_return_month, to: er.entity.date_dim,
+    cardinality: { from: "0..*", to: "1" },
+    join: [{ from: er.entity.category_return_month.month_start, to: er.entity.date_dim.cal_date }]
+}

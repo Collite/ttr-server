@@ -1,0 +1,150 @@
+package hartland
+
+model db schema dbo
+
+// AU (automation agents) — the H-2 return-request flow (D-79, D-84). Physical spellings:
+// project/kantheon/features/automation-agents/implementation/hartland/contracts.md §1.
+// Built in BOTH worlds by `data/automation/` (hartland P1) from the existing *_returns facts: requests +
+// lines from the returns, most requests single-line; receipts, credit notes, payments and replacement
+// shipments generated for decided requests WITH planted gaps (D-79: the ERP fulfils imperfectly). The
+// generator is the ERP here: it writes the four document tables; the recipes only ever expect them.
+//
+// The H-2 key is the LINE (D-84). The request header's state is not stored — the `return_request` view
+// derives it from its lines. Every enumeration is a plain text column (`states:` arrives at P2·S2.1).
+
+def table return_request_hdr {
+    description: "Return-request headers (AU H-2) — who returns what order through which channel, and when it was requested. The entity reads the return_request VIEW, which adds the derived state."
+    primaryKey: [rr_request_number]
+    columns: [
+        def column rr_request_number { type: int, isKey: true },
+        def column rr_customer_sk    { type: int },
+        def column rr_order_number   { type: int },
+        def column rr_channel        { type: varchar },                                          // web · marketplace
+        def column rr_requested_date { type: date }
+    ]
+}
+
+def table return_request_line {
+    // rl_customer_sk is the request's customer, DENORMALIZED onto the line by the generator (D-127): a
+    // relation is one hop, and H-2 joins the line to its customer's center (17 §4.1, rel_line_customer).
+    description: "Return-request lines (AU H-2, the key of the flow, D-84). rl_state: received · rejected · settling · awaiting_goods · goods_received · not_returned · closed."
+    primaryKey: [rl_line_id]
+    columns: [
+        def column rl_line_id              { type: int, isKey: true },
+        def column rl_request_number       { type: int },
+        def column rl_line_no              { type: int },
+        def column rl_item_sk              { type: int },
+        def column rl_quantity             { type: int },
+        def column rl_unit_price           { type: { type: decimal, length: 12, precision: 2 } },
+        def column rl_reason               { type: varchar },                                   // damaged · did_not_arrive · wrong_size · other
+        def column rl_requested_resolution { type: varchar },                                   // refund · exchange · replacement
+        def column rl_requested_variant_sk { type: int },                                       // NULL unless an exchange names a variant
+        def column rl_state                { type: varchar },
+        def column rl_way                  { type: varchar },                                   // NULL until decided — the decide_return route taken
+        def column rl_customer_sk          { type: int }
+    ]
+}
+
+def table return_receipt {
+    description: "Returned goods received (AU H-2) — written by the ERP (the generator; live, the n8n ERP workflow). rc_condition: ok · damaged · missing."
+    primaryKey: [rc_receipt_id]
+    columns: [
+        def column rc_receipt_id    { type: int, isKey: true },
+        def column rc_line_id       { type: int },
+        def column rc_received_date { type: date },
+        def column rc_item_sk       { type: int },
+        def column rc_quantity      { type: int },
+        def column rc_condition     { type: varchar }
+    ]
+}
+
+def table credit_note {
+    description: "Credit notes issued for return lines (AU H-2) — written by the ERP. cn_status: issued · paid."
+    primaryKey: [cn_credit_note_id]
+    columns: [
+        def column cn_credit_note_id { type: int, isKey: true },
+        def column cn_line_id        { type: int },
+        def column cn_customer_sk    { type: int },
+        def column cn_issued_date    { type: date },
+        def column cn_amount         { type: { type: decimal, length: 12, precision: 2 } },
+        def column cn_status         { type: varchar }
+    ]
+}
+
+def table refund_payment {
+    description: "Refunds paid out against credit notes (AU H-2) — written by the ERP."
+    primaryKey: [rp_payment_id]
+    columns: [
+        def column rp_payment_id     { type: int, isKey: true },
+        def column rp_credit_note_id { type: int },
+        def column rp_paid_date      { type: date },
+        def column rp_amount         { type: { type: decimal, length: 12, precision: 2 } }
+    ]
+}
+
+def table replacement_shipment {
+    description: "Replacement goods shipped for return lines (AU H-2) — written by the ERP."
+    primaryKey: [rs_shipment_id]
+    columns: [
+        def column rs_shipment_id  { type: int, isKey: true },
+        def column rs_line_id      { type: int },
+        def column rs_item_sk      { type: int },
+        def column rs_quantity     { type: int },
+        def column rs_shipped_date { type: date }
+    ]
+}
+
+// Derived VIEWS — `data/views/return_request.sql` and `data/views/document_flow.sql` (hartland P1·S1.1)
+// copy the SQL below; the channel_sales precedent (views.ttrm): the model says what the view IS.
+// Column order is load-bearing — CREATE OR REPLACE VIEW can only APPEND a column.
+
+def view return_request {
+    // D-84: `received` while any line is received (or none has arrived yet); `closed` when every line is
+    // rejected, not_returned or closed; `decided` in between. Nothing writes it — the recipes write lines.
+    description: "Return requests (AU H-2) — the header with its state derived from its lines: received · decided · closed."
+    columns: [
+        def column rr_request_number { type: int },
+        def column rr_customer_sk    { type: int },
+        def column rr_order_number   { type: int },
+        def column rr_channel        { type: varchar },
+        def column rr_requested_date { type: date },
+        def column rr_state          { type: varchar }
+    ]
+    definitionSql: """
+        SELECT h.rr_request_number, h.rr_customer_sk, h.rr_order_number, h.rr_channel, h.rr_requested_date,
+               CASE WHEN COUNT(l.rl_line_id) = 0 OR BOOL_OR(l.rl_state = 'received') THEN 'received'
+                    WHEN BOOL_AND(l.rl_state IN ('rejected', 'not_returned', 'closed')) THEN 'closed'
+                    ELSE 'decided'
+               END::text AS rr_state
+          FROM return_request_hdr h
+          LEFT JOIN return_request_line l ON l.rl_request_number = h.rr_request_number
+         GROUP BY h.rr_request_number, h.rr_customer_sk, h.rr_order_number, h.rr_channel, h.rr_requested_date
+    """
+}
+
+def view document_flow {
+    description: "The document flow of a return (AU H-2) — which document followed which: order → request, request → receipt, request → credit note, credit note → refund payment, request → replacement shipment. Kinds are entity names."
+    columns: [
+        def column df_pred_kind { type: varchar },
+        def column df_pred_id   { type: int },
+        def column df_succ_kind { type: varchar },
+        def column df_succ_id   { type: int }
+    ]
+    definitionSql: """
+        SELECT 'order'::text AS df_pred_kind, rr_order_number AS df_pred_id,
+               'return_request'::text AS df_succ_kind, rr_request_number AS df_succ_id
+          FROM return_request_hdr
+        UNION ALL
+        SELECT 'return_request', l.rl_request_number, 'return_receipt', rc.rc_receipt_id
+          FROM return_receipt rc JOIN return_request_line l ON l.rl_line_id = rc.rc_line_id
+        UNION ALL
+        SELECT 'return_request', l.rl_request_number, 'credit_note', cn.cn_credit_note_id
+          FROM credit_note cn JOIN return_request_line l ON l.rl_line_id = cn.cn_line_id
+        UNION ALL
+        SELECT 'credit_note', rp_credit_note_id, 'refund_payment', rp_payment_id
+          FROM refund_payment
+        UNION ALL
+        SELECT 'return_request', l.rl_request_number, 'replacement_shipment', rs.rs_shipment_id
+          FROM replacement_shipment rs JOIN return_request_line l ON l.rl_line_id = rs.rs_line_id
+    """
+}

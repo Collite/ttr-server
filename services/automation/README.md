@@ -323,6 +323,37 @@ scalar kinds require an explicit cast. Invalid predicates refuse even on empty r
 lowering and local execution failures return `501 preview-unsupported` before decision/batch completion.
 Repeated wiring stays repeated and the selected rows retain original route order.
 
+Action-typed wiring calls and explicit `on_due` calls now produce deferred preview evidence, for example
+`{"action":"start","arguments":{"process":"purchasing"},"deferred":true}`. Supplied scalar leaves use
+that same compiler projection over condition-selected rows; omitted partial-call arguments remain absent.
+Relative `due` values preserve an exact count and unit, e.g. `{"amount":2,"unit":"working_days"}` or a
+nonnegative integral pinned parameter via `working_days(:settlement)`. This is duration evidence, not an
+absolute deadline: preview does not consult a calendar or turn working days into elapsed days.
+When wiring omits `due` and the action declares no `due` column, its pinned action-level duration default
+is used. Undeclared `due` accepts only a duration or NULL, and undeclared `on_due` only a call or NULL;
+wrong explicit kinds refuse, including on empty routes. Explicit valid wiring presence wins, including NULL. Defaults must be finite nonnegative integral
+Long counts in one of the six supported units. TTR-M accepts `seconds`, but native preview refuses
+that unit because the published TTR-P DurationUnit does not include it.
+
+The published wiring parser checks the entire value, including nested calls. Malformed/duplicate keys,
+unknown parameters, wrong/fractional/null/negative counts, overflow, excessive call depth and unsupported
+row/detail capture refuse even on empty/unselected routes. A nested argument that names a context or
+the candidates refuses, even if that name also denotes a scalar route column; callee column types are
+consulted only after P3 pins nested callees. Nested `due` must be a duration or NULL, and nested `on_due`
+a call or NULL, at every depth. Until P3 pins callees, this also refuses a nested callee's declared
+`due` column wired with a date. Root scalar arguments keep projecting. Nested scalar leaves
+retain original source text (code-point spans), avoiding a second string-escaping pass. Unused casts are
+checked without executing.
+Would-text renders deferred calls and relative durations alongside existing scalars. The full Hartland H3
+fixture now previews both the proposal and buyer ask. Undeclared `due`, `on_due` and `group_by` stay in
+action evidence and out of writer assignments; declared columns with those names remain assignments.
+`group_by` remains scalar evidence on each selected row;
+no task grouping/creation, row capture or nested dispatch occurs here. A callee is not resolved/defaulted or
+executed. Future dispatch must establish its own dependency/approval closure before interpreting any
+`deferred:true` object; these objects are not executable action envelopes. The action-level `on_due` default
+is not in the evidence; P3 must apply it before interpreting a missing `on_due`. Root bounded detail refs keep
+their existing form. All evidence retains the existing atomic completion, retry and durable read behavior.
+
 Division uses the published ValidityCatalog and RejectGuardSql nonzero guard. The guard's portable SQL subset
 runs over compiler/translator-projected divisors in the same private DuckDB database, before any quotient or
 predicate. Nested divisions validate bottom-up. NULL divisors succeed with NULL results; zero divisors refuse

@@ -13,6 +13,7 @@ import org.tatrman.automation.bundle.ManifestWiring
 import org.tatrman.automation.runner.*
 import org.tatrman.ttr.metadata.model.AutomationAction
 import org.tatrman.ttr.metadata.model.Entity
+import org.tatrman.ttrp.graph.recipe.RecipeChecker
 import org.tatrman.ttrp.resolve.TargetResolution
 import java.time.Clock
 import java.util.UUID
@@ -84,6 +85,18 @@ class ApplyPlanner(
             require(wiring.routes.all { it in knownRoutes }) { "action wiring names an unknown decision route" }
             require(wiring.action in metadata.actions) { "action was not pinned at open" }
         }
+        val wiringValues =
+            recipe.wiring.map { wiring ->
+                val action = metadata.actions.getValue(wiring.action)
+                val defaults = PreviewWriterDefaults.resolve(action, context)
+                val scalarSources =
+                    (defaults.expressions + wiring.columns).filterKeys { name ->
+                        val column = action.columns.singleOrNull { it.name == name }
+                        column?.type != "rows"
+                    }
+                defaults to PreviewWiringValues.prepare(scalarSources, action)
+            }
+        val roleNames = roles.contexts.map { it.name }.toSet() + listOfNotNull(roles.candidates)
         val writtenAt = clock.instant()
         for (route in roles.routes) {
             currentCoroutineContext().ensureActive()
@@ -112,10 +125,11 @@ class ApplyPlanner(
                         val indices = table.rows.indices.filter { matches == null || it in matches }
                         val action = metadata.actions.getValue(wiring.action)
                         val targets = metadata.targets[wiring.action]
-                        val defaults = PreviewWriterDefaults.resolve(action, context)
+                        val (defaults, values) = wiringValues[wiringIndex]
                         // Presence wins, including explicit NULL. Defaults do not read other arguments.
-                        val columns = defaults.expressions + wiring.columns
-                        val argumentNames = columns.keys + defaults.values.keys + defaults.generated
+                        val argumentNames =
+                            (defaults.expressions.keys + wiring.columns.keys) + defaults.values.keys +
+                                defaults.generated + if (values.defaultDue != null) setOf("due") else emptySet()
                         val writer =
                             if (action.sinks[Bundle.NATIVE] ==
                                 "writer"
@@ -124,7 +138,7 @@ class ApplyPlanner(
                             } else {
                                 null
                             }
-                        writer?.validateArguments(argumentNames)
+                        writer?.validateArguments(assignmentNames(action, argumentNames))
                         writer?.validateGenerated(defaults.generated)
                         require(action.columns.filterNot { it.optional }.all { it.name in wiring.columns }) {
                             "missing required action argument"
@@ -144,30 +158,13 @@ class ApplyPlanner(
                                 expectedTypes = writer?.expectedTypes.orEmpty(),
                             )
                         }
-                        val scalarExpressions =
-                            columns
-                                .filterKeys { name ->
-                                    action.columns.singleOrNull { it.name == name }?.type != "rows"
-                                }.mapValues { (name, expression) ->
-                                    val column = action.columns.singleOrNull { it.name == name }
-                                    val symbolic = column == null || column.type in setOf("role", "action", "text")
-                                    val text = expression.trim()
-                                    if (symbolic &&
-                                        SYMBOL.matches(text) &&
-                                        table.columns.none { it.name == text } &&
-                                        text !in setOf("true", "false", "null")
-                                    ) {
-                                        JsonPrimitive(text).toString()
-                                    } else {
-                                        expression
-                                    }
-                                }
                         val projected =
-                            PreviewExpressions.project(
-                                scalarExpressions,
+                            PreviewWiringValues.project(
+                                values,
                                 table.copy(rows = indices.map { table.rows[it] }),
                                 context.bindings,
                                 expectedTypes = writer?.expectedTypes.orEmpty(),
+                                roleNames = roleNames,
                             )
                         PreparedWiring(
                             wiring,
@@ -175,10 +172,7 @@ class ApplyPlanner(
                             indices
                                 .mapIndexed { i, index ->
                                     val arguments =
-                                        projected.rows[i]
-                                            .mapIndexed { j, value ->
-                                                projected.columns[j].name to scalar(value)
-                                            }.toMap() +
+                                        projected[i] +
                                             contextValues +
                                             (defaults.generated - wiring.columns.keys).associateWith { column ->
                                                 JsonPrimitive(
@@ -280,7 +274,8 @@ class ApplyPlanner(
                     when (sink) {
                         "transition" -> effects(action, args, metadata, targets, rows)
                         "writer" -> {
-                            val insert = requireNotNull(writer).insert(rows.size + 1, args)
+                            val fields = assignmentNames(action, args.keys)
+                            val insert = requireNotNull(writer).insert(rows.size + 1, args.filterKeys { it in fields })
                             writerKeys.record(insert, generated)
                             rows += insert
                         }
@@ -423,6 +418,12 @@ class ApplyPlanner(
         }
     }
 
+    /** Undeclared wiring properties are evidence, never database assignments. Declared columns remain assignments. */
+    private fun assignmentNames(
+        action: AutomationAction,
+        names: Set<String>,
+    ): Set<String> = names - (RecipeChecker.WIRING_PROPERTIES - action.columns.map { it.name }.toSet())
+
     private fun render(
         template: String?,
         arguments: Map<String, JsonElement>,
@@ -434,14 +435,14 @@ class ApplyPlanner(
                     value = (value as? JsonObject)?.get(part)
                         ?: unsupported("unknown dry-run text argument")
                 }
-                if (value is JsonPrimitive) value.content else unsupported("dry-run text requires a scalar")
+                PreviewWiringValues.display(value)
+                    ?: unsupported("dry-run text requires a scalar or deferred-call/duration evidence")
             }
         }
 
     private fun entityName(name: String) = if (name.startsWith("er.entity.")) name else "er.entity.$name"
 
     companion object {
-        private val SYMBOL = Regex("[A-Za-z_][A-Za-z_0-9]*(?:\\.[A-Za-z_][A-Za-z_0-9]*)*")
         private val PLACEHOLDER = Regex("\\{([A-Za-z_][A-Za-z_0-9.]*)}")
 
         private fun unsupported(reason: String): Nothing =

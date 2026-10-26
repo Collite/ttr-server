@@ -1,0 +1,128 @@
+package hartland
+
+model md
+
+// Customer, Store, Distribution Centre, Promotion, Return Reason (Stage 2.3 T2/T3) —
+// single-level conformed dimensions, no drill hierarchy. Each dimension's descriptive
+// attributes bind through a table-backed `def map` (key -> attribute) + an `md2db_map`
+// (model/binding/md2db.ttrm) — the same mechanism the Product hierarchy uses, since
+// md2db has no `md2db_dimension` construct and the wide cubelet binds only grain KEYS.
+//
+// Customer.state is the customer's HOME state (c_current_addr_sk -> customer_address.ca_state),
+// reached via a two-hop CustomerCode -> AddressCode -> State chain because an md2db_map
+// targets a single table and those two columns live on customer / customer_address. This is
+// distinct from query #11 (revenue_by_customer_state), which slices by the BILLING address
+// at sale time (each fact's own addr_sk) — a fact-level view kept in raw SQL, not a Customer
+// dimension attribute. Customer.birthYear binds c_birth_year directly; age is derived at
+// query time (:year - birth_year, #12).
+
+def dimension Customer {
+    key: customerCode,
+    attributes: [
+        def attribute customerCode { domain: md.CustomerCode, isKey: true },
+        def attribute state        { domain: md.State },
+        def attribute birthYear    { domain: md.BirthYear }
+    ]
+}
+
+// Customer descriptive/geographic attribute maps (table-backed, N:1; bound in md2db.ttrm).
+def map customer_to_birthyear { from: md.CustomerCode, to: md.BirthYear,   cardinality: { from: "N", to: "1" } }
+def map customer_to_addr      { from: md.CustomerCode, to: md.AddressCode, cardinality: { from: "N", to: "1" } }
+def map addr_to_state         { from: md.AddressCode,  to: md.State,       cardinality: { from: "N", to: "1" } }
+
+def dimension Store {
+    key: storeCode,
+    attributes: [
+        def attribute storeCode { domain: md.StoreCode, isKey: true },
+        def attribute storeName { domain: md.StoreName }
+    ]
+}
+
+def map store_to_name { from: md.StoreCode, to: md.StoreName, cardinality: { from: "N", to: "1" } }
+
+// dcCode's physical value is the warehouse_sk (see md2db.ttrm: DistributionCentre.dcCode
+// binds to *_warehouse_sk) — valueLabels keyed on the sk, per Phase 1's
+// data/catalog/value-labels.json "dc" group (Stage 2.5 T3).
+def dimension DistributionCentre {
+    key: dcCode,
+    attributes: [
+        def attribute dcCode {
+            domain: md.DcCode,
+            isKey: true,
+            valueLabels: {
+                "5": { en: "Memphis DC", cs: "Brno DC" },
+                "1": { en: "Columbus DC", cs: "Praha DC" },
+                "2": { en: "Dallas DC", cs: "Ostrava DC" },
+                "3": { en: "Reno DC", cs: "Plzeň DC" },
+                "4": { en: "Allentown DC", cs: "Hradec Králové DC" }
+            }
+        },
+        def attribute dcName { domain: md.DcName }
+    ]
+}
+
+def map dc_to_name { from: md.DcCode, to: md.DcName, cardinality: { from: "N", to: "1" } }
+
+def dimension Promotion {
+    key: promoCode,
+    attributes: [
+        def attribute promoCode { domain: md.PromoCode, isKey: true },
+        def attribute promoName { domain: md.PromoName }
+    ]
+}
+
+def map promo_to_name { from: md.PromoCode, to: md.PromoName, cardinality: { from: "N", to: "1" } }
+
+// reasonCode's physical value is r_reason_sk (see md2db.ttrm) — valueLabels keyed on the
+// sk, all 35 (data/catalog/value-labels.json "reason" group). sk 3 is the isolated
+// "Nedorazilo včas" / "Did not get it on time" late-delivery signal (S3/S-9).
+def dimension ReturnReason {
+    key: reasonCode,
+    attributes: [
+        def attribute reasonCode {
+            domain: md.ReasonCode,
+            isKey: true,
+            valueLabels: {
+                "1": { en: "Package was damaged", cs: "Balík byl poškozen" },
+                "2": { en: "Stopped working", cs: "Přestalo fungovat" },
+                "3": { en: "Did not get it on time", cs: "Nedorazilo včas" },
+                "4": { en: "Not the product that was ordred", cs: "Nebyl to objednaný produkt" },
+                "5": { en: "Parts missing", cs: "Chybí díly" },
+                "6": { en: "Does not work with a product that I have", cs: "Nefunguje s produktem, který mám" },
+                "7": { en: "Gift exchange", cs: "Výměna dárku" },
+                "8": { en: "Did not like the color", cs: "Nelíbila se mi barva" },
+                "9": { en: "Did not like the model", cs: "Nelíbil se mi model" },
+                "10": { en: "Did not like the make", cs: "Nelíbila se mi značka" },
+                "11": { en: "Did not like the warranty", cs: "Nelíbila se mi záruka" },
+                "12": { en: "No service location in my area", cs: "V mém okolí není servis" },
+                "13": { en: "Found a better price in a store", cs: "Našel/našla jsem lepší cenu v obchodě" },
+                "14": { en: "Found a better extended warranty in a store", cs: "Lepší prodloužená záruka v obchodě" },
+                "15": { en: "Not working any more", cs: "Přestalo fungovat úplně" },
+                "16": { en: "Did not fit", cs: "Nesedělo to" },
+                "17": { en: "Wrong size", cs: "Špatná velikost" },
+                "18": { en: "Lost my job", cs: "Přišel/přišla jsem o práci" },
+                "19": { en: "unauthoized purchase", cs: "Neautorizovaný nákup" },
+                "20": { en: "duplicate purchase", cs: "Duplicitní nákup" },
+                "21": { en: "its is a boy", cs: "Je to kluk" },
+                "22": { en: "it is a girl", cs: "Je to holka" },
+                "23": { en: "Changed my mind", cs: "Změnil/a jsem názor" },
+                "24": { en: "Found a better price", cs: "Našel/našla jsem lepší cenu" },
+                "25": { en: "Not as pictured", cs: "Neodpovídá popisu" },
+                "26": { en: "Unwanted gift", cs: "Nechtěný dárek" },
+                "27": { en: "Ordered by mistake", cs: "Objednáno omylem" },
+                "28": { en: "No longer needed", cs: "Již nepotřebuji" },
+                "29": { en: "Incompatible with my device", cs: "Nekompatibilní se zařízením" },
+                "30": { en: "Quality not as expected", cs: "Kvalita neodpovídá" },
+                "31": { en: "Duplicate order", cs: "Duplicitní objednávka" },
+                "32": { en: "Missing accessory", cs: "Chybějící příslušenství" },
+                "33": { en: "Damaged packaging", cs: "Poškozený obal" },
+                "34": { en: "Other reason", cs: "Jiný důvod" },
+                "35": { en: "Manufacturer claim", cs: "Reklamace u výrobce" }
+
+            }
+        },
+        def attribute reasonDesc { domain: md.ReasonDesc }
+    ]
+}
+
+def map reason_to_desc { from: md.ReasonCode, to: md.ReasonDesc, cardinality: { from: "N", to: "1" } }

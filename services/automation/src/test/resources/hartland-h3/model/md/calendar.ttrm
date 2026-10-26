@@ -1,0 +1,45 @@
+package hartland
+
+model md
+
+// Calendar (Stage 2.3 T2/T3) — calc-backed, per map-catalog.md's v1 floor. Three
+// hierarchies share the `day` leaf rather than one Day->Month->Quarter->Year chain: the
+// v1 catalog ships `yearOfDate` as an EXTRACTION straight from Day (map-catalog.md
+// §2.2), not a Quarter->Year ROLL-UP (no such entry ships — §2.3 only has
+// `quarterOfMonth`). Chaining day->month->quarter->year in one hierarchy would need a
+// quarter-to-year step the catalog doesn't have; three co-leaf hierarchies (the pattern
+// 15-md-model.md's own hierarchy doc sanctions — "a second hierarchy sharing the day
+// leaf") stay strictly within the v1 shipped set (`monthOfDate`, `quarterOfMonth`,
+// `yearOfDate`, `weekOfYear`).
+
+def dimension Calendar {
+    key: day,
+    attributes: [
+        def attribute day     { domain: md.Day, isKey: true },
+        def attribute week    { domain: md.Week },
+        def attribute month   { domain: md.Month },
+        def attribute quarter { domain: md.Quarter },
+        def attribute year    { domain: md.Year }
+    ],
+    hierarchies: [calendarMonthly, calendarYearly, calendarWeekly]
+}
+
+def map day_to_month { from: md.Day,     to: md.Month,   calc: monthOfDate }
+def map month_to_qtr { from: md.Month,   to: md.Quarter, calc: quarterOfMonth }
+def map day_to_year  { from: md.Day,     to: md.Year,    calc: yearOfDate }
+def map day_to_week  { from: md.Day,     to: md.Week,    calc: weekOfYear }
+
+def hierarchy calendarMonthly {
+    dimension: md.Calendar,
+    levels: [day, month via md.day_to_month, quarter via md.month_to_qtr]
+}
+
+def hierarchy calendarYearly {
+    dimension: md.Calendar,
+    levels: [day, year via md.day_to_year]
+}
+
+def hierarchy calendarWeekly {
+    dimension: md.Calendar,
+    levels: [day, week via md.day_to_week]
+}

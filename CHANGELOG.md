@@ -16,6 +16,22 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+- **automation — preview review repairs.** Nested context/candidate references fail closed pending
+  callee pinning, action-level `due` defaults match explicit durations, and nested literals retain their
+  original escapes. Invalid would-text placeholders identify the template. Fixture verification rejects
+  extra files in both check and restore modes. Explicit undeclared `due` accepts durations/NULL and
+  `on_due` accepts calls/NULL; all three wiring properties stay outside writer assignments while declared
+  columns remain assignments. Role scope is required and prepared values retain their pinned action.
+  The same kind rules apply recursively to nested `due`/`on_due`, checked once during preparation.
+  Until callee types are pinned, a nested declared `due` column wired with a date also refuses.
+  Fixture restore requires its README and reports restored blobs.
+  Action-level `on_due` default application remains an explicit P3 obligation.
+
+- **automation — partial action and relative duration preview.** Full H3 can preview its proposal and
+  buyer ask. Action-typed calls retain supplied arguments as `deferred: true` intent; `due` preserves exact
+  `amount`/`unit` evidence, including pinned working-day counts. No nested dispatch, grouped task creation
+  or absolute/calendar deadline is performed. Invalid values refuse atomically even on empty routes.
+
 - **Umbrella metadata release cohort:** pin metadata and its in-repo consumers to
   `0.11.30`, including health, charon and opt-in automation. The server and regenerated
   clients use `MetadataService` together; a pre-rename consumer image cannot call it.

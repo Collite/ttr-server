@@ -1,0 +1,49 @@
+package hartland
+
+model er
+
+// Inventory Snapshots — the smoking gun (S1) — and its Distribution Center dim (D-5).
+
+def entity inventory {
+    description: "Weekly warehouse-level on-hand snapshots per warehouse and item."
+    roles: [fact]
+    displayLabel: { en: "Inventory Snapshots", cs: "Stavy zásob" }
+    // MS: the mention facet. ⚠ `last`, NOT the bare-id default `sum` (Bora, 2026-09-16):
+    // this fact is only semi-additive — see as_of_date, "stock levels MUST NOT be added
+    // across snapshots" — so a bare `quantity_on_hand` would declare precisely the
+    // aggregation the model forbids. The per-measure `aggregation:` here is the measure's
+    // own (semantics vocabulary v3); it is neither the def-level `aggregation:` property
+    // nor md's, which are separate surfaces by design.
+    semantics { measures: [{ attribute: quantity_on_hand, aggregation: last }] }
+    attributes: [
+        def attribute as_of_date       { type: int, isKey: true, description: "Weekly snapshot date. This entity is only semi-additive - stock levels MUST NOT be added across snapshots." },
+        def attribute item             { type: int, isKey: true, description: "Item primary key (the 'sk' attribute of the Item entity)" },
+        def attribute warehouse        { type: int, isKey: true, description: "Warehouse primary key (the 'sk' attribute of the Warehouse entity)" },
+        def attribute quantity_on_hand { type: int, description: "Quantity on hand of the given item at the time of the snapshot." }
+    ]
+}
+
+def entity warehouse {
+    description: "Distribution Centers"
+    // LP-P3·T1 (LP contracts §2.1) — the mention facet a quoted literal attributes to:
+    // `"..."` on this head lands on `name`, a code-shaped literal on `code`. Without it the
+    // literal is headless (G3) and the fast path refuses. The legacy properties below are
+    // kept for the same reason store's are (readers before producers).
+    semantics { name: warehouse_name, code: warehouse_id, code_pattern: "^[A-P]{16}$" }
+    nameAttribute: warehouse_name
+    codeAttribute: warehouse_id
+    roles: [dimension]
+    displayLabel: { en: "Distribution Center", cs: "Distribuční centrum" }
+    attributes: [
+        def attribute sk              { type: int, isKey: true, description: "Warehouse primary key. Internal sequence key only." },
+        def attribute warehouse_id    { type: text, description: "Warehouse ID (unique code)" },
+        // Member vocabulary, TOKENS: five names (`Memphis DC` …) — «Memphis» alone finds the DC.
+        def attribute warehouse_name  { type: text, description: "Warehouse name, the human-readable label", search { searchable method: TOKENS } },
+        def attribute city            { type: text, description: "The city the warehouse is located in" },
+        // MH-P3 tier M — one of the three attributes holding a `TN`. The value alone cannot
+        // say which; the GOVERNOR does ("warehouses in TN"), and that only works if the value
+        // is in the member vocabulary at all. EXACT, not TYPOS: on a two-character code every
+        // other state is one edit away.
+        def attribute state           { type: { type: char, length: 2 }, description: "The state the warehouse is located in", search { searchable method: EXACT } }
+    ]
+}

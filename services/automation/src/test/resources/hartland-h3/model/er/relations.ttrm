@@ -1,0 +1,157 @@
+package hartland
+
+model er
+
+// Fact -> dim relationships, one per Stage 2.1 fks.ttrm foreign key (26-relation-fk-mapping
+// pattern: `binding: { fk: db.dbo.fk_… } }`). Facts are the "many" side (cardinality
+// from: "0..*"), dims the "one" side (to: "1") — plus customer's own address/demographics
+// chains and household_demographics -> income_band.
+
+// -- store_sales --
+def relation rel_store_sales_item     { from: er.entity.store_sales, to: er.entity.item,     cardinality: { from: "0..*", to: "1" }, binding: { fk: db.dbo.fk_ss_item } }
+def relation rel_store_sales_customer { from: er.entity.store_sales, to: er.entity.customer, cardinality: { from: "0..*", to: "1" }, binding: { fk: db.dbo.fk_ss_customer } }
+def relation rel_store_sales_addr     { from: er.entity.store_sales, to: er.entity.customer_address, cardinality: { from: "0..*", to: "1" }, binding: { fk: db.dbo.fk_ss_addr } }
+def relation rel_store_sales_store    { from: er.entity.store_sales, to: er.entity.store,    cardinality: { from: "0..*", to: "1" }, binding: { fk: db.dbo.fk_ss_store } }
+def relation rel_store_sales_promo    { from: er.entity.store_sales, to: er.entity.promotion, cardinality: { from: "0..*", to: "1" }, binding: { fk: db.dbo.fk_ss_promo } }
+def relation rel_store_sales_date     { from: er.entity.store_sales, to: er.entity.date_dim,  cardinality: { from: "0..*", to: "1" }, binding: { fk: db.dbo.fk_ss_date } }
+
+// -- web_sales --
+def relation rel_web_sales_item     { from: er.entity.web_sales, to: er.entity.item,             cardinality: { from: "0..*", to: "1" }, binding: { fk: db.dbo.fk_ws_item } }
+def relation rel_web_sales_customer { from: er.entity.web_sales, to: er.entity.customer,         cardinality: { from: "0..*", to: "1" }, binding: { fk: db.dbo.fk_ws_customer } }
+def relation rel_web_sales_addr     { from: er.entity.web_sales, to: er.entity.customer_address, cardinality: { from: "0..*", to: "1" }, binding: { fk: db.dbo.fk_ws_addr } }
+def relation rel_web_sales_promo    { from: er.entity.web_sales, to: er.entity.promotion,        cardinality: { from: "0..*", to: "1" }, binding: { fk: db.dbo.fk_ws_promo } }
+def relation rel_web_sales_date     { from: er.entity.web_sales, to: er.entity.date_dim,         cardinality: { from: "0..*", to: "1" }, binding: { fk: db.dbo.fk_ws_date } }
+def relation rel_web_sales_warehouse { from: er.entity.web_sales, to: er.entity.warehouse,       cardinality: { from: "0..*", to: "1" }, binding: { fk: db.dbo.fk_ws_warehouse } }
+
+// -- catalog_sales (Marketplace) --
+def relation rel_catalog_sales_item       { from: er.entity.catalog_sales, to: er.entity.item,             cardinality: { from: "0..*", to: "1" }, binding: { fk: db.dbo.fk_cs_item } }
+def relation rel_catalog_sales_customer   { from: er.entity.catalog_sales, to: er.entity.customer,         cardinality: { from: "0..*", to: "1" }, binding: { fk: db.dbo.fk_cs_customer } }
+def relation rel_catalog_sales_addr       { from: er.entity.catalog_sales, to: er.entity.customer_address, cardinality: { from: "0..*", to: "1" }, binding: { fk: db.dbo.fk_cs_addr } }
+def relation rel_catalog_sales_callcenter { from: er.entity.catalog_sales, to: er.entity.call_center,      cardinality: { from: "0..*", to: "1" }, binding: { fk: db.dbo.fk_cs_callcenter } }
+def relation rel_catalog_sales_warehouse  { from: er.entity.catalog_sales, to: er.entity.warehouse,        cardinality: { from: "0..*", to: "1" }, binding: { fk: db.dbo.fk_cs_warehouse } }
+def relation rel_catalog_sales_promo      { from: er.entity.catalog_sales, to: er.entity.promotion,        cardinality: { from: "0..*", to: "1" }, binding: { fk: db.dbo.fk_cs_promo } }
+def relation rel_catalog_sales_date       { from: er.entity.catalog_sales, to: er.entity.date_dim,         cardinality: { from: "0..*", to: "1" }, binding: { fk: db.dbo.fk_cs_date } }
+
+// -- store_returns --
+def relation rel_store_returns_item     { from: er.entity.store_returns, to: er.entity.item,     cardinality: { from: "0..*", to: "1" }, binding: { fk: db.dbo.fk_sr_item } }
+def relation rel_store_returns_customer { from: er.entity.store_returns, to: er.entity.customer, cardinality: { from: "0..*", to: "1" }, binding: { fk: db.dbo.fk_sr_customer } }
+def relation rel_store_returns_store    { from: er.entity.store_returns, to: er.entity.store,    cardinality: { from: "0..*", to: "1" }, binding: { fk: db.dbo.fk_sr_store } }
+def relation rel_store_returns_reason   { from: er.entity.store_returns, to: er.entity.reason,   cardinality: { from: "0..*", to: "1" }, binding: { fk: db.dbo.fk_sr_reason } }
+def relation rel_store_returns_date     { from: er.entity.store_returns, to: er.entity.date_dim, cardinality: { from: "0..*", to: "1" }, binding: { fk: db.dbo.fk_sr_date } }
+
+// -- web_returns --
+def relation rel_web_returns_item     { from: er.entity.web_returns, to: er.entity.item,     cardinality: { from: "0..*", to: "1" }, binding: { fk: db.dbo.fk_wr_item } }
+def relation rel_web_returns_customer { from: er.entity.web_returns, to: er.entity.customer, cardinality: { from: "0..*", to: "1" }, binding: { fk: db.dbo.fk_wr_customer } }
+def relation rel_web_returns_reason   { from: er.entity.web_returns, to: er.entity.reason,   cardinality: { from: "0..*", to: "1" }, binding: { fk: db.dbo.fk_wr_reason } }
+def relation rel_web_returns_date     { from: er.entity.web_returns, to: er.entity.date_dim, cardinality: { from: "0..*", to: "1" }, binding: { fk: db.dbo.fk_wr_date } }
+
+// -- catalog_returns --
+def relation rel_catalog_returns_item      { from: er.entity.catalog_returns, to: er.entity.item,      cardinality: { from: "0..*", to: "1" }, binding: { fk: db.dbo.fk_cr_item } }
+def relation rel_catalog_returns_customer  { from: er.entity.catalog_returns, to: er.entity.customer,  cardinality: { from: "0..*", to: "1" }, binding: { fk: db.dbo.fk_cr_customer } }
+def relation rel_catalog_returns_reason    { from: er.entity.catalog_returns, to: er.entity.reason,    cardinality: { from: "0..*", to: "1" }, binding: { fk: db.dbo.fk_cr_reason } }
+def relation rel_catalog_returns_warehouse { from: er.entity.catalog_returns, to: er.entity.warehouse, cardinality: { from: "0..*", to: "1" }, binding: { fk: db.dbo.fk_cr_warehouse } }
+def relation rel_catalog_returns_date      { from: er.entity.catalog_returns, to: er.entity.date_dim,  cardinality: { from: "0..*", to: "1" }, binding: { fk: db.dbo.fk_cr_date } }
+
+// -- inventory --
+// The two a cn participant path names (model/binding/cn.ttrm `inventory_g`) state their `join:` beside the fk: the cn er
+// renderer correlates a participant through the relation's join pairs, and an fk-only relation has none — so
+// `on_hand`'s `latest(Inventory involving this.item, this.warehouse, …)` was refused ("ranged over with no participant").
+def relation rel_inventory_item      { from: er.entity.inventory, to: er.entity.item,      cardinality: { from: "0..*", to: "1" }, join: [{ from: er.entity.inventory.item, to: er.entity.item.sk }], binding: { fk: db.dbo.fk_inv_item } }
+def relation rel_inventory_warehouse { from: er.entity.inventory, to: er.entity.warehouse, cardinality: { from: "0..*", to: "1" }, join: [{ from: er.entity.inventory.warehouse, to: er.entity.warehouse.sk }], binding: { fk: db.dbo.fk_inv_warehouse } }
+def relation rel_inventory_date      { from: er.entity.inventory, to: er.entity.date_dim,  cardinality: { from: "0..*", to: "1" }, binding: { fk: db.dbo.fk_inv_date } }
+
+// -- customer's own dimension chains --
+def relation rel_customer_addr  { from: er.entity.customer, to: er.entity.customer_address,        cardinality: { from: "0..*", to: "1" }, binding: { fk: db.dbo.fk_c_addr } }
+def relation rel_customer_cdemo { from: er.entity.customer, to: er.entity.customer_demographics,    cardinality: { from: "0..*", to: "1" }, binding: { fk: db.dbo.fk_c_cdemo } }
+def relation rel_customer_hdemo { from: er.entity.customer, to: er.entity.household_demographics,   cardinality: { from: "0..*", to: "1" }, binding: { fk: db.dbo.fk_c_hdemo } }
+
+// -- household_demographics -> income_band --
+def relation rel_household_demographics_income_band { from: er.entity.household_demographics, to: er.entity.income_band, cardinality: { from: "0..*", to: "1" }, binding: { fk: db.dbo.fk_hd_income } }
+
+// -- sales (all channels, stacked on er.query.sales_union — md/hop HP-H) --
+// A stacked entity has no table and so no foreign key: each relation states its `join:` pair (the
+// customer_revenue precedent). `warehouse` is NULLABLE — a store line has no distribution centre — so joining it
+// keeps only web and marketplace lines.
+//
+// ⛔ No relation to `store`, though `sales.store` carries a store line's store. Four Czech cities and Memphis are both a
+// store and a distribution centre („Brno“ / „Brno DC“), and a bare city resolves through the fact's reach: with the
+// store in reach, «Tržby z tržiště v roce 2025 pro Brno» binds the STORE (an exact name beats the DC's partial one)
+// and answers an empty marketplace — the headline beat (act 2.3). The all-channel fact never reached the store
+// (`channel_sales` had no store column); a store name is the composer's, as by-store questions already are.
+def relation rel_sales_date      { from: er.entity.sales, to: er.entity.date_dim,  cardinality: { from: "0..*", to: "1" },    join: [{ from: er.entity.sales.sold_date, to: er.entity.date_dim.sk }] }
+def relation rel_sales_item      { from: er.entity.sales, to: er.entity.item,      cardinality: { from: "0..*", to: "1" },    join: [{ from: er.entity.sales.item, to: er.entity.item.sk }] }
+def relation rel_sales_customer  { from: er.entity.sales, to: er.entity.customer,  cardinality: { from: "0..*", to: "1" },    join: [{ from: er.entity.sales.customer, to: er.entity.customer.sk }] }
+def relation rel_sales_promo     { from: er.entity.sales, to: er.entity.promotion, cardinality: { from: "0..*", to: "0..1" }, join: [{ from: er.entity.sales.promo, to: er.entity.promotion.sk }] }
+// LR ⚑LR-9 — NULLABLE: a store line has no distribution center, so joining drops store lines.
+def relation rel_sales_warehouse { from: er.entity.sales, to: er.entity.warehouse, cardinality: { from: "0..*", to: "0..1" }, join: [{ from: er.entity.sales.warehouse, to: er.entity.warehouse.sk }] }
+
+// -- channel returns (all channels, stacked on er.query.returns_union — CN-P6 S6.1, the ground of cn.Return) --
+// The `sales` shape: `join:` pairs (no table, no fk), `warehouse` NULLABLE (only a marketplace return has one), and no
+// relation to `store`, for the bare-city reason above.
+def relation rel_channel_returns_date      { from: er.entity.channel_returns, to: er.entity.date_dim,  cardinality: { from: "0..*", to: "1" },    join: [{ from: er.entity.channel_returns.returned_date, to: er.entity.date_dim.sk }] }
+def relation rel_channel_returns_item      { from: er.entity.channel_returns, to: er.entity.item,      cardinality: { from: "0..*", to: "1" },    join: [{ from: er.entity.channel_returns.item, to: er.entity.item.sk }] }
+def relation rel_channel_returns_customer  { from: er.entity.channel_returns, to: er.entity.customer,  cardinality: { from: "0..*", to: "1" },    join: [{ from: er.entity.channel_returns.customer, to: er.entity.customer.sk }] }
+def relation rel_channel_returns_reason    { from: er.entity.channel_returns, to: er.entity.reason,    cardinality: { from: "0..*", to: "1" },    join: [{ from: er.entity.channel_returns.reason, to: er.entity.reason.sk }] }
+def relation rel_channel_returns_warehouse { from: er.entity.channel_returns, to: er.entity.warehouse, cardinality: { from: "0..*", to: "0..1" }, join: [{ from: er.entity.channel_returns.warehouse, to: er.entity.warehouse.sk }] }
+
+// ===== AU (automation agents) — the H-1/H-2 extension (orders.ttrm, returns-flow.ttrm, proposals.ttrm) =====
+// contracts.md §2's relations, plus one per remaining extension fk that names a dimension (this file's
+// rule: one relation per foreign key). `fk_rl_variant` gets NO relation: a second line → item relation
+// would make every line/item join ambiguous; the requested variant is joined by value (17 §4.1).
+//
+// Each one also states its `join:` pair, which the relations above leave to the fk. The automation
+// recipes join `on: relation X`, and that join condition — TTR-P's checker and the translator's
+// JoinPolicy alike — is built from the relation's join pairs; a relation with only an fk has none there.
+
+// -- order (sales_order) and its lines --
+def relation rel_order_customer  { from: er.entity.order, to: er.entity.customer,  cardinality: { from: "0..*", to: "1" }, join: [{ from: er.entity.order.customer, to: er.entity.customer.sk }], binding: { fk: db.dbo.fk_so_customer } }
+def relation rel_order_warehouse { from: er.entity.order, to: er.entity.warehouse, cardinality: { from: "0..*", to: "1" }, join: [{ from: er.entity.order.fulfilling_warehouse, to: er.entity.warehouse.sk }], binding: { fk: db.dbo.fk_so_warehouse } }
+// The one relation whose "many" side is the TO side: an order has one or more lines. The fk lives on the
+// many side (sales_line.sl_order_number); the key-lineage rule reads it as 1..* FROM the candidates'
+// entity, so an `orders ⋈ sales_line on: relation rel_order_line` context stays keyed on the order (D-103).
+def relation rel_order_line      { from: er.entity.order, to: er.entity.sales_line, cardinality: { from: "1", to: "1..*" }, join: [{ from: er.entity.order.order_number, to: er.entity.sales_line.order_number }], binding: { fk: db.dbo.fk_sl_order } }
+def relation rel_sales_line_item      { from: er.entity.sales_line, to: er.entity.item,      cardinality: { from: "0..*", to: "1" }, join: [{ from: er.entity.sales_line.item, to: er.entity.item.sk }], binding: { fk: db.dbo.fk_sl_item } }
+def relation rel_sales_line_customer  { from: er.entity.sales_line, to: er.entity.customer,  cardinality: { from: "0..*", to: "1" }, join: [{ from: er.entity.sales_line.customer, to: er.entity.customer.sk }], binding: { fk: db.dbo.fk_sl_customer } }
+def relation rel_sales_line_warehouse { from: er.entity.sales_line, to: er.entity.warehouse, cardinality: { from: "0..*", to: "1" }, join: [{ from: er.entity.sales_line.warehouse, to: er.entity.warehouse.sk }], binding: { fk: db.dbo.fk_sl_warehouse } }
+
+// -- prices, invoices, outages --
+def relation rel_price_list_item         { from: er.entity.price_list,     to: er.entity.item,     cardinality: { from: "0..*", to: "1" }, join: [{ from: er.entity.price_list.item, to: er.entity.item.sk }], binding: { fk: db.dbo.fk_pl_item } }
+def relation rel_customer_price_item     { from: er.entity.customer_price, to: er.entity.item,     cardinality: { from: "0..*", to: "1" }, join: [{ from: er.entity.customer_price.item, to: er.entity.item.sk }], binding: { fk: db.dbo.fk_cp_item } }
+def relation rel_customer_price_customer { from: er.entity.customer_price, to: er.entity.customer, cardinality: { from: "0..*", to: "1" }, join: [{ from: er.entity.customer_price.customer, to: er.entity.customer.sk }], binding: { fk: db.dbo.fk_cp_customer } }
+def relation rel_invoice_customer        { from: er.entity.invoice,        to: er.entity.customer, cardinality: { from: "0..*", to: "1" }, join: [{ from: er.entity.invoice.customer, to: er.entity.customer.sk }], binding: { fk: db.dbo.fk_inv_customer } }
+def relation rel_invoice_order           { from: er.entity.invoice,        to: er.entity.order,    cardinality: { from: "0..*", to: "1" }, join: [{ from: er.entity.invoice.order_number, to: er.entity.order.order_number }], binding: { fk: db.dbo.fk_inv_order } }
+def relation rel_outage_warehouse        { from: er.entity.warehouse_outage, to: er.entity.warehouse, cardinality: { from: "0..*", to: "1" }, join: [{ from: er.entity.warehouse_outage.warehouse, to: er.entity.warehouse.sk }], binding: { fk: db.dbo.fk_wo_warehouse } }
+
+// -- customer's distribution center (D-83) — NULLABLE: a customer with no web/marketplace order has none --
+def relation rel_customer_center { from: er.entity.customer, to: er.entity.warehouse, cardinality: { from: "0..*", to: "0..1" }, join: [{ from: er.entity.customer.center, to: er.entity.warehouse.sk }], binding: { fk: db.dbo.fk_c_center } }
+
+// -- the return-request flow (the request reads a VIEW: its relations bind the view's logical keys) --
+def relation rel_request_customer { from: er.entity.return_request, to: er.entity.customer, cardinality: { from: "0..*", to: "1" }, join: [{ from: er.entity.return_request.customer, to: er.entity.customer.sk }], binding: { fk: db.dbo.fk_rrv_customer } }
+def relation rel_request_order    { from: er.entity.return_request, to: er.entity.order,    cardinality: { from: "0..*", to: "1" }, join: [{ from: er.entity.return_request.order_number, to: er.entity.order.order_number }], binding: { fk: db.dbo.fk_rrv_order } }
+// A request has one or more lines — the to side is the many side, as in rel_order_line.
+def relation rel_request_line     { from: er.entity.return_request, to: er.entity.return_request_line, cardinality: { from: "1", to: "1..*" }, join: [{ from: er.entity.return_request.request_number, to: er.entity.return_request_line.request_number }], binding: { fk: db.dbo.fk_rlv_request } }
+// D-127 — one hop from the line to its customer (the line carries the request's customer).
+def relation rel_line_customer    { from: er.entity.return_request_line, to: er.entity.customer, cardinality: { from: "0..*", to: "1" }, join: [{ from: er.entity.return_request_line.customer, to: er.entity.customer.sk }], binding: { fk: db.dbo.fk_rl_customer } }
+def relation rel_line_item        { from: er.entity.return_request_line, to: er.entity.item,     cardinality: { from: "0..*", to: "1" }, join: [{ from: er.entity.return_request_line.item, to: er.entity.item.sk }], binding: { fk: db.dbo.fk_rl_item } }
+def relation rel_receipt_line        { from: er.entity.return_receipt,       to: er.entity.return_request_line, cardinality: { from: "0..*", to: "1" }, join: [{ from: er.entity.return_receipt.line_id, to: er.entity.return_request_line.line_id }], binding: { fk: db.dbo.fk_rc_line } }
+def relation rel_credit_note_line    { from: er.entity.credit_note,          to: er.entity.return_request_line, cardinality: { from: "0..*", to: "1" }, join: [{ from: er.entity.credit_note.line_id, to: er.entity.return_request_line.line_id }], binding: { fk: db.dbo.fk_cn_line } }
+def relation rel_payment_credit_note { from: er.entity.refund_payment,       to: er.entity.credit_note,         cardinality: { from: "0..*", to: "1" }, join: [{ from: er.entity.refund_payment.credit_note_id, to: er.entity.credit_note.credit_note_id }], binding: { fk: db.dbo.fk_rp_credit_note } }
+def relation rel_shipment_line       { from: er.entity.replacement_shipment, to: er.entity.return_request_line, cardinality: { from: "0..*", to: "1" }, join: [{ from: er.entity.replacement_shipment.line_id, to: er.entity.return_request_line.line_id }], binding: { fk: db.dbo.fk_rs_line } }
+
+// -- the H-3/H-5 write-back entities --
+def relation rel_proposal_item      { from: er.entity.reorder_proposal, to: er.entity.item,      cardinality: { from: "0..*", to: "1" }, join: [{ from: er.entity.reorder_proposal.item, to: er.entity.item.sk }], binding: { fk: db.dbo.fk_rp_item } }
+def relation rel_proposal_warehouse { from: er.entity.reorder_proposal, to: er.entity.warehouse, cardinality: { from: "0..*", to: "1" }, join: [{ from: er.entity.reorder_proposal.warehouse, to: er.entity.warehouse.sk }], binding: { fk: db.dbo.fk_rp_warehouse } }
+def relation rel_winback_customer   { from: er.entity.winback_mail,     to: er.entity.customer,  cardinality: { from: "0..*", to: "1" }, join: [{ from: er.entity.winback_mail.customer, to: er.entity.customer.sk }], binding: { fk: db.dbo.fk_wm_customer } }
+
+// -- the documents' days: each dated document head reaches the calendar from its own date, as every fact does
+// through its rel_*_date — so the composer's bare `JOIN date_dim` is conditioned by the model joins instead of
+// left ON TRUE (the whole calendar under every document). One per document: a line dates with its order or its
+// request (a second date path would make every order ⋈ line ⋈ date_dim join ambiguous); price lists and outages
+// are ranges, proposals and win-back mails run artefacts.
+def relation rel_order_date       { from: er.entity.order,                to: er.entity.date_dim, cardinality: { from: "0..*", to: "1" }, join: [{ from: er.entity.order.placed_date,                to: er.entity.date_dim.cal_date }], binding: { fk: db.dbo.fk_so_date } }
+def relation rel_invoice_date     { from: er.entity.invoice,              to: er.entity.date_dim, cardinality: { from: "0..*", to: "1" }, join: [{ from: er.entity.invoice.issued,                   to: er.entity.date_dim.cal_date }], binding: { fk: db.dbo.fk_invoice_date } }
+def relation rel_request_date     { from: er.entity.return_request,       to: er.entity.date_dim, cardinality: { from: "0..*", to: "1" }, join: [{ from: er.entity.return_request.requested_date,    to: er.entity.date_dim.cal_date }], binding: { fk: db.dbo.fk_rrv_date } }
+def relation rel_receipt_date     { from: er.entity.return_receipt,       to: er.entity.date_dim, cardinality: { from: "0..*", to: "1" }, join: [{ from: er.entity.return_receipt.received_date,     to: er.entity.date_dim.cal_date }], binding: { fk: db.dbo.fk_rc_date } }
+def relation rel_credit_note_date { from: er.entity.credit_note,          to: er.entity.date_dim, cardinality: { from: "0..*", to: "1" }, join: [{ from: er.entity.credit_note.issued_date,          to: er.entity.date_dim.cal_date }], binding: { fk: db.dbo.fk_cn_date } }
+def relation rel_payment_date     { from: er.entity.refund_payment,       to: er.entity.date_dim, cardinality: { from: "0..*", to: "1" }, join: [{ from: er.entity.refund_payment.paid_date,         to: er.entity.date_dim.cal_date }], binding: { fk: db.dbo.fk_rp_paid_date } }
+def relation rel_shipment_date    { from: er.entity.replacement_shipment, to: er.entity.date_dim, cardinality: { from: "0..*", to: "1" }, join: [{ from: er.entity.replacement_shipment.shipped_date, to: er.entity.date_dim.cal_date }], binding: { fk: db.dbo.fk_rs_date } }

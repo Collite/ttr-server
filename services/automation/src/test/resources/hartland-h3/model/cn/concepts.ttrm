@@ -1,0 +1,122 @@
+package hartland
+
+model cn
+
+// CN-P6 S6.1 (= AU-hartland P5 S5.1) — the Hartland conceptual package: design `11` §1 on the estate's real names.
+// The kinds, the role and the events here; their qualities in qualities.ttrm, the recipe vocabulary in phases.ttrm,
+// what the `grounds:` sugar cannot say (an event's participant paths and period) in model/binding/cn.ttrm, the words in
+// model/lexicon/{cs,en}/cn.ttrm.
+//
+// One grounding per concept (CN-D12). Analytical things ground to md and reach er through the DERIVED hop — hartland
+// authors no md2er: md2db and er2db meet on the same table (md/hop HP-P2; design `11` §5, A-H-5). The recipe world
+// grounds to er directly, the AU extension's entities (model/er/orders.ttrm, returns-flow.ttrm).
+//
+// A concept's `label:` is not a lexicon term — the archive holds a concept's TERMS only (lexicon/cn.ttrm). So nothing
+// below claims a word; the guards on the estate's words (model/lexicon/tests, lexicon/tests) stay where they are.
+//
+// No `Party` kind: `Customer` has no base (Q16-5 — add one when a second role of a party appears, a supplier).
+
+// ---- kinds ----
+def kind Item         { label: { en: "Product", cs: "Produkt" },                         grounds: md.Product }             // hop → er.entity.item
+def kind Store        { label: { en: "Store", cs: "Prodejna" },                          grounds: md.Store }               // hop → er.entity.store
+def kind Warehouse    { label: { en: "Distribution center", cs: "Distribuční centrum" }, grounds: md.DistributionCentre }  // hop → er.entity.warehouse
+def kind ReturnReason { label: { en: "Return reason", cs: "Důvod reklamace" },           grounds: md.ReturnReason }        // hop → er.entity.reason
+// A value kind (AM-27, L16-4): its members are the values of one attribute — store · web · marketplace.
+def kind Channel      { label: { en: "Channel", cs: "Kanál" },                           grounds: er.entity.sales.channel }
+// The document; `Invoicing` below is the act (design `11` §1).
+def kind Invoice      { label: { en: "Invoice", cs: "Faktura" },                         grounds: er.entity.invoice }
+
+// ---- roles ----
+def role Customer {
+    label: { en: "Customer", cs: "Zákazník" },
+    event: Order,
+    grounds: md.Customer                                                         // hop → er.entity.customer
+}
+
+// ---- events: the analytical ones (md cubelets behind them) ----
+// The three channel cubelets are phases of one event (L16-5, phases.ttrm); `Sale` is the stacked `sales` entity
+// over the channel union (md/hop HP-H, A-CN-100) — one grain for "revenue by channel".
+def event Sale {
+    label: { en: "Sale", cs: "Prodej" },
+    involves: [Customer, Item, Channel],
+    period: { at: sold_date },
+    qualities: [revenue, quantity, sold_date]
+}
+// The analytical return — the three returns cubelets, on the stacked `channel_returns` entity over their union
+// (Q16-2, model/er/channel_returns.ttrm). Not the return REQUEST of the recipe world (`ReturnRequest` below).
+def event Return {
+    label: { en: "Return", cs: "Vratka" },
+    involves: [Customer, Item, ReturnReason],
+    period: { at: returned_date },
+    qualities: [return_amount, returned_quantity, returned_date]
+}
+def event Inventory {
+    label: { en: "Stock reading", cs: "Stav zásob" },
+    involves: [Item, Warehouse],
+    period: { at: as_of_date },
+    qualities: [quantity_on_hand, as_of_date]
+}
+
+// ---- events: the recipe world (the AU extension) ----
+def event Order {
+    label: { en: "Order", cs: "Objednávka" },
+    extent: durative,
+    involves: [Customer, Warehouse as fulfilling],
+    // An order is open until it is delivered: no delivered_date is a running order (AM-43).
+    period: { start: placed_date, end: delivered_date, end_open: open },
+    qualities: [order_value, state, held_for, channel, placed_date, delivered_date]
+}
+def event OrderLine {
+    label: { en: "Order line", cs: "Řádek objednávky" },
+    involves: [Order, Customer, Item, Warehouse],
+    period: { at: line_date },
+    qualities: [line_quantity, unit_price, line_value, line_date]
+}
+def event Invoicing {
+    label: { en: "Invoicing", cs: "Fakturace" },
+    extent: durative,
+    involves: [Customer, Order],
+    period: { start: issued, end: due },
+    qualities: [amount, paid, invoice_status, issued, due]
+}
+def event WarehouseOutage {
+    label: { en: "Warehouse outage", cs: "Výpadek skladu" },
+    extent: durative,
+    involves: [Warehouse],
+    period: { start: outage_from, end: outage_to },                              // closed: to_date is the last day
+    qualities: [outage_from, outage_to, outage_reason]
+}
+def event PriceList {
+    label: { en: "List price", cs: "Ceníková cena" },
+    extent: durative,
+    involves: [Item],
+    period: { start: pl_from, end: pl_to, end_open: open },
+    qualities: [pl_price, pl_channel, pl_from, pl_to]
+}
+def event CustomerPrice {
+    label: { en: "Individual price", cs: "Individuální cena" },
+    extent: durative,
+    involves: [Customer, Item],
+    period: { start: cp_from, end: cp_to, end_open: open },
+    qualities: [cp_price, cp_from, cp_to]
+}
+def event ReturnRequest {
+    label: { en: "Return request", cs: "Reklamace" },
+    involves: [Customer, Order],
+    period: { at: requested_date },
+    qualities: [request_state, requested_date]
+}
+// The H-2 key (D-84). The requested variant of an exchange is no participant: `fk_rl_variant` has no relation
+// (model/er/relations.ttrm — a second line → item relation would make every line/item join ambiguous).
+def event ReturnLine {
+    label: { en: "Return request line", cs: "Řádek reklamace" },
+    involves: [ReturnRequest as request, Customer, Item],
+    qualities: [return_quantity, return_unit_price, return_reason, requested_resolution, line_state, way]
+}
+
+def phase LargeOrder {
+    of: Order,
+    label: { cs: "Velká objednávka", en: "Large order" },
+    sources: ["recipe://hartland.automation/release_order#s1"],
+    definition: """order_value > 1000000"""
+}

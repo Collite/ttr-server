@@ -1,0 +1,153 @@
+package hartland
+
+model er
+
+// AU (automation agents) — the H-1 order extension (D-81…D-83), the entity table of
+// project/kantheon/features/automation-agents/design/17-recipes-retyped.md §0: the names the hero recipes
+// are written against. Real dates, never date_dim sks (D-82).
+//
+// Every enumeration is named in the attribute's `description:` and labelled by `valueLabels` (S0.2);
+// the TTR-M `states:` keyword arrives with ttr-core P0 and lands on `order.state` and
+// `invoice.status` at hartland P2·S2.1.
+//
+// ⚠ A value label is a MEMBER term of the estate's lexicon, matched in every Golem question — so no label
+// here repeats a word the pre-AU vocabulary already binds (model/lexicon/tests/automation-lexicon.test.mjs).
+// That is why `held_for` says "Sales department", not "Sales", and why no `channel` attribute is labelled:
+// «web», «tržiště», "web", "marketplace" are the value labels of `sales.channel` (md/hop HP-H).
+//
+// ⚠ `sales_line` is the RECIPES' line, not a conversational fact: it declares no `semantics { measures }`.
+// The Golem's "revenue by channel" keeps `sales`; a second entity offering the same revenue would
+// split every bare "revenue"/"tržby" between two refs (contracts.md §2).
+
+def entity order {
+    // `order` is reserved in SQL, so the table is `sales_order`; er2db carries the name (D-119).
+    description: "Orders — one web or marketplace order (header): who ordered, through which channel, from which distribution center, its value and where it is in the release process. State: placed · held · released · cancelled."
+    labelPlural: "Orders"
+    // The mention facet: an order is asked about by its number («why is 4711 held?»). The legacy
+    // property beside it is kept for the reason store's is (readers before producers, TTR-SEM-218).
+    semantics { code: order_number }
+    codeAttribute: order_number
+    roles: [transaction]
+    displayLabel: { en: "Order", cs: "Objednávka" }
+    attributes: [
+        def attribute order_number         { type: int, isKey: true, description: "Order number — the web or marketplace order number of the order's lines." },
+        def attribute channel              { type: text, description: "Sales channel of the order: 'web' or 'marketplace'." },
+        def attribute customer             { type: int, description: "Ordering customer — FK to the 'sk' attribute of the Customer entity." },
+        def attribute placed_date          { type: date, description: "The day the order was placed." },
+        def attribute delivered_date       { type: date, description: "The day the order was delivered; empty until then." },
+        def attribute fulfilling_warehouse { type: int, description: "Distribution center that ships the order — FK to the 'sk' attribute of the Distribution Center (warehouse) entity." },
+        def attribute value                { type: { type: decimal, length: 12, precision: 2 }, description: "Order value — the sum of its lines' extended sales prices." },
+        def attribute state {
+            type: text,
+            description: "Release state of the order: 'placed' (waiting for the release check), 'held', 'released' or 'cancelled'.",
+            // AU D-67: the lifecycle the automation actions are checked against (`release`, `hold`); held → held is the
+            // implicit silent self-transition (D-85).
+            states: [placed, held, released, cancelled],
+            transitions: { placed: [held, released, cancelled], held: [released, cancelled] },
+            valueLabels: {
+                "placed":    { en: "Placed",    cs: "Pořízeno" },
+                "held":      { en: "Held",      cs: "Pozastaveno" },
+                "released":  { en: "Released",  cs: "Uvolněno" },
+                "cancelled": { en: "Cancelled", cs: "Zrušeno" }
+            }
+        },
+        def attribute held_for {
+            type: text,
+            description: "Who a held order waits for: 'Sales', 'AR' or 'both'; empty unless the order is held.",
+            valueLabels: {
+                "Sales": { en: "Sales department",       cs: "Obchodní oddělení" },
+                "AR":    { en: "Receivables department", cs: "Oddělení pohledávek" },
+                "both":  { en: "Both departments",       cs: "Obě oddělení" }
+            }
+        },
+        def attribute placed_by            { type: text, description: "Who placed the order (the ordering user or system)." }
+    ]
+}
+
+def entity sales_line {
+    description: "Order lines — one line of a web or marketplace order: the item, quantity, unit and extended price, the shipping distribution center. The release check reads an order's lines; for revenue by channel use All-Channel Sales."
+    labelPlural: "Order Lines"
+    roles: [fact]
+    displayLabel: { en: "Order Line", cs: "Řádek objednávky" }
+    attributes: [
+        def attribute order_number    { type: int, isKey: true, description: "Order number — FK to the 'order_number' attribute of the Order entity." },
+        def attribute line_no         { type: int, isKey: true, description: "Line number within the order." },
+        def attribute item            { type: int, description: "Ordered product — FK to the 'sk' attribute of the Product (item) entity." },
+        def attribute quantity        { type: int, description: "Units ordered on this line." },
+        def attribute unit_price      { type: { type: decimal, length: 12, precision: 2 }, description: "Unit price charged on this line — compared with the price list or the customer's individual price." },
+        def attribute ext_sales_price { type: { type: decimal, length: 12, precision: 2 }, description: "Extended sales price of the line (unit price × quantity)." },
+        def attribute warehouse       { type: int, description: "Distribution center shipping the line — FK to the 'sk' attribute of the Distribution Center (warehouse) entity." },
+        def attribute sold_date       { type: date, description: "The day the line was sold." },
+        def attribute customer        { type: int, description: "Ordering customer — FK to the 'sk' attribute of the Customer entity." },
+        def attribute channel         { type: text, description: "Sales channel of the line: 'web' or 'marketplace'." }
+    ]
+}
+
+def entity price_list {
+    description: "Channel price list — the list price of a product in a sales channel, valid from valid_from to valid_to (empty valid_to = still valid)."
+    labelPlural: "Price Lists"
+    roles: [master]
+    displayLabel: { en: "Price List", cs: "Ceník" }
+    attributes: [
+        def attribute item       { type: int, isKey: true, description: "Priced product — FK to the 'sk' attribute of the Product (item) entity." },
+        def attribute channel    { type: text, isKey: true, description: "Sales channel the price applies to: 'web' or 'marketplace'." },
+        def attribute valid_from { type: date, isKey: true, description: "First day the price is valid." },
+        def attribute price      { type: { type: decimal, length: 12, precision: 2 }, description: "List price per unit." },
+        def attribute valid_to   { type: date, description: "Last day the price is valid; empty while it is still valid." }
+    ]
+}
+
+def entity customer_price {
+    description: "Individual customer prices — a customer's own price of a product, valid from valid_from to valid_to; it beats the channel price list."
+    labelPlural: "Customer Prices"
+    roles: [master]
+    displayLabel: { en: "Customer Price", cs: "Individuální cena" }
+    attributes: [
+        def attribute item       { type: int, isKey: true, description: "Priced product — FK to the 'sk' attribute of the Product (item) entity." },
+        def attribute customer   { type: int, isKey: true, description: "Customer the price is agreed with — FK to the 'sk' attribute of the Customer entity." },
+        def attribute valid_from { type: date, isKey: true, description: "First day the price is valid." },
+        def attribute price      { type: { type: decimal, length: 12, precision: 2 }, description: "The customer's price per unit." },
+        def attribute valid_to   { type: date, description: "Last day the price is valid; empty while it is still valid." }
+    ]
+}
+
+def entity invoice {
+    description: "Invoices — one per released order: amount, amount paid so far, due date. Status: open · paid; an open invoice past its due date is overdue."
+    labelPlural: "Invoices"
+    roles: [transaction]
+    displayLabel: { en: "Invoice", cs: "Faktura" }
+    attributes: [
+        def attribute invoice_id   { type: int, isKey: true, description: "Invoice number." },
+        def attribute customer     { type: int, description: "Invoiced customer — FK to the 'sk' attribute of the Customer entity." },
+        def attribute order_number { type: int, description: "Invoiced order — FK to the 'order_number' attribute of the Order entity." },
+        def attribute issued       { type: date, description: "The day the invoice was issued." },
+        def attribute due          { type: date, description: "The day the invoice is due." },
+        def attribute amount       { type: { type: decimal, length: 12, precision: 2 }, description: "Invoiced amount." },
+        def attribute paid         { type: { type: decimal, length: 12, precision: 2 }, description: "Amount paid so far; amount − paid is still open." },
+        def attribute status {
+            type: text,
+            description: "Payment status: 'open' or 'paid'.",
+            states: [open, paid],                                    // AU D-67 — written by the ERP, never by a recipe
+            valueLabels: {
+                "open": { en: "Unpaid", cs: "Neuhrazeno" },
+                "paid": { en: "Paid",   cs: "Uhrazeno" }
+            }
+        }
+    ]
+}
+
+def entity warehouse_outage {
+    description: "Distribution-center outages — a center that cannot ship from from_date to to_date (both days included), and why."
+    labelPlural: "Warehouse Outages"
+    roles: [transaction]
+    // NOT „Výpadek“ (contracts §2 had it): a label is an EXACT term, and the bare «výpadek / výpadky» is the
+    // demo's stockout word — «Kolik týdnů v roce 2025 mělo Brno DC výpadky zásob?» (act 3.5,
+    // q.hartland.warehouse_stockout_week_count). The phrase keeps the word and leaves the bare one unclaimed.
+    displayLabel: { en: "Warehouse Outage", cs: "Výpadek skladu" }
+    attributes: [
+        def attribute warehouse { type: int, isKey: true, description: "The distribution center that is out — FK to the 'sk' attribute of the Distribution Center (warehouse) entity." },
+        def attribute from_date { type: date, isKey: true, description: "First day of the outage." },
+        def attribute to_date   { type: date, description: "Last day of the outage." },
+        def attribute reason    { type: text, description: "Why the center is out (free text)." }
+    ]
+}

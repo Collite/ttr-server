@@ -1,0 +1,161 @@
+package hartland
+
+model db schema dbo
+
+// Physical dimension tables — the demo subset (D-5 roster). Column selection matches the
+// display fields the catalog lit up (Phase 1) and every column a q.hartland.* query (D-2)
+// or the md Product/Calendar hierarchies (Stage 2.3) needs. D-6a excludes item's cost
+// column (i_wholesale_cost) alongside the fact-side profit/cost exclusions.
+
+def table date_dim {
+    description: "Calendar (D-5: Calendar — everything; holiday/seasonality)."
+    primaryKey: [d_date_sk]
+    columns: [
+        def column d_date_sk   { type: int, isKey: true },
+        def column d_date      { type: date },
+        def column d_year      { type: int },
+        def column d_moy       { type: int },   // month of year, 1-12
+        def column d_qoy       { type: int },   // quarter of year, 1-4
+        def column d_week_seq  { type: int },   // absolute week number — the seed's own unit
+        def column d_day_name  { type: { type: varchar, length: 9 } },
+        def column d_holiday   { type: { type: char, length: 1 } },
+        def column d_weekend   { type: { type: char, length: 1 } },
+        // AU D-82 — `d_holiday = 'N' AND d_weekend = 'N'`, filled by data/automation/25-calendar.sql.
+        // A real boolean (`bool` — TTR.g4's type list has one), not a Y/N char like its two sources.
+        def column d_working_day { type: bool }
+    ]
+}
+
+def table item {
+    description: "Products (D-5: Products — category/brand drills; the bilingual catalog, Phase 1)."
+    primaryKey: [i_item_sk]
+    columns: [
+        def column i_item_sk      { type: int, isKey: true },
+        def column i_item_id      { type: { type: char, length: 16 } },
+        def column i_product_name { type: { type: varchar, length: 50 } },
+        def column i_brand        { type: { type: varchar, length: 50 } },
+        def column i_class        { type: { type: varchar, length: 50 } },
+        def column i_category     { type: { type: varchar, length: 50 } },
+        def column i_manufact     { type: { type: varchar, length: 50 } },
+        def column i_size         { type: { type: varchar, length: 20 } },
+        def column i_container    { type: { type: varchar, length: 10 } }
+    ]
+}
+
+def table customer {
+    description: "Customers (D-5: Customers — channel-overlap + demographic branches)."
+    primaryKey: [c_customer_sk]
+    columns: [
+        def column c_customer_sk      { type: int, isKey: true },
+        def column c_customer_id      { type: { type: char, length: 16 } },
+        def column c_current_addr_sk  { type: int },
+        def column c_current_cdemo_sk { type: int },
+        def column c_current_hdemo_sk { type: int },
+        def column c_birth_year       { type: int },
+        // AU D-83 — the customer's distribution center: the modal warehouse of their web/marketplace
+        // lines (data/automation/24-centers.sql). NULL for a customer who never ordered from one.
+        def column c_center_sk        { type: int }
+    ]
+}
+
+def table customer_address {
+    description: "Customer addresses (D-5: Customer Addresses — the regional-dying branch)."
+    primaryKey: [ca_address_sk]
+    columns: [
+        def column ca_address_sk { type: int, isKey: true },
+        def column ca_address_id { type: { type: char, length: 16 } },
+        def column ca_city       { type: varchar },
+        def column ca_county     { type: varchar },
+        def column ca_state      { type: { type: char, length: 2 } }
+    ]
+}
+
+def table customer_demographics {
+    description: "Customer demographics (D-5: Demographics — demographic-dying branch)."
+    primaryKey: [cd_demo_sk]
+    columns: [
+        def column cd_demo_sk        { type: int, isKey: true },
+        def column cd_gender         { type: { type: char, length: 1 } },
+        def column cd_marital_status { type: { type: char, length: 1 } }
+    ]
+}
+
+def table household_demographics {
+    description: "Household demographics (D-5: Demographics — demographic-dying branch)."
+    primaryKey: [hd_demo_sk]
+    columns: [
+        def column hd_demo_sk        { type: int, isKey: true },
+        def column hd_income_band_sk { type: int },
+        def column hd_buy_potential  { type: { type: varchar, length: 15 } }
+    ]
+}
+
+def table income_band {
+    description: "Income bands (D-5: Income Bands)."
+    primaryKey: [ib_income_band_sk]
+    columns: [
+        def column ib_income_band_sk { type: int, isKey: true },
+        def column ib_lower_bound    { type: int },
+        def column ib_upper_bound    { type: int }
+    ]
+}
+
+def table store {
+    description: "Stores (D-5: Stores — 6 TN stores, Stores-channel dim)."
+    primaryKey: [s_store_sk]
+    columns: [
+        def column s_store_sk   { type: int, isKey: true },
+        def column s_store_id   { type: { type: char, length: 16 } },
+        def column s_store_name { type: varchar },
+        def column s_city       { type: varchar },
+        def column s_state      { type: { type: char, length: 2 } },
+        // ttr-demo#62 — the SCD-2 history dates (TPC-DS keeps several rows per store; the
+        // current row has no end date). Present in both worlds' dumps.
+        def column s_rec_start_date { type: date },
+        def column s_rec_end_date   { type: date }
+    ]
+}
+
+def table warehouse {
+    // D-5 beat-3 pivot: the meltdown DC (Memphis DC in the US world, Brno DC in the CZ world).
+    description: "Distribution Centers (D-5: Distribution Centers)."
+    primaryKey: [w_warehouse_sk]
+    columns: [
+        def column w_warehouse_sk   { type: int, isKey: true },
+        def column w_warehouse_id   { type: { type: char, length: 16 } },
+        def column w_warehouse_name { type: varchar },
+        def column w_city           { type: varchar },
+        def column w_state          { type: { type: char, length: 2 } }
+    ]
+}
+
+def table promotion {
+    description: "Promotions (D-5: Promotions — promo-dying branch + what-if lore)."
+    primaryKey: [p_promo_sk]
+    columns: [
+        def column p_promo_sk   { type: int, isKey: true },
+        def column p_promo_id   { type: { type: char, length: 16 } },
+        def column p_promo_name { type: { type: varchar, length: 50 } }
+    ]
+}
+
+def table reason {
+    // D-5: the late-delivery reason is the incident's signal; its text is the world's language.
+    description: "Return reasons (D-5: Return Reasons). r_reason_desc is in the language of the loaded data."
+    primaryKey: [r_reason_sk]
+    columns: [
+        def column r_reason_sk   { type: int, isKey: true },
+        def column r_reason_id   { type: { type: char, length: 16 } },
+        def column r_reason_desc { type: { type: varchar, length: 100 } }
+    ]
+}
+
+def table call_center {
+    description: "Seller support centers (D-5: Seller Support Centers — Marketplace lore, light labeling only)."
+    primaryKey: [cc_call_center_sk]
+    columns: [
+        def column cc_call_center_sk { type: int, isKey: true },
+        def column cc_call_center_id { type: { type: char, length: 16 } },
+        def column cc_name           { type: varchar }
+    ]
+}

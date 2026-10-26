@@ -1,0 +1,55 @@
+package hartland
+
+model md
+
+// Typed domains (Stage 2.3 T1). Money is currency-agnostic (the USD/CZK label rides the
+// lexicon locale, Stage 2.5; the FX-scaled values ride the DB, Phase 1) — per
+// tests-p2-overview.md's verified-correctness note: TTR-M has no per-connection currency
+// unit. Coded domains are kept OPEN strings (no `restrict: members`) — the on-screen
+// member labels are the lexicon's `valueLabels` (Stage 2.5), not modeled here, so both
+// worlds share one domain definition.
+
+// -- measures' value types --
+def domain Money    { type: decimal }
+def domain Quantity { type: int }
+
+// -- calendar (the one family that must be calc, per map-catalog.md — no non-time
+// calc maps ship in v1) --
+def domain Day     { type: date }
+def domain Month   { type: int, kind: calc, restrict: { range: 1..12 } }
+def domain Quarter { type: int, kind: calc, restrict: { range: 1..4 } }
+def domain Year    { type: int, kind: calc }
+def domain Week    { type: int, kind: calc, restrict: { range: 1..53 } }
+
+// -- Product (BM-5: Category -> Class -> Brand -> Manufacturer -> Item) --
+def domain ItemCode         { type: string }
+def domain ProductName      { type: string }
+def domain ClassCode        { type: string }
+def domain BrandCode        { type: string }
+def domain ManufacturerCode { type: string }
+def domain CategoryCode     { type: string }
+
+// -- Customer / geography --
+def domain CustomerCode { type: string }
+def domain AddressCode  { type: string }   // customer's current-address FK (c_current_addr_sk) —
+                                           // the intermediate join hop CustomerCode -> AddressCode -> State
+def domain State        { type: string }
+def domain BirthYear    { type: int }      // c_birth_year; buyer AGE is derived at query time
+                                           // (:year - birth_year, query #12) — TPC-DS stores no age
+                                           // band, so birth year is the honest physical source
+
+// -- Store --
+def domain StoreCode { type: string }
+def domain StoreName { type: string }
+
+// -- Distribution Centre --
+def domain DcCode { type: string }
+def domain DcName { type: string }
+
+// -- Promotion --
+def domain PromoCode { type: string }
+def domain PromoName { type: string }
+
+// -- Return Reason ("Nedorazilo včas" / "Did not get it on time" lives here, valueLabels in 2.5) --
+def domain ReasonCode { type: string }
+def domain ReasonDesc { type: string }

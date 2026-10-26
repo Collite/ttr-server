@@ -1,0 +1,89 @@
+package hartland
+
+model binding
+
+// CN-P6 S6.1 T5 — what the `grounds:` sugar cannot say: an event's participant PATHS (a participant label → the
+// relation path from the event's entity, L15-3) and its period on er. Every other grounding is the sugar on the concept
+// (model/cn/*.ttrm). No md2er anywhere: the md-grounded concepts reach er through the derived hop (A-H-5).
+//
+// A path may walk a relation against its arrow (`rel_order_line` runs order → sales_line; a line reaches its order
+// back along it). `Channel` has no path on `Sale`: it is a column of the event's own entity (AM-27).
+
+def cn2er_event sale_g {
+    event: cn.Sale,
+    target: er.entity.sales,
+    period: { at: er.entity.sales.sold_date },
+    participants: { customer: [er.relation.rel_sales_customer], item: [er.relation.rel_sales_item] }
+}
+def cn2er_event return_g {
+    event: cn.Return,
+    target: er.entity.channel_returns,
+    period: { at: er.entity.channel_returns.returned_date },
+    participants: {
+        customer: [er.relation.rel_channel_returns_customer],
+        item: [er.relation.rel_channel_returns_item],
+        returnreason: [er.relation.rel_channel_returns_reason]
+    }
+}
+def cn2er_event inventory_g {
+    event: cn.Inventory,
+    target: er.entity.inventory,
+    period: { at: er.entity.inventory.as_of_date },
+    participants: { item: [er.relation.rel_inventory_item], warehouse: [er.relation.rel_inventory_warehouse] }
+}
+def cn2er_event order_g {
+    event: cn.Order,
+    target: er.entity.order,
+    period: { start: er.entity.order.placed_date, end: er.entity.order.delivered_date },
+    participants: { customer: [er.relation.rel_order_customer], fulfilling: [er.relation.rel_order_warehouse] }
+}
+def cn2er_event order_line_g {
+    event: cn.OrderLine,
+    target: er.entity.sales_line,
+    period: { at: er.entity.sales_line.sold_date },
+    participants: {
+        order: [er.relation.rel_order_line],
+        customer: [er.relation.rel_sales_line_customer],
+        item: [er.relation.rel_sales_line_item],
+        warehouse: [er.relation.rel_sales_line_warehouse]
+    }
+}
+def cn2er_event invoicing_g {
+    event: cn.Invoicing,
+    target: er.entity.invoice,
+    period: { start: er.entity.invoice.issued, end: er.entity.invoice.due },
+    participants: { customer: [er.relation.rel_invoice_customer], order: [er.relation.rel_invoice_order] }
+}
+def cn2er_event outage_g {
+    event: cn.WarehouseOutage,
+    target: er.entity.warehouse_outage,
+    period: { start: er.entity.warehouse_outage.from_date, end: er.entity.warehouse_outage.to_date },
+    participants: { warehouse: [er.relation.rel_outage_warehouse] }
+}
+def cn2er_event price_list_g {
+    event: cn.PriceList,
+    target: er.entity.price_list,
+    period: { start: er.entity.price_list.valid_from, end: er.entity.price_list.valid_to },
+    participants: { item: [er.relation.rel_price_list_item] }
+}
+def cn2er_event customer_price_g {
+    event: cn.CustomerPrice,
+    target: er.entity.customer_price,
+    period: { start: er.entity.customer_price.valid_from, end: er.entity.customer_price.valid_to },
+    participants: { customer: [er.relation.rel_customer_price_customer], item: [er.relation.rel_customer_price_item] }
+}
+def cn2er_event return_request_g {
+    event: cn.ReturnRequest,
+    target: er.entity.return_request,
+    period: { at: er.entity.return_request.requested_date },
+    participants: { customer: [er.relation.rel_request_customer], order: [er.relation.rel_request_order] }
+}
+def cn2er_event return_line_g {
+    event: cn.ReturnLine,
+    target: er.entity.return_request_line,
+    participants: {
+        request: [er.relation.rel_request_line],
+        customer: [er.relation.rel_line_customer],                               // D-127: one hop, the line carries it
+        item: [er.relation.rel_line_item]
+    }
+}

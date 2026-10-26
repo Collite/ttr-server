@@ -1,0 +1,65 @@
+package hartland
+
+model md
+
+// Product (Stage 2.3 T2/T3) — the 5-level BM-5 hierarchy the bilingual catalog (Phase 1)
+// lit up: Category -> Class -> Brand -> Manufacturer -> Item. TPC-DS's `item` row
+// denormalizes category/class/brand/manufacturer on ONE row (no separate brand/category
+// tables), so every step is table-backed (no `calc:`) with an N:1 cardinality declared
+// explicitly — the case columns arrive via `md2db_map` in Stage 2.4.
+//
+// Verification note carried to Phase 3: N:1 (each brand rolls up to exactly one
+// manufacturer, each class to one category, etc.) is a MODELING decision BM-5 made for a
+// clean demo drill, not a guarantee the deterministic generator (data/catalog/generate.py)
+// enforces at the row level — live-DB verification of the rollup's actual consistency is
+// a Phase 3 H3 concern, not a Stage 2.3 blocker (mocked/structural only here).
+
+// categoryCode's physical value (i_category) is the SAME stable English string on both
+// hartland_us and hartland_cz (Phase 1 catalog generator kept the category code
+// locale-invariant; only class/brand/product_name are localized text) — so it's the code
+// valueLabels keys on, per data/catalog/value-labels.json "category" group (Stage 2.5 T3).
+def dimension Product {
+    key: itemCode,
+    attributes: [
+        def attribute itemCode         { domain: md.ItemCode, isKey: true },
+        def attribute productName      { domain: md.ProductName },
+        def attribute classCode        { domain: md.ClassCode },
+        def attribute brandCode        { domain: md.BrandCode },
+        def attribute manufacturerCode { domain: md.ManufacturerCode },
+        def attribute categoryCode {
+            domain: md.CategoryCode,
+            valueLabels: {
+                "Books": { en: "Books", cs: "Knihy" },
+                "Children": { en: "Children", cs: "Dětské" },
+                "Electronics": { en: "Electronics", cs: "Elektronika" },
+                "Home": { en: "Home", cs: "Domácnost" },
+                "Jewelry": { en: "Jewelry", cs: "Šperky" },
+                "Men": { en: "Men", cs: "Pánské" },
+                "Music": { en: "Music", cs: "Hudba" },
+                "Shoes": { en: "Shoes", cs: "Obuv" },
+                "Sports": { en: "Sports", cs: "Sport" },
+                "Women": { en: "Women", cs: "Dámské" }
+            }
+        }
+    ],
+    hierarchies: [productDrill]
+}
+
+def map item_to_manuf    { from: md.ItemCode,         to: md.ManufacturerCode, cardinality: { from: "N", to: "1" } }
+def map manuf_to_brand   { from: md.ManufacturerCode, to: md.BrandCode,        cardinality: { from: "N", to: "1" } }
+def map brand_to_class   { from: md.BrandCode,        to: md.ClassCode,        cardinality: { from: "N", to: "1" } }
+def map class_to_category { from: md.ClassCode,       to: md.CategoryCode,     cardinality: { from: "N", to: "1" } }
+
+// Product's descriptive label (not a drill level) — the item's display name, bound in md2db.ttrm.
+def map item_to_name     { from: md.ItemCode,         to: md.ProductName,      cardinality: { from: "N", to: "1" } }
+
+def hierarchy productDrill {
+    dimension: md.Product,
+    levels: [
+        itemCode,
+        manufacturerCode via md.item_to_manuf,
+        brandCode via md.manuf_to_brand,
+        classCode via md.brand_to_class,
+        categoryCode via md.class_to_category
+    ]
+}

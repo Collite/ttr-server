@@ -1,0 +1,24 @@
+package hartland
+
+model md
+
+// D-6/D-6a measure set — revenue, quantity, order/line counts, return amount, on-hand
+// qty ONLY. revenue/returnAmount share the currency-agnostic Money domain (Stage 2.3) —
+// the USD/CZK label is a lexicon/connection display fact (Stage 2.5 / connections.toml),
+// never a second measure (T4). No net_profit/margin/cost measure: the domains to build
+// one don't exist and the underlying db columns aren't modeled (Stage 2.1 T4).
+
+def measure revenue      { domain: md.Money,    class: additive, aggregation: sum }
+def measure quantity     { domain: md.Quantity, class: additive, aggregation: sum }
+def measure orderCount   { domain: md.Quantity, class: additive, aggregation: countDistinct }
+def measure lineCount    { domain: md.Quantity, class: additive, aggregation: count }
+def measure returnAmount { domain: md.Money,    class: additive, aggregation: sum }
+
+// Weekly on-hand snapshot — semi-additive (doesn't sum meaningfully across weeks), the
+// smoking gun behind S1 (17-week zero streak at the meltdown DC).
+def measure onHandQty {
+    domain: md.Quantity,
+    class: semiAdditive,
+    aggregation: { default: sum, time: latestValid },
+    validBy: week
+}

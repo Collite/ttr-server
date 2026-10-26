@@ -1,0 +1,87 @@
+package hartland
+
+model er
+
+// Products (the bilingual catalog, Phase 1), Promotions, and Seller Support Centers (D-5).
+//
+// NLS-P10 (⚑GXP-D7, grammar 0.13) — this file is the estate's BILINGUAL EXEMPLAR: every
+// `description:` here is authored as a localised map instead of a plain string, so a
+// `GetModel(locale: "cs")` serves Czech and a `GetModel(locale: "en")` serves English off
+// one model. The rest of `model/er/` stays plain-string on purpose: both forms are legal
+// side by side, and the mix is what proves it.
+//
+// The chain a reader applies (Veles, D7): requested locale → plain form → `en` → first
+// entry by language code → "". Writing both locales here means step 1 always hits.
+
+def entity item {
+    description: {
+        en: "Products — category/brand drills; the bilingual catalog lit these up (Phase 1).",
+        cs: "Produkty — členění podle kategorie a značky; dvojjazyčný katalog je rozsvítil (fáze 1)."
+    }
+    labelPlural: "Products"
+    // LP-P3·T1 (LP contracts §2.1) — the mention facet a quoted literal attributes to:
+    // `"..."` on this head lands on `name`, a code-shaped literal on `code`. Without it the
+    // literal is headless (G3) and the fast path refuses. The legacy properties below are
+    // kept for the same reason store's are (readers before producers).
+    semantics { name: product_name, code: item_id, code_pattern: "^[A-P]{16}$" }
+    nameAttribute: product_name
+    codeAttribute: item_id
+    roles: [dimension]
+    displayLabel: { en: "Product", cs: "Produkt" }
+    attributes: [
+        def attribute sk           { type: int, isKey: true, description: { en: "Sequence key. Internal primary key only.", cs: "Sekvenční klíč. Pouze interní primární klíč." } },
+        def attribute item_id      { type: text, description: { en: "Unique product identifier. Code. One SKU.", cs: "Jedinečný identifikátor produktu. Kód. Jedna SKU." } },
+        // A member vocabulary (18 000 rows, 17 952 names): a quoted partial name — products «Voltaic» —
+        // finds the product by its words. TOKENS: a catalogue name is several words and users type one.
+        def attribute product_name { type: text, description: { en: "Product name, the human-readable label.", cs: "Název produktu, čitelné označení." }, search { searchable method: TOKENS } },
+        def attribute brand        { type: text, description: { en: "Product brand of this item", cs: "Značka tohoto produktu" } },
+        def attribute class        { type: text, description: { en: "Product class of this item", cs: "Třída tohoto produktu" } },
+        def attribute category     { type: text, description: { en: "Product category of this item", cs: "Kategorie tohoto produktu" } },
+        def attribute manufact     { type: text, description: { en: "The manufacturer of this item", cs: "Výrobce tohoto produktu" } },
+        def attribute size         { type: text, description: { en: "The size of this item's SKU", cs: "Velikost SKU tohoto produktu" } },
+        def attribute container    { type: text, description: { en: "The packaging of this item's SKU", cs: "Balení SKU tohoto produktu" } }
+    ]
+}
+
+def entity promotion {
+    description: {
+        en: "Promotions — the promo-dying branch (promo participation stays dense every year).",
+        cs: "Akce — větev doznívajících promo akcí (účast v akcích zůstává každý rok hustá)."
+    }
+    // LP-P3·T1 (LP contracts §2.1) — the mention facet a quoted literal attributes to:
+    // `"..."` on this head lands on `name`, a code-shaped literal on `code`. Without it the
+    // literal is headless (G3) and the fast path refuses. The legacy properties below are
+    // kept for the same reason store's are (readers before producers).
+    semantics { name: promo_name, code: promo_id, code_pattern: "^[A-P]{16}$" }
+    nameAttribute: promo_name
+    codeAttribute: promo_id
+    roles: [dimension]
+    displayLabel: { en: "Promotion", cs: "Akce" }
+    attributes: [
+        def attribute sk         { type: int, isKey: true, description: { en: "Sequence key. Internal primary key only.", cs: "Sekvenční klíč. Pouze interní primární klíč." } },
+        def attribute promo_id   { type: text, description: { en: "Promotion indentifier (code)", cs: "Identifikátor akce (kód)" } },
+        def attribute promo_name { type: text, description: { en: "Promotion name, the human-readable label.", cs: "Název akce, čitelné označení." } }
+    ]
+}
+
+def entity call_center {
+    description: {
+        en: "Seller support centers — Marketplace lore.",
+        cs: "Centra podpory prodejců — příběh tržiště."
+    }
+    // LP-P3·T1 (LP contracts §2.1) — the mention facet a quoted literal attributes to:
+    // `"..."` on this head lands on `name`, a code-shaped literal on `code`. Without it the
+    // literal is headless (G3) and the fast path refuses. The legacy properties below are
+    // kept for the same reason store's are (readers before producers).
+    semantics { name: name, code: call_center_id, code_pattern: "^[A-P]{16}$" }
+    nameAttribute: name
+    codeAttribute: call_center_id
+    roles: [dimension]
+    displayLabel: { en: "Seller Support Center", cs: "Centrum podpory prodejců" }
+    attributes: [
+        def attribute sk             { type: int, isKey: true, description: { en: "Sequence key. Internal primary key only.", cs: "Sekvenční klíč. Pouze interní primární klíč." } },
+        def attribute call_center_id { type: text, description: { en: "Call center identifier (code)", cs: "Identifikátor centra podpory (kód)" } },
+        // Member vocabulary, TOKENS: three names (`NY Metro`, `Mid Atlantic`, `North Midwest`).
+        def attribute name           { type: text, description: { en: "Call center name, the human-readable label.", cs: "Název centra podpory, čitelné označení." }, search { searchable method: TOKENS } }
+    ]
+}
