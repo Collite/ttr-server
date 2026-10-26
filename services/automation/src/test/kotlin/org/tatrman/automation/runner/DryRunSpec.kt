@@ -1456,7 +1456,7 @@ class DryRunSpec :
         "writer grouping and on-due stay in evidence and out of assignments" {
             supervisorScope {
                 val columns =
-                    writerWiring().columns + mapOf("group_by" to "tenant", "on_due" to "hold { reason: \"later\" }")
+                    writerWiring().columns + mapOf("group_by" to "tenant", "on_due" to "hold { label: \"later\" }")
                 val wiring = writerWiring().copy(columns = columns)
                 val f = PreviewFixture(this, previewRecipe().withWiring(listOf(wiring)), writerMetadata())
                 f.runner.use { runner ->
@@ -1470,7 +1470,7 @@ class DryRunSpec :
                     arguments["on_due"] shouldBe
                         buildJsonObject {
                             put("action", "hold")
-                            put("arguments", buildJsonObject { put("reason", "later") })
+                            put("arguments", buildJsonObject { put("label", "later") })
                             put("deferred", true)
                         }
                     val row =
