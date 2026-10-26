@@ -1,6 +1,7 @@
 // Run in the pinned n8n or derived image with --network none. Uses real n8n persistence and execution;
 // only the Automation service is fake. All data and credentials are temporary.
 const assert = require('node:assert/strict');
+const { NodeHelpers } = require('n8n-workflow');
 const { spawn, execFile } = require('node:child_process');
 const { promisify } = require('node:util');
 const { createHmac, randomUUID } = require('node:crypto');
@@ -171,7 +172,7 @@ async function main() {
     connections: Object.fromEntries([['Trigger', 'Open'], ['Open', 'Evaluate'], ['Evaluate', 'Routes'], ['Routes', 'Perform'], ['Perform', 'Outcome'], ['Outcome', 'Close']].map(([source, target]) => [source, { main: [[{ node: target, type: 'main', index: 0 }]] }])),
   };
   // Exercise n8n-core's real expression resolver: missing selectors/keys must never mutate.
-  workflow.nodes.push({ ...node('Missing selection', { operation: 'perform', runId: 'source-run', action: 'notify', keys: '={{ $json.payload.selected }}' }), continueOnFail: true });
+  workflow.nodes.push({ ...node('Missing selection', { operation: 'perform', runId: 'source-run', recipe: 'release_order', action: 'notify', keys: '={{ $json.payload.selected }}' }), continueOnFail: true });
   workflow.nodes.push({ ...node('Missing idempotency', { operation: 'open', recipe: 'release_order', deployment: 'release_native_event', port: '{}', dryRun: true, idempotencyKey: '={{ $json.eventId }}' }), continueOnFail: true });
   workflow.connections.Trigger.main[0].push({ node: 'Missing selection', type: 'main', index: 0 }, { node: 'Missing idempotency', type: 'main', index: 0 });
   const pollWorkflow = {
@@ -204,7 +205,15 @@ async function main() {
       body: JSON.stringify({ nodeInfos: names.map(name => ({ name, version: 1 })) }),
     });
     assert.equal(types.status, 200, await types.clone().text());
-    assert.deepEqual((await types.json()).data.map(type => type.name).sort(), ['tatrmanRun', 'tatrmanTrigger']);
+    const descriptions = (await types.json()).data;
+    assert.deepEqual(descriptions.map(type => type.name).sort(), ['tatrmanRun', 'tatrmanTrigger']);
+    for (const fixture of [workflow, pollWorkflow]) {
+      for (const step of fixture.nodes) {
+        const description = descriptions.find(type => step.type.endsWith(`.${type.name}`));
+        assert.ok(description, `Missing node description for ${step.name}`);
+        assert.equal(NodeHelpers.getNodeParametersIssues(description.properties, step, description), null, `Invalid fixture parameters: ${step.name}`);
+      }
+    }
     async function api(path, method = 'GET', body) {
       const response = await fetch(`${n8nUrl}/rest/${path}`, { method, headers: { cookie, 'content-type': 'application/json' }, ...(body ? { body: JSON.stringify(body) } : {}) });
       assert.equal(response.status, 200, await response.clone().text());
