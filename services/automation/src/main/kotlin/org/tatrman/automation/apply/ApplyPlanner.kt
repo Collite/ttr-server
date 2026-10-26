@@ -160,7 +160,6 @@ class ApplyPlanner(
                         val projected =
                             PreviewWiringValues.project(
                                 values,
-                                action,
                                 table.copy(rows = indices.map { table.rows[it] }),
                                 context.bindings,
                                 expectedTypes = writer?.expectedTypes.orEmpty(),
@@ -418,11 +417,11 @@ class ApplyPlanner(
         }
     }
 
-    /** Undeclared due is wiring evidence, never a database assignment. Declared columns remain assignments. */
+    /** Undeclared wiring properties are evidence, never database assignments. Declared columns remain assignments. */
     private fun assignmentNames(
         action: AutomationAction,
         names: Set<String>,
-    ): Set<String> = if (action.columns.none { it.name == "due" }) names - "due" else names
+    ): Set<String> = names - (PreviewWiringValues.WIRING_PROPERTIES - action.columns.map { it.name }.toSet())
 
     private fun render(
         template: String?,

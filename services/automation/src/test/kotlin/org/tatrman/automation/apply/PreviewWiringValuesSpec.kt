@@ -13,6 +13,7 @@ import org.tatrman.automation.bundle.legacyPreviewMetadata
 import org.tatrman.automation.runner.BoundValue
 import org.tatrman.automation.runner.Table
 import org.tatrman.ttr.metadata.model.AutomationDuration
+import java.time.LocalDate
 
 class PreviewWiringValuesSpec :
     StringSpec({
@@ -31,6 +32,7 @@ class PreviewWiringValuesSpec :
                         ask,
                         table,
                         emptyMap(),
+                        roleNames = emptySet(),
                     ).single()
             val call = result.getValue("action").jsonObject
             call["deferred"] shouldBe JsonPrimitive(true)
@@ -48,7 +50,15 @@ class PreviewWiringValuesSpec :
                     Triple("2 $unit", emptyMap(), 2L),
                     Triple("$unit(:count)", mapOf("count" to BoundValue("int", 9007199254740993L)), 9007199254740993L),
                 )) {
-                    val result = PreviewWiringValues.project(mapOf("due" to source), ask, table, bindings).single()
+                    val result =
+                        PreviewWiringValues
+                            .project(
+                                mapOf("due" to source),
+                                ask,
+                                table,
+                                bindings,
+                                roleNames = emptySet(),
+                            ).single()
                     result["due"] shouldBe
                         buildJsonObject {
                             put("amount", amount)
@@ -67,6 +77,7 @@ class PreviewWiringValuesSpec :
                         ask,
                         table,
                         emptyMap(),
+                        roleNames = emptySet(),
                     ).single()
                     .getValue("on_due")
             PreviewWiringValues.display(result) shouldBe
@@ -92,6 +103,7 @@ class PreviewWiringValuesSpec :
                             ask,
                             table.copy(rows = emptyList()),
                             emptyMap(),
+                            roleNames = emptySet(),
                         )
                     }
                 error.code shouldBe ErrorCode.PREVIEW_UNSUPPORTED
@@ -114,11 +126,18 @@ class PreviewWiringValuesSpec :
                         mapOf(
                             "count" to bound,
                         ),
+                        roleNames = emptySet(),
                     )
                 }.code shouldBe ErrorCode.PREVIEW_UNSUPPORTED
             }
             shouldThrow<AutomationException> {
-                PreviewWiringValues.project(mapOf("due" to "9223372036854775808 working_days"), ask, table, emptyMap())
+                PreviewWiringValues.project(
+                    mapOf("due" to "9223372036854775808 working_days"),
+                    ask,
+                    table,
+                    emptyMap(),
+                    roleNames = emptySet(),
+                )
             }.code shouldBe ErrorCode.PREVIEW_UNSUPPORTED
         }
 
@@ -128,11 +147,18 @@ class PreviewWiringValuesSpec :
                 ask,
                 table.copy(rows = emptyList()),
                 emptyMap(),
+                roleNames = emptySet(),
             ) shouldBe
                 emptyList()
             val nested = (1..18).fold("start {}") { source, _ -> "later { action: $source }" }
             shouldThrow<AutomationException> {
-                PreviewWiringValues.project(mapOf("action" to nested), ask, table.copy(rows = emptyList()), emptyMap())
+                PreviewWiringValues.project(
+                    mapOf("action" to nested),
+                    ask,
+                    table.copy(rows = emptyList()),
+                    emptyMap(),
+                    roleNames = emptySet(),
+                )
             }.code shouldBe ErrorCode.PREVIEW_UNSUPPORTED
         }
 
@@ -178,20 +204,54 @@ class PreviewWiringValuesSpec :
 
         "pinned due defaults equal explicit evidence with presence wins and declared-column protection" {
             val action = ask.copy(due = AutomationDuration(2.0, "working_days"))
-            val implicit = PreviewWiringValues.project(emptyMap(), action, table, emptyMap())
-            implicit shouldBe PreviewWiringValues.project(mapOf("due" to "2 working_days"), action, table, emptyMap())
+            val implicit =
+                PreviewWiringValues.project(
+                    emptyMap(),
+                    action,
+                    table,
+                    emptyMap(),
+                    roleNames = emptySet(),
+                )
+            implicit shouldBe
+                PreviewWiringValues.project(
+                    mapOf("due" to "2 working_days"),
+                    action,
+                    table,
+                    emptyMap(),
+                    roleNames = emptySet(),
+                )
             implicit.single()["due"] shouldBe
                 buildJsonObject {
                     put("amount", 2)
                     put("unit", "working_days")
                 }
-            PreviewWiringValues.project(emptyMap(), action, table, emptyMap()) shouldBe implicit
-            PreviewWiringValues.project(mapOf("due" to "5 days"), action, table, emptyMap()).single()["due"] shouldBe
+            PreviewWiringValues.project(
+                emptyMap(),
+                action,
+                table,
+                emptyMap(),
+                roleNames = emptySet(),
+            ) shouldBe implicit
+            PreviewWiringValues
+                .project(
+                    mapOf("due" to "5 days"),
+                    action,
+                    table,
+                    emptyMap(),
+                    roleNames = emptySet(),
+                ).single()["due"] shouldBe
                 buildJsonObject {
                     put("amount", 5)
                     put("unit", "days")
                 }
-            PreviewWiringValues.project(mapOf("due" to "null"), action, table, emptyMap()).single()["due"] shouldBe
+            PreviewWiringValues
+                .project(
+                    mapOf("due" to "null"),
+                    action,
+                    table,
+                    emptyMap(),
+                    roleNames = emptySet(),
+                ).single()["due"] shouldBe
                 JsonNull
             PreviewWiringValues
                 .project(
@@ -199,6 +259,7 @@ class PreviewWiringValuesSpec :
                     ask.copy(due = null),
                     table,
                     emptyMap(),
+                    roleNames = emptySet(),
                 ).single()
                 .containsKey("due") shouldBe
                 false
@@ -207,7 +268,15 @@ class PreviewWiringValuesSpec :
                     columns =
                         action.columns + action.columns.first().copy(name = "due", type = "text"),
                 )
-            PreviewWiringValues.project(emptyMap(), declared, table, emptyMap()).single().containsKey("due") shouldBe
+            PreviewWiringValues
+                .project(
+                    emptyMap(),
+                    declared,
+                    table,
+                    emptyMap(),
+                    roleNames = emptySet(),
+                ).single()
+                .containsKey("due") shouldBe
                 false
         }
 
@@ -222,10 +291,23 @@ class PreviewWiringValuesSpec :
             )) {
                 val action = ask.copy(due = AutomationDuration(amount, unit))
                 shouldThrow<AutomationException> {
-                    PreviewWiringValues.project(emptyMap(), action, table.copy(rows = emptyList()), emptyMap())
+                    PreviewWiringValues.project(
+                        emptyMap(),
+                        action,
+                        table.copy(rows = emptyList()),
+                        emptyMap(),
+                        roleNames = emptySet(),
+                    )
                 }.code shouldBe
                     ErrorCode.PREVIEW_UNSUPPORTED
-                PreviewWiringValues.project(mapOf("due" to "null"), action, table, emptyMap()).single()["due"] shouldBe
+                PreviewWiringValues
+                    .project(
+                        mapOf("due" to "null"),
+                        action,
+                        table,
+                        emptyMap(),
+                        roleNames = emptySet(),
+                    ).single()["due"] shouldBe
                     JsonNull
             }
             for (amount in listOf(0.0, Math.nextDown(Long.MAX_VALUE.toDouble()))) {
@@ -235,6 +317,7 @@ class PreviewWiringValuesSpec :
                         ask.copy(due = AutomationDuration(amount, "days")),
                         table,
                         emptyMap(),
+                        roleNames = emptySet(),
                     ).single()
                     .getValue("due")
                     .jsonObject
@@ -256,6 +339,7 @@ class PreviewWiringValuesSpec :
                         ask,
                         table,
                         emptyMap(),
+                        roleNames = emptySet(),
                     ).single()
             val args =
                 values
@@ -276,8 +360,84 @@ class PreviewWiringValuesSpec :
                         ask,
                         table,
                         emptyMap(),
+                        roleNames = emptySet(),
                     ).single()
                     .getValue("action")
             PreviewWiringValues.display(value) shouldBe "start {}"
+        }
+
+        "explicit wiring properties refuse wrong AST kinds even with defaults and empty selections" {
+            val action = ask.copy(due = AutomationDuration(2.0, "working_days"))
+            val route = Table(listOf(ManifestColumn("on_hand", "int")), listOf(listOf(2)))
+            for ((name, source) in listOf(
+                "due" to "on_hand",
+                "due" to "\"2 days\"",
+                "due" to "2",
+                "due" to "true",
+                "due" to "hold {}",
+                "on_due" to "hold",
+                "on_due" to "weekly_demand",
+                "on_due" to "2 days",
+            )) {
+                for (selected in listOf(route, route.copy(rows = emptyList()))) {
+                    val error =
+                        shouldThrow<AutomationException> {
+                            PreviewWiringValues.project(
+                                mapOf(name to source),
+                                action,
+                                selected,
+                                emptyMap(),
+                                roleNames = setOf("on_hand", "weekly_demand"),
+                            )
+                        }
+                    error.code shouldBe ErrorCode.PREVIEW_UNSUPPORTED
+                    error.message shouldBe "unsupported action expression"
+                }
+            }
+        }
+
+        "null properties and declared date and text columns retain their own paths" {
+            val action = ask.copy(due = AutomationDuration(2.0, "working_days"))
+            val nulls =
+                PreviewWiringValues
+                    .project(
+                        mapOf("due" to "null", "on_due" to "null"),
+                        action,
+                        table,
+                        emptyMap(),
+                        roleNames = emptySet(),
+                    ).single()
+            nulls["due"] shouldBe JsonNull
+            nulls["on_due"] shouldBe JsonNull
+            val dated =
+                Table(
+                    listOf(ManifestColumn("date_value", "date"), ManifestColumn("on_hand", "int")),
+                    listOf(listOf(LocalDate.parse("2026-11-03"), 2)),
+                )
+            val declared =
+                action.copy(
+                    columns =
+                        action.columns +
+                            listOf(
+                                action.columns.first().copy(name = "due", type = "date"),
+                                action.columns.first().copy(name = "on_due", type = "text"),
+                            ),
+                )
+            val result =
+                PreviewWiringValues
+                    .project(
+                        mapOf(
+                            "due" to "date_value",
+                            "on_due" to "\"hold\"",
+                            "group_by" to "on_hand",
+                        ),
+                        declared,
+                        dated,
+                        emptyMap(),
+                        roleNames = setOf("on_hand"),
+                    ).single()
+            result["due"] shouldBe JsonPrimitive("2026-11-03")
+            result["on_due"] shouldBe JsonPrimitive("hold")
+            result["group_by"] shouldBe JsonPrimitive(2)
         }
     })

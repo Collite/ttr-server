@@ -17,11 +17,22 @@ import org.tatrman.ttrp.expr.ColumnRef
 import org.tatrman.ttrp.expr.DurationLiteral
 import org.tatrman.ttrp.expr.DurationParam
 import org.tatrman.ttrp.expr.DurationUnit
+import org.tatrman.ttrp.expr.Literal
+import org.tatrman.ttrp.expr.LiteralValue
 import org.tatrman.ttrp.parser.TtrpParser
 
 /** Wiring data, not dispatch: partial calls and relative durations never execute or resolve a deadline. */
 internal object PreviewWiringValues {
+    // Mirrors RecipeChecker.WIRING_PROPERTIES until the compiler API/P3 can expose that shared contract.
+    val WIRING_PROPERTIES = setOf("due", "on_due", "group_by")
+
+    private fun wiringProperty(
+        action: AutomationAction,
+        name: String,
+    ): String? = name.takeIf { it in WIRING_PROPERTIES && action.columns.none { column -> column.name == name } }
+
     internal data class Prepared(
+        val action: AutomationAction,
         val sources: Map<String, String>,
         val parsed: Map<String, WiringValue>,
         val defaultDue: JsonObject?,
@@ -37,7 +48,7 @@ internal object PreviewWiringValues {
                 sources
                     .filterKeys { name ->
                         val column = action.columns.singleOrNull { it.name == name }
-                        column?.type == "action" || column == null && name in setOf("due", "on_due")
+                        column?.type == "action" || (wiringProperty(action, name) != null && name != "group_by")
                     }.mapValues { parse(it.value) }
             val defaultDue =
                 if ("due" !in sources && action.columns.none { it.name == "due" }) {
@@ -51,7 +62,7 @@ internal object PreviewWiringValues {
                 } else {
                     null
                 }
-            Prepared(sources.toMap(), parsed, defaultDue)
+            Prepared(action, sources.toMap(), parsed, defaultDue)
         }
 
     fun project(
@@ -60,19 +71,18 @@ internal object PreviewWiringValues {
         table: Table,
         bindings: Map<String, BoundValue>,
         expectedTypes: Map<String, String> = emptyMap(),
-        roleNames: Set<String> = emptySet(),
-    ): List<Map<String, JsonElement>> =
-        project(prepare(sources, action), action, table, bindings, expectedTypes, roleNames)
+        roleNames: Set<String>,
+    ): List<Map<String, JsonElement>> = project(prepare(sources, action), table, bindings, expectedTypes, roleNames)
 
     fun project(
         prepared: Prepared,
-        action: AutomationAction,
         table: Table,
         bindings: Map<String, BoundValue>,
         expectedTypes: Map<String, String> = emptyMap(),
-        roleNames: Set<String> = emptySet(),
+        roleNames: Set<String>,
     ): List<Map<String, JsonElement>> =
         guarded {
+            val action = prepared.action
             val sources = prepared.sources
             val scalars = linkedMapOf<String, String>()
             val reserved = (sources.keys + table.columns.map { it.name } + bindings.keys).toMutableSet()
@@ -167,9 +177,16 @@ internal object PreviewWiringValues {
                 sources
                     .mapValues { (name, source) ->
                         val column = action.columns.singleOrNull { it.name == name }
-                        val isAction = column?.type == "action" || column == null && name == "on_due"
-                        val isDue = column == null && name == "due"
+                        val property = wiringProperty(action, name)
+                        val isAction = column?.type == "action" || property == "on_due"
+                        val isDue = property == "due"
                         val parsed = prepared.parsed[name]
+                        val expression = (parsed as? WiringValue.Expr)?.expression
+                        val isNull = expression is Literal && expression.value == LiteralValue.Null
+                        when (property) {
+                            "due" -> require(isNull || expression is DurationLiteral || expression is DurationParam)
+                            "on_due" -> require(isNull || parsed is WiringValue.Call)
+                        }
                         when {
                             parsed is WiringValue.Call -> {
                                 require(isAction)

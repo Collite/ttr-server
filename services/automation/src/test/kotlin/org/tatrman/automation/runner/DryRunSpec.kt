@@ -1424,6 +1424,130 @@ class DryRunSpec :
             }
         }
 
+        "wrong explicit due or on-due kinds refuse without a journal even on empty routes" {
+            val original = legacyPreviewMetadata(BundleFixture.load())
+            val ask = original.actions.getValue("ask").copy(due = AutomationDuration(2.0, "working_days"))
+            val metadata = original.copy(actions = original.actions + ("ask" to ask))
+            for (route in listOf("way.hold", "way.empty")) {
+                for ((name, source) in listOf("due" to "amount", "on_due" to "hold")) {
+                    supervisorScope {
+                        val columns =
+                            mapOf(
+                                "who" to "role.buyer",
+                                "about" to "department",
+                                "action" to "start {}",
+                                name to source,
+                            )
+                        val recipe = previewRecipe().withWiring(listOf(ManifestWiring(listOf(route), "ask", columns)))
+                        val f = PreviewFixture(this, recipe, metadata)
+                        f.runner.use { runner ->
+                            repeat(2) {
+                                shouldThrow<AutomationException> { runner.evaluate() }.code shouldBe
+                                    ErrorCode.PREVIEW_UNSUPPORTED
+                            }
+                            f.journals.get() shouldBe 0
+                            f.plan shouldBe null
+                        }
+                    }
+                }
+            }
+        }
+
+        "writer grouping and on-due stay in evidence and out of assignments" {
+            supervisorScope {
+                val columns =
+                    writerWiring().columns + mapOf("group_by" to "tenant", "on_due" to "hold { reason: \"later\" }")
+                val wiring = writerWiring().copy(columns = columns)
+                val f = PreviewFixture(this, previewRecipe().withWiring(listOf(wiring)), writerMetadata())
+                f.runner.use { runner ->
+                    runner.evaluate()
+                    val arguments =
+                        f.plan!!
+                            .actions
+                            .single()
+                            .arguments
+                    arguments["group_by"] shouldBe JsonPrimitive("a")
+                    arguments["on_due"] shouldBe
+                        buildJsonObject {
+                            put("action", "hold")
+                            put("arguments", buildJsonObject { put("reason", "later") })
+                            put("deferred", true)
+                        }
+                    val row =
+                        f.plan!!
+                            .rows
+                            .single { it.entity == "er.entity.order" }
+                            .row!!
+                    row.keys shouldBe setOf("order_number", "tenant", "value")
+                    row["value"] shouldBe JsonPrimitive(BigDecimal("6.06"))
+                    f.journals.get() shouldBe 1
+                }
+            }
+        }
+
+        "declared due and other property columns remain writer assignments despite a due default" {
+            supervisorScope {
+                val original = writerMetadata()
+                val entity = original.entities.single()
+                val template = entity.attributes.first()
+                val properties = listOf("due" to "date", "on_due" to "text", "group_by" to "text")
+                val target =
+                    entity.copy(
+                        attributes =
+                            entity.attributes +
+                                properties.map { (name, type) ->
+                                    template.copy(
+                                        internalId = name,
+                                        qname = template.qname.copy(name = "order.$name"),
+                                        type = type,
+                                        isKey = false,
+                                        nullable = false,
+                                    )
+                                },
+                    )
+                val action =
+                    original.actions.getValue("hold").copy(
+                        columns =
+                            original.actions.getValue("hold").columns +
+                                properties.map { (name, _) -> AutomationColumn(name, "order.$name") },
+                        due = AutomationDuration(2.0, "working_days"),
+                    )
+                val metadata = original.copy(actions = original.actions + ("hold" to action), entities = listOf(target))
+                val wiring =
+                    writerWiring().let {
+                        it.copy(
+                            columns =
+                                it.columns +
+                                    mapOf(
+                                        "due" to "cast('2026-11-03' as date)",
+                                        "on_due" to "department",
+                                        "group_by" to "tenant",
+                                    ),
+                        )
+                    }
+                val f = PreviewFixture(this, previewRecipe().withWiring(listOf(wiring)), metadata)
+                f.runner.use { runner ->
+                    runner.evaluate()
+                    val arguments =
+                        f.plan!!
+                            .actions
+                            .single()
+                            .arguments
+                    val row =
+                        f.plan!!
+                            .rows
+                            .single { it.entity == "er.entity.order" }
+                            .row!!
+                    row["due"] shouldBe JsonPrimitive("2026-11-03")
+                    arguments["due"] shouldBe row["due"]
+                    row["on_due"] shouldBe JsonPrimitive("Sales")
+                    row["group_by"] shouldBe JsonPrimitive("a")
+                    row.keys shouldBe setOf("order_number", "tenant", "value", "due", "on_due", "group_by")
+                    f.journals.get() shouldBe 1
+                }
+            }
+        }
+
         "nested role references refuse before any preview journal" {
             for (reference in listOf("lines", "candidates")) {
                 supervisorScope {

@@ -330,8 +330,10 @@ Relative `due` values preserve an exact count and unit, e.g. `{"amount":2,"unit"
 nonnegative integral pinned parameter via `working_days(:settlement)`. This is duration evidence, not an
 absolute deadline: preview does not consult a calendar or turn working days into elapsed days.
 When wiring omits `due` and the action declares no `due` column, its pinned action-level duration default
-is used. Explicit wiring presence wins, including NULL. Defaults must be finite nonnegative integral
-Long counts in one of the six supported units.
+is used. Undeclared `due` accepts only a duration or NULL, and undeclared `on_due` only a call or NULL;
+wrong explicit kinds refuse, including on empty routes. Explicit valid wiring presence wins, including NULL. Defaults must be finite nonnegative integral
+Long counts in one of the six supported units. TTR-M accepts `seconds`, but native preview refuses
+that unit because the published TTR-P DurationUnit does not include it.
 
 The published wiring parser checks the entire value, including nested calls. Malformed/duplicate keys,
 unknown parameters, wrong/fractional/null/negative counts, overflow, excessive call depth and unsupported
@@ -341,7 +343,9 @@ consulted only after P3 pins nested callees. Root scalar arguments keep projecti
 retain original source text (code-point spans), avoiding a second string-escaping pass. Unused casts are
 checked without executing.
 Would-text renders deferred calls and relative durations alongside existing scalars. The full Hartland H3
-fixture now previews both the proposal and buyer ask. `group_by` remains evidence on each selected row;
+fixture now previews both the proposal and buyer ask. Undeclared `due`, `on_due` and `group_by` stay in
+action evidence and out of writer assignments; declared columns with those names remain assignments.
+`group_by` remains scalar evidence on each selected row;
 no task grouping/creation, row capture or nested dispatch occurs here. A callee is not resolved/defaulted or
 executed. Future dispatch must establish its own dependency/approval closure before interpreting any
 `deferred:true` object; these objects are not executable action envelopes. The action-level `on_due` default
