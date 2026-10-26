@@ -30,6 +30,7 @@ async function main() {
   let runtime;
   let runtimeLog = '';
   let env;
+  let ownerCookie;
   const fake = http.createServer(async (req, res) => {
     try {
       if (req.headers.authorization !== 'Bearer local-workflow-token') { res.writeHead(401); res.end(); return; }
@@ -135,6 +136,17 @@ async function main() {
       if (await predicate()) return;
       await delay(100);
     }
+    if (ownerCookie) {
+      const response = await fetch(`${n8nUrl}/rest/executions`, { headers: { cookie: ownerCookie } });
+      const executions = (await response.json()).data?.results ?? [];
+      for (const execution of executions.filter(item => item.status === 'error')) {
+        const detail = await fetch(`${n8nUrl}/rest/executions/${execution.id}`, { headers: { cookie: ownerCookie } });
+        const data = (await detail.json()).data;
+        const result = data?.data?.resultData;
+        console.error('Workflow failure', JSON.stringify({ id: execution.id, status: execution.status, lastNode: result?.lastNodeExecuted, node: result?.error?.node?.name, message: result?.error?.message, description: result?.error?.description }));
+      }
+    }
+    console.error('Automation calls', JSON.stringify(calls.map(call => ({ method: call.method, path: call.path }))));
     throw new Error(`Timed out: ${description}\n${runtimeLog}`);
   }
   const credentials = { tatrmanAutomationApi: { id: 'local-automation', name: 'Local Automation' } };
@@ -183,6 +195,7 @@ async function main() {
     const setup = await fetch(`${n8nUrl}/rest/owner/setup`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: 'runtime@example.test', firstName: 'Runtime', lastName: 'Proof', password: 'LocalRuntimeProof123!' }) });
     assert.equal(setup.status, 200, await setup.text());
     const cookie = setup.headers.getSetCookie().map(value => value.split(';')[0]).join('; ');
+    ownerCookie = cookie;
     const names = ['@collite/n8n-nodes-tatrman.tatrmanRun', '@collite/n8n-nodes-tatrman.tatrmanTrigger'];
     const types = await fetch(`${n8nUrl}/rest/node-types`, {
       method: 'POST', headers: { cookie, 'content-type': 'application/json' },
