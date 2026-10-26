@@ -202,3 +202,16 @@ Hartland. Existing private-package access does not establish access to this new 
 release can leave one artifact published; inspect both registries before rerunning or cutting another
 version. Server P3 endpoint/lifecycle agreement, recorded H-1 fixtures and live AU certification remain
 open independently of this image release.
+
+If image publication succeeded but npm publication failed, inspect both registries first. Recover only npm
+from the existing tag after fixing the publishing workflow on master:
+
+```sh
+gh workflow run n8n-nodes.yml --repo Collite/kantheon --ref master -f release_tag=n8n-nodes-tatrman/v0.1.0
+```
+
+This manual action checks out `refs/tags/<release_tag>` in both jobs, validates the tag/package version,
+and repeats the checked-package, image and npm-install proofs. It publishes the resulting checked tarball
+only to the private npm registry; the existing image is not pushed again. Never move a released tag or
+use the recovery action to overwrite a version already present in npm. The tarball argument starts with
+`./package/` so npm treats it as a local file rather than a GitHub repository reference.
