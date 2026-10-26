@@ -66,11 +66,17 @@ directory names for several services. Use the key in the left column in your val
 
 | Key | Type | Default | Consumed by | Notes |
 |---|---|---|---|---|
-| `global.image.tag` | string | `"0.9.4"` | every service | The single product-tag knob: applied to every image unless that service sets `<name>.image.tag`. Finalized against published digests at T7. |
+| `global.image.tag` | string | `"0.9.0"` | every service | Applied to every image unless that service sets `<name>.image.tag`. |
 
 Per-service override: set `<name>.image.tag` (and `<name>.image.repository`, `<name>.image.pullPolicy`).
 Tag precedence in the `tatrman-service` library: `image.tag` → `global.image.tag` → the chart's `appVersion`.
 The four NLP backends (§5.1) render their own tag and are pinned individually.
+
+The metadata rename cohort uses explicit `0.11.30` overrides: `metadata`, `meta-mcp`,
+`query`, `translate`, `validate`, `query-mcp`, `chrono`, `geo`, `money`, `fuzzy`
+(image `lex-matcher`), `resolver`, `grounding-mcp`, `health`, `charon` and opt-in `automation`.
+The regenerated `MetadataService` clients and server must use the same rename generation;
+overriding only the server while retaining pre-rename consumer images breaks their gRPC calls.
 
 Image pull secrets: set per service (`<name>.imagePullSecrets`), or supply cluster-default pull secrets.
 

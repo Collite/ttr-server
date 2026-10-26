@@ -406,7 +406,7 @@ spec:
     spec:
       containers:
         - name: health
-          image: "ghcr.io/collite/health:0.9.0"
+          image: "ghcr.io/collite/health:0.11.30"
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
@@ -549,7 +549,7 @@ spec:
     spec:
       containers:
         - name: meta-mcp
-          image: "ghcr.io/collite/meta-mcp:0.9.0"
+          image: "ghcr.io/collite/meta-mcp:0.11.30"
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
@@ -616,7 +616,7 @@ spec:
     spec:
       containers:
         - name: metadata
-          image: "ghcr.io/collite/metadata:0.9.0"
+          image: "ghcr.io/collite/metadata:0.11.30"
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
@@ -894,7 +894,7 @@ spec:
     spec:
       containers:
         - name: query-mcp
-          image: "ghcr.io/collite/query-mcp:0.9.0"
+          image: "ghcr.io/collite/query-mcp:0.11.30"
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
@@ -963,7 +963,7 @@ spec:
     spec:
       containers:
         - name: query
-          image: "ghcr.io/collite/query:0.9.0"
+          image: "ghcr.io/collite/query:0.11.30"
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
@@ -1032,7 +1032,7 @@ spec:
     spec:
       containers:
         - name: translate
-          image: "ghcr.io/collite/translate:0.9.0"
+          image: "ghcr.io/collite/translate:0.11.30"
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
@@ -1099,7 +1099,7 @@ spec:
     spec:
       containers:
         - name: validate
-          image: "ghcr.io/collite/validate:0.9.0"
+          image: "ghcr.io/collite/validate:0.11.30"
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
