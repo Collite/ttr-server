@@ -9,6 +9,8 @@ const http = require('node:http');
 const { tmpdir } = require('node:os');
 const { join } = require('node:path');
 const { setTimeout: delay } = require('node:timers/promises');
+// n8n's editor API serializes execution data with its bundled flatted dependency.
+const { parse: parseExecution } = require(require.resolve('flatted', { paths: ['/usr/local/lib/node_modules/n8n'] }));
 
 async function main() {
   const directory = await mkdtemp(join(tmpdir(), 'tatrman-workflow-'));
@@ -142,7 +144,7 @@ async function main() {
       for (const execution of executions.filter(item => item.status === 'error')) {
         const detail = await fetch(`${n8nUrl}/rest/executions/${execution.id}`, { headers: { cookie: ownerCookie } });
         const data = (await detail.json()).data;
-        const result = data?.data?.resultData;
+        const result = (typeof data?.data === 'string' ? parseExecution(data.data) : data?.data)?.resultData;
         console.error('Workflow failure', JSON.stringify({ id: execution.id, status: execution.status, lastNode: result?.lastNodeExecuted, node: result?.error?.node?.name, message: result?.error?.message, description: result?.error?.description }));
       }
     }
