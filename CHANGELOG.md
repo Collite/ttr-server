@@ -1736,3 +1736,10 @@ artifact.
   named, so a chart that has never heard of a rule pack renders byte-identically.
 - **New diagnostics** — `NLS-NLP-011` (op unrouted in the active lane),
   `NLS-PACK-010` (reload refused), `LM-MORPH-007` (token report not sunk).
+
+- **connect-openmetadata0.1.3 — Studio model links.** Replace unsupported `/viewer?qname=…`
+  links with `/m/<workspace>/s/db|er|md`. `--studio-workspace` defaults to the export
+  world and can name a different manifest project. Concepts stay in OM; sync with
+  a Studio origin removes their obsolete Studio URL while preserving other custom
+  properties. Links open whole models; exact-object navigation and new-CN diagram
+  support remain follow-ups. Upgrade forces full projection through the options fingerprint.

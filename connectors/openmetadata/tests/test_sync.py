@@ -57,7 +57,7 @@ def test_sync_twice_and_deprecate(
         assert sum(len(t["customProperties"]) for t in fake.stores["metadata/types"].values()) == 11
         table = fake.stores["tables"]["northline-pg.northline.retail.sales"]
         assert table["extension"]["ttrQname"] == "db.retail.sales"
-        assert table["extension"]["ttrUrl"].startswith("https://studio.example/viewer?")
+        assert table["extension"]["ttrUrl"] == "https://studio.example/m/northline/s/db"
         assert any(t["tagFQN"] == "Tatrman.Grounded" for t in table["tags"])
         assert any(t["tagFQN"] == "Tatrman.Grounded" for c in table["columns"] for t in c["tags"])
         assert table["extension"]["catalogOwner"] == "retained"
@@ -101,6 +101,49 @@ def test_check_registry_is_idempotent(
         assert fake.calls[0][:2] == ("GET", "system/version")
         assert fake.stores["glossaries"] == {}
         assert not (tmp_path / "state.json").exists()
+
+
+def test_legacy_link_migration_removes_only_cn_studio_urls_and_is_idempotent(
+    export: Export, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    fake = FakeOm(export)
+    args = [*sync_args(tmp_path), "--studio-workspace", "catalog-demo"]
+    with responses.RequestsMock(assert_all_requests_are_fired=False) as mock:
+        fake.install(mock)
+        assert main(args) == 0
+        capsys.readouterr()
+        for term in fake.stores["glossaryTerms"].values():
+            term["extension"].update(
+                ttrUrl="https://studio.example/viewer?qname=legacy", externalOwner="retained"
+            )
+        for table in fake.stores["tables"].values():
+            table["extension"]["ttrUrl"] = "https://studio.example/viewer?qname=legacy"
+        for metric in fake.stores["metrics"].values():
+            metric["extension"]["ttrUrl"] = "https://studio.example/viewer?qname=legacy"
+        fake.calls.clear()
+        assert main(args) == 0
+        migrated = json.loads(capsys.readouterr().out)
+        assert migrated["updated"] > 0 and migrated["warnings"] == 0
+        for term in fake.stores["glossaryTerms"].values():
+            extension = term["extension"]
+            assert extension["externalOwner"] == "retained"
+            if extension["ttrQname"].startswith("cn."):
+                assert "ttrUrl" not in extension
+            else:
+                model = extension["ttrQname"].split(".", 1)[0]
+                assert extension["ttrUrl"] == f"https://studio.example/m/catalog-demo/s/{model}"
+        assert all(
+            t["extension"]["ttrUrl"] == "https://studio.example/m/catalog-demo/s/db"
+            for t in fake.stores["tables"].values()
+        )
+        assert all(
+            m["extension"]["ttrUrl"] == "https://studio.example/m/catalog-demo/s/md"
+            for m in fake.stores["metrics"].values()
+        )
+        fake.calls.clear()
+        assert main(args) == 0
+        assert fake.writes == []
+        assert json.loads(capsys.readouterr().out)["updated"] == 0
 
 
 def test_dry_run_needs_no_credentials_or_writes(
@@ -413,7 +456,6 @@ def test_200_link_failure_is_not_success(
         assert main([*sync_args(tmp_path), "--cn-path", "glossary"]) == 1
         assert "OM error" in capsys.readouterr().err
         assert not (tmp_path / "state.json").exists()
-
 
 
 def test_no_deprecate_missing_is_honored(

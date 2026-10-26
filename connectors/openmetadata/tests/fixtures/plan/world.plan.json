@@ -117,6 +117,7 @@
       "ttrQname": "cn.event.Purchase",
       "ttrIri": "urn:ttr:northline:cn.event.Purchase"
     },
+    "remove_props": [],
     "cn": true
   },
   {
@@ -139,6 +140,7 @@
       "ttrQname": "cn.kind.Party",
       "ttrIri": "https://example.org/northline/Party"
     },
+    "remove_props": [],
     "cn": true
   },
   {
@@ -162,6 +164,7 @@
       "ttrQname": "cn.kind.Product",
       "ttrIri": "urn:ttr:northline:cn.kind.Product"
     },
+    "remove_props": [],
     "cn": true
   },
   {
@@ -180,6 +183,7 @@
       "ttrQname": "cn.kind.Prospect",
       "ttrIri": "urn:ttr:northline:cn.kind.Prospect"
     },
+    "remove_props": [],
     "cn": true
   },
   {
@@ -198,6 +202,7 @@
       "ttrQname": "cn.phase.LargePurchase",
       "ttrIri": "urn:ttr:northline:cn.phase.LargePurchase"
     },
+    "remove_props": [],
     "cn": true
   },
   {
@@ -216,6 +221,7 @@
       "ttrQname": "cn.quality.sold_at",
       "ttrIri": "urn:ttr:northline:cn.quality.sold_at"
     },
+    "remove_props": [],
     "cn": true
   },
   {
@@ -234,6 +240,7 @@
       "ttrQname": "cn.relation_type.recommends",
       "ttrIri": "urn:ttr:northline:cn.relation_type.recommends"
     },
+    "remove_props": [],
     "cn": true
   },
   {
@@ -261,6 +268,7 @@
       "ttrQname": "cn.role.Customer",
       "ttrIri": "urn:ttr:northline:cn.role.Customer"
     },
+    "remove_props": [],
     "cn": true
   },
   {
@@ -284,6 +292,7 @@
       "ttrQname": "er.entity.buyer",
       "ttrIri": "urn:ttr:northline:er.entity.buyer"
     },
+    "remove_props": [],
     "cn": false
   },
   {
@@ -302,6 +311,7 @@
       "ttrQname": "er.entity.buyer.id",
       "ttrIri": "urn:ttr:northline:er.entity.buyer.id"
     },
+    "remove_props": [],
     "cn": false
   },
   {
@@ -320,6 +330,7 @@
       "ttrQname": "er.entity.buyer.name",
       "ttrIri": "urn:ttr:northline:er.entity.buyer.name"
     },
+    "remove_props": [],
     "cn": false
   },
   {
@@ -338,6 +349,7 @@
       "ttrQname": "er.entity.product",
       "ttrIri": "urn:ttr:northline:er.entity.product"
     },
+    "remove_props": [],
     "cn": false
   },
   {
@@ -356,6 +368,7 @@
       "ttrQname": "er.entity.product.id",
       "ttrIri": "urn:ttr:northline:er.entity.product.id"
     },
+    "remove_props": [],
     "cn": false
   },
   {
@@ -379,6 +392,7 @@
       "ttrQname": "er.entity.sale",
       "ttrIri": "urn:ttr:northline:er.entity.sale"
     },
+    "remove_props": [],
     "cn": false
   },
   {
@@ -397,6 +411,7 @@
       "ttrQname": "er.entity.sale.amount",
       "ttrIri": "urn:ttr:northline:er.entity.sale.amount"
     },
+    "remove_props": [],
     "cn": false
   },
   {
@@ -415,6 +430,7 @@
       "ttrQname": "er.entity.sale.buyer_id",
       "ttrIri": "urn:ttr:northline:er.entity.sale.buyer_id"
     },
+    "remove_props": [],
     "cn": false
   },
   {
@@ -433,6 +449,7 @@
       "ttrQname": "er.entity.sale.id",
       "ttrIri": "urn:ttr:northline:er.entity.sale.id"
     },
+    "remove_props": [],
     "cn": false
   },
   {
@@ -451,6 +468,7 @@
       "ttrQname": "er.entity.sale.sold_at",
       "ttrIri": "urn:ttr:northline:er.entity.sale.sold_at"
     },
+    "remove_props": [],
     "cn": false
   },
   {
@@ -472,6 +490,7 @@
       "ttrIri": "urn:ttr:northline:md.dimension.Buyer",
       "ttrKind": "dimension"
     },
+    "remove_props": [],
     "cn": false
   },
   {
@@ -491,6 +510,7 @@
       "ttrIri": "urn:ttr:northline:md.dimension.Calendar",
       "ttrKind": "dimension"
     },
+    "remove_props": [],
     "cn": false
   },
   {
@@ -510,6 +530,7 @@
       "ttrIri": "urn:ttr:northline:md.hierarchy.CalendarRollup",
       "ttrKind": "hierarchy"
     },
+    "remove_props": [],
     "cn": false
   },
   {

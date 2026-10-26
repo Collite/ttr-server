@@ -112,7 +112,7 @@ def test_asset_links_and_column_maps(export: Export) -> None:
     assert sales.fqn == "northline-pg.northline.retail.sales"
     assert sales.props == {
         "ttrQname": "db.retail.sales",
-        "ttrUrl": "https://studio.example/viewer?qname=db.retail.sales",
+        "ttrUrl": "https://studio.example/m/northline/s/db",
     }
     assert sales.tags == ["Tatrman.Grounded"]
     assert next(t for t in tables if t.fqn.endswith(".products")).tags == []
@@ -267,6 +267,58 @@ def test_missing_metric_definition_and_invalid_options(export: Export) -> None:
     export.defs.definitions.pop("md.measure.units")
     with pytest.raises(MappingError, match="missing definition"):
         plan_from_export(export)
+
+
+def test_studio_links_use_renderable_model_subjects_and_clear_cn_links(export: Export) -> None:
+    plan = plan_from_export(export, studio_url="https://studio.example/")
+    terms = [op for op in plan.operations if isinstance(op, UpsertTerm)]
+    for term in terms:
+        if term.cn:
+            assert "ttrUrl" not in term.props
+            assert term.remove_props == ["ttrUrl"]
+        else:
+            model = term.qname.split(".", 1)[0]
+            assert term.props["ttrUrl"] == f"https://studio.example/m/northline/s/{model}"
+            assert term.remove_props == []
+    for metric in (op for op in plan.operations if isinstance(op, UpsertMetric)):
+        assert metric.props["ttrUrl"] == "https://studio.example/m/northline/s/md"
+    assert all(
+        not t.remove_props for t in plan_from_export(export).operations if isinstance(t, UpsertTerm)
+    )
+
+
+def test_studio_workspace_can_differ_from_export_world(export: Export) -> None:
+    plan = plan_from_export(
+        export, studio_url="https://studio.example", studio_workspace="catalog-demo"
+    )
+    sales = next(op for op in plan.operations if isinstance(op, SetTableProps))
+    assert sales.props["ttrUrl"] == "https://studio.example/m/catalog-demo/s/db"
+    assert sales.props["ttrQname"].startswith("db.")
+
+
+@pytest.mark.parametrize("workspace", ["", ".", "..", "c", "_designer", "a/b", "a?x=y"])
+def test_studio_workspace_must_be_a_valid_nonreserved_manifest_name(
+    export: Export, workspace: str
+) -> None:
+    with pytest.raises(MappingError, match="Studio workspace"):
+        plan_from_export(export, studio_url="https://studio.example", studio_workspace=workspace)
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://",
+        "https://studio.example/viewer",
+        "https://studio.example?x=y",
+        "https://studio.example#fragment",
+        "https://user:fixture@studio.example",
+    ],
+)
+def test_studio_url_is_an_origin_not_a_route_or_credential_container(
+    export: Export, url: str
+) -> None:
+    with pytest.raises(MappingError, match="studio URL"):
+        plan_from_export(export, studio_url=url)
 
 
 def test_sdk_accepts_metric_and_term_payloads(export: Export) -> None:

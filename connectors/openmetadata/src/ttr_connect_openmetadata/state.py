@@ -26,6 +26,7 @@ def options_fingerprint(
     deprecate_missing: bool,
     connector_version: str,
     om_version: str,
+    studio_workspace: str | None = None,
 ) -> str:
     """Invalidate the export cache when any projection input changes."""
     values = [
@@ -36,6 +37,7 @@ def options_fingerprint(
         deprecate_missing,
         connector_version,
         om_version,
+        studio_workspace,
     ]
     return hashlib.sha256(json.dumps(values, separators=(",", ":")).encode()).hexdigest()
 

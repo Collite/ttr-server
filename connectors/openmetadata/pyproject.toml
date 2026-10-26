@@ -1,6 +1,6 @@
 [project]
 name = "ttr-connect-openmetadata"
-version = "0.1.2"
+version = "0.1.3"
 description = "Project Tatrman exports into OpenMetadata (XM M-1-beta)"
 readme = "README.md"
 authors = [

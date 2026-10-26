@@ -123,6 +123,7 @@ def test_skipped_assets_preserve_state_then_retry(
     [
         None,
         "studio-url",
+        "studio-workspace",
         "cn-name-mode",
         "cn-path",
         "world",
@@ -170,12 +171,15 @@ def test_conditional_export_respects_options(
 
             monkeypatch.setattr(OmClient, "read_version", upgraded)
         elif change == "connector-version":
-            monkeypatch.setattr("ttr_connect_openmetadata.cli.version", lambda _: "0.1.3")
+            monkeypatch.setattr(
+                "ttr_connect_openmetadata.cli.version", lambda _: "next-connector-build"
+            )
         elif change == "no-deprecate-missing":
             args += ["--no-deprecate-missing"]
         elif change:
             value = {
                 "studio-url": "https://new-studio.example",
+                "studio-workspace": "catalog-demo",
                 "cn-name-mode": "qname",
                 "cn-path": "owl",
                 "world": export.graph.world,
@@ -210,6 +214,7 @@ def test_conditional_export_respects_options(
                 assert all(
                     t["extension"]["ttrUrl"].startswith("https://new-studio.example/")
                     for t in fake.stores["glossaryTerms"].values()
+                    if not t["extension"]["ttrQname"].startswith("cn.")
                 )
 
 

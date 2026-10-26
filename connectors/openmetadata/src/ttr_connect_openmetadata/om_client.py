@@ -461,11 +461,14 @@ class OmClient:
             term = self._patch(term, {"iri": op.iri, "extension": op.props})
         else:
             before = payload(term)
+            extension = {**before.get("extension", {}), **op.props}
+            for name in op.remove_props:
+                extension.pop(name, None)
             changes: Json = {
                 "displayName": op.display,
                 "description": op.description,
                 "synonyms": op.synonyms,
-                "extension": {**before.get("extension", {}), **op.props},
+                "extension": extension,
             }
             # An established source identity is immutable. Fill only an absent IRI.
             if op.iri and not term.iri:

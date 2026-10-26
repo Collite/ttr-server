@@ -44,8 +44,22 @@ world graph + world definitions + CN OWL, and rejects mixed ETags, snapshots,
 grammars, worlds, scoped graphs and malformed Turtle. Unknown JSON fields are
 preserved for forward compatibility. Requests have a 30-second timeout.
 
-`--world` defaults to the export's world and must match it. `--studio-url` adds
-`<url>/viewer?qname=<encoded-qname>`. `--no-deprecate-missing` suppresses stale
+`--world` defaults to the export's world and must match it. `--studio-url` is the
+Studio HTTP(S) origin. Links open the **whole model** at
+`<origin>/m/<workspace>/s/db`, `/er` or `/md`; they do not select an individual
+object. `--studio-workspace` is the manifest `modeler.toml` `project.name` and
+defaults to the export world; set it when those names differ. The workspace is
+validated against Studio's manifest/route restrictions. Credentials, query strings
+and route paths are not accepted in the origin.
+
+New `cn` concepts remain in the OM glossary: Studio's legacy `cnc` renderer is a
+different model. With `--studio-url` configured, sync removes the obsolete
+connector-owned `ttrUrl` from CN terms while retaining other custom properties,
+IRIs, definitions and asset links. Without that option it leaves existing URLs
+untouched. Version0.1.3 changes the successful-state fingerprint, forcing a real
+projection after an upgrade even if the source snapshot has not changed.
+
+`--no-deprecate-missing` suppresses stale
 operations. `plan` never calls OM and never updates the state file. Exit codes:
 0 success/304; 1 OM/credential/success-state-write failure; 2 export/state read
 failure; 3 mapping failure. Argparse usage failures exit 2.
