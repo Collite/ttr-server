@@ -11,11 +11,18 @@ const { PackageDirectoryLoader } = require('n8n-core');
   const directory = '/opt/tatrman-nodes/node_modules/@collite/n8n-nodes-tatrman';
   const pkg = JSON.parse(fs.readFileSync(path.join(directory, 'package.json'), 'utf8'));
   assert.equal(pkg.name, '@collite/n8n-nodes-tatrman');
+  for (const file of [path.join(directory, 'package.json'), '/opt/tatrman-entrypoint.sh']) {
+    assert.equal(fs.statSync(file).uid, 0, `${file} must be root-owned`);
+    assert.throws(() => fs.openSync(file, 'r+'), { code: 'EACCES' });
+  }
+  assert.throws(() => fs.writeFileSync(path.join(directory, 'dist', 'write-probe'), ''), { code: 'EACCES' });
   assert.equal(pkg.version, process.env.EXPECTED_PACKAGE_VERSION);
   const runtime = '/usr/local/lib/node_modules/n8n';
   assert.equal(JSON.parse(fs.readFileSync(`${runtime}/package.json`, 'utf8')).version, process.env.EXPECTED_RUNTIME_VERSION);
   const sdk = JSON.parse(fs.readFileSync(`${runtime}/node_modules/n8n-workflow/package.json`, 'utf8'));
   assert.equal(pkg.peerDependencies['n8n-workflow'], sdk.version);
+  const luxon = JSON.parse(fs.readFileSync(`${runtime}/node_modules/luxon/package.json`, 'utf8'));
+  assert.equal(pkg.peerDependencies.luxon, luxon.version);
   for (const file of [...pkg.n8n.nodes, ...pkg.n8n.credentials]) {
     assert.ok(fs.statSync(path.join(directory, file)).isFile(), `Missing packaged file: ${file}`);
   }

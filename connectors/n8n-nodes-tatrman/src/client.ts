@@ -7,9 +7,12 @@ export interface OpenInput extends IDataObject { deployment: string; port: IData
 export interface OpenResult extends IDataObject { runId: string; replayed?: boolean; status?: string }
 export interface Descriptor extends IDataObject { deployments: IDataObject[]; recipes: IDataObject[]; programs: IDataObject[] }
 export interface AutomationEvent extends IDataObject { kind: string; deployment: string; runId?: string; taskId?: string; payload: IDataObject }
-// Server budgets.syncDefault is 60 s; allow transport/headroom before a 202 starts polling.
-const HTTP_TIMEOUT_MS = 90_000;
-const POLLING_BUDGET_MS = 30_000;
+// Server defaults: syncDefault=60 s, batchDefault=30 min. These configurable client
+// defaults allow sync headroom and ten minutes of polling; programs may need larger values.
+export const DEFAULT_REQUEST_TIMEOUT_SECONDS = 90;
+export const DEFAULT_WAIT_UP_TO_SECONDS = 600;
+export interface ClientBudgets { requestTimeoutMs?: number; waitUpToMs?: number }
+interface Flight { runId?: string; opening?: boolean; idempotencyKey?: string; read?: string }
 const enc = encodeURIComponent;
 function pollingDelay(headers: Record<string, unknown> | undefined): number {
   const raw = headers?.['retry-after'] ?? headers?.['Retry-After'];
@@ -29,52 +32,54 @@ export function rethrowDoorError(node: INode, error: unknown, itemIndex?: number
 
 /** Client of the governed door; n8n owns authentication and credential storage. */
 export class AutomationClient {
-  constructor(private readonly context: Context) {}
+  constructor(private readonly context: Context, private readonly budgets: ClientBudgets = {}) {}
 
-  async request<T = IDataObject>(method: IHttpRequestOptions['method'], path: string, body?: IDataObject, qs?: IDataObject, awaitCompletion = false, flight: { runId?: string; opening?: boolean; idempotencyKey?: string } = {}): Promise<T> {
+  async request<T = IDataObject>(method: IHttpRequestOptions['method'], path: string, body?: IDataObject, qs?: IDataObject, awaitCompletion = false, flight: Flight = {}): Promise<T> {
     const credentials = await this.context.getCredentials('tatrmanAutomationApi');
     const root = new URL(`${String(credentials.baseUrl).replace(/\/+$/, '')}/automation/`);
+    if (root.username || root.password) throw new NodeOperationError(this.context.getNode(), 'Base URL must not contain credentials');
     let url = new URL(path.replace(/^\//, ''), root);
+    const requestTimeout = this.budgets.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_SECONDS * 1000;
+    const waitUpTo = this.budgets.waitUpToMs ?? DEFAULT_WAIT_UP_TO_SECONDS * 1000;
     let deadline = Infinity;
     let polling = false;
     let initial: IDataObject = {};
-    for (let attempt = 0; attempt <= 6; attempt++) {
+    while (true) {
       let response;
       try {
         response = await this.context.helpers.httpRequestWithAuthentication.call(this.context, 'tatrmanAutomationApi', {
           method: polling ? 'GET' : method, url: url.toString(), json: true,
           ...(polling ? {} : { ...(body === undefined ? {} : { body }), ...(qs ? { qs } : {}) }),
           returnFullResponse: true, ignoreHttpStatusErrors: true, disableFollowRedirect: true,
-          timeout: polling ? Math.max(1, Math.min(HTTP_TIMEOUT_MS, deadline - Date.now())) : HTTP_TIMEOUT_MS,
+          timeout: polling ? Math.max(1, Math.min(requestTimeout, deadline - Date.now())) : requestTimeout,
         });
       } catch {
         // Do not expose a helper error's request configuration, which may contain the bearer.
-        const description = flight.runId
-          ? `The evaluation for run ${flight.runId} continues on the server if accepted. Retry Evaluate with this run ID to join it.`
-          : flight.opening ? 'The run may already exist. Always set an Idempotency Key; retry Open only with the same key to avoid another run.'
-            : 'The automation door could not be reached';
+        const description = this.flightDescription(flight);
         const error = new NodeApiError(this.context.getNode(), {}, { message: 'Tatrman request failed', description });
         error.context = { runId: flight.runId ?? initial.runId, location: url.toString() };
         throw error;
       }
       const status = Number(response.statusCode);
       const value = response.body as IDataObject;
+      const runId = flight.runId ?? initial.runId;
       if (status >= 400) {
-        const fault = value?.error as IDataObject | undefined;
+        const fault = value && typeof value === 'object' ? value.error as IDataObject | undefined : undefined;
+        const gatewayFailure = [502, 503, 504].includes(status) && !fault?.code;
         const code = String(fault?.code ?? status);
-        const error = new NodeApiError(this.context.getNode(), (value ?? {}) as JsonObject, {
+        const error = new NodeApiError(this.context.getNode(), (value && typeof value === 'object' ? value : {}) as JsonObject, {
           message: `${code}: ${String(fault?.message ?? 'Tatrman request failed')}`,
-          description: JSON.stringify(fault?.detail ?? value), httpCode: String(status),
+          description: gatewayFailure ? this.flightDescription(flight) : JSON.stringify(fault?.detail ?? value), httpCode: String(status),
         });
-        error.context = { code, detail: fault?.detail };
+        error.context = { code, detail: fault?.detail, runId, location: url.toString() };
         throw error;
       }
       if (status >= 300 && status < 400) {
         throw new NodeOperationError(this.context.getNode(), 'Unexpected redirect from the automation door');
       }
-      if (status === 202 && flight.opening) {
+      if (flight.opening) {
         const location = response.headers?.location ?? response.headers?.Location ?? value?.location;
-        return { ...value, replayed: true, ...(location ? { location: this.location(String(location), root, url).toString() } : {}) } as T;
+        return { ...value, ...(location ? { location: this.location(String(location), root, url).toString() } : {}) } as T;
       }
       const pending = awaitCompletion && (status === 202 || (polling && ['open', 'running'].includes(String(value?.status))));
       if (!pending) {
@@ -83,21 +88,27 @@ export class AutomationClient {
         }
         return (polling ? { ...initial, ...value } : value) as T;
       }
-      if (!polling) { initial = value ?? {}; deadline = Date.now() + POLLING_BUDGET_MS; }
+      if (!polling) { initial = value ?? {}; deadline = Date.now() + waitUpTo; }
       const location = response.headers?.location ?? response.headers?.Location ?? (typeof value?.location === 'string' ? value.location : undefined);
       if (location) url = this.location(String(location), root, url);
       else if (!polling) throw new NodeOperationError(this.context.getNode(), 'Async response has no Location');
-      if (url.origin !== root.origin || !url.pathname.startsWith(root.pathname) || url.username || url.password) {
-        throw new NodeOperationError(this.context.getNode(), 'Unsafe async Location from automation door');
-      }
       const delay = pollingDelay(response.headers);
-      if (attempt === 6 || Date.now() + delay >= deadline) break;
+      if (Date.now() + delay >= deadline) break;
       polling = true;
       await sleep(delay);
     }
-    const error = new NodeOperationError(this.context.getNode(), 'Automation request exceeded its 30 second polling budget');
+    const error = new NodeOperationError(this.context.getNode(), `Automation request exceeded its ${waitUpTo / 1000} second polling budget`, { description: this.flightDescription(flight) });
     error.context = { runId: flight.runId ?? initial.runId, location: url.toString() };
     throw error;
+  }
+
+  private flightDescription(flight: Flight): string {
+    if (flight.read) return `Read ${flight.read} for run ${flight.runId} timed out or could not complete; the server read may continue.`;
+    if (flight.runId) return `The evaluation for run ${flight.runId} continues on the server if accepted. Retry Evaluate with this run ID to join it.`;
+    if (flight.opening) return flight.idempotencyKey
+      ? 'The run may already exist; retry Open with the same key.'
+      : 'The run may already exist; a retry opens another run. Always set an Idempotency Key before the first attempt.';
+    return 'The automation door could not be reached';
   }
 
   private location(location: string, root: URL, current: URL): URL {
@@ -113,11 +124,11 @@ export class AutomationClient {
   descriptor() { return this.request<Descriptor>('GET', ''); }
   recipe(recipe: string) { return this.request('GET', `recipes/${enc(recipe)}`); }
   open(recipe: string, input: OpenInput) { return this.request<OpenResult>('POST', `recipes/${enc(recipe)}/runs`, input, undefined, false, { opening: true, idempotencyKey: input.idempotencyKey }); }
-  part(id: string, name: string) { return this.request('POST', `runs/${enc(id)}/parts/${enc(name)}`); }
-  island(id: string, name: string) { return this.request('POST', `runs/${enc(id)}/islands/${enc(name)}`); }
+  part(id: string, name: string) { return this.request('POST', `runs/${enc(id)}/parts/${enc(name)}`, undefined, undefined, false, { runId: id, read: `part ${name}` }); }
+  island(id: string, name: string) { return this.request('POST', `runs/${enc(id)}/islands/${enc(name)}`, undefined, undefined, false, { runId: id, read: `island ${name}` }); }
   evaluate(id: string) { return this.request('POST', `runs/${enc(id)}/evaluate`, undefined, undefined, true, { runId: id }); }
-  run(id: string) { return this.request('GET', `runs/${enc(id)}`); }
-  route(id: string, route: string, offset = 0) { return this.request<Page>('GET', `runs/${enc(id)}/routes/${enc(route)}`, undefined, { offset }); }
+  run(id: string) { return this.request('GET', `runs/${enc(id)}`, undefined, undefined, false, { runId: id, read: 'run status' }); }
+  route(id: string, route: string, offset = 0) { return this.request<Page>('GET', `runs/${enc(id)}/routes/${enc(route)}`, undefined, { offset }, false, { runId: id, read: `route ${route}` }); }
   async routeRows(id: string, route: string): Promise<IDataObject[]> {
     const rows: IDataObject[] = [];
     for (let page = 0; page < 10_000; page++) {

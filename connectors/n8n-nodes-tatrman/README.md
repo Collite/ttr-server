@@ -9,15 +9,25 @@ The public package name is reserved for a later licensing decision; this Platfor
 
 ## Install
 
-After a release is published, install the exact version into a self-hosted n8n community-package directory:
+After a release is published, download the exact tarball using your GitHub Packages read credential,
+then install that artifact in the self-hosted n8n community-package directory:
 
 ```sh
 npm config set @collite:registry https://npm.pkg.github.com
 # Configure a read:packages credential for npm.pkg.github.com using your secret manager.
-# Do not bake that credential into an image layer.
+mkdir -p /tmp/n8n-package
+npm pack @collite/n8n-nodes-tatrman@0.1.0 --pack-destination /tmp/n8n-package
+mkdir -p ~/.n8n/nodes
 cd ~/.n8n/nodes
-npm install @collite/n8n-nodes-tatrman@0.1.0
+npm install --offline --ignore-scripts --legacy-peer-deps --no-audit --no-fund /tmp/n8n-package/collite-n8n-nodes-tatrman-0.1.0.tgz
+export NODE_PATH=/usr/local/lib/node_modules/n8n/node_modules
+n8n start
 ```
+
+This is the supported npm configuration proven below: n8n 2.44.6 supplies n8n-workflow 2.44.2 and
+Luxon 3.7.2 through `NODE_PATH`; `--legacy-peer-deps` prevents separate peer copies. Plain npm peer
+auto-installation without that runtime path is not covered. Keep registry credentials out of image
+layers. Installing additional community packages through this derived image's UI is untested.
 
 Restart n8n. Hartland uses the derived image instead, keeping the package outside its persistent `.n8n` volume.
 Build and verify it from the packed package (repository root, Docker required):
@@ -34,7 +44,7 @@ upstream multi-platform digest. The dedicated manual mirror job in `release-imag
 workflow token to create the package and establish repository Actions access; PR and release jobs log
 in to GHCR before pulling it. The connector image remains `ghcr.io/collite/n8n-tatrman:<runtime>-<package>`.
 
-The build context is the unpacked package tarball. Package metadata and compiled files live in
+The build context is the unpacked package tarball. Root-owned package metadata and compiled files live in
 `/opt/tatrman-nodes/node_modules/@collite/n8n-nodes-tatrman`, outside the persistent `.n8n` volume.
 An unprivileged entrypoint creates only a symlink under n8n's scanned
 `.n8n/nodes/node_modules/@collite` directory, then delegates to the upstream entrypoint. It refuses
@@ -61,11 +71,11 @@ Select a recipe for the route/action dropdown; names come from the manifest retu
 
 | Operation | Fields | Output |
 | --- | --- | --- |
-| Open | Recipe, Deployment, Port (JSON); optional As Of, Bundle, Dry Run, Idempotency Key | Run ID, replay flag and status |
-| Part | Run ID, Part (`candidates`, context name or `decision`) | Part preview and reference |
-| Islands | Run ID, Island | Island preview and reference |
-| Evaluate | Run ID | Verdict/guard result, or completed asynchronous run |
-| Routes | Run ID, Recipe, Route | One item per row; fetches subsequent pages |
+| Open | Recipe, Deployment, Port (JSON); optional As Of, Bundle, Dry Run, Idempotency Key | Run ID, status, Location; replayed means an earlier closed run |
+| Part | Run ID, Part (`candidates`, context name or `decision`), Request Timeout | Part preview and reference |
+| Islands | Run ID, Island, Request Timeout | Island preview and reference |
+| Evaluate | Run ID, Wait Up To, Request Timeout | Verdict/guard result, or completed asynchronous run |
+| Routes | Run ID, Recipe, Route, Request Timeout | One item per row; fetches subsequent pages |
 | Perform | Run ID, Recipe, Action; optional Keys (JSON array), Group (JSON), Callback URL | Performed/skipped records |
 | Outcome | Run ID, Recipe, Action, Outcomes (JSON array) | Door acknowledgement |
 | Digests | Run ID | Digest groups |
@@ -77,18 +87,30 @@ For example, Open's Port may be `{"key":4711}` or `{"none":true}`. A stable Idem
 open replay the same run. Outcome entries contain `key`, `status` (`delivered`, `failed`, `skipped`), `at`, and
 optional `detail`. Keys/Rows/Outcomes must be arrays, and Port must be an object.
 
-Items retain their n8n input pairing. Enable n8n's Continue On Fail to receive `{ error, code, detail }` per failed
-item. Otherwise a NodeApiError includes the Server's code; fingerprint `differs` survives in its description
-and context. Each HTTP attempt allows 90 seconds, exceeding the Server's default 60-second synchronous budget.
-Only Evaluate polls after a 202, with a separate 30-second polling budget and a 15-second Retry-After
-floor. Poll errors retain the run ID and Location; a timed-out evaluation may still be running, and
-retrying Evaluate with that run ID joins the existing evaluation.
+Items retain their n8n input pairing. Continue On Fail emits
+`{ error, code?, detail?, runId?, location?, description? }`, preserving recovery guidance while
+omitting absent fields. Gateway 502/503/504 without a Server error body carries the same in-flight
+context as a transport failure; raw helper errors and credentials remain withheld.
 
-Always set an Idempotency Key on Open. An Open 202 is returned immediately as a replay handle;
-continue to Evaluate. If the original session is still registering, Evaluate can briefly return
-RUN_ABANDONED: retry Evaluate with the same run ID. A lost Open response without an idempotency key
-may have created a run; repeating Open can create another. Server Locations beginning `/automation/`
-are rebased beneath a Base URL path prefix; other origins and paths remain refused.
+Evaluate's **Wait Up To** defaults to 600 seconds after a 202; **Request Timeout** defaults to 90
+seconds per HTTP attempt and is also configurable on Part, Islands and Routes. The Server defaults
+are syncDefault=60 seconds and batchDefault=30 minutes; programs can override them. Increase the
+options for slower programs/reads. Polling keeps a 15-second minimum Retry-After interval, and
+budget errors retain the run ID and Location. **Deployment requirement:** any gateway route timeout
+on this path must exceed Request Timeout; Envoy's default 15 seconds is insufficient.
+
+Always set an Idempotency Key on Open. A 202 with status open/running is a live handle: continue to
+Evaluate, with the Server's `replayed:false` unchanged. A 200 replayed:true identifies an earlier
+closed run. Locations on 201/202 are normalized beneath the credential's gateway prefix. If a live
+session is still registering, Evaluate can briefly return RUN_ABANDONED: retry with the same run ID.
+Timed-out evaluations may continue on the server; retry Evaluate to join them. A lost Open response
+with a key can be retried with the same key. Without one the run may exist and a retry opens another.
+
+Only a literally blank optional parameter counts as omitted. Keys expressions must resolve to an
+array. A Keys, Group, Rows or Idempotency Key expression resolving to undefined, null or an empty
+string refuses that item, before any mutation. Missing As Of, Bundle, Callback URL or Note results
+are omitted and never coerced to the text undefined/null. Distinct event IDs must produce distinct
+idempotency keys; the Server scopes the key by subject/deployment/key, not by event payload.
 
 Omitted Keys means unrestricted candidates. An explicit `[]` means perform nothing: the connector
 emits `{ performed: [], skipped: [] }` without calling the Server. Empty Rows on Answer is preserved.
@@ -114,8 +136,9 @@ Poll supports Run Closed only. Since defaults to the first poll. The proposed li
 Timestamps are compared numerically; the cursor is canonical ISO. A five-minute creation-time overlap
 catches bounded late commits, with seen IDs pruned to that window. Pending runs are tracked separately;
 403/404 and terminal runs are dropped and logged. Transport/5xx failures do not commit partial state;
-truncated lists fail explicitly. Poll state survives re-publication and resets only when deployment or
-configured Since changes. Server P3 still needs to confirm durable terminal reads, inclusive time filtering,
+truncated lists fail explicitly. Poll state survives re-publication; switching to webhook mode clears it. It resets when deployment
+or configured Since changes, and overlapping ticks for the same workflow/node are skipped. Since
+values without an offset use the workflow timezone. Server P3 still needs to confirm durable terminal reads, inclusive time filtering,
 creation-versus-commit ordering and the maximum late-commit delay. These client tests do not certify that API.
 
 ## Development and checks
@@ -131,7 +154,7 @@ just lint-n8n
 just test-n8n-runtime
 just build-n8n-image
 just test-n8n-image
-just test-n8n-install-parity
+just test-n8n-install-parity /path/to/checked-package-directory
 ```
 
 Vitest uses fake service responses constrained by the checked Server source: route limits/defaults,
@@ -139,13 +162,14 @@ closed-session refusal, request budgets and idempotent replay handles. Recorded 
 hartland certification remain pending. The old adapter-only smoke script was removed.
 
 `test-n8n-image` checks the actual package manifest, compiled entry points, runtime/SDK pairing,
-unprivileged user and scoped package loader with a fresh `.n8n` mount. Its persisted workflow proof
+unprivileged user, root-owned/write-protected package/entrypoint and scoped package loader with a fresh `.n8n` mount. Its persisted workflow proof
 exercises authenticated credential testing (including a bad token), scoped workflow IDs, a 450-row
 route in server-default 200/200/50 pages, HMAC delivery, filtered-event suppression, expressions,
 perform/outcome/close, closed-route refusal, persisted success and webhook deactivation. A separate
 real poll-mode workflow is edited, saved and re-published while active: deduplication and pending-run
 state must survive. Only the Automation service is fake; outbound networking is disabled and only
-harness scripts are mounted. `test-n8n-install-parity` installs the tarball with npm in a fresh runtime
+harness scripts are mounted. `test-n8n-install-parity` consumes the same single checked tarball used for the image and publication
+(no second pack), prints its SHA-256, and installs it with the exact npm flags and NODE_PATH above in a fresh runtime
 and runs the same scoped workflow JSON. This proves installation/runtime mechanics, not Server P3.
 
 `scan` runs the official `@n8n/scan-community-package` rules on source and shipped JS, including `src/` (the public

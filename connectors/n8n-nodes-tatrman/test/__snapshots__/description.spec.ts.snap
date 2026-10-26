@@ -203,6 +203,45 @@ exports[`n8n descriptions > defines a valid Run description and stable parameter
     "type": "string",
   },
   {
+    "default": 600,
+    "description": "Polling budget in seconds after an accepted evaluation",
+    "displayName": "Wait Up To",
+    "displayOptions": {
+      "show": {
+        "operation": [
+          "evaluate",
+        ],
+      },
+    },
+    "name": "waitUpTo",
+    "required": true,
+    "type": "number",
+    "typeOptions": {
+      "minValue": 1,
+    },
+  },
+  {
+    "default": 90,
+    "description": "Per-attempt HTTP timeout in seconds; exceed the program sync/read budget and configure the gateway accordingly",
+    "displayName": "Request Timeout",
+    "displayOptions": {
+      "show": {
+        "operation": [
+          "evaluate",
+          "part",
+          "islands",
+          "routes",
+        ],
+      },
+    },
+    "name": "requestTimeout",
+    "required": true,
+    "type": "number",
+    "typeOptions": {
+      "minValue": 1,
+    },
+  },
+  {
     "default": "candidates",
     "description": "Candidates, a context name, or decision",
     "displayName": "Part",
@@ -459,7 +498,7 @@ exports[`n8n descriptions > defines a valid Trigger description and stable param
   },
   {
     "default": "",
-    "description": "Optional creation-time lower bound for the first poll. Defaults to the first poll.",
+    "description": "Optional creation-time lower bound for the first poll. Defaults to the first poll; values without an offset use the workflow timezone.",
     "displayName": "Since",
     "displayOptions": {
       "show": {

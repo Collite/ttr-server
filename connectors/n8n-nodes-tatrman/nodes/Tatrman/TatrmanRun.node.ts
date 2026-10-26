@@ -1,6 +1,6 @@
 import { NodeConnectionTypes, NodeOperationError } from 'n8n-workflow';
 import type { IDataObject, IExecuteFunctions, INodeExecutionData, INodeProperties, INodeType, INodeTypeDescription } from 'n8n-workflow';
-import { AutomationClient, rethrowDoorError } from '../../src/client';
+import { AutomationClient, DEFAULT_REQUEST_TIMEOUT_SECONDS, DEFAULT_WAIT_UP_TO_SECONDS, rethrowDoorError } from '../../src/client';
 import { loadOptions } from '../../src/options';
 const operations = ['open', 'part', 'islands', 'evaluate', 'routes', 'perform', 'outcome', 'digests', 'close', 'answer', 'task'];
 const show = (...operation: string[]) => ({ show: { operation } });
@@ -22,6 +22,8 @@ export class TatrmanRun implements INodeType {
       field('Bundle', 'bundle', 'Optional preview bundle (debug only)', ['open'], { required: false }),
       field('Dry Run', 'dryRun', 'Whether to request a dry run', ['open'], { type: 'boolean', default: false, required: false }),
       field('Idempotency Key', 'idempotencyKey', 'Stable key for replaying an open request safely', ['open'], { required: false }),
+      field('Wait Up To', 'waitUpTo', 'Polling budget in seconds after an accepted evaluation', ['evaluate'], { type: 'number', default: DEFAULT_WAIT_UP_TO_SECONDS, typeOptions: { minValue: 1 } }),
+      field('Request Timeout', 'requestTimeout', 'Per-attempt HTTP timeout in seconds; exceed the program sync/read budget and configure the gateway accordingly', ['evaluate', 'part', 'islands', 'routes'], { type: 'number', default: DEFAULT_REQUEST_TIMEOUT_SECONDS, typeOptions: { minValue: 1 } }),
       field('Part', 'part', 'Candidates, a context name, or decision', ['part'], { default: 'candidates' }),
       field('Island', 'island', 'Island name in the recipe manifest', ['islands']),
       field('Route Name or ID', 'route', 'Choose from the list, or specify an ID using an expression', ['routes'], { type: 'options', typeOptions: { loadOptionsMethod: 'getRoutes', loadOptionsDependsOn: ['recipe'] } }),
@@ -38,14 +40,24 @@ export class TatrmanRun implements INodeType {
   };
   methods = { loadOptions };
   async execute(this: IExecuteFunctions): Promise<INodeExecutionData[][]> {
-    const client = new AutomationClient(this);
     const output: INodeExecutionData[] = [];
     for (let i = 0; i < this.getInputData().length; i++) {
       const value = (name: string, fallback: unknown = '') => this.getNodeParameter(name, i, fallback);
       const str = (name: string) => String(value(name));
-      const supplied = (name: string) => ![undefined, null, ''].includes(value(name) as undefined | null | string);
-      const json = (name: string, kind?: 'array' | 'object'): unknown => {
-        const raw = value(name);
+      const labels: Record<string, string> = { keys: 'Keys', group: 'Group', rows: 'Rows', idempotencyKey: 'Idempotency Key' };
+      const optional = (name: string): unknown => {
+        const raw = this.getNodeParameter(name, i, '', { rawExpressions: true });
+        if (raw === '') return undefined;
+        const resolved = value(name);
+        if (resolved === undefined || resolved === null || resolved === '') {
+          if (labels[name]) {
+            throw new NodeOperationError(this.getNode(), `${labels[name]} expression resolved to nothing${name === 'keys' ? '; send [] to perform nothing' : ''}`, { itemIndex: i });
+          }
+          return undefined;
+        }
+        return resolved;
+      };
+      const json = (name: string, kind?: 'array' | 'object', raw: unknown = value(name)): unknown => {
         let parsed;
         try { parsed = typeof raw === 'string' ? JSON.parse(raw) : raw; }
         catch { throw new NodeOperationError(this.getNode(), `Invalid ${name[0].toUpperCase() + name.slice(1)} JSON`, { itemIndex: i }); }
@@ -55,13 +67,27 @@ export class TatrmanRun implements INodeType {
         return parsed;
       };
       try {
+        const seconds = (name: string, fallback: number) => {
+          const result = Number(value(name, fallback));
+          if (!Number.isFinite(result) || result <= 0) throw new NodeOperationError(this.getNode(), `${name} must be positive seconds`, { itemIndex: i });
+          return result * 1000;
+        };
+        const operation = str('operation');
+        const configurableRead = ['evaluate', 'part', 'islands', 'routes'].includes(operation);
+        const client = new AutomationClient(this, {
+          requestTimeoutMs: configurableRead ? seconds('requestTimeout', DEFAULT_REQUEST_TIMEOUT_SECONDS) : DEFAULT_REQUEST_TIMEOUT_SECONDS * 1000,
+          waitUpToMs: operation === 'evaluate' ? seconds('waitUpTo', DEFAULT_WAIT_UP_TO_SECONDS) : DEFAULT_WAIT_UP_TO_SECONDS * 1000,
+        });
         const id = str('runId');
         let result: unknown;
-        switch (str('operation')) {
+        switch (operation) {
           case 'open': {
             const body = { deployment: str('deployment'), port: json('port', 'object') as IDataObject, dryRun: Boolean(value('dryRun', false)), origin: 'engine' };
             const extras: IDataObject = {};
-            for (const key of ['asOf', 'bundle', 'idempotencyKey']) if (str(key)) extras[key] = str(key);
+            for (const key of ['asOf', 'bundle', 'idempotencyKey']) {
+              const extra = optional(key);
+              if (extra !== undefined) extras[key] = extra as IDataObject[string];
+            }
             result = await client.open(str('recipe'), { ...body, ...extras }); break;
           }
           case 'part': result = await client.part(id, str('part')); break;
@@ -70,10 +96,13 @@ export class TatrmanRun implements INodeType {
           case 'routes': result = await client.routeRows(id, str('route')); break;
           case 'perform': {
             const body: IDataObject = {};
-            if (supplied('keys')) body.keys = json('keys', 'array') as IDataObject[];
+            const keys = optional('keys');
+            if (keys !== undefined) body.keys = json('keys', 'array', keys) as IDataObject[];
+            const group = optional('group');
+            if (group !== undefined) body.group = json('group', undefined, group) as IDataObject;
             if (Array.isArray(body.keys) && body.keys.length === 0) { result = { performed: [], skipped: [] }; break; }
-            if (supplied('group')) body.group = json('group') as IDataObject;
-            if (str('callbackUrl')) body.callbackUrl = str('callbackUrl');
+            const callback = optional('callbackUrl');
+            if (callback !== undefined) body.callbackUrl = callback as string;
             result = await client.perform(id, str('action'), body); break;
           }
           case 'outcome': result = await client.outcome(id, str('action'), json('outcomes', 'array') as IDataObject[]); break;
@@ -81,8 +110,10 @@ export class TatrmanRun implements INodeType {
           case 'close': result = await client.close(id); break;
           case 'answer': {
             const body: IDataObject = { answer: str('answer') };
-            if (str('note')) body.note = str('note');
-            if (supplied('rows')) body.rows = json('rows', 'array') as IDataObject[];
+            const note = optional('note');
+            if (note !== undefined) body.note = note as string;
+            const rows = optional('rows');
+            if (rows !== undefined) body.rows = json('rows', 'array', rows) as IDataObject[];
             result = await client.answer(str('taskId'), body); break;
           }
           case 'task': result = await client.task(str('taskId')); break;
@@ -96,8 +127,11 @@ export class TatrmanRun implements INodeType {
         if (!this.continueOnFail()) {
           rethrowDoorError(this.getNode(), error, i);
         }
-        const fault = error as Error & { context?: IDataObject };
-        output.push({ json: { error: fault.message, code: fault.context?.code, detail: fault.context?.detail }, pairedItem: { item: i } });
+        const fault = error as Error & { context?: IDataObject; description?: string };
+        const json: IDataObject = { error: fault.message };
+        for (const key of ['code', 'detail', 'runId', 'location']) if (fault.context?.[key] !== undefined) json[key] = fault.context[key];
+        if (fault.description !== undefined) json.description = fault.description;
+        output.push({ json, pairedItem: { item: i } });
       }
     }
     return [output];

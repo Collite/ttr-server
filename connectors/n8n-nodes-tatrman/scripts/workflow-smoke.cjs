@@ -79,7 +79,8 @@ async function main() {
         assert.equal(url.searchParams.has('limit'), false, 'Use server default page size');
         const offset = Number(url.searchParams.get('offset'));
         assert.ok(offset >= 0 && offset < run.keys.length);
-        result = { rows: run.keys.slice(offset, offset + limit).map(key => ({ key, verdict_reason: 'fixture' })), rowCount: run.keys.length, truncated: offset + limit < run.keys.length };
+        result = { rows: run.keys.slice(offset, offset + limit).map(key => ({ key, verdict_reason: 'fixture' })), rowCount: run.keys.length, // RouteRows.kt: rowCount > rows.size, even on the final page.
+          truncated: run.keys.length > run.keys.slice(offset, offset + limit).length };
       } else if (url.pathname.endsWith('/actions/notify/perform') && run) {
         assert.equal(req.method, 'POST');
         assert.equal(run.status, 'evaluated', 'Never perform new work on the sealed source run');
@@ -155,6 +156,10 @@ async function main() {
     ],
     connections: Object.fromEntries([['Trigger', 'Open'], ['Open', 'Evaluate'], ['Evaluate', 'Routes'], ['Routes', 'Perform'], ['Perform', 'Outcome'], ['Outcome', 'Close']].map(([source, target]) => [source, { main: [[{ node: target, type: 'main', index: 0 }]] }])),
   };
+  // Exercise n8n-core's real expression resolver: missing selectors/keys must never mutate.
+  workflow.nodes.push({ ...node('Missing selection', { operation: 'perform', runId: 'source-run', action: 'notify', keys: '={{ $json.payload.selected }}' }), continueOnFail: true });
+  workflow.nodes.push({ ...node('Missing idempotency', { operation: 'open', recipe: 'release_order', deployment: 'release_native_event', port: '{}', dryRun: true, idempotencyKey: '={{ $json.eventId }}' }), continueOnFail: true });
+  workflow.connections.Trigger.main[0].push({ node: 'Missing selection', type: 'main', index: 0 }, { node: 'Missing idempotency', type: 'main', index: 0 });
   const pollWorkflow = {
     id: 'tatrman-poll-proof', name: 'Tatrman polling proof', active: false, versionId: randomUUID(),
     settings: { executionOrder: 'v1' },
@@ -239,13 +244,15 @@ async function main() {
       const successes = body.data.results.filter(execution => execution.status === 'success');
       return [workflow.id, pollWorkflow.id].every(id => successes.some(execution => execution.workflowId === id));
     }, 'persisted successful executions');
+    assert.equal(calls.filter(call => call.path === '/automation/recipes/release_order/runs').length, 1, 'Missing Idempotency Key expression must not send Open');
+    assert.equal(calls.filter(call => call.path.includes('/runs/source-run/actions/')).length, 0, 'Missing Keys expression must not send Perform');
     for (const id of [workflow.id, pollWorkflow.id]) {
       const deactivate = await fetch(`${n8nUrl}/rest/workflows/${id}/deactivate`, { method: 'POST', headers: { cookie, 'content-type': 'application/json' }, body: '{}' });
       assert.equal(deactivate.status, 200, await deactivate.text());
     }
     await until(() => hooks.size === 0, 'remote webhook removal');
     assert.equal(calls.filter(call => call.method === 'DELETE').length, 1);
-    console.log('PASS: scoped package IDs, credential auth, 450-row server-default paging, closed-route refusal, filtered-event suppression, real poll state across active edit/save/republish, paired workflows and deactivation');
+    console.log('PASS: scoped package IDs, missing-expression mutation refusal, credential auth, 450-row server-default paging, closed-route refusal, filtered-event suppression, real poll state across active edit/save/republish, paired workflows and deactivation');
   } catch (error) {
     console.error(runtimeLog);
     throw error;

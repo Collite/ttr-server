@@ -12,7 +12,8 @@ it('R1 pages 450 rows using the server default without a limit override', async 
     const offset = Number(options.qs?.offset ?? 0);
     if (options.qs?.limit && Number(options.qs.limit) > 200) return { statusCode: 400, body: { error: { code: 'invalid-limit' } } };
     expect(options.qs).not.toHaveProperty('limit');
-    return { rows: Array.from({ length: Math.min(200, 450 - offset) }, (_, i) => ({ key: i + offset })), rowCount: 450, truncated: offset + 200 < 450 };
+    return { rows: Array.from({ length: Math.min(200, 450 - offset) }, (_, i) => ({ key: i + offset })), rowCount: 450, // RouteRows.kt: rowCount > rows.size, including the final page.
+      truncated: 450 > Math.min(200, 450 - offset) };
   });
   expect(await new AutomationClient(h.context).routeRows('r1', 'release')).toHaveLength(450);
   expect(h.request.mock.calls.map(call => call[1].qs?.offset)).toEqual([0, 200, 400]);
@@ -42,8 +43,8 @@ it('R2 a request timeout preserves the run handle and says evaluation continues'
   expect(JSON.stringify(error)).not.toContain('secret');
 });
 it('R5 Open returns a live idempotent replay without polling', async () => {
-  const h = harness({}, () => ({ statusCode: 202, headers: { location: '/automation/runs/r1' }, body: { runId: 'r1', status: 'open' } }));
-  expect(await new AutomationClient(h.context).open('r', { deployment: 'd', port: {} })).toMatchObject({ runId: 'r1', status: 'open', location: 'https://fake.test/automation/runs/r1', replayed: true });
+  const h = harness({}, () => ({ statusCode: 202, headers: { location: '/automation/runs/r1' }, body: { runId: 'r1', status: 'open', replayed: false } }));
+  expect(await new AutomationClient(h.context).open('r', { deployment: 'd', port: {} })).toMatchObject({ runId: 'r1', status: 'open', location: 'https://fake.test/automation/runs/r1', replayed: false });
   expect(h.request).toHaveBeenCalledTimes(1);
 });
 it('R5 a polling-budget error carries runId and Location', async () => {

@@ -10,7 +10,9 @@ export function harness(parameters: IDataObject, respond: (options: IHttpRequest
     return { statusCode: 200, headers: {}, body };
   });
   const context = {
-    getNode: () => node,
+    getNode: () => ({ ...node, parameters }),
+    getWorkflow: () => ({ id: "unit-workflow" }), getTimezone: () => "UTC",
+    logger: { warn: vi.fn(), debug: vi.fn() },
     getInputData: () => Array.from({ length: count }, () => ({ json: {} })),
     getNodeParameter: (name: string, _index?: number, fallback?: unknown) => parameters[name] ?? fallback,
     getCredentials: async () => ({ baseUrl: 'https://fake.test', token: 'secret' }),
