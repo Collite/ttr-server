@@ -1,0 +1,82 @@
+package hartland
+
+model cn
+
+// CN-P6 S6.1 T4 — the phases: the per-channel sales and the recipe vocabulary (design `11` §1, the 0.5 spellings).
+// Each says what AU's hand-written islands say (automation/*/…ttrp) — those are the bar S6.2 holds these to. A
+// parametric phase reads the automation package's `def parameter` (automation/automation.ttrm) as `:<name>`, so the
+// Golem's "held orders" question uses the tolerance the recipe used (L16-1).
+
+// ---- the channel cubelets are phases of one Sale (L16-5) ----
+def phase StoreSale       { of: Sale, label: { en: "Store sale", cs: "Prodej na prodejně" },     definition: """channel = 'store'""" }
+def phase WebSale         { of: Sale, label: { en: "Web sale", cs: "Prodej na webu" },            definition: """channel = 'web'""" }
+def phase MarketplaceSale { of: Sale, label: { en: "Marketplace sale", cs: "Prodej na tržišti" }, definition: """channel = 'marketplace'""" }
+
+// ---- orders (H-1) ----
+def phase PendingOrder { of: Order, label: { en: "Pending order", cs: "Čekající objednávka" },  definition: """state in ('placed', 'held')""" }
+def phase HeldOrder    { of: Order, label: { en: "Held order", cs: "Pozastavená objednávka" },  definition: """state = 'held'""" }
+// Materialized (CN-D1, AM-2): `ttr cn materialize model cn.PlacedOrder` wrote model/er/placed_order.ttrm from the
+// definition `state = 'placed'`; the phase grounds to that stacked entity, and a definition beside it would be a
+// second grounding (cn/phase-double-definition).
+def phase PlacedOrder  { of: Order, label: { en: "Placed order", cs: "Zadaná objednávka" },     grounds: er.entity.placed_order }
+
+// H-1 check 1: a line its center cannot cover today — out of stock, or the center is out (`shortfall`).
+def phase ShortLine {
+    of: OrderLine,
+    label: { en: "Line short of stock", cs: "Řádek bez krytí" },
+    definition: """outage or on_hand < line_quantity"""
+}
+// H-1 check 2: no price applies, or the charged price is off it by more than the tolerance (`price_differences`).
+def phase MispricedLine {
+    of: OrderLine,
+    label: { en: "Mispriced line", cs: "Řádek s odchylkou ceny" },
+    definition: """applicable_price is null or abs(unit_price - applicable_price) > :tolerance"""
+}
+// H-1 check 3 (`overdue`): an open invoice past its due date.
+def phase OverdueInvoice {
+    of: Invoicing,
+    label: { en: "Overdue invoice", cs: "Faktura po splatnosti" },
+    definition: """invoice_status = 'open' and period.end < :as_of"""
+}
+def phase DebtorCustomer {
+    of: Customer,
+    label: { en: "Customer with overdue invoices", cs: "Zákazník s fakturami po splatnosti" },
+    definition: """exists Invoicing involving this as customer where OverdueInvoice"""
+}
+
+// ---- returns (H-2, decide_return) ----
+def phase ReceivedReturnLine {
+    of: ReturnLine,
+    label: { en: "Received return line", cs: "Přijatý řádek reklamace" },
+    definition: """line_state = 'received'"""
+}
+// The item is on the order the request names (`bought_here`'s item_on_order; ttr-core#154's anti-join, positive).
+def phase BoughtHereLine {
+    of: ReturnLine,
+    label: { en: "Line bought on its order", cs: "Řádek koupený na objednávce" },
+    definition: """exists OrderLine involving this.request.order, this.item"""
+}
+// Delivered longer ago than the return window (`bought_here`'s in_window = 0). AU measures from the decision day,
+// not from the request date; an order not delivered yet is running (end_open: open), so it is never late here —
+// where the island's NULL arm reads it as late.
+def phase LateReturnLine {
+    of: ReturnLine,
+    label: { en: "Late return line", cs: "Řádek reklamace po lhůtě" },
+    definition: """this.request.order.period.end < :as_of - :return_window"""
+}
+def phase AbusiveReturner {
+    of: Customer,
+    label: { en: "Abusive returner", cs: "Zákazník s nadměrnými vratkami" },
+    definition: """return_share > :abuse_share"""
+}
+def phase SmallValueLine {
+    of: ReturnLine,
+    label: { en: "Small-value line", cs: "Řádek nízké hodnoty" },
+    definition: """line_amount < :small_value"""
+}
+// The line's own item is in stock at the customer's distribution center (`stock_at_center`'s item_on_hand).
+def phase InStockAtCenter {
+    of: ReturnLine,
+    label: { en: "In stock at the customer's center", cs: "Skladem v centru zákazníka" },
+    definition: """latest(Inventory involving this.item, this.customer.center, by: as_of_date).quantity_on_hand >= return_quantity"""
+}

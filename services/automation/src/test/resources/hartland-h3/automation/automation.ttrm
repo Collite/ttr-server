@@ -1,0 +1,164 @@
+// hartland's automation package — AU design `17` §1 (parameters, actions, roles, approvals), written for ttr-core
+// grammar 0.16 (`model automation`, `//` comments, `keycloak_group`): the spellings of the toolchain's own fixture
+// (ttr-core `packages/kotlin/ttr-parser/src/test/resources/automation/automation.ttrm`), which is this file's `17` §1
+// part verbatim. Added here (AU-hartland P2):
+//   - a `{ en, cs }` label on every parameter and a `dry_run` text in both languages on every action (D-64);
+//   - H-3's and H-5's parameters (04, D-129 — the values of data/automation/automation.conf), the actions `propose`,
+//     `emit` and `record`, and the role `buyer` (S2.2 T4).
+// One deviation from `17` §1: `notify_customer.customer` is typed `customer.sk` — hartland's customer is the native
+// TPC-DS dimension, keyed `sk` (`17` §0 wrote `customer_sk`).
+// The programs and the event schemas are in programs.ttrm; the identities, executors, grants, deployments and the
+// process in the world (model/worlds/demo.ttrm). A value change here is a re-approval of kind `values` (D-13).
+package hartland.automation
+model automation
+
+// ---- parameters (D-13: a value change is a re-approval of kind `values`) ----
+// H-1 · H-2 (17 §1)
+def parameter tolerance              { type: decimal,  value: 0.01,  label: { en: "Price tolerance", cs: "Cenová tolerance" } }
+def parameter confirmation_threshold { type: decimal,  value: 50000, label: { en: "Confirmation threshold", cs: "Limit pro potvrzení" } }
+def parameter return_window          { type: days,     value: 30,    label: { en: "Return window", cs: "Lhůta pro vrácení" } }
+def parameter abuse_share            { type: decimal,  value: 0.40,  label: { en: "Return share limit", cs: "Limit podílu vratek" } }
+def parameter small_value            { type: decimal,  value: 15,    label: { en: "Small-value limit", cs: "Limit nízké hodnoty" } }
+def parameter care_threshold         { type: decimal,  value: 500,   label: { en: "Customer care threshold", cs: "Limit pro péči o zákazníky" } }
+def parameter inbound_reminder       { type: days,     value: 14,    label: { en: "Return reminder", cs: "Upomínka vrácení zboží" } }
+def parameter inbound_close          { type: days,     value: 30,    label: { en: "Return deadline", cs: "Lhůta pro vrácení zboží" } }
+def parameter settlement             { type: working_days, value: 5, label: { en: "Settlement time", cs: "Lhůta vyřízení" } }
+// H-3 (04): propose when the latest stock covers less than `cover_target` weeks of the average weekly demand of the
+// last `demand_period` weeks; propose enough for `order_up_to` weeks.
+def parameter cover_target           { type: int,      value: 3,     label: { en: "Stock cover target (weeks)", cs: "Cílové krytí zásob (týdny)" } }
+def parameter order_up_to            { type: int,      value: 6,     label: { en: "Order up to (weeks)", cs: "Doobjednat na (týdny)" } }
+def parameter demand_period          { type: int,      value: 8,     label: { en: "Demand period (weeks)", cs: "Období poptávky (týdny)" } }
+// H-5 (04, D-129): `active_orders` or more orders in the twelve months before the last `quiet_months`, none since;
+// a customer mailed in the last `mail_window` days is left out ("once per quarter").
+def parameter quiet_months           { type: int,      value: 12,    label: { en: "Quiet period (months)", cs: "Období bez objednávky (měsíce)" } }
+def parameter active_orders          { type: int,      value: 4,     label: { en: "Orders before the quiet period", cs: "Objednávky před obdobím bez objednávky" } }
+def parameter mail_window            { type: days,     value: 92,    label: { en: "Win-back mail window", cs: "Interval win-back e-mailů" } }
+
+// ---- actions (sinks per target; `native` = the Server writer or a connector) ----
+def action release {
+    columns:    [def column order { type: order.order_number }]
+    transition: order.state -> released { from: [placed, held] }
+    sinks:      { native: transition, n8n: door, camunda: door }
+    approval:   none
+    dry_run:    { en: "would release order {order}", cs: "uvolnil by objednávku {order}" }
+}
+def action hold {
+    columns:    [def column order { type: order.order_number }, def column department { type: text }]
+    set:        order.held_for = department
+    transition: order.state -> held { from: placed }            // held → held is an implicit silent self-transition (D-85)
+    sinks:      { native: transition, n8n: door, camunda: door }
+    approval:   none
+    dry_run:    { en: "would hold order {order} for {department}", cs: "pozastavil by objednávku {order} pro oddělení {department}" }
+}
+def action notify {
+    columns:    [def column who { type: role }, def column detail { type: rows }, def column template { type: text, optional: true }]
+    sinks:      { native: deliver, n8n: "n8n-nodes-base.emailSend", camunda: "send task", hebe: message }
+    deliverable: true
+    approval:   none
+    dry_run:    { en: "would notify {who} with {detail.count} rows", cs: "upozornil by {who}, řádků: {detail.count}" }
+}
+def action notify_customer {
+    columns:    [def column customer { type: customer.sk }, def column template { type: text }]
+    sinks:      { native: deliver, n8n: "n8n-nodes-base.emailSend" }
+    deliverable: true
+    approval:   none
+    dry_run:    { en: "would send customer {customer} the {template} message", cs: "poslal by zákazníkovi {customer} zprávu {template}" }
+}
+def action ask {
+    columns:    [def column who { type: role }, def column about { type: text }, def column action { type: action }, def column detail { type: rows, optional: true }]
+    sinks:      { native: task, hebe: task, camunda: "user task", n8n: door }    // n8n: perform ask, then Wait (D-109)
+    approval:   required
+    due:        2 working_days                                                  // program/action default (D-98)
+    dry_run:    { en: "would ask {who} to approve {action} for {about}", cs: "požádal by {who} o schválení {action} pro {about}" }
+}
+def action task {
+    columns:    [def column who { type: role }, def column about { type: text }, def column detail { type: rows, optional: true }]
+    sinks:      { native: task, hebe: task, n8n: door }
+    approval:   none
+    dry_run:    { en: "would give {who} a task about {about}", cs: "zadal by {who} úkol k {about}" }
+}
+def action set_state {
+    columns:    [def column line { type: return_request_line.line_id }, def column to { type: text }, def column way { type: text, optional: true }]
+    transition: return_request_line.state -> {to}
+    set:        return_request_line.way = way
+    sinks:      { native: transition, n8n: door, camunda: door }
+    approval:   none
+    dry_run:    { en: "would set return line {line} to {to}", cs: "převedl by řádek reklamace {line} do stavu {to}" }
+}
+def action expect {
+    columns:    [def column line { type: return_request_line.line_id }, def column kind { type: text }, def column due { type: date }]
+    sinks:      { native: obligation }                                          // the Server writer; emits no signal (open)
+    approval:   none
+    dry_run:    { en: "would expect the {kind} of return line {line} by {due}", cs: "očekával by {kind} k řádku reklamace {line} do {due}" }
+}
+def action fulfil {
+    columns:    [def column line { type: return_request_line.line_id }, def column kind { type: text }, def column to { type: text } ]
+    transition: obligation.state -> {to}                                        // set_state on obligation ⇒ signal (D-52, GI-4)
+    sinks:      { native: obligation }
+    approval:   none
+    dry_run:    { en: "would mark the {kind} of return line {line} {to}", cs: "označil by {kind} k řádku reklamace {line} jako {to}" }
+}
+def action start {                                                               // the outbound face (H-2 ERP, H-3 purchasing)
+    columns:    [def column process { type: text }, def column rows { type: rows }]
+    sinks:      { native: start, n8n: "n8n-nodes-base.httpRequest" }
+    approval:   none
+    dry_run:    { en: "would start {process} with {rows.count} rows", cs: "spustil by {process}, řádků: {rows.count}" }
+}
+// H-3: all eight required attributes are mapped; explicit defaults supply omitted metadata.
+// bigint_id_v1 is retry-stable per pinned run/wiring/candidate; the buyer holds the batch (D-66).
+def action propose {
+    columns:    [def column item          { type: reorder_proposal.item },
+                 def column warehouse     { type: reorder_proposal.warehouse },
+                 def column on_hand       { type: reorder_proposal.on_hand },
+                 def column weekly_demand { type: reorder_proposal.weekly_demand },
+                 def column proposed_qty  { type: reorder_proposal.proposed_qty },
+                 def column proposal_id   { type: reorder_proposal.proposal_id, optional: true },
+                 def column run           { type: reorder_proposal.run, optional: true },
+                 def column state         { type: reorder_proposal.state, optional: true }]
+    writer_defaults: {
+        proposal_id: { generated: bigint_id_v1 },
+        run: { context: run_id },
+        state: { expression: "'proposed'" }
+    }
+    sinks:      { native: writer }
+    approval:   none
+    dry_run:    { en: "would propose reordering {proposed_qty} of item {item} for center {warehouse}", cs: "navrhl by doobjednat {proposed_qty} ks položky {item} pro centrum {warehouse}" }
+}
+// H-5: quarter uses the UTC quarter of pinned as-of (YYYY-Qn); run and mailed_at use committed Open context.
+def action emit {
+    columns:    [def column customer { type: customer.sk }, def column offer { type: text }]
+    sinks:      { native: deliver, n8n: "n8n-nodes-base.emailSend" }
+    deliverable: true
+    approval:   none
+    dry_run:    { en: "would mail customer {customer} the {offer} win-back offer", cs: "poslal by zákazníkovi {customer} win-back nabídku {offer}" }
+}
+def action record {
+    columns:    [def column customer { type: winback_mail.customer }, def column offer { type: winback_mail.offer },
+                 def column quarter { type: winback_mail.quarter, optional: true },
+                 def column run { type: winback_mail.run, optional: true },
+                 def column mailed_at { type: winback_mail.mailed_at, optional: true }]
+    writer_defaults: {
+        quarter: { expression: "concat(concat(substring(cast(:as_of as text), 1, 4), '-Q'), case when substring(cast(:as_of as text), 6, 2) <= '03' then '1' when substring(cast(:as_of as text), 6, 2) <= '06' then '2' when substring(cast(:as_of as text), 6, 2) <= '09' then '3' else '4' end)" },
+        run: { context: run_id },
+        mailed_at: { context: started_at }
+    }
+    sinks:      { native: writer }
+    approval:   none
+    dry_run:    { en: "would record the win-back mail to customer {customer}", cs: "zaznamenal by win-back e-mail zákazníkovi {customer}" }
+}
+
+// ---- roles and approvals ----
+def role sales          { resolve: keycloak_group "hartland-sales",  delivery: { email: "sales@hartland.example" } }
+def role ar             { resolve: keycloak_group "hartland-ar",     delivery: { email: "ar@hartland.example" } }
+def role sales_manager  { resolve: keycloak_group "hartland-sales-managers" }     // Maya
+def role customer_care  { resolve: keycloak_group "hartland-care" }
+def role finance        { resolve: keycloak_group "hartland-finance" }
+def role logistics      { resolve: keycloak_group "hartland-logistics" }
+def role process_owner  { resolve: keycloak_group "hartland-process-owners" }
+def role ops            { resolve: keycloak_group "hartland-ops" }
+def role buyer          { resolve: keycloak_group "hartland-buyers" }             // H-3's reorder approver (S2.2 T4)
+
+def approval recipe     { by: role.process_owner, quorum: 1 }
+def approval values     { by: role.process_owner, quorum: 1 }
+def approval program    { by: role.process_owner, quorum: 1 }
+def approval deployment { by: role.ops,           quorum: 1 }

@@ -1,0 +1,191 @@
+package hartland
+
+model er
+
+// AU (automation agents) — the H-2 return-request flow (D-79, D-84), the entity table of
+// project/kantheon/features/automation-agents/design/17-recipes-retyped.md §0.
+//
+// The flow is keyed on the LINE (D-84): the recipes decide, monitor and settle one return_request_line
+// at a time; the request's own state is DERIVED from its lines (the return_request view) and nothing
+// writes it. The four document entities are written by the ERP — the data generator, live the n8n ERP
+// workflow — and only ever EXPECTED by the recipes (D-79).
+//
+// ⚠ These are not the returns FACTS. Return value and volume by channel stay with store_returns /
+// web_returns / catalog_returns («vratky», «reklamace» as a measure — ttr-demo#62); nothing here
+// declares `semantics { measures }`.
+
+def entity return_request {
+    description: "Return requests — a customer's request to return goods from one order (the header); its lines carry what is returned. State, derived from the lines: received (a line still waits for a decision) · decided · closed (every line rejected, not returned or closed)."
+    labelPlural: "Return Requests"
+    roles: [transaction]
+    displayLabel: { en: "Return Request", cs: "Reklamace" }
+    attributes: [
+        def attribute request_number { type: int, isKey: true, description: "Return request number." },
+        def attribute customer       { type: int, description: "Returning customer — FK to the 'sk' attribute of the Customer entity." },
+        def attribute order_number   { type: int, description: "The order the goods were bought on — FK to the 'order_number' attribute of the Order entity." },
+        def attribute channel        { type: text, description: "Sales channel of the request: 'web' or 'marketplace'." },
+        def attribute requested_date { type: date, description: "The day the return was requested." },
+        def attribute state {
+            type: text,
+            description: "State of the request, derived from its lines (read-only): 'received', 'decided' or 'closed'.",
+            valueLabels: {
+                "received": { en: "Received", cs: "Přijato" },
+                "decided":  { en: "Decided",  cs: "Rozhodnuto" },
+                "closed":   { en: "Closed",   cs: "Uzavřeno" }
+            }
+        }
+    ]
+}
+
+def entity return_request_line {
+    description: "Return request lines — one returned product of a return request, and where its handling stands. State: received · rejected · settling · awaiting_goods · goods_received · not_returned · closed."
+    labelPlural: "Return Request Lines"
+    roles: [transaction]
+    displayLabel: { en: "Return Request Line", cs: "Řádek reklamace" }
+    attributes: [
+        def attribute line_id              { type: int, isKey: true, description: "Return line number — the key every return decision and obligation is about." },
+        def attribute request_number       { type: int, description: "The line's return request — FK to the 'request_number' attribute of the Return Request entity." },
+        def attribute line_no              { type: int, description: "Line number within the request." },
+        def attribute item                 { type: int, description: "Returned product — FK to the 'sk' attribute of the Product (item) entity." },
+        def attribute quantity             { type: int, description: "Units to return." },
+        def attribute unit_price           { type: { type: decimal, length: 12, precision: 2 }, description: "Unit price the customer paid — quantity × unit price is the line's value." },
+        def attribute reason {
+            type: text,
+            description: "Why the customer returns it: 'damaged', 'did_not_arrive', 'wrong_size' or 'other'.",
+            valueLabels: {
+                "damaged":        { en: "Arrived damaged",   cs: "Dorazilo poškozené" },
+                "did_not_arrive": { en: "Never arrived",     cs: "Zásilka nedorazila" },
+                "wrong_size":     { en: "Size does not fit", cs: "Nevhodná velikost" },
+                "other":          { en: "Another reason",    cs: "Jiná příčina" }
+            }
+        },
+        def attribute requested_resolution {
+            type: text,
+            description: "What the customer asks for: 'refund', 'exchange' or 'replacement'.",
+            valueLabels: {
+                "refund":      { en: "Refund",      cs: "Vrácení peněz" },
+                "exchange":    { en: "Exchange",    cs: "Výměna" },
+                "replacement": { en: "Replacement", cs: "Náhrada" }
+            }
+        },
+        def attribute requested_variant    { type: int, description: "The product asked for in an exchange — FK to the 'sk' attribute of the Product (item) entity; empty otherwise." },
+        def attribute state {
+            type: text,
+            description: "Handling state of the line: 'received', 'rejected', 'settling', 'awaiting_goods', 'goods_received', 'not_returned' or 'closed'.",
+            // AU D-67 — the H-2 graph (17 §4): decide_return moves a received line, monitor_inbound an awaiting one,
+            // settle closes; rejected, not_returned and closed are final.
+            states: [received, rejected, settling, awaiting_goods, goods_received, not_returned, closed],
+            transitions: { received: [rejected, settling, awaiting_goods], awaiting_goods: [goods_received, not_returned],
+                           settling: [closed], goods_received: [closed] },
+            valueLabels: {
+                "received":       { en: "Received",       cs: "Přijato" },
+                "rejected":       { en: "Rejected",       cs: "Zamítnuto" },
+                "settling":       { en: "Settling",       cs: "Vyřizuje se" },
+                "awaiting_goods": { en: "Awaiting goods", cs: "Čeká na zboží" },
+                "goods_received": { en: "Goods received", cs: "Zboží přijato" },
+                "not_returned":   { en: "Not returned",   cs: "Nevráceno" },
+                "closed":         { en: "Closed",         cs: "Uzavřeno" }
+            }
+        },
+        def attribute way {
+            type: text,
+            description: "How the line is being settled, once decided: 'refund_no_return', 'replacement_no_return', 'exchange' or 'refund_after_return'; empty until decided or when rejected.",
+            valueLabels: {
+                "refund_no_return":      { en: "Refund without return",      cs: "Vrácení peněz bez vratky" },
+                "replacement_no_return": { en: "Replacement without return", cs: "Náhrada bez vratky" },
+                "exchange":              { en: "Exchange",                   cs: "Výměna" },
+                "refund_after_return":   { en: "Refund after return",        cs: "Vrácení peněz po vratce" }
+            }
+        },
+        // D-127 — the request's customer, denormalized onto the line by the generator: rel_line_customer is one hop.
+        def attribute customer             { type: int, description: "Returning customer (the request's) — FK to the 'sk' attribute of the Customer entity." }
+    ]
+}
+
+def entity return_receipt {
+    description: "Return receipts — returned goods received back at the warehouse for a return line, and in what condition: ok · damaged · missing."
+    labelPlural: "Return Receipts"
+    roles: [transaction]
+    // NOT „Vratka“ (contracts §2 had it): ttr-demo#62 ruled the bare «vratka / vratky» a word of the three
+    // channels' returns measures that must not pick one entity (lexicon/tests/store-family.test.mjs), and a
+    // label is an EXACT metadata term. „Příjemka vratky“ — the warehouse receipt of a return — is a phrase.
+    displayLabel: { en: "Return Receipt", cs: "Příjemka vratky" }
+    attributes: [
+        def attribute receipt_id    { type: int, isKey: true, description: "Receipt number." },
+        def attribute line_id       { type: int, description: "The return line received — FK to the 'line_id' attribute of the Return Request Line entity." },
+        def attribute received_date { type: date, description: "The day the goods arrived." },
+        def attribute item          { type: int, description: "Received product — FK to the 'sk' attribute of the Product (item) entity." },
+        def attribute quantity      { type: int, description: "Units received." },
+        def attribute condition {
+            type: text,
+            description: "Condition of the received goods: 'ok', 'damaged' or 'missing'.",
+            valueLabels: {
+                "ok":      { en: "In order",      cs: "V pořádku" },
+                "damaged": { en: "Damaged goods", cs: "Poškozené zboží" },
+                "missing": { en: "Goods missing", cs: "Zboží chybí" }
+            }
+        }
+    ]
+}
+
+def entity credit_note {
+    description: "Credit notes — the money owed back to a customer for a return line. Status: issued · paid."
+    labelPlural: "Credit Notes"
+    roles: [transaction]
+    displayLabel: { en: "Credit Note", cs: "Dobropis" }
+    attributes: [
+        def attribute credit_note_id { type: int, isKey: true, description: "Credit note number." },
+        def attribute line_id        { type: int, description: "The return line credited — FK to the 'line_id' attribute of the Return Request Line entity." },
+        def attribute customer       { type: int, description: "Credited customer — FK to the 'sk' attribute of the Customer entity." },
+        def attribute issued_date    { type: date, description: "The day the credit note was issued." },
+        def attribute amount         { type: { type: decimal, length: 12, precision: 2 }, description: "Credited amount." },
+        def attribute status {
+            type: text,
+            description: "Status of the credit note: 'issued' or 'paid'.",
+            valueLabels: {
+                "issued": { en: "Issued",   cs: "Vystaveno" },
+                "paid":   { en: "Paid out", cs: "Vyplaceno" }
+            }
+        }
+    ]
+}
+
+def entity refund_payment {
+    description: "Refund payments — money paid out to a customer against a credit note."
+    labelPlural: "Refund Payments"
+    roles: [transaction]
+    displayLabel: { en: "Refund Payment", cs: "Úhrada" }
+    attributes: [
+        def attribute payment_id     { type: int, isKey: true, description: "Payment number." },
+        def attribute credit_note_id { type: int, description: "The credit note paid — FK to the 'credit_note_id' attribute of the Credit Note entity." },
+        def attribute paid_date      { type: date, description: "The day the refund was paid." },
+        def attribute amount         { type: { type: decimal, length: 12, precision: 2 }, description: "Amount paid." }
+    ]
+}
+
+def entity replacement_shipment {
+    description: "Replacement shipments — replacement goods shipped to a customer for a return line."
+    labelPlural: "Replacement Shipments"
+    roles: [transaction]
+    displayLabel: { en: "Replacement Shipment", cs: "Náhradní zásilka" }
+    attributes: [
+        def attribute shipment_id  { type: int, isKey: true, description: "Shipment number." },
+        def attribute line_id      { type: int, description: "The return line replaced — FK to the 'line_id' attribute of the Return Request Line entity." },
+        def attribute item         { type: int, description: "Shipped product — FK to the 'sk' attribute of the Product (item) entity." },
+        def attribute quantity     { type: int, description: "Units shipped." },
+        def attribute shipped_date { type: date, description: "The day the replacement was shipped." }
+    ]
+}
+
+def entity document_flow {
+    description: "Document flow of returns — which document followed which: order → return request → receipt, credit note, replacement shipment; credit note → refund payment. A kind is the entity name of the document."
+    labelPlural: "Document Flow"
+    roles: [bridge]
+    displayLabel: { en: "Document Flow", cs: "Tok dokladů" }
+    attributes: [
+        def attribute pred_kind { type: text, isKey: true, description: "Kind of the preceding document: 'order', 'return_request' or 'credit_note'." },
+        def attribute pred_id   { type: int, isKey: true, description: "Number of the preceding document." },
+        def attribute succ_kind { type: text, isKey: true, description: "Kind of the following document: 'return_request', 'return_receipt', 'credit_note', 'refund_payment' or 'replacement_shipment'." },
+        def attribute succ_id   { type: int, isKey: true, description: "Number of the following document." }
+    ]
+}

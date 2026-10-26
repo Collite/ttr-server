@@ -1,0 +1,136 @@
+package hartland
+
+model db schema dbo
+
+// AU (automation agents) — the H-1 order extension + the H-3/H-5 write-back tables (D-79, D-81…D-83).
+// Physical spellings: project/kantheon/features/automation-agents/implementation/hartland/contracts.md §1.
+// Built in BOTH worlds by `data/automation/` (step 9 of the data build, hartland P1), derived from the
+// TPC-DS facts already loaded, so the two worlds get identical DDL:
+//
+//   sales_order        one row per distinct web_sales.ws_order_number / catalog_sales.cs_order_number
+//                      (the header: channel, customer, warehouse, value, the H-1 state)
+//   sales_line         one row per web_sales ∪ catalog_sales line; line_no = row_number by item_sk
+//   price_list         the item's modal unit price per channel, open-ended + planted closed windows
+//   customer_price     a hash-selected ~2 % of the (customer, item) pairs with lines
+//   invoice            one per order in state `released`; payment behaviour by a customer hash
+//   warehouse_outage   a handful of outage days per distribution center per year
+//   reorder_proposal   H-3's proposals — EMPTY at build; written by the recipe (`writable:`, D-79)
+//   winback_mail       H-5's mailed customers — EMPTY at build; written by the recipe (`writable:`)
+//
+// Money is decimal(12,2) — wider than the facts' (10,2): CZK values of multi-line orders exceed 10
+// digits. Dates are real `date`s, never date_dim sks (D-82); the only sks are foreign keys to dimensions.
+// Text is `varchar` (the DDL's `text`, the dims.ttrm precedent). Every enumeration below is a plain text
+// column; the TTR-M `states:` keyword arrives with ttr-core P0 and is added at hartland P2·S2.1.
+
+def table sales_order {
+    // `order` is reserved in SQL: the entity is `order`, the table `sales_order` (D-119).
+    description: "Order headers (AU H-1) — one row per web or marketplace order. so_state: placed · held · released · cancelled; so_held_for: Sales · AR · both."
+    primaryKey: [so_order_number]
+    columns: [
+        def column so_order_number   { type: int, isKey: true },
+        def column so_channel        { type: varchar },                                       // web · marketplace
+        def column so_customer_sk    { type: int },
+        def column so_placed_date    { type: date },
+        def column so_delivered_date { type: date },                                          // NULL until delivered
+        def column so_warehouse_sk   { type: int },                                           // the fulfilling distribution center
+        def column so_value          { type: { type: decimal, length: 12, precision: 2 } },
+        def column so_state          { type: varchar },
+        def column so_held_for       { type: varchar },                                       // NULL unless held
+        def column so_placed_by      { type: varchar }
+    ]
+}
+
+def table sales_line {
+    description: "Order lines (AU H-1, D-81) — one row per web_sales ∪ catalog_sales line, numbered within its order by item."
+    primaryKey: [sl_order_number, sl_line_no]
+    columns: [
+        def column sl_order_number    { type: int, isKey: true },
+        def column sl_line_no         { type: int, isKey: true },
+        def column sl_item_sk         { type: int },
+        def column sl_quantity        { type: int },
+        def column sl_unit_price      { type: { type: decimal, length: 12, precision: 2 } },
+        def column sl_ext_sales_price { type: { type: decimal, length: 12, precision: 2 } },
+        def column sl_warehouse_sk    { type: int },
+        def column sl_sold_date       { type: date },
+        def column sl_customer_sk     { type: int },
+        def column sl_channel         { type: varchar }                                       // web · marketplace
+    ]
+}
+
+def table price_list {
+    description: "Channel price list (AU H-1) — the list price of an item in a channel over a validity window; pl_valid_to NULL = open-ended."
+    primaryKey: [pl_item_sk, pl_channel, pl_valid_from]
+    columns: [
+        def column pl_item_sk    { type: int, isKey: true },
+        def column pl_channel    { type: varchar, isKey: true },
+        def column pl_valid_from { type: date, isKey: true },
+        def column pl_price      { type: { type: decimal, length: 12, precision: 2 } },
+        def column pl_valid_to   { type: date }
+    ]
+}
+
+def table customer_price {
+    description: "Individual customer prices (AU H-1) — a customer's own price of an item over a validity window; beats the channel price list."
+    primaryKey: [cp_item_sk, cp_customer_sk, cp_valid_from]
+    columns: [
+        def column cp_item_sk     { type: int, isKey: true },
+        def column cp_customer_sk { type: int, isKey: true },
+        def column cp_valid_from  { type: date, isKey: true },
+        def column cp_price       { type: { type: decimal, length: 12, precision: 2 } },
+        def column cp_valid_to    { type: date }
+    ]
+}
+
+def table invoice {
+    description: "Invoices (AU H-1) — one per released order. inv_status: open · paid."
+    primaryKey: [inv_invoice_id]
+    columns: [
+        def column inv_invoice_id   { type: int, isKey: true },
+        def column inv_customer_sk  { type: int },
+        def column inv_order_number { type: int },
+        def column inv_issued       { type: date },
+        def column inv_due          { type: date },
+        def column inv_amount       { type: { type: decimal, length: 12, precision: 2 } },
+        def column inv_paid         { type: { type: decimal, length: 12, precision: 2 } },
+        def column inv_status       { type: varchar }
+    ]
+}
+
+def table warehouse_outage {
+    description: "Distribution-center outages (AU H-1) — a center that cannot ship from wo_from_date to wo_to_date (both inclusive)."
+    primaryKey: [wo_warehouse_sk, wo_from_date]
+    columns: [
+        def column wo_warehouse_sk { type: int, isKey: true },
+        def column wo_from_date    { type: date, isKey: true },
+        def column wo_to_date      { type: date },
+        def column wo_reason       { type: varchar }
+    ]
+}
+
+def table reorder_proposal {
+    // Physical bigserial is bigint; generated AU keys use its negative signed 64-bit range.
+    description: "Reorder proposals (AU H-3) — written by the reorder_proposals recipe, empty at build. rp_state: proposed · approved · rejected · started."
+    primaryKey: [rp_proposal_id]
+    columns: [
+        def column rp_proposal_id   { type: bigint, isKey: true },
+        def column rp_run           { type: varchar },                                         // the automation run that proposed it
+        def column rp_item_sk       { type: int },
+        def column rp_warehouse_sk  { type: int },
+        def column rp_on_hand       { type: int },
+        def column rp_weekly_demand { type: { type: decimal, length: 12, precision: 2 } },
+        def column rp_proposed_qty  { type: int },
+        def column rp_state         { type: varchar }
+    ]
+}
+
+def table winback_mail {
+    description: "Win-back mailings (AU H-5) — the customers the winback recipe mailed, one row per customer and quarter; empty at build. wm_offer: premium · standard."
+    primaryKey: [wm_customer_sk, wm_quarter]
+    columns: [
+        def column wm_customer_sk { type: int, isKey: true },
+        def column wm_quarter     { type: varchar, isKey: true },                              // e.g. 2026-Q4
+        def column wm_offer       { type: varchar },
+        def column wm_run         { type: varchar },                                         // the automation run that mailed it
+        def column wm_mailed_at   { type: datetime }                                        // timestamptz in the DDL
+    ]
+}

@@ -80,14 +80,8 @@ object RecipeBindings {
             base.type in setOf("date", "datetime", "timestamp", "timestamptz"),
         ) { "date binding base is not temporal" }
         val amount =
-            d.amount.toLongOrNull() ?: values.getValue(d.amount).let { value ->
-                require(
-                    value.type in setOf("days", "working_days", "int", "integer", "bigint"),
-                ) { "derived amount is not an integer" }
-                when (val number = value.value) {
-                    is Byte, is Short, is Int, is Long -> (number as Number).toLong()
-                    else -> error("derived binding amount is not an integer")
-                }
+            d.amount.toLongOrNull() ?: requireNotNull(integralAmount(values.getValue(d.amount))) {
+                "derived binding amount is not an integer"
             }
         val signed =
             when (d.op) {
@@ -150,6 +144,16 @@ object RecipeBindings {
             },
         )
     }
+
+    /** Integral counts shared by binding derivations and wiring duration evidence. */
+    internal fun integralAmount(value: BoundValue): Long? =
+        if (value.type in setOf("days", "working_days", "int", "integer", "bigint") &&
+            (value.value is Byte || value.value is Short || value.value is Int || value.value is Long)
+        ) {
+            (value.value as Number).toLong()
+        } else {
+            null
+        }
 
     private fun literal(
         type: String,

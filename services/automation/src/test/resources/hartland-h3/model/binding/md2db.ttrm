@@ -1,0 +1,186 @@
+package hartland
+
+model binding
+
+// md2db — one md2db_cubelet per fact cubelet (shape wide), one md2db_map per Stage 2.3
+// table-backed dim map. No md2db_domain entries: every coded domain in domains.ttrm is a
+// plain open string (never `kind: bound`), by design (Stage 2.3) — member labels are the
+// lexicon's valueLabels, not a bound-domain source, so `md/source-on-unbound-domain`
+// structurally cannot fire. No `journaling:` anywhere — the demo serves read-only (T3).
+//
+// Currency note (T4): revenue/returnAmount bind to `ext_sales_price`/`return_amt`-family
+// columns whose stored VALUE is USD in hartland_us and CZK in hartland_cz (Phase 1
+// FX-scale) — the same measure, the same binding, on both connections. The on-screen
+// currency label is a lexicon/connection display fact (connections.toml `currency`),
+// never a second measure or a second binding.
+
+// ===== storeSales -> store_sales =====
+def md2db_cubelet storeSales_fact {
+    cubelet: md.storeSales,
+    target: db.dbo.store_sales,
+    shape: wide,
+    attributes: {
+        Product.itemCode: ss_item_sk,
+        Customer.customerCode: ss_customer_sk,
+        Calendar.day: ss_sold_date_sk,
+        Store.storeCode: ss_store_sk,
+        Promotion.promoCode: ss_promo_sk
+    },
+    measures: {
+        revenue: ss_ext_sales_price,
+        quantity: ss_quantity,
+        orderCount: ss_ticket_number,
+        lineCount: ss_ticket_number
+    }
+}
+
+// ===== webSales -> web_sales =====
+def md2db_cubelet webSales_fact {
+    cubelet: md.webSales,
+    target: db.dbo.web_sales,
+    shape: wide,
+    attributes: {
+        Product.itemCode: ws_item_sk,
+        Customer.customerCode: ws_bill_customer_sk,
+        Calendar.day: ws_sold_date_sk,
+        Promotion.promoCode: ws_promo_sk
+    },
+    measures: {
+        revenue: ws_ext_sales_price,
+        quantity: ws_quantity,
+        orderCount: ws_order_number,
+        lineCount: ws_order_number
+    }
+}
+
+// ===== marketplaceSales -> catalog_sales (the channel of the incident) =====
+def md2db_cubelet marketplaceSales_fact {
+    cubelet: md.marketplaceSales,
+    target: db.dbo.catalog_sales,
+    shape: wide,
+    attributes: {
+        Product.itemCode: cs_item_sk,
+        Customer.customerCode: cs_bill_customer_sk,
+        Calendar.day: cs_sold_date_sk,
+        DistributionCentre.dcCode: cs_warehouse_sk,
+        Promotion.promoCode: cs_promo_sk
+    },
+    measures: {
+        revenue: cs_ext_sales_price,
+        quantity: cs_quantity,
+        orderCount: cs_order_number,
+        lineCount: cs_order_number
+    }
+}
+
+// ===== storeReturns -> store_returns =====
+def md2db_cubelet storeReturns_fact {
+    cubelet: md.storeReturns,
+    target: db.dbo.store_returns,
+    shape: wide,
+    attributes: {
+        Product.itemCode: sr_item_sk,
+        Customer.customerCode: sr_customer_sk,
+        Calendar.day: sr_returned_date_sk,
+        Store.storeCode: sr_store_sk,
+        ReturnReason.reasonCode: sr_reason_sk
+    },
+    measures: {
+        returnAmount: sr_return_amt,
+        quantity: sr_return_quantity
+    }
+}
+
+// ===== webReturns -> web_returns =====
+def md2db_cubelet webReturns_fact {
+    cubelet: md.webReturns,
+    target: db.dbo.web_returns,
+    shape: wide,
+    attributes: {
+        Product.itemCode: wr_item_sk,
+        Customer.customerCode: wr_returning_customer_sk,
+        Calendar.day: wr_returned_date_sk,
+        ReturnReason.reasonCode: wr_reason_sk
+    },
+    measures: {
+        returnAmount: wr_return_amt,
+        quantity: wr_return_quantity
+    }
+}
+
+// ===== catalogReturns -> catalog_returns (S3's paired evidence signal) =====
+// Note: binds straight to the physical `cr_return_amount` column (see returns.ttrm /
+// er2db.ttrm for the same cr_return_amount-vs-*_return_amt naming aside).
+def md2db_cubelet catalogReturns_fact {
+    cubelet: md.catalogReturns,
+    target: db.dbo.catalog_returns,
+    shape: wide,
+    attributes: {
+        Product.itemCode: cr_item_sk,
+        Customer.customerCode: cr_returning_customer_sk,
+        Calendar.day: cr_returned_date_sk,
+        DistributionCentre.dcCode: cr_warehouse_sk,
+        ReturnReason.reasonCode: cr_reason_sk
+    },
+    measures: {
+        returnAmount: cr_return_amount,
+        quantity: cr_return_quantity
+    }
+}
+
+// ===== inventory -> inventory (the smoking gun, S1) =====
+// Calendar.week is reached THROUGH the day_to_week map, off date_dim's own d_week_seq —
+// inventory has no week column of its own, only inv_date_sk -> date_dim.
+def md2db_cubelet inventory_fact {
+    cubelet: md.inventory,
+    target: db.dbo.inventory,
+    shape: wide,
+    attributes: {
+        Product.itemCode: inv_item_sk,
+        DistributionCentre.dcCode: inv_warehouse_sk,
+        Calendar.week: { via: md.day_to_week, from: { table: db.dbo.date_dim, column: d_week_seq } }
+    },
+    measures: {
+        onHandQty: inv_quantity_on_hand
+    }
+}
+
+// ===== the calendar's calc maps read date_dim (CN-P6 S6.2 ⚑S62-2) =====
+// Every fact dates itself by a surrogate key: `Calendar.day` binds `*_sold_date_sk` / `*_returned_date_sk`, an int into
+// date_dim, not a date. Inline, a calc map is a date extraction on that column — `EXTRACT(MONTH FROM ss_sold_date_sk)` —
+// which PostgreSQL refuses (no extract on an integer), so no month or year filter on an md path could run. A calc map
+// with a case table is joined instead (MdPathLowering: the fact's day column = the table's Day column, then the `to`
+// column), so month and year come from date_dim's own d_moy / d_year — the key the facts already hold.
+// Not done here: `day_to_week` (weekOfYear is a week of the year; date_dim has only the absolute d_week_seq, so a case
+// table would change what a week is) and `month_to_qtr` (a chained calc over a computed month — the lowering's
+// follow-up). A day RANGE still compares the key with a date; that needs the Calendar keyed by the date key.
+// The TS lint's `md-binding-on-calc-map` predates the case-table lowering (md dot-path S4-A5) and calls this an error;
+// the Kotlin loader and the lowering take it, as ttr-concept's own golden world does (worlds/sales/md-binding.ttrm).
+// ttr-disable-next-line md-binding-on-calc-map
+def md2db_map day_to_month_map { map: md.day_to_month, target: db.dbo.date_dim, columns: { md.Day: d_date_sk, md.Month: d_moy } }
+// ttr-disable-next-line md-binding-on-calc-map
+def md2db_map day_to_year_map  { map: md.day_to_year,  target: db.dbo.date_dim, columns: { md.Day: d_date_sk, md.Year: d_year } }
+
+// ===== Stage 2.3 table-backed Product maps — case columns, all on the one denormalized
+// item row =====
+def md2db_map item_to_manuf_map     { map: md.item_to_manuf,     target: db.dbo.item, columns: { ItemCode: i_item_sk, ManufacturerCode: i_manufact } }
+def md2db_map manuf_to_brand_map    { map: md.manuf_to_brand,    target: db.dbo.item, columns: { ManufacturerCode: i_manufact, BrandCode: i_brand } }
+def md2db_map brand_to_class_map    { map: md.brand_to_class,    target: db.dbo.item, columns: { BrandCode: i_brand, ClassCode: i_class } }
+def md2db_map class_to_category_map { map: md.class_to_category, target: db.dbo.item, columns: { ClassCode: i_class, CategoryCode: i_category } }
+
+// ===== Descriptive-attribute lookup maps — one per dimension's display/analytic attribute.
+// Each keys on the dimension's grain sk (the same sk the wide cubelets bind above) and reads
+// the label/value column off the dimension table. No md2db_dimension construct exists, so
+// this is how a non-key dimension attribute gets a physical source. =====
+def md2db_map item_to_name_map      { map: md.item_to_name,      target: db.dbo.item,      columns: { ItemCode: i_item_sk, ProductName: i_product_name } }
+def md2db_map store_to_name_map     { map: md.store_to_name,     target: db.dbo.store,     columns: { StoreCode: s_store_sk, StoreName: s_store_name } }
+def md2db_map dc_to_name_map        { map: md.dc_to_name,        target: db.dbo.warehouse, columns: { DcCode: w_warehouse_sk, DcName: w_warehouse_name } }
+def md2db_map promo_to_name_map     { map: md.promo_to_name,     target: db.dbo.promotion, columns: { PromoCode: p_promo_sk, PromoName: p_promo_name } }
+def md2db_map reason_to_desc_map    { map: md.reason_to_desc,    target: db.dbo.reason,    columns: { ReasonCode: r_reason_sk, ReasonDesc: r_reason_desc } }
+
+// ===== Customer descriptive/geographic — birthYear off customer; state via the two-hop
+// CustomerCode -> AddressCode (customer.c_current_addr_sk) -> State (customer_address.ca_state),
+// each hop a single-table md2db_map (see dimensions.ttrm for why the chain). =====
+def md2db_map customer_to_birthyear_map { map: md.customer_to_birthyear, target: db.dbo.customer,         columns: { CustomerCode: c_customer_sk, BirthYear: c_birth_year } }
+def md2db_map customer_to_addr_map      { map: md.customer_to_addr,      target: db.dbo.customer,         columns: { CustomerCode: c_customer_sk, AddressCode: c_current_addr_sk } }
+def md2db_map addr_to_state_map         { map: md.addr_to_state,         target: db.dbo.customer_address, columns: { AddressCode: ca_address_sk, State: ca_state } }

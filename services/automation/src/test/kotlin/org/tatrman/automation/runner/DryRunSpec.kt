@@ -15,6 +15,7 @@ import org.tatrman.automation.bundle.BundleFixture.edit
 import org.tatrman.automation.staging.*
 import org.tatrman.ttr.metadata.model.LocalizedText
 import org.tatrman.ttr.metadata.model.AutomationColumn
+import org.tatrman.ttr.metadata.model.AutomationDuration
 import java.math.BigDecimal
 import java.nio.file.Files
 import java.time.Clock
@@ -1271,6 +1272,413 @@ class DryRunSpec :
                     }
                     f.journals.get() shouldBe 0
                     f.legacy.get() shouldBe 0
+                    f.reads.get() shouldBe 5
+                }
+            }
+        }
+
+        "nested action and working-day duration preview preserve partial intent" {
+            supervisorScope {
+                val original = legacyPreviewMetadata(BundleFixture.load())
+                val ask =
+                    original.actions.getValue("ask").copy(
+                        dryRun =
+                            LocalizedText(
+                                mapOf(
+                                    "en" to "would ask {who} to approve {action} for {about}, due {due}",
+                                ),
+                            ),
+                    )
+                val wiring =
+                    ManifestWiring(
+                        listOf("way.hold"),
+                        "ask",
+                        mapOf(
+                            "who" to "role.buyer",
+                            "about" to "department",
+                            "action" to "start { process: concat('purchase-', tenant) }",
+                            "group_by" to "tenant",
+                            "due" to "2 working_days",
+                        ),
+                    )
+                val f =
+                    PreviewFixture(
+                        this,
+                        previewRecipe().withWiring(listOf(wiring)),
+                        original.copy(
+                            actions =
+                                original.actions + ("ask" to ask),
+                        ),
+                    )
+                f.runner.use { runner ->
+                    runner.evaluate()
+                    val action = f.plan!!.actions.single()
+                    action.arguments["action"] shouldBe
+                        buildJsonObject {
+                            put("action", "start")
+                            put("arguments", buildJsonObject { put("process", "purchase-a") })
+                            put("deferred", true)
+                        }
+                    action.arguments["due"] shouldBe
+                        buildJsonObject {
+                            put("amount", 2)
+                            put("unit", "working_days")
+                        }
+                    action.arguments["group_by"] shouldBe JsonPrimitive("a")
+                    action.batchRows shouldBe emptyList()
+                    action.would shouldBe
+                        "would ask role.buyer to approve start { process: \"purchase-a\" } for Sales, due 2 working_days"
+                    runner.evaluate()
+                    f.journals.get() shouldBe 1
+                    f.reads.get() shouldBe 5
+                    f.legacy.get() shouldBe 0
+                }
+            }
+        }
+
+        "pinned action due default matches explicit wiring through evaluate and replay" {
+            val original = legacyPreviewMetadata(BundleFixture.load())
+            val ask = original.actions.getValue("ask").copy(due = AutomationDuration(2.0, "working_days"))
+            val metadata = original.copy(actions = original.actions + ("ask" to ask))
+            val columns = mapOf("who" to "role.buyer", "about" to "department", "action" to "start {}")
+            var expected: Map<String, JsonElement>? = null
+            for (arguments in listOf(columns + ("due" to "2 working_days"), columns)) {
+                supervisorScope {
+                    val recipe =
+                        previewRecipe().withWiring(
+                            listOf(ManifestWiring(listOf("way.hold"), "ask", arguments)),
+                        )
+                    val f = PreviewFixture(this, recipe, metadata)
+                    f.runner.use { runner ->
+                        runner.evaluate()
+                        val result =
+                            f.plan!!
+                                .actions
+                                .single()
+                                .arguments
+                        result["due"] shouldBe
+                            buildJsonObject {
+                                put("amount", 2)
+                                put("unit", "working_days")
+                            }
+                        expected?.let { result shouldBe it }
+                        expected = result
+                        ApplyPlanner(
+                            Clock.fixed(Instant.parse("2040-01-01T00:00:00Z"), ZoneOffset.UTC),
+                        ).preview(runner).actions.single().arguments shouldBe
+                            result
+                        runner.evaluate()
+                        f.journals.get() shouldBe 1
+                    }
+                }
+            }
+        }
+
+        "writer due evidence never becomes a database assignment" {
+            val original = writerMetadata()
+            val action = original.actions.getValue("hold").copy(due = AutomationDuration(2.0, "working_days"))
+            val metadata = original.copy(actions = original.actions + ("hold" to action))
+            val defaultDue =
+                buildJsonObject {
+                    put("amount", 2)
+                    put("unit", "working_days")
+                }
+            for ((source, expected) in listOf(
+                null to defaultDue,
+                "2 working_days" to defaultDue,
+                "5 days" to
+                    buildJsonObject {
+                        put("amount", 5)
+                        put("unit", "days")
+                    },
+                "null" to JsonNull,
+            )) {
+                supervisorScope {
+                    val wiring =
+                        writerWiring().let {
+                            if (source ==
+                                null
+                            ) {
+                                it
+                            } else {
+                                it.copy(columns = it.columns + ("due" to source))
+                            }
+                        }
+                    val f = PreviewFixture(this, previewRecipe().withWiring(listOf(wiring)), metadata)
+                    f.runner.use { runner ->
+                        runner.evaluate()
+                        f.plan!!
+                            .actions
+                            .single()
+                            .arguments["due"] shouldBe expected
+                        val inserted =
+                            f.plan!!
+                                .rows
+                                .single { it.entity == "er.entity.order" }
+                                .row!!
+                        inserted.keys shouldBe setOf("order_number", "tenant", "value")
+                        inserted["value"] shouldBe JsonPrimitive(BigDecimal("6.06"))
+                        f.journals.get() shouldBe 1
+                    }
+                }
+            }
+        }
+
+        "wrong explicit due or on-due kinds refuse without a journal even on empty routes" {
+            val original = legacyPreviewMetadata(BundleFixture.load())
+            val ask = original.actions.getValue("ask").copy(due = AutomationDuration(2.0, "working_days"))
+            val metadata = original.copy(actions = original.actions + ("ask" to ask))
+            for (route in listOf("way.hold", "way.empty")) {
+                for ((name, source) in listOf("due" to "amount", "on_due" to "hold")) {
+                    supervisorScope {
+                        val columns =
+                            mapOf(
+                                "who" to "role.buyer",
+                                "about" to "department",
+                                "action" to "start {}",
+                                name to source,
+                            )
+                        val recipe = previewRecipe().withWiring(listOf(ManifestWiring(listOf(route), "ask", columns)))
+                        val f = PreviewFixture(this, recipe, metadata)
+                        f.runner.use { runner ->
+                            repeat(2) {
+                                shouldThrow<AutomationException> { runner.evaluate() }.code shouldBe
+                                    ErrorCode.PREVIEW_UNSUPPORTED
+                            }
+                            f.journals.get() shouldBe 0
+                            f.plan shouldBe null
+                        }
+                    }
+                }
+            }
+        }
+
+        "writer grouping and on-due stay in evidence and out of assignments" {
+            supervisorScope {
+                val columns =
+                    writerWiring().columns + mapOf("group_by" to "tenant", "on_due" to "hold { label: \"later\" }")
+                val wiring = writerWiring().copy(columns = columns)
+                val f = PreviewFixture(this, previewRecipe().withWiring(listOf(wiring)), writerMetadata())
+                f.runner.use { runner ->
+                    runner.evaluate()
+                    val arguments =
+                        f.plan!!
+                            .actions
+                            .single()
+                            .arguments
+                    arguments["group_by"] shouldBe JsonPrimitive("a")
+                    arguments["on_due"] shouldBe
+                        buildJsonObject {
+                            put("action", "hold")
+                            put("arguments", buildJsonObject { put("label", "later") })
+                            put("deferred", true)
+                        }
+                    val row =
+                        f.plan!!
+                            .rows
+                            .single { it.entity == "er.entity.order" }
+                            .row!!
+                    row.keys shouldBe setOf("order_number", "tenant", "value")
+                    row["value"] shouldBe JsonPrimitive(BigDecimal("6.06"))
+                    f.journals.get() shouldBe 1
+                }
+            }
+        }
+
+        "declared due and other property columns remain writer assignments despite a due default" {
+            supervisorScope {
+                val original = writerMetadata()
+                val entity = original.entities.single()
+                val template = entity.attributes.first()
+                val properties = listOf("due" to "date", "on_due" to "text", "group_by" to "text")
+                val target =
+                    entity.copy(
+                        attributes =
+                            entity.attributes +
+                                properties.map { (name, type) ->
+                                    template.copy(
+                                        internalId = name,
+                                        qname = template.qname.copy(name = "order.$name"),
+                                        type = type,
+                                        isKey = false,
+                                        nullable = false,
+                                    )
+                                },
+                    )
+                val action =
+                    original.actions.getValue("hold").copy(
+                        columns =
+                            original.actions.getValue("hold").columns +
+                                properties.map { (name, _) -> AutomationColumn(name, "order.$name") },
+                        due = AutomationDuration(2.0, "working_days"),
+                    )
+                val metadata = original.copy(actions = original.actions + ("hold" to action), entities = listOf(target))
+                val wiring =
+                    writerWiring().let {
+                        it.copy(
+                            columns =
+                                it.columns +
+                                    mapOf(
+                                        "due" to "cast('2026-11-03' as date)",
+                                        "on_due" to "department",
+                                        "group_by" to "tenant",
+                                    ),
+                        )
+                    }
+                val f = PreviewFixture(this, previewRecipe().withWiring(listOf(wiring)), metadata)
+                f.runner.use { runner ->
+                    runner.evaluate()
+                    val arguments =
+                        f.plan!!
+                            .actions
+                            .single()
+                            .arguments
+                    val row =
+                        f.plan!!
+                            .rows
+                            .single { it.entity == "er.entity.order" }
+                            .row!!
+                    row["due"] shouldBe JsonPrimitive("2026-11-03")
+                    arguments["due"] shouldBe row["due"]
+                    row["on_due"] shouldBe JsonPrimitive("Sales")
+                    row["group_by"] shouldBe JsonPrimitive("a")
+                    row.keys shouldBe setOf("order_number", "tenant", "value", "due", "on_due", "group_by")
+                    f.journals.get() shouldBe 1
+                }
+            }
+        }
+
+        "nested role references refuse before any preview journal" {
+            for (reference in listOf("lines", "candidates")) {
+                supervisorScope {
+                    val columns =
+                        mapOf(
+                            "who" to "role.buyer",
+                            "about" to "department",
+                            "action" to "escalate { items: $reference }",
+                        )
+                    val recipe =
+                        previewRecipe().withWiring(
+                            listOf(ManifestWiring(listOf("way.hold", "way.empty"), "ask", columns)),
+                        )
+                    val f = PreviewFixture(this, recipe)
+                    f.runner.use { runner ->
+                        shouldThrow<AutomationException> { runner.evaluate() }.code shouldBe
+                            ErrorCode.PREVIEW_UNSUPPORTED
+                        f.journals.get() shouldBe 0
+                        f.plan shouldBe null
+                    }
+                }
+            }
+        }
+
+        "rows placeholder refusal identifies the dry-run text" {
+            supervisorScope {
+                val original = legacyPreviewMetadata(BundleFixture.load())
+                val notify =
+                    original.actions.getValue("notify").copy(
+                        dryRun =
+                            LocalizedText(
+                                mapOf(
+                                    "en" to "would notify {detail}",
+                                ),
+                            ),
+                    )
+                val recipe =
+                    previewRecipe().withWiring(
+                        listOf(
+                            ManifestWiring(
+                                listOf("way.hold"),
+                                "notify",
+                                mapOf(
+                                    "who" to "role.buyer",
+                                    "detail" to "lines",
+                                ),
+                            ),
+                        ),
+                    )
+                val f = PreviewFixture(this, recipe, original.copy(actions = original.actions + ("notify" to notify)))
+                f.runner.use { runner ->
+                    val error = shouldThrow<AutomationException> { runner.evaluate() }
+                    error.code shouldBe ErrorCode.PREVIEW_UNSUPPORTED
+                    error.message shouldBe "dry-run text requires a scalar or deferred-call/duration evidence"
+                    f.journals.get() shouldBe 0
+                }
+            }
+        }
+
+        "empty routes accept nested action intents without creating tasks or deadlines" {
+            supervisorScope {
+                val wiring =
+                    ManifestWiring(
+                        listOf("way.empty"),
+                        "ask",
+                        mapOf(
+                            "who" to "role.buyer",
+                            "about" to "department",
+                            "action" to "start { process: \"purchasing\" }",
+                            "due" to "2 working_days",
+                        ),
+                    )
+                val f = PreviewFixture(this, previewRecipe().withWiring(listOf(wiring)))
+                f.runner.use { runner ->
+                    runner.evaluate()
+                    f.plan!!.actions shouldBe emptyList()
+                    f.journals.get() shouldBe 1
+                    f.reads.get() shouldBe 5
+                }
+            }
+        }
+
+        "invalid deferred intent after earlier writer work refuses atomically on nonempty and empty routes" {
+            for (route in listOf("way.hold", "way.empty")) {
+                supervisorScope {
+                    val ask =
+                        ManifestWiring(
+                            listOf(route),
+                            "ask",
+                            mapOf(
+                                "who" to "role.buyer",
+                                "about" to "department",
+                                "action" to "start { process: \"private\", process: \"duplicate\" }",
+                                "due" to "2 working_days",
+                            ),
+                        )
+                    val recipe = previewRecipe().withWiring(listOf(writerWiring(listOf("way.release")), ask))
+                    val f = PreviewFixture(this, recipe, writerMetadata())
+                    f.runner.use { runner ->
+                        repeat(2) {
+                            shouldThrow<AutomationException> { runner.evaluate() }.code shouldBe
+                                ErrorCode.PREVIEW_UNSUPPORTED
+                        }
+                        f.plan shouldBe null
+                        f.journals.get() shouldBe 0
+                        f.reads.get() shouldBe 5
+                        f.legacy.get() shouldBe 0
+                    }
+                }
+            }
+        }
+
+        "unselected deferred scalar arguments validate without executing their casts" {
+            supervisorScope {
+                val wiring =
+                    ManifestWiring(
+                        listOf("way.hold"),
+                        "ask",
+                        mapOf(
+                            "who" to "role.buyer",
+                            "about" to "department",
+                            "action" to "start { process: cast('private' as int) }",
+                            "due" to "2 working_days",
+                        ),
+                        "false",
+                    )
+                val f = PreviewFixture(this, previewRecipe().withWiring(listOf(wiring)))
+                f.runner.use { runner ->
+                    runner.evaluate()
+                    f.plan!!.actions shouldBe emptyList()
+                    f.journals.get() shouldBe 1
                     f.reads.get() shouldBe 5
                 }
             }

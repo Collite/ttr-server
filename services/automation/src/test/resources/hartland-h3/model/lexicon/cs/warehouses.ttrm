@@ -1,0 +1,28 @@
+package hartland
+
+model lexicon locale cs
+
+// The distribution-center dimension's words, Czech. LR ruling 7 (2026-10-11): the demo's 4.1 and 6.1
+// («Tržby z tržiště podle distribučního centra v roce 2025») went to the LLM at ~14 s because
+// «distribučního centra» bound nothing (G1). The citation form is already a term — the entity's
+// `displayLabel.cs` ("Distribuční centrum") — but it is EXACT, and the resolver looks a mention up
+// by its dictionary form only when the mention is ONE word (`LemmaLookup`): a Czech multi-word
+// term's citation form is not the token-wise lemma of what was written, so a phrase is matched as
+// written and the estate declares the forms it means. Hence the case forms below, singular and
+// plural, minus the citation form the label already gives.
+//
+// «sklad» is one word, so its cases («skladu», «skladech») reach it through the lemma lookup.
+// One target, `er.entity.warehouse`, the only distribution center in the model.
+//
+// Watch in rehearsal: «na skladě» ("in stock") is a stock phrase that now mentions the warehouse.
+
+def term warehouse_cs {
+    description: "distribuční centrum (its case forms), sklad — the distribution-center dimension"
+    for: er.entity.warehouse
+    forms: [
+        "distribučního centra", "distribučnímu centru", "distribučním centru", "distribučním centrem",
+        "distribuční centra", "distribučních center", "distribučním centrům", "distribučních centrech",
+        "distribučními centry",
+        "sklad"
+    ]
+}

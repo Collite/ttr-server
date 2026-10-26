@@ -1,0 +1,13 @@
+package hartland
+
+model lexicon locale en
+
+// The distribution-center dimension's plural, English twin of cs/warehouses.ttrm (LR ruling 7,
+// 2026-10-11). The singular is already a term — the entity's `displayLabel.en` — and "warehouse"
+// is its own name; the model declares no `labelPlural`, and a two-word phrase is matched as written.
+
+def term warehouse_en {
+    description: "distribution centers — the distribution-center dimension"
+    for: er.entity.warehouse
+    forms: ["distribution centers"]
+}

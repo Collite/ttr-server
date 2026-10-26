@@ -1,0 +1,132 @@
+package hartland
+
+model er
+
+// The three channel facts (D-5) — the SOURCES of `sales` below, and no longer anything an agent is offered
+// (md/hop ⚑H-7, ruled 2026-10-22: source only). Attribute names are logical, the physical table prefix stripped
+// (ss_/ws_/cs_). They carry no label and no lexicon term: a label is a METADATA term, and every channel word is now a
+// value label of `sales.channel` (`lexicon/aliases/channels.lex.yaml`), so a question about one channel reads `sales`
+// restricted to it. Nor do they carry the revenue facet (`semantics { measures }`): a composer reading the model is
+// pointed at `sales`, the one object that offers revenue, and their descriptions say so. The union below reads them;
+// nothing else in `model/` needs them, and the db-lane `q.hartland.*` queries read their tables, not these entities.
+
+def entity store_sales {
+    description: "Stores-channel sales lines — a SOURCE of `sales`, which is the object to ask: store / brick-and-mortar revenue is `sales` restricted to channel 'store'."
+    roles: [fact]
+    attributes: [
+        def attribute item           { type: int, isKey: true, description: "Sold product — FK to the 'sk' attribute of the Product (item) entity." },
+        def attribute ticket_number  { type: int, isKey: true, description: "Sales ticket number; one ticket = one basket. Part of the primary key." },
+        def attribute sold_date      { type: int, description: "Sale date — FK to the 'sk' attribute of the Calendar (date_dim) entity." },
+        def attribute customer       { type: int, description: "Buying customer — FK to the 'sk' attribute of the Customer entity." },
+        def attribute addr           { type: int, description: "Customer address at sale time — FK to the 'sk' attribute of the Customer Address entity." },
+        def attribute store          { type: int, description: "Selling store — FK to the 'sk' attribute of the Store entity." },
+        def attribute promo          { type: int, description: "Promotion applied to this line, if any — FK to the 'sk' attribute of the Promotion entity." },
+        def attribute quantity       { type: int, description: "Units sold on this line." },
+        def attribute ext_sales_price { type: { type: decimal, length: 10, precision: 2 }, description: "Extended sales price of the line (unit price × quantity) — the revenue amount; SUM this for revenue/sales." }
+    ]
+}
+
+def entity web_sales {
+    description: "Web-channel sales lines — a SOURCE of `sales`, which is the object to ask: web / online / e-shop revenue is `sales` restricted to channel 'web'."
+    roles: [fact]
+    attributes: [
+        def attribute item           { type: int, isKey: true, description: "Sold product — FK to the 'sk' attribute of the Product (item) entity." },
+        def attribute order_number   { type: int, isKey: true, description: "Web order number; one order = one basket. Part of the primary key." },
+        def attribute sold_date      { type: int, description: "Sale date — FK to the 'sk' attribute of the Calendar (date_dim) entity." },
+        def attribute customer       { type: int, description: "Buying customer — FK to the 'sk' attribute of the Customer entity." },
+        def attribute addr           { type: int, description: "Customer address at sale time — FK to the 'sk' attribute of the Customer Address entity." },
+        def attribute warehouse      { type: int, description: "Fulfilling distribution center — FK to the 'sk' attribute of the Distribution Center (warehouse) entity." },
+        def attribute promo          { type: int, description: "Promotion applied to this line, if any — FK to the 'sk' attribute of the Promotion entity." },
+        def attribute quantity       { type: int, description: "Units sold on this line." },
+        def attribute ext_sales_price { type: { type: decimal, length: 10, precision: 2 }, description: "Extended sales price of the line (unit price × quantity) — the revenue amount; SUM this for revenue/sales." }
+    ]
+}
+
+def entity catalog_sales {
+    description: "Marketplace (third-party / 3P) sales lines — a SOURCE of `sales`, which is the object to ask: marketplace revenue is `sales` restricted to channel 'marketplace' (the channel of the incident)."
+    roles: [fact]
+    attributes: [
+        def attribute item           { type: int, isKey: true, description: "Sold product — FK to the 'sk' attribute of the Product (item) entity." },
+        def attribute order_number   { type: int, isKey: true, description: "Marketplace order number; one order = one basket. Part of the primary key." },
+        def attribute sold_date      { type: int, description: "Sale date — FK to the 'sk' attribute of the Calendar (date_dim) entity." },
+        def attribute customer       { type: int, description: "Buying customer — FK to the 'sk' attribute of the Customer entity." },
+        def attribute addr           { type: int, description: "Customer address at sale time — FK to the 'sk' attribute of the Customer Address entity." },
+        def attribute call_center    { type: int, description: "Seller support center handling the order — FK to the 'sk' attribute of the Seller Support Center (call_center) entity." },
+        def attribute warehouse      { type: int, description: "Fulfilling distribution center — FK to the 'sk' attribute of the Distribution Center (warehouse) entity." },
+        def attribute promo          { type: int, description: "Promotion applied to this line, if any — FK to the 'sk' attribute of the Promotion entity." },
+        def attribute quantity       { type: int, description: "Units sold on this line." },
+        def attribute ext_sales_price { type: { type: decimal, length: 10, precision: 2 }, description: "Extended sales price of the line (unit price × quantity) — the revenue amount; SUM this for revenue/sales." }
+    ]
+}
+
+
+// ===== sales — the three channels as ONE entity, over the union query (md/hop ⚑H-1, HP-H) =====
+// "Revenue by channel" needs the channel as a COLUMN and revenue as ONE measure. Until HP-H that was
+// `channel_sales`, an entity on the db view `data/views/channel_sales.sql`: its columns were its own, so the
+// lineage of its revenue lived in the database and no model reader could see that it IS the three facts'
+// `ext_sales_price` (md/hop design §4 — the bearer rule had nothing to restrict to). The union now lives in the
+// model, as a logical query over the three entities, and `sales` is stacked on it: one entity, `channel` an
+// attribute, and every column traceable to the facts (R7: stacked-entity lineage).
+//
+// The query is NOT named after the entity: veles lists a logical query in ListQueries and GetModel, and golem's
+// descriptor lookup tries a query's local name before an entity's (customer_revenue.ttrm says the same).
+//
+// Security rides along: the body is inlined into the plan where `sales` is read, so the DC-scope row rule on
+// `catalog_sales` and `web_sales` (olymp, validate `dc-scope`) narrows those lines for a DC-scoped caller, and
+// the store channel — which no distribution centre ships — stays whole, as it does on `store_sales` itself.
+//
+// `store` is a store line's, `warehouse` a web or marketplace line's; each is NULL on the other channels, so
+// grouping or restricting by a store or a distribution centre reads only the lines that have one.
+//
+// ⛔ The channel literals are CAST to VARCHAR. Bare, the translator types them CHAR(5), CHAR(3) and CHAR(11),
+// unifies the union at CHAR(11) and writes `'store      '` and `'web        '` into the SQL — padded text that
+// `channel = 'store'` never matches, so a question about the store or the web channel would answer nothing.
+def query sales_union {
+    description: "Every sales line of the three channels — store, web and marketplace — labelled by channel: the lines the entity `sales` reads."
+    tags: ["sales"]
+    sourceText: """sql
+SELECT CAST('store' AS VARCHAR(16)) AS channel, item, customer, sold_date, promo, quantity, ext_sales_price, ticket_number AS line_ref, store, NULL AS warehouse FROM store_sales
+UNION ALL SELECT CAST('web' AS VARCHAR(16)) AS channel, item, customer, sold_date, promo, quantity, ext_sales_price, order_number AS line_ref, NULL AS store, warehouse FROM web_sales
+UNION ALL SELECT CAST('marketplace' AS VARCHAR(16)) AS channel, item, customer, sold_date, promo, quantity, ext_sales_price, order_number AS line_ref, NULL AS store, warehouse FROM catalog_sales
+"""
+}
+
+// The label names the OBJECT, never a revenue word: a label is a METADATA term and outranks a declared phrase
+// (ttr-demo#62). The revenue words are declared on the measure (`lexicon/aliases/hartland.lex.yaml`), the channel
+// words on `channel`'s value labels and `lexicon/aliases/channels.lex.yaml`.
+def entity sales {
+    description: "Sales lines of all three channels — store, web and marketplace — one object, labelled by channel. Revenue (sales) = SUM(ext_sales_price), units sold = quantity, dated by sold_date; restrict by channel for one channel, group by channel to compare them."
+    labelPlural: "All-Channel Sales"
+    roles: [fact]
+    // The labels `channel_sales` carried, so the object keeps the names it was asked by.
+    displayLabel: { en: "All-Channel Sales", cs: "Prodeje napříč kanály" }
+    // MS: revenue FIRST — the default measure of a bare "revenue" / „tržby“ — then units sold.
+    semantics { measures: [ ext_sales_price, quantity ] }
+    binding: { target: { query: er.query.sales_union } },
+    attributes: [
+        def attribute channel {
+            type: text,
+            description: "Sales channel of the line — 'store', 'web' or 'marketplace'.",
+            // The channel words of the estate. A value label is a member term of the lexicon, and the resolver binds
+            // it as `er.entity.sales.channel#<value>`, which the query door restricts by (`channel = 'marketplace'`).
+            valueLabels: {
+                // Not „Prodejny“ / "Stores": that is the store DIMENSION's word too, and an ask between the two readings
+                // of the store word (ttr-demo#62) would offer „Prodejna“ beside „Prodejny“.
+                "store":       { en: "Store channel", cs: "Kanál prodejen" },
+                "web":         { en: "Web",         cs: "Web" },
+                "marketplace": { en: "Marketplace", cs: "Tržiště" }
+            }
+        },
+        def attribute item            { type: int, description: "Sold product — FK to the 'sk' attribute of the Product (item) entity." },
+        def attribute customer        { type: int, description: "Buying customer — FK to the 'sk' attribute of the Customer entity." },
+        def attribute sold_date       { type: int, description: "Sale date — FK to the 'sk' attribute of the Calendar (date_dim) entity." },
+        def attribute promo           { type: int, description: "Promotion applied to this line, if any — FK to the 'sk' attribute of the Promotion entity." },
+        def attribute quantity        { type: int, description: "Units sold on this line." },
+        def attribute ext_sales_price { type: { type: decimal, length: 10, precision: 2 }, description: "Extended sales price of the line (unit price × quantity) — the revenue amount; SUM this for revenue/sales, in any channel." },
+        def attribute line_ref        { type: int, description: "The line's basket: the ticket number of a store line, the order number of a web or marketplace line. Not unique across channels." },
+        // No relation to `store` (relations.ttrm says why): a store name is asked of the store channel by the composer.
+        def attribute store           { type: int, description: "Selling store of a store line — the 'sk' attribute of the Store entity; empty for a web or marketplace line." },
+        // LR ⚑LR-9 — the DC a web or marketplace line ships from; empty on a store line.
+        def attribute warehouse       { type: int, description: "Fulfilling distribution center of a web or marketplace line — FK to the 'sk' attribute of the Distribution Center (warehouse) entity; empty for a store line, which no distribution center ships." }
+    ]
+}

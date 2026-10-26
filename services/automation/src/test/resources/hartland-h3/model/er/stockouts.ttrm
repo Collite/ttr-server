@@ -1,0 +1,82 @@
+package hartland
+
+model er
+
+// BI-4 (project platform/features/bi, contracts C-22) — the logical query behind Superset's "DC meltdown —
+// stock-outs" dashboard, and the entity stacked on it (the LQ shape of customer_revenue.ttrm). One row per
+// distribution center per month: how many of the month's weekly snapshots were stock-out weeks.
+//
+// A stock-out week is the seed's own definition (data/seed/02-seed-incident/tests/verify-story.sql §3), the one
+// `q.hartland.warehouse_stockout_week_count` counts: at least half of the DC's inventory rows for the week at zero.
+// So the body counts per snapshot first, then per month — a WITH, which the metadata service compiles into the
+// stored ER plan like any subquery. The 2025 incident is 17 stock-out weeks at DC 5 (Brno DC / Memphis DC), August
+// to November, and summed over 2025 this entity says 17 too: one number on the dashboard, in Iris and in the saved
+// query.
+//
+// Monthly, not weekly: a week as a date has no spelling the translator lowers yet (DATE_TRUNC, ttr-core#244). The
+// month is its first day, built from the calendar date (the spelling the BI-0 spike proved through the door), so a
+// chart has a real time axis and the relation to the calendar below can narrow it by year or quarter.
+//
+// Parameterless (D-23): a dashboard reads it as it is, every month on record. Security rides along as for
+// customer_revenue: the body reads `inventory` and `warehouse`, and the DC-scope row rule narrows a
+// `kantheon-scope-dc-5` caller to DC 5's rows — petr's dashboard shows Brno DC only, marketa's all five.
+//
+// ⚑ The query is NOT named after the entity (customer_revenue.ttrm says why). Its label names the OBJECT, never the
+// stock-out words a question asks with: a label is a METADATA term and outranks a declared phrase (ttr-demo#62), and
+// «výpadky zásob» belongs to act 3.5's saved query. The measure's phrases are in lexicon/aliases/hartland.lex.yaml.
+
+def query stockouts_monthly_dc {
+    description: "Stock-out weeks per distribution center per month — one row per DC and month, every month on record. A stock-out week is a weekly inventory snapshot in which at least half of the DC's inventory rows were at zero."
+    tags: ["inventory", "stockouts"]
+    sourceText: """sql
+WITH weekly AS (
+    SELECT inventory.warehouse AS warehouse, warehouse.warehouse_name AS warehouse_name,
+           CAST(CAST(EXTRACT(YEAR FROM date_dim.cal_date) AS VARCHAR(4)) || '-' || CAST(EXTRACT(MONTH FROM date_dim.cal_date) AS VARCHAR(2)) || '-01' AS DATE) AS month_start,
+           inventory.as_of_date AS as_of_date,
+           SUM(CASE WHEN inventory.quantity_on_hand = 0 THEN 1 ELSE 0 END) AS zero_rows,
+           COUNT(*) AS total_rows
+    FROM inventory JOIN warehouse JOIN date_dim
+    GROUP BY inventory.warehouse, warehouse.warehouse_name, date_dim.cal_date, inventory.as_of_date
+)
+SELECT weekly.warehouse, weekly.warehouse_name, weekly.month_start,
+       SUM(CASE WHEN 2 * weekly.zero_rows >= weekly.total_rows THEN 1 ELSE 0 END) AS stockout_weeks,
+       COUNT(*) AS weeks,
+       SUM(weekly.zero_rows) AS zero_rows,
+       SUM(weekly.total_rows) AS total_rows
+FROM weekly
+GROUP BY weekly.warehouse, weekly.warehouse_name, weekly.month_start
+"""
+}
+
+// Stacked on the query: unbound attributes, each naming the output column of its own name. No foreign key, so the
+// relations state `join:` pairs — to the DC, and to the calendar day the month starts on.
+def entity dc_stockout_month {
+    description: "Stock-out weeks per distribution center per month — one row per DC and month. A stock-out week is a weekly inventory snapshot in which at least half of the DC's inventory rows were at zero. Sum stockout_weeks across months or DCs; the month is its first day, so a year or a quarter narrows the months."
+    roles: [fact]
+    displayLabel: { en: "Monthly Stock-out Overview", cs: "Měsíční přehled výpadků zásob" }
+    semantics { measures: [ stockout_weeks ] }
+    binding: { target: { query: er.query.stockouts_monthly_dc } },
+    attributes: [
+        def attribute warehouse      { type: int, isKey: true, description: "Distribution center — FK to the 'sk' attribute of the Distribution Center entity." },
+        def attribute warehouse_name { type: text, description: "The distribution center's name (Brno DC, Memphis DC, …), as the Distribution Center entity has it." },
+        def attribute month_start    { type: date, isKey: true, description: "The month, as its first day: 2025-08-01 is August 2025. A weekly snapshot counts in the month its date falls in." },
+        def attribute stockout_weeks { type: int, description: "Stock-out weeks in the month: weekly snapshots in which at least half of the DC's inventory rows were at zero. Additive across months and DCs." },
+        def attribute weeks          { type: int, description: "Weekly snapshots taken in the month (4 or 5)." },
+        def attribute zero_rows      { type: int, description: "Inventory rows at zero on hand across the month's snapshots (one row per item per snapshot)." },
+        def attribute total_rows     { type: int, description: "Inventory rows across the month's snapshots." }
+    ]
+}
+
+def relation rel_dc_stockout_month_warehouse {
+    description: "A month's stock-out count belongs to one distribution center."
+    from: er.entity.dc_stockout_month, to: er.entity.warehouse,
+    cardinality: { from: "0..*", to: "1" },
+    join: [{ from: er.entity.dc_stockout_month.warehouse, to: er.entity.warehouse.sk }]
+}
+
+def relation rel_dc_stockout_month_date {
+    description: "A month's stock-out count is dated by the first day of its month."
+    from: er.entity.dc_stockout_month, to: er.entity.date_dim,
+    cardinality: { from: "0..*", to: "1" },
+    join: [{ from: er.entity.dc_stockout_month.month_start, to: er.entity.date_dim.cal_date }]
+}

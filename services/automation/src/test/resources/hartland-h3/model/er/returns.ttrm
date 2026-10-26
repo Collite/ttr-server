@@ -1,0 +1,91 @@
+package hartland
+
+model er
+
+// Channel returns entities + the Return Reasons dim (D-5). return_amt is deliberately
+// the SAME logical name across all three returns entities even though the physical
+// column is cr_return_amount (not cr_return_amt) on catalog_returns — the er2db binding
+// (Stage 2.2 T2) absorbs that naming inconsistency so md-layer measures (Stage 2.4) can
+// treat the three symmetrically.
+
+def entity store_returns {
+    description: "Stores-channel returns."
+    labelPlural: "Store Returns"
+    roles: [fact]
+    displayLabel: { en: "Store Returns", cs: "Reklamace z prodejen" }
+    // MS: the mention facet. return_amt FIRST — a bare "reklamace" asks about the
+    // refunded value, and the rate beat divides it by ext_sales_price.
+    semantics { measures: [ return_amt, return_quantity ] }
+    attributes: [
+        def attribute item            { type: int, isKey: true, description: "Returned product — FK to the 'sk' attribute of the Product (item) entity." },
+        def attribute ticket_number   { type: int, isKey: true, description: "Original sales ticket number — pairs this return with its sale." },
+        def attribute returned_date   { type: int, description: "Return date — FK to the 'sk' attribute of the Calendar (date_dim) entity." },
+        def attribute customer        { type: int, description: "Returning customer — FK to the 'sk' attribute of the Customer entity." },
+        def attribute store           { type: int, description: "Store accepting the return — FK to the 'sk' attribute of the Store entity." },
+        def attribute reason          { type: int, description: "Return reason — FK to the 'sk' attribute of the Return Reason entity." },
+        def attribute return_quantity { type: int, description: "Units returned on this line." },
+        def attribute return_amt      { type: { type: decimal, length: 10, precision: 2 }, description: "Refunded amount of the line — SUM this for the return value; ratio against ext_sales_price gives the return rate." }
+    ]
+}
+
+def entity web_returns {
+    description: "Web-channel returns."
+    labelPlural: "Web Returns"
+    roles: [fact]
+    displayLabel: { en: "Web Returns", cs: "Reklamace z webu" }
+    // MS: the mention facet — the three returns entities stay symmetric here too.
+    semantics { measures: [ return_amt, return_quantity ] }
+    attributes: [
+        def attribute item            { type: int, isKey: true, description: "Returned product — FK to the 'sk' attribute of the Product (item) entity." },
+        def attribute order_number    { type: int, isKey: true, description: "Original web order number — pairs this return with its sale." },
+        def attribute returned_date   { type: int, description: "Return date — FK to the 'sk' attribute of the Calendar (date_dim) entity." },
+        def attribute customer        { type: int, description: "Returning customer — FK to the 'sk' attribute of the Customer entity." },
+        def attribute reason          { type: int, description: "Return reason — FK to the 'sk' attribute of the Return Reason entity." },
+        def attribute return_quantity { type: int, description: "Units returned on this line." },
+        def attribute return_amt      { type: { type: decimal, length: 10, precision: 2 }, description: "Refunded amount of the line — SUM this for the return value; ratio against ext_sales_price gives the return rate." }
+    ]
+}
+
+def entity catalog_returns {
+    description: "Marketplace-channel returns — S3's paired evidence signal alongside the inventory stockout."
+    labelPlural: "Marketplace Returns"
+    roles: [fact]
+    displayLabel: { en: "Marketplace Returns", cs: "Reklamace z tržiště" }
+    // MS: the mention facet — S3's paired signal is asked about by value, so return_amt
+    // leads here as it does on the other two channels.
+    semantics { measures: [ return_amt, return_quantity ] }
+    attributes: [
+        def attribute item            { type: int, isKey: true, description: "Returned product — FK to the 'sk' attribute of the Product (item) entity." },
+        def attribute order_number    { type: int, isKey: true, description: "Original marketplace order number — pairs this return with its sale." },
+        def attribute returned_date   { type: int, description: "Return date — FK to the 'sk' attribute of the Calendar (date_dim) entity." },
+        def attribute customer        { type: int, description: "Returning customer — FK to the 'sk' attribute of the Customer entity." },
+        def attribute reason          { type: int, description: "Return reason — FK to the 'sk' attribute of the Return Reason entity." },
+        def attribute warehouse       { type: int, description: "Distribution center processing the return — FK to the 'sk' attribute of the Distribution Center (warehouse) entity." },
+        def attribute return_quantity { type: int, description: "Units returned on this line." },
+        def attribute return_amt      { type: { type: decimal, length: 10, precision: 2 }, description: "Refunded amount of the line — SUM this for the return value; ratio against ext_sales_price gives the return rate." }
+    ]
+}
+
+def entity reason {
+    // The incident's late-delivery signal is one of these reasons. Its text is world-specific
+    // (US "Did not get it on time", CZ "Nedorazilo včas"), so no description below names a value:
+    // the model serves both worlds (BM-8), and the composer copied the US example into SQL on the
+    // CZ world (0 rows, 2026-10-10).
+    description: "Return reasons — why a customer returned a sales line. The reason text is stored in the language of the loaded data."
+    labelPlural: "Return Reasons"
+    // LP-P3·T1 (LP contracts §2.1) — the mention facet a quoted literal attributes to:
+    // `"..."` on this head lands on `name`, a code-shaped literal on `code`. Without it the
+    // literal is headless (G3) and the fast path refuses. The legacy properties below are
+    // kept for the same reason store's are (readers before producers).
+    semantics { name: reason_desc, code: reason_id, code_pattern: "^[A-P]{16}$" }
+    nameAttribute: reason_desc
+    codeAttribute: reason_id
+    roles: [dimension]
+    displayLabel: { en: "Return Reason", cs: "Důvod reklamace" }
+    attributes: [
+        def attribute sk          { type: int, isKey: true, description: "Sequence key. Internal primary key only." },
+        def attribute reason_id   { type: text, description: "Return reason identifier (code)." },
+        // Member vocabulary, TOKENS: 35 reasons, each a short phrase — «better price» finds 'Found a better price'.
+        def attribute reason_desc { type: text, description: "Return reason text, the human-readable label, in the language of the loaded data. Filter on the reason exactly as the question names it, never on a translation of it.", search { searchable method: TOKENS } }
+    ]
+}

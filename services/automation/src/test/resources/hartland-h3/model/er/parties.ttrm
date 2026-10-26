@@ -1,0 +1,132 @@
+package hartland
+
+model er
+
+// Customers + their addresses/demographics, and Stores (D-5).
+
+def entity customer {
+    description: "Customers — the channel-overlap and demographic branches key off this entity."
+    labelPlural: "Customers"
+    // LP-P3·T1 (LP contracts §2.1) — the mention facet, CODE ONLY: this entity holds no
+    // customer name (TPC-DS keeps first/last name out of the hartland cut), so a quoted
+    // literal on this head attributes only when it is code-shaped. A plain quoted word stays
+    // headless (G3) and the fast path refuses — correctly, and visibly.
+    semantics { code: customer_id, code_pattern: "^[A-P]{16}$" }
+    codeAttribute: customer_id
+    roles: [master, dimension]
+    displayLabel: { en: "Customer", cs: "Zákazník" }
+    attributes: [
+        def attribute sk          { type: int, isKey: true, description: "Sequence key. Internal primary key only." },
+        def attribute customer_id { type: text, description: "Unique customer identifier (code)." },
+        def attribute addr        { type: int, description: "Current address — FK to the 'sk' attribute of the Customer Address entity." },
+        def attribute cdemo       { type: int, description: "Customer demographics — FK to the 'sk' attribute of the Customer Demographics entity." },
+        def attribute hdemo       { type: int, description: "Household demographics — FK to the 'sk' attribute of the Household Demographics entity." },
+        def attribute birth_year  { type: int, description: "Customer's year of birth — buyer-age analyses derive age from this." },
+        // AU D-83 — derived by the data build from the modal warehouse of the customer's lines.
+        def attribute center      { type: int, description: "The customer's distribution center — the one that ships most of their orders; FK to the 'sk' attribute of the Distribution Center (warehouse) entity. Empty for a customer with no web or marketplace order." }
+    ]
+}
+
+def entity customer_address {
+    description: "Customer addresses — the regional-dying branch (revenue-by-state, confirmed flat)."
+    labelPlural: "Customer Addresses"
+    // LP-P3·T1 (LP contracts §2.1) — the mention facet a quoted literal attributes to:
+    // `"..."` on this head lands on `name`, a code-shaped literal on `code`. Without it the
+    // literal is headless (G3) and the fast path refuses. The legacy properties below are
+    // kept for the same reason store's are (readers before producers).
+    semantics { name: city, code: address_id, code_pattern: "^[A-P]{16}$" }
+    nameAttribute: city
+    codeAttribute: address_id
+    roles: [dimension]
+    displayLabel: { en: "Customer Address", cs: "Adresa zákazníka" }
+    attributes: [
+        def attribute sk         { type: int, isKey: true, description: "Sequence key. Internal primary key only." },
+        def attribute address_id { type: text, description: "Unique address identifier (code)." },
+        // Member vocabulary, TYPOS(1) on lex-matcher's lemma axis (nlp lemmatises the query and the members alike): a
+        // question inflects the city («zákazníci z Prahy», «v Brně», «v Českých Budějovicích»), and the resolver binds the
+        // STORED name, so the filter reads city = 'Praha' — never the inflected word. Within one hop of `customer` and the
+        // channel facts, not of `sales` (the bare-city headline beat keeps its DC). The store's and the DC's cities stay
+        // unsearchable on purpose: each is named after its city („Brno“, „Brno DC“), and store_name / warehouse_name
+        // already match the city word the same way — a second attribute with the same word would only split it.
+        def attribute city       { type: text, description: "City of the address.", search { searchable method: TYPOS(1) } },
+        def attribute county     { type: text, description: "County of the address." },
+        // MH-P3 tier M — the `customers in TN` case: `customer` holds no state, this does, and
+        // `customer_address` declares a relation TO `customer`, so the governor reaches it in
+        // one hop. EXACT: two-character codes are all one edit apart.
+        def attribute state      { type: { type: char, length: 2 }, description: "Two-letter US state code of the address — revenue-by-state slices use this.", search { searchable method: EXACT } }
+    ]
+}
+
+def entity customer_demographics {
+    description: "Customer demographics — the demographic-dying branch (buyer age, confirmed flat)."
+    labelPlural: "Customer Demographics"
+    roles: [dimension]
+    displayLabel: { en: "Customer Demographics", cs: "Demografie zákazníka" }
+    attributes: [
+        def attribute sk             { type: int, isKey: true, description: "Sequence key. Internal primary key only." },
+        def attribute gender         { type: { type: char, length: 1 }, description: "Gender code (M/F)." },
+        def attribute marital_status { type: { type: char, length: 1 }, description: "Marital status code (single letter, e.g. S/M/D)." }
+    ]
+}
+
+def entity household_demographics {
+    description: "Household demographics — the demographic-dying branch."
+    labelPlural: "Household Demographics"
+    roles: [dimension]
+    displayLabel: { en: "Household Demographics", cs: "Demografie domácnosti" }
+    attributes: [
+        def attribute sk            { type: int, isKey: true, description: "Sequence key. Internal primary key only." },
+        def attribute income_band   { type: int, description: "Income band — FK to the 'sk' attribute of the Income Band entity." },
+        def attribute buy_potential { type: text, description: "Household buying-potential label (e.g. '>10000', 'Unknown')." }
+    ]
+}
+
+def entity income_band {
+    description: "Income bands."
+    labelPlural: "Income Bands"
+    roles: [dimension]
+    displayLabel: { en: "Income Band", cs: "Příjmové pásmo" }
+    attributes: [
+        def attribute sk          { type: int, isKey: true, description: "Sequence key. Internal primary key only." },
+        def attribute lower_bound { type: int, description: "Lower bound of the household's yearly income range (USD)." },
+        def attribute upper_bound { type: int, description: "Upper bound of the household's yearly income range (USD)." }
+    ]
+}
+
+def entity store {
+    // ttr-demo#62 remedy 3 (Bora, 2026-10-12): "How many stores do we have?" is 6, not 12. This
+    // dimension is SCD type 2 — a store keeps its history as several rows, 12 rows for 6 stores
+    // in both worlds — and a composer once answered COUNT(*). TTR-M says it in its own vocabulary
+    // with the validity pair below (`valid_from`/`valid_to` on the row's history dates; the
+    // business key is the mention facet's `code:`). Nothing reads that pair for a dimension yet
+    // (money reads it for fx tables only), and the composer is shown an entity's FIRST
+    // description line and no semantic role — so that line says how to count, in words.
+    description: "Stores — the six stores (Stores-channel dim). SCD type 2: a store keeps its history as several rows (12 rows for the 6 stores), so count stores by store_id, or keep only the current rows (rec_end_date empty)."
+    labelPlural: "Stores"
+    // MS: the same two pointers in the vocabulary-v3 mention facet. The legacy properties
+    // below are deliberately KEPT, which is why this entity raises TTR-SEM-218 ("both,
+    // agreeing" — see model/tests/project-harness.mjs). Readers before producers: veles
+    // reads `semantics { name:, code: }` only from MS-P2 on, and dropping the legacy
+    // properties before the serving estate runs that build would blank
+    // EntityDetail.name_attribute for this dimension. Delete them once hartland's veles
+    // is on an MS-P2 image, not before.
+    semantics { name: store_name, code: store_id, code_pattern: "^[A-P]{16}$" }
+    nameAttribute: store_name
+    codeAttribute: store_id
+    roles: [dimension]
+    displayLabel: { en: "Store", cs: "Prodejna" }
+    attributes: [
+        def attribute sk         { type: int, isKey: true, description: "Sequence key of one history row. Internal primary key only." },
+        def attribute store_id   { type: text, description: "Unique store identifier (code) — the same on every history row of one store; count stores by it." },
+        // MH-P3 tier M (E4) — `Nashville` is a store NAME, and a governed value has to be in
+        // the member vocabulary before the governor can be asked about it. TYPOS(1) here: a
+        // typed store name is a real word, not a two-letter code.
+        def attribute store_name { type: text, description: "Store name, the human-readable label.", search { searchable method: TYPOS(1) } },
+        def attribute city       { type: text, description: "The city the store is located in." },
+        // MH-P3 tier M — the `stores in TN` case, and the one the drill leads with.
+        def attribute state      { type: { type: char, length: 2 }, description: "The state the store is located in.", search { searchable method: EXACT } },
+        // ttr-demo#62 — the SCD-2 validity pair (see the entity's comment).
+        def attribute rec_start_date { type: date, semantics { role: valid_from }, description: "First day this history row describes the store." },
+        def attribute rec_end_date   { type: date, semantics { role: valid_to }, description: "Last day this history row describes the store; empty on the current row." }
+    ]
+}

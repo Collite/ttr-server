@@ -167,6 +167,61 @@ class DryRunLedgerSpec :
             unchanged()
         }
 
+        "deferred calls and relative durations survive JSONB retry sealing and a new ledger reader" {
+            val id = open()
+            val intent =
+                buildJsonObject {
+                    put("action", "start")
+                    put(
+                        "arguments",
+                        buildJsonObject {
+                            put("process", "purchasing")
+                            put("revision", 9007199254740993L)
+                        },
+                    )
+                    put("deferred", true)
+                }
+            val duration =
+                buildJsonObject {
+                    put("amount", 9007199254740993L)
+                    put("unit", "working_days")
+                }
+            val preview =
+                plan(id).let { base ->
+                    base.copy(
+                        actions =
+                            listOf(
+                                base.actions.first().copy(
+                                    action = "ask",
+                                    sink = "task",
+                                    batchRows = emptyList(),
+                                    arguments =
+                                        buildJsonObject {
+                                            put("action", intent)
+                                            put("due", duration)
+                                        },
+                                    would = "would ask for purchasing",
+                                ),
+                            ),
+                    )
+                }
+            ledger.completeEvaluation(id, result, preview)
+            ledger.completeEvaluation(id, result, preview)
+            ledger.readRunProgress(id, "subject-1").actions shouldBe preview.actions
+            ledger.sealProtocol(id)
+            clock.now = now.plusSeconds(90000)
+            val reloaded = Ledger(Duration.ofSeconds(1), clock).readRunProgress(id, "subject-1").actions.single()
+            reloaded.arguments["action"] shouldBe intent
+            reloaded.arguments["due"] shouldBe duration
+            reloaded.arguments
+                .getValue("due")
+                .jsonObject
+                .getValue("amount")
+                .jsonPrimitive.long shouldBe
+                9007199254740993L
+            unchanged()
+        }
+
         "JSONB exponent normalization preserves exact values in batch and action HTTP JSON and identical retries" {
             val id = open()
             val original = plan(id)

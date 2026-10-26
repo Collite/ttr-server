@@ -1,0 +1,37 @@
+package hartland
+
+model db schema dbo
+
+// Physical VIEWS — created by `data/views/*.sql` in both worlds (hartland_us, hartland_cz); the
+// model declares what the database already holds. `definitionSql` mirrors the script so the model
+// says what the view IS, not only what it is called.
+
+// `channel_sales` backed the er entity of that name until md/hop HP-H (2026-10-24): the all-channel entity is now
+// `er.entity.sales`, stacked on the logical query `er.query.sales_union` (model/er/sales.ttrm), and no entity reads
+// this view. It stays declared because it stays in both databases, and the routing corpus's validation SQL reads it.
+def view channel_sales {
+    description: "All-channel sales lines — store, web and marketplace sales in one relation, labelled by channel. No entity reads it; the model's all-channel object is `sales`."
+    columns: [
+        def column channel          { type: varchar },
+        def column sold_date_sk     { type: int },
+        def column item_sk          { type: int },
+        def column customer_sk      { type: int },
+        def column quantity         { type: int },
+        def column ext_sales_price  { type: { type: decimal, length: 10, precision: 2 } },
+        // LR ⚑LR-9 — the fulfilling DC of a web / marketplace line; NULL on a store line. The
+        // DC-scope row rule filters on it (contracts C-5·4). Last, as in the script.
+        def column warehouse_sk     { type: int }
+    ]
+    definitionSql: """
+        SELECT 'store'::text AS channel, ss_sold_date_sk AS sold_date_sk, ss_item_sk AS item_sk,
+               ss_customer_sk AS customer_sk, ss_quantity AS quantity, ss_ext_sales_price AS ext_sales_price,
+               NULL::int AS warehouse_sk
+          FROM store_sales
+        UNION ALL
+        SELECT 'web', ws_sold_date_sk, ws_item_sk, ws_bill_customer_sk, ws_quantity, ws_ext_sales_price, ws_warehouse_sk
+          FROM web_sales
+        UNION ALL
+        SELECT 'marketplace', cs_sold_date_sk, cs_item_sk, cs_bill_customer_sk, cs_quantity, cs_ext_sales_price, cs_warehouse_sk
+          FROM catalog_sales
+    """
+}
