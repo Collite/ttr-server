@@ -14,22 +14,27 @@ import org.tatrman.ttrp.ast.RecipeDecl
 import org.tatrman.ttrp.ast.WiringValue
 import org.tatrman.ttrp.diagnostics.Severity
 import org.tatrman.ttrp.expr.ColumnRef
+import org.tatrman.ttrp.expr.DurationExpr
 import org.tatrman.ttrp.expr.DurationLiteral
 import org.tatrman.ttrp.expr.DurationParam
 import org.tatrman.ttrp.expr.DurationUnit
 import org.tatrman.ttrp.expr.Literal
 import org.tatrman.ttrp.expr.LiteralValue
+import org.tatrman.ttrp.graph.recipe.RecipeChecker
 import org.tatrman.ttrp.parser.TtrpParser
 
 /** Wiring data, not dispatch: partial calls and relative durations never execute or resolve a deadline. */
 internal object PreviewWiringValues {
-    // Mirrors RecipeChecker.WIRING_PROPERTIES until the compiler API/P3 can expose that shared contract.
-    val WIRING_PROPERTIES = setOf("due", "on_due", "group_by")
+    private val PARSED_PROPERTIES = setOf("due", "on_due")
 
     private fun wiringProperty(
         action: AutomationAction,
         name: String,
-    ): String? = name.takeIf { it in WIRING_PROPERTIES && action.columns.none { column -> column.name == name } }
+    ): String? =
+        name.takeIf {
+            it in RecipeChecker.WIRING_PROPERTIES &&
+                action.columns.none { column -> column.name == name }
+        }
 
     internal data class Prepared(
         val action: AutomationAction,
@@ -48,10 +53,12 @@ internal object PreviewWiringValues {
                 sources
                     .filterKeys { name ->
                         val column = action.columns.singleOrNull { it.name == name }
-                        column?.type == "action" || (wiringProperty(action, name) != null && name != "group_by")
-                    }.mapValues { parse(it.value) }
+                        column?.type == "action" || (wiringProperty(action, name) in PARSED_PROPERTIES)
+                    }.mapValues { (name, source) ->
+                        parse(source).also { validateKinds(it, wiringProperty(action, name)) }
+                    }
             val defaultDue =
-                if ("due" !in sources && action.columns.none { it.name == "due" }) {
+                if ("due" !in sources && wiringProperty(action, "due") != null) {
                     action.due?.let {
                         // MAX_VALUE rounds up to 2^63 as a Double; the upper bound must be strict.
                         require(it.amount.isFinite() && it.amount >= 0 && it.amount < Long.MAX_VALUE.toDouble())
@@ -64,15 +71,6 @@ internal object PreviewWiringValues {
                 }
             Prepared(action, sources.toMap(), parsed, defaultDue)
         }
-
-    fun project(
-        sources: Map<String, String>,
-        action: AutomationAction,
-        table: Table,
-        bindings: Map<String, BoundValue>,
-        expectedTypes: Map<String, String> = emptyMap(),
-        roleNames: Set<String>,
-    ): List<Map<String, JsonElement>> = project(prepare(sources, action), table, bindings, expectedTypes, roleNames)
 
     fun project(
         prepared: Prepared,
@@ -181,19 +179,13 @@ internal object PreviewWiringValues {
                         val isAction = column?.type == "action" || property == "on_due"
                         val isDue = property == "due"
                         val parsed = prepared.parsed[name]
-                        val expression = (parsed as? WiringValue.Expr)?.expression
-                        val isNull = expression is Literal && expression.value == LiteralValue.Null
-                        when (property) {
-                            "due" -> require(isNull || expression is DurationLiteral || expression is DurationParam)
-                            "on_due" -> require(isNull || parsed is WiringValue.Call)
-                        }
                         when {
                             parsed is WiringValue.Call -> {
                                 require(isAction)
                                 value(parsed, 0, source)
                             }
                             parsed is WiringValue.Expr &&
-                                (parsed.expression is DurationLiteral || parsed.expression is DurationParam) -> {
+                                parsed.expression is DurationExpr -> {
                                 require(isDue)
                                 value(parsed, 0, source)
                             }
@@ -216,6 +208,29 @@ internal object PreviewWiringValues {
                 outputs.mapValues { it.value(row) }
             }
         }
+
+    /** Callees are not pinned yet: nested property names conservatively use the wiring contract. */
+    private fun validateKinds(
+        node: WiringValue,
+        property: String?,
+    ) {
+        val expression = (node as? WiringValue.Expr)?.expression
+        val isNull = expression is Literal && expression.value == LiteralValue.Null
+        when (property) {
+            "due" -> require(isNull || expression is DurationExpr)
+            "on_due" -> require(isNull || node is WiringValue.Call)
+        }
+        if (node is WiringValue.Call) {
+            node.args.forEach {
+                validateKinds(
+                    it.value,
+                    it.name.takeIf { name ->
+                        name in RecipeChecker.WIRING_PROPERTIES
+                    },
+                )
+            }
+        }
+    }
 
     /** Check the full wrapper shape so no input tail is ignored. */
     private fun parse(source: String): WiringValue {

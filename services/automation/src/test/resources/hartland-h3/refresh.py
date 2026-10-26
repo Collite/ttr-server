@@ -26,7 +26,7 @@ actual = {path.relative_to(root) for path in root.rglob('*') if path.is_file()}
 expected = set(blobs) | {Path('README.md'), Path('SOURCE.json'), Path('refresh.py')}
 extra = actual - expected
 missing = expected - actual
-if extra or (args.check and missing):
+if extra or Path('README.md') in missing or (args.check and missing):
     parser.error(f'fixture file set differs: extra={sorted(map(str, extra))}, missing={sorted(map(str, missing))}')
 for path, data in blobs.items():
     destination = root / path
@@ -36,4 +36,5 @@ for path, data in blobs.items():
     else:
         destination.parent.mkdir(parents=True, exist_ok=True)
         destination.write_bytes(data)
-print(f'{len(blobs)} pinned source blobs verified')
+operation = 'verified' if args.check else 'restored'
+print(f'{len(blobs)} pinned source blobs {operation}')

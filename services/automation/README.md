@@ -339,7 +339,9 @@ The published wiring parser checks the entire value, including nested calls. Mal
 unknown parameters, wrong/fractional/null/negative counts, overflow, excessive call depth and unsupported
 row/detail capture refuse even on empty/unselected routes. A nested argument that names a context or
 the candidates refuses, even if that name also denotes a scalar route column; callee column types are
-consulted only after P3 pins nested callees. Root scalar arguments keep projecting. Nested scalar leaves
+consulted only after P3 pins nested callees. Nested `due` must be a duration or NULL, and nested `on_due`
+a call or NULL, at every depth. Until P3 pins callees, this also refuses a nested callee's declared
+`due` column wired with a date. Root scalar arguments keep projecting. Nested scalar leaves
 retain original source text (code-point spans), avoiding a second string-escaping pass. Unused casts are
 checked without executing.
 Would-text renders deferred calls and relative durations alongside existing scalars. The full Hartland H3

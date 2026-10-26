@@ -22,6 +22,9 @@ outside this repo could notice is in.
   extra files in both check and restore modes. Explicit undeclared `due` accepts durations/NULL and
   `on_due` accepts calls/NULL; all three wiring properties stay outside writer assignments while declared
   columns remain assignments. Role scope is required and prepared values retain their pinned action.
+  The same kind rules apply recursively to nested `due`/`on_due`, checked once during preparation.
+  Until callee types are pinned, a nested declared `due` column wired with a date also refuses.
+  Fixture restore requires its README and reports restored blobs.
   Action-level `on_due` default application remains an explicit P3 obligation.
 
 - **automation — partial action and relative duration preview.** Full H3 can preview its proposal and

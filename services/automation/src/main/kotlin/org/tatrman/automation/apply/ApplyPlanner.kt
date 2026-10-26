@@ -13,6 +13,7 @@ import org.tatrman.automation.bundle.ManifestWiring
 import org.tatrman.automation.runner.*
 import org.tatrman.ttr.metadata.model.AutomationAction
 import org.tatrman.ttr.metadata.model.Entity
+import org.tatrman.ttrp.graph.recipe.RecipeChecker
 import org.tatrman.ttrp.resolve.TargetResolution
 import java.time.Clock
 import java.util.UUID
@@ -421,7 +422,7 @@ class ApplyPlanner(
     private fun assignmentNames(
         action: AutomationAction,
         names: Set<String>,
-    ): Set<String> = names - (PreviewWiringValues.WIRING_PROPERTIES - action.columns.map { it.name }.toSet())
+    ): Set<String> = names - (RecipeChecker.WIRING_PROPERTIES - action.columns.map { it.name }.toSet())
 
     private fun render(
         template: String?,

@@ -12,6 +12,7 @@ import org.tatrman.automation.bundle.ManifestColumn
 import org.tatrman.automation.bundle.legacyPreviewMetadata
 import org.tatrman.automation.runner.BoundValue
 import org.tatrman.automation.runner.Table
+import org.tatrman.ttr.metadata.model.AutomationAction
 import org.tatrman.ttr.metadata.model.AutomationDuration
 import java.time.LocalDate
 
@@ -42,6 +43,106 @@ class PreviewWiringValuesSpec :
                 .jsonObject["value"]!!
                 .jsonPrimitive.long shouldBe 9007199254740993L
             call.getValue("arguments").jsonObject["label"] shouldBe JsonPrimitive("purchasing-batch")
+        }
+
+        "nested on-due refuses a bare symbol at every call depth" {
+            for (source in listOf(
+                "start { on_due: weekly }",
+                "start { action: hold { on_due: weekly } }",
+            )) {
+                for (selected in listOf(table, table.copy(rows = emptyList()))) {
+                    val error =
+                        shouldThrow<AutomationException> {
+                            PreviewWiringValues.project(
+                                mapOf("action" to source),
+                                ask,
+                                selected,
+                                emptyMap(),
+                                roleNames = emptySet(),
+                            )
+                        }
+                    error.code shouldBe ErrorCode.PREVIEW_UNSUPPORTED
+                    error.message shouldBe "unsupported action expression"
+                }
+            }
+        }
+
+        "nested due refuses a route column at every call depth" {
+            val route = Table(listOf(ManifestColumn("amount", "int")), listOf(listOf(2)))
+            for (source in listOf(
+                "hold { due: amount }",
+                "hold { on_due: release { due: amount } }",
+            )) {
+                for (selected in listOf(route, route.copy(rows = emptyList()))) {
+                    val error =
+                        shouldThrow<AutomationException> {
+                            PreviewWiringValues.project(
+                                mapOf("on_due" to source),
+                                ask,
+                                selected,
+                                emptyMap(),
+                                roleNames = emptySet(),
+                            )
+                        }
+                    error.code shouldBe ErrorCode.PREVIEW_UNSUPPORTED
+                    error.message shouldBe "unsupported action expression"
+                }
+            }
+        }
+
+        "nested duration and on-due call retain deferred values" {
+            val result =
+                PreviewWiringValues
+                    .project(
+                        mapOf("on_due" to "hold { due: 2 working_days, on_due: release {} }"),
+                        ask,
+                        table,
+                        emptyMap(),
+                        roleNames = emptySet(),
+                    ).single()
+                    .getValue("on_due")
+            result shouldBe
+                buildJsonObject {
+                    put("action", "hold")
+                    put(
+                        "arguments",
+                        buildJsonObject {
+                            put(
+                                "due",
+                                buildJsonObject {
+                                    put("amount", 2)
+                                    put("unit", "working_days")
+                                },
+                            )
+                            put(
+                                "on_due",
+                                buildJsonObject {
+                                    put("action", "release")
+                                    put("arguments", JsonObject(emptyMap()))
+                                    put("deferred", true)
+                                },
+                            )
+                        },
+                    )
+                    put("deferred", true)
+                }
+        }
+
+        "nested null due and on-due remain explicit nulls" {
+            val args =
+                PreviewWiringValues
+                    .project(
+                        mapOf("on_due" to "hold { due: null, on_due: null }"),
+                        ask,
+                        table,
+                        emptyMap(),
+                        roleNames = emptySet(),
+                    ).single()
+                    .getValue("on_due")
+                    .jsonObject
+                    .getValue("arguments")
+                    .jsonObject
+            args shouldBe JsonObject(mapOf("due" to JsonNull, "on_due" to JsonNull))
         }
 
         "relative durations retain every published unit and exact pinned parameter counts" {
@@ -441,3 +542,12 @@ class PreviewWiringValuesSpec :
             result["group_by"] shouldBe JsonPrimitive(2)
         }
     })
+
+private fun PreviewWiringValues.project(
+    sources: Map<String, String>,
+    action: AutomationAction,
+    table: Table,
+    bindings: Map<String, BoundValue>,
+    expectedTypes: Map<String, String> = emptyMap(),
+    roleNames: Set<String>,
+): List<Map<String, JsonElement>> = project(prepare(sources, action), table, bindings, expectedTypes, roleNames)
