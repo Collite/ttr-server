@@ -4,8 +4,9 @@
 import json
 import time
 from collections.abc import Callable, Iterator
-from typing import Any, TypeVar
+from typing import Any, Literal, TypeVar
 from urllib.parse import quote, urlsplit
+from uuid import UUID
 
 import requests
 from metadata.generated.schema.api.classification.createClassification import (
@@ -54,6 +55,13 @@ class OmError(Exception):
         self.status = status
         self.body = body
         super().__init__(f"OM {status if status is not None else 'transport'}: {body}")
+
+
+class NativeHyperlinkType(BaseModel):
+    # The pinned SDK's Type.name rejects hyphens, including this real built-in.
+    # Validate its exact name and UUID at the narrow REST lookup boundary.
+    id: UUID
+    name: Literal["hyperlink-cp"]
 
 
 class Summary(BaseModel):
@@ -309,10 +317,13 @@ class OmClient:
     def ensure_custom_property(self, op: EnsureCustomProperty) -> None:
         def get_type(name: str) -> Json:
             if name not in self._types:
-                value = Type.model_validate(
-                    self._rest(
-                        "GET", f"metadata/types/name/{name}", params={"fields": "customProperties"}
-                    )
+                response = self._rest(
+                    "GET", f"metadata/types/name/{name}", params={"fields": "customProperties"}
+                )
+                value = (
+                    NativeHyperlinkType.model_validate(response)
+                    if name == "hyperlink-cp"
+                    else Type.model_validate(response)
                 )
                 if value.id is None:
                     raise OmError(None, f"OM type {name} has no id")
@@ -320,17 +331,17 @@ class OmClient:
             return self._types[name]
 
         entity = get_type(op.entity_type)
-        string = get_type("string")
+        property_type = get_type(op.type)
         properties = entity.get("customProperties") or []
         existing = next((p for p in properties if p["name"] == op.name), None)
         if existing is not None:
-            if existing["propertyType"]["id"] != string["id"]:
-                raise OmError(409, f"{op.entity_type}.{op.name} exists with a non-string type")
+            if existing["propertyType"]["id"] != property_type["id"]:
+                raise OmError(409, f"{op.entity_type}.{op.name} exists with a non-{op.type} type")
             return
         prop = {
             "name": op.name,
             "description": f"Tatrman {op.name}",
-            "propertyType": {"id": string["id"], "type": "type"},
+            "propertyType": {"id": property_type["id"], "type": "type"},
         }
         prop = payload(CustomProperty.model_validate(prop))
         self._rest("PUT", f"metadata/types/{entity['id']}", json=prop)
@@ -349,14 +360,20 @@ class OmClient:
     def check(self) -> str:
         self.read_version()
         for kind, names in {
-            "table": ("ttrQname", "ttrUrl"),
+            "table": ("ttrQname", "ttrUrl", "ttrStudioLink"),
             "tableColumn": ("ttrQname",),
-            "glossaryTerm": ("ttrQname", "ttrUrl", "ttrKind", "ttrIri"),
-            "metric": ("ttrQname", "ttrUrl", "ttrAdditivity", "ttrColumnAssets"),
+            "glossaryTerm": ("ttrQname", "ttrUrl", "ttrStudioLink", "ttrKind", "ttrIri"),
+            "metric": ("ttrQname", "ttrUrl", "ttrStudioLink", "ttrAdditivity", "ttrColumnAssets"),
         }.items():
             for name in names:
                 self.ensure_custom_property(
-                    EnsureCustomProperty.model_validate({"entity_type": kind, "name": name})
+                    EnsureCustomProperty.model_validate(
+                        {
+                            "entity_type": kind,
+                            "name": name,
+                            "type": "hyperlink-cp" if name == "ttrStudioLink" else "string",
+                        }
+                    )
                 )
         self.ensure_classification("Tatrman")
         for name in ("Grounded", "Deprecated"):

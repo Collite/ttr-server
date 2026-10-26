@@ -45,7 +45,12 @@ grammars, worlds, scoped graphs and malformed Turtle. Unknown JSON fields are
 preserved for forward compatibility. Requests have a 30-second timeout.
 
 `--world` defaults to the export's world and must match it. `--studio-url` is the
-Studio HTTP(S) origin. Links open the **whole model** at
+Studio HTTP(S) origin. Version0.1.4 adds `ttrStudioLink`, an OM-native
+`hyperlink-cp` custom property with a label such as **Open E-R model in Studio**.
+Click it in Custom Properties or the overview properties panel. The existing
+`ttrUrl` string remains unchanged for integrations; no existing property type is
+migrated. A conflicting pre-existing `ttrStudioLink` type fails without changing it.
+Links open the **whole model** at
 `<origin>/m/<workspace>/s/db`, `/er` or `/md`; they do not select an individual
 object. `--studio-workspace` is the manifest `modeler.toml` `project.name` and
 defaults to the export world; set it when those names differ. The workspace is
@@ -54,9 +59,9 @@ and route paths are not accepted in the origin.
 
 New `cn` concepts remain in the OM glossary: Studio's legacy `cnc` renderer is a
 different model. With `--studio-url` configured, sync removes the obsolete
-connector-owned `ttrUrl` from CN terms while retaining other custom properties,
+connector-owned `ttrUrl` and `ttrStudioLink` from CN terms while retaining other custom properties,
 IRIs, definitions and asset links. Without that option it leaves existing URLs
-untouched. Version0.1.3 changes the successful-state fingerprint, forcing a real
+untouched. Version0.1.4 changes the successful-state fingerprint, forcing a real
 projection after an upgrade even if the source snapshot has not changed.
 
 `--no-deprecate-missing` suppresses stale

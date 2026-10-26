@@ -10,6 +10,7 @@ from ttr_connect_openmetadata.mapping import MappingError, plan_from_export
 from ttr_connect_openmetadata.model import (
     Connection,
     Edge,
+    EnsureCustomProperty,
     Export,
     LinkMetricToAsset,
     LinkTermToAsset,
@@ -113,6 +114,10 @@ def test_asset_links_and_column_maps(export: Export) -> None:
     assert sales.props == {
         "ttrQname": "db.retail.sales",
         "ttrUrl": "https://studio.example/m/northline/s/db",
+        "ttrStudioLink": {
+            "url": "https://studio.example/m/northline/s/db",
+            "displayText": "Open database model in Studio",
+        },
     }
     assert sales.tags == ["Tatrman.Grounded"]
     assert next(t for t in tables if t.fqn.endswith(".products")).tags == []
@@ -275,7 +280,8 @@ def test_studio_links_use_renderable_model_subjects_and_clear_cn_links(export: E
     for term in terms:
         if term.cn:
             assert "ttrUrl" not in term.props
-            assert term.remove_props == ["ttrUrl"]
+            assert "ttrStudioLink" not in term.props
+            assert term.remove_props == ["ttrUrl", "ttrStudioLink"]
         else:
             model = term.qname.split(".", 1)[0]
             assert term.props["ttrUrl"] == f"https://studio.example/m/northline/s/{model}"
@@ -293,7 +299,8 @@ def test_studio_workspace_can_differ_from_export_world(export: Export) -> None:
     )
     sales = next(op for op in plan.operations if isinstance(op, SetTableProps))
     assert sales.props["ttrUrl"] == "https://studio.example/m/catalog-demo/s/db"
-    assert sales.props["ttrQname"].startswith("db.")
+    qname = sales.props["ttrQname"]
+    assert isinstance(qname, str) and qname.startswith("db.")
 
 
 @pytest.mark.parametrize("workspace", ["", ".", "..", "c", "_designer", "a/b", "a?x=y"])
@@ -370,3 +377,28 @@ def test_case_insensitive_glossary_name_collision_fails_before_writes(export: Ex
     customer.label = "party"
     with pytest.raises(MappingError, match="glossary name collision"):
         plan_from_export(export)
+
+
+def test_native_studio_links_match_urls_and_registry_types(export: Export) -> None:
+    plan = plan_from_export(export, studio_url="https://studio.example", studio_workspace="demo")
+    properties = [op for op in plan.operations if isinstance(op, EnsureCustomProperty)]
+    links = [op for op in properties if op.name == "ttrStudioLink"]
+    assert {(op.entity_type, op.type) for op in links} == {
+        ("table", "hyperlink-cp"),
+        ("glossaryTerm", "hyperlink-cp"),
+        ("metric", "hyperlink-cp"),
+    }
+    assert all(op.type == "string" for op in properties if op.name != "ttrStudioLink")
+    for op in plan.operations:
+        if isinstance(op, (SetTableProps, UpsertTerm, UpsertMetric)) and "ttrUrl" in op.props:
+            link = op.props["ttrStudioLink"]
+            assert isinstance(link, dict)
+            assert link["url"] == op.props["ttrUrl"]
+            assert link["url"].startswith("https://studio.example/m/demo/s/")
+            assert link["displayText"].startswith("Open ")
+            assert link["displayText"].endswith(" model in Studio")
+    assert all(
+        "ttrStudioLink" not in op.props
+        for op in plan_from_export(export).operations
+        if isinstance(op, (SetTableProps, UpsertTerm, UpsertMetric))
+    )

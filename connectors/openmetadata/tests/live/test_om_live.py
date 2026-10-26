@@ -51,15 +51,20 @@ def test_check_sync_idempotency_and_deprecation(om: LiveOm, tmp_path: Path) -> N
 
     cli("check", *credentials)
     for entity, names in {
-        "table": {"ttrQname", "ttrUrl"},
+        "table": {"ttrQname", "ttrUrl", "ttrStudioLink"},
         "tableColumn": {"ttrQname"},
-        "glossaryTerm": {"ttrQname", "ttrUrl", "ttrKind", "ttrIri"},
-        "metric": {"ttrQname", "ttrUrl", "ttrAdditivity", "ttrColumnAssets"},
+        "glossaryTerm": {"ttrQname", "ttrUrl", "ttrStudioLink", "ttrKind", "ttrIri"},
+        "metric": {"ttrQname", "ttrUrl", "ttrStudioLink", "ttrAdditivity", "ttrColumnAssets"},
     }.items():
         registry = om.call(
             "GET", f"metadata/types/name/{entity}", params={"fields": "customProperties"}
         )
         assert names <= {p["name"] for p in registry["customProperties"]}
+        for prop in registry["customProperties"]:
+            if prop["name"] in names:
+                expected_type = "hyperlink-cp" if prop["name"] == "ttrStudioLink" else "string"
+                type_info = om.call("GET", f"metadata/types/name/{expected_type}")
+                assert prop["propertyType"]["id"] == type_info["id"]
     args = [
         "sync",
         "--export-dir",
@@ -103,6 +108,10 @@ def test_check_sync_idempotency_and_deprecation(om: LiveOm, tmp_path: Path) -> N
     for name, table in tables.items():
         assert table["extension"]["ttrQname"] == f"db.retail.{name}"
         assert table["extension"]["ttrUrl"] == "https://studio.example/m/northline/s/db"
+        assert table["extension"]["ttrStudioLink"] == {
+            "url": table["extension"]["ttrUrl"],
+            "displayText": "Open database model in Studio",
+        }
     sales = tables["sales"]
     assert "Tatrman.Grounded" in {t["tagFQN"] for t in sales["tags"]}
     assert "Tatrman.Grounded" in {t["tagFQN"] for t in tables["buyers"]["tags"]}
@@ -134,7 +143,7 @@ def test_check_sync_idempotency_and_deprecation(om: LiveOm, tmp_path: Path) -> N
     assert before == state.read_bytes()
     entities = om.entities("glossaryTerms") + om.entities("metrics") + om.entities("tables")
     assert all(e["version"] == versions[e["id"]] for e in entities if e["id"] in versions)
-    # Migrate actual 0.1.2-style links through OM's real JSON-patch boundary.
+    # Migrate actual legacy URL-only links through OM's real JSON-patch boundary.
     er_term = by_qname["er.entity.buyer"]
     revenue = next(m for m in metrics if m["name"] == "revenue")
     legacy_targets = [
@@ -143,7 +152,7 @@ def test_check_sync_idempotency_and_deprecation(om: LiveOm, tmp_path: Path) -> N
         ("tables", sales, "db"),
         ("metrics", revenue, "md"),
     ]
-    for resource, legacy_entity, _ in legacy_targets:
+    for resource, legacy_entity, model in legacy_targets:
         om.call(
             "PATCH",
             f"{resource}/{legacy_entity['id']}",
@@ -152,7 +161,21 @@ def test_check_sync_idempotency_and_deprecation(om: LiveOm, tmp_path: Path) -> N
                     "op": "add",
                     "path": "/extension/ttrUrl",
                     "value": "https://studio.example/viewer?qname=legacy",
-                }
+                },
+                {
+                    "op": "remove" if model else "add",
+                    "path": "/extension/ttrStudioLink",
+                    **(
+                        {}
+                        if model
+                        else {
+                            "value": {
+                                "url": "https://studio.example/obsolete",
+                                "displayText": "Old",
+                            }
+                        }
+                    ),
+                },
             ],
             headers={"Content-Type": "application/json-patch+json"},
         )
@@ -166,9 +189,11 @@ def test_check_sync_idempotency_and_deprecation(om: LiveOm, tmp_path: Path) -> N
         assert extension["ttrQname"] == legacy_entity["extension"]["ttrQname"]
         if model is None:
             assert "ttrUrl" not in extension
+            assert "ttrStudioLink" not in extension
             assert extension["ttrIri"] == party["extension"]["ttrIri"]
         else:
             assert extension["ttrUrl"] == f"https://studio.example/m/northline/s/{model}"
+            assert extension["ttrStudioLink"]["url"] == extension["ttrUrl"]
     om.settle_initial_approvals()
     clean = cli(*args)
     assert all(clean[k] == 0 for k in ("created", "updated", "deprecated", "linked", "warnings"))

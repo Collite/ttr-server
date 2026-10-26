@@ -1749,3 +1749,9 @@ artifact.
   a Studio origin removes their obsolete Studio URL while preserving other custom
   properties. Links open whole models; exact-object navigation and new-CN diagram
   support remain follow-ups. Upgrade forces full projection through the options fingerprint.
+
+- **connect-openmetadata 0.1.4 — clickable Studio model links.** Add native
+  `ttrStudioLink` hyperlinks to projected tables, ER/MD terms and metrics while
+  retaining the existing `ttrUrl` string and foreign metadata. Concepts stay in OM;
+  stale connector-owned CN links are removed only with Studio configured. The
+  version fingerprint forces a real projection on upgrade from0.1.3.

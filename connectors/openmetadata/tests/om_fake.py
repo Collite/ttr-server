@@ -50,7 +50,7 @@ class FakeOm:
         self.link_failed = False
         self.failures: dict[tuple[str, str], list[int]] = {}
         self.page_size = 100
-        for name in ("string", "table", "tableColumn", "glossaryTerm", "metric"):
+        for name in ("string", "hyperlink-cp", "table", "tableColumn", "glossaryTerm", "metric"):
             self.stores["metadata/types"][name] = {
                 "id": uid(name),
                 "name": name,
@@ -203,7 +203,8 @@ class FakeOm:
             from metadata.generated.schema.type.customProperty import CustomProperty
 
             CustomProperty.model_validate(data)
-            assert data["propertyType"]["id"] == uid("string")
+            expected_type = "hyperlink-cp" if data["name"] == "ttrStudioLink" else "string"
+            assert data["propertyType"]["id"] == uid(expected_type)
             assert not any(p["name"] == data["name"] for p in entity["customProperties"])
             entity["customProperties"].append(data)
             return self.answer(200, entity)

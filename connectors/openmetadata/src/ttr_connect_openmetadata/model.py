@@ -128,7 +128,7 @@ class EnsureCustomProperty(Operation):
     op: Literal["EnsureCustomProperty"] = "EnsureCustomProperty"
     entity_type: Literal["table", "tableColumn", "glossaryTerm", "metric"]
     name: str
-    type: Literal["string"] = "string"
+    type: Literal["string", "hyperlink-cp"] = "string"
 
 
 class ImportRdf(Operation):
@@ -154,9 +154,9 @@ class UpsertTerm(Operation):
     parent: str | None
     related: list[RelatedTerm]
     iri: str | None
-    props: dict[str, str]
+    props: dict[str, str | dict[str, str]]
     # Explicitly remove an obsolete connector-owned link; preserve other extensions.
-    remove_props: list[Literal["ttrUrl"]] = Field(default_factory=list)
+    remove_props: list[Literal["ttrUrl", "ttrStudioLink"]] = Field(default_factory=list)
     # Always present for qname/custom-property updates; S2.2 uses the fallback
     # payload for creation when OWL import refuses the graph.
     cn: bool = False
@@ -175,13 +175,13 @@ class UpsertMetric(Operation):
     description: str
     metricExpression: MetricExpression
     metricType: Literal["SUM", "COUNT", "AVERAGE", "OTHER"]
-    props: dict[str, str]
+    props: dict[str, str | dict[str, str]]
 
 
 class SetTableProps(Operation):
     op: Literal["SetTableProps"] = "SetTableProps"
     fqn: str
-    props: dict[str, str]
+    props: dict[str, str | dict[str, str]]
     tags: list[str]
     description: str = ""
 

@@ -61,12 +61,15 @@ def _description(node: Node) -> str:
     )
 
 
-def _props(node: Node, studio_url: str | None, workspace: str) -> dict[str, str]:
-    result = {"ttrQname": node.id}
+def _props(node: Node, studio_url: str | None, workspace: str) -> dict[str, str | dict[str, str]]:
+    result: dict[str, str | dict[str, str]] = {"ttrQname": node.id}
     # Studio subjects are model graphs, not arbitrary exported object qnames.
     # New cn is not the legacy cnc renderer: keep concepts in the OM glossary.
     if studio_url and node.model in {"db", "er", "md"}:
-        result["ttrUrl"] = f"{studio_url.rstrip('/')}/m/{quote(workspace, safe='')}/s/{node.model}"
+        url = f"{studio_url.rstrip('/')}/m/{quote(workspace, safe='')}/s/{node.model}"
+        result["ttrUrl"] = url
+        label = {"db": "database", "er": "E-R", "md": "dimensional"}[node.model]
+        result["ttrStudioLink"] = {"url": url, "displayText": f"Open {label} model in Studio"}
     return result
 
 
@@ -178,7 +181,9 @@ def _terms(
                 related=[RelatedTerm(term=addresses[t]) for t in sorted(related[key])],
                 iri=node.iri,
                 props=props,
-                remove_props=["ttrUrl"] if studio_url and node.model == "cn" else [],
+                remove_props=["ttrUrl", "ttrStudioLink"]
+                if studio_url and node.model == "cn"
+                else [],
                 cn=node.model == "cn",
             )
         )
@@ -439,10 +444,10 @@ def plan_from_export(
         EnsureTag(classification="Tatrman", name="Deprecated"),
     ]
     registry: dict[str, tuple[str, ...]] = {
-        "table": ("ttrQname", "ttrUrl"),
+        "table": ("ttrQname", "ttrUrl", "ttrStudioLink"),
         "tableColumn": ("ttrQname",),
-        "glossaryTerm": ("ttrQname", "ttrUrl", "ttrKind", "ttrIri"),
-        "metric": ("ttrQname", "ttrUrl", "ttrAdditivity", "ttrColumnAssets"),
+        "glossaryTerm": ("ttrQname", "ttrUrl", "ttrStudioLink", "ttrKind", "ttrIri"),
+        "metric": ("ttrQname", "ttrUrl", "ttrStudioLink", "ttrAdditivity", "ttrColumnAssets"),
     }
     for entity_type, properties in registry.items():
         for name in properties:
@@ -451,6 +456,7 @@ def plan_from_export(
                     {
                         "entity_type": entity_type,
                         "name": name,
+                        "type": "hyperlink-cp" if name == "ttrStudioLink" else "string",
                     }
                 )
             )

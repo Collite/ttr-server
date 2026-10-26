@@ -54,7 +54,7 @@ def test_sync_twice_and_deprecate(
         assert len(fake.stores["glossaries"]) == 2
         assert len(fake.stores["glossaryTerms"]) == 21
         assert len(fake.stores["metrics"]) == 3
-        assert sum(len(t["customProperties"]) for t in fake.stores["metadata/types"].values()) == 11
+        assert sum(len(t["customProperties"]) for t in fake.stores["metadata/types"].values()) == 14
         table = fake.stores["tables"]["northline-pg.northline.retail.sales"]
         assert table["extension"]["ttrQname"] == "db.retail.sales"
         assert table["extension"]["ttrUrl"] == "https://studio.example/m/northline/s/db"
@@ -94,7 +94,7 @@ def test_check_registry_is_idempotent(
     with responses.RequestsMock(assert_all_requests_are_fired=False) as mock:
         fake.install(mock)
         assert main(check) == 0
-        assert json.loads(capsys.readouterr().out)["created"] == 14
+        assert json.loads(capsys.readouterr().out)["created"] == 17
         fake.calls.clear()
         assert main(check) == 0
         assert fake.writes == []
@@ -114,7 +114,9 @@ def test_legacy_link_migration_removes_only_cn_studio_urls_and_is_idempotent(
         capsys.readouterr()
         for term in fake.stores["glossaryTerms"].values():
             term["extension"].update(
-                ttrUrl="https://studio.example/viewer?qname=legacy", externalOwner="retained"
+                ttrUrl="https://studio.example/viewer?qname=legacy",
+                ttrStudioLink={"url": "https://studio.example/obsolete", "displayText": "Old"},
+                externalOwner="retained",
             )
         for table in fake.stores["tables"].values():
             table["extension"]["ttrUrl"] = "https://studio.example/viewer?qname=legacy"
@@ -129,6 +131,7 @@ def test_legacy_link_migration_removes_only_cn_studio_urls_and_is_idempotent(
             assert extension["externalOwner"] == "retained"
             if extension["ttrQname"].startswith("cn."):
                 assert "ttrUrl" not in extension
+                assert "ttrStudioLink" not in extension
             else:
                 model = extension["ttrQname"].split(".", 1)[0]
                 assert extension["ttrUrl"] == f"https://studio.example/m/catalog-demo/s/{model}"
@@ -165,7 +168,7 @@ def test_dry_run_needs_no_credentials_or_writes(
             )
             == 0
         )
-        assert len(capsys.readouterr().out.splitlines()) == 63
+        assert len(capsys.readouterr().out.splitlines()) == 66
         assert fake.calls == []
         assert not (tmp_path / "state").exists()
 
@@ -414,7 +417,7 @@ def test_rdf_success_adopts_terms_by_iri(
         fake.install(mock)
         assert main(args) == 0
         summary = json.loads(capsys.readouterr().out)
-        assert summary["created"] == 40  # 14 registry, 2 glossaries, 21 terms, 3 metrics
+        assert summary["created"] == 43  # 17 registry, 2 glossaries, 21 terms, 3 metrics
         assert len(fake.stores["glossaryTerms"]) == 21
         actual = fake.stores["glossaryTerms"][fqn]
         assert actual["iri"] == imported.iri
@@ -665,3 +668,93 @@ def test_stale_conditional_deprecation_preserves_state(
         assert "OM 412" in capsys.readouterr().err
         assert sum(method == "PATCH" and name == path for method, name, _ in fake.calls) == 1
         assert state.read_bytes() == before
+
+
+def test_additive_native_link_upgrade_preserves_legacy_types_and_foreign_metadata(
+    export: Export, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    fake = FakeOm(export)
+    args = sync_args(tmp_path)
+    with responses.RequestsMock(assert_all_requests_are_fired=False) as mock:
+        fake.install(mock)
+        assert main(args) == 0
+        capsys.readouterr()
+        # Reproduce a 0.1.3 catalog: original string registrations and values exist,
+        # but the native hyperlink registrations and values have not been added.
+        for entity in fake.stores["metadata/types"].values():
+            entity["customProperties"] = [
+                p for p in entity["customProperties"] if p["name"] != "ttrStudioLink"
+            ]
+        for resource in ("tables", "glossaryTerms", "metrics"):
+            for entity in fake.stores[resource].values():
+                entity["extension"].pop("ttrStudioLink", None)
+                entity["extension"]["foreignProperty"] = "human metadata"
+        before_types = {
+            kind: [dict(p) for p in fake.stores["metadata/types"][kind]["customProperties"]]
+            for kind in ("table", "glossaryTerm", "metric")
+        }
+        fake.calls.clear()
+        assert main(args) == 0
+        result = json.loads(capsys.readouterr().out)
+        assert result["created"] == 3 and result["updated"] > 0 and result["warnings"] == 0
+        for kind, previous in before_types.items():
+            after = fake.stores["metadata/types"][kind]["customProperties"]
+            assert all(p in after for p in previous)
+            added = next(p for p in after if p["name"] == "ttrStudioLink")
+            assert (
+                added["propertyType"]["id"] == fake.stores["metadata/types"]["hyperlink-cp"]["id"]
+            )
+        for resource in ("tables", "glossaryTerms", "metrics"):
+            for entity in fake.stores[resource].values():
+                ext = entity["extension"]
+                assert ext["foreignProperty"] == "human metadata"
+                if ext["ttrQname"].startswith("cn."):
+                    assert "ttrStudioLink" not in ext
+                else:
+                    assert ext["ttrStudioLink"]["url"] == ext["ttrUrl"]
+        fake.calls.clear()
+        assert main(args) == 0
+        assert fake.writes == []
+        capsys.readouterr()
+        # Omitting --studio-url leaves both existing link properties alone.
+        no_studio = args.copy()
+        index = no_studio.index("--studio-url")
+        del no_studio[index : index + 2]
+        fake.calls.clear()
+        assert main(no_studio) == 0
+        assert fake.writes == []
+
+
+def test_native_link_registry_conflict_fails_without_type_migration(
+    export: Export, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    fake = FakeOm(export)
+    args = sync_args(tmp_path)
+    with responses.RequestsMock(assert_all_requests_are_fired=False) as mock:
+        fake.install(mock)
+        assert main(args) == 0
+        capsys.readouterr()
+        prop = next(
+            p
+            for p in fake.stores["metadata/types"]["table"]["customProperties"]
+            if p["name"] == "ttrStudioLink"
+        )
+        prop["propertyType"]["id"] = fake.stores["metadata/types"]["string"]["id"]
+        fake.calls.clear()
+        assert main(args) == 1
+        assert "non-hyperlink-cp type" in capsys.readouterr().err
+        assert fake.writes == []
+
+
+@pytest.mark.parametrize("field,value", [("name", "unexpected"), ("id", "not-a-uuid")])
+def test_native_builtin_lookup_rejects_wrong_name_or_uuid(
+    export: Export, tmp_path: Path, capsys: pytest.CaptureFixture[str], field: str, value: str
+) -> None:
+    fake = FakeOm(export)
+    fake.stores["metadata/types"]["hyperlink-cp"][field] = value
+    with responses.RequestsMock(assert_all_requests_are_fired=False) as mock:
+        fake.install(mock)
+        assert main(sync_args(tmp_path)) == 1
+        assert "validation error" in capsys.readouterr().err
+        assert fake.stores["glossaryTerms"] == {}
+        assert not (tmp_path / "state.json").exists()
