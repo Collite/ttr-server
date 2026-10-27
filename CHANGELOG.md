@@ -16,6 +16,12 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+- **metadata — report and form template reads (#272).** Cluster-internal `GET /model/reports`,
+  `/model/report?id=`, and `/model/forms` serve authored templates from configured Git sources at the
+  served source SHA. Report detail includes the original YAML, base64 workbook and SHA-256 checksum;
+  unknown ids return 404. Content swaps with the model, and invalid YAML/missing workbooks appear in
+  `/status.issues`. The routes are read-only; rendering remains with the report consumer.
+
 - **automation — preview review repairs.** Nested context/candidate references fail closed pending
   callee pinning, action-level `due` defaults match explicit durations, and nested literals retain their
   original escapes. Invalid would-text placeholders identify the template. Fixture verification rejects

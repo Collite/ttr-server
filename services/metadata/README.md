@@ -51,6 +51,37 @@ each omitted when empty (ttr-server#185):
 Metadata picks no locale here. The reader chooses the language and applies the D7 chain to descriptions:
 requested locale → plain form → `en` → first by language code.
 
+### Report and form templates (#272)
+
+The same unauthenticated, cluster-internal HTTP port serves read-only authored content from each configured
+Git source. The source's configured `subdirectory` is the model root (normally `model`).
+
+| Route | Response |
+|---|---|
+| `GET /model/reports` | `{ reports: [{ id, title, program, params, roles, refresh, source, version }] }` |
+| `GET /model/report?id=sales` | `{ id, yaml, template, sha256 }` |
+| `GET /model/forms` | `{ forms: [{ target, source, ...authoredFields }] }` |
+
+Reports live at `reports/<id>/report.yaml` with a sibling `template.xlsx`; forms at `forms/<target>.yaml`
+under that model root. Public `source` paths use `model/reports/...` and `model/forms/...`. Report ids and
+form targets come from their paths; lists are sorted by those keys. Nested form targets are retained.
+The report detail preserves the YAML text, returns the workbook bytes as base64, and hashes those bytes
+with SHA-256 (lowercase hex). The summary's `version` is the authored YAML version (default 1).
+Absent `params`/`roles` are `[]`, absent `title` is `{}`, and absent `program`/`refresh` are `null`.
+
+Content is read from Git blobs at the model source's recorded SHA in the **same `GitArchiveStorage`
+checkout**, then travels in that source's immutable registry sidecars. Requests only read the published
+snapshot, so staged loads and newer checkout files are invisible until its model swaps in. Deletion and
+configured fallback replace the contribution with the model; failed loads retain the prior contribution.
+For duplicate ids/targets across sources, higher numeric priority wins; ties use the later source id in
+lexicographic order. List and detail use the same rule. Filesystem/resource sources contribute no templates.
+
+Only YAML mapping validity is checked (including duplicate keys and multiple documents). Invalid documents
+and reports without a regular workbook are omitted and diagnosed in `/status.issues[]`. Git symlinks are
+never followed. No workbook parsing, report schema validation, program execution, rendering or write API
+is added. The gateway exposes no new route. Before a model loads, all three routes return 503; unknown
+report ids return 404, and a missing/blank `id` returns 400. Loaded empty catalogs return empty arrays.
+
 ## The cn candidate store (`cn/`, off by default)
 
 Producers propose concepts, terms and relations as `cn-candidate.v1` documents (ttr-concept's
