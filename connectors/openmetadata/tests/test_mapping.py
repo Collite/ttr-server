@@ -467,6 +467,7 @@ def test_studio_origins_are_canonical(export: Export, origin: str, expected: str
         "https://" + ".".join(["a" * 63] * 4),
         "https://256.1.2.3",
         "https://[::1]junk",
+        "https://[v1.example]",
     ],
 )
 def test_invalid_origin_host_grammar(export: Export, url: str) -> None:

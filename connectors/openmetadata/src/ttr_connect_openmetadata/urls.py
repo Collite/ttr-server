@@ -34,7 +34,7 @@ def http_origin(url: str, *, allow_path: bool) -> str:
             or port == 0
         ):
             raise ValueError("invalid authority")
-        if ":" in host:
+        if parsed.netloc.startswith("["):
             # urlsplit lowercases host/scheme; reject junk after IPv6 brackets.
             suffix = parsed.netloc.partition("]")[2]
             if not parsed.netloc.startswith("[") or suffix not in {"", f":{port}"}:
