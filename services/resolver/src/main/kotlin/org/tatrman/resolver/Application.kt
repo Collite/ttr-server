@@ -158,8 +158,11 @@ fun Application.module(config: Config) {
     // ttr-server#209 — a LIST of archives (one per source the estate's packages come from), read as
     // one declared layer. The singular key still works, as a one-element list.
     val archivePaths = LexiconArchivePaths.read(config) { log.warn(it) }
+    val archiveUrls =
+        org.tatrman.resolver.registry.DeclaredLayer
+            .pathList(config, "resolver.lexicon-archive-urls")
     val registrySource =
-        if (archivePaths.isEmpty()) {
+        if (archivePaths.isEmpty() && archiveUrls.isEmpty()) {
             log.warn(
                 "resolver.lexicon-archive-path(s) is unset — the declared vocabulary is EMPTY, so the " +
                     "anchored span-proposal path cannot fire and every binding will carry the stub's " +
@@ -168,12 +171,14 @@ fun Application.module(config: Config) {
             )
             LiveMetadataRegistryAdapter()
         } else {
-            log.info("declared vocabulary channel: {} lexicon archive(s) {}", archivePaths.size, archivePaths)
+            val locations = archiveUrls.ifEmpty { archivePaths }
+            log.info("declared vocabulary channel: {} lexicon archive(s) {}", locations.size, locations)
             LexiconArchiveRegistrySource(
                 archivePaths.map {
                     java.nio.file.Path
                         .of(it)
                 },
+                archiveUrls,
             )
         }
     val registry = SnapshotRegistry(registrySource, defaultThresholds)

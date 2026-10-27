@@ -16,6 +16,13 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+- **metadata/fuzzy/resolver — compiled lexicon HTTP channel (#273).** `GET /model/lexicon.tar.zst`
+  serves exact Git-commit archive bytes with the source SHA as ETag and conditional 304 responses.
+  Multi-source readers can select `?source=` and opt into an ordered HTTP URL list; existing mounted
+  ConfigMap paths remain the default. Archive read errors appear on `/status` without blocking the
+  live model, and never expose old bytes under a new SHA. HTTP readers retain existing validation and
+  last-good semantics, bound downloads and retry outages. No deployment or default channel switch.
+
 - **metadata — report and form template reads (#272).** Cluster-internal `GET /model/reports`,
   `/model/report?id=`, and `/model/forms` serve authored templates from configured Git sources at the
   served source SHA. Report detail includes the original YAML, base64 workbook and SHA-256 checksum;

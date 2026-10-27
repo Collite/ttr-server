@@ -9,6 +9,7 @@ import org.tatrman.ttr.lexicon.CompiledLexicon
 import org.tatrman.ttr.lexicon.CompiledLexiconHeader
 import org.tatrman.ttr.lexicon.TargetClass
 import org.tatrman.ttr.lexicon.TargetFacts
+import org.tatrman.lexicon.transport.ArchiveInputs
 import java.nio.file.Path
 
 /**
@@ -76,9 +77,13 @@ import java.nio.file.Path
  * and a configured list is never the "estate with no lexicon" case.
  */
 class LexiconArchiveRegistrySource(
-    private val archivePaths: List<Path>,
+    localPaths: List<Path>,
+    archiveUrls: List<String> = emptyList(),
 ) : RegistrySource {
     constructor(archivePath: Path) : this(listOf(archivePath))
+
+    private val inputs = ArchiveInputs(localPaths, archiveUrls)
+    private val archivePaths = inputs.paths
 
     init {
         require(archivePaths.isNotEmpty()) { "LexiconArchiveRegistrySource needs at least one archive path" }
@@ -86,7 +91,7 @@ class LexiconArchiveRegistrySource(
 
     private val logger = LoggerFactory.getLogger(LexiconArchiveRegistrySource::class.java)
 
-    private val archives = DeclaredLayer.ArchiveSet(archivePaths)
+    private val archives = DeclaredLayer.ArchiveSet(archivePaths, inputs::read)
 
     /** How the archives are named in a log line: the path, or the list of them. */
     private val named: String = archivePaths.singleOrNull()?.toString() ?: archivePaths.joinToString(", ", "[", "]")

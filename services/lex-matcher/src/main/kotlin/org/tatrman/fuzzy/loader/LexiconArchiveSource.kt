@@ -12,6 +12,7 @@ import org.tatrman.fuzzy.core.TargetClass
 import org.tatrman.ttr.lexicon.CompiledEntry
 import org.tatrman.ttr.lexicon.CompiledLexicon
 import org.tatrman.ttr.lexicon.CompiledLexiconHeader
+import org.tatrman.lexicon.transport.ArchiveInputs
 import java.nio.file.Path
 import org.tatrman.ttr.lexicon.MatchProfile as ArtifactMatchProfile
 import org.tatrman.ttr.lexicon.SourceTag as ArtifactSourceTag
@@ -58,9 +59,13 @@ import org.tatrman.ttr.lexicon.TargetClass as ArtifactTargetClass
  * `overlay-archive-path` stays a separate source on its own clock ([OverlayArchiveSource]).
  */
 class LexiconArchiveSource(
-    private val archivePaths: List<Path>,
+    localPaths: List<Path>,
+    archiveUrls: List<String> = emptyList(),
 ) : SnapshotVocabularySource {
     constructor(archivePath: Path) : this(listOf(archivePath))
+
+    private val inputs = ArchiveInputs(localPaths, archiveUrls)
+    private val archivePaths = inputs.paths
 
     init {
         require(archivePaths.isNotEmpty()) { "LexiconArchiveSource needs at least one archive path" }
@@ -68,7 +73,7 @@ class LexiconArchiveSource(
 
     private val logger = LoggerFactory.getLogger(LexiconArchiveSource::class.java)
 
-    private val archives = DeclaredLayer.ArchiveSet(archivePaths)
+    private val archives = DeclaredLayer.ArchiveSet(archivePaths, inputs::read)
 
     /** How many configured archives the last pass did not serve — the degraded state, as a number. */
     @Volatile

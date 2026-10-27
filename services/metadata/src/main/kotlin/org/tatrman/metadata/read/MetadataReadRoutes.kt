@@ -232,6 +232,7 @@ fun Route.metadataReadRoutes(
     // VL-P2 — GET /model/layouts, GET /model/layout?name= (LayoutRoutes.kt).
     layoutRoutes(registry)
     templateRoutes(registry)
+    lexiconRoutes(registry)
 }
 
 private const val DEFAULT_SEARCH_LIMIT = 20

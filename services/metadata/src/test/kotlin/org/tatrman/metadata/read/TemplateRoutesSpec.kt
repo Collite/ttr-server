@@ -338,6 +338,7 @@ internal fun ApplicationTestBuilder.serve(
     application {
         routing {
             templateRoutes(registry)
+            lexiconRoutes(registry)
             modelHealthRoutes(registry, board)
         }
     }

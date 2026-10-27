@@ -108,6 +108,53 @@ diagnosed and never followed. Missing report/form trees are valid and silent. No
 program execution, rendering or write API is added. The gateway exposes no new route. Before a model loads, all three routes return 503; unknown
 report ids return 404, and a missing/blank `id` returns 400. Loaded empty catalogs return empty arrays.
 
+
+## Compiled lexicon archive (#273)
+
+`GET /model/lexicon.tar.zst` serves the exact compiled bytes from the Git commit used by the served
+source snapshot (`application/zstd`). Its quoted `ETag` contains that source's Git SHA, rather than the
+merged model hash. `If-None-Match` accepts quoted, weak, comma-separated or bare tokens and `*`; a match
+returns an empty `304` with the same ETag. The route is read-only and cluster-internal like the other
+`/model` reads; no gateway route is added.
+
+The default file is **repository-relative** `generated/lexicon.tar.zst`, independent of `subdirectory`.
+Override `metadata.sources.<source>.lexicon-path` (`METADATA_GIT_LEXICON_PATH`, or
+`METADATA_GIT2_LEXICON_PATH` for the second built-in Git source). Absolute/escaping paths and symlinks,
+including ancestor folders, are refused. The server serves compiled content; it never compiles a lexicon.
+Reads are bounded at 50 MiB. A missing archive is valid for an estate without a lexicon and yields `404`;
+a read/configuration failure yields `503` and an issue on `/status`, while the live model still loads.
+An old archive is never relabelled with a new source SHA. Successful reads, including absence, are cached
+by source commit; I/O failures are retried. Bytes travel in an internal snapshot sidecar (ttr-core#314),
+are published atomically with the model, and are excluded from public export bundles.
+
+For several Git sources, `?source=<configured-source-id>` selects an archive and its own SHA. Without
+that selector, the highest source priority wins; ties use the later lexicographic source id. The
+winning source's missing/broken archive remains `404`/`503`, rather than silently selecting another source.
+Before any model is served the route returns `503`. An unknown source is `404`; invalid selectors are `400`.
+
+Opt in the readers with **the same ordered URL list**, primary first:
+
+```hocon
+fuzzy.lexicon.archive-urls = [
+  "http://metadata:7260/model/lexicon.tar.zst?source=github-model",
+  "http://metadata:7260/model/lexicon.tar.zst?source=github-model-2"
+]
+resolver.lexicon-archive-urls = [
+  "http://metadata:7260/model/lexicon.tar.zst?source=github-model",
+  "http://metadata:7260/model/lexicon.tar.zst?source=github-model-2"
+]
+```
+
+The environment equivalents are `FUZZY_LEXICON_ARCHIVE_URLS` and `RESOLVER_LEXICON_ARCHIVE_URLS`
+(comma-separated). An explicit nonempty URL list replaces the whole mounted archive list. With URLs
+unset, existing singular/plural ConfigMap path settings keep their behavior. There is no automatic
+switch to a possibly older mounted archive during an HTTP outage. The readers send `If-None-Match`,
+retain bytes on `304`, retry errors, and apply their existing archive validation and primary/additive
+last-good rules (#209). Each request has a 3 s connection / 5 s read timeout and a 50 MiB body limit;
+redirects and incomplete responses are refused. URL transport does not change the learned overlay.
+The existing `/refresh` orchestration loads Metadata first, then the readers; periodic reader checks
+remain available. This does not make separate services swap simultaneously or change deployment wiring.
+
 ## The cn candidate store (`cn/`, off by default)
 
 Producers propose concepts, terms and relations as `cn-candidate.v1` documents (ttr-concept's

@@ -67,11 +67,13 @@ data class LoaderSourceConfig(
  * pre-RV service: member vocabulary only. Optional on purpose, so an estate that has not authored
  * a lexicon yet is a supported deployment rather than a broken one.
  *
- * A local path, not a URL: the estate build writes the archive and the deployment mounts it.
- * Pulling it over the snapshot channel from metadata is the RO-13 step and is deliberately not this.
+ * Mounted paths remain the fallback for deployments without metadata. `archiveUrls` opts into
+ * conditional HTTP reads from metadata at the served source SHA (#273).
  */
 data class LexiconConfig(
     val archivePath: String = "",
+    /** #273: optional HTTP archive list; replaces all mounted paths when configured. */
+    val archiveUrls: List<String> = emptyList(),
     /**
      * ttr-server#209 — SEVERAL compiled archives, one per source the estate's packages come from,
      * loaded as ONE declared layer ([org.tatrman.fuzzy.loader.LexiconArchiveSource]). When set it is
@@ -466,6 +468,7 @@ object ConfigLoader {
                 archivePath =
                     if (lexicon.hasPath("archive-path")) lexicon.getString("archive-path") else defaults.archivePath,
                 archivePaths = DeclaredLayer.pathList(lexicon, "archive-paths"),
+                archiveUrls = DeclaredLayer.pathList(lexicon, "archive-urls"),
                 uniquenessMarginFloor =
                     if (lexicon.hasPath("uniqueness-margin-floor")) {
                         lexicon.getDouble("uniqueness-margin-floor")

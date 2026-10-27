@@ -85,6 +85,7 @@ include(":shared:libs:kotlin:grounding-lexicon")
 // FZ-P3 — the pure fuzzy engine, extracted so a downstream platform consumes it instead of a copy.
 include(":shared:libs:kotlin:lex-matcher-core")
 include(":shared:libs:kotlin:fuzzy-common")
+include(":shared:libs:kotlin:lexicon-transport")
 include(":shared:libs:kotlin:whois-common")
 include(":shared:libs:kotlin:keycloak-auth")
 include(":shared:libs:kotlin:meta-client")

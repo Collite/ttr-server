@@ -65,6 +65,7 @@ jib {
 }
 
 dependencies {
+    implementation(project(":shared:libs:kotlin:lexicon-transport"))
     implementation(project(":shared:libs:kotlin:ktor-configurator"))
     api(libs.otel.logback.appender)
     implementation(project(":shared:libs:kotlin:logging-config"))

@@ -3,6 +3,7 @@ package org.tatrman.metadata
 
 import com.typesafe.config.Config
 import com.typesafe.config.ConfigFactory
+import org.tatrman.metadata.read.GitLexiconSource
 import org.tatrman.metadata.read.GitTemplateSource
 import org.tatrman.ttr.metadata.graph.ModelGraph
 import org.tatrman.metadata.grpc.MetadataServiceImpl
@@ -537,12 +538,10 @@ private fun buildSourceFromConfig(
         "ttr" -> {
             val source = FileBasedSource(sourceId = id, priority = priority, storage = storage, layouts = true)
             if (storage is GitArchiveStorage) {
-                GitTemplateSource(
-                    source,
+                GitLexiconSource(
+                    GitTemplateSource(source, gitCheckoutDir(sub, id, ""), gitSubdirectory(sub), id, priority),
                     gitCheckoutDir(sub, id, ""),
-                    gitSubdirectory(sub),
-                    id,
-                    priority,
+                    if (sub.hasPath("lexicon-path")) sub.getString("lexicon-path") else "generated/lexicon.tar.zst",
                 )
             } else {
                 source

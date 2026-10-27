@@ -17,7 +17,6 @@ import org.tatrman.ttr.snapshot.SnapshotReadResult
 import org.tatrman.ttr.snapshot.SnapshotReader
 import java.nio.file.Path
 import java.util.concurrent.ConcurrentHashMap
-import kotlin.io.path.exists
 import kotlin.io.path.readBytes
 
 /**
@@ -140,6 +139,7 @@ internal object DeclaredLayer {
      */
     class ArchiveSet(
         val paths: List<Path>,
+        private val readBytes: (Path) -> ByteArray = { it.readBytes() },
     ) {
         init {
             require(paths.isNotEmpty()) { "a declared layer needs at least one archive path" }
@@ -195,10 +195,11 @@ internal object DeclaredLayer {
 
         /** One archive, decoded — or why not. Never throws. */
         private fun read(path: Path): Read {
-            if (!path.exists()) return Failure(path, "absent")
             val bytes =
                 try {
-                    path.readBytes()
+                    readBytes(path)
+                } catch (e: java.nio.file.NoSuchFileException) {
+                    return Failure(path, "absent")
                 } catch (e: Exception) {
                     return Failure(path, "unreadable: ${e.message}")
                 }
