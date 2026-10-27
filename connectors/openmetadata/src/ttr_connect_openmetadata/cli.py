@@ -85,7 +85,9 @@ def run(args: argparse.Namespace, dry: bool, client: "OmClient | None") -> int:
     if args.command != "check":
         try:
             studio_origin = (
-                http_origin(args.studio_url, allow_path=False) if args.studio_url else None
+                http_origin(args.studio_url, allow_path=False, link_host=True)
+                if args.studio_url
+                else None
             )
             workspace = (
                 resolve_studio_workspace("", args.studio_workspace)

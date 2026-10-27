@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 import responses
+from conftest import export_with_world
 
 from ttr_connect_openmetadata.cli import main
 from ttr_connect_openmetadata.model import Export
@@ -311,9 +312,9 @@ def test_dry_plan_discloses_out_of_plan_normalization(
     origins: list[str] = []
     workspaces: list[str | None] = []
 
-    def origin(url: str, *, allow_path: bool) -> str:
+    def origin(url: str, *, allow_path: bool, link_host: bool) -> str:
         origins.append(url)
-        return http_origin(url, allow_path=allow_path)
+        return http_origin(url, allow_path=allow_path, link_host=link_host)
 
     def workspace(world: str, value: str | None) -> str:
         workspaces.append(value)
@@ -357,15 +358,7 @@ def test_invalid_implicit_workspace_is_a_mapping_error(
     capsys: pytest.CaptureFixture[str],
     world: str,
 ) -> None:
-    changed = tmp_path / "invalid-workspace"
-    changed.mkdir()
-    for name in ("graph.json", "defs.json", "cn.ttl", ".snapshot"):
-        text = (
-            (FIXTURES / "export" / name)
-            .read_text()
-            .replace('"world":"northline"', f'"world":"{world}"')
-        )
-        (changed / name).write_text(text)
+    changed = export_with_world(tmp_path, world)
     assert (
         main(["plan", "--export-dir", str(changed), "--studio-url", "https://studio.example"]) == 3
     )
@@ -386,15 +379,7 @@ def test_default_workspace_follows_new_export_world_after_saved_state(
         fake.install(mock)
         assert main(args) == 0
         capsys.readouterr()
-        changed = tmp_path / "changed-world"
-        changed.mkdir()
-        for name in ("graph.json", "defs.json", "cn.ttl", ".snapshot"):
-            text = (
-                (FIXTURES / "export" / name)
-                .read_text()
-                .replace('"world":"northline"', '"world":"acme.retail"')
-            )
-            (changed / name).write_text(text)
+        changed = export_with_world(tmp_path, "acme.retail")
         args[args.index("--export-dir") + 1] = str(changed)
         assert main(args) == 0
         assert json.loads(capsys.readouterr().out)["warnings"] == 0
@@ -402,3 +387,67 @@ def test_default_workspace_follows_new_export_world_after_saved_state(
         assert table["extension"]["ttrUrl"] == "https://studio.example/m/acme.retail/s/db"
         assert table["extension"]["ttrStudioLink"]["url"] == table["extension"]["ttrUrl"]
         assert json.loads((tmp_path / "state.json").read_text())["world"] == "acme.retail"
+
+
+def test_quoted_world_without_terms_is_a_mapping_error(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    changed = export_with_world(tmp_path, 'bad"world')
+    graph_path = changed / "graph.json"
+    graph = json.loads(graph_path.read_text())
+    graph["nodes"] = []
+    graph["edges"] = []
+    graph_path.write_text(json.dumps(graph))
+
+    def unexpected(*args: object, **kwargs: object) -> None:
+        raise AssertionError("OM must not be called for an invalid mapping")
+
+    monkeypatch.setattr("ttr_connect_openmetadata.om_client.OmClient", unexpected)
+    assert main(["sync", "--dry-run", "--export-dir", str(changed)]) == 3
+    output = capsys.readouterr()
+    assert "mapping error" in output.err
+    assert "unsupported quote" in output.err
+    assert "Traceback" not in output.err
+
+
+def test_sync_quoted_world_without_terms_returns_mapping_error(
+    export: Export,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    from om_fake import FakeOm
+
+    changed = export_with_world(tmp_path, 'bad"world')
+    path = changed / "graph.json"
+    graph = json.loads(path.read_text())
+    graph["nodes"] = []
+    graph["edges"] = []
+    path.write_text(json.dumps(graph))
+    token = tmp_path / "token"
+    token.write_text("fixture-token")
+    fake = FakeOm(export)
+    with responses.RequestsMock(assert_all_requests_are_fired=False) as mock:
+        fake.install(mock)
+        assert (
+            main(
+                [
+                    "sync",
+                    "--export-dir",
+                    str(changed),
+                    "--om-url",
+                    "http://om.example/api",
+                    "--om-token-file",
+                    str(token),
+                    "--state-file",
+                    str(tmp_path / "state"),
+                ]
+            )
+            == 3
+        )
+        assert fake.writes == []
+    output = capsys.readouterr()
+    assert "mapping error: unsupported quote" in output.err
+    assert "Traceback" not in output.err
+    assert not (tmp_path / "state").exists()

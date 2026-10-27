@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 import responses
+from conftest import export_with_world
 from om_fake import URL, FakeOm
 
 from ttr_connect_openmetadata.cli import main
@@ -798,13 +799,7 @@ def test_out_of_plan_links_preserve_deprecation_and_normalize_live_orphans(
     fake.approval_workflow = True
     args = sync_args(tmp_path)
     if dotted_world:
-        edited = tmp_path / "export"
-        edited.mkdir()
-        for name in ("graph.json", "defs.json", "cn.ttl", ".snapshot"):
-            text = (
-                (FIXTURE / name).read_text().replace('"world":"northline"', '"world":"acme.retail"')
-            )
-            (edited / name).write_text(text)
+        edited = export_with_world(tmp_path, "acme.retail")
         args[args.index("--export-dir") + 1] = str(edited)
     world = "acme.retail" if dotted_world else "northline"
     if not with_studio:
@@ -1061,8 +1056,9 @@ def test_reactivation_status_precedes_metadata(
             term["extension"]["ttrUrl"] = "https://studio.example/viewer?qname=old"
         fake.calls.clear()
         assert main(args) == 0
-        patches = [call for call in fake.calls if call[0] == "PATCH"]
+        patches = fake.writes
         assert len(patches) == (2 if stale else 1)
+        assert all(call[0] == "PATCH" for call in patches)
         assert all(call[1] == f"glossaryTerms/{term['id']}" for call in patches)
         assert patches[0][2] == [{"op": "replace", "path": "/entityStatus", "value": "Draft"}]
         requests = [call.request for call in mock.calls if call.request.method == "PATCH"]
@@ -1098,8 +1094,12 @@ def test_patch_rejects_metadata_edits_to_deprecated_term(export: Export) -> None
         fake.install(mock)
         client = OmClient(URL, "fixture-token")
         try:
-            with pytest.raises(OmError, match="refusing a non-status edit to Deprecated term"):
+            with pytest.raises(OmError) as error:
                 client._patch(term, {"extension": {"ttrUrl": "changed"}})
+            assert str(error.value) == (
+                "OM transport: refusing a non-status edit to Deprecated term demo.deprecated"
+            )
+            assert "root=" not in str(error.value)
             assert fake.writes == []
         finally:
             client.close()
@@ -1145,3 +1145,75 @@ def test_state_from_future_version_preserves_ownership(tmp_path: Path) -> None:
     )
     state = read_state(path)
     assert state is not None and state.ids == ["er.entity.old"]
+
+
+def test_om_container_host_remains_accepted() -> None:
+    from ttr_connect_openmetadata.om_client import OmClient
+    from ttr_connect_openmetadata.urls import http_origin
+
+    url = "http://openmetadata_server:8585/api"
+    assert http_origin(url, allow_path=True, link_host=False) == "http://openmetadata_server:8585"
+    client = OmClient(url, "fixture-token")
+    client.close()
+    with pytest.raises(ValueError, match="invalid host or port"):
+        http_origin(url, allow_path=True, link_host=True)
+
+
+@pytest.mark.parametrize("reviewers_on", [None, "glossary", "parent"])
+def test_fake_term_create_mirrors_reviewer_default_status(
+    export: Export, reviewers_on: str | None
+) -> None:
+    from om_fake import uid
+
+    from ttr_connect_openmetadata.model import EnsureGlossary, UpsertTerm
+    from ttr_connect_openmetadata.om_client import OmClient
+
+    fake = FakeOm(export)
+    with responses.RequestsMock(assert_all_requests_are_fired=False) as mock:
+        fake.install(mock)
+        client = OmClient(URL, "fixture-token")
+        try:
+            client.ensure_glossary(EnsureGlossary(name="test Entities"))
+            client.upsert_term(
+                UpsertTerm(
+                    glossary="test Entities",
+                    name="parent",
+                    qname="er.entity.parent",
+                    fqn="test Entities.parent",
+                    description="parent",
+                    display="parent",
+                    synonyms=[],
+                    parent=None,
+                    related=[],
+                    iri=None,
+                    props={},
+                )
+            )
+            target = (
+                fake.stores["glossaries"]["test Entities"]
+                if reviewers_on == "glossary"
+                else fake.stores["glossaryTerms"]["test Entities.parent"]
+            )
+            if reviewers_on:
+                target["reviewers"] = [{"id": uid("reviewer"), "type": "user"}]
+            fake.calls.clear()
+            client.upsert_term(
+                UpsertTerm(
+                    glossary="test Entities",
+                    name="child",
+                    parent="test Entities.parent",
+                    qname="er.entity.child",
+                    fqn="test Entities.parent.child",
+                    description="child",
+                    display="child",
+                    synonyms=[],
+                    related=[],
+                    iri=None,
+                    props={},
+                )
+            )
+            assert fake.stores["glossaryTerms"]["test Entities.parent.child"]["entityStatus"] == (
+                "Draft" if reviewers_on else "Approved"
+            )
+        finally:
+            client.close()

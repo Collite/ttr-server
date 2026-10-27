@@ -2,10 +2,8 @@
 """Pure tier 1 + tier 0 projection into ordered OpenMetadata operations."""
 
 import json
-import re
 from collections import defaultdict
 from typing import NamedTuple
-from urllib.parse import urlsplit
 
 from pydantic import JsonValue
 
@@ -34,7 +32,7 @@ from .model import (
     UpsertMetric,
     UpsertTerm,
 )
-from .urls import http_origin
+from .urls import http_origin, validate_studio_base, validate_studio_workspace
 
 
 class MappingError(Exception):
@@ -412,14 +410,14 @@ def _assets(
 
 
 def resolve_studio_workspace(world: str, workspace: str | None) -> str:
-    result = world if workspace is None else workspace
-    if not re.fullmatch(r"[A-Za-z0-9._~-]+", result) or result in {".", "..", "c", "_designer"}:
-        raise MappingError("invalid Studio workspace (use modeler.toml project.name)")
-    return result
+    try:
+        return validate_studio_workspace(world if workspace is None else workspace)
+    except ValueError as exc:
+        raise MappingError(str(exc)) from exc
 
 
 class PreparedStudio(NamedTuple):
-    """Origin and workspace already validated by the calling CLI boundary."""
+    """Prepared origin and workspace; validated again at the library boundary."""
 
     origin: str
     workspace: str
@@ -427,20 +425,7 @@ class PreparedStudio(NamedTuple):
 
 def build_studio_base(origin: str, workspace: str) -> str:
     """Build the single canonical model-route base from prepared components."""
-    return f"{origin}/m/{workspace}/s/"
-
-
-def _validated_studio_base(value: str) -> str:
-    try:
-        parsed = urlsplit(value)
-        origin = http_origin(value, allow_path=True)
-        match = re.fullmatch(r"/m/([^/]+)/s/", parsed.path)
-        if match is None:
-            raise ValueError("expected /m/<workspace>/s/")
-        workspace = resolve_studio_workspace("", match[1])
-        return build_studio_base(origin, workspace)
-    except (ValueError, MappingError) as exc:
-        raise MappingError(f"invalid prepared Studio base: {exc}") from exc
+    return validate_studio_base(f"{origin}/m/{workspace}/s/")
 
 
 def plan_from_export(
@@ -454,13 +439,16 @@ def plan_from_export(
     studio_base: str | PreparedStudio | None = None,
 ) -> Plan:
     # CLI supplies its already validated/resolved base, also used for the cache.
-    # Library callers supply the raw URL/workspace and validate them here once.
+    # Every library entry validates its base; Plan also validates its public field.
     if studio_base is not None and (studio_url is not None or studio_workspace is not None):
         raise MappingError("supply a prepared Studio base or a raw URL/workspace, not both")
-    if isinstance(studio_base, PreparedStudio):
-        studio_base = build_studio_base(*studio_base)
-    elif studio_base is not None:
-        studio_base = _validated_studio_base(studio_base)
+    try:
+        if isinstance(studio_base, PreparedStudio):
+            studio_base = build_studio_base(*studio_base)
+        elif studio_base is not None:
+            studio_base = validate_studio_base(studio_base)
+    except ValueError as exc:
+        raise MappingError(f"invalid prepared Studio base: {exc}") from exc
     if cn_name_mode not in {"label", "qname"}:
         raise MappingError("CN name mode must be label or qname")
     world = world or export.graph.world
@@ -470,11 +458,13 @@ def plan_from_export(
         raise MappingError("Studio workspace requires a studio URL")
     if studio_url:
         try:
-            origin = http_origin(studio_url, allow_path=False)
+            origin = http_origin(studio_url, allow_path=False, link_host=True)
         except ValueError as exc:
             raise MappingError(f"studio URL: {exc}") from exc
         workspace = resolve_studio_workspace(world, studio_workspace)
         studio_base = build_studio_base(origin, workspace)
+    om_name(f"{world} Concepts")
+    om_name(f"{world} Entities")
     nodes = {n.id: n for n in export.graph.nodes if not n.external}
     operations: list[PlanOperation] = [
         EnsureGlossary(name=f"{world} Concepts"),

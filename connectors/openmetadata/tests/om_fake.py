@@ -264,7 +264,11 @@ class FakeOm:
                     "fullyQualifiedName": parent,
                 }
             data["relatedTerms"] = []
-            data["entityStatus"] = "Approved"
+            data["entityStatus"] = (
+                "Draft"
+                if glossary.get("reviewers") or store.get(parent, {}).get("reviewers")
+                else "Approved"
+            )
         elif collection == "tags":
             fqn = f"{data['classification']}.{name}"
             data["classification"] = {"id": uid(data["classification"]), "type": "classification"}

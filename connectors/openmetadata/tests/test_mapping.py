@@ -448,7 +448,7 @@ def test_string_properties_reject_structured_values(
 def test_studio_origins_are_canonical(export: Export, origin: str, expected: str) -> None:
     from ttr_connect_openmetadata.urls import http_origin
 
-    assert http_origin(origin, allow_path=False) == expected
+    assert http_origin(origin, allow_path=False, link_host=True) == expected
     plan = plan_from_export(export, studio_url=origin)
     assert plan.studio_base == f"{expected}/m/northline/s/"
 
@@ -488,7 +488,7 @@ def test_origin_rejections_explain_the_cause(url: str, cause: str) -> None:
     from ttr_connect_openmetadata.urls import http_origin
 
     with pytest.raises(ValueError, match=cause):
-        http_origin(url, allow_path=False)
+        http_origin(url, allow_path=False, link_host=True)
 
 
 def test_dns_root_dot_is_canonical(export: Export) -> None:
@@ -513,10 +513,54 @@ def test_invalid_prepared_base_is_rejected(export: Export, base: str) -> None:
 
 
 def test_prepared_base_and_library_cli_input_agree(export: Export) -> None:
-    assert plan_from_export(export, studio_base="https://Studio.EXAMPLE.:443/m/demo/s/") == (
+    assert plan_from_export(export, studio_base="https://studio.example/m/demo/s/") == (
         plan_from_export(export, studio_url="https://studio.example", studio_workspace="demo")
     )
     plan = plan_from_export(export)
     assert not plan.studio_links
     plan.studio_base = "https://studio.example/m/demo/s/"
     assert plan.studio_links
+
+
+@pytest.mark.parametrize("host", ["studio.123", "0x7f.0.0.1", "studio.0x", "studio.0x12"])
+def test_browser_numeric_hosts_are_rejected(export: Export, host: str) -> None:
+    with pytest.raises(MappingError, match="invalid host or port"):
+        plan_from_export(export, studio_url=f"https://{host}")
+
+
+@pytest.mark.parametrize("host", ["1.2.3.4", "studio.example"])
+def test_canonical_ipv4_and_dns_remain_valid(export: Export, host: str) -> None:
+    assert plan_from_export(export, studio_url=f"https://{host}").studio_links
+
+
+@pytest.mark.parametrize(
+    "origin,workspace",
+    [("", ""), ("javascript:alert(1)//", "c"), ("https://studio.example", "_designer")],
+)
+def test_prepared_components_are_validated(export: Export, origin: str, workspace: str) -> None:
+    from ttr_connect_openmetadata.mapping import PreparedStudio
+
+    with pytest.raises(MappingError):
+        plan_from_export(export, studio_base=PreparedStudio(origin, workspace))
+
+
+@pytest.mark.parametrize(
+    "base",
+    [
+        "",
+        "javascript:alert(1)//m/demo/s/",
+        "/m//s/",
+        "https://studio.example/m/c/s/",
+        "https://Studio.EXAMPLE/m/demo/s/",
+    ],
+)
+def test_plan_validates_studio_base_on_creation_and_assignment(base: str) -> None:
+    from pydantic import ValidationError
+
+    from ttr_connect_openmetadata.model import Plan
+
+    with pytest.raises(ValidationError):
+        Plan(snapshot="test", operations=[], studio_base=base)
+    plan = Plan(snapshot="test", operations=[])
+    with pytest.raises(ValidationError):
+        plan.studio_base = base

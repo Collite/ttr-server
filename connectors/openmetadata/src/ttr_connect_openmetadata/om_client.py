@@ -116,7 +116,7 @@ def columns(items: list[Json]) -> Iterator[Json]:
 class OmClient:
     def __init__(self, url: str, token: str) -> None:
         try:
-            origin = http_origin(url, allow_path=True)
+            origin = http_origin(url, allow_path=True, link_host=False)
         except ValueError as exc:
             raise OmError(None, f"--om-url: {exc}") from exc
         if not token.strip():
@@ -252,7 +252,8 @@ class OmClient:
             and changes.keys() - {"entityStatus"}
         ):
             raise OmError(
-                None, f"refusing a non-status edit to Deprecated term {source.fullyQualifiedName}"
+                None,
+                f"refusing a non-status edit to Deprecated term {source.fullyQualifiedName.root}",
             )
         if all(before.get(key) == value for key, value in changes.items()):
             return source
@@ -810,8 +811,8 @@ class OmClient:
         if op.kind == "glossaryTerm":
             for term in list(self._terms.values()):
                 if (
-                    payload(term).get("extension", {}).get("ttrQname") == op.qname
-                    and _glossary_name(term) in self._glossaries
+                    _glossary_name(term) in self._glossaries
+                    and payload(term).get("extension", {}).get("ttrQname") == op.qname
                 ):
                     self.deprecate_term(term)
         elif op.kind == "metric":

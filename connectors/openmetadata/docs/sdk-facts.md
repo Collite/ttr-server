@@ -188,3 +188,10 @@ Official source inspected at `2.0.6-release`, commit `a695261b19d48411a39502a5c5
 - [Renderer](https://github.com/open-metadata/OpenMetadata/blob/a695261b19d48411a39502a5c5fc0b453729eb4e/openmetadata-ui/src/main/resources/ui/src/components/common/CustomPropertyTable/PropertyValue.tsx)
 - [Value schema](https://github.com/open-metadata/OpenMetadata/blob/a695261b19d48411a39502a5c5fc0b453729eb4e/openmetadata-spec/src/main/resources/json/schema/type/customProperties/complexTypes.json)
 - [Type-name constant](https://github.com/open-metadata/OpenMetadata/blob/a695261b19d48411a39502a5c5fc0b453729eb4e/openmetadata-ui/src/main/resources/ui/src/constants/CustomProperty.constants.ts)
+
+
+OM 2.0.6 quotes glossary names on lookup (`quoteFqn`), so a bare dotted name
+resolves too. The connector still sends canonical quoted FQNs, and the fake
+deliberately returns 404 for a bare dotted name so tests catch a client that stops
+quoting. The real-OM dotted-glossary test records both canonical operations and
+this lookup compatibility.

@@ -3,7 +3,9 @@
 
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, JsonValue, model_validator
+from pydantic import BaseModel, ConfigDict, Field, JsonValue, field_validator, model_validator
+
+from .urls import validate_studio_base
 
 
 class ExportModel(BaseModel):
@@ -269,10 +271,17 @@ type PlanOperation = Annotated[
 
 
 class Plan(BaseModel):
+    model_config = ConfigDict(validate_assignment=True)
+
     snapshot: str
     studio_base: str | None = None
     operations: list[PlanOperation]
     warnings: list[str] = Field(default_factory=list)
+
+    @field_validator("studio_base")
+    @classmethod
+    def valid_studio_base(cls, value: str | None) -> str | None:
+        return validate_studio_base(value) if value is not None else None
 
     @property
     def studio_links(self) -> bool:

@@ -59,7 +59,9 @@ defaults to the export world; set it when those names differ. The workspace is
 validated against Studio's manifest/route restrictions. Credentials, query strings,
 fragments, backslashes, whitespace, Unicode control/format characters, encoded or
 non-ASCII hosts, empty/zero/invalid ports and route paths are not accepted in the
-origin. Use punycode for IDNs. Scheme/host case and default ports are canonicalized. `--studio-workspace` requires `--studio-url`.
+Studio origin. This strict link-host grammar does not apply to `--om-url`, which
+continues to accept container names such as `http://openmetadata_server:8585/api`.
+Use punycode for IDNs. Scheme/host case and default ports are canonicalized. `--studio-workspace` requires `--studio-url`.
 
 New `cn` concepts remain in the OM glossary: Studio's legacy `cnc` renderer is a
 different model. With `--studio-url` configured, sync removes the obsolete
