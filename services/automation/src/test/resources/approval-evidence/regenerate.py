@@ -14,6 +14,7 @@ variants = parser.add_mutually_exclusive_group()
 variants.add_argument("--unqualified", action="store_true")
 variants.add_argument("--generated-ids", action="store_true")
 variants.add_argument("--obligations", action="store_true")
+variants.add_argument("--fulfilment", action="store_true")
 variants.add_argument("--obligation-conflict", action="store_true")
 args = parser.parse_args()
 cli = args.cli.resolve()
@@ -22,6 +23,7 @@ if subprocess.check_output([str(cli), "--version"], text=True).strip() != "ttrp 
 resource = Path(__file__).resolve().parent
 fixture = resource.parent / "bundles/hartland"
 source = (resource / "generated-ids" if args.generated_ids else
+          resource / "fulfilment" if args.fulfilment else
           resource / "obligations" if args.obligations or args.obligation_conflict else resource)
 recipe_source = source / "conflict" if args.obligation_conflict else source
 with tempfile.TemporaryDirectory(prefix="approval-evidence-") as directory:

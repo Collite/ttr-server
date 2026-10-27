@@ -15,7 +15,7 @@ import java.math.BigDecimal
 import java.time.ZoneOffset
 import java.util.UUID
 
-/** Proposed open obligations only. Existing-open lookup, fulfilment and signal delivery belong to P2. */
+/** Proposed open obligations only. Physical one-open checks and signal delivery belong to P2. */
 internal class PreviewObligation private constructor(
     private val target: PreviewWriter.KeyMapping,
     private val obligation: PreviewWriter,

@@ -57,3 +57,15 @@ The component cases use actual loader packages from an arbitrary `branch` checko
 evaluate and the PostgreSQL ledger. Equal proposals persist once across retry/close/restart; the conflicting
 bundle refuses evaluation without a batch or action evidence. Query tables alone are canned. This does not
 exercise physical obligation uniqueness, fulfilment, signals, calendar reads or a live Hartland recipe.
+
+
+The `fulfilment/` variant wires the defaulted writer, qualified hold and two equal qualified stdlib-state
+transitions. Candidates explicitly join the stdlib obligation, so the compiler records its read scope and
+produces real ERP/automation storage parts with DuckDB combines. The runtime test adds the separately scoped
+lookup and persists its exact transition/read evidence through evaluate, retry, close and restart. Ambiguous
+matches and undeclared compiler footprints refuse without batch/action completion. Query table rows are canned;
+this certifies the assembled real ledger/runtime, not physical writes, signals or a deployed Query database.
+
+```sh
+python3 regenerate.py /path/to/ttrp-cli-0.18.9/bin/ttrp-cli --fulfilment
+```

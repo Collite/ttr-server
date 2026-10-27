@@ -25,7 +25,7 @@ data class PreviewMetadata(
     val targets: Map<String, Map<String, org.tatrman.ttrp.resolve.TargetResolution.Resolved>> = emptyMap(),
 )
 
-/** Pure synthesis over verified staged results. No model connection, writer, connector or new Query reads. */
+/** Preview synthesis over verified staged results and the runner's explicitly governed obligation snapshot. */
 class ApplyPlanner(
     private val clock: Clock,
 ) {
@@ -40,8 +40,16 @@ class ApplyPlanner(
         val arguments: Map<Int, Map<String, JsonElement>>,
         val writer: PreviewWriter?,
         val obligation: PreviewObligation?,
+        val fulfilment: PreviewFulfilment?,
         val targets: Map<String, TargetResolution.Resolved>?,
         val generated: Boolean,
+    )
+
+    private data class WiringValues(
+        val defaults: PreviewWriterDefaults.Defaults,
+        val values: PreviewWiringValues.Prepared,
+        val obligation: PreviewObligation?,
+        val fulfilment: PreviewFulfilment?,
     )
 
     suspend fun preview(runner: PartRunner): PreviewPlan {
@@ -51,6 +59,7 @@ class ApplyPlanner(
         val actions = mutableListOf<DryRunAction>()
         val writerKeys = PreviewWriterIds.Keys()
         val obligations = PreviewObligation.Proposals()
+        val fulfilments = PreviewFulfilment.Effects()
         val metadata = requireNotNull(context.previewMetadata) { "preview metadata was not pinned at open" }
         val roles = recipe.roles
         val decision = roles?.decision
@@ -97,14 +106,22 @@ class ApplyPlanner(
                         column?.type != "rows"
                     }
                 val obligation =
-                    if (action.sinks[Bundle.NATIVE] == "obligation") {
+                    if (action.sinks[Bundle.NATIVE] == "obligation" && action.transition == null) {
                         PreviewObligation.resolve(action, metadata, metadata.targets[wiring.action])
                     } else {
                         null
                     }
-                Triple(defaults, PreviewWiringValues.prepare(scalarSources, action), obligation)
+                val fulfilment =
+                    if (action.sinks[Bundle.NATIVE] == "obligation" && action.transition != null) {
+                        PreviewFulfilment.resolve(action, metadata, metadata.targets[wiring.action])
+                    } else {
+                        null
+                    }
+                WiringValues(defaults, PreviewWiringValues.prepare(scalarSources, action), obligation, fulfilment)
             }
         val roleNames = roles.contexts.map { it.name }.toSet() + listOfNotNull(roles.candidates)
+        val lookupEntities = wiringValues.mapNotNull { it.fulfilment?.entity }.toSet()
+        var snapshot: PreviewFulfilment.Snapshot? = null
         val writtenAt = clock.instant()
         for (route in roles.routes) {
             currentCoroutineContext().ensureActive()
@@ -133,7 +150,7 @@ class ApplyPlanner(
                         val indices = table.rows.indices.filter { matches == null || it in matches }
                         val action = metadata.actions.getValue(wiring.action)
                         val targets = metadata.targets[wiring.action]
-                        val (defaults, values, obligation) = wiringValues[wiringIndex]
+                        val (defaults, values, obligation, fulfilment) = wiringValues[wiringIndex]
                         // Presence wins, including explicit NULL. Defaults do not read other arguments.
                         val argumentNames =
                             (defaults.expressions.keys + wiring.columns.keys) + defaults.values.keys +
@@ -148,7 +165,9 @@ class ApplyPlanner(
                             }
                         writer?.validateArguments(assignmentNames(action, argumentNames))
                         obligation?.validateArguments(assignmentNames(action, argumentNames))
-                        val expectedTypes = writer?.expectedTypes ?: obligation?.expectedTypes.orEmpty()
+                        fulfilment?.validateArguments(assignmentNames(action, argumentNames))
+                        val expectedTypes =
+                            writer?.expectedTypes ?: obligation?.expectedTypes ?: fulfilment?.expectedTypes.orEmpty()
                         writer?.validateGenerated(defaults.generated)
                         require(action.columns.filterNot { it.optional }.all { it.name in wiring.columns }) {
                             "missing required action argument"
@@ -199,6 +218,7 @@ class ApplyPlanner(
                                 }.toMap(),
                             writer,
                             obligation,
+                            fulfilment,
                             targets,
                             (defaults.generated - wiring.columns.keys).isNotEmpty(),
                         )
@@ -259,7 +279,15 @@ class ApplyPlanner(
                             )
                     }
                 }
-                for ((wiring, argumentNames, arguments, writer, obligation, targets, generated) in selected) {
+                for (prepared in selected) {
+                    val wiring = prepared.wiring
+                    val argumentNames = prepared.argumentNames
+                    val arguments = prepared.arguments
+                    val writer = prepared.writer
+                    val obligation = prepared.obligation
+                    val fulfilment = prepared.fulfilment
+                    val targets = prepared.targets
+                    val generated = prepared.generated
                     val scalarArguments = arguments[index] ?: continue
                     val action = metadata.actions.getValue(wiring.action)
                     val args = linkedMapOf<String, JsonElement>()
@@ -282,15 +310,24 @@ class ApplyPlanner(
                     }
                     val sink = action.sinks[Bundle.NATIVE] ?: unsupported("action ${wiring.action} has no native sink")
                     val start = rows.size
-                    var obligationRow: Int? = null
+                    var obligationRows: List<Int>? = null
                     when (sink) {
                         "obligation" -> {
                             val fields = assignmentNames(action, args.keys)
-                            val insert =
-                                requireNotNull(
-                                    obligation,
-                                ).insert(rows.size + 1, args.filterKeys { it in fields }, context)
-                            obligationRow = obligations.add(insert, rows)
+                            val assigned = args.filterKeys { it in fields }
+                            if (fulfilment != null) {
+                                val lookup =
+                                    snapshot
+                                        ?: PreviewFulfilment.Snapshot(runner.obligationSnapshot(lookupEntities)).also {
+                                            snapshot =
+                                                it
+                                        }
+                                obligationRows =
+                                    fulfilments.add(fulfilment.transition(assigned, lookup, rows.size + 1), rows)
+                            } else {
+                                val insert = requireNotNull(obligation).insert(rows.size + 1, assigned, context)
+                                obligationRows = listOf(obligations.add(insert, rows))
+                            }
                         }
                         "transition" -> effects(action, args, metadata, targets, rows)
                         "writer" -> {
@@ -309,7 +346,7 @@ class ApplyPlanner(
                             wiring.action,
                             sink,
                             JsonObject(args),
-                            obligationRow?.let(::listOf) ?: (start + 1..rows.size).toList(),
+                            obligationRows ?: (start + 1..rows.size).toList(),
                             render(action.dryRun.byLanguage["en"], args),
                         )
                 }

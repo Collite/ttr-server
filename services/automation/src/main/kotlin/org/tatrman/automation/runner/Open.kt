@@ -181,6 +181,17 @@ class Open(
                 detailLimit = detailLimit,
                 detailLimits = detailLimits(recipe.recipe, pinnedActions, detailLimit),
                 syncBudget = sync,
+                obligationStorage =
+                    if (pinnedActions.values.any {
+                            it.sinks[Bundle.NATIVE] == "obligation" &&
+                                it.transition != null
+                        }
+                    ) {
+                        org.tatrman.automation.apply.PreviewObligationStorage
+                            .resolve(bundle, world.name)
+                    } else {
+                        null
+                    },
                 previewMetadata =
                     org.tatrman.automation.apply.PreviewMetadata(
                         pinnedActions,

@@ -12,16 +12,18 @@ object ApprovalFixture {
         unqualified: Boolean = false,
         generatedIds: Boolean = false,
         obligations: Boolean = false,
+        fulfilment: Boolean = false,
         obligationConflict: Boolean = false,
     ): Path {
         val base = Path.of("src/test/resources/approval-evidence")
-        require(listOf(unqualified, generatedIds, obligations).count { it } <= 1)
+        require(listOf(unqualified, generatedIds, obligations, fulfilment).count { it } <= 1)
         require(!obligationConflict || obligations)
         val resource =
             when {
                 unqualified -> base.resolve("unqualified")
                 generatedIds -> base.resolve("generated-ids")
                 obligations -> base.resolve("obligations")
+                fulfilment -> base.resolve("fulfilment")
                 else -> base
             }
 

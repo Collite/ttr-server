@@ -1,0 +1,26 @@
+uses world "hartland.worlds.demo"
+import hartland.*
+import hartland.automation.*
+recipe {
+ key: order.order_number
+ as of: now
+ parameters: [tolerance, confirmation_threshold, inbound_reminder]
+ candidates placed_orders(out orders) target erp """sql
+ SELECT o.order_number FROM er.entity.order o
+ JOIN er.entity.obligation ob ON ob.entity = 'er.entity.return_request_line'
+  AND ob.key = '{"line_id":9007199254740993}' AND ob.kind = 'inbound'
+  AND ob.state IN ('open', 'overdue', 'reopened')
+ """
+ decision verdict(in orders) {
+  orders -> switch {
+   mode: overlapping
+   release: true because: "approved writer fixture"
+  }
+ }
+ actions {
+  verdict.release -> release { order: order_number, customer: 42, value: 100.00, held_for: "Sales" }
+  verdict.release -> hold { order: order_number, department: "Sales" }
+  verdict.release -> fulfil { line: 9007199254740993, kind: "inbound", to: "fulfilled" }
+  verdict.release -> fulfil { line: 9007199254740993, kind: "inbound", to: "fulfilled" }
+ }
+}

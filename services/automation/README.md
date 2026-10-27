@@ -404,9 +404,38 @@ Different due dates for that identity refuse the whole preview. New runs have di
 
 This is proposed insert evidence, without an existing-open lookup: it does not claim that a physical insert
 would beat the one-open uniqueness check. P2 must check existing open obligations and decide insert/no-op
-atomically. Obligation transitions (`fulfil`), indirect key lookups, signals, actual writes and calendar
-lowering remain unsupported here. The adapter makes no additional Query/model/connector call. Re-evaluation,
-close and durable batch/protocol reads preserve the same proposal.
+atomically. Insert synthesis makes no additional Query/model/connector call. Re-evaluation, close and durable
+batch/protocol reads preserve the same proposal.
+
+Native obligation transitions now resolve a complete business key and text kind against a governed snapshot.
+The transition must target the pinned stdlib `obligation.state`; its target state is fixed or supplied by a
+text column. Mapping and assignment validation also runs on empty/unselected routes. The stock `fulfil`
+action is one example; action names have no special meaning.
+
+Open pins the obligation's logical storage using the compiler's placement and world-overlay rules. This
+is the world's declaration (Hartland uses `automation_db`), not a hard-coded physical database name. The
+lookup supports an unbound stdlib obligation only. Its placement input omits unrelated `hosts` lists,
+which never participate in unbound placement; this avoids the published WorldResolver's legacy path-based
+host validation without changing the pinned model or its writable/engine/overlay declarations. Missing,
+ambiguous or invalid placement refuses before a claim. Query still requires an explicit world/storage alias.
+
+A selected transition requires `er.entity.obligation` in the pinned manifest's `objectsRead`. The runner
+issues one shared, parameterized read of id/entity/key/kind/state, constrained to resolved business entities.
+It uses the pinned model, run identity, read ceiling, timeout, scope preflight and restricted-view guards.
+The template is identified as `runtime:obligation-lookup/v1` in protocol source evidence. Its verified Arrow
+snapshot is journalled as `_au_obligations.rows`, retained with the run, and reused by retries. It is an
+internal snapshot, not a new manifest output/download route. Empty selections issue no lookup.
+
+Matching uses the canonical entity qname and exact typed JSON-object key stored by insert previews, plus
+kind. Legacy bare entity names/scalar key text do not resolve through inference. One active obligation
+(open/overdue/reopened) wins over closed history; multiple active matches, missing matches, invalid values
+or malformed snapshots refuse. If no active row exists, only matching history entirely in the requested
+state is a silent self transition. Equal effects share one row; opposing effects on one ID refuse. Proposals
+carry the observed state as `from` and request history only for a change. Lookup guard results join evaluate's
+evidence before atomic decision/batch/action completion. On refusal, successful read evidence remains but
+no partial batch or action is committed. No model row is changed or signal sent; P2 must recheck current state,
+apply writes/history and enqueue signals atomically. General indirect entity lookups and calendar lowering
+remain pending.
 
 Explicit native `writer` actions now produce insert previews. Each declared action column must name one
 attribute of the same pinned ER entity; every declared key and non-nullable field must be mapped and supplied.

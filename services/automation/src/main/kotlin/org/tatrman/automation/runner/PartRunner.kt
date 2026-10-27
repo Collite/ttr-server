@@ -42,6 +42,8 @@ data class RunContext(
     /** Production Open replaces this with the committed ledger claim timestamp. */
     val startedAt: java.time.Instant = java.time.Instant.now(),
     val previewMetadata: PreviewMetadata? = null,
+    /** Compiler-resolved logical storage for an auxiliary obligation lookup, pinned at Open. */
+    val obligationStorage: String? = null,
 ) {
     init {
         require(readCeiling > 0 && detailLimit > 0 && !timeout.isNegative && !timeout.isZero)
@@ -107,6 +109,7 @@ class PartRunner(
     private val partReads = mutableMapOf<String, Deferred<Unit>>()
     private val outputs = mutableMapOf<String, Deferred<StagedOutput>>()
     private var evaluation: Deferred<EvaluationResult>? = null
+    private var obligationRead: Pair<Set<String>, Deferred<StagedOutput>>? = null
 
     @Volatile internal var evaluationRecorded = false
         private set
@@ -159,8 +162,9 @@ class PartRunner(
                 evaluation ?: scope
                     .async {
                         val execute: suspend () -> EvaluationResult = {
-                            val result = summarizeEvaluation(this@PartRunner)
+                            val decision = summarizeEvaluation(this@PartRunner)
                             val plan = preview?.invoke(this@PartRunner)
+                            val result = decision.copy(guards = guards)
                             checks.ensureAllowed()
                             kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
                                 if (plan == null) {
@@ -205,6 +209,89 @@ class PartRunner(
         checks.ensureAllowed()
         require(output.output.run == context.id)
         return staging.readData(output).also { checks.ensureAllowed() }
+    }
+
+    /** Explicit auxiliary read: the manifest must already authorize the stdlib entity. No fallback door route. */
+    internal suspend fun obligationSnapshot(entities: Set<String>): Table {
+        val island = "_au_obligations"
+        val entity = "er.entity.obligation"
+        checks.ensureAllowed()
+        if (entity !in context.recipe.recipe.objectsRead) {
+            checks.doorRefused(
+                island,
+                org.tatrman.automation.api.AutomationException(
+                    org.tatrman.automation.api.ErrorCode.OUT_OF_SCOPE_READ,
+                    "obligation lookup requires declared ER scope",
+                ),
+            )
+        }
+        if (entities.isEmpty() || island in islands) {
+            throw org.tatrman.automation.api.AutomationException(
+                org.tatrman.automation.api.ErrorCode.PREVIEW_UNSUPPORTED,
+                "invalid obligation lookup plan",
+            )
+        }
+        val storage =
+            context.obligationStorage ?: throw org.tatrman.automation.api.AutomationException(
+                org.tatrman.automation.api.ErrorCode.PREVIEW_UNSUPPORTED,
+                "obligation storage was not pinned",
+            )
+        val work =
+            lock.withLock {
+                obligationRead?.let { (pinned, work) ->
+                    require(pinned == entities) { "obligation lookup scope changed" }
+                    work
+                } ?: scope
+                    .async {
+                        val started = System.nanoTime()
+                        val parameters =
+                            entities
+                                .sorted()
+                                .mapIndexed { i, name ->
+                                    "_au_obligation_entity_$i" to
+                                        BoundValue("text", name)
+                                }.toMap()
+                        val columns =
+                            listOf("id", "entity", "key", "kind", "state").map {
+                                org.tatrman.automation.bundle
+                                    .ManifestColumn(it, "text")
+                            }
+                        val sql =
+                            "SELECT ob.id, ob.entity, ob.key, ob.kind, ob.state " +
+                                "FROM er.entity.obligation ob WHERE ob.entity IN (" +
+                                parameters.keys.joinToString(", ") { ":$it" } +
+                                ")"
+                        val result =
+                            read(
+                                island,
+                                storage,
+                                "runtime:obligation-lookup/v1",
+                                emptyList(),
+                                columns,
+                                CandidateScope.Statement(sql, parameters),
+                            )
+                        staging.put(
+                            context.id,
+                            island,
+                            "rows",
+                            result.table,
+                            IslandExecution(
+                                "output",
+                                island,
+                                "runtime:obligation-lookup/v1",
+                                "query",
+                                ProtocolRecorder.parameters(parameters),
+                                result.table.rows.size
+                                    .toLong(),
+                                elapsedMs(started),
+                                result.warnings.sorted(),
+                                port = "rows",
+                                storage = storage,
+                            ),
+                        )
+                    }.also { obligationRead = entities.toSet() to it }
+            }
+        return readStaged(work.await()).also { checks.ensureAllowed() }
     }
 
     private suspend fun outputIsland(name: String): List<StagedOutput> =

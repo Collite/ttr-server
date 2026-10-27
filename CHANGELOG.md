@@ -20,7 +20,13 @@ outside this repo could notice is in.
   date due and complete target keys propose deterministic open rows from pinned metadata and Open time.
   Key/date assignments validate on empty selections, large/composite keys remain exact, and equal
   proposals share one row. Conflicting due dates refuse atomically. No extra reads or physical writes;
-  existing-open checks, fulfilment, signals and calendar evaluation remain pending.
+  physical existing-open checks, signals and calendar evaluation remain pending.
+
+- **automation — governed obligation fulfilment previews.** Native obligation transitions resolve exact
+  business keys/kinds through one journalled scoped snapshot, using the pinned world's compiler-resolved
+  logical storage and run identity. Missing/ambiguous matches and opposing transitions refuse atomically;
+  equal effects share a row, self transitions stay silent. Query scope/restriction/ceiling checks precede
+  snapshot use. No physical write, signal, general indirect lookup or calendar execution is enabled.
 
 - **automation — preview review repairs.** Nested context/candidate references fail closed pending
   callee pinning, action-level `due` defaults match explicit durations, and nested literals retain their
