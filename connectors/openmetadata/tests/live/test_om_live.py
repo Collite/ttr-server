@@ -349,12 +349,13 @@ def test_dotted_glossary_fqn_on_real_om(om: LiveOm) -> None:
         client.summary = Summary(snapshot="dotted-world")
         glossary = client.ensure_glossary(EnsureGlossary(name=name))
         assert str(glossary.fullyQualifiedName.root) == fqn
-        assert (
-            om.session.get(
-                f"{om.url}/v1/glossaries/name/{quote(name, safe='')}", timeout=60
-            ).status_code
-            == 404
-        )
+        # The fake deliberately requires canonical quoted input. The real server
+        # may also accept bare glossary names; record that behavior, don't infer
+        # it from the generic FQN hashing implementation.
+        bare = om.session.get(f"{om.url}/v1/glossaries/name/{quote(name, safe='')}", timeout=60)
+        assert bare.status_code in {200, 404}
+        if bare.status_code == 200:
+            assert bare.json()["id"] == str(glossary.id.root)
         op = UpsertTerm(
             qname="er.entity.dotted-proof",
             fqn=f"{fqn}.proof",
@@ -387,7 +388,7 @@ def test_dotted_glossary_fqn_on_real_om(om: LiveOm) -> None:
                 "name": name,
                 "fqn": fqn,
                 "term": saved["fullyQualifiedName"],
-                "unquotedLookup": 404,
+                "unquotedLookup": bare.status_code,
                 "repeat": client.summary.model_dump(),
             },
         )
