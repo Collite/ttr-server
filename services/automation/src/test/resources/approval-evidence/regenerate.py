@@ -13,13 +13,17 @@ parser.add_argument("cli", type=Path)
 variants = parser.add_mutually_exclusive_group()
 variants.add_argument("--unqualified", action="store_true")
 variants.add_argument("--generated-ids", action="store_true")
+variants.add_argument("--obligations", action="store_true")
+variants.add_argument("--obligation-conflict", action="store_true")
 args = parser.parse_args()
 cli = args.cli.resolve()
 if subprocess.check_output([str(cli), "--version"], text=True).strip() != "ttrp 0.18.9":
     sys.exit("fixture regeneration requires the published ttrp 0.18.9 CLI")
 resource = Path(__file__).resolve().parent
 fixture = resource.parent / "bundles/hartland"
-source = resource / "generated-ids" if args.generated_ids else resource
+source = (resource / "generated-ids" if args.generated_ids else
+          resource / "obligations" if args.obligations or args.obligation_conflict else resource)
+recipe_source = source / "conflict" if args.obligation_conflict else source
 with tempfile.TemporaryDirectory(prefix="approval-evidence-") as directory:
     root = Path(directory)
     # Non-approval compiler resolution still uses the conventional producer folder layout.
@@ -34,10 +38,10 @@ with tempfile.TemporaryDirectory(prefix="approval-evidence-") as directory:
     if args.unqualified:
         action_text = action_text.replace("hartland.order.", "order.")
     (root / "models/hartland/automation/automation.ttrm").write_text(action_text)
-    shutil.copyfile(source / "release_order.ttrp", root / "release_order.ttrp")
+    shutil.copyfile(recipe_source / "release_order.ttrp", root / "release_order.ttrp")
     (root / "modeler.toml").write_text('[ttrp]\nworld = "hartland.worlds.demo"\n')
     subprocess.run([str(cli), "build", "release_order.ttrp"], cwd=root, check=True)
-    destination = resource / "unqualified" if args.unqualified else source
+    destination = resource / "unqualified" if args.unqualified else recipe_source
     destination.mkdir(exist_ok=True)
     output = destination / "release_order.bundle"
     generated = root / "release_order.bundle"

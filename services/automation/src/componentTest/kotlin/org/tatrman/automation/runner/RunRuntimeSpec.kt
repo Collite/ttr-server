@@ -148,6 +148,113 @@ class RunRuntimeComponentSpec :
             }
         }
 
+        fun obligationFixture(conflict: Boolean = false): DurableRuntimeFixture {
+            val root =
+                ApprovalFixture.copyTo(
+                    tempdir(prefix = "automation-bundles-").toPath().resolve("branch"),
+                    obligations = true,
+                    obligationConflict = conflict,
+                )
+            val source =
+                BundleLoader(AuthorMap(emptyMap())).load(
+                    Checkout(root, "master", "0123456789abcdef", "po", "po@example.org"),
+                    BundleKind.SERVED,
+                )
+            return DurableRuntimeFixture(transformBundle = {
+                source.copy(
+                    deployments =
+                        source.deployments + (
+                            "release_native_event" to
+                                source.deployments.getValue("release_native_event").copy(runAs = ModelRunAs.Caller)
+                        ),
+                )
+            }, queryTable = { request ->
+                if ("approved writer fixture" in request.source) {
+                    Table(
+                        listOf(
+                            ManifestColumn("order_number", "text"),
+                            ManifestColumn("route", "text"),
+                            ManifestColumn("verdict_reason", "text"),
+                        ),
+                        listOf(listOf("4711", "release", "approved writer fixture")),
+                    )
+                } else {
+                    Table(listOf(ManifestColumn("order_number", "text")), listOf(listOf("4711")))
+                }
+            })
+        }
+
+        "qualified obligation preview persists exact keys and pinned dates through evaluate retry close and restart" {
+            val f = obligationFixture()
+            f.base.now = Instant.parse("2000-01-01T12:00:00.123456Z")
+            val runtime = f.start()
+            try {
+                val opened = runtime.sessions.open("release_order", f.request, f.caller)
+                opened.httpStatus shouldBe 201
+                opened.approvalsBypassed shouldBe false
+                val id = UUID.fromString(opened.response.runId)
+                val startedAt = opened.context!!.startedAt
+                f.base.now = f.base.now.plusSeconds(1)
+                runtime.sessions.evaluate(id, f.caller)
+                val batch = runtime.status.batch(id, f.caller)
+                val row = batch.rows.single { it.entity == "er.entity.obligation" }
+                val data = row.row!!
+                data["due"] shouldBe JsonPrimitive("2000-01-15")
+                data["run"] shouldBe JsonPrimitive(id.toString())
+                data["state"] shouldBe JsonPrimitive("open")
+                java.time.LocalDateTime
+                    .parse(
+                        data.getValue("created_at").jsonPrimitive.content,
+                    ).toInstant(ZoneOffset.UTC) shouldBe
+                    startedAt
+                Json.parseToJsonElement(data.getValue("key").jsonPrimitive.content) shouldBe
+                    buildJsonObject { put("line_id", 9007199254740993L) }
+                val actions = runtime.status.read(id, f.caller).actions
+                val expectations = actions.filter { it.sink == "obligation" }
+                expectations.size shouldBe 2
+                expectations.forEach { it.batchRows shouldBe listOf(row.seq) }
+                runtime.sessions.evaluate(id, f.caller)
+                runtime.status.batch(id, f.caller) shouldBe batch
+                f.reads.get() shouldBe 2
+                runtime.closer.close(id, f.caller)
+                val protocol = runtime.protocol.read(id, f.caller)
+                runtime.shutdown()
+                val restarted = f.start()
+                try {
+                    restarted.status.batch(id, f.caller) shouldBe batch
+                    restarted.status.read(id, f.caller).actions shouldBe actions
+                    restarted.protocol.read(id, f.caller) shouldBe protocol
+                    transaction { Batches.selectAll().count() } shouldBe 1L
+                    f.reads.get() shouldBe 2
+                } finally {
+                    restarted.shutdown()
+                }
+            } finally {
+                runtime.shutdown()
+                f.close()
+            }
+        }
+
+        "conflicting obligation due dates leave no durable preview or action evidence" {
+            val f = obligationFixture(conflict = true)
+            val runtime = f.start()
+            try {
+                val opened = runtime.sessions.open("release_order", f.request, f.caller)
+                val id = UUID.fromString(opened.response.runId)
+                repeat(2) {
+                    shouldThrow<AutomationException> { runtime.sessions.evaluate(id, f.caller) }.code shouldBe
+                        ErrorCode.PREVIEW_UNSUPPORTED
+                }
+                transaction { Batches.selectAll().count() } shouldBe 0L
+                runtime.status.read(id, f.caller).actions shouldBe emptyList()
+                runtime.status.read(id, f.caller).status shouldBe "failed"
+                f.reads.get() shouldBe 2
+            } finally {
+                runtime.shutdown()
+                f.close()
+            }
+        }
+
         "governed generated bigint keys persist through retry close restart and reject stale declarations" {
             val root =
                 ApprovalFixture.copyTo(

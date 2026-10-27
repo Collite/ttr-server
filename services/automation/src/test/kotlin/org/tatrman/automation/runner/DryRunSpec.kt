@@ -140,6 +140,167 @@ class DryRunSpec :
             }
         }
 
+        fun obligationWiring(
+            routes: List<String> = listOf("way.hold"),
+            kind: String = "\"inbound\"",
+            due: String = "cast(:as_of + days(14) as date)",
+        ) = ManifestWiring(routes, "expect", mapOf("line" to "9007199254740993", "kind" to kind, "due" to due))
+
+        "expect previews a typed open obligation from pinned targets dates and Open time" {
+            supervisorScope {
+                val opened = Instant.parse("2031-01-31T09:45:00.123456789Z")
+                val f = PreviewFixture(this, previewRecipe().withWiring(listOf(obligationWiring())), startedAt = opened)
+                f.runner.use { runner ->
+                    runner.evaluate()
+                    val plan = f.plan!!
+                    val action = plan.actions.single()
+                    val row = plan.rows.single { it.entity == "er.entity.obligation" }
+                    action.sink shouldBe "obligation"
+                    action.batchRows shouldBe listOf(row.seq)
+                    action.arguments["line"] shouldBe JsonPrimitive(9007199254740993L)
+                    action.arguments["due"] shouldBe JsonPrimitive("2026-11-06")
+                    val data = row.row!!
+                    data.keys shouldBe
+                        setOf("id", "recipe", "run", "entity", "key", "kind", "due", "state", "created_at")
+                    data["recipe"] shouldBe JsonPrimitive("release_order")
+                    data["run"] shouldBe JsonPrimitive(runner.context.id.toString())
+                    data["entity"] shouldBe JsonPrimitive("er.entity.return_request_line")
+                    Json.parseToJsonElement(data.getValue("key").jsonPrimitive.content) shouldBe
+                        buildJsonObject { put("line_id", 9007199254740993L) }
+                    data["kind"] shouldBe JsonPrimitive("inbound")
+                    data["due"] shouldBe action.arguments["due"]
+                    data["state"] shouldBe JsonPrimitive("open")
+                    data["created_at"] shouldBe JsonPrimitive("2031-01-31T09:45:00.123456789")
+                    row.key shouldBe buildJsonObject { put("id", data.getValue("id")) }
+                    UUID.fromString(data.getValue("id").jsonPrimitive.content).toString() shouldBe
+                        data.getValue("id").jsonPrimitive.content
+                    val replay =
+                        ApplyPlanner(
+                            Clock.fixed(PREVIEW_NOW.plusSeconds(86400), ZoneOffset.UTC),
+                        ).preview(runner)
+                    replay.actions shouldBe plan.actions
+                    replay.rows.filter { it.entity == "er.entity.obligation" } shouldBe listOf(row)
+                    runner.evaluate()
+                    f.journals.get() shouldBe 1
+                    f.reads.get() shouldBe 5
+                    f.legacy.get() shouldBe 0
+                    Json.encodeToString(plan).contains("unused_secret") shouldBe false
+                }
+            }
+        }
+
+        "qualified obligation key uses the loader resolution through evaluate" {
+            val root = BundleFixture.copy()
+            try {
+                ApprovalFixture.copyTo(root, obligations = true)
+                val bundle = BundleFixture.load(root)
+                val coverage = bundle.recipes.getValue("release_order").coverage
+                coverage.refusal shouldBe null
+                val metadata = PreviewMetadata(coverage.actions, bundle.entities, coverage.targets)
+                metadata.targets
+                    .getValue("expect")
+                    .getValue("hartland.return_request_line.line_id")
+                    .entity.qname.`package` shouldBe ""
+                supervisorScope {
+                    val f = PreviewFixture(this, previewRecipe().withWiring(listOf(obligationWiring())), metadata)
+                    f.runner.use { runner ->
+                        runner.evaluate()
+                        val row = f.plan!!.rows.single { it.entity == "er.entity.obligation" }
+                        Json.parseToJsonElement(
+                            row.row!!
+                                .getValue("key")
+                                .jsonPrimitive.content,
+                        ) shouldBe
+                            buildJsonObject { put("line_id", 9007199254740993L) }
+                        f.plan!!
+                            .actions
+                            .single()
+                            .batchRows shouldBe listOf(row.seq)
+                        f.journals.get() shouldBe 1
+                        f.reads.get() shouldBe 5
+                    }
+                }
+            } finally {
+                root.toFile().deleteRecursively()
+            }
+        }
+
+        "equal obligation proposals share one row and different kinds receive different ids" {
+            supervisorScope {
+                val wiring = obligationWiring()
+                val recipe = previewRecipe().withWiring(listOf(wiring, wiring, obligationWiring(kind = "\"payment\"")))
+                val f = PreviewFixture(this, recipe)
+                f.runner.use { runner ->
+                    runner.evaluate()
+                    val plan = f.plan!!
+                    val rows = plan.rows.filter { it.entity == "er.entity.obligation" }
+                    rows.size shouldBe 2
+                    rows.map { it.key }.distinct().size shouldBe 2
+                    plan.actions.map { it.batchRows } shouldBe
+                        listOf(listOf(rows[0].seq), listOf(rows[0].seq), listOf(rows[1].seq))
+                    f.reads.get() shouldBe 5
+                }
+            }
+        }
+
+        "conflicting obligation proposals refuse atomically after an earlier native effect" {
+            supervisorScope {
+                val recipe =
+                    previewRecipe().withWiring(
+                        listOf(
+                            previewRecipe().recipe.wiring.first(),
+                            obligationWiring(),
+                            obligationWiring(due = "cast(:as_of as date)"),
+                        ),
+                    )
+                val f = PreviewFixture(this, recipe)
+                f.runner.use { runner ->
+                    repeat(2) {
+                        shouldThrow<AutomationException> { runner.evaluate() }.code shouldBe
+                            ErrorCode.PREVIEW_UNSUPPORTED
+                    }
+                    f.plan shouldBe null
+                    f.journals.get() shouldBe 0
+                    f.reads.get() shouldBe 5
+                }
+            }
+        }
+
+        "obligation key kind and date assignments validate on empty and unselected routes" {
+            for (columns in listOf(
+                obligationWiring().columns + ("line" to "\"not an integer\""),
+                obligationWiring().columns + ("kind" to "amount"),
+                obligationWiring().columns + ("due" to "\"2026-11-06\""),
+                obligationWiring().columns - "line",
+            )) {
+                for ((routes, condition) in listOf(listOf("way.empty") to null, listOf("way.hold") to "false")) {
+                    supervisorScope {
+                        val wiring = obligationWiring(routes).copy(columns = columns, whenCondition = condition)
+                        val f = PreviewFixture(this, previewRecipe().withWiring(listOf(wiring)))
+                        f.runner.use { runner ->
+                            shouldThrow<AutomationException> { runner.evaluate() }.code shouldBe
+                                ErrorCode.PREVIEW_UNSUPPORTED
+                            f.journals.get() shouldBe 0
+                            f.reads.get() shouldBe 5
+                        }
+                    }
+                }
+            }
+        }
+
+        "empty full obligation preview is successful without manufacturing rows" {
+            supervisorScope {
+                val f = PreviewFixture(this, previewRecipe().withWiring(listOf(obligationWiring(listOf("way.empty")))))
+                f.runner.use { runner ->
+                    runner.evaluate()
+                    f.plan!!.rows.none { it.entity == "er.entity.obligation" } shouldBe true
+                    f.plan!!.actions shouldBe emptyList()
+                    f.journals.get() shouldBe 1
+                    f.reads.get() shouldBe 5
+                }
+            }
+        }
+
         fun generatedMetadata(
             type: String = "bigint",
             source: String = "bigint_id_v1",

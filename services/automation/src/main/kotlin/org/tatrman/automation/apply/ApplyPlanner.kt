@@ -39,6 +39,7 @@ class ApplyPlanner(
         val argumentNames: Set<String>,
         val arguments: Map<Int, Map<String, JsonElement>>,
         val writer: PreviewWriter?,
+        val obligation: PreviewObligation?,
         val targets: Map<String, TargetResolution.Resolved>?,
         val generated: Boolean,
     )
@@ -49,6 +50,7 @@ class ApplyPlanner(
         val rows = mutableListOf<ApplyRow>()
         val actions = mutableListOf<DryRunAction>()
         val writerKeys = PreviewWriterIds.Keys()
+        val obligations = PreviewObligation.Proposals()
         val metadata = requireNotNull(context.previewMetadata) { "preview metadata was not pinned at open" }
         val roles = recipe.roles
         val decision = roles?.decision
@@ -94,7 +96,13 @@ class ApplyPlanner(
                         val column = action.columns.singleOrNull { it.name == name }
                         column?.type != "rows"
                     }
-                defaults to PreviewWiringValues.prepare(scalarSources, action)
+                val obligation =
+                    if (action.sinks[Bundle.NATIVE] == "obligation") {
+                        PreviewObligation.resolve(action, metadata, metadata.targets[wiring.action])
+                    } else {
+                        null
+                    }
+                Triple(defaults, PreviewWiringValues.prepare(scalarSources, action), obligation)
             }
         val roleNames = roles.contexts.map { it.name }.toSet() + listOfNotNull(roles.candidates)
         val writtenAt = clock.instant()
@@ -125,7 +133,7 @@ class ApplyPlanner(
                         val indices = table.rows.indices.filter { matches == null || it in matches }
                         val action = metadata.actions.getValue(wiring.action)
                         val targets = metadata.targets[wiring.action]
-                        val (defaults, values) = wiringValues[wiringIndex]
+                        val (defaults, values, obligation) = wiringValues[wiringIndex]
                         // Presence wins, including explicit NULL. Defaults do not read other arguments.
                         val argumentNames =
                             (defaults.expressions.keys + wiring.columns.keys) + defaults.values.keys +
@@ -139,13 +147,15 @@ class ApplyPlanner(
                                 null
                             }
                         writer?.validateArguments(assignmentNames(action, argumentNames))
+                        obligation?.validateArguments(assignmentNames(action, argumentNames))
+                        val expectedTypes = writer?.expectedTypes ?: obligation?.expectedTypes.orEmpty()
                         writer?.validateGenerated(defaults.generated)
                         require(action.columns.filterNot { it.optional }.all { it.name in wiring.columns }) {
                             "missing required action argument"
                         }
                         val contextValues =
                             PreviewExpressions
-                                .constants(defaults.values, writer?.expectedTypes.orEmpty())
+                                .constants(defaults.values, expectedTypes)
                                 .filterKeys { it !in wiring.columns }
                                 .mapValues { scalar(it.value) }
                         val overridden = defaults.expressions.filterKeys { it in wiring.columns }
@@ -155,7 +165,7 @@ class ApplyPlanner(
                                 overridden,
                                 table.copy(rows = emptyList()),
                                 context.bindings,
-                                expectedTypes = writer?.expectedTypes.orEmpty(),
+                                expectedTypes = expectedTypes,
                             )
                         }
                         val projected =
@@ -163,7 +173,7 @@ class ApplyPlanner(
                                 values,
                                 table.copy(rows = indices.map { table.rows[it] }),
                                 context.bindings,
-                                expectedTypes = writer?.expectedTypes.orEmpty(),
+                                expectedTypes = expectedTypes,
                                 roleNames = roleNames,
                             )
                         PreparedWiring(
@@ -188,6 +198,7 @@ class ApplyPlanner(
                                     index to arguments
                                 }.toMap(),
                             writer,
+                            obligation,
                             targets,
                             (defaults.generated - wiring.columns.keys).isNotEmpty(),
                         )
@@ -248,7 +259,7 @@ class ApplyPlanner(
                             )
                     }
                 }
-                for ((wiring, argumentNames, arguments, writer, targets, generated) in selected) {
+                for ((wiring, argumentNames, arguments, writer, obligation, targets, generated) in selected) {
                     val scalarArguments = arguments[index] ?: continue
                     val action = metadata.actions.getValue(wiring.action)
                     val args = linkedMapOf<String, JsonElement>()
@@ -271,7 +282,16 @@ class ApplyPlanner(
                     }
                     val sink = action.sinks[Bundle.NATIVE] ?: unsupported("action ${wiring.action} has no native sink")
                     val start = rows.size
+                    var obligationRow: Int? = null
                     when (sink) {
+                        "obligation" -> {
+                            val fields = assignmentNames(action, args.keys)
+                            val insert =
+                                requireNotNull(
+                                    obligation,
+                                ).insert(rows.size + 1, args.filterKeys { it in fields }, context)
+                            obligationRow = obligations.add(insert, rows)
+                        }
                         "transition" -> effects(action, args, metadata, targets, rows)
                         "writer" -> {
                             val fields = assignmentNames(action, args.keys)
@@ -289,7 +309,7 @@ class ApplyPlanner(
                             wiring.action,
                             sink,
                             JsonObject(args),
-                            (start + 1..rows.size).toList(),
+                            obligationRow?.let(::listOf) ?: (start + 1..rows.size).toList(),
                             render(action.dryRun.byLanguage["en"], args),
                         )
                 }

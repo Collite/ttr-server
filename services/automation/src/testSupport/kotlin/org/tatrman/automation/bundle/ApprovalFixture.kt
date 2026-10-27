@@ -11,13 +11,17 @@ object ApprovalFixture {
         root: Path,
         unqualified: Boolean = false,
         generatedIds: Boolean = false,
+        obligations: Boolean = false,
+        obligationConflict: Boolean = false,
     ): Path {
         val base = Path.of("src/test/resources/approval-evidence")
-        require(!unqualified || !generatedIds)
+        require(listOf(unqualified, generatedIds, obligations).count { it } <= 1)
+        require(!obligationConflict || obligations)
         val resource =
             when {
                 unqualified -> base.resolve("unqualified")
                 generatedIds -> base.resolve("generated-ids")
+                obligations -> base.resolve("obligations")
                 else -> base
             }
 
@@ -34,9 +38,10 @@ object ApprovalFixture {
             root.resolve("automation/automation.ttrm"),
             StandardCopyOption.REPLACE_EXISTING,
         )
+        val bundleResource = if (obligationConflict) resource.resolve("conflict") else resource
         val bundle = root.resolve("automation/release_order/release_order.bundle")
         bundle.toFile().deleteRecursively()
-        copyFixtureTree(resource.resolve("release_order.bundle"), bundle)
+        copyFixtureTree(bundleResource.resolve("release_order.bundle"), bundle)
         return root
     }
 }

@@ -386,6 +386,28 @@ replace authored values or make unknown references resolve. Invalid/overflowing 
 completion, including on empty routes. The compiler's wiring/window spelling `30 days` remains invalid inside
 scalar expressions; use `days(30)` there.
 
+Native `obligation` actions with no set/transition can now propose open obligation inserts. The action
+must declare `kind: text`, `due: date`, and a complete, unambiguous key mapping to one business entity through
+its other column types. These are column declarations, not assumptions about the action's name: the stock
+`expect` uses `line: return_request_line.line_id`. Qualified targets consume the verifier's exact pinned
+resolutions; legacy recipes retain their existing unqualified lookup rules. No missing pin falls back.
+The compiler checks key/kind/date assignments even on empty or unselected routes; selected null keys/dates,
+blank kinds, malformed mappings, schema mismatches and declared key bounds refuse before completion.
+
+Each proposed `er.entity.obligation` row carries `id`, `recipe`, `run`, `entity`, `key`, `kind`, `due`,
+`state: open` and `created_at`. Its `key` is canonical JSON stored as text, retaining exact numeric values;
+`created_at` is the pinned Open instant expressed as a UTC timestamp, with full precision. The opaque preview
+UUID is deterministic from the versioned namespace, run UUID, target entity, canonical key and kind. It is
+independent of route/wiring order and preview clock; it does not allocate a physical model identifier.
+Equal proposals for the same target/key/kind share one row, and every action references that row's sequence.
+Different due dates for that identity refuse the whole preview. New runs have distinct preview identities.
+
+This is proposed insert evidence, without an existing-open lookup: it does not claim that a physical insert
+would beat the one-open uniqueness check. P2 must check existing open obligations and decide insert/no-op
+atomically. Obligation transitions (`fulfil`), indirect key lookups, signals, actual writes and calendar
+lowering remain unsupported here. The adapter makes no additional Query/model/connector call. Re-evaluation,
+close and durable batch/protocol reads preserve the same proposal.
+
 Explicit native `writer` actions now produce insert previews. Each declared action column must name one
 attribute of the same pinned ER entity; every declared key and non-nullable field must be mapped and supplied.
 Arguments use compiler assignment unification, allowing lossless integer/decimal and date/timestamp widening
@@ -485,8 +507,8 @@ generation. The finite 63-bit hash space does not guarantee global uniqueness: P
 physical primary-key conflict transactionally, without overwriting/skipping/regenerating. Preview never
 queries or writes the target model to allocate an ID. The evidence format from 0.18.9, unchanged through 0.18.11, covers the authored source.
 
-Hartland's authored default mappings/bundles remain pending, as do obligation/
-key-lookup/calendar/column-date synthesis. P2 must validate actual physical bounds and writable policies
+Hartland's authored default mappings/bundles are staged in #122; deployed adoption remains pending.
+Obligation lookup/fulfilment and calendar/column-date synthesis remain pending. P2 must validate actual physical bounds and writable policies
 before applying anything. H-3/H-5 are not certified by these defaults. Selected unsupported operations return
 `501 preview-unsupported`. P2/P3
 retain dry-run task/delivery rows and performed action outcomes. Durable close/sealing and local staging retention are described below. Application mounting is

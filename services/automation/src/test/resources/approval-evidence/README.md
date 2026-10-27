@@ -42,3 +42,18 @@ python3 regenerate.py /path/to/ttrp-cli-0.18.9/bin/ttrp-cli --generated-ids
 The real-ledger test goes through governed Open/evaluate, checks key/row/action/would-text agreement and
 idempotent retry, then close/restart persistence. Editing the source under old evidence refuses before
 another claim. This fixture does not perform physical model writes or certify the live H-3 recipe.
+
+The `obligations/` variant wires the same defaulted writer and qualified hold plus two equal `expect`
+proposals with `hartland.return_request_line.line_id`, an exact key above 2^53 and a compiler-checked date.
+The `obligations/conflict/` companion changes only the second proposal's date expression. Both complete
+bundles and their approval dependencies are produced unchanged by published ttrp 0.18.9 (no compiler bump).
+
+```sh
+python3 regenerate.py /path/to/ttrp-cli-0.18.9/bin/ttrp-cli --obligations
+python3 regenerate.py /path/to/ttrp-cli-0.18.9/bin/ttrp-cli --obligation-conflict
+```
+
+The component cases use actual loader packages from an arbitrary `branch` checkout, real governed Open,
+evaluate and the PostgreSQL ledger. Equal proposals persist once across retry/close/restart; the conflicting
+bundle refuses evaluation without a batch or action evidence. Query tables alone are canned. This does not
+exercise physical obligation uniqueness, fulfilment, signals, calendar reads or a live Hartland recipe.

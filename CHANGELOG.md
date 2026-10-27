@@ -16,6 +16,12 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+- **automation — open obligation insert previews.** Native obligation actions with explicit text kind,
+  date due and complete target keys propose deterministic open rows from pinned metadata and Open time.
+  Key/date assignments validate on empty selections, large/composite keys remain exact, and equal
+  proposals share one row. Conflicting due dates refuse atomically. No extra reads or physical writes;
+  existing-open checks, fulfilment, signals and calendar evaluation remain pending.
+
 - **automation — preview review repairs.** Nested context/candidate references fail closed pending
   callee pinning, action-level `due` defaults match explicit durations, and nested literals retain their
   original escapes. Invalid would-text placeholders identify the template. Fixture verification rejects
