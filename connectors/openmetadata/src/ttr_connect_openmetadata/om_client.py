@@ -30,9 +30,10 @@ from metadata.generated.schema.type.customProperty import CustomProperty
 from metadata.ingestion.ometa.ometa_api import OpenMetadata
 from pydantic import BaseModel
 
-from .mapping import studio_link
+from .mapping import om_name, studio_link
 from .model import (
     REGISTRY,
+    STUDIO_LINK_KEYS,
     Deprecate,
     EnsureCustomProperty,
     EnsureGlossary,
@@ -90,6 +91,10 @@ class _Page(BaseModel):
 
 def payload(model: BaseModel) -> Json:
     return model.model_dump(mode="json", by_alias=True, exclude_none=True)
+
+
+def _glossary_name(term: GlossaryTerm) -> str | None:
+    return str(term.glossary.name) if term.glossary and term.glossary.name else None
 
 
 def tag(fqn: str, source: str = "Classification") -> Json:
@@ -241,6 +246,14 @@ class OmClient:
 
     def _patch(self, source: M, changes: Json, *, count: bool = True) -> M:
         before = payload(source)
+        if (
+            isinstance(source, GlossaryTerm)
+            and before.get("entityStatus") == "Deprecated"
+            and changes.keys() - {"entityStatus"}
+        ):
+            raise OmError(
+                None, f"refusing a non-status edit to Deprecated term {source.fullyQualifiedName}"
+            )
         if all(before.get(key) == value for key, value in changes.items()):
             return source
         version = before.get("version")
@@ -273,7 +286,7 @@ class OmClient:
             self.summary.warnings += 1
 
     def ensure_glossary(self, op: EnsureGlossary) -> Glossary:
-        entity = self._get(Glossary, "glossaries", op.name)
+        entity = self._get(Glossary, "glossaries", om_name(op.name))
         if entity is None:
             entity = self._create(
                 CreateGlossaryRequest.model_validate(
@@ -385,21 +398,12 @@ class OmClient:
         }
 
     def _find_term(self, op: UpsertTerm) -> GlossaryTerm | None:
-        scoped = [
-            t
-            for t in self._terms.values()
-            if (payload(t).get("glossary") or {}).get("name") == op.glossary
-        ]
+        scoped = [t for t in self._terms.values() if _glossary_name(t) == op.glossary]
         candidates = [
             t for t in scoped if payload(t).get("extension", {}).get("ttrQname") == op.qname
         ]
         if not candidates and op.iri:
-            candidates = [
-                t
-                for t in scoped
-                if str(t.iri or "") == op.iri
-                and (payload(t).get("glossary") or {}).get("name") == op.glossary
-            ]
+            candidates = [t for t in scoped if str(t.iri or "") == op.iri]
         if not candidates:
             candidates = [
                 t for t in self._terms.values() if payload(t).get("fullyQualifiedName") == op.fqn
@@ -417,7 +421,7 @@ class OmClient:
         try:
             result = self._rest(
                 "PUT",
-                f"glossaries/name/{quote(op.glossary, safe='')}/importRdf",
+                f"glossaries/name/{quote(om_name(op.glossary), safe='')}/importRdf",
                 data=op.turtle,
                 params={"format": "turtle", "dryRun": "false"},
             )
@@ -465,7 +469,7 @@ class OmClient:
                 CreateGlossaryTermRequest.model_validate(
                     {
                         "name": op.name,
-                        "glossary": op.glossary,
+                        "glossary": om_name(op.glossary),
                         "parent": str(parent.fullyQualifiedName.root) if parent else op.parent,
                         "displayName": op.display,
                         "description": op.description,
@@ -744,28 +748,30 @@ class OmClient:
         self._metric_aliases[op.metric] = metric
         self.summary.linked += 1
 
-    def normalize_out_of_plan_term_links(self, plan: Plan, terms: list[UpsertTerm]) -> None:
-        current = {op.qname for op in terms}
+    def normalize_out_of_plan_term_links(self, plan: Plan) -> None:
+        current = {op.qname for op in plan.operations if isinstance(op, UpsertTerm)}
         retiring = {
             op.qname
             for op in plan.operations
             if isinstance(op, Deprecate) and op.kind == "glossaryTerm"
         }
+        excluded = current | retiring
         for term in list(self._terms.values()):
+            if _glossary_name(term) not in self._glossaries:
+                continue
             data = payload(term)
             extension = data.get("extension") or {}
             qname = extension.get("ttrQname")
-            # A non-status edit to a Deprecated term re-runs approval in OM 2.0.6.
+            # Non-status edits re-run approval; only Approved/Draft orphans are eligible.
             # Skip planned retirements too, even if the cache predates that status.
             if (
-                (data.get("glossary") or {}).get("name") not in self._glossaries
-                or data.get("entityStatus") == "Deprecated"
+                data.get("entityStatus") not in {"Approved", "Draft"}
                 or not isinstance(qname, str)
                 or not qname
-                or qname in current | retiring
+                or qname in excluded
             ):
                 continue
-            desired = {k: v for k, v in extension.items() if k not in {"ttrUrl", "ttrStudioLink"}}
+            desired = {k: v for k, v in extension.items() if k not in STUDIO_LINK_KEYS}
             model = qname.split(".", 1)[0]
             link = studio_link(model, plan.studio_base) if model in {"er", "md"} else None
             if link is not None:
@@ -805,7 +811,7 @@ class OmClient:
             for term in list(self._terms.values()):
                 if (
                     payload(term).get("extension", {}).get("ttrQname") == op.qname
-                    and (payload(term).get("glossary") or {}).get("name") in self._glossaries
+                    and _glossary_name(term) in self._glossaries
                 ):
                     self.deprecate_term(term)
         elif op.kind == "metric":
@@ -885,5 +891,5 @@ class OmClient:
             elif isinstance(op, Deprecate):
                 self.deprecate(op)
         if plan.studio_links:
-            self.normalize_out_of_plan_term_links(plan, terms)
+            self.normalize_out_of_plan_term_links(plan)
         return self.summary

@@ -13,6 +13,7 @@ from pydantic import ValidationError
 from .export_reader import DirSource, ExportError, NotModified, UrlSource
 from .mapping import (
     MappingError,
+    PreparedStudio,
     deprecations,
     json_lines,
     plan_from_export,
@@ -149,7 +150,9 @@ def run(args: argparse.Namespace, dry: bool, client: "OmClient | None") -> int:
                 export,
                 args.world,
                 cn_name_mode=args.cn_name_mode,
-                studio_base=f"{studio_origin}/m/{workspace}/s/" if studio_origin else None,
+                studio_base=PreparedStudio(studio_origin, workspace)
+                if studio_origin and workspace is not None
+                else None,
             )
             if args.cn_path == "glossary":
                 result.operations = [
@@ -173,7 +176,7 @@ def run(args: argparse.Namespace, dry: bool, client: "OmClient | None") -> int:
                 )
                 print(
                     "INFO sync also normalizes Studio links on out-of-plan, "
-                    f"non-deprecated terms in {glossaries}",
+                    f"Approved/Draft terms in {glossaries}",
                     file=sys.stderr,
                 )
             for warning in result.warnings:

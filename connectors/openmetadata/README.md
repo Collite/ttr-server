@@ -39,7 +39,7 @@ uv build
 `plan` and `sync --dry-run` honor --cn-path (default glossary); select owl
 to include the RDF import operation. `plan` writes one typed operation per JSON line to stdout and warnings to stderr.
 With Studio configured, an INFO line on stderr also discloses sync's normalization
-of out-of-plan, non-deprecated terms; those terms are discovered only at sync time.
+of out-of-plan Approved and Draft terms; those terms are discovered only at sync time.
 The directory must contain `graph.json`, `defs.json`, `cn.ttl`, and `.snapshot`.
 The URL is the **full export route**, without query parameters. The reader requests
 world graph + world definitions + CN OWL, and rejects mixed ETags, snapshots,
@@ -63,15 +63,15 @@ origin. Use punycode for IDNs. Scheme/host case and default ports are canonicali
 
 New `cn` concepts remain in the OM glossary: Studio's legacy `cnc` renderer is a
 different model. With `--studio-url` configured, sync removes the obsolete
-connector-owned `ttrUrl` and `ttrStudioLink` from CN terms while retaining other custom properties,
+connector-owned `ttrUrl` and `ttrStudioLink` from in-plan CN terms while retaining other custom properties,
 IRIs, definitions and asset links. Without that option it leaves existing URLs
-untouched. After deprecations, sync also normalizes links on non-deprecated owned
+untouched. After deprecations, sync also normalizes links on Approved or Draft owned
 terms absent from the current plan in this world's Concepts/Entities glossaries,
 including orphans from a fresh state or `--no-deprecate-missing`: ER/MD get the same
 model URL and native label as planned terms; CN and other prefixes have neither key.
-Deprecated terms retain whatever links they had, including retired `/viewer?qname=`
+Out-of-plan terms in every other status retain whatever links they had, including retired `/viewer?qname=`
 links from 0.1.2 or earlier. Editing their metadata re-runs OM's approval workflow
-and can un-deprecate them, so they are never swept. Reappearing model terms first
+and can reset their status, so they are never swept. Reappearing model terms first
 reactivate through a pure status change before metadata is reconciled.
 Other glossaries and unrelated extension keys are preserved. Metric and table links
 outside the current export (both keys) are not migrated; general reconciliation
@@ -139,7 +139,8 @@ and dry-run remain independent of OM and credentials. A 304 sync prints zero
 counters with `not_modified: true`; a real sync prints `not_modified: false`.
 A 304 without compatible state or after part of a new export is an export error.
 **Rollback to 0.1.3 or earlier requires a fresh state path**: those versions reject
-the saved `world` field introduced in 0.1.4.
+the saved `world` field introduced in 0.1.4. Versions 0.1.4+ ignore unknown state
+fields written by later versions; a connector-version change still forces a full sync.
 State uses a same-directory temporary file, fsync and atomic rename; ids are sorted
 and deduplicated.
 

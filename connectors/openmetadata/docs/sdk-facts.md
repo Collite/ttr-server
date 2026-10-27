@@ -160,7 +160,10 @@ skip that consolidation, preserve pure status events and reject concurrent edits
 with 412; no 4xx retry or state advance occurs. Deprecation is checked immediately
 and again after a delay in the live suite. The connector never sends a non-status
 PATCH to a Deprecated term; a reappearing term first gets a pure status reactivation.
-Out-of-plan Deprecated terms retain their links to avoid re-triggering approval.
+Only Approved and Draft out-of-plan terms are normalized; terms in any other
+status keep their links. This avoids reversing rejection or re-opening approval.
+A term that reappears with unchanged metadata stays Draft; its status-only
+reactivation does not trigger OM approval.
 Reappearance can be Draft or Approved
 under the catalog's approval policy. Initial approval-instance completion is
 observed before the version/no-op assertions; the suite never disables workflows.

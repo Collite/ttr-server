@@ -124,6 +124,10 @@ class FakeOm:
             return self.answer(200, {"version": "2.0.6"})
         if "/importRdf" in path:
             assert "dryRun=false" in request.url
+            assert (
+                path.removeprefix("glossaries/name/").removesuffix("/importRdf")
+                in self.stores["glossaries"]
+            )
             if self.import_status == 200:
                 for term in self.import_terms:
                     self.stores["glossaryTerms"][term["fullyQualifiedName"]] = deepcopy(term)
@@ -172,9 +176,7 @@ class FakeOm:
         suffix = path.removeprefix(collection).strip("/")
         if method == "GET":
             if suffix.startswith("name/"):
-                entity = store.get(suffix[5:]) or next(
-                    (v for v in store.values() if v["name"] == suffix[5:]), None
-                )
+                entity = store.get(suffix[5:])
                 return (
                     self.answer(200, entity) if entity else self.answer(404, {"message": "absent"})
                 )
@@ -244,11 +246,8 @@ class FakeOm:
                 and t["glossary"]["fullyQualifiedName"] == data["glossary"]
                 for t in store.values()
             ), "OM names are case-insensitively unique across the glossary"
-            glossary = next(
-                g
-                for g in self.stores["glossaries"].values()
-                if g["name"] == data["glossary"] or g["fullyQualifiedName"] == data["glossary"]
-            )
+            glossary = self.stores["glossaries"].get(data["glossary"])
+            assert glossary is not None, "term glossary must equal its stored FQN"
             parent = data.get("parent") or glossary["fullyQualifiedName"]
             assert parent in store or parent in self.stores["glossaries"]
             fqn = parent + "." + (f'"{name}"' if "." in name else name)
@@ -265,6 +264,7 @@ class FakeOm:
                     "fullyQualifiedName": parent,
                 }
             data["relatedTerms"] = []
+            data["entityStatus"] = "Approved"
         elif collection == "tags":
             fqn = f"{data['classification']}.{name}"
             data["classification"] = {"id": uid(data["classification"]), "type": "classification"}

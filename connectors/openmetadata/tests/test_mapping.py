@@ -451,3 +451,71 @@ def test_studio_origins_are_canonical(export: Export, origin: str, expected: str
     assert http_origin(origin, allow_path=False) == expected
     plan = plan_from_export(export, studio_url=origin)
     assert plan.studio_base == f"{expected}/m/northline/s/"
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        'https://a"b<c>',
+        "https://studio.example;x",
+        "https://x{y}|z",
+        "https://a..b",
+        "https://1.2.3.4.5",
+        "https://-bad.example",
+        "https://bad-.example",
+        "https://" + "a" * 64 + ".example",
+        "https://" + ".".join(["a" * 63] * 4),
+        "https://256.1.2.3",
+        "https://[::1]junk",
+    ],
+)
+def test_invalid_origin_host_grammar(export: Export, url: str) -> None:
+    with pytest.raises(MappingError, match="invalid host or port"):
+        plan_from_export(export, studio_url=url)
+
+
+@pytest.mark.parametrize(
+    "url,cause",
+    [
+        ("https://studio.example/m/demo", "without a path"),
+        ("https://user@studio.example", "credentials"),
+        ("ftp://studio.example", "scheme"),
+        ("https://studio.example:0", "host or port"),
+    ],
+)
+def test_origin_rejections_explain_the_cause(url: str, cause: str) -> None:
+    from ttr_connect_openmetadata.urls import http_origin
+
+    with pytest.raises(ValueError, match=cause):
+        http_origin(url, allow_path=False)
+
+
+def test_dns_root_dot_is_canonical(export: Export) -> None:
+    dotted = plan_from_export(export, studio_url="https://Studio.EXAMPLE.")
+    plain = plan_from_export(export, studio_url="https://studio.example")
+    assert dotted == plain
+
+
+@pytest.mark.parametrize(
+    "base",
+    [
+        "",
+        "garbage",
+        "https://studio.example/m//s/",
+        "https://studio.example/m/c/s/",
+        "https://studio.example/m/demo/s/?query",
+    ],
+)
+def test_invalid_prepared_base_is_rejected(export: Export, base: str) -> None:
+    with pytest.raises(MappingError, match="invalid prepared Studio base"):
+        plan_from_export(export, studio_base=base)
+
+
+def test_prepared_base_and_library_cli_input_agree(export: Export) -> None:
+    assert plan_from_export(export, studio_base="https://Studio.EXAMPLE.:443/m/demo/s/") == (
+        plan_from_export(export, studio_url="https://studio.example", studio_workspace="demo")
+    )
+    plan = plan_from_export(export)
+    assert not plan.studio_links
+    plan.studio_base = "https://studio.example/m/demo/s/"
+    assert plan.studio_links

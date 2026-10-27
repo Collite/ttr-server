@@ -329,3 +329,73 @@ def test_plain_text_search_minimum(om: LiveOm) -> None:
         assert any(
             h["_source"]["fullyQualifiedName"] == PREFIX + "sales" for h in result["hits"]["hits"]
         )
+
+
+def test_dotted_glossary_fqn_on_real_om(om: LiveOm) -> None:
+    """All connector glossary lookup/create paths use a single quoted FQN."""
+    from urllib.parse import quote
+    from uuid import uuid4
+
+    from ttr_connect_openmetadata.mapping import om_name
+    from ttr_connect_openmetadata.model import EnsureGlossary, UpsertTerm
+    from ttr_connect_openmetadata.om_client import OmClient, Summary
+
+    name = f"conformance.{uuid4().hex} Entities"
+    fqn = om_name(name)
+    client = OmClient(om.url, om.token)
+    glossary = None
+    try:
+        client.check()
+        client.summary = Summary(snapshot="dotted-world")
+        glossary = client.ensure_glossary(EnsureGlossary(name=name))
+        assert str(glossary.fullyQualifiedName.root) == fqn
+        assert (
+            om.session.get(
+                f"{om.url}/v1/glossaries/name/{quote(name, safe='')}", timeout=60
+            ).status_code
+            == 404
+        )
+        op = UpsertTerm(
+            qname="er.entity.dotted-proof",
+            fqn=f"{fqn}.proof",
+            glossary=name,
+            name="proof",
+            display="proof",
+            description="Dotted FQN proof",
+            synonyms=[],
+            parent=None,
+            related=[],
+            iri=None,
+            props={"ttrQname": "er.entity.dotted-proof"},
+        )
+        client.upsert_term(op)
+        om.settle_initial_approvals()
+        saved = om.call("GET", f"glossaryTerms/name/{quote(op.fqn, safe='')}")
+        assert saved["glossary"]["fullyQualifiedName"] == fqn
+        client.summary = Summary(snapshot="dotted-world")
+        client._load_terms()
+        repeated = client.ensure_glossary(EnsureGlossary(name=name))
+        client.upsert_term(op)
+        assert repeated.id == glossary.id
+        assert all(
+            getattr(client.summary, k) == 0
+            for k in ("created", "updated", "deprecated", "linked", "warnings")
+        )
+        om.record(
+            "dotted-glossary",
+            {
+                "name": name,
+                "fqn": fqn,
+                "term": saved["fullyQualifiedName"],
+                "unquotedLookup": 404,
+                "repeat": client.summary.model_dump(),
+            },
+        )
+    finally:
+        client.close()
+        if glossary is not None:
+            om.call(
+                "DELETE",
+                f"glossaries/{glossary.id.root}",
+                params={"recursive": "true", "hardDelete": "true"},
+            )

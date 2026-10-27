@@ -338,7 +338,7 @@ def test_dry_plan_discloses_out_of_plan_normalization(
     assert origins == ["https://Studio.EXAMPLE:443/"]
     assert workspaces == ["demo"]
     assert output.err == (
-        "INFO sync also normalizes Studio links on out-of-plan, non-deprecated terms "
+        "INFO sync also normalizes Studio links on out-of-plan, Approved/Draft terms "
         "in northline Concepts, northline Entities\n"
     )
     operations = [json.loads(line) for line in output.out.splitlines()]
@@ -351,24 +351,25 @@ def test_dry_plan_discloses_out_of_plan_normalization(
     assert "INFO" not in capsys.readouterr().err
 
 
+@pytest.mark.parametrize("world", ["c", "_designer"])
 def test_invalid_implicit_workspace_is_a_mapping_error(
+    tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
+    world: str,
 ) -> None:
-    assert (
-        main(
-            [
-                "plan",
-                "--export-dir",
-                str(FIXTURES / "export"),
-                "--studio-url",
-                "https://studio.example",
-                "--world",
-                ".",
-            ]
+    changed = tmp_path / "invalid-workspace"
+    changed.mkdir()
+    for name in ("graph.json", "defs.json", "cn.ttl", ".snapshot"):
+        text = (
+            (FIXTURES / "export" / name)
+            .read_text()
+            .replace('"world":"northline"', f'"world":"{world}"')
         )
-        == 3
+        (changed / name).write_text(text)
+    assert (
+        main(["plan", "--export-dir", str(changed), "--studio-url", "https://studio.example"]) == 3
     )
-    assert "mapping error" in capsys.readouterr().err
+    assert "invalid Studio workspace" in capsys.readouterr().err
 
 
 def test_default_workspace_follows_new_export_world_after_saved_state(

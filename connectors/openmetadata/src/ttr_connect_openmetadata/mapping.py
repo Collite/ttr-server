@@ -4,11 +4,14 @@
 import json
 import re
 from collections import defaultdict
+from typing import NamedTuple
+from urllib.parse import urlsplit
 
 from pydantic import JsonValue
 
 from .model import (
     REGISTRY,
+    STUDIO_LINK_KEYS,
     Connection,
     Delta,
     Deprecate,
@@ -38,14 +41,14 @@ class MappingError(Exception):
     """The export cannot be projected safely (C-14 exit 3)."""
 
 
-def _segment(name: str) -> str:
+def om_name(name: str) -> str:
     if '"' in name:
         raise MappingError(f"unsupported quote in OM name: {name}")
     return f'"{name}"' if "." in name else name
 
 
 def _fqn(*segments: str) -> str:
-    return ".".join(_segment(s) for s in segments)
+    return ".".join(om_name(s) for s in segments)
 
 
 def _display(node: Node) -> str:
@@ -74,7 +77,7 @@ def _props(node: Node, studio_base: str | None) -> tuple[dict[str, str], StudioL
 def studio_link(model: str | None, studio_base: str | None) -> StudioLink | None:
     """One desired value for in-plan entities and eligible out-of-plan terms."""
     labels = {"db": "database", "er": "E-R", "md": "dimensional"}
-    if studio_base and model is not None and model in labels:
+    if studio_base is not None and model is not None and model in labels:
         return StudioLink(
             url=studio_base + model, displayText=f"Open {labels[model]} model in Studio"
         )
@@ -156,8 +159,8 @@ def _terms(
         visiting.add(key)
         node = terms[key]
         glossary = f"{world} {'Concepts' if node.model == 'cn' else 'Entities'}"
-        base = address(parents[key]) if key in parents else _segment(glossary)
-        result = base + "." + _segment(names[key])
+        base = address(parents[key]) if key in parents else om_name(glossary)
+        result = base + "." + om_name(names[key])
         if result in addresses.values():
             raise MappingError(f"glossary FQN collision at {result}")
         addresses[key] = result
@@ -189,8 +192,8 @@ def _terms(
                 iri=node.iri,
                 props=props,
                 studio_link=studio_link,
-                remove_props=["ttrUrl", "ttrStudioLink"]
-                if studio_base and node.model == "cn"
+                remove_props=list(STUDIO_LINK_KEYS)
+                if studio_base is not None and node.model == "cn"
                 else [],
                 cn=node.model == "cn",
             )
@@ -366,7 +369,7 @@ def _assets(
         node = nodes[column]
         for fqn in table_addresses.get(table, []):
             name = node.label or column.rsplit(".", 1)[-1]
-            addresses[column].append((fqn + "." + _segment(name), "column", name))
+            addresses[column].append((fqn + "." + om_name(name), "column", name))
             operations.append(
                 SetColumnTags(
                     fqn=fqn,
@@ -415,6 +418,31 @@ def resolve_studio_workspace(world: str, workspace: str | None) -> str:
     return result
 
 
+class PreparedStudio(NamedTuple):
+    """Origin and workspace already validated by the calling CLI boundary."""
+
+    origin: str
+    workspace: str
+
+
+def build_studio_base(origin: str, workspace: str) -> str:
+    """Build the single canonical model-route base from prepared components."""
+    return f"{origin}/m/{workspace}/s/"
+
+
+def _validated_studio_base(value: str) -> str:
+    try:
+        parsed = urlsplit(value)
+        origin = http_origin(value, allow_path=True)
+        match = re.fullmatch(r"/m/([^/]+)/s/", parsed.path)
+        if match is None:
+            raise ValueError("expected /m/<workspace>/s/")
+        workspace = resolve_studio_workspace("", match[1])
+        return build_studio_base(origin, workspace)
+    except (ValueError, MappingError) as exc:
+        raise MappingError(f"invalid prepared Studio base: {exc}") from exc
+
+
 def plan_from_export(
     export: Export,
     world: str | None = None,
@@ -423,12 +451,16 @@ def plan_from_export(
     cn_name_mode: str = "label",
     studio_workspace: str | None = None,
     *,
-    studio_base: str | None = None,
+    studio_base: str | PreparedStudio | None = None,
 ) -> Plan:
     # CLI supplies its already validated/resolved base, also used for the cache.
     # Library callers supply the raw URL/workspace and validate them here once.
     if studio_base is not None and (studio_url is not None or studio_workspace is not None):
         raise MappingError("supply a prepared Studio base or a raw URL/workspace, not both")
+    if isinstance(studio_base, PreparedStudio):
+        studio_base = build_studio_base(*studio_base)
+    elif studio_base is not None:
+        studio_base = _validated_studio_base(studio_base)
     if cn_name_mode not in {"label", "qname"}:
         raise MappingError("CN name mode must be label or qname")
     world = world or export.graph.world
@@ -442,7 +474,7 @@ def plan_from_export(
         except ValueError as exc:
             raise MappingError(f"studio URL: {exc}") from exc
         workspace = resolve_studio_workspace(world, studio_workspace)
-        studio_base = f"{origin}/m/{workspace}/s/"
+        studio_base = build_studio_base(origin, workspace)
     nodes = {n.id: n for n in export.graph.nodes if not n.external}
     operations: list[PlanOperation] = [
         EnsureGlossary(name=f"{world} Concepts"),
@@ -472,7 +504,6 @@ def plan_from_export(
     operations.extend(assets)
     return Plan(
         snapshot=export.snapshot,
-        studio_links=studio_base is not None,
         studio_base=studio_base,
         operations=operations,
         warnings=warnings,

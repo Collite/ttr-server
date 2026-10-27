@@ -127,6 +127,8 @@ class EnsureTag(Operation):
 type EntityType = Literal["table", "tableColumn", "glossaryTerm", "metric"]
 type FieldType = Literal["string", "hyperlink-cp"]
 
+STUDIO_LINK_KEYS: tuple[Literal["ttrUrl", "ttrStudioLink"], ...] = ("ttrUrl", "ttrStudioLink")
+
 REGISTRY: dict[EntityType, tuple[tuple[str, FieldType], ...]] = {
     "table": (("ttrQname", "string"), ("ttrUrl", "string"), ("ttrStudioLink", "hyperlink-cp")),
     "tableColumn": (("ttrQname", "string"),),
@@ -268,7 +270,10 @@ type PlanOperation = Annotated[
 
 class Plan(BaseModel):
     snapshot: str
-    studio_links: bool = False
     studio_base: str | None = None
     operations: list[PlanOperation]
     warnings: list[str] = Field(default_factory=list)
+
+    @property
+    def studio_links(self) -> bool:
+        return self.studio_base is not None

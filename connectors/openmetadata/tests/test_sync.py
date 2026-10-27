@@ -981,3 +981,167 @@ def test_om_url_retains_valid_api_path() -> None:
         assert client.url == "https://om.example:8585/api"
     finally:
         client.close()
+
+
+@pytest.mark.parametrize(
+    "status",
+    ["Approved", "Draft", "Rejected", "In Review", "Archived", "Unprocessed", "Deprecated", None],
+)
+def test_out_of_plan_status_allowlist(
+    export: Export,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    status: str | None,
+) -> None:
+    from copy import deepcopy
+
+    from om_fake import uid
+
+    fake = FakeOm(export)
+    fake.approval_workflow = True
+    args = sync_args(tmp_path)
+    with responses.RequestsMock(assert_all_requests_are_fired=False) as mock:
+        fake.install(mock)
+        assert main(args) == 0
+        fake.finish_approvals()
+        capsys.readouterr()
+        term = deepcopy(next(iter(fake.stores["glossaryTerms"].values())))
+        term.update(
+            id=uid("status-orphan"),
+            name="status-orphan",
+            fullyQualifiedName="northline Entities.status-orphan",
+            glossary={
+                "id": fake.stores["glossaries"]["northline Entities"]["id"],
+                "name": "northline Entities",
+                "type": "glossary",
+            },
+            extension={"ttrQname": "er.entity.status-orphan", "ttrUrl": "old"},
+        )
+        if status is None:
+            term.pop("entityStatus", None)
+        else:
+            term["entityStatus"] = status
+        fake.stores["glossaryTerms"][term["fullyQualifiedName"]] = term
+        before = deepcopy(term)
+        fake.calls.clear()
+        assert main(args) == 0
+        fake.finish_approvals()
+        summary = json.loads(capsys.readouterr().out)
+        after = fake.stores["glossaryTerms"][term["fullyQualifiedName"]]
+        if status in {"Approved", "Draft"}:
+            assert summary["updated"] == 1
+            assert after["extension"]["ttrStudioLink"]["displayText"] == "Open E-R model in Studio"
+        else:
+            assert fake.writes == []
+            assert after == before
+
+
+@pytest.mark.parametrize("stale", [False, True])
+def test_reactivation_status_precedes_metadata(
+    export: Export,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    stale: bool,
+) -> None:
+    fake = FakeOm(export)
+    fake.approval_workflow = True
+    args = sync_args(tmp_path)
+    with responses.RequestsMock(assert_all_requests_are_fired=False) as mock:
+        fake.install(mock)
+        assert main(args) == 0
+        fake.finish_approvals()
+        capsys.readouterr()
+        term = next(
+            t
+            for t in fake.stores["glossaryTerms"].values()
+            if t["extension"]["ttrQname"] == "cn.quality.sold_at"
+        )
+        term.update(entityStatus="Deprecated", version=1.2)
+        if stale:
+            term["extension"]["ttrUrl"] = "https://studio.example/viewer?qname=old"
+        fake.calls.clear()
+        assert main(args) == 0
+        patches = [call for call in fake.calls if call[0] == "PATCH"]
+        assert len(patches) == (2 if stale else 1)
+        assert all(call[1] == f"glossaryTerms/{term['id']}" for call in patches)
+        assert patches[0][2] == [{"op": "replace", "path": "/entityStatus", "value": "Draft"}]
+        requests = [call.request for call in mock.calls if call.request.method == "PATCH"]
+        assert requests[-len(patches)].headers["If-Match"] == 'W/"1.2"'
+        if stale:
+            assert all(op["path"] != "/entityStatus" for op in patches[1][2])
+        assert json.loads(capsys.readouterr().out)["updated"] == 1
+        fake.finish_approvals()
+        assert fake.stores["glossaryTerms"][term["fullyQualifiedName"]]["entityStatus"] == (
+            "Approved" if stale else "Draft"
+        )
+
+
+def test_patch_rejects_metadata_edits_to_deprecated_term(export: Export) -> None:
+    from metadata.generated.schema.entity.data.glossaryTerm import GlossaryTerm
+    from om_fake import uid
+
+    from ttr_connect_openmetadata.om_client import OmClient, OmError
+
+    fake = FakeOm(export)
+    term = GlossaryTerm.model_validate(
+        {
+            "id": uid("deprecated"),
+            "name": "deprecated",
+            "fullyQualifiedName": "demo.deprecated",
+            "description": "retired",
+            "version": 1.2,
+            "glossary": {"id": uid("demo"), "type": "glossary", "name": "demo"},
+            "entityStatus": "Deprecated",
+        }
+    )
+    with responses.RequestsMock(assert_all_requests_are_fired=False) as mock:
+        fake.install(mock)
+        client = OmClient(URL, "fixture-token")
+        try:
+            with pytest.raises(OmError, match="refusing a non-status edit to Deprecated term"):
+                client._patch(term, {"extension": {"ttrUrl": "changed"}})
+            assert fake.writes == []
+        finally:
+            client.close()
+
+
+def test_dotted_glossary_fake_requires_quoted_fqn(export: Export) -> None:
+    from ttr_connect_openmetadata.model import EnsureGlossary, ImportRdf
+    from ttr_connect_openmetadata.om_client import OmClient
+
+    fake = FakeOm(export)
+    with responses.RequestsMock(assert_all_requests_are_fired=False) as mock:
+        fake.install(mock)
+        client = OmClient(URL, "fixture-token")
+        try:
+            op = EnsureGlossary(name="acme.retail Concepts")
+            client.ensure_glossary(op)
+            assert (
+                client._rest("GET", "glossaries/name/acme.retail%20Concepts", missing=True) is None
+            )
+            fake.calls.clear()
+            client.ensure_glossary(op)
+            assert fake.writes == []
+            client.import_rdf(ImportRdf(glossary=op.name, turtle=export.ttl))
+            assert any(
+                path == 'glossaries/name/"acme.retail Concepts"/importRdf'
+                for _, path, _ in fake.calls
+            )
+        finally:
+            client.close()
+
+
+def test_state_from_future_version_preserves_ownership(tmp_path: Path) -> None:
+    path = tmp_path / "future-state.json"
+    path.write_text(
+        json.dumps(
+            {
+                "snapshot": "future",
+                "ids": ["er.entity.old"],
+                "om_version": "2.0.6",
+                "future_field": {"new": True},
+            }
+        )
+    )
+    state = read_state(path)
+    assert state is not None and state.ids == ["er.entity.old"]
