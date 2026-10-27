@@ -64,9 +64,9 @@ dependencies {
     implementation(libs.tatrman.ttr.metadata)
     implementation(libs.tomlj)
     // #272: YAML validity and JSON projection only; no report renderer dependency.
-    implementation(libs.jackson.databind)
-    implementation(libs.jackson.dataformat.yaml)
-    // Direct blob reads at the served SHA in GitTemplateSource, without a second fetch/checkout.
+    implementation(libs.snakeyaml.engine)
+    // ttr-metadata-git's POM exposes jgit only at runtime; direct SHA blob reads need it at compile time.
+    // Keep this version equal to jgit in that POM (6.8.0.202311291450-r). Remove with ttr-core#314's readAt API.
     implementation(libs.jgit)
     // GitArchiveStorage behind the ModelStorage SPI (MD3).
     implementation(libs.tatrman.ttr.metadata.git)

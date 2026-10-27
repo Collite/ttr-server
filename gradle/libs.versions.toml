@@ -51,6 +51,8 @@ typesafe-config           = "1.4.3"
 # databind/yaml under `tools.jackson.*`. Bumping the version alone would break
 # the module coordinates below — treat as a separate migration decision.
 jackson                   = "2.18.1"
+# Match ttr-report YAML 1.2 Core parsing for served template metadata.
+snakeyaml-engine          = "3.0.1"
 
 # Test stack
 kotest                    = "6.1.2"
@@ -243,6 +245,8 @@ java-string-similarity               = { module = "info.debatty:java-string-simi
 jackson-databind                    = { module = "com.fasterxml.jackson.core:jackson-databind",             version.ref = "jackson" }
 jackson-module-kotlin               = { module = "com.fasterxml.jackson.module:jackson-module-kotlin",      version.ref = "jackson" }
 jackson-dataformat-yaml             = { module = "com.fasterxml.jackson.dataformat:jackson-dataformat-yaml", version.ref = "jackson" }
+
+snakeyaml-engine                   = { module = "org.snakeyaml:snakeyaml-engine", version.ref = "snakeyaml-engine" }
 
 # Kotlin MCP SDK
 kotlin-mcp-sdk                      = { module = "io.modelcontextprotocol:kotlin-sdk",                      version.ref = "kotlin-mcp-sdk" }

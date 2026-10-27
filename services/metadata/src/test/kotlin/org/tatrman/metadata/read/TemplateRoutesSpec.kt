@@ -4,6 +4,8 @@ package org.tatrman.metadata.read
 import com.typesafe.config.ConfigFactory
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldHaveSize
+import io.kotest.matchers.string.shouldStartWith
+import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.shouldBe
 import io.ktor.client.request.get
 import io.ktor.client.request.post
@@ -125,18 +127,18 @@ class TemplateRoutesSpec :
                     client.get("/model/report?id=missing").status shouldBe HttpStatusCode.NotFound
                     client.get("/model/forms").bodyAsText() shouldBe "{\"forms\":[]}"
                     val status = Json.parseToJsonElement(client.get("/status").bodyAsText()).jsonObject
-                    status
-                        .getValue("issues")
-                        .jsonArray
-                        .map { it.jsonPrimitive.content }
-                        .toSet() shouldBe
+                    val issues = status.getValue("issues").jsonArray.map { it.jsonPrimitive.content }
+                    issues.shouldHaveSize(5)
+                    issues.filterNot { it.contains("/broken/") }.toSet() shouldBe
                         setOf(
-                            "template model/reports/broken/report.yaml: invalid YAML mapping",
-                            "template model/forms/duplicate.yaml: invalid YAML mapping",
-                            "template model/forms/documents.yaml: invalid YAML mapping",
-                            "template model/forms/scalar.yaml: invalid YAML mapping",
-                            "template model/reports/missing/template.xlsx: missing or not a regular file",
+                            "template world:model/forms/duplicate.yaml: duplicate key 'fields'",
+                            "template world:model/forms/documents.yaml: more than one document",
+                            "template world:model/forms/scalar.yaml: not a mapping",
+                            "template world:model/reports/missing/template.xlsx: missing workbook",
                         )
+                    issues.single { it.contains("/broken/") } shouldStartWith
+                        "template world:model/reports/broken/report.yaml: "
+                    issues.single { it.contains("/broken/") } shouldContain "expected"
                 }
             }
         }
@@ -326,12 +328,15 @@ class TemplateRoutesSpec :
         }
     })
 
-private fun ApplicationTestBuilder.serve(registry: MetadataRegistry) {
+internal fun ApplicationTestBuilder.serve(
+    registry: MetadataRegistry,
+    board: SourceLoadBoard = SourceLoadBoard(),
+) {
     environment { config = MapApplicationConfig() }
     application {
         routing {
             templateRoutes(registry)
-            modelHealthRoutes(registry, SourceLoadBoard())
+            modelHealthRoutes(registry, board)
         }
     }
 }
@@ -350,7 +355,9 @@ private val REPORT_YAML =
     """.trimMargin()
 
 /** Real local GitArchiveStorage + production source wiring + library refresher, with no network. */
-private class TemplateFixture : AutoCloseable {
+internal class TemplateFixture(
+    private val modelDirectory: String = "world/model",
+) : AutoCloseable {
     val root: Path = Files.createTempDirectory("template-source-")
     val checkout: Path = root.resolveSibling(root.fileName.toString() + "-checkout")
     val git: Git =
@@ -377,7 +384,7 @@ private class TemplateFixture : AutoCloseable {
                     "metadata.sources.world.remote-uri" to root.toUri().toString(),
                     "metadata.sources.world.local-checkout-dir" to checkout.toString(),
                     "metadata.sources.world.branch" to "main",
-                    "metadata.sources.world.subdirectory" to "world/model",
+                    "metadata.sources.world.subdirectory" to modelDirectory,
                 ),
             ),
             PackageIndex(),
@@ -397,7 +404,7 @@ private class TemplateFixture : AutoCloseable {
         path: String,
         bytes: ByteArray,
     ) {
-        val file = root.resolve("world/model").resolve(path)
+        val file = root.resolve(modelDirectory).resolve(path)
         Files.createDirectories(file.parent)
         Files.write(file, bytes)
     }

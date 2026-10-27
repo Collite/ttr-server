@@ -54,7 +54,10 @@ requested locale → plain form → `en` → first by language code.
 ### Report and form templates (#272)
 
 The same unauthenticated, cluster-internal HTTP port serves read-only authored content from each configured
-Git source. The source's configured `subdirectory` is the model root (normally `model`).
+Git source. The source's configured `subdirectory` is the model root (normally `model`), normalized
+once for tree lookup (`./model`, `model/.`, repeated separators). A blank root serves only repository-root
+`reports/**` and `forms/**`; it never merges an additional `model/` tree. A root that escapes the repository
+with `..` after normalization contributes no templates and emits a source-specific issue and warning.
 
 | Route | Response |
 |---|---|
@@ -67,19 +70,32 @@ under that model root. Public `source` paths use `model/reports/...` and `model/
 form targets come from their paths; lists are sorted by those keys. Nested form targets are retained.
 The report detail preserves the YAML text, returns the workbook bytes as base64, and hashes those bytes
 with SHA-256 (lowercase hex). The summary's `version` is the authored YAML version (default 1).
-Absent `params`/`roles` are `[]`, absent `title` is `{}`, and absent `program`/`refresh` are `null`.
+Absent or empty (`null`) `params`/`roles` are `[]`, `title` is `{}` and `version` is `1`.
+Absent or empty `program`/`refresh` remain `null`; wrong field types stay with the consumer's schema validation.
 
 Content is read from Git blobs at the model source's recorded SHA in the **same `GitArchiveStorage`
 checkout**, then travels in that source's immutable registry sidecars. Requests only read the published
 snapshot, so staged loads and newer checkout files are invisible until its model swaps in. Deletion and
-configured fallback replace the contribution with the model; failed loads retain the prior contribution.
+configured fallback replace the contribution with the model; genuine model-load failures retain the prior contribution.
+
+Template I/O failures never prevent a successful model load or trigger its configured model fallback. Per R171-B,
+a failed template read retains that source instance's last successful **whole** catalog (possibly from an older SHA),
+or an empty catalog on its first load, with a `/status.issues` entry naming the source, attempted SHA, cause and
+previous catalog SHA. Model-source health still records the successful model load. Failed template SHAs are retried
+every tick. Recovery at the same SHA is not published until the next registry swap (a new commit, or another source
+changing): the refresher's unchanged-version short-circuit keeps the previously served catalog and issue until then.
+The model version is never altered to force a swap. An unchanged successful SHA reuses its encoded sidecar string,
+without re-reading, re-encoding or re-hashing workbooks. The Git walk is restricted to the report and form trees.
+
 For duplicate ids/targets across sources, higher numeric priority wins; ties use the later source id in
 lexicographic order. List and detail use the same rule. Filesystem/resource sources contribute no templates.
 
-Only YAML mapping validity is checked (including duplicate keys and multiple documents). Invalid documents
-and reports without a regular workbook are omitted and diagnosed in `/status.issues[]`. Git symlinks are
-never followed. No workbook parsing, report schema validation, program execution, rendering or write API
-is added. The gateway exposes no new route. Before a model loads, all three routes return 503; unknown
+Only YAML mapping validity is checked, using studio-report's `snakeyaml-engine` 3.0.1 YAML 1.2 `CoreSchema`
+settings: duplicate keys and collection aliases are forbidden, as are multiple documents. Non-finite numbers
+are represented in JSON as the strings `.inf`, `-.inf` and `.nan`. Invalid documents and reports without a regular
+workbook are omitted and diagnosed in `/status.issues[]`, with source id, path and a one-line cause. Symlink/submodule
+entries at template paths are diagnosed and never followed. No workbook parsing, report schema validation,
+program execution, rendering or write API is added. The gateway exposes no new route. Before a model loads, all three routes return 503; unknown
 report ids return 404, and a missing/blank `id` returns 400. Loaded empty catalogs return empty arrays.
 
 ## The cn candidate store (`cn/`, off by default)

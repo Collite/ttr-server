@@ -5,7 +5,7 @@ import io.ktor.http.HttpStatusCode
 import io.ktor.server.routing.Route
 import io.ktor.server.routing.get
 import kotlinx.serialization.json.JsonArray
-import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import org.tatrman.ttr.metadata.registry.MetadataRegistry
@@ -16,11 +16,13 @@ fun Route.templateRoutes(registry: MetadataRegistry) {
         val snapshot = registry.read() ?: return@get call.respondModelNotLoaded()
         val reports =
             snapshot
-                .templateCatalogs()
-                .flatMap { it.reports }
-                .associateBy { it.summary.getValue("id") }
-                .values
-                .sortedBy { it.summary.getValue("id").toString() }
+                .templateContent()
+                .reportsById.values
+                .sortedBy {
+                    it.summary
+                        .getValue("id")
+                        .jsonPrimitive.content
+                }
         call.respondJson(buildJsonObject { put("reports", JsonArray(reports.map { it.summary })) }.toString())
     }
     get("/model/report") {
@@ -28,10 +30,7 @@ fun Route.templateRoutes(registry: MetadataRegistry) {
         val id = call.request.queryParameters["id"]
         if (id.isNullOrBlank()) return@get call.respondError(HttpStatusCode.BadRequest, "missing id")
         val report =
-            snapshot
-                .templateCatalogs()
-                .flatMap { it.reports }
-                .lastOrNull { it.summary["id"] == JsonPrimitive(id) }
+            snapshot.templateContent().reportsById[id]
                 ?: return@get call.respondError(HttpStatusCode.NotFound, "not found")
         call.respondJson(
             buildJsonObject {
@@ -46,11 +45,9 @@ fun Route.templateRoutes(registry: MetadataRegistry) {
         val snapshot = registry.read() ?: return@get call.respondModelNotLoaded()
         val forms =
             snapshot
-                .templateCatalogs()
-                .flatMap { it.forms }
-                .associateBy { it.getValue("target") }
-                .values
-                .sortedBy { it.getValue("target").toString() }
+                .templateContent()
+                .formsByTarget.values
+                .sortedBy { it.getValue("target").jsonPrimitive.content }
         call.respondJson(buildJsonObject { put("forms", JsonArray(forms.toList())) }.toString())
     }
 }

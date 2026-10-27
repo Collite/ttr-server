@@ -540,7 +540,7 @@ private fun buildSourceFromConfig(
                 GitTemplateSource(
                     source,
                     gitCheckoutDir(sub, id, ""),
-                    if (sub.hasPath("subdirectory")) sub.getString("subdirectory").trim('/') else "",
+                    gitSubdirectory(sub),
                 )
             } else {
                 source
@@ -597,6 +597,10 @@ private fun gitCheckoutDir(
         Path.of(System.getProperty("java.io.tmpdir"), "metadata-git", id + suffix)
     }
 
+/** Both model storage and template path mapping start with this exact configured value. */
+private fun gitSubdirectory(sub: Config): String =
+    if (sub.hasPath("subdirectory")) sub.getString("subdirectory") else ""
+
 /** The storage one `metadata.sources.<id>` block reads; null when the block is unbuildable. */
 private fun buildStorage(
     sub: Config,
@@ -622,7 +626,7 @@ private fun buildStorage(
                 remoteUri = remoteUri,
                 localCheckoutDir = checkout,
                 branch = if (sub.hasPath("branch")) sub.getString("branch") else "main",
-                subdirectory = if (sub.hasPath("subdirectory")) sub.getString("subdirectory") else "",
+                subdirectory = gitSubdirectory(sub),
                 username = if (sub.hasPath("username")) sub.getString("username") else null,
                 password = if (sub.hasPath("password")) sub.getString("password") else null,
             )

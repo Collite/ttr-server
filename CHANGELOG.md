@@ -20,7 +20,10 @@ outside this repo could notice is in.
   `/model/report?id=`, and `/model/forms` serve authored templates from configured Git sources at the
   served source SHA. Report detail includes the original YAML, base64 workbook and SHA-256 checksum;
   unknown ids return 404. Content swaps with the model, and invalid YAML/missing workbooks appear in
-  `/status.issues`. The routes are read-only; rendering remains with the report consumer.
+  `/status.issues`. Template I/O failures retain the source's last successful catalog (or an empty first
+  catalog) and report the stale SHA without failing the live model. YAML parsing matches the consumer's
+  YAML 1.2 Core settings, and unchanged successful SHAs reuse their encoded catalogs. The routes are
+  read-only; rendering remains with the report consumer.
 
 - **automation — preview review repairs.** Nested context/candidate references fail closed pending
   callee pinning, action-level `due` defaults match explicit durations, and nested literals retain their
