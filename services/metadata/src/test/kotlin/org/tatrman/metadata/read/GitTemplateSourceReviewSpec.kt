@@ -240,6 +240,9 @@ class GitTemplateSourceReviewSpec :
                 catalog.reports.single().yaml shouldContain "en: Sales"
                 catalog.issues.single() shouldBe
                     "template world:model/reports/incomplete/template.xlsx: missing workbook"
+                // GitArchiveStorage treats whitespace-only values as the repository root too.
+                val whitespace = GitTemplateSource(ModelSource { fixture.modelSnapshot() }, fixture.root, " \t ")
+                whitespace.load().catalog() shouldBe catalog
             }
         }
 

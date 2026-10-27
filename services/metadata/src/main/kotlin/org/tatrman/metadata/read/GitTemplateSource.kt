@@ -25,7 +25,7 @@ internal class GitTemplateSource(
 ) : ModelSource {
     private val modelRoot =
         runCatching {
-            val normalized = Path.of(modelDirectory).normalize()
+            val normalized = Path.of(modelDirectory.ifBlank { "" }).normalize()
             require(normalized.none { it.toString() == ".." }) { "model subdirectory escapes the repository" }
             normalized.joinToString("/").trim('/')
         }
