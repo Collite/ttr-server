@@ -1,6 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 package org.tatrman.metadata.read
 
+import ch.qos.logback.classic.Logger
+import ch.qos.logback.classic.Level
+import ch.qos.logback.classic.spi.ILoggingEvent
+import ch.qos.logback.core.read.ListAppender
+import org.slf4j.LoggerFactory
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
@@ -34,6 +39,8 @@ class GitTemplateSourceReviewSpec :
                         ModelSource { model },
                         fixture.checkout.resolveSibling("missing-repository"),
                         "world/model",
+                        "world",
+                        100,
                     )
                 val board = SourceLoadBoard()
                 val loaded = board.recording("world", "test source", source).load()
@@ -65,7 +72,7 @@ class GitTemplateSourceReviewSpec :
         "R1 read failure serves the previous catalog with a new live model; same-SHA recovery waits for a later swap" {
             TemplateFixture().use { fixture ->
                 var current = fixture.modelSnapshot()
-                val source = GitTemplateSource(ModelSource { current }, fixture.root, "world/model")
+                val source = GitTemplateSource(ModelSource { current }, fixture.root, "world/model", "world", 100)
                 val board = SourceLoadBoard()
                 val recorded = board.recording("world", "test source", source)
                 val initial = recorded.load()
@@ -139,11 +146,11 @@ class GitTemplateSourceReviewSpec :
         "R1 template errors keep the primary model and each instance keeps its own previous catalog" {
             TemplateFixture().use { fixture ->
                 var current = fixture.modelSnapshot()
-                val primary = GitTemplateSource(ModelSource { current }, fixture.root, "world/model")
+                val primary = GitTemplateSource(ModelSource { current }, fixture.root, "world/model", "world", 100)
                 val original = primary.load().catalog()
                 // A well-formed SHA absent from the checkout exercises a different read failure from Git.open.
                 current = current.copy(version = "f".repeat(40))
-                val missing = GitTemplateSource(ModelSource { current }, fixture.root, "world/model")
+                val missing = GitTemplateSource(ModelSource { current }, fixture.root, "world/model", "world", 100)
                 missing.load().catalog().reports shouldBe emptyList()
                 val composite =
                     FallbackSource("world", primary, ModelSource { error("must not invoke model fallback") })
@@ -155,14 +162,15 @@ class GitTemplateSourceReviewSpec :
         }
 
         "R1 genuine model load failures still propagate unchanged" {
-            val source = GitTemplateSource(ModelSource { error("model unavailable") }, Path.of("unused"), "model")
+            val source =
+                GitTemplateSource(ModelSource { error("model unavailable") }, Path.of("unused"), "model", "world", 100)
             shouldThrow<IllegalStateException> { source.load() }.message shouldBe "model unavailable"
         }
 
         "R5 unchanged SHA reuses the encoded sidecar instance without opening git; new SHA attempts a fresh read" {
             TemplateFixture().use { fixture ->
                 var current = fixture.modelSnapshot()
-                val source = GitTemplateSource(ModelSource { current }, fixture.root, "world/model")
+                val source = GitTemplateSource(ModelSource { current }, fixture.root, "world/model", "world", 100)
                 val first =
                     source
                         .load()
@@ -190,6 +198,191 @@ class GitTemplateSourceReviewSpec :
             }
         }
 
+        "N1 deep flow and block forms are content issues; the live model and valid form stay available" {
+            TemplateFixture().use { fixture ->
+                fixture.write("forms/valid.yaml", "fields: []\n")
+                fixture.write("forms/deep-flow.yaml", "x: " + "[".repeat(5000) + "0" + "]".repeat(5000))
+                fixture.write("forms/deep-block.yaml", (0..5000).joinToString("\n") { " ".repeat(it) + "x:" })
+                fixture.commit()
+                val model = fixture.modelSnapshot()
+                val source = GitTemplateSource(ModelSource { model }, fixture.root, "world/model", "world", 100)
+                val board = SourceLoadBoard()
+                val loaded = board.recording("world", "deep forms", source).load()
+                loaded.entities shouldBe model.entities
+                loaded.version shouldBe model.version
+                loaded.catalog().issues.toSet() shouldBe
+                    setOf(
+                        "template world:model/forms/deep-flow.yaml: nesting deeper than $MAX_TEMPLATE_NESTING",
+                        "template world:model/forms/deep-block.yaml: nesting deeper than $MAX_TEMPLATE_NESTING",
+                    )
+                fixture.publish(listOf(loaded))
+                // A content issue is a successful catalog and is memoized at this SHA.
+                Files.move(fixture.root.resolve(".git"), fixture.root.resolve("hidden-git"))
+                source.load().exportSidecars.values.single().shouldBeSameInstanceAs(
+                    loaded.exportSidecars.values.single(),
+                )
+                testApplication {
+                    serve(fixture.registry, board)
+                    client.get("/ready").status shouldBe HttpStatusCode.OK
+                    val forms =
+                        Json
+                            .parseToJsonElement(client.get("/model/forms").bodyAsText())
+                            .jsonObject
+                            .getValue("forms")
+                            .jsonArray
+                    forms
+                        .single()
+                        .jsonObject
+                        .getValue("target")
+                        .jsonPrimitive.content shouldBe "valid"
+                    val status = Json.parseToJsonElement(client.get("/status").bodyAsText()).jsonObject
+                    status.getValue("issues").jsonArray.size shouldBe 2
+                    status.getValue("issues").jsonArray.forEach {
+                        it.jsonPrimitive.content shouldContain
+                            "nesting deeper than"
+                    }
+                    board.states().single().lastError shouldBe ""
+                    board.states().single().consecutiveFailures shouldBe 0
+                }
+            }
+        }
+
+        "N1 model Errors stay outside the template safety net" {
+            val overflow = StackOverflowError("inner model")
+            val source = GitTemplateSource(ModelSource { throw overflow }, Path.of("unused"), "model", "world", 100)
+            shouldThrow<StackOverflowError> { source.load() }.shouldBeSameInstanceAs(overflow)
+            val vmError = object : VirtualMachineError("inner VM error") {}
+            val other = GitTemplateSource(ModelSource { throw vmError }, Path.of("unused"), "model", "world", 100)
+            shouldThrow<VirtualMachineError> { other.load() }.shouldBeSameInstanceAs(vmError)
+        }
+
+        "N3 identical failures reuse encoding and warn once, while every load still retries git" {
+            TemplateFixture().use { fixture ->
+                var model = fixture.modelSnapshot()
+                val source = GitTemplateSource(ModelSource { model }, fixture.root, "world/model", "world", 100)
+                val good = source.load().catalog()
+                val missingSha = "e".repeat(40)
+                model = model.copy(version = missingSha)
+                Files.move(fixture.root.resolve(".git"), fixture.root.resolve("hidden-git"))
+                withTemplateLogs { events ->
+                    val first =
+                        source
+                            .load()
+                            .exportSidecars.values
+                            .single()
+                    val second =
+                        source
+                            .load()
+                            .exportSidecars.values
+                            .single()
+                    second.shouldBeSameInstanceAs(first)
+                    events.count { it.level == Level.WARN } shouldBe 1
+                    // Restore access between calls: the same attempted SHA now produces a different cause.
+                    Files.move(fixture.root.resolve("hidden-git"), fixture.root.resolve(".git"))
+                    val differentCause =
+                        source
+                            .load()
+                            .exportSidecars.values
+                            .single()
+                    (differentCause === second) shouldBe false
+                    Json.decodeFromString<TemplateCatalog>(differentCause).issues.single() shouldContain
+                        "MissingObjectException"
+                    events.count { it.level == Level.WARN } shouldBe 2
+                    source
+                        .load()
+                        .exportSidecars.values
+                        .single()
+                        .shouldBeSameInstanceAs(differentCause)
+                    // Returning to the successful SHA clears the remembered failure.
+                    model = model.copy(version = good.version)
+                    source.load().catalog() shouldBe good
+                    model = model.copy(version = missingSha)
+                    val afterSuccess =
+                        source
+                            .load()
+                            .exportSidecars.values
+                            .single()
+                    (afterSuccess === differentCause) shouldBe false
+                    events.count { it.level == Level.WARN } shouldBe 3
+                    model = model.copy(version = "f".repeat(40))
+                    (
+                        source
+                            .load()
+                            .exportSidecars.values
+                            .single() === afterSuccess
+                    ) shouldBe false
+                    events.count { it.level == Level.WARN } shouldBe 4
+                }
+            }
+        }
+
+        "N4 symlinked folders and model roots are diagnosed once without hiding other templates" {
+            TemplateFixture().use { fixture ->
+                val root = fixture.root.resolve("world/model")
+                Files.createSymbolicLink(root.resolve("reports/shared"), Path.of("sales"))
+                Files.createDirectories(root.resolve("forms"))
+                fixture.write("forms/valid.yaml", "fields: []\n")
+                Files.createSymbolicLink(root.resolve("forms/common"), Path.of("../reports"))
+                Files.createSymbolicLink(fixture.root.resolve("current"), Path.of("world/model"))
+                fixture.commit()
+                val model = fixture.modelSnapshot()
+                val normal =
+                    GitTemplateSource(
+                        ModelSource { model },
+                        fixture.root,
+                        "world/model",
+                        "world",
+                        100,
+                    ).load().catalog()
+                normal.reports.size shouldBe 1
+                normal.forms.size shouldBe 1
+                normal.issues.sorted() shouldBe
+                    listOf(
+                        "template world:model/forms/common: not a regular file (symlink/submodule)",
+                        "template world:model/reports/shared: not a regular file (symlink/submodule)",
+                    )
+                val rootLink = GitTemplateSource(ModelSource { model }, fixture.root, "current", "world", 100).load()
+                rootLink.entities shouldBe model.entities
+                rootLink.catalog().reports shouldBe emptyList()
+                rootLink.catalog().forms shouldBe emptyList()
+                rootLink.catalog().issues.single() shouldBe
+                    "template world:current: is a symlink/submodule; templates under it are not served"
+                // A symlink further up a configured nested root is reported at the first blocked component.
+                GitTemplateSource(ModelSource { model }, fixture.root, "current/nested", "world", 100)
+                    .load()
+                    .catalog()
+                    .issues
+                    .single() shouldBe rootLink.catalog().issues.single()
+                // Missing report/form trees are normal.
+                GitTemplateSource(ModelSource { model }, fixture.root, "absent", "world", 100)
+                    .load()
+                    .catalog()
+                    .issues shouldBe emptyList()
+            }
+        }
+
+        "N5 invalid roots warn at construction and reuse one empty catalog without git access or SHA diagnostics" {
+            listOf("../model" to "escapes the repository", "/model" to "absolute").forEach { (raw, reason) ->
+                val model = SourceSnapshot("configured", 50, "not-even-a-git-sha")
+                withTemplateLogs { events ->
+                    val source =
+                        GitTemplateSource(ModelSource { model }, Path.of("missing-repository"), raw, "configured", 50)
+                    events.count { it.level == Level.WARN } shouldBe 1
+                    val first = source.load()
+                    first.entities shouldBe model.entities
+                    first.catalog().sourceId shouldBe "configured"
+                    first.catalog().priority shouldBe 50
+                    first.catalog().reports shouldBe emptyList()
+                    first.catalog().issues.single() shouldBe
+                        "template source configured: invalid subdirectory '$raw' ($reason); no templates served"
+                    source.load().exportSidecars.values.single().shouldBeSameInstanceAs(
+                        first.exportSidecars.values.single(),
+                    )
+                    events.count { it.level == Level.WARN } shouldBe 1
+                }
+            }
+        }
+
         "R4 symlinked report, form and workbook paths are diagnosed without following them" {
             TemplateFixture().use { fixture ->
                 val root = fixture.root.resolve("world/model")
@@ -210,10 +403,12 @@ class GitTemplateSourceReviewSpec :
                         .single()
                 catalog.reports shouldBe emptyList()
                 catalog.forms shouldBe emptyList()
+                catalog.issues.size shouldBe 4
                 catalog.issues.toSet() shouldBe
                     setOf(
                         "template world:model/reports/link/report.yaml: not a regular file (symlink/submodule)",
                         "template world:model/reports/sales/template.xlsx: not a regular file (symlink/submodule)",
+                        "template world:model/reports/sales/link.xlsx: not a regular file (symlink/submodule)",
                         "template world:model/forms/link.yaml: not a regular file (symlink/submodule)",
                     )
             }
@@ -241,24 +436,21 @@ class GitTemplateSourceReviewSpec :
                 catalog.issues.single() shouldBe
                     "template world:model/reports/incomplete/template.xlsx: missing workbook"
                 // GitArchiveStorage treats whitespace-only values as the repository root too.
-                val whitespace = GitTemplateSource(ModelSource { fixture.modelSnapshot() }, fixture.root, " \t ")
+                val whitespace =
+                    GitTemplateSource(ModelSource { fixture.modelSnapshot() }, fixture.root, " \t ", "world", 100)
                 whitespace.load().catalog() shouldBe catalog
             }
         }
 
-        "R6 canonical and noncanonical subdirectories select the same tree and parent escapes are diagnosed" {
+        "R6 canonical and noncanonical subdirectories select the same tree" {
             TemplateFixture().use { fixture ->
                 val snapshot = fixture.modelSnapshot()
 
-                fun source(root: String) = GitTemplateSource(ModelSource { snapshot }, fixture.root, root)
+                fun source(root: String) = GitTemplateSource(ModelSource { snapshot }, fixture.root, root, "world", 100)
                 val expected = source("world/model").load().catalog()
                 listOf("./world/model", "world/model/.", "world//model").forEach { root ->
                     source(root).load().catalog() shouldBe expected
                 }
-                val invalid = source("../model").load()
-                invalid.entities shouldBe snapshot.entities
-                invalid.catalog().reports shouldBe emptyList()
-                invalid.catalog().issues.single() shouldContain "model subdirectory escapes the repository"
             }
         }
     })
@@ -272,3 +464,16 @@ private fun TemplateFixture.modelSnapshot(): SourceSnapshot =
         .copy(exportSidecars = emptyMap())
 
 private fun SourceSnapshot.catalog(): TemplateCatalog = Json.decodeFromString(exportSidecars.values.single())
+
+private inline fun withTemplateLogs(block: (List<ILoggingEvent>) -> Unit) {
+    val logger = LoggerFactory.getLogger(GitTemplateSource::class.java) as Logger
+    val appender = ListAppender<ILoggingEvent>()
+    appender.start()
+    logger.addAppender(appender)
+    try {
+        block(appender.list)
+    } finally {
+        logger.detachAppender(appender)
+        appender.stop()
+    }
+}

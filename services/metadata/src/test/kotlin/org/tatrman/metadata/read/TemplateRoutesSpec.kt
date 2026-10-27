@@ -181,6 +181,8 @@ class TemplateRoutesSpec :
                         ModelSource { SourceSnapshot("pinned", 100, old) },
                         fixture.root,
                         "world/model",
+                        "pinned",
+                        100,
                     )
                 val catalog =
                     Json.decodeFromString<TemplateCatalog>(

@@ -11,6 +11,8 @@ import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.jsonPrimitive
 import org.snakeyaml.engine.v2.api.Load
 import org.snakeyaml.engine.v2.api.LoadSettings
+import org.snakeyaml.engine.v2.api.lowlevel.Parse
+import org.snakeyaml.engine.v2.events.Event
 import org.snakeyaml.engine.v2.schema.CoreSchema
 import org.snakeyaml.engine.v2.exceptions.DuplicateKeyException
 import org.snakeyaml.engine.v2.exceptions.MarkedYamlEngineException
@@ -25,6 +27,9 @@ import java.util.Base64
  * for an export bundle MUST skip this prefix; these entries are not public root export sidecars.
  */
 internal const val TEMPLATE_SIDECAR_PREFIX = "ttr-server:templates:"
+
+// Bound both the recursive YAML composer and the subsequent JSON projection/serialization.
+internal const val MAX_TEMPLATE_NESTING = 100
 
 @Serializable
 internal data class TemplateCatalog(
@@ -104,11 +109,26 @@ internal fun templateCatalog(
     fun document(path: String): Pair<String, JsonObject>? =
         try {
             val text = files.getValue(path).decodeToString(throwOnInvalidSequence = true)
+            var depth = 0
+            // Parse emits events iteratively; do not enter Load's recursive composer before this check.
+            for (event in Parse(settings).parseString(text)) {
+                when (event.eventId) {
+                    Event.ID.MappingStart, Event.ID.SequenceStart -> {
+                        depth++
+                        require(depth <= MAX_TEMPLATE_NESTING) { "nesting deeper than $MAX_TEMPLATE_NESTING" }
+                    }
+                    Event.ID.MappingEnd, Event.ID.SequenceEnd -> depth--
+                    else -> Unit
+                }
+            }
             val root = Load(settings).loadFromString(text)
             require(root is Map<*, *>) { "not a mapping" }
             text to (root.toTemplateJson() as JsonObject)
         } catch (e: Exception) {
             issues += "template $sourceId:$path: ${yamlCause(e)}"
+            null
+        } catch (e: StackOverflowError) {
+            issues += "template $sourceId:$path: nesting too deep"
             null
         }
 
@@ -159,6 +179,8 @@ private fun Any?.toTemplateJson(): JsonElement =
         null -> JsonNull
         is Map<*, *> -> JsonObject(entries.associate { (key, value) -> key.toString() to value.toTemplateJson() })
         is List<*> -> JsonArray(map { it.toTemplateJson() })
+        is Set<*> -> JsonArray(map { it.toTemplateJson() })
+        is ByteArray -> JsonPrimitive(Base64.getEncoder().encodeToString(this))
         is Double ->
             if (isFinite()) {
                 JsonPrimitive(this)
@@ -173,7 +195,8 @@ private fun Any?.toTemplateJson(): JsonElement =
             }
         is Number -> JsonPrimitive(this)
         is Boolean -> JsonPrimitive(this)
-        else -> JsonPrimitive(toString())
+        is String -> JsonPrimitive(this)
+        else -> throw IllegalArgumentException("unsupported YAML value (${javaClass.simpleName})")
     }
 
 private fun yamlCause(e: Exception): String {
@@ -183,6 +206,9 @@ private fun yamlCause(e: Exception): String {
         e is DuplicateKeyException -> "duplicate key '${problem.removePrefix("found duplicate key ")}'"
         problem.contains("another document") -> "more than one document"
         problem.contains("aliases", ignoreCase = true) -> "aliases are not allowed"
+        generateSequence<Throwable>(e) { it.cause }.any {
+            it is NumberFormatException && it.message.orEmpty().contains(".inf")
+        } -> "unsupported `+.inf` (write `.inf`)"
         else -> problem.lineSequence().firstOrNull { it.isNotBlank() } ?: e.javaClass.simpleName
     }.lineSequence().first().trim()
 }

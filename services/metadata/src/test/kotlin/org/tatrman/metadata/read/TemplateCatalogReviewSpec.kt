@@ -59,6 +59,35 @@ class TemplateCatalogReviewSpec :
             }
         }
 
+        "N1 collection nesting accepts the limit and rejects one more before composing YAML" {
+            fun nested(depth: Int) = "x: " + "[".repeat(depth - 1) + "0" + "]".repeat(depth - 1)
+            catalog(form = nested(MAX_TEMPLATE_NESTING)).apply {
+                forms.shouldHaveSize(1)
+                issues shouldBe emptyList()
+            }
+            catalog(form = nested(MAX_TEMPLATE_NESTING + 1)).apply {
+                forms shouldBe emptyList()
+                issues.single() shouldBe
+                    "template source:model/forms/test.yaml: nesting deeper than $MAX_TEMPLATE_NESTING"
+            }
+        }
+
+        "N2 binary and set values have stable JSON representations; unsupported values are diagnosed" {
+            catalog(form = "logo: !!binary aGVsbG8=\ns: !!set {a: null, b: null}\n").apply {
+                issues shouldBe emptyList()
+                forms.single().getValue("logo") shouldBe Json.parseToJsonElement("\"aGVsbG8=\"")
+                forms.single().getValue("s") shouldBe Json.parseToJsonElement("[\"a\",\"b\"]")
+            }
+            catalog(form = "x: !!java.util.Optional foo\n").apply {
+                forms shouldBe emptyList()
+                issues.single() shouldBe "template source:model/forms/test.yaml: unsupported YAML value (Optional)"
+            }
+            catalog(form = "max: +.inf\n").apply {
+                forms shouldBe emptyList()
+                issues.single() shouldBe "template source:model/forms/test.yaml: unsupported `+.inf` (write `.inf`)"
+            }
+        }
+
         "R3 explicit-null metadata uses defaults while wrong field types stay consumer-owned" {
             val summary =
                 catalog(

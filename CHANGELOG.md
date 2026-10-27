@@ -22,7 +22,9 @@ outside this repo could notice is in.
   unknown ids return 404. Content swaps with the model, and invalid YAML/missing workbooks appear in
   `/status.issues`. Template I/O failures retain the source's last successful catalog (or an empty first
   catalog) and report the stale SHA without failing the live model. YAML parsing matches the consumer's
-  YAML 1.2 Core settings, and unchanged successful SHAs reuse their encoded catalogs. The routes are
+  YAML 1.2 Core settings, with a 100-level nesting limit and stable binary/set projections. Unchanged
+  successful SHAs and identical template read failures reuse their encoded catalogs; invalid configured
+  roots and symlinked template folders/ancestors are diagnosed without following them. The routes are
   read-only; rendering remains with the report consumer.
 
 - **automation — preview review repairs.** Nested context/candidate references fail closed pending

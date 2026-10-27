@@ -541,6 +541,8 @@ private fun buildSourceFromConfig(
                     source,
                     gitCheckoutDir(sub, id, ""),
                     gitSubdirectory(sub),
+                    id,
+                    priority,
                 )
             } else {
                 source

@@ -56,8 +56,9 @@ requested locale → plain form → `en` → first by language code.
 The same unauthenticated, cluster-internal HTTP port serves read-only authored content from each configured
 Git source. The source's configured `subdirectory` is the model root (normally `model`), normalized
 once for tree lookup (`./model`, `model/.`, repeated separators). A blank root serves only repository-root
-`reports/**` and `forms/**`; it never merges an additional `model/` tree. A root that escapes the repository
-with `..` after normalization contributes no templates and emits a source-specific issue and warning.
+`reports/**` and `forms/**`; it never merges an additional `model/` tree. Absolute roots and roots that escape the repository
+with `..` after normalization contribute no templates. They emit one configuration warning at source construction
+and reuse one empty catalog with a source-specific issue; no template Git read is attempted for those roots.
 
 | Route | Response |
 |---|---|
@@ -82,7 +83,10 @@ Template I/O failures never prevent a successful model load or trigger its confi
 a failed template read retains that source instance's last successful **whole** catalog (possibly from an older SHA),
 or an empty catalog on its first load, with a `/status.issues` entry naming the source, attempted SHA, cause and
 previous catalog SHA. Model-source health still records the successful model load. Failed template SHAs are retried
-every tick. Recovery at the same SHA is not published until the next registry swap (a new commit, or another source
+every tick. An identical failure (attempted SHA, prior catalog SHA and cause) reuses its encoded result and
+logs at DEBUG after the first WARN; a successful read clears that failure cache. The source retains only the
+successful catalog SHA and encoded string, decoding it transiently when a new failure needs a stale catalog.
+Recovery at the same SHA is not published until the next registry swap (a new commit, or another source
 changing): the refresher's unchanged-version short-circuit keeps the previously served catalog and issue until then.
 The model version is never altered to force a swap. An unchanged successful SHA reuses its encoded sidecar string,
 without re-reading, re-encoding or re-hashing workbooks. The Git walk is restricted to the report and form trees.
@@ -91,10 +95,16 @@ For duplicate ids/targets across sources, higher numeric priority wins; ties use
 lexicographic order. List and detail use the same rule. Filesystem/resource sources contribute no templates.
 
 Only YAML mapping validity is checked, using studio-report's `snakeyaml-engine` 3.0.1 YAML 1.2 `CoreSchema`
-settings: duplicate keys and collection aliases are forbidden, as are multiple documents. Non-finite numbers
-are represented in JSON as the strings `.inf`, `-.inf` and `.nan`. Invalid documents and reports without a regular
-workbook are omitted and diagnosed in `/status.issues[]`, with source id, path and a one-line cause. Symlink/submodule
-entries at template paths are diagnosed and never followed. No workbook parsing, report schema validation,
+settings: duplicate keys and collection aliases are forbidden, as are multiple documents. An iterative event pass
+limits collection nesting to 100 levels (including the root mapping) before the recursive loader runs. Deeper
+documents are omitted with a source/path issue; valid sibling documents and the live model remain available.
+A remaining `StackOverflowError` on the template path is also contained; other VM errors retain their normal semantics.
+Non-finite `.inf`, `-.inf` and `.nan` values are accepted and represented as JSON strings; `+.inf` is refused
+with a suggestion to write `.inf`. Binary values become base64 text and sets become arrays. Other unsupported
+YAML value types are omitted with a diagnostic rather than Java internal text. Invalid documents and reports
+without a regular workbook are omitted and diagnosed in `/status.issues[]`, with source id, path and a one-line cause.
+Symlink/submodule entries throughout the report/form trees, including folders and model-root ancestors, are
+diagnosed and never followed. Missing report/form trees are valid and silent. No workbook parsing, report schema validation,
 program execution, rendering or write API is added. The gateway exposes no new route. Before a model loads, all three routes return 503; unknown
 report ids return 404, and a missing/blank `id` returns 400. Loaded empty catalogs return empty arrays.
 
