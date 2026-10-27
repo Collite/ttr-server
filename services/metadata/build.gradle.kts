@@ -63,8 +63,12 @@ dependencies {
     // (MetadataExportRoutes still imports them — they arrive transitively).
     implementation(libs.tatrman.ttr.metadata)
     implementation(libs.tomlj)
-    // GitArchiveStorage (jgit) behind the ModelStorage SPI (MD3) — jgit +
-    // commons-compress ride this transitively; Metadata must not re-declare them.
+    // #272: YAML validity and JSON projection only; no report renderer dependency.
+    implementation(libs.snakeyaml.engine)
+    // ttr-metadata-git's POM exposes jgit only at runtime; direct SHA blob reads need it at compile time.
+    // Keep this version equal to jgit in that POM (6.8.0.202311291450-r). Remove with ttr-core#314's readAt API.
+    implementation(libs.jgit)
+    // GitArchiveStorage behind the ModelStorage SPI (MD3).
     implementation(libs.tatrman.ttr.metadata.git)
     // `erp-sql-metadata` was a declared-but-unused dep in the predecessor platform's build (no `shared.erp.*`
     // imports in any source). Dropped from the kantheon fork.
@@ -92,8 +96,7 @@ dependencies {
     implementation(libs.grpc.netty.shaded)
     implementation(libs.grpc.services)
 
-    // jgrapht (ModelGraph) rides ttr-metadata transitively; jgit/commons-compress
-    // ride ttr-metadata-git (MD3). Metadata no longer declares any of them directly.
+    // jgrapht (ModelGraph) rides ttr-metadata transitively.
 
     implementation(libs.ktor.server.core)
     implementation(libs.ktor.server.netty)

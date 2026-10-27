@@ -16,6 +16,17 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+- **metadata — report and form template reads (#272).** Cluster-internal `GET /model/reports`,
+  `/model/report?id=`, and `/model/forms` serve authored templates from configured Git sources at the
+  served source SHA. Report detail includes the original YAML, base64 workbook and SHA-256 checksum;
+  unknown ids return 404. Content swaps with the model, and invalid YAML/missing workbooks appear in
+  `/status.issues`. Template I/O failures retain the source's last successful catalog (or an empty first
+  catalog) and report the stale SHA without failing the live model. YAML parsing matches the consumer's
+  YAML 1.2 Core settings, with a 100-level nesting limit and stable binary/set projections. Unchanged
+  successful SHAs and identical template read failures reuse their encoded catalogs; invalid configured
+  roots and symlinked template folders/ancestors are diagnosed without following them. The routes are
+  read-only; rendering remains with the report consumer.
+
 - **automation — preview review repairs.** Nested context/candidate references fail closed pending
   callee pinning, action-level `due` defaults match explicit durations, and nested literals retain their
   original escapes. Invalid would-text placeholders identify the template. Fixture verification rejects
