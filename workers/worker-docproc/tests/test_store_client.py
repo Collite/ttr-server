@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-"""DX-P0 S0.4 T5 — the warehouse client's call shape against a stubbed Kallimachos (respx)."""
+"""DX-P0 S0.4 T5 — the warehouse client's call shape against a stubbed docwh-store (respx)."""
 
 from __future__ import annotations
 
@@ -9,11 +9,11 @@ import httpx
 import pytest
 import respx
 
-from aristarchos.sdk.kallimachos import KallimachosClient, KallimachosError, MartForbidden, SchemaRejected
-from aristarchos.sdk.models import ListAnnotationsRequest, LoadAnnotationsRequest
+from docproc.sdk.models import ListAnnotationsRequest, LoadAnnotationsRequest
+from docproc.sdk.store import MartForbidden, SchemaRejected, StoreClient, StoreError
 from tests.conftest import CONTRACTS
 
-BASE = "http://kallimachos.test"
+BASE = "http://docwh-store.test"
 
 
 def fixture(name: str) -> dict[str, object]:
@@ -25,7 +25,7 @@ def fixture(name: str) -> dict[str, object]:
 def test_load_annotations_posts_the_fixture_request_and_reads_the_response() -> None:
     f = fixture("loadAnnotations.json")
     route = respx.post(f"{BASE}/load/annotations").mock(return_value=httpx.Response(200, json=f["response"]))
-    client = KallimachosClient(BASE)
+    client = StoreClient(BASE)
     resp = client.load_annotations(LoadAnnotationsRequest.model_validate(f["request"]))
     assert json.loads(route.calls.last.request.content) == f["request"]  # the body is the fixture's request half
     assert resp.ids == [5001, 5005, 5006] and resp.mentions_linked == 2
@@ -38,7 +38,7 @@ def test_get_unit_and_list_annotations() -> None:
     )
     page = fixture("listAnnotations.json")
     listing = respx.get(f"{BASE}/annotations").mock(return_value=httpx.Response(200, json=page["response"]))
-    client = KallimachosClient(BASE)
+    client = StoreClient(BASE)
     assert client.get_unit(101, "hartland-reviews").content_lemmas.startswith("recenze")
     got = client.list_annotations(ListAnnotationsRequest.model_validate(page["request"]))
     assert [a.id for a in got.annotations] == [5001, 5002] and got.next_page_token
@@ -56,7 +56,7 @@ def test_get_unit_and_list_annotations() -> None:
 def test_403_is_mart_forbidden(body: dict[str, object]) -> None:
     respx.get(f"{BASE}/units/101").mock(return_value=httpx.Response(403, json=body))
     with pytest.raises(MartForbidden) as e:
-        KallimachosClient(BASE).get_unit(101, "hartland-reviews")
+        StoreClient(BASE).get_unit(101, "hartland-reviews")
     assert e.value.code == "mart_forbidden" and "no visible mart" in e.value.message
 
 
@@ -68,10 +68,10 @@ def test_422_annotation_schema_is_schema_rejected_other_errors_stay_generic() ->
             httpx.Response(422, json={"error": "annotation/unknown-type", "detail": "Statement[refund]"}),
         ]
     )
-    client = KallimachosClient(BASE)
+    client = StoreClient(BASE)
     req = LoadAnnotationsRequest.model_validate(fixture("loadAnnotations.json")["request"])
     with pytest.raises(SchemaRejected):
         client.load_annotations(req)
-    with pytest.raises(KallimachosError) as e:
+    with pytest.raises(StoreError) as e:
         client.load_annotations(req)
     assert not isinstance(e.value, SchemaRejected) and e.value.code == "annotation/unknown-type"

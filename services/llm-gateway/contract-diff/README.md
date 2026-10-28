@@ -1,5 +1,7 @@
 # contract-diff — the LLM Gateway 1.x → 2.0 migration gate
 
+> **Renamed 2026-10-26 (DX-D10, DX-RN):** `docwh-store` (was Kallimachos) · `docwh-pipeline` (was Pinakes).
+
 Purpose (design G-1 gate 1 / architecture §8): capture what every consumer really sends to and reads
 back from the **1.x** gateway, then diff those response shapes against **2.0** in staging. A clean
 diff over a thin corpus is a *false pass* (design §Risks) — so the corpus must carry every consumer ×
@@ -15,7 +17,7 @@ contract-diff/
 │   ├── hebe-embeddings.json
 │   ├── themis-golem-chat-nonstream.json
 │   ├── kleio-chat-nonstream-apiv1.json
-│   ├── pinakes-chat-content.json          # SQ-2 field-surface consumer
+│   ├── docwh-pipeline-chat-content.json          # SQ-2 field-surface consumer
 │   └── iris-responses.json                # SQ-2 field-surface consumer
 └── README.md
 ```
@@ -25,7 +27,7 @@ Each corpus entry (`CorpusEntry`, see `src/test/.../conformance/ContractCorpus.k
 | field | meaning |
 |---|---|
 | `consumer` / `shape` | who, and which distinct call shape |
-| `method` / `path` | on-wire endpoint (note Kleio's `/api/v1/...`, pinakes' `/v1/chat`) |
+| `method` / `path` | on-wire endpoint (note Kleio's `/api/v1/...`, docwh-pipeline' `/v1/chat`) |
 | `headers` | headers sent (**secrets redacted** — see rules below) |
 | `requestBody` | the real request shape, `origin: reconstructed-from-source` until a live capture replaces it |
 | `readsResponseFields` | **the load-bearing column** — response fields the consumer actually depends on; drives diff ranking |
@@ -74,18 +76,18 @@ Verified against kantheon `master` (all consumers live there) + olymp/modeler/ta
 - **Async jobs surface** — zero external callers → safe to remove (G-2). ✓
 - **`/v1/conversations` endpoint** — zero callers → safe to remove. ✓
 - **`/api/v1/*` prefix — 🔴 BLOCKED, and cutover-breaking.** `kleio` still `POST /api/v1/chat/completions`
-  (`agents/kleio/.../HttpClients.kt:149`, wired) and `kallimachos` `POST /api/v1/embeddings`
-  (`services/kallimachos/.../LlmGatewayEmbeddingsClient.kt:69`, wired) on **master** — 2.0 exposes only
+  (`agents/kleio/.../HttpClients.kt:149`, wired) and `docwh-store` `POST /api/v1/embeddings`
+  (`services/docwh-store/.../LlmGatewayEmbeddingsClient.kt:69`, wired) on **master** — 2.0 exposes only
   `/v1/*`, so both 404 on cutover. The Kleio `/api/v1`→`/v1` migration is on branch `lg-p0-kleio`, NOT master.
-- **Top-level `content` + custom `/v1/chat` — 🔴 BLOCKED.** `pinakes` `POST /v1/chat` reads top-level
-  `content` (`services/pinakes/.../LlmGatewayClient.kt:46,51`, wired) — 404 on cutover. `kleio` also keeps a
+- **Top-level `content` + custom `/v1/chat` — 🔴 BLOCKED.** `docwh-pipeline` `POST /v1/chat` reads top-level
+  `content` (`services/docwh-pipeline/.../LlmGatewayClient.kt:46,51`, wired) — 404 on cutover. `kleio` also keeps a
   top-level-`content` fallback.
 - **Responses *field* surface (`output[]/status/createdAt/conversationId/reasoning.summary`, `conversation`
   req)** — the sole consumer is Iris' `LlmGatewayView.vue`/`llmGatewayService.ts`, which is **orphaned**
   (not in `router/index.ts`; live Iris goes via iris-bff). Removable in-tree, but ⚑ Bora: delete rather
   than leave latent.
 
-⚑ **Net: G-3 ("zero caller changes") is not achievable as-is** — `kleio`, `kallimachos`, `pinakes` must
+⚑ **Net: G-3 ("zero caller changes") is not achievable as-is** — `kleio`, `docwh-store`, `docwh-pipeline` must
 migrate to the standard `/v1/*` surface first, OR 2.0 keeps `/api/v1/*` + `/v1/chat` compat shims for the
-migration window. Bora's disposition (reopens G-2 / LG-D3). Corpus TODO: add a `kallimachos-embeddings`
+migration window. Bora's disposition (reopens G-2 / LG-D3). Corpus TODO: add a `docwh-store-embeddings`
 entry (missing — it was not in the P0 consumer set).

@@ -9,7 +9,7 @@ from collections.abc import Iterator
 
 import pytest
 
-from aristarchos.bus import DONE, PgmqBus, work_queue
+from docproc.bus import DONE, PgmqBus, work_queue
 from tests.conftest import PGMQ_SQL, kantheon_dir
 
 pytestmark = pytest.mark.component

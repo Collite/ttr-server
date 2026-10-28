@@ -1,0 +1,23 @@
+{
+  "consumer": "docwh-pipeline",
+  "shape": "chat-nonstream-toplevel-content",
+  "method": "POST",
+  "path": "/v1/chat",
+  "headers": {
+    "Content-Type": "application/json"
+  },
+  "requestBody": {
+    "model": "__configured_model__",
+    "messages": [
+      { "role": "user", "content": "__prompt__" }
+    ]
+  },
+  "readsResponseFields": [
+    "content"
+  ],
+  "origin": "reconstructed-from-source",
+  "sources": [
+    "kantheon/services/docwh-pipeline/.../clients/LlmGatewayClient.kt:34,46,51"
+  ],
+  "notes": "SQ-2 field-surface consumer. Reads the 1.x NON-STANDARD top-level `content` response field (ChatReply(content)). 2.0 does not emit top-level `content` (contracts §1.3 dropped list) — this is a HARD contract-diff hit: docwh-pipeline must migrate to choices[0].message.content, or top-level content is promoted to (dual, migration). Also note the path is /v1/chat, not /v1/chat/completions."
+}

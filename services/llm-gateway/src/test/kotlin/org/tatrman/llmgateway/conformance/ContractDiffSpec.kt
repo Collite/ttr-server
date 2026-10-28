@@ -54,7 +54,7 @@ class ContractDiffSpec :
                 )
         }
 
-        "catches a dropped non-standard field (pinakes/iris top-level content presence)" {
+        "catches a dropped non-standard field (docwh-pipeline/iris top-level content presence)" {
             val oneX = """{"choices":[{"message":{"content":"x"}}],"content":"top-level dup"}"""
             val twoX = """{"choices":[{"message":{"content":"x"}}]}"""
             val deltas = ContractDiff.diff(j(oneX), j(twoX))

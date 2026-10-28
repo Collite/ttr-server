@@ -1,7 +1,7 @@
 [project]
-name = "aristarchos"
+name = "workers-docproc"
 version = "0.11.0"
-description = "Aristarchos — the document-extraction worker runtime (Python). DX-P0 spike skeleton: the pgmq bus and the message models only; the runtime, the kinds and the image come later."
+description = "docproc — the document-extraction worker runtime (Python). DX-P0 spike skeleton: the pgmq bus and the message models only; the runtime, the kinds and the image come later."
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
@@ -15,7 +15,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/aristarchos"]
+packages = ["src/docproc"]
 
 [dependency-groups]
 dev = [
@@ -29,7 +29,7 @@ dev = [
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 # Component tier — mirrors the Kotlin `componentTest` source set: real Postgres via
-# testcontainers-python. Select with `just test-py workers/worker-extract -m component`.
+# testcontainers-python. Select with `just test-py workers/worker-docproc -m component`.
 markers = [
     "component: real-dependency component tier (testcontainers-python; no cluster)",
 ]
