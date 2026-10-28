@@ -53,6 +53,7 @@ class Guards(
         island: String,
         result: ReadResult,
         requireComplete: Boolean = false,
+        completeMessage: String = "obligation lookup requires a complete snapshot",
     ) {
         ensureAllowed()
         if (requireComplete ||
@@ -65,7 +66,7 @@ class Guards(
                     AutomationException(
                         ErrorCode.RESTRICTED_VIEW,
                         if (requireComplete) {
-                            "obligation lookup requires a complete snapshot"
+                            completeMessage
                         } else {
                             "a decision read was narrowed by security"
                         },

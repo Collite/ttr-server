@@ -66,6 +66,7 @@ class Open(
     private val clock: Clock = Clock.systemUTC(),
     private val approvalsOff: Boolean = false,
     private val detailLimit: Int = 200,
+    private val doorRoutes: Set<String> = emptySet(),
 ) {
     fun open(
         recipeName: String,
@@ -192,6 +193,13 @@ class Open(
                     } else {
                         null
                     },
+                calendar =
+                    org.tatrman.automation.apply.PreviewCalendar.plan(
+                        bundle,
+                        world.name,
+                        recipe.recipe,
+                        pinnedActions,
+                    ),
                 previewMetadata =
                     org.tatrman.automation.apply.PreviewMetadata(
                         pinnedActions,
@@ -200,6 +208,11 @@ class Open(
                         { obj -> bundle.prepared.index.isAutomationStdlib(obj) },
                     ),
             )
+        context.calendar?.let { calendar ->
+            if ("${context.world}/${calendar.storage}" !in doorRoutes) {
+                throw AutomationException(ErrorCode.DOOR_REFUSED, "no door route for the pinned calendar storage")
+            }
+        }
         if (port.keys != null &&
             port.keys.size > context.readCeiling
         ) {
@@ -254,6 +267,14 @@ class Open(
                         put("dryRun", true)
                         put("allowRestrictedView", d.allowRestrictedView)
                         put("readCeiling", context.readCeiling)
+                        context.calendar?.let { calendar ->
+                            putJsonObject("calendar") {
+                                put("entity", calendar.entity)
+                                put("storage", calendar.storage)
+                                put("columns", JsonArray(calendar.columns.map { JsonPrimitive(it.name) }))
+                                put("template", "runtime:calendar-snapshot/v1")
+                            }
+                        }
                         put("detailLimit", context.detailLimit)
                         put("detailLimits", JsonObject(context.detailLimits.mapValues { JsonPrimitive(it.value) }))
                         put("budgetSyncMs", sync.toMillis())

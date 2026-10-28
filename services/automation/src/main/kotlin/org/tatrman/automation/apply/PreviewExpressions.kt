@@ -49,6 +49,7 @@ internal object PreviewExpressions {
         table: Table,
         bindings: Map<String, BoundValue>,
         expectedTypes: Map<String, String> = emptyMap(),
+        calendar: CalendarSnapshot? = null,
     ): Table =
         guarded("unsupported action expression") {
             val result =
@@ -58,6 +59,7 @@ internal object PreviewExpressions {
                     bindings,
                     predicate = false,
                     expectedTypes = expressions.keys.map { expectedTypes[it] },
+                    calendar = calendar,
                 )
             PreviewAssignments.assign(
                 Table(
@@ -72,9 +74,10 @@ internal object PreviewExpressions {
         expression: String,
         table: Table,
         bindings: Map<String, BoundValue>,
+        calendar: CalendarSnapshot? = null,
     ): Set<Int> =
         guarded("unsupported action condition") {
-            execute(listOf(expression), table, bindings, predicate = true)
+            execute(listOf(expression), table, bindings, predicate = true, calendar = calendar)
                 .rows
                 .map { (it.single() as Long).toInt() }
                 .toSet()
@@ -97,6 +100,7 @@ internal object PreviewExpressions {
         bindings: Map<String, BoundValue>,
         predicate: Boolean,
         expectedTypes: List<String?> = emptyList(),
+        calendar: CalendarSnapshot? = null,
     ): Table {
         val parsed = sources.map { TtrpParser.parseExpression(it) }
         if (parsed.any { result -> result.diagnostics.any { it.severity == Severity.ERROR } }) unsupported()
@@ -126,7 +130,7 @@ internal object PreviewExpressions {
         }
         // Keep literal decimals/large integers out of plan.v1's Double literal arm. Parameters likewise
         // retain their JDBC types rather than the translator's default decimal/timestamp parameter type.
-        val expressions =
+        val boundExpressions =
             timed.expressions.map { result ->
                 NodeExpressions.rewrite(result) {
                     when (it) {
@@ -147,6 +151,16 @@ internal object PreviewExpressions {
                     }
                 }
             }
+        val calendarResult =
+            PreviewCalendarGraph.lower(
+                boundExpressions,
+                Table(columns.toList(), table.rows.map { it + constants }),
+                timed.bindings,
+                calendar,
+            )
+        val expressions = calendarResult.expressions
+        columns.clear()
+        columns += calendarResult.table.columns
         val schema = mapOf("" to columns.map { Column(it.name, expressionType(it.type)) })
         val checker = ExpressionTypechecker()
         expressions.forEachIndexed { i, expression ->
@@ -213,7 +227,7 @@ internal object PreviewExpressions {
             Table(
                 selectedColumns,
                 table.rows.mapIndexed { i, row ->
-                    val values = row + constants
+                    val values = calendarResult.table.rows[i]
                     ordinals.map { values[it] } + i.toLong()
                 },
             )

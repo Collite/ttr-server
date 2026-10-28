@@ -70,6 +70,7 @@ class ApplyPlanner(
         val obligations = PreviewObligation.Proposals()
         val fulfilments = PreviewFulfilment.Effects()
         val metadata = requireNotNull(context.previewMetadata) { "preview metadata was not pinned at open" }
+        val calendar = runner.calendarSnapshot()
         val roles = recipe.roles
         val decision = roles?.decision
         val batch = UUID.nameUUIDFromBytes("automation/preview/${context.id}".toByteArray(Charsets.UTF_8)).toString()
@@ -156,6 +157,7 @@ class ApplyPlanner(
                                         it,
                                         table,
                                         context.bindings,
+                                        calendar,
                                     )
                                 }
                             val indices = table.rows.indices.filter { matches == null || it in matches }
@@ -197,6 +199,7 @@ class ApplyPlanner(
                                     table.copy(rows = emptyList()),
                                     context.bindings,
                                     expectedTypes = expectedTypes,
+                                    calendar = calendar,
                                 )
                             }
                             val projected =
@@ -206,6 +209,7 @@ class ApplyPlanner(
                                     context.bindings,
                                     expectedTypes = expectedTypes,
                                     roleNames = roleNames,
+                                    calendar = calendar,
                                 )
                             PreparedWiring(
                                 wiring,

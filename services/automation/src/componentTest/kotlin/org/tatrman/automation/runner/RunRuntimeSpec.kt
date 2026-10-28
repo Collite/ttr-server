@@ -53,6 +53,218 @@ class RunRuntimeComponentSpec :
         LedgerTestDb.ready()
         beforeEach { LedgerTestDb.reset() }
 
+        fun calendarFixture(
+            warnings: Set<String> = emptySet(),
+            readsScope: List<String> = listOf("er.entity.date_dim"),
+            transform: (Bundle) -> Bundle = { it },
+        ): DurableRuntimeFixture {
+            val root =
+                CalendarFixture.copyTo(
+                    tempdir(prefix = "calendar-runtime-").toPath().resolve("arbitrary-branch"),
+                )
+            val loaded =
+                BundleLoader(
+                    AuthorMap(emptyMap()),
+                ).load(Checkout(root, "master", "0123456789abcdef", "po", "po@example.org"), BundleKind.SERVED)
+            return DurableRuntimeFixture(
+                lookupReads = readsScope,
+                queryWarnings = { if ("FROM er.entity.date_dim cal" in it.source) warnings else emptySet() },
+                transformBundle = {
+                    transform(
+                        loaded.copy(
+                            deployments =
+                                loaded.deployments +
+                                    (
+                                        "release_native_event" to
+                                            loaded.deployments
+                                                .getValue(
+                                                    "release_native_event",
+                                                ).copy(runAs = ModelRunAs.Caller)
+                                    ),
+                        ),
+                    )
+                },
+                queryTable = { request ->
+                    request.world shouldBe "us-erp"
+                    request.context.modelVersion shouldBe loaded.modelFp
+                    request.context.userId shouldBe "maya"
+                    when {
+                        "FROM er.entity.date_dim cal" in request.source -> {
+                            request.allowedErReads.objectsList.contains("er.entity.date_dim") shouldBe true
+                            request.context.parametersCount shouldBe 0
+                            Table(
+                                listOf(ManifestColumn("cal_date", "date"), ManifestColumn("working_day", "bool")),
+                                (23..28).map { day ->
+                                    listOf(
+                                        java.time.LocalDate.of(2026, 10, day),
+                                        day !in setOf(24, 25, 27),
+                                    )
+                                },
+                            )
+                        }
+                        "verdict_reason" in request.source ->
+                            Table(
+                                listOf(
+                                    ManifestColumn("order_number", "text"),
+                                    ManifestColumn("placed", "date"),
+                                    ManifestColumn("route", "text"),
+                                    ManifestColumn("verdict_reason", "text"),
+                                ),
+                                listOf(
+                                    listOf("4711", java.time.LocalDate.of(2026, 10, 23), "release", "calendar fixture"),
+                                ),
+                            )
+                        else ->
+                            Table(
+                                listOf(ManifestColumn("order_number", "text"), ManifestColumn("placed", "date")),
+                                listOf(listOf("4711", java.time.LocalDate.of(2026, 10, 23))),
+                            )
+                    }
+                },
+            )
+        }
+
+        "published calendar fixture opens evaluates and journals one immutable snapshot through retry close restart" {
+            val f = calendarFixture()
+            val runtime = f.start()
+            try {
+                val opened =
+                    runtime.sessions.open(
+                        "release_order",
+                        f.request.copy(asOf = "2026-10-28T12:00:00Z"),
+                        f.caller,
+                    )
+                opened.httpStatus shouldBe 201
+                opened.approvalsBypassed shouldBe false
+                val id = UUID.fromString(opened.response.runId)
+                val result = runtime.sessions.evaluate(id, f.caller)
+                val actions = runtime.status.read(id, f.caller).actions
+                actions.single().arguments["template"] shouldBe JsonPrimitive("2")
+                f.reads.get() shouldBe 3
+                transaction { RunOutputs.selectAll().count() } shouldBe 3L
+                runtime.sessions.evaluate(id, f.caller) shouldBe result
+                f.reads.get() shouldBe 3
+                val protocol = runtime.protocol.read(id, f.caller)
+                val openedEvidence =
+                    protocol.sections.values
+                        .flatten()
+                        .map { it.payload }
+                        .filterIsInstance<JsonObject>()
+                        .single { it["event"] == JsonPrimitive("opened") }
+                openedEvidence["calendar"]!!.jsonObject["entity"] shouldBe JsonPrimitive("er.entity.date_dim")
+                openedEvidence["calendar"]!!.jsonObject["storage"] shouldBe JsonPrimitive("erp_db")
+                val read =
+                    protocol.sections.values
+                        .flatten()
+                        .map { it.payload }
+                        .filterIsInstance<JsonObject>()
+                        .single { it["statement"] == JsonPrimitive("runtime:calendar-snapshot/v1") }
+                read["storage"] shouldBe JsonPrimitive("erp_db")
+                read["rows"] shouldBe JsonPrimitive(6)
+                runtime.closer.close(id, f.caller)
+                val sealed = runtime.protocol.read(id, f.caller)
+                runtime.shutdown()
+                val restarted = f.start()
+                try {
+                    restarted.status.read(id, f.caller).actions shouldBe actions
+                    restarted.protocol.read(id, f.caller) shouldBe sealed
+                    f.reads.get() shouldBe 3
+                } finally {
+                    restarted.shutdown()
+                }
+            } finally {
+                runtime.shutdown()
+                f.close()
+            }
+        }
+
+        "calendar scope and placement refuse before claim and preserve idempotency" {
+            for (missingScope in listOf(true, false)) {
+                val f =
+                    calendarFixture(transform = { bundle ->
+                        if (missingScope) {
+                            val loaded = bundle.recipes.getValue("release_order")
+                            val metadata =
+                                loaded.recipe.copy(
+                                    objectsRead = loaded.recipe.objectsRead - "er.entity.date_dim",
+                                )
+                            bundle.copy(
+                                recipes =
+                                    bundle.recipes +
+                                        (
+                                            "release_order" to
+                                                loaded.copy(
+                                                    recipe = metadata,
+                                                    manifest = loaded.manifest.copy(recipe = metadata),
+                                                )
+                                        ),
+                            )
+                        } else {
+                            val schema = bundle.model.schemas.getValue("world") as WorldSchema
+                            val world = schema.worlds.values.single { it.qname.name == "demo" }
+                            val changed = world.copy(storages = world.storages.filterNot { it.qname.name == "erp_db" })
+                            bundle.copy(
+                                model =
+                                    bundle.model.copy(
+                                        schemas =
+                                            bundle.model.schemas +
+                                                (
+                                                    "world" to
+                                                        schema.copy(worlds = schema.worlds + (world.qname to changed))
+                                                ),
+                                    ),
+                            )
+                        }
+                    })
+                val runtime = f.start()
+                try {
+                    repeat(2) {
+                        shouldThrow<AutomationException> {
+                            runtime.sessions.open(
+                                "release_order",
+                                f.request.copy(idempotencyKey = "missing-calendar"),
+                                f.caller,
+                            )
+                        }.code shouldBe if (missingScope) ErrorCode.OUT_OF_SCOPE_READ else ErrorCode.PREVIEW_UNSUPPORTED
+                    }
+                    transaction { Runs.selectAll().count() } shouldBe 0L
+                    f.reads.get() shouldBe 0
+                } finally {
+                    runtime.shutdown()
+                    f.close()
+                }
+            }
+        }
+
+        "calendar narrowed capped and undeclared reads refuse without batch or action completion" {
+            for ((warning, scope, expected) in listOf(
+                Triple(setOf("security_predicate_applied"), listOf("er.entity.date_dim"), ErrorCode.RESTRICTED_VIEW),
+                Triple(setOf("top_n_applied"), listOf("er.entity.date_dim"), ErrorCode.CANDIDATES_TRUNCATED),
+                Triple(emptySet<String>(), listOf("er.entity.customer"), ErrorCode.OUT_OF_SCOPE_READ),
+            )) {
+                val f =
+                    calendarFixture(warning, scope, transform = { bundle ->
+                        val deployment = bundle.deployments.getValue("release_native_event")
+                        bundle.copy(
+                            deployments =
+                                bundle.deployments +
+                                    ("release_native_event" to deployment.copy(allowRestrictedView = true)),
+                        )
+                    })
+                val runtime = f.start()
+                try {
+                    val opened = runtime.sessions.open("release_order", f.request, f.caller)
+                    val id = UUID.fromString(opened.response.runId)
+                    shouldThrow<AutomationException> { runtime.sessions.evaluate(id, f.caller) }.code shouldBe expected
+                    transaction { Batches.selectAll().count() } shouldBe 0L
+                    runtime.status.read(id, f.caller).actions shouldBe emptyList()
+                } finally {
+                    runtime.shutdown()
+                    f.close()
+                }
+            }
+        }
+
         for (unqualified in listOf(false, true)) {
             "governed ${if (unqualified) "unqualified" else "qualified"} effects evaluate and stale metadata refuses" {
                 val root =
@@ -1190,7 +1402,8 @@ private class DurableRuntimeFixture(
                     .setErReads(
                         ErReadScope.newBuilder().addAllObjects(
                             if ("_au_obligation_entity_" in
-                                request.source
+                                request.source ||
+                                "FROM er.entity.date_dim cal" in request.source
                             ) {
                                 lookupReads
                             } else {

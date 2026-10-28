@@ -16,6 +16,12 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+- Automation previews support governed calendar counts in action expressions and wiring conditions.
+  Open pins declared ER scope, compiler-resolved calendar storage and an explicit door route before claim.
+  Evaluation journals one complete guarded snapshot and executes the published compiler graph in DuckDB;
+  security-narrowed or capped reads refuse without batch/action completion. Absolute working-day deadlines
+  and additional column-date forms remain pending. Runtime dependencies stay at 0.18.14.
+
 - Automation fulfilment previews use a bounded v2 lookup of selected entity/kind/canonical-key identities,
   refuse security-narrowed obligation snapshots even with restricted decision views enabled, and reject
   missing obligation read scope before claiming a run. Placement outcomes are cached per bundle/world;

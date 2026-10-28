@@ -32,12 +32,14 @@ tasks.test {
     inputs.dir("src/main/resources")
     // The bundle fixture is copied into a throwaway git repo by the specs (S0.2).
     inputs.dir("src/test/resources/bundles")
+    inputs.dir("src/test/resources/calendar-preview")
     inputs.dir("src/test/resources/runner")
 }
 
 tasks.named<Test>("componentTest") {
     jvmArgs("--add-opens=java.base/java.nio=ALL-UNNAMED")
     inputs.dir("src/test/resources/bundles")
+    inputs.dir("src/test/resources/calendar-preview")
 }
 
 val osArch = System.getProperty("os.arch").lowercase()

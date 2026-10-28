@@ -44,6 +44,7 @@ data class RunContext(
     val previewMetadata: PreviewMetadata? = null,
     /** Compiler-resolved logical storage for an auxiliary obligation lookup, pinned at Open. */
     val obligationStorage: String? = null,
+    val calendar: org.tatrman.automation.apply.CalendarPlan? = null,
 ) {
     init {
         require(readCeiling > 0 && detailLimit > 0 && !timeout.isNegative && !timeout.isZero)
@@ -111,6 +112,8 @@ class PartRunner(
     private var evaluation: Deferred<EvaluationResult>? = null
     private var obligationRead:
         Pair<Set<org.tatrman.automation.apply.PreviewFulfilment.Identity>, Deferred<StagedOutput>>? = null
+
+    private var calendarRead: Deferred<StagedOutput>? = null
 
     @Volatile internal var evaluationRecorded = false
         private set
@@ -307,6 +310,71 @@ class PartRunner(
         return readStaged(work.await()).also { checks.ensureAllowed() }
     }
 
+    /** A single immutable, complete calendar snapshot; retries share its success or refusal. */
+    internal suspend fun calendarSnapshot(): org.tatrman.automation.apply.CalendarSnapshot? {
+        val plan = context.calendar ?: return null
+        val island = "_au_calendar"
+        checks.ensureAllowed()
+        require(island !in islands)
+        if (plan.entity !in context.recipe.recipe.objectsRead) {
+            checks.doorRefused(
+                island,
+                org.tatrman.automation.api.AutomationException(
+                    org.tatrman.automation.api.ErrorCode.OUT_OF_SCOPE_READ,
+                    "calendar lookup requires declared ER scope",
+                ),
+            )
+        }
+        val work =
+            lock.withLock {
+                calendarRead ?: scope
+                    .async {
+                        val started = System.nanoTime()
+                        val sql =
+                            "SELECT " +
+                                plan.columns.joinToString {
+                                    "cal." +
+                                        quoted(
+                                            it.name,
+                                        )
+                                } + " FROM " + plan.entity +
+                                " cal"
+                        val result =
+                            read(
+                                island,
+                                plan.storage,
+                                "runtime:calendar-snapshot/v1",
+                                emptyList(),
+                                plan.columns,
+                                CandidateScope.Statement(sql, emptyMap()),
+                                requireComplete = true,
+                                completeMessage = "calendar lookup requires a complete snapshot",
+                            )
+                        staging.put(
+                            context.id,
+                            island,
+                            "rows",
+                            result.table,
+                            IslandExecution(
+                                "output",
+                                island,
+                                "runtime:calendar-snapshot/v1",
+                                "query",
+                                emptyMap(),
+                                result.table.rows.size
+                                    .toLong(),
+                                elapsedMs(started),
+                                result.warnings.sorted(),
+                                port = "rows",
+                                storage = plan.storage,
+                            ),
+                        )
+                    }.also { calendarRead = it }
+            }
+        return org.tatrman.automation.apply
+            .CalendarSnapshot(plan, readStaged(work.await()))
+    }
+
     private suspend fun outputIsland(name: String): List<StagedOutput> =
         kotlinx.coroutines.coroutineScope {
             islands
@@ -466,6 +534,7 @@ class PartRunner(
         columns: List<org.tatrman.automation.bundle.ManifestColumn>,
         scoped: CandidateScope.Statement = CandidateScope.Statement(statement(file), emptyMap()),
         requireComplete: Boolean = false,
+        completeMessage: String = "obligation lookup requires a complete snapshot",
     ): ReadResult =
         slots.withPermit {
             checks.ensureAllowed()
@@ -489,7 +558,7 @@ class PartRunner(
                         ),
                     ).also {
                         observedWarnings.merge(island, it.warnings.toSet()) { earlier, later -> earlier + later }
-                        checks.read(island, it, requireComplete)
+                        checks.read(island, it, requireComplete, completeMessage)
                         checks.scopePassed(island)
                     }
             } catch (e: org.tatrman.automation.api.AutomationException) {

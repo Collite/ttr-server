@@ -24,5 +24,6 @@ class BundlePreparation internal constructor(
     internal val snapshot by lazy { RegistrySnapshot(model, ModelGraph.build(model), loadedAt, emptyList()) }
     internal val packageOf: (ModelObject) -> String = { obj -> packages[obj.sourceFile].orEmpty() }
     internal val index by lazy { ModelIndex(snapshot, packageOf) }
+    internal val calendarPlans = ConcurrentHashMap<String, Result<org.tatrman.automation.apply.CalendarPlan>>()
     internal val obligationPlacements = ConcurrentHashMap<String, Result<String>>()
 }

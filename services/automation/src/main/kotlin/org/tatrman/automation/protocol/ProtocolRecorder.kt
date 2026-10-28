@@ -42,8 +42,8 @@ data class ProtocolParameter(
 /**
  * One successful storage part or published island port. A multi-output island has one entry per port;
  * shared parts have their own entries and are never counted again for each dependent combine.
- * Statement paths are relative to the run's pinned recipe bundle; `runtime:obligation-lookup/v2` names
- * the Server's versioned auxiliary-read template. Neither form contains SQL or connection credentials.
+ * Statement paths are relative to the run's pinned recipe bundle; `runtime:obligation-lookup/v2` and
+ * `runtime:calendar-snapshot/v1` name the Server's versioned auxiliary-read templates. Neither form contains SQL or connection credentials.
  * Part byte counts are absent: the door exposes decoded rows, not the source's IPC byte count.
  */
 @Serializable

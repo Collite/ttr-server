@@ -76,6 +76,8 @@ class RunRuntime(
                 clock,
                 config.approvalsOff,
                 config.budgets.detailLimit,
+                config.door.routes.keys
+                    .toSet(),
             )
         // The registry exists before a consumer or its maintenance job can start. The dispatcher is only
         // called by a session created after construction returns, when workers has been assigned.

@@ -419,7 +419,7 @@ pinned model with the bundle's complete loader package map, including injected s
 validated against declared-or-computed packages, independently of checkout paths; unknown or partial
 packages and an incomplete provider refuse before a claim. Writable/engine/overlay declarations remain
 in the resolver input. Missing, ambiguous or invalid placement refuses. Query still requires an explicit
-world/storage alias. Calendar source reads and graph execution remain a separate integration stage.
+world/storage alias. Calendar-count source reads and published graph execution are described below.
 
 Open refuses a pinned fulfilment action unless `er.entity.obligation` is in the manifest's `objectsRead`,
 before placement, run claim or idempotency allocation. Evaluate checks this scope again. Until Core#319 is
@@ -453,8 +453,7 @@ state is a silent self transition. Equal effects share one row; opposing effects
 carry the observed state as `from` and request history only for a change. Lookup guard results join evaluate's
 evidence before atomic decision/batch/action completion. On refusal, successful read evidence remains but
 no partial batch or action is committed. No model row is changed or signal sent; P2 must recheck current state,
-apply writes/history and enqueue signals atomically. General indirect entity lookups and calendar lowering
-remain pending.
+apply writes/history and enqueue signals atomically. General indirect entity lookups and additional time forms remain pending.
 
 Explicit native `writer` actions now produce insert previews. Each declared action column must name one
 attribute of the same pinned ER entity; every declared key and non-nullable field must be mapped and supplied.
@@ -556,7 +555,7 @@ physical primary-key conflict transactionally, without overwriting/skipping/rege
 queries or writes the target model to allocate an ID. The evidence format from 0.18.9, unchanged through 0.18.11, covers the authored source.
 
 Hartland's authored default mappings/bundles are staged in #122; deployed adoption remains pending.
-Calendar/column-date synthesis remains pending. P2 must validate actual physical bounds and writable policies
+Calendar counts are supported as described above; additional column-date forms remain pending. P2 must validate actual physical bounds and writable policies
 before applying anything. H-3/H-5 are not certified by these defaults. Selected unsupported operations return
 `501 preview-unsupported`. P2/P3
 retain dry-run task/delivery rows and performed action outcomes. Durable close/sealing and local staging retention are described below. Application mounting is
@@ -707,3 +706,33 @@ The HTTP port opens only after the migration, so the chart's startup probe cover
 5. Debug runs are as the caller, or with a grant as the deployment's `run_as`; the protocol records both.
 
 **Ports:** HTTP 7131. **Image:** `ghcr.io/collite/automation` (a tag `automation/v<x.y.z>` publishes it).
+
+### Governed calendar-count preview
+
+Action expressions, writer-default expressions, wiring conditions and expressions inside deferred calls
+can use `age(since: placed)` and `working_days(between: placed, and: :as_of)` over typed date/timestamp
+columns and bindings. Open discovers the single model calendar by `semantics { role: event_date }`,
+requires its exact ER qname in `recipe.objectsRead`, resolves its binding and world placement with the
+published compiler and the complete loader package map, and requires an explicit Query door route before
+claiming the run. The calendar plan is cached per immutable bundle/world, including placement refusals;
+refresh creates a different cache. Checkout paths never grant scope. Open records the calendar entity,
+logical storage, columns and `runtime:calendar-snapshot/v1` template in its protocol evidence.
+
+Evaluation performs one governed calendar read using the pinned model, identity, read ceiling, timeout
+and allowed ER scope. The date and bound working-day flag are the only selected attributes. The snapshot
+must be complete: security narrowing refuses even with `allow_restricted_view`; a reached ceiling or
+validator cap also refuses. Verified Arrow is journalled as `_au_calendar.rows`. Concurrent consumers and
+retries share the same successful snapshot or failure; no auxiliary output/download API is introduced.
+A refusal cannot publish a decision, batch or action completion.
+
+The published `SugarLowering`, normalizer and SQL graph emitter execute against that snapshot and only
+the referenced staged route columns in UTC DuckDB. Server does not copy the calendar joins/count SQL or
+invent weekdays. Compiler semantics count calendar days in `(start, end]`, filter the authored working-day
+flag, preserve repeated route rows, propagate NULL dates and return zero for empty/reversed ranges. Empty
+routes still validate. The published 0.18.14 fixture under `src/test/resources/calendar-preview` goes through
+governed Open/evaluate/retry/close/restart with the real PostgreSQL ledger; only Query tables are canned.
+It does not certify a live Query database or perform physical writes.
+
+Relative `due` values remain descriptive; absolute working-day deadlines, calendar-key inputs and further
+column-date forms (including bound date minus a column) remain explicit follow-ups. Unsupported forms
+continue to refuse. This stage changes no runtime/compiler dependency pin.
