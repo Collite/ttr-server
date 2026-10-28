@@ -209,8 +209,130 @@ class DryRunSpec :
                         read.objectsRead shouldBe
                             runner.context.recipe.recipe.objectsRead
                                 .toSet()
-                        read.bindings.values.map { it.value } shouldBe listOf("er.entity.return_request_line")
+                        read.bindings.values.map { it.value } shouldBe
+                            listOf("er.entity.return_request_line", "inbound", "{\"line_id\":9007199254740993}")
                     }
+                }
+            }
+        }
+
+        "fulfil reads only selected exact identities despite unrelated malformed history" {
+            supervisorScope {
+                val requested = existingObligations("open")
+                val history =
+                    requested +
+                        listOf(
+                            listOf("bad-key", "er.entity.return_request_line", "not JSON", "inbound", "open"),
+                            listOf(
+                                "bad-state",
+                                "er.entity.return_request_line",
+                                "{\"line_id\":42}",
+                                "inbound",
+                                "unknown",
+                            ),
+                            listOf(
+                                "other-kind",
+                                "er.entity.return_request_line",
+                                "{\"line_id\":9007199254740993}",
+                                "other",
+                                "unknown",
+                            ),
+                        )
+                val f = PreviewFixture(this, fulfilRecipe(), obligationRows = history, filterLookup = true)
+                f.runner.use { runner ->
+                    runner.evaluate()
+                    f.plan!!
+                        .rows
+                        .single { it.entity == "er.entity.obligation" }
+                        .key shouldBe
+                        buildJsonObject { put("id", "ob-0") }
+                    val read = f.obligationReads.single()
+                    read.bindings.values
+                        .map { it.value }
+                        .toSet() shouldBe
+                        setOf("er.entity.return_request_line", "inbound", "{\"line_id\":9007199254740993}")
+                    read.sql.contains("ob.kind IN (") shouldBe true
+                    read.sql.contains("ob.key IN (") shouldBe true
+                    shouldThrow<IllegalArgumentException> {
+                        runner.obligationSnapshot(
+                            setOf(
+                                org.tatrman.automation.apply.PreviewFulfilment.Identity(
+                                    "er.entity.return_request_line",
+                                    "{\"line_id\":42}",
+                                    "inbound",
+                                ),
+                            ),
+                        )
+                    }
+                }
+            }
+        }
+
+        "lookup does not find noncanonical stored key text" {
+            supervisorScope {
+                for (key in listOf("{\"line_id\":9007199254740993.0}", "{ \"line_id\":9007199254740993}")) {
+                    val f =
+                        PreviewFixture(
+                            this,
+                            fulfilRecipe(),
+                            obligationRows =
+                                listOf(
+                                    listOf("ob", "er.entity.return_request_line", key, "inbound", "open"),
+                                ),
+                            filterLookup = true,
+                        )
+                    f.runner.use { runner ->
+                        shouldThrow<AutomationException> { runner.evaluate() }.code shouldBe
+                            ErrorCode.PREVIEW_UNSUPPORTED
+                        f.journals.get() shouldBe 0
+                        f.obligationReads.size shouldBe 1
+                    }
+                }
+            }
+        }
+
+        "identity bind limit refuses before the Door and narrowed snapshots retain the ceiling guard" {
+            supervisorScope {
+                val f = PreviewFixture(this, fulfilRecipe())
+                f.runner.use { runner ->
+                    val identities =
+                        (0..PartRunner.MAX_OBLIGATION_IDENTITIES)
+                            .map {
+                                org.tatrman.automation.apply.PreviewFulfilment.Identity(
+                                    "er.entity.return_request_line",
+                                    "{\"line_id\":$it}",
+                                    "inbound",
+                                )
+                            }.toSet()
+                    shouldThrow<AutomationException> { runner.obligationSnapshot(identities) }.code shouldBe
+                        ErrorCode.PREVIEW_UNSUPPORTED
+                    f.reads.get() shouldBe 0
+                    f.obligationReads.size shouldBe 0
+                }
+                val capped =
+                    PreviewFixture(
+                        this,
+                        fulfilRecipe(),
+                        obligationRows = existingObligations("fulfilled", "fulfilled", "fulfilled"),
+                        filterLookup = true,
+                        readCeiling = 3,
+                    )
+                capped.runner.use { runner ->
+                    // Access the auxiliary read directly so an authored candidate cap cannot mask its guard.
+                    shouldThrow<AutomationException> {
+                        runner.obligationSnapshot(
+                            setOf(
+                                org.tatrman.automation.apply.PreviewFulfilment.Identity(
+                                    "er.entity.return_request_line",
+                                    "{\"line_id\":9007199254740993}",
+                                    "inbound",
+                                ),
+                            ),
+                        )
+                    }.code shouldBe
+                        ErrorCode.CANDIDATES_TRUNCATED
+                    capped.obligationReads.size shouldBe 1
+                    capped.journals.get() shouldBe 0
                 }
             }
         }
@@ -303,6 +425,50 @@ class DryRunSpec :
                         } shouldBe
                             true
                     }
+                }
+            }
+        }
+
+        "restricted fulfilment refuses even when decision reads opt in to restricted views" {
+            supervisorScope {
+                val f =
+                    PreviewFixture(
+                        this,
+                        fulfilRecipe(),
+                        obligationRows = existingObligations("fulfilled"),
+                        lookupWarnings = setOf("security_predicate_applied"),
+                        allowRestrictedView = true,
+                        decisionWarnings = setOf("security_predicate_applied"),
+                    )
+                f.runner.use { runner ->
+                    repeat(2) {
+                        shouldThrow<AutomationException> { runner.evaluate() }.code shouldBe
+                            ErrorCode.RESTRICTED_VIEW
+                    }
+                    f.journals.get() shouldBe 0
+                    f.plan shouldBe null
+                    runner.evaluationRecorded shouldBe false
+                    f.obligationReads.size shouldBe 1
+                    runner.guards.any {
+                        it.island == "_au_obligations" &&
+                            it.code == "restricted-view" &&
+                            it.status == "refused"
+                    } shouldBe
+                        true
+                    runner.guards.any {
+                        it.island == "way" && it.code == "restricted-view" && it.status == "allowed"
+                    } shouldBe
+                        true
+                }
+                val control =
+                    PreviewFixture(
+                        this,
+                        allowRestrictedView = true,
+                        decisionWarnings = setOf("security_predicate_applied"),
+                    )
+                control.runner.use { runner ->
+                    runner.evaluate()
+                    control.journals.get() shouldBe 1
                 }
             }
         }
@@ -2428,6 +2594,10 @@ private class PreviewFixture(
     store: StagingStore = LocalStagingStore(Files.createTempDirectory("au-preview")),
     obligationRows: List<List<Any?>> = emptyList(),
     lookupWarnings: Set<String> = emptySet(),
+    allowRestrictedView: Boolean = false,
+    decisionWarnings: Set<String> = emptySet(),
+    filterLookup: Boolean = false,
+    readCeiling: Int = 100_000,
 ) {
     val reads = AtomicInteger()
     val obligationReads = mutableListOf<DoorRead>()
@@ -2442,6 +2612,8 @@ private class PreviewFixture(
                 keys = null,
                 detailLimit = 2,
                 obligationStorage = "automation_db",
+                allowRestrictedView = allowRestrictedView,
+                readCeiling = readCeiling,
                 previewMetadata =
                     metadata.copy(
                         actions =
@@ -2482,7 +2654,24 @@ private class PreviewFixture(
                         else -> {
                             require(read.island == "_au_obligations")
                             obligationReads += read
-                            obligationRows
+                            if (filterLookup && "ob.kind IN (" in read.sql && "ob.key IN (" in read.sql) {
+                                fun allowed(prefix: String) =
+                                    read.bindings
+                                        .filterKeys {
+                                            it.startsWith(
+                                                "_au_obligation_${prefix}_",
+                                            )
+                                        }.values
+                                        .map { it.value }
+                                        .toSet()
+                                obligationRows.filter {
+                                    it[1] in allowed("entity") &&
+                                        it[2] in allowed("key") &&
+                                        it[3] in allowed("kind")
+                                }
+                            } else {
+                                obligationRows
+                            }
                         }
                     }
                 ReadResult(
@@ -2492,7 +2681,7 @@ private class PreviewFixture(
                     ) {
                         lookupWarnings
                     } else {
-                        emptySet()
+                        decisionWarnings
                     },
                 )
             },

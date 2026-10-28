@@ -188,6 +188,7 @@ class RunRuntimeComponentSpec :
         fun fulfilmentFixture(
             ambiguous: Boolean = false,
             lookupReads: List<String> = listOf("er.entity.obligation"),
+            lookupWarnings: Set<String> = emptySet(),
             transform: (Bundle) -> Bundle = { it },
         ): DurableRuntimeFixture {
             val root =
@@ -201,7 +202,9 @@ class RunRuntimeComponentSpec :
                         AuthorMap(emptyMap()),
                     ).load(Checkout(root, "master", "0123456789abcdef", "po", "po@example.org"), BundleKind.SERVED),
                 )
-            return DurableRuntimeFixture(lookupReads = lookupReads, transformBundle = {
+            return DurableRuntimeFixture(lookupReads = lookupReads, queryWarnings = { request ->
+                if ("_au_obligation_entity_" in request.source) lookupWarnings else emptySet()
+            }, transformBundle = {
                 source.copy(
                     deployments =
                         source.deployments +
@@ -218,9 +221,9 @@ class RunRuntimeComponentSpec :
                         request.context.userId shouldBe "maya"
                         request.context.modelVersion shouldBe source.modelFp
                         request.context.parametersList
-                            .single()
-                            .value.stringValue shouldBe
-                            "er.entity.return_request_line"
+                            .map { it.value.stringValue }
+                            .toSet() shouldBe
+                            setOf("er.entity.return_request_line", "inbound", "{\"line_id\":9007199254740993}")
                         Table(
                             listOf("id", "entity", "key", "kind", "state").map { ManifestColumn(it, "text") },
                             (if (ambiguous) listOf("ob-1", "ob-2") else listOf("ob-1")).map { id ->
@@ -338,6 +341,42 @@ class RunRuntimeComponentSpec :
             }
         }
 
+        "missing obligation read scope refuses repeated Open before claiming or reading" {
+            val f =
+                fulfilmentFixture(transform = { bundle ->
+                    bundle.copy(
+                        recipes =
+                            bundle.recipes.mapValues { (_, loaded) ->
+                                val recipe =
+                                    loaded.recipe.copy(
+                                        objectsRead =
+                                            loaded.recipe.objectsRead - "er.entity.obligation",
+                                    )
+                                loaded.copy(recipe = recipe, manifest = loaded.manifest.copy(recipe = recipe))
+                            },
+                    )
+                })
+            val runtime = f.start()
+            try {
+                repeat(2) {
+                    shouldThrow<AutomationException> {
+                        runtime.sessions.open(
+                            "release_order",
+                            f.request.copy(idempotencyKey = "missing-obligation-scope"),
+                            f.caller,
+                        )
+                    }.code shouldBe ErrorCode.OUT_OF_SCOPE_READ
+                }
+                transaction { Runs.selectAll().count() } shouldBe 0L
+                transaction { RunOutputs.selectAll().count() } shouldBe 0L
+                transaction { Batches.selectAll().count() } shouldBe 0L
+                f.reads.get() shouldBe 0
+            } finally {
+                runtime.shutdown()
+                f.close()
+            }
+        }
+
         "governed qualified fulfilment journals a scoped snapshot and persists transition through retry close restart" {
             val f = fulfilmentFixture()
             val runtime = f.start()
@@ -368,11 +407,12 @@ class RunRuntimeComponentSpec :
                         .flatten()
                         .map { it.payload }
                         .filterIsInstance<JsonObject>()
-                        .single { it["statement"] == JsonPrimitive("runtime:obligation-lookup/v1") }
+                        .single { it["statement"] == JsonPrimitive("runtime:obligation-lookup/v2") }
                 lookup["name"] shouldBe JsonPrimitive("_au_obligations")
                 lookup["storage"] shouldBe JsonPrimitive("automation_db")
                 lookup["rows"] shouldBe JsonPrimitive(1)
-                lookup["params"]!!.jsonObject.keys shouldBe setOf("_au_obligation_entity_0")
+                lookup["params"]!!.jsonObject.keys shouldBe
+                    setOf("_au_obligation_entity_0", "_au_obligation_kind_0", "_au_obligation_key_0")
                 runtime.shutdown()
                 val restarted = f.start()
                 try {
@@ -383,6 +423,48 @@ class RunRuntimeComponentSpec :
                 } finally {
                     restarted.shutdown()
                 }
+            } finally {
+                runtime.shutdown()
+                f.close()
+            }
+        }
+
+        "restricted lookup refuses despite deployment opt in before decision completion" {
+            val f =
+                fulfilmentFixture(lookupWarnings = setOf("security_predicate_applied"), transform = { bundle ->
+                    bundle.copy(
+                        deployments =
+                            bundle.deployments.mapValues { (_, d) ->
+                                d.copy(allowRestrictedView = true)
+                            },
+                    )
+                })
+            val runtime = f.start()
+            try {
+                val opened = runtime.sessions.open("release_order", f.request, f.caller)
+                val id = UUID.fromString(opened.response.runId)
+                repeat(2) {
+                    val error = shouldThrow<AutomationException> { runtime.sessions.evaluate(id, f.caller) }
+                    error.code shouldBe ErrorCode.RESTRICTED_VIEW
+                    error.message shouldBe "obligation lookup requires a complete snapshot"
+                }
+                transaction { Batches.selectAll().count() } shouldBe 0L
+                runtime.status.read(id, f.caller).actions shouldBe emptyList()
+                shouldThrow<AutomationException> { runtime.status.batch(id, f.caller) }.code shouldBe
+                    ErrorCode.BATCH_NOT_READY
+                runtime.status.read(id, f.caller).verdict shouldBe null
+                f.reads.get() shouldBe 3
+                // Earlier verified reads remain; the refused lookup never stages narrowed Arrow for matching.
+                transaction { RunOutputs.selectAll().count() } shouldBe 2L
+                runtime.protocol
+                    .read(id, f.caller)
+                    .sections.values
+                    .flatten()
+                    .isNotEmpty() shouldBe true
+                runtime.status
+                    .read(id, f.caller)
+                    .error!!
+                    .jsonObject["code"] shouldBe JsonPrimitive("restricted-view")
             } finally {
                 runtime.shutdown()
                 f.close()
@@ -960,6 +1042,7 @@ private class DurableRuntimeFixture(
     transformBundle: (Bundle) -> Bundle = { it },
     private val queryTable: ((RunRequest) -> Table)? = null,
     private val lookupReads: List<String> = listOf("er.entity.obligation"),
+    private val queryWarnings: (RunRequest) -> Set<String> = { emptySet() },
 ) {
     // Far from the system clock: a queue/session accidentally using wall time would immediately refuse.
     val base = RuntimeClock(Instant.parse("2000-01-01T12:00:00Z"))
@@ -1103,7 +1186,16 @@ private class DurableRuntimeFixture(
                     emit(
                         ResultBatch
                             .newBuilder()
-                            .setBatchRowCount(
+                            .setContext(
+                                request.context.toBuilder().addAllWarnings(
+                                    queryWarnings(request).map {
+                                        org.tatrman.plan.v1.Warning
+                                            .newBuilder()
+                                            .setCode(it)
+                                            .build()
+                                    },
+                                ),
+                            ).setBatchRowCount(
                                 table.rows.size.toLong(),
                             ).setArrowIpc(ByteString.copyFrom(ArrowTables.encode(table)))
                             .build(),

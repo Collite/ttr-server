@@ -4,10 +4,8 @@ package org.tatrman.automation.bundle
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.*
-import org.tatrman.ttr.metadata.graph.ModelGraph
 import org.tatrman.ttr.metadata.model.AutomationAction
 import org.tatrman.ttr.metadata.model.AutomationSchema
-import org.tatrman.ttr.metadata.registry.RegistrySnapshot
 import org.tatrman.ttrp.bundle.RecipeApprovalDependencies
 import org.tatrman.ttrp.emit.recipe.RecipeActionDependencies
 import org.tatrman.ttrp.resolve.ActionResolution
@@ -55,18 +53,39 @@ object ApprovalDependencies {
 
     fun prepare(bundle: Bundle): Bundle {
         val resolver = Resolver(bundle)
-        return bundle.copy(
-            entities =
-                (bundle.model.schemas["er"] as? org.tatrman.ttr.metadata.model.ErSchema)
-                    ?.entities
-                    ?.values
-                    .orEmpty()
-                    .toList(),
-            recipes =
-                bundle.recipes.mapValues { (_, recipe) ->
-                    recipe.copy(coverage = resolver.check(recipe.recipe))
-                },
-        )
+        return bundle
+            .withSharedPreparation()
+            .copy(
+                entities =
+                    (bundle.model.schemas["er"] as? org.tatrman.ttr.metadata.model.ErSchema)
+                        ?.entities
+                        ?.values
+                        .orEmpty()
+                        .toList(),
+                recipes =
+                    bundle.recipes.mapValues { (_, recipe) ->
+                        recipe.copy(coverage = resolver.check(recipe.recipe))
+                    },
+            ).also { prepared ->
+                if (prepared.recipes.values.any { recipe ->
+                        recipe.coverage.actions.values.any {
+                            it.sinks[Bundle.NATIVE] == "obligation" && it.transition != null
+                        }
+                    }
+                ) {
+                    // Warm both successes and refusals while preparing the immutable bundle, outside sessions' lock.
+                    prepared.worlds.keys.forEach { world ->
+                        try {
+                            org.tatrman.automation.apply.PreviewObligationStorage
+                                .resolve(prepared, world)
+                        } catch (
+                            _: org.tatrman.automation.api.AutomationException,
+                        ) {
+                            // cached; Open reports it
+                        }
+                    }
+                }
+            }
     }
 
     /** Explicit recomputation seam for constructing changed immutable snapshots, not a request-path check. */
@@ -78,11 +97,7 @@ object ApprovalDependencies {
     private class Resolver(
         private val bundle: Bundle,
     ) {
-        private val index by lazy {
-            ModelIndex(
-                RegistrySnapshot(bundle.model, ModelGraph.build(bundle.model), bundle.loadedAt, emptyList()),
-            ) { obj -> bundle.packages[obj.sourceFile].orEmpty() }
-        }
+        private val index get() = bundle.prepared.index
         private val groups by lazy {
             (bundle.model.schemas["automation"] as? AutomationSchema)?.actions.orEmpty().groupBy { it.qname.name }
         }

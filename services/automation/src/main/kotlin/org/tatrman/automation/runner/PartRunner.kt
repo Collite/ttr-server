@@ -109,7 +109,8 @@ class PartRunner(
     private val partReads = mutableMapOf<String, Deferred<Unit>>()
     private val outputs = mutableMapOf<String, Deferred<StagedOutput>>()
     private var evaluation: Deferred<EvaluationResult>? = null
-    private var obligationRead: Pair<Set<String>, Deferred<StagedOutput>>? = null
+    private var obligationRead:
+        Pair<Set<org.tatrman.automation.apply.PreviewFulfilment.Identity>, Deferred<StagedOutput>>? = null
 
     @Volatile internal var evaluationRecorded = false
         private set
@@ -212,7 +213,9 @@ class PartRunner(
     }
 
     /** Explicit auxiliary read: the manifest must already authorize the stdlib entity. No fallback door route. */
-    internal suspend fun obligationSnapshot(entities: Set<String>): Table {
+    internal suspend fun obligationSnapshot(
+        identities: Set<org.tatrman.automation.apply.PreviewFulfilment.Identity>,
+    ): Table {
         val island = "_au_obligations"
         val entity = "er.entity.obligation"
         checks.ensureAllowed()
@@ -225,7 +228,7 @@ class PartRunner(
                 ),
             )
         }
-        if (entities.isEmpty() || island in islands) {
+        if (identities.isEmpty() || identities.size > MAX_OBLIGATION_IDENTITIES || island in islands) {
             throw org.tatrman.automation.api.AutomationException(
                 org.tatrman.automation.api.ErrorCode.PREVIEW_UNSUPPORTED,
                 "invalid obligation lookup plan",
@@ -239,18 +242,28 @@ class PartRunner(
         val work =
             lock.withLock {
                 obligationRead?.let { (pinned, work) ->
-                    require(pinned == entities) { "obligation lookup scope changed" }
+                    require(pinned == identities) { "obligation lookup scope changed" }
                     work
                 } ?: scope
                     .async {
                         val started = System.nanoTime()
-                        val parameters =
-                            entities
+                        val parameters = linkedMapOf<String, BoundValue>()
+
+                        fun bindings(
+                            prefix: String,
+                            values: List<String>,
+                        ): String =
+                            values
+                                .distinct()
                                 .sorted()
-                                .mapIndexed { i, name ->
-                                    "_au_obligation_entity_$i" to
-                                        BoundValue("text", name)
-                                }.toMap()
+                                .mapIndexed { i, value ->
+                                    val name = "_au_obligation_${prefix}_$i"
+                                    parameters[name] = BoundValue("text", value)
+                                    ":$name"
+                                }.joinToString(", ")
+                        val entities = bindings("entity", identities.map { it.entity })
+                        val kinds = bindings("kind", identities.map { it.kind })
+                        val keys = bindings("key", identities.map { it.key })
                         val columns =
                             listOf("id", "entity", "key", "kind", "state").map {
                                 org.tatrman.automation.bundle
@@ -258,17 +271,17 @@ class PartRunner(
                             }
                         val sql =
                             "SELECT ob.id, ob.entity, ob.key, ob.kind, ob.state " +
-                                "FROM er.entity.obligation ob WHERE ob.entity IN (" +
-                                parameters.keys.joinToString(", ") { ":$it" } +
-                                ")"
+                                "FROM er.entity.obligation ob WHERE ob.entity IN ($entities) " +
+                                "AND ob.kind IN ($kinds) AND ob.key IN ($keys)"
                         val result =
                             read(
                                 island,
                                 storage,
-                                "runtime:obligation-lookup/v1",
+                                "runtime:obligation-lookup/v2",
                                 emptyList(),
                                 columns,
                                 CandidateScope.Statement(sql, parameters),
+                                requireComplete = true,
                             )
                         staging.put(
                             context.id,
@@ -278,7 +291,7 @@ class PartRunner(
                             IslandExecution(
                                 "output",
                                 island,
-                                "runtime:obligation-lookup/v1",
+                                "runtime:obligation-lookup/v2",
                                 "query",
                                 ProtocolRecorder.parameters(parameters),
                                 result.table.rows.size
@@ -289,7 +302,7 @@ class PartRunner(
                                 storage = storage,
                             ),
                         )
-                    }.also { obligationRead = entities.toSet() to it }
+                    }.also { obligationRead = identities.toSet() to it }
             }
         return readStaged(work.await()).also { checks.ensureAllowed() }
     }
@@ -452,6 +465,7 @@ class PartRunner(
         params: List<String>,
         columns: List<org.tatrman.automation.bundle.ManifestColumn>,
         scoped: CandidateScope.Statement = CandidateScope.Statement(statement(file), emptyMap()),
+        requireComplete: Boolean = false,
     ): ReadResult =
         slots.withPermit {
             checks.ensureAllowed()
@@ -475,7 +489,7 @@ class PartRunner(
                         ),
                     ).also {
                         observedWarnings.merge(island, it.warnings.toSet()) { earlier, later -> earlier + later }
-                        checks.read(island, it)
+                        checks.read(island, it, requireComplete)
                         checks.scopePassed(island)
                     }
             } catch (e: org.tatrman.automation.api.AutomationException) {
@@ -525,6 +539,11 @@ class PartRunner(
             if (value is Number) java.math.BigDecimal(value.toString()).stripTrailingZeros() else value
         val allowed = keys.map { key -> names.map { canonical(key.getValue(it)) } }.toSet()
         return table.copy(rows = table.rows.filter { row -> indices.map { canonical(row[it]) } in allowed })
+    }
+
+    companion object {
+        /** At most 900 bound identity values (entity/kind/key), below the portable 999-parameter ceiling. */
+        internal const val MAX_OBLIGATION_IDENTITIES = 300
     }
 
     override fun close() {

@@ -64,10 +64,12 @@ class PreviewFulfilmentSpec :
             PreviewFulfilment.resolve(legacy, metadata, null).transition(args, snapshot(row()), 7) shouldBe expected
         }
 
-        "lookup distinguishes adjacent large numbers from strings and normalizes numeric spellings" {
-            mapping().transition(args, snapshot(row(key = "{\"line_id\":9007199254740993.0}")), 1)!!.key shouldBe
-                buildJsonObject { put("id", "ob-1") }
+        "lookup uses exact stored key text and distinguishes adjacent numbers and strings" {
+            for (spelling in listOf("1", "1.0", "1E0")) {
+                mapping().identity(args + ("line" to Json.parseToJsonElement(spelling))).key shouldBe "{\"line_id\":1}"
+            }
             for (key in listOf(
+                "{\"line_id\":9007199254740993.0}",
                 "{\"line_id\":9007199254740992}",
                 "{\"line_id\":\"9007199254740993\"}",
                 "{\"wrong\":9007199254740993}",
@@ -76,7 +78,7 @@ class PreviewFulfilmentSpec :
             }
         }
 
-        "composite keys preserve escaped text and ignore object and action column order" {
+        "composite lookup canonicalizes arguments but requires exact stored field order" {
             val original = pinned.getValue("hartland.return_request_line.line_id").entity
             val tenant =
                 original.attributes
@@ -110,12 +112,24 @@ class PreviewFulfilmentSpec :
                 )
             val key =
                 buildJsonObject {
-                    put("tenant", "a\"\\b")
                     put("line_id", 9007199254740993L)
+                    put("tenant", "a\"\\b")
                 }.toString()
             target.transition(args + ("scope" to JsonPrimitive("a\"\\b")), snapshot(row(key = key)), 1)!!.key shouldBe
                 buildJsonObject { put("id", "ob-1") }
             shouldThrow<AutomationException> { target.transition(args, snapshot(row(key = key)), 1) }
+            val reversed =
+                JsonObject(
+                    Json
+                        .parseToJsonElement(key)
+                        .jsonObject
+                        .toList()
+                        .reversed()
+                        .toMap(),
+                ).toString()
+            shouldThrow<AutomationException> {
+                target.transition(args + ("scope" to JsonPrimitive("a\"\\b")), snapshot(row(key = reversed)), 1)
+            }
         }
 
         "one active match wins over closed history while ambiguous active rows and absent rows refuse" {
@@ -135,6 +149,40 @@ class PreviewFulfilmentSpec :
                 shouldThrow<AutomationException> { mapping().transition(args, data, 1) }
             }
             mapping().transition(args + ("to" to JsonPrimitive("open")), snapshot(row()), 1) shouldBe null
+        }
+
+        "cross-product rows never match another requested identity" {
+            val data =
+                snapshot(row(), listOf("other", "er.entity.return_request_line", "{\"line_id\":42}", "payment", "open"))
+            data.find(
+                PreviewFulfilment.Identity(
+                    "er.entity.return_request_line",
+                    "{\"line_id\":9007199254740993}",
+                    "payment",
+                ),
+            ) shouldBe
+                emptyList()
+            data.find(
+                PreviewFulfilment.Identity("er.entity.return_request_line", "{\"line_id\":42}", "inbound"),
+            ) shouldBe
+                emptyList()
+        }
+
+        "malformed cross-product history is ignored but malformed requested rows refuse" {
+            val requested =
+                setOf(
+                    PreviewFulfilment.Identity(
+                        "er.entity.return_request_line",
+                        "{\"line_id\":9007199254740993}",
+                        "inbound",
+                    ),
+                )
+            val unrelated = listOf("old", "er.entity.return_request_line", "{\"line_id\":42}", "inbound", "unknown")
+            val data = PreviewFulfilment.Snapshot(Table(columns, listOf(row(), unrelated)), requested)
+            mapping().transition(args, data, 1)!!.key shouldBe buildJsonObject { put("id", "ob-1") }
+            shouldThrow<AutomationException> {
+                PreviewFulfilment.Snapshot(Table(columns, listOf(row(state = "unknown"))), requested)
+            }
         }
 
         "malformed snapshots cannot supply a match" {

@@ -13,7 +13,6 @@ import org.tatrman.automation.api.scalar
 import org.tatrman.automation.runner.Table
 import org.tatrman.ttr.metadata.model.AutomationAction
 import org.tatrman.ttrp.resolve.TargetResolution
-import java.math.BigDecimal
 
 /** Resolves a business key to a journalled obligation; never manufactures an obligation ID. */
 internal class PreviewFulfilment private constructor(
@@ -30,18 +29,29 @@ internal class PreviewFulfilment private constructor(
         if (names != expectedTypes.keys) unsupported()
     }
 
+    data class Identity(
+        val entity: String,
+        val key: String,
+        val kind: String,
+    )
+
+    fun identity(arguments: Map<String, JsonElement>): Identity {
+        validateArguments(arguments.keys)
+        val key = target.key(arguments.filterKeys { it in target.expectedTypes })
+        return Identity(entity, ObligationKeys.canonicalText(key), text(arguments["kind"]))
+    }
+
     fun transition(
         arguments: Map<String, JsonElement>,
         snapshot: Snapshot,
         seq: Int,
     ): ApplyRow? {
         validateArguments(arguments.keys)
-        val key = target.key(arguments.filterKeys { it in target.expectedTypes })
-        val kind = text(arguments["kind"])
+        val identity = identity(arguments)
         val transition = requireNotNull(action.transition)
         val to = transition.to ?: text(arguments[transition.toColumn])
         if (to !in STATES || state.attribute.states.isNotEmpty() && to !in state.attribute.states) unsupported()
-        val found = snapshot.find(entity, key, kind)
+        val found = snapshot.find(identity)
         val active = found.filter { it.state in ACTIVE }
         if (active.size > 1) unsupported()
         val current =
@@ -70,6 +80,7 @@ internal class PreviewFulfilment private constructor(
 
     class Snapshot(
         table: Table,
+        requested: Set<Identity>? = null,
     ) {
         data class Obligation(
             val id: String,
@@ -77,12 +88,6 @@ internal class PreviewFulfilment private constructor(
             val key: JsonObject,
             val kind: String,
             val state: String,
-        )
-
-        private data class Identity(
-            val entity: String,
-            val key: Map<String, Any>,
-            val kind: String,
         )
 
         private val indexed: Map<Identity, List<Obligation>>
@@ -96,8 +101,16 @@ internal class PreviewFulfilment private constructor(
             val ids = mutableSetOf<String>()
             indexed =
                 table.rows
-                    .map { row ->
+                    .mapNotNull { row ->
                         if (row.size != 5) unsupported()
+                        val identity =
+                            Identity(
+                                row[1] as? String ?: unsupported(),
+                                row[2] as? String ?: unsupported(),
+                                row[3] as? String ?: unsupported(),
+                            )
+                        // IN predicates may return cross-product identities; they are not part of this request.
+                        if (requested != null && identity !in requested) return@mapNotNull null
                         val values = row.map { (it as? String)?.takeIf(String::isNotBlank) ?: unsupported() }
                         if (!ids.add(values[0]) || values[4] !in STATES) unsupported()
                         val key =
@@ -108,16 +121,13 @@ internal class PreviewFulfilment private constructor(
                             ) {
                                 unsupported()
                             }
-                        canonical(key)
-                        Obligation(values[0], values[1], key, values[3], values[4])
-                    }.groupBy { Identity(it.entity, canonical(it.key), it.kind) }
+                        ObligationKeys.canonicalText(key) // validate once; stored spelling must match exactly
+                        identity to
+                            Obligation(values[0], values[1], key, values[3], values[4])
+                    }.groupBy({ it.first }, { it.second })
         }
 
-        fun find(
-            entity: String,
-            key: JsonObject,
-            kind: String,
-        ): List<Obligation> = indexed[Identity(entity, canonical(key), kind)].orEmpty()
+        fun find(identity: Identity): List<Obligation> = indexed[identity].orEmpty()
     }
 
     /** Equal effects share one row; opposing transitions of an existing ID cannot form a preview. */
@@ -164,27 +174,8 @@ internal class PreviewFulfilment private constructor(
             ) {
                 unsupported()
             }
-            val entity = metadata.entities.singleOrNull { it.qname.dotted() == "er.entity.obligation" } ?: unsupported()
-            if (!entity.sourceFile.startsWith("/automation-stdlib/") ||
-                listOf("id", "entity", "key", "kind", "state").any { name ->
-                    entity.attributes.singleOrNull { it.qname.name.substringAfterLast('.') == name }?.type != "text"
-                }
-            ) {
-                unsupported()
-            }
-            val attribute =
-                entity.attributes.singleOrNull { it.qname.name.substringAfterLast('.') == "state" && it.type == "text" }
-                    ?: unsupported()
-            val key = entity.attributes.filter { it.isKey }
-            if (key.size != 1 ||
-                key
-                    .single()
-                    .qname.name
-                    .substringAfterLast('.') != "id" ||
-                key.single().type != "text"
-            ) {
-                unsupported()
-            }
+            val entity = ObligationSchema.resolve(metadata)
+            val attribute = entity.attributes.single { it.qname.name.substringAfterLast('.') == "state" }
             val resolved =
                 if (pinned != null) {
                     pinned[transition.attribute] ?: unsupported()
@@ -222,26 +213,6 @@ internal class PreviewFulfilment private constructor(
                 }
                 input.endStructure(descriptor)
                 return JsonObject(values)
-            }
-        }
-
-        private fun canonical(key: JsonObject): Map<String, Any> {
-            if (key.isEmpty()) unsupported()
-            return key.mapValues { (_, value) ->
-                val primitive = value as? JsonPrimitive ?: unsupported()
-                when {
-                    primitive == JsonNull -> unsupported()
-                    primitive.isString -> primitive.content
-                    primitive.booleanOrNull != null -> primitive.boolean
-                    else ->
-                        try {
-                            BigDecimal(primitive.content).stripTrailingZeros()
-                        } catch (
-                            _: Exception,
-                        ) {
-                            unsupported()
-                        }
-                }
             }
         }
 

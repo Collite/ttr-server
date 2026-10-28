@@ -166,6 +166,10 @@ class Open(
         val sync = program.budgetSync?.duration() ?: syncDefault
         val batch = program.budgetBatch?.duration() ?: batchDefault
         require(!sync.isNegative && !sync.isZero) { "invalid sync budget" }
+        val fulfilment = pinnedActions.values.any { it.sinks[Bundle.NATIVE] == "obligation" && it.transition != null }
+        if (fulfilment && "er.entity.obligation" !in recipe.recipe.objectsRead) {
+            throw AutomationException(ErrorCode.OUT_OF_SCOPE_READ, "obligation lookup requires declared ER scope")
+        }
         val context =
             RunContext(
                 UUID(0, 0),
@@ -182,11 +186,7 @@ class Open(
                 detailLimits = detailLimits(recipe.recipe, pinnedActions, detailLimit),
                 syncBudget = sync,
                 obligationStorage =
-                    if (pinnedActions.values.any {
-                            it.sinks[Bundle.NATIVE] == "obligation" &&
-                                it.transition != null
-                        }
-                    ) {
+                    if (fulfilment) {
                         org.tatrman.automation.apply.PreviewObligationStorage
                             .resolve(bundle, world.name)
                     } else {
@@ -197,6 +197,7 @@ class Open(
                         pinnedActions,
                         bundle.entities,
                         coverage.targets,
+                        { obj -> bundle.prepared.index.isAutomationStdlib(obj) },
                     ),
             )
         if (port.keys != null &&

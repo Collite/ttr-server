@@ -86,7 +86,24 @@ data class Bundle(
     val packages: Map<String, String> = emptyMap(),
     /** Entity list pinned once alongside the loaded coverage results. */
     val entities: List<org.tatrman.ttr.metadata.model.Entity> = emptyList(),
+    private val preparation: BundlePreparation = BundlePreparation(model, packages, loadedAt),
 ) {
+    // Data-class copies may replace the model/package map. Never carry their old cached outcomes forward.
+    internal val prepared by lazy {
+        if (preparation.matches(
+                model,
+                packages,
+                loadedAt,
+            )
+        ) {
+            preparation
+        } else {
+            BundlePreparation(model, packages, loadedAt)
+        }
+    }
+
+    internal fun withSharedPreparation(): Bundle = copy(preparation = prepared)
+
     /** The world that declares [deployment]. */
     fun worldOf(deployment: WorldDeployment): WorldScope? = deploymentWorlds[deployment.qname.name]?.let { worlds[it] }
 

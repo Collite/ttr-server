@@ -51,6 +51,40 @@ class PreviewObligationStorageSpec :
             world.storages.single { it.qname.name == "erp_db" }.hosts shouldBe listOf("hartland")
         }
 
+        "prepared bundle caches successful and refused placement and refresh gets a new cache" {
+            val ready =
+                org.tatrman.automation.bundle.ApprovalDependencies
+                    .prepare(bundle)
+            val cached = ready.prepared.obligationPlacements.getValue("demo")
+            repeat(2) { PreviewObligationStorage.resolve(ready, "demo") shouldBe "automation_db" }
+            ready.prepared.obligationPlacements.getValue("demo") shouldBe cached
+            (ready.prepared.index === bundle.prepared.index) shouldBe true
+            val invalid =
+                org.tatrman.automation.bundle.ApprovalDependencies.prepare(
+                    changed(
+                        world.copy(
+                            storages =
+                                world.storages - storage,
+                        ),
+                    ),
+                )
+            val refused =
+                invalid.prepared.obligationPlacements
+                    .getValue("demo")
+                    .exceptionOrNull()
+            repeat(2) {
+                val error = shouldThrow<AutomationException> { PreviewObligationStorage.resolve(invalid, "demo") }
+                (error === refused) shouldBe true
+                error.code shouldBe ErrorCode.PREVIEW_UNSUPPORTED
+            }
+            (ready.prepared === invalid.prepared) shouldBe false
+            val refreshed =
+                org.tatrman.automation.bundle.ApprovalDependencies
+                    .prepare(changed(world))
+            PreviewObligationStorage.resolve(refreshed, "demo") shouldBe "automation_db"
+            (refreshed.prepared === invalid.prepared) shouldBe false
+        }
+
         "missing ambiguous or unbound-engine placements refuse without choosing a default storage" {
             for (value in listOf(
                 world.copy(storages = world.storages - storage),

@@ -16,6 +16,12 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+- Automation fulfilment previews use a bounded v2 lookup of selected entity/kind/canonical-key identities,
+  refuse security-narrowed obligation snapshots even with restricted decision views enabled, and reject
+  missing obligation read scope before claiming a run. Placement outcomes are cached per bundle/world;
+  insert and fulfil use the same stdlib schema check. Stored obligation keys must use canonical text.
+
+
 - **automation — declared-package world validation.** Adopt the internal 0.18.14 toolchain and pass
   complete loader packages to the compiler's resolver at Open. Obligation placement uses the actual pinned
   world, replacing the temporary host-list projection. Unknown/partial hosts and missing package scope

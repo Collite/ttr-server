@@ -52,17 +52,23 @@ class Guards(
     fun read(
         island: String,
         result: ReadResult,
+        requireComplete: Boolean = false,
     ) {
         ensureAllowed()
-        if (context.recipe.recipe.roles
+        if (requireComplete ||
+            context.recipe.recipe.roles
                 ?.decision != null
         ) {
             val restricted = "security_predicate_applied" in result.warnings
-            if (restricted && !context.allowRestrictedView) {
+            if (restricted && (requireComplete || !context.allowRestrictedView)) {
                 refuse(
                     AutomationException(
                         ErrorCode.RESTRICTED_VIEW,
-                        "a decision read was narrowed by security",
+                        if (requireComplete) {
+                            "obligation lookup requires a complete snapshot"
+                        } else {
+                            "a decision read was narrowed by security"
+                        },
                         detail(island),
                     ),
                     island,

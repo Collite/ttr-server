@@ -35,6 +35,49 @@ class PreviewObligationSpec :
                 "due" to JsonPrimitive("2026-11-06"),
             )
 
+        "insert and fulfilment share exact canonical numeric and composite key text" {
+            val mapping = PreviewObligation.resolve(action, metadata, pinned)
+            for (spelling in listOf("1", "1.0", "1E0")) {
+                val value = Json.parseToJsonElement(spelling)
+                val row = mapping.insert(1, args + ("line" to value), context)
+                row.row!!
+                    .getValue("key")
+                    .jsonPrimitive.content shouldBe
+                    ObligationKeys.canonicalText(buildJsonObject { put("line_id", value) })
+                row.row!!
+                    .getValue("key")
+                    .jsonPrimitive.content shouldBe "{\"line_id\":1}"
+            }
+            ObligationKeys.canonicalText(Json.parseToJsonElement("{\"b\":1.0,\"a\":2E0}").jsonObject) shouldBe
+                "{\"a\":2,\"b\":1}"
+            for (key in listOf("{}", "{\"a\":null}", "{\"a\":{}}", "{\"a\":[]}")) {
+                shouldThrow<AutomationException> {
+                    ObligationKeys.canonicalText(
+                        Json.parseToJsonElement(key).jsonObject,
+                    )
+                }.code shouldBe
+                    ErrorCode.PREVIEW_UNSUPPORTED
+            }
+        }
+
+        "insert refuses a non-stdlib obligation just like fulfilment" {
+            val changed =
+                metadata.copy(
+                    entities =
+                        metadata.entities.map {
+                            if (it.qname.dotted() ==
+                                "er.entity.obligation"
+                            ) {
+                                it.copy(sourceFile = "/custom/obligation.ttrm")
+                            } else {
+                                it
+                            }
+                        },
+                )
+            shouldThrow<AutomationException> { PreviewObligation.resolve(action, changed, pinned) }.code shouldBe
+                ErrorCode.PREVIEW_UNSUPPORTED
+        }
+
         "incomplete pins never fall back to a matching legacy key" {
             shouldThrow<AutomationException> { PreviewObligation.resolve(action, metadata, emptyMap()) }.code shouldBe
                 ErrorCode.PREVIEW_UNSUPPORTED

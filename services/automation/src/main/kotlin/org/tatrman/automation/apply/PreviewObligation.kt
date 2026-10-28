@@ -11,7 +11,6 @@ import org.tatrman.automation.runner.RunContext
 import org.tatrman.ttr.metadata.model.AutomationAction
 import org.tatrman.ttr.metadata.model.AutomationColumn
 import org.tatrman.ttrp.resolve.TargetResolution
-import java.math.BigDecimal
 import java.time.ZoneOffset
 import java.util.UUID
 
@@ -33,18 +32,7 @@ internal class PreviewObligation private constructor(
     ): ApplyRow {
         validateArguments(arguments.keys)
         val key = target.key(arguments.filterKeys { it in target.expectedTypes })
-        // Normalize key ordering and exact numeric spellings before naming an obligation. No Double conversion.
-        val canonicalKey =
-            JsonObject(
-                key.toSortedMap().mapValues { (_, value) ->
-                    val primitive = value.jsonPrimitive
-                    if (primitive.isString || primitive.booleanOrNull != null) {
-                        primitive
-                    } else {
-                        JsonUnquotedLiteral(BigDecimal(primitive.content).stripTrailingZeros().toPlainString())
-                    }
-                },
-            )
+        val canonicalKey = ObligationKeys.canonicalText(key)
         val kind = arguments["kind"] as? JsonPrimitive ?: unsupported()
         if (!kind.isString || kind.content.isBlank()) unsupported()
         val due = arguments["due"]?.takeUnless { it == JsonNull } ?: unsupported()
@@ -55,7 +43,7 @@ internal class PreviewObligation private constructor(
                     JsonPrimitive("automation/obligation-preview/v1"),
                     scalar(context.id),
                     scalar(entity),
-                    canonicalKey,
+                    Json.parseToJsonElement(canonicalKey),
                     kind,
                 ),
             )
@@ -67,7 +55,7 @@ internal class PreviewObligation private constructor(
                 "recipe" to scalar(context.recipe.recipe.name),
                 "run" to scalar(context.id),
                 "entity" to scalar(entity),
-                "key" to scalar(canonicalKey.toString()),
+                "key" to scalar(canonicalKey),
                 "kind" to kind,
                 "due" to due,
                 "state" to scalar("open"),
@@ -97,7 +85,7 @@ internal class PreviewObligation private constructor(
     }
 
     companion object {
-        private val FIELDS =
+        internal val FIELDS =
             linkedMapOf(
                 "id" to "text",
                 "recipe" to "text",
@@ -136,7 +124,7 @@ internal class PreviewObligation private constructor(
                     metadata.entities,
                     pinned,
                 )
-            val entity = metadata.entities.singleOrNull { it.qname.dotted() == "er.entity.obligation" } ?: unsupported()
+            val entity = ObligationSchema.resolve(metadata)
             val columns = FIELDS.keys.map { AutomationColumn(it, "obligation.$it") }
             val targets =
                 columns.associate { column ->

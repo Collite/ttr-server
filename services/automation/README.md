@@ -421,15 +421,32 @@ packages and an incomplete provider refuse before a claim. Writable/engine/overl
 in the resolver input. Missing, ambiguous or invalid placement refuses. Query still requires an explicit
 world/storage alias. Calendar source reads and graph execution remain a separate integration stage.
 
-A selected transition requires `er.entity.obligation` in the pinned manifest's `objectsRead`. The runner
-issues one shared, parameterized read of id/entity/key/kind/state, constrained to resolved business entities.
-It uses the pinned model, run identity, read ceiling, timeout, scope preflight and restricted-view guards.
-The template is identified as `runtime:obligation-lookup/v1` in protocol source evidence. Its verified Arrow
-snapshot is journalled as `_au_obligations.rows`, retained with the run, and reused by retries. It is an
-internal snapshot, not a new manifest output/download route. Empty selections issue no lookup.
+Open refuses a pinned fulfilment action unless `er.entity.obligation` is in the manifest's `objectsRead`,
+before placement, run claim or idempotency allocation. Evaluate checks this scope again. Until Core#319 is
+released and adopted, the published fixture retains its authored obligation JOIN to declare this read.
+Placement successes and refusals are prepared once per immutable bundle/world, sharing coverage's model
+snapshot and index. Refreshed bundles have their own cache. Both insert and fulfil require the same stdlib
+obligation schema.
 
-Matching uses the canonical entity qname and exact typed JSON-object key stored by insert previews, plus
-kind. Legacy bare entity names/scalar key text do not resolve through inference. One active obligation
+After validating/projecting all wirings, the runner collects the selected (entity, canonical key text, kind)
+identities. It issues one parameterized id/entity/key/kind/state read, filtered by the requested entities,
+kinds and exact key text. Matching in memory requires the exact triple, so cross-product rows cannot match
+another requested identity. At most **300 distinct identities** are allowed (at most **900 bound values**,
+below a portable 999-parameter limit); excess refuses `PREVIEW_UNSUPPORTED` before any lookup, without
+splitting or truncating. No selected fulfilment means no auxiliary read.
+
+The lookup uses the pinned model, identity, ceiling, timeout and scope preflight. A security-narrowed lookup
+always refuses `RESTRICTED_VIEW` with guard evidence, including when `allow_restricted_view` permits narrowed
+decision reads. Truncation and scope guards still apply. The template is `runtime:obligation-lookup/v2` in
+protocol evidence. Verified Arrow is journalled as `_au_obligations.rows`, retained with the run, and reused
+by retries/replans, including failure; a different identity set on replan is an invariant failure. This is an
+internal snapshot, not a new manifest output/download route.
+
+Insert and lookup share canonical key text: sorted JSON object fields and exact numeric normalization
+(`BigDecimal.stripTrailingZeros().toPlainString()`), with no null or structured members. Strings remain
+distinct from numbers. Stored keys must equal this text exactly; a different field order, whitespace or
+numeric spelling is not found and refuses as missing. Legacy bare entity names/scalar keys are not inferred.
+One active obligation
 (open/overdue/reopened) wins over closed history; multiple active matches, missing matches, invalid values
 or malformed snapshots refuse. If no active row exists, only matching history entirely in the requested
 state is a silent self transition. Equal effects share one row; opposing effects on one ID refuse. Proposals
@@ -539,7 +556,7 @@ physical primary-key conflict transactionally, without overwriting/skipping/rege
 queries or writes the target model to allocate an ID. The evidence format from 0.18.9, unchanged through 0.18.11, covers the authored source.
 
 Hartland's authored default mappings/bundles are staged in #122; deployed adoption remains pending.
-Obligation lookup/fulfilment and calendar/column-date synthesis remain pending. P2 must validate actual physical bounds and writable policies
+Calendar/column-date synthesis remains pending. P2 must validate actual physical bounds and writable policies
 before applying anything. H-3/H-5 are not certified by these defaults. Selected unsupported operations return
 `501 preview-unsupported`. P2/P3
 retain dry-run task/delivery rows and performed action outcomes. Durable close/sealing and local staging retention are described below. Application mounting is
