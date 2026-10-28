@@ -144,8 +144,8 @@ fun Route.metadataReadRoutes(
         }
 
         val references =
-            catalog.edges
-                .filter { it.from == obj.qname }
+            catalog.outgoingByFrom[obj.qname]
+                .orEmpty()
                 .map { it.to }
                 .distinct()
                 .sorted()

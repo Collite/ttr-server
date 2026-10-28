@@ -20,10 +20,13 @@ outside this repo could notice is in.
   routes now include loaded md objects, dimension membership, cubelet grain/measures and hierarchy
   levels. Logical-to-physical er2db/md2db edges use the existing `MAPS_TO` type. Graph scopes omit
   edges with excluded or unresolved endpoints. Valid typed binding endpoints take precedence over
-  definition-graph fallbacks; ambiguous identities are omitted and diagnosed. Md attributes retain
-  localized labels, source paths match db/er paths, and hierarchy nodes expose ordered `levels`.
-  Colliding md ids retain the first source-file declaration with a warning. The complete projection
-  is cached at snapshot publication. Viewer rendering remains a separate change.
+  definition-graph fallbacks; ambiguous identities and duplicate binding ids are omitted and diagnosed.
+  Source-precedence copies retain bindings when their model/namespace provenance matches. Md attributes
+  retain localized labels, source paths match db/er paths, and hierarchy nodes expose ordered `levels`.
+  Colliding md ids retain the library-selected declaration; warnings name kept/dropped sources.
+  Empty hierarchy levels are omitted. The complete projection and outgoing-edge index are cached
+  after package publication, including startup priming under the registry swap monitor. Viewer rendering
+  remains a separate change.
 
 - **metadata/fuzzy/resolver — compiled lexicon HTTP channel (#273).** `GET /model/lexicon.tar.zst`
   serves exact Git-commit archive bytes with SHA-plus-blob ETags and conditional 304 responses.

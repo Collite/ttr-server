@@ -57,7 +57,8 @@ requested locale → plain form → `en` → first by language code.
 The index, graph and object routes also serve the loaded `md` definitions: domains, dimensions and
 nested attributes, maps, hierarchies, measures and cubelets. They use the same five node fields above,
 with `schema: "md"`, library canonical qnames (for example `md.dimension.Buyer.id` and
-`md.cubelet.purchases`), the file's declared or inferred package, and optional authored descriptions.
+`md.cubelet.purchases`), the file's declared or inferred package, optional authored descriptions,
+attribute `displayLabel` and ordered hierarchy `levels`.
 The index includes `md` when present; its object count covers the same objects as the unfiltered graph.
 Object detail returns the same node, its source file and its outgoing references.
 
@@ -72,15 +73,17 @@ Edges retain `{ from, to, type }` and the existing four type literals:
 
 For each binding, the typed query-path endpoints win when both are catalog objects; otherwise the
 library's definition graph supplies the fallback. Ambiguous export identities and duplicate binding ids
-are omitted from that fallback and diagnosed once per model version. Md ids carry no package or cubelet
+are omitted and diagnosed once per model version. Md ids carry no package or cubelet
 scope: two declarations with one id (including same-named inline measures in two cubelets) are served as
-one node, the first by source file path without source priority, with a warning once per model version.
+one node selected by the library's definition order (root-relative path, then source priority on ties).
+A warning once per model version names the kept declaration and the dropped declarations.
 The shared binding resolver and scoped md identities are tracked in [ttr-core#321](https://github.com/Collite/ttr-core/issues/321)
 and [ttr-core#322](https://github.com/Collite/ttr-core/issues/322).
 
 The library's captured definition graph supplies md objects and resolves references; no files are read
-or parsed on HTTP requests. The whole projection, graph and diagnostics are cached by snapshot identity
-in a registry listener after package-index publication, with initial-load priming. Old/in-flight requests
+or parsed on HTTP requests. The whole projection and diagnostics are cached by snapshot identity
+in a registry listener after package-index publication, with initial-load priming under the registry swap monitor.
+Old/in-flight requests
 can build uncached without evicting the current entry. Failed builds are never cached. Disk edits become
 visible only through a registry swap. Unresolved export stubs are omitted,
 and every graph scope keeps edges only when both endpoints survive its filters. Thus cross-schema

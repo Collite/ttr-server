@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package org.tatrman.metadata.read
 
-import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.add
+import kotlinx.serialization.json.putJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonObject
@@ -34,10 +34,15 @@ internal data class ReadEdge(
     val type: String,
 )
 
+internal data class MdCollision(
+    val kept: String,
+    val dropped: List<String>,
+)
+
 internal data class ProjectionDiagnostics(
     val ambiguousIds: Map<String, List<String>>,
     val omittedEdges: Int,
-    val collidingMdIds: Map<String, List<String>>,
+    val collidingMdIds: Map<String, MdCollision>,
 ) {
     val hasWarnings: Boolean get() = ambiguousIds.isNotEmpty() || collidingMdIds.isNotEmpty()
 }
@@ -45,9 +50,10 @@ internal data class ProjectionDiagnostics(
 internal data class StructuralReadProjection(
     val objects: Map<String, ReadObject>,
     val edges: List<ReadEdge>,
-    val graph: DefinitionGraph,
     val diagnostics: ProjectionDiagnostics,
-)
+) {
+    val outgoingByFrom = edges.groupBy { it.from }
+}
 
 private val mdReferences = setOf("grain", "measures", "level")
 private val physicalBindings = setOf("er2db", "md2db")
@@ -55,7 +61,8 @@ private val log = LoggerFactory.getLogger(StructuralReadProjectionCache::class.j
 
 /**
  * HTTP DTO adaptation only; reference resolution remains library-owned. Register after
- * PackageIndex.commitOnSwap, then prime: the initial load can publish before routes are installed.
+ * PackageIndex.commitOnSwap. Register and prime under the registry monitor: this depends on
+ * MetadataRegistry.swap being @Synchronized through all listeners, including package publication.
  * Old/in-flight reads build without caching, so they cannot evict the current snapshot's projection.
  */
 internal class StructuralReadProjectionCache(
@@ -65,12 +72,14 @@ internal class StructuralReadProjectionCache(
     @Volatile
     private var cached: Pair<RegistrySnapshot, StructuralReadProjection>? = null
 
-    // Only versions with diagnostics are retained; requests never log or mutate this set.
-    private val warnedVersions = mutableSetOf<String>()
+    @Volatile
+    private var lastWarnedVersion: String? = null
 
     init {
-        registry.addListener(::published)
-        registry.read()?.let(::published)
+        synchronized(registry) {
+            registry.addListener(::published)
+            registry.read()?.let(::published)
+        }
     }
 
     @Synchronized
@@ -87,10 +96,11 @@ internal class StructuralReadProjectionCache(
         if (snapshot !== registry.read()) return
         cached = snapshot to result
         val diagnostics = result.diagnostics
-        if (diagnostics.hasWarnings && warnedVersions.add(snapshot.model.version.value)) {
+        if (diagnostics.hasWarnings && lastWarnedVersion != snapshot.model.version.value) {
+            lastWarnedVersion = snapshot.model.version.value
             log.warn(
-                "Structural read projection version {}: omitted {} ambiguous definition edges; " +
-                    "ambiguous ids {} {}; colliding md ids {} {} (first source file wins, without priority)",
+                "Structural read projection version {}: omitted {} binding/definition edges; " +
+                    "ambiguous ids {} {}; colliding md ids {} {}",
                 snapshot.model.version.value,
                 diagnostics.omittedEdges,
                 diagnostics.ambiguousIds.size,
@@ -132,10 +142,18 @@ internal class StructuralReadProjectionCache(
         val mdCollisions =
             declarations
                 .filterValues { entries -> entries.count { it.model == "md" } > 1 }
-                .mapValues { (_, entries) -> entries.map { it.def.source.file }.distinct().sorted() }
+                .mapValues { (_, entries) ->
+                    MdCollision(
+                        entries
+                            .first()
+                            .def.source.file,
+                        entries.drop(1).map { it.def.source.file },
+                    )
+                }
 
         // Export ids classify ER objects by kind; catalog ids keep the file's namespace. Join every
-        // declaration before deduplication. A partial or conflicting join must never select a survivor.
+        // declaration before deduplication. A precedence copy may join only the winning source,
+        // but declarations with different model/namespace provenance remain ambiguous.
         val typedByDeclaration = typedObjects.groupBy { Triple(it.sourceFile, it.kind, it.qname.name) }
         val joins =
             declarations.mapValues { (_, entries) ->
@@ -152,7 +170,27 @@ internal class StructuralReadProjectionCache(
                         ]?.singleOrNull()?.qname?.dotted()
                     }.toSet()
             }
-        val ambiguous = joins.filterValues { it.size > 1 }.keys.toMutableSet()
+        val ambiguous =
+            joins
+                .filter { (id, matches) ->
+                    val joined = matches.filterNotNull().toSet()
+                    joined.size >= 2 ||
+                        (
+                            joined.size == 1 &&
+                                declarations
+                                    .getValue(id)
+                                    .map { it.fileModel to it.fileNamespace }
+                                    .distinct()
+                                    .size > 1
+                        )
+                }.keys
+                .toMutableSet()
+        val typedBindingCounts =
+            snapshot.model.mappings
+                .filter { it.mappingSource == MappingSource.Explicit }
+                .groupingBy { "${it.qname.namespace}.${it.qname.name}" }
+                .eachCount()
+        ambiguous += typedBindingCounts.filterValues { it > 1 }.keys
         val duplicateBindings =
             declarations
                 .filterValues { entries ->
@@ -163,10 +201,13 @@ internal class StructuralReadProjectionCache(
         fun catalogId(id: String): String? =
             when {
                 id in ambiguous -> null
-                else -> joins[id]?.singleOrNull() ?: id
+                else -> joins[id]?.filterNotNull()?.singleOrNull() ?: id
             }
 
-        for (node in graph.nodes.filter { it.model == "md" && !it.external }) {
+        val mdNodes = graph.nodes.filter { it.model == "md" && !it.external }
+        val mdNodeIds = mdNodes.mapNotNull { catalogId(it.id) }.toSet()
+        val levelsByHierarchy = graph.edges.filter { it.kind == "level" }.groupBy { it.from }
+        for (node in mdNodes) {
             val entry = mdDefinitions.getValue(node.id)
             val body =
                 buildJsonObject {
@@ -186,25 +227,21 @@ internal class StructuralReadProjectionCache(
                             }
                         }
                     }
+                    if (node.kind == "hierarchy") {
+                        val levels =
+                            levelsByHierarchy[node.id]
+                                .orEmpty()
+                                .sortedBy { (it.props["order"] as? Number)?.toInt() }
+                                .mapNotNull { catalogId(it.to) }
+                                .filter { it in mdNodeIds }
+                        if (levels.isNotEmpty()) putJsonArray("levels") { levels.forEach { add(it) } }
+                    }
                     if (!node.displayLabel.isNullOrEmpty()) {
                         putJsonObject("displayLabel") { node.displayLabel.orEmpty().forEach { (k, v) -> put(k, v) } }
                     }
                 }
             objects[node.id] = ReadObject(node.id, "md", entry.pkg, entry.def.source.file, body)
         }
-        // Preserve authored hierarchy order independently of the structural edge sort order.
-        val levelsByHierarchy = graph.edges.filter { it.kind == "level" }.groupBy { it.from }
-        for ((id, obj) in objects.toMap()) {
-            if (id !in mdDefinitions || mdDefinitions.getValue(id).kind != "hierarchy") continue
-            val levels =
-                levelsByHierarchy[id]
-                    .orEmpty()
-                    .sortedBy { (it.props["order"] as? Number)?.toInt() }
-                    .mapNotNull { catalogId(it.to) }
-                    .filter { it in objects }
-            objects[id] = obj.copy(body = JsonObject(obj.body + ("levels" to JsonArray(levels.map(::JsonPrimitive)))))
-        }
-
         val edges = linkedSetOf<ReadEdge>()
         snapshot.graph.forEachEdge { edge ->
             val from =
@@ -218,7 +255,14 @@ internal class StructuralReadProjectionCache(
             if (from != null && to != null) edges += ReadEdge(from, to, edge.type.toWire())
         }
         val typedResolved = mutableSetOf<String>()
+        var omitted = 0
+        // Duplicate explicit ids cannot choose a logical target. Preserve the typed graph wire above.
         for (mapping in snapshot.model.mappings) {
+            val key = "${mapping.qname.namespace}.${mapping.qname.name}"
+            if (mapping.mappingSource == MappingSource.Explicit && typedBindingCounts.getValue(key) > 1) {
+                omitted++
+                continue
+            }
             val endpoints =
                 when (mapping) {
                     is Er2DbEntityMapping ->
@@ -240,10 +284,9 @@ internal class StructuralReadProjectionCache(
             if (from !in objects || to !in objects) continue
             edges += ReadEdge(from, to, "MAPS_TO")
             if (mapping.mappingSource == MappingSource.Explicit) {
-                typedResolved += "${mapping.qname.namespace}.${mapping.qname.name}"
+                typedResolved += key
             }
         }
-        var omitted = 0
         for (edge in graph.edges) {
             val type =
                 when {
@@ -270,7 +313,6 @@ internal class StructuralReadProjectionCache(
         return StructuralReadProjection(
             objects,
             edges.filter { it.from in objects && it.to in objects },
-            graph,
             ProjectionDiagnostics(
                 ambiguous.associateWith { id ->
                     declarations[id]
