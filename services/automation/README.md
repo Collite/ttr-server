@@ -721,7 +721,7 @@ logical storage, columns and `runtime:calendar-snapshot/v1` template in its prot
 Evaluation performs one governed calendar read using the pinned model, identity, read ceiling, timeout
 and allowed ER scope. The date and bound working-day flag are the only selected attributes. The snapshot
 must be complete: security narrowing refuses even with `allow_restricted_view`; a reached ceiling or
-validator cap also refuses. Verified Arrow is journalled as `_au_calendar.rows`. Concurrent consumers and
+validator cap also refuses. Verified Arrow is journalled as `_au_calendar.rows` (or an unused numbered private island when that name is authored). Concurrent consumers and
 retries share the same successful snapshot or failure; no auxiliary output/download API is introduced.
 A refusal cannot publish a decision, batch or action completion.
 

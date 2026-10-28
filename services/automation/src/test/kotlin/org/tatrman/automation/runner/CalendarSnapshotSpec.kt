@@ -71,6 +71,49 @@ class CalendarSnapshotSpec :
             }
         }
 
+        "an authored calendar island and the private snapshot keep separate immutable outputs" {
+            coroutineScope {
+                val authored =
+                    ManifestIsland(
+                        "_au_calendar",
+                        outputs =
+                            listOf(
+                                ManifestOutput("rows", "authored.sql", storage = "erp_db", columns = table.columns),
+                            ),
+                    )
+                val loaded =
+                    recipe.copy(
+                        manifest =
+                            recipe.manifest.copy(
+                                islands = listOf(authored),
+                                waves = listOf(listOf(authored.name)),
+                            ),
+                        statements = recipe.statements + ("authored.sql" to "authored"),
+                    )
+                val published = mutableListOf<RunOutput>()
+                val ledger = mockk<Ledger>()
+                every { ledger.putOutput(any(), any()) } answers {
+                    published += firstArg<RunOutput>()
+                    Unit
+                }
+                val other = table.copy(rows = listOf(listOf(LocalDate.of(2026, 10, 29), false)))
+                val door = Door { read -> ReadResult(if (read.sql == "authored") other else table) }
+                PartRunner(
+                    runnerContext(loaded).copy(calendar = plan),
+                    door,
+                    Staging(LocalStagingStore(Files.createTempDirectory("calendar-island")), ProtocolRecorder(ledger)),
+                    this,
+                ).use { runner ->
+                    runner.calendarSnapshot()!!.table shouldBe table
+                    runner.island("_au_calendar").single().table shouldBe other
+                    runner.calendarSnapshot()!!.table shouldBe table
+                    published.map { it.island }.toSet().size shouldBe 2
+                    published.any { it.island == "_au_calendar" } shouldBe true
+                    published.size shouldBe 2
+                }
+            }
+        }
+
         "calendar caps and narrowed views refuse once before staging even with restricted-view opt in" {
             supervisorScope {
                 for ((rows, warnings, expected) in listOf(

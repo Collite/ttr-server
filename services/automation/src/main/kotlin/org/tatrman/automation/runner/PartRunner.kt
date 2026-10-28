@@ -313,9 +313,11 @@ class PartRunner(
     /** A single immutable, complete calendar snapshot; retries share its success or refusal. */
     internal suspend fun calendarSnapshot(): org.tatrman.automation.apply.CalendarSnapshot? {
         val plan = context.calendar ?: return null
-        val island = "_au_calendar"
+        val island =
+            generateSequence(0) { it + 1 }
+                .map { if (it == 0) "_au_calendar" else "_au_calendar_$it" }
+                .first { it !in islands }
         checks.ensureAllowed()
-        require(island !in islands)
         if (plan.entity !in context.recipe.recipe.objectsRead) {
             checks.doorRefused(
                 island,
