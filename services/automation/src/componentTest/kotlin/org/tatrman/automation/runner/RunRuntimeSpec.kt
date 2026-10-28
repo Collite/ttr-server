@@ -31,6 +31,7 @@ import org.tatrman.query.v1.RunRequest
 import org.tatrman.worker.v1.ResultBatch
 import org.tatrman.ttr.metadata.model.AutomationColumn
 import org.tatrman.ttr.metadata.model.ErSchema
+import org.tatrman.ttr.metadata.model.WorldSchema
 import org.tatrman.ttr.parser.model.AutoValue
 import org.tatrman.ttr.parser.model.AutoEntry
 import org.tatrman.ttr.parser.model.Reference
@@ -187,6 +188,7 @@ class RunRuntimeComponentSpec :
         fun fulfilmentFixture(
             ambiguous: Boolean = false,
             lookupReads: List<String> = listOf("er.entity.obligation"),
+            transform: (Bundle) -> Bundle = { it },
         ): DurableRuntimeFixture {
             val root =
                 ApprovalFixture.copyTo(
@@ -194,9 +196,11 @@ class RunRuntimeComponentSpec :
                     fulfilment = true,
                 )
             val source =
-                BundleLoader(
-                    AuthorMap(emptyMap()),
-                ).load(Checkout(root, "master", "0123456789abcdef", "po", "po@example.org"), BundleKind.SERVED)
+                transform(
+                    BundleLoader(
+                        AuthorMap(emptyMap()),
+                    ).load(Checkout(root, "master", "0123456789abcdef", "po", "po@example.org"), BundleKind.SERVED),
+                )
             return DurableRuntimeFixture(lookupReads = lookupReads, transformBundle = {
                 source.copy(
                     deployments =
@@ -282,6 +286,56 @@ class RunRuntimeComponentSpec :
                     else -> Table(listOf(ManifestColumn("order_number", "text")), listOf(listOf("4711")))
                 }
             })
+        }
+
+        "invalid hosts or missing loader packages refuse governed fulfilment before a run is claimed" {
+            for (missingPackages in listOf(false, true)) {
+                val f =
+                    fulfilmentFixture(transform = { bundle ->
+                        if (missingPackages) {
+                            bundle.copy(packages = emptyMap())
+                        } else {
+                            val schema = bundle.model.schemas.getValue("world") as WorldSchema
+                            val worlds =
+                                schema.worlds.mapValues { (_, world) ->
+                                    world.copy(
+                                        storages =
+                                            world.storages.map {
+                                                if (it.qname.name == "erp_db") it.copy(hosts = listOf("hart")) else it
+                                            },
+                                    )
+                                }
+                            bundle.copy(
+                                model =
+                                    bundle.model.copy(
+                                        schemas =
+                                            bundle.model.schemas +
+                                                ("world" to schema.copy(worlds = worlds)),
+                                    ),
+                            )
+                        }
+                    })
+                val runtime = f.start()
+                try {
+                    // Missing packages already invalidate approval coverage; invalid hosts reach placement.
+                    repeat(2) {
+                        shouldThrow<AutomationException> {
+                            runtime.sessions.open(
+                                "release_order",
+                                f.request.copy(idempotencyKey = "invalid-scope"),
+                                f.caller,
+                            )
+                        }.code shouldBe if (missingPackages) ErrorCode.RECIPE_STALE else ErrorCode.PREVIEW_UNSUPPORTED
+                    }
+                    transaction { Runs.selectAll().count() } shouldBe 0L
+                    transaction { RunOutputs.selectAll().count() } shouldBe 0L
+                    transaction { Batches.selectAll().count() } shouldBe 0L
+                    f.reads.get() shouldBe 0
+                } finally {
+                    runtime.shutdown()
+                    f.close()
+                }
+            }
         }
 
         "governed qualified fulfilment journals a scoped snapshot and persists transition through retry close restart" {

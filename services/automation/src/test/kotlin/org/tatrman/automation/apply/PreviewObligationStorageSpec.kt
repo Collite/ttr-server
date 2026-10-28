@@ -6,6 +6,7 @@ import io.kotest.core.spec.style.StringSpec
 import io.kotest.engine.spec.tempdir
 import io.kotest.matchers.shouldBe
 import org.tatrman.automation.api.AutomationException
+import org.tatrman.automation.api.ErrorCode
 import org.tatrman.automation.bundle.ApprovalFixture
 import org.tatrman.automation.bundle.BundleFixture
 import org.tatrman.ttr.metadata.model.World
@@ -67,6 +68,27 @@ class PreviewObligationStorageSpec :
                 shouldThrow<AutomationException> { PreviewObligationStorage.resolve(changed(value), "demo") }
             }
             shouldThrow<AutomationException> { PreviewObligationStorage.resolve(bundle, "missing") }
+        }
+
+        "world hosts require whole declared packages even for an unbound obligation lookup" {
+            for (host in listOf("not.loaded", "hart", "hartland_extra")) {
+                val invalid =
+                    world.copy(
+                        storages =
+                            world.storages.map {
+                                if (it.qname.name == "erp_db") it.copy(hosts = listOf(host)) else it
+                            },
+                    )
+                shouldThrow<AutomationException> {
+                    PreviewObligationStorage.resolve(changed(invalid), "demo")
+                }.code shouldBe ErrorCode.PREVIEW_UNSUPPORTED
+            }
+        }
+
+        "a missing loader package map refuses instead of projecting away world hosts" {
+            shouldThrow<AutomationException> {
+                PreviewObligationStorage.resolve(bundle.copy(packages = emptyMap()), "demo")
+            }.code shouldBe ErrorCode.PREVIEW_UNSUPPORTED
         }
 
         "unresolved and cyclic storage overlays refuse" {

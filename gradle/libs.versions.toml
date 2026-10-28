@@ -3,18 +3,18 @@
 # https://docs.gradle.org/current/userguide/version_catalogs.html
 
 [versions]
-tatrman-grammar           = "0.18.12"
+tatrman-grammar           = "0.18.14"
 # Moves WITH the grammar ref, always: they are one `api` closure (ttr-snapshot api's
 # ttr-metadata, ttr-lexicon-compile's POM names it exactly), and the `bundle grammar` lane
 # publishes them at one version. Two versions here is the 0.10.3/0.10.4 failure.
-tatrman-ttr-metadata      = "0.18.12"
+tatrman-ttr-metadata      = "0.18.14"
 # Lockstep pair (`translator/v*` cuts both). DQ: 0.11.4 carries MJ's ModelJoinRewriter — a bare
 # ER `JOIN` with no `ON` (the form the Golem's LLM lane and its query door write) is conditioned
 # from the model's relations; on 0.10.3 Calcite refused it ("join requires a condition").
 # 0.12.6 (#232): `refuseUnconditionedBareJoins` — translate refuses a bare JOIN that stays a Cartesian product.
 # Never 0.12.5 with the option on: it made a WHERE filter reading both sides of an FK-only bare join the join's
 # whole ON, dropping the foreign key (ttr-core#223).
-# Grammar 0.18.12's emitter publishes against plan-proto 0.12.11; keep the translator pair aligned.
+# Grammar 0.18.14's emitter publishes against plan-proto 0.12.11; keep the translator pair aligned.
 tatrman-ttr-translator    = "0.12.11"
 tatrman-ttr-plan-proto    = "0.12.11"
 # SV-P1 S4 — Maven Central publishing via the Central Portal.

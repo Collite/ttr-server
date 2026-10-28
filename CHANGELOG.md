@@ -16,6 +16,11 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+- **automation — declared-package world validation.** Adopt the internal 0.18.14 toolchain and pass
+  complete loader packages to the compiler's resolver at Open. Obligation placement uses the actual pinned
+  world, replacing the temporary host-list projection. Unknown/partial hosts and missing package scope
+  refuse before a run or idempotency key is claimed. No calendar reads or physical writes are added.
+
 - **automation — open obligation insert previews.** Native obligation actions with explicit text kind,
   date due and complete target keys propose deterministic open rows from pinned metadata and Open time.
   Key/date assignments validate on empty selections, large/composite keys remain exact, and equal

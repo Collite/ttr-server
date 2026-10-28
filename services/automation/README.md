@@ -414,10 +414,12 @@ action is one example; action names have no special meaning.
 
 Open pins the obligation's logical storage using the compiler's placement and world-overlay rules. This
 is the world's declaration (Hartland uses `automation_db`), not a hard-coded physical database name. The
-lookup supports an unbound stdlib obligation only. Its placement input omits unrelated `hosts` lists,
-which never participate in unbound placement; this avoids the published WorldResolver's legacy path-based
-host validation without changing the pinned model or its writable/engine/overlay declarations. Missing,
-ambiguous or invalid placement refuses before a claim. Query still requires an explicit world/storage alias.
+lookup supports an unbound stdlib obligation only. Published grammar/metadata 0.18.14 resolves the actual
+pinned model with the bundle's complete loader package map, including injected stdlib. World hosts are
+validated against declared-or-computed packages, independently of checkout paths; unknown or partial
+packages and an incomplete provider refuse before a claim. Writable/engine/overlay declarations remain
+in the resolver input. Missing, ambiguous or invalid placement refuses. Query still requires an explicit
+world/storage alias. Calendar source reads and graph execution remain a separate integration stage.
 
 A selected transition requires `er.entity.obligation` in the pinned manifest's `objectsRead`. The runner
 issues one shared, parameterized read of id/entity/key/kind/state, constrained to resolved business entities.
