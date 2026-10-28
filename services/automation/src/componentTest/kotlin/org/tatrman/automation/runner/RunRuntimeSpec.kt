@@ -377,6 +377,35 @@ class RunRuntimeComponentSpec :
             }
         }
 
+        "two governed Opens pin the same cached obligation storage" {
+            val f = fulfilmentFixture()
+            val runtime = f.start()
+            try {
+                val storage = mutableListOf<JsonElement?>()
+                for (key in listOf("cache-first", "cache-second")) {
+                    val opened = runtime.sessions.open("release_order", f.request.copy(idempotencyKey = key), f.caller)
+                    opened.httpStatus shouldBe 201
+                    val id = UUID.fromString(opened.response.runId)
+                    runtime.sessions.evaluate(id, f.caller)
+                    val lookup =
+                        runtime.protocol
+                            .read(id, f.caller)
+                            .sections.values
+                            .flatten()
+                            .map { it.payload }
+                            .filterIsInstance<JsonObject>()
+                            .single { it["statement"] == JsonPrimitive("runtime:obligation-lookup/v2") }
+                    storage += lookup["storage"]
+                }
+                storage shouldBe listOf(JsonPrimitive("automation_db"), JsonPrimitive("automation_db"))
+                transaction { Runs.selectAll().count() } shouldBe 2L
+                f.reads.get() shouldBe 6
+            } finally {
+                runtime.shutdown()
+                f.close()
+            }
+        }
+
         "governed qualified fulfilment journals a scoped snapshot and persists transition through retry close restart" {
             val f = fulfilmentFixture()
             val runtime = f.start()
