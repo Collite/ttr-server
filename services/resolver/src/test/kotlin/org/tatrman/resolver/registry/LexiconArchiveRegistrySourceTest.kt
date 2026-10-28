@@ -244,6 +244,218 @@ class LexiconArchiveRegistrySourceTest :
                 target: er.entity.catalog_sales.ext_sales_price
             """.trimIndent()
 
+        "#273 HTTP archives use conditional reads, retain last good on failure and recover without mounted files" {
+            val dir = Files.createTempDirectory("http-lexicon")
+            val packed = writeArchive(dir, aliases, objectsOnly).toFile().readBytes()
+            var body = packed
+            var version = "\"one\""
+            var status = 200
+            val validators = mutableListOf<String?>()
+            val server =
+                com.sun.net.httpserver.HttpServer
+                    .create(java.net.InetSocketAddress("127.0.0.1", 0), 0)
+            server.createContext("/") { request ->
+                val validator = request.requestHeaders.getFirst("If-None-Match")
+                validators.add(validator)
+                request.responseHeaders.add("ETag", version)
+                val code = if (status == 200 && validator == version) 304 else status
+                request.sendResponseHeaders(code, if (code == 200) body.size.toLong() else -1)
+                if (code == 200) request.responseBody.write(body)
+                request.close()
+            }
+            server.start()
+            try {
+                val source =
+                    LexiconArchiveRegistrySource(
+                        emptyList(),
+                        listOf("http://127.0.0.1:${server.address.port}/model/lexicon.tar.zst"),
+                    )
+                source.readAtBoot()
+                val first = source.hash()
+                first shouldNotBe ""
+                runBlocking { source.fetch() }.entries.shouldNotBeEmpty()
+                validators.toList() shouldBe listOf(null)
+                status = 503
+                source.readAtBoot()
+                source.hash() shouldBe first
+                status = 200
+                version = "\"broken\""
+                body = "not an archive".toByteArray()
+                source.readAtBoot()
+                source.hash() shouldBe first
+                // Corrupt content remains excluded on 304 too.
+                source.readAtBoot()
+                source.hash() shouldBe first
+                version = "\"repaired\""
+                body = packed
+                source.readAtBoot()
+                source.hash() shouldBe first
+                runBlocking { source.fetch() }.entries.shouldNotBeEmpty()
+            } finally {
+                server.stop(0)
+                dir.toFile().deleteRecursively()
+            }
+        }
+
+        "#273 polling keeps requests fast through outages, retries absent primaries and stops on cancellation" {
+            val dir = Files.createTempDirectory("poll-lexicon")
+            val packed = writeArchive(dir, aliases, objectsOnly).toFile().readBytes()
+            val updated = writeArchive(dir, aliases, objectsOnly, producer = "updated").toFile().readBytes()
+            val requests =
+                java.util.concurrent.atomic
+                    .AtomicInteger()
+            val state =
+                java.util.concurrent.atomic
+                    .AtomicReference(Triple(404, "one", packed))
+            val hang =
+                java.util.concurrent.atomic
+                    .AtomicBoolean(false)
+            val entered = java.util.concurrent.CountDownLatch(1)
+            val release = java.util.concurrent.CountDownLatch(1)
+            val server =
+                com.sun.net.httpserver.HttpServer
+                    .create(java.net.InetSocketAddress("127.0.0.1", 0), 0)
+            server.createContext("/") { request ->
+                requests.incrementAndGet()
+                if (hang.get()) {
+                    entered.countDown()
+                    release.await(3, java.util.concurrent.TimeUnit.SECONDS)
+                }
+                val (status, etag, bytes) = state.get()
+                request.responseHeaders.add("ETag", "\"$etag\"")
+                val body = if (status == 404) "{\"error\":\"lexicon not found\"}".toByteArray() else bytes
+                request.sendResponseHeaders(status, if (status == 200 || status == 404) body.size.toLong() else -1)
+                if (status == 200 || status == 404) {
+                    request.responseBody.write(body)
+                }
+                request.close()
+            }
+            server.start()
+            val scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob())
+            try {
+                val source =
+                    LexiconArchiveRegistrySource(emptyList(), listOf("http://127.0.0.1:${server.address.port}/"))
+                source.readAtBoot()
+                val registry =
+                    SnapshotRegistry(
+                        source,
+                        ResolverThresholds(bind = 0.8, ambiguityGap = 0.1, exact = 1.0, maxOptions = 5),
+                    )
+                registry.current().entityTypes.size shouldBe 0
+                val bootRequests = requests.get()
+                repeat(50) {
+                    registry.current()
+                    source.modelSnapshotHash()
+                }
+                requests.get() shouldBe bootRequests
+                val job = source.startPolling(scope, 50)
+
+                suspend fun awaitHash(expected: String) {
+                    kotlinx.coroutines.withTimeout(3000) {
+                        while (source.hash() != expected) kotlinx.coroutines.delay(10)
+                    }
+                }
+                state.set(Triple(200, "one", packed))
+                val first =
+                    org.tatrman.ttr.snapshot.SnapshotId
+                        .of(packed)
+                awaitHash(first) // Primary absent at boot is retried.
+                registry.current().entityTypes.shouldNotBeEmpty()
+                registry.current().modelSnapshotHash shouldBe modelHash
+                hang.set(true)
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    entered.await(2, java.util.concurrent.TimeUnit.SECONDS)
+                } shouldBe
+                    true
+                val start = System.nanoTime()
+                repeat(50) { registry.current().snapshotHash shouldBe first }
+                ((System.nanoTime() - start) / 1_000_000 < 100) shouldBe true
+                state.set(Triple(503, "two", updated))
+                hang.set(false)
+                release.countDown()
+                kotlinx.coroutines.delay(150)
+                source.hash() shouldBe first
+                val captured = source.capture()
+                state.set(Triple(200, "two", updated))
+                val next =
+                    org.tatrman.ttr.snapshot.SnapshotId
+                        .of(updated)
+                awaitHash(next)
+                registry.current().snapshotHash shouldBe next
+                registry.current().modelSnapshotHash shouldBe modelHash
+                captured.hash() shouldBe first
+                captured.fetch().entries.shouldNotBeEmpty()
+                scope.coroutineContext[kotlinx.coroutines.Job]!!.cancel()
+                job.join()
+                val stopped = requests.get()
+                kotlinx.coroutines.delay(150)
+                requests.get() shouldBe stopped
+            } finally {
+                scope.coroutineContext[kotlinx.coroutines.Job]!!.cancel()
+                release.countDown()
+                server.stop(0)
+                dir.toFile().deleteRecursively()
+            }
+        }
+
+        "#273 polling retries skipped additives and retains served additive last-good through failure" {
+            val dir = Files.createTempDirectory("poll-additive")
+            val primary = writeArchive(dir, aliases, objectsOnly).toFile().readBytes()
+            val additive =
+                writeArchive(
+                    dir,
+                    aliases.replace("marketplace", "commerce"),
+                    objectsOnly,
+                    producer = "additive",
+                ).toFile().readBytes()
+            val status =
+                java.util.concurrent.atomic
+                    .AtomicInteger(404)
+            val server =
+                com.sun.net.httpserver.HttpServer
+                    .create(java.net.InetSocketAddress("127.0.0.1", 0), 0)
+            server.createContext("/") { request ->
+                val isPrimary = request.requestURI.path == "/primary"
+                val code = if (isPrimary) 200 else status.get()
+                val body =
+                    if (code == 404) {
+                        "{\"error\":\"lexicon not found\"}".toByteArray()
+                    } else if (isPrimary) {
+                        primary
+                    } else {
+                        additive
+                    }
+                request.responseHeaders.add("ETag", "\"${if (isPrimary) "primary" else "additive"}\"")
+                request.sendResponseHeaders(code, if (code == 200 || code == 404) body.size.toLong() else -1)
+                if (code == 200 || code == 404) {
+                    request.responseBody.write(body)
+                }
+                request.close()
+            }
+            server.start()
+            val scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob())
+            try {
+                val base = "http://127.0.0.1:${server.address.port}"
+                val source = LexiconArchiveRegistrySource(emptyList(), listOf("$base/primary", "$base/additive"))
+                source.readAtBoot()
+                val first = source.hash()
+                val job = source.startPolling(scope, 50)
+                status.set(200)
+                kotlinx.coroutines.withTimeout(3000) { while (source.hash() == first) kotlinx.coroutines.delay(10) }
+                val combined = source.hash()
+                status.set(503)
+                kotlinx.coroutines.delay(200)
+                source.hash() shouldBe combined
+                source.fetch().entries.shouldNotBeEmpty()
+                scope.coroutineContext[kotlinx.coroutines.Job]!!.cancel()
+                job.join()
+            } finally {
+                scope.coroutineContext[kotlinx.coroutines.Job]!!.cancel()
+                server.stop(0)
+                dir.toFile().deleteRecursively()
+            }
+        }
+
         "⚠ only MODEL_OBJECT rows become anchors — members and grounding triggers do not" {
             // A decision, not a filter, and the test that makes it a decision. `anchors` are the
             // words naming a model OBJECT that Q-20's anchored proposal ties subtrees to.
@@ -524,6 +736,77 @@ class LexiconArchiveRegistrySourceTest :
             } finally {
                 logger.detachAppender(appender)
                 appender.stop()
+            }
+        }
+
+        listOf(false, true).forEach { additive ->
+            "#273 ${if (additive) "additive" else "primary"} outages log once until same-archive recovery" {
+                val dir = Files.createTempDirectory("outage-lexicon")
+                val packed = writeArchive(dir, aliases, objectsOnly).toFile().readBytes()
+                val status =
+                    java.util.concurrent.atomic
+                        .AtomicInteger(200)
+                val notModified =
+                    java.util.concurrent.atomic
+                        .AtomicInteger()
+                val server =
+                    com.sun.net.httpserver.HttpServer
+                        .create(java.net.InetSocketAddress("127.0.0.1", 0), 0)
+                server.createContext("/") { request ->
+                    val affected = !additive || request.requestURI.path == "/additive"
+                    val desired = if (affected) status.get() else 200
+                    val code =
+                        if (desired == 200 && request.requestHeaders.getFirst("If-None-Match") == "\"one\"") {
+                            if (affected) notModified.incrementAndGet()
+                            304
+                        } else {
+                            desired
+                        }
+                    request.responseHeaders.add("ETag", "\"one\"")
+                    request.sendResponseHeaders(code, if (code == 200) packed.size.toLong() else -1)
+                    if (code == 200) request.responseBody.write(packed)
+                    request.close()
+                }
+                server.start()
+                try {
+                    val base = "http://127.0.0.1:${server.address.port}"
+                    val urls = if (additive) listOf("$base/primary", "$base/additive") else listOf("$base/primary")
+                    val source = LexiconArchiveRegistrySource(emptyList(), urls)
+                    source.readAtBoot()
+                    val first = source.hash()
+                    first shouldNotBe ""
+                    var warnings = 0
+
+                    fun pass(): Int {
+                        warnings +=
+                            warnsFrom { source.readAtBoot() }.count {
+                                it.contains(
+                                    if (additive) {
+                                        "serving its last good copy"
+                                    } else {
+                                        "keeping the loaded declared vocabulary"
+                                    },
+                                )
+                            }
+                        source.hash() shouldBe first
+                        return warnings
+                    }
+                    status.set(503)
+                    pass() shouldBe 1
+                    pass() shouldBe 1
+                    status.set(200)
+                    pass() shouldBe 1
+                    notModified.get() shouldBe 1
+                    status.set(503)
+                    pass() shouldBe 2
+                    // A different cause is still reported while the outage persists.
+                    status.set(502)
+                    pass() shouldBe 3
+                    pass() shouldBe 3
+                } finally {
+                    server.stop(0)
+                    dir.toFile().deleteRecursively()
+                }
             }
         }
 

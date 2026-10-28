@@ -158,8 +158,11 @@ fun Application.module(config: Config) {
     // ttr-server#209 — a LIST of archives (one per source the estate's packages come from), read as
     // one declared layer. The singular key still works, as a one-element list.
     val archivePaths = LexiconArchivePaths.read(config) { log.warn(it) }
+    val archiveUrls =
+        org.tatrman.resolver.registry.DeclaredLayer
+            .pathList(config, "resolver.lexicon-archive-urls")
     val registrySource =
-        if (archivePaths.isEmpty()) {
+        if (archivePaths.isEmpty() && archiveUrls.isEmpty()) {
             log.warn(
                 "resolver.lexicon-archive-path(s) is unset — the declared vocabulary is EMPTY, so the " +
                     "anchored span-proposal path cannot fire and every binding will carry the stub's " +
@@ -168,14 +171,18 @@ fun Application.module(config: Config) {
             )
             LiveMetadataRegistryAdapter()
         } else {
-            log.info("declared vocabulary channel: {} lexicon archive(s) {}", archivePaths.size, archivePaths)
+            val locations = archiveUrls.ifEmpty { archivePaths }
+            log.info("declared vocabulary channel: {} lexicon archive(s) {}", locations.size, locations)
             LexiconArchiveRegistrySource(
                 archivePaths.map {
                     java.nio.file.Path
                         .of(it)
                 },
+                archiveUrls,
             )
         }
+    val remoteLexicon = (registrySource as? LexiconArchiveRegistrySource)?.takeIf { it.isRemote }
+    remoteLexicon?.readAtBoot()
     val registry = SnapshotRegistry(registrySource, defaultThresholds)
     // ⛑ Projected once at boot so the size is in the log before the first question. An empty
     // vocabulary looks exactly like a small one, which is why this is stated and not inferred.
@@ -188,6 +195,13 @@ fun Application.module(config: Config) {
             loaded.snapshotHash.ifBlank { "<none>" },
         )
     }
+
+    val lexiconPoller =
+        remoteLexicon?.startPolling(
+            this,
+            config.getLong("resolver.lexicon-archive-check-interval-seconds") * 1000,
+        )
+    monitor.subscribe(ApplicationStopping) { lexiconPoller?.cancel() }
 
     // HMAC resume-token codec (RS-26). Keys come from config so they rotate by
     // key_id without a redeploy; the active key signs, all listed keys verify

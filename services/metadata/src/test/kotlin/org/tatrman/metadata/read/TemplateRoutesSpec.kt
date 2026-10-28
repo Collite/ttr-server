@@ -333,11 +333,13 @@ class TemplateRoutesSpec :
 internal fun ApplicationTestBuilder.serve(
     registry: MetadataRegistry,
     board: SourceLoadBoard = SourceLoadBoard(),
+    lexiconSourceIds: Set<String> = setOf("world"),
 ) {
     environment { config = MapApplicationConfig() }
     application {
         routing {
             templateRoutes(registry)
+            lexiconRoutes(registry, lexiconSourceIds)
             modelHealthRoutes(registry, board)
         }
     }

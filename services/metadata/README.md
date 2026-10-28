@@ -108,6 +108,67 @@ diagnosed and never followed. Missing report/form trees are valid and silent. No
 program execution, rendering or write API is added. The gateway exposes no new route. Before a model loads, all three routes return 503; unknown
 report ids return 404, and a missing/blank `id` returns 400. Loaded empty catalogs return empty arrays.
 
+
+## Compiled lexicon archive (#273)
+
+`GET /model/lexicon.tar.zst` serves the exact compiled bytes from the Git commit used by the served
+source snapshot (`application/zstd`). Its quoted `ETag` contains `<source-Git-SHA>.<archive-blob-id>`, so changing the configured path at the
+same commit also changes the validator. `If-None-Match` accepts quoted, weak, comma-separated or bare tokens and `*`; a match
+returns an empty `304` with the same ETag. The route is read-only and cluster-internal like the other
+`/model` reads; no gateway route is added.
+
+The default file is **repository-relative** `generated/lexicon.tar.zst`, independent of `subdirectory`.
+Override `metadata.sources.<source>.lexicon-path` (`METADATA_GIT_LEXICON_PATH`, or
+`METADATA_GIT2_LEXICON_PATH` for the second built-in Git source). Absolute/escaping paths and symlinks,
+including ancestor folders, are refused. A blank path disables the archive (clean `404`, no status issue). The server serves compiled content; it never compiles a lexicon.
+Reads are bounded at 50 MiB. A missing archive is valid for an estate without a lexicon and yields `404`;
+a read/configuration failure yields `503` and an issue on `/status`, while the live model still loads.
+An old archive is never relabelled with a new source SHA. Successful reads, including absence, are cached
+by source commit; I/O failures are retried each tick. A same-SHA recovery is not published until the
+next registry swap (a source commit changes); the `503` and `/status` issue remain until then.
+A reader started in that window serves no declared vocabulary until that swap. Bytes travel in an internal snapshot sidecar (ttr-core#314),
+are published atomically with the model, and are excluded from public export bundles.
+
+For several configured Git sources, `?source=<configured-source-id>` is required: a bare URL returns
+`400` naming the ids, even if one source failed to load. With exactly one configured Git source the
+bare URL selects it. A configured but unloaded source returns `503`; an unknown source is `404`
+`unknown lexicon source`, and a loaded source without an archive is `404` `lexicon not found`.
+With no Git source configured, a bare URL returns `404` `no lexicon source configured` (a reader error).
+Read/configuration failures return `503`. Before any model is served the route returns `503`.
+Invalid selectors are `400`. Source ids are `metadata.sources.<block>.id` values (`github-model`,
+`second-model`). bp-dsk needs both URLs below; a bare URL there is a `400`.
+
+Opt in the readers with **the same ordered URL list**, primary first:
+
+```hocon
+fuzzy.lexicon.archive-urls = [
+  "http://metadata:7260/model/lexicon.tar.zst?source=github-model",
+  "http://metadata:7260/model/lexicon.tar.zst?source=second-model"
+]
+resolver.lexicon-archive-urls = [
+  "http://metadata:7260/model/lexicon.tar.zst?source=github-model",
+  "http://metadata:7260/model/lexicon.tar.zst?source=second-model"
+]
+```
+
+The environment equivalents are `FUZZY_LEXICON_ARCHIVE_URLS` and `RESOLVER_LEXICON_ARCHIVE_URLS`
+(comma-separated). An explicit nonempty URL list replaces the whole mounted archive list. With URLs
+unset, existing singular/plural ConfigMap path settings keep their behavior. There is no automatic
+switch to a possibly older mounted archive during an HTTP outage. The readers send `If-None-Match`,
+retain bytes on `304`, retry errors, and apply their existing archive validation and primary/additive
+last-good rules (#209). Explicit archive absence is quiet; unknown source ids remain errors.
+Each request has a 3 s connection / 5 s read timeout, a 30 s deadline enforced on body reads
+(measured from request start; connect/headers are not bounded by that deadline). One body read may
+overrun by up to 5 s. The body limit is 50 MiB;
+redirects and incomplete responses are refused. URL transport does not change the learned overlay.
+Fuzzy checks on its refresh clock (`POST /refresh` and `refreshIntervalSeconds`). If a source fails
+metadata's initial load and recovers after fuzzy's first pass, fuzzy serves without its archive until
+the next refresh (600 s on hartland, 3600 s by default) or an operator calls `POST /refresh`.
+The resolver does one synchronous read at boot, then polls on `Dispatchers.IO` with a fixed delay of
+`resolver.lexicon-archive-check-interval-seconds` (env `RESOLVER_LEXICON_ARCHIVE_CHECK_INTERVAL_SECONDS`,
+default 30). Resolve/gate requests only read the last completed pass and never perform HTTP I/O.
+The resolver can lag metadata by up to that interval, plus download time. This does not make separate services swap simultaneously or change deployment wiring.
+
 ## The cn candidate store (`cn/`, off by default)
 
 Producers propose concepts, terms and relations as `cn-candidate.v1` documents (ttr-concept's

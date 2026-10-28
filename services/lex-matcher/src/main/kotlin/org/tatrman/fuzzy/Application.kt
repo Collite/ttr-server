@@ -177,14 +177,16 @@ fun Application.module(serverConfig: KtorServerConfig) {
     val lexiconSource =
         config.lexicon
             .archives()
-            .takeIf { it.isNotEmpty() }
+            .takeIf { it.isNotEmpty() || config.lexicon.archiveUrls.isNotEmpty() }
             ?.let { paths ->
-                log.info("Compiled lexicon layer enabled: {} archive(s) {}", paths.size, paths)
+                val locations = config.lexicon.archiveUrls.ifEmpty { paths }
+                log.info("Compiled lexicon layer enabled: {} archive(s) {}", locations.size, locations)
                 LexiconArchiveSource(
                     paths.map {
                         java.nio.file.Path
                             .of(it)
                     },
+                    config.lexicon.archiveUrls,
                 ).also { source -> telemetry.registerLexiconArchivesSkipped(source::skippedArchives) }
             }
     // RV-P7.3 T3 — the LEARNED layer, when the estate's Golem is exporting one. `NoopOverlayStore`
