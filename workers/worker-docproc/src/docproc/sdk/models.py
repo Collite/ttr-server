@@ -172,7 +172,7 @@ class Completion(DxModel):
     verdict_ids: list[str] = []
 
 
-# ── The warehouse contracts (DX contracts §1.1–§1.4; the proto truth is kantheon's `org.tatrman.kallimachos.v1`) ───
+# ── The warehouse contracts (DX contracts §1.1–§1.4; the proto truth is kantheon's `org.tatrman.docwh.store.v1`) ───
 # Proto3 JSON, held through the fixtures: int64 ids are numbers, an annotation's `payloadJson` is a JSON STRING (Rule 7),
 # a span is [start, end) in Unicode code points of the unit's NFC text — which is how a Python `str` indexes.
 

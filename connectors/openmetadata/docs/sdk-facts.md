@@ -158,6 +158,40 @@ same user's PATCHes for ten minutes, replaying previous metadata changes in a
 status event and retriggering approval after deprecation. Conditional writes
 skip that consolidation, preserve pure status events and reject concurrent edits
 with 412; no 4xx retry or state advance occurs. Deprecation is checked immediately
-and again after a delay in the live suite. Reappearance can be Draft or Approved
+and again after a delay in the live suite. The connector never sends a non-status
+PATCH to a Deprecated term; a reappearing term first gets a pure status reactivation.
+Only Approved and Draft out-of-plan terms are normalized; terms in any other
+status keep their links. This avoids reversing rejection or re-opening approval.
+A term that reappears with unchanged metadata stays Draft; its status-only
+reactivation does not trigger OM approval.
+Reappearance can be Draft or Approved
 under the catalog's approval policy. Initial approval-instance completion is
 observed before the version/no-op assertions; the suite never disables workflows.
+
+## Native clickable Studio link — 0.1.4
+
+OM 2.0.6 supports the native `hyperlink-cp` custom-property type. Its value is
+`{"url":"https://studio.example/m/northline/s/er","displayText":"Open E-R model in Studio"}`.
+The renderer emits an HTTP(S) `href`, `target="_blank"` and `rel="noopener noreferrer"`.
+The connector registers a new `ttrStudioLink` on table/glossaryTerm/metric and
+preserves all original string types, including `ttrUrl`. CN terms have neither link
+with Studio configured; no-Studio sync leaves existing link properties unchanged.
+
+The pinned Python SDK's `Type.name` uses `EntityName`, which rejects the hyphen in
+this genuine built-in name. Only the `hyperlink-cp` REST type lookup uses a narrow
+model validating its exact literal name and UUID; existing entity/string type
+lookups retain SDK validation. Writes still validate through `CustomProperty` and
+the SDK entity payloads. Wrong built-in names/UUIDs and conflicting existing
+property types fail; no silent type conversion is performed.
+
+Official source inspected at `2.0.6-release`, commit `a695261b19d48411a39502a5c5fc0b453729eb4e`:
+- [Renderer](https://github.com/open-metadata/OpenMetadata/blob/a695261b19d48411a39502a5c5fc0b453729eb4e/openmetadata-ui/src/main/resources/ui/src/components/common/CustomPropertyTable/PropertyValue.tsx)
+- [Value schema](https://github.com/open-metadata/OpenMetadata/blob/a695261b19d48411a39502a5c5fc0b453729eb4e/openmetadata-spec/src/main/resources/json/schema/type/customProperties/complexTypes.json)
+- [Type-name constant](https://github.com/open-metadata/OpenMetadata/blob/a695261b19d48411a39502a5c5fc0b453729eb4e/openmetadata-ui/src/main/resources/ui/src/constants/CustomProperty.constants.ts)
+
+
+OM 2.0.6 quotes glossary names on lookup (`quoteFqn`), so a bare dotted name
+resolves too. The connector still sends canonical quoted FQNs, and the fake
+deliberately returns 404 for a bare dotted name so tests catch a client that stops
+quoting. The real-OM dotted-glossary test records both canonical operations and
+this lookup compatibility.

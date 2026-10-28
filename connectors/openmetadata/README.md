@@ -38,6 +38,8 @@ uv build
 
 `plan` and `sync --dry-run` honor --cn-path (default glossary); select owl
 to include the RDF import operation. `plan` writes one typed operation per JSON line to stdout and warnings to stderr.
+With Studio configured, an INFO line on stderr also discloses sync's normalization
+of out-of-plan Approved and Draft terms; those terms are discovered only at sync time.
 The directory must contain `graph.json`, `defs.json`, `cn.ttl`, and `.snapshot`.
 The URL is the **full export route**, without query parameters. The reader requests
 world graph + world definitions + CN OWL, and rejects mixed ETags, snapshots,
@@ -45,19 +47,39 @@ grammars, worlds, scoped graphs and malformed Turtle. Unknown JSON fields are
 preserved for forward compatibility. Requests have a 30-second timeout.
 
 `--world` defaults to the export's world and must match it. `--studio-url` is the
-Studio HTTP(S) origin. Links open the **whole model** at
+Studio HTTP(S) origin. Version 0.1.4 adds `ttrStudioLink`, an OM-native
+`hyperlink-cp` custom property with a label such as **Open E-R model in Studio**.
+Click it in Custom Properties or the overview properties panel. The existing
+`ttrUrl` string remains unchanged for integrations; no existing property type is
+migrated. A conflicting pre-existing `ttrStudioLink` type fails without changing it.
+Links open the **whole model** at
 `<origin>/m/<workspace>/s/db`, `/er` or `/md`; they do not select an individual
 object. `--studio-workspace` is the manifest `modeler.toml` `project.name` and
 defaults to the export world; set it when those names differ. The workspace is
-validated against Studio's manifest/route restrictions. Credentials, query strings
-and route paths are not accepted in the origin.
+validated against Studio's manifest/route restrictions. Credentials, query strings,
+fragments, backslashes, whitespace, Unicode control/format characters, encoded or
+non-ASCII hosts, empty/zero/invalid ports and route paths are not accepted in the
+Studio origin. This strict link-host grammar does not apply to `--om-url`, which
+continues to accept container names such as `http://openmetadata_server:8585/api`.
+Use punycode for IDNs. Scheme/host case and default ports are canonicalized. `--studio-workspace` requires `--studio-url`.
 
 New `cn` concepts remain in the OM glossary: Studio's legacy `cnc` renderer is a
 different model. With `--studio-url` configured, sync removes the obsolete
-connector-owned `ttrUrl` from CN terms while retaining other custom properties,
+connector-owned `ttrUrl` and `ttrStudioLink` from in-plan CN terms while retaining other custom properties,
 IRIs, definitions and asset links. Without that option it leaves existing URLs
-untouched. Version0.1.3 changes the successful-state fingerprint, forcing a real
-projection after an upgrade even if the source snapshot has not changed.
+untouched. After deprecations, sync also normalizes links on Approved or Draft owned
+terms absent from the current plan in this world's Concepts/Entities glossaries,
+including orphans from a fresh state or `--no-deprecate-missing`: ER/MD get the same
+model URL and native label as planned terms; CN and other prefixes have neither key.
+Out-of-plan terms in every other status retain whatever links they had, including retired `/viewer?qname=`
+links from 0.1.2 or earlier. Editing their metadata re-runs OM's approval workflow
+and can reset their status, so they are never swept. Reappearing model terms first
+reactivate through a pure status change before metadata is reconciled.
+Other glossaries and unrelated extension keys are preserved. Metric and table links
+outside the current export (both keys) are not migrated; general reconciliation
+of connector-owned links across entity types is tracked in
+[issue #325](https://github.com/Collite/ttr-server/issues/325). Version 0.1.4 changes
+the successful-state fingerprint, forcing a real projection after an upgrade even if the source snapshot has not changed.
 
 `--no-deprecate-missing` suppresses stale
 operations. `plan` never calls OM and never updates the state file. Exit codes:
@@ -76,7 +98,7 @@ failure; 3 mapping failure. Argparse usage failures exit 2.
 | DB table / view | Properties on an existing scanned OM Table, description, `Tatrman.Grounded` when bound |
 | DB column | `ttrQname`, `Grounded` when bound; applied through the owning table |
 | ER/MD/CN binding | Term-to-table/column link; MD per-field maps determine actual columns; metrics use native parent-table assets plus exact column FQNs in ttrColumnAssets |
-| Registry | String properties `ttrQname`, `ttrUrl`, `ttrKind`, `ttrIri`, `ttrAdditivity`, `ttrColumnAssets` on applicable types; classification `Tatrman`, tags `Grounded` / `Deprecated` |
+| Registry | Native `hyperlink-cp` `ttrStudioLink` on tables/terms/metrics; string properties `ttrQname`, `ttrUrl`, `ttrKind`, `ttrIri`, `ttrAdditivity`, `ttrColumnAssets` on applicable types; classification `Tatrman`, tags `Grounded` / `Deprecated` |
 
 Display names prefer English; Czech-only names append `(<cs label>)` to the source
 name. Descriptions prefer English, otherwise retain all language-labelled text.
@@ -107,15 +129,20 @@ without creating it. Missing columns are also skipped with a warning.
 
 ## State and deprecation
 
-State JSON has `snapshot`, `ids` (TTR qnames), `om_version` and optional `options`.
-`options` fingerprints world, Studio URL, CN path/name mode, deprecation mode,
+State JSON has `snapshot`, `ids` (TTR qnames), `om_version`, and optional `world`
+and `options`. The saved export world resolves an omitted workspace before a
+conditional read; older state is accepted and forces a full sync.
+`options` fingerprints the resolved world, normalized Studio origin and resolved
+workspace (or no workspace without Studio), CN path/name mode, deprecation mode,
 connector version and the current OM version. Sync probes OM's version before
 reading the export. Only an exact options match permits `If-None-Match`; a legacy
 state without `options` loads successfully but forces a full sync. Offline plan
 and dry-run remain independent of OM and credentials. A 304 sync prints zero
 counters with `not_modified: true`; a real sync prints `not_modified: false`.
 A 304 without compatible state or after part of a new export is an export error.
-**Rollback to0.1.1 requires a fresh state path**: that version rejects the new field.
+**Rollback to 0.1.3 or earlier requires a fresh state path**: those versions reject
+the saved `world` field introduced in 0.1.4. Versions 0.1.4+ ignore unknown state
+fields written by later versions; a connector-version change still forces a full sync.
 State uses a same-directory temporary file, fsync and atomic rename; ids are sorted
 and deduplicated.
 
@@ -129,7 +156,8 @@ lose the Deprecated tag. **Deprecate, never delete**: neither the operation sche
 nor the writer has a delete action. Qnames resolve across all response pages;
 term lookup/deprecation is scoped to this world's glossaries.
 
-`sync` calls `check` first, reconciles entities, finalizes term relations, then
+`sync` calls `check` first, reconciles entities, prunes stale owned-term links
+when Studio is configured, finalizes term relations, then
 links and deprecations. State advances only after every operation succeeds.
 Missing scanned tables/columns and planner omissions prevent state advancement,
 with a loud `WARN state not advanced: N tables not scanned` diagnostic (plus column
@@ -139,7 +167,7 @@ unscannable object therefore causes a full sync every night until repaired. RDF
 import informational messages and a successful glossary fallback do not skip
 operations and do not prevent state advancement. Other write failures fail the run.
 OM writes are not a transaction: partial changes can remain for an idempotent retry.
-A compatible saved snapshot receiving304 skips registry/writes, but still checks
+A compatible saved snapshot receiving 304 skips registry/writes, but still checks
 the current OM version. Use two fresh state paths to prove actual writer idempotency.
 
 Successful sync prints exactly one JSON line with `snapshot`, `created`,

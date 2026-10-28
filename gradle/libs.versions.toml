@@ -160,7 +160,7 @@ junit                     = "5.11.0"
 detekt                    = "1.23.8"
 shadow                    = "9.4.1"
 
-# ── Kleio / DocWH (P1 Stage 1.1 — services/kallimachos + services/pinakes) ────
+# ── Kleio / DocWH (P1 Stage 1.1 — services/docwh-store + services/docwh-pipeline) ────
 # Ingestion parsers ported from ~/Dev/doc-store (faithful versions — the
 # doc-store test corpus is the parity oracle, so the parser versions match).
 jsoup                     = "1.17.2"     # HTML → DocNode (html handler)
@@ -339,7 +339,7 @@ postgresql                          = { module = "org.postgresql:postgresql",   
 jts-core                            = { module = "org.locationtech.jts:jts-core",                           version.ref = "jts" }
 mssql-jdbc                          = { module = "com.microsoft.sqlserver:mssql-jdbc",                      version.ref = "mssql" }
 
-# Kleio / DocWH ingestion parsers (services/kallimachos, P1 Stage 1.1 — ported
+# Kleio / DocWH ingestion parsers (services/docwh-store, P1 Stage 1.1 — ported
 # from doc-store). pgvector helper is the VECTOR-plane binding (P2 Stage 2.1).
 jsoup                               = { module = "org.jsoup:jsoup",                                         version.ref = "jsoup" }
 flexmark                            = { module = "com.vladsch.flexmark:flexmark",                           version.ref = "flexmark" }

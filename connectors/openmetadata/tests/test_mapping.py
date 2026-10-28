@@ -10,6 +10,7 @@ from ttr_connect_openmetadata.mapping import MappingError, plan_from_export
 from ttr_connect_openmetadata.model import (
     Connection,
     Edge,
+    EnsureCustomProperty,
     Export,
     LinkMetricToAsset,
     LinkTermToAsset,
@@ -275,7 +276,8 @@ def test_studio_links_use_renderable_model_subjects_and_clear_cn_links(export: E
     for term in terms:
         if term.cn:
             assert "ttrUrl" not in term.props
-            assert term.remove_props == ["ttrUrl"]
+            assert "ttrStudioLink" not in term.props
+            assert term.remove_props == ["ttrUrl", "ttrStudioLink"]
         else:
             model = term.qname.split(".", 1)[0]
             assert term.props["ttrUrl"] == f"https://studio.example/m/northline/s/{model}"
@@ -293,7 +295,8 @@ def test_studio_workspace_can_differ_from_export_world(export: Export) -> None:
     )
     sales = next(op for op in plan.operations if isinstance(op, SetTableProps))
     assert sales.props["ttrUrl"] == "https://studio.example/m/catalog-demo/s/db"
-    assert sales.props["ttrQname"].startswith("db.")
+    qname = sales.props["ttrQname"]
+    assert isinstance(qname, str) and qname.startswith("db.")
 
 
 @pytest.mark.parametrize("workspace", ["", ".", "..", "c", "_designer", "a/b", "a?x=y"])
@@ -310,6 +313,28 @@ def test_studio_workspace_must_be_a_valid_nonreserved_manifest_name(
         "https://",
         "https://studio.example/viewer",
         "https://studio.example?x=y",
+        "https://studio.example?",
+        "https://studio.example#",
+        "https://studio.example\\evil",
+        "https://studio.example:abc",
+        "https://studio.example:65536",
+        "https://studio.example\t",
+        "https://studio.example\x00",
+        "https://studio.example\x80",
+        "https://studio.example\u202e",
+        "https://studio.example\u200b",
+        "https://studio.example\ufeff",
+        "https://studio.example\ud800",
+        "https://studio.example\ue000",
+        "https://studio.example\u0378",
+        "https://studio.example:0",
+        "https://studio.example:",
+        "https://studio%2Fexample",
+        "https://studio%40example",
+        "https://stüdio.example",
+        "https://studio.example space",
+        "https://@studio.example",
+        "https://:80",
         "https://studio.example#fragment",
         "https://user:fixture@studio.example",
     ],
@@ -370,3 +395,172 @@ def test_case_insensitive_glossary_name_collision_fails_before_writes(export: Ex
     customer.label = "party"
     with pytest.raises(MappingError, match="glossary name collision"):
         plan_from_export(export)
+
+
+def test_native_studio_links_match_urls_and_registry_types(export: Export) -> None:
+    plan = plan_from_export(export, studio_url="https://studio.example", studio_workspace="demo")
+    properties = [op for op in plan.operations if isinstance(op, EnsureCustomProperty)]
+    links = [op for op in properties if op.name == "ttrStudioLink"]
+    assert {(op.entity_type, op.type) for op in links} == {
+        ("table", "hyperlink-cp"),
+        ("glossaryTerm", "hyperlink-cp"),
+        ("metric", "hyperlink-cp"),
+    }
+    assert all(op.type == "string" for op in properties if op.name != "ttrStudioLink")
+    for op in plan.operations:
+        if isinstance(op, (SetTableProps, UpsertTerm, UpsertMetric)) and "ttrUrl" in op.props:
+            link = op.studio_link
+            assert link is not None
+            assert link.url == op.props["ttrUrl"]
+            assert link.url.startswith("https://studio.example/m/demo/s/")
+            assert link.displayText.startswith("Open ")
+            assert link.displayText.endswith(" model in Studio")
+    assert all(
+        op.studio_link is None
+        for op in plan_from_export(export).operations
+        if isinstance(op, (SetTableProps, UpsertTerm, UpsertMetric))
+    )
+
+
+@pytest.mark.parametrize("operation", [SetTableProps, UpsertTerm, UpsertMetric])
+def test_string_properties_reject_structured_values(
+    export: Export, operation: type[SetTableProps] | type[UpsertTerm] | type[UpsertMetric]
+) -> None:
+    from pydantic import ValidationError
+
+    op = next(o for o in plan_from_export(export).operations if isinstance(o, operation))
+    data = op.model_dump()
+    data["props"]["ttrQname"] = {"url": "https://wrong.example"}
+    with pytest.raises(ValidationError):
+        operation.model_validate(data)
+
+
+@pytest.mark.parametrize(
+    "origin,expected",
+    [
+        ("HTTPS://Studio.EXAMPLE:443/", "https://studio.example"),
+        ("http://Studio.EXAMPLE:80", "http://studio.example"),
+        ("https://Studio.EXAMPLE:8443", "https://studio.example:8443"),
+        ("http://[2001:DB8::1]:80/", "http://[2001:db8::1]"),
+        ("https://xn--stdio-kva.example", "https://xn--stdio-kva.example"),
+    ],
+)
+def test_studio_origins_are_canonical(export: Export, origin: str, expected: str) -> None:
+    from ttr_connect_openmetadata.urls import http_origin
+
+    assert http_origin(origin, allow_path=False, link_host=True) == expected
+    plan = plan_from_export(export, studio_url=origin)
+    assert plan.studio_base == f"{expected}/m/northline/s/"
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        'https://a"b<c>',
+        "https://studio.example;x",
+        "https://x{y}|z",
+        "https://a..b",
+        "https://1.2.3.4.5",
+        "https://-bad.example",
+        "https://bad-.example",
+        "https://" + "a" * 64 + ".example",
+        "https://" + ".".join(["a" * 63] * 4),
+        "https://256.1.2.3",
+        "https://[::1]junk",
+        "https://[v1.example]",
+    ],
+)
+def test_invalid_origin_host_grammar(export: Export, url: str) -> None:
+    with pytest.raises(MappingError, match="invalid host or port"):
+        plan_from_export(export, studio_url=url)
+
+
+@pytest.mark.parametrize(
+    "url,cause",
+    [
+        ("https://studio.example/m/demo", "without a path"),
+        ("https://user@studio.example", "credentials"),
+        ("ftp://studio.example", "scheme"),
+        ("https://studio.example:0", "host or port"),
+    ],
+)
+def test_origin_rejections_explain_the_cause(url: str, cause: str) -> None:
+    from ttr_connect_openmetadata.urls import http_origin
+
+    with pytest.raises(ValueError, match=cause):
+        http_origin(url, allow_path=False, link_host=True)
+
+
+def test_dns_root_dot_is_canonical(export: Export) -> None:
+    dotted = plan_from_export(export, studio_url="https://Studio.EXAMPLE.")
+    plain = plan_from_export(export, studio_url="https://studio.example")
+    assert dotted == plain
+
+
+@pytest.mark.parametrize(
+    "base",
+    [
+        "",
+        "garbage",
+        "https://studio.example/m//s/",
+        "https://studio.example/m/c/s/",
+        "https://studio.example/m/demo/s/?query",
+    ],
+)
+def test_invalid_prepared_base_is_rejected(export: Export, base: str) -> None:
+    with pytest.raises(MappingError, match="invalid prepared Studio base"):
+        plan_from_export(export, studio_base=base)
+
+
+def test_prepared_base_and_library_cli_input_agree(export: Export) -> None:
+    assert plan_from_export(export, studio_base="https://studio.example/m/demo/s/") == (
+        plan_from_export(export, studio_url="https://studio.example", studio_workspace="demo")
+    )
+    plan = plan_from_export(export)
+    assert not plan.studio_links
+    plan.studio_base = "https://studio.example/m/demo/s/"
+    assert plan.studio_links
+
+
+@pytest.mark.parametrize("host", ["studio.123", "0x7f.0.0.1", "studio.0x", "studio.0x12"])
+def test_browser_numeric_hosts_are_rejected(export: Export, host: str) -> None:
+    with pytest.raises(MappingError, match="invalid host or port"):
+        plan_from_export(export, studio_url=f"https://{host}")
+
+
+@pytest.mark.parametrize("host", ["1.2.3.4", "studio.example"])
+def test_canonical_ipv4_and_dns_remain_valid(export: Export, host: str) -> None:
+    assert plan_from_export(export, studio_url=f"https://{host}").studio_links
+
+
+@pytest.mark.parametrize(
+    "origin,workspace",
+    [("", ""), ("javascript:alert(1)//", "c"), ("https://studio.example", "_designer")],
+)
+def test_prepared_components_are_validated(export: Export, origin: str, workspace: str) -> None:
+    from ttr_connect_openmetadata.mapping import PreparedStudio
+
+    with pytest.raises(MappingError):
+        plan_from_export(export, studio_base=PreparedStudio(origin, workspace))
+
+
+@pytest.mark.parametrize(
+    "base",
+    [
+        "",
+        "javascript:alert(1)//m/demo/s/",
+        "/m//s/",
+        "https://studio.example/m/c/s/",
+        "https://Studio.EXAMPLE/m/demo/s/",
+    ],
+)
+def test_plan_validates_studio_base_on_creation_and_assignment(base: str) -> None:
+    from pydantic import ValidationError
+
+    from ttr_connect_openmetadata.model import Plan
+
+    with pytest.raises(ValidationError):
+        Plan(snapshot="test", operations=[], studio_base=base)
+    plan = Plan(snapshot="test", operations=[])
+    with pytest.raises(ValidationError):
+        plan.studio_base = base

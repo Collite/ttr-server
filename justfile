@@ -182,7 +182,7 @@ lint-py module="":
     #!/usr/bin/env bash
     set -euo pipefail
     if [ -z "{{module}}" ]; then
-        for d in services/nlp services/golem-py workers/worker-polars workers/worker-extract shared/libs/python/ttr-nlp shared/libs/python/ttr-morph shared/libs/python/ttr-sqlalchemy; do just lint-py "$d"; done
+        for d in services/nlp services/golem-py workers/worker-polars workers/worker-docproc shared/libs/python/ttr-nlp shared/libs/python/ttr-morph shared/libs/python/ttr-sqlalchemy; do just lint-py "$d"; done
         exit 0
     fi
     path=$(just _resolve "{{module}}")
@@ -194,7 +194,7 @@ build-py module="":
     #!/usr/bin/env bash
     set -euo pipefail
     if [ -z "{{module}}" ]; then
-        for d in services/nlp services/golem-py services/morph-studio workers/worker-polars workers/worker-extract shared/libs/python/ttr-nlp shared/libs/python/ttr-morph shared/libs/python/ttr-sqlalchemy; do just build-py "$d"; done
+        for d in services/nlp services/golem-py services/morph-studio workers/worker-polars workers/worker-docproc shared/libs/python/ttr-nlp shared/libs/python/ttr-morph shared/libs/python/ttr-sqlalchemy; do just build-py "$d"; done
         exit 0
     fi
     path=$(just _resolve "{{module}}")
@@ -206,7 +206,7 @@ test-py module="" *args:
     #!/usr/bin/env bash
     set -euo pipefail
     if [ -z "{{module}}" ]; then
-        for d in services/nlp services/golem-py services/morph-studio workers/worker-polars workers/worker-extract shared/libs/python/ttr-nlp shared/libs/python/ttr-morph shared/libs/python/ttr-sqlalchemy; do just test-py "$d" {{args}}; done
+        for d in services/nlp services/golem-py services/morph-studio workers/worker-polars workers/worker-docproc shared/libs/python/ttr-nlp shared/libs/python/ttr-morph shared/libs/python/ttr-sqlalchemy; do just test-py "$d" {{args}}; done
         exit 0
     fi
     path=$(just _resolve "{{module}}")

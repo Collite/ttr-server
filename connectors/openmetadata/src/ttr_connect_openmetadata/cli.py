@@ -11,9 +11,17 @@ from typing import TYPE_CHECKING
 from pydantic import ValidationError
 
 from .export_reader import DirSource, ExportError, NotModified, UrlSource
-from .mapping import MappingError, deprecations, json_lines, plan_from_export
-from .model import ImportRdf
+from .mapping import (
+    MappingError,
+    PreparedStudio,
+    deprecations,
+    json_lines,
+    plan_from_export,
+    resolve_studio_workspace,
+)
+from .model import EnsureGlossary, Export, ImportRdf
 from .state import State, options_fingerprint, read_state, write_state
+from .urls import http_origin
 
 if TYPE_CHECKING:
     from .om_client import OmClient
@@ -46,6 +54,8 @@ def main(argv: list[str] | None = None) -> int:
         if name == "sync":
             command.add_argument("--dry-run", action="store_true")
     args = parser.parse_args(argv)
+    if args.command != "check" and args.studio_workspace is not None and not args.studio_url:
+        parser.error("--studio-workspace requires --studio-url")
     dry = args.command == "plan" or (args.command == "sync" and args.dry_run)
     if not dry and (not args.om_url or not args.om_token_file):
         parser.error("check/sync require --om-url and --om-token-file (except sync --dry-run)")
@@ -74,21 +84,40 @@ def main(argv: list[str] | None = None) -> int:
 def run(args: argparse.Namespace, dry: bool, client: "OmClient | None") -> int:
     if args.command != "check":
         try:
-            state = read_state(args.state_file) if args.state_file else None
-            fingerprint = (
+            studio_origin = (
+                http_origin(args.studio_url, allow_path=False, link_host=True)
+                if args.studio_url
+                else None
+            )
+            workspace = (
+                resolve_studio_workspace("", args.studio_workspace)
+                if studio_origin and args.studio_workspace is not None
+                else None
+            )
+        except (ValueError, MappingError) as exc:
+            print(f"mapping error: studio URL/workspace: {exc}", file=sys.stderr)
+            return 3
+
+        def fingerprint_for(world: str | None) -> str | None:
+            return (
                 options_fingerprint(
-                    args.world,
-                    args.studio_url,
+                    world,
+                    studio_origin,
                     args.cn_path,
                     args.cn_name_mode,
                     args.deprecate_missing,
                     version("ttr-connect-openmetadata"),
                     client.version,
-                    args.studio_workspace,
+                    workspace if workspace is not None else world if studio_origin else None,
                 )
                 if client is not None
                 else None
             )
+
+        try:
+            state = read_state(args.state_file) if args.state_file else None
+            known_world = args.world or (state.world if state else None)
+            fingerprint = fingerprint_for(known_world)
             # Keep old ids for deprecations, but never send an incompatible ETag.
             cached = state if client is None or (state and state.options == fingerprint) else None
             export = (
@@ -116,12 +145,16 @@ def run(args: argparse.Namespace, dry: bool, client: "OmClient | None") -> int:
             print(f"export error: {exc}", file=sys.stderr)
             return 2
         try:
+            if studio_origin and workspace is None:
+                workspace = resolve_studio_workspace(export.graph.world, None)
+            fingerprint = fingerprint_for(args.world or export.graph.world)
             result = plan_from_export(
                 export,
                 args.world,
-                args.studio_url,
                 cn_name_mode=args.cn_name_mode,
-                studio_workspace=args.studio_workspace,
+                studio_base=PreparedStudio(studio_origin, workspace)
+                if studio_origin and workspace is not None
+                else None,
             )
             if args.cn_path == "glossary":
                 result.operations = [
@@ -139,6 +172,15 @@ def run(args: argparse.Namespace, dry: bool, client: "OmClient | None") -> int:
             print(f"mapping error: {exc}", file=sys.stderr)
             return 3
         if dry:
+            if result.studio_links:
+                glossaries = ", ".join(
+                    op.name for op in result.operations if isinstance(op, EnsureGlossary)
+                )
+                print(
+                    "INFO sync also normalizes Studio links on out-of-plan, "
+                    f"Approved/Draft terms in {glossaries}",
+                    file=sys.stderr,
+                )
             for warning in result.warnings:
                 print(f"WARN {warning}", file=sys.stderr)
             print(json_lines(result), end="")
@@ -148,6 +190,7 @@ def run(args: argparse.Namespace, dry: bool, client: "OmClient | None") -> int:
         client.check()
         print(client.summary.model_dump_json())
     else:
+        assert isinstance(export, Export)
         summary = client.sync(result, args.cn_path)
         # Exhaustive warning classification: get_table, set_column_tags and _asset
         # skip unscanned assets; plan.warnings omit unmappable assets. RDF import
@@ -167,6 +210,7 @@ def run(args: argparse.Namespace, dry: bool, client: "OmClient | None") -> int:
                     snapshot=export.snapshot,
                     ids=sorted(current_ids),
                     om_version=client.version,
+                    world=export.graph.world,
                     options=fingerprint,
                 ),
             )
