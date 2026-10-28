@@ -192,12 +192,12 @@ jobs:
         working-directory: services/golem-py
         run: uv run pytest -q
 
-  # DX-P0 S0.2/S0.4 — worker-extract (Aristarchos), the extraction worker's spike skeleton: the pgmq bus
+  # DX-P0 S0.2/S0.4 — worker-docproc (docproc), the extraction worker's spike skeleton: the pgmq bus
   # and the message models. ruff + mypy --strict + pytest, the component tier included (testcontainers-python
   # on postgres:18-alpine with the automation service's vendored pgmq SQL). Runs on every PR from the day the
   # module exists, so it never becomes another dark tier. The kantheon fixture-identity checks skip here (no
   # kantheon checkout); they run where both repos sit side by side.
-  worker-extract:
+  worker-docproc:
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -213,19 +213,19 @@ jobs:
           enable-cache: true
 
       - name: install (locked)
-        working-directory: workers/worker-extract
+        working-directory: workers/worker-docproc
         run: uv sync --locked
 
       - name: ruff
-        working-directory: workers/worker-extract
+        working-directory: workers/worker-docproc
         run: uv run --locked ruff check .
 
       - name: mypy --strict
-        working-directory: workers/worker-extract
+        working-directory: workers/worker-docproc
         run: uv run --locked mypy
 
       - name: pytest (unit + component)
-        working-directory: workers/worker-extract
+        working-directory: workers/worker-docproc
         run: uv run --locked pytest -q
 
   # XM-P2: connector-only Python gate. Keep the workflow's existing cross-repo

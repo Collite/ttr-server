@@ -12,6 +12,8 @@ from typing import Any
 
 import pytest
 
+from ttr_connect_openmetadata.model import REGISTRY
+
 from .conftest import LiveOm
 
 pytestmark = pytest.mark.om_live
@@ -50,16 +52,17 @@ def test_check_sync_idempotency_and_deprecation(om: LiveOm, tmp_path: Path) -> N
         return summary
 
     cli("check", *credentials)
-    for entity, names in {
-        "table": {"ttrQname", "ttrUrl"},
-        "tableColumn": {"ttrQname"},
-        "glossaryTerm": {"ttrQname", "ttrUrl", "ttrKind", "ttrIri"},
-        "metric": {"ttrQname", "ttrUrl", "ttrAdditivity", "ttrColumnAssets"},
-    }.items():
+    field_ids = {
+        name: om.call("GET", f"metadata/types/name/{name}")["id"]
+        for name in ("string", "hyperlink-cp")
+    }
+    for entity, properties in REGISTRY.items():
         registry = om.call(
             "GET", f"metadata/types/name/{entity}", params={"fields": "customProperties"}
         )
-        assert names <= {p["name"] for p in registry["customProperties"]}
+        actual = {p["name"]: p["propertyType"]["id"] for p in registry["customProperties"]}
+        for name, field_type in properties:
+            assert actual[name] == field_ids[field_type]
     args = [
         "sync",
         "--export-dir",
@@ -103,6 +106,10 @@ def test_check_sync_idempotency_and_deprecation(om: LiveOm, tmp_path: Path) -> N
     for name, table in tables.items():
         assert table["extension"]["ttrQname"] == f"db.retail.{name}"
         assert table["extension"]["ttrUrl"] == "https://studio.example/m/northline/s/db"
+        assert table["extension"]["ttrStudioLink"] == {
+            "url": table["extension"]["ttrUrl"],
+            "displayText": "Open database model in Studio",
+        }
     sales = tables["sales"]
     assert "Tatrman.Grounded" in {t["tagFQN"] for t in sales["tags"]}
     assert "Tatrman.Grounded" in {t["tagFQN"] for t in tables["buyers"]["tags"]}
@@ -134,7 +141,7 @@ def test_check_sync_idempotency_and_deprecation(om: LiveOm, tmp_path: Path) -> N
     assert before == state.read_bytes()
     entities = om.entities("glossaryTerms") + om.entities("metrics") + om.entities("tables")
     assert all(e["version"] == versions[e["id"]] for e in entities if e["id"] in versions)
-    # Migrate actual 0.1.2-style links through OM's real JSON-patch boundary.
+    # Migrate actual legacy URL-only links through OM's real JSON-patch boundary.
     er_term = by_qname["er.entity.buyer"]
     revenue = next(m for m in metrics if m["name"] == "revenue")
     legacy_targets = [
@@ -143,7 +150,7 @@ def test_check_sync_idempotency_and_deprecation(om: LiveOm, tmp_path: Path) -> N
         ("tables", sales, "db"),
         ("metrics", revenue, "md"),
     ]
-    for resource, legacy_entity, _ in legacy_targets:
+    for resource, legacy_entity, model in legacy_targets:
         om.call(
             "PATCH",
             f"{resource}/{legacy_entity['id']}",
@@ -152,7 +159,21 @@ def test_check_sync_idempotency_and_deprecation(om: LiveOm, tmp_path: Path) -> N
                     "op": "add",
                     "path": "/extension/ttrUrl",
                     "value": "https://studio.example/viewer?qname=legacy",
-                }
+                },
+                {
+                    "op": "remove" if model and resource != "tables" else "add",
+                    "path": "/extension/ttrStudioLink",
+                    **(
+                        {}
+                        if model and resource != "tables"
+                        else {
+                            "value": {
+                                "url": "https://studio.example/obsolete",
+                                "displayText": "Old",
+                            }
+                        }
+                    ),
+                },
             ],
             headers={"Content-Type": "application/json-patch+json"},
         )
@@ -166,10 +187,96 @@ def test_check_sync_idempotency_and_deprecation(om: LiveOm, tmp_path: Path) -> N
         assert extension["ttrQname"] == legacy_entity["extension"]["ttrQname"]
         if model is None:
             assert "ttrUrl" not in extension
+            assert "ttrStudioLink" not in extension
             assert extension["ttrIri"] == party["extension"]["ttrIri"]
         else:
             assert extension["ttrUrl"] == f"https://studio.example/m/northline/s/{model}"
+            label = {"db": "database", "er": "E-R", "md": "dimensional"}[model]
+            assert extension["ttrStudioLink"] == {
+                "url": extension["ttrUrl"],
+                "displayText": f"Open {label} model in Studio",
+            }
+    # Exercise out-of-plan links under the real default approval workflow.
+    # Editing a Deprecated term's extension would asynchronously re-approve it.
+    orphan_seeds = {}
+    for name, qname, glossary in (
+        ("review-retired", "er.entity.review-retired", "northline Entities"),
+        ("review-retiring", "er.entity.review-retiring", "northline Entities"),
+        ("review-orphan", "er.entity.review-orphan", "northline Entities"),
+        ("review-cn-orphan", "cn.kind.review-orphan", "northline Concepts"),
+    ):
+        seed = om.call(
+            "PUT",
+            "glossaryTerms",
+            json={
+                "name": name,
+                "glossary": glossary,
+                "description": "Link migration regression",
+            },
+        )
+        extension = {
+            "ttrQname": qname,
+            "ttrUrl": "https://studio.example/viewer?qname=legacy",
+            "ttrStudioLink": {"url": "https://studio.example/obsolete", "displayText": "Old"},
+        }
+        om.call(
+            "PATCH",
+            f"glossaryTerms/{seed['id']}",
+            json=[
+                {"op": "add", "path": "/extension", "value": extension},
+            ],
+            headers={"Content-Type": "application/json-patch+json"},
+        )
+        orphan_seeds[name] = (seed, extension)
     om.settle_initial_approvals()
+    retired, retired_extension = orphan_seeds["review-retired"]
+    retired = om.call("GET", f"glossaryTerms/{retired['id']}")
+    om.call(
+        "PATCH",
+        f"glossaryTerms/{retired['id']}",
+        json=[
+            {"op": "replace", "path": "/entityStatus", "value": "Deprecated"},
+        ],
+        headers={
+            "Content-Type": "application/json-patch+json",
+            "If-Match": f'W/"{retired["version"]}"',
+        },
+    )
+    # A second linked term is retired by this very sync, then must be skipped.
+    saved = json.loads(state.read_text())
+    saved["ids"].append("er.entity.review-retiring")
+    state.write_text(json.dumps(saved))
+    normalized = cli(*args)
+    assert normalized["deprecated"] == 1 and normalized["updated"] == 2
+    om.settle_initial_approvals()
+    time.sleep(2)
+    for name in ("review-retired", "review-retiring", "review-orphan", "review-cn-orphan"):
+        seed, old_extension = orphan_seeds[name]
+        retained = om.call("GET", f"glossaryTerms/{seed['id']}", params={"fields": "extension"})
+        extension = retained["extension"]
+        if name in {"review-retired", "review-retiring"}:
+            assert retained["entityStatus"] == "Deprecated"
+            assert extension == old_extension
+        elif name == "review-orphan":
+            assert retained["entityStatus"] == "Approved"
+            assert extension == {
+                "ttrQname": old_extension["ttrQname"],
+                "ttrUrl": "https://studio.example/m/northline/s/er",
+                "ttrStudioLink": {
+                    "url": "https://studio.example/m/northline/s/er",
+                    "displayText": "Open E-R model in Studio",
+                },
+            }
+        else:
+            assert extension == {"ttrQname": old_extension["ttrQname"]}
+        om.record(
+            "out-of-plan-links",
+            {
+                "name": name,
+                "entityStatus": retained["entityStatus"],
+                "extension": extension,
+            },
+        )
     clean = cli(*args)
     assert all(clean[k] == 0 for k in ("created", "updated", "deprecated", "linked", "warnings"))
     # Remove an isolated quality from a coherent export; keep all scanner-owned assets.
@@ -222,3 +329,74 @@ def test_plain_text_search_minimum(om: LiveOm) -> None:
         assert any(
             h["_source"]["fullyQualifiedName"] == PREFIX + "sales" for h in result["hits"]["hits"]
         )
+
+
+def test_dotted_glossary_fqn_on_real_om(om: LiveOm) -> None:
+    """All connector glossary lookup/create paths use a single quoted FQN."""
+    from urllib.parse import quote
+    from uuid import uuid4
+
+    from ttr_connect_openmetadata.mapping import om_name
+    from ttr_connect_openmetadata.model import EnsureGlossary, UpsertTerm
+    from ttr_connect_openmetadata.om_client import OmClient, Summary
+
+    name = f"conformance.{uuid4().hex} Entities"
+    fqn = om_name(name)
+    client = OmClient(om.url, om.token)
+    glossary = None
+    try:
+        client.check()
+        client.summary = Summary(snapshot="dotted-world")
+        glossary = client.ensure_glossary(EnsureGlossary(name=name))
+        assert str(glossary.fullyQualifiedName.root) == fqn
+        # The fake deliberately requires canonical quoted input. The real server
+        # may also accept bare glossary names; record that behavior, don't infer
+        # it from the generic FQN hashing implementation.
+        bare = om.session.get(f"{om.url}/v1/glossaries/name/{quote(name, safe='')}", timeout=60)
+        assert bare.status_code in {200, 404}
+        if bare.status_code == 200:
+            assert bare.json()["id"] == str(glossary.id.root)
+        op = UpsertTerm(
+            qname="er.entity.dotted-proof",
+            fqn=f"{fqn}.proof",
+            glossary=name,
+            name="proof",
+            display="proof",
+            description="Dotted FQN proof",
+            synonyms=[],
+            parent=None,
+            related=[],
+            iri=None,
+            props={"ttrQname": "er.entity.dotted-proof"},
+        )
+        client.upsert_term(op)
+        om.settle_initial_approvals()
+        saved = om.call("GET", f"glossaryTerms/name/{quote(op.fqn, safe='')}")
+        assert saved["glossary"]["fullyQualifiedName"] == fqn
+        client.summary = Summary(snapshot="dotted-world")
+        client._load_terms()
+        repeated = client.ensure_glossary(EnsureGlossary(name=name))
+        client.upsert_term(op)
+        assert repeated.id == glossary.id
+        assert all(
+            getattr(client.summary, k) == 0
+            for k in ("created", "updated", "deprecated", "linked", "warnings")
+        )
+        om.record(
+            "dotted-glossary",
+            {
+                "name": name,
+                "fqn": fqn,
+                "term": saved["fullyQualifiedName"],
+                "unquotedLookup": bare.status_code,
+                "repeat": client.summary.model_dump(),
+            },
+        )
+    finally:
+        client.close()
+        if glossary is not None:
+            om.call(
+                "DELETE",
+                f"glossaries/{glossary.id.root}",
+                params={"recursive": "true", "hardDelete": "true"},
+            )

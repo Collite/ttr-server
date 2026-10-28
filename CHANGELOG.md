@@ -28,6 +28,40 @@ outside this repo could notice is in.
   equal effects share a row, self transitions stay silent. Query scope/restriction/ceiling checks precede
   snapshot use. No physical write, signal, general indirect lookup or calendar execution is enabled.
 
+- **connect-openmetadata 0.1.4 — clickable Studio model links.** Add native
+  `ttrStudioLink` hyperlinks to projected tables, ER/MD terms and metrics while
+  retaining the existing `ttrUrl` string and foreign metadata. Both links use one
+  validated Studio origin. Concepts stay in OM; with Studio configured, remove
+  both link keys from planned CN terms. After deprecations, normalize Approved and Draft
+  out-of-plan owned terms: ER/MD get both model links; CN/other prefixes get neither.
+  Terms in every other status retain their links, including retired `/viewer?qname=` links from
+  0.1.2 or earlier: editing metadata re-runs OM approval and can un-deprecate them.
+  Dotted glossary names use quoted FQNs in lookups, term creation and RDF import.
+  0.1.4+ reads state written by later versions, ignoring unknown fields.
+  Dry-run discloses the additional normalization on stderr; stdout stays JSON-lines. Metric and table links
+  outside the current export (both keys) are not migrated (follow-up #325). Without Studio, existing
+  links remain unchanged. The version fingerprint forces a real projection on
+  upgrade from 0.1.3; equivalent resolved workspaces share the cache identity.
+  State now saves the export world; rollback to 0.1.3 or earlier needs a fresh state path.
+
+- **connect-openmetadata 0.1.3 — Studio model links.** Replace unsupported `/viewer?qname=…`
+  links with `/m/<workspace>/s/db|er|md`. `--studio-workspace` defaults to the export
+  world and can name a different manifest project. Concepts stay in OM; sync with
+  a Studio origin removes their obsolete Studio URL while preserving other custom
+  properties. Links open whole models; exact-object navigation and new-CN diagram
+  support remain follow-ups. Upgrade forces full projection through the options fingerprint.
+
+- **metadata — report and form template reads (#272).** Cluster-internal `GET /model/reports`,
+  `/model/report?id=`, and `/model/forms` serve authored templates from configured Git sources at the
+  served source SHA. Report detail includes the original YAML, base64 workbook and SHA-256 checksum;
+  unknown ids return 404. Content swaps with the model, and invalid YAML/missing workbooks appear in
+  `/status.issues`. Template I/O failures retain the source's last successful catalog (or an empty first
+  catalog) and report the stale SHA without failing the live model. YAML parsing matches the consumer's
+  YAML 1.2 Core settings, with a 100-level nesting limit and stable binary/set projections. Unchanged
+  successful SHAs and identical template read failures reuse their encoded catalogs; invalid configured
+  roots and symlinked template folders/ancestors are diagnosed without following them. The routes are
+  read-only; rendering remains with the report consumer.
+
 - **automation — preview review repairs.** Nested context/candidate references fail closed pending
   callee pinning, action-level `due` defaults match explicit durations, and nested literals retain their
   original escapes. Invalid would-text placeholders identify the template. Fixture verification rejects
@@ -90,13 +124,13 @@ outside this repo could notice is in.
   advisory `cn/lowered-on-er` names md's reason. Pin: `tatrman-grammar` / `tatrman-ttr-metadata` 0.18.9 → 0.18.10.
 - **connect-openmetadata 0.1.2 — complete sync and cache identity.** Skipped scanned
   tables/columns or mapping omissions retain the old state for retry. Summaries add
-  `not_modified` to distinguish304 from a real sync. State fingerprints mapping
+  `not_modified` to distinguish 304 from a real sync. State fingerprints mapping
   options plus connector/current OM versions; legacy state forces a full sync.
-  Rollback to0.1.1 requires a fresh state path.
+  Rollback to 0.1.1 requires a fresh state path.
 
 - **connect-openmetadata 0.1.1 — Hartland catalog integration.** Optional
   `locators.openmetadata.schema` maps a model schema handle to the scanner's physical
-  schema without changing model identities or ownership filters. HTTP304 syncs print
+  schema without changing model identities or ownership filters. HTTP 304 syncs print
   a zero-counter summary while retaining state and making no OM calls.
   Optional `--cn-name-mode qname` supports concept kinds/qualities with equal labels
   under OM's case-insensitive glossary-wide name constraint; existing label mode remains default.
@@ -1770,10 +1804,3 @@ artifact.
   named, so a chart that has never heard of a rule pack renders byte-identically.
 - **New diagnostics** — `NLS-NLP-011` (op unrouted in the active lane),
   `NLS-PACK-010` (reload refused), `LM-MORPH-007` (token report not sunk).
-
-- **connect-openmetadata0.1.3 — Studio model links.** Replace unsupported `/viewer?qname=…`
-  links with `/m/<workspace>/s/db|er|md`. `--studio-workspace` defaults to the export
-  world and can name a different manifest project. Concepts stay in OM; sync with
-  a Studio origin removes their obsolete Studio URL while preserving other custom
-  properties. Links open whole models; exact-object navigation and new-CN diagram
-  support remain follow-ups. Upgrade forces full projection through the options fingerprint.

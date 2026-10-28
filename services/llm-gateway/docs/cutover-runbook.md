@@ -1,5 +1,7 @@
 # LLM Gateway 1.x → 2.0 — cutover runbook
 
+> **Renamed 2026-10-26 (DX-D10, DX-RN):** `docwh-store` (was Kallimachos) · `docwh-pipeline` (was Pinakes).
+
 > Scope: repoint the deployed `llm-gateway` from the Spring 1.x image to the Ktor 2.0 image.
 > Authored in LG-P6·S1·T6. The GATE that authorizes running this runbook is LG-P6·S2 — do not
 > execute until every pre-flight below is green.
@@ -7,8 +9,8 @@
 > ⚠ **The "zero caller changes" premise is RETIRED (P6·S1 soak, kantheon#16).** 2.0's `/v1` is
 > key-gated where 1.x `/api/v1` was permit-all, and 2.0 dropped the 1.x-only URL/shape variants.
 > So the constellation consumers that call the gateway on the chat/embeddings path **were migrated
-> and now require a ttrk- key**: kleio (`/v1/chat/completions`), kallimachos (`/v1/embeddings`),
-> pinakes (`/v1/chat/completions`) — kantheon `5af7361` (URL/shape) + `504d60a` (auth slice). Their
+> and now require a ttrk- key**: kleio (`/v1/chat/completions`), docwh-store (`/v1/embeddings`),
+> docwh-pipeline (`/v1/chat/completions`) — kantheon `5af7361` (URL/shape) + `504d60a` (auth slice). Their
 > repoint + key wiring is now a **coupled cutover step** (§2a), not a no-op. Golems already target
 > `llm-gateway.ttr-server:7280`.
 >
@@ -52,20 +54,20 @@ git push --force origin llm-gateway/pre-2.0
 - [ ] **SQ-2 removal warrant** (T4) recorded: async-jobs + `/v1/conversations` endpoint confirmed
       zero-consumer; the Responses **field** surface (`output[]/status/createdAt/conversationId/
       reasoning.summary`, top-level `content`, `conversation` request field) dispositioned — **Iris**
-      and **pinakes** either migrated or the surface is retained. **No field-surface removal ships
+      and **docwh-pipeline** either migrated or the surface is retained. **No field-surface removal ships
       until this is signed off.**
 - [ ] **Staging soak green** (T5): Hebe/Kleio/Themis/Golem/Pythia smoke clean over the agreed window;
       budget-settle sanity (settled ≈ Σ usage.cost); no 10× latency regression; SSE heartbeats survive
       ingress buffering (`proxy_buffering` off on the Service path — config noted in findings).
 - [ ] **Rollback rehearsed** on staging (T6): repoint staging to `:0.9.0`, confirm 1.x serves against
       the migrated PG copy.
-- [ ] **Consumers migrated + key-ready** (P6·S1 soak, kantheon#16). The kleio/kallimachos/pinakes
+- [ ] **Consumers migrated + key-ready** (P6·S1 soak, kantheon#16). The kleio/docwh-store/docwh-pipeline
       images in the estate are built from kantheon `504d60a`+ (URL/shape migration + `Authorization:
       Bearer` from `*_LLM_GATEWAY_KEY`); **hebe** was already 2.0-native (openai-compat GatewayClient
       with Bearer + `X-Cost-Center`, k8s profile `llm.source = gateway`) — config-only switch. Governance
-      seeds a team per consumer (`kleio`/`kallimachos`/`pinakes`/`hebe` — governance.yaml). Per-team
+      seeds a team per consumer (`kleio`/`docwh-store`/`docwh-pipeline`/`hebe` — governance.yaml). Per-team
       ttrk- keys minted, their SHA-256 seeded into the gateway's governance config, and the plaintext in
-      Azure KV (kleio/kallimachos/pinakes) or the `hebe-dev` secret (hebe). Verified once on staging: a
+      Azure KV (kleio/docwh-store/docwh-pipeline) or the `hebe-dev` secret (hebe). Verified once on staging: a
       real consumer binary authenticates (a 401 can't settle a prompt-log row).
 
 ---
@@ -160,7 +162,7 @@ Every consuming service must (a) point its gateway host at the 2.0 Service and (
 The gateway Service is `llm-gateway` in ns `ttr-server`, port `7280` (the golems already use it); the
 legacy `prometheus` host value is retired. Four callers on this path, in two key-delivery styles:
 
-- **kleio, kallimachos, pinakes** — env-configured (`*_LLM_GATEWAY_HOST/PORT/KEY`); the key rides a
+- **kleio, docwh-store, docwh-pipeline** — env-configured (`*_LLM_GATEWAY_HOST/PORT/KEY`); the key rides a
   per-consumer **ClusterExternalSecret** from the vault into the kantheon ns (olymp branch
   `lg-p6-consumer-cutover`).
 - **hebe** — toml-configured (`[llm] base_url`, `api_key_secret`); already 2.0-native (k8s profile =
@@ -171,16 +173,16 @@ legacy `prometheus` host value is retired. Four callers on this path, in two key
   Service and are unaffected.
 
 1. **Mint one ttrk- key per consumer team** (never committed — plaintext lives only in Azure KV; hebe's
-   goes into `hebe-dev` via provision.sh instead). Teams `kleio`/`kallimachos`/`pinakes`/`hebe` all
+   goes into `hebe-dev` via provision.sh instead). Teams `kleio`/`docwh-store`/`docwh-pipeline`/`hebe` all
    exist in governance.yaml:
 
    ```bash
    # 256-bit url-safe secret with the ttrk- prefix; print the key and its SHA-256 (the seed hash).
-   for team in kleio kallimachos pinakes hebe; do
+   for team in kleio docwh-store docwh-pipeline hebe; do
      key="ttrk-$(openssl rand -base64 32 | tr '+/' '-_' | tr -d '=')"
      hash="$(printf '%s' "$key" | shasum -a 256 | cut -d' ' -f1)"
      echo "$team  key=$key  sha256=$hash"
-     # kleio/kallimachos/pinakes → vault; hebe's key goes into the hebe-dev secret via provision.sh.
+     # kleio/docwh-store/docwh-pipeline → vault; hebe's key goes into the hebe-dev secret via provision.sh.
      [ "$team" = hebe ] || az keyvault secret set --vault-name <kv> --name "ttrk-$team" --value "$key" >/dev/null
    done
    ```
@@ -199,7 +201,7 @@ legacy `prometheus` host value is retired. Four callers on this path, in two key
    `virtual_keys` (Flyway V2). NOT a sibling DB (iris/pythia/golem/…) on the same cluster.
 
    ⚠ **Run this AFTER the 2.0 pod is Ready** — that boot applies Flyway V1–V3 (creates `virtual_keys`) and
-   upserts the six teams (`virtual_keys.team_id` FKs `teams`). Too early ⇒ `relation "virtual_keys" does
+   upserts every team in the image's `governance.yaml` (`virtual_keys.team_id` FKs `teams`). Too early ⇒ `relation "virtual_keys" does
    not exist` or an FK violation. Gate on `kubectl -n ttr-server rollout status deploy/llm-gateway`.
 
    ```bash
@@ -210,7 +212,7 @@ legacy `prometheus` host value is retired. Four callers on this path, in two key
 
    # each env-consumer's hash straight from the vault (byte-exact, lowercase, no newline)
    KV=<key-vault-name>
-   for team in kleio kallimachos pinakes; do
+   for team in kleio docwh-store docwh-pipeline; do
      key=$(az keyvault secret show --vault-name "$KV" --name "ttrk-$team" --query value -o tsv)
      printf '%-12s %s\n' "$team" "$(printf '%s' "$key" | shasum -a 256 | cut -d' ' -f1)"
    done
@@ -219,8 +221,8 @@ legacy `prometheus` host value is retired. Four callers on this path, in two key
    kubectl -n data exec -i "$PRIMARY" -- psql -U postgres -d llm_gateway <<'SQL'
    INSERT INTO virtual_keys (id, team_id, name, key_hash, seeded) VALUES
      ('vk_kleio_cutover',       'kleio',       'kleio-cutover',       '<sha256-kleio>',       true),
-     ('vk_kallimachos_cutover', 'kallimachos', 'kallimachos-cutover', '<sha256-kallimachos>', true),
-     ('vk_pinakes_cutover',     'pinakes',     'pinakes-cutover',     '<sha256-pinakes>',     true)
+     ('vk_docwh_store_cutover', 'docwh-store', 'docwh-store-cutover', '<sha256-docwh-store>', true),
+     ('vk_docwh_pipeline_cutover',     'docwh-pipeline',     'docwh-pipeline-cutover',     '<sha256-docwh-pipeline>',     true)
    ON CONFLICT (key_hash) DO NOTHING;
    SQL
    ```
@@ -284,20 +286,20 @@ legacy `prometheus` host value is retired. Four callers on this path, in two key
    metadata: { name: llm-gateway-governance, namespace: ttr-server }
    data:
      governance.yaml: |
-       teams:            # the 6 teams verbatim from the image's governance.yaml
+       teams:            # every team verbatim from the image's governance.yaml
          - { id: golem,  costCenterPrefix: "golem/",  budget: { id: golem-monthly,  usdPerMonth: 100.0, mode: soft }, rateLimit: { id: golem-rl,  requestsPerMinute: 120 } }
-         # … hebe, themis, kleio, kallimachos, pinakes …
+         # … hebe, themis, kleio, docwh-store, docwh-pipeline, kallimachos, pinakes (transitional) …
        keys:
          - { team: kleio,       name: kleio-cutover,       sha256: <sha256-kleio> }
-         - { team: kallimachos, name: kallimachos-cutover, sha256: <sha256-kallimachos> }
-         - { team: pinakes,     name: pinakes-cutover,     sha256: <sha256-pinakes> }
+         - { team: docwh-store, name: docwh-store-cutover, sha256: <sha256-docwh-store> }
+         - { team: docwh-pipeline,     name: docwh-pipeline-cutover,     sha256: <sha256-docwh-pipeline> }
          - { team: hebe,        name: hebe-cutover,        sha256: <sha256-hebe> }
    ```
 
 3. **Wire the consumer env + key secrets** — done for bp-dsk on olymp branch `lg-p6-consumer-cutover`
    (mirror it for collite-o1). Two delivery styles:
 
-   - **kleio / kallimachos / pinakes** — a `ClusterExternalSecret` per consumer
+   - **kleio / docwh-store / docwh-pipeline** — a `ClusterExternalSecret` per consumer
      (`clusters/<cluster>/platform/auth/clusterexternalsecret-<c>-llm-gateway-key.yaml`) pulls
      `ttrk-<team>` from `azure-store` into a `<c>-llm-gateway-key` Secret in the kantheon ns, and
      `apps/<c>/values.yaml extraEnv` gets:
@@ -307,8 +309,8 @@ legacy `prometheus` host value is retired. Four callers on this path, in two key
      - name: <C>_LLM_GATEWAY_KEY
        valueFrom: { secretKeyRef: { name: <c>-llm-gateway-key, key: key } }
      ```
-     (`<C>` = `KLEIO`/`KALLIMACHOS`/`PINAKES`; register each ExternalSecret in the auth
-     `kustomization.yaml`. pinakes keeps its `sonnet` default in app config.)
+     (`<C>` = `KLEIO`/`DOCWH_STORE`/`DOCWH_PIPELINE`; register each ExternalSecret in the auth
+     `kustomization.yaml`. docwh-pipeline keeps its `sonnet` default in app config.)
    - **hebe** — no ExternalSecret: put the `ttrk-hebe` plaintext in the `hebe-dev` provisioning secret
      under key `llm-gateway-key` (via `just hebe-provision dev`). `apps/hebe/values.yaml` toml sets
      `base_url = "http://llm-gateway.ttr-server:7280/v1"` and `embedding_model = "ada-002"`.
@@ -318,7 +320,7 @@ legacy `prometheus` host value is retired. Four callers on this path, in two key
 ## 3. Abort criteria (roll back if ANY, during the watch window)
 
 - 5xx / gateway-error rate above the 1.x baseline for >5 min on the repointed cluster.
-- Any consumer smoke breaks (Hebe turn, Kleio `/v1`, Themis/Golem alias, Iris responses, pinakes
+- Any consumer smoke breaks (Hebe turn, Kleio `/v1`, Themis/Golem alias, Iris responses, docwh-pipeline
   `content`, Pythia cost read).
 - Budget settle drift (settled materially ≠ Σ usage.cost) or prompt-log writes silently dropping
   (`llm_gateway_promptlog_dropped_total` climbing).

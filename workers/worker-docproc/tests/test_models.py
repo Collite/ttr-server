@@ -8,7 +8,7 @@ import json
 import pytest
 from pydantic import ValidationError
 
-from aristarchos.sdk.models import (
+from docproc.sdk.models import (
     Completion,
     CompletionStatus,
     RunVisibility,

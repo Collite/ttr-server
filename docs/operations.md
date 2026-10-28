@@ -187,11 +187,22 @@ leave it off where the port is reachable from outside the cluster. Without it, p
 
 | Image | Operator command | State / prerequisites |
 |---|---|---|
-| ghcr.io/collite/connect-openmetadata:0.1.0 | `check`, `plan`, `sync --export-url … --om-url … --om-token-file /secrets/token --state-file /state/last.json` | OM 2.0.6; scanned existing tables; read-only token file; writable persistent state directory; default CN path glossary |
+| ghcr.io/collite/connect-openmetadata:0.1.4 | `check`, `plan`, `sync --export-url … --om-url … --om-token-file /secrets/token --state-file /state/last.json` | OM 2.0.6; scanned existing tables; read-only token file; writable persistent state directory; default CN path glossary |
 
 The [connector manual](../connectors/openmetadata/README.md) covers options, exit
 codes and deprecation; [local conformance](../conformance/openmetadata/README.md)
 verifies scanner-owned table/column links and repeat-sync behavior. The connector
 never creates or deletes tables. Schedule scanning before projection. Supply
-studio-url for viewer deep links. Parent-table metric associations are native;
+`--studio-url` for model-level Studio links (`/m/<workspace>/s/db|er|md`): native
+**Open … model in Studio** anchors in `ttrStudioLink` alongside the string `ttrUrl`.
+Add `--studio-workspace` when the served manifest's `project.name` differs from the
+export world; it requires `--studio-url`. Concepts stay in OM.
+Parent-table metric associations are native;
 exact column bindings are stored in the metric's ttrColumnAssets property.
+
+
+With Studio configured, post-deprecation normalization also visits owned terms
+outside the export in this world's two glossaries. Only Approved and Draft terms
+are normalized: ER/MD get model links and CN terms get neither link. Terms in every
+other status retain their old links: a non-status edit would rerun OM approval
+and could reset their status.

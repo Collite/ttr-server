@@ -3,7 +3,9 @@
 
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, JsonValue, model_validator
+from pydantic import BaseModel, ConfigDict, Field, JsonValue, field_validator, model_validator
+
+from .urls import validate_studio_base
 
 
 class ExportModel(BaseModel):
@@ -124,11 +126,41 @@ class EnsureTag(Operation):
     name: str
 
 
+type EntityType = Literal["table", "tableColumn", "glossaryTerm", "metric"]
+type FieldType = Literal["string", "hyperlink-cp"]
+
+STUDIO_LINK_KEYS: tuple[Literal["ttrUrl", "ttrStudioLink"], ...] = ("ttrUrl", "ttrStudioLink")
+
+REGISTRY: dict[EntityType, tuple[tuple[str, FieldType], ...]] = {
+    "table": (("ttrQname", "string"), ("ttrUrl", "string"), ("ttrStudioLink", "hyperlink-cp")),
+    "tableColumn": (("ttrQname", "string"),),
+    "glossaryTerm": (
+        ("ttrQname", "string"),
+        ("ttrUrl", "string"),
+        ("ttrStudioLink", "hyperlink-cp"),
+        ("ttrKind", "string"),
+        ("ttrIri", "string"),
+    ),
+    "metric": (
+        ("ttrQname", "string"),
+        ("ttrUrl", "string"),
+        ("ttrStudioLink", "hyperlink-cp"),
+        ("ttrAdditivity", "string"),
+        ("ttrColumnAssets", "string"),
+    ),
+}
+
+
+class StudioLink(Operation):
+    url: str
+    displayText: str
+
+
 class EnsureCustomProperty(Operation):
     op: Literal["EnsureCustomProperty"] = "EnsureCustomProperty"
-    entity_type: Literal["table", "tableColumn", "glossaryTerm", "metric"]
+    entity_type: EntityType
     name: str
-    type: Literal["string"] = "string"
+    type: FieldType = "string"
 
 
 class ImportRdf(Operation):
@@ -155,8 +187,9 @@ class UpsertTerm(Operation):
     related: list[RelatedTerm]
     iri: str | None
     props: dict[str, str]
+    studio_link: StudioLink | None = None
     # Explicitly remove an obsolete connector-owned link; preserve other extensions.
-    remove_props: list[Literal["ttrUrl"]] = Field(default_factory=list)
+    remove_props: list[Literal["ttrUrl", "ttrStudioLink"]] = Field(default_factory=list)
     # Always present for qname/custom-property updates; S2.2 uses the fallback
     # payload for creation when OWL import refuses the graph.
     cn: bool = False
@@ -176,12 +209,14 @@ class UpsertMetric(Operation):
     metricExpression: MetricExpression
     metricType: Literal["SUM", "COUNT", "AVERAGE", "OTHER"]
     props: dict[str, str]
+    studio_link: StudioLink | None = None
 
 
 class SetTableProps(Operation):
     op: Literal["SetTableProps"] = "SetTableProps"
     fqn: str
     props: dict[str, str]
+    studio_link: StudioLink | None = None
     tags: list[str]
     description: str = ""
 
@@ -236,6 +271,18 @@ type PlanOperation = Annotated[
 
 
 class Plan(BaseModel):
+    model_config = ConfigDict(validate_assignment=True)
+
     snapshot: str
+    studio_base: str | None = None
     operations: list[PlanOperation]
     warnings: list[str] = Field(default_factory=list)
+
+    @field_validator("studio_base")
+    @classmethod
+    def valid_studio_base(cls, value: str | None) -> str | None:
+        return validate_studio_base(value) if value is not None else None
+
+    @property
+    def studio_links(self) -> bool:
+        return self.studio_base is not None

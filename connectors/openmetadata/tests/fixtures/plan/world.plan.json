@@ -35,6 +35,12 @@
   },
   {
     "op": "EnsureCustomProperty",
+    "entity_type": "table",
+    "name": "ttrStudioLink",
+    "type": "hyperlink-cp"
+  },
+  {
+    "op": "EnsureCustomProperty",
     "entity_type": "tableColumn",
     "name": "ttrQname",
     "type": "string"
@@ -50,6 +56,12 @@
     "entity_type": "glossaryTerm",
     "name": "ttrUrl",
     "type": "string"
+  },
+  {
+    "op": "EnsureCustomProperty",
+    "entity_type": "glossaryTerm",
+    "name": "ttrStudioLink",
+    "type": "hyperlink-cp"
   },
   {
     "op": "EnsureCustomProperty",
@@ -74,6 +86,12 @@
     "entity_type": "metric",
     "name": "ttrUrl",
     "type": "string"
+  },
+  {
+    "op": "EnsureCustomProperty",
+    "entity_type": "metric",
+    "name": "ttrStudioLink",
+    "type": "hyperlink-cp"
   },
   {
     "op": "EnsureCustomProperty",
@@ -117,6 +135,7 @@
       "ttrQname": "cn.event.Purchase",
       "ttrIri": "urn:ttr:northline:cn.event.Purchase"
     },
+    "studio_link": null,
     "remove_props": [],
     "cn": true
   },
@@ -140,6 +159,7 @@
       "ttrQname": "cn.kind.Party",
       "ttrIri": "https://example.org/northline/Party"
     },
+    "studio_link": null,
     "remove_props": [],
     "cn": true
   },
@@ -164,6 +184,7 @@
       "ttrQname": "cn.kind.Product",
       "ttrIri": "urn:ttr:northline:cn.kind.Product"
     },
+    "studio_link": null,
     "remove_props": [],
     "cn": true
   },
@@ -183,6 +204,7 @@
       "ttrQname": "cn.kind.Prospect",
       "ttrIri": "urn:ttr:northline:cn.kind.Prospect"
     },
+    "studio_link": null,
     "remove_props": [],
     "cn": true
   },
@@ -202,6 +224,7 @@
       "ttrQname": "cn.phase.LargePurchase",
       "ttrIri": "urn:ttr:northline:cn.phase.LargePurchase"
     },
+    "studio_link": null,
     "remove_props": [],
     "cn": true
   },
@@ -221,6 +244,7 @@
       "ttrQname": "cn.quality.sold_at",
       "ttrIri": "urn:ttr:northline:cn.quality.sold_at"
     },
+    "studio_link": null,
     "remove_props": [],
     "cn": true
   },
@@ -240,6 +264,7 @@
       "ttrQname": "cn.relation_type.recommends",
       "ttrIri": "urn:ttr:northline:cn.relation_type.recommends"
     },
+    "studio_link": null,
     "remove_props": [],
     "cn": true
   },
@@ -268,6 +293,7 @@
       "ttrQname": "cn.role.Customer",
       "ttrIri": "urn:ttr:northline:cn.role.Customer"
     },
+    "studio_link": null,
     "remove_props": [],
     "cn": true
   },
@@ -292,6 +318,7 @@
       "ttrQname": "er.entity.buyer",
       "ttrIri": "urn:ttr:northline:er.entity.buyer"
     },
+    "studio_link": null,
     "remove_props": [],
     "cn": false
   },
@@ -311,6 +338,7 @@
       "ttrQname": "er.entity.buyer.id",
       "ttrIri": "urn:ttr:northline:er.entity.buyer.id"
     },
+    "studio_link": null,
     "remove_props": [],
     "cn": false
   },
@@ -330,6 +358,7 @@
       "ttrQname": "er.entity.buyer.name",
       "ttrIri": "urn:ttr:northline:er.entity.buyer.name"
     },
+    "studio_link": null,
     "remove_props": [],
     "cn": false
   },
@@ -349,6 +378,7 @@
       "ttrQname": "er.entity.product",
       "ttrIri": "urn:ttr:northline:er.entity.product"
     },
+    "studio_link": null,
     "remove_props": [],
     "cn": false
   },
@@ -368,6 +398,7 @@
       "ttrQname": "er.entity.product.id",
       "ttrIri": "urn:ttr:northline:er.entity.product.id"
     },
+    "studio_link": null,
     "remove_props": [],
     "cn": false
   },
@@ -392,6 +423,7 @@
       "ttrQname": "er.entity.sale",
       "ttrIri": "urn:ttr:northline:er.entity.sale"
     },
+    "studio_link": null,
     "remove_props": [],
     "cn": false
   },
@@ -411,6 +443,7 @@
       "ttrQname": "er.entity.sale.amount",
       "ttrIri": "urn:ttr:northline:er.entity.sale.amount"
     },
+    "studio_link": null,
     "remove_props": [],
     "cn": false
   },
@@ -430,6 +463,7 @@
       "ttrQname": "er.entity.sale.buyer_id",
       "ttrIri": "urn:ttr:northline:er.entity.sale.buyer_id"
     },
+    "studio_link": null,
     "remove_props": [],
     "cn": false
   },
@@ -449,6 +483,7 @@
       "ttrQname": "er.entity.sale.id",
       "ttrIri": "urn:ttr:northline:er.entity.sale.id"
     },
+    "studio_link": null,
     "remove_props": [],
     "cn": false
   },
@@ -468,6 +503,7 @@
       "ttrQname": "er.entity.sale.sold_at",
       "ttrIri": "urn:ttr:northline:er.entity.sale.sold_at"
     },
+    "studio_link": null,
     "remove_props": [],
     "cn": false
   },
@@ -490,6 +526,7 @@
       "ttrIri": "urn:ttr:northline:md.dimension.Buyer",
       "ttrKind": "dimension"
     },
+    "studio_link": null,
     "remove_props": [],
     "cn": false
   },
@@ -510,6 +547,7 @@
       "ttrIri": "urn:ttr:northline:md.dimension.Calendar",
       "ttrKind": "dimension"
     },
+    "studio_link": null,
     "remove_props": [],
     "cn": false
   },
@@ -530,6 +568,7 @@
       "ttrIri": "urn:ttr:northline:md.hierarchy.CalendarRollup",
       "ttrKind": "hierarchy"
     },
+    "studio_link": null,
     "remove_props": [],
     "cn": false
   },
@@ -547,7 +586,8 @@
     "props": {
       "ttrQname": "md.measure.balance",
       "ttrAdditivity": "semiAdditive"
-    }
+    },
+    "studio_link": null
   },
   {
     "op": "UpsertMetric",
@@ -562,7 +602,8 @@
     "metricType": "SUM",
     "props": {
       "ttrQname": "md.measure.revenue"
-    }
+    },
+    "studio_link": null
   },
   {
     "op": "UpsertMetric",
@@ -577,7 +618,8 @@
     "metricType": "SUM",
     "props": {
       "ttrQname": "md.measure.units"
-    }
+    },
+    "studio_link": null
   },
   {
     "op": "SetTableProps",
@@ -585,6 +627,7 @@
     "props": {
       "ttrQname": "db.retail.buyers"
     },
+    "studio_link": null,
     "tags": [
       "Tatrman.Grounded"
     ],
@@ -596,6 +639,7 @@
     "props": {
       "ttrQname": "db.retail.products"
     },
+    "studio_link": null,
     "tags": [],
     "description": ""
   },
@@ -605,6 +649,7 @@
     "props": {
       "ttrQname": "db.retail.recent_sales"
     },
+    "studio_link": null,
     "tags": [],
     "description": ""
   },
@@ -614,6 +659,7 @@
     "props": {
       "ttrQname": "db.retail.sales"
     },
+    "studio_link": null,
     "tags": [
       "Tatrman.Grounded"
     ],

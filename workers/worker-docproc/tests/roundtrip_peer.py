@@ -26,8 +26,8 @@ from typing import Any
 
 import psycopg
 
-from aristarchos.bus import DONE, PgmqBus
-from aristarchos.sdk.models import Completion, CompletionStatus, Usage, WorkItem, unspecified_fields
+from docproc.bus import DONE, PgmqBus
+from docproc.sdk.models import Completion, CompletionStatus, Usage, WorkItem, unspecified_fields
 
 RETRIES = 3  # a failed work item is released this many times, then dead-lettered (PgmqBus.fail)
 

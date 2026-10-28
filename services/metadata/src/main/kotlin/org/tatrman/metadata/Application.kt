@@ -3,6 +3,7 @@ package org.tatrman.metadata
 
 import com.typesafe.config.Config
 import com.typesafe.config.ConfigFactory
+import org.tatrman.metadata.read.GitTemplateSource
 import org.tatrman.ttr.metadata.graph.ModelGraph
 import org.tatrman.metadata.grpc.MetadataServiceImpl
 import org.tatrman.metadata.grpc.PackageIndex
@@ -533,7 +534,20 @@ private fun buildSourceFromConfig(
 
     return when (kind) {
         // VL V-37: Metadata serves the layouts committed next to the model — a source collects them only when asked
-        "ttr" -> FileBasedSource(sourceId = id, priority = priority, storage = storage, layouts = true)
+        "ttr" -> {
+            val source = FileBasedSource(sourceId = id, priority = priority, storage = storage, layouts = true)
+            if (storage is GitArchiveStorage) {
+                GitTemplateSource(
+                    source,
+                    gitCheckoutDir(sub, id, ""),
+                    gitSubdirectory(sub),
+                    id,
+                    priority,
+                )
+            } else {
+                source
+            }
+        }
         // Phase 2.1 (fork) — `yaml-legacy` source kind removed: kantheon is TTR-only
         // (`org.tatrman.ttr.*` modeler artifacts, no erp-sql legacy YAML parse path).
         // See docs/implementation/v1/fork/tasks-p2-s2.1-metadata.md T2 note.
@@ -585,6 +599,10 @@ private fun gitCheckoutDir(
         Path.of(System.getProperty("java.io.tmpdir"), "metadata-git", id + suffix)
     }
 
+/** Both model storage and template path mapping start with this exact configured value. */
+private fun gitSubdirectory(sub: Config): String =
+    if (sub.hasPath("subdirectory")) sub.getString("subdirectory") else ""
+
 /** The storage one `metadata.sources.<id>` block reads; null when the block is unbuildable. */
 private fun buildStorage(
     sub: Config,
@@ -610,7 +628,7 @@ private fun buildStorage(
                 remoteUri = remoteUri,
                 localCheckoutDir = checkout,
                 branch = if (sub.hasPath("branch")) sub.getString("branch") else "main",
-                subdirectory = if (sub.hasPath("subdirectory")) sub.getString("subdirectory") else "",
+                subdirectory = gitSubdirectory(sub),
                 username = if (sub.hasPath("username")) sub.getString("username") else null,
                 password = if (sub.hasPath("password")) sub.getString("password") else null,
             )

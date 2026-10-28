@@ -2,13 +2,14 @@
 """Pure tier 1 + tier 0 projection into ordered OpenMetadata operations."""
 
 import json
-import re
 from collections import defaultdict
-from urllib.parse import quote, urlsplit
+from typing import NamedTuple
 
 from pydantic import JsonValue
 
 from .model import (
+    REGISTRY,
+    STUDIO_LINK_KEYS,
     Connection,
     Delta,
     Deprecate,
@@ -27,23 +28,25 @@ from .model import (
     RelatedTerm,
     SetColumnTags,
     SetTableProps,
+    StudioLink,
     UpsertMetric,
     UpsertTerm,
 )
+from .urls import http_origin, validate_studio_base, validate_studio_workspace
 
 
 class MappingError(Exception):
     """The export cannot be projected safely (C-14 exit 3)."""
 
 
-def _segment(name: str) -> str:
+def om_name(name: str) -> str:
     if '"' in name:
         raise MappingError(f"unsupported quote in OM name: {name}")
     return f'"{name}"' if "." in name else name
 
 
 def _fqn(*segments: str) -> str:
-    return ".".join(_segment(s) for s in segments)
+    return ".".join(om_name(s) for s in segments)
 
 
 def _display(node: Node) -> str:
@@ -61,13 +64,22 @@ def _description(node: Node) -> str:
     )
 
 
-def _props(node: Node, studio_url: str | None, workspace: str) -> dict[str, str]:
+def _props(node: Node, studio_base: str | None) -> tuple[dict[str, str], StudioLink | None]:
     result = {"ttrQname": node.id}
-    # Studio subjects are model graphs, not arbitrary exported object qnames.
-    # New cn is not the legacy cnc renderer: keep concepts in the OM glossary.
-    if studio_url and node.model in {"db", "er", "md"}:
-        result["ttrUrl"] = f"{studio_url.rstrip('/')}/m/{quote(workspace, safe='')}/s/{node.model}"
-    return result
+    link = studio_link(node.model, studio_base)
+    if link is not None:
+        result["ttrUrl"] = link.url
+    return result, link
+
+
+def studio_link(model: str | None, studio_base: str | None) -> StudioLink | None:
+    """One desired value for in-plan entities and eligible out-of-plan terms."""
+    labels = {"db": "database", "er": "E-R", "md": "dimensional"}
+    if studio_base is not None and model is not None and model in labels:
+        return StudioLink(
+            url=studio_base + model, displayText=f"Open {labels[model]} model in Studio"
+        )
+    return None
 
 
 def _term_nodes(nodes: dict[str, Node]) -> dict[str, Node]:
@@ -84,9 +96,8 @@ def _terms(
     export: Export,
     nodes: dict[str, Node],
     world: str,
-    studio_url: str | None,
+    studio_base: str | None,
     cn_name_mode: str,
-    workspace: str,
 ) -> tuple[list[UpsertTerm], dict[str, str]]:
     terms = _term_nodes(nodes)
     parents: dict[str, str] = {}
@@ -146,8 +157,8 @@ def _terms(
         visiting.add(key)
         node = terms[key]
         glossary = f"{world} {'Concepts' if node.model == 'cn' else 'Entities'}"
-        base = address(parents[key]) if key in parents else _segment(glossary)
-        result = base + "." + _segment(names[key])
+        base = address(parents[key]) if key in parents else om_name(glossary)
+        result = base + "." + om_name(names[key])
         if result in addresses.values():
             raise MappingError(f"glossary FQN collision at {result}")
         addresses[key] = result
@@ -160,7 +171,7 @@ def _terms(
     result = []
     for key in order:
         node = terms[key]
-        props = _props(node, studio_url, workspace)
+        props, studio_link = _props(node, studio_base)
         if node.iri:
             props["ttrIri"] = node.iri
         if node.model == "md":
@@ -178,16 +189,17 @@ def _terms(
                 related=[RelatedTerm(term=addresses[t]) for t in sorted(related[key])],
                 iri=node.iri,
                 props=props,
-                remove_props=["ttrUrl"] if studio_url and node.model == "cn" else [],
+                studio_link=studio_link,
+                remove_props=list(STUDIO_LINK_KEYS)
+                if studio_base is not None and node.model == "cn"
+                else [],
                 cn=node.model == "cn",
             )
         )
     return result, addresses
 
 
-def _metrics(
-    export: Export, nodes: dict[str, Node], studio_url: str | None, workspace: str
-) -> list[UpsertMetric]:
+def _metrics(export: Export, nodes: dict[str, Node], studio_base: str | None) -> list[UpsertMetric]:
     result: list[UpsertMetric] = []
     names: set[str] = set()
     for key, node in sorted(nodes.items()):
@@ -209,7 +221,7 @@ def _metrics(
         if isinstance(expression, dict):
             expression = expression.get("block", "")
         code = " ".join(str(value) for value in (aggregation, expression) if value)
-        extensions = _props(node, studio_url, workspace)
+        extensions, studio_link = _props(node, studio_base)
         additivity = props.get("class") or node.props.get("additivity")
         if additivity:
             extensions["ttrAdditivity"] = str(additivity)
@@ -226,6 +238,7 @@ def _metrics(
                     "metricExpression": MetricExpression(code=code),
                     "metricType": metric_type,
                     "props": extensions,
+                    "studio_link": studio_link,
                 }
             )
         )
@@ -282,9 +295,8 @@ def _assets(
     nodes: dict[str, Node],
     terms: dict[str, str],
     metrics: list[UpsertMetric],
-    studio_url: str | None,
+    studio_base: str | None,
     connections: list[Connection],
-    workspace: str,
 ) -> tuple[list[PlanOperation], list[str]]:
     warnings: set[str] = set()
     targets = _binding_targets(export, nodes)
@@ -341,10 +353,12 @@ def _assets(
             owned_fqns[fqn] = key
             table_addresses[key].append(fqn)
             addresses[key].append((fqn, "table", None))
+            props, studio_link = _props(node, studio_base)
             operations.append(
                 SetTableProps(
                     fqn=fqn,
-                    props=_props(node, studio_url, workspace),
+                    props=props,
+                    studio_link=studio_link,
                     description=_description(node),
                     tags=["Tatrman.Grounded"] if key in bound_tables else [],
                 )
@@ -353,7 +367,7 @@ def _assets(
         node = nodes[column]
         for fqn in table_addresses.get(table, []):
             name = node.label or column.rsplit(".", 1)[-1]
-            addresses[column].append((fqn + "." + _segment(name), "column", name))
+            addresses[column].append((fqn + "." + om_name(name), "column", name))
             operations.append(
                 SetColumnTags(
                     fqn=fqn,
@@ -395,6 +409,25 @@ def _assets(
     return operations, sorted(warnings)
 
 
+def resolve_studio_workspace(world: str, workspace: str | None) -> str:
+    try:
+        return validate_studio_workspace(world if workspace is None else workspace)
+    except ValueError as exc:
+        raise MappingError(str(exc)) from exc
+
+
+class PreparedStudio(NamedTuple):
+    """Prepared origin and workspace; validated again at the library boundary."""
+
+    origin: str
+    workspace: str
+
+
+def build_studio_base(origin: str, workspace: str) -> str:
+    """Build the single canonical model-route base from prepared components."""
+    return validate_studio_base(f"{origin}/m/{workspace}/s/")
+
+
 def plan_from_export(
     export: Export,
     world: str | None = None,
@@ -402,34 +435,36 @@ def plan_from_export(
     connections: list[Connection] | None = None,
     cn_name_mode: str = "label",
     studio_workspace: str | None = None,
+    *,
+    studio_base: str | PreparedStudio | None = None,
 ) -> Plan:
+    # CLI supplies its already validated/resolved base, also used for the cache.
+    # Every library entry validates its base; Plan also validates its public field.
+    if studio_base is not None and (studio_url is not None or studio_workspace is not None):
+        raise MappingError("supply a prepared Studio base or a raw URL/workspace, not both")
+    try:
+        if isinstance(studio_base, PreparedStudio):
+            studio_base = build_studio_base(*studio_base)
+        elif studio_base is not None:
+            studio_base = validate_studio_base(studio_base)
+    except ValueError as exc:
+        raise MappingError(f"invalid prepared Studio base: {exc}") from exc
     if cn_name_mode not in {"label", "qname"}:
         raise MappingError("CN name mode must be label or qname")
     world = world or export.graph.world
     if world != export.graph.world:
         raise MappingError(f"world {world} differs from export world {export.graph.world}")
-    workspace = world if studio_workspace is None else studio_workspace
+    if studio_workspace is not None and not studio_url:
+        raise MappingError("Studio workspace requires a studio URL")
     if studio_url:
-        parsed = urlsplit(studio_url)
-        if (
-            parsed.scheme not in {"http", "https"}
-            or not parsed.netloc
-            or parsed.username is not None
-            or parsed.password is not None
-            or parsed.path not in {"", "/"}
-            or parsed.query
-            or parsed.fragment
-        ):
-            raise MappingError(
-                "studio URL must be an HTTP(S) origin without credentials/query/path"
-            )
-        if not re.fullmatch(r"[A-Za-z0-9._~-]+", workspace) or workspace in {
-            ".",
-            "..",
-            "c",
-            "_designer",
-        }:
-            raise MappingError("invalid Studio workspace (use modeler.toml project.name)")
+        try:
+            origin = http_origin(studio_url, allow_path=False, link_host=True)
+        except ValueError as exc:
+            raise MappingError(f"studio URL: {exc}") from exc
+        workspace = resolve_studio_workspace(world, studio_workspace)
+        studio_base = build_studio_base(origin, workspace)
+    om_name(f"{world} Concepts")
+    om_name(f"{world} Entities")
     nodes = {n.id: n for n in export.graph.nodes if not n.external}
     operations: list[PlanOperation] = [
         EnsureGlossary(name=f"{world} Concepts"),
@@ -438,38 +473,31 @@ def plan_from_export(
         EnsureTag(classification="Tatrman", name="Grounded"),
         EnsureTag(classification="Tatrman", name="Deprecated"),
     ]
-    registry: dict[str, tuple[str, ...]] = {
-        "table": ("ttrQname", "ttrUrl"),
-        "tableColumn": ("ttrQname",),
-        "glossaryTerm": ("ttrQname", "ttrUrl", "ttrKind", "ttrIri"),
-        "metric": ("ttrQname", "ttrUrl", "ttrAdditivity", "ttrColumnAssets"),
-    }
-    for entity_type, properties in registry.items():
-        for name in properties:
+    for entity_type, properties in REGISTRY.items():
+        for name, field_type in properties:
             operations.append(
-                EnsureCustomProperty.model_validate(
-                    {
-                        "entity_type": entity_type,
-                        "name": name,
-                    }
-                )
+                EnsureCustomProperty(entity_type=entity_type, name=name, type=field_type)
             )
     operations.append(ImportRdf(glossary=f"{world} Concepts", turtle=export.ttl))
-    terms, addresses = _terms(export, nodes, world, studio_url, cn_name_mode, workspace)
+    terms, addresses = _terms(export, nodes, world, studio_base, cn_name_mode)
     operations.extend(terms)
-    metrics = _metrics(export, nodes, studio_url, workspace)
+    metrics = _metrics(export, nodes, studio_base)
     operations.extend(metrics)
     assets, warnings = _assets(
         export,
         nodes,
         addresses,
         metrics,
-        studio_url,
+        studio_base,
         export.defs.connections if connections is None else connections,
-        workspace,
     )
     operations.extend(assets)
-    return Plan(snapshot=export.snapshot, operations=operations, warnings=warnings)
+    return Plan(
+        snapshot=export.snapshot,
+        studio_base=studio_base,
+        operations=operations,
+        warnings=warnings,
+    )
 
 
 def deprecations(

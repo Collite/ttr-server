@@ -13,8 +13,8 @@ import time
 import psycopg
 import pytest
 
-from aristarchos.bus import DONE, PgmqBus
-from aristarchos.sdk.models import Completion, CompletionStatus
+from docproc.bus import DONE, PgmqBus
+from docproc.sdk.models import Completion, CompletionStatus
 from tests import roundtrip_peer as peer
 from tests.conftest import CONTRACTS
 

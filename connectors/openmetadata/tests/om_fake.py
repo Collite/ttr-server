@@ -13,7 +13,7 @@ import requests
 import responses
 
 from ttr_connect_openmetadata.mapping import plan_from_export
-from ttr_connect_openmetadata.model import Export, SetColumnTags, SetTableProps
+from ttr_connect_openmetadata.model import REGISTRY, Export, SetColumnTags, SetTableProps
 
 URL = "http://om.example/api"
 
@@ -45,12 +45,15 @@ class FakeOm:
             "termsUpdated": 0,
             "messages": [],
         }
+        self.approval_workflow = False
+        self.pending_approvals: list[str] = []
+        self.drop_term_extension = False
         self.drop_metric_assets = False
         self.drop_term_iri = False
         self.link_failed = False
         self.failures: dict[tuple[str, str], list[int]] = {}
         self.page_size = 100
-        for name in ("string", "table", "tableColumn", "glossaryTerm", "metric"):
+        for name in ("string", "hyperlink-cp", "table", "tableColumn", "glossaryTerm", "metric"):
             self.stores["metadata/types"][name] = {
                 "id": uid(name),
                 "name": name,
@@ -77,6 +80,18 @@ class FakeOm:
                         "extension": {"catalogColumn": "retained"},
                     }
                 )
+
+    def finish_approvals(self) -> None:
+        # Apply after PATCH responses (and possibly after later status writes),
+        # reproducing OM's asynchronous no-reviewer approval workflow.
+        for key in self.pending_approvals:
+            term = self.stores["glossaryTerms"][key]
+            glossary = next(
+                g for g in self.stores["glossaries"].values() if g["id"] == term["glossary"]["id"]
+            )
+            if not glossary.get("reviewers"):
+                term["entityStatus"] = "Approved"
+        self.pending_approvals.clear()
 
     @property
     def writes(self) -> list[tuple[str, str, Any]]:
@@ -109,6 +124,10 @@ class FakeOm:
             return self.answer(200, {"version": "2.0.6"})
         if "/importRdf" in path:
             assert "dryRun=false" in request.url
+            assert (
+                path.removeprefix("glossaries/name/").removesuffix("/importRdf")
+                in self.stores["glossaries"]
+            )
             if self.import_status == 200:
                 for term in self.import_terms:
                     self.stores["glossaryTerms"][term["fullyQualifiedName"]] = deepcopy(term)
@@ -188,7 +207,10 @@ class FakeOm:
             if collection == "glossaryTerms" and any(p["path"] == "/entityStatus" for p in data):
                 assert request.headers["If-Match"].startswith('W/"')
             key = next(k for k, v in store.items() if v["id"] == suffix)
+            previous_extension = deepcopy(store[key].get("extension"))
             store[key] = jsonpatch.apply_patch(store[key], data)
+            if collection == "glossaryTerms" and self.drop_term_extension:
+                store[key]["extension"] = previous_extension
             if collection == "glossaryTerms" and self.drop_term_iri:
                 store[key].pop("iri", None)
             if collection == "metrics":
@@ -197,13 +219,21 @@ class FakeOm:
                 ]
             if collection == "metrics" and self.drop_metric_assets:
                 store[key]["assets"] = []
-            return self.answer(200, store[key])
+            response = self.answer(200, store[key])
+            if (
+                collection == "glossaryTerms"
+                and self.approval_workflow
+                and any(p["path"] != "/entityStatus" for p in data)
+            ):
+                self.pending_approvals.append(key)
+            return response
         if suffix and collection == "metadata/types":
             entity = next(v for v in store.values() if v["id"] == suffix)
             from metadata.generated.schema.type.customProperty import CustomProperty
 
             CustomProperty.model_validate(data)
-            assert data["propertyType"]["id"] == uid("string")
+            expected_type = dict(REGISTRY[entity["name"]])[data["name"]]
+            assert data["propertyType"]["id"] == uid(expected_type)
             assert not any(p["name"] == data["name"] for p in entity["customProperties"])
             entity["customProperties"].append(data)
             return self.answer(200, entity)
@@ -216,14 +246,16 @@ class FakeOm:
                 and t["glossary"]["fullyQualifiedName"] == data["glossary"]
                 for t in store.values()
             ), "OM names are case-insensitively unique across the glossary"
-            parent = data.get("parent") or data["glossary"]
+            glossary = self.stores["glossaries"].get(data["glossary"])
+            assert glossary is not None, "term glossary must equal its stored FQN"
+            parent = data.get("parent") or glossary["fullyQualifiedName"]
             assert parent in store or parent in self.stores["glossaries"]
             fqn = parent + "." + (f'"{name}"' if "." in name else name)
-            glossary = self.stores["glossaries"][data["glossary"]]
             data["glossary"] = {
                 "id": glossary["id"],
                 "type": "glossary",
-                "fullyQualifiedName": data["glossary"],
+                "name": glossary["name"],
+                "fullyQualifiedName": glossary["fullyQualifiedName"],
             }
             if data.get("parent"):
                 data["parent"] = {
@@ -232,11 +264,16 @@ class FakeOm:
                     "fullyQualifiedName": parent,
                 }
             data["relatedTerms"] = []
+            data["entityStatus"] = (
+                "Draft"
+                if glossary.get("reviewers") or store.get(parent, {}).get("reviewers")
+                else "Approved"
+            )
         elif collection == "tags":
             fqn = f"{data['classification']}.{name}"
             data["classification"] = {"id": uid(data["classification"]), "type": "classification"}
         else:
-            fqn = name
+            fqn = f'"{name}"' if collection == "glossaries" and "." in name else name
         entity = {**data, "id": uid(fqn), "fullyQualifiedName": fqn}
         store[fqn] = entity
         return self.answer(200, entity)
