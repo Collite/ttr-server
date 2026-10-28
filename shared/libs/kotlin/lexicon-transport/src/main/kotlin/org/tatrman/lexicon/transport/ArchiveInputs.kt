@@ -17,7 +17,8 @@ import java.nio.file.Path
  * #273: HTTP is opt-in; an unset URL list preserves the mounted ConfigMap path.
  * URLs replace the entire local list, preserving primary/additive order. Paths remain the readers'
  * opaque identity/provenance keys; a remote key is never opened on the filesystem.
- * Downloads have a total deadline; one socket read may overrun it by up to the 5 s read timeout.
+ * Body reads enforce a 30 s deadline measured from request start; connect/headers are not bounded
+ * by it. One body read may overrun it by up to the 5 s read timeout.
  */
 class ArchiveInputs(
     localPaths: List<Path>,
@@ -37,7 +38,9 @@ class ArchiveInputs(
             }
             Path.of(url) to RemoteArchive(uri, downloadDeadlineMillis)
         }
-    val paths: List<Path> = if (remotes.isEmpty()) localPaths else remotes.keys.toList()
+    val isRemote: Boolean get() = remotes.isNotEmpty()
+
+    val paths: List<Path> = if (isRemote) remotes.keys.toList() else localPaths
 
     fun location(path: Path): String = remotes[path]?.location ?: path.toString()
 
@@ -82,7 +85,6 @@ private class RemoteArchive(
                     ) {
                         throw IOException("Truncated lexicon archive from $uri")
                     }
-                    if (bytes.size > MAX_ARCHIVE_BYTES) throw IOException("Lexicon archive exceeds 50 MiB from $uri")
                     // Decoding and last-good semantics remain with each consumer, exactly as for local files.
                     cached = bytes
                     etag = validator

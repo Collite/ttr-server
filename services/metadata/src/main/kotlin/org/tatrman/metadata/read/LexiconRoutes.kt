@@ -37,6 +37,9 @@ fun Route.lexiconRoutes(
                 "lexicon source selector required: ?source=<one of ${configuredSourceIds.sorted().joinToString(", ")}>",
             )
         }
+        if (sourceId == null && configuredSourceIds.isEmpty()) {
+            return@get call.respondError(HttpStatusCode.NotFound, "no lexicon source configured")
+        }
         val selected = sourceId ?: configuredSourceIds.singleOrNull()
         if (selected !in configuredSourceIds) {
             return@get call.respondError(HttpStatusCode.NotFound, "unknown lexicon source")

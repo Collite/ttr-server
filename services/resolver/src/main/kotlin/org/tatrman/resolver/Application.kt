@@ -181,7 +181,7 @@ fun Application.module(config: Config) {
                 archiveUrls,
             )
         }
-    val remoteLexicon = (registrySource as? LexiconArchiveRegistrySource)?.takeIf { archiveUrls.isNotEmpty() }
+    val remoteLexicon = (registrySource as? LexiconArchiveRegistrySource)?.takeIf { it.isRemote }
     remoteLexicon?.readAtBoot()
     val registry = SnapshotRegistry(registrySource, defaultThresholds)
     // ⛑ Projected once at boot so the size is in the log before the first question. An empty
@@ -199,13 +199,7 @@ fun Application.module(config: Config) {
     val lexiconPoller =
         remoteLexicon?.startPolling(
             this,
-            (
-                if (config.hasPath("resolver.lexicon-archive-check-interval-seconds")) {
-                    config.getLong("resolver.lexicon-archive-check-interval-seconds")
-                } else {
-                    30L
-                }
-            ) * 1000,
+            config.getLong("resolver.lexicon-archive-check-interval-seconds") * 1000,
         )
     monitor.subscribe(ApplicationStopping) { lexiconPoller?.cancel() }
 

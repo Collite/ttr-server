@@ -61,7 +61,7 @@ fun Route.metadataReadRoutes(
     searchRegistry: SearchAlgorithmRegistry,
     searchIndexHolder: SearchIndexHolder?,
     packageIndex: PackageIndex,
-    lexiconSourceIds: Set<String> = emptySet(),
+    lexiconSourceIds: Set<String>,
 ) {
     // GET /model/index — packages / schemas / areas + counts + version.
     get("/model/index") {

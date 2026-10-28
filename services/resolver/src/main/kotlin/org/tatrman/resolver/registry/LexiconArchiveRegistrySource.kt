@@ -11,6 +11,7 @@ import org.tatrman.ttr.lexicon.TargetClass
 import org.tatrman.ttr.lexicon.TargetFacts
 import org.tatrman.lexicon.transport.ArchiveInputs
 import java.nio.file.Path
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -90,7 +91,7 @@ class LexiconArchiveRegistrySource(
 
     private val inputs = ArchiveInputs(localPaths, archiveUrls)
     private val archivePaths = inputs.paths
-    private val remote = archiveUrls.any { it.isNotBlank() }
+    val isRemote: Boolean get() = inputs.isRemote
 
     init {
         require(archivePaths.isNotEmpty()) { "LexiconArchiveRegistrySource needs at least one archive path" }
@@ -125,10 +126,10 @@ class LexiconArchiveRegistrySource(
     )
 
     // URL-mode accessors are pure reads. Only boot and this one fixed-delay poller do I/O.
-    private fun currentLoaded(): Loaded? = if (remote) cached else load()
+    private fun currentLoaded(): Loaded? = if (isRemote) cached else load()
 
     override fun capture(): RegistrySource {
-        if (!remote) return this
+        if (!isRemote) return this
         val loaded = cached
         return object : RegistrySource {
             override fun hash(): String = loaded?.archiveId ?: ""
@@ -141,20 +142,31 @@ class LexiconArchiveRegistrySource(
 
     /** Synchronous boot pass, before registry projection and before starting the poller. */
     fun readAtBoot() {
-        if (remote) load()
+        if (isRemote) load()
     }
 
-    /** The application owns/cancels the job; a slow pass cannot overlap the next one. */
+    /**
+     * The application owns/cancels the job; a slow pass cannot overlap the next one.
+     * Unexpected exceptions are logged and retried; cancellation propagates and Errors are not caught.
+     */
     fun startPolling(
         scope: CoroutineScope,
         intervalMillis: Long = 30_000,
     ): Job {
-        require(remote) { "Polling is only for URL-mode lexicons" }
+        require(isRemote) { "Polling is only for URL-mode lexicons" }
         require(intervalMillis > 0) { "Lexicon check interval must be positive" }
         return scope.launch(Dispatchers.IO) {
             while (isActive) {
                 delay(intervalMillis)
-                if (isActive) load()
+                if (isActive) {
+                    try {
+                        load()
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        logger.error("lexicon poll failed", e)
+                    }
+                }
             }
         }
     }
@@ -373,6 +385,12 @@ class LexiconArchiveRegistrySource(
                 )
         }
 
+        // Recovery can leave the layer id unchanged (304 or an additive's last-good copy).
+        // Forget only read failures that cleared; schema/merge warnings still belong to this layer.
+        reported.removeIf { cause ->
+            (cause.startsWith("primary:") || cause.startsWith("fallback:") || cause.startsWith("skip:")) &&
+                cause !in causes
+        }
         val id = pass.layerId
         cached?.let {
             if (it.archiveId == id) {

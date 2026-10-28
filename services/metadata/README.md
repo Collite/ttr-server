@@ -133,6 +133,7 @@ For several configured Git sources, `?source=<configured-source-id>` is required
 `400` naming the ids, even if one source failed to load. With exactly one configured Git source the
 bare URL selects it. A configured but unloaded source returns `503`; an unknown source is `404`
 `unknown lexicon source`, and a loaded source without an archive is `404` `lexicon not found`.
+With no Git source configured, a bare URL returns `404` `no lexicon source configured` (a reader error).
 Read/configuration failures return `503`. Before any model is served the route returns `503`.
 Invalid selectors are `400`. Source ids are `metadata.sources.<block>.id` values (`github-model`,
 `second-model`). bp-dsk needs both URLs below; a bare URL there is a `400`.
@@ -156,11 +157,14 @@ unset, existing singular/plural ConfigMap path settings keep their behavior. The
 switch to a possibly older mounted archive during an HTTP outage. The readers send `If-None-Match`,
 retain bytes on `304`, retry errors, and apply their existing archive validation and primary/additive
 last-good rules (#209). Explicit archive absence is quiet; unknown source ids remain errors.
-Each request has a 3 s connection / 5 s read timeout, a 30 s total download deadline
-(which one socket read may overrun by up to 5 s), and a 50 MiB body limit;
+Each request has a 3 s connection / 5 s read timeout, a 30 s deadline enforced on body reads
+(measured from request start; connect/headers are not bounded by that deadline). One body read may
+overrun by up to 5 s. The body limit is 50 MiB;
 redirects and incomplete responses are refused. URL transport does not change the learned overlay.
-Fuzzy checks on its refresh clock (`/refresh` and `refreshIntervalSeconds`). The resolver does one
-synchronous read at boot, then polls on `Dispatchers.IO` with a fixed delay of
+Fuzzy checks on its refresh clock (`POST /refresh` and `refreshIntervalSeconds`). If a source fails
+metadata's initial load and recovers after fuzzy's first pass, fuzzy serves without its archive until
+the next refresh (600 s on hartland, 3600 s by default) or an operator calls `POST /refresh`.
+The resolver does one synchronous read at boot, then polls on `Dispatchers.IO` with a fixed delay of
 `resolver.lexicon-archive-check-interval-seconds` (env `RESOLVER_LEXICON_ARCHIVE_CHECK_INTERVAL_SECONDS`,
 default 30). Resolve/gate requests only read the last completed pass and never perform HTTP I/O.
 The resolver can lag metadata by up to that interval, plus download time. This does not make separate services swap simultaneously or change deployment wiring.

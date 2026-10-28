@@ -96,6 +96,20 @@ class LexiconRoutesSpec :
             }
         }
 
+        "a loaded estate without a Git source names its configuration error" {
+            TemplateFixture().use { f ->
+                testApplication {
+                    serve(f.registry, lexiconSourceIds = emptySet())
+                    val response = client.get("/model/lexicon.tar.zst")
+                    response.status shouldBe HttpStatusCode.NotFound
+                    response.bodyAsText() shouldBe "{\"error\":\"no lexicon source configured\"}"
+                    val unknown = client.get("/model/lexicon.tar.zst?source=typo")
+                    unknown.status shouldBe HttpStatusCode.NotFound
+                    unknown.bodyAsText() shouldContain "unknown lexicon source"
+                }
+            }
+        }
+
         "multi-source bare URLs require selectors even when a configured source is not loaded" {
             TemplateFixture().use { f ->
                 val model = f.modelSnapshot()

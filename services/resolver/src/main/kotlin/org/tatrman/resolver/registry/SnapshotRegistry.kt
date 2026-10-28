@@ -37,7 +37,7 @@ class SnapshotRegistry(
         // but the projection is a pure function of (hash, snapshot) so both writes
         // produce an equal registry — last-write-wins is harmless, and we avoid
         // holding a lock across the suspending fetch().
-        val projected = project(captured.fetch(), h)
+        val projected = project(captured.fetch(), h, captured.modelSnapshotHash())
         cache.set(h to projected)
         return projected
     }
@@ -45,6 +45,7 @@ class SnapshotRegistry(
     private fun project(
         vocab: DeclaredVocabulary,
         hash: String,
+        modelSnapshotHash: String,
     ): ResolverRegistry {
         // Group by entity ref (category == targetRef) so an entity with several
         // declared categories collapses to one type with the union of categories.
@@ -92,7 +93,7 @@ class SnapshotRegistry(
                 )
             }
         val locales = (vocab.locales + configLocales).distinct()
-        return ResolverRegistry(entityTypes, locales, thresholds, hash, source.modelSnapshotHash())
+        return ResolverRegistry(entityTypes, locales, thresholds, hash, modelSnapshotHash)
     }
 
     /** CN-P4 — an entry registered for its concept facts alone: no term, no member vocabulary. */

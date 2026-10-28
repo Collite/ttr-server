@@ -38,7 +38,7 @@ internal class GitLexiconSource(
         runCatching {
             if (archivePath.isBlank()) return@runCatching null
             val parsed = Path.of(archivePath)
-            require(archivePath.isNotBlank() && !parsed.isAbsolute) { "must be a nonempty repository-relative path" }
+            require(!parsed.isAbsolute) { "must be a repository-relative path" }
             val normalized = parsed.normalize()
             require(normalized.none { it.toString() == ".." } && normalized.toString().isNotEmpty()) {
                 "must name a file within the repository"

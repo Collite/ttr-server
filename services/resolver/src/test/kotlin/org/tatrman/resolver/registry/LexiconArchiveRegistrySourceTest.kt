@@ -361,6 +361,7 @@ class LexiconArchiveRegistrySourceTest :
                         .of(packed)
                 awaitHash(first) // Primary absent at boot is retried.
                 registry.current().entityTypes.shouldNotBeEmpty()
+                registry.current().modelSnapshotHash shouldBe modelHash
                 hang.set(true)
                 kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
                     entered.await(2, java.util.concurrent.TimeUnit.SECONDS)
@@ -381,6 +382,7 @@ class LexiconArchiveRegistrySourceTest :
                         .of(updated)
                 awaitHash(next)
                 registry.current().snapshotHash shouldBe next
+                registry.current().modelSnapshotHash shouldBe modelHash
                 captured.hash() shouldBe first
                 captured.fetch().entries.shouldNotBeEmpty()
                 scope.coroutineContext[kotlinx.coroutines.Job]!!.cancel()
@@ -734,6 +736,77 @@ class LexiconArchiveRegistrySourceTest :
             } finally {
                 logger.detachAppender(appender)
                 appender.stop()
+            }
+        }
+
+        listOf(false, true).forEach { additive ->
+            "#273 ${if (additive) "additive" else "primary"} outages log once until same-archive recovery" {
+                val dir = Files.createTempDirectory("outage-lexicon")
+                val packed = writeArchive(dir, aliases, objectsOnly).toFile().readBytes()
+                val status =
+                    java.util.concurrent.atomic
+                        .AtomicInteger(200)
+                val notModified =
+                    java.util.concurrent.atomic
+                        .AtomicInteger()
+                val server =
+                    com.sun.net.httpserver.HttpServer
+                        .create(java.net.InetSocketAddress("127.0.0.1", 0), 0)
+                server.createContext("/") { request ->
+                    val affected = !additive || request.requestURI.path == "/additive"
+                    val desired = if (affected) status.get() else 200
+                    val code =
+                        if (desired == 200 && request.requestHeaders.getFirst("If-None-Match") == "\"one\"") {
+                            if (affected) notModified.incrementAndGet()
+                            304
+                        } else {
+                            desired
+                        }
+                    request.responseHeaders.add("ETag", "\"one\"")
+                    request.sendResponseHeaders(code, if (code == 200) packed.size.toLong() else -1)
+                    if (code == 200) request.responseBody.write(packed)
+                    request.close()
+                }
+                server.start()
+                try {
+                    val base = "http://127.0.0.1:${server.address.port}"
+                    val urls = if (additive) listOf("$base/primary", "$base/additive") else listOf("$base/primary")
+                    val source = LexiconArchiveRegistrySource(emptyList(), urls)
+                    source.readAtBoot()
+                    val first = source.hash()
+                    first shouldNotBe ""
+                    var warnings = 0
+
+                    fun pass(): Int {
+                        warnings +=
+                            warnsFrom { source.readAtBoot() }.count {
+                                it.contains(
+                                    if (additive) {
+                                        "serving its last good copy"
+                                    } else {
+                                        "keeping the loaded declared vocabulary"
+                                    },
+                                )
+                            }
+                        source.hash() shouldBe first
+                        return warnings
+                    }
+                    status.set(503)
+                    pass() shouldBe 1
+                    pass() shouldBe 1
+                    status.set(200)
+                    pass() shouldBe 1
+                    notModified.get() shouldBe 1
+                    status.set(503)
+                    pass() shouldBe 2
+                    // A different cause is still reported while the outage persists.
+                    status.set(502)
+                    pass() shouldBe 3
+                    pass() shouldBe 3
+                } finally {
+                    server.stop(0)
+                    dir.toFile().deleteRecursively()
+                }
             }
         }
 

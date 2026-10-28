@@ -67,6 +67,7 @@ class LayoutRoutesSpec :
                         SearchAlgorithmRegistry(emptyMap()),
                         null,
                         PackageIndex(),
+                        emptySet(),
                     )
                 }
             }
