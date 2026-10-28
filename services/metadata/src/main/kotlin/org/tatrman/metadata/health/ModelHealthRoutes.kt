@@ -16,6 +16,7 @@ import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
 import org.tatrman.ttr.metadata.registry.MetadataRegistry
 import org.tatrman.metadata.read.templateCatalogs
+import org.tatrman.metadata.read.servedLexicons
 
 /** `/status` `error` when no model source is configured at all. */
 const val NO_MODEL_SOURCE = "no_model_source_configured"
@@ -68,6 +69,7 @@ fun Route.modelHealthRoutes(
                 putJsonArray("issues") {
                     snap?.layouts?.issues?.forEach { add(it.toString()) }
                     snap?.templateCatalogs()?.flatMap { it.issues }?.forEach { add(it) }
+                    snap?.servedLexicons()?.mapNotNull { it.issue }?.forEach { add(it) }
                 }
                 putJsonArray("sources") { board.states().forEach { addJsonObject { putState(it) } } }
             },

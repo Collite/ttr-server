@@ -101,6 +101,54 @@ class LexiconArchiveSourceTest :
                 target: md.measure.revenue
             """.trimIndent()
 
+        "#273 HTTP archives use conditional reads, retain last good on failure and recover without mounted files" {
+            val dir = Files.createTempDirectory("http-lexicon")
+            val packed = writeArchive(dir, aliases).toFile().readBytes()
+            var body = packed
+            var version = "\"one\""
+            var status = 200
+            val validators = mutableListOf<String?>()
+            val server =
+                com.sun.net.httpserver.HttpServer
+                    .create(java.net.InetSocketAddress("127.0.0.1", 0), 0)
+            server.createContext("/") { request ->
+                val validator = request.requestHeaders.getFirst("If-None-Match")
+                validators.add(validator)
+                request.responseHeaders.add("ETag", version)
+                val code = if (status == 200 && validator == version) 304 else status
+                request.sendResponseHeaders(code, if (code == 200) body.size.toLong() else -1)
+                if (code == 200) request.responseBody.write(body)
+                request.close()
+            }
+            server.start()
+            try {
+                val source =
+                    LexiconArchiveSource(
+                        emptyList(),
+                        listOf("http://127.0.0.1:${server.address.port}/model/lexicon.tar.zst"),
+                    )
+                val first = source.hash()
+                first shouldNotBe ""
+                runBlocking { source.fetch() }.entries.shouldNotBeEmpty()
+                validators.take(2) shouldBe listOf(null, "\"one\"")
+                status = 503
+                source.hash() shouldBe first
+                status = 200
+                version = "\"broken\""
+                body = "not an archive".toByteArray()
+                source.hash() shouldBe first
+                // Corrupt content remains excluded on 304 too.
+                source.hash() shouldBe first
+                version = "\"repaired\""
+                body = packed
+                source.hash() shouldBe first
+                runBlocking { source.fetch() }.entries.shouldNotBeEmpty()
+            } finally {
+                server.stop(0)
+                dir.toFile().deleteRecursively()
+            }
+        }
+
         // ---- MS-P2·S2 (contracts §6): the canary, and the version check ----------------------
         //
         // This reader is the SECOND of the two duplicated archive readers (RS-24 / plan risk 2).
@@ -121,6 +169,34 @@ class LexiconArchiveSourceTest :
             } finally {
                 logger.detachAppender(appender)
                 appender.stop()
+            }
+        }
+
+        "#273 missing mounted and HTTP primary archives are equally silent at WARN" {
+            val dir = Files.createTempDirectory("absent-lexicon")
+            var body = "{\"error\":\"lexicon not found\"}"
+            val server =
+                com.sun.net.httpserver.HttpServer
+                    .create(java.net.InetSocketAddress("127.0.0.1", 0), 0)
+            server.createContext("/") { request ->
+                val bytes = body.toByteArray()
+                request.sendResponseHeaders(404, bytes.size.toLong())
+                request.responseBody.use { it.write(bytes) }
+                request.close()
+            }
+            server.start()
+            try {
+                val url = "http://127.0.0.1:${server.address.port}/model/lexicon.tar.zst"
+                warnsFrom { repeat(2) { LexiconArchiveSource(dir.resolve("missing")).hash() } } shouldBe emptyList()
+                val source = LexiconArchiveSource(emptyList(), listOf(url))
+                warnsFrom { repeat(2) { source.hash() } } shouldBe emptyList()
+                body = "{\"error\":\"unknown lexicon source\"}"
+                val warnings = warnsFrom { source.hash() }
+                warnings.single() shouldContainText url
+                warnings.single() shouldContainText "unreadable"
+            } finally {
+                server.stop(0)
+                dir.toFile().deleteRecursively()
             }
         }
 

@@ -12,6 +12,7 @@ import org.tatrman.fuzzy.core.TargetClass
 import org.tatrman.ttr.lexicon.CompiledEntry
 import org.tatrman.ttr.lexicon.CompiledLexicon
 import org.tatrman.ttr.lexicon.CompiledLexiconHeader
+import org.tatrman.lexicon.transport.ArchiveInputs
 import java.nio.file.Path
 import org.tatrman.ttr.lexicon.MatchProfile as ArtifactMatchProfile
 import org.tatrman.ttr.lexicon.SourceTag as ArtifactSourceTag
@@ -58,9 +59,13 @@ import org.tatrman.ttr.lexicon.TargetClass as ArtifactTargetClass
  * `overlay-archive-path` stays a separate source on its own clock ([OverlayArchiveSource]).
  */
 class LexiconArchiveSource(
-    private val archivePaths: List<Path>,
+    localPaths: List<Path>,
+    archiveUrls: List<String> = emptyList(),
 ) : SnapshotVocabularySource {
     constructor(archivePath: Path) : this(listOf(archivePath))
+
+    private val inputs = ArchiveInputs(localPaths, archiveUrls)
+    private val archivePaths = inputs.paths
 
     init {
         require(archivePaths.isNotEmpty()) { "LexiconArchiveSource needs at least one archive path" }
@@ -68,7 +73,7 @@ class LexiconArchiveSource(
 
     private val logger = LoggerFactory.getLogger(LexiconArchiveSource::class.java)
 
-    private val archives = DeclaredLayer.ArchiveSet(archivePaths)
+    private val archives = DeclaredLayer.ArchiveSet(archivePaths, inputs::read)
 
     /** How many configured archives the last pass did not serve — the degraded state, as a number. */
     @Volatile
@@ -83,7 +88,11 @@ class LexiconArchiveSource(
     fun skippedArchives(): Int = skipped
 
     /** How the archives are named in a log line: the path, or the list of them. */
-    private val named: String = archivePaths.singleOrNull()?.toString() ?: archivePaths.joinToString(", ", "[", "]")
+    private val named: String =
+        archivePaths.map(inputs::location).let {
+            it.singleOrNull()
+                ?: it.joinToString(", ", "[", "]")
+        }
 
     /** Last successfully read archive, keyed by its content id so a re-read is not a re-parse. */
     @Volatile
@@ -161,7 +170,7 @@ class LexiconArchiveSource(
         if (loaded.skipped.isEmpty()) {
             logger.info(message, *args.toTypedArray())
         } else {
-            logger.warn(message, *(args + DeclaredLayer.describe(loaded.skipped)).toTypedArray())
+            logger.warn(message, *(args + describe(loaded.skipped)).toTypedArray())
         }
         reportUnrecognisedMethods(entries)
         return DeclaredVocabulary(entries)
@@ -265,7 +274,11 @@ class LexiconArchiveSource(
                     val f = p.failure
                     when {
                         cached != null ->
-                            logger.warn("Compiled lexicon at {} — {}: keeping the loaded one", f.path, f.reason)
+                            logger.warn(
+                                "Compiled lexicon at {} — {}: keeping the loaded one",
+                                inputs.location(f.path),
+                                f.reason,
+                            )
                         // #244 review — with additive archives configured, an unreadable primary is a
                         // misconfiguration, never the pre-RV estate with no lexicon: say what it costs.
                         archives.additive.isNotEmpty() -> {
@@ -274,25 +287,34 @@ class LexiconArchiveSource(
                                 "Compiled lexicon PRIMARY at {} — {}: the declared layer is EMPTY, and the " +
                                     "additive archive(s) {} are NOT served — an additive archive is never served " +
                                     "without the primary (ttr-server#209)",
-                                f.path,
+                                inputs.location(f.path),
                                 f.reason,
-                                archives.additive,
+                                archives.additive.map(inputs::location),
                             )
                         }
                         // Absent at boot is the pre-RV estate with no lexicon: say nothing, as before.
-                        f.reason != "absent" -> logger.warn("Compiled lexicon at {} — {}", f.path, f.reason)
+                        f.reason != "absent" ->
+                            logger.warn(
+                                "Compiled lexicon at {} — {}",
+                                inputs.location(f.path),
+                                f.reason,
+                            )
                     }
                     return cached
                 }
                 is DeclaredLayer.Pass.Served -> p
             }
         for (f in pass.fallbacks) {
-            logger.warn("Lexicon archive at {} — {}: serving its last good copy (ttr-server#209)", f.path, f.reason)
+            logger.warn(
+                "Lexicon archive at {} — {}: serving its last good copy (ttr-server#209)",
+                inputs.location(f.path),
+                f.reason,
+            )
         }
         for (f in pass.skipped) {
             logger.error(
                 "Lexicon archive at {} SKIPPED — {}: its words are not served; the rest of the layer is (ttr-server#209)",
-                f.path,
+                inputs.location(f.path),
                 f.reason,
             )
         }
@@ -317,7 +339,7 @@ class LexiconArchiveSource(
 
     /** #209 — the degraded state in one line: which archives the new layer serves, and which not. */
     private fun reportServed(pass: DeclaredLayer.Pass.Served) {
-        val served = pass.archives.map { it.path }
+        val served = pass.archives.map { inputs.location(it.path) }
         if (pass.skipped.isEmpty()) {
             logger.info("Declared layer: serving {} of {} lexicon archives {}", served.size, pass.configured, served)
         } else {
@@ -326,7 +348,7 @@ class LexiconArchiveSource(
                 served.size,
                 pass.configured,
                 served,
-                DeclaredLayer.describe(pass.skipped),
+                describe(pass.skipped),
             )
         }
     }
@@ -379,6 +401,9 @@ class LexiconArchiveSource(
             CompiledLexiconHeader.SCHEMA_VERSION,
         )
     }
+
+    private fun describe(failures: List<DeclaredLayer.Failure>): String =
+        failures.joinToString("; ") { "${inputs.location(it.path)} (${it.reason})" }
 
     private companion object {
         /** How many merge conflicts a WARN spells out; the count always covers all of them. */

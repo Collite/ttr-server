@@ -140,7 +140,15 @@ private suspend fun withRoutes(block: suspend (get: suspend (String) -> JsonObje
         val substring = SubstringAlgorithm()
         val search = SearchAlgorithmRegistry(mapOf(substring.name to substring))
         application {
-            routing { metadataReadRoutes(registry, search, SearchIndexHolder(search, listOf("en")), PackageIndex()) }
+            routing {
+                metadataReadRoutes(
+                    registry,
+                    search,
+                    SearchIndexHolder(search, listOf("en")),
+                    PackageIndex(),
+                    emptySet(),
+                )
+            }
         }
         block { path ->
             val res = client.get(path)

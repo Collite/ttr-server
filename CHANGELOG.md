@@ -16,6 +16,16 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+- **metadata/fuzzy/resolver — compiled lexicon HTTP channel (#273).** `GET /model/lexicon.tar.zst`
+  serves exact Git-commit archive bytes with SHA-plus-blob ETags and conditional 304 responses.
+  Multiple configured Git sources require `?source=`; readers can opt into an ordered HTTP URL list.
+  The resolver polls in the background (default 30 s); resolve/gate requests never fetch HTTP archives.
+  Existing mounted
+  ConfigMap paths remain the default. Archive read errors appear on `/status` without blocking the
+  live model, and never expose old bytes under a new SHA. HTTP readers retain existing validation and
+  last-good semantics, bound download size and total time, and retry outages. Same-SHA read repairs
+  wait for the next registry swap. No deployment or default channel switch.
+
 - **connect-openmetadata 0.1.4 — clickable Studio model links.** Add native
   `ttrStudioLink` hyperlinks to projected tables, ER/MD terms and metrics while
   retaining the existing `ttrUrl` string and foreign metadata. Both links use one

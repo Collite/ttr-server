@@ -235,7 +235,7 @@ private fun errorBody(
             },
     ).toString()
 
-private fun matchesEtag(
+internal fun matchesEtag(
     header: String?,
     version: String,
 ): Boolean =

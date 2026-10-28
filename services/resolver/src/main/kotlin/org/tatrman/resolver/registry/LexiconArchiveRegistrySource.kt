@@ -9,7 +9,15 @@ import org.tatrman.ttr.lexicon.CompiledLexicon
 import org.tatrman.ttr.lexicon.CompiledLexiconHeader
 import org.tatrman.ttr.lexicon.TargetClass
 import org.tatrman.ttr.lexicon.TargetFacts
+import org.tatrman.lexicon.transport.ArchiveInputs
 import java.nio.file.Path
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 
 /**
  * ✅ **Q-7 (Bora, 2026-08-14): the declared-vocabulary channel is the compiled lexicon archive.**
@@ -76,9 +84,14 @@ import java.nio.file.Path
  * and a configured list is never the "estate with no lexicon" case.
  */
 class LexiconArchiveRegistrySource(
-    private val archivePaths: List<Path>,
+    localPaths: List<Path>,
+    archiveUrls: List<String> = emptyList(),
 ) : RegistrySource {
     constructor(archivePath: Path) : this(listOf(archivePath))
+
+    private val inputs = ArchiveInputs(localPaths, archiveUrls)
+    private val archivePaths = inputs.paths
+    val isRemote: Boolean get() = inputs.isRemote
 
     init {
         require(archivePaths.isNotEmpty()) { "LexiconArchiveRegistrySource needs at least one archive path" }
@@ -86,10 +99,14 @@ class LexiconArchiveRegistrySource(
 
     private val logger = LoggerFactory.getLogger(LexiconArchiveRegistrySource::class.java)
 
-    private val archives = DeclaredLayer.ArchiveSet(archivePaths)
+    private val archives = DeclaredLayer.ArchiveSet(archivePaths, inputs::read)
 
     /** How the archives are named in a log line: the path, or the list of them. */
-    private val named: String = archivePaths.singleOrNull()?.toString() ?: archivePaths.joinToString(", ", "[", "]")
+    private val named: String =
+        archivePaths.map(inputs::location).let {
+            it.singleOrNull()
+                ?: it.joinToString(", ", "[", "]")
+        }
 
     @Volatile
     private var cached: Loaded? = null
@@ -108,6 +125,52 @@ class LexiconArchiveRegistrySource(
         val skipped: List<DeclaredLayer.Failure>,
     )
 
+    // URL-mode accessors are pure reads. Only boot and this one fixed-delay poller do I/O.
+    private fun currentLoaded(): Loaded? = if (isRemote) cached else load()
+
+    override fun capture(): RegistrySource {
+        if (!isRemote) return this
+        val loaded = cached
+        return object : RegistrySource {
+            override fun hash(): String = loaded?.archiveId ?: ""
+
+            override fun modelSnapshotHash(): String = loaded?.lexicon?.header?.modelSnapshotHash ?: ""
+
+            override suspend fun fetch(): DeclaredVocabulary = vocabulary(loaded)
+        }
+    }
+
+    /** Synchronous boot pass, before registry projection and before starting the poller. */
+    fun readAtBoot() {
+        if (isRemote) load()
+    }
+
+    /**
+     * The application owns/cancels the job; a slow pass cannot overlap the next one.
+     * Unexpected exceptions are logged and retried; cancellation propagates and Errors are not caught.
+     */
+    fun startPolling(
+        scope: CoroutineScope,
+        intervalMillis: Long = 30_000,
+    ): Job {
+        require(isRemote) { "Polling is only for URL-mode lexicons" }
+        require(intervalMillis > 0) { "Lexicon check interval must be positive" }
+        return scope.launch(Dispatchers.IO) {
+            while (isActive) {
+                delay(intervalMillis)
+                if (isActive) {
+                    try {
+                        load()
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        logger.error("lexicon poll failed", e)
+                    }
+                }
+            }
+        }
+    }
+
     /**
      * The **archive** id — what the snapshot cache in [SnapshotRegistry] compares. Deliberately
      * the file's content id and not [CompiledLexicon.contentHash]: this answers *"is the file on
@@ -120,9 +183,9 @@ class LexiconArchiveRegistrySource(
      * Empty string when there is no readable archive — a stable value, so an absent lexicon does
      * not make the registry re-project on every call.
      */
-    override fun hash(): String = load()?.archiveId ?: ""
+    override fun hash(): String = currentLoaded()?.archiveId ?: ""
 
-    override fun modelSnapshotHash(): String = load()?.lexicon?.header?.modelSnapshotHash ?: ""
+    override fun modelSnapshotHash(): String = currentLoaded()?.lexicon?.header?.modelSnapshotHash ?: ""
 
     /**
      * Entries grouped by target ref, which **is** the category key — the convention the declared
@@ -160,8 +223,10 @@ class LexiconArchiveRegistrySource(
      * owns it. Before this, a governed value under `store` could not reach `store.state` by any
      * path, and even the open lookup never asked for it (MV-T3 T1 measured both).
      */
-    override suspend fun fetch(): DeclaredVocabulary {
-        val loaded = load() ?: return DeclaredVocabulary()
+    override suspend fun fetch(): DeclaredVocabulary = vocabulary(currentLoaded())
+
+    private fun vocabulary(loaded: Loaded?): DeclaredVocabulary {
+        if (loaded == null) return DeclaredVocabulary()
         val lexicon = loaded.lexicon
 
         val rowsByRef =
@@ -222,9 +287,11 @@ class LexiconArchiveRegistrySource(
         // additive archive must not read as served in the very line a post-deploy check greps.
         val source =
             if (archivePaths.size == 1) {
-                archivePaths.single().toString()
+                inputs.location(archivePaths.single())
             } else {
-                "${loaded.served.size} of ${archivePaths.size} lexicon archive(s) ${loaded.served}"
+                "${loaded.served.size} of ${archivePaths.size} lexicon archive(s) ${loaded.served.map(
+                    inputs::location,
+                )}"
             }
         val message =
             "declared vocabulary from {}: {} entity type(s) ({} member vocabularies, {} concept(s)), {} anchor(s), " +
@@ -243,7 +310,7 @@ class LexiconArchiveRegistrySource(
         if (loaded.skipped.isEmpty()) {
             logger.info(message, *args.toTypedArray())
         } else {
-            logger.warn(message, *(args + DeclaredLayer.describe(loaded.skipped)).toTypedArray())
+            logger.warn(message, *(args + describe(loaded.skipped)).toTypedArray())
         }
         return DeclaredVocabulary(entries)
     }
@@ -278,9 +345,9 @@ class LexiconArchiveRegistrySource(
                             "compiled lexicon PRIMARY at {} — {}: the declared vocabulary is EMPTY, and the " +
                                 "additive archive(s) {} are NOT served — an additive archive is never served " +
                                 "without the primary (ttr-server#209)",
-                            f.path,
+                            inputs.location(f.path),
                             f.reason,
-                            archives.additive,
+                            archives.additive.map(inputs::location),
                         )
                     } else {
                         warnOnce(
@@ -290,7 +357,7 @@ class LexiconArchiveRegistrySource(
                             } else {
                                 "compiled lexicon at {} — {}: keeping the loaded declared vocabulary"
                             },
-                            f.path,
+                            inputs.location(f.path),
                             f.reason,
                         )
                     }
@@ -304,7 +371,7 @@ class LexiconArchiveRegistrySource(
                 warnOnce(
                     "fallback:${f.path}:${f.reason}",
                     "lexicon archive at {} — {}: serving its last good copy (ttr-server#209)",
-                    f.path,
+                    inputs.location(f.path),
                     f.reason,
                 )
         }
@@ -313,11 +380,17 @@ class LexiconArchiveRegistrySource(
                 errorOnce(
                     "skip:${f.path}:${f.reason}",
                     "lexicon archive at {} SKIPPED — {}: its words are not served; the rest of the layer is (ttr-server#209)",
-                    f.path,
+                    inputs.location(f.path),
                     f.reason,
                 )
         }
 
+        // Recovery can leave the layer id unchanged (304 or an additive's last-good copy).
+        // Forget only read failures that cleared; schema/merge warnings still belong to this layer.
+        reported.removeIf { cause ->
+            (cause.startsWith("primary:") || cause.startsWith("fallback:") || cause.startsWith("skip:")) &&
+                cause !in causes
+        }
         val id = pass.layerId
         cached?.let {
             if (it.archiveId == id) {
@@ -343,8 +416,8 @@ class LexiconArchiveRegistrySource(
         val message =
             "declared layer: serving {} of {} lexicon archives {}" +
                 if (pass.skipped.isEmpty()) "" else "; skipped: {}"
-        val skipped = DeclaredLayer.describe(pass.skipped)
-        val served = pass.archives.map { it.path }
+        val skipped = describe(pass.skipped)
+        val served = pass.archives.map { inputs.location(it.path) }
         if (pass.skipped.isEmpty()) {
             logger.info(message, pass.archives.size, pass.configured, served)
         } else {
@@ -404,6 +477,9 @@ class LexiconArchiveRegistrySource(
             CompiledLexiconHeader.SCHEMA_VERSION,
         )
     }
+
+    private fun describe(failures: List<DeclaredLayer.Failure>): String =
+        failures.joinToString("; ") { "${inputs.location(it.path)} (${it.reason})" }
 
     private companion object {
         /** How many merge conflicts a WARN spells out; the count always covers all of them. */

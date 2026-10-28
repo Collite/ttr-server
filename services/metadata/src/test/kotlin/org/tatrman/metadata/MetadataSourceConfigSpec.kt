@@ -121,6 +121,29 @@ class MetadataSourceConfigSpec :
             board.isReady(Instant.now()) shouldBe false
         }
 
+        "lexicon source ids come from built Git sources before loading, excluding blank remotes" {
+            val dir = Files.createTempDirectory("lexicon-ids")
+
+            fun ids(secondRemote: String): Set<String> {
+                val ids = mutableSetOf<String>()
+                buildSources(
+                    config(
+                        """
+                        metadata.sources.github-model.remote-uri = "${unreachable(dir)}"
+                        metadata.sources.github-model.local-checkout-dir = "${dir.resolve("first")}"
+                        metadata.sources.second-model.remote-uri = "$secondRemote"
+                        metadata.sources.second-model.local-checkout-dir = "${dir.resolve("second")}"
+                        """.trimIndent(),
+                    ),
+                    PackageIndex(),
+                    lexiconSourceIds = ids,
+                )
+                return ids
+            }
+            ids("") shouldBe setOf("github-model")
+            ids(unreachable(dir)) shouldBe setOf("github-model", "second-model")
+        }
+
         "credentials in the remote-uri never reach the source description" {
             val dir = Files.createTempDirectory("metadata-src")
             val (board, _) =

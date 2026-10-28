@@ -50,7 +50,7 @@ class MetadataReadRoutesSpec :
             testApplication {
                 environment { config = MapApplicationConfig() }
                 val (registry, sr, holder, packages) = wire(populatedModel())
-                application { routing { metadataReadRoutes(registry, sr, holder, packages) } }
+                application { routing { metadataReadRoutes(registry, sr, holder, packages, emptySet()) } }
 
                 client.get("/model/index").let {
                     it.status shouldBe HttpStatusCode.OK
@@ -69,7 +69,7 @@ class MetadataReadRoutesSpec :
                 environment { config = MapApplicationConfig() }
                 val registry = MetadataRegistry()
                 val (sr, holder) = searchStack()
-                application { routing { metadataReadRoutes(registry, sr, holder, PackageIndex()) } }
+                application { routing { metadataReadRoutes(registry, sr, holder, PackageIndex(), emptySet()) } }
 
                 client.get("/model/index").let {
                     it.status shouldBe HttpStatusCode.ServiceUnavailable
@@ -82,7 +82,7 @@ class MetadataReadRoutesSpec :
             testApplication {
                 environment { config = MapApplicationConfig() }
                 val (registry, sr, holder, packages) = wire(populatedModel())
-                application { routing { metadataReadRoutes(registry, sr, holder, packages) } }
+                application { routing { metadataReadRoutes(registry, sr, holder, packages, emptySet()) } }
 
                 client.get("/model/graph").let {
                     it.status shouldBe HttpStatusCode.OK
@@ -100,7 +100,7 @@ class MetadataReadRoutesSpec :
             testApplication {
                 environment { config = MapApplicationConfig() }
                 val (registry, sr, holder, packages) = wire(populatedModel())
-                application { routing { metadataReadRoutes(registry, sr, holder, packages) } }
+                application { routing { metadataReadRoutes(registry, sr, holder, packages, emptySet()) } }
 
                 client.get("/model/graph?package=sales").let {
                     it.status shouldBe HttpStatusCode.OK
@@ -119,7 +119,7 @@ class MetadataReadRoutesSpec :
             testApplication {
                 environment { config = MapApplicationConfig() }
                 val (registry, sr, holder, packages) = wire(populatedModel())
-                application { routing { metadataReadRoutes(registry, sr, holder, packages) } }
+                application { routing { metadataReadRoutes(registry, sr, holder, packages, emptySet()) } }
 
                 client.get("/model/object?qname=er.sales.order").let {
                     it.status shouldBe HttpStatusCode.OK
@@ -140,7 +140,7 @@ class MetadataReadRoutesSpec :
             testApplication {
                 environment { config = MapApplicationConfig() }
                 val (registry, sr, holder, packages) = wire(populatedModel())
-                application { routing { metadataReadRoutes(registry, sr, holder, packages) } }
+                application { routing { metadataReadRoutes(registry, sr, holder, packages, emptySet()) } }
 
                 client.get("/model/search?query=ordersList").let {
                     it.status shouldBe HttpStatusCode.OK
