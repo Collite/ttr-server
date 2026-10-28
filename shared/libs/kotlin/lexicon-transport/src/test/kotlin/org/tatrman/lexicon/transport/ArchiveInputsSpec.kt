@@ -111,6 +111,77 @@ class ArchiveInputsSpec :
             }
         }
 
+        "only explicit archive absence is quiet; unknown sources and malformed 404s remain errors" {
+            var body = "{\"error\":\"lexicon not found\"}"
+            val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
+            server.createContext("/") { request ->
+                val bytes = body.toByteArray()
+                request.sendResponseHeaders(404, bytes.size.toLong())
+                request.responseBody.use { it.write(bytes) }
+                request.close()
+            }
+            server.start()
+            try {
+                val url = "http://127.0.0.1:${server.address.port}/"
+                val inputs = ArchiveInputs(emptyList(), listOf(url))
+                inputs.location(inputs.paths.single()) shouldBe url
+                shouldThrow<java.nio.file.NoSuchFileException> { inputs.read(inputs.paths.single()) }
+                body = "{\"error\":\"unknown lexicon source\"}"
+                shouldThrow<IOException> { inputs.read(inputs.paths.single()) }.javaClass shouldBe
+                    IOException::class.java
+                body = "not json"
+                shouldThrow<IOException> { inputs.read(inputs.paths.single()) }.javaClass shouldBe
+                    IOException::class.java
+            } finally {
+                server.stop(0)
+            }
+        }
+
+        "total deadline cuts off a trickling body and preserves the previous ETag and bytes" {
+            var trickle = false
+            val validators = mutableListOf<String?>()
+            val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
+            server.createContext("/") { request ->
+                validators.add(request.requestHeaders.getFirst("If-None-Match"))
+                try {
+                    if (trickle) {
+                        request.responseHeaders.add("ETag", "\"new\"")
+                        request.sendResponseHeaders(200, 0)
+                        repeat(20) {
+                            request.responseBody.write(1)
+                            request.responseBody.flush()
+                            Thread.sleep(100)
+                        }
+                    } else if (validators.last() != null) {
+                        request.sendResponseHeaders(304, -1)
+                    } else {
+                        request.responseHeaders.add("ETag", "\"old\"")
+                        request.sendResponseHeaders(200, 1)
+                        request.responseBody.write(7)
+                    }
+                } catch (_: IOException) {
+                } finally {
+                    request.close()
+                }
+            }
+            server.start()
+            try {
+                val inputs = ArchiveInputs(emptyList(), listOf("http://127.0.0.1:${server.address.port}/"), 500)
+                val key = inputs.paths.single()
+                val first = inputs.read(key)
+                trickle = true
+                val started = System.nanoTime()
+                shouldThrow<IOException> { inputs.read(key) }.message!! shouldBe
+                    "Lexicon download exceeded 0.5 s from http://127.0.0.1:${server.address.port}/"
+                ((System.nanoTime() - started) / 1_000_000 < 1100) shouldBe true
+                trickle = false
+                inputs.read(key) shouldBeSameInstanceAs first
+                validators shouldBe listOf(null, "\"old\"", "\"old\"")
+            } finally {
+                server.stop(0)
+            }
+        }
+
         "unset URLs read mounted files while explicit URLs replace the whole local list" {
             val path = Files.createTempFile("lexicon-local", ".zst")
             try {

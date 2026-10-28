@@ -181,6 +181,8 @@ fun Application.module(config: Config) {
                 archiveUrls,
             )
         }
+    val remoteLexicon = (registrySource as? LexiconArchiveRegistrySource)?.takeIf { archiveUrls.isNotEmpty() }
+    remoteLexicon?.readAtBoot()
     val registry = SnapshotRegistry(registrySource, defaultThresholds)
     // ⛑ Projected once at boot so the size is in the log before the first question. An empty
     // vocabulary looks exactly like a small one, which is why this is stated and not inferred.
@@ -193,6 +195,19 @@ fun Application.module(config: Config) {
             loaded.snapshotHash.ifBlank { "<none>" },
         )
     }
+
+    val lexiconPoller =
+        remoteLexicon?.startPolling(
+            this,
+            (
+                if (config.hasPath("resolver.lexicon-archive-check-interval-seconds")) {
+                    config.getLong("resolver.lexicon-archive-check-interval-seconds")
+                } else {
+                    30L
+                }
+            ) * 1000,
+        )
+    monitor.subscribe(ApplicationStopping) { lexiconPoller?.cancel() }
 
     // HMAC resume-token codec (RS-26). Keys come from config so they rotate by
     // key_id without a redeploy; the active key signs, all listed keys verify

@@ -25,6 +25,7 @@ internal data class ServedLexicon(
     val version: String,
     val archive: String? = null,
     val issue: String? = null,
+    val blobId: String? = null,
 )
 
 /** Reads an opaque compiled archive from the immutable commit, never a moving checkout file. */
@@ -35,6 +36,7 @@ internal class GitLexiconSource(
 ) : ModelSource {
     private val path =
         runCatching {
+            if (archivePath.isBlank()) return@runCatching null
             val parsed = Path.of(archivePath)
             require(archivePath.isNotBlank() && !parsed.isAbsolute) { "must be a nonempty repository-relative path" }
             val normalized = parsed.normalize()
@@ -67,10 +69,16 @@ internal class GitLexiconSource(
                 )
             } ?: cached?.takeIf { it.first == snapshot.version }?.second ?: run {
                 try {
-                    val archive = readAt(snapshot.version, path.getOrThrow())
+                    val archive = path.getOrThrow()?.let { readAt(snapshot.version, it) }
                     Json
                         .encodeToString(
-                            ServedLexicon(snapshot.sourceId, snapshot.priority, snapshot.version, archive),
+                            ServedLexicon(
+                                snapshot.sourceId,
+                                snapshot.priority,
+                                snapshot.version,
+                                archive?.second,
+                                blobId = archive?.first,
+                            ),
                         ).also {
                             cached = snapshot.version to it
                             lastFailure = null
@@ -81,7 +89,7 @@ internal class GitLexiconSource(
                             "${e.javaClass.simpleName}: ${e.message.orEmpty().lineSequence().first()}"
                     if (lastFailure != issue) log.warn(issue)
                     lastFailure = issue
-                    // Never label an old archive with the new model SHA. Failures are retried next tick.
+                    // Never label an old archive with the new model SHA. Failures are retried each tick; a same-SHA recovery is published with the next swap.
                     Json.encodeToString(
                         ServedLexicon(snapshot.sourceId, snapshot.priority, snapshot.version, issue = issue),
                     )
@@ -96,7 +104,7 @@ internal class GitLexiconSource(
     private fun readAt(
         version: String,
         path: String,
-    ): String? =
+    ): Pair<String, String>? =
         Git.open(checkout.toFile()).use { git ->
             val repo = git.repository
             RevWalk(repo).use { revisions ->
@@ -114,11 +122,12 @@ internal class GitLexiconSource(
                                 "$current is not a regular file (symlink/submodule)"
                             }
                             // Bound the in-memory sidecar and reject oversized blobs with a normal exception.
-                            return Base64.getEncoder().encodeToString(
-                                repo.open(entry.getObjectId(0)).getBytes(
-                                    50 * 1024 * 1024,
-                                ),
-                            )
+                            return entry.getObjectId(0).name to
+                                Base64.getEncoder().encodeToString(
+                                    repo.open(entry.getObjectId(0)).getBytes(
+                                        50 * 1024 * 1024,
+                                    ),
+                                )
                         }
                     }
                 }

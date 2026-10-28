@@ -270,23 +270,185 @@ class LexiconArchiveRegistrySourceTest :
                         emptyList(),
                         listOf("http://127.0.0.1:${server.address.port}/model/lexicon.tar.zst"),
                     )
+                source.readAtBoot()
                 val first = source.hash()
                 first shouldNotBe ""
                 runBlocking { source.fetch() }.entries.shouldNotBeEmpty()
-                validators.take(2) shouldBe listOf(null, "\"one\"")
+                validators.toList() shouldBe listOf(null)
                 status = 503
+                source.readAtBoot()
                 source.hash() shouldBe first
                 status = 200
                 version = "\"broken\""
                 body = "not an archive".toByteArray()
+                source.readAtBoot()
                 source.hash() shouldBe first
                 // Corrupt content remains excluded on 304 too.
+                source.readAtBoot()
                 source.hash() shouldBe first
                 version = "\"repaired\""
                 body = packed
+                source.readAtBoot()
                 source.hash() shouldBe first
                 runBlocking { source.fetch() }.entries.shouldNotBeEmpty()
             } finally {
+                server.stop(0)
+                dir.toFile().deleteRecursively()
+            }
+        }
+
+        "#273 polling keeps requests fast through outages, retries absent primaries and stops on cancellation" {
+            val dir = Files.createTempDirectory("poll-lexicon")
+            val packed = writeArchive(dir, aliases, objectsOnly).toFile().readBytes()
+            val updated = writeArchive(dir, aliases, objectsOnly, producer = "updated").toFile().readBytes()
+            val requests =
+                java.util.concurrent.atomic
+                    .AtomicInteger()
+            val state =
+                java.util.concurrent.atomic
+                    .AtomicReference(Triple(404, "one", packed))
+            val hang =
+                java.util.concurrent.atomic
+                    .AtomicBoolean(false)
+            val entered = java.util.concurrent.CountDownLatch(1)
+            val release = java.util.concurrent.CountDownLatch(1)
+            val server =
+                com.sun.net.httpserver.HttpServer
+                    .create(java.net.InetSocketAddress("127.0.0.1", 0), 0)
+            server.createContext("/") { request ->
+                requests.incrementAndGet()
+                if (hang.get()) {
+                    entered.countDown()
+                    release.await(3, java.util.concurrent.TimeUnit.SECONDS)
+                }
+                val (status, etag, bytes) = state.get()
+                request.responseHeaders.add("ETag", "\"$etag\"")
+                val body = if (status == 404) "{\"error\":\"lexicon not found\"}".toByteArray() else bytes
+                request.sendResponseHeaders(status, if (status == 200 || status == 404) body.size.toLong() else -1)
+                if (status == 200 || status == 404) {
+                    request.responseBody.write(body)
+                }
+                request.close()
+            }
+            server.start()
+            val scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob())
+            try {
+                val source =
+                    LexiconArchiveRegistrySource(emptyList(), listOf("http://127.0.0.1:${server.address.port}/"))
+                source.readAtBoot()
+                val registry =
+                    SnapshotRegistry(
+                        source,
+                        ResolverThresholds(bind = 0.8, ambiguityGap = 0.1, exact = 1.0, maxOptions = 5),
+                    )
+                registry.current().entityTypes.size shouldBe 0
+                val bootRequests = requests.get()
+                repeat(50) {
+                    registry.current()
+                    source.modelSnapshotHash()
+                }
+                requests.get() shouldBe bootRequests
+                val job = source.startPolling(scope, 50)
+
+                suspend fun awaitHash(expected: String) {
+                    kotlinx.coroutines.withTimeout(3000) {
+                        while (source.hash() != expected) kotlinx.coroutines.delay(10)
+                    }
+                }
+                state.set(Triple(200, "one", packed))
+                val first =
+                    org.tatrman.ttr.snapshot.SnapshotId
+                        .of(packed)
+                awaitHash(first) // Primary absent at boot is retried.
+                registry.current().entityTypes.shouldNotBeEmpty()
+                hang.set(true)
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    entered.await(2, java.util.concurrent.TimeUnit.SECONDS)
+                } shouldBe
+                    true
+                val start = System.nanoTime()
+                repeat(50) { registry.current().snapshotHash shouldBe first }
+                ((System.nanoTime() - start) / 1_000_000 < 100) shouldBe true
+                state.set(Triple(503, "two", updated))
+                hang.set(false)
+                release.countDown()
+                kotlinx.coroutines.delay(150)
+                source.hash() shouldBe first
+                val captured = source.capture()
+                state.set(Triple(200, "two", updated))
+                val next =
+                    org.tatrman.ttr.snapshot.SnapshotId
+                        .of(updated)
+                awaitHash(next)
+                registry.current().snapshotHash shouldBe next
+                captured.hash() shouldBe first
+                captured.fetch().entries.shouldNotBeEmpty()
+                scope.coroutineContext[kotlinx.coroutines.Job]!!.cancel()
+                job.join()
+                val stopped = requests.get()
+                kotlinx.coroutines.delay(150)
+                requests.get() shouldBe stopped
+            } finally {
+                scope.coroutineContext[kotlinx.coroutines.Job]!!.cancel()
+                release.countDown()
+                server.stop(0)
+                dir.toFile().deleteRecursively()
+            }
+        }
+
+        "#273 polling retries skipped additives and retains served additive last-good through failure" {
+            val dir = Files.createTempDirectory("poll-additive")
+            val primary = writeArchive(dir, aliases, objectsOnly).toFile().readBytes()
+            val additive =
+                writeArchive(
+                    dir,
+                    aliases.replace("marketplace", "commerce"),
+                    objectsOnly,
+                    producer = "additive",
+                ).toFile().readBytes()
+            val status =
+                java.util.concurrent.atomic
+                    .AtomicInteger(404)
+            val server =
+                com.sun.net.httpserver.HttpServer
+                    .create(java.net.InetSocketAddress("127.0.0.1", 0), 0)
+            server.createContext("/") { request ->
+                val isPrimary = request.requestURI.path == "/primary"
+                val code = if (isPrimary) 200 else status.get()
+                val body =
+                    if (code == 404) {
+                        "{\"error\":\"lexicon not found\"}".toByteArray()
+                    } else if (isPrimary) {
+                        primary
+                    } else {
+                        additive
+                    }
+                request.responseHeaders.add("ETag", "\"${if (isPrimary) "primary" else "additive"}\"")
+                request.sendResponseHeaders(code, if (code == 200 || code == 404) body.size.toLong() else -1)
+                if (code == 200 || code == 404) {
+                    request.responseBody.write(body)
+                }
+                request.close()
+            }
+            server.start()
+            val scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob())
+            try {
+                val base = "http://127.0.0.1:${server.address.port}"
+                val source = LexiconArchiveRegistrySource(emptyList(), listOf("$base/primary", "$base/additive"))
+                source.readAtBoot()
+                val first = source.hash()
+                val job = source.startPolling(scope, 50)
+                status.set(200)
+                kotlinx.coroutines.withTimeout(3000) { while (source.hash() == first) kotlinx.coroutines.delay(10) }
+                val combined = source.hash()
+                status.set(503)
+                kotlinx.coroutines.delay(200)
+                source.hash() shouldBe combined
+                source.fetch().entries.shouldNotBeEmpty()
+                scope.coroutineContext[kotlinx.coroutines.Job]!!.cancel()
+                job.join()
+            } finally {
+                scope.coroutineContext[kotlinx.coroutines.Job]!!.cancel()
                 server.stop(0)
                 dir.toFile().deleteRecursively()
             }

@@ -172,6 +172,34 @@ class LexiconArchiveSourceTest :
             }
         }
 
+        "#273 missing mounted and HTTP primary archives are equally silent at WARN" {
+            val dir = Files.createTempDirectory("absent-lexicon")
+            var body = "{\"error\":\"lexicon not found\"}"
+            val server =
+                com.sun.net.httpserver.HttpServer
+                    .create(java.net.InetSocketAddress("127.0.0.1", 0), 0)
+            server.createContext("/") { request ->
+                val bytes = body.toByteArray()
+                request.sendResponseHeaders(404, bytes.size.toLong())
+                request.responseBody.use { it.write(bytes) }
+                request.close()
+            }
+            server.start()
+            try {
+                val url = "http://127.0.0.1:${server.address.port}/model/lexicon.tar.zst"
+                warnsFrom { repeat(2) { LexiconArchiveSource(dir.resolve("missing")).hash() } } shouldBe emptyList()
+                val source = LexiconArchiveSource(emptyList(), listOf(url))
+                warnsFrom { repeat(2) { source.hash() } } shouldBe emptyList()
+                body = "{\"error\":\"unknown lexicon source\"}"
+                val warnings = warnsFrom { source.hash() }
+                warnings.single() shouldContainText url
+                warnings.single() shouldContainText "unreadable"
+            } finally {
+                server.stop(0)
+                dir.toFile().deleteRecursively()
+            }
+        }
+
         // ---- LP-P2b·T2 (§3.2): the `pred:` class, off a REAL stdlib-carrying archive ----------
 
         "the stdlib predicate slice arrives as STRING_PREDICATE rows, keyed by `pred:` ref" {

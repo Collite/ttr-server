@@ -61,6 +61,7 @@ fun Route.metadataReadRoutes(
     searchRegistry: SearchAlgorithmRegistry,
     searchIndexHolder: SearchIndexHolder?,
     packageIndex: PackageIndex,
+    lexiconSourceIds: Set<String> = emptySet(),
 ) {
     // GET /model/index — packages / schemas / areas + counts + version.
     get("/model/index") {
@@ -232,7 +233,7 @@ fun Route.metadataReadRoutes(
     // VL-P2 — GET /model/layouts, GET /model/layout?name= (LayoutRoutes.kt).
     layoutRoutes(registry)
     templateRoutes(registry)
-    lexiconRoutes(registry)
+    lexiconRoutes(registry, lexiconSourceIds)
 }
 
 private const val DEFAULT_SEARCH_LIMIT = 20

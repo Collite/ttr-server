@@ -6,4 +6,7 @@ plugins {
 }
 kotlin { jvmToolchain(21) }
 tasks.test { useJUnitPlatform() }
-dependencies { testImplementation(libs.bundles.kotest) }
+dependencies {
+    implementation(libs.kotlinx.serialization.json)
+    testImplementation(libs.bundles.kotest)
+}

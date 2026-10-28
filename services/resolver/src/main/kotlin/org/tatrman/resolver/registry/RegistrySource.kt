@@ -106,6 +106,9 @@ data class DeclaredVocabulary(
  * [hash] is the snapshot identity: the registry reloads only when it changes.
  */
 interface RegistrySource {
+    /** A stable view for one registry read; background-fed sources pin their last completed pass. */
+    fun capture(): RegistrySource = this
+
     suspend fun fetch(): DeclaredVocabulary
 
     fun hash(): String

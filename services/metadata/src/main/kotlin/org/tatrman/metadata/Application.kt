@@ -126,8 +126,9 @@ fun Application.module(config: Config) {
     // CN-P5 S5.3 — the candidate store (cn contracts §6). Its registered vocabulary versions ride the refresher as one
     // more source (A-CN-94); it is not a configured model source, so it stays off the load board and out of /ready.
     val cn = CnSetup.fromConfig(config) { id -> promotionTarget(config, id) }
+    val lexiconSourceIds = mutableSetOf<String>()
     val sourceSlots =
-        buildSources(config, packageIndex, loadBoard) +
+        buildSources(config, packageIndex, loadBoard, lexiconSourceIds) +
             listOfNotNull(
                 cn.vocabularySource?.let {
                     SourceSlot(
@@ -358,7 +359,7 @@ fun Application.module(config: Config) {
             )
         }
         metadataExportRoutes(registry)
-        metadataReadRoutes(registry, searchRegistryWithAll, searchIndexHolder, packageIndex)
+        metadataReadRoutes(registry, searchRegistryWithAll, searchIndexHolder, packageIndex, lexiconSourceIds.toSet())
         // CN-P5 S5.3 — the candidate store and the vocabulary versions; a registration is in the model at once.
         candidateRoutes(cn.surface) {
             withContext(Dispatchers.IO) { refresher.refresh(sourceId = VocabularySource.SOURCE_ID, force = true) }
@@ -392,8 +393,9 @@ internal fun buildSources(
     config: Config,
     packageIndex: PackageIndex,
     loadBoard: SourceLoadBoard = SourceLoadBoard(),
+    lexiconSourceIds: MutableSet<String> = mutableSetOf(),
 ): List<SourceSlot> =
-    configuredSources(config).map { slot ->
+    configuredSources(config, lexiconSourceIds).map { slot ->
         val recorded =
             if (slot.id == BuiltinStockSource.SOURCE_ID) {
                 slot.source
@@ -404,7 +406,10 @@ internal fun buildSources(
         slot.copy(source = packageIndex.recording(slot.id, recorded))
     }
 
-private fun configuredSources(config: Config): List<SourceSlot> {
+private fun configuredSources(
+    config: Config,
+    lexiconSourceIds: MutableSet<String>,
+): List<SourceSlot> {
     // Phase 2.2 — the built-in stock-roles source always loads first. Its
     // priority is Int.MAX_VALUE so it wins all merge collisions; protected
     // qnames are enforced separately by the reconciler regardless of priority.
@@ -426,15 +431,23 @@ private fun configuredSources(config: Config): List<SourceSlot> {
             // (`METADATA_GIT_FALLBACK` for the git source); Metadata bundles no model of its own.
             val fallbackId = if (sub.hasPath("fallback")) sub.getString("fallback").ifBlank { null } else null
             if (fallbackId == null) {
-                return@mapNotNull buildSourceFromConfig(sub, id)?.let { SourceSlot(id, it, describeSource(sub)) }
+                return@mapNotNull buildSourceFromConfig(
+                    sub,
+                    id,
+                    lexiconSourceIds,
+                )?.let { SourceSlot(id, it, describeSource(sub)) }
             }
 
             val fallbackSub = referencedSourceConfig(sourcesConfig, fallbackId)
             val fallbackSource =
                 fallbackSub?.let { fs ->
-                    buildSourceFromConfig(fs, if (fs.hasPath("id")) fs.getString("id") else fallbackId)
+                    buildSourceFromConfig(
+                        fs,
+                        if (fs.hasPath("id")) fs.getString("id") else fallbackId,
+                        lexiconSourceIds,
+                    )
                 }
-            val primary = buildSourceFromConfig(sub, id)
+            val primary = buildSourceFromConfig(sub, id, lexiconSourceIds)
             when {
                 fallbackSource == null -> {
                     log.warn(
@@ -528,6 +541,7 @@ private suspend fun retryUntilLoaded(
 private fun buildSourceFromConfig(
     sub: Config,
     id: String,
+    lexiconSourceIds: MutableSet<String>,
 ): ModelSource? {
     val kind = if (sub.hasPath("kind")) sub.getString("kind") else "ttr"
     val priority = if (sub.hasPath("priority")) sub.getInt("priority") else 100
@@ -538,6 +552,7 @@ private fun buildSourceFromConfig(
         "ttr" -> {
             val source = FileBasedSource(sourceId = id, priority = priority, storage = storage, layouts = true)
             if (storage is GitArchiveStorage) {
+                lexiconSourceIds.add(id)
                 GitLexiconSource(
                     GitTemplateSource(source, gitCheckoutDir(sub, id, ""), gitSubdirectory(sub), id, priority),
                     gitCheckoutDir(sub, id, ""),

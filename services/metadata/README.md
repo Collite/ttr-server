@@ -112,36 +112,41 @@ report ids return 404, and a missing/blank `id` returns 400. Loaded empty catalo
 ## Compiled lexicon archive (#273)
 
 `GET /model/lexicon.tar.zst` serves the exact compiled bytes from the Git commit used by the served
-source snapshot (`application/zstd`). Its quoted `ETag` contains that source's Git SHA, rather than the
-merged model hash. `If-None-Match` accepts quoted, weak, comma-separated or bare tokens and `*`; a match
+source snapshot (`application/zstd`). Its quoted `ETag` contains `<source-Git-SHA>.<archive-blob-id>`, so changing the configured path at the
+same commit also changes the validator. `If-None-Match` accepts quoted, weak, comma-separated or bare tokens and `*`; a match
 returns an empty `304` with the same ETag. The route is read-only and cluster-internal like the other
 `/model` reads; no gateway route is added.
 
 The default file is **repository-relative** `generated/lexicon.tar.zst`, independent of `subdirectory`.
 Override `metadata.sources.<source>.lexicon-path` (`METADATA_GIT_LEXICON_PATH`, or
 `METADATA_GIT2_LEXICON_PATH` for the second built-in Git source). Absolute/escaping paths and symlinks,
-including ancestor folders, are refused. The server serves compiled content; it never compiles a lexicon.
+including ancestor folders, are refused. A blank path disables the archive (clean `404`, no status issue). The server serves compiled content; it never compiles a lexicon.
 Reads are bounded at 50 MiB. A missing archive is valid for an estate without a lexicon and yields `404`;
 a read/configuration failure yields `503` and an issue on `/status`, while the live model still loads.
 An old archive is never relabelled with a new source SHA. Successful reads, including absence, are cached
-by source commit; I/O failures are retried. Bytes travel in an internal snapshot sidecar (ttr-core#314),
+by source commit; I/O failures are retried each tick. A same-SHA recovery is not published until the
+next registry swap (a source commit changes); the `503` and `/status` issue remain until then.
+A reader started in that window serves no declared vocabulary until that swap. Bytes travel in an internal snapshot sidecar (ttr-core#314),
 are published atomically with the model, and are excluded from public export bundles.
 
-For several Git sources, `?source=<configured-source-id>` selects an archive and its own SHA. Without
-that selector, the highest source priority wins; ties use the later lexicographic source id. The
-winning source's missing/broken archive remains `404`/`503`, rather than silently selecting another source.
-Before any model is served the route returns `503`. An unknown source is `404`; invalid selectors are `400`.
+For several configured Git sources, `?source=<configured-source-id>` is required: a bare URL returns
+`400` naming the ids, even if one source failed to load. With exactly one configured Git source the
+bare URL selects it. A configured but unloaded source returns `503`; an unknown source is `404`
+`unknown lexicon source`, and a loaded source without an archive is `404` `lexicon not found`.
+Read/configuration failures return `503`. Before any model is served the route returns `503`.
+Invalid selectors are `400`. Source ids are `metadata.sources.<block>.id` values (`github-model`,
+`second-model`). bp-dsk needs both URLs below; a bare URL there is a `400`.
 
 Opt in the readers with **the same ordered URL list**, primary first:
 
 ```hocon
 fuzzy.lexicon.archive-urls = [
   "http://metadata:7260/model/lexicon.tar.zst?source=github-model",
-  "http://metadata:7260/model/lexicon.tar.zst?source=github-model-2"
+  "http://metadata:7260/model/lexicon.tar.zst?source=second-model"
 ]
 resolver.lexicon-archive-urls = [
   "http://metadata:7260/model/lexicon.tar.zst?source=github-model",
-  "http://metadata:7260/model/lexicon.tar.zst?source=github-model-2"
+  "http://metadata:7260/model/lexicon.tar.zst?source=second-model"
 ]
 ```
 
@@ -150,10 +155,15 @@ The environment equivalents are `FUZZY_LEXICON_ARCHIVE_URLS` and `RESOLVER_LEXIC
 unset, existing singular/plural ConfigMap path settings keep their behavior. There is no automatic
 switch to a possibly older mounted archive during an HTTP outage. The readers send `If-None-Match`,
 retain bytes on `304`, retry errors, and apply their existing archive validation and primary/additive
-last-good rules (#209). Each request has a 3 s connection / 5 s read timeout and a 50 MiB body limit;
+last-good rules (#209). Explicit archive absence is quiet; unknown source ids remain errors.
+Each request has a 3 s connection / 5 s read timeout, a 30 s total download deadline
+(which one socket read may overrun by up to 5 s), and a 50 MiB body limit;
 redirects and incomplete responses are refused. URL transport does not change the learned overlay.
-The existing `/refresh` orchestration loads Metadata first, then the readers; periodic reader checks
-remain available. This does not make separate services swap simultaneously or change deployment wiring.
+Fuzzy checks on its refresh clock (`/refresh` and `refreshIntervalSeconds`). The resolver does one
+synchronous read at boot, then polls on `Dispatchers.IO` with a fixed delay of
+`resolver.lexicon-archive-check-interval-seconds` (env `RESOLVER_LEXICON_ARCHIVE_CHECK_INTERVAL_SECONDS`,
+default 30). Resolve/gate requests only read the last completed pass and never perform HTTP I/O.
+The resolver can lag metadata by up to that interval, plus download time. This does not make separate services swap simultaneously or change deployment wiring.
 
 ## The cn candidate store (`cn/`, off by default)
 
