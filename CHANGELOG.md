@@ -16,6 +16,12 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+- **metadata — md catalog structure and physical bindings (#274).** The JSON index, graph and object
+  routes now include loaded md objects, dimension membership, cubelet grain/measures and hierarchy
+  levels. Logical-to-physical er2db/md2db edges use the existing `MAPS_TO` type. Graph scopes omit
+  edges with excluded or unresolved endpoints. The projection uses the served registry snapshot;
+  Viewer rendering remains a separate change.
+
 - **metadata/fuzzy/resolver — compiled lexicon HTTP channel (#273).** `GET /model/lexicon.tar.zst`
   serves exact Git-commit archive bytes with SHA-plus-blob ETags and conditional 304 responses.
   Multiple configured Git sources require `?source=`; readers can opt into an ordered HTTP URL list.

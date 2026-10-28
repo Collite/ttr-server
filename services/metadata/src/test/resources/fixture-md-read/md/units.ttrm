@@ -1,0 +1,3 @@
+model md
+
+def domain Units { type: int }
