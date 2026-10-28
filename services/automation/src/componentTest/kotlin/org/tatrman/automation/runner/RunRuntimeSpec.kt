@@ -96,7 +96,7 @@ class RunRuntimeComponentSpec :
                                 listOf(ManifestColumn("cal_date", "date"), ManifestColumn("working_day", "bool")),
                                 (23..28).map { day ->
                                     listOf(
-                                        java.time.LocalDate.of(2026, 10, day),
+                                        java.time.LocalDate.of(2040, 10, day),
                                         day !in setOf(24, 25, 27),
                                     )
                                 },
@@ -111,13 +111,13 @@ class RunRuntimeComponentSpec :
                                     ManifestColumn("verdict_reason", "text"),
                                 ),
                                 listOf(
-                                    listOf("4711", java.time.LocalDate.of(2026, 10, 23), "release", "calendar fixture"),
+                                    listOf("4711", java.time.LocalDate.of(2040, 10, 23), "release", "calendar fixture"),
                                 ),
                             )
                         else ->
                             Table(
                                 listOf(ManifestColumn("order_number", "text"), ManifestColumn("placed", "date")),
-                                listOf(listOf("4711", java.time.LocalDate.of(2026, 10, 23))),
+                                listOf(listOf("4711", java.time.LocalDate.of(2040, 10, 23))),
                             )
                     }
                 },
@@ -131,7 +131,7 @@ class RunRuntimeComponentSpec :
                 val opened =
                     runtime.sessions.open(
                         "release_order",
-                        f.request.copy(asOf = "2026-10-28T12:00:00Z"),
+                        f.request.copy(asOf = "2040-10-28T12:00:00Z"),
                         f.caller,
                     )
                 opened.httpStatus shouldBe 201
