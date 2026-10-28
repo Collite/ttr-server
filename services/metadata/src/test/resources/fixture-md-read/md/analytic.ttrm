@@ -5,7 +5,7 @@ import md.*
 model md
 
 def domain Money { type: decimal }
-def dimension Buyer { description: { en: "The buyer dimension", cs: "Dimenze kupujícího" }, key: id, attributes: [def attribute id { domain: md.Money, isKey: true }] }
+def dimension Buyer { description: { en: "The buyer dimension", cs: "Dimenze kupujícího" }, key: id, attributes: [def attribute id { domain: md.Money, isKey: true, displayLabel: { en: "Buyer id", cs: "Kód kupujícího" } }] }
 def dimension Calendar { key: day, attributes: [def attribute day { domain: md.Money, isKey: true }, def attribute month { domain: md.Money }] }
 def hierarchy CalendarRollup { dimension: md.Calendar, levels: [day, month] }
 def measure revenue { domain: md.Money, aggregation: sum }

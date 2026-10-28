@@ -62,7 +62,7 @@ fun Route.metadataReadRoutes(
     packageIndex: PackageIndex,
     lexiconSourceIds: Set<String>,
 ) {
-    val projection = StructuralReadProjectionCache(packageIndex)
+    val projection = StructuralReadProjectionCache(registry, packageIndex)
 
     // GET /model/index — packages / schemas / areas + counts + version.
     get("/model/index") {

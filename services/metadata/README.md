@@ -47,6 +47,7 @@ each omitted when empty (ttr-server#185):
 | `description` / `descriptionLocalized` | any object | the plain form / the `{ lang: text }` form |
 | `from`, `to`, `cardinality` | relation | entity qnames; `{ "from": "0..*", "to": "1" }` |
 | `fromColumns`, `toColumns` | foreign key | column qnames |
+| `levels` | hierarchy | ordered level attribute qnames |
 
 Metadata picks no locale here. The reader chooses the language and applies the D7 chain to descriptions:
 requested locale → plain form → `en` → first by language code.
@@ -69,12 +70,24 @@ Edges retain `{ from, to, type }` and the existing four type literals:
   explicit and inline er2db mappings, and md2db cubelet, domain and map bindings. Existing mapping
   vertices and their outgoing edges remain available.
 
+For each binding, the typed query-path endpoints win when both are catalog objects; otherwise the
+library's definition graph supplies the fallback. Ambiguous export identities and duplicate binding ids
+are omitted from that fallback and diagnosed once per model version. Md ids carry no package or cubelet
+scope: two declarations with one id (including same-named inline measures in two cubelets) are served as
+one node, the first by source file path without source priority, with a warning once per model version.
+The shared binding resolver and scoped md identities are tracked in [ttr-core#321](https://github.com/Collite/ttr-core/issues/321)
+and [ttr-core#322](https://github.com/Collite/ttr-core/issues/322).
+
 The library's captured definition graph supplies md objects and resolves references; no files are read
-or parsed on HTTP requests. One definition graph is cached by snapshot identity and replaced after a
-registry swap. Disk edits become visible only through that swap. Unresolved export stubs are omitted,
+or parsed on HTTP requests. The whole projection, graph and diagnostics are cached by snapshot identity
+in a registry listener after package-index publication, with initial-load priming. Old/in-flight requests
+can build uncached without evicting the current entry. Failed builds are never cached. Disk edits become
+visible only through a registry swap. Unresolved export stubs are omitted,
 and every graph scope keeps edges only when both endpoints survive its filters. Thus cross-schema
 bindings are visible on the unfiltered graph; `?schema=md` serves only md-to-md edges. Package filters
 retain their existing exact-match behavior.
+
+`md2er` bindings and concept groundings are not projected.
 
 This is the structural catalog surface. Rich md slot data and Viewer rendering/capability changes stay
 in ttr-core. `/model/search` retains its existing library search path. No new gRPC contract, gateway

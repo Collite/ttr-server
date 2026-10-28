@@ -35,6 +35,13 @@ class MetadataReadRoutesMdSpec :
                 nodes.getValue("md.dimension.Buyer")["kind"]!!.jsonPrimitive.content shouldBe "dimension"
                 nodes.getValue("md.cubelet.purchases")["kind"]!!.jsonPrimitive.content shouldBe "cubelet"
                 nodes.getValue("md.dimension.Buyer.id")["kind"]!!.jsonPrimitive.content shouldBe "attribute"
+                nodes
+                    .getValue(
+                        "md.dimension.Buyer.id",
+                    )["displayLabel"]!!
+                    .jsonObject["cs"]!!
+                    .jsonPrimitive.content shouldBe
+                    "Kód kupujícího"
                 nodes.getValue("md.map.buyer_amounts")["kind"]!!.jsonPrimitive.content shouldBe "map"
                 nodes.getValue("md.domain.Units")["pkg"]!!.jsonPrimitive.content shouldBe "md"
                 nodes
@@ -108,7 +115,7 @@ class MetadataReadRoutesMdSpec :
         }
 
         "md object detail round trips graph fields, source and outgoing references" {
-            withMdRoutes { get, _, _ ->
+            withMdRoutes { get, root, _ ->
                 val graph = get("/model/graph")
                 for (id in listOf(
                     "md.dimension.Buyer",
@@ -118,7 +125,9 @@ class MetadataReadRoutesMdSpec :
                 )) {
                     val detail = get("/model/object?qname=$id")
                     detail["object"]!!.jsonObject shouldBe graph.nodes().getValue(id)
-                    detail["sourceLocation"]!!.jsonPrimitive.content.endsWith("analytic.ttrm") shouldBe true
+                    val location = detail["sourceLocation"]!!.jsonPrimitive.content
+                    Path.of(location).isAbsolute shouldBe true
+                    location shouldBe root.resolve("md/analytic.ttrm").toString()
                     detail["references"]!!.jsonArray.map { it.jsonPrimitive.content } shouldBe
                         graph
                             .edges()
@@ -127,6 +136,14 @@ class MetadataReadRoutesMdSpec :
                             .distinct()
                             .sorted()
                 }
+            }
+        }
+
+        "typed and md detail source paths use the same absolute form" {
+            withMdRoutes { get, root, _ ->
+                val location = get("/model/object?qname=er.entity.buyer")["sourceLocation"]!!.jsonPrimitive.content
+                Path.of(location).isAbsolute shouldBe true
+                location shouldBe root.resolve("er/logical.ttrm").toString()
             }
         }
 
