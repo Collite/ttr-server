@@ -47,9 +47,66 @@ each omitted when empty (ttr-server#185):
 | `description` / `descriptionLocalized` | any object | the plain form / the `{ lang: text }` form |
 | `from`, `to`, `cardinality` | relation | entity qnames; `{ "from": "0..*", "to": "1" }` |
 | `fromColumns`, `toColumns` | foreign key | column qnames |
+| `levels` | hierarchy | ordered level attribute qnames |
 
 Metadata picks no locale here. The reader chooses the language and applies the D7 chain to descriptions:
 requested locale → plain form → `en` → first by language code.
+
+### Multidimensional structural reads (#274)
+
+The index, graph and object routes also serve the loaded `md` definitions: domains, dimensions and
+nested attributes, maps, hierarchies, measures and cubelets. They use the same five node fields above,
+with `schema: "md"`, library canonical qnames (for example `md.dimension.Buyer.id` and
+`md.cubelet.purchases`), the file's declared or inferred package, optional authored descriptions,
+attribute `displayLabel` and ordered hierarchy `levels`.
+The index includes `md` when present; its object count covers the same objects as the unfiltered graph.
+Object detail returns the same node, its source file and its outgoing references.
+
+Edges retain `{ from, to, type }` and the existing four type literals:
+
+- A nested md attribute points to its dimension with `DEFINES`.
+- Cubelet grain points to dimension attributes, cubelet measures to measures, and hierarchy levels
+  to dimension attributes with `REFERENCES`.
+- `er2db` and `md2db` bindings add **logical object → physical object** `MAPS_TO` edges. This includes
+  explicit and inline er2db mappings, and md2db cubelet, domain and map bindings. Existing mapping
+  vertices and their outgoing edges remain available.
+
+For each binding, the typed query-path endpoints win when both are catalog objects; otherwise the
+library's definition graph supplies the fallback. Er2db copies are compared by their resolved endpoints:
+identical endpoint pairs serve once, including copies that differ only in description, tags, imports or
+`whereFilter` (the read edge has no filter). Conflicting copies are omitted and diagnosed until ttr-core#321.
+Md2db and md copies instead compare rendered definition, imports, package, parent and compatible effective
+model/namespace provenance. Directive-less db/er objects use the loader's kind defaults; unknown md/binding
+provenance matches a specified value. Different imports or packages keep md2db copies differing until
+per-declaration resolution is available in ttr-core#321.
+Ambiguous export identities are omitted and diagnosed. Er2db, `md2db_domain` and `md2db_map` logical objects
+with multiple or contested physical targets are omitted; omitted binding copies still contest that object.
+Each source table of a multi-source cubelet is served. A conflicting copy of one cubelet binding is omitted
+without suppressing the cubelet's other binding ids.
+Diagnostics are logged once per publication of a version with diagnostics
+(consecutive publications of one version log once).
+Md ids carry no package or cubelet scope: differing declarations with one id (including same-named inline
+measures in two cubelets) are served as one node selected by the library's definition order
+(root-relative path, then source priority on ties). Identical md precedence copies produce no collision warning.
+A warning once per publication of a version with diagnostics (consecutive publications of one version log once)
+names the kept and dropped declarations, including file:line and parent qname.
+The shared binding resolver and scoped md identities are tracked in [ttr-core#321](https://github.com/Collite/ttr-core/issues/321)
+and [ttr-core#322](https://github.com/Collite/ttr-core/issues/322).
+
+The library's captured definition graph supplies md objects and resolves references; no files are read
+or parsed on HTTP requests. The whole projection and diagnostics are cached by snapshot identity
+in a registry listener after package-index publication, with initial-load priming under the registry swap monitor.
+Old/in-flight requests can build uncached without evicting the current entry. Failed builds are never cached.
+Disk edits become visible only through a registry swap. Unresolved export stubs are omitted,
+and every graph scope keeps edges only when both endpoints survive its filters. Thus cross-schema
+bindings are visible on the unfiltered graph; `?schema=md` serves only md-to-md edges. Package filters
+retain their existing exact-match behavior.
+
+`md2er` bindings and concept groundings are not projected.
+
+This is the structural catalog surface. Rich md slot data and Viewer rendering/capability changes stay
+in ttr-core. `/model/search` retains its existing library search path. No new gRPC contract, gateway
+route, write API or deployment configuration is introduced.
 
 ### Report and form templates (#272)
 

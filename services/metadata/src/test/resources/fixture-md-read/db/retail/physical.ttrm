@@ -1,0 +1,11 @@
+package db.retail
+import er.*
+import db.retail.*
+import md.*
+model db schema retail
+
+def table buyers { primaryKey: [id], columns: [def column id { type: int }, def column name { type: text }] }
+def table products { primaryKey: [id], columns: [def column id { type: int }, def column name { type: text }] }
+def table sales { primaryKey: [id], columns: [def column id { type: int }, def column buyer_id { type: int }, def column amount { type: decimal }, def column sold_at { type: date }] }
+def view recent_sales { columns: [def column id { type: int }], definitionSql: "select id from sales" }
+def fk sale_buyer { from: [db.retail.sales.buyer_id], to: [db.retail.buyers.id] }

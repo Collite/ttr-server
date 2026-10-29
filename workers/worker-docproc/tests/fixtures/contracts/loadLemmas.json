@@ -1,0 +1,16 @@
+{
+  "request": {
+    "lemmas": [
+      {
+        "contentLemmas": "recenze sluchátko voltaic být skvělý jen objednávka být týden pozastavený",
+        "lang": "cs",
+        "lemmatizer": "morphodita:czech-morfflex2.1-pdtc2.0-250131",
+        "unitId": 101
+      }
+    ],
+    "runId": "step-3/1"
+  },
+  "response": {
+    "updated": 1
+  }
+}
