@@ -1,0 +1,21 @@
+{
+  "contentRef": "documents/sheet-002.cs.html",
+  "document": {
+    "context": {
+      "legalEntity": "hartland-cz",
+      "marts": [
+        "hartland-public"
+      ]
+    },
+    "createdAt": "2026-06-10T09:00:00Z",
+    "documentId": "sheet:HL-2040:cs",
+    "feed": "mini-rag",
+    "lang": "cs",
+    "mimeType": "text/html",
+    "originalName": "sheet-002.cs.html",
+    "receivedAt": "2026-10-26T12:00:00Z",
+    "recordedAt": "2026-06-10T09:00:00Z",
+    "status": "final",
+    "version": "1"
+  }
+}

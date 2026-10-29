@@ -1,0 +1,264 @@
+{
+  "$defs": {
+    "Conflict": {
+      "additionalProperties": false,
+      "description": "Incompatible values for the same time, kept with a marker for review.",
+      "properties": {
+        "attribute": {
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "open",
+            "resolved"
+          ],
+          "type": "string"
+        },
+        "values": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "annotationIds": {
+                "items": {
+                  "type": "integer"
+                },
+                "minItems": 1,
+                "type": "array"
+              },
+              "value": {}
+            },
+            "required": [
+              "annotationIds",
+              "value"
+            ],
+            "type": "object"
+          },
+          "minItems": 2,
+          "type": "array"
+        }
+      },
+      "required": [
+        "attribute",
+        "status",
+        "values"
+      ],
+      "type": "object"
+    },
+    "Evidence": {
+      "additionalProperties": false,
+      "properties": {
+        "annotationId": {
+          "type": "integer"
+        },
+        "role": {
+          "enum": [
+            "creates",
+            "confirms",
+            "restates",
+            "updates",
+            "contradicts",
+            "refutes"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "annotationId",
+        "role"
+      ],
+      "type": "object"
+    },
+    "HistoryEntry": {
+      "additionalProperties": false,
+      "description": "A superseded value (valid-time): the record's earlier value of one attribute or modifier.",
+      "properties": {
+        "annotationId": {
+          "type": "integer"
+        },
+        "asOf": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "attribute": {
+          "type": "string"
+        },
+        "consolidationRun": {
+          "type": "string"
+        },
+        "value": {}
+      },
+      "required": [
+        "annotationId",
+        "attribute",
+        "consolidationRun",
+        "value"
+      ],
+      "type": "object"
+    },
+    "Ref": {
+      "additionalProperties": false,
+      "description": "A reference to a row of the referenced entity: its qname (key or code as the source names it) and the surface it was read from.",
+      "properties": {
+        "display": {
+          "type": "string"
+        },
+        "qname": {
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "qname"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "ttr:types/Record.review",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "A product review as the customer wrote it.",
+  "properties": {
+    "attributes": {
+      "additionalProperties": false,
+      "properties": {
+        "body": {
+          "type": "string",
+          "x-ttr-attribute": "er.entity.review.body"
+        },
+        "customer": {
+          "$ref": "#/$defs/Ref",
+          "x-ttr-attribute": "er.entity.review.customer",
+          "x-ttr-references": "er.entity.customer"
+        },
+        "helpful_votes": {
+          "type": "integer",
+          "x-ttr-attribute": "er.entity.review.helpful_votes"
+        },
+        "item": {
+          "$ref": "#/$defs/Ref",
+          "x-ttr-attribute": "er.entity.review.item",
+          "x-ttr-references": "er.entity.item"
+        },
+        "price_paid": {
+          "type": "number",
+          "x-ttr-attribute": "er.entity.review.price_paid",
+          "x-ttr-scale": 2
+        },
+        "rating": {
+          "description": "Stars, 1 to 5.",
+          "type": "integer",
+          "x-ttr-attribute": "er.entity.review.rating"
+        },
+        "recommended": {
+          "type": "boolean",
+          "x-ttr-attribute": "er.entity.review.recommended"
+        },
+        "recorded_at": {
+          "format": "date-time",
+          "type": "string",
+          "x-ttr-attribute": "er.entity.review.recorded_at"
+        },
+        "reviewed_on": {
+          "format": "date",
+          "type": "string",
+          "x-ttr-attribute": "er.entity.review.reviewed_on"
+        },
+        "sentiment": {
+          "enum": [
+            "positive",
+            "neutral",
+            "negative"
+          ],
+          "type": "string",
+          "x-ttr-attribute": "er.entity.review.sentiment"
+        },
+        "title": {
+          "maxLength": 120,
+          "type": "string",
+          "x-ttr-attribute": "er.entity.review.title"
+        }
+      },
+      "required": [
+        "body",
+        "item",
+        "rating",
+        "recorded_at",
+        "reviewed_on",
+        "sentiment"
+      ],
+      "type": "object"
+    },
+    "concept": {
+      "enum": [
+        "cn.NegativeReview",
+        "cn.Review",
+        "cn.VerifiedReview"
+      ],
+      "type": "string"
+    },
+    "conflicts": {
+      "items": {
+        "$ref": "#/$defs/Conflict"
+      },
+      "type": "array"
+    },
+    "consolidationRun": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "evidence": {
+      "items": {
+        "$ref": "#/$defs/Evidence"
+      },
+      "minItems": 1,
+      "type": "array"
+    },
+    "history": {
+      "items": {
+        "$ref": "#/$defs/HistoryEntry"
+      },
+      "type": "array"
+    },
+    "modifiers": {
+      "additionalProperties": false,
+      "properties": {
+        "temporal_context": {
+          "enum": [
+            "current",
+            "past",
+            "intended"
+          ],
+          "type": "string",
+          "x-ttr-attribute": "er.entity.review.temporal_context",
+          "x-ttr-quality": "cn.temporal_context"
+        },
+        "verification": {
+          "enum": [
+            "verified_purchase",
+            "unverified",
+            "employee"
+          ],
+          "type": "string",
+          "x-ttr-attribute": "er.entity.review.verification",
+          "x-ttr-quality": "cn.verification"
+        }
+      },
+      "required": [
+        "temporal_context",
+        "verification"
+      ],
+      "type": "object"
+    }
+  },
+  "required": [
+    "attributes",
+    "consolidationRun",
+    "evidence"
+  ],
+  "title": "Record.review",
+  "type": "object",
+  "x-ttr-concept": "cn.Review",
+  "x-ttr-entity": "er.entity.review",
+  "x-ttr-feedsGold": true,
+  "x-ttr-kind": "record"
+}

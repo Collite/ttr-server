@@ -1,0 +1,11 @@
+# The eval slice (R-16): train/test by SUBJECT, so no item's documents sit on both sides. P4 excludes the test
+# documents from few-shots (review-extract's few_shots.exclude_eval) and evaluates on them. The sheets carry no
+# subject and are train-side context only.
+version: 1
+by: subject
+test:
+  subjects: [HL-2040, HL-4205]
+  documents: [review-002.cs.json, claim-001.cs.txt]
+train:
+  subjects: [HL-1001, HL-3310]
+  documents: [review-001.en.json, claim-002.en.md, sheet-001.en.html, sheet-002.cs.html]

@@ -1,0 +1,57 @@
+{
+  "document": "claim-001.cs.txt",
+  "mentions": [
+    {
+      "concept": "cn.Item",
+      "id": "g:claim-001.cs:m0",
+      "kind": "item",
+      "member": {
+        "category": "er.entity.item",
+        "display": "Summit Kettle",
+        "id": "HL-4205"
+      },
+      "section": "g:claim-001.cs:s0",
+      "span": {
+        "end": 38,
+        "start": 12
+      },
+      "surface": "rychlovarná konvice Summit"
+    },
+    {
+      "concept": "cn.Item",
+      "id": "g:claim-001.cs:m1",
+      "kind": "item",
+      "member": {
+        "category": "er.entity.item",
+        "display": "Summit Kettle",
+        "id": "HL-4205"
+      },
+      "section": "g:claim-001.cs:s0",
+      "span": {
+        "end": 87,
+        "start": 60
+      },
+      "surface": "rychlovarnou konvici Summit"
+    },
+    {
+      "expected": "abstain",
+      "id": "g:claim-001.cs:m2",
+      "kind": "item",
+      "section": "g:claim-001.cs:s0",
+      "span": {
+        "end": 520,
+        "start": 507
+      },
+      "surface": "novou konvici"
+    }
+  ],
+  "sections": [
+    {
+      "contentHash": "sha256:1638f29a335d13b0e2b082ac1a652a28bb201dc2cc1d7302897e8383a0e7c274",
+      "id": "g:claim-001.cs:s0",
+      "idx": 0,
+      "sectionKind": "claim_body",
+      "text": "Reklamace – rychlovarná konvice Summit Dobrý den, reklamuji rychlovarnou konvici Summit (produkt HL-4205), kterou jsem koupila 2. září 2026 v prodejně Hartland v Brně. Po třech týdnech přestala vypínat po dosažení varu a voda vře dál, dokud ji nevypnu ručně. Termostat je asi vadný, ale nejsem si jistá, jestli nejde jen o víko, které pořádně nedolehne.\n\nKonvici jsem používala podle návodu, jen na vodu, a nikdy nespadla. Doklad o koupi přikládám. Žádám o vrácení kupní ceny 1 290 Kč, případně o výměnu za novou konvici. S pozdravem zákaznice C-40311"
+    }
+  ]
+}

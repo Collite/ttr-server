@@ -1,0 +1,17 @@
+family: normalize-review
+version: 1
+kind: rule
+host: docproc
+role: primary
+description: >-
+  One Statement[review] per review from the recorded facts and the linked item mention (rules/normalize-review.v1.yaml):
+  item, rating, verification. The deterministic primary; review-extract is its LLM mentor (⚑PX-2).
+graph:
+  unit: document
+  when: "exists(Import.review)"
+  consumes: ["Import.review", SectionKind, "Mention[item]"]
+  produces: ["Statement[review]"]
+engine:
+  rules: rules/normalize-review.v1.yaml
+post_conditions: [span_within_unit, schema_valid]
+budget: { timeout_s: 30, retries: 2 }

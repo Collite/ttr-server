@@ -1,0 +1,138 @@
+{
+  "$defs": {
+    "Ref": {
+      "additionalProperties": false,
+      "description": "A reference to a row of the referenced entity: its qname (key or code as the source names it) and the surface it was read from.",
+      "properties": {
+        "display": {
+          "type": "string"
+        },
+        "qname": {
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "qname"
+      ],
+      "type": "object"
+    },
+    "Span": {
+      "additionalProperties": false,
+      "description": "[start, end) in Unicode code points of the unit's NFC text.",
+      "properties": {
+        "end": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "start": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "unitId": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "end",
+        "start",
+        "unitId"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "ttr:types/Statement.claim",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "A warranty claim on a product.",
+  "properties": {
+    "attributes": {
+      "additionalProperties": false,
+      "properties": {
+        "claim_status": {
+          "enum": [
+            "opened",
+            "accepted",
+            "rejected"
+          ],
+          "type": "string",
+          "x-ttr-attribute": "er.entity.claim.claim_status"
+        },
+        "claimed_amount": {
+          "type": "number",
+          "x-ttr-attribute": "er.entity.claim.claimed_amount",
+          "x-ttr-scale": 2
+        },
+        "claimed_on": {
+          "format": "date",
+          "type": "string",
+          "x-ttr-attribute": "er.entity.claim.claimed_on"
+        },
+        "customer": {
+          "$ref": "#/$defs/Ref",
+          "x-ttr-attribute": "er.entity.claim.customer",
+          "x-ttr-references": "er.entity.customer"
+        },
+        "defect": {
+          "type": "string",
+          "x-ttr-attribute": "er.entity.claim.defect"
+        },
+        "item": {
+          "$ref": "#/$defs/Ref",
+          "x-ttr-attribute": "er.entity.claim.item",
+          "x-ttr-references": "er.entity.item"
+        }
+      },
+      "type": "object"
+    },
+    "concept": {
+      "enum": [
+        "cn.Claim",
+        "cn.OpenClaim"
+      ],
+      "type": "string"
+    },
+    "confidence": {
+      "maximum": 1,
+      "minimum": 0,
+      "type": "number"
+    },
+    "modifiers": {
+      "additionalProperties": false,
+      "properties": {
+        "certainty": {
+          "enum": [
+            "confirmed",
+            "suspected",
+            "ruled_out"
+          ],
+          "type": "string",
+          "x-ttr-attribute": "er.entity.claim.certainty",
+          "x-ttr-quality": "cn.certainty"
+        }
+      },
+      "type": "object"
+    },
+    "spans": {
+      "items": {
+        "$ref": "#/$defs/Span"
+      },
+      "minItems": 1,
+      "type": "array"
+    },
+    "verbatim": {
+      "minLength": 1,
+      "type": "string"
+    }
+  },
+  "required": [
+    "attributes",
+    "spans",
+    "verbatim"
+  ],
+  "title": "Statement[claim]",
+  "type": "object",
+  "x-ttr-concept": "cn.Claim",
+  "x-ttr-entity": "er.entity.claim",
+  "x-ttr-kind": "statement"
+}

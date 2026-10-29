@@ -1,0 +1,32 @@
+// hartland-mini (DX PX T2) — copied from ttr-core `packages/kotlin/ttr-concept/src/test/resources/worlds/hartland-dx/bindings.ttrm`
+// at ttr-core master 7205b101. The ttr-core world stays the renderer's golden world: change it there, then re-copy.
+// DX-P0 S0.3 — one grounding per concept (AM-15), every one on er: the slice lands on the extraction entities.
+model binding
+
+def cn2er_kind item_g          { kind: cn.Item, target: er.entity.item }
+def cn2er_kind customer_g      { kind: cn.Customer, target: er.entity.customer }
+def cn2er_kind product_sheet_g { kind: cn.ProductSheet, target: er.entity.product_sheet }
+
+def cn2er_event review_g {
+    event: cn.Review,
+    target: er.entity.review,
+    period: { at: er.entity.review.reviewed_on },
+    participants: { reviewer: [er.relation.review_customer], item: [er.relation.review_item] }
+}
+def cn2er_event claim_g {
+    event: cn.Claim,
+    target: er.entity.claim,
+    period: { at: er.entity.claim.claimed_on },
+    participants: { claimant: [er.relation.claim_customer], item: [er.relation.claim_item] }
+}
+
+def cn2er_quality rating_g           { quality: cn.rating, target: er.entity.review.rating }
+def cn2er_quality sentiment_g        { quality: cn.sentiment, target: er.entity.review.sentiment }
+def cn2er_quality verification_g     { quality: cn.verification, target: er.entity.review.verification }
+def cn2er_quality temporal_context_g { quality: cn.temporal_context, target: er.entity.review.temporal_context }
+def cn2er_quality reviewed_on_g      { quality: cn.reviewed_on, target: er.entity.review.reviewed_on }
+def cn2er_quality defect_g           { quality: cn.defect, target: er.entity.claim.defect }
+def cn2er_quality claimed_amount_g   { quality: cn.claimed_amount, target: er.entity.claim.claimed_amount }
+def cn2er_quality claim_status_g     { quality: cn.claim_status, target: er.entity.claim.claim_status }
+def cn2er_quality certainty_g        { quality: cn.certainty, target: er.entity.claim.certainty }
+def cn2er_quality claimed_on_g       { quality: cn.claimed_on, target: er.entity.claim.claimed_on }

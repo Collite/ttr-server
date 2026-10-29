@@ -1,0 +1,20 @@
+family: classify-sections
+version: 1
+kind: classify
+host: docproc
+role: primary
+description: >-
+  SectionKind by heading or JSON field. In mini-extract every section that no rule names is part of a claim, so the
+  default is claim_body (sheets do not enter this feed).
+graph:
+  unit: section
+  when: ""
+  consumes: [Section]
+  produces: [SectionKind]
+engine:
+  rules:
+    - { when_field: body, kind: review_body }
+    - { when_heading: "(?i)^(specifications|technické parametry|elektrické parametry|rozměry a hmotnost)$", kind: spec_table }
+    - { when_heading: "(?i)^warranty claim", kind: other }
+  default: claim_body
+budget: { timeout_s: 30, retries: 2 }

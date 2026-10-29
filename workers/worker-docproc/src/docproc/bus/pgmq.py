@@ -25,6 +25,8 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
@@ -71,6 +73,18 @@ class PgmqBus:
     def __init__(self, conninfo: str) -> None:
         self._conninfo = conninfo
         self._conn: psycopg.Connection[Any] | None = None
+
+    @contextmanager
+    def transaction(self) -> Iterator[psycopg.Connection[Any]]:
+        """Separate connection: heartbeat/probe activity must never join completion's transaction."""
+        with psycopg.connect(self._conninfo) as conn:
+            yield conn
+
+    def ready(self) -> bool:
+        try:
+            return self._c(None).execute("SELECT 1").fetchone() == (1,)
+        except psycopg.Error:
+            return False
 
     def close(self) -> None:
         if self._conn is not None:

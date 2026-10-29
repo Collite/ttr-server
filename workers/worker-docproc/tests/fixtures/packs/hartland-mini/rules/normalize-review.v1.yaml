@@ -1,0 +1,37 @@
+# normalize-review v1 (the rule DSL, P3 S3.3 T4; schema shared/proto/fixtures/dx/schemas/rules.schema.json).
+# One Statement[review] per review: the recorded Import.review fact (re-anchored to its review's section by split)
+# + the linked item mention in that section. The recorded `verified` flag becomes the `verification` modifier, by
+# two rules with literal values (the template language has no conditional). Sentiment, temporal context, title and
+# body are review-extract's (the LLM mentor), not this file's.
+version: 1
+rules:
+  - id: verified-review
+    match: { name: fact, type: Import.review, unit: section, where: "Import.review.verified = true" }
+    with:
+      - { name: kind, type: SectionKind, rel: same_unit, where: "SectionKind.kind in [review_body]" }
+      - { name: item, type: "Mention[item]", rel: within }
+    emit:
+      type: "Statement[review]"
+      spans: fact
+      payload:
+        attributes:
+          item: { qname: "${item.payload.member.id}", display: "${item.surface}" }
+          rating: "${fact.payload.rating}"
+        modifiers:
+          verification: verified_purchase
+        verbatim: "${fact.surface}"
+  - id: unverified-review
+    match: { name: fact, type: Import.review, unit: section, where: "Import.review.verified = false" }
+    with:
+      - { name: kind, type: SectionKind, rel: same_unit, where: "SectionKind.kind in [review_body]" }
+      - { name: item, type: "Mention[item]", rel: within }
+    emit:
+      type: "Statement[review]"
+      spans: fact
+      payload:
+        attributes:
+          item: { qname: "${item.payload.member.id}", display: "${item.surface}" }
+          rating: "${fact.payload.rating}"
+        modifiers:
+          verification: unverified
+        verbatim: "${fact.surface}"

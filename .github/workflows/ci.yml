@@ -192,7 +192,7 @@ jobs:
         working-directory: services/golem-py
         run: uv run pytest -q
 
-  # DX-P0 S0.2/S0.4 — worker-docproc (docproc), the extraction worker's spike skeleton: the pgmq bus
+  # DX-P3 S3.1 — worker-docproc: runtime, clients, shared fixtures, pgmq bus
   # and the message models. ruff + mypy --strict + pytest, the component tier included (testcontainers-python
   # on postgres:18-alpine with the automation service's vendored pgmq SQL). Runs on every PR from the day the
   # module exists, so it never becomes another dark tier. The kantheon fixture-identity checks skip here (no
@@ -215,6 +215,13 @@ jobs:
       - name: install (locked)
         working-directory: workers/worker-docproc
         run: uv sync --locked
+
+      - name: regenerate gRPC clients (must be clean)
+        working-directory: workers/worker-docproc
+        run: |
+          uv run --locked python scripts/gen_proto.py
+          git diff --exit-code -- src/docproc/_generated
+          test -z "$(git ls-files --others --exclude-standard src/docproc/_generated)"
 
       - name: ruff
         working-directory: workers/worker-docproc

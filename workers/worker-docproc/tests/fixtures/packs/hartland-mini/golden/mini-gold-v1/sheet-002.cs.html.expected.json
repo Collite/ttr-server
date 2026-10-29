@@ -1,0 +1,149 @@
+{
+  "chunks": {
+    "items": [
+      {
+        "id": "g:sheet-002.cs:c0",
+        "ordinal": 0,
+        "section": "g:sheet-002.cs:s0",
+        "span": {
+          "end": 61,
+          "start": 0
+        },
+        "tokenCount": 24
+      },
+      {
+        "id": "g:sheet-002.cs:c1",
+        "ordinal": 0,
+        "section": "g:sheet-002.cs:s1",
+        "span": {
+          "end": 259,
+          "start": 0
+        },
+        "tokenCount": 118
+      },
+      {
+        "id": "g:sheet-002.cs:c2",
+        "ordinal": 1,
+        "section": "g:sheet-002.cs:s1",
+        "span": {
+          "end": 527,
+          "start": 261
+        },
+        "tokenCount": 131
+      },
+      {
+        "id": "g:sheet-002.cs:c3",
+        "ordinal": 0,
+        "section": "g:sheet-002.cs:s2",
+        "span": {
+          "end": 121,
+          "start": 0
+        },
+        "tokenCount": 57
+      },
+      {
+        "id": "g:sheet-002.cs:c4",
+        "ordinal": 0,
+        "section": "g:sheet-002.cs:s3",
+        "span": {
+          "end": 71,
+          "start": 0
+        },
+        "tokenCount": 34
+      },
+      {
+        "id": "g:sheet-002.cs:c5",
+        "ordinal": 0,
+        "section": "g:sheet-002.cs:s4",
+        "span": {
+          "end": 151,
+          "start": 0
+        },
+        "tokenCount": 74
+      },
+      {
+        "id": "g:sheet-002.cs:c6",
+        "ordinal": 0,
+        "section": "g:sheet-002.cs:s5",
+        "span": {
+          "end": 177,
+          "start": 0
+        },
+        "tokenCount": 72
+      }
+    ],
+    "maxTokens": 200,
+    "producer": "chunk-recursive",
+    "tokenizer": "cl100k_base"
+  },
+  "document": "sheet-002.cs.html",
+  "sections": [
+    {
+      "contentHash": "sha256:57cbeb9fc5c77368f127f4e8d8d6946d71c1e8433e28ecacbcea5ad359bddba7",
+      "id": "g:sheet-002.cs:s0",
+      "idx": 0,
+      "sectionPath": [
+        "Sloupový ventilátor Breeze"
+      ],
+      "text": "Produkt HL-2040. Kategorie: Domácnost. Značka: Hartland Home.",
+      "title": "Sloupový ventilátor Breeze"
+    },
+    {
+      "contentHash": "sha256:d65c4da64f21e3b6104a34788f1882a9e2ac7164c10fa93bcc34b3ffdfec2be8",
+      "id": "g:sheet-002.cs:s1",
+      "idx": 1,
+      "sectionPath": [
+        "Sloupový ventilátor Breeze",
+        "Přehled"
+      ],
+      "text": "Sloupový ventilátor Breeze je štíhlý ventilátor do obýváku, pracovny nebo ložnice. Vzduch nasává po celé výšce sloupu a vyfukuje ho úzkou mřížkou vpředu, takže proud je rovnoměrný a nefouká jen do jednoho místa. Ventilátor se může otáčet o 70 stupňů do stran.\n\nNa výběr jsou tři rychlosti a noční režim, ve kterém ventilátor běží nejtišeji a po hodině sám sníží otáčky. Časovač vypne ventilátor po jedné až osmi hodinách. Vše se ovládá tlačítky nahoře na sloupu nebo dálkovým ovladačem, který se ukládá do drážky v zadní části.",
+      "title": "Přehled"
+    },
+    {
+      "contentHash": "sha256:f3db734de1a0f7f4cfc073576c04f3039a538fde55117cfccc0653140d344361",
+      "id": "g:sheet-002.cs:s2",
+      "idx": 2,
+      "sectionPath": [
+        "Sloupový ventilátor Breeze",
+        "Technické parametry",
+        "Elektrické parametry"
+      ],
+      "text": "Parametr Hodnota  Příkon 45 W  Napájení 230 V, 50 Hz  Hlučnost v nočním režimu 32 dB  Hlučnost na nejvyšší rychlost 54 dB",
+      "title": "Elektrické parametry"
+    },
+    {
+      "contentHash": "sha256:1b9cefaf85c3d225b0a14ff25daa8567c0a5bba9f72bc48b7c7ed04d5bb45c91",
+      "id": "g:sheet-002.cs:s3",
+      "idx": 3,
+      "sectionPath": [
+        "Sloupový ventilátor Breeze",
+        "Technické parametry",
+        "Rozměry a hmotnost"
+      ],
+      "text": "Parametr Hodnota  Výška 105 cm  Průměr podstavce 30 cm  Hmotnost 4,2 kg",
+      "title": "Rozměry a hmotnost"
+    },
+    {
+      "contentHash": "sha256:40ccef6bd816368f3fba40bbc83c9620e6146cacdfcd488706aa7cda6f1bcff7",
+      "id": "g:sheet-002.cs:s4",
+      "idx": 4,
+      "sectionPath": [
+        "Sloupový ventilátor Breeze",
+        "Údržba"
+      ],
+      "text": "Před čištěním ventilátor vypněte a vytáhněte ze zásuvky. Mřížku otřete suchým hadříkem nebo vysajte, do sloupu nestříkejte vodu ani čisticí prostředky.",
+      "title": "Údržba"
+    },
+    {
+      "contentHash": "sha256:79957471511d40f528ae5e9baade5f963f569267a31d319b1985db035a3f1f9f",
+      "id": "g:sheet-002.cs:s5",
+      "idx": 5,
+      "sectionPath": [
+        "Sloupový ventilátor Breeze",
+        "Záruka"
+      ],
+      "text": "Na sloupový ventilátor Breeze poskytuje Hartland záruku 24 měsíců. Reklamaci uplatníte v kterékoli prodejně Hartland nebo přes zákaznický formulář; uschovejte si doklad o koupi.",
+      "title": "Záruka"
+    }
+  ]
+}

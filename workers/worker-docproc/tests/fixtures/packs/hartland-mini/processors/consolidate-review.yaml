@@ -1,0 +1,15 @@
+family: consolidate-review
+version: 1
+kind: rule
+host: docproc
+role: primary
+description: One Record.review per review event (consolidation.yaml, review → occurrence), per subject.
+graph:
+  unit: subject
+  when: ""
+  consumes: ["Statement[review]"]
+  produces: ["Record.review"]
+engine:
+  function: docproc.kinds.rule_fns.consolidate
+post_conditions: [schema_valid]
+budget: { timeout_s: 60, retries: 2 }

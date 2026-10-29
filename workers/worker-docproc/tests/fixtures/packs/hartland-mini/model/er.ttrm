@@ -1,0 +1,86 @@
+// hartland-mini (DX PX T2) — copied from ttr-core `packages/kotlin/ttr-concept/src/test/resources/worlds/hartland-dx/er.ttrm`
+// at ttr-core master 7205b101. The ttr-core world stays the renderer's golden world: change it there, then re-copy.
+// The one deliberate addition (PX T2, the P4 S4.2 seam): `review` and `claim` carry `annotation_refs` and
+// `consolidation_run`, tagged "provenance". `record-etl` writes them from the run, so the query door returns them
+// (Hermes explain, the inspector's record view); the extraction types leave them out (ttr-core T2b). They bind by
+// TTR-M's convention, to the columns of their own name on the entity's table (records/ddl/review.sql).
+// DX-P0 S0.3 — the er face of the extraction slice: Hartland's `item` and `customer` (cut to what the slice reads) and the
+// three document-derived entities the extraction pack will fill — `review`, `claim`, `product_sheet`. Those three are
+// NOT in Hartland's model yet (ttr-demo master, 2026-10-25); they live here only, minimal, until the Hartland pack (DH
+// Train 2) authors the real ones. Modifier attributes (`verification`, `temporal_context`, `certainty`) are attributes of
+// the entity with small closed vocabularies — the model owns the modifier set.
+model er
+
+def entity item {
+    labelPlural: "Products",
+    attributes: [
+        def attribute sk           { type: int, isKey: true },
+        def attribute item_id      { type: text, description: "Unique product identifier. Code. One SKU." },
+        def attribute product_name { type: text, description: "Product name, the human-readable label.", search { searchable method: TOKENS } },
+        def attribute brand        { type: text },
+        def attribute category     { type: text }
+    ]
+}
+
+def entity customer {
+    attributes: [
+        def attribute sk   { type: int, isKey: true },
+        def attribute name { type: text }
+    ]
+}
+
+def entity review {
+    description: "A product review as the customer wrote it.",
+    attributes: [
+        def attribute review_id        { type: int, isKey: true },
+        def attribute item             { type: int },
+        def attribute customer         { type: int, optional: true },
+        def attribute rating           { type: int, description: "Stars, 1 to 5." },
+        def attribute title            { type: { type: text, length: 120 }, optional: true },
+        def attribute body             { type: text },
+        def attribute sentiment        { type: text, states: [positive, neutral, negative] },
+        def attribute verification     { type: text, states: [verified_purchase, unverified, employee] },
+        def attribute temporal_context { type: text, states: [current, past, intended] },
+        def attribute price_paid       { type: { type: decimal, length: 10, precision: 2 }, optional: true },
+        def attribute helpful_votes    { type: int, optional: true },
+        def attribute recommended      { type: boolean, optional: true },
+        def attribute reviewed_on      { type: date },
+        def attribute recorded_at      { type: timestamp },
+        def attribute annotation_refs  { type: text, tags: ["provenance"], description: "The annotation ids this row was consolidated from, a JSON array." },
+        def attribute consolidation_run { type: text, tags: ["provenance"], description: "The consolidation run that wrote this row." }
+    ]
+}
+
+def entity claim {
+    description: "A warranty claim on a product.",
+    attributes: [
+        def attribute claim_id       { type: int, isKey: true },
+        def attribute item           { type: int },
+        def attribute customer       { type: int },
+        def attribute defect         { type: text },
+        def attribute claimed_amount { type: { type: decimal, length: 12, precision: 2 } },
+        def attribute claim_status   { type: text, states: [opened, accepted, rejected] },
+        def attribute certainty      { type: text, states: [confirmed, suspected, ruled_out] },
+        def attribute claimed_on     { type: date },
+        def attribute annotation_refs { type: text, tags: ["provenance"], description: "The annotation ids this row was consolidated from, a JSON array." },
+        def attribute consolidation_run { type: text, tags: ["provenance"], description: "The consolidation run that wrote this row." }
+    ]
+}
+
+def entity product_sheet {
+    description: "One specification line of a product sheet.",
+    attributes: [
+        def attribute sheet_id   { type: int, isKey: true },
+        def attribute item       { type: int },
+        def attribute section    { type: text },
+        def attribute spec_name  { type: text },
+        def attribute spec_value { type: text },
+        def attribute unit       { type: text, optional: true }
+    ]
+}
+
+def relation review_item          { from: er.entity.review, to: er.entity.item, join: [{ from: er.entity.review.item, to: er.entity.item.sk }] }
+def relation review_customer      { from: er.entity.review, to: er.entity.customer, join: [{ from: er.entity.review.customer, to: er.entity.customer.sk }] }
+def relation claim_item           { from: er.entity.claim, to: er.entity.item, join: [{ from: er.entity.claim.item, to: er.entity.item.sk }] }
+def relation claim_customer       { from: er.entity.claim, to: er.entity.customer, join: [{ from: er.entity.claim.customer, to: er.entity.customer.sk }] }
+def relation product_sheet_item   { from: er.entity.product_sheet, to: er.entity.item, join: [{ from: er.entity.product_sheet.item, to: er.entity.item.sk }] }

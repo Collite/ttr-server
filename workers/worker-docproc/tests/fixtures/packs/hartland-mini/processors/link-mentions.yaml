@@ -1,0 +1,24 @@
+family: link-mentions
+version: 1
+kind: link
+host: docproc
+role: primary
+description: >-
+  Links an unlinked item mention to cn.Item and its sku member, or abstains (a Decision with no chosen). It re-emits
+  Mention[item] derived from its input (⚑PX-1 in the README: P2 S2.1's cycle and two-primaries checks meet this).
+graph:
+  unit: section
+  when: "exists(Mention[item])"
+  consumes: ["Mention[item]"]
+  produces: ["Mention[item]", Decision]
+engine:
+  candidates: [lexicon, knn]
+  pick: rule
+  abstain_below: 0.6
+  margin: 0.05
+  k: 5
+  targets: { er.entity.item: cn.Item }
+  categories: { item: [er.entity.item.product_name] }
+post_conditions: [span_within_unit]
+measurement: { golden_set: mini-gold-v1, gates: { min_f1_span: 0.9 } }
+budget: { timeout_s: 30, retries: 2 }

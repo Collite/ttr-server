@@ -1,0 +1,13 @@
+# Consolidation policy (P3 S3.3 T5): per entity, the temporal nature and the blocking keys.
+version: 1
+entities:
+  review:
+    # One record per review event: two reviews of one item by one customer are two records.
+    nature: occurrence
+    blocking: [item, customer]
+    identity: { known_from: "Import.review.reviewId" }
+  claim:
+    # A claim is a state that moves (opened → accepted | rejected): a later value updates it, a contemporaneous
+    # different value contradicts it and opens a conflict.
+    nature: state
+    blocking: [item, customer]
