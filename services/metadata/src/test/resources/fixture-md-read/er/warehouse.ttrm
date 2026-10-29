@@ -1,0 +1,5 @@
+package er
+import db.retail.*
+model er schema storage
+
+def entity warehouse { attributes: [def attribute id { type: int }] }

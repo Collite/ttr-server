@@ -1,0 +1,15 @@
+package binding
+import er.*
+import db.retail.*
+import md.*
+model binding
+
+def er2db_entity buyer_table { entity: er.entity.buyer, target: { table: db.retail.buyers } }
+def er2db_attribute buyer_id { attribute: er.entity.buyer.id, target: { column: db.retail.buyers.id } }
+def er2db_relation sale_buyer_fk { relation: er.relation.sale_buyer, fk: db.retail.sale_buyer }
+def md2db_cubelet purchases_table { cubelet: md.purchases, target: db.retail.sales, attributes: { Buyer.id: buyer_id, Calendar.day: sold_at }, measures: { revenue: amount, units: id, balance: amount } }
+def md2db_domain money_source { domain: md.Money, source: { table: db.retail.sales, column: amount } }
+
+def md2db_map amounts_map { map: md.buyer_amounts, target: db.retail.sales, columns: { md.Money: amount } }
+
+def er2db_entity warehouse_table { entity: er.warehouse, target: { table: db.retail.buyers } }

@@ -1,0 +1,1199 @@
+// SPDX-License-Identifier: Apache-2.0
+package org.tatrman.metadata.read
+
+import ch.qos.logback.classic.Level
+import ch.qos.logback.classic.Logger
+import ch.qos.logback.classic.spi.ILoggingEvent
+import ch.qos.logback.core.read.ListAppender
+import io.kotest.core.spec.style.StringSpec
+import io.kotest.assertions.throwables.shouldThrow
+import io.mockk.every
+import io.mockk.mockk
+import io.kotest.matchers.shouldBe
+import io.kotest.matchers.string.shouldContain
+import io.ktor.client.request.get
+import io.ktor.client.statement.bodyAsText
+import io.ktor.http.HttpStatusCode
+import io.ktor.server.config.MapApplicationConfig
+import io.ktor.server.routing.routing
+import io.ktor.server.testing.testApplication
+import kotlinx.serialization.json.*
+import org.slf4j.LoggerFactory
+import org.tatrman.metadata.grpc.PackageIndex
+import org.tatrman.ttr.metadata.MetadataLoader
+import org.tatrman.ttr.metadata.graph.ModelGraph
+import org.tatrman.ttr.metadata.registry.MetadataRegistry
+import org.tatrman.ttr.metadata.search.SearchAlgorithmRegistry
+import org.tatrman.ttr.metadata.source.BuiltinStockSource
+import org.tatrman.ttr.metadata.source.FileBasedSource
+import org.tatrman.ttr.metadata.source.LocalFsStorage
+import java.nio.file.Files
+import java.nio.file.Path
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicReference
+import kotlin.concurrent.thread
+
+class StructuralReadProjectionReviewSpec :
+    StringSpec({
+        "R1 one explicit binding prefers its query-path target over the definition resolver" {
+            withWorld(
+                mapOf(
+                    "db/dbo/tables.ttrm" to "model db schema dbo\ndef table buyers {}",
+                    "db/retail/tables.ttrm" to "model db schema retail\ndef table buyers {}",
+                    "er/buyer.ttrm" to "model er\ndef entity buyer {}",
+                    "db/retail/binding.ttrm" to """
+                package db.retail
+                import db.retail.*
+                import er.*
+                model binding
+                def er2db_entity b { entity: er.entity.buyer, target: { table: buyers } }
+            """,
+                ),
+            ) { world ->
+                withHttp(world) { get ->
+                    val edges = get("/model/graph").readEdges()
+                    edges.filter { it.first == "er.entity.buyer" && it.third == "MAPS_TO" }.map { it.second } shouldBe
+                        listOf("db.dbo.buyers")
+                    edges.any { it.first == "er2db_entity.er2db_entity.b" && it.second == "db.dbo.buyers" } shouldBe
+                        true
+                    val refs =
+                        get(
+                            "/model/object?qname=er.entity.buyer",
+                        )["references"]!!.jsonArray.map { it.jsonPrimitive.content }
+                    refs.contains("db.dbo.buyers") shouldBe true
+                    refs.contains("db.retail.buyers") shouldBe false
+                }
+            }
+        }
+
+        "R2 colliding export ids never move a binding to another ER schema in either file order" {
+            for (defaultFile in listOf("z.ttrm", "a.ttrm")) {
+                withProjectionLogs { logs ->
+                    withWorld(
+                        mapOf(
+                            "db/retail/tables.ttrm" to
+                                "model db schema retail\ndef table wh_main {}\ndef table wh_store {}",
+                            "er/$defaultFile" to "model er\ndef entity warehouse {}",
+                            "er/storage.ttrm" to "model er schema storage\ndef entity warehouse {}",
+                            "binding/mappings.ttrm" to """
+                        import er.*
+                        import db.retail.*
+                        model binding
+                        def er2db_entity main_wh { entity: er.entity.warehouse, target: { table: db.retail.wh_main } }
+                    """,
+                        ),
+                    ) { world ->
+                        withHttp(world) { get ->
+                            val edges = get("/model/graph").readEdges()
+                            edges.contains(Triple("er.entity.warehouse", "db.retail.wh_main", "MAPS_TO")) shouldBe true
+                            edges.none { it.first == "er.storage.warehouse" && it.third == "MAPS_TO" } shouldBe true
+                            get("/model/graph")
+                            logs.warnings().size shouldBe 1
+                            logs.warnings().single().formattedMessage shouldContain "er.entity.warehouse"
+                            logs.warnings().single().formattedMessage shouldContain "storage.ttrm"
+                        }
+                    }
+                }
+            }
+        }
+
+        "R1 duplicate binding export ids cannot choose a definition fallback" {
+            withWorld(
+                mapOf(
+                    "db/tables.ttrm" to "model db\ndef table ta {}\ndef table tb {}",
+                    "er/entities.ttrm" to "model er\ndef entity a {}\ndef entity b {}",
+                    "binding/a.ttrm" to
+                        "import er.*\nimport db.*\nmodel binding\ndef er2db_entity same { entity: er.a, target: { table: db.dbo.ta } }",
+                    "binding/b.ttrm" to
+                        "import er.*\nimport db.*\nmodel binding\ndef er2db_entity same { entity: er.b, target: { table: db.dbo.tb } }",
+                ),
+            ) { world ->
+                val cache = StructuralReadProjectionCache(world.registry, world.packages)
+                val result = cache.read(world.registry.readOrError())
+                result.edges.none { it.from in setOf("er.entity.a", "er.entity.b") && it.type == "MAPS_TO" } shouldBe
+                    true
+                result.diagnostics.omittedEdges shouldBe 2
+                result.diagnostics.ambiguousIds.keys
+                    .contains("er2db_entity.same") shouldBe true
+            }
+        }
+
+        "R2 a partially joined export id is omitted rather than assigned to its only joined declaration" {
+            withProjectionLogs { logs ->
+                withWorld(
+                    mapOf(
+                        "db/tables.ttrm" to "model db\ndef table warehouse_table {}",
+                        "er/a.ttrm" to "model er\ndef entity warehouse {}",
+                        "er/b.ttrm" to "model er schema storage\ndef entity warehouse {}",
+                        "binding/b.ttrm" to
+                            "import er.*\nimport db.*\nmodel binding\ndef er2db_entity b { entity: er.warehouse, target: { table: db.dbo.warehouse_table } }",
+                    ),
+                ) { world ->
+                    val snap = world.registry.readOrError()
+                    val er = snap.model.schemas.getValue("er") as org.tatrman.ttr.metadata.model.ErSchema
+                    val partial =
+                        snap.model.copy(
+                            schemas =
+                                snap.model.schemas + (
+                                    "er" to
+                                        er.copy(
+                                            entities = er.entities.filterKeys { it.namespace == "storage" },
+                                        )
+                                ),
+                        )
+                    val files = snap.definitions
+                    world.registry.swap(partial, ModelGraph.build(partial))
+                    // Keep real parsed declarations to exercise a mixed joined/unjoined identity.
+                    val partialSnap = world.registry.readOrError().copy(definitions = files)
+                    val cache = StructuralReadProjectionCache(world.registry, world.packages)
+                    val result = cache.read(partialSnap)
+                    result.edges.none { it.from == "er.storage.warehouse" && it.type == "MAPS_TO" } shouldBe true
+                    result.diagnostics.omittedEdges shouldBe 1
+                    result.diagnostics.ambiguousIds.keys
+                        .contains("er.entity.warehouse") shouldBe true
+                    // An uncached request does not emit publication warnings.
+                    logs.warnings().size shouldBe 0
+                }
+            }
+        }
+
+        "R3 same-named inline measures retain the first declaration and warn only on publication" {
+            withProjectionLogs { logs ->
+                withWorld(
+                    mapOf(
+                        "db/tables.ttrm" to "model db\ndef table anchor {}",
+                        "md/model.ttrm" to """
+                    model md
+                    def domain Money { type: decimal }
+                    def cubelet sales { grain: [], measures: [def measure amount { domain: md.Money, description: "sales amount" }] }
+                    def cubelet returns { grain: [], measures: [def measure amount { domain: md.Money, description: "returns amount" }] }
+                """,
+                    ),
+                ) { world ->
+                    withHttp(world) { get ->
+                        val nodes = get("/model/graph")["nodes"]!!.jsonArray.map { it.jsonObject }
+                        nodes.count { it["qname"]!!.jsonPrimitive.content == "md.measure.amount" } shouldBe 1
+                        nodes
+                            .single { it["qname"]!!.jsonPrimitive.content == "md.measure.amount" }["description"]!!
+                            .jsonPrimitive.content shouldBe "sales amount"
+                        get("/model/graph")
+                        logs.warnings().size shouldBe 1
+                        logs.warnings().single().formattedMessage shouldContain "md.measure.amount"
+                        logs.warnings().single().formattedMessage shouldContain
+                            "kept=${world.root.resolve("md/model.ttrm")}"
+                        logs.warnings().single().formattedMessage shouldContain
+                            "parent=md.cubelet.sales"
+                        logs.warnings().single().formattedMessage shouldContain "parent=md.cubelet.returns"
+                        val collision =
+                            StructuralReadProjectionCache(world.registry, world.packages)
+                                .read(world.registry.readOrError())
+                                .diagnostics.collidingMdIds
+                                .getValue("md.measure.amount")
+                        collision.kept shouldContain "${world.root.resolve("md/model.ttrm")}:"
+                        collision.dropped.single() shouldContain "${world.root.resolve("md/model.ttrm")}:"
+                        collision.kept
+                            .substringAfterLast(".ttrm:")
+                            .substringBefore(" ")
+                            .toInt() shouldBe 3
+                        collision.dropped
+                            .single()
+                            .substringAfterLast(".ttrm:")
+                            .substringBefore(" ")
+                            .toInt() shouldBe 4
+                    }
+                }
+            }
+        }
+
+        "R6 hierarchy node preserves authored level order in graph and detail" {
+            withWorld(
+                mapOf(
+                    "db/tables.ttrm" to "model db\ndef table anchor {}",
+                    "md/calendar.ttrm" to """
+                model md
+                def domain DatePart { type: int }
+                def dimension Cal { key: day, attributes: [
+                    def attribute year { domain: md.DatePart },
+                    def attribute month { domain: md.DatePart },
+                    def attribute day { domain: md.DatePart, isKey: true }
+                ] }
+                def hierarchy Rollup { dimension: md.Cal, levels: [year, month, day] }
+            """,
+                ),
+            ) { world ->
+                withHttp(world) { get ->
+                    val node =
+                        get("/model/graph")["nodes"]!!
+                            .jsonArray
+                            .map { it.jsonObject }
+                            .single { it["qname"]!!.jsonPrimitive.content == "md.hierarchy.Rollup" }
+                    node["levels"]!!.jsonArray.map { it.jsonPrimitive.content } shouldBe
+                        listOf("md.dimension.Cal.year", "md.dimension.Cal.month", "md.dimension.Cal.day")
+                    get("/model/object?qname=md.hierarchy.Rollup")["object"] shouldBe node
+                }
+            }
+        }
+
+        "S1 precedence copies preserve md2db table and column bindings without warnings" {
+            withProjectionLogs { logs ->
+                withWorld(
+                    mapOf(
+                        "base/db/retail/tables.ttrm" to
+                            "model db schema retail\ndef table sales { columns: [def column amount { type: decimal }] }",
+                        "overlay/db/retail/tables.ttrm" to
+                            "model db schema retail\ndef table sales { columns: [def column amount { type: decimal }] }",
+                        "base/md/model.ttrm" to """
+                            model md
+                            def domain Money { type: decimal }
+                            def cubelet purchases { grain: [], measures: [] }
+                        """,
+                        "base/binding/model.ttrm" to """
+                            import md.*
+                            import db.retail.*
+                            model binding
+                            def md2db_cubelet purchases_table { cubelet: md.purchases, target: { table: db.retail.sales } }
+                            def md2db_domain money_source { domain: md.Money, source: { table: db.retail.sales, column: amount } }
+                        """,
+                    ),
+                    sources = listOf("overlay" to 200, "base" to 100),
+                ) { world ->
+                    withHttp(world) { get ->
+                        val edges = get("/model/graph").readEdges()
+                        edges.contains(Triple("md.cubelet.purchases", "db.retail.sales", "MAPS_TO")) shouldBe true
+                        edges.contains(Triple("md.domain.Money", "db.retail.sales.amount", "MAPS_TO")) shouldBe true
+                        logs.warnings().size shouldBe 0
+                    }
+                }
+            }
+        }
+
+        "T3 directive-free and explicit dbo precedence copies retain bindings without warnings" {
+            withProjectionLogs { logs ->
+                withWorld(
+                    mapOf(
+                        "base/db/tables.ttrm" to "def table sales {}",
+                        "overlay/db/tables.ttrm" to "model db\ndef table sales {}",
+                        "base/md/model.ttrm" to "model md\ndef cubelet purchases { grain: [], measures: [] }",
+                        "base/binding/model.ttrm" to
+                            "import md.*\nimport db.*\nmodel binding\ndef md2db_cubelet purchases_table { cubelet: md.purchases, target: { table: db.dbo.sales } }",
+                    ),
+                    sources = listOf("overlay" to 200, "base" to 100),
+                ) { world ->
+                    val snap = world.registry.readOrError()
+                    val entries = snap.definitions.entries.filter { it.qname == "db.dbo.sales" }
+                    entries.map { it.fileModel }.toSet() shouldBe setOf(null, "db")
+                    entries.map { it.fileNamespace }.toSet() shouldBe setOf(null, "dbo")
+                    val result = StructuralReadProjectionCache(world.registry, world.packages).read(snap)
+                    result.edges.contains(ReadEdge("md.cubelet.purchases", "db.dbo.sales", "MAPS_TO")) shouldBe true
+                    result.diagnostics.omittedEdges shouldBe 0
+                    result.diagnostics.ambiguousIds shouldBe emptyMap()
+                    logs.warnings().size shouldBe 0
+                }
+            }
+        }
+
+        "S3 duplicate explicit binding ids omit both typed logical edges including overlays" {
+            for (overlay in listOf(false, true)) {
+                val base = if (overlay) "base/" else ""
+                val other = if (overlay) "overlay/" else ""
+                withProjectionLogs { logs ->
+                    withWorld(
+                        mapOf(
+                            "${base}db/tables.ttrm" to "model db\ndef table t1 {}\ndef table t2 {}",
+                            "${base}er/buyer.ttrm" to "model er\ndef entity buyer {}",
+                            "${base}binding/a.ttrm" to
+                                "import er.*\nimport db.*\nmodel binding\ndef er2db_entity b { entity: er.entity.buyer, target: { table: db.dbo.t1 } }",
+                            "${other}binding/z.ttrm" to
+                                "import er.*\nimport db.*\nmodel binding\ndef er2db_entity b { entity: er.entity.buyer, target: { table: db.dbo.t2 } }",
+                        ),
+                        sources = if (overlay) listOf("overlay" to 200, "base" to 100) else listOf("" to 100),
+                    ) { world ->
+                        val result =
+                            StructuralReadProjectionCache(
+                                world.registry,
+                                world.packages,
+                            ).read(world.registry.readOrError())
+                        result.edges.none { it.from == "er.entity.buyer" && it.type == "MAPS_TO" } shouldBe true
+                        result.diagnostics.omittedEdges shouldBe 2
+                        result.diagnostics.ambiguousIds.keys
+                            .contains("er2db_entity.b") shouldBe true
+                        result.edges
+                            .filter { it.from == "er2db_entity.er2db_entity.b" && it.type == "MAPS_TO" }
+                            .map { it.to }
+                            .toSet() shouldBe setOf("db.dbo.t1", "db.dbo.t2")
+                        logs.warnings().single().formattedMessage shouldContain "binding/definition edges"
+                    }
+                }
+            }
+        }
+
+        "T1 identical explicit er2db overlay copies serve once without warnings" {
+            withProjectionLogs { logs ->
+                val binding = """
+                    import er.*
+                    import db.*
+                    model binding
+                    def er2db_entity b { entity: er.entity.buyer, target: { table: db.dbo.t1 } }
+                """
+                withWorld(
+                    mapOf(
+                        "base/db/tables.ttrm" to "model db\ndef table t1 {}",
+                        "base/er/entities.ttrm" to "model er\ndef entity buyer {}",
+                        "base/binding/model.ttrm" to binding,
+                        "overlay/binding/model.ttrm" to binding,
+                    ),
+                    sources = listOf("overlay" to 200, "base" to 100),
+                ) { world ->
+                    val result =
+                        StructuralReadProjectionCache(
+                            world.registry,
+                            world.packages,
+                        ).read(world.registry.readOrError())
+                    result.edges.filter { it.from == "er.entity.buyer" && it.type == "MAPS_TO" } shouldBe
+                        listOf(ReadEdge("er.entity.buyer", "db.dbo.t1", "MAPS_TO"))
+                    result.diagnostics.omittedEdges shouldBe 0
+                    result.diagnostics.hasWarnings shouldBe false
+                    logs.warnings().size shouldBe 0
+                }
+            }
+        }
+
+        "T1 identical md2db overlay copies serve once without warnings" {
+            withProjectionLogs { logs ->
+                val binding = """
+                    import md.*
+                    import db.*
+                    model binding
+                    def md2db_cubelet pt { cubelet: md.purchases, target: { table: db.dbo.t1 } }
+                """
+                withWorld(
+                    mapOf(
+                        "base/db/tables.ttrm" to "model db\ndef table t1 {}",
+                        "base/md/model.ttrm" to "model md\ndef cubelet purchases { grain: [], measures: [] }",
+                        "base/binding/model.ttrm" to binding,
+                        "overlay/binding/model.ttrm" to binding,
+                    ),
+                    sources = listOf("overlay" to 200, "base" to 100),
+                ) { world ->
+                    val result =
+                        StructuralReadProjectionCache(
+                            world.registry,
+                            world.packages,
+                        ).read(world.registry.readOrError())
+                    result.edges.filter { it.from == "md.cubelet.purchases" && it.type == "MAPS_TO" } shouldBe
+                        listOf(ReadEdge("md.cubelet.purchases", "db.dbo.t1", "MAPS_TO"))
+                    result.diagnostics.omittedEdges shouldBe 0
+                    result.diagnostics.hasWarnings shouldBe false
+                    logs.warnings().size shouldBe 0
+                }
+            }
+        }
+
+        "T1 inline overlay copies serve identical targets and omit differing targets despite load errors" {
+            for (target in listOf("t1", "t2")) {
+                withProjectionLogs { logs ->
+                    withWorld(
+                        mapOf(
+                            "base/db/tables.ttrm" to "model db\ndef table t1 {}\ndef table t2 {}",
+                            "base/er/model.ttrm" to
+                                "import db.*\nmodel er\ndef entity product { binding: { target: { table: db.dbo.t1 } } }",
+                            "overlay/er/model.ttrm" to
+                                "import db.*\nmodel er\ndef entity product { binding: { target: { table: db.dbo.$target } } }",
+                        ),
+                        sources = listOf("overlay" to 200, "base" to 100),
+                        allowLoadErrors = true,
+                    ) { world ->
+                        world.loadErrors.size shouldBe 2
+                        world.loadErrors.all { "ttr/duplicate-mapping" in it } shouldBe true
+                        val result =
+                            StructuralReadProjectionCache(
+                                world.registry,
+                                world.packages,
+                            ).read(world.registry.readOrError())
+                        val edges = result.edges.filter { it.from == "er.entity.product" && it.type == "MAPS_TO" }
+                        if (target == "t1") {
+                            edges shouldBe listOf(ReadEdge("er.entity.product", "db.dbo.t1", "MAPS_TO"))
+                            result.diagnostics.omittedEdges shouldBe 0
+                            logs.warnings().size shouldBe 0
+                        } else {
+                            edges shouldBe emptyList()
+                            result.diagnostics.omittedEdges shouldBe 2
+                            result.diagnostics.ambiguousIds.keys
+                                .contains("er2db_entity.product") shouldBe true
+                            logs.warnings().size shouldBe 1
+                            result.diagnostics.ambiguousIds
+                                .getValue("er2db_entity.product")
+                                .toSet() shouldBe
+                                setOf(
+                                    world.root.resolve("base/er/model.ttrm").toString(),
+                                    world.root.resolve("overlay/er/model.ttrm").toString(),
+                                )
+                        }
+                    }
+                }
+            }
+        }
+
+        "T1 a duplicate binding key with two resolved entities cannot select either pair" {
+            withWorld(
+                mapOf(
+                    "db/tables.ttrm" to "model db\ndef table ta {}\ndef table tb {}",
+                    "er/entities.ttrm" to "model er\ndef entity a {}\ndef entity b {}",
+                    "binding/a.ttrm" to
+                        "import er.*\nimport db.*\nmodel binding\ndef er2db_entity same { entity: er.entity.a, target: { table: db.dbo.ta } }",
+                    "binding/b.ttrm" to
+                        "import er.*\nimport db.*\nmodel binding\ndef er2db_entity same { entity: er.entity.b, target: { table: db.dbo.tb } }",
+                ),
+            ) { world ->
+                val result =
+                    StructuralReadProjectionCache(
+                        world.registry,
+                        world.packages,
+                    ).read(world.registry.readOrError())
+                result.edges.none { it.from in setOf("er.entity.a", "er.entity.b") && it.type == "MAPS_TO" } shouldBe
+                    true
+                result.diagnostics.omittedEdges shouldBe 2
+                result.diagnostics.ambiguousIds.keys
+                    .contains("er2db_entity.same") shouldBe true
+            }
+        }
+
+        "T1 same-named inline bindings on distinct ER schemas are omitted" {
+            withWorld(
+                mapOf(
+                    "db/tables.ttrm" to "model db\ndef table ta {}\ndef table tb {}",
+                    "er/a.ttrm" to
+                        "import db.*\nmodel er\ndef entity warehouse { binding: { target: { table: db.dbo.ta } } }",
+                    "er/b.ttrm" to
+                        "import db.*\nmodel er schema storage\ndef entity warehouse { binding: { target: { table: db.dbo.tb } } }",
+                ),
+                allowLoadErrors = true,
+            ) { world ->
+                world.loadErrors.size shouldBe 2
+                world.loadErrors.all { "ttr/duplicate-mapping" in it } shouldBe true
+                val result =
+                    StructuralReadProjectionCache(
+                        world.registry,
+                        world.packages,
+                    ).read(world.registry.readOrError())
+                result.edges.none {
+                    it.from in setOf("er.entity.warehouse", "er.storage.warehouse") &&
+                        it.type == "MAPS_TO"
+                } shouldBe
+                    true
+                result.diagnostics.omittedEdges shouldBe 2
+                result.diagnostics.ambiguousIds.keys
+                    .contains("er2db_entity.warehouse") shouldBe true
+            }
+        }
+
+        "T2 differently named er2db bindings cannot serve multiple physical targets" {
+            // Exercise both typed candidates and a typed/definition-fallback disagreement.
+            for (secondEntity in listOf("er.entity.buyer", "er.buyer")) {
+                withWorld(
+                    mapOf(
+                        "db/tables.ttrm" to "model db\ndef table t1 {}\ndef table t2 {}",
+                        "er/model.ttrm" to "model er\ndef entity buyer {}",
+                        "binding/a.ttrm" to
+                            "import er.*\nimport db.*\nmodel binding\ndef er2db_entity b1 { entity: er.entity.buyer, target: { table: db.dbo.t1 } }",
+                        "binding/z.ttrm" to
+                            "import er.*\nimport db.*\nmodel binding\ndef er2db_entity b2 { entity: $secondEntity, target: { table: db.dbo.t2 } }",
+                    ),
+                ) { world ->
+                    val result =
+                        StructuralReadProjectionCache(
+                            world.registry,
+                            world.packages,
+                        ).read(world.registry.readOrError())
+                    result.edges.none { it.from == "er.entity.buyer" && it.type == "MAPS_TO" } shouldBe true
+                    result.diagnostics.omittedEdges shouldBe 2
+                    result.diagnostics.ambiguousIds.keys shouldBe setOf("er2db_entity.b1", "er2db_entity.b2")
+                }
+            }
+        }
+
+        "U1 multi-source cubelets retain every physical source without warnings" {
+            withProjectionLogs { logs ->
+                withWorld(
+                    mapOf(
+                        "db/tables.ttrm" to "model db\ndef table t1 {}\ndef table t2 {}",
+                        "md/model.ttrm" to "model md\ndef cubelet purchases { grain: [], measures: [] }",
+                        "binding/a.ttrm" to
+                            "import md.*\nimport db.*\nmodel binding\ndef md2db_cubelet b1 { cubelet: md.purchases, target: { table: db.dbo.t1 } }",
+                        "binding/z.ttrm" to
+                            "import md.*\nimport db.*\nmodel binding\ndef md2db_cubelet b2 { cubelet: md.purchases, target: { table: db.dbo.t2 } }",
+                    ),
+                ) { world ->
+                    val result =
+                        StructuralReadProjectionCache(
+                            world.registry,
+                            world.packages,
+                        ).read(world.registry.readOrError())
+                    result.edges.filter { it.from == "md.cubelet.purchases" && it.type == "MAPS_TO" }.toSet() shouldBe
+                        setOf(
+                            ReadEdge("md.cubelet.purchases", "db.dbo.t1", "MAPS_TO"),
+                            ReadEdge("md.cubelet.purchases", "db.dbo.t2", "MAPS_TO"),
+                        )
+                    result.diagnostics.omittedEdges shouldBe 0
+                    result.diagnostics.hasWarnings shouldBe false
+                    logs.warnings().size shouldBe 0
+                }
+            }
+        }
+
+        "T4 identical entity roles in overlays do not produce physical binding diagnostics" {
+            withProjectionLogs { logs ->
+                val entity = "model er\ndef entity sale { roles: [dimension] }"
+                withWorld(
+                    mapOf(
+                        "base/cn/model.ttrm" to "model cn\ndef kind Anchor {}",
+                        "base/er/model.ttrm" to entity,
+                        "overlay/er/model.ttrm" to entity,
+                    ),
+                    sources = listOf("overlay" to 200, "base" to 100),
+                    withStockRoles = true,
+                ) { world ->
+                    val snap = world.registry.readOrError()
+                    snap.model.mappings.count { it.kind == "er2cnc_role_mapping" } shouldBe 2
+                    val result = StructuralReadProjectionCache(world.registry, world.packages).read(snap)
+                    result.diagnostics.omittedEdges shouldBe 0
+                    result.diagnostics.hasWarnings shouldBe false
+                    logs.warnings().size shouldBe 0
+                }
+            }
+        }
+
+        "T5 identical md precedence copies are not collisions" {
+            withProjectionLogs { logs ->
+                val md = """
+                    model md
+                    def domain Money { type: decimal }
+                    def cubelet purchases { grain: [], measures: [def measure amount { domain: md.Money }] }
+                """
+                withWorld(
+                    mapOf(
+                        "base/db/tables.ttrm" to "model db\ndef table anchor {}",
+                        "base/md/model.ttrm" to md,
+                        "overlay/md/model.ttrm" to md,
+                    ),
+                    sources = listOf("overlay" to 200, "base" to 100),
+                ) { world ->
+                    val result =
+                        StructuralReadProjectionCache(
+                            world.registry,
+                            world.packages,
+                        ).read(world.registry.readOrError())
+                    result.objects.keys.containsAll(listOf("md.domain.Money", "md.cubelet.purchases")) shouldBe true
+                    result.diagnostics.collidingMdIds shouldBe emptyMap()
+                    result.diagnostics.hasWarnings shouldBe false
+                    logs.warnings().size shouldBe 0
+                }
+            }
+        }
+
+        "T5 identical inline measure bodies in distinct cubelets still diagnose a collision" {
+            withProjectionLogs { logs ->
+                withWorld(
+                    mapOf(
+                        "db/tables.ttrm" to "model db\ndef table anchor {}",
+                        "md/model.ttrm" to """
+                            model md
+                            def domain Money { type: decimal }
+                            def cubelet sales { grain: [], measures: [def measure amount { domain: md.Money }] }
+                            def cubelet returns { grain: [], measures: [def measure amount { domain: md.Money }] }
+                        """,
+                    ),
+                ) { world ->
+                    val snap = world.registry.readOrError()
+                    snap.definitions.entries
+                        .filter { it.qname == "md.measure.amount" }
+                        .map { it.parentQname } shouldBe listOf(null, null)
+                    val result = StructuralReadProjectionCache(world.registry, world.packages).read(snap)
+                    val collision = result.diagnostics.collidingMdIds.getValue("md.measure.amount")
+                    collision.kept shouldContain "parent=md.cubelet.sales"
+                    collision.dropped.single() shouldContain "parent=md.cubelet.returns"
+                    logs.warnings().size shouldBe 1
+                }
+            }
+        }
+
+        "U1 a changed cubelet binding omits only that binding and keeps its other sources" {
+            withWorld(
+                mapOf(
+                    "base/db/tables.ttrm" to "model db\ndef table t1 {}\ndef table t2 {}\ndef table t3 {}",
+                    "base/md/model.ttrm" to "model md\ndef cubelet purchases { grain: [], measures: [] }",
+                    "base/binding/model.ttrm" to
+                        "import md.*\nimport db.*\nmodel binding\ndef md2db_cubelet b1 { cubelet: md.purchases, target: db.dbo.t1 }\ndef md2db_cubelet b2 { cubelet: md.purchases, target: db.dbo.t3 }",
+                    "overlay/binding/model.ttrm" to
+                        "import md.*\nimport db.*\nmodel binding\ndef md2db_cubelet b1 { cubelet: md.purchases, target: db.dbo.t2 }",
+                ),
+                sources = listOf("overlay" to 200, "base" to 100),
+            ) { world ->
+                val result =
+                    StructuralReadProjectionCache(
+                        world.registry,
+                        world.packages,
+                    ).read(world.registry.readOrError())
+                result.edges.filter { it.from == "md.cubelet.purchases" && it.type == "MAPS_TO" } shouldBe
+                    listOf(ReadEdge("md.cubelet.purchases", "db.dbo.t3", "MAPS_TO"))
+                result.diagnostics.omittedEdges shouldBe 1
+                result.diagnostics.ambiguousIds.keys shouldBe setOf("md2db_cubelet.b1")
+            }
+        }
+
+        "U1 domain bindings still allow at most one physical target" {
+            withWorld(
+                mapOf(
+                    "db/tables.ttrm" to
+                        "model db\ndef table t1 { columns: [def column c1 { type: decimal }] }\ndef table t2 { columns: [def column c1 { type: decimal }] }",
+                    "md/model.ttrm" to "model md\ndef domain Money { type: decimal }",
+                    "binding/model.ttrm" to
+                        "import md.*\nimport db.*\nmodel binding\ndef md2db_domain b1 { domain: md.Money, source: { table: db.dbo.t1, column: c1 } }\ndef md2db_domain b2 { domain: md.Money, source: { table: db.dbo.t2, column: c1 } }",
+                ),
+            ) { world ->
+                val result =
+                    StructuralReadProjectionCache(
+                        world.registry,
+                        world.packages,
+                    ).read(world.registry.readOrError())
+                result.edges.none { it.from == "md.domain.Money" && it.type == "MAPS_TO" } shouldBe true
+                result.diagnostics.omittedEdges shouldBe 2
+                result.diagnostics.ambiguousIds.keys shouldBe setOf("md2db_domain.b1", "md2db_domain.b2")
+            }
+        }
+
+        "U2 an omitted changed binding contests every other binding on its logical entity" {
+            withWorld(
+                mapOf(
+                    "base/db/tables.ttrm" to "model db\ndef table t1 {}\ndef table t2 {}\ndef table t3 {}",
+                    "base/er/model.ttrm" to "model er\ndef entity buyer {}",
+                    "base/binding/model.ttrm" to
+                        "import er.*\nimport db.*\nmodel binding\ndef er2db_entity b { entity: er.entity.buyer, target: { table: db.dbo.t1 } }\ndef er2db_entity b2 { entity: er.entity.buyer, target: { table: db.dbo.t3 } }",
+                    "overlay/binding/model.ttrm" to
+                        "import er.*\nimport db.*\nmodel binding\ndef er2db_entity b { entity: er.entity.buyer, target: { table: db.dbo.t2 } }",
+                ),
+                sources = listOf("overlay" to 200, "base" to 100),
+            ) { world ->
+                val result =
+                    StructuralReadProjectionCache(
+                        world.registry,
+                        world.packages,
+                    ).read(world.registry.readOrError())
+                result.edges.none { it.from == "er.entity.buyer" && it.type == "MAPS_TO" } shouldBe true
+                result.diagnostics.omittedEdges shouldBe 3
+                result.diagnostics.ambiguousIds.keys shouldBe setOf("er2db_entity.b", "er2db_entity.b2")
+            }
+        }
+
+        "U2 omitted graph binding copies still contest domain targets" {
+            withWorld(
+                mapOf(
+                    "base/db/tables.ttrm" to
+                        "model db\ndef table t1 { columns: [def column c1 { type: decimal }] }\ndef table t2 { columns: [def column c1 { type: decimal }] }\ndef table t3 { columns: [def column c1 { type: decimal }] }",
+                    "base/md/model.ttrm" to "model md\ndef domain Money { type: decimal }",
+                    "base/binding/model.ttrm" to
+                        "import md.*\nimport db.*\nmodel binding\ndef md2db_domain b { domain: md.Money, source: { table: db.dbo.t1, column: c1 } }\ndef md2db_domain b2 { domain: md.Money, source: { table: db.dbo.t3, column: c1 } }",
+                    "overlay/binding/model.ttrm" to
+                        "import md.*\nimport db.*\nmodel binding\ndef md2db_domain b { domain: md.Money, source: { table: db.dbo.t2, column: c1 } }",
+                ),
+                sources = listOf("overlay" to 200, "base" to 100),
+            ) { world ->
+                val result =
+                    StructuralReadProjectionCache(
+                        world.registry,
+                        world.packages,
+                    ).read(world.registry.readOrError())
+                result.edges.none { it.from == "md.domain.Money" && it.type == "MAPS_TO" } shouldBe true
+                result.diagnostics.omittedEdges shouldBe 2
+                result.diagnostics.ambiguousIds.keys shouldBe setOf("md2db_domain.b", "md2db_domain.b2")
+            }
+        }
+
+        "U2 a column and expression copy conflict but expression-only mappings stay unprojected" {
+            for (baseTarget in listOf("column: db.dbo.t1.c1", "expression: \"c1 + 1\"")) {
+                withWorld(
+                    mapOf(
+                        "base/db/tables.ttrm" to "model db\ndef table t1 { columns: [def column c1 { type: int }] }",
+                        "base/er/model.ttrm" to
+                            "model er\ndef entity buyer { attributes: [def attribute a1 { type: int }] }",
+                        "base/binding/model.ttrm" to
+                            "import er.*\nimport db.*\nmodel binding\ndef er2db_attribute ba { attribute: er.entity.buyer.a1, target: { $baseTarget } }",
+                        "overlay/binding/model.ttrm" to
+                            "import er.*\nimport db.*\nmodel binding\ndef er2db_attribute ba { attribute: er.entity.buyer.a1, target: { expression: \"c1 + 1\" } }",
+                    ),
+                    sources = listOf("overlay" to 200, "base" to 100),
+                ) { world ->
+                    val result =
+                        StructuralReadProjectionCache(
+                            world.registry,
+                            world.packages,
+                        ).read(world.registry.readOrError())
+                    result.edges.none { it.from == "er.entity.buyer.a1" && it.type == "MAPS_TO" } shouldBe true
+                    if (baseTarget.startsWith("column")) {
+                        result.diagnostics.omittedEdges shouldBe 1
+                        result.diagnostics.ambiguousIds.keys shouldBe setOf("er2db_attribute.ba")
+                    } else {
+                        result.diagnostics.omittedEdges shouldBe 0
+                        result.diagnostics.hasWarnings shouldBe false
+                    }
+                }
+            }
+        }
+
+        "U3 identical directive-free md2db copies retain their edge without warnings" {
+            withProjectionLogs { logs ->
+                val definition = "def md2db_cubelet pt { cubelet: md.purchases, target: db.dbo.t1 }"
+                withWorld(
+                    mapOf(
+                        "base/db/tables.ttrm" to "model db\ndef table t1 {}",
+                        "base/md/model.ttrm" to "model md\ndef cubelet purchases { grain: [], measures: [] }",
+                        "base/binding/model.ttrm" to "import md.*\nimport db.*\n$definition",
+                        "overlay/binding/model.ttrm" to "import md.*\nimport db.*\nmodel binding\n$definition",
+                    ),
+                    sources = listOf("overlay" to 200, "base" to 100),
+                ) { world ->
+                    val result =
+                        StructuralReadProjectionCache(
+                            world.registry,
+                            world.packages,
+                        ).read(world.registry.readOrError())
+                    result.edges.contains(ReadEdge("md.cubelet.purchases", "db.dbo.t1", "MAPS_TO")) shouldBe true
+                    result.diagnostics.omittedEdges shouldBe 0
+                    result.diagnostics.hasWarnings shouldBe false
+                    logs.warnings().size shouldBe 0
+                }
+            }
+        }
+
+        "U3 identical directive-free md definitions are not collisions" {
+            withProjectionLogs { logs ->
+                val definitions =
+                    "def domain Money { type: decimal }\n" +
+                        "def cubelet purchases { grain: [], measures: [] }"
+                withWorld(
+                    mapOf(
+                        "base/db/tables.ttrm" to "model db\ndef table t1 {}",
+                        "base/md/model.ttrm" to definitions,
+                        "overlay/md/model.ttrm" to "model md\n$definitions",
+                    ),
+                    sources = listOf("overlay" to 200, "base" to 100),
+                ) { world ->
+                    val result =
+                        StructuralReadProjectionCache(
+                            world.registry,
+                            world.packages,
+                        ).read(world.registry.readOrError())
+                    result.diagnostics.collidingMdIds shouldBe emptyMap()
+                    result.diagnostics.hasWarnings shouldBe false
+                    logs.warnings().size shouldBe 0
+                }
+            }
+        }
+
+        "U3 resolved er2db copies ignore directive and import-only differences without diagnostics" {
+            for (baseDirective in listOf("", "model binding\n")) {
+                withProjectionLogs { logs ->
+                    val definition = "def er2db_entity b { entity: er.entity.buyer, target: { table: db.dbo.t1 } }"
+                    withWorld(
+                        mapOf(
+                            "base/db/tables.ttrm" to "model db\ndef table t1 {}",
+                            "base/er/model.ttrm" to "model er\ndef entity buyer {}",
+                            "base/binding/model.ttrm" to "import er.*\nimport db.*\n$baseDirective$definition",
+                            "overlay/binding/model.ttrm" to
+                                "import er.*\nimport db.*\nimport db.dbo.*\nmodel binding\n$definition",
+                        ),
+                        sources = listOf("overlay" to 200, "base" to 100),
+                    ) { world ->
+                        val result =
+                            StructuralReadProjectionCache(
+                                world.registry,
+                                world.packages,
+                            ).read(world.registry.readOrError())
+                        result.edges.contains(ReadEdge("er.entity.buyer", "db.dbo.t1", "MAPS_TO")) shouldBe true
+                        result.diagnostics.omittedEdges shouldBe 0
+                        result.diagnostics.ambiguousIds shouldBe emptyMap()
+                        logs.warnings().size shouldBe 0
+                    }
+                }
+            }
+        }
+
+        "U3 md2db copies with different imports or packages remain differing" {
+            for (difference in listOf("import db.dbo.*\n", "package other\n")) {
+                val directory = if (difference.startsWith("package")) "other" else "binding"
+                withWorld(
+                    mapOf(
+                        "base/db/tables.ttrm" to "model db\ndef table t1 {}",
+                        "base/md/model.ttrm" to "model md\ndef cubelet purchases { grain: [], measures: [] }",
+                        "base/binding/model.ttrm" to
+                            "import md.*\nimport db.*\nmodel binding\ndef md2db_cubelet pt { cubelet: md.purchases, target: db.dbo.t1 }",
+                        "overlay/$directory/model.ttrm" to
+                            "${difference}import md.*\nimport db.*\nmodel binding\ndef md2db_cubelet pt { cubelet: md.purchases, target: db.dbo.t1 }",
+                    ),
+                    sources = listOf("overlay" to 200, "base" to 100),
+                ) { world ->
+                    val result =
+                        StructuralReadProjectionCache(
+                            world.registry,
+                            world.packages,
+                        ).read(world.registry.readOrError())
+                    result.edges.none { it.from == "md.cubelet.purchases" && it.type == "MAPS_TO" } shouldBe true
+                    result.diagnostics.omittedEdges shouldBe 1
+                    result.diagnostics.ambiguousIds.keys shouldBe setOf("md2db_cubelet.pt")
+                }
+            }
+        }
+
+        "U4 directive-free partial joins never attach a binding to either surviving ER schema" {
+            for (namespace in listOf("entity", "storage")) {
+                withWorld(
+                    mapOf(
+                        "db/tables.ttrm" to "model db\ndef table warehouse_table {}",
+                        "er/a.ttrm" to "def entity warehouse {}",
+                        "er/b.ttrm" to "model er schema storage\ndef entity warehouse {}",
+                        "binding/model.ttrm" to
+                            "import er.*\nimport db.*\nmodel binding\ndef er2db_entity b { entity: er.warehouse, target: { table: db.dbo.warehouse_table } }",
+                    ),
+                ) { world ->
+                    val snap = world.registry.readOrError()
+                    val er = snap.model.schemas.getValue("er") as org.tatrman.ttr.metadata.model.ErSchema
+                    val partial =
+                        snap.model.copy(
+                            schemas =
+                                snap.model.schemas +
+                                    ("er" to er.copy(entities = er.entities.filterKeys { it.namespace == namespace })),
+                        )
+                    world.registry.swap(partial, ModelGraph.build(partial))
+                    val partialSnap = world.registry.readOrError().copy(definitions = snap.definitions)
+                    val result = StructuralReadProjectionCache(world.registry, world.packages).read(partialSnap)
+                    result.edges.none {
+                        it.from in setOf("er.entity.warehouse", "er.storage.warehouse") &&
+                            it.type == "MAPS_TO"
+                    } shouldBe
+                        true
+                    result.diagnostics.omittedEdges shouldBe 1
+                    result.diagnostics.ambiguousIds.keys
+                        .contains("er.entity.warehouse") shouldBe true
+                }
+            }
+        }
+
+        "U5 roles on distinct ER schemas do not participate in physical binding conflicts" {
+            withWorld(
+                mapOf(
+                    "cn/model.ttrm" to "model cn\ndef kind Anchor {}",
+                    "er/a.ttrm" to "model er\ndef entity sale { roles: [dimension] }",
+                    "er/b.ttrm" to "model er schema storage\ndef entity sale { roles: [dimension] }",
+                ),
+                withStockRoles = true,
+            ) { world ->
+                val snap = world.registry.readOrError()
+                snap.model.mappings.count { it.kind == "er2cnc_role_mapping" } shouldBe 2
+                val result = StructuralReadProjectionCache(world.registry, world.packages).read(snap)
+                result.diagnostics.omittedEdges shouldBe 0
+                result.diagnostics.ambiguousIds.keys shouldBe setOf("er.entity.sale")
+            }
+        }
+
+        "U5 clean publication resets warnings so rollback to an earlier version logs again" {
+            withProjectionLogs { logs ->
+                withWorld(
+                    mapOf(
+                        "db/tables.ttrm" to "model db\ndef table t1 {}\ndef table t2 {}",
+                        "er/model.ttrm" to "model er\ndef entity buyer {}",
+                        "binding/a.ttrm" to
+                            "import er.*\nimport db.*\nmodel binding\ndef er2db_entity b { entity: er.entity.buyer, target: { table: db.dbo.t1 } }",
+                        "binding/b.ttrm" to
+                            "import er.*\nimport db.*\nmodel binding\ndef er2db_entity b { entity: er.entity.buyer, target: { table: db.dbo.t2 } }",
+                    ),
+                    load = false,
+                ) { world ->
+                    val cache = StructuralReadProjectionCache(world.registry, world.packages)
+                    world.reload()
+                    val a = world.registry.readOrError()
+                    logs.warnings().size shouldBe 1
+                    val clean = a.model.copy(mappings = emptyList(), version = a.model.version.copy(value = "clean"))
+                    world.registry.swap(clean, ModelGraph.build(clean))
+                    cache.read(world.registry.readOrError()).diagnostics.hasWarnings shouldBe false
+                    world.registry.swap(a.model, a.graph)
+                    logs.warnings().size shouldBe 2
+                    logs.warnings().last().formattedMessage shouldContain a.model.version.value
+                    // Consecutive publication of that same version remains quiet.
+                    world.registry.swap(a.model, a.graph)
+                    logs.warnings().size shouldBe 2
+                }
+            }
+        }
+
+        "S4 unresolved hierarchy levels are omitted in graph and detail" {
+            withWorld(
+                mapOf(
+                    "db/tables.ttrm" to "model db\ndef table anchor {}",
+                    "md/model.ttrm" to """
+                        model md
+                        def domain Part { type: int }
+                        def dimension Cal { key: day, attributes: [def attribute day { domain: md.Part, isKey: true }] }
+                        def hierarchy Rollup { dimension: md.Cal, levels: [nope] }
+                    """,
+                ),
+            ) { world ->
+                withHttp(world) { get ->
+                    val node =
+                        get("/model/graph")["nodes"]!!
+                            .jsonArray
+                            .map { it.jsonObject }
+                            .single { it["qname"]!!.jsonPrimitive.content == "md.hierarchy.Rollup" }
+                    node.containsKey("levels") shouldBe false
+                    get("/model/object?qname=md.hierarchy.Rollup")["object"] shouldBe node
+                }
+            }
+        }
+
+        "S5 conflicting catalog identities block definition-only binding fallbacks in both file orders" {
+            for (defaultFile in listOf("z.ttrm", "a.ttrm")) {
+                withWorld(
+                    mapOf(
+                        "db/retail/tables.ttrm" to "model db schema retail\ndef table wh_main {}",
+                        "er/$defaultFile" to "model er\ndef entity warehouse {}",
+                        "er/storage.ttrm" to "model er schema storage\ndef entity warehouse {}",
+                        "binding/b.ttrm" to
+                            "import er.*\nimport db.retail.*\nmodel binding\ndef er2db_entity wh { entity: er.warehouse, target: { table: db.retail.wh_main } }",
+                    ),
+                ) { world ->
+                    val result =
+                        StructuralReadProjectionCache(
+                            world.registry,
+                            world.packages,
+                        ).read(world.registry.readOrError())
+                    result.edges.none {
+                        it.from.startsWith("er.") &&
+                            it.to == "db.retail.wh_main" &&
+                            it.type == "MAPS_TO"
+                    } shouldBe
+                        true
+                    result.diagnostics.omittedEdges shouldBe 1
+                    result.diagnostics.ambiguousIds.keys
+                        .contains("er.entity.warehouse") shouldBe true
+                }
+            }
+        }
+
+        "S2 startup prime waits for an in-flight swap to publish its packages" {
+            val reached = CountDownLatch(1)
+            val release = CountDownLatch(1)
+            val registry = MetadataRegistry()
+            registry.addListener {
+                reached.countDown()
+                check(release.await(5, TimeUnit.SECONDS))
+            }
+            withWorld(
+                mapOf("db/tables.ttrm" to "model db\ndef table anchor {}"),
+                load = false,
+                registry = registry,
+            ) { world ->
+                val failure = AtomicReference<Throwable?>()
+                val cache = AtomicReference<StructuralReadProjectionCache?>()
+                val started = CountDownLatch(1)
+                val swapper =
+                    thread {
+                        try {
+                            world.reload()
+                        } catch (error: Throwable) {
+                            failure.set(error)
+                        }
+                    }
+                var primer: Thread? = null
+                try {
+                    reached.await(5, TimeUnit.SECONDS) shouldBe true
+                    primer =
+                        thread {
+                            started.countDown()
+                            try {
+                                cache.set(StructuralReadProjectionCache(registry, world.packages))
+                            } catch (
+                                error: Throwable,
+                            ) {
+                                failure.set(error)
+                            }
+                        }
+                    started.await(5, TimeUnit.SECONDS) shouldBe true
+                    // The fixed prime blocks on the registry monitor. The old prime finishes with empty packages.
+                    val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5)
+                    while (primer.isAlive &&
+                        primer.state != Thread.State.BLOCKED &&
+                        System.nanoTime() < deadline
+                    ) {
+                        Thread.yield()
+                    }
+                    (primer.state == Thread.State.BLOCKED || !primer.isAlive) shouldBe true
+                } finally {
+                    release.countDown()
+                    swapper.join(5000)
+                    primer?.join(5000)
+                }
+                swapper.isAlive shouldBe false
+                primer.isAlive shouldBe false
+                failure.get()?.let { throw it }
+                val snap = registry.readOrError()
+                val result = cache.get()!!.read(snap)
+                result.objects.getValue("db.dbo.anchor").pkg shouldBe "db"
+                (cache.get()!!.read(snap) === result) shouldBe true
+            }
+        }
+
+        "R7 publication caches the full projection and old reads cannot evict the current result" {
+            withWorld(mapOf("db/tables.ttrm" to "model db\ndef table anchor {}")) { world ->
+                val cache = StructuralReadProjectionCache(world.registry, world.packages)
+                val old = world.registry.readOrError()
+                val oldResult = cache.read(old)
+                (cache.read(old) === oldResult) shouldBe true
+                Files.writeString(world.root.resolve("db/tables.ttrm"), "model db\ndef table replacement {}\n")
+                world.reload()
+                val current = world.registry.readOrError()
+                val currentResult = cache.read(current)
+                (cache.read(current) === currentResult) shouldBe true
+                currentResult.objects.getValue("db.dbo.replacement").pkg shouldBe "db"
+                (cache.read(old) === oldResult) shouldBe false
+                (cache.read(old) === cache.read(old)) shouldBe false
+                (cache.read(current) === currentResult) shouldBe true
+            }
+        }
+
+        "R7 listener build failures stay uncached and uncached failures remain visible" {
+            withProjectionLogs { logs ->
+                withWorld(mapOf("db/tables.ttrm" to "model db\ndef table anchor {}")) { world ->
+                    val packages = mockk<PackageIndex>()
+                    every { packages.packageOf(any()) } returns "db"
+                    val cache = StructuralReadProjectionCache(world.registry, packages)
+                    every { packages.packageOf(any()) } throws IllegalStateException("package probe")
+                    world.reload()
+                    val snap = world.registry.readOrError()
+                    shouldThrow<IllegalStateException> { cache.read(snap) }
+                    logs.warnings().size shouldBe 1
+                    logs.warnings().single().formattedMessage shouldContain "projection failed"
+                    every { packages.packageOf(any()) } returns "db"
+                    (cache.read(snap) === cache.read(snap)) shouldBe false
+                    world.reload()
+                    val repaired = world.registry.readOrError()
+                    (cache.read(repaired) === cache.read(repaired)) shouldBe true
+                }
+            }
+        }
+
+        "R7 listener installed before initial load serves the committed package index" {
+            withWorld(mapOf("db/tables.ttrm" to "model db\ndef table anchor {}"), load = false) { world ->
+                val cache = StructuralReadProjectionCache(world.registry, world.packages)
+                world.reload()
+                val snap = world.registry.readOrError()
+                val result = cache.read(snap)
+                result.objects.getValue("db.dbo.anchor").pkg shouldBe "db"
+                (cache.read(snap) === result) shouldBe true
+            }
+        }
+    })
+
+private class ReviewWorld(
+    val root: Path,
+    val registry: MetadataRegistry,
+    private val sources: List<Pair<String, Int>>,
+    private val allowLoadErrors: Boolean,
+    private val withStockRoles: Boolean,
+) {
+    val packages = PackageIndex().commitOnSwap(registry)
+
+    var loadErrors: List<String> = emptyList()
+        private set
+
+    fun reload() {
+        val loaded =
+            MetadataLoader(
+                listOfNotNull(BuiltinStockSource().takeIf { withStockRoles }) +
+                    sources.map { (directory, priority) ->
+                        val id = directory.ifEmpty { "review-177" }
+                        packages.recording(
+                            id,
+                            FileBasedSource(id, priority, LocalFsStorage(id, root.resolve(directory))),
+                        )
+                    },
+            ).load()
+        loadErrors = loaded.errors.map { it.toString() }
+        if (!allowLoadErrors) loaded.errors shouldBe emptyList()
+        val model = requireNotNull(loaded.model)
+        registry.swap(model, ModelGraph.build(model), files = loaded.files)
+    }
+}
+
+private suspend fun withWorld(
+    files: Map<String, String>,
+    load: Boolean = true,
+    registry: MetadataRegistry = MetadataRegistry(),
+    sources: List<Pair<String, Int>> = listOf("" to 100),
+    allowLoadErrors: Boolean = false,
+    withStockRoles: Boolean = false,
+    block: suspend (ReviewWorld) -> Unit,
+) {
+    val root = Files.createTempDirectory("metadata-review-177")
+    try {
+        for ((path, content) in files) {
+            val target = root.resolve(path)
+            Files.createDirectories(target.parent)
+            Files.writeString(target, content.trimIndent() + "\n")
+        }
+        val world = ReviewWorld(root, registry, sources, allowLoadErrors, withStockRoles)
+        if (load) world.reload()
+        block(world)
+    } finally {
+        Files.walk(root).use { paths -> paths.sorted(Comparator.reverseOrder()).forEach(Files::delete) }
+    }
+}
+
+private suspend fun withHttp(
+    world: ReviewWorld,
+    block: suspend (suspend (String) -> JsonObject) -> Unit,
+) {
+    testApplication {
+        environment { config = MapApplicationConfig() }
+        application {
+            routing {
+                metadataReadRoutes(
+                    world.registry,
+                    SearchAlgorithmRegistry(emptyMap()),
+                    null,
+                    world.packages,
+                    emptySet(),
+                )
+            }
+        }
+        block { path ->
+            val response = client.get(path)
+            response.status shouldBe HttpStatusCode.OK
+            Json.parseToJsonElement(response.bodyAsText()).jsonObject
+        }
+    }
+}
+
+private fun JsonObject.readEdges(): List<Triple<String, String, String>> =
+    getValue("edges").jsonArray.map {
+        val e = it.jsonObject
+        Triple(
+            e.getValue("from").jsonPrimitive.content,
+            e.getValue("to").jsonPrimitive.content,
+            e.getValue("type").jsonPrimitive.content,
+        )
+    }
+
+private fun List<ILoggingEvent>.warnings() = filter { it.level == Level.WARN }
+
+private suspend fun withProjectionLogs(block: suspend (List<ILoggingEvent>) -> Unit) {
+    val logger = LoggerFactory.getLogger(StructuralReadProjectionCache::class.java) as Logger
+    val appender = ListAppender<ILoggingEvent>()
+    appender.start()
+    logger.addAppender(appender)
+    try {
+        block(appender.list)
+    } finally {
+        logger.detachAppender(appender)
+        appender.stop()
+    }
+}

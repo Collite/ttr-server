@@ -51,10 +51,9 @@ import org.tatrman.metadata.grpc.PackageIndex
  * straight through here rather than rebuilt — a search route wired to an empty
  * registry would silently return no hits.
  *
- * Packages (the index's `packages`, graph's `?package=`, every node's `pkg`) come from the same
- * [PackageIndex] the gRPC GetModel / ListObjects / ListQueries scope by (ttr-server#111): a file's
- * `package` clause, else the package its directory implies. The loader never sets
- * `QualifiedName.package`, so these routes must not read it.
+ * Typed objects use the same [PackageIndex] as the gRPC reads (ttr-server#111); md objects use
+ * the captured definition's package provenance. Both follow the loader's declared package clause,
+ * else the directory-implied package. Never read `QualifiedName.package` (the loader leaves it empty).
  */
 fun Route.metadataReadRoutes(
     registry: MetadataRegistry,
@@ -63,23 +62,22 @@ fun Route.metadataReadRoutes(
     packageIndex: PackageIndex,
     lexiconSourceIds: Set<String>,
 ) {
+    val projection = StructuralReadProjectionCache(registry, packageIndex)
+
     // GET /model/index — packages / schemas / areas + counts + version.
     get("/model/index") {
         val snap = registry.read() ?: return@get call.respondModelNotLoaded()
 
-        // objectByQname() is the same all-objects view the gRPC handlers read
-        // (MetadataServiceImpl.kt:251, Model.kt:39).
-        val objects = snap.model.objectByQname()
-        // Schema keys are "db" / "er" / "cnc" (SchemaContents.schemaCode; Model.kt:116-160,
-        // the same map keyed at MetadataServiceImpl.kt:248-250).
+        // Keep index, graph and detail on one catalog view, including the library's md definitions.
+        val objects = projection.read(snap).objects
         val schemas =
-            snap.model.schemas.keys
+            (snap.model.schemas.keys + objects.values.map { it.schema }.filter { it.isNotBlank() })
                 .sorted()
         // Distinct package of every object's source file — the packages GetModel serves
         // objects for. Objects of no package (stock roles, root-level files) are dropped.
         val packages =
             objects.values
-                .mapNotNull { packageIndex.packageOf(it.sourceFile) }
+                .map { it.pkg }
                 .filter { it.isNotBlank() }
                 .distinct()
                 .sorted()
@@ -104,48 +102,29 @@ fun Route.metadataReadRoutes(
         call.respondJson(body.toString())
     }
 
-    // GET /model/graph?schema=&package= — nodes + edges from the ModelGraph snapshot.
+    // GET /model/graph?schema=&package= — nodes + edges from the captured structural projection.
     get("/model/graph") {
         val snap = registry.read() ?: return@get call.respondModelNotLoaded()
 
         val schemaParam = call.request.queryParameters["schema"]?.takeIf { it.isNotBlank() }
         val pkgParam = call.request.queryParameters["package"]?.takeIf { it.isNotBlank() }
 
-        // Graph vertices are ModelObjects keyed by internalId (ModelGraph.byInternalId,
-        // ModelGraph.kt:37). Filter to the requested scope; keep the surviving ids so we
-        // can drop dangling edges.
+        val catalog = projection.read(snap)
         val nodes =
-            snap.graph.byInternalId.values.filter { obj ->
-                (schemaParam == null || schemaCodeToToken(obj.qname.schemaCode) == schemaParam) &&
-                    (pkgParam == null || packageIndex.contains(pkgParam, obj.sourceFile))
+            catalog.objects.values.filter { obj ->
+                (schemaParam == null || obj.schema == schemaParam) &&
+                    (pkgParam == null || obj.pkg == pkgParam)
             }
-        val keptIds = nodes.mapTo(mutableSetOf()) { it.internalId }
-
+        val keptQnames = nodes.mapTo(mutableSetOf()) { it.qname }
         val body =
             buildJsonObject {
-                putJsonArray("nodes") {
-                    nodes.forEach { obj -> addJsonObject { putNodeFields(obj, packageIndex) } }
-                }
+                putJsonArray("nodes") { nodes.forEach { add(it.body) } }
                 putJsonArray("edges") {
-                    // forEachEdge is the graph's read-only edge walk (ModelGraph.kt:108).
-                    // Edge.source / Edge.target are internalIds; resolve them back to qnames.
-                    snap.graph.forEachEdge { edge ->
-                        if (edge.source in keptIds && edge.target in keptIds) {
-                            val from =
-                                snap.graph.byInternalId[edge.source]
-                                    ?.qname
-                                    ?.dotted()
-                            val to =
-                                snap.graph.byInternalId[edge.target]
-                                    ?.qname
-                                    ?.dotted()
-                            if (from != null && to != null) {
-                                addJsonObject {
-                                    put("from", from)
-                                    put("to", to)
-                                    put("type", edge.type.toWire())
-                                }
-                            }
+                    catalog.edges.filter { it.from in keptQnames && it.to in keptQnames }.forEach { edge ->
+                        addJsonObject {
+                            put("from", edge.from)
+                            put("to", edge.to)
+                            put("type", edge.type)
                         }
                     }
                 }
@@ -158,40 +137,26 @@ fun Route.metadataReadRoutes(
         val snap = registry.read() ?: return@get call.respondModelNotLoaded()
 
         val qnameParam = call.request.queryParameters["qname"].orEmpty()
-        // gRPC getObject resolves a structured proto QualifiedName via
-        // `objectByQname()[request.qualifiedName.toDomain()]` (MetadataServiceImpl.kt:399).
-        // Over HTTP we only have the dotted string, so we match on the canonical
-        // `QualifiedName.dotted()` form (QualifiedName.kt:63) — the exact string the other
-        // three routes emit, so the contract round-trips regardless of the `package` field.
-        val obj =
-            snap.model
-                .objectByQname()
-                .values
-                .firstOrNull { it.qname.dotted() == qnameParam }
+        val catalog = projection.read(snap)
+        val obj = catalog.objects[qnameParam]
         if (obj == null) {
             return@get call.respondError(HttpStatusCode.NotFound, "not found")
         }
 
-        // "References / dependencies" = the objects this one points at in the graph:
-        // outgoing DEFINES / REFERENCES / MAPS_TO / USES edges (ModelGraph.kt:41-47,
-        // edge kinds documented at ModelGraph.kt:24-32). Resolved back to dotted qnames.
         val references =
-            snap.graph
-                .outgoingOf(obj.internalId)
-                .mapNotNull {
-                    snap.graph.byInternalId[it.target]
-                        ?.qname
-                        ?.dotted()
-                }.distinct()
+            catalog.outgoingByFrom[obj.qname]
+                .orEmpty()
+                .map { it.to }
+                .distinct()
                 .sorted()
 
         val body =
             buildJsonObject {
-                putJsonObject("object") { putNodeFields(obj, packageIndex) }
+                put("object", obj.body)
                 // The domain ModelObject exposes only `sourceFile: String` — there is no
                 // structured file/line/column (Model.kt:85). We emit the string variant of
                 // the contract's `string | {file,line,column}` union.
-                put("sourceLocation", obj.sourceFile)
+                put("sourceLocation", obj.sourceLocation)
                 putJsonArray("references") { references.forEach { add(it) } }
             }
         call.respondJson(body.toString())
@@ -253,7 +218,7 @@ private const val DEFAULT_SEARCH_LIMIT = 20
  * (`?lang=`, a setting, the browser) and applies the same D7 chain to descriptions that the gRPC
  * `GetModel(locale)` applies here (requested locale → plain form → `en` → first by language code).
  */
-private fun JsonObjectBuilder.putNodeFields(
+internal fun JsonObjectBuilder.putNodeFields(
     obj: ModelObject,
     packageIndex: PackageIndex,
 ) {
@@ -315,7 +280,7 @@ private fun rangeOf(
  * total and no "unknown → REFERENCES" fallback is reachable. If the enum grows,
  * add `else -> "REFERENCES"`.
  */
-private fun EdgeType.toWire(): String =
+internal fun EdgeType.toWire(): String =
     when (this) {
         EdgeType.DEFINES -> "DEFINES"
         EdgeType.REFERENCES -> "REFERENCES"
