@@ -122,7 +122,7 @@ fun Application.module(config: Config) {
     val cn = CnSetup.fromConfig(config) { id -> promotionTarget(config, id) }
     val lexiconSourceIds = mutableSetOf<String>()
     val sourceSlots =
-        buildSources(config, loadBoard, lexiconSourceIds) +
+        buildSources(config, loadBoard, lexiconSourceIds) { registry.read()?.exportSidecars.orEmpty() } +
             listOfNotNull(
                 cn.vocabularySource?.let {
                     SourceSlot(
@@ -138,6 +138,8 @@ fun Application.module(config: Config) {
             sourceIds = sourceSlots.map { it.id },
             reconciler = reconciler,
             registry = registry,
+            strictSwap = strictSwap(config),
+            configuredIds = loadBoard.states().map { it.id }.toSet(),
             board = loadBoard,
             packageIndex = packageIndex,
         )
@@ -364,8 +366,9 @@ internal fun buildSources(
     config: Config,
     loadBoard: SourceLoadBoard = SourceLoadBoard(),
     lexiconSourceIds: MutableSet<String> = mutableSetOf(),
+    servedSidecars: () -> Map<String, String> = { emptyMap() },
 ): List<SourceSlot> =
-    configuredSources(config, lexiconSourceIds).map { slot ->
+    configuredSources(config, lexiconSourceIds, servedSidecars).map { slot ->
         if (slot.id != BuiltinStockSource.SOURCE_ID) {
             log.info("Model source '{}': {}", slot.id, slot.description)
             loadBoard.register(slot.id, slot.description)
@@ -376,6 +379,7 @@ internal fun buildSources(
 private fun configuredSources(
     config: Config,
     lexiconSourceIds: MutableSet<String>,
+    servedSidecars: () -> Map<String, String>,
 ): List<SourceSlot> {
     // Phase 2.2 — the built-in stock-roles source always loads first. Its
     // priority is Int.MAX_VALUE so it wins all merge collisions; protected
@@ -402,6 +406,7 @@ private fun configuredSources(
                     sub,
                     id,
                     lexiconSourceIds,
+                    servedSidecars,
                 )?.let { SourceSlot(id, it, describeSource(sub)) }
             }
 
@@ -412,9 +417,10 @@ private fun configuredSources(
                         fs,
                         if (fs.hasPath("id")) fs.getString("id") else fallbackId,
                         lexiconSourceIds,
+                        servedSidecars,
                     )
                 }
-            val primary = buildSourceFromConfig(sub, id, lexiconSourceIds)
+            val primary = buildSourceFromConfig(sub, id, lexiconSourceIds, servedSidecars)
             when {
                 fallbackSource == null -> {
                     log.warn(
@@ -509,6 +515,7 @@ private fun buildSourceFromConfig(
     sub: Config,
     id: String,
     lexiconSourceIds: MutableSet<String>,
+    servedSidecars: () -> Map<String, String>,
 ): ModelSource? {
     val kind = if (sub.hasPath("kind")) sub.getString("kind") else "ttr"
     val priority = if (sub.hasPath("priority")) sub.getInt("priority") else 100
@@ -521,7 +528,9 @@ private fun buildSourceFromConfig(
             if (storage is GitArchiveStorage) {
                 lexiconSourceIds.add(id)
                 GitLexiconSource(
-                    GitTemplateSource(source, gitCheckoutDir(sub, id, ""), gitSubdirectory(sub), id, priority),
+                    GitTemplateSource(source, gitCheckoutDir(sub, id, ""), gitSubdirectory(sub), id, priority) {
+                        servedSidecars()[org.tatrman.metadata.read.TEMPLATE_SIDECAR_PREFIX + id]
+                    },
                     gitCheckoutDir(sub, id, ""),
                     if (sub.hasPath("lexicon-path")) sub.getString("lexicon-path") else "generated/lexicon.tar.zst",
                 )

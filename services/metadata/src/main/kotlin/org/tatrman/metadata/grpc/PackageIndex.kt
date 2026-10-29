@@ -19,7 +19,7 @@ import java.util.concurrent.ConcurrentHashMap
  * for that one package returned all of them.
  *
  * The loader knows each file's package but the reconciled model does not keep it, so the sources
- * feed the index ([recording]) and the registry publishes it ([commitOnSwap]). A load is only
+ * are staged by GuardedRefresher ([stageAccepted]) and the registry publishes them ([commitOnSwap]). A load is only
  * staged: the index keeps answering for the model the registry serves until the registry swaps in
  * a new one, and only then promotes the latest successful load of every slot — the snapshots the
  * refresher has just reconciled. So a load whose model never arrives (the reconcile or the swap
@@ -75,7 +75,7 @@ class PackageIndex {
         sourceFile: String,
     ): Boolean = packageName.isNotEmpty() && packageOf(sourceFile) == packageName
 
-    /** [source] with every successful load staged into this index under [slotId]. */
+    /** Test-only adapter for library-loader fixtures; production stages only accepted transactions. */
     fun recording(
         slotId: String,
         source: ModelSource,

@@ -22,7 +22,7 @@ import kotlinx.serialization.json.jsonPrimitive
 import org.tatrman.metadata.health.SourceLoadBoard
 import org.tatrman.ttr.metadata.model.ModelDescriptor
 import org.tatrman.ttr.metadata.reconcile.ModelReconciler
-import org.tatrman.ttr.metadata.refresh.MetadataRefresher
+import org.tatrman.metadata.refresh.GuardedRefresher
 import org.tatrman.ttr.metadata.source.FallbackSource
 import org.tatrman.ttr.metadata.source.ModelSource
 import org.tatrman.ttr.metadata.source.SourceSnapshot
@@ -72,19 +72,26 @@ class GitTemplateSourceReviewSpec :
         "R1 read failure serves the previous catalog with a new live model; same-SHA recovery waits for a later swap" {
             TemplateFixture().use { fixture ->
                 var current = fixture.modelSnapshot()
-                val source = GitTemplateSource(ModelSource { current }, fixture.root, "world/model", "world", 100)
+                val source =
+                    GitTemplateSource(ModelSource { current }, fixture.root, "world/model", "world", 100) {
+                        fixture.registry.read()?.exportSidecars?.get(
+                            TEMPLATE_SIDECAR_PREFIX + "world",
+                        )
+                    }
                 val board = SourceLoadBoard()
-                val recorded = board.recording("world", "test source", source)
-                val initial = recorded.load()
-                fixture.publish(listOf(initial))
+                board.register("world", "test source")
                 val refresher =
-                    MetadataRefresher(
-                        listOf(recorded),
+                    GuardedRefresher(
+                        listOf(source),
                         listOf("world"),
                         ModelReconciler(ModelDescriptor(id = "read-failure", name = "read-failure")),
                         fixture.registry,
+                        true,
+                        setOf("world"),
+                        board,
                     )
-                refresher.recordInitial(listOf(initial))
+                refresher.refresh("", true).single().success shouldBe true
+                val initial = current.copy(exportSidecars = fixture.registry.readOrError().exportSidecars)
                 val oldVersion = current.version
                 fixture.write("reports/sales/report.yaml", "title: {en: Updated}\n")
                 fixture.write("extra.ttrm", "model er\ndef entity extra { attributes: [] }\n")
@@ -143,15 +150,27 @@ class GitTemplateSourceReviewSpec :
             }
         }
 
-        "R1 template errors keep the primary model and each instance keeps its own previous catalog" {
+        "R1 template errors keep the primary model and fallback uses its published catalog" {
             TemplateFixture().use { fixture ->
                 var current = fixture.modelSnapshot()
-                val primary = GitTemplateSource(ModelSource { current }, fixture.root, "world/model", "world", 100)
-                val original = primary.load().catalog()
+                val primary =
+                    GitTemplateSource(ModelSource { current }, fixture.root, "world/model", "world", 100) {
+                        fixture.registry.read()?.exportSidecars?.get(
+                            TEMPLATE_SIDECAR_PREFIX + "world",
+                        )
+                    }
+                val first = primary.load()
+                fixture.publish(listOf(first))
+                val original = first.catalog()
                 // A well-formed SHA absent from the checkout exercises a different read failure from Git.open.
                 current = current.copy(version = "f".repeat(40))
-                val missing = GitTemplateSource(ModelSource { current }, fixture.root, "world/model", "world", 100)
-                missing.load().catalog().reports shouldBe emptyList()
+                val missing =
+                    GitTemplateSource(ModelSource { current }, fixture.root, "world/model", "world", 100) {
+                        fixture.registry.read()?.exportSidecars?.get(
+                            TEMPLATE_SIDECAR_PREFIX + "world",
+                        )
+                    }
+                missing.load().catalog().reports shouldBe original.reports
                 val composite =
                     FallbackSource("world", primary, ModelSource { error("must not invoke model fallback") })
                 val loaded = composite.load()
@@ -170,7 +189,12 @@ class GitTemplateSourceReviewSpec :
         "R5 unchanged SHA reuses the encoded sidecar instance without opening git; new SHA attempts a fresh read" {
             TemplateFixture().use { fixture ->
                 var current = fixture.modelSnapshot()
-                val source = GitTemplateSource(ModelSource { current }, fixture.root, "world/model", "world", 100)
+                val source =
+                    GitTemplateSource(ModelSource { current }, fixture.root, "world/model", "world", 100) {
+                        fixture.registry.read()?.exportSidecars?.get(
+                            TEMPLATE_SIDECAR_PREFIX + "world",
+                        )
+                    }
                 val first =
                     source
                         .load()

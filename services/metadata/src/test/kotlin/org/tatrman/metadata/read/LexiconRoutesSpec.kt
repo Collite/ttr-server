@@ -18,7 +18,7 @@ import org.tatrman.ttr.metadata.source.ModelSource
 import java.nio.file.Files
 import java.util.Base64
 import kotlinx.serialization.json.Json
-import org.tatrman.ttr.metadata.refresh.MetadataRefresher
+import org.tatrman.metadata.refresh.GuardedRefresher
 import org.tatrman.ttr.metadata.reconcile.ModelReconciler
 import org.tatrman.ttr.metadata.model.ModelDescriptor
 
@@ -190,22 +190,21 @@ class LexiconRoutesSpec :
                 val gitDir = f.checkout.resolve(".git")
                 val movedGit = f.checkout.resolve(".git-away")
                 val source = GitLexiconSource(ModelSource { model }, f.checkout, "lexicon.zst")
-                Files.move(gitDir, movedGit)
-                val failed =
-                    try {
-                        source.load()
-                    } finally {
-                        Files.move(movedGit, gitDir)
-                    }
-                f.publish(listOf(failed))
                 val refresher =
-                    MetadataRefresher(
+                    GuardedRefresher(
                         listOf(source),
                         listOf("world"),
                         ModelReconciler(ModelDescriptor(id = "repair", name = "repair")),
                         f.registry,
+                        true,
+                        setOf("world"),
                     )
-                refresher.recordInitial(listOf(failed))
+                Files.move(gitDir, movedGit)
+                try {
+                    refresher.refresh("", true).single().success shouldBe true
+                } finally {
+                    Files.move(movedGit, gitDir)
+                }
                 testApplication {
                     serve(f.registry)
                     refresher.refresh("", true)

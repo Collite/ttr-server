@@ -66,6 +66,8 @@ class RefreshSchedulerSpec :
                     sourceIds = listOf("s1"),
                     reconciler = ModelReconciler(ModelDescriptor(id = "t", name = "t")),
                     registry = registry,
+                    strictSwap = true,
+                    configuredIds = setOf("s1"),
                 )
 
             val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -105,6 +107,8 @@ class RefreshSchedulerSpec :
                     sourceIds = listOf("s1"),
                     reconciler = ModelReconciler(ModelDescriptor(id = "t", name = "t")),
                     registry = registry,
+                    strictSwap = true,
+                    configuredIds = setOf("s1"),
                 )
             val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
             val job = RefreshScheduler(refresher, Duration.ofMillis(60), scope).start()

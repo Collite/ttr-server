@@ -171,10 +171,8 @@ class GetModelPackageMembershipSpec :
                     reconciler = ModelReconciler(ModelDescriptor(id = "test", name = "test", description = "wiring")),
                     registry = registry,
                     packageIndex = index,
-                    // This package-scoping fixture deliberately contains package-layout errors.
-                    board =
-                        org.tatrman.metadata.health
-                            .SourceLoadBoard(strictSwap = false),
+                    strictSwap = true,
+                    configuredIds = setOf("git"),
                 )
             val svc = MetadataServiceImpl(registry, packageIndex = index)
 

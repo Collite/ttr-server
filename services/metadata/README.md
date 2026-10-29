@@ -24,12 +24,20 @@ Since the ttr-metadata swap (arc doc: [`docs/architecture/fork/ttr-metadata-adop
 
 ## Strict model publication (#258)
 
-`METADATA_STRICT_SWAP=true` (the default; HOCON `metadata.strict-swap`) keeps each source's last
-accepted contribution when a load reports errors, drops a file, throws, or contains no model objects.
-A valid independent source may still advance alongside that retained contribution. If reconciliation
-reports errors, the whole proposed transaction is refused: cross-source errors cannot safely be
-assigned to just one new contribution. Parsing, validation and reconciliation use the pinned library;
-this switch changes when the service publishes their result.
+`METADATA_STRICT_SWAP=true` (the default; HOCON `metadata.strict-swap`) refuses loads when the
+library's strict load report has an ERROR or drops a file, a source throws, or a configured source
+contains no model content. The verdict is `MetadataLoader.load(LoadOptions(strict = true)).report`,
+the same library check used by the model-repository `ttr-metadata load --strict` gate. The service uses
+its default `PackageLayout.Flexible`: package-declaration mismatches remain warnings. Known gap:
+Metadata fetches only the configured model subtree and cannot read the repository's `modeler.toml`
+layout policy.
+
+Changed sources owning blocking issues retain their previous accepted contribution. A second pass
+reconciles the remaining candidates with those last-good contributions; a clean pass publishes the
+independent updates. An unattributable issue or a blocking second pass refuses the whole transaction,
+charging only changed configured sources. Unchanged and internal sources are not blamed for another
+source's error. Parsing, validation and reconciliation remain library-owned; this switch controls
+publication of their result.
 
 Startup, scheduled ticks, `POST /refresh`, gRPC `Refresh` and CN-triggered refreshes share the same
 serialized path. A targeted retry also loads unpublished internal contributions (stock roles and registered
@@ -39,12 +47,16 @@ even at the same SHA. A successful repair publishes as one model swap. Same-vers
 sidecars of an already accepted source are cached but retain the existing served catalog until the next model swap,
 as described below. Layout, report/form and lexicon content issues remain non-blocking.
 
-Before the first accepted load, `/ready` answers 503. Once every configured source has contributed a
+With configured sources but no accepted contribution, strict mode publishes nothing: gRPC
+`model_loaded` stays false and `/ready` answers 503. With no configured sources, the stock-only
+model and `NO_MODEL_SOURCE` diagnostic remain; readiness stays down. Once every configured source has contributed a
 published load, a later failure keeps readiness UP while the old content is served. Built-in stock
 roles and registered CN vocabulary versions are not configured sources and do not satisfy this gate.
-Md-only and other definition-only sources count as model content even without typed model carriers.
+Md-only sources, including directive-less files, and cn concepts count as model content even without
+typed model carriers. Lexicon entries and project headers alone do not count.
 
-`GET /status` advertises `strict_swap: true|false`. Rejections are logged at ERROR and appear in
+`GET /status` advertises `strict_swap: true|false`. Rejections log their full details at ERROR once per source/version/issues; repeated refusals log a
+short ERROR referring to `/status`. Acceptance resets this suppression. Refusals appear in
 `sources[].last_error`, `last_attempt_at`, `consecutive_failures`, `failures_total`, the existing source
 failure metric, and `issues[]` with source/file/location details. Source `version` and `last_success_at`
 continue to describe the accepted contribution; issues clear on a successful retry. Served model

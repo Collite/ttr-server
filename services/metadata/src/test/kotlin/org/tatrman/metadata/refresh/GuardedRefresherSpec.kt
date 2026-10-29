@@ -262,7 +262,7 @@ class GuardedRefresherSpec :
             board.states().single { it.id == "one" }.version shouldBe "old1"
         }
 
-        "reconcile errors reject the proposed transaction without poisoning accepted source versions" {
+        "two changed culprits are refused without poisoning accepted source versions" {
             var one = parsed("one", "orders").copy(version = "old1")
             var two = parsed("two", "products").copy(version = "old2")
             val board =
@@ -277,7 +277,7 @@ class GuardedRefresherSpec :
             val prior = registry.readOrError()
             one = parsed("one", "duplicate").copy(version = "new1")
             two = parsed("two", "duplicate").copy(version = "new2")
-            refresher.refresh("", true).all { !it.success && it.errorMessage.contains("reconcile_rejected") } shouldBe
+            refresher.refresh("", true).all { !it.success && it.errorMessage.contains("strict_swap_rejected") } shouldBe
                 true
             (registry.read() === prior) shouldBe true
             board.states().map { it.version } shouldBe listOf("old1", "old2")
@@ -304,7 +304,13 @@ class GuardedRefresherSpec :
                     registry,
                     board,
                 )
-            refresher.refresh("", true).all { !it.success } shouldBe true
+            refresher
+                .refresh(
+                    "",
+                    true,
+                ).filter { it.sourceId != BuiltinStockSource.SOURCE_ID }
+                .all { !it.success } shouldBe
+                true
             registry.read() shouldBe null
             one = parsed("one", "orders_new", withRole = true).copy(version = "new1")
             val recovered = refresher.refresh("one", true)
@@ -442,7 +448,21 @@ private fun coordinator(
     ids: List<String>,
     registry: MetadataRegistry,
     board: SourceLoadBoard,
-) = GuardedRefresher(sources, ids, ModelReconciler(ModelDescriptor("test", "test")), registry, board)
+) = GuardedRefresher(
+    sources,
+    ids,
+    ModelReconciler(
+        ModelDescriptor("test", "test"),
+    ),
+    registry,
+    board.strictSwap,
+    board
+        .states()
+        .map {
+            it.id
+        }.toSet(),
+    board,
+)
 
 private fun parsed(
     id: String,
@@ -504,6 +524,7 @@ private class SwapFixture(
                 ),
             ),
             board,
+            servedSidecars = { registry.read()?.exportSidecars.orEmpty() },
         )
     val refresher =
         GuardedRefresher(
@@ -513,6 +534,8 @@ private class SwapFixture(
             slots.map { it.id },
             ModelReconciler(ModelDescriptor("test", "test")),
             registry,
+            strict,
+            setOf("world"),
             board,
             index,
         )

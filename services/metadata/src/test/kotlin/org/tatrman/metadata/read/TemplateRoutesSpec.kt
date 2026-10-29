@@ -21,6 +21,8 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import org.eclipse.jgit.api.Git
 import org.tatrman.metadata.buildSources
+import org.tatrman.metadata.refresh.GuardedRefresher
+import kotlinx.coroutines.runBlocking
 import org.tatrman.metadata.health.SourceLoadBoard
 import org.tatrman.metadata.health.modelHealthRoutes
 import org.tatrman.ttr.metadata.graph.ModelGraph
@@ -357,7 +359,7 @@ private val REPORT_YAML =
         |
     """.trimMargin()
 
-/** Real local GitArchiveStorage + production source wiring + library refresher, with no network. */
+/** Real local GitArchiveStorage + production source wiring + guarded refresher, with no network. */
 internal class TemplateFixture(
     private val modelDirectory: String = "world/model",
 ) : AutoCloseable {
@@ -379,6 +381,7 @@ internal class TemplateFixture(
         commit()
     }
 
+    val board = SourceLoadBoard()
     val slots =
         buildSources(
             ConfigFactory.parseMap(
@@ -390,11 +393,22 @@ internal class TemplateFixture(
                     "metadata.sources.world.subdirectory" to modelDirectory,
                 ),
             ),
+            board,
+            servedSidecars = { registry.read()?.exportSidecars.orEmpty() },
         )
-    val refresher = MetadataRefresher(slots.map { it.source }, slots.map { it.id }, reconciler, registry)
+    val refresher =
+        GuardedRefresher(
+            slots.map { it.source },
+            slots.map { it.id },
+            reconciler,
+            registry,
+            true,
+            setOf("world"),
+            board,
+        )
 
     init {
-        publish(slots.map { it.source.load() })
+        runBlocking { refresher.refresh("", true).all { it.success } shouldBe true }
     }
 
     fun write(
@@ -428,7 +442,6 @@ internal class TemplateFixture(
     }
 
     fun publish(snapshots: List<SourceSnapshot>) {
-        refresher.recordInitial(snapshots)
         val result = reconciler.reconcile(snapshots)
         registry.swap(
             result.model,

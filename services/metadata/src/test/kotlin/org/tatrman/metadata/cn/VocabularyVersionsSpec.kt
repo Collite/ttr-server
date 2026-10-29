@@ -12,7 +12,7 @@ import org.tatrman.ttr.metadata.model.CnSchema
 import org.tatrman.ttr.metadata.model.ModelDescriptor
 import org.tatrman.ttr.metadata.model.VocabularyVersion
 import org.tatrman.ttr.metadata.reconcile.ModelReconciler
-import org.tatrman.ttr.metadata.refresh.MetadataRefresher
+import org.tatrman.metadata.refresh.GuardedRefresher
 import org.tatrman.ttr.metadata.registry.MetadataRegistry
 import org.tatrman.ttr.metadata.source.BuiltinStockSource
 import org.tatrman.metadata.cn.CnTestKit.IMPORTER
@@ -94,11 +94,13 @@ class VocabularyVersionsSpec :
             val reconciler = ModelReconciler(ModelDescriptor(id = "t", name = "t"))
             val vocabularies = VocabularySource(store)
             val refresher =
-                MetadataRefresher(
+                GuardedRefresher(
                     sources = listOf(BuiltinStockSource(), vocabularies),
                     sourceIds = listOf(BuiltinStockSource.SOURCE_ID, VocabularySource.SOURCE_ID),
                     reconciler = reconciler,
                     registry = registry,
+                    strictSwap = true,
+                    configuredIds = emptySet(),
                 )
             refresher.refresh(sourceId = "", force = true)
 
