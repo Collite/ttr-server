@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 from collections import defaultdict
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -281,9 +282,13 @@ class Consolidator:
                 continue
             used_keys.add((entity, key))
 
-            def time_of(a: Annotation) -> str:
+            def time_of(a: Annotation) -> datetime:
                 root = next((u for u in roots if u.source_id == ctx.units[a.unit_id].source_id), ctx.units[a.unit_id])
-                return str(a.payload().get("attributes", {}).get("recorded_at", meta(root, "recordedAt")))
+                value = str(a.payload().get("attributes", {}).get("recorded_at", meta(root, "recordedAt")))
+                parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+                if parsed.tzinfo is None:
+                    raise ValueError("consolidate/evidence-time-offset-required")
+                return parsed.astimezone(UTC)
 
             evidence.sort(key=lambda a: (time_of(a), a.id))
             attributes: dict[str, Any] = {}
@@ -309,7 +314,7 @@ class Consolidator:
                                         "attribute": name,
                                         "value": target[field],
                                         "annotationId": prior.id,
-                                        "asOf": time_of(prior),
+                                        "asOf": time_of(prior).isoformat(),
                                         "consolidationRun": ctx.item.run_id,
                                     }
                                 )

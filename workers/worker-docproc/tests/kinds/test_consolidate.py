@@ -189,3 +189,31 @@ def test_split_largest_evidence_part_keeps_old_key(tmp_path: Path) -> None:
     assert len(decisions) == 2
     assert next(d for d in decisions if d["factors"]["recordEvidence"] == [b.id, c.id])["chosen"] == old_key
     assert next(d for d in decisions if d["factors"]["recordEvidence"] == [a.id])["chosen"] != old_key
+
+
+def test_state_times_compare_instants_across_offsets(tmp_path: Path) -> None:
+    import shutil
+
+    import yaml
+
+    ctx, wh = complete_subject()
+    target = tmp_path / "pack"
+    shutil.copytree(PACK, target)
+    policy = yaml.safe_load((target / "consolidation.yaml").read_text())
+    policy["entities"]["review"] = {"nature": "state", "blocking": ["item"]}
+    (target / "consolidation.yaml").write_text(yaml.safe_dump(policy))
+    first = ctx.annotations[0].model_copy(deep=True)
+    second = first.model_copy(deep=True)
+    second.id = 950
+    payload = first.payload()
+    payload["attributes"]["recorded_at"] = "2026-10-01T09:00:00+02:00"
+    first.payload_json = payload_text(payload)
+    payload["attributes"]["recorded_at"] = "2026-10-01T08:00:00Z"
+    payload["attributes"]["rating"] = 5
+    second.payload_json = payload_text(payload)
+    kind = Consolidator(wh, registry(), str(target))
+    result = kind.consolidate(replace(ctx, annotations=[first, second]))
+    record = next(a.payload() for a in result.annotations if a.type == "Record.review")
+    assert record["attributes"]["rating"] == 5
+    assert record["history"][0]["asOf"] == "2026-10-01T07:00:00+00:00"
+    assert not record.get("conflicts")
