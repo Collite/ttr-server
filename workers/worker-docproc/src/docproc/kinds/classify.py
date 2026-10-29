@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from docproc.kinds.common import annotation, meta, sections
+from docproc.runtime.predicate import Predicate
 from docproc.runtime.registry import KindResult, RunContext
 from docproc.sdk.models import Unit
 
@@ -57,7 +58,9 @@ class Classify:
         for unit in sections(ctx):
             kind, matched = str(engine.get("default", "other")), "default"
             for n, rule in enumerate(engine.get("rules", [])):
-                if self._matches(unit, rule):
+                if self._matches(unit, rule) and Predicate(rule.get("where", "")).evaluate(
+                    [a for a in ctx.annotations if a.unit_id == unit.id]
+                ):
                     kind, matched = rule["kind"], str(rule.get("name", f"rule:{n}"))
                     break
             result.annotations.append(annotation(unit, "SectionKind", {"kind": kind, "rule": matched}))

@@ -88,7 +88,7 @@ class ProcessorRunner:
         missing = set(self.config.families) - {p.family for p in self.processors}
         if missing:
             raise ValueError(f"hosted families not found: {sorted(missing)}")
-        # A single loaded registry version is the frozen v1 seam; pack version negotiation is P2's responsibility.
+        # Readiness schema; every work item reloads the version pinned by its plan graph.
         self.registry.load("1")
         for processor in self.processors:
             self.kinds.manifest(processor)
@@ -205,6 +205,11 @@ class ProcessorRunner:
         ctx = RunContext(item, processor, {}, {}, [])
         try:
             manifest = self.kinds.manifest(processor)
+            graph = self.manager.graph(item.plan_id)
+            version = graph.get("registryVersion")
+            if not isinstance(version, str) or not version:
+                raise ValueError("registry/graph-version-required")
+            self.registry.load(version)
             if item.kind != processor.kind:
                 raise ValueError("kind/unsupported: work kind differs from processor")
         except Exception as exc:
@@ -218,14 +223,20 @@ class ProcessorRunner:
                 self.warehouse.iter_annotations(ListAnnotationsRequest(run_id=item.run_id, active_only=False))
             )
             if existing:
-                completion.status = CompletionStatus.SUCCEEDED
+                completion.status = (
+                    CompletionStatus.ABSTAINED
+                    if item.kind == "link"
+                    and any(a.type == "Decision" for a in existing)
+                    and not any(a.type == "Mention" for a in existing)
+                    else CompletionStatus.SUCCEEDED
+                )
                 completion.annotation_ids = [a.id for a in existing]
                 completion.verdict_ids = [str(a.id) for a in existing if a.type == "Verdict"]
             elif msg.read_ct > int(manifest["budget"]["retries"]):
                 completion.status, completion.error = CompletionStatus.FAILED, "retries exhausted"
             else:
                 units = {uid: self.warehouse.get_unit(uid) for uid in item.unit_ids}
-                if item.kind in ("import", "diff"):
+                if item.kind in ("import", "diff") or manifest["graph"]["unit"] in ("document", "subject"):
                     for source_id in {u.source_id for u in list(units.values())}:
                         units.update((u.id, u) for u in self.warehouse.units_of_source(source_id))
                 annotations: list[Annotation] = []
@@ -276,7 +287,8 @@ class ProcessorRunner:
                     only_abstentions = bool(output) and all(a.type == "Abstention" for a in output)
                     completion.status = (
                         CompletionStatus.ABSTAINED
-                        if only_abstentions or (result.abstained and not output)
+                        if only_abstentions
+                        or (result.abstained and not any(a.type not in ("Decision", "Verdict") for a in output))
                         else CompletionStatus.SUCCEEDED
                     )
                     completion.usage = result.usage

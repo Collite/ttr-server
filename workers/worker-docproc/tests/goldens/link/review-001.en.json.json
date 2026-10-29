@@ -1,0 +1,164 @@
+[
+  {
+    "id": "g:review-001.en:0",
+    "payload": {
+      "candidates": [
+        {
+          "code": "HL-1001",
+          "label": "Aurora Desk Lamp",
+          "score": 0.95,
+          "source": "lexicon",
+          "system": "cn.Item"
+        }
+      ],
+      "concept": "cn.Item",
+      "kind": "item",
+      "linkMethod": "lexicon",
+      "member": {
+        "category": "er.entity.item.product_name",
+        "display": "Aurora Desk Lamp",
+        "id": "HL-1001"
+      },
+      "surface": "Aurora Desk Lamp"
+    },
+    "spans": [
+      {
+        "end": 61,
+        "start": 45,
+        "unit": "g:review-001.en:s0"
+      }
+    ],
+    "type": "Mention",
+    "unit": "g:review-001.en:s0"
+  },
+  {
+    "id": "g:review-001.en:1",
+    "payload": {
+      "chosen": "HL-1001",
+      "decider": "link/rule",
+      "factors": {
+        "annotationId": 100,
+        "candidates": 1,
+        "margin": null
+      },
+      "score": 0.95
+    },
+    "spans": [
+      {
+        "end": 61,
+        "start": 45,
+        "unit": "g:review-001.en:s0"
+      }
+    ],
+    "type": "Decision",
+    "unit": "g:review-001.en:s0"
+  },
+  {
+    "id": "g:review-001.en:2",
+    "payload": {
+      "candidates": [
+        {
+          "code": "HL-1001",
+          "label": "Aurora Desk Lamp",
+          "score": 0.95,
+          "source": "lexicon",
+          "system": "cn.Item"
+        }
+      ],
+      "concept": "cn.Item",
+      "kind": "item",
+      "linkMethod": "lexicon",
+      "member": {
+        "category": "er.entity.item.product_name",
+        "display": "Aurora Desk Lamp",
+        "id": "HL-1001"
+      },
+      "surface": "Aurora lamp"
+    },
+    "spans": [
+      {
+        "end": 81,
+        "start": 70,
+        "unit": "g:review-001.en:s1"
+      }
+    ],
+    "type": "Mention",
+    "unit": "g:review-001.en:s1"
+  },
+  {
+    "id": "g:review-001.en:3",
+    "payload": {
+      "chosen": "HL-1001",
+      "decider": "link/rule",
+      "factors": {
+        "annotationId": 101,
+        "candidates": 1,
+        "margin": null
+      },
+      "score": 0.95
+    },
+    "spans": [
+      {
+        "end": 81,
+        "start": 70,
+        "unit": "g:review-001.en:s1"
+      }
+    ],
+    "type": "Decision",
+    "unit": "g:review-001.en:s1"
+  },
+  {
+    "id": "g:review-001.en:4",
+    "payload": {
+      "candidates": [
+        {
+          "code": "HL-1001",
+          "label": "Aurora Desk Lamp",
+          "score": 0.95,
+          "source": "lexicon",
+          "system": "cn.Item"
+        }
+      ],
+      "concept": "cn.Item",
+      "kind": "item",
+      "linkMethod": "lexicon",
+      "member": {
+        "category": "er.entity.item.product_name",
+        "display": "Aurora Desk Lamp",
+        "id": "HL-1001"
+      },
+      "surface": "Aurora Desk Lamp"
+    },
+    "spans": [
+      {
+        "end": 257,
+        "start": 241,
+        "unit": "g:review-001.en:s1"
+      }
+    ],
+    "type": "Mention",
+    "unit": "g:review-001.en:s1"
+  },
+  {
+    "id": "g:review-001.en:5",
+    "payload": {
+      "chosen": "HL-1001",
+      "decider": "link/rule",
+      "factors": {
+        "annotationId": 102,
+        "candidates": 1,
+        "margin": null
+      },
+      "score": 0.95
+    },
+    "spans": [
+      {
+        "end": 257,
+        "start": 241,
+        "unit": "g:review-001.en:s1"
+      }
+    ],
+    "type": "Decision",
+    "unit": "g:review-001.en:s1"
+  }
+]

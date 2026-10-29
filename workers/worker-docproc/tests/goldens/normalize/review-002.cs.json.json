@@ -1,0 +1,82 @@
+[
+  {
+    "id": "g:review-002.cs:0",
+    "payload": {
+      "attributes": {
+        "body": "Koupil jsem si ventilátor Breeze do ložnice a je to zklamání. Hrozně hučí, v noci se u toho nedá spát 😤 Breeze bych nikomu nedoporučil, vracim ho zpátky. Škoda, vypadá hezky a za ty penize bych čekal víc.",
+        "customer": {
+          "qname": "C-31102"
+        },
+        "item": {
+          "qname": "HL-2040"
+        },
+        "rating": 1,
+        "recorded_at": "2026-08-03T21:05:00Z",
+        "reviewed_on": "2026-08-03",
+        "sentiment": "negative",
+        "title": "Hrozně hlučnej"
+      },
+      "modifiers": {
+        "temporal_context": "current",
+        "verification": "verified_purchase"
+      },
+      "spans": [
+        {
+          "end": 220,
+          "start": 16,
+          "unitId": "g:review-002.cs:s0"
+        }
+      ],
+      "verbatim": "Koupil jsem si ventilátor Breeze do ložnice a je to zklamání. Hrozně hučí, v noci se u toho nedá spát 😤 Breeze bych nikomu nedoporučil, vracim ho zpátky. Škoda, vypadá hezky a za ty penize bych čekal víc."
+    },
+    "spans": [
+      {
+        "end": 220,
+        "start": 16,
+        "unit": "g:review-002.cs:s0"
+      }
+    ],
+    "type": "Statement[review]",
+    "unit": "g:review-002.cs:s0"
+  },
+  {
+    "id": "g:review-002.cs:1",
+    "payload": {
+      "attributes": {
+        "body": "Po dvou týdnech používání musím říct, že ventilátoru Breeze nemám moc co vytknout. Noční režim je opravdu tichý a časovač funguje. Jediné, co mě štve, je lehoučký dálkový ovladač, který pořád hledám pod polštářem.",
+        "customer": {
+          "qname": "C-31560"
+        },
+        "item": {
+          "qname": "HL-2040"
+        },
+        "rating": 4,
+        "recorded_at": "2026-08-19T06:30:00Z",
+        "reviewed_on": "2026-08-19",
+        "sentiment": "positive",
+        "title": "Po dvou týdnech spokojenost"
+      },
+      "modifiers": {
+        "temporal_context": "current",
+        "verification": "verified_purchase"
+      },
+      "spans": [
+        {
+          "end": 242,
+          "start": 29,
+          "unitId": "g:review-002.cs:s1"
+        }
+      ],
+      "verbatim": "Po dvou týdnech používání musím říct, že ventilátoru Breeze nemám moc co vytknout. Noční režim je opravdu tichý a časovač funguje. Jediné, co mě štve, je lehoučký dálkový ovladač, který pořád hledám pod polštářem."
+    },
+    "spans": [
+      {
+        "end": 242,
+        "start": 29,
+        "unit": "g:review-002.cs:s1"
+      }
+    ],
+    "type": "Statement[review]",
+    "unit": "g:review-002.cs:s1"
+  }
+]

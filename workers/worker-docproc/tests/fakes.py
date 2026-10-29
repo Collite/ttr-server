@@ -119,13 +119,24 @@ class PackManager:
     def hosted_processors(self) -> list[Processor]:
         return [p for p in self.processors.values() if p.host == "docproc"]
 
+    def graph(self, plan_id: str) -> dict[str, Any]:
+        return {"registryVersion": "1"}
+
     def registry(self, version: str) -> dict[str, Any]:
         entries = []
+        model_entries = {e["key"]: e for e in yaml.safe_load((self.pack / "types/registry.yaml").read_text())["types"]}
         for path in sorted((self.pack / "types/generated").glob("*.schema.json")):
             schema = json.loads(path.read_text())
             stem = path.name.removesuffix(".schema.json")
             key = "Statement[" + stem.split(".", 1)[1] + "]" if stem.startswith("Statement.") else stem
-            entries.append({"key": key, "schemaJson": json.dumps(schema)})
+            entries.append(
+                {
+                    **model_entries[key],
+                    "key": key,
+                    "schemaJson": json.dumps(schema),
+                    "feedsRecords": model_entries[key]["feeds_records"],
+                }
+            )
         engine_root = WORKER / "tests/fixtures/types"
         if (engine_root / "engine.yaml").exists():
             engine = yaml.safe_load((engine_root / "engine.yaml").read_text())

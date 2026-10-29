@@ -57,3 +57,21 @@ def test_costly_chunk_strategies_are_not_hosted_in_p3(strategy: str) -> None:
     processor.manifest_yaml = yaml.safe_dump(manifest)
     with pytest.raises(UnsupportedKind, match="chunk/strategy-not-in-this-release"):
         registry.manifest(processor)
+
+
+def test_registry_exact_version_and_manager_schema_drift() -> None:
+    import copy
+
+    from tests.fakes import PACK
+
+    manager = PackManager()
+    original = manager.registry
+    manager.registry = lambda version: {**original(version), "version": "other"}  # type: ignore[method-assign]
+    with pytest.raises(ValueError, match="version-mismatch"):
+        TypeRegistryClient(manager).load("1")
+    manager.registry = original  # type: ignore[method-assign]
+    body = copy.deepcopy(original("1"))
+    body["types"][0]["schemaJson"] = '{"type":"object"}'
+    manager.registry = lambda version: body  # type: ignore[method-assign]
+    with pytest.raises(ValueError, match="manager-schema-drift"):
+        TypeRegistryClient(manager, str(PACK)).load("1")

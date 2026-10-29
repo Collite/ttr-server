@@ -56,3 +56,20 @@ def test_rule_forms_order_gazetteer_and_unicode() -> None:
     assert Classify(str(PACK)).run(ctx).annotations[0].payload() == {"kind": "review_body", "rule": "rule:1"}
     ctx.manifest["engine"]["rules"] = [{"heading": "missing", "kind": "no"}]
     assert Classify().run(ctx).annotations[0].payload()["kind"] == "other"
+
+
+def test_where_uses_only_current_unit_annotations() -> None:
+    from dataclasses import replace
+
+    from docproc.kinds.common import annotation
+    from tests.pack import new_context
+
+    ctx = context("review-001.en.json", "classify-sections")
+    units = list(ctx.units.values())
+    ctx = new_context(
+        ctx,
+        kind="classify",
+        engine={"rules": [{"kind": "selected", "where": "exists(Mention[item])"}], "default": "other"},
+    )
+    ctx = replace(ctx, annotations=[annotation(units[0], "Mention", {"kind": "item", "surface": "Aurora"})])
+    assert [a.payload()["kind"] for a in Classify().run(ctx).annotations] == ["selected", "other"]

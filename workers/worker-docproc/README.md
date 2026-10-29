@@ -4,7 +4,7 @@ The stateless Python worker runtime for deterministic document processing. Desig
 and planned in `project/kantheon/features/hermes/` (DX-P3). Version stays on 0.11.x.
 
 S3.1 provides the runtime, clients, validators, probes and packaging. S3.2 registers
-`import`, `lemmatize`, `classify`, `nlp-pipeline`, `diff`, and `chunk`. `Noop` is test-only
+`import`, `lemmatize`, `classify`, `nlp-pipeline`, `diff`, and `chunk`. S3.3 adds `link`, `rule` and `record-etl`. `Noop` is test-only
 and is never registered by the bootstrap.
 Outward calls are held behind `Warehouse`/`Manager` protocols, exercised against
 in-memory fakes until P1/P2 supply the services and phase certification runs.
@@ -38,8 +38,8 @@ DOCWH_PIPELINE_URL='http://docwh-pipeline:7280' uv run python -m docproc.main
 `DOCPROC_CONFIG` selects another HOCON file.
 `NLP_GRPC` is required when an NLP kind runs (gRPC, normally `nlp:7271`).
 `DOCPROC_PACK_PATH` names the mounted pack for classify gazetteers and `pack:` chunkers.
-Lex-matcher, gateway and world-DB settings are reserved for S3.3/P4; the world connection follows
-`TTR_CONN_EXTRACT_RECORDS`. Connection strings are excluded from configuration repr.
+`LEXMATCHER_GRPC` is required for lexicon linking (normally `fuzzy:7266`); the world
+connection for record-etl follows `TTR_CONN_EXTRACT_RECORDS`. Gateway settings remain P4-owned. Connection strings are excluded from configuration repr.
 
 Service identity uses `DOCPROC_SERVICE_TOKEN`, or the file named by
 `DOCPROC_SERVICE_TOKEN_FILE`; no OBO credentials. A notebook query is omitted when
@@ -67,8 +67,8 @@ Fixture source: `kantheon/shared/proto/fixtures/dx/packs/hartland-mini` and sibl
 canonical, documents NFC. Set `KANTHEON_DIR` to that checkout for the peer checks.
 The engine `types/` mirror comes from P1 `4f0b263b`, with P3's optional `Chunk.oversize`
 field. P3 supplies `chunk-validators.json`; P1's `loadSource`, `unitTree` and `loadLemmas`
-fixtures are also mirrored. Only `when-cases.json` remains a named, explicit skip
-until its owner supplies it. Set `KANTHEON_DIR` to the P3 canonical-fixture checkout
+fixtures are also mirrored. `when-cases.json` now has 39 Python-verified canonical cases; the Kotlin twin remains
+pending P2 S2.1. `Decision.chosen` is optional for abstention. Set `KANTHEON_DIR` to the P3 canonical-fixture checkout
 for complete peer checks. Runtime schemas are packaged under `_data/schemas/` and
 `_data/types/`; the actual model registry is fetched from the manager, never copied
 into Python classes.
@@ -160,8 +160,56 @@ unit. `semantic`/`summary-prefix` are refused here; P4 hosts those in docproc-ll
 The dev-only installed test distribution is absent from the production image;
 pack plugin fixtures live outside the shared pack mirror.
 
-Until S3.3, set `DOCPROC_FAMILIES` to implemented families if the manager also lists
-`link`, `rule`, or `record-etl`; unsupported hosted kinds fail bootstrap explicitly.
+## Deterministic extraction
+
+`link` makes one category-scoped BatchMatch call per item and unions it with
+concept-page recall over the mention's sentence. The explicit `targets` map turns
+model qnames into cn concepts; MEMBER hits supply the instance id. It enriches
+unlinked mentions and gazetted concepts that still lack a member. A score/margin
+failure emits a Decision without chosen and yields ABSTAINED when nothing links.
+The runtime preserves that status on load-before-ack recovery. `pick: llm` is refused.
+
+`rule` validates the pack rules file, joins annotations by declared spatial
+relations, evaluates a recursive-descent predicate parser, and expands only closed
+references/literals/coalesce. It fills every bound id into derivedFrom. Repeated
+surfaces of one linked member bind once per anchor, in span order. Function engines
+come only from the `@rule_fn` registry (`normalize`, `consolidate`); arbitrary imports
+are refused at bootstrap. Every emitted payload validates against the manager registry.
+
+`normalize` merges document-local duplicate statements and scoped modifiers, keeping
+alternate values in `normalize/conflicts` Decisions. `consolidate` blocks within
+one subject, reads occurrence/state policy, retains temporal history and open
+conflicts, and assigns evidence roles. Source/human provenance is required for
+known identity. Maximum evidence overlap carries an old key across reruns; the
+largest split retains it. Merge/split redirects appear in the artefact.
+The frozen renderer has no recordKey/subjectId fields: companion `consolidate/key`
+Decisions persist the key, subject and exact evidence set. ETL requires that Decision.
+Records hang, without spans, on the newest evidence's DOCUMENT root.
+
+`record-etl` accepts only registry entries with feedsRecords=true. It maps Refs
+through dimension lookups, checks decimal scales exactly and validates dates. ACTIVE
+replaces one subject's rows in one transaction under a subject advisory lock; an
+insert failure rolls back the delete. CANDIDATE/SHADOW calculate a diff and full
+candidate rows in the artefact without writing the world DB. Candidate outputs are
+labelled VERBOSITY_FULL and need P2's storage/redaction floor before certification.
+All runs emit RecordRowRef pointers for lineage. row_id hashes entity + stable key.
+The legacy generated review_id is a surrogate; row_id is the stable identity.
+
+Each item requests its plan-pinned Graph from `GET /v1/plans/{planId}/graph` and
+loads precisely registryVersion. This route is an explicit P2 integration seam;
+missing/mismatched versions fail the message. The mounted model hash and every
+indexed generated file/schema must match, including the schemas returned by the manager.
+
+**PX exit gap:** its deterministic review DSL emits item/rating/verification only,
+while Record.review requires attributes/modifiers assigned to the LLM mentor.
+The six-document flow correctly reports incomplete records. A separate, explicitly
+complete Statement fixture proof produces the PX row oracle with resolvable lineage
+and stable ids. It does not claim the unchanged deterministic pack produces those rows.
+The frozen review DDL also lacks the fixed row_id/subject_id columns and uses text
+annotation_refs; `tests/fixtures/sql/record_columns.sql` shows the required migration
+on the disposable world DB. The worker never changes DDL.
+
+See [docs/README.md](docs/README.md) for integration gates and fixture provenance.
 
 ## Image and deployment templates
 

@@ -20,7 +20,6 @@
   },
   "required": [
     "decider",
-    "chosen",
     "score",
     "factors"
   ],

@@ -316,3 +316,14 @@ def test_unsupported_kind_never_succeeds(runtime: tuple[ProcessorRunner, WorkIte
     result = runner.process(enqueue(runner, item))
     assert result and result.status == CompletionStatus.FAILED and result.error and "kind/unsupported" in result.error
     assert isinstance(runner.warehouse, FakeWarehouse) and runner.warehouse.loads == 0
+
+
+def test_plan_registry_mismatch_fails_before_kind(runtime: tuple[ProcessorRunner, WorkItem]) -> None:
+    runner, item = runtime
+    assert isinstance(runner.manager, PackManager)
+    original = runner.manager.registry
+    runner.manager.registry = lambda version: {**original(version), "version": "wrong"}  # type: ignore[method-assign]
+    result = runner.process(enqueue(runner, item))
+    assert result and result.status == CompletionStatus.FAILED and result.error == "registry/version-mismatch"
+    assert isinstance(runner.warehouse, FakeWarehouse) and runner.warehouse.loads == 0
+    assert len(completions(runner, item)) == 1

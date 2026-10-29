@@ -84,7 +84,13 @@ class ProtocolWriter:
                     "turnId": item.run_id,
                     "seq": 1,
                     "sections": [
-                        {"key": key, "appliedVerbosity": "VERBOSITY_SUMMARY", member: payload}
+                        {
+                            "key": key,
+                            "appliedVerbosity": "VERBOSITY_FULL"
+                            if key == "outputs" and "candidateRows" in payload
+                            else "VERBOSITY_SUMMARY",
+                            member: payload,
+                        }
                         for key, member, payload in payloads
                     ],
                 }

@@ -13,6 +13,7 @@ from docproc.sdk.store import StoreClient
 class Manager(Protocol):
     def processor(self, family: str, version_hash: str) -> Processor: ...
     def registry(self, version: str) -> dict[str, Any]: ...
+    def graph(self, plan_id: str) -> dict[str, Any]: ...
     def hosted_processors(self) -> list[Processor]: ...
     def bundle(self, bundle_ref: str) -> list[Annotation]: ...
 
@@ -50,3 +51,8 @@ class PipelineClient(StoreClient):
     def bundle(self, bundle_ref: str) -> list[Annotation]:
         body = self._ok(self._http.get(f"/v1/bundles/{quote(bundle_ref, safe='')}"))
         return [Annotation.model_validate(a) for a in body["annotations"]]
+
+    def graph(self, plan_id: str) -> dict[str, Any]:
+        """P2 seam: the immutable graph pinned by this plan, including registryVersion."""
+        result: dict[str, Any] = self._ok(self._http.get(f"/v1/plans/{quote(plan_id, safe='')}/graph"))
+        return result

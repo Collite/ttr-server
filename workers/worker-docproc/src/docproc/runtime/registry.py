@@ -7,10 +7,11 @@ import json
 import re
 from dataclasses import dataclass, field
 from importlib.resources import files
+from pathlib import Path
 from typing import Any, Protocol
 
 import yaml
-from jsonschema import Draft202012Validator
+from jsonschema import Draft202012Validator, FormatChecker
 
 from docproc.sdk.models import Annotation, Processor, Unit, Usage, WorkItem
 from docproc.sdk.pipeline import Manager
@@ -65,6 +66,13 @@ class KindRegistry:
         ):
             raise UnsupportedKind("chunk/strategy-not-in-this-release")
         self._manifest.validate(manifest)
+        if manifest["kind"] == "link" and manifest["engine"].get("pick") != "rule" and hosted:
+            raise UnsupportedKind("link/pick-not-in-this-release")
+        if manifest["kind"] == "rule" and "function" in manifest["engine"] and hosted:
+            from docproc.kinds.rule_fns import registered
+
+            if not registered(manifest["engine"]["function"]):
+                raise UnsupportedKind("rule/function-unregistered")
         if (manifest["family"], str(manifest["version"]), manifest["kind"], manifest["host"]) != (
             processor.family,
             processor.version,
@@ -78,23 +86,45 @@ class KindRegistry:
 
 
 class TypeRegistryClient:
-    def __init__(self, manager: Manager) -> None:
+    def __init__(self, manager: Manager, pack_path: str = "") -> None:
         self.manager = manager
+        self.pack_path = Path(pack_path) if pack_path else None
+        self.version = ""
+        self.entries: dict[str, dict[str, Any]] = {}
         self._schemas: dict[str, Draft202012Validator] = {}
         self.loaded = False
 
     def load(self, version: str) -> None:
         registry = self.manager.registry(version)
+        if str(registry.get("version", "")) != version:
+            raise ValueError("registry/version-mismatch")
+        if self.pack_path:
+            from docproc.runtime.model_hash import verify_pack
+
+            verify_pack(self.pack_path)
+        expected: dict[str, Any] = {}
+        if self.pack_path:
+            index = json.loads((self.pack_path / "types/generated/index.json").read_text())
+            expected = {
+                e["key"]: json.loads((self.pack_path / "types/generated" / e["file"]).read_text())
+                for e in index["types"]
+            }
         compiled: dict[str, Draft202012Validator] = {}
         for entry in registry["types"]:
             schema = entry.get("schemaJson", entry.get("schema"))
             if isinstance(schema, str):
                 schema = json.loads(schema)
+            if entry["key"] in expected and schema != expected[entry["key"]]:
+                raise ValueError("registry/manager-schema-drift")
             Draft202012Validator.check_schema(schema)
-            compiled[entry["key"]] = Draft202012Validator(schema)
+            compiled[entry["key"]] = Draft202012Validator(schema, format_checker=FormatChecker())
+        if expected.keys() - compiled.keys():
+            raise ValueError("registry/model-types-missing")
         if not compiled:
             raise ValueError("empty type registry")
         self._schemas = compiled
+        self.entries = {e["key"]: e for e in registry["types"]}
+        self.version = version
         self.loaded = True
 
     def schema_for(self, key: str) -> Draft202012Validator:
