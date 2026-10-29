@@ -1,0 +1,25 @@
+{
+  "$id": "ttr:types/Verdict",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "A validator's result (a post-condition, a rule): never a crash.",
+  "properties": {
+    "message": {
+      "type": "string"
+    },
+    "ok": {
+      "type": "boolean"
+    },
+    "rule": {
+      "minLength": 1,
+      "type": "string"
+    }
+  },
+  "required": [
+    "rule",
+    "ok",
+    "message"
+  ],
+  "title": "Verdict",
+  "type": "object"
+}

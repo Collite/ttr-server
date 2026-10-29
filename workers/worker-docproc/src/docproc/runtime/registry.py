@@ -33,6 +33,7 @@ class KindResult:
     usage: Usage = field(default_factory=Usage)
     sections: dict[str, Any] = field(default_factory=dict)
     abstained: bool = False
+    chunk_params: dict[int, dict[str, Any]] = field(default_factory=dict)
 
 
 class Kind(Protocol):
@@ -56,6 +57,13 @@ class KindRegistry:
 
     def manifest(self, processor: Processor, hosted: bool = True) -> dict[str, Any]:
         manifest: dict[str, Any] = yaml.safe_load(processor.manifest_yaml)
+        if (
+            isinstance(manifest, dict)
+            and manifest.get("kind") == "chunk"
+            and isinstance(manifest.get("engine"), dict)
+            and manifest["engine"].get("strategy") in ("semantic", "summary-prefix")
+        ):
+            raise UnsupportedKind("chunk/strategy-not-in-this-release")
         self._manifest.validate(manifest)
         if (manifest["family"], str(manifest["version"]), manifest["kind"], manifest["host"]) != (
             processor.family,

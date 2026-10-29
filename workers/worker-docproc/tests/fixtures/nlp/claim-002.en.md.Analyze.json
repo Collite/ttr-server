@@ -1,0 +1,2182 @@
+[
+  {
+    "language": "en",
+    "response": {
+      "detectedLanguage": "en",
+      "elapsedMs": "164",
+      "engineUsed": "stanza",
+      "language": "en",
+      "languageConfidence": 1.0,
+      "sentences": [
+        {
+          "charEnd": 17
+        },
+        {
+          "charEnd": 33,
+          "charStart": 18
+        },
+        {
+          "charEnd": 50,
+          "charStart": 34
+        }
+      ],
+      "tokens": [
+        {
+          "charEnd": 8,
+          "depHead": 2,
+          "depRelation": "compound",
+          "feats": {
+            "Number": "Sing"
+          },
+          "lemma": "customer",
+          "text": "Customer",
+          "upos": "NOUN",
+          "xpos": "NN"
+        },
+        {
+          "charEnd": 10,
+          "charStart": 9,
+          "depRelation": "root",
+          "feats": {
+            "Number": "Sing"
+          },
+          "lemma": "C",
+          "text": "C",
+          "upos": "PROPN",
+          "xpos": "NNP"
+        },
+        {
+          "charEnd": 11,
+          "charStart": 10,
+          "depHead": 4,
+          "depRelation": "punct",
+          "lemma": "-",
+          "text": "-",
+          "upos": "PUNCT",
+          "xpos": "HYPH"
+        },
+        {
+          "charEnd": 16,
+          "charStart": 11,
+          "depHead": 2,
+          "depRelation": "nmod",
+          "feats": {
+            "NumForm": "Digit",
+            "NumType": "Card"
+          },
+          "lemma": "52007",
+          "text": "52007",
+          "upos": "NUM",
+          "xpos": "CD"
+        },
+        {
+          "charEnd": 17,
+          "charStart": 16,
+          "depHead": 2,
+          "depRelation": "punct",
+          "lemma": ".",
+          "text": ".",
+          "upos": "PUNCT",
+          "xpos": "."
+        },
+        {
+          "charEnd": 23,
+          "charStart": 18,
+          "depRelation": "root",
+          "feats": {
+            "Number": "Sing"
+          },
+          "lemma": "order",
+          "text": "Order",
+          "upos": "NOUN",
+          "xpos": "NN"
+        },
+        {
+          "charEnd": 26,
+          "charStart": 24,
+          "depHead": 1,
+          "depRelation": "flat",
+          "feats": {
+            "Number": "Sing"
+          },
+          "lemma": "so",
+          "text": "SO",
+          "upos": "NOUN",
+          "xpos": "NN"
+        },
+        {
+          "charEnd": 27,
+          "charStart": 26,
+          "depHead": 4,
+          "depRelation": "punct",
+          "lemma": "-",
+          "text": "-",
+          "upos": "PUNCT",
+          "xpos": "HYPH"
+        },
+        {
+          "charEnd": 32,
+          "charStart": 27,
+          "depHead": 2,
+          "depRelation": "nmod",
+          "feats": {
+            "NumForm": "Digit",
+            "NumType": "Card"
+          },
+          "lemma": "88412",
+          "text": "88412",
+          "upos": "NUM",
+          "xpos": "CD"
+        },
+        {
+          "charEnd": 33,
+          "charStart": 32,
+          "depHead": 1,
+          "depRelation": "punct",
+          "lemma": ".",
+          "text": ".",
+          "upos": "PUNCT",
+          "xpos": "."
+        },
+        {
+          "charEnd": 41,
+          "charStart": 34,
+          "depHead": 2,
+          "depRelation": "compound",
+          "feats": {
+            "Number": "Sing"
+          },
+          "lemma": "product",
+          "text": "Product",
+          "upos": "NOUN",
+          "xpos": "NN"
+        },
+        {
+          "charEnd": 44,
+          "charStart": 42,
+          "depRelation": "root",
+          "feats": {
+            "Number": "Sing"
+          },
+          "lemma": "HL",
+          "text": "HL",
+          "upos": "PROPN",
+          "xpos": "NNP"
+        },
+        {
+          "charEnd": 45,
+          "charStart": 44,
+          "depHead": 4,
+          "depRelation": "case",
+          "lemma": "-",
+          "text": "-",
+          "upos": "SYM",
+          "xpos": "SYM"
+        },
+        {
+          "charEnd": 49,
+          "charStart": 45,
+          "depHead": 2,
+          "depRelation": "nmod",
+          "feats": {
+            "NumForm": "Digit",
+            "NumType": "Card"
+          },
+          "lemma": "3310",
+          "text": "3310",
+          "upos": "NUM",
+          "xpos": "CD"
+        },
+        {
+          "charEnd": 50,
+          "charStart": 49,
+          "depHead": 2,
+          "depRelation": "punct",
+          "lemma": ".",
+          "text": ".",
+          "upos": "PUNCT",
+          "xpos": "."
+        }
+      ],
+      "traceId": "f07d6133cb62b7d55f14397149b81384",
+      "used": [
+        {
+          "engine": "stanza",
+          "model": "stanza-cs-en",
+          "modelVersion": "stanza-1.10.0",
+          "op": "SENTENCE_SPLIT"
+        }
+      ]
+    },
+    "sha256": "de1c469e83e2f57b874611925ba2744d1e1660e56989043cc42bf2f729ac3f05"
+  },
+  {
+    "language": "en",
+    "response": {
+      "detectedLanguage": "en",
+      "elapsedMs": "605",
+      "engineUsed": "stanza",
+      "entities": [
+        {
+          "charEnd": 13,
+          "label": "DATE",
+          "sourceEngine": "stanza",
+          "text": "About a month"
+        },
+        {
+          "charEnd": 83,
+          "charStart": 58,
+          "label": "PRODUCT",
+          "sourceEngine": "stanza",
+          "text": "Pulse Wireless Headphones"
+        },
+        {
+          "charEnd": 220,
+          "charStart": 214,
+          "label": "ORDINAL",
+          "sourceEngine": "stanza",
+          "text": "second"
+        }
+      ],
+      "language": "en",
+      "languageConfidence": 1.0,
+      "sentences": [
+        {
+          "charEnd": 112
+        },
+        {
+          "charEnd": 191,
+          "charStart": 113
+        },
+        {
+          "charEnd": 266,
+          "charStart": 192
+        }
+      ],
+      "tokens": [
+        {
+          "charEnd": 5,
+          "depHead": 3,
+          "depRelation": "advmod",
+          "lemma": "about",
+          "text": "About",
+          "upos": "ADV",
+          "xpos": "RB"
+        },
+        {
+          "charEnd": 7,
+          "charStart": 6,
+          "depHead": 3,
+          "depRelation": "det",
+          "feats": {
+            "Definite": "Ind",
+            "PronType": "Art"
+          },
+          "lemma": "a",
+          "text": "a",
+          "upos": "DET",
+          "xpos": "DT"
+        },
+        {
+          "charEnd": 13,
+          "charStart": 8,
+          "depHead": 6,
+          "depRelation": "obl:unmarked",
+          "feats": {
+            "Number": "Sing"
+          },
+          "lemma": "month",
+          "text": "month",
+          "upos": "NOUN",
+          "xpos": "NN"
+        },
+        {
+          "charEnd": 19,
+          "charStart": 14,
+          "depHead": 6,
+          "depRelation": "mark",
+          "lemma": "after",
+          "text": "after",
+          "upos": "SCONJ",
+          "xpos": "IN"
+        },
+        {
+          "charEnd": 21,
+          "charStart": 20,
+          "depHead": 6,
+          "depRelation": "nsubj",
+          "feats": {
+            "Case": "Nom",
+            "Number": "Sing",
+            "Person": "1",
+            "PronType": "Prs"
+          },
+          "lemma": "I",
+          "text": "I",
+          "upos": "PRON",
+          "xpos": "PRP"
+        },
+        {
+          "charEnd": 28,
+          "charStart": 22,
+          "depHead": 18,
+          "depRelation": "advcl",
+          "feats": {
+            "Mood": "Ind",
+            "Number": "Sing",
+            "Person": "1",
+            "Tense": "Past",
+            "VerbForm": "Fin"
+          },
+          "lemma": "buy",
+          "text": "bought",
+          "upos": "VERB",
+          "xpos": "VBD"
+        },
+        {
+          "charEnd": 33,
+          "charStart": 29,
+          "depHead": 6,
+          "depRelation": "obj",
+          "feats": {
+            "Case": "Acc",
+            "Number": "Plur",
+            "Person": "3",
+            "PronType": "Prs"
+          },
+          "lemma": "they",
+          "text": "them",
+          "upos": "PRON",
+          "xpos": "PRP"
+        },
+        {
+          "charEnd": 34,
+          "charStart": 33,
+          "depHead": 6,
+          "depRelation": "punct",
+          "lemma": ",",
+          "text": ",",
+          "upos": "PUNCT",
+          "xpos": ","
+        },
+        {
+          "charEnd": 38,
+          "charStart": 35,
+          "depHead": 12,
+          "depRelation": "det",
+          "feats": {
+            "Definite": "Def",
+            "PronType": "Art"
+          },
+          "lemma": "the",
+          "text": "the",
+          "upos": "DET",
+          "xpos": "DT"
+        },
+        {
+          "charEnd": 43,
+          "charStart": 39,
+          "depHead": 12,
+          "depRelation": "amod",
+          "feats": {
+            "Degree": "Pos"
+          },
+          "lemma": "left",
+          "text": "left",
+          "upos": "ADJ",
+          "xpos": "JJ"
+        },
+        {
+          "charEnd": 47,
+          "charStart": 44,
+          "depHead": 12,
+          "depRelation": "compound",
+          "feats": {
+            "Number": "Sing"
+          },
+          "lemma": "ear",
+          "text": "ear",
+          "upos": "NOUN",
+          "xpos": "NN"
+        },
+        {
+          "charEnd": 51,
+          "charStart": 48,
+          "depHead": 18,
+          "depRelation": "nsubj",
+          "feats": {
+            "Number": "Sing"
+          },
+          "lemma": "cup",
+          "text": "cup",
+          "upos": "NOUN",
+          "xpos": "NN"
+        },
+        {
+          "charEnd": 54,
+          "charStart": 52,
+          "depHead": 17,
+          "depRelation": "case",
+          "lemma": "of",
+          "text": "of",
+          "upos": "ADP",
+          "xpos": "IN"
+        },
+        {
+          "charEnd": 57,
+          "charStart": 55,
+          "depHead": 17,
+          "depRelation": "nmod:poss",
+          "feats": {
+            "Case": "Gen",
+            "Number": "Sing",
+            "Person": "1",
+            "Poss": "Yes",
+            "PronType": "Prs"
+          },
+          "lemma": "my",
+          "text": "my",
+          "upos": "PRON",
+          "xpos": "PRP$"
+        },
+        {
+          "charEnd": 63,
+          "charStart": 58,
+          "depHead": 17,
+          "depRelation": "compound",
+          "feats": {
+            "Number": "Sing"
+          },
+          "lemma": "Pulse",
+          "text": "Pulse",
+          "upos": "PROPN",
+          "xpos": "NNP"
+        },
+        {
+          "charEnd": 72,
+          "charStart": 64,
+          "depHead": 17,
+          "depRelation": "compound",
+          "feats": {
+            "Number": "Sing"
+          },
+          "lemma": "Wireless",
+          "text": "Wireless",
+          "upos": "PROPN",
+          "xpos": "NNP"
+        },
+        {
+          "charEnd": 83,
+          "charStart": 73,
+          "depHead": 12,
+          "depRelation": "nmod",
+          "feats": {
+            "Number": "Plur"
+          },
+          "lemma": "Headphones",
+          "text": "Headphones",
+          "upos": "PROPN",
+          "xpos": "NNPS"
+        },
+        {
+          "charEnd": 91,
+          "charStart": 84,
+          "depRelation": "root",
+          "feats": {
+            "Mood": "Ind",
+            "Number": "Sing",
+            "Person": "3",
+            "Tense": "Past",
+            "VerbForm": "Fin"
+          },
+          "lemma": "stop",
+          "text": "stopped",
+          "upos": "VERB",
+          "xpos": "VBD"
+        },
+        {
+          "charEnd": 101,
+          "charStart": 92,
+          "depHead": 18,
+          "depRelation": "xcomp",
+          "feats": {
+            "VerbForm": "Ger"
+          },
+          "lemma": "produce",
+          "text": "producing",
+          "upos": "VERB",
+          "xpos": "VBG"
+        },
+        {
+          "charEnd": 105,
+          "charStart": 102,
+          "depHead": 21,
+          "depRelation": "det",
+          "feats": {
+            "PronType": "Ind"
+          },
+          "lemma": "any",
+          "text": "any",
+          "upos": "DET",
+          "xpos": "DT"
+        },
+        {
+          "charEnd": 111,
+          "charStart": 106,
+          "depHead": 19,
+          "depRelation": "obj",
+          "feats": {
+            "Number": "Sing"
+          },
+          "lemma": "sound",
+          "text": "sound",
+          "upos": "NOUN",
+          "xpos": "NN"
+        },
+        {
+          "charEnd": 112,
+          "charStart": 111,
+          "depHead": 18,
+          "depRelation": "punct",
+          "lemma": ".",
+          "text": ".",
+          "upos": "PUNCT",
+          "xpos": "."
+        },
+        {
+          "charEnd": 116,
+          "charStart": 113,
+          "depHead": 3,
+          "depRelation": "det",
+          "feats": {
+            "Definite": "Def",
+            "PronType": "Art"
+          },
+          "lemma": "the",
+          "text": "The",
+          "upos": "DET",
+          "xpos": "DT"
+        },
+        {
+          "charEnd": 122,
+          "charStart": 117,
+          "depHead": 3,
+          "depRelation": "amod",
+          "feats": {
+            "Degree": "Pos"
+          },
+          "lemma": "right",
+          "text": "right",
+          "upos": "ADJ",
+          "xpos": "JJ"
+        },
+        {
+          "charEnd": 127,
+          "charStart": 123,
+          "depHead": 5,
+          "depRelation": "nsubj",
+          "feats": {
+            "Number": "Sing"
+          },
+          "lemma": "side",
+          "text": "side",
+          "upos": "NOUN",
+          "xpos": "NN"
+        },
+        {
+          "charEnd": 133,
+          "charStart": 128,
+          "depHead": 5,
+          "depRelation": "advmod",
+          "lemma": "still",
+          "text": "still",
+          "upos": "ADV",
+          "xpos": "RB"
+        },
+        {
+          "charEnd": 139,
+          "charStart": 134,
+          "depRelation": "root",
+          "feats": {
+            "Mood": "Ind",
+            "Number": "Sing",
+            "Person": "3",
+            "Tense": "Pres",
+            "VerbForm": "Fin"
+          },
+          "lemma": "work",
+          "text": "works",
+          "upos": "VERB",
+          "xpos": "VBZ"
+        },
+        {
+          "charEnd": 140,
+          "charStart": 139,
+          "depHead": 11,
+          "depRelation": "punct",
+          "lemma": ",",
+          "text": ",",
+          "upos": "PUNCT",
+          "xpos": ","
+        },
+        {
+          "charEnd": 144,
+          "charStart": 141,
+          "depHead": 11,
+          "depRelation": "cc",
+          "lemma": "and",
+          "text": "and",
+          "upos": "CCONJ",
+          "xpos": "CC"
+        },
+        {
+          "charEnd": 148,
+          "charStart": 145,
+          "depHead": 9,
+          "depRelation": "det",
+          "feats": {
+            "Definite": "Def",
+            "PronType": "Art"
+          },
+          "lemma": "the",
+          "text": "the",
+          "upos": "DET",
+          "xpos": "DT"
+        },
+        {
+          "charEnd": 159,
+          "charStart": 149,
+          "depHead": 11,
+          "depRelation": "nsubj",
+          "feats": {
+            "Number": "Plur"
+          },
+          "lemma": "headphone",
+          "text": "headphones",
+          "upos": "NOUN",
+          "xpos": "NNS"
+        },
+        {
+          "charEnd": 165,
+          "charStart": 160,
+          "depHead": 11,
+          "depRelation": "advmod",
+          "lemma": "still",
+          "text": "still",
+          "upos": "ADV",
+          "xpos": "RB"
+        },
+        {
+          "charEnd": 170,
+          "charStart": 166,
+          "depHead": 5,
+          "depRelation": "conj",
+          "feats": {
+            "Mood": "Ind",
+            "Number": "Plur",
+            "Person": "3",
+            "Tense": "Pres",
+            "VerbForm": "Fin"
+          },
+          "lemma": "pair",
+          "text": "pair",
+          "upos": "VERB",
+          "xpos": "VBP"
+        },
+        {
+          "charEnd": 174,
+          "charStart": 171,
+          "depHead": 13,
+          "depRelation": "cc",
+          "lemma": "and",
+          "text": "and",
+          "upos": "CCONJ",
+          "xpos": "CC"
+        },
+        {
+          "charEnd": 181,
+          "charStart": 175,
+          "depHead": 11,
+          "depRelation": "conj",
+          "feats": {
+            "Mood": "Ind",
+            "Number": "Plur",
+            "Person": "3",
+            "Tense": "Pres",
+            "VerbForm": "Fin"
+          },
+          "lemma": "charge",
+          "text": "charge",
+          "upos": "VERB",
+          "xpos": "VBP"
+        },
+        {
+          "charEnd": 190,
+          "charStart": 182,
+          "depHead": 13,
+          "depRelation": "advmod",
+          "lemma": "normally",
+          "text": "normally",
+          "upos": "ADV",
+          "xpos": "RB"
+        },
+        {
+          "charEnd": 191,
+          "charStart": 190,
+          "depHead": 5,
+          "depRelation": "punct",
+          "lemma": ".",
+          "text": ".",
+          "upos": "PUNCT",
+          "xpos": "."
+        },
+        {
+          "charEnd": 193,
+          "charStart": 192,
+          "depHead": 2,
+          "depRelation": "nsubj",
+          "feats": {
+            "Case": "Nom",
+            "Number": "Sing",
+            "Person": "1",
+            "PronType": "Prs"
+          },
+          "lemma": "I",
+          "text": "I",
+          "upos": "PRON",
+          "xpos": "PRP"
+        },
+        {
+          "charEnd": 199,
+          "charStart": 194,
+          "depRelation": "root",
+          "feats": {
+            "Mood": "Ind",
+            "Number": "Sing",
+            "Person": "1",
+            "Tense": "Past",
+            "VerbForm": "Fin"
+          },
+          "lemma": "try",
+          "text": "tried",
+          "upos": "VERB",
+          "xpos": "VBD"
+        },
+        {
+          "charEnd": 201,
+          "charStart": 200,
+          "depHead": 4,
+          "depRelation": "det",
+          "feats": {
+            "Definite": "Ind",
+            "PronType": "Art"
+          },
+          "lemma": "a",
+          "text": "a",
+          "upos": "DET",
+          "xpos": "DT"
+        },
+        {
+          "charEnd": 207,
+          "charStart": 202,
+          "depHead": 2,
+          "depRelation": "obj",
+          "feats": {
+            "Number": "Sing"
+          },
+          "lemma": "reset",
+          "text": "reset",
+          "upos": "NOUN",
+          "xpos": "NN"
+        },
+        {
+          "charEnd": 211,
+          "charStart": 208,
+          "depHead": 8,
+          "depRelation": "cc",
+          "lemma": "and",
+          "text": "and",
+          "upos": "CCONJ",
+          "xpos": "CC"
+        },
+        {
+          "charEnd": 213,
+          "charStart": 212,
+          "depHead": 8,
+          "depRelation": "det",
+          "feats": {
+            "Definite": "Ind",
+            "PronType": "Art"
+          },
+          "lemma": "a",
+          "text": "a",
+          "upos": "DET",
+          "xpos": "DT"
+        },
+        {
+          "charEnd": 220,
+          "charStart": 214,
+          "depHead": 8,
+          "depRelation": "amod",
+          "feats": {
+            "Degree": "Pos",
+            "NumForm": "Word",
+            "NumType": "Ord"
+          },
+          "lemma": "second",
+          "text": "second",
+          "upos": "ADJ",
+          "xpos": "JJ"
+        },
+        {
+          "charEnd": 226,
+          "charStart": 221,
+          "depHead": 4,
+          "depRelation": "conj",
+          "feats": {
+            "Number": "Sing"
+          },
+          "lemma": "phone",
+          "text": "phone",
+          "upos": "NOUN",
+          "xpos": "NN"
+        },
+        {
+          "charEnd": 227,
+          "charStart": 226,
+          "depHead": 13,
+          "depRelation": "punct",
+          "lemma": ";",
+          "text": ";",
+          "upos": "PUNCT",
+          "xpos": ","
+        },
+        {
+          "charEnd": 231,
+          "charStart": 228,
+          "depHead": 12,
+          "depRelation": "det",
+          "feats": {
+            "Definite": "Def",
+            "PronType": "Art"
+          },
+          "lemma": "the",
+          "text": "the",
+          "upos": "DET",
+          "xpos": "DT"
+        },
+        {
+          "charEnd": 236,
+          "charStart": 232,
+          "depHead": 12,
+          "depRelation": "amod",
+          "feats": {
+            "Degree": "Pos"
+          },
+          "lemma": "left",
+          "text": "left",
+          "upos": "ADJ",
+          "xpos": "JJ"
+        },
+        {
+          "charEnd": 241,
+          "charStart": 237,
+          "depHead": 13,
+          "depRelation": "nsubj",
+          "feats": {
+            "Number": "Sing"
+          },
+          "lemma": "side",
+          "text": "side",
+          "upos": "NOUN",
+          "xpos": "NN"
+        },
+        {
+          "charEnd": 247,
+          "charStart": 242,
+          "depHead": 2,
+          "depRelation": "parataxis",
+          "feats": {
+            "Mood": "Ind",
+            "Number": "Sing",
+            "Person": "3",
+            "Tense": "Pres",
+            "VerbForm": "Fin"
+          },
+          "lemma": "stay",
+          "text": "stays",
+          "upos": "VERB",
+          "xpos": "VBZ"
+        },
+        {
+          "charEnd": 254,
+          "charStart": 248,
+          "depHead": 13,
+          "depRelation": "xcomp",
+          "feats": {
+            "Degree": "Pos"
+          },
+          "lemma": "silent",
+          "text": "silent",
+          "upos": "ADJ",
+          "xpos": "JJ"
+        },
+        {
+          "charEnd": 261,
+          "charStart": 255,
+          "depHead": 16,
+          "depRelation": "det",
+          "feats": {
+            "PronType": "Ind"
+          },
+          "lemma": "either",
+          "text": "either",
+          "upos": "DET",
+          "xpos": "DT"
+        },
+        {
+          "charEnd": 265,
+          "charStart": 262,
+          "depHead": 13,
+          "depRelation": "obl:unmarked",
+          "feats": {
+            "Number": "Sing"
+          },
+          "lemma": "way",
+          "text": "way",
+          "upos": "NOUN",
+          "xpos": "NN"
+        },
+        {
+          "charEnd": 266,
+          "charStart": 265,
+          "depHead": 2,
+          "depRelation": "punct",
+          "lemma": ".",
+          "text": ".",
+          "upos": "PUNCT",
+          "xpos": "."
+        }
+      ],
+      "traceId": "075c4cccd157a1de32356996fde9bb59",
+      "used": [
+        {
+          "engine": "stanza",
+          "model": "stanza-cs-en",
+          "modelVersion": "stanza-1.10.0",
+          "op": "SENTENCE_SPLIT"
+        }
+      ]
+    },
+    "sha256": "5b3c13d5f287be31f794a6ad49da0c2cc4b9fdab018e6b9108ada3d783ccb333"
+  },
+  {
+    "language": "en",
+    "response": {
+      "detectedLanguage": "en",
+      "elapsedMs": "467",
+      "engineUsed": "stanza",
+      "entities": [
+        {
+          "charEnd": 103,
+          "charStart": 98,
+          "label": "MONEY",
+          "sourceEngine": "stanza",
+          "text": "89.99"
+        }
+      ],
+      "language": "en",
+      "languageConfidence": 1.0,
+      "sentences": [
+        {
+          "charEnd": 32
+        },
+        {
+          "charEnd": 104,
+          "charStart": 33
+        }
+      ],
+      "tokens": [
+        {
+          "charEnd": 1,
+          "depHead": 3,
+          "depRelation": "nsubj",
+          "feats": {
+            "Case": "Nom",
+            "Number": "Sing",
+            "Person": "1",
+            "PronType": "Prs"
+          },
+          "lemma": "I",
+          "text": "I",
+          "upos": "PRON",
+          "xpos": "PRP"
+        },
+        {
+          "charEnd": 7,
+          "charStart": 2,
+          "depHead": 3,
+          "depRelation": "aux",
+          "feats": {
+            "VerbForm": "Fin"
+          },
+          "lemma": "would",
+          "text": "would",
+          "upos": "AUX",
+          "xpos": "MD"
+        },
+        {
+          "charEnd": 12,
+          "charStart": 8,
+          "depRelation": "root",
+          "feats": {
+            "VerbForm": "Inf"
+          },
+          "lemma": "like",
+          "text": "like",
+          "upos": "VERB",
+          "xpos": "VB"
+        },
+        {
+          "charEnd": 14,
+          "charStart": 13,
+          "depHead": 6,
+          "depRelation": "det",
+          "feats": {
+            "Definite": "Ind",
+            "PronType": "Art"
+          },
+          "lemma": "a",
+          "text": "a",
+          "upos": "DET",
+          "xpos": "DT"
+        },
+        {
+          "charEnd": 26,
+          "charStart": 15,
+          "depHead": 6,
+          "depRelation": "compound",
+          "feats": {
+            "Number": "Sing"
+          },
+          "lemma": "replacement",
+          "text": "replacement",
+          "upos": "NOUN",
+          "xpos": "NN"
+        },
+        {
+          "charEnd": 31,
+          "charStart": 27,
+          "depHead": 3,
+          "depRelation": "obj",
+          "feats": {
+            "Number": "Sing"
+          },
+          "lemma": "pair",
+          "text": "pair",
+          "upos": "NOUN",
+          "xpos": "NN"
+        },
+        {
+          "charEnd": 32,
+          "charStart": 31,
+          "depHead": 3,
+          "depRelation": "punct",
+          "lemma": ".",
+          "text": ".",
+          "upos": "PUNCT",
+          "xpos": "."
+        },
+        {
+          "charEnd": 35,
+          "charStart": 33,
+          "depHead": 5,
+          "depRelation": "mark",
+          "lemma": "if",
+          "text": "If",
+          "upos": "SCONJ",
+          "xpos": "IN"
+        },
+        {
+          "charEnd": 38,
+          "charStart": 36,
+          "depHead": 3,
+          "depRelation": "det",
+          "feats": {
+            "PronType": "Neg"
+          },
+          "lemma": "no",
+          "text": "no",
+          "upos": "DET",
+          "xpos": "DT"
+        },
+        {
+          "charEnd": 50,
+          "charStart": 39,
+          "depHead": 5,
+          "depRelation": "nsubj",
+          "feats": {
+            "Number": "Sing"
+          },
+          "lemma": "replacement",
+          "text": "replacement",
+          "upos": "NOUN",
+          "xpos": "NN"
+        },
+        {
+          "charEnd": 53,
+          "charStart": 51,
+          "depHead": 5,
+          "depRelation": "cop",
+          "feats": {
+            "Mood": "Ind",
+            "Number": "Sing",
+            "Person": "3",
+            "Tense": "Pres",
+            "VerbForm": "Fin"
+          },
+          "lemma": "be",
+          "text": "is",
+          "upos": "AUX",
+          "xpos": "VBZ"
+        },
+        {
+          "charEnd": 63,
+          "charStart": 54,
+          "depHead": 8,
+          "depRelation": "advcl",
+          "feats": {
+            "Degree": "Pos"
+          },
+          "lemma": "available",
+          "text": "available",
+          "upos": "ADJ",
+          "xpos": "JJ"
+        },
+        {
+          "charEnd": 64,
+          "charStart": 63,
+          "depHead": 5,
+          "depRelation": "punct",
+          "lemma": ",",
+          "text": ",",
+          "upos": "PUNCT",
+          "xpos": ","
+        },
+        {
+          "charEnd": 71,
+          "charStart": 65,
+          "depHead": 8,
+          "depRelation": "discourse",
+          "lemma": "please",
+          "text": "please",
+          "upos": "INTJ",
+          "xpos": "UH"
+        },
+        {
+          "charEnd": 78,
+          "charStart": 72,
+          "depRelation": "root",
+          "feats": {
+            "Mood": "Imp",
+            "VerbForm": "Fin"
+          },
+          "lemma": "refund",
+          "text": "refund",
+          "upos": "VERB",
+          "xpos": "VB"
+        },
+        {
+          "charEnd": 82,
+          "charStart": 79,
+          "depHead": 10,
+          "depRelation": "det",
+          "feats": {
+            "Definite": "Def",
+            "PronType": "Art"
+          },
+          "lemma": "the",
+          "text": "the",
+          "upos": "DET",
+          "xpos": "DT"
+        },
+        {
+          "charEnd": 88,
+          "charStart": 83,
+          "depHead": 8,
+          "depRelation": "obj",
+          "feats": {
+            "Number": "Sing"
+          },
+          "lemma": "price",
+          "text": "price",
+          "upos": "NOUN",
+          "xpos": "NN"
+        },
+        {
+          "charEnd": 90,
+          "charStart": 89,
+          "depHead": 12,
+          "depRelation": "nsubj",
+          "feats": {
+            "Case": "Nom",
+            "Number": "Sing",
+            "Person": "1",
+            "PronType": "Prs"
+          },
+          "lemma": "I",
+          "text": "I",
+          "upos": "PRON",
+          "xpos": "PRP"
+        },
+        {
+          "charEnd": 95,
+          "charStart": 91,
+          "depHead": 10,
+          "depRelation": "acl:relcl",
+          "feats": {
+            "Mood": "Ind",
+            "Number": "Sing",
+            "Person": "1",
+            "Tense": "Past",
+            "VerbForm": "Fin"
+          },
+          "lemma": "pay",
+          "text": "paid",
+          "upos": "VERB",
+          "xpos": "VBD"
+        },
+        {
+          "charEnd": 96,
+          "charStart": 95,
+          "depHead": 14,
+          "depRelation": "punct",
+          "lemma": ",",
+          "text": ",",
+          "upos": "PUNCT",
+          "xpos": ","
+        },
+        {
+          "charEnd": 98,
+          "charStart": 97,
+          "depHead": 10,
+          "depRelation": "appos",
+          "lemma": "$",
+          "text": "$",
+          "upos": "SYM",
+          "xpos": "$"
+        },
+        {
+          "charEnd": 103,
+          "charStart": 98,
+          "depHead": 14,
+          "depRelation": "nummod",
+          "feats": {
+            "NumForm": "Digit",
+            "NumType": "Frac"
+          },
+          "lemma": "89.99",
+          "text": "89.99",
+          "upos": "NUM",
+          "xpos": "CD"
+        },
+        {
+          "charEnd": 104,
+          "charStart": 103,
+          "depHead": 8,
+          "depRelation": "punct",
+          "lemma": ".",
+          "text": ".",
+          "upos": "PUNCT",
+          "xpos": "."
+        }
+      ],
+      "traceId": "dea53b997c291c2fcbcc28f4ee8e54fb",
+      "used": [
+        {
+          "engine": "stanza",
+          "model": "stanza-cs-en",
+          "modelVersion": "stanza-1.10.0",
+          "op": "SENTENCE_SPLIT"
+        }
+      ]
+    },
+    "sha256": "10cc419e1ed14f3cd536bf72daf99800656d4e1e8c40e68a867425546d11daef"
+  },
+  {
+    "language": "en",
+    "response": {
+      "detectedLanguage": "en",
+      "elapsedMs": "616",
+      "engineUsed": "stanza",
+      "entities": [
+        {
+          "charEnd": 61,
+          "charStart": 47,
+          "label": "DATE",
+          "sourceEngine": "stanza",
+          "text": "3 October 2026"
+        },
+        {
+          "charEnd": 151,
+          "charStart": 141,
+          "label": "DATE",
+          "sourceEngine": "stanza",
+          "text": "four weeks"
+        }
+      ],
+      "language": "en",
+      "languageConfidence": 1.0,
+      "sentences": [
+        {
+          "charEnd": 62
+        },
+        {
+          "charEnd": 152,
+          "charStart": 64
+        },
+        {
+          "charEnd": 237,
+          "charStart": 153
+        },
+        {
+          "charEnd": 298,
+          "charStart": 239
+        }
+      ],
+      "tokens": [
+        {
+          "charEnd": 1,
+          "depHead": 3,
+          "depRelation": "nsubj",
+          "feats": {
+            "Case": "Nom",
+            "Number": "Sing",
+            "Person": "1",
+            "PronType": "Prs"
+          },
+          "lemma": "I",
+          "text": "I",
+          "upos": "PRON",
+          "xpos": "PRP"
+        },
+        {
+          "charEnd": 9,
+          "charStart": 2,
+          "depHead": 3,
+          "depRelation": "advmod",
+          "lemma": "already",
+          "text": "already",
+          "upos": "ADV",
+          "xpos": "RB"
+        },
+        {
+          "charEnd": 18,
+          "charStart": 10,
+          "depRelation": "root",
+          "feats": {
+            "Mood": "Ind",
+            "Number": "Sing",
+            "Person": "1",
+            "Tense": "Past",
+            "VerbForm": "Fin"
+          },
+          "lemma": "report",
+          "text": "reported",
+          "upos": "VERB",
+          "xpos": "VBD"
+        },
+        {
+          "charEnd": 23,
+          "charStart": 19,
+          "depHead": 3,
+          "depRelation": "obj",
+          "feats": {
+            "Number": "Sing",
+            "PronType": "Dem"
+          },
+          "lemma": "this",
+          "text": "this",
+          "upos": "PRON",
+          "xpos": "DT"
+        },
+        {
+          "charEnd": 26,
+          "charStart": 24,
+          "depHead": 7,
+          "depRelation": "case",
+          "lemma": "to",
+          "text": "to",
+          "upos": "ADP",
+          "xpos": "IN"
+        },
+        {
+          "charEnd": 35,
+          "charStart": 27,
+          "depHead": 7,
+          "depRelation": "compound",
+          "feats": {
+            "Number": "Sing"
+          },
+          "lemma": "customer",
+          "text": "customer",
+          "upos": "NOUN",
+          "xpos": "NN"
+        },
+        {
+          "charEnd": 43,
+          "charStart": 36,
+          "depHead": 3,
+          "depRelation": "obl",
+          "feats": {
+            "Number": "Sing"
+          },
+          "lemma": "service",
+          "text": "service",
+          "upos": "NOUN",
+          "xpos": "NN"
+        },
+        {
+          "charEnd": 46,
+          "charStart": 44,
+          "depHead": 9,
+          "depRelation": "case",
+          "lemma": "on",
+          "text": "on",
+          "upos": "ADP",
+          "xpos": "IN"
+        },
+        {
+          "charEnd": 48,
+          "charStart": 47,
+          "depHead": 3,
+          "depRelation": "obl",
+          "feats": {
+            "NumForm": "Digit",
+            "NumType": "Card"
+          },
+          "lemma": "3",
+          "text": "3",
+          "upos": "NUM",
+          "xpos": "CD"
+        },
+        {
+          "charEnd": 56,
+          "charStart": 49,
+          "depHead": 9,
+          "depRelation": "nmod:unmarked",
+          "feats": {
+            "Number": "Sing"
+          },
+          "lemma": "October",
+          "text": "October",
+          "upos": "PROPN",
+          "xpos": "NNP"
+        },
+        {
+          "charEnd": 61,
+          "charStart": 57,
+          "depHead": 9,
+          "depRelation": "nmod:unmarked",
+          "feats": {
+            "NumForm": "Digit",
+            "NumType": "Card"
+          },
+          "lemma": "2026",
+          "text": "2026",
+          "upos": "NUM",
+          "xpos": "CD"
+        },
+        {
+          "charEnd": 62,
+          "charStart": 61,
+          "depHead": 3,
+          "depRelation": "punct",
+          "lemma": ":",
+          "text": ":",
+          "upos": "PUNCT",
+          "xpos": ":"
+        },
+        {
+          "charEnd": 69,
+          "charStart": 64,
+          "depHead": 11,
+          "depRelation": "discourse",
+          "lemma": "hello",
+          "text": "Hello",
+          "upos": "INTJ",
+          "xpos": "UH"
+        },
+        {
+          "charEnd": 70,
+          "charStart": 69,
+          "depHead": 1,
+          "depRelation": "punct",
+          "lemma": ",",
+          "text": ",",
+          "upos": "PUNCT",
+          "xpos": ","
+        },
+        {
+          "charEnd": 74,
+          "charStart": 71,
+          "depHead": 5,
+          "depRelation": "det",
+          "feats": {
+            "Definite": "Def",
+            "PronType": "Art"
+          },
+          "lemma": "the",
+          "text": "the",
+          "upos": "DET",
+          "xpos": "DT"
+        },
+        {
+          "charEnd": 79,
+          "charStart": 75,
+          "depHead": 5,
+          "depRelation": "amod",
+          "feats": {
+            "Degree": "Pos"
+          },
+          "lemma": "left",
+          "text": "left",
+          "upos": "ADJ",
+          "xpos": "JJ"
+        },
+        {
+          "charEnd": 84,
+          "charStart": 80,
+          "depHead": 11,
+          "depRelation": "nsubj",
+          "feats": {
+            "Number": "Sing"
+          },
+          "lemma": "side",
+          "text": "side",
+          "upos": "NOUN",
+          "xpos": "NN"
+        },
+        {
+          "charEnd": 87,
+          "charStart": 85,
+          "depHead": 9,
+          "depRelation": "case",
+          "lemma": "of",
+          "text": "of",
+          "upos": "ADP",
+          "xpos": "IN"
+        },
+        {
+          "charEnd": 90,
+          "charStart": 88,
+          "depHead": 9,
+          "depRelation": "nmod:poss",
+          "feats": {
+            "Case": "Gen",
+            "Number": "Sing",
+            "Person": "1",
+            "Poss": "Yes",
+            "PronType": "Prs"
+          },
+          "lemma": "my",
+          "text": "my",
+          "upos": "PRON",
+          "xpos": "PRP$"
+        },
+        {
+          "charEnd": 96,
+          "charStart": 91,
+          "depHead": 9,
+          "depRelation": "compound",
+          "feats": {
+            "Number": "Sing"
+          },
+          "lemma": "pulse",
+          "text": "Pulse",
+          "upos": "NOUN",
+          "xpos": "NN"
+        },
+        {
+          "charEnd": 107,
+          "charStart": 97,
+          "depHead": 5,
+          "depRelation": "nmod",
+          "feats": {
+            "Number": "Plur"
+          },
+          "lemma": "headphone",
+          "text": "headphones",
+          "upos": "NOUN",
+          "xpos": "NNS"
+        },
+        {
+          "charEnd": 111,
+          "charStart": 108,
+          "depHead": 11,
+          "depRelation": "aux",
+          "feats": {
+            "Mood": "Ind",
+            "Number": "Sing",
+            "Person": "3",
+            "Tense": "Pres",
+            "VerbForm": "Fin"
+          },
+          "lemma": "have",
+          "text": "has",
+          "upos": "AUX",
+          "xpos": "VBZ"
+        },
+        {
+          "charEnd": 116,
+          "charStart": 112,
+          "depRelation": "root",
+          "feats": {
+            "Tense": "Past",
+            "VerbForm": "Part"
+          },
+          "lemma": "go",
+          "text": "gone",
+          "upos": "VERB",
+          "xpos": "VBN"
+        },
+        {
+          "charEnd": 127,
+          "charStart": 117,
+          "depHead": 13,
+          "depRelation": "advmod",
+          "lemma": "completely",
+          "text": "completely",
+          "upos": "ADV",
+          "xpos": "RB"
+        },
+        {
+          "charEnd": 134,
+          "charStart": 128,
+          "depHead": 11,
+          "depRelation": "xcomp",
+          "feats": {
+            "Degree": "Pos"
+          },
+          "lemma": "silent",
+          "text": "silent",
+          "upos": "ADJ",
+          "xpos": "JJ"
+        },
+        {
+          "charEnd": 140,
+          "charStart": 135,
+          "depHead": 16,
+          "depRelation": "case",
+          "lemma": "after",
+          "text": "after",
+          "upos": "ADP",
+          "xpos": "IN"
+        },
+        {
+          "charEnd": 145,
+          "charStart": 141,
+          "depHead": 16,
+          "depRelation": "nummod",
+          "feats": {
+            "NumForm": "Word",
+            "NumType": "Card"
+          },
+          "lemma": "four",
+          "text": "four",
+          "upos": "NUM",
+          "xpos": "CD"
+        },
+        {
+          "charEnd": 151,
+          "charStart": 146,
+          "depHead": 11,
+          "depRelation": "obl",
+          "feats": {
+            "Number": "Plur"
+          },
+          "lemma": "week",
+          "text": "weeks",
+          "upos": "NOUN",
+          "xpos": "NNS"
+        },
+        {
+          "charEnd": 152,
+          "charStart": 151,
+          "depHead": 11,
+          "depRelation": "punct",
+          "lemma": ".",
+          "text": ".",
+          "upos": "PUNCT",
+          "xpos": "."
+        },
+        {
+          "charEnd": 155,
+          "charStart": 153,
+          "depHead": 3,
+          "depRelation": "aux:pass",
+          "feats": {
+            "Mood": "Ind",
+            "Number": "Sing",
+            "Person": "3",
+            "Tense": "Pres",
+            "VerbForm": "Fin"
+          },
+          "lemma": "be",
+          "text": "Is",
+          "upos": "AUX",
+          "xpos": "VBZ"
+        },
+        {
+          "charEnd": 160,
+          "charStart": 156,
+          "depHead": 3,
+          "depRelation": "nsubj:pass",
+          "feats": {
+            "Number": "Sing",
+            "PronType": "Dem"
+          },
+          "lemma": "this",
+          "text": "this",
+          "upos": "PRON",
+          "xpos": "DT"
+        },
+        {
+          "charEnd": 168,
+          "charStart": 161,
+          "depRelation": "root",
+          "feats": {
+            "Tense": "Past",
+            "VerbForm": "Part",
+            "Voice": "Pass"
+          },
+          "lemma": "cover",
+          "text": "covered",
+          "upos": "VERB",
+          "xpos": "VBN"
+        },
+        {
+          "charEnd": 171,
+          "charStart": 169,
+          "depHead": 6,
+          "depRelation": "case",
+          "lemma": "by",
+          "text": "by",
+          "upos": "ADP",
+          "xpos": "IN"
+        },
+        {
+          "charEnd": 175,
+          "charStart": 172,
+          "depHead": 6,
+          "depRelation": "det",
+          "feats": {
+            "Definite": "Def",
+            "PronType": "Art"
+          },
+          "lemma": "the",
+          "text": "the",
+          "upos": "DET",
+          "xpos": "DT"
+        },
+        {
+          "charEnd": 184,
+          "charStart": 176,
+          "depHead": 3,
+          "depRelation": "obl:agent",
+          "feats": {
+            "Number": "Sing"
+          },
+          "lemma": "warranty",
+          "text": "warranty",
+          "upos": "NOUN",
+          "xpos": "NN"
+        },
+        {
+          "charEnd": 185,
+          "charStart": 184,
+          "depHead": 11,
+          "depRelation": "punct",
+          "lemma": ",",
+          "text": ",",
+          "upos": "PUNCT",
+          "xpos": ","
+        },
+        {
+          "charEnd": 189,
+          "charStart": 186,
+          "depHead": 11,
+          "depRelation": "cc",
+          "lemma": "and",
+          "text": "and",
+          "upos": "CCONJ",
+          "xpos": "CC"
+        },
+        {
+          "charEnd": 196,
+          "charStart": 190,
+          "depHead": 11,
+          "depRelation": "aux",
+          "feats": {
+            "VerbForm": "Fin"
+          },
+          "lemma": "should",
+          "text": "should",
+          "upos": "AUX",
+          "xpos": "MD"
+        },
+        {
+          "charEnd": 198,
+          "charStart": 197,
+          "depHead": 11,
+          "depRelation": "nsubj",
+          "feats": {
+            "Case": "Nom",
+            "Number": "Sing",
+            "Person": "1",
+            "PronType": "Prs"
+          },
+          "lemma": "I",
+          "text": "I",
+          "upos": "PRON",
+          "xpos": "PRP"
+        },
+        {
+          "charEnd": 203,
+          "charStart": 199,
+          "depHead": 3,
+          "depRelation": "conj",
+          "feats": {
+            "VerbForm": "Inf"
+          },
+          "lemma": "send",
+          "text": "send",
+          "upos": "VERB",
+          "xpos": "VB"
+        },
+        {
+          "charEnd": 208,
+          "charStart": 204,
+          "depHead": 11,
+          "depRelation": "obj",
+          "feats": {
+            "Case": "Acc",
+            "Number": "Plur",
+            "Person": "3",
+            "PronType": "Prs"
+          },
+          "lemma": "they",
+          "text": "them",
+          "upos": "PRON",
+          "xpos": "PRP"
+        },
+        {
+          "charEnd": 211,
+          "charStart": 209,
+          "depHead": 11,
+          "depRelation": "compound:prt",
+          "lemma": "in",
+          "text": "in",
+          "upos": "ADP",
+          "xpos": "RP"
+        },
+        {
+          "charEnd": 214,
+          "charStart": 212,
+          "depHead": 15,
+          "depRelation": "cc",
+          "lemma": "or",
+          "text": "or",
+          "upos": "CCONJ",
+          "xpos": "CC"
+        },
+        {
+          "charEnd": 220,
+          "charStart": 215,
+          "depHead": 11,
+          "depRelation": "conj",
+          "feats": {
+            "VerbForm": "Inf"
+          },
+          "lemma": "bring",
+          "text": "bring",
+          "upos": "VERB",
+          "xpos": "VB"
+        },
+        {
+          "charEnd": 225,
+          "charStart": 221,
+          "depHead": 15,
+          "depRelation": "obj",
+          "feats": {
+            "Case": "Acc",
+            "Number": "Plur",
+            "Person": "3",
+            "PronType": "Prs"
+          },
+          "lemma": "they",
+          "text": "them",
+          "upos": "PRON",
+          "xpos": "PRP"
+        },
+        {
+          "charEnd": 228,
+          "charStart": 226,
+          "depHead": 19,
+          "depRelation": "case",
+          "lemma": "to",
+          "text": "to",
+          "upos": "ADP",
+          "xpos": "IN"
+        },
+        {
+          "charEnd": 230,
+          "charStart": 229,
+          "depHead": 19,
+          "depRelation": "det",
+          "feats": {
+            "Definite": "Ind",
+            "PronType": "Art"
+          },
+          "lemma": "a",
+          "text": "a",
+          "upos": "DET",
+          "xpos": "DT"
+        },
+        {
+          "charEnd": 236,
+          "charStart": 231,
+          "depHead": 15,
+          "depRelation": "obl",
+          "feats": {
+            "Number": "Sing"
+          },
+          "lemma": "store",
+          "text": "store",
+          "upos": "NOUN",
+          "xpos": "NN"
+        },
+        {
+          "charEnd": 237,
+          "charStart": 236,
+          "depHead": 3,
+          "depRelation": "punct",
+          "lemma": "?",
+          "text": "?",
+          "upos": "PUNCT",
+          "xpos": "."
+        },
+        {
+          "charEnd": 240,
+          "charStart": 239,
+          "depHead": 4,
+          "depRelation": "nsubj",
+          "feats": {
+            "Case": "Nom",
+            "Number": "Sing",
+            "Person": "1",
+            "PronType": "Prs"
+          },
+          "lemma": "I",
+          "text": "I",
+          "upos": "PRON",
+          "xpos": "PRP"
+        },
+        {
+          "charEnd": 245,
+          "charStart": 241,
+          "depHead": 4,
+          "depRelation": "aux",
+          "feats": {
+            "Mood": "Ind",
+            "Number": "Sing",
+            "Person": "1",
+            "Tense": "Pres",
+            "VerbForm": "Fin"
+          },
+          "lemma": "have",
+          "text": "have",
+          "upos": "AUX",
+          "xpos": "VBP"
+        },
+        {
+          "charEnd": 249,
+          "charStart": 246,
+          "depHead": 4,
+          "depRelation": "advmod",
+          "feats": {
+            "Polarity": "Neg"
+          },
+          "lemma": "not",
+          "text": "not",
+          "upos": "PART",
+          "xpos": "RB"
+        },
+        {
+          "charEnd": 258,
+          "charStart": 250,
+          "depRelation": "root",
+          "feats": {
+            "Tense": "Past",
+            "VerbForm": "Part"
+          },
+          "lemma": "receive",
+          "text": "received",
+          "upos": "VERB",
+          "xpos": "VBN"
+        },
+        {
+          "charEnd": 260,
+          "charStart": 259,
+          "depHead": 6,
+          "depRelation": "det",
+          "feats": {
+            "Definite": "Ind",
+            "PronType": "Art"
+          },
+          "lemma": "a",
+          "text": "a",
+          "upos": "DET",
+          "xpos": "DT"
+        },
+        {
+          "charEnd": 266,
+          "charStart": 261,
+          "depHead": 4,
+          "depRelation": "obj",
+          "feats": {
+            "Number": "Sing"
+          },
+          "lemma": "reply",
+          "text": "reply",
+          "upos": "NOUN",
+          "xpos": "NN"
+        },
+        {
+          "charEnd": 270,
+          "charStart": 267,
+          "depHead": 4,
+          "depRelation": "advmod",
+          "lemma": "yet",
+          "text": "yet",
+          "upos": "ADV",
+          "xpos": "RB"
+        },
+        {
+          "charEnd": 271,
+          "charStart": 270,
+          "depHead": 12,
+          "depRelation": "punct",
+          "lemma": ",",
+          "text": ",",
+          "upos": "PUNCT",
+          "xpos": ","
+        },
+        {
+          "charEnd": 274,
+          "charStart": 272,
+          "depHead": 12,
+          "depRelation": "advmod",
+          "lemma": "so",
+          "text": "so",
+          "upos": "ADV",
+          "xpos": "RB"
+        },
+        {
+          "charEnd": 276,
+          "charStart": 275,
+          "depHead": 12,
+          "depRelation": "nsubj",
+          "feats": {
+            "Case": "Nom",
+            "Number": "Sing",
+            "Person": "1",
+            "PronType": "Prs"
+          },
+          "lemma": "I",
+          "text": "I",
+          "upos": "PRON",
+          "xpos": "PRP"
+        },
+        {
+          "charEnd": 279,
+          "charStart": 277,
+          "depHead": 12,
+          "depRelation": "aux",
+          "feats": {
+            "Mood": "Ind",
+            "Number": "Sing",
+            "Person": "1",
+            "Tense": "Pres",
+            "VerbForm": "Fin"
+          },
+          "lemma": "be",
+          "text": "am",
+          "upos": "AUX",
+          "xpos": "VBP"
+        },
+        {
+          "charEnd": 286,
+          "charStart": 280,
+          "depHead": 4,
+          "depRelation": "parataxis",
+          "feats": {
+            "Tense": "Pres",
+            "VerbForm": "Part"
+          },
+          "lemma": "file",
+          "text": "filing",
+          "upos": "VERB",
+          "xpos": "VBG"
+        },
+        {
+          "charEnd": 291,
+          "charStart": 287,
+          "depHead": 14,
+          "depRelation": "det",
+          "feats": {
+            "Number": "Sing",
+            "PronType": "Dem"
+          },
+          "lemma": "this",
+          "text": "this",
+          "upos": "DET",
+          "xpos": "DT"
+        },
+        {
+          "charEnd": 297,
+          "charStart": 292,
+          "depHead": 12,
+          "depRelation": "obj",
+          "feats": {
+            "Number": "Sing"
+          },
+          "lemma": "claim",
+          "text": "claim",
+          "upos": "NOUN",
+          "xpos": "NN"
+        },
+        {
+          "charEnd": 298,
+          "charStart": 297,
+          "depHead": 4,
+          "depRelation": "punct",
+          "lemma": ".",
+          "text": ".",
+          "upos": "PUNCT",
+          "xpos": "."
+        }
+      ],
+      "traceId": "a8cc2e71e923eddb6d82a142b9231afd",
+      "used": [
+        {
+          "engine": "stanza",
+          "model": "stanza-cs-en",
+          "modelVersion": "stanza-1.10.0",
+          "op": "SENTENCE_SPLIT"
+        }
+      ]
+    },
+    "sha256": "97fb3f2581fd728c3cfcba2f58b54aa88a9ef7d89f77234e7e1167a363a9c68c"
+  }
+]

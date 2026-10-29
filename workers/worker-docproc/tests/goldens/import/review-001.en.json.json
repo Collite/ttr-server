@@ -1,0 +1,42 @@
+[
+  {
+    "id": "g:review-001.en:0",
+    "payload": {
+      "createdAt": "2026-09-14T08:12:00Z",
+      "rating": 2,
+      "recorded": true,
+      "reviewId": "R-1001-01",
+      "source": "json-reviews",
+      "verified": true
+    },
+    "spans": [
+      {
+        "end": 301,
+        "start": 32,
+        "unit": "g:review-001.en:s0"
+      }
+    ],
+    "type": "Import.review",
+    "unit": "g:review-001.en:s0"
+  },
+  {
+    "id": "g:review-001.en:1",
+    "payload": {
+      "createdAt": "2026-09-28T19:40:00Z",
+      "rating": 5,
+      "recorded": true,
+      "reviewId": "R-1001-02",
+      "source": "json-reviews",
+      "verified": false
+    },
+    "spans": [
+      {
+        "end": 274,
+        "start": 27,
+        "unit": "g:review-001.en:s1"
+      }
+    ],
+    "type": "Import.review",
+    "unit": "g:review-001.en:s1"
+  }
+]

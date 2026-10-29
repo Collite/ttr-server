@@ -31,6 +31,7 @@ class FakeWarehouse:
         self.units = {u.id: u for u in units}
         self.annotations: list[Annotation] = []
         self.lemmas: dict[int, dict[str, Any]] = {}
+        self.sources: list[dict[str, Any]] = []
         self.loads = 0
         self.next_id = 1000
         self.visibility: dict[str, Any] = {}
@@ -84,7 +85,7 @@ class FakeWarehouse:
         return {"hits": []}
 
     def sources_of_document(self, document_id: str) -> list[dict[str, Any]]:
-        return []
+        return list(self.sources)
 
 
 class PackManager:
@@ -106,7 +107,11 @@ class PackManager:
                 manifest_yaml=text,
             )
             self.processors[(family, digest)] = p
-        self.extra_types: list[dict[str, Any]] = []  # test-only schemas, pending P1's engine fixtures
+        self.extra_types: list[dict[str, Any]] = []
+        self.bundles: dict[str, list[Annotation]] = {}
+
+    def bundle(self, bundle_ref: str) -> list[Annotation]:
+        return [a.model_copy(deep=True) for a in self.bundles[bundle_ref]]
 
     def processor(self, family: str, version_hash: str) -> Processor:
         return self.processors[(family, version_hash)]

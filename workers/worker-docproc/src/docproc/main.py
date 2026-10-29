@@ -13,9 +13,11 @@ import uvicorn
 
 from docproc.bus.pgmq import PgmqBus
 from docproc.config import load_config
+from docproc.kinds import register_structural
 from docproc.probes import make_probes_app
 from docproc.runtime.registry import KindRegistry, TypeRegistryClient
 from docproc.runtime.runner import ProcessorRunner
+from docproc.sdk.nlp import NlpClient
 from docproc.sdk.pipeline import PipelineClient
 from docproc.sdk.store import StoreClient
 
@@ -32,8 +34,9 @@ def main() -> None:
     manager = PipelineClient(config.pipeline_url, token_file=token_file)
     bus = PgmqBus(config.pipeline_db_url)
     kinds = KindRegistry()
-    # Production kind registration is added by S3.2; noop remains test-only.
+    nlp = NlpClient(config.nlp_grpc)
     registry = TypeRegistryClient(manager)
+    register_structural(kinds, warehouse, manager, registry, nlp, config.pack_path)
     runner = ProcessorRunner(config, bus, warehouse, manager, kinds, registry)
     app = make_probes_app(runner.ready, runner.status, runner.refresh_metrics)
     server = uvicorn.Server(uvicorn.Config(app, host="0.0.0.0", port=config.http_port, log_level="info"))
@@ -55,6 +58,7 @@ def main() -> None:
         bus.close()
         warehouse.close()
         manager.close()
+        nlp.close()
 
 
 if __name__ == "__main__":

@@ -1,0 +1,19 @@
+{
+  "$id": "ttr:types/Section",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "A section's heading facts. The section itself is a SECTION unit; this label carries its title and, once classified, its kind.",
+  "properties": {
+    "kind": {
+      "type": "string"
+    },
+    "title": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "title"
+  ],
+  "title": "Section",
+  "type": "object"
+}

@@ -1,0 +1,52 @@
+[
+  {
+    "id": "g:claim-002.en:0",
+    "payload": {
+      "previousUnitId": "g:claim-002.en:previous:0",
+      "status": "identical"
+    },
+    "spans": [],
+    "type": "UnitDiff",
+    "unit": "g:claim-002.en:s0"
+  },
+  {
+    "id": "g:claim-002.en:1",
+    "payload": {
+      "previousUnitId": "g:claim-002.en:previous:1",
+      "similarity": 0.95,
+      "status": "modified"
+    },
+    "spans": [],
+    "type": "UnitDiff",
+    "unit": "g:claim-002.en:s1"
+  },
+  {
+    "id": "g:claim-002.en:2",
+    "payload": {
+      "previousUnitId": "g:claim-002.en:previous:2",
+      "status": "identical"
+    },
+    "spans": [],
+    "type": "UnitDiff",
+    "unit": "g:claim-002.en:s8"
+  },
+  {
+    "id": "g:claim-002.en:3",
+    "payload": {
+      "previousUnitId": "g:claim-002.en:previous:3",
+      "status": "identical"
+    },
+    "spans": [],
+    "type": "UnitDiff",
+    "unit": "g:claim-002.en:s3"
+  },
+  {
+    "id": "g:claim-002.en:4",
+    "payload": {
+      "status": "new"
+    },
+    "spans": [],
+    "type": "UnitDiff",
+    "unit": "g:claim-002.en:s9"
+  }
+]

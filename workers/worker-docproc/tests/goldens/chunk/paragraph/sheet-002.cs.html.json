@@ -1,0 +1,156 @@
+[
+  {
+    "id": "g:sheet-002.cs:0",
+    "payload": {
+      "context": {
+        "parentUnitId": "g:sheet-002.cs:s0",
+        "prefix": "sheet-002.cs.html › Sloupový ventilátor Breeze"
+      },
+      "ordinal": 0,
+      "paramsHash": "sha256:ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356",
+      "strategy": "paragraph",
+      "tokenCount": 24
+    },
+    "spans": [
+      {
+        "end": 61,
+        "start": 0,
+        "unit": "g:sheet-002.cs:s0"
+      }
+    ],
+    "type": "Chunk",
+    "unit": "g:sheet-002.cs:s0"
+  },
+  {
+    "id": "g:sheet-002.cs:1",
+    "payload": {
+      "context": {
+        "parentUnitId": "g:sheet-002.cs:s1",
+        "prefix": "sheet-002.cs.html › Sloupový ventilátor Breeze › Přehled"
+      },
+      "ordinal": 0,
+      "paramsHash": "sha256:ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356",
+      "strategy": "paragraph",
+      "tokenCount": 118
+    },
+    "spans": [
+      {
+        "end": 259,
+        "start": 0,
+        "unit": "g:sheet-002.cs:s1"
+      }
+    ],
+    "type": "Chunk",
+    "unit": "g:sheet-002.cs:s1"
+  },
+  {
+    "id": "g:sheet-002.cs:2",
+    "payload": {
+      "context": {
+        "parentUnitId": "g:sheet-002.cs:s1",
+        "prefix": "sheet-002.cs.html › Sloupový ventilátor Breeze › Přehled"
+      },
+      "ordinal": 1,
+      "paramsHash": "sha256:ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356",
+      "strategy": "paragraph",
+      "tokenCount": 131
+    },
+    "spans": [
+      {
+        "end": 527,
+        "start": 261,
+        "unit": "g:sheet-002.cs:s1"
+      }
+    ],
+    "type": "Chunk",
+    "unit": "g:sheet-002.cs:s1"
+  },
+  {
+    "id": "g:sheet-002.cs:3",
+    "payload": {
+      "context": {
+        "parentUnitId": "g:sheet-002.cs:s2",
+        "prefix": "sheet-002.cs.html › Sloupový ventilátor Breeze › Technické parametry › Elektrické parametry"
+      },
+      "ordinal": 0,
+      "paramsHash": "sha256:ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356",
+      "strategy": "paragraph",
+      "tokenCount": 57
+    },
+    "spans": [
+      {
+        "end": 121,
+        "start": 0,
+        "unit": "g:sheet-002.cs:s2"
+      }
+    ],
+    "type": "Chunk",
+    "unit": "g:sheet-002.cs:s2"
+  },
+  {
+    "id": "g:sheet-002.cs:4",
+    "payload": {
+      "context": {
+        "parentUnitId": "g:sheet-002.cs:s3",
+        "prefix": "sheet-002.cs.html › Sloupový ventilátor Breeze › Technické parametry › Rozměry a hmotnost"
+      },
+      "ordinal": 0,
+      "paramsHash": "sha256:ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356",
+      "strategy": "paragraph",
+      "tokenCount": 34
+    },
+    "spans": [
+      {
+        "end": 71,
+        "start": 0,
+        "unit": "g:sheet-002.cs:s3"
+      }
+    ],
+    "type": "Chunk",
+    "unit": "g:sheet-002.cs:s3"
+  },
+  {
+    "id": "g:sheet-002.cs:5",
+    "payload": {
+      "context": {
+        "parentUnitId": "g:sheet-002.cs:s4",
+        "prefix": "sheet-002.cs.html › Sloupový ventilátor Breeze › Údržba"
+      },
+      "ordinal": 0,
+      "paramsHash": "sha256:ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356",
+      "strategy": "paragraph",
+      "tokenCount": 74
+    },
+    "spans": [
+      {
+        "end": 151,
+        "start": 0,
+        "unit": "g:sheet-002.cs:s4"
+      }
+    ],
+    "type": "Chunk",
+    "unit": "g:sheet-002.cs:s4"
+  },
+  {
+    "id": "g:sheet-002.cs:6",
+    "payload": {
+      "context": {
+        "parentUnitId": "g:sheet-002.cs:s5",
+        "prefix": "sheet-002.cs.html › Sloupový ventilátor Breeze › Záruka"
+      },
+      "ordinal": 0,
+      "paramsHash": "sha256:ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356",
+      "strategy": "paragraph",
+      "tokenCount": 72
+    },
+    "spans": [
+      {
+        "end": 177,
+        "start": 0,
+        "unit": "g:sheet-002.cs:s5"
+      }
+    ],
+    "type": "Chunk",
+    "unit": "g:sheet-002.cs:s5"
+  }
+]

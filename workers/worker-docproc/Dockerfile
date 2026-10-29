@@ -10,5 +10,6 @@ WORKDIR /app/workers/worker-docproc
 COPY workers/worker-docproc/src /app/workers/worker-docproc/src
 RUN uv sync --frozen --no-dev
 COPY workers/worker-docproc/conf /app/workers/worker-docproc/conf
+ENV TIKTOKEN_CACHE_DIR=/app/workers/worker-docproc/src/docproc/_data/tiktoken
 EXPOSE 7310
 CMD ["uv", "run", "--frozen", "--no-dev", "python", "-m", "docproc.main"]

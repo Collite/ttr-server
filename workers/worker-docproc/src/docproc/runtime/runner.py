@@ -201,6 +201,7 @@ class ProcessorRunner:
     def _process(self, msg: Message, item: WorkItem, started: float) -> Completion:
         processor = self.manager.processor(item.family, item.version_hash)
         completion = Completion(run_id=item.run_id, step_id=item.step_id)
+        sections: dict[str, Any] = {}
         ctx = RunContext(item, processor, {}, {}, [])
         try:
             manifest = self.kinds.manifest(processor)
@@ -224,6 +225,9 @@ class ProcessorRunner:
                 completion.status, completion.error = CompletionStatus.FAILED, "retries exhausted"
             else:
                 units = {uid: self.warehouse.get_unit(uid) for uid in item.unit_ids}
+                if item.kind in ("import", "diff"):
+                    for source_id in {u.source_id for u in list(units.values())}:
+                        units.update((u.id, u) for u in self.warehouse.units_of_source(source_id))
                 annotations: list[Annotation] = []
                 if item.consume.visibility not in ("active", "active+generation"):
                     completion.status, completion.error = CompletionStatus.FAILED, "unsupported consume visibility"
@@ -251,12 +255,24 @@ class ProcessorRunner:
                 try:
                     with time_budget(float(manifest["budget"]["timeout_s"])):
                         result = self.kinds.kinds[item.kind].run(ctx)
-                    output, diagnostics = self.validators.validate(
-                        result.annotations + result.verdicts, units, manifest.get("post_conditions", [])
-                    )
+                    sections = result.sections
+                    annotations_to_validate = result.annotations + result.verdicts
+                    conditions = manifest.get("post_conditions", [])
+                    chunk_diagnostics: list[Annotation] = []
+                    if item.kind == "chunk":
+                        annotations_to_validate, chunk_diagnostics = self.validators.validate_chunks(
+                            annotations_to_validate, units, manifest["engine"], result.chunk_params
+                        )
+                        conditions = [
+                            c for c in conditions if c not in ("coverage", "overlap_within_declared", "max_tokens")
+                        ]
+                    output, diagnostics = self.validators.validate(annotations_to_validate, units, conditions)
+                    diagnostics += chunk_diagnostics
                     output += diagnostics
                     for a in output:
-                        a.run_id, a.producer, a.producer_version = item.run_id, item.family, item.version_hash
+                        a.run_id = item.run_id
+                        if item.kind != "import" or not a.producer.startswith("import:"):
+                            a.producer, a.producer_version = item.family, item.version_hash
                     only_abstentions = bool(output) and all(a.type == "Abstention" for a in output)
                     completion.status = (
                         CompletionStatus.ABSTAINED
@@ -290,12 +306,25 @@ class ProcessorRunner:
                             verdicts.labels(item.family, str(a.payload().get("rule", ""))).inc()
                     self.after_load()  # fault injection: outside kind error handling, leaves message unacked
         completion.usage.latency_ms = int((time.monotonic() - started) * 1000)
-        self._complete(msg, ctx, completion, archive=msg.read_ct > int(manifest["budget"]["retries"]) and not existing)
+        self._complete(
+            msg,
+            ctx,
+            completion,
+            archive=msg.read_ct > int(manifest["budget"]["retries"]) and not existing,
+            sections=sections,
+        )
         return completion
 
-    def _complete(self, msg: Message, ctx: RunContext, completion: Completion, archive: bool = False) -> None:
+    def _complete(
+        self,
+        msg: Message,
+        ctx: RunContext,
+        completion: Completion,
+        archive: bool = False,
+        sections: dict[str, Any] | None = None,
+    ) -> None:
         completion.artefact_ref = f"pipeline://run_artefacts/{ctx.item.run_id}"
-        document = self.writer.document(ctx, completion)
+        document = self.writer.document(ctx, completion, sections)
         with self.bus.transaction() as conn:
             inserted = conn.execute(
                 "INSERT INTO pipeline.run_artefacts(run_id, protocol) VALUES (%s, %s) "

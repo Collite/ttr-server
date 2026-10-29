@@ -1,0 +1,266 @@
+{
+  "documents": {
+    "claim-001.cs.txt": [
+      {
+        "idx": 0,
+        "spans": [
+          {
+            "end": 353,
+            "start": 0
+          },
+          {
+            "end": 551,
+            "start": 355
+          }
+        ]
+      }
+    ],
+    "claim-002.en.md": [
+      {
+        "idx": 0,
+        "spans": [
+          {
+            "end": 50,
+            "start": 0
+          }
+        ]
+      },
+      {
+        "idx": 1,
+        "spans": [
+          {
+            "end": 266,
+            "start": 0
+          }
+        ]
+      },
+      {
+        "idx": 2,
+        "spans": [
+          {
+            "end": 104,
+            "start": 0
+          }
+        ]
+      },
+      {
+        "idx": 3,
+        "spans": [
+          {
+            "end": 237,
+            "start": 0
+          },
+          {
+            "end": 298,
+            "start": 239
+          }
+        ]
+      }
+    ],
+    "review-001.en.json": [
+      {
+        "idx": 0,
+        "spans": [
+          {
+            "end": 301,
+            "start": 0
+          }
+        ]
+      },
+      {
+        "idx": 1,
+        "spans": [
+          {
+            "end": 274,
+            "start": 0
+          }
+        ]
+      }
+    ],
+    "review-002.cs.json": [
+      {
+        "idx": 0,
+        "spans": [
+          {
+            "end": 220,
+            "start": 0
+          }
+        ]
+      },
+      {
+        "idx": 1,
+        "spans": [
+          {
+            "end": 242,
+            "start": 0
+          }
+        ]
+      }
+    ],
+    "sheet-001.en.html": [
+      {
+        "idx": 0,
+        "spans": [
+          {
+            "end": 54,
+            "start": 0
+          }
+        ]
+      },
+      {
+        "idx": 1,
+        "spans": [
+          {
+            "end": 285,
+            "start": 0
+          },
+          {
+            "end": 590,
+            "start": 287
+          },
+          {
+            "end": 772,
+            "start": 592
+          },
+          {
+            "end": 1013,
+            "start": 774
+          }
+        ]
+      },
+      {
+        "idx": 2,
+        "spans": [
+          {
+            "end": 309,
+            "start": 0
+          }
+        ]
+      },
+      {
+        "idx": 3,
+        "spans": [
+          {
+            "end": 83,
+            "start": 0
+          }
+        ]
+      },
+      {
+        "idx": 4,
+        "spans": [
+          {
+            "end": 382,
+            "start": 0
+          },
+          {
+            "end": 636,
+            "start": 384
+          }
+        ]
+      },
+      {
+        "idx": 5,
+        "spans": [
+          {
+            "end": 146,
+            "start": 0
+          },
+          {
+            "end": 370,
+            "start": 148
+          },
+          {
+            "end": 549,
+            "start": 372
+          }
+        ]
+      },
+      {
+        "idx": 6,
+        "spans": [
+          {
+            "end": 208,
+            "start": 0
+          },
+          {
+            "end": 351,
+            "start": 210
+          }
+        ]
+      },
+      {
+        "idx": 7,
+        "spans": [
+          {
+            "end": 255,
+            "start": 0
+          }
+        ]
+      }
+    ],
+    "sheet-002.cs.html": [
+      {
+        "idx": 0,
+        "spans": [
+          {
+            "end": 61,
+            "start": 0
+          }
+        ]
+      },
+      {
+        "idx": 1,
+        "spans": [
+          {
+            "end": 259,
+            "start": 0
+          },
+          {
+            "end": 527,
+            "start": 261
+          }
+        ]
+      },
+      {
+        "idx": 2,
+        "spans": [
+          {
+            "end": 121,
+            "start": 0
+          }
+        ]
+      },
+      {
+        "idx": 3,
+        "spans": [
+          {
+            "end": 71,
+            "start": 0
+          }
+        ]
+      },
+      {
+        "idx": 4,
+        "spans": [
+          {
+            "end": 151,
+            "start": 0
+          }
+        ]
+      },
+      {
+        "idx": 5,
+        "spans": [
+          {
+            "end": 177,
+            "start": 0
+          }
+        ]
+      }
+    ]
+  },
+  "maxWords": 200,
+  "minWords": 30,
+  "source": "kantheon@4f0b263b:services/docwh-store/src/main/kotlin/org/tatrman/docwh/store/ingestion/ParagraphSplitter.kt"
+}

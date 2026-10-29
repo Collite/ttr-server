@@ -6,7 +6,7 @@ from __future__ import annotations
 from typing import Any, Protocol
 from urllib.parse import quote
 
-from docproc.sdk.models import Processor
+from docproc.sdk.models import Annotation, Processor
 from docproc.sdk.store import StoreClient
 
 
@@ -14,6 +14,7 @@ class Manager(Protocol):
     def processor(self, family: str, version_hash: str) -> Processor: ...
     def registry(self, version: str) -> dict[str, Any]: ...
     def hosted_processors(self) -> list[Processor]: ...
+    def bundle(self, bundle_ref: str) -> list[Annotation]: ...
 
 
 class PipelineClient(StoreClient):
@@ -45,3 +46,7 @@ class PipelineClient(StoreClient):
     def hosted_processors(self) -> list[Processor]:
         body = self._ok(self._http.get("/v1/processors"))
         return [Processor.model_validate(p) for p in body["processors"] if p.get("host") == "docproc"]
+
+    def bundle(self, bundle_ref: str) -> list[Annotation]:
+        body = self._ok(self._http.get(f"/v1/bundles/{quote(bundle_ref, safe='')}"))
+        return [Annotation.model_validate(a) for a in body["annotations"]]

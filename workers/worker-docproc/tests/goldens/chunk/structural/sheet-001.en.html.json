@@ -1,0 +1,200 @@
+[
+  {
+    "id": "g:sheet-001.en:0",
+    "payload": {
+      "context": {
+        "parentUnitId": "g:sheet-001.en:s0",
+        "prefix": "sheet-001.en.html › Aurora Desk Lamp"
+      },
+      "ordinal": 0,
+      "paramsHash": "sha256:36d3feae636ee4bae4c7c754e63e33a63a764b8f1e0975a67d35e097bf6beed9",
+      "strategy": "structural",
+      "tokenCount": 16
+    },
+    "spans": [
+      {
+        "end": 54,
+        "start": 0,
+        "unit": "g:sheet-001.en:s0"
+      }
+    ],
+    "type": "Chunk",
+    "unit": "g:sheet-001.en:s0"
+  },
+  {
+    "id": "g:sheet-001.en:1",
+    "payload": {
+      "context": {
+        "parentUnitId": "g:sheet-001.en:s1",
+        "prefix": "sheet-001.en.html › Aurora Desk Lamp › Overview"
+      },
+      "ordinal": 0,
+      "paramsHash": "sha256:36d3feae636ee4bae4c7c754e63e33a63a764b8f1e0975a67d35e097bf6beed9",
+      "strategy": "structural",
+      "tokenCount": 167
+    },
+    "spans": [
+      {
+        "end": 772,
+        "start": 0,
+        "unit": "g:sheet-001.en:s1"
+      }
+    ],
+    "type": "Chunk",
+    "unit": "g:sheet-001.en:s1"
+  },
+  {
+    "id": "g:sheet-001.en:2",
+    "payload": {
+      "context": {
+        "parentUnitId": "g:sheet-001.en:s1",
+        "prefix": "sheet-001.en.html › Aurora Desk Lamp › Overview"
+      },
+      "ordinal": 1,
+      "paramsHash": "sha256:36d3feae636ee4bae4c7c754e63e33a63a764b8f1e0975a67d35e097bf6beed9",
+      "strategy": "structural",
+      "tokenCount": 50
+    },
+    "spans": [
+      {
+        "end": 1013,
+        "start": 774,
+        "unit": "g:sheet-001.en:s1"
+      }
+    ],
+    "type": "Chunk",
+    "unit": "g:sheet-001.en:s1"
+  },
+  {
+    "id": "g:sheet-001.en:3",
+    "payload": {
+      "context": {
+        "parentUnitId": "g:sheet-001.en:s2",
+        "prefix": "sheet-001.en.html › Aurora Desk Lamp › Specifications"
+      },
+      "ordinal": 0,
+      "paramsHash": "sha256:36d3feae636ee4bae4c7c754e63e33a63a764b8f1e0975a67d35e097bf6beed9",
+      "strategy": "structural",
+      "tokenCount": 105
+    },
+    "spans": [
+      {
+        "end": 309,
+        "start": 0,
+        "unit": "g:sheet-001.en:s2"
+      }
+    ],
+    "type": "Chunk",
+    "unit": "g:sheet-001.en:s2"
+  },
+  {
+    "id": "g:sheet-001.en:4",
+    "payload": {
+      "context": {
+        "parentUnitId": "g:sheet-001.en:s3",
+        "prefix": "sheet-001.en.html › Aurora Desk Lamp › In the box"
+      },
+      "ordinal": 0,
+      "paramsHash": "sha256:36d3feae636ee4bae4c7c754e63e33a63a764b8f1e0975a67d35e097bf6beed9",
+      "strategy": "structural",
+      "tokenCount": 21
+    },
+    "spans": [
+      {
+        "end": 83,
+        "start": 0,
+        "unit": "g:sheet-001.en:s3"
+      }
+    ],
+    "type": "Chunk",
+    "unit": "g:sheet-001.en:s3"
+  },
+  {
+    "id": "g:sheet-001.en:5",
+    "payload": {
+      "context": {
+        "parentUnitId": "g:sheet-001.en:s4",
+        "prefix": "sheet-001.en.html › Aurora Desk Lamp › Using the lamp"
+      },
+      "ordinal": 0,
+      "paramsHash": "sha256:36d3feae636ee4bae4c7c754e63e33a63a764b8f1e0975a67d35e097bf6beed9",
+      "strategy": "structural",
+      "tokenCount": 143
+    },
+    "spans": [
+      {
+        "end": 636,
+        "start": 0,
+        "unit": "g:sheet-001.en:s4"
+      }
+    ],
+    "type": "Chunk",
+    "unit": "g:sheet-001.en:s4"
+  },
+  {
+    "id": "g:sheet-001.en:6",
+    "payload": {
+      "context": {
+        "parentUnitId": "g:sheet-001.en:s5",
+        "prefix": "sheet-001.en.html › Aurora Desk Lamp › Questions and answers"
+      },
+      "ordinal": 0,
+      "paramsHash": "sha256:36d3feae636ee4bae4c7c754e63e33a63a764b8f1e0975a67d35e097bf6beed9",
+      "strategy": "structural",
+      "tokenCount": 124
+    },
+    "spans": [
+      {
+        "end": 549,
+        "start": 0,
+        "unit": "g:sheet-001.en:s5"
+      }
+    ],
+    "type": "Chunk",
+    "unit": "g:sheet-001.en:s5"
+  },
+  {
+    "id": "g:sheet-001.en:7",
+    "payload": {
+      "context": {
+        "parentUnitId": "g:sheet-001.en:s6",
+        "prefix": "sheet-001.en.html › Aurora Desk Lamp › Care and safety"
+      },
+      "ordinal": 0,
+      "paramsHash": "sha256:36d3feae636ee4bae4c7c754e63e33a63a764b8f1e0975a67d35e097bf6beed9",
+      "strategy": "structural",
+      "tokenCount": 79
+    },
+    "spans": [
+      {
+        "end": 351,
+        "start": 0,
+        "unit": "g:sheet-001.en:s6"
+      }
+    ],
+    "type": "Chunk",
+    "unit": "g:sheet-001.en:s6"
+  },
+  {
+    "id": "g:sheet-001.en:8",
+    "payload": {
+      "context": {
+        "parentUnitId": "g:sheet-001.en:s7",
+        "prefix": "sheet-001.en.html › Aurora Desk Lamp › Warranty"
+      },
+      "ordinal": 0,
+      "paramsHash": "sha256:36d3feae636ee4bae4c7c754e63e33a63a764b8f1e0975a67d35e097bf6beed9",
+      "strategy": "structural",
+      "tokenCount": 56
+    },
+    "spans": [
+      {
+        "end": 255,
+        "start": 0,
+        "unit": "g:sheet-001.en:s7"
+      }
+    ],
+    "type": "Chunk",
+    "unit": "g:sheet-001.en:s7"
+  }
+]

@@ -1,0 +1,29 @@
+{
+  "$id": "ttr:types/Date",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "A date or time read from the text: the normalized value, its precision, the text it was read from, and its anchor.",
+  "properties": {
+    "anchor": {
+      "type": "string"
+    },
+    "precision": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "text": {
+      "type": "string"
+    },
+    "value": {
+      "minLength": 1,
+      "type": "string"
+    }
+  },
+  "required": [
+    "value",
+    "precision",
+    "text"
+  ],
+  "title": "Date",
+  "type": "object"
+}

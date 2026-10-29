@@ -1,0 +1,89 @@
+{
+  "$defs": {
+    "Candidate": {
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "score": {
+          "type": "number"
+        },
+        "source": {
+          "type": "string"
+        },
+        "system": {
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "system",
+        "code",
+        "label",
+        "score",
+        "source"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "ttr:types/Mention",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "A mention of something the model knows. kind makes the selector Mention[<kind>]; member is the linked row (link).",
+  "properties": {
+    "candidates": {
+      "items": {
+        "$ref": "#/$defs/Candidate"
+      },
+      "type": "array"
+    },
+    "concept": {
+      "type": "string"
+    },
+    "kind": {
+      "pattern": "^[a-z_][a-z0-9_]*$",
+      "type": "string"
+    },
+    "lemma": {
+      "type": "string"
+    },
+    "linkMethod": {
+      "type": "string"
+    },
+    "member": {
+      "additionalProperties": false,
+      "properties": {
+        "category": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "display": {
+          "type": "string"
+        },
+        "id": {
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "category",
+        "id"
+      ],
+      "type": "object"
+    },
+    "surface": {
+      "minLength": 1,
+      "type": "string"
+    }
+  },
+  "required": [
+    "surface"
+  ],
+  "title": "Mention",
+  "type": "object"
+}

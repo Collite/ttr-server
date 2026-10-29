@@ -1,0 +1,90 @@
+[
+  {
+    "id": "g:claim-002.en:0",
+    "payload": {
+      "context": {
+        "parentUnitId": "g:claim-002.en:s0",
+        "prefix": "claim-002.en.md › Warranty claim: Pulse Wireless Headphones"
+      },
+      "ordinal": 0,
+      "paramsHash": "sha256:ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356",
+      "strategy": "page",
+      "tokenCount": 18
+    },
+    "spans": [
+      {
+        "end": 50,
+        "start": 0,
+        "unit": "g:claim-002.en:s0"
+      }
+    ],
+    "type": "Chunk",
+    "unit": "g:claim-002.en:s0"
+  },
+  {
+    "id": "g:claim-002.en:1",
+    "payload": {
+      "context": {
+        "parentUnitId": "g:claim-002.en:s1",
+        "prefix": "claim-002.en.md › Warranty claim: Pulse Wireless Headphones › The defect"
+      },
+      "ordinal": 0,
+      "paramsHash": "sha256:ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356",
+      "strategy": "page",
+      "tokenCount": 55
+    },
+    "spans": [
+      {
+        "end": 266,
+        "start": 0,
+        "unit": "g:claim-002.en:s1"
+      }
+    ],
+    "type": "Chunk",
+    "unit": "g:claim-002.en:s1"
+  },
+  {
+    "id": "g:claim-002.en:2",
+    "payload": {
+      "context": {
+        "parentUnitId": "g:claim-002.en:s2",
+        "prefix": "claim-002.en.md › Warranty claim: Pulse Wireless Headphones › What I am asking for"
+      },
+      "ordinal": 0,
+      "paramsHash": "sha256:ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356",
+      "strategy": "page",
+      "tokenCount": 25
+    },
+    "spans": [
+      {
+        "end": 104,
+        "start": 0,
+        "unit": "g:claim-002.en:s2"
+      }
+    ],
+    "type": "Chunk",
+    "unit": "g:claim-002.en:s2"
+  },
+  {
+    "id": "g:claim-002.en:3",
+    "payload": {
+      "context": {
+        "parentUnitId": "g:claim-002.en:s3",
+        "prefix": "claim-002.en.md › Warranty claim: Pulse Wireless Headphones › Earlier correspondence"
+      },
+      "ordinal": 0,
+      "paramsHash": "sha256:ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356",
+      "strategy": "page",
+      "tokenCount": 67
+    },
+    "spans": [
+      {
+        "end": 298,
+        "start": 0,
+        "unit": "g:claim-002.en:s3"
+      }
+    ],
+    "type": "Chunk",
+    "unit": "g:claim-002.en:s3"
+  }
+]

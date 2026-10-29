@@ -14,7 +14,9 @@ from docproc.sdk.models import Completion
 
 
 class ProtocolWriter:
-    def document(self, ctx: RunContext, completion: Completion) -> dict[str, Any]:
+    def document(
+        self, ctx: RunContext, completion: Completion, sections: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
         item = ctx.item
         payloads: list[tuple[str, str, dict[str, Any]]] = [
             (
@@ -69,6 +71,8 @@ class ProtocolWriter:
                 else {},
             ),
         ]
+        if sections:
+            payloads = [(key, member, {**payload, **sections.get(key, {})}) for key, member, payload in payloads]
         return {
             "protocolId": item.run_id,
             "sessionId": item.plan_id,

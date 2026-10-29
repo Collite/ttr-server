@@ -40,3 +40,20 @@ def test_registry_parameterized_and_import_resolution() -> None:
     schema = registry.schema_for("Statement[review]").schema
     assert isinstance(schema, dict)
     assert schema["$id"] == "ttr:types/Statement.review"
+
+
+@pytest.mark.parametrize("strategy", ["semantic", "summary-prefix"])
+def test_costly_chunk_strategies_are_not_hosted_in_p3(strategy: str) -> None:
+    import yaml
+
+    from docproc.kinds.noop import Noop
+    from tests.fakes import PackManager
+
+    registry = KindRegistry()
+    registry.register("chunk", Noop())
+    processor = next(p for p in PackManager().processors.values() if p.family == "chunk-recursive")
+    manifest = yaml.safe_load(processor.manifest_yaml)
+    manifest["engine"]["strategy"] = strategy
+    processor.manifest_yaml = yaml.safe_dump(manifest)
+    with pytest.raises(UnsupportedKind, match="chunk/strategy-not-in-this-release"):
+        registry.manifest(processor)

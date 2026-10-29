@@ -1,0 +1,34 @@
+{
+  "$id": "ttr:types/Candidate",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "A link candidate: the code system, the code, its label and score, and where it came from (lexicon, knn, …).",
+  "properties": {
+    "code": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "label": {
+      "type": "string"
+    },
+    "score": {
+      "type": "number"
+    },
+    "source": {
+      "type": "string"
+    },
+    "system": {
+      "minLength": 1,
+      "type": "string"
+    }
+  },
+  "required": [
+    "system",
+    "code",
+    "label",
+    "score",
+    "source"
+  ],
+  "title": "Candidate",
+  "type": "object"
+}

@@ -1,0 +1,78 @@
+[
+  {
+    "id": "g:claim-001.cs:0",
+    "payload": {
+      "candidates": [],
+      "concept": "cn.Item",
+      "kind": "item",
+      "linkMethod": "gazetteer",
+      "surface": "rychlovarná konvice Summit"
+    },
+    "spans": [
+      {
+        "end": 38,
+        "start": 12,
+        "unit": "g:claim-001.cs:s0"
+      }
+    ],
+    "type": "Mention",
+    "unit": "g:claim-001.cs:s0"
+  },
+  {
+    "id": "g:claim-001.cs:1",
+    "payload": {
+      "candidates": [],
+      "concept": "cn.Item",
+      "kind": "item",
+      "linkMethod": "gazetteer",
+      "surface": "rychlovarnou konvici Summit"
+    },
+    "spans": [
+      {
+        "end": 87,
+        "start": 60,
+        "unit": "g:claim-001.cs:s0"
+      }
+    ],
+    "type": "Mention",
+    "unit": "g:claim-001.cs:s0"
+  },
+  {
+    "id": "g:claim-001.cs:2",
+    "payload": {
+      "precision": "day",
+      "text": "2. září 2026",
+      "value": "2026-09-02"
+    },
+    "spans": [
+      {
+        "end": 139,
+        "start": 127,
+        "unit": "g:claim-001.cs:s0"
+      }
+    ],
+    "type": "Date",
+    "unit": "g:claim-001.cs:s0"
+  },
+  {
+    "id": "g:claim-001.cs:3",
+    "payload": {
+      "kind": "certainty",
+      "scope": {
+        "end": 275,
+        "start": 272,
+        "unitId": "g:claim-001.cs:s0"
+      },
+      "trigger": "asi"
+    },
+    "spans": [
+      {
+        "end": 275,
+        "start": 272,
+        "unit": "g:claim-001.cs:s0"
+      }
+    ],
+    "type": "Modifier",
+    "unit": "g:claim-001.cs:s0"
+  }
+]

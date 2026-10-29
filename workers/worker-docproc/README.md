@@ -4,7 +4,8 @@ The stateless Python worker runtime for deterministic document processing. Desig
 and planned in `project/kantheon/features/hermes/` (DX-P3). Version stays on 0.11.x.
 
 S3.1 provides the runtime, clients, validators, probes and packaging. S3.2 registers
-the production kinds; `Noop` is test-only and is never registered by the bootstrap.
+`import`, `lemmatize`, `classify`, `nlp-pipeline`, `diff`, and `chunk`. `Noop` is test-only
+and is never registered by the bootstrap.
 Outward calls are held behind `Warehouse`/`Manager` protocols, exercised against
 in-memory fakes until P1/P2 supply the services and phase certification runs.
 
@@ -34,8 +35,10 @@ DOCWH_PIPELINE_URL='http://docwh-pipeline:7280' uv run python -m docproc.main
 `conf/application.conf` uses HOCON with optional environment overrides. Required:
 `PIPELINE_DB_URL`, `DOCWH_STORE_URL`, `DOCWH_PIPELINE_URL`. Pool defaults to `cpu`;
 `DOCPROC_FAMILIES` optionally narrows the hosted registry to comma-separated families.
-`DOCPROC_CONFIG` selects another HOCON file. NLP, lex-matcher, gateway, pack path and
-world-DB settings are reserved for subsequent kinds; the world connection follows
+`DOCPROC_CONFIG` selects another HOCON file.
+`NLP_GRPC` is required when an NLP kind runs (gRPC, normally `nlp:7271`).
+`DOCPROC_PACK_PATH` names the mounted pack for classify gazetteers and `pack:` chunkers.
+Lex-matcher, gateway and world-DB settings are reserved for S3.3/P4; the world connection follows
 `TTR_CONN_EXTRACT_RECORDS`. Connection strings are excluded from configuration repr.
 
 Service identity uses `DOCPROC_SERVICE_TOKEN`, or the file named by
@@ -62,11 +65,41 @@ uv run --locked python scripts/gen_proto.py
 Fixture source: `kantheon/shared/proto/fixtures/dx/packs/hartland-mini` and sibling
 `schemas/` at merged PX commit `64ad33f6`. The mirrors are byte-identical, JSON is
 canonical, documents NFC. Set `KANTHEON_DIR` to that checkout for the peer checks.
-P1's engine `types/`, `when-cases.json`, and `chunk-validators.json` are explicitly
-skipped until supplied; then copy them byte-for-byte into the fixture mirror and
-package `types/` under `src/docproc/_data/`. Runtime manifest schemas already ship
-under `_data/schemas/`. Model schemas load from the manager's registry, not Python
-re-statements. The test-only fake supplies minimal structural schemas until P1.
+The engine `types/` mirror comes from P1 `4f0b263b`, with P3's optional `Chunk.oversize`
+field. P3 supplies `chunk-validators.json`; P1's `loadSource`, `unitTree` and `loadLemmas`
+fixtures are also mirrored. Only `when-cases.json` remains a named, explicit skip
+until its owner supplies it. Set `KANTHEON_DIR` to the P3 canonical-fixture checkout
+for complete peer checks. Runtime schemas are packaged under `_data/schemas/` and
+`_data/types/`; the actual model registry is fetched from the manager, never copied
+into Python classes.
+
+Per-kind goldens cover all six documents; ids in them are stable `g:` references.
+Failures print the first differing annotation and its sliced text. The fixture unit
+trees follow PX's sections, including heading/table-row code-point metadata from the
+original documents. The real Kotlin `ParagraphSplitter` (kantheon `4f0b263b`, Kotlin
+2.0.21, `minWords=30/maxWords=200`) produced `tests/fixtures/paragraph-kotlin.json` for
+all 23 sections; recursive sheet boundaries/token counts also match PX exactly.
+
+`tests/fixtures/nlp/` holds actual gRPC replies from the local production NLP front
+and the pinned Stanza/spaCy backend images, including an emoji-before-mention proof.
+The recording front builds test-world lists from PX's gazetteer (including terms
+lemmatized by the real model), plus explicit test calendar/modifier rules. These
+lists configure the recording service; production NLP pipeline configuration is
+owned by the world deployment. CI replays the replies through an in-process gRPC
+servicer and never needs a live NLP service or model downloads. To record again:
+
+```sh
+# Repository root; existing local model images, loopback ports, disposable containers.
+docker run --rm -d --name dx-p3-stanza -p 127.0.0.1:18090:8090 ttr-nlp-stanza:dev
+docker run --rm -d --name dx-p3-spacy -p 127.0.0.1:18091:8091 ttr-nlp-spacy:dev
+uv sync --directory services/nlp --locked
+uv run --directory services/nlp python scripts/gen_proto.py
+PYTHONPATH=services/nlp/src:services/nlp/generated services/nlp/.venv/bin/python \
+  workers/worker-docproc/scripts/serve_fixture_nlp.py
+# Another terminal, worker directory:
+PYTHONPATH=. uv run --locked python scripts/record_nlp.py --target 127.0.0.1:17271
+# Stop the recording front, then the two named containers when finished.
+```
 
 The processor protocol follows DX's summary spine (ids/hashes, no unit text).
 `tests/fixtures/protocol/noop.json` is a local canonical golden; P2's processor proto
@@ -78,6 +111,57 @@ NLP/fuzzy/common gRPC stubs are generated from this repository's shared `.proto`
 tree into the private `docproc._generated` namespace. CI regenerates them with the
 locked compiler and checks for drift; generated code is excluded from Ruff/mypy.
 No Kantheon proto stubs are imported.
+
+## Structural kinds and chunkers
+
+`import` reads the split-reanchored bundle via `GET /v1/bundles/{ref}` and retains
+connector provenance (`import:<connector>@<version>`). Each invalid fact becomes
+`import/rejected`; valid siblings still load. `lemmatize` batches by language and
+`engine.batch` (64 by default), writes the lemma plane only, and refuses missing
+S-1 model identities or wrong result cardinality before any writes. Artefacts record
+NLP calls and model identities; gRPC propagates the current trace context.
+
+`classify` evaluates ordered deterministic rules: heading regex, metadata, language,
+and pack gazetteer matches; first match wins. PX's `when_heading`/`when_field` aliases
+are accepted. Its `claim_body` default belongs to mini-extract; sheets are outside
+that feed. `nlp-pipeline` supports the manifest's declarative `map`; PX's omitted map
+uses Lookup[item]→Mention, DATE→Date and Modifier→Modifier. Invalid offsets/surfaces
+are Verdicts. Relative DATE entities without normalized values become
+`nlp/date-no-value`; normalized duplicate layers take precedence. `diff` aligns the
+previous document version by title path/index, then content hash. Removed units
+appear in the artefact only.
+
+Built-ins: `paragraph`, `fixed-tokens`, `sentence-window`, `recursive`, `structural`,
+`page`, `table-aware`. The kind produces spans over existing section units, never
+CHUNK units or duplicated text. Structural/page/table strategies consume metadata
+from split and degrade to recursive/one-unit/prose chunking when absent. Table row
+groups repeat the header as an extra span; unavoidable oversized rows carry
+`oversize: true`. Prefixes use the document/ancestor titles and current Section hint.
+`paramsHash` hashes canonical manifest params (sorted, two-space JSON + newline).
+Token counts for multi-span chunks use slices joined with a newline.
+
+Tokenizers: `tiktoken:cl100k_base` (also `cl100k_base`) by default, or `whitespace`.
+The encoding is vendored under `_data/tiktoken/` and `tests/fixtures/tiktoken/`, and
+SHA-256 checked before loading. The image sets `TIKTOKEN_CACHE_DIR` to its baked
+cache. Missing/corrupt data fails locally; the worker does not fetch tokenizer data.
+Token windows respect complete Unicode code points, including astral characters.
+`max_tokens`/token overlap apply to token windows; sentence windows use `n` (PX alias
+`window`) and sentence overlap. Paragraph word limits default to Kotlin's 30/200;
+page/paragraph/sentence strategies can omit a token cap or declare an explicit one
+(which the validators enforce).
+
+Plugins: `plugin:<entry-point>` from `docproc.chunkers`, or
+`pack:chunkers/<module>.py#<Class>` inside `DOCPROC_PACK_PATH`. Trusted reviewed code
+runs in process. It implements `Chunker` (`name`, `chunk(text, unit, params)` →
+`list[ChunkSpan]`, optional `partial`). Runtime always checks spans, full non-blank
+coverage (unless partial), declared overlap and token bounds, even if the manifest
+omits postconditions. A failed plugin/unit yields Verdicts and no chunks for that
+unit. `semantic`/`summary-prefix` are refused here; P4 hosts those in docproc-llm.
+The dev-only installed test distribution is absent from the production image;
+pack plugin fixtures live outside the shared pack mirror.
+
+Until S3.3, set `DOCPROC_FAMILIES` to implemented families if the manager also lists
+`link`, `rule`, or `record-etl`; unsupported hosted kinds fail bootstrap explicitly.
 
 ## Image and deployment templates
 

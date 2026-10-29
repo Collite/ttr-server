@@ -8,7 +8,7 @@ from datetime import date
 from typing import Any
 
 from docproc.runtime.registry import TypeRegistryClient
-from docproc.sdk.models import Annotation, Unit, payload_text
+from docproc.sdk.models import Annotation, Unit, UnitKind, payload_text
 
 
 def span_within_unit(annotation: Annotation, units: dict[int, Unit]) -> None:
@@ -73,3 +73,58 @@ class Validators:
                     )
                 )
         return good, verdicts
+
+    def validate_chunks(
+        self,
+        annotations: list[Annotation],
+        units: dict[int, Unit],
+        engine: dict[str, Any],
+        unit_params: dict[int, dict[str, Any]],
+    ) -> tuple[list[Annotation], list[Annotation]]:
+        """The runtime's mandatory chunk batch checks, including empty output units."""
+        from docproc.kinds.chunk.checks import failures
+        from docproc.kinds.chunk.types import ChunkSpan
+        from docproc.kinds.common import verdict
+
+        good: list[Annotation] = []
+        diagnostics: list[Annotation] = []
+
+        expected = [
+            uid
+            for uid, u in units.items()
+            if u.kind != UnitKind.DOCUMENT or not any(v.parent_id == uid for v in units.values())
+        ]
+        for uid in expected:
+            params = unit_params.get(uid, dict(engine.get("params", {})))
+            outputs = [a for a in annotations if a.type == "Chunk" and a.unit_id == uid]
+            if not outputs and any(
+                a.unit_id == uid and a.type == "Verdict" and a.payload().get("ok") is False for a in annotations
+            ):
+                continue  # The kind already rejected this unit atomically (e.g. plugin exception).
+            spans = [
+                ChunkSpan(a.spans[0].start, a.spans[0].end, tuple((s.start, s.end) for s in a.spans[1:]), a.payload())
+                for a in outputs
+                if a.spans
+            ]
+            bad = failures(units[uid].content_text, spans, params, engine["strategy"])
+            if any(not a.spans or any(s.unit_id != uid for s in a.spans) for a in outputs):
+                bad.append("span_within_unit")
+            if engine["strategy"] == "sentence-window" and outputs and "_sentences" not in params:
+                bad.append("overlap_within_declared")
+            for a in outputs:
+                try:
+                    self.registry.schema_for(a.type).validate(a.payload())
+                except Exception:
+                    bad.append("schema_valid")
+                    break
+            if bad:
+                diagnostics.extend(
+                    verdict(uid, rule, "chunk batch rejected for this unit") for rule in dict.fromkeys(bad)
+                )
+            else:
+                good.extend(outputs)
+        for a in annotations:
+            if a.type == "Chunk" and a.unit_id not in expected:
+                diagnostics.append(verdict(next(iter(units)), "span_within_unit", "chunk output outside input units"))
+        good.extend(a for a in annotations if a.type != "Chunk")
+        return good, diagnostics

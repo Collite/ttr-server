@@ -1,0 +1,12 @@
+[
+  {
+    "id": "g:claim-001.cs:0",
+    "payload": {
+      "kind": "claim_body",
+      "rule": "default"
+    },
+    "spans": [],
+    "type": "SectionKind",
+    "unit": "g:claim-001.cs:s0"
+  }
+]
