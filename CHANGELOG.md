@@ -16,6 +16,14 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+- **metadata — strict source publication and gRPC source health (#258).** `METADATA_STRICT_SWAP`
+  defaults to true: failed, empty or incomplete source loads retain their previous contribution;
+  reconcile errors reject the proposed transaction. Rejected versions remain retryable, including
+  the same SHA. All refresh entry points share the guarded path. `/status.strict_swap`, source
+  failures and file issues expose the policy and refusals. `GetStatus.sources` now reports accepted
+  source versions, timestamps and health. Set the switch to false for legacy partial publication.
+
+
 - **metadata — md catalog structure and physical bindings (#274).** The JSON index, graph and object
   routes now include loaded md objects, dimension membership, cubelet grain/measures and hierarchy
   levels. Logical-to-physical er2db/md2db edges use the existing `MAPS_TO` type. Graph scopes omit

@@ -15,7 +15,6 @@ import org.tatrman.ttr.metadata.model.ModelDescriptor
 import org.tatrman.ttr.metadata.reconcile.ModelReconciler
 import org.tatrman.ttr.metadata.source.BuiltinStockSource
 import org.tatrman.ttr.metadata.source.SourceSnapshot
-import org.tatrman.metadata.grpc.PackageIndex
 import org.tatrman.metadata.health.SourceLoadBoard
 import org.tatrman.metadata.read.LAYOUT_FIXTURE
 import java.nio.file.Files
@@ -36,13 +35,18 @@ class MetadataSourceConfigSpec :
         fun config(overrides: String): Config =
             ConfigFactory.parseString(overrides).withFallback(shipped).resolve(noEnv)
 
-        /** The initial load as Application runs it: a source that throws contributes nothing. */
+        /** Inspect source construction independently of the strict publication policy. */
         fun loadAll(config: Config): Pair<SourceLoadBoard, List<SourceSnapshot>> {
             val board = SourceLoadBoard()
             val snapshots =
-                buildSources(config, PackageIndex(), board).map { slot ->
-                    runCatching { slot.source.load() }
-                        .getOrElse { SourceSnapshot(sourceId = "<errored>", priority = 0, version = "errored") }
+                buildSources(config, board).map { slot ->
+                    runCatching {
+                        if (slot.id == BuiltinStockSource.SOURCE_ID) {
+                            slot.source.load()
+                        } else {
+                            board.recording(slot.id, slot.description, slot.source).load()
+                        }
+                    }.getOrElse { SourceSnapshot(sourceId = "<errored>", priority = 0, version = "errored") }
                 }
             return board to snapshots
         }
@@ -135,7 +139,6 @@ class MetadataSourceConfigSpec :
                         metadata.sources.second-model.local-checkout-dir = "${dir.resolve("second")}"
                         """.trimIndent(),
                     ),
-                    PackageIndex(),
                     lexiconSourceIds = ids,
                 )
                 return ids

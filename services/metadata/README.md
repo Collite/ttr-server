@@ -7,20 +7,56 @@ The **model-graph service** for kantheon. Loads a TTR model from a git repositor
 
 ## Runs on the `org.tatrman:ttr-metadata` library (Stage M4.1, ttr-metadata adoption)
 
-Since the ttr-metadata swap (arc doc: [`docs/architecture/fork/ttr-metadata-adoption.md`](../../docs/architecture/fork/ttr-metadata-adoption.md)), Metadata **owns no model/graph/search/resolution logic**. It is a thin gRPC facade over the third-party libraries `org.tatrman:ttr-metadata` (+ `:ttr-metadata-git` for `GitArchiveStorage`, MD3): typed model, sources, reconciler, resolver, graph, search, registry, and the `MetadataRefresher` mechanism all live there. What stays here:
+Since the ttr-metadata swap (arc doc: [`docs/architecture/fork/ttr-metadata-adoption.md`](../../docs/architecture/fork/ttr-metadata-adoption.md)), Metadata **owns no model/graph/search/resolution logic**. It is a thin gRPC facade over the third-party libraries `org.tatrman:ttr-metadata` (+ `:ttr-metadata-git` for `GitArchiveStorage`, MD3): typed model, sources, reconciler, resolver, graph, search, registry, and the legacy `MetadataRefresher` mechanism all live there. What stays here:
 
 - `grpc/MetadataServiceImpl` — proto ↔ library conversion + delegation to `MetadataQuery`/`WorldResolver` (MD2). The de-proto boundary is `grpc/ProtoConverters.kt` (proto `plan.v1.QualifiedName`/`SchemaCode`, `meta.v1.EdgeType`/`Direction` ↔ the library's proto-free types).
 - `grpc/PageTokenCodec` — AIP-158 wire page tokens (wire-level, stays here).
-- `refresh/RefreshScheduler` — scheduling policy over the library `MetadataRefresher`.
+- `refresh/GuardedRefresher` — service publication policy (#258), delegating parsing, reconciliation, graph and layouts to the library. `RefreshScheduler` schedules this same guarded path.
 - `parse/` — the in-process query-parse worker (ttr-translator arc).
 - `export/MetadataExportRoutes` — the Ktor `/model/export` + `/model/export/dot` routes (the export *pipeline* — `ModelToDefinitions`/`GraphDotExporter` — is library-owned).
 - `Application.kt`, OTel/metrics/k8s wiring.
 
-**Drift rule (contract, enforced by review + CI grep):** core model/graph/search/resolution fixes ship as a **new `org.tatrman:ttr-metadata` release**, never as a re-fork under `services/metadata`. A PR adding such logic here is bounced to the library. The guard greps (all must be empty) live in the arc doc's execution checklist. The pinned version is `tatrman-ttr-metadata` in `gradle/libs.versions.toml` (currently `0.8.6`, published to GitHub Packages; the `0.0.1-LOCAL`/`mavenLocal()` local-iteration interim is retired).
+**Drift rule (contract, enforced by review + CI grep):** core model/graph/search/resolution fixes ship as a **new `org.tatrman:ttr-metadata` release**, never as a re-fork under `services/metadata`. A PR adding such logic here is bounced to the library. The guard greps (all must be empty) live in the arc doc's execution checklist. The pinned version is `tatrman-ttr-metadata` in `gradle/libs.versions.toml` (currently `0.18.12`, published to GitHub Packages; the `0.0.1-LOCAL`/`mavenLocal()` local-iteration interim is retired).
 
 **Areas (Golem P4 S4.2, 2026-06-25):** `ResolveArea(area) → packages + description + tags` resolves a subject area to its member packages, loaded from the model's `def area` blocks (`AreaDef`, modeler ≥ 0.7.0). Golem assembles a Shem by resolving its `areas` → packages → `GetModel`.
 
 **Prompt-serving REMOVED (Golem P4 S4.2, 2026-06-25; reverses the 2026-06-13 addition):** the `GetPrompts` RPC, the `prompts/` package, and the `prompts/` Git subtree are gone — **the model is just the model.** Prompts belong to the **Shem** now (mounted with the Golem pod; each Golem's `PromptStore` loads its own `prompts/{locale}/…`). The git source carries the model only. See `docs/architecture/fork/contracts.md` §1.1.
+
+## Strict model publication (#258)
+
+`METADATA_STRICT_SWAP=true` (the default; HOCON `metadata.strict-swap`) keeps each source's last
+accepted contribution when a load reports errors, drops a file, throws, or contains no model objects.
+A valid independent source may still advance alongside that retained contribution. If reconciliation
+reports errors, the whole proposed transaction is refused: cross-source errors cannot safely be
+assigned to just one new contribution. Parsing, validation and reconciliation use the pinned library;
+this switch changes when the service publishes their result.
+
+Startup, scheduled ticks, `POST /refresh`, gRPC `Refresh` and CN-triggered refreshes share the same
+serialized path. A rejected candidate never updates the accepted source cache, served packages,
+model objects, layouts or template/lexicon sidecars. Rejected versions are retried on later refreshes,
+even at the same SHA. A successful repair publishes as one model swap. Same-version repairs to optional
+sidecars of an already accepted source are cached but retain the existing served catalog until the next model swap,
+as described below. Layout, report/form and lexicon content issues remain non-blocking.
+
+Before the first accepted load, `/ready` answers 503. Once every configured source has contributed a
+published load, a later failure keeps readiness UP while the old content is served. Built-in stock
+roles and registered CN vocabulary versions are not configured sources and do not satisfy this gate.
+Md-only and other definition-only sources count as model content even without typed model carriers.
+
+`GET /status` advertises `strict_swap: true|false`. Rejections are logged at ERROR and appear in
+`sources[].last_error`, `last_attempt_at`, `consecutive_failures`, `failures_total`, the existing source
+failure metric, and `issues[]` with source/file/location details. Source `version` and `last_success_at`
+continue to describe the accepted contribution; issues clear on a successful retry. Served model
+warnings and optional-content issues are also listed. gRPC `GetStatus.sources` uses the same source
+board, including before a model is loaded: never-loaded sources are DOWN, last-good sources with an
+error (including an explicit fallback) are DEGRADED, healthy sources are OK. `version`, `last_success`,
+`last_error` and `last_error_at` are populated; overall status degrades when any configured source does.
+Credentials in URI diagnostics are redacted.
+
+`METADATA_STRICT_SWAP=false` restores legacy partial/empty publication for a temporary demo opt-out.
+Load exceptions still retain the previous contribution. A source with no objects is still reported as a
+health failure; permissive publication does not imply a healthy source. The Studio editor should require
+strict mode outside a deployment that explicitly accepts partial models. No deployment is changed here.
 
 ## Package root
 

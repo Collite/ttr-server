@@ -10,11 +10,10 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.plus
 import org.slf4j.LoggerFactory
-import org.tatrman.ttr.metadata.refresh.MetadataRefresher
 import java.time.Duration
 
 /**
- * DF-M06 / Phase 07 B3 — periodic re-load of model sources, delegating to [MetadataRefresher].
+ * DF-M06 / Phase 07 B3 — periodic re-load of model sources, delegating to [GuardedRefresher].
  *
  * Uses the same atomic-swap path as the on-demand `Refresh` RPC, so a scheduled refresh is just
  * as safe as a manual one (concurrent reads keep observing the prior snapshot until the swap
@@ -24,7 +23,7 @@ import java.time.Duration
  * Lifecycle: [start] returns the launched [Job] so callers can cancel on shutdown.
  */
 class RefreshScheduler(
-    private val refresher: MetadataRefresher,
+    private val refresher: GuardedRefresher,
     private val interval: Duration,
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
 ) {

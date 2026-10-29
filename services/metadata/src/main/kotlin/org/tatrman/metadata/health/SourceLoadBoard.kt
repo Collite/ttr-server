@@ -16,8 +16,9 @@ import java.util.concurrent.CopyOnWriteArrayList
  * and `/metrics`.
  *
  * Readiness is about the model Metadata was told to serve, not about having *a* model: Metadata is
- * ready once every configured source has loaded at least once and that model is swapped in. A load counts when it returns a
- * snapshot with at least one model object; a load that throws (bad token, wrong branch, no
+ * ready once every configured source has been accepted at least once and that model is swapped in. A load counts when it returns a
+ * snapshot with at least one model object; [org.tatrman.metadata.refresh.GuardedRefresher] additionally
+ * rejects dropped files and model errors in strict mode. A load that throws (bad token, wrong branch, no
  * network) or that finds nothing (an empty repository or a wrong sub-path) is a failure, and the
  * failure stays visible in `/status` and in `metadata_model_source_load_failures_total`. Once a
  * source has loaded (`metadata_model_source_loaded` is 1), a later failed refresh does not take readiness away: the refresher keeps
@@ -31,6 +32,7 @@ import java.util.concurrent.CopyOnWriteArrayList
 class SourceLoadBoard(
     private val meterRegistry: MeterRegistry? = null,
     private val clock: Clock = Clock.systemUTC(),
+    val strictSwap: Boolean = true,
 ) {
     /** One configured source, as `/status` reports it. */
     data class SourceLoadState(
@@ -41,6 +43,8 @@ class SourceLoadBoard(
         val firstSuccessAt: Instant? = null,
         val lastSuccessAt: Instant? = null,
         val lastError: String = "",
+        val lastErrorAt: Instant? = null,
+        val issues: List<String> = emptyList(),
         val consecutiveFailures: Int = 0,
         val failuresTotal: Long = 0,
         val servingFallback: Boolean = false,
@@ -68,7 +72,7 @@ class SourceLoadBoard(
                 failureCounters[id] =
                     Counter
                         .builder("metadata.model.source.load.failures")
-                        .description("Model source loads that threw or found no model objects")
+                        .description("Model source loads that failed or were refused by the publication policy")
                         .tag("source", id)
                         .register(registry)
             }
@@ -111,9 +115,10 @@ class SourceLoadBoard(
     /** Every registered source, in registration order. */
     fun states(): List<SourceLoadState> = order.mapNotNull { states[it] }
 
-    private fun record(
+    fun record(
         id: String,
         snapshot: SourceSnapshot,
+        publishedAt: Instant = clock.instant(),
     ) {
         val objects = snapshot.objectCount()
         if (objects == 0) {
@@ -123,7 +128,7 @@ class SourceLoadBoard(
             )
             return
         }
-        val now = clock.instant()
+        val now = publishedAt
         val fallbackNote = snapshot.warnings.firstOrNull { it.file == FALLBACK_MARKER }
         states.computeIfPresent(id) { _, s ->
             s.copy(
@@ -131,7 +136,9 @@ class SourceLoadBoard(
                 lastAttemptAt = now,
                 firstSuccessAt = s.firstSuccessAt ?: now,
                 lastSuccessAt = now,
-                lastError = fallbackNote?.message.orEmpty(),
+                lastError = redactCredentials(fallbackNote?.message.orEmpty()),
+                lastErrorAt = if (fallbackNote != null) now else null,
+                issues = emptyList(),
                 consecutiveFailures = 0,
                 servingFallback = fallbackNote != null,
                 version = snapshot.version,
@@ -140,15 +147,18 @@ class SourceLoadBoard(
         }
     }
 
-    private fun recordFailure(
+    fun recordFailure(
         id: String,
         message: String,
+        issues: List<String> = listOf(message),
     ) {
         val now = clock.instant()
         states.computeIfPresent(id) { _, s ->
             s.copy(
                 lastAttemptAt = now,
                 lastError = redactCredentials(message),
+                lastErrorAt = now,
+                issues = issues.map(::redactCredentials),
                 consecutiveFailures = s.consecutiveFailures + 1,
                 failuresTotal = s.failuresTotal + 1,
             )
@@ -164,8 +174,12 @@ class SourceLoadBoard(
 
 /** Every model object a snapshot contributes, of any kind. */
 internal fun SourceSnapshot.objectCount(): Int =
-    tables.size + views.size + procedures.size + foreignKeys.size + entities.size + relations.size +
-        mappings.size + queries.size + roles.size + drillMaps.size + areas.size + worlds.size
+    maxOf(
+        tables.size + views.size + procedures.size + foreignKeys.size + entities.size + relations.size +
+            mappings.size + queries.size + roles.size + drillMaps.size + areas.size + worlds.size +
+            rowSchemas.size + automation.size,
+        loadedFiles.sumOf { it.definitions.size },
+    )
 
 private val URI_USERINFO = Regex("""([a-zA-Z][a-zA-Z0-9+.-]*://)[^/@\s]+@""")
 

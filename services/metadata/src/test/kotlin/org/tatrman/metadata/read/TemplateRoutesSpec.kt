@@ -21,7 +21,6 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import org.eclipse.jgit.api.Git
 import org.tatrman.metadata.buildSources
-import org.tatrman.metadata.grpc.PackageIndex
 import org.tatrman.metadata.health.SourceLoadBoard
 import org.tatrman.metadata.health.modelHealthRoutes
 import org.tatrman.ttr.metadata.graph.ModelGraph
@@ -391,7 +390,6 @@ internal class TemplateFixture(
                     "metadata.sources.world.subdirectory" to modelDirectory,
                 ),
             ),
-            PackageIndex(),
         )
     val refresher = MetadataRefresher(slots.map { it.source }, slots.map { it.id }, reconciler, registry)
 

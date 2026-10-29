@@ -5,7 +5,6 @@ import org.tatrman.ttr.metadata.model.QualifiedName
 import org.tatrman.ttr.metadata.model.DbTable
 import org.tatrman.ttr.metadata.model.ModelDescriptor
 import org.tatrman.ttr.metadata.reconcile.ModelReconciler
-import org.tatrman.ttr.metadata.refresh.MetadataRefresher
 import org.tatrman.ttr.metadata.registry.MetadataRegistry
 import org.tatrman.ttr.metadata.source.ModelSource
 import org.tatrman.ttr.metadata.source.SourceSnapshot
@@ -62,7 +61,7 @@ class RefreshSchedulerSpec :
                 }
             val registry = MetadataRegistry()
             val refresher =
-                MetadataRefresher(
+                GuardedRefresher(
                     sources = listOf(src),
                     sourceIds = listOf("s1"),
                     reconciler = ModelReconciler(ModelDescriptor(id = "t", name = "t")),
@@ -101,7 +100,7 @@ class RefreshSchedulerSpec :
                 }
             val registry = MetadataRegistry()
             val refresher =
-                MetadataRefresher(
+                GuardedRefresher(
                     sources = listOf(src),
                     sourceIds = listOf("s1"),
                     reconciler = ModelReconciler(ModelDescriptor(id = "t", name = "t")),

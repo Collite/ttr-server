@@ -85,7 +85,8 @@ import org.tatrman.common.v1.Severity
 import org.tatrman.meta.v1.ValidateModelRequest
 import org.tatrman.meta.v1.ValidateModelResponse
 import org.tatrman.ttr.metadata.query.MetadataQuery
-import org.tatrman.ttr.metadata.refresh.MetadataRefresher
+import org.tatrman.metadata.refresh.GuardedRefresher
+import org.tatrman.metadata.health.SourceLoadBoard
 import org.tatrman.ttr.metadata.model.AttributeMappingTarget
 import org.tatrman.ttr.metadata.model.Attribute
 import org.tatrman.ttr.metadata.model.Binding as DomainBinding
@@ -149,8 +150,9 @@ class MetadataServiceImpl(
     private val searchIndexHolder: org.tatrman.ttr.metadata.search.SearchIndexHolder? = null,
     private val tracer: Tracer? = null,
     private val parseState: QueryParseState? = null,
-    private val refresher: MetadataRefresher? = null,
+    private val refresher: GuardedRefresher? = null,
     private val packageIndex: PackageIndex,
+    private val loadBoard: SourceLoadBoard? = null,
 ) : MetadataServiceGrpcKt.MetadataServiceCoroutineImplBase() {
     private val logger = org.slf4j.LoggerFactory.getLogger(MetadataServiceImpl::class.java)
 
@@ -708,9 +710,27 @@ class MetadataServiceImpl(
     }
 
     override suspend fun getStatus(request: GetStatusRequest): GetStatusResponse {
-        val snap = registry.read()
+        // Source versions publish in a registry listener; capture both under the swap monitor.
+        val (snap, sourceStates) = synchronized(registry) { registry.read() to loadBoard?.states().orEmpty() }
         val supportedAlgos = searchRegistry.supportedNames.ifEmpty { listOf("substring", "keyword", "regex", "all") }
         val builder = GetStatusResponse.newBuilder()
+        sourceStates.forEach { source ->
+            builder.addSources(
+                org.tatrman.meta.v1.SourceStatus
+                    .newBuilder()
+                    .setId(source.id)
+                    .setStatus(
+                        when {
+                            !source.loadedOnce -> OverallStatus.DOWN
+                            source.lastError.isNotEmpty() -> OverallStatus.DEGRADED
+                            else -> OverallStatus.OK
+                        },
+                    ).setVersion(source.version)
+                    .setLastSuccess(source.lastSuccessAt?.toString().orEmpty())
+                    .setLastError(source.lastError)
+                    .setLastErrorAt(source.lastErrorAt?.toString().orEmpty()),
+            )
+        }
         if (snap == null) {
             return builder
                 .setModelLoaded(false)
@@ -731,8 +751,16 @@ class MetadataServiceImpl(
             .setQueriesParsed(counts.parsed)
             .setQueriesFailed(counts.failed)
             .setQueriesPending(counts.pending)
-            .setOverallStatus(OverallStatus.OK)
-            .addAllSupportedSearchAlgorithms(supportedAlgos)
+            .setOverallStatus(
+                if (sourceStates.any {
+                        !it.loadedOnce || it.lastError.isNotEmpty()
+                    }
+                ) {
+                    OverallStatus.DEGRADED
+                } else {
+                    OverallStatus.OK
+                },
+            ).addAllSupportedSearchAlgorithms(supportedAlgos)
             .setDefaultSearchAlgorithm(DEFAULT_SEARCH_ALGORITHM)
         // LQ (L-4) — an entity stacked on a query whose bindings name columns the body does not output. The query is
         // PARSED; the entity is what is wrong, and a query over it fails at translation.

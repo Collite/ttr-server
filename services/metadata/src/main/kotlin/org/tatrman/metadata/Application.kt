@@ -5,7 +5,6 @@ import com.typesafe.config.Config
 import com.typesafe.config.ConfigFactory
 import org.tatrman.metadata.read.GitLexiconSource
 import org.tatrman.metadata.read.GitTemplateSource
-import org.tatrman.ttr.metadata.graph.ModelGraph
 import org.tatrman.metadata.grpc.MetadataServiceImpl
 import org.tatrman.metadata.grpc.PackageIndex
 import org.tatrman.ttr.metadata.model.CnSchema
@@ -23,18 +22,15 @@ import org.tatrman.ttr.metadata.search.keyword.Tokenizer
 import org.tatrman.ttr.metadata.search.regex.RegexAlgorithm
 import org.tatrman.ttr.metadata.search.substring.SubstringAlgorithm
 import org.tatrman.ttr.metadata.source.ClasspathStorage
-import org.tatrman.ttr.metadata.layout.LayoutIndex
-import org.tatrman.ttr.metadata.refresh.MetadataRefresher
+import org.tatrman.metadata.refresh.GuardedRefresher
 import org.tatrman.metadata.refresh.RefreshScheduler
 import org.tatrman.ttr.metadata.source.BuiltinStockSource
 import org.tatrman.ttr.metadata.source.FallbackSource
 import org.tatrman.ttr.metadata.source.FileBasedSource
 import org.tatrman.ttr.metadata.git.GitArchiveStorage
 import org.tatrman.ttr.metadata.source.LocalFsStorage
-import org.tatrman.ttr.metadata.source.logModelLoadIssues
 import org.tatrman.ttr.metadata.source.ModelSource
 import org.tatrman.ttr.metadata.source.ModelStorage
-import org.tatrman.ttr.metadata.source.SourceSnapshot
 import org.tatrman.metadata.cn.CnSetup
 import org.tatrman.metadata.cn.PromotionTarget
 import org.tatrman.metadata.cn.VocabularySource
@@ -103,7 +99,7 @@ fun Application.module(config: Config) {
     // service without `/metrics`; other services scrape from a comparable mount point.
     val meterRegistry = PrometheusMeterRegistry(PrometheusConfig.DEFAULT)
     // ttr-server#180 — every configured source's loads, for /ready, /status and /metrics.
-    val loadBoard = SourceLoadBoard(meterRegistry)
+    val loadBoard = SourceLoadBoard(meterRegistry, strictSwap = strictSwap(config))
 
     val registry = MetadataRegistry()
     val reconciler =
@@ -116,9 +112,7 @@ fun Application.module(config: Config) {
                 ),
         )
 
-    // Initial load — synchronous block on startup. The plan's polled refresher
-    // (Section G follow-up) replaces this with a coroutine that re-runs the
-    // load on schedule.
+    // Initial load shares the same serialized publication policy as every later refresh.
     // ttr-server#111 — every load also records which package each of its files belongs to; the
     // reconciled model keeps no such map, and package scoping must not guess it from the path.
     // The index serves a load once its model swaps in, so it is the registry's FIRST listener.
@@ -128,7 +122,7 @@ fun Application.module(config: Config) {
     val cn = CnSetup.fromConfig(config) { id -> promotionTarget(config, id) }
     val lexiconSourceIds = mutableSetOf<String>()
     val sourceSlots =
-        buildSources(config, packageIndex, loadBoard, lexiconSourceIds) +
+        buildSources(config, loadBoard, lexiconSourceIds) +
             listOfNotNull(
                 cn.vocabularySource?.let {
                     SourceSlot(
@@ -139,11 +133,13 @@ fun Application.module(config: Config) {
                 },
             )
     val refresher =
-        MetadataRefresher(
+        GuardedRefresher(
             sources = sourceSlots.map { it.source },
             sourceIds = sourceSlots.map { it.id },
             reconciler = reconciler,
             registry = registry,
+            board = loadBoard,
+            packageIndex = packageIndex,
         )
     launch(Dispatchers.IO) {
         if (loadBoard.states().isEmpty()) {
@@ -153,32 +149,7 @@ fun Application.module(config: Config) {
                     "METADATA_GIT_REMOTE_URI, METADATA_GIT_BRANCH and METADATA_GIT_SUBDIR.",
             )
         }
-        val snapshots = sourceSlots.map { runCatching { it.source.load() }.getOrElse { emptySnapshotForError(it) } }
-        refresher.recordInitial(snapshots)
-        val result = reconciler.reconcile(snapshots)
-        val graph = withContext(Dispatchers.Default) { ModelGraph.build(result.model) }
-        // VL V-37: the layouts of this model, from the same loads, in the same swap (the refresher does likewise)
-        val layouts = LayoutIndex.build(snapshots, result.model)
-        registry.swap(
-            result.model,
-            graph,
-            lastWarnings = result.warnings + result.errors,
-            layouts = layouts,
-            files = result.files,
-            exportSidecars =
-                snapshots.sortedBy { it.priority }.flatMap { it.exportSidecars.entries }.associate {
-                    it
-                        .toPair()
-                },
-        )
-        log.info(
-            "Metadata initial snapshot loaded: version={} objects={} warnings={} errors={}",
-            result.model.version.value,
-            graph.size(),
-            result.warnings.size,
-            result.errors.size,
-        )
-        log.logModelLoadIssues(result.errors, result.warnings)
+        refresher.refresh(sourceId = "", force = true)
         retryUntilLoaded(loadBoard, refresher)
     }
 
@@ -244,6 +215,7 @@ fun Application.module(config: Config) {
             parseState = parseState,
             refresher = refresher,
             packageIndex = packageIndex,
+            loadBoard = loadBoard,
         )
 
     // Phase 07 B3 — RefreshScheduler (off by default; interval-seconds > 0 enables).
@@ -385,25 +357,20 @@ internal data class SourceSlot(
 )
 
 /**
- * The configured source slots, each recording its loads into [packageIndex] (ttr-server#111) and,
- * apart from the built-in stock roles, into [loadBoard] (ttr-server#180). The wrapping lives here,
- * not at the call site, so no slot can reach the refresher unrecorded.
+ * The configured source slots, registered on [loadBoard] apart from built-in stock roles.
+ * [GuardedRefresher] records health and package membership only after accepting the load.
  */
 internal fun buildSources(
     config: Config,
-    packageIndex: PackageIndex,
     loadBoard: SourceLoadBoard = SourceLoadBoard(),
     lexiconSourceIds: MutableSet<String> = mutableSetOf(),
 ): List<SourceSlot> =
     configuredSources(config, lexiconSourceIds).map { slot ->
-        val recorded =
-            if (slot.id == BuiltinStockSource.SOURCE_ID) {
-                slot.source
-            } else {
-                log.info("Model source '{}': {}", slot.id, slot.description)
-                loadBoard.recording(slot.id, slot.description, slot.source)
-            }
-        slot.copy(source = packageIndex.recording(slot.id, recorded))
+        if (slot.id != BuiltinStockSource.SOURCE_ID) {
+            log.info("Model source '{}': {}", slot.id, slot.description)
+            loadBoard.register(slot.id, slot.description)
+        }
+        slot
     }
 
 private fun configuredSources(
@@ -519,7 +486,7 @@ private fun describeSource(sub: Config): String {
  */
 private suspend fun retryUntilLoaded(
     loadBoard: SourceLoadBoard,
-    refresher: MetadataRefresher,
+    refresher: GuardedRefresher,
 ) {
     var backoffSeconds = 5L
     while (loadBoard.notLoaded().isNotEmpty()) {
@@ -668,7 +635,6 @@ private fun buildStorage(
     }
 }
 
-private fun emptySnapshotForError(t: Throwable): SourceSnapshot {
-    log.error("Source load failed", t)
-    return SourceSnapshot(sourceId = "<errored>", priority = 0, version = "errored")
-}
+/** Strict by default even for programmatically supplied configurations. */
+internal fun strictSwap(config: Config): Boolean =
+    !config.hasPath("metadata.strict-swap") || config.getBoolean("metadata.strict-swap")

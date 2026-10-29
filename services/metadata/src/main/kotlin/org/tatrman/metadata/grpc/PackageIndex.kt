@@ -48,6 +48,12 @@ class PackageIndex {
             snapshot.loadedFiles.associate { it.storageFile.path to (it.declaredPackage ?: it.computedPackage) }
     }
 
+    /** Stage exactly the guarded transaction; discard candidates left by an earlier failed swap. */
+    internal fun stageAccepted(snapshots: Map<String, SourceSnapshot>) {
+        loaded.clear()
+        snapshots.forEach { (id, snapshot) -> record(snapshot, id) }
+    }
+
     /** Serve the staged loads — call when their reconciled model goes live. See [commitOnSwap]. */
     fun commit() {
         served = buildMap { loaded.values.forEach { putAll(it) } }
