@@ -65,11 +65,31 @@ private val mdReferences = setOf("grain", "measures", "level")
 private val physicalBindings = setOf("er2db", "md2db")
 private val log = LoggerFactory.getLogger(StructuralReadProjectionCache::class.java)
 
+// Mirror 0.18.12 Source.kt schemaNamespaceForKind until ttr-core#321 exposes effective
+// provenance. Only a wholly directive-less declaration needs defaults; md/bindings stay unknown.
+private fun DefinedObject.effectiveProvenance(): Pair<String?, String?> =
+    if (fileModel != null || fileNamespace != null) {
+        fileModel to fileNamespace
+    } else {
+        when (kind) {
+            "table", "view", "procedure", "foreign_key", "query" -> "db" to "dbo"
+            "entity" -> "er" to "entity"
+            "relation" -> "er" to "relation"
+            "role" -> "cnc" to "role"
+            else -> null to null
+        }
+    }
+
+private fun List<DefinedObject>.compatibleProvenance(): Boolean {
+    val provenance = map { it.effectiveProvenance() }
+    return provenance.mapNotNull { it.first }.distinct().size <= 1 &&
+        provenance.mapNotNull { it.second }.distinct().size <= 1
+}
+
 // Render only duplicate groups. Source positions distinguish declarations, not their semantics.
 private fun List<DefinedObject>.identicalCopies(): Boolean =
-    map { listOf(TtrRenderer.renderDef(it.def), it.imports, it.fileModel, it.fileNamespace, it.parentQname) }
-        .distinct()
-        .size == 1
+    map { listOf(TtrRenderer.renderDef(it.def), it.imports, it.pkg, it.parentQname) }.distinct().size == 1 &&
+        compatibleProvenance()
 
 private fun DefinedObject.diagnosticLocation(): String =
     "${def.source.file}:${def.source.line} parent=${parentQname ?: "<root>"}"
@@ -77,6 +97,14 @@ private fun DefinedObject.diagnosticLocation(): String =
 private data class BindingCandidate(
     val key: String?,
     val edge: ReadEdge,
+)
+
+private data class TypedBinding(
+    val key: String,
+    val from: String,
+    val to: String?,
+    val source: MappingSource,
+    val sourceFile: String,
 )
 
 /**
@@ -116,6 +144,7 @@ internal class StructuralReadProjectionCache(
         if (snapshot !== registry.read()) return
         cached = snapshot to result
         val diagnostics = result.diagnostics
+        if (!diagnostics.hasWarnings) lastWarnedVersion = null
         if (diagnostics.hasWarnings && lastWarnedVersion != snapshot.model.version.value) {
             lastWarnedVersion = snapshot.model.version.value
             log.warn(
@@ -207,10 +236,7 @@ internal class StructuralReadProjectionCache(
                     joined.size >= 2 ||
                         (
                             joined.size == 1 &&
-                                declarations.getValue(id).let { entries ->
-                                    entries.mapNotNull { it.fileModel }.distinct().size > 1 ||
-                                        entries.mapNotNull { it.fileNamespace }.distinct().size > 1
-                                }
+                                !declarations.getValue(id).compatibleProvenance()
                         )
                 }.keys
                 .toMutableSet()
@@ -221,7 +247,6 @@ internal class StructuralReadProjectionCache(
                     entries.count { it.kind.startsWith("er2db_") || it.kind.startsWith("md2db_") } > 1 &&
                         !entries.identicalCopies()
                 }.keys
-        ambiguous += duplicateBindings
 
         fun catalogId(id: String): String? =
             when {
@@ -281,6 +306,7 @@ internal class StructuralReadProjectionCache(
         }
         val typedResolved = mutableSetOf<String>()
         val candidates = linkedSetOf<BindingCandidate>()
+        val contested = mutableSetOf<String>()
         var omitted = 0
         // Only projected physical families participate. Inline and explicit copies share a key.
         val typedBindings =
@@ -296,31 +322,33 @@ internal class StructuralReadProjectionCache(
                                         is MappingTarget.SqlQuery -> target.qname
                                     }
                             is Er2DbAttributeMapping ->
-                                (mapping.target as? AttributeMappingTarget.Column)?.let {
-                                    mapping.attribute to it.qname
-                                }
+                                mapping.attribute to (mapping.target as? AttributeMappingTarget.Column)?.qname
                             is Er2DbRelationMapping -> mapping.relation to mapping.foreignKey
                             else -> null
                         } ?: return@mapNotNull null
-                    Triple(
+                    TypedBinding(
                         "${mapping.qname.namespace}.${mapping.qname.name}",
-                        ReadEdge(endpoints.first.dotted(), endpoints.second.dotted(), "MAPS_TO"),
+                        endpoints.first.dotted(),
+                        endpoints.second?.dotted(),
                         mapping.mappingSource,
+                        mapping.sourceFile,
                     )
-                }.groupBy { it.first }
+                }.groupBy { it.key }
         val conflictingTyped = mutableSetOf<String>()
         for ((key, bindings) in typedBindings) {
-            val pairs = bindings.map { it.second }.toSet()
+            val pairs = bindings.map { it.from to it.to }.toSet()
             if (pairs.size > 1) {
                 conflictingTyped += key
                 ambiguous += key
-                omitted += pairs.size
+                contested += pairs.map { it.first }
+                omitted += pairs.count { it.second != null }
                 continue
             }
-            val edge = pairs.single()
-            if (edge.from !in objects || edge.to !in objects) continue
+            val (from, to) = pairs.single()
+            if (to == null || from !in objects || to !in objects) continue
+            val edge = ReadEdge(from, to, "MAPS_TO")
             candidates += BindingCandidate(key, edge)
-            if (bindings.any { it.third == MappingSource.Explicit }) typedResolved += key
+            if (bindings.any { it.source == MappingSource.Explicit }) typedResolved += key
         }
         for (edge in graph.edges) {
             val type =
@@ -331,6 +359,8 @@ internal class StructuralReadProjectionCache(
                         if (edge.id in conflictingTyped) continue // Already counted each distinct pair.
                         if (edge.kind == "er2db" && edge.id in typedResolved) continue
                         if (edge.id in duplicateBindings) {
+                            edge.id?.let(ambiguous::add)
+                            catalogId(edge.from)?.let(contested::add)
                             omitted++
                             continue
                         }
@@ -345,16 +375,17 @@ internal class StructuralReadProjectionCache(
                 continue
             }
             val projected = if (type == "DEFINES") ReadEdge(to, from, type) else ReadEdge(from, to, type)
-            if (type == "MAPS_TO") {
+            if (type == "MAPS_TO" && declarations[edge.id]?.firstOrNull()?.kind != "md2db_cubelet") {
                 if (from in objects && to in objects) candidates += BindingCandidate(edge.id, projected)
             } else {
                 edges += projected
             }
         }
-        // The query path has one physical target per logical object, across all binding keys/paths.
-        for ((_, bindings) in candidates.groupBy { it.edge.from }) {
+        // er2db and md2db domain/map objects have one physical target across all keys/paths.
+        // Cubelets retain every source table; their lowering unions those sources.
+        for ((from, bindings) in candidates.groupBy { it.edge.from }) {
             val distinctEdges = bindings.map { it.edge }.toSet()
-            if (distinctEdges.map { it.to }.distinct().size > 1) {
+            if (from in contested || distinctEdges.size > 1) {
                 omitted += distinctEdges.size
                 ambiguous += bindings.mapNotNull { it.key }
             } else {
@@ -365,13 +396,13 @@ internal class StructuralReadProjectionCache(
             objects,
             edges.filter { it.from in objects && it.to in objects },
             ProjectionDiagnostics(
-                ambiguous.associateWith { id ->
-                    declarations[id]
-                        .orEmpty()
-                        .map { it.def.source.file }
-                        .distinct()
-                        .sorted()
-                },
+                ambiguous
+                    .associateWith { id ->
+                        declarations[id]?.map { it.def.source.file }?.takeIf { it.isNotEmpty() }
+                            ?: typedBindings[id].orEmpty().map { it.sourceFile }
+                    }.mapValues { (_, files) ->
+                        files.distinct().sorted()
+                    },
                 omitted,
                 mdCollisions,
             ),

@@ -20,9 +20,12 @@ outside this repo could notice is in.
   routes now include loaded md objects, dimension membership, cubelet grain/measures and hierarchy
   levels. Logical-to-physical er2db/md2db edges use the existing `MAPS_TO` type. Graph scopes omit
   edges with excluded or unresolved endpoints. Valid typed binding endpoints take precedence over
-  definition-graph fallbacks. Identical binding copies are served once; differing copies (including overlay
-  overrides) are omitted and diagnosed until ttr-core#321. Ambiguous identities and logical objects with
-  multiple physical targets are omitted. Missing provenance permits compatible source-precedence copies.
+  definition-graph fallbacks. Er2db copies compare resolved endpoints, ignoring differences in descriptions,
+  tags or `whereFilter`; identical pairs serve once. Conflicting copies are omitted until ttr-core#321.
+  Md2db/md copies compare rendered definition, imports, package, parent and compatible effective provenance.
+  Directive-less db/er declarations use the loader's kind defaults. Ambiguous identities and er2db,
+  md2db-domain/map objects with multiple or contested targets are omitted. Multi-source cubelets retain every
+  source table; a conflicting binding id does not suppress their other sources.
   Md attributes retain localized labels, source paths match db/er paths, and hierarchy nodes expose
   ordered `levels`.
   Colliding md ids retain the library-selected declaration; warnings name kept/dropped file:line and parent.

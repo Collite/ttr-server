@@ -72,9 +72,17 @@ Edges retain `{ from, to, type }` and the existing four type literals:
   vertices and their outgoing edges remain available.
 
 For each binding, the typed query-path endpoints win when both are catalog objects; otherwise the
-library's definition graph supplies the fallback. Identical copies of a binding are served once.
-A binding whose copies differ (including an overlay override) is omitted and diagnosed until ttr-core#321.
-Ambiguous export identities and logical objects with multiple physical targets are also omitted and diagnosed.
+library's definition graph supplies the fallback. Er2db copies are compared by their resolved endpoints:
+identical endpoint pairs serve once, including copies that differ only in description, tags, imports or
+`whereFilter` (the read edge has no filter). Conflicting copies are omitted and diagnosed until ttr-core#321.
+Md2db and md copies instead compare rendered definition, imports, package, parent and compatible effective
+model/namespace provenance. Directive-less db/er objects use the loader's kind defaults; unknown md/binding
+provenance matches a specified value. Different imports or packages keep md2db copies differing until
+per-declaration resolution is available in ttr-core#321.
+Ambiguous export identities are omitted and diagnosed. Er2db, `md2db_domain` and `md2db_map` logical objects
+with multiple or contested physical targets are omitted; omitted binding copies still contest that object.
+Each source table of a multi-source cubelet is served. A conflicting copy of one cubelet binding is omitted
+without suppressing the cubelet's other binding ids.
 Diagnostics are logged once per publication of a version with diagnostics
 (consecutive publications of one version log once).
 Md ids carry no package or cubelet scope: differing declarations with one id (including same-named inline
