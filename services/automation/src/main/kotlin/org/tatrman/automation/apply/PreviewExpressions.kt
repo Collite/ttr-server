@@ -117,7 +117,10 @@ internal object PreviewExpressions {
         fun fresh(): String =
             generateSequence(columns.size) { it + 1 }
                 .map { "_au_condition_$it" }
-                .first { name -> name !in authoredNames && columns.none { it.name == name } }
+                .first { name ->
+                    authoredNames.none { it.equals(name, ignoreCase = true) } &&
+                        columns.none { it.name.equals(name, ignoreCase = true) }
+                }
 
         fun constant(
             value: BoundValue,

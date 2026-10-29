@@ -105,7 +105,7 @@ internal object PreviewCalendar {
                     .singleOrNull {
                         it.qname.name.substringAfterLast('.') == "working_day" && "working_day" in bound
                     }?.let { ManifestColumn("working_day", it.type) },
-            )
+            ).distinctBy { it.name }
         val declaration =
             (bundle.model.schemas["world"] as? WorldSchema)
                 ?.worlds

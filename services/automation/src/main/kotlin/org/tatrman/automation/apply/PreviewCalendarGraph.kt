@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package org.tatrman.automation.apply
 
+import java.util.Locale
 import org.tatrman.automation.bundle.ManifestColumn
 import org.tatrman.automation.runner.*
 import org.tatrman.translate.v1.SqlDialect
@@ -35,7 +36,9 @@ internal object PreviewCalendarGraph {
         val calls = PreviewCalendar.calls(expressions).distinct()
         if (calls.isEmpty()) return Result(expressions, table)
         requireNotNull(snapshot) { "calendar source was not pinned at open" }
-        require(table.columns.none { it.name.startsWith("_ttrp_") }) { "reserved compiler helper column" }
+        require(
+            table.columns.none { it.name.startsWith("_ttrp_", ignoreCase = true) },
+        ) { "reserved compiler helper column" }
         if (calls.any { it.function.name == "age" && "and" !in it.argNames }) {
             require(bindings["as_of"]?.type in setOf("date", "datetime", "timestamp", "timestamptz"))
         }
@@ -44,9 +47,12 @@ internal object PreviewCalendarGraph {
                 .flatMap {
                     NodeExpressions.walk(it).filterIsInstance<ColumnRef>().toList()
                 }.map { it.column }
-        val used = (table.columns.map { it.name } + authoredNames).toMutableSet()
+        val used = (table.columns.map { it.name } + authoredNames).map { it.lowercase(Locale.ROOT) }.toMutableSet()
 
-        fun fresh() = generateSequence(0) { it + 1 }.map { "_au_calendar_$it" }.first { used.add(it) }
+        fun fresh() =
+            generateSequence(0) { it + 1 }
+                .map { "_au_calendar_$it" }
+                .first { used.add(it.lowercase(Locale.ROOT)) }
         val index = fresh()
         val asOf = fresh()
         val aliases = calls.map { fresh() }
@@ -188,6 +194,8 @@ internal object PreviewCalendarGraph {
                 db.load("_au_calendar_source", snapshot.table)
                 db.query(sql, emptyMap())
             }
+        require(result.columns.map { it.name } == listOf(index) + aliases)
+        require(result.columns.drop(1).all { it.type == "int" }) { "calendar counts must remain integers" }
         require(result.rows.size == table.rows.size)
         val byIndex = result.rows.associateBy { it.first() as Long }
         require(

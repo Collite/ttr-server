@@ -316,7 +316,7 @@ class PartRunner(
         val island =
             generateSequence(0) { it + 1 }
                 .map { if (it == 0) "_au_calendar" else "_au_calendar_$it" }
-                .first { it !in islands }
+                .first { candidate -> islands.keys.none { it.equals(candidate, ignoreCase = true) } }
         checks.ensureAllowed()
         if (plan.entity !in context.recipe.recipe.objectsRead) {
             checks.doorRefused(

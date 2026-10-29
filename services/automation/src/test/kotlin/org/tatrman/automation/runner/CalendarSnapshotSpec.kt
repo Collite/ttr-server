@@ -72,44 +72,49 @@ class CalendarSnapshotSpec :
         }
 
         "an authored calendar island and the private snapshot keep separate immutable outputs" {
-            coroutineScope {
-                val authored =
-                    ManifestIsland(
-                        "_au_calendar",
-                        outputs =
-                            listOf(
-                                ManifestOutput("rows", "authored.sql", storage = "erp_db", columns = table.columns),
-                            ),
-                    )
-                val loaded =
-                    recipe.copy(
-                        manifest =
-                            recipe.manifest.copy(
-                                islands = listOf(authored),
-                                waves = listOf(listOf(authored.name)),
-                            ),
-                        statements = recipe.statements + ("authored.sql" to "authored"),
-                    )
-                val published = mutableListOf<RunOutput>()
-                val ledger = mockk<Ledger>()
-                every { ledger.putOutput(any(), any()) } answers {
-                    published += firstArg<RunOutput>()
-                    Unit
-                }
-                val other = table.copy(rows = listOf(listOf(LocalDate.of(2026, 10, 29), false)))
-                val door = Door { read -> ReadResult(if (read.sql == "authored") other else table) }
-                PartRunner(
-                    runnerContext(loaded).copy(calendar = plan),
-                    door,
-                    Staging(LocalStagingStore(Files.createTempDirectory("calendar-island")), ProtocolRecorder(ledger)),
-                    this,
-                ).use { runner ->
-                    runner.calendarSnapshot()!!.table shouldBe table
-                    runner.island("_au_calendar").single().table shouldBe other
-                    runner.calendarSnapshot()!!.table shouldBe table
-                    published.map { it.island }.toSet().size shouldBe 2
-                    published.any { it.island == "_au_calendar" } shouldBe true
-                    published.size shouldBe 2
+            for (authoredName in listOf("_au_calendar", "_AU_CALENDAR")) {
+                coroutineScope {
+                    val authored =
+                        ManifestIsland(
+                            authoredName,
+                            outputs =
+                                listOf(
+                                    ManifestOutput("rows", "authored.sql", storage = "erp_db", columns = table.columns),
+                                ),
+                        )
+                    val loaded =
+                        recipe.copy(
+                            manifest =
+                                recipe.manifest.copy(
+                                    islands = listOf(authored),
+                                    waves = listOf(listOf(authored.name)),
+                                ),
+                            statements = recipe.statements + ("authored.sql" to "authored"),
+                        )
+                    val published = mutableListOf<RunOutput>()
+                    val ledger = mockk<Ledger>()
+                    every { ledger.putOutput(any(), any()) } answers {
+                        published += firstArg<RunOutput>()
+                        Unit
+                    }
+                    val other = table.copy(rows = listOf(listOf(LocalDate.of(2026, 10, 29), false)))
+                    val door = Door { read -> ReadResult(if (read.sql == "authored") other else table) }
+                    PartRunner(
+                        runnerContext(loaded).copy(calendar = plan),
+                        door,
+                        Staging(
+                            LocalStagingStore(Files.createTempDirectory("calendar-island")),
+                            ProtocolRecorder(ledger),
+                        ),
+                        this,
+                    ).use { runner ->
+                        runner.calendarSnapshot()!!.table shouldBe table
+                        runner.island(authoredName).single().table shouldBe other
+                        runner.calendarSnapshot()!!.table shouldBe table
+                        published.map { it.island.lowercase(java.util.Locale.ROOT) }.toSet().size shouldBe 2
+                        published.any { it.island == authoredName } shouldBe true
+                        published.size shouldBe 2
+                    }
                 }
             }
         }

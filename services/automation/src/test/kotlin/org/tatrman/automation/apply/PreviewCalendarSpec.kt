@@ -108,6 +108,25 @@ class PreviewCalendarSpec :
             }.code shouldBe ErrorCode.PREVIEW_UNSUPPORTED
         }
 
+        "an event-date attribute named working_day is selected only once for age" {
+            val root = CalendarFixture.add(BundleFixture.copy())
+            for (name in listOf("model/er/calendar.ttrm", "model/binding/calendar.ttrm")) {
+                root.edit(name) { it.replace("working_day", "is_working").replace("cal_date", "working_day") }
+            }
+            val renamed = BundleFixture.load(root)
+            val selected = PreviewCalendar.plan(renamed, "demo", recipe, mapOf("notify_customer" to action))!!
+            selected.columns shouldBe listOf(ManifestColumn("working_day", "date"))
+            val dates = Table(selected.columns, calendar.rows.map { listOf(it.first()) })
+            PreviewExpressions
+                .project(
+                    mapOf("n" to "age(since: placed)"),
+                    table,
+                    bindings,
+                    calendar = CalendarSnapshot(selected, dates),
+                ).rows shouldBe
+                listOf(listOf(5L), listOf(5L), listOf(null), listOf(0L), listOf(0L))
+        }
+
         "nested wiring and conditions plan the same calendar once per immutable bundle and world" {
             val nested =
                 recipe.copy(
@@ -176,6 +195,42 @@ class PreviewCalendarSpec :
                 ).rows shouldBe
                 listOf(listOf(0L), listOf(0L), listOf(null), listOf(0L), listOf(0L))
         }
+        "private names avoid case variants and compiler helper inputs refuse" {
+            val source =
+                Table(
+                    table.columns +
+                        listOf(ManifestColumn("_AU_CALENDAR_2", "text"), ManifestColumn("_AU_CONDITION_0", "date")),
+                    table.rows.map { it + listOf("original", it.first()) },
+                )
+            PreviewExpressions
+                .project(
+                    linkedMapOf(
+                        "count" to "age(since: placed)",
+                        "working" to "working_days(between: _AU_CONDITION_0, and: :as_of)",
+                        "kept" to "_AU_CALENDAR_2",
+                    ),
+                    source,
+                    bindings,
+                    calendar = snapshot,
+                ).rows shouldBe
+                listOf(
+                    listOf(5L, 2L, "original"),
+                    listOf(5L, 2L, "original"),
+                    listOf(null, null, "original"),
+                    listOf(0L, 0L, "original"),
+                    listOf(0L, 0L, "original"),
+                )
+            val reserved = table.copy(columns = listOf(ManifestColumn("_TTRP_N_VALUE_0", "date")))
+            shouldThrow<AutomationException> {
+                PreviewExpressions.project(
+                    mapOf("n" to "cast(age(since: _TTRP_N_VALUE_0) as text)"),
+                    reserved,
+                    bindings,
+                    calendar = snapshot,
+                )
+            }.code shouldBe ErrorCode.PREVIEW_UNSUPPORTED
+        }
+
         "private calendar result names cannot satisfy an unknown authored column" {
             shouldThrow<AutomationException> {
                 PreviewExpressions.project(
