@@ -78,7 +78,7 @@ def test_knn_union_mapping_and_refusal() -> None:
     class Store(FakeWarehouse):
         def find_similar(self, request: dict) -> dict:  # type: ignore[type-arg]
             assert request == {"text": "Aurora failed.", "nodeKinds": ["page"], "k": 5}
-            return {"hits": [{"score": 0.9, "page": {"title": "Item", "conceptRef": {"velesQname": "cn.Item"}}}]}
+            return {"hits": [{"score": 0.9, "page": {"title": "Item", "conceptRef": {"metadataQname": "cn.Item"}}}]}
 
     unit = Unit(id=1, content_text="Aurora failed. Next sentence.")
     mention = annotation(unit, "Mention", {"kind": "item", "surface": "Aurora"}, [Span(unit_id=1, start=0, end=6)])

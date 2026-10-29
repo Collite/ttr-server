@@ -108,7 +108,7 @@ class Link:
                 for hit in reply.get("hits", []):
                     page = hit.get("page", hit)
                     ref = page.get("conceptRef", {})
-                    concept = ref.get("velesQname", "") if isinstance(ref, dict) else ""
+                    concept = ref.get("metadataQname", "") if isinstance(ref, dict) else ""
                     if not concept.startswith("cn.") or mention.payload().get("concept") not in (None, "", concept):
                         continue
                     score = float(hit.get("score", 0))
