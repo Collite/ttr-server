@@ -9,6 +9,7 @@ import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonObject
 import org.slf4j.LoggerFactory
 import org.tatrman.metadata.grpc.PackageIndex
+import org.tatrman.ttr.metadata.export.DefinedObject
 import org.tatrman.ttr.metadata.export.DefinitionGraph
 import org.tatrman.ttr.metadata.model.AttributeMappingTarget
 import org.tatrman.ttr.metadata.model.Er2DbAttributeMapping
@@ -19,6 +20,11 @@ import org.tatrman.ttr.metadata.model.MappingTarget
 import org.tatrman.ttr.metadata.model.schemaCodeToToken
 import org.tatrman.ttr.metadata.registry.MetadataRegistry
 import org.tatrman.ttr.metadata.registry.RegistrySnapshot
+import org.tatrman.ttr.writer.TtrRenderer
+import org.tatrman.ttr.parser.model.CubeletDef
+import org.tatrman.ttr.parser.model.CubeletMeasure
+import org.tatrman.ttr.parser.model.Definition
+import java.util.IdentityHashMap
 
 internal data class ReadObject(
     val qname: String,
@@ -58,6 +64,20 @@ internal data class StructuralReadProjection(
 private val mdReferences = setOf("grain", "measures", "level")
 private val physicalBindings = setOf("er2db", "md2db")
 private val log = LoggerFactory.getLogger(StructuralReadProjectionCache::class.java)
+
+// Render only duplicate groups. Source positions distinguish declarations, not their semantics.
+private fun List<DefinedObject>.identicalCopies(): Boolean =
+    map { listOf(TtrRenderer.renderDef(it.def), it.imports, it.fileModel, it.fileNamespace, it.parentQname) }
+        .distinct()
+        .size == 1
+
+private fun DefinedObject.diagnosticLocation(): String =
+    "${def.source.file}:${def.source.line} parent=${parentQname ?: "<root>"}"
+
+private data class BindingCandidate(
+    val key: String?,
+    val edge: ReadEdge,
+)
 
 /**
  * HTTP DTO adaptation only; reference resolution remains library-owned. Register after
@@ -139,15 +159,25 @@ internal class StructuralReadProjectionCache(
         val definitions = snapshot.definitions.entries.distinctBy { it.qname }
         val graph = DefinitionGraph.build(snapshot.definitions.copy(entries = definitions))
         val mdDefinitions = definitions.filter { it.model == "md" }.associateBy { it.qname }
+        // 0.18.12 lifts inline measures with a null parentQname. Recover diagnostic context
+        // from their existing AST membership, without changing export ids or resolving references.
+        val inlineParents = IdentityHashMap<Definition, String>()
+        for (entry in snapshot.definitions.entries) {
+            val cubelet = entry.def as? CubeletDef ?: continue
+            cubelet.measures.filterIsInstance<CubeletMeasure.Inline>().forEach {
+                inlineParents[it.measure] = entry.qname
+            }
+        }
         val mdCollisions =
             declarations
                 .filterValues { entries -> entries.count { it.model == "md" } > 1 }
                 .mapValues { (_, entries) ->
+                    entries.map { it.copy(parentQname = it.parentQname ?: inlineParents[it.def]) }
+                }.filterValues { entries -> !entries.identicalCopies() }
+                .mapValues { (_, entries) ->
                     MdCollision(
-                        entries
-                            .first()
-                            .def.source.file,
-                        entries.drop(1).map { it.def.source.file },
+                        entries.first().diagnosticLocation(),
+                        entries.drop(1).map { it.diagnosticLocation() },
                     )
                 }
 
@@ -177,24 +207,19 @@ internal class StructuralReadProjectionCache(
                     joined.size >= 2 ||
                         (
                             joined.size == 1 &&
-                                declarations
-                                    .getValue(id)
-                                    .map { it.fileModel to it.fileNamespace }
-                                    .distinct()
-                                    .size > 1
+                                declarations.getValue(id).let { entries ->
+                                    entries.mapNotNull { it.fileModel }.distinct().size > 1 ||
+                                        entries.mapNotNull { it.fileNamespace }.distinct().size > 1
+                                }
                         )
                 }.keys
                 .toMutableSet()
-        val typedBindingCounts =
-            snapshot.model.mappings
-                .filter { it.mappingSource == MappingSource.Explicit }
-                .groupingBy { "${it.qname.namespace}.${it.qname.name}" }
-                .eachCount()
-        ambiguous += typedBindingCounts.filterValues { it > 1 }.keys
+
         val duplicateBindings =
             declarations
                 .filterValues { entries ->
-                    entries.count { it.kind.startsWith("er2db_") || it.kind.startsWith("md2db_") } > 1
+                    entries.count { it.kind.startsWith("er2db_") || it.kind.startsWith("md2db_") } > 1 &&
+                        !entries.identicalCopies()
                 }.keys
         ambiguous += duplicateBindings
 
@@ -255,37 +280,47 @@ internal class StructuralReadProjectionCache(
             if (from != null && to != null) edges += ReadEdge(from, to, edge.type.toWire())
         }
         val typedResolved = mutableSetOf<String>()
+        val candidates = linkedSetOf<BindingCandidate>()
         var omitted = 0
-        // Duplicate explicit ids cannot choose a logical target. Preserve the typed graph wire above.
-        for (mapping in snapshot.model.mappings) {
-            val key = "${mapping.qname.namespace}.${mapping.qname.name}"
-            if (mapping.mappingSource == MappingSource.Explicit && typedBindingCounts.getValue(key) > 1) {
-                omitted++
+        // Only projected physical families participate. Inline and explicit copies share a key.
+        val typedBindings =
+            snapshot.model.mappings
+                .mapNotNull { mapping ->
+                    val endpoints =
+                        when (mapping) {
+                            is Er2DbEntityMapping ->
+                                mapping.entity to
+                                    when (val target = mapping.target) {
+                                        is MappingTarget.Table -> target.qname
+                                        is MappingTarget.View -> target.qname
+                                        is MappingTarget.SqlQuery -> target.qname
+                                    }
+                            is Er2DbAttributeMapping ->
+                                (mapping.target as? AttributeMappingTarget.Column)?.let {
+                                    mapping.attribute to it.qname
+                                }
+                            is Er2DbRelationMapping -> mapping.relation to mapping.foreignKey
+                            else -> null
+                        } ?: return@mapNotNull null
+                    Triple(
+                        "${mapping.qname.namespace}.${mapping.qname.name}",
+                        ReadEdge(endpoints.first.dotted(), endpoints.second.dotted(), "MAPS_TO"),
+                        mapping.mappingSource,
+                    )
+                }.groupBy { it.first }
+        val conflictingTyped = mutableSetOf<String>()
+        for ((key, bindings) in typedBindings) {
+            val pairs = bindings.map { it.second }.toSet()
+            if (pairs.size > 1) {
+                conflictingTyped += key
+                ambiguous += key
+                omitted += pairs.size
                 continue
             }
-            val endpoints =
-                when (mapping) {
-                    is Er2DbEntityMapping ->
-                        mapping.entity to
-                            when (val target = mapping.target) {
-                                is MappingTarget.Table -> target.qname
-                                is MappingTarget.View -> target.qname
-                                is MappingTarget.SqlQuery -> target.qname
-                            }
-                    is Er2DbAttributeMapping ->
-                        (mapping.target as? AttributeMappingTarget.Column)?.let {
-                            mapping.attribute to it.qname
-                        }
-                    is Er2DbRelationMapping -> mapping.relation to mapping.foreignKey
-                    else -> null
-                } ?: continue
-            val from = endpoints.first.dotted()
-            val to = endpoints.second.dotted()
-            if (from !in objects || to !in objects) continue
-            edges += ReadEdge(from, to, "MAPS_TO")
-            if (mapping.mappingSource == MappingSource.Explicit) {
-                typedResolved += key
-            }
+            val edge = pairs.single()
+            if (edge.from !in objects || edge.to !in objects) continue
+            candidates += BindingCandidate(key, edge)
+            if (bindings.any { it.third == MappingSource.Explicit }) typedResolved += key
         }
         for (edge in graph.edges) {
             val type =
@@ -293,6 +328,7 @@ internal class StructuralReadProjectionCache(
                     edge.kind == "contains" && edge.from in mdDefinitions && edge.to in mdDefinitions -> "DEFINES"
                     edge.kind in mdReferences && edge.from in mdDefinitions -> "REFERENCES"
                     edge.kind in physicalBindings -> {
+                        if (edge.id in conflictingTyped) continue // Already counted each distinct pair.
                         if (edge.kind == "er2db" && edge.id in typedResolved) continue
                         if (edge.id in duplicateBindings) {
                             omitted++
@@ -308,7 +344,22 @@ internal class StructuralReadProjectionCache(
                 omitted++
                 continue
             }
-            edges += if (type == "DEFINES") ReadEdge(to, from, type) else ReadEdge(from, to, type)
+            val projected = if (type == "DEFINES") ReadEdge(to, from, type) else ReadEdge(from, to, type)
+            if (type == "MAPS_TO") {
+                if (from in objects && to in objects) candidates += BindingCandidate(edge.id, projected)
+            } else {
+                edges += projected
+            }
+        }
+        // The query path has one physical target per logical object, across all binding keys/paths.
+        for ((_, bindings) in candidates.groupBy { it.edge.from }) {
+            val distinctEdges = bindings.map { it.edge }.toSet()
+            if (distinctEdges.map { it.to }.distinct().size > 1) {
+                omitted += distinctEdges.size
+                ambiguous += bindings.mapNotNull { it.key }
+            } else {
+                edges += distinctEdges
+            }
         }
         return StructuralReadProjection(
             objects,

@@ -72,20 +72,24 @@ Edges retain `{ from, to, type }` and the existing four type literals:
   vertices and their outgoing edges remain available.
 
 For each binding, the typed query-path endpoints win when both are catalog objects; otherwise the
-library's definition graph supplies the fallback. Ambiguous export identities and duplicate binding ids
-are omitted and diagnosed once per model version. Md ids carry no package or cubelet
-scope: two declarations with one id (including same-named inline measures in two cubelets) are served as
-one node selected by the library's definition order (root-relative path, then source priority on ties).
-A warning once per model version names the kept declaration and the dropped declarations.
+library's definition graph supplies the fallback. Identical copies of a binding are served once.
+A binding whose copies differ (including an overlay override) is omitted and diagnosed until ttr-core#321.
+Ambiguous export identities and logical objects with multiple physical targets are also omitted and diagnosed.
+Diagnostics are logged once per publication of a version with diagnostics
+(consecutive publications of one version log once).
+Md ids carry no package or cubelet scope: differing declarations with one id (including same-named inline
+measures in two cubelets) are served as one node selected by the library's definition order
+(root-relative path, then source priority on ties). Identical md precedence copies produce no collision warning.
+A warning once per publication of a version with diagnostics (consecutive publications of one version log once)
+names the kept and dropped declarations, including file:line and parent qname.
 The shared binding resolver and scoped md identities are tracked in [ttr-core#321](https://github.com/Collite/ttr-core/issues/321)
 and [ttr-core#322](https://github.com/Collite/ttr-core/issues/322).
 
 The library's captured definition graph supplies md objects and resolves references; no files are read
 or parsed on HTTP requests. The whole projection and diagnostics are cached by snapshot identity
 in a registry listener after package-index publication, with initial-load priming under the registry swap monitor.
-Old/in-flight requests
-can build uncached without evicting the current entry. Failed builds are never cached. Disk edits become
-visible only through a registry swap. Unresolved export stubs are omitted,
+Old/in-flight requests can build uncached without evicting the current entry. Failed builds are never cached.
+Disk edits become visible only through a registry swap. Unresolved export stubs are omitted,
 and every graph scope keeps edges only when both endpoints survive its filters. Thus cross-schema
 bindings are visible on the unfiltered graph; `?schema=md` serves only md-to-md edges. Package filters
 retain their existing exact-match behavior.
