@@ -81,6 +81,7 @@ class Chunk:
         used = []
         for unit in processing_units(ctx):
             effective = dict(params)
+            effective["partial"] = bool(engine.get("partial") or params.get("partial", False))
             if strategy == "sentence-window":
                 response = self.nlp.sentences(unit.content_text, meta(unit, "lang"))
                 used.extend(identities(response.used))
@@ -93,12 +94,12 @@ class Chunk:
             try:
                 if plugin:
                     chunker = plugins.load(strategy, self.pack_path)
-                    effective["partial"] = bool(getattr(chunker, "partial", False) or params.get("partial", False))
-                    chunks = chunker.chunk(unit.content_text, unit, dict(effective))
+                    effective["partial"] = bool(effective["partial"] or getattr(chunker, "partial", False))
+                    chunks = chunker.chunk(unit.content_text, unit.model_copy(deep=True), dict(effective))
                 else:
                     chunks = BUILTINS[strategy](unit.content_text, unit, effective)
                 invalid = failures(unit.content_text, chunks, effective, strategy)
-            except Exception as exc:
+            except (Exception, SystemExit) as exc:
                 if not plugin:
                     raise
                 result.verdicts.append(verdict(unit, "chunk/plugin-error", f"{type(exc).__name__}: {exc}"))

@@ -9,19 +9,21 @@ from __future__ import annotations
 
 import hashlib
 from collections import defaultdict
-from datetime import UTC, datetime
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 import yaml
 from jsonschema import ValidationError
 
-from docproc.kinds.common import annotation, meta, verdict
+from docproc.kinds.common import annotation, meta, utc_instant, verdict
 from docproc.kinds.rule_dsl import pack_file, related
 from docproc.runtime.predicate import _MISSING, path_value
 from docproc.runtime.registry import KindResult, RunContext, TypeRegistryClient
 from docproc.sdk.models import Annotation, ListAnnotationsRequest, Span, Unit, UnitKind, canonical
 from docproc.sdk.store import Warehouse
+
+ROLE_RANK = ("restates", "confirms", "updates", "contradicts")
 
 
 def digest(*parts: Any) -> str:
@@ -104,33 +106,33 @@ class Consolidator:
     def normalize(self, ctx: RunContext) -> KindResult:
         all_ = self._all(ctx)
         result = KindResult()
-        groups: list[list[Annotation]] = []
-        for a in sorted((a for a in ctx.annotations if a.type.startswith("Statement[")), key=lambda a: a.id):
-            entity = a.type[10:-1]
-            policy = self._policy(entity)
-            known = self._known(a, policy, all_)
-            group = next(
-                (
-                    g
-                    for g in groups
-                    if g[0].type == a.type
-                    and ctx.units[g[0].unit_id].source_id == ctx.units[a.unit_id].source_id
-                    and (
-                        related(ctx, g[0], a, "overlaps")
-                        or known is not None
-                        and self._known(g[0], policy, all_) == known
-                    )
-                ),
-                None,
-            )
-            if group is None:
-                groups.append([a])
-            else:
-                group.append(a)
+        statements = sorted((a for a in ctx.annotations if a.type.startswith("Statement[")), key=lambda a: a.id)
+        parents = list(range(len(statements)))
+        known = [self._known(a, self._policy(a.type[10:-1]), all_) for a in statements]
+
+        def find(i: int) -> int:
+            while parents[i] != i:
+                parents[i] = parents[parents[i]]
+                i = parents[i]
+            return i
+
+        for i, a in enumerate(statements):
+            for j in range(i):
+                b = statements[j]
+                if (
+                    a.type == b.type
+                    and ctx.units[a.unit_id].source_id == ctx.units[b.unit_id].source_id
+                    and (related(ctx, a, b, "overlaps") or known[i] is not None and known[i] == known[j])
+                ):
+                    parents[find(i)] = find(j)
+        components: dict[int, list[Annotation]] = defaultdict(list)
+        for i, a in enumerate(statements):
+            components[find(i)].append(a)
+        groups = sorted(components.values(), key=lambda group: group[0].id)
         for group in groups:
             first = group[0]
             payload = first.payload()
-            conflicts = []
+            conflicts: list[dict[str, Any]] = []
             for a in group[1:]:
                 for layer in ("attributes", "modifiers"):
                     for field, value in a.payload().get(layer, {}).items():
@@ -146,6 +148,10 @@ class Consolidator:
                         else:
                             target[field] = value
             bound_modifier_ids = []
+            modifier_origins = {
+                kind: next(a.id for a in group if a.payload().get("modifiers", {}).get(kind) == value)
+                for kind, value in payload.get("modifiers", {}).items()
+            }
             for modifier in ctx.annotations:
                 if modifier.type != "Modifier":
                     continue
@@ -167,7 +173,23 @@ class Consolidator:
                         if value not in field_schema.get("enum", [value]):
                             result.verdicts.append(verdict(first.unit_id, "normalize/modifier-unmapped", kind))
                             continue
-                        payload.setdefault("modifiers", {})[kind] = value
+                        target = payload.setdefault("modifiers", {})
+                        if kind in target and target[kind] != value:
+                            name = f"modifiers.{kind}"
+                            conflict = next((c for c in conflicts if c["attribute"] == name), None)
+                            if conflict is None:
+                                conflict = {
+                                    "attribute": name,
+                                    "values": [target[kind]],
+                                    "annotationIds": [modifier_origins[kind]],
+                                }
+                                conflicts.append(conflict)
+                            if value not in conflict["values"]:
+                                conflict["values"].append(value)
+                                conflict["annotationIds"].append(modifier.id)
+                        else:
+                            target[kind] = value
+                            modifier_origins.setdefault(kind, modifier.id)
                         bound_modifier_ids.append(modifier.id)
             # Disagreement is kept in a companion Decision: Statement schemas do not contain conflicts.
             spans_by_unit: dict[int, list[tuple[int, int]]] = defaultdict(list)
@@ -285,10 +307,7 @@ class Consolidator:
             def time_of(a: Annotation) -> datetime:
                 root = next((u for u in roots if u.source_id == ctx.units[a.unit_id].source_id), ctx.units[a.unit_id])
                 value = str(a.payload().get("attributes", {}).get("recorded_at", meta(root, "recordedAt")))
-                parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
-                if parsed.tzinfo is None:
-                    raise ValueError("consolidate/evidence-time-offset-required")
-                return parsed.astimezone(UTC)
+                return utc_instant(value, "consolidate/evidence-time")
 
             evidence.sort(key=lambda a: (time_of(a), a.id))
             attributes: dict[str, Any] = {}
@@ -305,7 +324,7 @@ class Consolidator:
                         if field not in target:
                             target[field], origins[name] = value, a
                             if n:
-                                role = "confirms"
+                                role = max(role, "confirms", key=ROLE_RANK.index)
                         elif target[field] != value:
                             prior = origins[name]
                             if policy["nature"] == "state" and time_of(a) > time_of(prior):
@@ -319,8 +338,8 @@ class Consolidator:
                                     }
                                 )
                                 target[field], origins[name] = value, a
-                                if role != "contradicts":
-                                    role = "updates"
+                                if n:
+                                    role = max(role, "updates", key=ROLE_RANK.index)
                             else:
                                 conflict = conflicts.setdefault(
                                     name,
@@ -335,13 +354,14 @@ class Consolidator:
                                     variant["annotationIds"].append(a.id)
                                 else:
                                     conflict["values"].append({"value": value, "annotationIds": [a.id]})
-                                role = "contradicts"
+                                if n:
+                                    role = max(role, "contradicts", key=ROLE_RANK.index)
                         elif (
                             n
                             and role == "restates"
                             and ctx.units[a.unit_id].source_id != ctx.units[evidence[0].unit_id].source_id
                         ):
-                            role = "confirms"
+                            role = max(role, "confirms", key=ROLE_RANK.index)
                 if any(
                     a.payload().get("modifiers", {}).get(k) in ("negative", "negated", "refuted")
                     for k in ("polarity", "certainty", "verification")
@@ -367,7 +387,7 @@ class Consolidator:
                     if (
                         d.type != "Decision"
                         or d.payload().get("decider") != "normalize/conflicts"
-                        or not ancestors.intersection(d.derived_from)
+                        or ancestors != set(d.derived_from)
                     ):
                         continue
                     for conflict in d.payload()["factors"]["conflicts"]:

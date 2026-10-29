@@ -109,6 +109,7 @@ def new_context(ctx: RunContext, *, kind: str, engine: dict[str, Any]) -> RunCon
     import yaml
 
     manifest = {**ctx.manifest, "kind": kind, "engine": engine}
+    assert ctx.processor is not None
     p = Processor.model_validate({**ctx.processor.dump(), "kind": kind, "manifestYaml": yaml.safe_dump(manifest)})
     return replace(ctx, manifest=manifest, processor=p, item=ctx.item.model_copy(update={"kind": kind}))
 

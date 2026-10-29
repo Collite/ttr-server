@@ -15,11 +15,11 @@ import yaml
 from psycopg import sql
 from psycopg.rows import dict_row
 
-from docproc.kinds.common import verdict
+from docproc.kinds.common import utc_instant, verdict
 from docproc.kinds.consolidate import digest, record_decision, subject_scope
 from docproc.kinds.rule_dsl import pack_file
 from docproc.runtime.predicate import _MISSING, path_value
-from docproc.runtime.registry import KindResult, RunContext, TypeRegistryClient
+from docproc.runtime.registry import KindRefused, KindResult, RunContext, TypeRegistryClient
 from docproc.sdk.models import ListAnnotationsRequest, RunVisibility
 from docproc.sdk.store import Warehouse
 
@@ -35,18 +35,24 @@ def scalar(value: Any, schema: dict[str, Any]) -> Any:
     if value is None:
         return None
     if "x-ttr-scale" in schema:
-        number = Decimal(str(value))
+        try:
+            number = Decimal(str(value))
+        except ArithmeticError:
+            raise ValueError("record-etl/invalid-decimal") from None
         scale = int(schema["x-ttr-scale"])
         if not number.is_finite() or number.as_tuple().exponent < -scale:  # type: ignore[operator]
             raise ValueError("record-etl/decimal-scale")
         return number
     if schema.get("format") == "date":
-        return date.fromisoformat(str(value))
+        try:
+            return date.fromisoformat(str(value))
+        except ValueError:
+            raise ValueError("record-etl/invalid-date") from None
     if schema.get("format") == "date-time":
-        result = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
-        if result.tzinfo is None:
-            raise ValueError("record-etl/date-time-offset")
-        return result
+        try:
+            return utc_instant(str(value), "record-etl/date-time")
+        except ValueError:
+            raise ValueError("record-etl/invalid-date-time") from None
     return value
 
 
@@ -86,6 +92,17 @@ class RecordEtl:
         result = KindResult()
         rows: list[dict[str, Any]] = []
         refs = []
+        failures: list[dict[str, Any]] = []
+        # Fetch immutable key decisions before opening a world transaction/subject lock.
+        decisions_by_run = {
+            run_id: list(
+                self.warehouse.iter_annotations(
+                    ListAnnotationsRequest(run_id=run_id, types=["Decision"], active_only=False)
+                )
+            )
+            for run_id in {record.run_id for record in records}
+        }
+        ref_cache: dict[tuple[str, str, str, str], Any] = {}
         try:
             with psycopg.connect(self._conninfo, row_factory=dict_row) as conn:
                 # Serialize concurrent ACTIVE generations of one subject. Candidate reads do not take write locks.
@@ -103,13 +120,8 @@ class RecordEtl:
                         validator.validate(record.payload())
                         if any(c.get("status") == "open" for c in payload.get("conflicts", [])):
                             raise ValueError("record-etl/open-conflict")
-                        decisions = list(
-                            self.warehouse.iter_annotations(
-                                ListAnnotationsRequest(run_id=record.run_id, types=["Decision"], active_only=False)
-                            )
-                        )
-                        key = record_decision(record, decisions, subject)["chosen"]
-                        row_id = digest(entity, key)
+                        key = record_decision(record, decisions_by_run[record.run_id], subject)["chosen"]
+                        row_id = digest(entity, subject, key)
                         if row_id in seen:
                             raise ValueError("record-etl/duplicate-record-key")
                         seen.add(row_id)
@@ -141,12 +153,16 @@ class RecordEtl:
                                 if not isinstance(value, dict) or not value.get("qname"):
                                     raise ValueError("record-etl/invalid-ref")
                                 ref = spec["ref"]
-                                found = conn.execute(
-                                    sql.SQL("SELECT {} FROM {} WHERE {} = %s").format(
-                                        identifier(ref["value"]), identifier(ref["table"]), identifier(ref["match"])
-                                    ),
-                                    (value["qname"],),
-                                ).fetchall()
+                                cache_key = (ref["table"], ref["value"], ref["match"], value["qname"])
+                                found = ref_cache.get(cache_key)
+                                if found is None:
+                                    found = conn.execute(
+                                        sql.SQL("SELECT {} FROM {} WHERE {} = %s").format(
+                                            identifier(ref["value"]), identifier(ref["table"]), identifier(ref["match"])
+                                        ),
+                                        (value["qname"],),
+                                    ).fetchall()
+                                    ref_cache[cache_key] = found
                                 if len(found) != 1:
                                     raise ValueError("record-etl/unresolved-ref")
                                 value = found[0][ref["value"]]
@@ -157,21 +173,33 @@ class RecordEtl:
                             {"entity": entity, "rowId": row_id, "consolidationRun": payload["consolidationRun"]}
                         )
                     except (ValueError, KeyError, ArithmeticError) as exc:
-                        result.verdicts.append(verdict(record.unit_id, "record-etl/row", str(exc)))
+                        code = (
+                            str(exc)
+                            if isinstance(exc, ValueError) and str(exc).startswith(("record-etl/", "record/"))
+                            else "record-etl/invalid-record"
+                        )
+                        failures.append({"annotationId": record.id, "rule": code})
+                        result.verdicts.append(verdict(record.unit_id, "record-etl/row", code))
                     except Exception as exc:
                         # jsonschema errors can contain sensitive payload values; keep a stable diagnostic.
                         from jsonschema import ValidationError
 
                         if not isinstance(exc, ValidationError):
                             raise
+                        failures.append({"annotationId": record.id, "rule": "record-etl/schema"})
                         result.verdicts.append(verdict(record.unit_id, "record-etl/schema", "invalid record payload"))
+                if ctx.item.visibility == RunVisibility.ACTIVE and failures:
+                    # Raising inside the connection rolls back, releasing the advisory lock.
+                    raise KindRefused("record-etl/rows-rejected", diagnostics=failures)
                 rows.sort(key=lambda row: row["row_id"])
                 old = {r["row_id"]: r for r in current}
                 new = {r["row_id"]: r for r in rows}
-                ignored = {mapping.get("key", ""), "consolidation_run"}
+                ignored = {mapping.get("key", ""), "consolidation_run", "annotation_refs"}
 
                 def comparable(row: dict[str, Any]) -> dict[str, Any]:
-                    return {k: v for k, v in json_row(row).items() if k not in ignored}
+                    # Numeric equality and aware datetime equality compare values/instants,
+                    # independent of decimal scale, session timezone and run provenance.
+                    return {k: v for k, v in row.items() if k not in ignored}
 
                 diff = {
                     "added": sorted(new.keys() - old.keys()),

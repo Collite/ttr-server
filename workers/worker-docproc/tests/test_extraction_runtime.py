@@ -188,3 +188,37 @@ def test_complete_statement_fixture_reaches_rows_with_resolvable_lineage(
     outputs = [next(s["outputs"] for s in d["turns"][0]["sections"] if s["key"] == "outputs") for d in docs]
     assert outputs[0]["recordRows"] == outputs[1]["recordRows"]
     assert outputs[1]["recordDiff"] == {"added": [], "removed": [], "changed": []}
+
+
+def test_abstaining_link_crash_recovers_status_and_section_marker(
+    extraction: tuple[ProcessorRunner, PackManager, FakeWarehouse], pg_url: str
+) -> None:
+    from docproc.kinds.common import annotation
+
+    runner, manager, wh = extraction
+    doc = "review-001.en.json"
+    units = units_of(doc)
+    wh.units = {u.id: u for u in units}
+    mention = annotation(units[1], "Mention", {"kind": "item", "surface": "ventilátor"})
+    mention.id = 5
+    wh.annotations = [mention]
+
+    def crash() -> None:
+        raise RuntimeError("crash after abstaining link load")
+
+    runner.after_load = crash
+    with pytest.raises(RuntimeError, match="crash after abstaining link load"):
+        dispatch(runner, manager, doc, "link-mentions", units[1:])
+    p = next(p for p in manager.hosted_processors() if p.kind == "link")
+    queue = work_queue(p.family)
+    from psycopg import sql
+
+    with psycopg.connect(pg_url) as conn:
+        conn.execute(sql.SQL("UPDATE pgmq.{} SET vt=now()").format(sql.Identifier("q_" + queue)))
+    result = runner.process(runner.bus.fetch(queue, 30)[0])
+    assert result and result.status == CompletionStatus.ABSTAINED and wh.loads == 1
+    with psycopg.connect(pg_url) as conn:
+        row = conn.execute("SELECT protocol FROM pipeline.run_artefacts WHERE run_id=%s", (result.run_id,)).fetchone()
+    assert row
+    errors = next(s["errors"] for s in row[0]["turns"][0]["sections"] if s["key"] == "errors")
+    assert errors["recovery"] == "sections-lost"

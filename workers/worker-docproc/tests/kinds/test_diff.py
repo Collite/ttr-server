@@ -71,3 +71,37 @@ def test_two_versions_align_modify_add_remove_and_hash_fallback() -> None:
     assert payloads[2]["previousUnitId"] == old[3].id
     assert result.sections["decisions"] == {"previousSourceId": 10, "removedUnitIds": [10999]}
     assert_golden("diff-v2", doc, result.annotations, {u.id: u for u in current})
+
+
+def test_diff_times_are_utc_and_leaf_versions_match() -> None:
+    from dataclasses import replace
+
+    import pytest
+
+    from docproc.sdk.models import Unit, UnitKind
+    from tests.pack import metadata
+
+    old = Unit(
+        id=1,
+        source_id=10,
+        kind=UnitKind.DOCUMENT,
+        content_text="same",
+        content_hash="hash",
+        metadata=metadata(recordedAt="2026-10-01T07:00:00Z"),
+    )
+    now = old.model_copy(
+        update={"id": 2, "source_id": 20, "metadata": metadata(recordedAt="2026-10-01T09:30:00+02:00")}
+    )
+    later = old.model_copy(update={"id": 3, "source_id": 30})
+    ctx = replace(new_context(context("claim-002.en.md", "classify-sections"), kind="diff", engine={}), units={2: now})
+    wh = FakeWarehouse([old, now, later])
+    wh.sources = [
+        {"id": i, "documentId": ctx.item.document_id, "recordedAt": at}
+        for i, at in [(10, "2026-10-01T07:00:00Z"), (20, "2026-10-01T09:30:00+02:00"), (30, "2026-10-01T08:00:00Z")]
+    ]
+    result = Diff(wh).run(ctx)
+    assert result.sections["decisions"]["previousSourceId"] == 10
+    assert result.annotations[0].payload() == {"status": "identical", "previousUnitId": 1}
+    wh.sources[1]["recordedAt"] = "2026-10-01T09:30:00"
+    with pytest.raises(ValueError, match="diff/recorded-at-offset-required"):
+        Diff(wh).run(ctx)

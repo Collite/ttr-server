@@ -39,3 +39,29 @@ def test_unconfigured_vocabulary_is_verdict() -> None:
         [Annotation(unit_id=1, type="Mention", payload_json="{}")], {1: Unit(id=1)}, ["code_exists_in(items)"]
     )
     assert not out and "not yet configured" in verdicts[0].payload()["message"]
+
+
+def test_schema_verdict_has_no_payload_values() -> None:
+    registry = TypeRegistryClient(PackManager())
+    registry.load("1")
+    invalid = Annotation(
+        unit_id=1, type="Mention", payload_json=payload_text({"kind": "item", "surface": "SECRET", "extra": "SECRET"})
+    )
+    out, verdicts = Validators(registry).validate([invalid], {1: Unit(id=1)}, [])
+    assert not out
+    message = verdicts[0].payload()["message"]
+    assert len(message) < 200 and "SECRET" not in message and "additionalProperties at $" in message
+
+
+def test_date_parses_only_dates() -> None:
+    manager = PackManager()
+    manager.extra_types = [{"key": "Date", "schema": {"type": "object"}}]
+    reg = TypeRegistryClient(manager)
+    reg.load("1")
+    mention = Annotation(unit_id=1, type="Mention", payload_json=payload_text({"kind": "item", "surface": "Aurora"}))
+    good_date = Annotation(unit_id=1, type="Date", payload_json='{"value":"2026-10-29"}')
+    out, verdicts = Validators(reg).validate([mention, good_date], {1: Unit(id=1)}, ["date_parses"])
+    assert out == [mention, good_date] and not verdicts
+    good_date.payload_json = '{"value":"SECRET"}'
+    out, verdicts = Validators(reg).validate([mention, good_date], {1: Unit(id=1)}, ["date_parses"])
+    assert out == [mention] and len(verdicts) == 1 and "SECRET" not in verdicts[0].payload()["message"]

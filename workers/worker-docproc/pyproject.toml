@@ -13,6 +13,7 @@ dependencies = [
     "uvicorn>=0.34",
     "prometheus-client>=0.21",
     "jsonschema>=4.23",
+    "rfc3339-validator>=0.1.4",
     "pyyaml>=6",
     "tiktoken>=0.9",
     "grpcio>=1.85",

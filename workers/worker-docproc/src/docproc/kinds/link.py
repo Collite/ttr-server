@@ -109,7 +109,9 @@ class Link:
                     page = hit.get("page", hit)
                     ref = page.get("conceptRef", {})
                     concept = ref.get("metadataQname", "") if isinstance(ref, dict) else ""
-                    if not concept.startswith("cn.") or mention.payload().get("concept") not in (None, "", concept):
+                    if concept not in set(engine.get("targets", {}).values()) or mention.payload().get(
+                        "concept"
+                    ) not in (None, "", concept):
                         continue
                     score = float(hit.get("score", 0))
                     if not math.isfinite(score):
@@ -119,7 +121,8 @@ class Link:
                     for key in keys:
                         if key in options:
                             options[key]["source"] = "both"
-                            options[key]["score"] = max(options[key]["score"], score)
+                            if not key[1]:
+                                options[key]["score"] = max(options[key]["score"], score)
                         else:
                             options[key] = {
                                 "system": concept,

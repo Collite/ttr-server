@@ -92,7 +92,28 @@
             "additionalProperties": false,
             "minProperties": 2,
             "properties": {
+              "contains_any": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "heading": {
+                "type": "string"
+              },
               "kind": {
+                "type": "string"
+              },
+              "lang": {
+                "type": "string"
+              },
+              "metadata": {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              "name": {
                 "type": "string"
               },
               "when_field": {

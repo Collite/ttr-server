@@ -45,7 +45,7 @@ def template(value: Any, bound: dict[str, Annotation | None], ctx: RunContext) -
         for arg in args:
             arg = arg.strip()
             try:
-                literal = json.loads(arg)
+                literal = arg[1:-1] if len(arg) >= 2 and arg[0] == arg[-1] == "'" else json.loads(arg)
             except ValueError:
                 literal = arg
             result = template(literal, bound, ctx)
@@ -86,6 +86,11 @@ def related(ctx: RunContext, anchor: Annotation, other: Annotation, rel: str) ->
     raise ValueError("rule/invalid-relation")
 
 
+def unrefined(candidates: list[Annotation]) -> list[Annotation]:
+    refined = {parent for candidate in candidates for parent in candidate.derived_from}
+    return [a for a in candidates if a.id not in refined]
+
+
 class RuleDsl:
     def __init__(self, registry: TypeRegistryClient, pack_path: str = "") -> None:
         self.registry = registry
@@ -123,7 +128,7 @@ class RuleDsl:
                 and pred.evaluate([a])
                 and ("unit" not in anchor_spec or str(ctx.units[a.unit_id].kind).lower() == anchor_spec["unit"])
             ]
-            for anchor in anchors:
+            for anchor in unrefined(anchors):
                 bindings: list[dict[str, Annotation | None]] = [{anchor_spec.get("name", "match"): anchor}]
                 for spec in rule.get("with", []):
                     where = Predicate(spec.get("where", ""))
@@ -137,7 +142,9 @@ class RuleDsl:
                     # Repeated surface mentions of the same linked member within one anchor are one binding.
                     # Distinct members remain distinct; the rule never guesses between them.
                     unique: dict[tuple[Any, ...], Annotation] = {}
-                    for candidate in sorted(candidates, key=lambda a: (a.spans[0].start if a.spans else -1, a.id)):
+                    for candidate in sorted(
+                        unrefined(candidates), key=lambda a: (a.spans[0].start if a.spans else -1, a.id)
+                    ):
                         p = candidate.payload()
                         member = p.get("member")
                         binding_key = (

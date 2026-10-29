@@ -16,7 +16,7 @@ from docproc.config import Config
 from docproc.kinds import register_structural
 from docproc.runtime.registry import KindRegistry, TypeRegistryClient
 from docproc.runtime.runner import ProcessorRunner
-from docproc.sdk.models import Annotation, Completion, CompletionStatus, Unit, payload_text
+from docproc.sdk.models import Annotation, Completion, CompletionStatus, RunVisibility, Unit, payload_text
 from tests.conftest import WORKER
 from tests.fakes import PACK, FakeWarehouse, PackManager
 from tests.fakes_nlp import recorded_nlp
@@ -68,6 +68,7 @@ def dispatch(runner: ProcessorRunner, manager: PackManager, doc: str, family: st
         update={
             "family": processor.family,
             "kind": processor.kind,
+            "visibility": RunVisibility.ACTIVE,
             "version_hash": processor.version_hash,
             "step_id": step,
             "run_id": step + "/1",

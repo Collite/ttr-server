@@ -124,6 +124,10 @@ class Predicate:
         if self._take("exists"):
             self._expect("(")
             name = self._name()
+            if not re.fullmatch(
+                r"[A-Z][A-Za-z0-9_]*(?:\[[A-Za-z0-9_]+\])?|(?:Import|Record)\.[A-Za-z_][A-Za-z0-9_]*", name
+            ):
+                raise PredicateError("predicate/syntax: exists requires type")
             self._expect(")")
             return ("exists", name)
         name = self._name()

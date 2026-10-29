@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from docproc.kinds.chunk.tokens import Tokenizer
+from docproc.kinds.chunk.tokens import Tokenizer, TokenOffsets
 from docproc.kinds.chunk.types import ChunkSpan, UnitMeta
 
 
@@ -20,10 +20,11 @@ def windows(text: str, params: dict[str, Any], separators: list[str]) -> list[Ch
     size, overlap = int(params.get("max_tokens", 400)), int(params.get("overlap", 0))
     if size < 1 or not 0 <= overlap < size:
         raise ValueError("chunk/invalid-size-or-overlap")
+    offsets = TokenOffsets(tokenizer, text)
     start, stop = trim(text, 0, len(text))
     out: list[ChunkSpan] = []
     while start < stop:
-        end = min(stop, tokenizer.end(text[:stop], start, size))
+        end = min(stop, offsets.end(start, size))
         if end < stop:
             for sep in separators:
                 if not sep:
@@ -37,7 +38,7 @@ def windows(text: str, params: dict[str, Any], separators: list[str]) -> list[Ch
             out.append(ChunkSpan(lo, hi))
         if end >= stop:
             break
-        next_start = tokenizer.overlap_start(text, lo, hi, overlap)
+        next_start = offsets.overlap_start(lo, hi, overlap)
         # A separator can make a short chunk <= overlap; always make progress.
         start = next_start if next_start > start else end
         while start < stop and text[start].isspace():

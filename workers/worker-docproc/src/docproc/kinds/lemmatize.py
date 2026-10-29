@@ -3,12 +3,13 @@
 
 from __future__ import annotations
 
+import hashlib
 from collections import defaultdict
 from typing import Any
 
 from docproc.kinds.common import meta, processing_units
 from docproc.runtime.registry import KindResult, RunContext
-from docproc.sdk.models import Unit
+from docproc.sdk.models import RunVisibility, Unit
 from docproc.sdk.nlp import Nlp, identities
 from docproc.sdk.store import Warehouse
 
@@ -44,7 +45,19 @@ class Lemmatize:
                     {"unitId": u.id, "contentLemmas": " ".join(r.lemmas), "lang": lang, "lemmatizer": lemmatizer}
                     for u, r in zip(chunk, response.results, strict=True)
                 )
-        if lemmas:
+        if lemmas and ctx.item.visibility == RunVisibility.ACTIVE:
             self.warehouse.load_lemmas(ctx.item.run_id, lemmas)
+        elif lemmas:
+            result.sections["outputs"] = {
+                "lemmas": [
+                    {
+                        "unitId": row["unitId"],
+                        "lang": row["lang"],
+                        "lemmatizer": row["lemmatizer"],
+                        "lemmasSha256": "sha256:" + hashlib.sha256(row["contentLemmas"].encode()).hexdigest(),
+                    }
+                    for row in lemmas
+                ]
+            }
         result.sections["nlp-calls"] = {"calls": result.usage.nlp_calls, "used": used}
         return result

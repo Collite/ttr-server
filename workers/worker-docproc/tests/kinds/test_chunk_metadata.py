@@ -4,6 +4,9 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import replace
+from typing import Any
+
+import pytest
 
 from docproc.kinds.chunk.kind import Chunk
 from docproc.kinds.chunk.strategies import page, paragraph, structural, table_aware
@@ -99,3 +102,21 @@ def test_parent_section_own_text_is_processed_with_its_child() -> None:
     with recorded_nlp() as nlp:
         result = Chunk(nlp, FakeWarehouse([root, parent, child])).run(ctx)
     assert [a.unit_id for a in result.annotations] == [2, 3] and not result.verdicts
+
+
+def test_recursive_encodes_unit_once(monkeypatch: pytest.MonkeyPatch) -> None:
+    from docproc.kinds.chunk.strategies.recursive import windows
+    from docproc.kinds.chunk.tokens import encoding
+
+    encoder = encoding()
+    original = encoder.encode
+    calls: list[str] = []
+
+    def counted(text: str, **kwargs: Any) -> list[int]:
+        calls.append(text)
+        return original(text, **kwargs)
+
+    monkeypatch.setattr(encoder, "encode", counted)
+    text = "Long document. " * 10000
+    chunks = windows(text, {"max_tokens": 200, "overlap": 0}, [". "])
+    assert len(chunks) > 10 and calls == [text]

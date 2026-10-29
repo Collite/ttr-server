@@ -88,3 +88,76 @@ def test_knn_union_mapping_and_refusal() -> None:
     assert result.sections["candidates"]["unmapped"] == 1
     with pytest.raises(ValueError, match="pick-not-in-this-release"):
         Link(Lex(), Store([unit])).run(new_context(ctx, kind="link", engine={"pick": "llm"}))
+
+
+@pytest.mark.parametrize("score,chosen", [(0.2, False), (0.95, True)])
+def test_page_never_boosts_member(score: float, chosen: bool) -> None:
+    class Lex:
+        def batch(self, queries: list[pb.SpanQuery]) -> pb.BatchMatchResponse:
+            return pb.BatchMatchResponse(
+                results=[
+                    pb.FuzzyMatchResponse(
+                        matches=[
+                            pb.FuzzyMatch(
+                                candidate_id="HL-1001",
+                                candidate="Aurora",
+                                score=score,
+                                source=pb.MEMBER,
+                                category="er.entity.item.product_name",
+                            )
+                        ]
+                    )
+                ]
+            )
+
+    class Store(FakeWarehouse):
+        def find_similar(self, request: dict) -> dict:  # type: ignore[type-arg]
+            return {"hits": [{"score": 0.9, "conceptRef": {"metadataQname": "cn.Item"}}]}
+
+    unit = Unit(id=1, content_text="Aurora")
+    mention = annotation(unit, "Mention", {"kind": "item", "surface": "Aurora"})
+    ctx = replace(context("review-001.en.json", "link-mentions"), units={1: unit}, annotations=[mention])
+    result = Link(Lex(), Store([unit])).run(ctx)
+    decision = next(a.payload() for a in result.annotations if a.type == "Decision")
+    assert ("chosen" in decision) == chosen and decision["score"] == pytest.approx(score)
+    assert any(a.type == "Mention" for a in result.annotations) == chosen
+    if chosen:
+        assert result.annotations[0].payload()["linkMethod"] == "both"
+
+
+@pytest.mark.parametrize("concept,chosen", [("cn.Customer", False), ("cn.Item", True)])
+def test_knn_respects_family_targets(concept: str, chosen: bool) -> None:
+    class EmptyLex:
+        def batch(self, queries: list[pb.SpanQuery]) -> pb.BatchMatchResponse:
+            return pb.BatchMatchResponse(results=[pb.FuzzyMatchResponse()])
+
+    class Store(FakeWarehouse):
+        def find_similar(self, request: dict) -> dict:  # type: ignore[type-arg]
+            return {"hits": [{"score": 0.8, "conceptRef": {"metadataQname": concept}}]}
+
+    unit = Unit(id=1, content_text="Aurora")
+    mention = annotation(unit, "Mention", {"kind": "item", "surface": "Aurora"})
+    ctx = replace(context("review-001.en.json", "link-mentions"), units={1: unit}, annotations=[mention])
+    result = Link(EmptyLex(), Store([unit])).run(ctx)
+    assert any(a.type == "Mention" for a in result.annotations) == chosen
+
+
+def test_every_real_hartland_replay_abstains() -> None:
+    from google.protobuf.json_format import ParseDict
+
+    replay = RecordedLexMatcher("hartland.json")
+    for row in replay.rows:
+
+        class Lex:
+            def batch(self, queries: list[pb.SpanQuery]) -> pb.BatchMatchResponse:
+                return pb.BatchMatchResponse(results=[ParseDict(row["response"], pb.FuzzyMatchResponse())])  # noqa: B023
+
+        class Store(FakeWarehouse):
+            def find_similar(self, request: dict) -> dict:  # type: ignore[type-arg]
+                return {"hits": [{"score": 0.9, "conceptRef": {"metadataQname": "cn.Item"}}]}
+
+        unit = Unit(id=1, content_text=row["query"])
+        mention = annotation(unit, "Mention", {"kind": "item", "surface": row["query"]})
+        ctx = replace(context("review-001.en.json", "link-mentions"), units={1: unit}, annotations=[mention])
+        result = Link(Lex(), FakeWarehouse([unit])).run(ctx)
+        assert result.abstained and not any(a.type == "Mention" for a in result.annotations)

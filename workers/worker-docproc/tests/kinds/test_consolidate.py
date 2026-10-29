@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+import json
 from dataclasses import replace
 from pathlib import Path
 
@@ -138,7 +139,7 @@ def test_normalized_conflicts_survive_to_record_and_modifier_lineage() -> None:
     kind = Consolidator(wh, registry(), str(PACK))
     normalized = kind.normalize(replace(ctx, annotations=[first, duplicate, mod]))
     statement = next(a for a in normalized.annotations if a.type == "Statement[review]")
-    assert statement.payload()["modifiers"]["temporal_context"] == "past" and mod.id in statement.derived_from
+    assert statement.payload()["modifiers"]["temporal_context"] == "current" and mod.id in statement.derived_from
     for n, a in enumerate(normalized.annotations):
         a.id = 1000 + n
         wh.annotations.append(a)
@@ -217,3 +218,140 @@ def test_state_times_compare_instants_across_offsets(tmp_path: Path) -> None:
     assert record["attributes"]["rating"] == 5
     assert record["history"][0]["asOf"] == "2026-10-01T07:00:00+00:00"
     assert not record.get("conflicts")
+
+
+def test_normalize_conflicts_do_not_leak_across_shared_modifier() -> None:
+    from docproc.kinds.common import annotation
+    from docproc.sdk.models import Span
+
+    ctx, wh = complete_subject()
+    a, b = ctx.annotations
+    # Two distinct non-overlapping evidence groups in the same unit, sharing a scope.
+    b = b.model_copy(update={"unit_id": a.unit_id, "spans": [Span(unit_id=a.unit_id, start=40, end=50)]}, deep=True)
+    ap = a.payload()
+    ap["spans"] = [{"unitId": a.unit_id, "start": 0, "end": 10}]
+    a = a.model_copy(update={"spans": [Span(unit_id=a.unit_id, start=0, end=10)], "payload_json": payload_text(ap)})
+    bp = b.payload()
+    bp["spans"] = [s.model_dump(by_alias=True) for s in b.spans]
+    b.payload_json = payload_text(bp)
+    duplicate = a.model_copy(update={"id": 901}, deep=True)
+    p = duplicate.payload()
+    p["attributes"]["rating"] = 1
+    duplicate.payload_json = payload_text(p)
+    mod = annotation(
+        a.unit_id,
+        "Modifier",
+        {"kind": "temporal_context", "value": "current", "scope": {"unitId": a.unit_id, "start": 0, "end": 100}},
+    )
+    mod.id = 902
+    wh.annotations.extend([b, duplicate, mod])
+    kind = Consolidator(wh, registry(), str(PACK))
+    normalized = kind.normalize(replace(ctx, annotations=[a, duplicate, b, mod]))
+    statements = [a for a in normalized.annotations if a.type.startswith("Statement")]
+    assert len(statements) == 2 and all(mod.id in a.derived_from for a in statements)
+    for n, a in enumerate(normalized.annotations):
+        a.id = 1000 + n
+    wh.annotations.extend(normalized.annotations)
+    result = kind.consolidate(replace(ctx, annotations=statements))
+    records = [a.payload() for a in result.annotations if a.type == "Record.review"]
+    assert len(records) == 2 and sum(bool(p.get("conflicts")) for p in records) == 1
+
+
+@pytest.mark.parametrize("reverse", [False, True])
+def test_evidence_role_only_increases(reverse: bool) -> None:
+    ctx, wh = complete_subject()
+    first = ctx.annotations[0].model_copy(deep=True)
+    first_payload = first.payload()
+    first_payload["attributes"].pop("title", None)
+    first.payload_json = payload_text(first_payload)
+    second = first.model_copy(update={"id": 901}, deep=True)
+    p = second.payload()
+    p["attributes"]["rating"] = 1
+    p["attributes"]["title"] = "new"
+    if reverse:
+        p["attributes"] = dict(reversed(list(p["attributes"].items())))
+    second.payload_json = json.dumps(p)
+    result = Consolidator(wh, registry(), str(PACK)).consolidate(replace(ctx, annotations=[first, second]))
+    record = next(a.payload() for a in result.annotations if a.type == "Record.review")
+    assert record["evidence"][1]["role"] == "contradicts"
+
+
+def test_normalize_preserves_modifier_disagreement() -> None:
+    from docproc.kinds.common import annotation
+
+    ctx, wh = complete_subject()
+    first = ctx.annotations[0]
+    mod = annotation(
+        first.unit_id,
+        "Modifier",
+        {"kind": "temporal_context", "value": "past", "scope": first.spans[0].model_dump(by_alias=True)},
+    )
+    mod.id = 901
+    another = mod.model_copy(update={"id": 902})
+    result = Consolidator(wh, registry(), str(PACK)).normalize(replace(ctx, annotations=[first, mod, another]))
+    statement, decision = result.annotations
+    assert statement.payload()["modifiers"]["temporal_context"] == "current"
+    assert decision.payload()["factors"]["conflicts"] == [
+        {"attribute": "modifiers.temporal_context", "values": ["current", "past"], "annotationIds": [first.id, mod.id]}
+    ]
+
+
+def test_normalize_transitive_components() -> None:
+    from itertools import permutations
+
+    from docproc.sdk.models import Span
+
+    ctx, wh = complete_subject()
+    first = ctx.annotations[0]
+    kind = Consolidator(wh, registry(), str(PACK))
+    for ids in permutations([901, 902, 903]):
+        inputs = []
+        for id_, (start, end) in zip(ids, [(0, 10), (5, 20), (15, 30)], strict=True):
+            a = first.model_copy(
+                update={"id": id_, "derived_from": [], "spans": [Span(unit_id=first.unit_id, start=start, end=end)]},
+                deep=True,
+            )
+            p = a.payload()
+            p["spans"] = [s.model_dump(by_alias=True) for s in a.spans]
+            a.payload_json = payload_text(p)
+            inputs.append(a)
+        output = kind.normalize(replace(ctx, annotations=inputs))
+        assert len(output.annotations) == 1 and not output.verdicts
+        assert output.annotations[0].derived_from == [901, 902, 903]
+        assert [(s.start, s.end) for s in output.annotations[0].spans] == [(0, 30)]
+
+
+def test_evidence_time_error_is_redacted() -> None:
+    ctx, wh = complete_subject()
+    a = ctx.annotations[0].model_copy(deep=True)
+    p = a.payload()
+    p["attributes"]["recorded_at"] = "SECRET"
+    a.payload_json = payload_text(p)
+    with pytest.raises(ValueError, match="^consolidate/evidence-time-invalid$"):
+        Consolidator(wh, registry(), str(PACK)).consolidate(replace(ctx, annotations=[a]))
+
+
+def test_two_modifiers_keep_both_values_and_their_lineage() -> None:
+    from docproc.kinds.common import annotation
+
+    ctx, wh = complete_subject()
+    a = ctx.annotations[0].model_copy(deep=True)
+    p = a.payload()
+    p["modifiers"].pop("temporal_context")
+    a.payload_json = payload_text(p)
+    first = annotation(
+        a.unit_id,
+        "Modifier",
+        {"kind": "temporal_context", "value": "current", "scope": a.spans[0].model_dump(by_alias=True)},
+    )
+    first.id = 901
+    second = first.model_copy(update={"id": 902}, deep=True)
+    p = second.payload()
+    p["value"] = "past"
+    second.payload_json = payload_text(p)
+    result = Consolidator(wh, registry(), str(PACK)).normalize(replace(ctx, annotations=[a, first, second]))
+    statement, decision = result.annotations
+    assert statement.payload()["modifiers"]["temporal_context"] == "current"
+    assert decision.payload()["factors"]["conflicts"] == [
+        {"attribute": "modifiers.temporal_context", "values": ["current", "past"], "annotationIds": [901, 902]}
+    ]

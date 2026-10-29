@@ -47,7 +47,7 @@ class Import:
                     verdict(
                         source.unit_id if source.unit_id in ctx.units else next(iter(ctx.units)),
                         "import/rejected",
-                        exc.message if isinstance(exc, ValidationError) else str(exc),
+                        f"{exc.validator} at {exc.json_path}" if isinstance(exc, ValidationError) else str(exc),
                     )
                 )
         return result

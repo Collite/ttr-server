@@ -26,6 +26,7 @@ class Config:
     vt_slack_s: int = 30
     idle_ms: int = 500
     batch: int = 1
+    max_deliveries: int = 10
     telemetry_enabled: bool = False
     otlp_endpoint: str = "http://localhost:4317"
 
@@ -60,9 +61,16 @@ def load_config(path: str | Path | None = None) -> Config:
         vt_slack_s=int(tree.get("vt-slack-s", 30)),
         idle_ms=int(tree.get("poll.idle-ms", 500)),
         batch=int(tree.get("poll.batch", 1)),
+        max_deliveries=int(tree.get("max-deliveries", 10)),
         telemetry_enabled=tree.get_bool("telemetry.enabled", False),
         otlp_endpoint=tree.get("telemetry.otlp.endpoint", "http://localhost:4317"),
     )
-    if cfg.batch < 1 or cfg.idle_ms < 1 or cfg.vt_slack_s < 0 or not 1 <= cfg.http_port <= 65535:
+    if (
+        cfg.max_deliveries < 1
+        or cfg.batch < 1
+        or cfg.idle_ms < 1
+        or cfg.vt_slack_s < 0
+        or not 1 <= cfg.http_port <= 65535
+    ):
         raise ValueError("invalid docproc poll, vt-slack-s or http.port")
     return cfg

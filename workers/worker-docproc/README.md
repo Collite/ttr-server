@@ -35,7 +35,12 @@ DOCWH_PIPELINE_URL='http://docwh-pipeline:7280' uv run python -m docproc.main
 `conf/application.conf` uses HOCON with optional environment overrides. Required:
 `PIPELINE_DB_URL`, `DOCWH_STORE_URL`, `DOCWH_PIPELINE_URL`. Pool defaults to `cpu`;
 `DOCPROC_FAMILIES` optionally narrows the hosted registry to comma-separated families.
-`DOCPROC_CONFIG` selects another HOCON file.
+`DOCPROC_CONFIG` selects another HOCON file. `DOCPROC_MAX_DELIVERIES` defaults to 10
+and caps redelivery even when the manager is unreachable. Hosted manifests must
+declare `budget.timeout_s` and `budget.retries`; retries are additional attempts
+after the first delivery. Transport errors, store 401/429/5xx and PostgreSQL
+operational failures stay leased for retry. Permanent processor lookup failures
+archive with a FAILED completion; permanent annotation-load refusals fail once.
 `NLP_GRPC` is required when an NLP kind runs (gRPC, normally `nlp:7271`).
 `DOCPROC_PACK_PATH` names the mounted pack for classify gazetteers and `pack:` chunkers.
 `LEXMATCHER_GRPC` is required for lexicon linking (normally `fuzzy:7266`); the world
@@ -48,7 +53,9 @@ generation; the `generation` load/read seam is recorded in DX contracts §1.4 an
 must be implemented by P1 before certification.
 
 HTTP port `7310` exposes `/health`, `/ready`, `/status`, `/metrics`. Readiness requires
-a loaded type registry and a successful pipeline-DB `SELECT 1`. Telemetry defaults
+successful bootstrap (hosted manifests and mounted-pack integrity) and a successful
+pipeline-DB `SELECT 1`. Registry versions are loaded only from each item's pinned
+plan. Drain the families before switching the mounted pack. Telemetry defaults
 off; enable `DOCPROC_TELEMETRY_ENABLED` with `OTEL_EXPORTER_OTLP_ENDPOINT` to export
 the per-item `docproc.run` span and shared platform telemetry.
 
@@ -67,7 +74,7 @@ Fixture source: `kantheon/shared/proto/fixtures/dx/packs/hartland-mini` and sibl
 canonical, documents NFC. Set `KANTHEON_DIR` to that checkout for the peer checks.
 The engine `types/` mirror comes from P1 `4f0b263b`, with P3's optional `Chunk.oversize`
 field. P3 supplies `chunk-validators.json`; P1's `loadSource`, `unitTree` and `loadLemmas`
-fixtures are also mirrored. `when-cases.json` now has 39 Python-verified canonical cases; the Kotlin twin remains
+fixtures are also mirrored. `when-cases.json` now has 40 Python-verified canonical cases; the Kotlin twin remains
 pending P2 S2.1. `Decision.chosen` is optional for abstention. Set `KANTHEON_DIR` to the P3 canonical-fixture checkout
 for complete peer checks. Runtime schemas are packaged under `_data/schemas/` and
 `_data/types/`; the actual model registry is fetched from the manager, never copied
@@ -117,9 +124,12 @@ No Kantheon proto stubs are imported.
 `import` reads the split-reanchored bundle via `GET /v1/bundles/{ref}` and retains
 connector provenance (`import:<connector>@<version>`). Each invalid fact becomes
 `import/rejected`; valid siblings still load. `lemmatize` batches by language and
-`engine.batch` (64 by default), writes the lemma plane only, and refuses missing
+`engine.batch` (64 by default), writes the lemma plane only on ACTIVE runs, and refuses missing
 S-1 model identities or wrong result cardinality before any writes. Artefacts record
-NLP calls and model identities; gRPC propagates the current trace context.
+NLP calls and model identities; CANDIDATE/SHADOW lemmas are hashes in the outputs
+section and never change live lemmas. Promotion must re-plan lemmatize at ACTIVE;
+candidate full-text evaluation uses the previous live lemmas. Any future sink kind
+must follow this ACTIVE-only world-write rule. gRPC propagates the current trace context.
 
 `classify` evaluates ordered deterministic rules: heading regex, metadata, language,
 and pack gazetteer matches; first match wins. PX's `when_heading`/`when_field` aliases
@@ -145,6 +155,8 @@ The encoding is vendored under `_data/tiktoken/` and `tests/fixtures/tiktoken/`,
 SHA-256 checked before loading. The image sets `TIKTOKEN_CACHE_DIR` to its baked
 cache. Missing/corrupt data fails locally; the worker does not fetch tokenizer data.
 Token windows respect complete Unicode code points, including astral characters.
+Recursive windows encode the unit once and use token/code-point offset lookups;
+Unicode overlap corrections inspect only bounded window slices.
 `max_tokens`/token overlap apply to token windows; sentence windows use `n` (PX alias
 `window`) and sentence overlap. Paragraph word limits default to Kotlin's 30/200;
 page/paragraph/sentence strategies can omit a token cap or declare an explicit one
@@ -155,7 +167,11 @@ Plugins: `plugin:<entry-point>` from `docproc.chunkers`, or
 runs in process. It implements `Chunker` (`name`, `chunk(text, unit, params)` →
 `list[ChunkSpan]`, optional `partial`). Runtime always checks spans, full non-blank
 coverage (unless partial), declared overlap and token bounds, even if the manifest
-omits postconditions. A failed plugin/unit yields Verdicts and no chunks for that
+omits postconditions. `engine.partial` (or `params.partial`/plugin partial) permits
+partial coverage. Plugins receive a deep unit copy; SystemExit becomes a plugin
+Verdict, and the timeout timer repeats if a plugin swallows its first signal.
+Reviewed in-process plugin exception text remains in `chunk/plugin-error` diagnostics.
+A failed plugin/unit yields Verdicts and no chunks for that
 unit. `semantic`/`summary-prefix` are refused here; P4 hosts those in docproc-llm.
 The dev-only installed test distribution is absent from the production image;
 pack plugin fixtures live outside the shared pack mirror.
@@ -167,12 +183,15 @@ concept-page recall over the mention's sentence. The explicit `targets` map turn
 model qnames into cn concepts; MEMBER hits supply the instance id. It enriches
 unlinked mentions and gazetted concepts that still lack a member. A score/margin
 failure emits a Decision without chosen and yields ABSTAINED when nothing links.
-The runtime preserves that status on load-before-ack recovery. `pick: llm` is refused.
+Concept-page hits are limited to the family targets. They support a member
+candidate's provenance but never raise its lexical score; weak members still
+abstain. The runtime preserves abstention status on load-before-ack recovery. `pick: llm` is refused.
 
 `rule` validates the pack rules file, joins annotations by declared spatial
 relations, evaluates a recursive-descent predicate parser, and expands only closed
 references/literals/coalesce. It fills every bound id into derivedFrom. Repeated
-surfaces of one linked member bind once per anchor, in span order. Function engines
+surfaces of one linked member bind once per anchor, in span order. Raw anchors or
+bindings with a present refinement are excluded. Function engines
 come only from the `@rule_fn` registry (`normalize`, `consolidate`); arbitrary imports
 are refused at bootstrap. Every emitted payload validates against the manager registry.
 
@@ -189,10 +208,18 @@ Records hang, without spans, on the newest evidence's DOCUMENT root.
 `record-etl` accepts only registry entries with feedsRecords=true. It maps Refs
 through dimension lookups, checks decimal scales exactly and validates dates. ACTIVE
 replaces one subject's rows in one transaction under a subject advisory lock; an
-insert failure rolls back the delete. CANDIDATE/SHADOW calculate a diff and full
+insert failure rolls back the delete. Any rejected record fails the entire ACTIVE
+run with `record-etl/rows-rejected`, loads no annotations and preserves the last
+good world generation; the artefact records only annotation ids and rule codes. CANDIDATE/SHADOW calculate a diff and full
 candidate rows in the artefact without writing the world DB. Candidate outputs are
 labelled VERBOSITY_FULL and need P2's storage/redaction floor before certification.
-All runs emit RecordRowRef pointers for lineage. row_id hashes entity + stable key.
+Fresh runs emit RecordRowRef pointers for lineage. `row_id` hashes the canonical
+JSON array `[entity, subject, recordKey]` (SHA-256). Diff comparison uses typed
+numeric/UTC instant equality and excludes run provenance (`annotation_refs`,
+`consolidation_run`). Load-before-ack recovery restores stored annotation ids/status,
+but kind sections (`recordRows`, link candidates, consolidate recordKeys/redirects,
+and NLP evidence) can be lost; `errors.recovery: sections-lost` marks that path
+until P2 supplies durable sections.
 The legacy generated review_id is a surrogate; row_id is the stable identity.
 
 Each item requests its plan-pinned Graph from `GET /v1/plans/{planId}/graph` and
@@ -200,14 +227,20 @@ loads precisely registryVersion. This route is an explicit P2 integration seam;
 missing/mismatched versions fail the message. The mounted model hash and every
 indexed generated file/schema must match, including the schemas returned by the manager.
 
-**PX exit gap:** its deterministic review DSL emits item/rating/verification only,
+**Accepted P3 proof (review-182 R182-A):** its deterministic review DSL emits item/rating/verification only,
 while Record.review requires attributes/modifiers assigned to the LLM mentor.
 The six-document flow correctly reports incomplete records. A separate, explicitly
 complete Statement fixture proof produces the PX row oracle with resolvable lineage
 and stable ids. It does not claim the unchanged deterministic pack produces those rows.
-The frozen review DDL also lacks the fixed row_id/subject_id columns and uses text
+P4 exit must prove unchanged pack → complete rows once `review-extract` supplies
+the LLM-owned fields. The frozen review DDL also lacks the fixed row_id/subject_id columns and uses text
 annotation_refs; `tests/fixtures/sql/record_columns.sql` shows the required migration
 on the disposable world DB. The worker never changes DDL.
+
+Validation uses Draft 2020-12 with every declared format checker present, including
+RFC3339 date-time. `date_parses` applies only to Date annotations; model date fields
+are checked by `schema_valid`. Schema and scalar Verdict messages contain rule/path
+codes without payload values.
 
 See [docs/README.md](docs/README.md) for integration gates and fixture provenance.
 

@@ -6,7 +6,7 @@ from __future__ import annotations
 from difflib import SequenceMatcher
 from typing import Any
 
-from docproc.kinds.common import annotation, meta, meta_list, sections
+from docproc.kinds.common import annotation, meta, meta_list, sections, utc_instant
 from docproc.runtime.registry import KindResult, RunContext
 from docproc.sdk.models import Unit, UnitKind
 from docproc.sdk.store import Warehouse
@@ -55,23 +55,38 @@ class Diff:
             and source_value(s, "documentId") == ctx.item.document_id
             and source_value(s, "recordedAt")
             and recorded_at
-            and source_value(s, "recordedAt") < recorded_at
+            and utc_instant(source_value(s, "recordedAt"), "diff/recorded-at")
+            < utc_instant(recorded_at, "diff/recorded-at")
         ]
-        previous = max(older, key=lambda s: (source_value(s, "recordedAt"), int(s["id"]))) if older else None
+        previous = (
+            max(older, key=lambda s: (utc_instant(source_value(s, "recordedAt"), "diff/recorded-at"), int(s["id"])))
+            if older
+            else None
+        )
         old_units = {u.id: u for u in self.warehouse.units_of_source(int(previous["id"]))} if previous else {}
         candidates = {u.id: u for u in old_units.values() if u.kind == UnitKind.SECTION}
+        if not candidates:
+            candidates = {u.id: u for u in old_units.values() if u.kind == UnitKind.DOCUMENT}
         result = KindResult()
         for unit in current:
             match = next(
                 (
                     u
                     for u in candidates.values()
-                    if (title_path(u, old_units), u.idx) == (title_path(unit, ctx.units), unit.idx)
+                    if u.kind == unit.kind
+                    and (
+                        u.idx == unit.idx
+                        if unit.kind == UnitKind.DOCUMENT
+                        else (title_path(u, old_units), u.idx) == (title_path(unit, ctx.units), unit.idx)
+                    )
                 ),
                 None,
             )
             if match is None and unit.content_hash:
-                match = next((u for u in candidates.values() if u.content_hash == unit.content_hash), None)
+                match = next(
+                    (u for u in candidates.values() if u.kind == unit.kind and u.content_hash == unit.content_hash),
+                    None,
+                )
             payload: dict[str, Any] = {"status": "new"}
             if match:
                 candidates.pop(match.id)

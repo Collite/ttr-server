@@ -39,7 +39,7 @@ def test_one_bad_fact_does_not_discard_valid_siblings() -> None:
             },
         }
     ]
-    registry.load("1")
+    registry.load("2")
     bad_span = facts[0].model_copy(update={"spans": [Span(unit_id=10001, start=0, end=9999)]})
     bad_payload = facts[0].model_copy(update={"payload_json": payload_text({"rating": 8})})
     missing_identity = Annotation(unit_id=10001, type="Import", payload_json="{}")
@@ -71,3 +71,20 @@ def test_unit_level_fact_has_no_span() -> None:
     result = Import(manager, registry).run(ctx)
     assert not result.verdicts and not result.annotations[0].spans
     assert result.annotations[0].payload() == {"source": "json-reviews", "recorded": True, "rating": 5}
+
+
+def test_import_schema_verdict_redacts_payload() -> None:
+    from docproc.sdk.models import payload_text
+
+    manager = PackManager()
+    manager.extra_types = [{"key": "Import.review", "schema": {"type": "object", "additionalProperties": False}}]
+    registry = TypeRegistryClient(manager)
+    registry.load("1")
+    ctx = context("review-001.en.json", "import", manager=manager)
+    fact = bundle_of("review-001.en.json", units_of("review-001.en.json"))[0]
+    fact.payload_json = payload_text({"body": "SECRET"})
+    manager.bundles[ctx.item.bundle_ref or ""] = [fact]
+    result = Import(manager, registry).run(ctx)
+    assert len(result.verdicts) == 1 and not result.annotations
+    message = result.verdicts[0].payload()["message"]
+    assert "SECRET" not in message and len(message) < 200

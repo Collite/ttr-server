@@ -55,10 +55,11 @@ class Classify:
     def run(self, ctx: RunContext) -> KindResult:
         engine = ctx.manifest["engine"]
         result = KindResult()
+        predicates = [Predicate(rule.get("where", "")) for rule in engine.get("rules", [])]
         for unit in sections(ctx):
             kind, matched = str(engine.get("default", "other")), "default"
             for n, rule in enumerate(engine.get("rules", [])):
-                if self._matches(unit, rule) and Predicate(rule.get("where", "")).evaluate(
+                if self._matches(unit, rule) and predicates[n].evaluate(
                     [a for a in ctx.annotations if a.unit_id == unit.id]
                 ):
                     kind, matched = rule["kind"], str(rule.get("name", f"rule:{n}"))

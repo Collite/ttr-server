@@ -1051,5 +1051,17 @@
     ],
     "error": "predicate/syntax",
     "expr": "Mention.x = NaN"
+  },
+  {
+    "annotations": [
+      {
+        "payload": {
+          "rating": 3
+        },
+        "type": "Import.review"
+      }
+    ],
+    "error": "predicate/syntax",
+    "expr": "exists(Import.review.rating)"
   }
 ]

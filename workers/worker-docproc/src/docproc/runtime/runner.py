@@ -21,7 +21,8 @@ from psycopg.types.json import Jsonb
 from docproc.bus.pgmq import DONE, Message, PgmqBus, work_queue
 from docproc.config import Config
 from docproc.probes import duration, queue_age, queue_depth, runs, verdicts
-from docproc.runtime.registry import KindRegistry, RunContext, TypeRegistryClient
+from docproc.runtime.failures import diagnostic, transient
+from docproc.runtime.registry import KindRefused, KindRegistry, RunContext, TypeRegistryClient
 from docproc.runtime.validators import Validators
 from docproc.sdk.models import (
     Annotation,
@@ -35,7 +36,7 @@ from docproc.sdk.models import (
 )
 from docproc.sdk.pipeline import Manager
 from docproc.sdk.protocol import ProtocolWriter
-from docproc.sdk.store import Warehouse
+from docproc.sdk.store import StoreError, Warehouse
 
 log = logging.getLogger(__name__)
 
@@ -53,7 +54,7 @@ def time_budget(seconds: float) -> Iterator[None]:
         raise RunTimeout()
 
     previous = signal.signal(signal.SIGALRM, expired)
-    signal.setitimer(signal.ITIMER_REAL, seconds)
+    signal.setitimer(signal.ITIMER_REAL, seconds, 1.0)
     try:
         yield
     finally:
@@ -81,6 +82,7 @@ class ProcessorRunner:
         self.stopping = threading.Event()
         self.in_flight: set[str] = set()
         self.processors: list[Processor] = []
+        self.bootstrapped = False
 
     def bootstrap(self) -> None:
         hosted = self.manager.hosted_processors()
@@ -88,13 +90,13 @@ class ProcessorRunner:
         missing = set(self.config.families) - {p.family for p in self.processors}
         if missing:
             raise ValueError(f"hosted families not found: {sorted(missing)}")
-        # Readiness schema; every work item reloads the version pinned by its plan graph.
-        self.registry.load("1")
+        self.registry.verify_pack()
         for processor in self.processors:
             self.kinds.manifest(processor)
+        self.bootstrapped = True
 
     def ready(self) -> bool:
-        return not self.stopping.is_set() and self.registry.loaded and self.bus.ready()
+        return not self.stopping.is_set() and self.bootstrapped and self.bus.ready()
 
     def status(self) -> dict[str, Any]:
         return {
@@ -110,9 +112,12 @@ class ProcessorRunner:
 
     def refresh_metrics(self) -> None:
         for queue in self.queues():
-            m = self.bus.metrics(queue)
-            queue_depth.labels(queue).set(m.queue_length)
-            queue_age.labels(queue).set(m.oldest_msg_age_sec or 0)
+            try:
+                m = self.bus.metrics(queue)
+                queue_depth.labels(queue).set(m.queue_length)
+                queue_age.labels(queue).set(m.oldest_msg_age_sec or 0)
+            except Exception as exc:
+                log.warning("queue metrics interrupted queue=%s %s", queue, diagnostic(exc))
 
     @contextmanager
     def heartbeat(self, msg: Message, vt: int) -> Iterator[None]:
@@ -141,18 +146,20 @@ class ProcessorRunner:
     def poll_once(self) -> int:
         count = 0
         for processor in self.processors:
-            manifest = self.kinds.manifest(processor)
-            vt = int(manifest["budget"]["timeout_s"]) + self.config.vt_slack_s
-            # Batch is the per-family poll quota. Lease one at a time so later items
-            # never spend their timeout waiting behind earlier items in this process.
-            for _ in range(self.config.batch):
-                if self.stopping.is_set():
-                    return count
-                messages = self.bus.fetch_prefer_hi(processor.family, max(vt, 1), qty=1)
-                if not messages:
-                    break
-                self.process(messages[0])
-                count += 1
+            try:
+                manifest = self.kinds.manifest(processor)
+                vt = int(manifest["budget"]["timeout_s"]) + self.config.vt_slack_s
+                # Lease one at a time: the batch is the family's per-poll quota.
+                for _ in range(self.config.batch):
+                    if self.stopping.is_set():
+                        return count
+                    messages = self.bus.fetch_prefer_hi(processor.family, max(vt, 1), qty=1)
+                    if not messages:
+                        break
+                    self.process(messages[0])
+                    count += 1
+            except Exception as exc:
+                log.warning("family poll interrupted family=%s %s", processor.family, diagnostic(exc))
         return count
 
     def run(self) -> None:
@@ -160,9 +167,9 @@ class ProcessorRunner:
             try:
                 if self.poll_once() == 0:
                     self.stopping.wait(self.config.idle_ms / 1000)
-            except Exception:
-                # Infra failures leave leases unacked; pgmq redelivers. Do not log request bodies/credentials.
-                log.warning("consumer attempt interrupted; work remains leased", exc_info=False)
+            except Exception as exc:
+                # Infra failures leave leases unacked; pgmq redelivers. Never log bodies/credentials.
+                log.warning("consumer attempt interrupted; work remains leased %s", diagnostic(exc))
                 self.stopping.wait(self.config.idle_ms / 1000)
 
     def process(self, msg: Message) -> Completion | None:
@@ -199,9 +206,22 @@ class ProcessorRunner:
             self.in_flight.discard(item.run_id)
 
     def _process(self, msg: Message, item: WorkItem, started: float) -> Completion:
-        processor = self.manager.processor(item.family, item.version_hash)
         completion = Completion(run_id=item.run_id, step_id=item.step_id)
         sections: dict[str, Any] = {}
+        ctx = RunContext(item, None, {}, {}, [])
+        if msg.read_ct > self.config.max_deliveries:
+            completion.status, completion.error = CompletionStatus.FAILED, "deliveries exhausted"
+            self._complete(msg, ctx, completion, archive=True)
+            return completion
+        try:
+            processor = self.manager.processor(item.family, item.version_hash)
+        except Exception as exc:
+            if transient(exc):
+                raise
+            detail = f"{exc.status} {exc.code}" if isinstance(exc, StoreError) else type(exc).__name__
+            completion.status, completion.error = CompletionStatus.FAILED, f"processor/unavailable: {detail}"
+            self._complete(msg, ctx, completion, archive=True)
+            return completion
         ctx = RunContext(item, processor, {}, {}, [])
         try:
             manifest = self.kinds.manifest(processor)
@@ -213,7 +233,10 @@ class ProcessorRunner:
             if item.kind != processor.kind:
                 raise ValueError("kind/unsupported: work kind differs from processor")
         except Exception as exc:
-            completion.status, completion.error = CompletionStatus.FAILED, str(exc)
+            if transient(exc):
+                raise
+            error = f"store/{exc.code}" if isinstance(exc, StoreError) else str(exc)
+            completion.status, completion.error = CompletionStatus.FAILED, error
             self._complete(msg, ctx, completion)
             return completion
         vt = max(1, int(manifest["budget"]["timeout_s"]) + self.config.vt_slack_s)
@@ -225,14 +248,16 @@ class ProcessorRunner:
             if existing:
                 completion.status = (
                     CompletionStatus.ABSTAINED
-                    if item.kind == "link"
-                    and any(a.type == "Decision" for a in existing)
-                    and not any(a.type == "Mention" for a in existing)
+                    if all(a.type in ("Abstention", "Decision", "Verdict") for a in existing)
+                    and any(
+                        a.type == "Abstention" or a.type == "Decision" and "chosen" not in a.payload() for a in existing
+                    )
                     else CompletionStatus.SUCCEEDED
                 )
+                sections = {"errors": {"recovery": "sections-lost"}}
                 completion.annotation_ids = [a.id for a in existing]
                 completion.verdict_ids = [str(a.id) for a in existing if a.type == "Verdict"]
-            elif msg.read_ct > int(manifest["budget"]["retries"]):
+            elif msg.read_ct > (int(manifest["budget"]["retries"]) + 1):
                 completion.status, completion.error = CompletionStatus.FAILED, "retries exhausted"
             else:
                 units = {uid: self.warehouse.get_unit(uid) for uid in item.unit_ids}
@@ -293,6 +318,10 @@ class ProcessorRunner:
                     )
                     completion.usage = result.usage
                     completion.child_unit_ids = result.child_unit_ids
+                except KindRefused as exc:
+                    output = []
+                    completion.status, completion.error = CompletionStatus.FAILED, str(exc)
+                    sections = {"errors": {"diagnostics": exc.diagnostics}}
                 except RunTimeout:
                     output = []
                     completion.status, completion.error = CompletionStatus.FAILED, "timeout"
@@ -301,14 +330,22 @@ class ProcessorRunner:
                     completion.status = CompletionStatus.FAILED
                     completion.error = f"{type(exc).__name__}: {exc}"
                 if output:
-                    loaded = self.warehouse.load_annotations(
-                        LoadAnnotationsRequest(
-                            run_id=item.run_id,
-                            annotations=output,
-                            visibility=item.visibility,
-                            generation=item.generation or None,
+                    try:
+                        loaded = self.warehouse.load_annotations(
+                            LoadAnnotationsRequest(
+                                run_id=item.run_id,
+                                annotations=output,
+                                visibility=item.visibility,
+                                generation=item.generation or None,
+                            )
                         )
-                    )
+                    except Exception as exc:
+                        if transient(exc):
+                            raise
+                        error = f"store/{exc.code}" if isinstance(exc, StoreError) else type(exc).__name__
+                        completion.status, completion.error = CompletionStatus.FAILED, error
+                        self._complete(msg, ctx, completion, sections=sections)
+                        return completion
                     completion.annotation_ids = loaded.ids
                     completion.verdict_ids = [
                         str(uid) for uid, a in zip(loaded.ids, output, strict=True) if a.type == "Verdict"
@@ -322,7 +359,7 @@ class ProcessorRunner:
             msg,
             ctx,
             completion,
-            archive=msg.read_ct > int(manifest["budget"]["retries"]) and not existing,
+            archive=msg.read_ct > (int(manifest["budget"]["retries"]) + 1) and not existing,
             sections=sections,
         )
         return completion

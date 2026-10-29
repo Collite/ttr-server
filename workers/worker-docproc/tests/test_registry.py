@@ -1,4 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
+from pathlib import Path
+from typing import Any
+
 import pytest
 from jsonschema import ValidationError
 
@@ -75,3 +78,72 @@ def test_registry_exact_version_and_manager_schema_drift() -> None:
     manager.registry = lambda version: body  # type: ignore[method-assign]
     with pytest.raises(ValueError, match="manager-schema-drift"):
         TypeRegistryClient(manager, str(PACK)).load("1")
+
+
+def test_hosted_budget_required() -> None:
+    import yaml
+
+    registry = KindRegistry()
+    registry.register("classify", Noop())
+    p = next(p for p in PackManager().processors.values() if p.kind == "classify")
+    manifest = yaml.safe_load(p.manifest_yaml)
+    del manifest["budget"]["retries"]
+    p.manifest_yaml = yaml.safe_dump(manifest)
+    with pytest.raises(ValueError, match="manifest/budget-required"):
+        registry.manifest(p)
+
+
+def test_registry_formats_checked(monkeypatch: pytest.MonkeyPatch) -> None:
+    from jsonschema import FormatChecker
+
+    manager = PackManager()
+    registry = TypeRegistryClient(manager)
+    registry.load("1")
+    record_schema = registry.schema_for("Record.review")
+    from docproc.kinds.consolidate import Consolidator
+    from tests.extraction import complete_subject
+    from tests.fakes import PACK
+
+    ctx, warehouse = complete_subject()
+    record = next(
+        a
+        for a in Consolidator(warehouse, registry, str(PACK)).consolidate(ctx).annotations
+        if a.type == "Record.review"
+    )
+    payload = record.payload()
+    payload["attributes"]["recorded_at"] = "not-a-date"
+    with pytest.raises(ValidationError) as caught:
+        record_schema.validate(payload)
+    assert caught.value.validator == "format"
+    monkeypatch.delitem(FormatChecker.checkers, "uri", raising=False)
+    manager.extra_types = [{"key": "Uri", "schema": {"format": "uri"}}]
+    with pytest.raises(ValueError, match="registry/format-unchecked: uri"):
+        TypeRegistryClient(manager).load("2")
+
+
+def test_same_registry_version_is_compiled_once(monkeypatch: pytest.MonkeyPatch) -> None:
+    from docproc.runtime.model_hash import verify_pack
+    from tests.fakes import PACK
+
+    manager = PackManager()
+    original = manager.registry
+    calls: list[str] = []
+    verifies: list[str] = []
+
+    def counted(version: str) -> dict[str, Any]:
+        calls.append(version)
+        return original(version)
+
+    def verified(pack: Path) -> None:
+        verifies.append(str(pack))
+        verify_pack(pack)
+
+    monkeypatch.setattr(manager, "registry", counted)
+    monkeypatch.setattr("docproc.runtime.model_hash.verify_pack", verified)
+    registry = TypeRegistryClient(manager, str(PACK))
+    registry.verify_pack()
+    registry.load("v2")
+    schema = registry.schema_for("Record.review")
+    registry.load("v2")
+    assert calls == ["v2"] and verifies == [str(PACK)]
+    assert registry.schema_for("Record.review") is schema

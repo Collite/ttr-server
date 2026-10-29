@@ -121,9 +121,13 @@ class PgmqBus:
         self, family: str, vt_s: int, qty: int = 1, conn: psycopg.Connection[Any] | None = None
     ) -> list[Message]:
         """The ``_hi`` lane first; ``work_<family>`` only when it yields nothing."""
-        return self.fetch(work_queue(family, hi=True), vt_s, qty, conn) or self.fetch(
-            work_queue(family), vt_s, qty, conn
-        )
+        try:
+            # A savepoint keeps an explicitly supplied transaction usable after a missing lane.
+            with self._c(conn).transaction():
+                high = self.fetch(work_queue(family, hi=True), vt_s, qty, conn)
+        except psycopg.errors.UndefinedTable:
+            high = []
+        return high or self.fetch(work_queue(family), vt_s, qty, conn)
 
     def extend(self, msg: Message, vt_s: int, conn: psycopg.Connection[Any] | None = None) -> bool:
         """The heartbeat: ``msg`` stays invisible until now + ``vt_s``. False when it is gone."""

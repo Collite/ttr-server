@@ -73,3 +73,63 @@ class Tokenizer:
         while offset < end and self.count(text[offset:end]) > limit:
             offset += 1
         return max(start, offset)
+
+
+class TokenOffsets:
+    """One encoding per unit; token byte boundaries mapped to Unicode code points.
+
+    Window lookups are logarithmic and never encode the remaining document.
+    """
+
+    def __init__(self, tokenizer: Tokenizer, text: str) -> None:
+        from bisect import bisect_right
+
+        self.text = text
+        self.tokenizer = tokenizer
+        self.words = list(re.finditer(r"\S+", text)) if tokenizer.encoder is None else []
+        self.ends: list[int] = []
+        self.starts: list[int] = []
+        self.byte_ends: list[int] = []
+        self.char_bytes: list[int] = []
+        if tokenizer.encoder is not None:
+            # Byte/code-point boundaries are monotone, including split UTF-8 tokens.
+            char_bytes = [0]
+            for char in text:
+                char_bytes.append(char_bytes[-1] + len(char.encode("utf-8")))
+            self.char_bytes = char_bytes
+            offset = 0
+            for token in tokenizer.encoder.encode(text, disallowed_special=()):
+                self.starts.append(bisect_right(char_bytes, offset) - 1)
+                offset += len(tokenizer.encoder.decode_single_token_bytes(token))
+                self.byte_ends.append(offset)
+                self.ends.append(bisect_right(char_bytes, offset) - 1)
+        else:
+            self.starts = [w.start() for w in self.words]
+            self.ends = [w.end() for w in self.words]
+
+    def end(self, start: int, limit: int) -> int:
+        from bisect import bisect_right
+
+        first = (
+            bisect_right(self.byte_ends, self.char_bytes[start]) if self.byte_ends else bisect_right(self.ends, start)
+        )
+        if first + limit >= len(self.ends):
+            return len(self.text)
+        end = self.ends[first + limit - 1]
+        if end <= start:
+            raise ValueError("chunk/max-tokens-too-small-for-codepoint")
+        return end
+
+    def overlap_start(self, start: int, end: int, limit: int) -> int:
+        from bisect import bisect_left
+
+        if limit <= 0:
+            return end
+        last = bisect_left(self.starts, end)
+        offset = max(start, self.starts[max(0, last - limit)])
+        # A token may start inside a code point. Pick the next complete token start
+        # rather than carrying an extra token into the overlap.
+        if self.tokenizer.encoder is not None:
+            while offset < end and self.tokenizer.count(self.text[offset:end]) > limit:
+                offset += 1
+        return offset

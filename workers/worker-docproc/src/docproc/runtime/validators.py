@@ -7,6 +7,8 @@ from collections.abc import Callable
 from datetime import date
 from typing import Any
 
+from jsonschema import ValidationError
+
 from docproc.runtime.registry import TypeRegistryClient
 from docproc.sdk.models import Annotation, Unit, UnitKind, payload_text
 
@@ -21,10 +23,15 @@ def span_within_unit(annotation: Annotation, units: dict[int, Unit]) -> None:
 
 
 def date_parses(annotation: Annotation, units: dict[int, Unit]) -> None:
+    if annotation.type != "Date":
+        return
     value = annotation.payload().get("value", annotation.payload().get("date"))
     if not isinstance(value, str):
         raise ValueError("missing date string")
-    date.fromisoformat(value)
+    try:
+        date.fromisoformat(value)
+    except ValueError:
+        raise ValueError("date/invalid") from None
 
 
 def code_exists_in(annotation: Annotation, units: dict[int, Unit]) -> None:
@@ -56,6 +63,8 @@ class Validators:
                         if rule not in self.rules:
                             raise NotImplementedError(f"validator not registered: {rule}")
                         self.rules[rule](annotation, units)
+                except ValidationError as exc:
+                    failures.append((rule, f"{exc.validator} at {exc.json_path}"))
                 except Exception as exc:
                     failures.append((rule, str(exc)))
             if not failures:

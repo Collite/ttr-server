@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
+from datetime import UTC, datetime
 from typing import Any
 
 from docproc.runtime.registry import RunContext
@@ -45,3 +46,14 @@ def annotation(unit: Unit | int, type_: str, payload: dict[str, Any], spans: Ite
 
 def verdict(unit: Unit | int, rule: str, message: str) -> Annotation:
     return annotation(unit, "Verdict", {"rule": rule, "ok": False, "message": message})
+
+
+def utc_instant(value: str, code: str) -> datetime:
+    """Parse an offset-bearing instant without exposing its value in an exception."""
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        raise ValueError(f"{code}-invalid") from None
+    if parsed.tzinfo is None:
+        raise ValueError(f"{code}-offset-required")
+    return parsed.astimezone(UTC)

@@ -20,7 +20,7 @@ from docproc.sdk.pipeline import Manager
 @dataclass(frozen=True)
 class RunContext:
     item: WorkItem
-    processor: Processor
+    processor: Processor | None
     manifest: dict[str, Any]
     units: dict[int, Unit]
     annotations: list[Annotation]
@@ -39,6 +39,14 @@ class KindResult:
 
 class Kind(Protocol):
     def run(self, ctx: RunContext) -> KindResult: ...
+
+
+class KindRefused(ValueError):
+    """A kind refused all writes; diagnostics contain only annotation ids and rule codes."""
+
+    def __init__(self, code: str, diagnostics: list[dict[str, Any]]) -> None:
+        super().__init__(f"{code}: {len(diagnostics)} records")
+        self.diagnostics = diagnostics
 
 
 class UnsupportedKind(ValueError):
@@ -66,6 +74,8 @@ class KindRegistry:
         ):
             raise UnsupportedKind("chunk/strategy-not-in-this-release")
         self._manifest.validate(manifest)
+        if hosted and not {"timeout_s", "retries"} <= manifest.get("budget", {}).keys():
+            raise ValueError("manifest/budget-required")
         if manifest["kind"] == "link" and manifest["engine"].get("pick") != "rule" and hosted:
             raise UnsupportedKind("link/pick-not-in-this-release")
         if manifest["kind"] == "rule" and "function" in manifest["engine"] and hosted:
@@ -85,6 +95,16 @@ class KindRegistry:
         return manifest
 
 
+def schema_formats(value: Any) -> set[str]:
+    if isinstance(value, dict):
+        return ({value["format"]} if isinstance(value.get("format"), str) else set()) | set().union(
+            *(schema_formats(v) for v in value.values())
+        )
+    if isinstance(value, list):
+        return set().union(*(schema_formats(v) for v in value))
+    return set()
+
+
 class TypeRegistryClient:
     def __init__(self, manager: Manager, pack_path: str = "") -> None:
         self.manager = manager
@@ -93,15 +113,22 @@ class TypeRegistryClient:
         self.entries: dict[str, dict[str, Any]] = {}
         self._schemas: dict[str, Draft202012Validator] = {}
         self.loaded = False
+        self.pack_verified = False
 
-    def load(self, version: str) -> None:
-        registry = self.manager.registry(version)
-        if str(registry.get("version", "")) != version:
-            raise ValueError("registry/version-mismatch")
-        if self.pack_path:
+    def verify_pack(self) -> None:
+        if self.pack_path and not self.pack_verified:
             from docproc.runtime.model_hash import verify_pack
 
             verify_pack(self.pack_path)
+            self.pack_verified = True
+
+    def load(self, version: str) -> None:
+        if version == self.version and self.loaded:
+            return
+        registry = self.manager.registry(version)
+        if str(registry.get("version", "")) != version:
+            raise ValueError("registry/version-mismatch")
+        self.verify_pack()
         expected: dict[str, Any] = {}
         if self.pack_path:
             index = json.loads((self.pack_path / "types/generated/index.json").read_text())
@@ -117,7 +144,11 @@ class TypeRegistryClient:
             if entry["key"] in expected and schema != expected[entry["key"]]:
                 raise ValueError("registry/manager-schema-drift")
             Draft202012Validator.check_schema(schema)
-            compiled[entry["key"]] = Draft202012Validator(schema, format_checker=FormatChecker())
+            checker = FormatChecker()
+            for format_ in schema_formats(schema):
+                if format_ not in checker.checkers:
+                    raise ValueError(f"registry/format-unchecked: {format_}")
+            compiled[entry["key"]] = Draft202012Validator(schema, format_checker=checker)
         if expected.keys() - compiled.keys():
             raise ValueError("registry/model-types-missing")
         if not compiled:

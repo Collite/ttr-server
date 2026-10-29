@@ -1,9 +1,11 @@
 # SPDX-License-Identifier: Apache-2.0
 import json
+from dataclasses import replace
 
 import pytest
 
 from docproc.kinds.lemmatize import Lemmatize
+from docproc.sdk.models import RunVisibility
 from tests.conftest import WORKER
 from tests.fakes import FakeWarehouse
 from tests.fakes_nlp import recorded_nlp
@@ -13,6 +15,7 @@ from tests.pack import context, units_of
 @pytest.mark.parametrize("doc", ["sheet-002.cs.html", "review-002.cs.json"])
 def test_lemma_plane(doc: str) -> None:
     ctx = context(doc, "lemmatize")
+    ctx = replace(ctx, item=ctx.item.model_copy(update={"visibility": RunVisibility.ACTIVE}))
     warehouse = FakeWarehouse(units_of(doc))
     with recorded_nlp() as nlp:
         result = Lemmatize(nlp, warehouse).run(ctx)
@@ -31,6 +34,7 @@ def test_batch_cardinality_identity_and_leaf_document() -> None:
 
     doc = "review-002.cs.json"
     ctx = context(doc, "lemmatize")
+    ctx = replace(ctx, item=ctx.item.model_copy(update={"visibility": RunVisibility.ACTIVE}))
     ctx.manifest["engine"]["batch"] = 1
     replay = RecordedNlp()
     warehouse = FakeWarehouse(units_of(doc))
@@ -73,3 +77,23 @@ def test_grpc_calls_propagate_current_trace() -> None:
     with trace.use_span(span), recorded_nlp(replay) as nlp:
         Lemmatize(nlp, FakeWarehouse(units_of("review-002.cs.json"))).run(ctx)
     assert replay.metadata[0]["traceparent"] == "00-00000000000000000000000000000001-0000000000000002-01"
+
+
+@pytest.mark.parametrize("visibility", [RunVisibility.CANDIDATE, RunVisibility.SHADOW])
+def test_nonactive_lemmas_are_hashes_only(visibility: RunVisibility) -> None:
+    import hashlib
+
+    ctx = context("review-002.cs.json", "lemmatize")
+    ctx = replace(ctx, item=ctx.item.model_copy(update={"visibility": visibility}))
+    warehouse = FakeWarehouse(units_of("review-002.cs.json"))
+    with recorded_nlp() as nlp:
+        result = Lemmatize(nlp, warehouse).run(ctx)
+    assert warehouse.lemmas == {}
+    rows = result.sections["outputs"]["lemmas"]
+    assert len(rows) == 2 and all(set(r) == {"unitId", "lang", "lemmatizer", "lemmasSha256"} for r in rows)
+    active = replace(ctx, item=ctx.item.model_copy(update={"visibility": RunVisibility.ACTIVE}))
+    with recorded_nlp() as nlp:
+        Lemmatize(nlp, warehouse).run(active)
+    assert [r["lemmasSha256"] for r in rows] == [
+        "sha256:" + hashlib.sha256(r["contentLemmas"].encode()).hexdigest() for r in warehouse.lemmas.values()
+    ]
