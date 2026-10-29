@@ -31,6 +31,8 @@ def test_peer_identity(name: str) -> None:
     a = files(source) if source.is_dir() else {name: source.read_bytes()}
     b = files(target) if target.is_dir() else {name: target.read_bytes()}
     assert a == b, f"fixture drift: {sorted(k for k in a.keys() | b.keys() if a.get(k) != b.get(k))}"
+    if name == "types":
+        assert b == files(WORKER / "src/docproc/_data/types"), "packaged engine registry drift"
 
 
 def test_pack_canonical_and_nfc() -> None:

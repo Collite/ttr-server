@@ -33,7 +33,7 @@ def main() -> int:
     for path in list(OUT.rglob("*.py")) + list(OUT.rglob("*.pyi")):
         path.write_text(path.read_text().replace("from org.", "from docproc._generated.org."))
     for directory in [OUT, *(p for p in OUT.rglob("*") if p.is_dir())]:
-        (directory / "__init__.py").write_text("# Generated namespace package.\n")
+        (directory / "__init__.py").write_text("# SPDX-License-Identifier: Apache-2.0\n# Generated namespace package.\n")
     return 0
 
 
