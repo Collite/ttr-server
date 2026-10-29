@@ -7,9 +7,6 @@ recipe {
  parameters: [tolerance, confirmation_threshold, inbound_reminder]
  candidates placed_orders(out orders) target erp """sql
  SELECT o.order_number FROM er.entity.order o
- JOIN er.entity.obligation ob ON ob.entity = 'er.entity.return_request_line'
-  AND ob.key = '{"line_id":9007199254740993}' AND ob.kind = 'inbound'
-  AND ob.state IN ('open', 'overdue', 'reopened')
  """
  decision verdict(in orders) {
   orders -> switch {

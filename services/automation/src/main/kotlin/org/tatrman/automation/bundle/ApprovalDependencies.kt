@@ -69,7 +69,7 @@ object ApprovalDependencies {
             ).also { prepared ->
                 if (prepared.recipes.values.any { recipe ->
                         recipe.coverage.actions.values.any {
-                            it.sinks[Bundle.NATIVE] == "obligation" && it.transition != null
+                            AutomationScope.needsObligationLookup(it)
                         }
                     }
                 ) {

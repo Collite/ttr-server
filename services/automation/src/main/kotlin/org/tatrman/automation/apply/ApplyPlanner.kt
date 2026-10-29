@@ -15,6 +15,7 @@ import org.tatrman.ttr.metadata.model.AutomationAction
 import org.tatrman.ttr.metadata.model.Entity
 import org.tatrman.ttrp.graph.recipe.RecipeChecker
 import org.tatrman.ttrp.resolve.TargetResolution
+import org.tatrman.ttrp.resolve.AutomationScope
 import java.time.Clock
 import java.util.UUID
 
@@ -122,7 +123,7 @@ class ApplyPlanner(
                         null
                     }
                 val fulfilment =
-                    if (action.sinks[Bundle.NATIVE] == "obligation" && action.transition != null) {
+                    if (AutomationScope.needsObligationLookup(action)) {
                         PreviewFulfilment.resolve(action, metadata, metadata.targets[wiring.action])
                     } else {
                         null

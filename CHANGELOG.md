@@ -16,13 +16,20 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+- **automation — compiler-derived obligation read scope.** Adopt internal grammar/metadata 0.18.16
+  (translator/proto stay 0.12.11) and share Core's native-obligation lookup predicate across preparation,
+  Open and preview. The regenerated fulfilment fixture reads orders without an artificial obligation JOIN;
+  the compiler declares the separate lookup scope. Its changed SQL/text evidence is deliberately re-approved,
+  while the superseded approval refuses before any claim. Candidate/key selection and durable fulfilment
+  are checked through evaluate, retry, close and restart. Physical writes and live certification remain pending.
+
 - Automation previews support governed calendar counts in action expressions and wiring conditions.
   Open pins declared ER scope, compiler-resolved calendar storage and an explicit door route before claim.
   Evaluation journals one complete guarded snapshot and executes the published compiler graph in DuckDB;
   security-narrowed or capped reads refuse without batch/action completion. Bound-date-minus-column
   expressions (including derived bounds) use the same public calendar lowering; numeric subtraction stays
   numeric. Calendar-key action inputs, column date shifts and absolute working-day deadlines remain
-  unsupported. Runtime dependencies stay at 0.18.14.
+  unsupported. Runtime dependencies use 0.18.16; the calendar producer fixtures remain on 0.18.14.
 
 - Automation fulfilment previews use a bounded v2 lookup of selected entity/kind/canonical-key identities,
   refuse security-narrowed obligation snapshots even with restricted decision views enabled, and reject

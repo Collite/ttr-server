@@ -1,7 +1,7 @@
 {
   "schemaVersion": 3,
   "ttrpVersion": 2,
-  "toolchain": "org.tatrman:ttrp:0.18.9",
+  "toolchain": "org.tatrman:ttrp:0.18.16",
   "program": "release_order.ttrp",
   "world": {
     "qname": "hartland.worlds.demo",
@@ -10,20 +10,19 @@
   "islands": [
     {
       "name": "placed_orders",
-      "engine": "duckdb",
+      "engine": "erp",
       "executor": "native",
-      "invocation": "duckdb",
-      "file": "islands/placed_orders.orders.duckdb.sql",
-      "sha256": "sha256:c65825040a69be1c35ce6266046bac81de45a3264a03b75ab0d73323960f5b38",
+      "invocation": "sql-text",
+      "file": "islands/placed_orders.orders.sql",
+      "sha256": "sha256:92e6ca45d0d5661a54757dfcbca7d1f2e9d57345d45d7d2b5529500a317a603b",
       "connections": [
-        "TTR_CONN_AUTOMATION",
         "TTR_CONN_ERP"
       ],
       "outputs": [
         {
           "port": "orders",
-          "file": "islands/placed_orders.orders.duckdb.sql",
-          "sha256": "sha256:c65825040a69be1c35ce6266046bac81de45a3264a03b75ab0d73323960f5b38",
+          "file": "islands/placed_orders.orders.sql",
+          "sha256": "sha256:92e6ca45d0d5661a54757dfcbca7d1f2e9d57345d45d7d2b5529500a317a603b",
           "columns": [
             {
               "name": "order_number",
@@ -31,37 +30,26 @@
             }
           ],
           "keyed": true,
-          "combine": {
-            "file": "islands/placed_orders.orders.duckdb.sql",
-            "sha256": "sha256:c65825040a69be1c35ce6266046bac81de45a3264a03b75ab0d73323960f5b38",
-            "parts": [
-              "p_478041f1",
-              "p_255a207c"
-            ],
-            "params": [],
-            "engine": "duckdb",
-            "dialect": "duckdb"
-          }
+          "storage": "erp_db"
         }
       ],
-      "schema": "db"
+      "schema": "er"
     },
     {
       "name": "verdict",
-      "engine": "duckdb",
+      "engine": "erp",
       "executor": "native",
-      "invocation": "duckdb",
-      "file": "islands/verdict.release.duckdb.sql",
-      "sha256": "sha256:2f0a2d57f4c3eb5f27e90ebe21e0f22075f98a1bf9d8a5203b5c4589dbdbee8e",
+      "invocation": "sql-text",
+      "file": "islands/verdict.release.sql",
+      "sha256": "sha256:6e1b136e5f80929303cc0142923e923da081a326314606b4ff0ce1067864b01b",
       "connections": [
-        "TTR_CONN_AUTOMATION",
         "TTR_CONN_ERP"
       ],
       "outputs": [
         {
           "port": "release",
-          "file": "islands/verdict.release.duckdb.sql",
-          "sha256": "sha256:2f0a2d57f4c3eb5f27e90ebe21e0f22075f98a1bf9d8a5203b5c4589dbdbee8e",
+          "file": "islands/verdict.release.sql",
+          "sha256": "sha256:6e1b136e5f80929303cc0142923e923da081a326314606b4ff0ce1067864b01b",
           "columns": [
             {
               "name": "order_number",
@@ -77,20 +65,10 @@
             }
           ],
           "keyed": true,
-          "combine": {
-            "file": "islands/verdict.release.duckdb.sql",
-            "sha256": "sha256:2f0a2d57f4c3eb5f27e90ebe21e0f22075f98a1bf9d8a5203b5c4589dbdbee8e",
-            "parts": [
-              "p_478041f1",
-              "p_255a207c"
-            ],
-            "params": [],
-            "engine": "duckdb",
-            "dialect": "duckdb"
-          }
+          "storage": "erp_db"
         }
       ],
-      "schema": "db"
+      "schema": "er"
     }
   ],
   "transfers": [],
@@ -103,7 +81,6 @@
     ]
   ],
   "connections": [
-    "TTR_CONN_AUTOMATION",
     "TTR_CONN_ERP"
   ],
   "displays": [],
@@ -247,90 +224,18 @@
       "er.entity.order"
     ],
     "fingerprints": {
-      "text": "sha256:b082403495840f743348e83cfbe241b0cbbae0c368c6f09d5a6fe91112a91a73",
+      "text": "sha256:33fa6ba232fd351e3c17a0c18a59fcc3c8c4f0120277ce7b30f08c40d48f151b",
       "values": "sha256:d58020f8c2d17d4ff8952f58ad306b7633b941150ec69a0d0c4e585782aa5fb8",
       "labels": "sha256:bcf48e2c164b2a0175b5c310c4d8b77541a13ffcd1e6aee76b495b316a9f454b"
     },
     "protocol": "always",
-    "parts": [
-      {
-        "name": "p_255a207c",
-        "storage": "automation_db",
-        "engine": "automation",
-        "file": "parts/p_255a207c.sql",
-        "sha256": "sha256:944c1e48abe3dccbf1f62b4d1eccb2405d06220e09d33525ecfa98fd24553849",
-        "columns": [
-          {
-            "name": "id",
-            "type": "text"
-          },
-          {
-            "name": "recipe",
-            "type": "text"
-          },
-          {
-            "name": "run",
-            "type": "text"
-          },
-          {
-            "name": "entity",
-            "type": "text"
-          },
-          {
-            "name": "key",
-            "type": "text"
-          },
-          {
-            "name": "kind",
-            "type": "text"
-          },
-          {
-            "name": "due",
-            "type": "date"
-          },
-          {
-            "name": "state",
-            "type": "text"
-          },
-          {
-            "name": "fulfilled_by",
-            "type": "text"
-          },
-          {
-            "name": "fulfilled_at",
-            "type": "timestamp"
-          },
-          {
-            "name": "created_at",
-            "type": "timestamp"
-          }
-        ],
-        "params": [],
-        "keyed": false
-      },
-      {
-        "name": "p_478041f1",
-        "storage": "erp_db",
-        "engine": "erp",
-        "file": "parts/p_478041f1.sql",
-        "sha256": "sha256:4bdc1806656ec5ad963007e51bcfb017228912695fb96b63a29da17d5ffa4dc5",
-        "columns": [
-          {
-            "name": "order_number",
-            "type": "text"
-          }
-        ],
-        "params": [],
-        "keyed": true
-      }
-    ],
     "approvalDependencies": {
       "version": 1,
       "imports": [
         "hartland",
         "hartland.automation"
       ],
-      "textBase": "sha256:b9c61d5ff2520e96e64fa1f161b8fd9bc2544b270ca1c530b33bb427dc4ceb8a",
+      "textBase": "sha256:9b0f0e9ba08cf5499b9534895e31252001c85d24491602d1e515cf6c804b4b56",
       "actions": {
         "fulfil": "sha256:ef80b1d85c1717f9c7037d8d8fae5f3a43ff7f9a8530b9c62c4f1aaab51d9440",
         "hold": "sha256:609a9e29ea8652f35e7ee6de8d664336be186d326a9b5d5191299008cb67acb5",
@@ -340,11 +245,9 @@
   },
   "files": {
     "README.md": "sha256:9d36f1d99e18d76f156d8bf09ea91ec7efa0f1f6675ad6a578e093e83a4a4096",
-    "catalog/release_order.ttrm": "sha256:e3b28c04aef3111cac7741a4dc9de2c9d274a0cf677bb1c35d23c038e9c6eec3",
+    "catalog/release_order.ttrm": "sha256:8e367c7505e1ed3b6643ddfddf465901cd88d5dfd43ea2f8ae36503babc1de01",
     "catalog/release_order_verdict.ttrm": "sha256:e1a40f72485615093cb5e77d59ccd8cc3757eb2d6685f5037c37ebd2f63f867f",
-    "islands/placed_orders.orders.duckdb.sql": "sha256:c65825040a69be1c35ce6266046bac81de45a3264a03b75ab0d73323960f5b38",
-    "islands/verdict.release.duckdb.sql": "sha256:2f0a2d57f4c3eb5f27e90ebe21e0f22075f98a1bf9d8a5203b5c4589dbdbee8e",
-    "parts/p_255a207c.sql": "sha256:944c1e48abe3dccbf1f62b4d1eccb2405d06220e09d33525ecfa98fd24553849",
-    "parts/p_478041f1.sql": "sha256:4bdc1806656ec5ad963007e51bcfb017228912695fb96b63a29da17d5ffa4dc5"
+    "islands/placed_orders.orders.sql": "sha256:92e6ca45d0d5661a54757dfcbca7d1f2e9d57345d45d7d2b5529500a317a603b",
+    "islands/verdict.release.sql": "sha256:6e1b136e5f80929303cc0142923e923da081a326314606b4ff0ce1067864b01b"
   }
 }

@@ -32,6 +32,7 @@ tasks.test {
     inputs.dir("src/main/resources")
     // The bundle fixture is copied into a throwaway git repo by the specs (S0.2).
     inputs.dir("src/test/resources/bundles")
+    inputs.dir("src/test/resources/approval-evidence")
     inputs.dir("src/test/resources/calendar-preview")
     inputs.dir("src/test/resources/runner")
 }
@@ -39,6 +40,7 @@ tasks.test {
 tasks.named<Test>("componentTest") {
     jvmArgs("--add-opens=java.base/java.nio=ALL-UNNAMED")
     inputs.dir("src/test/resources/bundles")
+    inputs.dir("src/test/resources/approval-evidence")
     inputs.dir("src/test/resources/calendar-preview")
 }
 

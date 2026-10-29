@@ -414,7 +414,7 @@ action is one example; action names have no special meaning.
 
 Open pins the obligation's logical storage using the compiler's placement and world-overlay rules. This
 is the world's declaration (Hartland uses `automation_db`), not a hard-coded physical database name. The
-lookup supports an unbound stdlib obligation only. Published grammar/metadata 0.18.14 resolves the actual
+lookup supports an unbound stdlib obligation only. Published grammar/metadata 0.18.16 resolves the actual
 pinned model with the bundle's complete loader package map, including injected stdlib. World hosts are
 validated against declared-or-computed packages, independently of checkout paths; unknown or partial
 packages and an incomplete provider refuse before a claim. Writable/engine/overlay declarations remain
@@ -422,8 +422,12 @@ in the resolver input. Missing, ambiguous or invalid placement refuses. Query st
 world/storage alias. Calendar-count source reads and published graph execution are described below.
 
 Open refuses a pinned fulfilment action unless `er.entity.obligation` is in the manifest's `objectsRead`,
-before placement, run claim or idempotency allocation. Evaluate checks this scope again. Until Core#319 is
-released and adopted, the published fixture retains its authored obligation JOIN to declare this read.
+before placement, run claim or idempotency allocation. Evaluate checks this scope again. Published Core#319
+(0.18.16) derives this read from directly wired action metadata, so the fulfilment fixture no longer needs an
+artificial obligation JOIN. Open, preparation and preview use Core's shared `AutomationScope.needsObligationLookup`
+predicate. Removing the JOIN changes SQL/text evidence; the fixture records a newly approved text fingerprint,
+and its old approval refuses before any claim. Nested call read derivation and calendar action-expression
+reads (Core#330) remain separate follow-ups.
 Placement successes and refusals are prepared once per immutable bundle/world, sharing coverage's model
 snapshot and index. Refreshed bundles have their own cache. Both insert and fulfil require the same stdlib
 obligation schema.

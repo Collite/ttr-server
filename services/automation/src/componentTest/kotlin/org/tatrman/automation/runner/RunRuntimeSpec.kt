@@ -36,6 +36,7 @@ import org.tatrman.ttr.parser.model.AutoValue
 import org.tatrman.ttr.parser.model.AutoEntry
 import org.tatrman.ttr.parser.model.Reference
 import org.tatrman.ttr.parser.model.SourceLocation
+import java.sql.DriverManager
 import java.time.OffsetDateTime
 import java.nio.file.Files
 import java.nio.file.Path
@@ -404,6 +405,8 @@ class RunRuntimeComponentSpec :
 
         fun fulfilmentFixture(
             ambiguous: Boolean = false,
+            missing: Boolean = false,
+            oldApproval: Boolean = false,
             lookupReads: List<String> = listOf("er.entity.obligation"),
             lookupWarnings: Set<String> = emptySet(),
             transform: (Bundle) -> Bundle = { it },
@@ -419,93 +422,107 @@ class RunRuntimeComponentSpec :
                         AuthorMap(emptyMap()),
                     ).load(Checkout(root, "master", "0123456789abcdef", "po", "po@example.org"), BundleKind.SERVED),
                 )
-            return DurableRuntimeFixture(lookupReads = lookupReads, queryWarnings = { request ->
-                if ("_au_obligation_entity_" in request.source) lookupWarnings else emptySet()
-            }, transformBundle = {
-                source.copy(
-                    deployments =
-                        source.deployments +
-                            (
-                                "release_native_event" to
-                                    source.deployments.getValue("release_native_event").copy(runAs = ModelRunAs.Caller)
-                            ),
-                )
-            }, queryTable = { request ->
-                when {
-                    "_au_obligation_entity_" in request.source -> {
-                        request.world shouldBe "us-automation"
-                        request.allowedErReads.objectsList.contains("er.entity.obligation") shouldBe true
-                        request.context.userId shouldBe "maya"
-                        request.context.modelVersion shouldBe source.modelFp
-                        request.context.parametersList
-                            .map { it.value.stringValue }
-                            .toSet() shouldBe
-                            setOf("er.entity.return_request_line", "inbound", "{\"line_id\":9007199254740993}")
-                        Table(
-                            listOf("id", "entity", "key", "kind", "state").map { ManifestColumn(it, "text") },
-                            (if (ambiguous) listOf("ob-1", "ob-2") else listOf("ob-1")).map { id ->
-                                listOf(
-                                    id,
-                                    "er.entity.return_request_line",
-                                    "{\"line_id\":9007199254740993}",
-                                    "inbound",
-                                    "overdue",
-                                )
-                            },
-                        )
-                    }
-                    "FROM \"obligation\"" in request.source ->
-                        Table(
-                            listOf(
-                                "id",
-                                "recipe",
-                                "run",
-                                "entity",
-                                "key",
-                                "kind",
-                                "due",
-                                "state",
-                                "fulfilled_by",
-                                "fulfilled_at",
-                                "created_at",
-                            ).map { name ->
-                                ManifestColumn(
-                                    name,
-                                    when (name) {
-                                        "due" -> "date"
-                                        "fulfilled_at", "created_at" -> "timestamp"
-                                        else -> "text"
-                                    },
-                                )
-                            },
-                            listOf(
-                                listOf(
-                                    "ob-1",
-                                    "past_recipe",
-                                    "past_run",
-                                    "er.entity.return_request_line",
-                                    "{\"line_id\":9007199254740993}",
-                                    "inbound",
-                                    java.time.LocalDate.parse("2000-01-15"),
-                                    "overdue",
-                                    null,
-                                    null,
-                                    java.time.LocalDateTime.parse("2000-01-01T12:00:00"),
+            val approvals =
+                Json
+                    .parseToJsonElement(
+                        Path.of("src/test/resources/approval-evidence/fulfilment/approvals.json").readText(),
+                    ).jsonObject
+            val approvedText = approvals.getValue(if (oldApproval) "supersededText" else "text").jsonPrimitive.content
+            return DurableRuntimeFixture(
+                lookupReads = lookupReads,
+                approvalReader =
+                    ApprovalReader { kind, obj, fp ->
+                        when (kind) {
+                            "recipe" -> obj == "release_order" && fp == approvedText
+                            "values" ->
+                                obj == "release_order" &&
+                                    fp == approvals.getValue("values").jsonPrimitive.content
+                            "program" -> fp == source.programFps[obj]
+                            "deployment" -> fp == source.deploymentFps[obj]
+                            else -> false
+                        }
+                    },
+                queryWarnings = { request ->
+                    if ("_au_obligation_entity_" in request.source) lookupWarnings else emptySet()
+                },
+                transformBundle = {
+                    source.copy(
+                        deployments =
+                            source.deployments +
+                                (
+                                    "release_native_event" to
+                                        source.deployments
+                                            .getValue(
+                                                "release_native_event",
+                                            ).copy(runAs = ModelRunAs.Caller)
                                 ),
-                            ),
-                        )
-                    "approved writer fixture" in request.source ->
-                        Table(
-                            listOf(
-                                ManifestColumn("order_number", "text"),
-                                ManifestColumn("route", "text"),
-                                ManifestColumn("verdict_reason", "text"),
-                            ),
-                            listOf(listOf("4711", "release", "approved writer fixture")),
-                        )
-                    else -> Table(listOf(ManifestColumn("order_number", "text")), listOf(listOf("4711")))
-                }
-            })
+                    )
+                },
+                queryTable = { request ->
+                    when {
+                        "_au_obligation_entity_" in request.source -> {
+                            request.world shouldBe "us-automation"
+                            request.allowedErReads.objectsList.contains("er.entity.obligation") shouldBe true
+                            request.context.userId shouldBe "maya"
+                            request.context.modelVersion shouldBe source.modelFp
+                            request.context.parametersList
+                                .map { it.value.stringValue }
+                                .toSet() shouldBe
+                                setOf("er.entity.return_request_line", "inbound", "{\"line_id\":9007199254740993}")
+                            Table(
+                                listOf("id", "entity", "key", "kind", "state").map { ManifestColumn(it, "text") },
+                                (
+                                    if (missing) {
+                                        emptyList()
+                                    } else if (ambiguous) {
+                                        listOf("ob-1", "ob-2")
+                                    } else {
+                                        listOf("ob-1")
+                                    }
+                                ).map { id ->
+                                    listOf(
+                                        id,
+                                        "er.entity.return_request_line",
+                                        "{\"line_id\":9007199254740993}",
+                                        "inbound",
+                                        "overdue",
+                                    )
+                                },
+                            )
+                        }
+                        else ->
+                            DriverManager.getConnection("jdbc:duckdb:").use { db ->
+                                db.createStatement().use {
+                                    it.execute("CREATE TABLE \"order\" (order_number VARCHAR)")
+                                    // A second order makes the keyed Open exercise the actual candidate predicate.
+                                    it.execute("INSERT INTO \"order\" VALUES ('4711'), ('9999')")
+                                }
+                                request.source.contains("obligation", ignoreCase = true) shouldBe false
+                                val bindings =
+                                    request.context.parametersList.associate {
+                                        it.name to BoundValue("text", it.value.stringValue)
+                                    }
+                                // Query's wire placeholders are {name}; the fixture JDBC adapter uses :name.
+                                val sql =
+                                    bindings.keys.fold(request.source) { text, name ->
+                                        text.replace("{$name}", ":$name")
+                                    }
+                                JdbcTables.query(db, sql, bindings).also { result ->
+                                    // Only candidates are wrapped at the door; other keyed outputs are
+                                    // filtered by PartRunner before staging (the batch asserts this below).
+                                    result.rows.map { it.first() }.toSet() shouldBe
+                                        if ("_au_candidates" in
+                                            request.source
+                                        ) {
+                                            setOf("4711")
+                                        } else {
+                                            setOf("4711", "9999")
+                                        }
+                                }
+                            }
+                    }
+                },
+            )
         }
 
         "invalid hosts or missing loader packages refuse governed fulfilment before a run is claimed" {
@@ -594,6 +611,42 @@ class RunRuntimeComponentSpec :
             }
         }
 
+        "superseded fulfilment approval refuses before claim or ERP work" {
+            val f = fulfilmentFixture(oldApproval = true)
+            val runtime = f.start()
+            try {
+                shouldThrow<AutomationException> {
+                    runtime.sessions.open("release_order", f.request, f.caller)
+                }.code shouldBe ErrorCode.RECIPE_STALE
+                transaction { Runs.selectAll().count() } shouldBe 0L
+                f.reads.get() shouldBe 0
+            } finally {
+                runtime.shutdown()
+                f.close()
+            }
+        }
+
+        "join-free candidates still reach the scoped lookup when no obligation exists" {
+            val f = fulfilmentFixture(missing = true)
+            val runtime = f.start()
+            try {
+                val opened = runtime.sessions.open("release_order", f.request, f.caller)
+                opened.approvalsBypassed shouldBe false
+                val id = UUID.fromString(opened.response.runId)
+                // The ERP key remains selected; missing fulfilment targets still refuse as before.
+                shouldThrow<AutomationException> {
+                    runtime.sessions.evaluate(id, f.caller)
+                }.code shouldBe ErrorCode.PREVIEW_UNSUPPORTED
+                f.reads.get() shouldBe 3
+                transaction { RunOutputs.selectAll().count() } shouldBe 3L
+                transaction { Batches.selectAll().count() } shouldBe 0L
+                runtime.status.read(id, f.caller).actions shouldBe emptyList()
+            } finally {
+                runtime.shutdown()
+                f.close()
+            }
+        }
+
         "two governed Opens pin the same cached obligation storage" {
             val f = fulfilmentFixture()
             val runtime = f.start()
@@ -633,6 +686,11 @@ class RunRuntimeComponentSpec :
                 val id = UUID.fromString(opened.response.runId)
                 val result = runtime.sessions.evaluate(id, f.caller)
                 val batch = runtime.status.batch(id, f.caller)
+                batch.rows
+                    .filter { it.entity == "er.entity.order" }
+                    .map { it.key }
+                    .toSet() shouldBe
+                    setOf(buildJsonObject { put("order_number", "4711") })
                 val row = batch.rows.single { it.entity == "er.entity.obligation" }
                 row.op shouldBe "transition"
                 row.key shouldBe buildJsonObject { put("id", "ob-1") }
@@ -1287,6 +1345,7 @@ private class DurableRuntimeFixture(
     development: Boolean = false,
     transformBundle: (Bundle) -> Bundle = { it },
     private val queryTable: ((RunRequest) -> Table)? = null,
+    private val approvalReader: ApprovalReader? = null,
     private val lookupReads: List<String> = listOf("er.entity.obligation"),
     private val queryWarnings: (RunRequest) -> Set<String> = { emptySet() },
 ) {
@@ -1454,7 +1513,7 @@ private class DurableRuntimeFixture(
         RunRuntime(
             config,
             { bundle },
-            ApprovalReader {
+            approvalReader ?: ApprovalReader {
                 _,
                 _,
                 _,

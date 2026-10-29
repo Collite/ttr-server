@@ -10,6 +10,7 @@ import org.tatrman.automation.identity.*
 import org.tatrman.automation.ledger.*
 import org.tatrman.ttr.metadata.model.AutomationDuration
 import org.tatrman.ttr.metadata.model.AutomationProgram
+import org.tatrman.ttrp.resolve.AutomationScope
 import java.security.MessageDigest
 import java.time.Clock
 import java.time.Duration
@@ -167,7 +168,7 @@ class Open(
         val sync = program.budgetSync?.duration() ?: syncDefault
         val batch = program.budgetBatch?.duration() ?: batchDefault
         require(!sync.isNegative && !sync.isZero) { "invalid sync budget" }
-        val fulfilment = pinnedActions.values.any { it.sinks[Bundle.NATIVE] == "obligation" && it.transition != null }
+        val fulfilment = pinnedActions.values.any { AutomationScope.needsObligationLookup(it) }
         if (fulfilment && "er.entity.obligation" !in recipe.recipe.objectsRead) {
             throw AutomationException(ErrorCode.OUT_OF_SCOPE_READ, "obligation lookup requires declared ER scope")
         }
