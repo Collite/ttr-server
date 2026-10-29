@@ -90,16 +90,19 @@ class GuardedRefresher(
         val proposed = accepted.toMutableMap()
         val results = linkedMapOf<String, SourceResult>()
         val loaded = linkedMapOf<String, SourceSnapshot>()
+        val configuredIds = board.states().map { it.id }.toSet()
         for ((id, source) in sourceIds.zip(sources)) {
             val old = accepted[id]?.version.orEmpty()
-            if (sourceId.isNotEmpty() && sourceId != id) {
-                results[id] = SourceResult(id, true, oldVersion = old, newVersion = old)
+            // A rejected initial transaction leaves no cache, including stock roles and vocabulary
+            // versions. Bootstrap those internal contributions even on a targeted retry.
+            if (sourceId.isNotEmpty() && sourceId != id && (id in accepted || id in configuredIds)) {
+                if (id in accepted) results[id] = SourceResult(id, true, oldVersion = old, newVersion = old)
                 continue
             }
             try {
                 val snapshot = source.load()
                 val issues = (snapshot.errors + snapshot.droppedFiles).distinct().map { it.diagnostic() }
-                val empty = board.states().any { it.id == id } && snapshot.objectCount() == 0
+                val empty = id in configuredIds && snapshot.objectCount() == 0
                 if (strictSwap && (issues.isNotEmpty() || empty)) {
                     val errors = issues.ifEmpty { listOf("source '$id': no model objects (empty model source)") }
                     results[id] = reject(id, old, "strict_swap_rejected", errors)
@@ -110,6 +113,9 @@ class GuardedRefresher(
                 }
             } catch (e: CancellationException) {
                 throw e
+            } catch (e: StackOverflowError) {
+                results[id] =
+                    reject(id, old, "load_failed", listOf("StackOverflowError: model source exceeded the thread stack"))
             } catch (e: Exception) {
                 results[id] =
                     reject(id, old, "load_failed", listOf("${e.javaClass.simpleName}: ${e.message.orEmpty()}"))
@@ -165,6 +171,17 @@ class GuardedRefresher(
             }
         } catch (e: CancellationException) {
             throw e
+        } catch (e: StackOverflowError) {
+            loaded.keys.forEach { id ->
+                results[id] =
+                    reject(
+                        id,
+                        accepted[id]?.version.orEmpty(),
+                        "reconcile_failed",
+                        listOf("StackOverflowError: model construction exceeded the thread stack"),
+                    )
+            }
+            return results.values.toList()
         } catch (e: Exception) {
             loaded.keys.forEach { id ->
                 results[id] =

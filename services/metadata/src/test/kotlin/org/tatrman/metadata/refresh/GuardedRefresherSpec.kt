@@ -33,6 +33,7 @@ import org.tatrman.metadata.strictSwap
 import org.tatrman.ttr.metadata.model.ModelDescriptor
 import org.tatrman.ttr.metadata.reconcile.ModelReconciler
 import org.tatrman.ttr.metadata.registry.MetadataRegistry
+import org.tatrman.ttr.metadata.source.BuiltinStockSource
 import org.tatrman.ttr.metadata.source.FileBasedSource
 import org.tatrman.ttr.metadata.source.LoadWarning
 import org.tatrman.ttr.metadata.source.LocalFsStorage
@@ -197,6 +198,29 @@ class GuardedRefresherSpec :
             board.states().single().consecutiveFailures shouldBe 0
         }
 
+        "a source stack overflow is recorded and retryable while last good stays served" {
+            val sourceSnapshot = parsed("one", "orders")
+            var overflow = false
+            val board = SourceLoadBoard().apply { register("one", "one") }
+            val registry = MetadataRegistry()
+            val refresher =
+                coordinator(
+                    listOf(ModelSource { if (overflow) throw StackOverflowError() else sourceSnapshot }),
+                    listOf("one"),
+                    registry,
+                    board,
+                )
+            refresher.refresh("", true)
+            val prior = registry.readOrError()
+            overflow = true
+            refresher.refresh("", true).single().errorMessage shouldContain "StackOverflowError"
+            (registry.read() === prior) shouldBe true
+            board.states().single().consecutiveFailures shouldBe 1
+            overflow = false
+            refresher.refresh("", true).single().success shouldBe true
+            board.states().single().consecutiveFailures shouldBe 0
+        }
+
         "successful same-version sidecar retries remain cached until a later model swap" {
             var one = parsed("one", "orders").copy(version = "v1", exportSidecars = mapOf("sentinel" to "old"))
             var two = parsed("two", "products").copy(version = "v2")
@@ -262,6 +286,35 @@ class GuardedRefresherSpec :
             refresher.refresh("one", true).single { it.sourceId == "one" }.snapshotSwapped shouldBe true
             tableNames(registry) shouldBe setOf("duplicate", "products")
             board.states().single { it.id == "two" }.consecutiveFailures shouldBe 1
+        }
+
+        "targeted retries bootstrap internal roles after an initial reconcile rejection" {
+            var one = parsed("one", "orders", withRole = true).copy(version = "old1")
+            val two = parsed("two", "orders").copy(version = "old2")
+            val board =
+                SourceLoadBoard().apply {
+                    register("one", "one")
+                    register("two", "two")
+                }
+            val registry = MetadataRegistry()
+            val refresher =
+                coordinator(
+                    listOf(BuiltinStockSource(), ModelSource { one }, ModelSource { two }),
+                    listOf(BuiltinStockSource.SOURCE_ID, "one", "two"),
+                    registry,
+                    board,
+                )
+            refresher.refresh("", true).all { !it.success } shouldBe true
+            registry.read() shouldBe null
+            one = parsed("one", "orders_new", withRole = true).copy(version = "new1")
+            val recovered = refresher.refresh("one", true)
+            recovered.map { it.sourceId }.toSet() shouldBe setOf(BuiltinStockSource.SOURCE_ID, "one")
+            recovered.single { it.sourceId == "one" }.success shouldBe true
+            board.states().single { it.id == "one" }.loadedOnce shouldBe true
+            board.states().single { it.id == "two" }.loadedOnce shouldBe false
+            refresher.refresh("two", true).single { it.sourceId == "two" }.success shouldBe true
+            tableNames(registry) shouldBe setOf("orders_new", "orders")
+            board.isReady(registry.readOrError().swappedAt) shouldBe true
         }
 
         "gRPC source health includes initial failure last-good degradation and recovery" {
@@ -394,10 +447,14 @@ private fun coordinator(
 private fun parsed(
     id: String,
     name: String,
+    withRole: Boolean = false,
 ): SourceSnapshot {
     val dir = Files.createTempDirectory("strict-source")
     return try {
         Files.writeString(dir.resolve("db.ttrm"), "model db\ndef table $name {}")
+        if (withRole) {
+            Files.writeString(dir.resolve("er.ttrm"), "model er\ndef entity sale { roles: [dimension] }")
+        }
         FileBasedSource(id, 100, LocalFsStorage(id, dir)).load()
     } finally {
         dir.toFile().deleteRecursively()

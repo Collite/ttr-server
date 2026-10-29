@@ -32,7 +32,8 @@ assigned to just one new contribution. Parsing, validation and reconciliation us
 this switch changes when the service publishes their result.
 
 Startup, scheduled ticks, `POST /refresh`, gRPC `Refresh` and CN-triggered refreshes share the same
-serialized path. A rejected candidate never updates the accepted source cache, served packages,
+serialized path. A targeted retry also loads unpublished internal contributions (stock roles and registered
+vocabulary versions) needed to recover from an initial reconciliation failure. A rejected candidate never updates the accepted source cache, served packages,
 model objects, layouts or template/lexicon sidecars. Rejected versions are retried on later refreshes,
 even at the same SHA. A successful repair publishes as one model swap. Same-version repairs to optional
 sidecars of an already accepted source are cached but retain the existing served catalog until the next model swap,
