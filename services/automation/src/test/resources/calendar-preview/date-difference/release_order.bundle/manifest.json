@@ -1,0 +1,221 @@
+{
+  "schemaVersion": 3,
+  "ttrpVersion": 2,
+  "toolchain": "org.tatrman:ttrp:0.18.14",
+  "program": "release_order.ttrp",
+  "world": {
+    "qname": "hartland.worlds.demo",
+    "fingerprint": "sha256:f22d2996de19a569dbcd5c0b6ab9a3dbda56440b652dfdbe851eebfeb5bba676"
+  },
+  "islands": [
+    {
+      "name": "placed_orders",
+      "engine": "erp",
+      "executor": "native",
+      "invocation": "sql-text",
+      "file": "islands/placed_orders.orders.sql",
+      "sha256": "sha256:4f52ba2917a45b61422058490132b218ed6bca65972aea1af513a8ee92dbac92",
+      "connections": [
+        "TTR_CONN_ERP"
+      ],
+      "params": [
+        "as_of_minus_5_days"
+      ],
+      "outputs": [
+        {
+          "port": "orders",
+          "file": "islands/placed_orders.orders.sql",
+          "sha256": "sha256:4f52ba2917a45b61422058490132b218ed6bca65972aea1af513a8ee92dbac92",
+          "columns": [
+            {
+              "name": "order_number",
+              "type": "text"
+            },
+            {
+              "name": "placed",
+              "type": "date"
+            }
+          ],
+          "params": [
+            "as_of_minus_5_days"
+          ],
+          "keyed": true,
+          "storage": "erp_db"
+        }
+      ],
+      "schema": "er"
+    },
+    {
+      "name": "verdict",
+      "engine": "erp",
+      "executor": "native",
+      "invocation": "sql-text",
+      "file": "islands/verdict.release.sql",
+      "sha256": "sha256:b904d8e1ace48bd0527724c4b02339af5fffb884f0c22a2466777e086362c590",
+      "connections": [
+        "TTR_CONN_ERP"
+      ],
+      "params": [
+        "as_of_minus_5_days"
+      ],
+      "outputs": [
+        {
+          "port": "release",
+          "file": "islands/verdict.release.sql",
+          "sha256": "sha256:b904d8e1ace48bd0527724c4b02339af5fffb884f0c22a2466777e086362c590",
+          "columns": [
+            {
+              "name": "order_number",
+              "type": "text"
+            },
+            {
+              "name": "placed",
+              "type": "date"
+            },
+            {
+              "name": "route",
+              "type": "text"
+            },
+            {
+              "name": "verdict_reason",
+              "type": "text"
+            }
+          ],
+          "params": [
+            "as_of_minus_5_days"
+          ],
+          "keyed": true,
+          "storage": "erp_db"
+        }
+      ],
+      "schema": "er"
+    }
+  ],
+  "transfers": [],
+  "waves": [
+    [
+      "placed_orders"
+    ],
+    [
+      "verdict"
+    ]
+  ],
+  "connections": [
+    "TTR_CONN_ERP"
+  ],
+  "displays": [],
+  "rejectSites": [],
+  "recipe": {
+    "name": "release_order",
+    "key": [
+      "order.order_number"
+    ],
+    "asOf": "now",
+    "parameters": [],
+    "bindings": [
+      {
+        "name": "as_of",
+        "type": "datetime",
+        "source": "run"
+      },
+      {
+        "name": "as_of_minus_5_days",
+        "type": "datetime",
+        "source": "derived",
+        "derive": {
+          "base": "as_of",
+          "op": "minus",
+          "amount": "5",
+          "unit": "days"
+        }
+      }
+    ],
+    "roles": {
+      "candidates": "placed_orders",
+      "contexts": [],
+      "decision": "verdict",
+      "routes": [
+        {
+          "name": "release",
+          "because": "calendar fixture",
+          "detail": [],
+          "turnFed": false
+        }
+      ],
+      "switchMode": "exclusive"
+    },
+    "wiring": [
+      {
+        "routes": [
+          "verdict.release"
+        ],
+        "action": "notify_customer",
+        "columns": {
+          "customer": "42",
+          "template": "cast(:as_of - placed as string)"
+        }
+      }
+    ],
+    "kinds": [
+      "sql"
+    ],
+    "mode": "per-candidate",
+    "windows": [],
+    "verdictSchema": {
+      "entity": "release_order_verdict",
+      "columns": [
+        {
+          "name": "run",
+          "type": "text"
+        },
+        {
+          "name": "as_of",
+          "type": "timestamp"
+        },
+        {
+          "name": "order_number",
+          "type": "text"
+        },
+        {
+          "name": "route",
+          "type": "text"
+        },
+        {
+          "name": "verdict_reason",
+          "type": "text"
+        },
+        {
+          "name": "parameters_fp",
+          "type": "text"
+        },
+        {
+          "name": "run_as",
+          "type": "text"
+        },
+        {
+          "name": "written_at",
+          "type": "timestamp"
+        }
+      ],
+      "detail": "release_order_verdict_detail",
+      "current": "release_order_verdict_current"
+    },
+    "objectsRead": [
+      "er.entity.date_dim",
+      "er.entity.order"
+    ],
+    "fingerprints": {
+      "text": "sha256:cfe84dad8671cccbd4bf4ce602f4a3f2c78519ce9974a5dbfde9661b5335c470",
+      "values": "sha256:cf4cebb35ea628b58234678c397e0b46b5222084bbc7d909320e7854c6222e9f",
+      "labels": "sha256:bfdc918f0d8026b1791a8da52eaa5679d227ccc7137f5e9d0cff76d012bab69e"
+    },
+    "protocol": "always"
+  },
+  "files": {
+    "README.md": "sha256:d80a035a64d2becad46176c7c6b76fb2f627f47f640d763075893e60c6104654",
+    "catalog/release_order.ttrm": "sha256:dd92d7617d3532d913ed84c7e5935ba67f4ea244c2e783233ed5ac568205ffc3",
+    "catalog/release_order_verdict.ttrm": "sha256:e1a40f72485615093cb5e77d59ccd8cc3757eb2d6685f5037c37ebd2f63f867f",
+    "islands/placed_orders.orders.sql": "sha256:4f52ba2917a45b61422058490132b218ed6bca65972aea1af513a8ee92dbac92",
+    "islands/verdict.release.sql": "sha256:b904d8e1ace48bd0527724c4b02339af5fffb884f0c22a2466777e086362c590"
+  }
+}

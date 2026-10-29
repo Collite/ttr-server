@@ -12,6 +12,10 @@ import org.tatrman.ttr.metadata.model.WorldSchema
 import org.tatrman.ttr.metadata.world.WorldResolution
 import org.tatrman.ttr.metadata.world.WorldResolver
 import org.tatrman.ttr.parser.model.AutoValue
+import org.tatrman.ttrp.expr.CatalogId
+import org.tatrman.ttrp.expr.ColumnRef
+import org.tatrman.ttrp.expr.DurationExpr
+import org.tatrman.ttrp.expr.ParamRef
 import org.tatrman.ttrp.expr.Expression
 import org.tatrman.ttrp.expr.FunctionCall
 import org.tatrman.ttrp.graph.model.NodeExpressions
@@ -39,6 +43,32 @@ internal object PreviewCalendar {
             .flatMap { NodeExpressions.walk(it).filterIsInstance<FunctionCall>().toList() }
             .filter { it.function.name in setOf("age", "working_days") }
 
+    private val dateTypes = setOf("date", "datetime", "timestamp", "timestamptz")
+
+    fun differences(
+        expressions: List<Expression>,
+        parameterTypes: Map<String, String>,
+    ): List<FunctionCall> {
+        fun boundDate(e: Expression): Boolean =
+            when (e) {
+                is ParamRef -> parameterTypes[e.name] in dateTypes
+                is FunctionCall ->
+                    e.function in setOf(CatalogId.ADD, CatalogId.SUB) &&
+                        e.args.size == 2 &&
+                        boundDate(e.args[0]) &&
+                        (e.args[1] is DurationExpr || e.args[1] is ParamRef)
+                else -> false
+            }
+        return expressions
+            .flatMap { NodeExpressions.walk(it).filterIsInstance<FunctionCall>() }
+            .filter {
+                it.function == CatalogId.SUB &&
+                    it.args.size == 2 &&
+                    boundDate(it.args[0]) &&
+                    it.args[1] is ColumnRef
+            }
+    }
+
     fun plan(
         bundle: Bundle,
         worldName: String,
@@ -64,7 +94,16 @@ internal object PreviewCalendar {
             }
         // Invalid expressions still refuse in preview. A failed parse cannot authorize an auxiliary read.
         val calls =
-            calls(sources.flatMap { runCatching { PreviewWiringValues.expressions(it) }.getOrDefault(emptyList()) })
+            sources
+                .flatMap { runCatching { PreviewWiringValues.expressions(it) }.getOrDefault(emptyList()) }
+                .let { expressions ->
+                    calls(expressions) +
+                        differences(
+                            expressions,
+                            recipe.parameters.associate { it.name to it.type } +
+                                recipe.bindings.associate { it.name to it.type } + ("as_of" to "timestamp"),
+                        )
+                }
         if (calls.isEmpty()) return null
         val plan =
             bundle.prepared.calendarPlans

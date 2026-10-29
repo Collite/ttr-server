@@ -10,10 +10,12 @@ import tempfile
 parser = argparse.ArgumentParser()
 parser.add_argument("cli", type=Path)
 parser.add_argument("--check", action="store_true")
+parser.add_argument("--date-difference", action="store_true", help="Regenerate the bound-date-minus-column variant")
 args = parser.parse_args()
 cli = args.cli.resolve()
 assert subprocess.check_output([str(cli), "--version"], text=True).strip() == "ttrp 0.18.14"
 resource = Path(__file__).resolve().parent
+variant = resource / "date-difference" if args.date_difference else resource
 with tempfile.TemporaryDirectory(prefix="calendar-preview-") as directory:
     root = Path(directory) / "unrelated-checkout"
     shutil.copytree(resource.parent / "bundles/hartland", root)
@@ -23,13 +25,13 @@ with tempfile.TemporaryDirectory(prefix="calendar-preview-") as directory:
         shutil.copyfile(source, destination)
     for name in ("db.ttrm", "binding.ttrm"):
         shutil.copyfile(resource.parent / "approval-evidence" / name, root / "model" / name)
-    shutil.copyfile(resource / "release_order.ttrp", root / "release_order.ttrp")
+    shutil.copyfile(variant / "release_order.ttrp", root / "release_order.ttrp")
     (root / "modeler.toml").write_text('[ttrp]\nworld = "hartland.worlds.demo"\nextra-model-roots = ["model", "automation"]\n')
     subprocess.run([str(cli), "check", "release_order.ttrp"], cwd=root, check=True)
     subprocess.run([str(cli), "build", "release_order.ttrp"], cwd=root, check=True)
     generated = root / "release_order.bundle"
     assert (generated / "manifest.json").is_file(), "CLI did not produce a complete bundle; preserving existing fixture"
-    destination = resource / "release_order.bundle"
+    destination = variant / "release_order.bundle"
     if args.check:
         def contents(folder):
             return {p.relative_to(folder): p.read_bytes() for p in folder.rglob("*") if p.is_file()}

@@ -54,6 +54,7 @@ class RunRuntimeComponentSpec :
         beforeEach { LedgerTestDb.reset() }
 
         fun calendarFixture(
+            difference: Boolean = false,
             warnings: Set<String> = emptySet(),
             readsScope: List<String> = listOf("er.entity.date_dim"),
             transform: (Bundle) -> Bundle = { it },
@@ -61,6 +62,7 @@ class RunRuntimeComponentSpec :
             val root =
                 CalendarFixture.copyTo(
                     tempdir(prefix = "calendar-runtime-").toPath().resolve("arbitrary-branch"),
+                    difference = difference,
                 )
             val loaded =
                 BundleLoader(
@@ -124,57 +126,60 @@ class RunRuntimeComponentSpec :
             )
         }
 
-        "published calendar fixture opens evaluates and journals one immutable snapshot through retry close restart" {
-            val f = calendarFixture()
-            val runtime = f.start()
-            try {
-                val opened =
-                    runtime.sessions.open(
-                        "release_order",
-                        f.request.copy(asOf = "2040-10-28T12:00:00Z"),
-                        f.caller,
-                    )
-                opened.httpStatus shouldBe 201
-                opened.approvalsBypassed shouldBe false
-                val id = UUID.fromString(opened.response.runId)
-                val result = runtime.sessions.evaluate(id, f.caller)
-                val actions = runtime.status.read(id, f.caller).actions
-                actions.single().arguments["template"] shouldBe JsonPrimitive("2")
-                f.reads.get() shouldBe 3
-                transaction { RunOutputs.selectAll().count() } shouldBe 3L
-                runtime.sessions.evaluate(id, f.caller) shouldBe result
-                f.reads.get() shouldBe 3
-                val protocol = runtime.protocol.read(id, f.caller)
-                val openedEvidence =
-                    protocol.sections.values
-                        .flatten()
-                        .map { it.payload }
-                        .filterIsInstance<JsonObject>()
-                        .single { it["event"] == JsonPrimitive("opened") }
-                openedEvidence["calendar"]!!.jsonObject["entity"] shouldBe JsonPrimitive("er.entity.date_dim")
-                openedEvidence["calendar"]!!.jsonObject["storage"] shouldBe JsonPrimitive("erp_db")
-                val read =
-                    protocol.sections.values
-                        .flatten()
-                        .map { it.payload }
-                        .filterIsInstance<JsonObject>()
-                        .single { it["statement"] == JsonPrimitive("runtime:calendar-snapshot/v1") }
-                read["storage"] shouldBe JsonPrimitive("erp_db")
-                read["rows"] shouldBe JsonPrimitive(6)
-                runtime.closer.close(id, f.caller)
-                val sealed = runtime.protocol.read(id, f.caller)
-                runtime.shutdown()
-                val restarted = f.start()
+        for (difference in listOf(false, true)) {
+            val label = if (difference) "bound-date-difference" else "calendar"
+            "published $label fixture opens evaluates and journals one immutable snapshot through retry close restart" {
+                val f = calendarFixture(difference = difference)
+                val runtime = f.start()
                 try {
-                    restarted.status.read(id, f.caller).actions shouldBe actions
-                    restarted.protocol.read(id, f.caller) shouldBe sealed
+                    val opened =
+                        runtime.sessions.open(
+                            "release_order",
+                            f.request.copy(asOf = "2040-10-28T12:00:00Z"),
+                            f.caller,
+                        )
+                    opened.httpStatus shouldBe 201
+                    opened.approvalsBypassed shouldBe false
+                    val id = UUID.fromString(opened.response.runId)
+                    val result = runtime.sessions.evaluate(id, f.caller)
+                    val actions = runtime.status.read(id, f.caller).actions
+                    actions.single().arguments["template"] shouldBe JsonPrimitive(if (difference) "5" else "2")
                     f.reads.get() shouldBe 3
+                    transaction { RunOutputs.selectAll().count() } shouldBe 3L
+                    runtime.sessions.evaluate(id, f.caller) shouldBe result
+                    f.reads.get() shouldBe 3
+                    val protocol = runtime.protocol.read(id, f.caller)
+                    val openedEvidence =
+                        protocol.sections.values
+                            .flatten()
+                            .map { it.payload }
+                            .filterIsInstance<JsonObject>()
+                            .single { it["event"] == JsonPrimitive("opened") }
+                    openedEvidence["calendar"]!!.jsonObject["entity"] shouldBe JsonPrimitive("er.entity.date_dim")
+                    openedEvidence["calendar"]!!.jsonObject["storage"] shouldBe JsonPrimitive("erp_db")
+                    val read =
+                        protocol.sections.values
+                            .flatten()
+                            .map { it.payload }
+                            .filterIsInstance<JsonObject>()
+                            .single { it["statement"] == JsonPrimitive("runtime:calendar-snapshot/v1") }
+                    read["storage"] shouldBe JsonPrimitive("erp_db")
+                    read["rows"] shouldBe JsonPrimitive(6)
+                    runtime.closer.close(id, f.caller)
+                    val sealed = runtime.protocol.read(id, f.caller)
+                    runtime.shutdown()
+                    val restarted = f.start()
+                    try {
+                        restarted.status.read(id, f.caller).actions shouldBe actions
+                        restarted.protocol.read(id, f.caller) shouldBe sealed
+                        f.reads.get() shouldBe 3
+                    } finally {
+                        restarted.shutdown()
+                    }
                 } finally {
-                    restarted.shutdown()
+                    runtime.shutdown()
+                    f.close()
                 }
-            } finally {
-                runtime.shutdown()
-                f.close()
             }
         }
 
@@ -243,7 +248,7 @@ class RunRuntimeComponentSpec :
                 Triple(emptySet<String>(), listOf("er.entity.customer"), ErrorCode.OUT_OF_SCOPE_READ),
             )) {
                 val f =
-                    calendarFixture(warning, scope, transform = { bundle ->
+                    calendarFixture(warnings = warning, readsScope = scope, transform = { bundle ->
                         val deployment = bundle.deployments.getValue("release_native_event")
                         bundle.copy(
                             deployments =

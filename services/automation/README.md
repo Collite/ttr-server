@@ -555,7 +555,7 @@ physical primary-key conflict transactionally, without overwriting/skipping/rege
 queries or writes the target model to allocate an ID. The evidence format from 0.18.9, unchanged through 0.18.11, covers the authored source.
 
 Hartland's authored default mappings/bundles are staged in #122; deployed adoption remains pending.
-Calendar counts are supported as described above; additional column-date forms remain pending. P2 must validate actual physical bounds and writable policies
+Calendar counts and bound-date-minus-column counts are supported as described below; other column-date forms remain pending. P2 must validate actual physical bounds and writable policies
 before applying anything. H-3/H-5 are not certified by these defaults. Selected unsupported operations return
 `501 preview-unsupported`. P2/P3
 retain dry-run task/delivery rows and performed action outcomes. Durable close/sealing and local staging retention are described below. Application mounting is
@@ -711,7 +711,11 @@ The HTTP port opens only after the migration, so the chart's startup probe cover
 
 Action expressions, writer-default expressions, wiring conditions and expressions inside deferred calls
 can use `age(since: placed)` and `working_days(between: placed, and: :as_of)` over typed date/timestamp
-columns and bindings. Open discovers the single model calendar by `semantics { role: event_date }`,
+columns and bindings. A bound date minus a typed date/timestamp column (`:as_of - placed`, including
+a derived bound such as `(:as_of - days(1)) - placed`) uses the same calendar count; numeric subtraction
+remains numeric. The known manifest-duration flattening limitation still blocks literal-duration
+subexpressions in published wiring text (for example `days(1)` rendered as `1 days`); compute that bound
+upstream or bind a duration parameter until Core U1 is fixed. Open discovers the single model calendar by `semantics { role: event_date }`,
 requires its exact ER qname in `recipe.objectsRead`, resolves its binding and world placement with the
 published compiler and the complete loader package map, and requires an explicit Query door route before
 claiming the run. The calendar plan is cached per immutable bundle/world, including placement refusals;
@@ -725,7 +729,8 @@ validator cap also refuses. Verified Arrow is journalled as `_au_calendar.rows` 
 retries share the same successful snapshot or failure; no auxiliary output/download API is introduced.
 A refusal cannot publish a decision, batch or action completion.
 
-The published `SugarLowering`, normalizer and SQL graph emitter execute against that snapshot and only
+The published `RecipeTime` typer, `SugarLowering`, normalizer and parameter-aware `SqlTextPlanner` execute
+against that snapshot and only
 the referenced staged route columns in UTC DuckDB. Server does not copy the calendar joins/count SQL or
 invent weekdays. Compiler semantics count calendar days in `(start, end]`, filter the authored working-day
 flag, preserve repeated route rows, propagate NULL dates and return zero for empty/reversed ranges. Empty
@@ -733,6 +738,7 @@ routes still validate. The published 0.18.14 fixture under `src/test/resources/c
 governed Open/evaluate/retry/close/restart with the real PostgreSQL ledger; only Query tables are canned.
 It does not certify a live Query database or perform physical writes.
 
-Relative `due` values remain descriptive; absolute working-day deadlines, calendar-key inputs and further
-column-date forms (including bound date minus a column) remain explicit follow-ups. Unsupported forms
-continue to refuse. This stage changes no runtime/compiler dependency pin.
+Relative `due` values remain descriptive. Absolute working-day deadlines, adding/subtracting a duration
+to/from a route date, reverse/column-column date differences and integer calendar-key action inputs
+remain unsupported and refuse, including on empty routes. Action rows do not carry the key provenance
+needed to resolve calendar keys; no integer/date coercion is inferred. This stage changes no runtime/compiler dependency pin.

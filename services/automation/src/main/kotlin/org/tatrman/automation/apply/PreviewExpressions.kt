@@ -102,10 +102,11 @@ internal object PreviewExpressions {
         expectedTypes: List<String?> = emptyList(),
         calendar: CalendarSnapshot? = null,
     ): Table {
-        val parsed = sources.map { TtrpParser.parseExpression(it) }
+        val parsed = sources.mapIndexed { i, source -> TtrpParser.parseExpression(source, "<action-$i>") }
         if (parsed.any { result -> result.diagnostics.any { it.severity == Severity.ERROR } }) unsupported()
         val timed = PreviewTime.lower(parsed.map { it.expression }, bindings)
-        val columns = table.columns.toMutableList()
+        val calendarResult = PreviewCalendarGraph.lower(timed.expressions, table, timed.bindings, calendar)
+        val columns = calendarResult.table.columns.toMutableList()
         val constants = mutableListOf<Any?>()
         val authoredNames =
             parsed
@@ -134,7 +135,7 @@ internal object PreviewExpressions {
         // Keep literal decimals/large integers out of plan.v1's Double literal arm. Parameters likewise
         // retain their JDBC types rather than the translator's default decimal/timestamp parameter type.
         val boundExpressions =
-            timed.expressions.map { result ->
+            calendarResult.expressions.map { result ->
                 NodeExpressions.rewrite(result) {
                     when (it) {
                         is ParamRef -> constant(timed.bindings[it.name] ?: unsupported(), it.location)
@@ -154,16 +155,7 @@ internal object PreviewExpressions {
                     }
                 }
             }
-        val calendarResult =
-            PreviewCalendarGraph.lower(
-                boundExpressions,
-                Table(columns.toList(), table.rows.map { it + constants }),
-                timed.bindings,
-                calendar,
-            )
-        val expressions = calendarResult.expressions
-        columns.clear()
-        columns += calendarResult.table.columns
+        val expressions = boundExpressions
         val schema = mapOf("" to columns.map { Column(it.name, expressionType(it.type)) })
         val checker = ExpressionTypechecker()
         expressions.forEachIndexed { i, expression ->
@@ -230,7 +222,7 @@ internal object PreviewExpressions {
             Table(
                 selectedColumns,
                 table.rows.mapIndexed { i, row ->
-                    val values = calendarResult.table.rows[i]
+                    val values = calendarResult.table.rows[i] + constants
                     ordinals.map { values[it] } + i.toLong()
                 },
             )

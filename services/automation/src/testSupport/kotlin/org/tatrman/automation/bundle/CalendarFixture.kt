@@ -14,14 +14,18 @@ object CalendarFixture {
         return root
     }
 
-    fun copyTo(root: Path): Path {
+    fun copyTo(
+        root: Path,
+        difference: Boolean = false,
+    ): Path {
+        val variant = if (difference) resource.resolve("date-difference") else resource
         copyFixtureTree(Path.of("src/test/resources/bundles/hartland"), root)
         add(root)
         val bundle = root.resolve("automation/release_order/release_order.bundle")
         bundle.toFile().deleteRecursively()
-        copyFixtureTree(resource.resolve("release_order.bundle"), bundle)
+        copyFixtureTree(variant.resolve("release_order.bundle"), bundle)
         Files.copy(
-            resource.resolve("release_order.ttrp"),
+            variant.resolve("release_order.ttrp"),
             root.resolve("automation/release_order/release_order.ttrp"),
             StandardCopyOption.REPLACE_EXISTING,
         )

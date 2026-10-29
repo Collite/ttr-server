@@ -177,6 +177,174 @@ class PreviewCalendarSpec :
             ) shouldBe
                 setOf(0, 1)
         }
+        "bound dates minus route dates use calendar counts with derived parameters and numeric controls" {
+            val bindings =
+                bindings +
+                    mapOf("cutoff" to BoundValue("date", LocalDate.of(2026, 10, 28)), "limit" to BoundValue("int", 8L))
+            val input = Table(table.columns + ManifestColumn("quantity", "int"), table.rows.map { it + 3L })
+            val result =
+                PreviewExpressions.project(
+                    linkedMapOf(
+                        "age" to ":as_of - placed",
+                        "date" to ":cutoff - placed",
+                        "derived" to "(:as_of - days(1)) - placed",
+                        "numeric" to ":limit - quantity",
+                    ),
+                    input,
+                    bindings,
+                    calendar = snapshot,
+                )
+            result.rows shouldBe
+                listOf(
+                    listOf(5L, 5L, 4L, 5L),
+                    listOf(5L, 5L, 4L, 5L),
+                    listOf(null, null, null, 5L),
+                    listOf(0L, 0L, 0L, 5L),
+                    listOf(0L, 0L, 0L, 5L),
+                )
+            PreviewConditions.select(":as_of - placed >= 5", input, bindings, snapshot) shouldBe setOf(0, 1)
+            PreviewExpressions
+                .project(
+                    mapOf("n" to ":as_of - placed"),
+                    input.copy(rows = emptyList()),
+                    bindings,
+                    calendar = snapshot,
+                ).rows shouldBe
+                emptyList()
+        }
+        "date differences retain typed NULL and UTC timestamp bounds" {
+            val nullDate = bindings + ("cutoff" to BoundValue("date", null))
+            PreviewExpressions
+                .project(
+                    mapOf("n" to ":cutoff - placed"),
+                    table,
+                    nullDate,
+                    calendar = snapshot,
+                ).rows shouldBe
+                List(5) { listOf(null) }
+            val utc =
+                bindings +
+                    ("cutoff" to BoundValue("timestamptz", java.time.OffsetDateTime.parse("2026-10-29T01:00:00+02:00")))
+            val timestamps =
+                Table(
+                    listOf(ManifestColumn("placed", "timestamp")),
+                    listOf(listOf(java.time.LocalDateTime.parse("2026-10-23T00:00:00"))),
+                )
+            PreviewExpressions
+                .project(
+                    mapOf("n" to ":cutoff - placed + 1"),
+                    timestamps,
+                    utc,
+                    calendar = snapshot,
+                ).rows shouldBe
+                listOf(listOf(6L))
+        }
+
+        "column differences plan scope before claim without planning numeric subtraction" {
+            val difference =
+                recipe.copy(
+                    wiring =
+                        listOf(
+                            ManifestWiring(
+                                listOf("way.release"),
+                                "notify_customer",
+                                mapOf(
+                                    "template" to "cast((:as_of - days(1)) - placed as text)",
+                                ),
+                            ),
+                        ),
+                )
+            (PreviewCalendar.plan(bundle, "demo", difference, mapOf("notify_customer" to action)) === plan) shouldBe
+                true
+            shouldThrow<AutomationException> {
+                PreviewCalendar.plan(
+                    bundle,
+                    "demo",
+                    difference.copy(objectsRead = emptyList()),
+                    mapOf(
+                        "notify_customer" to action,
+                    ),
+                )
+            }.code shouldBe
+                ErrorCode.OUT_OF_SCOPE_READ
+            for (fromPort in listOf(false, true)) {
+                val dated =
+                    difference.copy(
+                        parameters = if (fromPort) emptyList() else listOf(ManifestParameter("cutoff", "date")),
+                        bindings =
+                            if (fromPort) {
+                                listOf(
+                                    ManifestBinding("cutoff", "date", "port.cutoff"),
+                                )
+                            } else {
+                                emptyList()
+                            },
+                        wiring =
+                            listOf(
+                                ManifestWiring(
+                                    listOf("way.release"),
+                                    "notify_customer",
+                                    mapOf(
+                                        "template" to "hold { value: :cutoff - placed }",
+                                    ),
+                                ),
+                            ),
+                    )
+                (PreviewCalendar.plan(bundle, "demo", dated, mapOf("notify_customer" to action)) === plan) shouldBe true
+            }
+            val numeric =
+                difference.copy(
+                    parameters = listOf(ManifestParameter("limit", "int")),
+                    wiring =
+                        listOf(
+                            ManifestWiring(
+                                listOf("way.release"),
+                                "notify_customer",
+                                mapOf(
+                                    "template" to "cast(:limit - quantity as text)",
+                                ),
+                            ),
+                        ),
+                )
+            PreviewCalendar.plan(
+                bundle,
+                "demo",
+                numeric.copy(objectsRead = emptyList()),
+                mapOf(
+                    "notify_customer" to action,
+                ),
+            ) shouldBe
+                null
+        }
+        "integer calendar keys and column date shifts refuse even for empty routes" {
+            val keyed = table.copy(columns = listOf(ManifestColumn("placed", "int")), rows = listOf(listOf(20261023L)))
+            for (input in listOf(keyed, keyed.copy(rows = emptyList()))) {
+                for (source in listOf(
+                    "age(since: placed)",
+                    ":as_of - placed",
+                    "working_days(between: placed, and: :as_of)",
+                )) {
+                    shouldThrow<AutomationException> {
+                        PreviewExpressions.project(mapOf("n" to source), input, bindings, calendar = snapshot)
+                    }.code shouldBe
+                        ErrorCode.PREVIEW_UNSUPPORTED
+                }
+            }
+            for (input in listOf(table, table.copy(rows = emptyList()))) {
+                for (source in listOf(
+                    "placed + days(2)",
+                    "placed - days(2)",
+                    ":as_of + working_days(2)",
+                    "placed - :as_of",
+                )) {
+                    shouldThrow<AutomationException> {
+                        PreviewExpressions.project(mapOf("n" to source), input, bindings, calendar = snapshot)
+                    }.code shouldBe
+                        ErrorCode.PREVIEW_UNSUPPORTED
+                }
+            }
+        }
+
         "empty routes validate and empty calendars yield zero" {
             PreviewExpressions
                 .project(
