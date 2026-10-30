@@ -4,6 +4,7 @@ package org.tatrman.automation.apply
 import org.tatrman.automation.api.AutomationException
 import org.tatrman.automation.api.ErrorCode
 import org.tatrman.automation.bundle.Bundle
+import org.tatrman.ttr.metadata.model.ErSchema
 import org.tatrman.ttr.metadata.model.WorldSchema
 import org.tatrman.ttr.metadata.world.WorldResolution
 import org.tatrman.ttr.metadata.world.WorldResolver
@@ -19,13 +20,13 @@ internal object PreviewObligationStorage {
         bundle.prepared.obligationPlacements
             .computeIfAbsent(worldName) {
                 try {
-                    Result.success(place(bundle, worldName))
-                } catch (e: AutomationException) {
+                    Result.success(bundle.prepared.placeObligation(bundle, worldName))
+                } catch (e: Exception) {
                     Result.failure(e)
                 }
             }.getOrThrow()
 
-    private fun place(
+    internal fun place(
         bundle: Bundle,
         worldName: String,
     ): String {
@@ -33,7 +34,11 @@ internal object PreviewObligationStorage {
         val index = prepared.index
         val schema = bundle.model.schemas["world"] as? WorldSchema ?: unsupported()
         val declaration = schema.worlds.values.singleOrNull { it.qname.name == worldName } ?: unsupported()
-        val entity = bundle.entities.singleOrNull { it.qname.dotted() == "er.entity.obligation" } ?: unsupported()
+        val entity =
+            (bundle.model.schemas["er"] as? ErSchema)
+                ?.entities
+                ?.values
+                ?.singleOrNull { it.qname.dotted() == "er.entity.obligation" } ?: unsupported()
         val source = LoadSourceResolver.resolve(entity, index)?.takeIf { it.unbound } ?: unsupported()
         val world =
             (

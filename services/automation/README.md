@@ -428,9 +428,15 @@ artificial obligation JOIN. Open, preparation and preview use Core's shared `Aut
 predicate. Removing the JOIN changes SQL/text evidence; the fixture records a newly approved text fingerprint,
 and its old approval refuses before any claim. Nested call read derivation and calendar action-expression
 reads (Core#330) remain separate follow-ups.
-Placement successes and refusals are prepared once per immutable bundle/world, sharing coverage's model
+Placement successes and all `Exception` failures are prepared once per immutable bundle/world, sharing coverage's model
 snapshot and index. Refreshed bundles have their own cache. Both insert and fulfil require the same stdlib
 obligation schema.
+
+Warm-up catches `Exception` and logs once per world and pinned preparation, so one unavailable placement
+cannot prevent other recipes from loading. A fulfilment Open rethrows the cached original failure before
+claiming: expected refusals remain `501 preview-unsupported`; unexpected failures remain a sanitized
+`500 internal`. Fatal JVM `Error`s are not swallowed. Placement derives the obligation entity from the pinned
+model, so copies with a different precomputed entity list cannot poison a shared preparation.
 
 After validating/projecting all wirings, the runner collects the selected (entity, canonical key text, kind)
 identities. It issues one parameterized id/entity/key/kind/state read, filtered by the requested entities,

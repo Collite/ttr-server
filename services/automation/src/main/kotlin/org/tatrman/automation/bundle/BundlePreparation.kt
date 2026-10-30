@@ -14,6 +14,9 @@ class BundlePreparation internal constructor(
     private val model: Model,
     private val packages: Map<String, String>,
     private val loadedAt: Instant,
+    /** Instance-scoped placement boundary; production always uses the public compiler adapter. */
+    internal val placeObligation: (Bundle, String) -> String =
+        org.tatrman.automation.apply.PreviewObligationStorage::place,
 ) {
     internal fun matches(
         model: Model,
@@ -26,4 +29,5 @@ class BundlePreparation internal constructor(
     internal val index by lazy { ModelIndex(snapshot, packageOf) }
     internal val calendarPlans = ConcurrentHashMap<String, Result<org.tatrman.automation.apply.CalendarPlan>>()
     internal val obligationPlacements = ConcurrentHashMap<String, Result<String>>()
+    internal val warnedObligationPlacements: MutableSet<String> = ConcurrentHashMap.newKeySet()
 }

@@ -16,6 +16,11 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+- **automation — isolate obligation placement warm-up failures (#335).** Unexpected placement failures
+  no longer refuse the entire refreshed bundle. Cache each world’s original failure, warn once, and report
+  it only when a fulfilment Open needs that placement, before claiming the run. Insert-only recipes remain
+  available. Placement reads the pinned model rather than an independently copied entity list.
+
 - **automation — compiler-derived obligation read scope.** Adopt internal grammar/metadata 0.18.16
   (translator/proto stay 0.12.11) and share Core's native-obligation lookup predicate across preparation,
   Open and preview. The regenerated fulfilment fixture reads orders without an artificial obligation JOIN;

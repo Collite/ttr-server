@@ -38,6 +38,7 @@ enum class CoverageKind(
 
 /** Resolve once at load; approval and execution consume these same pinned objects. */
 object ApprovalDependencies {
+    private val log = org.slf4j.LoggerFactory.getLogger(ApprovalDependencies::class.java)
     private val evidenceJson = Json
 
     fun unprepared() = Checked(refusal = "approval coverage was not prepared", coverage = CoverageKind.MISSING)
@@ -78,10 +79,12 @@ object ApprovalDependencies {
                         try {
                             org.tatrman.automation.apply.PreviewObligationStorage
                                 .resolve(prepared, world)
-                        } catch (
-                            _: org.tatrman.automation.api.AutomationException,
-                        ) {
-                            // cached; Open reports it
+                        } catch (e: Exception) {
+                            // Cache the original failure; Open rethrows it before claiming. Re-preparing the
+                            // same snapshot must neither retry placement nor repeat its warm-up warning.
+                            if (prepared.prepared.warnedObligationPlacements.add(world)) {
+                                log.warn("automation: obligation placement unavailable in pinned world {}", world, e)
+                            }
                         }
                     }
                 }

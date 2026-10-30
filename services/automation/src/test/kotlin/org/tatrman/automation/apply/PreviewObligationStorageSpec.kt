@@ -85,6 +85,17 @@ class PreviewObligationStorageSpec :
             (refreshed.prepared === invalid.prepared) shouldBe false
         }
 
+        "placement derives entities from the model when copies share a cold preparation" {
+            val cold =
+                bundle
+                    .copy(loadedAt = bundle.loadedAt.plusSeconds(1), entities = emptyList())
+                    .withSharedPreparation()
+            val complete = cold.copy(entities = bundle.entities)
+            (cold.prepared === complete.prepared) shouldBe true
+            PreviewObligationStorage.resolve(cold, "demo") shouldBe "automation_db"
+            PreviewObligationStorage.resolve(complete, "demo") shouldBe "automation_db"
+        }
+
         "missing ambiguous or unbound-engine placements refuse without choosing a default storage" {
             for (value in listOf(
                 world.copy(storages = world.storages - storage),
