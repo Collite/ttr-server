@@ -55,7 +55,7 @@ class GrpcMetadataStatus(
  * `model_version` carries a random suffix per reconcile, so the comparable stamp is a source's version — for a git
  * source, its commit. `modelDrift` = Metadata serves another commit than the served bundle's: [source] (the
  * `bundle.metadataSource` config) names Metadata's source of this repo; unset, any Metadata source at the bundle's commit
- * counts as in sync. Null = not known (Metadata unreachable, or no such source). A drift is a descriptor warning,
+ * counts as in sync. Null = not known (Metadata unreachable, no such source, or no accepted version yet). A drift is a descriptor warning,
  * never a refusal — the model repo and the automation package may be one repo or two (with two, set no source and
  * read `modelDrift` as "Metadata serves none of this repo's commits"). The answer is cached for [ttl].
  */
@@ -71,9 +71,12 @@ class MetadataHandshake(
     suspend fun drift(commit: String): Boolean? {
         val versions = versions() ?: return null
         return if (source != null) {
-            versions[source]?.let { it != commit }
+            versions[source]?.takeIf { it.isNotEmpty() }?.let { it != commit }
         } else {
-            commit !in versions.values
+            versions.values
+                .filter { it.isNotEmpty() }
+                .takeIf { it.isNotEmpty() }
+                ?.let { commit !in it }
         }
     }
 

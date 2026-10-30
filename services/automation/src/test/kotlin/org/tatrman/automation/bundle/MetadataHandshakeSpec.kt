@@ -33,6 +33,13 @@ class MetadataHandshakeSpec :
             handshake(mapOf("a" to commit), source = "hartland").drift(commit) shouldBe null
         }
 
+        "DOWN source versions are unknown and do not produce drift" {
+            handshake(mapOf("hartland" to ""), source = "hartland").drift(commit) shouldBe null
+            handshake(mapOf("hartland" to "")).drift(commit) shouldBe null
+            handshake(mapOf("down" to "", "loaded" to commit)).drift(commit) shouldBe false
+            handshake(mapOf("down" to "", "loaded" to "beef")).drift(commit) shouldBe true
+        }
+
         "Metadata unreachable: not known" {
             handshake(null).drift(commit) shouldBe null
         }

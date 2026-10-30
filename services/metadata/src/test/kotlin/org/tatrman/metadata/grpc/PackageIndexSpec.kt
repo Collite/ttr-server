@@ -59,6 +59,22 @@ class PackageIndexSpec :
             index.packageOf("/tmp/metadata-git/a/model/c/loose.ttrm") shouldBe "c"
         }
 
+        "a later accepted transaction discards packages staged by a failed unpublished swap" {
+            val registry = MetadataRegistry()
+            val index = PackageIndex().commitOnSwap(registry)
+            val accepted = snapshot("one", file("/accepted/a.ttrm", computed = "a"))
+            index.stageAccepted(mapOf("one" to accepted))
+            registry.swapIn()
+            index.stageAccepted(mapOf("two" to snapshot("two", file("/rejected/b.ttrm", computed = "b"))))
+            // No swap: construction of the registry snapshot failed before publication.
+            index.packageOf("/accepted/a.ttrm") shouldBe "a"
+            index.packageOf("/rejected/b.ttrm") shouldBe null
+            index.stageAccepted(mapOf("one" to accepted))
+            registry.swapIn()
+            index.packageOf("/accepted/a.ttrm") shouldBe "a"
+            index.packageOf("/rejected/b.ttrm") shouldBe null
+        }
+
         "an unknown file and a blank package match nothing" {
             val index = PackageIndex()
             index.record(snapshot("git", file("/m/orphan.ttrm", computed = "")))

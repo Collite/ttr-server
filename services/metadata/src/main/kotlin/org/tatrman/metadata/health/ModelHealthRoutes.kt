@@ -17,6 +17,7 @@ import kotlinx.serialization.json.putJsonArray
 import org.tatrman.ttr.metadata.registry.MetadataRegistry
 import org.tatrman.metadata.read.templateCatalogs
 import org.tatrman.metadata.read.servedLexicons
+import org.tatrman.metadata.refresh.diagnostic
 
 /** `/status` `error` when no model source is configured at all. */
 const val NO_MODEL_SOURCE = "no_model_source_configured"
@@ -28,8 +29,9 @@ const val NO_MODEL_SOURCE = "no_model_source_configured"
  * built from those loads is swapped in ([SourceLoadBoard.isReady]); until then it answers 503 with
  * a one-line reason.
  * `/status` always answers 200 and carries the per-source detail: what each source is, whether it
- * has loaded, when it last tried and succeeded, and the last error — and `issues`, the files of the served
- * model that were left out: a layout file that does not parse or repeats a taken name,
+ * has loaded, when it last tried and succeeded, and the last error. `strict_swap` advertises the
+ * configured publication policy. `issues` includes rejected model diagnostics as well as optional
+ * content that was left out of the served model: a layout file that does not parse or repeats a taken name,
  * `layout <path>: <reason>` (VL V-38). Neither makes the model any less loaded.
  */
 fun Route.modelHealthRoutes(
@@ -37,8 +39,8 @@ fun Route.modelHealthRoutes(
     board: SourceLoadBoard,
 ) {
     get("/ready") {
-        val snap = registry.read()
-        if (snap != null && board.isReady(snap.swappedAt)) {
+        val (snap, ready) = synchronized(registry) { registry.read().let { it to board.isReady(it?.swappedAt) } }
+        if (snap != null && ready) {
             call.respondJson(
                 buildJsonObject {
                     put("status", "UP")
@@ -56,22 +58,32 @@ fun Route.modelHealthRoutes(
         }
     }
     get("/status") {
-        val snap = registry.read()
+        val (snap, sourceStates, ready) =
+            synchronized(registry) {
+                val snapshot = registry.read()
+                Triple(snapshot, board.states(), board.isReady(snapshot?.swappedAt))
+            }
         call.respondJson(
             buildJsonObject {
                 put("service", "metadata")
-                put("ready", board.isReady(snap?.swappedAt))
+                put("strict_swap", board.strictSwap)
+                put("ready", ready)
                 put("model_loaded", snap != null)
                 put("model_version", snap?.model?.version?.value ?: "")
                 put("object_count", snap?.graph?.size() ?: 0)
                 put("queries_total", snap?.model?.queries?.size ?: 0)
-                if (board.states().isEmpty()) put("error", NO_MODEL_SOURCE)
+                if (sourceStates.isEmpty()) put("error", NO_MODEL_SOURCE)
                 putJsonArray("issues") {
+                    sourceStates
+                        .flatMap { it.issues }
+                        .distinct()
+                        .forEach { add(it) }
+                    snap?.warnings?.forEach { add(it.diagnostic()) }
                     snap?.layouts?.issues?.forEach { add(it.toString()) }
                     snap?.templateCatalogs()?.flatMap { it.issues }?.forEach { add(it) }
                     snap?.servedLexicons()?.mapNotNull { it.issue }?.forEach { add(it) }
                 }
-                putJsonArray("sources") { board.states().forEach { addJsonObject { putState(it) } } }
+                putJsonArray("sources") { sourceStates.forEach { addJsonObject { putState(it) } } }
             },
         )
     }

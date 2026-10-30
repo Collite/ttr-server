@@ -9,7 +9,7 @@ import org.tatrman.meta.v1.ListQueriesRequest
 import org.tatrman.ttr.metadata.graph.ModelGraph
 import org.tatrman.ttr.metadata.model.ModelDescriptor
 import org.tatrman.ttr.metadata.reconcile.ModelReconciler
-import org.tatrman.ttr.metadata.refresh.MetadataRefresher
+import org.tatrman.metadata.refresh.GuardedRefresher
 import org.tatrman.ttr.metadata.registry.MetadataRegistry
 import org.tatrman.ttr.metadata.source.FileBasedSource
 import org.tatrman.ttr.metadata.source.LocalFsStorage
@@ -156,20 +156,23 @@ class GetModelPackageMembershipSpec :
             queriesIn("b") shouldBe setOf("q_b")
         }
 
-        // The production path, not a hand-fed index: Application's buildSources wraps every
+        // The production path, not a hand-fed index: Application's source builder registers every
         // configured slot, the refresher loads and swaps, and the index serves what was swapped in.
         "as wired in Application: every slot records, and a load is served once its model swaps in" {
             val root = estate()
             val config = ConfigFactory.parseString("metadata.sources.git { type = filesystem, path = \"$root\" }")
             val registry = MetadataRegistry()
             val index = PackageIndex().commitOnSwap(registry)
-            val slots = buildSources(config, index)
+            val slots = buildSources(config)
             val refresher =
-                MetadataRefresher(
+                GuardedRefresher(
                     sources = slots.map { it.source },
                     sourceIds = slots.map { it.id },
                     reconciler = ModelReconciler(ModelDescriptor(id = "test", name = "test", description = "wiring")),
                     registry = registry,
+                    packageIndex = index,
+                    strictSwap = true,
+                    configuredIds = setOf("git"),
                 )
             val svc = MetadataServiceImpl(registry, packageIndex = index)
 
