@@ -1,0 +1,157 @@
+// SPDX-License-Identifier: Apache-2.0
+package org.tatrman.automation.apply
+
+import io.kotest.assertions.throwables.shouldThrow
+import io.kotest.core.spec.style.StringSpec
+import io.kotest.engine.spec.tempdir
+import io.kotest.matchers.shouldBe
+import org.tatrman.automation.api.AutomationException
+import org.tatrman.automation.api.ErrorCode
+import org.tatrman.automation.bundle.ApprovalFixture
+import org.tatrman.automation.bundle.BundleFixture
+import org.tatrman.ttr.metadata.model.World
+import org.tatrman.ttr.metadata.model.WorldSchema
+
+class PreviewObligationStorageSpec :
+    StringSpec({
+        val bundle =
+            BundleFixture.load(
+                ApprovalFixture.copyTo(tempdir().toPath().resolve("unrelated-folder"), fulfilment = true),
+            )
+        val schema = bundle.model.schemas.getValue("world") as WorldSchema
+        val world = schema.worlds.values.single { it.qname.name == "demo" }
+        val storage = world.storages.single { it.qname.name == "automation_db" }
+
+        fun changed(value: World) =
+            bundle.copy(
+                model =
+                    bundle.model.copy(
+                        schemas =
+                            bundle.model.schemas +
+                                ("world" to schema.copy(worlds = schema.worlds + (world.qname to value))),
+                    ),
+            )
+
+        "obligation placement uses declared logical storage without a package-shaped checkout" {
+            PreviewObligationStorage.resolve(bundle, "demo") shouldBe "automation_db"
+            val renamed =
+                world.copy(
+                    storages =
+                        world.storages.map {
+                            if (it ==
+                                storage
+                            ) {
+                                it.copy(qname = it.qname.copy(name = "ledger_archive"))
+                            } else {
+                                it
+                            }
+                        },
+                )
+            PreviewObligationStorage.resolve(changed(renamed), "demo") shouldBe "ledger_archive"
+            world.storages.single { it.qname.name == "erp_db" }.hosts shouldBe listOf("hartland")
+        }
+
+        "prepared bundle caches successful and refused placement and refresh gets a new cache" {
+            val ready =
+                org.tatrman.automation.bundle.ApprovalDependencies
+                    .prepare(bundle)
+            val cached = ready.prepared.obligationPlacements.getValue("demo")
+            repeat(2) { PreviewObligationStorage.resolve(ready, "demo") shouldBe "automation_db" }
+            ready.prepared.obligationPlacements.getValue("demo") shouldBe cached
+            (ready.prepared.index === bundle.prepared.index) shouldBe true
+            val invalid =
+                org.tatrman.automation.bundle.ApprovalDependencies.prepare(
+                    changed(
+                        world.copy(
+                            storages =
+                                world.storages - storage,
+                        ),
+                    ),
+                )
+            val refused =
+                invalid.prepared.obligationPlacements
+                    .getValue("demo")
+                    .exceptionOrNull()
+            repeat(2) {
+                val error = shouldThrow<AutomationException> { PreviewObligationStorage.resolve(invalid, "demo") }
+                (error === refused) shouldBe true
+                error.code shouldBe ErrorCode.PREVIEW_UNSUPPORTED
+            }
+            (ready.prepared === invalid.prepared) shouldBe false
+            val refreshed =
+                org.tatrman.automation.bundle.ApprovalDependencies
+                    .prepare(changed(world))
+            PreviewObligationStorage.resolve(refreshed, "demo") shouldBe "automation_db"
+            (refreshed.prepared === invalid.prepared) shouldBe false
+        }
+
+        "placement derives entities from the model when copies share a cold preparation" {
+            val cold =
+                bundle
+                    .copy(loadedAt = bundle.loadedAt.plusSeconds(1), entities = emptyList())
+                    .withSharedPreparation()
+            val complete = cold.copy(entities = bundle.entities)
+            (cold.prepared === complete.prepared) shouldBe true
+            PreviewObligationStorage.resolve(cold, "demo") shouldBe "automation_db"
+            PreviewObligationStorage.resolve(complete, "demo") shouldBe "automation_db"
+        }
+
+        "missing ambiguous or unbound-engine placements refuse without choosing a default storage" {
+            for (value in listOf(
+                world.copy(storages = world.storages - storage),
+                world.copy(
+                    storages =
+                        world.storages +
+                            storage.copy(
+                                internalId = "other-ledger",
+                                qname = storage.qname.copy(name = "other_ledger"),
+                            ),
+                ),
+                world.copy(storages = world.storages.map { if (it == storage) it.copy(via = null) else it }),
+                world.copy(storages = world.storages.map { if (it == storage) it.copy(via = "missing") else it }),
+            )) {
+                shouldThrow<AutomationException> { PreviewObligationStorage.resolve(changed(value), "demo") }
+            }
+            shouldThrow<AutomationException> { PreviewObligationStorage.resolve(bundle, "missing") }
+        }
+
+        "world hosts require whole declared packages even for an unbound obligation lookup" {
+            for (host in listOf("not.loaded", "hart", "hartland_extra")) {
+                val invalid =
+                    world.copy(
+                        storages =
+                            world.storages.map {
+                                if (it.qname.name == "erp_db") it.copy(hosts = listOf(host)) else it
+                            },
+                    )
+                shouldThrow<AutomationException> {
+                    PreviewObligationStorage.resolve(changed(invalid), "demo")
+                }.code shouldBe ErrorCode.PREVIEW_UNSUPPORTED
+            }
+        }
+
+        "a missing loader package map refuses instead of projecting away world hosts" {
+            shouldThrow<AutomationException> {
+                PreviewObligationStorage.resolve(bundle.copy(packages = emptyMap()), "demo")
+            }.code shouldBe ErrorCode.PREVIEW_UNSUPPORTED
+        }
+
+        "unresolved and cyclic storage overlays refuse" {
+            for (ref in listOf("missing.package.storage", "automation_db")) {
+                val value =
+                    world.copy(
+                        storages =
+                            world.storages.map {
+                                if (it ==
+                                    storage
+                                ) {
+                                    it.copy(extendsRef = ref)
+                                } else {
+                                    it
+                                }
+                            },
+                    )
+                shouldThrow<AutomationException> { PreviewObligationStorage.resolve(changed(value), "demo") }
+            }
+        }
+    })

@@ -1,0 +1,20 @@
+uses world "hartland.worlds.demo"
+import hartland.*
+import hartland.automation.*
+recipe {
+ key: order.order_number
+ as of: now
+ candidates placed_orders(out orders) target erp """sql
+ SELECT o.order_number, c.cal_date AS placed
+ FROM er.entity.order o JOIN er.entity.date_dim c ON c.cal_date = cast(:as_of - days(5) AS date)
+ """
+ decision verdict(in orders) {
+  orders -> switch {
+   mode: exclusive
+   release: true because: "calendar fixture"
+  }
+ }
+ actions {
+  verdict.release -> notify_customer { customer: 42, template: cast(:as_of - placed as text) }
+ }
+}

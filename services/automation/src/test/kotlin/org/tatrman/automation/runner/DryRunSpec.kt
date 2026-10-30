@@ -140,6 +140,550 @@ class DryRunSpec :
             }
         }
 
+        fun obligationWiring(
+            routes: List<String> = listOf("way.hold"),
+            kind: String = "\"inbound\"",
+            due: String = "cast(:as_of + days(14) as date)",
+        ) = ManifestWiring(routes, "expect", mapOf("line" to "9007199254740993", "kind" to kind, "due" to due))
+
+        fun fulfilWiring(
+            to: String = "fulfilled",
+            route: String = "way.hold",
+        ) = ManifestWiring(
+            listOf(route),
+            "fulfil",
+            mapOf(
+                "line" to "9007199254740993",
+                "kind" to "\"inbound\"",
+                "to" to "\"$to\"",
+            ),
+        )
+
+        fun fulfilRecipe(wirings: List<ManifestWiring> = listOf(fulfilWiring())): LoadedRecipe {
+            val original = previewRecipe().withWiring(wirings)
+            val recipe = original.recipe.copy(objectsRead = original.recipe.objectsRead + "er.entity.obligation")
+            return original.copy(recipe = recipe, manifest = original.manifest.copy(recipe = recipe))
+        }
+
+        fun existingObligations(vararg states: String): List<List<Any?>> =
+            states.mapIndexed { i, state ->
+                listOf("ob-$i", "er.entity.return_request_line", "{\"line_id\":9007199254740993}", "inbound", state)
+            }
+
+        "fulfil resolves a governed obligation snapshot once and shares equal transition rows" {
+            supervisorScope {
+                val f =
+                    PreviewFixture(
+                        this,
+                        fulfilRecipe(listOf(fulfilWiring(), fulfilWiring())),
+                        obligationRows = existingObligations("open"),
+                    )
+                f.runner.use { runner ->
+                    val result = runner.evaluate()
+                    val row = f.plan!!.rows.single { it.entity == "er.entity.obligation" }
+                    row.op shouldBe "transition"
+                    row.key shouldBe buildJsonObject { put("id", "ob-0") }
+                    row.attribute shouldBe "state"
+                    row.from shouldBe listOf("open")
+                    row.to shouldBe JsonPrimitive("fulfilled")
+                    row.history shouldBe true
+                    f.plan!!.actions.forEach { it.batchRows shouldBe listOf(row.seq) }
+                    result.guards.any {
+                        it.island == "_au_obligations" &&
+                            it.code == "out-of-scope-read" &&
+                            it.status == "passed"
+                    } shouldBe
+                        true
+                    runner.evaluate()
+                    val replay =
+                        ApplyPlanner(
+                            Clock.fixed(PREVIEW_NOW.plusSeconds(86400), ZoneOffset.UTC),
+                        ).preview(runner)
+                    replay.rows.filter { it.entity == "er.entity.obligation" } shouldBe listOf(row)
+                    replay.actions shouldBe f.plan!!.actions
+                    f.obligationReads.size shouldBe 1
+                    f.obligationReads.single().let { read ->
+                        read.storage shouldBe "automation_db"
+                        read.modelFp shouldBe runner.context.modelFp
+                        read.identity shouldBe runner.context.identity
+                        read.objectsRead shouldBe
+                            runner.context.recipe.recipe.objectsRead
+                                .toSet()
+                        read.bindings.values.map { it.value } shouldBe
+                            listOf("er.entity.return_request_line", "inbound", "{\"line_id\":9007199254740993}")
+                    }
+                }
+            }
+        }
+
+        "fulfil reads only selected exact identities despite unrelated malformed history" {
+            supervisorScope {
+                val requested = existingObligations("open")
+                val history =
+                    requested +
+                        listOf(
+                            listOf("bad-key", "er.entity.return_request_line", "not JSON", "inbound", "open"),
+                            listOf(
+                                "bad-state",
+                                "er.entity.return_request_line",
+                                "{\"line_id\":42}",
+                                "inbound",
+                                "unknown",
+                            ),
+                            listOf(
+                                "other-kind",
+                                "er.entity.return_request_line",
+                                "{\"line_id\":9007199254740993}",
+                                "other",
+                                "unknown",
+                            ),
+                        )
+                val f = PreviewFixture(this, fulfilRecipe(), obligationRows = history, filterLookup = true)
+                f.runner.use { runner ->
+                    runner.evaluate()
+                    f.plan!!
+                        .rows
+                        .single { it.entity == "er.entity.obligation" }
+                        .key shouldBe
+                        buildJsonObject { put("id", "ob-0") }
+                    val read = f.obligationReads.single()
+                    read.bindings.values
+                        .map { it.value }
+                        .toSet() shouldBe
+                        setOf("er.entity.return_request_line", "inbound", "{\"line_id\":9007199254740993}")
+                    read.sql.contains("ob.kind IN (") shouldBe true
+                    read.sql.contains("ob.key IN (") shouldBe true
+                    shouldThrow<IllegalArgumentException> {
+                        runner.obligationSnapshot(
+                            setOf(
+                                org.tatrman.automation.apply.PreviewFulfilment.Identity(
+                                    "er.entity.return_request_line",
+                                    "{\"line_id\":42}",
+                                    "inbound",
+                                ),
+                            ),
+                        )
+                    }
+                }
+            }
+        }
+
+        "lookup does not find noncanonical stored key text" {
+            supervisorScope {
+                for (key in listOf("{\"line_id\":9007199254740993.0}", "{ \"line_id\":9007199254740993}")) {
+                    val f =
+                        PreviewFixture(
+                            this,
+                            fulfilRecipe(),
+                            obligationRows =
+                                listOf(
+                                    listOf("ob", "er.entity.return_request_line", key, "inbound", "open"),
+                                ),
+                            filterLookup = true,
+                        )
+                    f.runner.use { runner ->
+                        shouldThrow<AutomationException> { runner.evaluate() }.code shouldBe
+                            ErrorCode.PREVIEW_UNSUPPORTED
+                        f.journals.get() shouldBe 0
+                        f.obligationReads.size shouldBe 1
+                    }
+                }
+            }
+        }
+
+        "identity bind limit refuses before the Door and narrowed snapshots retain the ceiling guard" {
+            supervisorScope {
+                val f = PreviewFixture(this, fulfilRecipe())
+                f.runner.use { runner ->
+                    val identities =
+                        (0..PartRunner.MAX_OBLIGATION_IDENTITIES)
+                            .map {
+                                org.tatrman.automation.apply.PreviewFulfilment.Identity(
+                                    "er.entity.return_request_line",
+                                    "{\"line_id\":$it}",
+                                    "inbound",
+                                )
+                            }.toSet()
+                    shouldThrow<AutomationException> { runner.obligationSnapshot(identities) }.code shouldBe
+                        ErrorCode.PREVIEW_UNSUPPORTED
+                    f.reads.get() shouldBe 0
+                    f.obligationReads.size shouldBe 0
+                }
+                val capped =
+                    PreviewFixture(
+                        this,
+                        fulfilRecipe(),
+                        obligationRows = existingObligations("fulfilled", "fulfilled", "fulfilled"),
+                        filterLookup = true,
+                        readCeiling = 3,
+                    )
+                capped.runner.use { runner ->
+                    // Access the auxiliary read directly so an authored candidate cap cannot mask its guard.
+                    shouldThrow<AutomationException> {
+                        runner.obligationSnapshot(
+                            setOf(
+                                org.tatrman.automation.apply.PreviewFulfilment.Identity(
+                                    "er.entity.return_request_line",
+                                    "{\"line_id\":9007199254740993}",
+                                    "inbound",
+                                ),
+                            ),
+                        )
+                    }.code shouldBe
+                        ErrorCode.CANDIDATES_TRUNCATED
+                    capped.obligationReads.size shouldBe 1
+                    capped.journals.get() shouldBe 0
+                }
+            }
+        }
+
+        "fulfil refuses missing ambiguous conflicting and malformed snapshots atomically" {
+            supervisorScope {
+                val variants =
+                    listOf(
+                        emptyList(),
+                        existingObligations("open", "overdue"),
+                        listOf(listOf("ob", "er.entity.return_request_line", "{bad", "inbound", "open")),
+                        listOf(
+                            listOf(
+                                "ob",
+                                "er.entity.return_request_line",
+                                "{\"line_id\":9007199254740992}",
+                                "inbound",
+                                "open",
+                            ),
+                        ),
+                    )
+                for (snapshot in variants) {
+                    val f = PreviewFixture(this, fulfilRecipe(), obligationRows = snapshot)
+                    f.runner.use { runner ->
+                        repeat(2) {
+                            shouldThrow<AutomationException> { runner.evaluate() }.code shouldBe
+                                ErrorCode.PREVIEW_UNSUPPORTED
+                        }
+                        f.plan shouldBe null
+                        f.journals.get() shouldBe 0
+                        f.obligationReads.size shouldBe 1
+                    }
+                }
+                val f =
+                    PreviewFixture(
+                        this,
+                        fulfilRecipe(listOf(fulfilWiring(), fulfilWiring("cancelled"))),
+                        obligationRows = existingObligations("open"),
+                    )
+                f.runner.use { runner ->
+                    shouldThrow<AutomationException> { runner.evaluate() }.code shouldBe ErrorCode.PREVIEW_UNSUPPORTED
+                    f.journals.get() shouldBe 0
+                }
+            }
+        }
+
+        "fulfil requires declared ER scope and does no lookup on empty selections" {
+            supervisorScope {
+                val missing =
+                    PreviewFixture(
+                        this,
+                        previewRecipe().withWiring(listOf(fulfilWiring())),
+                        obligationRows = existingObligations("open"),
+                    )
+                missing.runner.use { runner ->
+                    shouldThrow<AutomationException> { runner.evaluate() }.code shouldBe ErrorCode.OUT_OF_SCOPE_READ
+                    missing.obligationReads.size shouldBe 0
+                    missing.journals.get() shouldBe 0
+                }
+                val empty = PreviewFixture(this, fulfilRecipe(listOf(fulfilWiring(route = "way.empty"))))
+                empty.runner.use { runner ->
+                    runner.evaluate()
+                    empty.plan!!.actions shouldBe emptyList()
+                    empty.obligationReads.size shouldBe 0
+                }
+            }
+        }
+
+        "obligation lookup obeys restricted view truncation and scope guards before preview completion" {
+            supervisorScope {
+                for ((warning, expected) in mapOf(
+                    "security_predicate_applied" to ErrorCode.RESTRICTED_VIEW,
+                    "top_n_applied" to ErrorCode.CANDIDATES_TRUNCATED,
+                )) {
+                    val f =
+                        PreviewFixture(
+                            this,
+                            fulfilRecipe(),
+                            obligationRows = existingObligations("open"),
+                            lookupWarnings = setOf(warning),
+                        )
+                    f.runner.use { runner ->
+                        repeat(2) { shouldThrow<AutomationException> { runner.evaluate() }.code shouldBe expected }
+                        f.journals.get() shouldBe 0
+                        f.obligationReads.size shouldBe 1
+                        runner.guards.any {
+                            it.island == "_au_obligations" &&
+                                it.code == expected.code &&
+                                it.status == "refused"
+                        } shouldBe
+                            true
+                    }
+                }
+            }
+        }
+
+        "restricted fulfilment refuses even when decision reads opt in to restricted views" {
+            supervisorScope {
+                val f =
+                    PreviewFixture(
+                        this,
+                        fulfilRecipe(),
+                        obligationRows = existingObligations("fulfilled"),
+                        lookupWarnings = setOf("security_predicate_applied"),
+                        allowRestrictedView = true,
+                        decisionWarnings = setOf("security_predicate_applied"),
+                    )
+                f.runner.use { runner ->
+                    repeat(2) {
+                        shouldThrow<AutomationException> { runner.evaluate() }.code shouldBe
+                            ErrorCode.RESTRICTED_VIEW
+                    }
+                    f.journals.get() shouldBe 0
+                    f.plan shouldBe null
+                    runner.evaluationRecorded shouldBe false
+                    f.obligationReads.size shouldBe 1
+                    runner.guards.any {
+                        it.island == "_au_obligations" &&
+                            it.code == "restricted-view" &&
+                            it.status == "refused"
+                    } shouldBe
+                        true
+                    runner.guards.any {
+                        it.island == "way" && it.code == "restricted-view" && it.status == "allowed"
+                    } shouldBe
+                        true
+                }
+                val control =
+                    PreviewFixture(
+                        this,
+                        allowRestrictedView = true,
+                        decisionWarnings = setOf("security_predicate_applied"),
+                    )
+                control.runner.use { runner ->
+                    runner.evaluate()
+                    control.journals.get() shouldBe 1
+                }
+            }
+        }
+
+        "obligation lookup verifies staged bytes before resolving an existing ID" {
+            supervisorScope {
+                val local = LocalStagingStore(Files.createTempDirectory("au-fulfil-corrupt"))
+                val corrupt =
+                    object : StagingStore by local {
+                        override fun get(path: String): ByteArray =
+                            local.get(path).let { bytes ->
+                                if (path.endsWith("_au_obligations.rows.arrow")) bytes + byteArrayOf(1) else bytes
+                            }
+                    }
+                val f =
+                    PreviewFixture(this, fulfilRecipe(), store = corrupt, obligationRows = existingObligations("open"))
+                f.runner.use { runner ->
+                    shouldThrow<IllegalStateException> { runner.evaluate() }
+                    f.journals.get() shouldBe 0
+                    f.plan shouldBe null
+                }
+            }
+        }
+
+        "fulfil checks assignments on empty and unselected routes before reading obligations" {
+            supervisorScope {
+                for (route in listOf("way.empty", "way.hold")) {
+                    for ((name, value) in mapOf("line" to "\"wrong type\"", "kind" to "true", "to" to "123")) {
+                        val original = fulfilWiring(route = route)
+                        val wiring =
+                            original.copy(
+                                columns = original.columns + (name to value),
+                                whenCondition = "false",
+                            )
+                        val f = PreviewFixture(this, fulfilRecipe(listOf(wiring)))
+                        f.runner.use { runner ->
+                            shouldThrow<AutomationException> { runner.evaluate() }.code shouldBe
+                                ErrorCode.PREVIEW_UNSUPPORTED
+                            f.obligationReads.size shouldBe 0
+                            f.journals.get() shouldBe 0
+                        }
+                    }
+                }
+            }
+        }
+
+        "fulfil self transitions produce action evidence without history or writes" {
+            supervisorScope {
+                val f = PreviewFixture(this, fulfilRecipe(), obligationRows = existingObligations("fulfilled"))
+                f.runner.use { runner ->
+                    runner.evaluate()
+                    f.plan!!.rows.none { it.entity == "er.entity.obligation" } shouldBe true
+                    f.plan!!
+                        .actions
+                        .single()
+                        .batchRows shouldBe emptyList()
+                }
+            }
+        }
+
+        "expect previews a typed open obligation from pinned targets dates and Open time" {
+            supervisorScope {
+                val opened = Instant.parse("2031-01-31T09:45:00.123456789Z")
+                val f = PreviewFixture(this, previewRecipe().withWiring(listOf(obligationWiring())), startedAt = opened)
+                f.runner.use { runner ->
+                    runner.evaluate()
+                    val plan = f.plan!!
+                    val action = plan.actions.single()
+                    val row = plan.rows.single { it.entity == "er.entity.obligation" }
+                    action.sink shouldBe "obligation"
+                    action.batchRows shouldBe listOf(row.seq)
+                    action.arguments["line"] shouldBe JsonPrimitive(9007199254740993L)
+                    action.arguments["due"] shouldBe JsonPrimitive("2026-11-06")
+                    val data = row.row!!
+                    data.keys shouldBe
+                        setOf("id", "recipe", "run", "entity", "key", "kind", "due", "state", "created_at")
+                    data["recipe"] shouldBe JsonPrimitive("release_order")
+                    data["run"] shouldBe JsonPrimitive(runner.context.id.toString())
+                    data["entity"] shouldBe JsonPrimitive("er.entity.return_request_line")
+                    Json.parseToJsonElement(data.getValue("key").jsonPrimitive.content) shouldBe
+                        buildJsonObject { put("line_id", 9007199254740993L) }
+                    data["kind"] shouldBe JsonPrimitive("inbound")
+                    data["due"] shouldBe action.arguments["due"]
+                    data["state"] shouldBe JsonPrimitive("open")
+                    data["created_at"] shouldBe JsonPrimitive("2031-01-31T09:45:00.123456789")
+                    row.key shouldBe buildJsonObject { put("id", data.getValue("id")) }
+                    UUID.fromString(data.getValue("id").jsonPrimitive.content).toString() shouldBe
+                        data.getValue("id").jsonPrimitive.content
+                    val replay =
+                        ApplyPlanner(
+                            Clock.fixed(PREVIEW_NOW.plusSeconds(86400), ZoneOffset.UTC),
+                        ).preview(runner)
+                    replay.actions shouldBe plan.actions
+                    replay.rows.filter { it.entity == "er.entity.obligation" } shouldBe listOf(row)
+                    runner.evaluate()
+                    f.journals.get() shouldBe 1
+                    f.reads.get() shouldBe 5
+                    f.legacy.get() shouldBe 0
+                    Json.encodeToString(plan).contains("unused_secret") shouldBe false
+                }
+            }
+        }
+
+        "qualified obligation key uses the loader resolution through evaluate" {
+            val root = BundleFixture.copy()
+            try {
+                ApprovalFixture.copyTo(root, obligations = true)
+                val bundle = BundleFixture.load(root)
+                val coverage = bundle.recipes.getValue("release_order").coverage
+                coverage.refusal shouldBe null
+                val metadata = PreviewMetadata(coverage.actions, bundle.entities, coverage.targets)
+                metadata.targets
+                    .getValue("expect")
+                    .getValue("hartland.return_request_line.line_id")
+                    .entity.qname.`package` shouldBe ""
+                supervisorScope {
+                    val f = PreviewFixture(this, previewRecipe().withWiring(listOf(obligationWiring())), metadata)
+                    f.runner.use { runner ->
+                        runner.evaluate()
+                        val row = f.plan!!.rows.single { it.entity == "er.entity.obligation" }
+                        Json.parseToJsonElement(
+                            row.row!!
+                                .getValue("key")
+                                .jsonPrimitive.content,
+                        ) shouldBe
+                            buildJsonObject { put("line_id", 9007199254740993L) }
+                        f.plan!!
+                            .actions
+                            .single()
+                            .batchRows shouldBe listOf(row.seq)
+                        f.journals.get() shouldBe 1
+                        f.reads.get() shouldBe 5
+                    }
+                }
+            } finally {
+                root.toFile().deleteRecursively()
+            }
+        }
+
+        "equal obligation proposals share one row and different kinds receive different ids" {
+            supervisorScope {
+                val wiring = obligationWiring()
+                val recipe = previewRecipe().withWiring(listOf(wiring, wiring, obligationWiring(kind = "\"payment\"")))
+                val f = PreviewFixture(this, recipe)
+                f.runner.use { runner ->
+                    runner.evaluate()
+                    val plan = f.plan!!
+                    val rows = plan.rows.filter { it.entity == "er.entity.obligation" }
+                    rows.size shouldBe 2
+                    rows.map { it.key }.distinct().size shouldBe 2
+                    plan.actions.map { it.batchRows } shouldBe
+                        listOf(listOf(rows[0].seq), listOf(rows[0].seq), listOf(rows[1].seq))
+                    f.reads.get() shouldBe 5
+                }
+            }
+        }
+
+        "conflicting obligation proposals refuse atomically after an earlier native effect" {
+            supervisorScope {
+                val recipe =
+                    previewRecipe().withWiring(
+                        listOf(
+                            previewRecipe().recipe.wiring.first(),
+                            obligationWiring(),
+                            obligationWiring(due = "cast(:as_of as date)"),
+                        ),
+                    )
+                val f = PreviewFixture(this, recipe)
+                f.runner.use { runner ->
+                    repeat(2) {
+                        shouldThrow<AutomationException> { runner.evaluate() }.code shouldBe
+                            ErrorCode.PREVIEW_UNSUPPORTED
+                    }
+                    f.plan shouldBe null
+                    f.journals.get() shouldBe 0
+                    f.reads.get() shouldBe 5
+                }
+            }
+        }
+
+        "obligation key kind and date assignments validate on empty and unselected routes" {
+            for (columns in listOf(
+                obligationWiring().columns + ("line" to "\"not an integer\""),
+                obligationWiring().columns + ("kind" to "amount"),
+                obligationWiring().columns + ("due" to "\"2026-11-06\""),
+                obligationWiring().columns - "line",
+            )) {
+                for ((routes, condition) in listOf(listOf("way.empty") to null, listOf("way.hold") to "false")) {
+                    supervisorScope {
+                        val wiring = obligationWiring(routes).copy(columns = columns, whenCondition = condition)
+                        val f = PreviewFixture(this, previewRecipe().withWiring(listOf(wiring)))
+                        f.runner.use { runner ->
+                            shouldThrow<AutomationException> { runner.evaluate() }.code shouldBe
+                                ErrorCode.PREVIEW_UNSUPPORTED
+                            f.journals.get() shouldBe 0
+                            f.reads.get() shouldBe 5
+                        }
+                    }
+                }
+            }
+        }
+
+        "empty full obligation preview is successful without manufacturing rows" {
+            supervisorScope {
+                val f = PreviewFixture(this, previewRecipe().withWiring(listOf(obligationWiring(listOf("way.empty")))))
+                f.runner.use { runner ->
+                    runner.evaluate()
+                    f.plan!!.rows.none { it.entity == "er.entity.obligation" } shouldBe true
+                    f.plan!!.actions shouldBe emptyList()
+                    f.journals.get() shouldBe 1
+                    f.reads.get() shouldBe 5
+                }
+            }
+        }
+
         fun generatedMetadata(
             type: String = "bigint",
             source: String = "bigint_id_v1",
@@ -2048,8 +2592,15 @@ private class PreviewFixture(
     asOf: Instant = PREVIEW_NOW,
     startedAt: Instant = PREVIEW_NOW,
     store: StagingStore = LocalStagingStore(Files.createTempDirectory("au-preview")),
+    obligationRows: List<List<Any?>> = emptyList(),
+    lookupWarnings: Set<String> = emptySet(),
+    allowRestrictedView: Boolean = false,
+    decisionWarnings: Set<String> = emptySet(),
+    filterLookup: Boolean = false,
+    readCeiling: Int = 100_000,
 ) {
     val reads = AtomicInteger()
+    val obligationReads = mutableListOf<DoorRead>()
     val journals = AtomicInteger()
     val legacy = AtomicInteger()
     var plan: PreviewPlan? = null
@@ -2060,7 +2611,25 @@ private class PreviewFixture(
                 startedAt = startedAt,
                 keys = null,
                 detailLimit = 2,
-                previewMetadata = metadata,
+                obligationStorage = "automation_db",
+                allowRestrictedView = allowRestrictedView,
+                readCeiling = readCeiling,
+                previewMetadata =
+                    metadata.copy(
+                        actions =
+                            metadata.actions.mapValues { (name, action) ->
+                                if (name == "fulfil" && metadata.targets[name] == null) {
+                                    action.copy(
+                                        columns =
+                                            action.columns.map {
+                                                it.copy(type = it.type.removePrefix("hartland."))
+                                            },
+                                    )
+                                } else {
+                                    action
+                                }
+                            },
+                    ),
                 bindings =
                     mapOf(
                         "as_of" to BoundValue("datetime", asOf),
@@ -2082,9 +2651,39 @@ private class PreviewFixture(
                                 "2.00",
                                 "3.00",
                             ).map { listOf("4712", "a", BigDecimal(it), "hold", "lines") }
-                        else -> error("unknown read")
+                        else -> {
+                            require(read.island == "_au_obligations")
+                            obligationReads += read
+                            if (filterLookup && "ob.kind IN (" in read.sql && "ob.key IN (" in read.sql) {
+                                fun allowed(prefix: String) =
+                                    read.bindings
+                                        .filterKeys {
+                                            it.startsWith(
+                                                "_au_obligation_${prefix}_",
+                                            )
+                                        }.values
+                                        .map { it.value }
+                                        .toSet()
+                                obligationRows.filter {
+                                    it[1] in allowed("entity") &&
+                                        it[2] in allowed("key") &&
+                                        it[3] in allowed("kind")
+                                }
+                            } else {
+                                obligationRows
+                            }
+                        }
                     }
-                ReadResult(Table(read.columns, rows))
+                ReadResult(
+                    Table(read.columns, rows),
+                    if (read.island ==
+                        "_au_obligations"
+                    ) {
+                        lookupWarnings
+                    } else {
+                        decisionWarnings
+                    },
+                )
             },
             Staging(store) {},
             scope,

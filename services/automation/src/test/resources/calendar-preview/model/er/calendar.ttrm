@@ -1,0 +1,6 @@
+package hartland
+model er
+def entity date_dim { attributes: [
+    def attribute cal_date { type: date, isKey: true, semantics { role: event_date } },
+    def attribute working_day { type: bool }
+] }

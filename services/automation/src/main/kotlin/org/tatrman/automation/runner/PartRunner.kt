@@ -42,6 +42,9 @@ data class RunContext(
     /** Production Open replaces this with the committed ledger claim timestamp. */
     val startedAt: java.time.Instant = java.time.Instant.now(),
     val previewMetadata: PreviewMetadata? = null,
+    /** Compiler-resolved logical storage for an auxiliary obligation lookup, pinned at Open. */
+    val obligationStorage: String? = null,
+    val calendar: org.tatrman.automation.apply.CalendarPlan? = null,
 ) {
     init {
         require(readCeiling > 0 && detailLimit > 0 && !timeout.isNegative && !timeout.isZero)
@@ -107,6 +110,10 @@ class PartRunner(
     private val partReads = mutableMapOf<String, Deferred<Unit>>()
     private val outputs = mutableMapOf<String, Deferred<StagedOutput>>()
     private var evaluation: Deferred<EvaluationResult>? = null
+    private var obligationRead:
+        Pair<Set<org.tatrman.automation.apply.PreviewFulfilment.Identity>, Deferred<StagedOutput>>? = null
+
+    private var calendarRead: Deferred<StagedOutput>? = null
 
     @Volatile internal var evaluationRecorded = false
         private set
@@ -159,8 +166,9 @@ class PartRunner(
                 evaluation ?: scope
                     .async {
                         val execute: suspend () -> EvaluationResult = {
-                            val result = summarizeEvaluation(this@PartRunner)
+                            val decision = summarizeEvaluation(this@PartRunner)
                             val plan = preview?.invoke(this@PartRunner)
+                            val result = decision.copy(guards = guards)
                             checks.ensureAllowed()
                             kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
                                 if (plan == null) {
@@ -205,6 +213,168 @@ class PartRunner(
         checks.ensureAllowed()
         require(output.output.run == context.id)
         return staging.readData(output).also { checks.ensureAllowed() }
+    }
+
+    /** Explicit auxiliary read: the manifest must already authorize the stdlib entity. No fallback door route. */
+    internal suspend fun obligationSnapshot(
+        identities: Set<org.tatrman.automation.apply.PreviewFulfilment.Identity>,
+    ): Table {
+        val island = "_au_obligations"
+        val entity = "er.entity.obligation"
+        checks.ensureAllowed()
+        if (entity !in context.recipe.recipe.objectsRead) {
+            checks.doorRefused(
+                island,
+                org.tatrman.automation.api.AutomationException(
+                    org.tatrman.automation.api.ErrorCode.OUT_OF_SCOPE_READ,
+                    "obligation lookup requires declared ER scope",
+                ),
+            )
+        }
+        if (identities.isEmpty() || identities.size > MAX_OBLIGATION_IDENTITIES || island in islands) {
+            throw org.tatrman.automation.api.AutomationException(
+                org.tatrman.automation.api.ErrorCode.PREVIEW_UNSUPPORTED,
+                "invalid obligation lookup plan",
+            )
+        }
+        val storage =
+            context.obligationStorage ?: throw org.tatrman.automation.api.AutomationException(
+                org.tatrman.automation.api.ErrorCode.PREVIEW_UNSUPPORTED,
+                "obligation storage was not pinned",
+            )
+        val work =
+            lock.withLock {
+                obligationRead?.let { (pinned, work) ->
+                    require(pinned == identities) { "obligation lookup scope changed" }
+                    work
+                } ?: scope
+                    .async {
+                        val started = System.nanoTime()
+                        val parameters = linkedMapOf<String, BoundValue>()
+
+                        fun bindings(
+                            prefix: String,
+                            values: List<String>,
+                        ): String =
+                            values
+                                .distinct()
+                                .sorted()
+                                .mapIndexed { i, value ->
+                                    val name = "_au_obligation_${prefix}_$i"
+                                    parameters[name] = BoundValue("text", value)
+                                    ":$name"
+                                }.joinToString(", ")
+                        val entities = bindings("entity", identities.map { it.entity })
+                        val kinds = bindings("kind", identities.map { it.kind })
+                        val keys = bindings("key", identities.map { it.key })
+                        val columns =
+                            listOf("id", "entity", "key", "kind", "state").map {
+                                org.tatrman.automation.bundle
+                                    .ManifestColumn(it, "text")
+                            }
+                        val sql =
+                            "SELECT ob.id, ob.entity, ob.key, ob.kind, ob.state " +
+                                "FROM er.entity.obligation ob WHERE ob.entity IN ($entities) " +
+                                "AND ob.kind IN ($kinds) AND ob.key IN ($keys)"
+                        val result =
+                            read(
+                                island,
+                                storage,
+                                "runtime:obligation-lookup/v2",
+                                emptyList(),
+                                columns,
+                                CandidateScope.Statement(sql, parameters),
+                                requireComplete = true,
+                            )
+                        staging.put(
+                            context.id,
+                            island,
+                            "rows",
+                            result.table,
+                            IslandExecution(
+                                "output",
+                                island,
+                                "runtime:obligation-lookup/v2",
+                                "query",
+                                ProtocolRecorder.parameters(parameters),
+                                result.table.rows.size
+                                    .toLong(),
+                                elapsedMs(started),
+                                result.warnings.sorted(),
+                                port = "rows",
+                                storage = storage,
+                            ),
+                        )
+                    }.also { obligationRead = identities.toSet() to it }
+            }
+        return readStaged(work.await()).also { checks.ensureAllowed() }
+    }
+
+    /** A single immutable, complete calendar snapshot; retries share its success or refusal. */
+    internal suspend fun calendarSnapshot(): org.tatrman.automation.apply.CalendarSnapshot? {
+        val plan = context.calendar ?: return null
+        val island =
+            generateSequence(0) { it + 1 }
+                .map { if (it == 0) "_au_calendar" else "_au_calendar_$it" }
+                .first { candidate -> islands.keys.none { it.equals(candidate, ignoreCase = true) } }
+        checks.ensureAllowed()
+        if (plan.entity !in context.recipe.recipe.objectsRead) {
+            checks.doorRefused(
+                island,
+                org.tatrman.automation.api.AutomationException(
+                    org.tatrman.automation.api.ErrorCode.OUT_OF_SCOPE_READ,
+                    "calendar lookup requires declared ER scope",
+                ),
+            )
+        }
+        val work =
+            lock.withLock {
+                calendarRead ?: scope
+                    .async {
+                        val started = System.nanoTime()
+                        val sql =
+                            "SELECT " +
+                                plan.columns.joinToString {
+                                    "cal." +
+                                        quoted(
+                                            it.name,
+                                        )
+                                } + " FROM " + plan.entity +
+                                " cal"
+                        val result =
+                            read(
+                                island,
+                                plan.storage,
+                                "runtime:calendar-snapshot/v1",
+                                emptyList(),
+                                plan.columns,
+                                CandidateScope.Statement(sql, emptyMap()),
+                                requireComplete = true,
+                                completeMessage = "calendar lookup requires a complete snapshot",
+                            )
+                        staging.put(
+                            context.id,
+                            island,
+                            "rows",
+                            result.table,
+                            IslandExecution(
+                                "output",
+                                island,
+                                "runtime:calendar-snapshot/v1",
+                                "query",
+                                emptyMap(),
+                                result.table.rows.size
+                                    .toLong(),
+                                elapsedMs(started),
+                                result.warnings.sorted(),
+                                port = "rows",
+                                storage = plan.storage,
+                            ),
+                        )
+                    }.also { calendarRead = it }
+            }
+        return org.tatrman.automation.apply
+            .CalendarSnapshot(plan, readStaged(work.await()))
     }
 
     private suspend fun outputIsland(name: String): List<StagedOutput> =
@@ -365,6 +535,8 @@ class PartRunner(
         params: List<String>,
         columns: List<org.tatrman.automation.bundle.ManifestColumn>,
         scoped: CandidateScope.Statement = CandidateScope.Statement(statement(file), emptyMap()),
+        requireComplete: Boolean = false,
+        completeMessage: String = "obligation lookup requires a complete snapshot",
     ): ReadResult =
         slots.withPermit {
             checks.ensureAllowed()
@@ -388,7 +560,7 @@ class PartRunner(
                         ),
                     ).also {
                         observedWarnings.merge(island, it.warnings.toSet()) { earlier, later -> earlier + later }
-                        checks.read(island, it)
+                        checks.read(island, it, requireComplete, completeMessage)
                         checks.scopePassed(island)
                     }
             } catch (e: org.tatrman.automation.api.AutomationException) {
@@ -438,6 +610,11 @@ class PartRunner(
             if (value is Number) java.math.BigDecimal(value.toString()).stripTrailingZeros() else value
         val allowed = keys.map { key -> names.map { canonical(key.getValue(it)) } }.toSet()
         return table.copy(rows = table.rows.filter { row -> indices.map { canonical(row[it]) } in allowed })
+    }
+
+    companion object {
+        /** At most 900 bound identity values (entity/kind/key), below the portable 999-parameter ceiling. */
+        internal const val MAX_OBLIGATION_IDENTITIES = 300
     }
 
     override fun close() {

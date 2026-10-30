@@ -15,6 +15,7 @@ import org.tatrman.ttr.metadata.model.AutomationAction
 import org.tatrman.ttr.metadata.model.Entity
 import org.tatrman.ttrp.graph.recipe.RecipeChecker
 import org.tatrman.ttrp.resolve.TargetResolution
+import org.tatrman.ttrp.resolve.AutomationScope
 import java.time.Clock
 import java.util.UUID
 
@@ -23,9 +24,10 @@ data class PreviewMetadata(
     val actions: Map<String, AutomationAction>,
     val entities: List<Entity>,
     val targets: Map<String, Map<String, org.tatrman.ttrp.resolve.TargetResolution.Resolved>> = emptyMap(),
+    val isAutomationStdlib: ((org.tatrman.ttr.metadata.model.ModelObject) -> Boolean)? = null,
 )
 
-/** Pure synthesis over verified staged results. No model connection, writer, connector or new Query reads. */
+/** Preview synthesis over verified staged results and the runner's explicitly governed obligation snapshot. */
 class ApplyPlanner(
     private val clock: Clock,
 ) {
@@ -39,8 +41,25 @@ class ApplyPlanner(
         val argumentNames: Set<String>,
         val arguments: Map<Int, Map<String, JsonElement>>,
         val writer: PreviewWriter?,
+        val obligation: PreviewObligation?,
+        val fulfilment: PreviewFulfilment?,
         val targets: Map<String, TargetResolution.Resolved>?,
         val generated: Boolean,
+    )
+
+    private data class PreparedRoute(
+        val route: ManifestRoute,
+        val table: Table,
+        val routeKeys: List<List<Any>>,
+        val details: Map<String, DetailSnapshot>,
+        val selected: List<PreparedWiring>,
+    )
+
+    private data class WiringValues(
+        val defaults: PreviewWriterDefaults.Defaults,
+        val values: PreviewWiringValues.Prepared,
+        val obligation: PreviewObligation?,
+        val fulfilment: PreviewFulfilment?,
     )
 
     suspend fun preview(runner: PartRunner): PreviewPlan {
@@ -49,7 +68,10 @@ class ApplyPlanner(
         val rows = mutableListOf<ApplyRow>()
         val actions = mutableListOf<DryRunAction>()
         val writerKeys = PreviewWriterIds.Keys()
+        val obligations = PreviewObligation.Proposals()
+        val fulfilments = PreviewFulfilment.Effects()
         val metadata = requireNotNull(context.previewMetadata) { "preview metadata was not pinned at open" }
+        val calendar = runner.calendarSnapshot()
         val roles = recipe.roles
         val decision = roles?.decision
         val batch = UUID.nameUUIDFromBytes("automation/preview/${context.id}".toByteArray(Charsets.UTF_8)).toString()
@@ -94,104 +116,161 @@ class ApplyPlanner(
                         val column = action.columns.singleOrNull { it.name == name }
                         column?.type != "rows"
                     }
-                defaults to PreviewWiringValues.prepare(scalarSources, action)
+                val obligation =
+                    if (action.sinks[Bundle.NATIVE] == "obligation" && action.transition == null) {
+                        PreviewObligation.resolve(action, metadata, metadata.targets[wiring.action])
+                    } else {
+                        null
+                    }
+                val fulfilment =
+                    if (AutomationScope.needsObligationLookup(action)) {
+                        PreviewFulfilment.resolve(action, metadata, metadata.targets[wiring.action])
+                    } else {
+                        null
+                    }
+                WiringValues(defaults, PreviewWiringValues.prepare(scalarSources, action), obligation, fulfilment)
             }
         val roleNames = roles.contexts.map { it.name }.toSet() + listOfNotNull(roles.candidates)
         val writtenAt = clock.instant()
-        for (route in roles.routes) {
-            currentCoroutineContext().ensureActive()
-            val table = tables.getValue(route.name)
-            val routeKeys = table.keyValues(keys)
-            val details =
-                route.detail.associateWith {
-                    val detail = tables.getValue("${route.name}.$it")
-                    DetailSnapshot(detail, detail.keyValues(keys).zip(detail.rows).groupBy({ it.first }, { it.second }))
-                }
-            val selected =
-                recipe.wiring
-                    .withIndex()
-                    .filter {
-                        "$decision.${route.name}" in it.value.routes
-                    }.map { (wiringIndex, wiring) ->
-                        currentCoroutineContext().ensureActive()
-                        val matches =
-                            wiring.whenCondition?.let {
-                                PreviewConditions.select(
-                                    it,
-                                    table,
-                                    context.bindings,
-                                )
-                            }
-                        val indices = table.rows.indices.filter { matches == null || it in matches }
-                        val action = metadata.actions.getValue(wiring.action)
-                        val targets = metadata.targets[wiring.action]
-                        val (defaults, values) = wiringValues[wiringIndex]
-                        // Presence wins, including explicit NULL. Defaults do not read other arguments.
-                        val argumentNames =
-                            (defaults.expressions.keys + wiring.columns.keys) + defaults.values.keys +
-                                defaults.generated + if (values.defaultDue != null) setOf("due") else emptySet()
-                        val writer =
-                            if (action.sinks[Bundle.NATIVE] ==
-                                "writer"
-                            ) {
-                                PreviewWriter.resolve(action, metadata.entities, targets)
-                            } else {
-                                null
-                            }
-                        writer?.validateArguments(assignmentNames(action, argumentNames))
-                        writer?.validateGenerated(defaults.generated)
-                        require(action.columns.filterNot { it.optional }.all { it.name in wiring.columns }) {
-                            "missing required action argument"
-                        }
-                        val contextValues =
-                            PreviewExpressions
-                                .constants(defaults.values, writer?.expectedTypes.orEmpty())
-                                .filterKeys { it !in wiring.columns }
-                                .mapValues { scalar(it.value) }
-                        val overridden = defaults.expressions.filterKeys { it in wiring.columns }
-                        if (overridden.isNotEmpty()) {
-                            // Check names/types even when overridden; unused values never execute.
-                            PreviewExpressions.project(
-                                overridden,
-                                table.copy(rows = emptyList()),
-                                context.bindings,
-                                expectedTypes = writer?.expectedTypes.orEmpty(),
-                            )
-                        }
-                        val projected =
-                            PreviewWiringValues.project(
-                                values,
-                                table.copy(rows = indices.map { table.rows[it] }),
-                                context.bindings,
-                                expectedTypes = writer?.expectedTypes.orEmpty(),
-                                roleNames = roleNames,
-                            )
-                        PreparedWiring(
-                            wiring,
-                            argumentNames,
-                            indices
-                                .mapIndexed { i, index ->
-                                    val arguments =
-                                        projected[i] +
-                                            contextValues +
-                                            (defaults.generated - wiring.columns.keys).associateWith { column ->
-                                                JsonPrimitive(
-                                                    PreviewWriterIds.bigintV1(
-                                                        context.id,
-                                                        wiringIndex,
-                                                        route.name,
-                                                        column,
-                                                        JsonObject(keys.zip(routeKeys[index].map(::scalar)).toMap()),
-                                                    ),
-                                                )
-                                            }
-                                    index to arguments
-                                }.toMap(),
-                            writer,
-                            targets,
-                            (defaults.generated - wiring.columns.keys).isNotEmpty(),
+        val preparedRoutes =
+            roles.routes.map { route ->
+                currentCoroutineContext().ensureActive()
+                val table = tables.getValue(route.name)
+                val routeKeys = table.keyValues(keys)
+                val details =
+                    route.detail.associateWith {
+                        val detail = tables.getValue("${route.name}.$it")
+                        DetailSnapshot(
+                            detail,
+                            detail.keyValues(keys).zip(detail.rows).groupBy({ it.first }, { it.second }),
                         )
                     }
+                val selected =
+                    recipe.wiring
+                        .withIndex()
+                        .filter {
+                            "$decision.${route.name}" in it.value.routes
+                        }.map { (wiringIndex, wiring) ->
+                            currentCoroutineContext().ensureActive()
+                            val matches =
+                                wiring.whenCondition?.let {
+                                    PreviewConditions.select(
+                                        it,
+                                        table,
+                                        context.bindings,
+                                        calendar,
+                                    )
+                                }
+                            val indices = table.rows.indices.filter { matches == null || it in matches }
+                            val action = metadata.actions.getValue(wiring.action)
+                            val targets = metadata.targets[wiring.action]
+                            val (defaults, values, obligation, fulfilment) = wiringValues[wiringIndex]
+                            // Presence wins, including explicit NULL. Defaults do not read other arguments.
+                            val argumentNames =
+                                (defaults.expressions.keys + wiring.columns.keys) + defaults.values.keys +
+                                    defaults.generated + if (values.defaultDue != null) setOf("due") else emptySet()
+                            val writer =
+                                if (action.sinks[Bundle.NATIVE] ==
+                                    "writer"
+                                ) {
+                                    PreviewWriter.resolve(action, metadata.entities, targets)
+                                } else {
+                                    null
+                                }
+                            writer?.validateArguments(assignmentNames(action, argumentNames))
+                            obligation?.validateArguments(assignmentNames(action, argumentNames))
+                            fulfilment?.validateArguments(assignmentNames(action, argumentNames))
+                            val expectedTypes =
+                                writer?.expectedTypes ?: obligation?.expectedTypes
+                                    ?: fulfilment?.expectedTypes.orEmpty()
+                            writer?.validateGenerated(defaults.generated)
+                            require(action.columns.filterNot { it.optional }.all { it.name in wiring.columns }) {
+                                "missing required action argument"
+                            }
+                            val contextValues =
+                                PreviewExpressions
+                                    .constants(defaults.values, expectedTypes)
+                                    .filterKeys { it !in wiring.columns }
+                                    .mapValues { scalar(it.value) }
+                            val overridden = defaults.expressions.filterKeys { it in wiring.columns }
+                            if (overridden.isNotEmpty()) {
+                                // Check names/types even when overridden; unused values never execute.
+                                PreviewExpressions.project(
+                                    overridden,
+                                    table.copy(rows = emptyList()),
+                                    context.bindings,
+                                    expectedTypes = expectedTypes,
+                                    calendar = calendar,
+                                )
+                            }
+                            val projected =
+                                PreviewWiringValues.project(
+                                    values,
+                                    table.copy(rows = indices.map { table.rows[it] }),
+                                    context.bindings,
+                                    expectedTypes = expectedTypes,
+                                    roleNames = roleNames,
+                                    calendar = calendar,
+                                )
+                            PreparedWiring(
+                                wiring,
+                                argumentNames,
+                                indices
+                                    .mapIndexed { i, index ->
+                                        val arguments =
+                                            projected[i] +
+                                                contextValues +
+                                                (defaults.generated - wiring.columns.keys).associateWith { column ->
+                                                    JsonPrimitive(
+                                                        PreviewWriterIds.bigintV1(
+                                                            context.id,
+                                                            wiringIndex,
+                                                            route.name,
+                                                            column,
+                                                            JsonObject(
+                                                                keys.zip(routeKeys[index].map(::scalar)).toMap(),
+                                                            ),
+                                                        ),
+                                                    )
+                                                }
+                                        index to arguments
+                                    }.toMap(),
+                                writer,
+                                obligation,
+                                fulfilment,
+                                targets,
+                                (defaults.generated - wiring.columns.keys).isNotEmpty(),
+                            )
+                        }
+                PreparedRoute(route, table, routeKeys, details, selected)
+            }
+        // All selected identities are known before the single governed read; empty selections never read.
+        val identities =
+            preparedRoutes
+                .flatMap { prepared ->
+                    prepared.selected.flatMap wiring@{ wiring ->
+                        val fulfilment = wiring.fulfilment ?: return@wiring emptyList()
+                        val action = metadata.actions.getValue(wiring.wiring.action)
+                        wiring.arguments.values.map { arguments ->
+                            fulfilment.identity(
+                                arguments.filterKeys {
+                                    it in
+                                        assignmentNames(action, wiring.argumentNames)
+                                },
+                            )
+                        }
+                    }
+                }.toSet()
+        val snapshot =
+            if (identities.isEmpty()) {
+                null
+            } else {
+                PreviewFulfilment.Snapshot(
+                    runner.obligationSnapshot(identities),
+                    identities,
+                )
+            }
+        for ((route, table, routeKeys, details, selected) in preparedRoutes) {
             for ((index, values) in table.rows.withIndex()) {
                 currentCoroutineContext().ensureActive()
                 val record = table.columns.mapIndexed { i, column -> column.name to scalar(values[i]) }.toMap()
@@ -248,7 +327,15 @@ class ApplyPlanner(
                             )
                     }
                 }
-                for ((wiring, argumentNames, arguments, writer, targets, generated) in selected) {
+                for (prepared in selected) {
+                    val wiring = prepared.wiring
+                    val argumentNames = prepared.argumentNames
+                    val arguments = prepared.arguments
+                    val writer = prepared.writer
+                    val obligation = prepared.obligation
+                    val fulfilment = prepared.fulfilment
+                    val targets = prepared.targets
+                    val generated = prepared.generated
                     val scalarArguments = arguments[index] ?: continue
                     val action = metadata.actions.getValue(wiring.action)
                     val args = linkedMapOf<String, JsonElement>()
@@ -271,7 +358,20 @@ class ApplyPlanner(
                     }
                     val sink = action.sinks[Bundle.NATIVE] ?: unsupported("action ${wiring.action} has no native sink")
                     val start = rows.size
+                    var obligationRows: List<Int>? = null
                     when (sink) {
+                        "obligation" -> {
+                            val fields = assignmentNames(action, args.keys)
+                            val assigned = args.filterKeys { it in fields }
+                            if (fulfilment != null) {
+                                val lookup = requireNotNull(snapshot)
+                                obligationRows =
+                                    fulfilments.add(fulfilment.transition(assigned, lookup, rows.size + 1), rows)
+                            } else {
+                                val insert = requireNotNull(obligation).insert(rows.size + 1, assigned, context)
+                                obligationRows = listOf(obligations.add(insert, rows))
+                            }
+                        }
                         "transition" -> effects(action, args, metadata, targets, rows)
                         "writer" -> {
                             val fields = assignmentNames(action, args.keys)
@@ -289,7 +389,7 @@ class ApplyPlanner(
                             wiring.action,
                             sink,
                             JsonObject(args),
-                            (start + 1..rows.size).toList(),
+                            obligationRows ?: (start + 1..rows.size).toList(),
                             render(action.dryRun.byLanguage["en"], args),
                         )
                 }

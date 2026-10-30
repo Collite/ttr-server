@@ -16,6 +16,49 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+- **automation — isolate obligation placement warm-up failures (#335).** Unexpected placement failures
+  no longer refuse the entire refreshed bundle. Cache each world’s original failure, warn once, and report
+  it only when a fulfilment Open needs that placement, before claiming the run. Insert-only recipes remain
+  available. Placement reads the pinned model rather than an independently copied entity list.
+
+- **automation — compiler-derived obligation read scope.** Adopt internal grammar/metadata 0.18.16
+  (translator/proto stay 0.12.11) and share Core's native-obligation lookup predicate across preparation,
+  Open and preview. The regenerated fulfilment fixture reads orders without an artificial obligation JOIN;
+  the compiler declares the separate lookup scope. Its changed SQL/text evidence is deliberately re-approved,
+  while the superseded approval refuses before any claim. Candidate/key selection and durable fulfilment
+  are checked through evaluate, retry, close and restart. Physical writes and live certification remain pending.
+
+- Automation previews support governed calendar counts in action expressions and wiring conditions.
+  Open pins declared ER scope, compiler-resolved calendar storage and an explicit door route before claim.
+  Evaluation journals one complete guarded snapshot and executes the published compiler graph in DuckDB;
+  security-narrowed or capped reads refuse without batch/action completion. Bound-date-minus-column
+  expressions (including derived bounds) use the same public calendar lowering; numeric subtraction stays
+  numeric. Calendar-key action inputs, column date shifts and absolute working-day deadlines remain
+  unsupported. Runtime dependencies use 0.18.16; the calendar producer fixtures remain on 0.18.14.
+
+- Automation fulfilment previews use a bounded v2 lookup of selected entity/kind/canonical-key identities,
+  refuse security-narrowed obligation snapshots even with restricted decision views enabled, and reject
+  missing obligation read scope before claiming a run. Placement outcomes are cached per bundle/world;
+  insert and fulfil use the same stdlib schema check. Stored obligation keys must use canonical text.
+
+
+- **automation — declared-package world validation.** Adopt the internal 0.18.14 toolchain and pass
+  complete loader packages to the compiler's resolver at Open. Obligation placement uses the actual pinned
+  world, replacing the temporary host-list projection. Unknown/partial hosts and missing package scope
+  refuse before a run or idempotency key is claimed. No calendar reads or physical writes are added.
+
+- **automation — open obligation insert previews.** Native obligation actions with explicit text kind,
+  date due and complete target keys propose deterministic open rows from pinned metadata and Open time.
+  Key/date assignments validate on empty selections, large/composite keys remain exact, and equal
+  proposals share one row. Conflicting due dates refuse atomically. No extra reads or physical writes;
+  physical existing-open checks, signals and calendar evaluation remain pending.
+
+- **automation — governed obligation fulfilment previews.** Native obligation transitions resolve exact
+  business keys/kinds through one journalled scoped snapshot, using the pinned world's compiler-resolved
+  logical storage and run identity. Missing/ambiguous matches and opposing transitions refuse atomically;
+  equal effects share a row, self transitions stay silent. Query scope/restriction/ceiling checks precede
+  snapshot use. No physical write, signal, general indirect lookup or calendar execution is enabled.
+
 - **query — opt-in world requirement on multi-world doors (#261).** When `QUERY_REQUIRE_WORLD`
   is on (default **off**) and `QUERY_WORLDS` names more than one world, `Run` and `RunSavedQuery`
   refuse omission with `world_unspecified` before

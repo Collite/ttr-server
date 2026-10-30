@@ -78,6 +78,7 @@ internal object PreviewWiringValues {
         bindings: Map<String, BoundValue>,
         expectedTypes: Map<String, String> = emptyMap(),
         roleNames: Set<String>,
+        calendar: CalendarSnapshot? = null,
     ): List<Map<String, JsonElement>> =
         guarded {
             val action = prepared.action
@@ -202,6 +203,7 @@ internal object PreviewWiringValues {
                         it in
                             scalars
                     },
+                    calendar = calendar,
                 )
             projected.rows.map { values ->
                 val row = projected.columns.mapIndexed { i, column -> column.name to scalar(values[i]) }.toMap()
@@ -246,6 +248,17 @@ internal object PreviewWiringValues {
             .single()
             .also { require(it.name == "payload") }
             .value
+    }
+
+    /** The same wiring parser used by preview, including expressions inside deferred calls. */
+    fun expressions(source: String): List<org.tatrman.ttrp.expr.Expression> {
+        fun leaves(value: WiringValue): List<org.tatrman.ttrp.expr.Expression> =
+            when (value) {
+                is WiringValue.Expr -> listOf(value.expression)
+                is WiringValue.Call -> value.args.flatMap { leaves(it.value) }
+                is WiringValue.Values -> value.items
+            }
+        return leaves(parse(source))
     }
 
     /** Unsupported placeholder shapes belong to the dry-run template diagnostic. */
