@@ -26,6 +26,11 @@ Proto `org.tatrman.query.v1` / `QueryService` (`com.tatrman.runner.v1` is gone):
   expression subqueries, expanded logical-query bodies and their stamped entity boundaries. Presence with
   an empty list certifies a constant query; absence provides no read-scope evidence.
 
+- **RunSavedQuery** — read a stored canonical plan from Metadata and run it through the same execution
+  pipeline. Named parameters referenced by that plan must have values in this caller's context, including
+  when no declaration/binding is supplied at all; otherwise `parameter_unbound` is returned before dispatch.
+  Both logical (ER) and physical (DB) saved queries follow this rule.
+
 - **Translate** — passthrough to translate's Translate (any-to-any conversion).
 - **GetStatus** — readiness + cache stats.
 
@@ -35,6 +40,22 @@ DB/workspace/write/uninspectable plan return `out-of-scope-read`. An empty, pres
 model reads. Context audit entries and physical DB names cannot authorize ER reads. AU uses Compile preflight
 and sends the same allow-list on Run, so a changed policy or logical body cannot bypass the execution check.
 Caller-dependent validation/evidence is never cached.
+
+### Parameter refusals
+
+The `parameter_unbound` check introduced with #264 applies to **named references in the executable plan**,
+including nested expressions, repeated references and cached plans. Each execution checks its own context;
+a previous caller's bound values do not satisfy a later call. A missing binding, absent `value`, or empty
+`Value` is unbound. Explicit NULL (`is_null = true`) and scalar zero/false are values. An unused declaration
+is not a required reference. Compile accepts typed valueless declarations and reports `required_parameters`.
+This is a Query execution check; Validate does not emit this code.
+
+For SQL text, provide parameter **names and types** to let translate parse `{name}`. This is separate from
+providing their values. With other typed bindings present, an undeclared placeholder is refused as
+`translator_rejected` (translate's `parameter_unknown`). With no bindings, translate parses SQL verbatim,
+so raw `{name}` text can instead produce a SQL syntax error under `translator_rejected`. Query does not
+scan SQL for braces or rename unrelated translation failures. A REL_NODE or saved plan already carries
+its named parameter references, so an entirely missing binding is `parameter_unbound`.
 
 Ports: HTTP 7305 (health/ready/status) · gRPC 7306 · Flight SQL 7308 (opt-in, see below). Downstreams via config
 (`translate`/`validate`/`dispatch` host+port, env-overridable).

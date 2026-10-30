@@ -16,6 +16,12 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+- **query — parameter refusal contract verified (#260).** The pre-dispatch `parameter_unbound`
+  guard shipped with #264 already covers direct, cached and saved plans. Regression coverage now runs
+  real translator plans through both execution paths, including missing/empty bindings, explicit NULL,
+  repeated references and Compile-to-Run cache reuse. Clarify that SQL needs typed declarations to parse
+  placeholders: undeclared SQL placeholders remain translation errors. No execution behavior changes.
+
 - **query — opt-in world requirement on multi-world doors (#261).** When `QUERY_REQUIRE_WORLD`
   is on (default **off**) and `QUERY_WORLDS` names more than one world, `Run` and `RunSavedQuery`
   refuse omission with `world_unspecified` before
@@ -475,7 +481,7 @@ outside this repo could notice is in.
   - The stored plan joins `Run` as a `REL_NODE` source in its own lane. A logical query (`er.query.<name>`) takes the
     ER half: Validate pass 1, MAP_TO_PHYSICAL, then Validate pass 2. A db query takes the DB half. The caller's roles,
     row policies and row window apply exactly as for `Run`, and `context.parameters` bind declared parameters by
-    name (`parameter_unbound` from Validate otherwise).
+    name (`parameter_unbound` from Query before dispatch otherwise; the guard was added in #264).
   - Refusals come as an error batch: `saved_query_not_found`, `saved_query_pending`, `saved_query_parse_failed`, and
     `saved_query_unavailable` when no metadata service is reachable.
   - Entitlement is Validate's alone for now. Nothing calls it yet; it is for automation agents and workflows.
