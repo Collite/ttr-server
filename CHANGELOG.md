@@ -16,6 +16,15 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+- **resolver — BREAKING: an assertion frame names its `concept` (grammar 0.20.1, translator 0.13.0; ttr-core#315,
+  #331).** `assertion.validate:v1`, `assertion.lower:v1` and `assertion.explain:v1` read
+  `org.tatrman.assertion.v1.Assertion` field 1 as `concept` (was `event`). The binary encoding is unchanged, but the
+  doors parse JSON strictly with no alias, so a call that still sends `{"assertion": {"event": …}}` is
+  `INVALID_ARGUMENT`. The field takes events, validity rows, phase episodes and subkinds. Grammar 0.20 also refuses a
+  durative event (`cn/durative-event`: a kind with a lifetime or a phase instead), and its Czech explain reads a
+  phase's definition with «dokud». Pin: `tatrman-grammar` / `tatrman-ttr-metadata` 0.18.16 → 0.20.1;
+  translator/plan-proto 0.12.11 → 0.13.0.
+
 - **automation — install the preview runtime in Application.** Authenticated Open/evaluate/close and staged
   output routes now use the configured Query door, storage, queue workers and ledger clock. Shutdown fences
   execution and joins workers/sessions before closing dependencies after HTTP drain. The chart requires

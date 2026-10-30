@@ -14,6 +14,7 @@ import io.ktor.server.routing.routing
 import io.ktor.server.testing.testApplication
 import kotlinx.serialization.json.*
 import org.tatrman.ttr.metadata.MetadataLoader
+import org.tatrman.ttr.metadata.export.ExportGrammar
 import org.tatrman.ttr.metadata.graph.ModelGraph
 import org.tatrman.ttr.metadata.registry.MetadataRegistry
 import org.tatrman.ttr.metadata.source.*
@@ -23,6 +24,20 @@ import java.util.zip.GZIPInputStream
 import org.apache.commons.compress.archivers.tar.TarArchiveInputStream
 
 internal val XM_ROOT: Path = Path.of("src/test/resources/xm-world").toAbsolutePath()
+
+/**
+ * A core golden as this service serves it: ttr-core's specs write the goldens with snapshot `fixture-1` and grammar
+ * `0.18` passed by hand, while the route names the loaded snapshot and the grammar bundle it runs.
+ */
+internal fun coreGolden(
+    path: Path,
+    snapshot: String,
+): String =
+    Files
+        .readString(path)
+        .replace("fixture-1", snapshot)
+        .replace("\"grammar\":\"0.18\"", "\"grammar\":\"${ExportGrammar.version}\"")
+        .replace("owl:versionInfo \"0.18\"", "owl:versionInfo \"${ExportGrammar.version}\"")
 
 internal fun xmRegistry(): MetadataRegistry {
     val result =
@@ -75,10 +90,7 @@ class MetadataExportRoutesSpec :
                 response.status shouldBe HttpStatusCode.OK
                 response.contentType()?.withoutParameters() shouldBe ContentType.Application.Json
                 response.bodyAsText() shouldBe
-                    Files
-                        .readString(
-                            Path.of("src/test/resources/xm-goldens/graph.json/world.json"),
-                        ).replace("fixture-1", version)
+                    coreGolden(Path.of("src/test/resources/xm-goldens/graph.json/world.json"), version)
                 for (tag in listOf(version, "\"$version\"", "W/\"$version\"", "\"different\", \"$version\"", "*")) {
                     val cached = client.get("/model/export?format=graph.json") { header(HttpHeaders.IfNoneMatch, tag) }
                     cached.status shouldBe HttpStatusCode.NotModified

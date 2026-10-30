@@ -13,7 +13,7 @@
       "tool": "assertion.explain:v1",
       "args": {
         "assertion": {
-          "event": {
+          "concept": {
             "qname": "cn.Transfer"
           },
           "identity": {

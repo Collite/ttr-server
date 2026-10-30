@@ -43,7 +43,7 @@
         "refusal_over_guess": true,
         "deterministic": true,
         "outcome": "result",
-        "text": "Čistý obrat · aktivní zákazník: existuje prodej, účastník zákazník, kde čas za posledních 365 dní · leden 2026 · ke dni 31. 1. 2026."
+        "text": "Čistý obrat · aktivní zákazník dokud existuje prodej, účastník zákazník, kde čas za posledních 365 dní · leden 2026 · ke dni 31. 1. 2026."
       }
     },
     {
