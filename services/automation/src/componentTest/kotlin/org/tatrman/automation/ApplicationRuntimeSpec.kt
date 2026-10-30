@@ -11,6 +11,7 @@ import io.ktor.client.request.*
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.*
 import io.ktor.server.application.Application
+import io.ktor.server.application.ApplicationStopped
 import io.ktor.server.application.ApplicationStopping
 import io.ktor.server.testing.ApplicationTestBuilder
 import io.ktor.server.testing.testApplication
@@ -156,6 +157,40 @@ class ApplicationRuntimeSpec :
                         Runs.selectAll().count() shouldBe 1L
                         Batches.selectAll().count() shouldBe 0L
                     }
+                }
+            } finally {
+                f.close()
+            }
+        }
+
+        "Stopped cleanup fences execution even when the earlier Stopping notification was missed" {
+            val entered = CompletableDeferred<Unit>()
+            val cancelled = CompletableDeferred<Unit>()
+            val f =
+                fixture {
+                    entered.complete(Unit)
+                    try {
+                        awaitCancellation()
+                    } finally {
+                        cancelled.complete(Unit)
+                    }
+                }
+            try {
+                f.api { installed ->
+                    val id = f.open(this)
+                    client.post("/automation/runs/$id/evaluate") { bearerAuth(f.token) }.status shouldBe
+                        HttpStatusCode.Accepted
+                    withTimeout(10_000) { entered.await() }
+                    withContext(Dispatchers.IO) { installed.monitor.raise(ApplicationStopped, installed) }
+                    withTimeout(10_000) { cancelled.await() }
+                    val refused =
+                        client.post("/automation/recipes/release_order/runs") {
+                            bearerAuth(f.token)
+                            contentType(ContentType.Application.Json)
+                            setBody(f.request("after-stopped"))
+                        }
+                    refused.status shouldBe HttpStatusCode.ServiceUnavailable
+                    client.get("/ready").status shouldBe HttpStatusCode.ServiceUnavailable
                 }
             } finally {
                 f.close()

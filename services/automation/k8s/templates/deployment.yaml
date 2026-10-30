@@ -1,4 +1,4 @@
-{{- if ne (int .Values.replicaCount) 1 }}
+{{- if ne (toString .Values.replicaCount) "1" }}
 {{- fail "automation: execution requires exactly one replica" }}
 {{- end }}
 {{- if ne .Values.strategy.type "Recreate" }}
