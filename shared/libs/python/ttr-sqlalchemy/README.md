@@ -32,7 +32,7 @@ engine = sa.create_engine(
 | URL part | Meaning |
 |---|---|
 | host, port | the edge: `flight.<cluster host>` (port 443, TLS) behind the gateway; `localhost:7308` with `?tls=false` through a port-forward (`kubectl -n <namespace> port-forward deploy/query 7308:7308`) |
-| database | the **world** (`hartland_cz`, `hartland_us`): sent on every call; the connection reads that world only. None = the deployment's default |
+| database | the **world** (`hartland_cz`, `hartland_us`): sent on every call; the connection reads that world only. None preserves derived/default routing unless `QUERY_REQUIRE_WORLD` is on (default off) with multiple worlds; then execution fails `world_unspecified` |
 | user, password | optional; the edge exchanges them for a bearer at connect (Keycloak's password grant) and the password is not sent again |
 | `?tls=` | `true` (default) or `false` |
 | `?tls_skip_verify=` | `true` to skip certificate verification (a test cluster with its own CA) |
@@ -116,7 +116,7 @@ warehouse_id?`). Through SQLAlchemy they arrive wrapped (`sqlalchemy.exc.DBAPIEr
 |---|---|
 | `ProgrammingError` | the statement's fault: `translator_rejected`, `parameter_unbound`, … (the default) |
 | `DatabaseError` | refused on access: `access_denied`, `column_denied`, `permission_denied`, `world_mismatch` |
-| `OperationalError` | no answer to give: `missing_credentials`, `invalid_token`, `password_refused`, `unknown_world`, any `*_unavailable` |
+| `OperationalError` | no answer to give: `missing_credentials`, `invalid_token`, `password_refused`, `unknown_world`, `world_unspecified`, any `*_unavailable` |
 | `InternalError` | the door's own failure: `query_failed`, `translator_failed`, … |
 | `NotSupportedError` | `executemany`, a value with no literal |
 

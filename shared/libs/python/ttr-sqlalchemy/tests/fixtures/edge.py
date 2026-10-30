@@ -230,6 +230,10 @@ class RecordedEdge(fl.FlightServerBase):
             )
         if "INSERT" in q.upper():
             raise pa.ArrowInvalid("translator_rejected: The edge is read-only; INSERT is not a query.")
+        if "world_required" in q and not headers.get("world"):
+            raise pa.ArrowInvalid(
+                "world_unspecified: A world is required here; the worlds are hartland_cz, hartland_us."
+            )
         if "column_denied" in q:
             raise fl.FlightUnauthorizedError("column_denied: Column 'margin' of 'channel_sales' is not readable.")
         if "dispatch_down" in q:

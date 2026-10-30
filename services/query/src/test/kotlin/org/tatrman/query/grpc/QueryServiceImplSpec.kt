@@ -1533,7 +1533,7 @@ class QueryServiceImplSpec :
 
         // ── BI contracts C-9 — RunRequest.world through QUERY_WORLDS to dispatch's connection_id ──
 
-        val hartlandWorlds = Worlds.parse("hartland_us=pg-hartland-us, hartland_cz=pg-hartland-cz")
+        val hartlandWorlds = Worlds.parse("hartland_us=pg-hartland-us, hartland_cz=pg-hartland-cz", requireWorld = true)
 
         fun capturing(into: MutableList<DispatchRequest>): DispatcherClient =
             DispatcherClient { req ->
@@ -1616,6 +1616,59 @@ class QueryServiceImplSpec :
             }
         }
 
+        "with the requirement off, two worlds allow omission and preserve derived routing for any roles" {
+            // Exercise the default as well as an explicit false: default-true and ignoring the flag must fail.
+            for (worlds in listOf(
+                Worlds.parse("hartland_us=pg-hartland-us,hartland_cz=pg-hartland-cz"),
+                Worlds(hartlandWorlds.connections, requireWorld = false),
+            )) {
+                val dispatched = CopyOnWriteArrayList<DispatchRequest>()
+                val svc = service(dispatcher = capturing(dispatched), worlds = worlds)
+                for (roles in listOf(emptyList(), listOf("analyst"))) {
+                    val req =
+                        worldRequest("")
+                            .toBuilder()
+                            .setContext(
+                                PipelineContext.newBuilder().setUserId("u").addAllAuthRoles(roles),
+                            ).build()
+                    svc
+                        .run(req)
+                        .toList()
+                        .flatMap { it.messagesList }
+                        .filter { it.severity == Severity.ERROR } shouldBe
+                        emptyList()
+                }
+                dispatched.map { it.connectionId } shouldBe listOf("", "")
+                svc
+                    .run(worldRequest("missing"))
+                    .toList()
+                    .single()
+                    .messagesList
+                    .single()
+                    .code shouldBe "unknown_world"
+                dispatched.size shouldBe 2
+            }
+        }
+
+        "world refusal precedes an invalid row window on Run" {
+            val svc = service(worlds = hartlandWorlds)
+            val req =
+                worldRequest("")
+                    .toBuilder()
+                    .setRowWindow(
+                        org.tatrman.query.v1.RowWindow
+                            .newBuilder()
+                            .setOffset(-1),
+                    ).build()
+            svc
+                .run(req)
+                .toList()
+                .single()
+                .messagesList
+                .single()
+                .code shouldBe "world_unspecified"
+        }
+
         "multiple worlds require a choice before any downstream call, with or without roles" {
             val neverParse = TranslatorClient { error("an unspecified world must not parse") }
             val neverDetect = TranslatorDetectClient { error("an unspecified world must not detect") }
@@ -1678,7 +1731,10 @@ class QueryServiceImplSpec :
         "one configured world permits omission and still maps an explicit choice" {
             val dispatched = CopyOnWriteArrayList<DispatchRequest>()
             val svc =
-                service(dispatcher = capturing(dispatched), worlds = Worlds.parse("hartland_us=pg-hartland-us"))
+                service(
+                    dispatcher = capturing(dispatched),
+                    worlds = Worlds.parse("hartland_us=pg-hartland-us", requireWorld = true),
+                )
             for (world in listOf("", "hartland_us")) {
                 svc
                     .run(worldRequest(world))
@@ -1690,7 +1746,7 @@ class QueryServiceImplSpec :
         }
 
         "two world names require a choice even if they alias one connection" {
-            val svc = service(worlds = Worlds.parse("alias_a=shared,alias_b=shared"))
+            val svc = service(worlds = Worlds.parse("alias_a=shared,alias_b=shared", requireWorld = true))
             svc
                 .run(worldRequest(""))
                 .toList()

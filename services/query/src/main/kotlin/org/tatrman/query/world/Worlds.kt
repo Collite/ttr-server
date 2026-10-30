@@ -9,11 +9,12 @@ import com.typesafe.config.Config
  * connection id goes to dispatch, which treats an explicit `connection_id` as authoritative. A table, not string
  * surgery on the world's name: the connection a world runs on is a deployment's fact.
  *
- * Empty (the default) = this deployment serves one world, its default connection; any named world is unknown.
- * More than one configured world requires an explicit choice on execution requests, independent of caller roles.
+ * Empty (the default) means any named world is unknown. Omission preserves derived/default routing unless
+ * `QUERY_REQUIRE_WORLD` is on and more than one world is configured, independent of caller roles.
  */
 class Worlds(
     val connections: Map<String, String>,
+    val requireWorld: Boolean = false,
 ) {
     /** The connection [world] runs on, or null when this door does not serve it. */
     fun connectionOf(world: String): String? = connections[world]
@@ -22,7 +23,15 @@ class Worlds(
 
     val names: List<String> get() = connections.keys.sorted()
 
-    val requiresWorld: Boolean get() = connections.size > 1
+    val requiresWorld: Boolean get() = requireWorld && connections.size > 1
+
+    /** Execution refusal; Flight connect only applies this to non-empty names so catalog can be set later. */
+    fun refusal(world: String): Pair<String, String>? =
+        when {
+            world.isEmpty() && requiresWorld -> WORLD_UNSPECIFIED to unspecified()
+            world.isNotEmpty() && world !in this -> UNKNOWN_WORLD to unknown(world)
+            else -> null
+        }
 
     fun unspecified(): String = "A world is required here; the worlds are ${names.joinToString(", ")}."
 
@@ -45,7 +54,10 @@ class Worlds(
         val NONE = Worlds(emptyMap())
 
         /** `world=connection` pairs, comma-separated; a malformed or repeated pair is a configuration error, named. */
-        fun parse(raw: String?): Worlds {
+        fun parse(
+            raw: String?,
+            requireWorld: Boolean = false,
+        ): Worlds {
             val pairs =
                 raw
                     .orEmpty()
@@ -62,10 +74,13 @@ class Worlds(
                     }
             val repeated = pairs.groupBy { it.first }.filterValues { it.size > 1 }.keys
             require(repeated.isEmpty()) { "query.worlds (QUERY_WORLDS) names ${repeated.joinToString()} twice" }
-            return Worlds(pairs.toMap())
+            return Worlds(pairs.toMap(), requireWorld)
         }
 
         fun fromConfig(config: Config): Worlds =
-            parse(if (config.hasPath("query.worlds")) config.getString("query.worlds") else null)
+            parse(
+                if (config.hasPath("query.worlds")) config.getString("query.worlds") else null,
+                requireWorld = config.hasPath("query.require-world") && config.getBoolean("query.require-world"),
+            )
     }
 }

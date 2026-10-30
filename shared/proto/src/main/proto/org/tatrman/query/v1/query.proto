@@ -90,8 +90,10 @@ message RunSavedQueryRequest {
   org.tatrman.worker.v1.ExecutionOptions execution_options = 3;
   bool bypass_cache = 4;
   RowWindow row_window = 5;
-  // As RunRequest.world: the world this saved query runs in. Required when QUERY_WORLDS names more
-  // than one world; otherwise an empty value preserves default routing. Checked before metadata lookup.
+  // As RunRequest.world: required when QUERY_REQUIRE_WORLD is on (default off) and QUERY_WORLDS
+  // names more than one world. Otherwise empty preserves derived/default routing. Checked before metadata.
+  // Do not enable on mixed pattern-routed doors: naming a world overrides patterns; omission is refused
+  // (https://github.com/Collite/ttr-server/issues/344).
   string world = 8;
   reserved 6, 7, 9, 10;
 }
@@ -143,9 +145,11 @@ message RunRequest {
   RowWindow row_window = 7;
 
   // The world to run in (BI contracts C-9): the door maps it through its `QUERY_WORLDS` table to the
-  // connection dispatch executes on (`hartland_us` -> `pg-hartland-us`). When the table names more than
-  // one world, empty is refused (`world_unspecified`) before compilation or cache lookup. With zero or
-  // one configured world, empty preserves dispatch's derived/default routing. A named world absent from
+  // connection dispatch executes on (`hartland_us` -> `pg-hartland-us`). When QUERY_REQUIRE_WORLD is on
+  // (default off) and the table names more than one world, empty is refused (`world_unspecified`) before
+  // compilation or cache lookup. With the flag off or zero/one world, empty preserves derived/default routing.
+  // Do not enable on mixed pattern-routed doors: naming a world overrides patterns; omission is refused
+  // (https://github.com/Collite/ttr-server/issues/344). A named world absent from
   // the table is refused (`unknown_world`). Roles do not select a world or grant access to it.
   // Compile ignores this field: the world picks where a plan runs, never what it is.
   string world = 8;

@@ -134,13 +134,13 @@ class QueryServiceImpl(
             flow {
                 activeRuns.incrementAndGet()
                 try {
-                    windowRefusal(window)?.let { reason ->
-                        emit(errorBatch("invalid_row_window", reason, context))
-                        return@flow
-                    }
                     // #261 / BI (C-9) — choose the execution world before compilation or cache lookup.
                     worldRefusal(request.world, context)?.let {
                         emit(it)
+                        return@flow
+                    }
+                    windowRefusal(window)?.let { reason ->
+                        emit(errorBatch("invalid_row_window", reason, context))
                         return@flow
                     }
                     val connectionId = worlds.connectionOf(request.world).orEmpty()
@@ -1120,14 +1120,7 @@ class QueryServiceImpl(
     private fun worldRefusal(
         world: String,
         context: PipelineContext,
-    ): ResultBatch? =
-        when {
-            world.isEmpty() && worlds.requiresWorld ->
-                errorBatch(Worlds.WORLD_UNSPECIFIED, worlds.unspecified(), context)
-            world.isNotEmpty() && world !in worlds ->
-                errorBatch(Worlds.UNKNOWN_WORLD, worlds.unknown(world), context)
-            else -> null
-        }
+    ): ResultBatch? = worlds.refusal(world)?.let { (code, message) -> errorBatch(code, message, context) }
 
     private sealed interface SavedQueryResolution {
         data class Stored(

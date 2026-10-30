@@ -13,7 +13,11 @@ engine-named — **worker-mssql** (the MSSQL worker), and **worker-polars**
   derive a `connection_id`; a caller may also supply one explicitly. Plans with
   no scans and tables with no matching exact/prefix pattern use the configured `default-connection`.
   Caller roles do not affect routing. Query's `QUERY_WORLDS` table handles the caller's explicit world;
-  with multiple configured worlds query refuses an omitted world before calling dispatch.
+  when `QUERY_REQUIRE_WORLD` is on (default off) and the table names more than one world, query refuses
+  an omitted world before calling dispatch. Otherwise omission keeps derived/default routing. Do not enable
+  that requirement on doors routing tables outside their worlds by `world.table-connections` patterns:
+  a named world overrides patterns (`connection_id_overrides_derived`), and omission is refused
+  ([#344](https://github.com/Collite/ttr-server/issues/344)).
 - **CAPABILITY MATCH** — selects among workers that advertise the resolved
   connection (and, for stateful plans, `supports_stateful_sessions = true`).
 - **STICKY ROUTING** — pins a `session_id` to a worker when the worker is

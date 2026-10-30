@@ -52,4 +52,17 @@ else
   rc=1
 fi
 
+# #261 / review-184 — the world requirement must remain an opt-in chart setting.
+worlds_default=$(helm template tatrman-server "$CHART" --namespace ttr-server \
+  -f "$CHART/fixtures/values-minimal.yaml")
+worlds_on=$(helm template tatrman-server "$CHART" --namespace ttr-server \
+  -f "$CHART/fixtures/values-minimal.yaml" --set query.requireWorld=true)
+if ! grep -q 'name: QUERY_REQUIRE_WORLD' <<<"$worlds_default" && \
+  grep -A1 'name: QUERY_REQUIRE_WORLD' <<<"$worlds_on" | grep -q 'value: "true"'; then
+  echo "✓ query: requireWorld is off by default and emits true only when opted in"
+else
+  echo "✗ query: requireWorld environment does not match the opt-in setting" >&2
+  rc=1
+fi
+
 exit $rc
