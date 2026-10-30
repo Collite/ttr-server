@@ -15,14 +15,15 @@ in the project folder:
 > and authenticated route/detail/output readers page the verified Arrow or download Arrow/CSV. Absolute
 > evaluation deadlines, runtime assembly, durable execution evidence and the authenticated raw protocol reader
 > are implemented, along with durable status and native dry-run preview batches. Application now installs the
-> authenticated durable status/protocol/batch readers. Execution runtime installation, owner routing and remaining
-> preview lowering remain. Durable dry-run close/sealing and local staging retention are assembled and tested.
-> Budgeted evaluate, observation-only polling and durable abandonment/cleanup primitives are implemented. Run handlers,
-> Open/evaluate/close and route/detail/output execution handlers are not mounted in Application.
+> authenticated Open/evaluate/close, part/island, route/detail/output and durable status/protocol/batch readers.
+> The runtime uses configured Query aliases, staging, workers, maintenance and the same clock as the ledger.
+> One replica with Recreate updates owns original contexts; restart never reconstructs credentials.
+> Durable dry-run close/sealing and staging retention are installed. PT rendering, performed/ES links,
+> remaining lowering and live certification are separate work.
 
 The durable evaluation path has atomic pgmq enqueue/acknowledgement, a permanent execution claim and
 bounded coroutine consumers. `RunRuntime` assembles this path with the pinned sessions, governed Query door,
-staging and typed ledger callbacks. Application installation remains pending with the other P1 lifecycle work.
+staging and typed ledger callbacks. Application installs the runtime and its ordered shutdown alongside the durable readers.
 
 The bundle reader keeps its own manifest-v3 DTO as an external consumer. It skips unknown fields and uses
 defaults for absent/null optional fields; the compiler's strict internal `RunManifest` reader is not a service
@@ -48,8 +49,7 @@ service), compile errors or undeclared reads prevent execution. The same allow-l
 that call's validated ER tree before dispatch, including on cache hits. This covers expression subqueries,
 expanded logical-query bodies and entity boundaries without mapping physical DB names back to ER. Policy
 validation stays fresh per caller. Scope refusals latch on the run before staging, alongside restricted-view,
-ceiling, empty scoped candidates and duplicate-key guards. Production wiring must deploy the matching Query
-contract before mounting these handlers.
+ceiling, empty scoped candidates and duplicate-key guards. Production must deploy the matching Query contract before enabling recipe execution.
 
 Evaluation reuses scheduled part/output promises, including across concurrent calls and overlapping part reads.
 In manifest v3, a decision island emits a port for each route and additional `<route>.<context>` detail ports.
@@ -108,7 +108,7 @@ The decision-only callback remains a foundation test seam; the assembled runtime
 Identical durable retries are harmless; changed evidence, sealed protocols and terminal/waiting runs refuse.
 This supplies the durable summary for status/protocol readers without a second mutable summary column.
 A journal failure is shared like other executor failures and the session fails the active run. Budgeted
-evaluate/poll is described below; Application mounting and remaining lifecycle work are still pending.
+evaluate/poll is described below; Application installs this runtime with the configured storage and lifecycle.
 
 `POST /automation/runs/{id}/evaluate` waits at most the program's pinned `budget.sync` (configured default when
 absent). Open pins and journals that budget in milliseconds alongside the batch budget. One supervised session
@@ -143,8 +143,7 @@ Engine polling contract (D-47):
    never automatically restart a refusal.
 4. A lost transport response can be retried with the same key/run id. A `503 run-abandoned` permits a bounded
    restart with that same key (bound attempts and elapsed time in the engine); stop when that bound is reached.
-   Production queue/maintenance wiring and owner routing are pending. With these
-   unmounted session handlers, a missing/released context fails closed; restarting cannot reconstruct today's recipe as
+   The production queue and maintenance share the configured ledger clock. A missing/released context fails closed; restarting cannot reconstruct today's recipe as
    the old run, and an existing key may remain held until the ledger's existing budget-plus-two-minute claim rule.
 
 `RunSessions` enforces the batch budget from the **committed** `runs.started_at` returned by a new claim,
@@ -164,9 +163,9 @@ committed decisions remain idempotent. Cancellation is rechecked after blocking 
 ledger insert; unreferenced blobs remain for retention. Release joins the deadline monitor and all cancelled
 blocking work before closing DuckDB. The DB checks protect late results independently of timer scheduling.
 
-The cancellation path is implemented for active P1 execution. Production clock-skew/runtime mounting,
-preview/close lifecycle deadlines and later WAITING/task handoff remain integration work; the execution timer
-must be disarmed when ownership passes to a waiting task. A lost process has no local timer or reconstructible
+Application shares the configured skewed clock across Ledger, queue, preview and sessions. Evaluation ends
+the active execution timer; close rechecks the original ledger budget. Later WAITING/task handoff must disarm
+the timer when task ownership takes over; previews do not create waiting tasks. A lost process has no local timer or reconstructible
 context: its row still waits for durable budget-plus-grace abandonment before a bounded same-key restart.
 
 `Ledger.abandonExpiredRuns(limit = 100)` supplies the durable clock sweep. It selects at most `limit` expired
@@ -185,7 +184,7 @@ requires an outermost READ COMMITTED ledger transaction and checks active status
 lock; late writes cannot publish even an identical retry after abandonment/close/failure/waiting/sealing. Existing
 immutable outputs remain evidence. A rejected journal can leave an unreferenced blob for retention, as below.
 These are independently tested primitives. The worker loop below invokes a required runtime maintenance
-callback; production mounting and blob retention remain integration/lifecycle work.
+callback. Application installs the runtime maintenance and configured staging-retention path.
 
 Durable evaluation uses `ledger/RunQueue` and V5's `run_evaluations` journal. Enqueue locks the run, checks
 active/unsealed status, and commits one dispatch row plus one pgmq message together. Repeated enqueue by the
@@ -229,19 +228,21 @@ Runtime shutdown first fences new opens/reads, then joins worker cancellation an
 Concurrent shutdown calls join the same cleanup; database, Query channel and staging must remain usable until
 it returns. These dependencies belong to the application and are not closed by the runtime.
 
-Application installs only the durable `GET /automation/runs/{id}`, `/protocol` and `/batch` readers inside
-bearer authentication, using the same ledger as the service. They need no served bundle, local executor or
-execution owner, and remain available after restart/seal/expiry. Status polling never starts execution or
-maintenance. Open/evaluate/close, staged output reads and the worker/maintenance loops remain pending with
-deployment owner routing and the remaining P1 lifecycle integration. Performed payloads, configured PT/ES
-links, preview lowering and task deadline handoff still gate that execution installation.
+Application installs preview execution routes and durable status/protocol/batch readers inside bearer
+authentication, using the service's ledger and clock. Durable readers need no served bundle, local executor
+or execution owner and remain available after restart/seal/expiry. Status polling never starts execution.
+Workers and maintenance use configured staging. The chart requires one replica and Recreate updates so
+requests reach the process holding the original context. Recreate updates briefly interrupt service.
+A restart refuses execution of an old run while
+its durable evidence stays readable. Multi-replica routing and owner leases are unsupported. Performed
+payloads, configured PT/ES links, remaining preview lowering and task execution remain separate work.
 
-The production-module component specs use the actual bootstrap/migrations and JWT verification against
-the real PostgreSQL fixture, without test-only route assembly. They cover restart reads, pinned metadata,
-exact numeric JSON, authentication/subject ownership, malformed handles, no-preview/PT refusals and the
-absence of execution side effects. Database and Metadata cleanup runs at `ApplicationStopped`, after HTTP
-drain, so a stopping notification does not cut off in-flight durable readers. Full runtime shutdown still
-must join its workers and executors before dependency cleanup.
+Production-module component specs use actual bootstrap/migrations, verified JWT/JWKS, a released producer
+bundle loaded through git, persisted approvals, real pgmq/ledger and the configured gRPC Query adapter.
+They cover Open/evaluate/outputs/close/restart, the skewed clock, original identity/model/aliases and active
+read cancellation. Query is a canned gRPC dependency, not a live governed server. At `ApplicationStopping`,
+the runtime fences execution and joins workers/sessions. Query, Metadata, staging and the database remain
+available through HTTP drain, closing at `ApplicationStopped`. Durable readers stay available during drain.
 
 ### Debug-run walkthrough
 
@@ -277,9 +278,8 @@ are 0700/0600; partial captures remain on failure. These files contain run data:
 adding it as a shared fixture. Exact decimal/large-integer response bytes are preserved. Closed replays use only
 durable readers because their route snapshots are no longer executable.
 
-The script is ready for a runtime with run routes installed. **Application currently leaves those routes
-unmounted**, so this does not certify a live Hartland run. Remaining lowering, deployment/lifecycle installation
-and the independent P1 exit still gate that proof. `just test-automation-debug` runs eighteen mocked HTTP contract
+Application installs the run routes used by this script. Live certification and the independent P1 exit
+still require a deployed proof; local gRPC/ledger fixtures do not certify a live Hartland run. `just test-automation-debug` runs eighteen mocked HTTP contract
 tests; the ordinary `automation-debug` CI job runs the same suite without services, network or Docker.
 
 ### Native dry-run previews (S1.3 foundation)
@@ -568,8 +568,7 @@ Hartland's authored default mappings/bundles are staged in #122; deployed adopti
 Calendar counts and bound-date-minus-column counts are supported as described below; other column-date forms remain pending. P2 must validate actual physical bounds and writable policies
 before applying anything. H-3/H-5 are not certified by these defaults. Selected unsupported operations return
 `501 preview-unsupported`. P2/P3
-retain dry-run task/delivery rows and performed action outcomes. Durable close/sealing and local staging retention are described below. Application mounting is
-pending. The local Query fixtures do not certify live Hartland behavior.
+retain dry-run task/delivery rows and performed action outcomes. Durable close/sealing and local staging retention are described below. Application installs previews; the local Query fixtures do not certify live Hartland behavior.
 
 ### Durable execution protocol (S1.3 foundation)
 
@@ -595,8 +594,7 @@ or elapsed execution budgets refuse publication. A failed source journal prevent
 
 `?render=pt` currently returns `501 protocol-renderer-unavailable` after ownership verification. Configured PT
 proxying, performed action/outcome payloads, stable ES links and remaining preview lowering remain S1.3 work.
-The assembled runtime installs close and its ledger seal; Application installs durable readers while
-close and the other execution routes remain unmounted.
+Application installs durable readers, preview execution, close and its ledger seal.
 ES receipt links still need a stable source reference; the current worker proto supplies an inline receipt.
 Application keeps the ledger and Metadata alive until `ApplicationStopped`, after durable HTTP readers drain;
 they do not belong to an executor's cancellation scope.
@@ -634,15 +632,14 @@ a run directory. It preserves sibling runs. The configured Redis/S3 adapters imp
 the default method refuses unsupported adapters rather than marking their output index released.
 
 This lifecycle is verified locally and against PostgreSQL, including runtime maintenance and retries after
-restart. Configured remote staging is described below. Application run-route/worker installation, owner routing and
-live Hartland certification remain pending.
+restart. Configured remote staging is described below. Application installs routes/workers with a one-replica Recreate deployment contract; live Hartland certification
+remains pending.
 
 ### Configured immutable staging
 
 Application selects `local`, `redis` or `seaweed` through `StagingStores.open` at startup and closes the owned
-store after HTTP drain (`ApplicationStopped`). Durable run readers are installed; execution routes/workers/
-maintenance remain unmounted pending the remaining P1 integration. RunRuntime continues to accept the application-owned
-store and must finish shutdown before its dependencies close.
+store after HTTP drain (`ApplicationStopped`). The preview runtime, durable readers and worker/maintenance
+loops use that store. RunRuntime finishes shutdown before its application-owned dependencies close.
 
 | setting | use |
 | --- | --- |

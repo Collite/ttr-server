@@ -158,6 +158,7 @@ dependencies {
     // round-trips, the idempotency claim races. `src/componentTest`, so the unit gate stays Docker-free.
     "componentTestImplementation"(libs.testcontainers.postgresql)
     "componentTestImplementation"(libs.ktor.server.test.host)
+    "componentTestImplementation"(libs.jgit)
     "componentTestImplementation"(libs.auth0.java.jwt)
     "componentTestImplementation"(project(":shared:libs:kotlin:db-common"))
     "componentTestImplementation"(libs.exposed.core)

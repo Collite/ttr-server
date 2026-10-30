@@ -15,6 +15,10 @@ metadata:
     {{- include "tatrman-service.labels" . | nindent 4 }}
 spec:
   replicas: {{ .Values.replicaCount }}
+  {{- with .Values.strategy }}
+  strategy:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
   selector:
     matchLabels:
       {{- include "tatrman-service.selectorLabels" . | nindent 6 }}

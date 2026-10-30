@@ -3,9 +3,11 @@
 # db.passwordSecret.name, auth.jwksUrl, auth.issuer — and the render fails, naming the key, when one
 # is missing (AU contracts §8: a misconfigured pod should not get as far as a crash loop).
 
-# One replica. The claim is safe under concurrency (the ledger's unique index), but the scheduler
-# (S3.2) and the abandonment sweep assume one runner until a later stage elects a leader.
+# Execution contexts and credentials belong to one process. Recreate avoids old/new pod overlap;
+# a restart never reconstructs an old context. Multi-replica routing/leases are not implemented.
 replicaCount: 1
+strategy:
+  type: Recreate
 
 image:
   repository: ghcr.io/collite/automation

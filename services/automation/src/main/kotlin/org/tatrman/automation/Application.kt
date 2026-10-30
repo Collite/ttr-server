@@ -4,6 +4,7 @@ package org.tatrman.automation
 import com.typesafe.config.Config
 import com.typesafe.config.ConfigFactory
 import io.ktor.server.application.Application
+import io.ktor.server.application.ApplicationStopping
 import io.ktor.server.application.ApplicationStopped
 import io.ktor.server.application.install
 import io.ktor.server.auth.Authentication
@@ -18,7 +19,7 @@ import org.tatrman.automation.api.ServedBundle
 import org.tatrman.automation.api.AutomationException
 import org.tatrman.automation.api.DescriptorSources
 import org.tatrman.automation.api.descriptorRoutes
-import org.tatrman.automation.api.durableRunRoutes
+import org.tatrman.automation.api.runRoutes
 import org.tatrman.automation.api.healthRoutes
 import org.tatrman.automation.api.installAutomationErrors
 import org.tatrman.automation.bundle.BundleLoader
@@ -35,8 +36,8 @@ import org.tatrman.automation.identity.AutomationBearerProvider
 import org.tatrman.automation.identity.CallerVerifier
 import org.tatrman.automation.identity.ServiceTokens
 import org.tatrman.automation.ledger.Ledger
-import org.tatrman.automation.runner.RunStatusReader
-import org.tatrman.automation.protocol.ProtocolRecorder
+import org.tatrman.automation.runner.GrpcQueryRun
+import org.tatrman.automation.runner.RunRuntime
 import org.tatrman.automation.staging.StagingStores
 import org.tatrman.automation.ledger.LedgerBundles
 import org.tatrman.automation.obs.AutomationTelemetry
@@ -50,6 +51,8 @@ import shared.ktor.installKtorServerBase
 import shared.libs.db.common.DatabaseConnection
 import shared.otel.OtelEndpointConfig
 import shared.otel.createOpenTelemetrySdk
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -72,8 +75,9 @@ fun main() {
  * The bootstrap (AU-server S0.1): config (fails at load on a missing required key) → OTel → the ledger's
  * database + Flyway (V1–V7 ledger, queues, dispatch, subjects and release fences) → queues → bearer
  * check (S0.3: every route under `/automation` but `/automation/health` answers 401 without a verified token) →
- * Ktor with durable status/protocol/batch readers → the served bundle loaded in the background (S0.2), then
- * polled. Execution routes/workers and the scheduler join this sequence with their remaining integration.
+ * Ktor with the preview runtime and durable readers → the served bundle loaded in the background (S0.2), then
+ * polled. One process owns execution contexts; the deployment uses one replica and Recreate updates.
+ * The scheduler remains a later phase.
  */
 fun Application.module(config: Config) {
     val automation = AutomationConfig.load(config)
@@ -93,10 +97,14 @@ fun Application.module(config: Config) {
             enabled = config.hasPath("telemetry.enabled") && config.getBoolean("telemetry.enabled"),
         )
 
-    // Configure storage now; execution routes remain gated on the remaining P1 integration. Stop storage only
-    // after HTTP has drained. The later runtime must join workers before this subscription can close it.
+    // Application owns staging; runtime shutdown must finish before dependencies close after HTTP drain.
+    var execution: RunRuntime? = null
     val staging = StagingStores.open(automation.staging)
-    monitor.subscribe(ApplicationStopped) { staging.close() }
+    monitor.subscribe(ApplicationStopped) {
+        // Also covers failed startup before runtime construction and a missed/retried Stopping cleanup.
+        runBlocking(Dispatchers.Default) { execution?.shutdown() }
+        staging.close()
+    }
 
     val db = DatabaseConnection(automation.db).also { it.init() }
     val migrated = migrateLedger(db)
@@ -141,12 +149,41 @@ fun Application.module(config: Config) {
     install(Authentication) { AutomationBearerProvider.register(this, callers) }
     val metadataStatus = GrpcMetadataStatus(automation.door.metadataUrl)
     val tokens = ServiceTokens.keycloak(automation.connections, automation.auth.tokenUrl)
+    val query = GrpcQueryRun(automation.door.queryUrl)
+    // Durable readers and descriptors still need dependencies during HTTP drain; close them only afterwards.
+    monitor.subscribe(ApplicationStopped) {
+        runBlocking(Dispatchers.Default) { execution?.shutdown() }
+        try {
+            query.close()
+        } finally {
+            try {
+                metadataStatus.close()
+            } finally {
+                db.close()
+            }
+        }
+    }
+    val runtime =
+        RunRuntime(
+            automation,
+            { bundles.served },
+            ledgerBundles,
+            tokens,
+            ledger,
+            this,
+            clock,
+            query,
+            staging,
+        ).also { execution = it }
+    // Fence new execution and join its workers/sessions before HTTP drain and dependency cleanup.
+    // Use a worker dispatcher: shutdown must not depend on a blocked engine/event-loop thread.
+    monitor.subscribe(ApplicationStopping) { runBlocking(Dispatchers.Default) { runtime.shutdown() } }
 
     install(StatusPages) { installAutomationErrors() }
     routing {
         healthRoutes(sources)
         authenticate(AUTOMATION_AUTH) {
-            durableRunRoutes(RunStatusReader(ledger), ProtocolRecorder(ledger))
+            runRoutes(runtime)
             descriptorRoutes(
                 DescriptorSources(
                     bundles = bundles,
@@ -171,16 +208,6 @@ fun Application.module(config: Config) {
                 delay(every * 1000)
                 refreshQuietly(bundles)
             }
-        }
-    }
-
-    // Stopping is raised before HTTP drain. Durable readers and descriptors still need their ledger /
-    // Metadata dependencies then. A later execution runtime must join workers at Stopping, before this point.
-    monitor.subscribe(ApplicationStopped) {
-        try {
-            metadataStatus.close()
-        } finally {
-            db.close()
         }
     }
 }

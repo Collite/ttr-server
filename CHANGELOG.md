@@ -16,6 +16,12 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+- **automation — install the preview runtime in Application.** Authenticated Open/evaluate/close and staged
+  output routes now use the configured Query door, storage, queue workers and ledger clock. Shutdown fences
+  execution and joins workers/sessions before closing dependencies after HTTP drain. The chart requires
+  exactly one replica with Recreate updates because original contexts and credentials stay in one process;
+  after restart, durable evidence remains readable and missing execution contexts refuse.
+
 - **query — parameter refusal and Compile isolation (#260).** `Run` now maps translate's
   `parameter_unknown` to `parameter_unbound`, preserving its message and position. Other translation
   refusals remain `translator_rejected`. SQL with no bindings still parses verbatim until ttr-core#334

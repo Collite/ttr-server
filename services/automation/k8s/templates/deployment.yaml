@@ -1,1 +1,7 @@
+{{- if ne (toString .Values.replicaCount) "1" }}
+{{- fail "automation: execution requires exactly one replica" }}
+{{- end }}
+{{- if ne .Values.strategy.type "Recreate" }}
+{{- fail "automation: execution requires Recreate updates" }}
+{{- end }}
 {{ include "tatrman-service.deployment" . }}
