@@ -104,7 +104,8 @@ def test_parent_section_own_text_is_processed_with_its_child() -> None:
     assert [a.unit_id for a in result.annotations] == [2, 3] and not result.verdicts
 
 
-def test_recursive_encodes_unit_once(monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.parametrize("overlap", [0, 50])
+def test_recursive_encoding_is_linear(monkeypatch: pytest.MonkeyPatch, overlap: int) -> None:
     from docproc.kinds.chunk.strategies.recursive import windows
     from docproc.kinds.chunk.tokens import encoding
 
@@ -118,5 +119,8 @@ def test_recursive_encodes_unit_once(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setattr(encoder, "encode", counted)
     text = "Long document. " * 10000
-    chunks = windows(text, {"max_tokens": 200, "overlap": 0}, [". "])
-    assert len(chunks) > 10 and calls == [text]
+    chunks = windows(text, {"max_tokens": 400, "overlap": overlap}, [". "])
+    assert len(chunks) > 10 and calls.count(text) == 1
+    longest = max(s.end - s.start for s in chunks)
+    assert all(len(call) <= longest + len(". ") for call in calls if call != text)
+    assert sum(map(len, calls)) <= 4 * len(text)

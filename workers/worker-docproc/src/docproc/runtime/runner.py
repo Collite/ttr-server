@@ -40,6 +40,22 @@ from docproc.sdk.store import StoreError, Warehouse
 
 log = logging.getLogger(__name__)
 
+# A kind that sets result.abstained must add its Decision decider here.
+ABSTAINING_DECIDERS = {"link/rule"}
+
+
+def recovered_status(existing: list[Annotation]) -> CompletionStatus:
+    abstains = any(
+        a.type == "Abstention"
+        or a.type == "Decision"
+        and a.payload().get("decider") in ABSTAINING_DECIDERS
+        and "chosen" not in a.payload()
+        for a in existing
+    )
+    if all(a.type in ("Abstention", "Decision", "Verdict") for a in existing) and abstains:
+        return CompletionStatus.ABSTAINED
+    return CompletionStatus.SUCCEEDED
+
 
 class RunTimeout(BaseException):
     """A control-flow signal; ordinary kind error handlers must not swallow it."""
@@ -246,14 +262,7 @@ class ProcessorRunner:
                 self.warehouse.iter_annotations(ListAnnotationsRequest(run_id=item.run_id, active_only=False))
             )
             if existing:
-                completion.status = (
-                    CompletionStatus.ABSTAINED
-                    if all(a.type in ("Abstention", "Decision", "Verdict") for a in existing)
-                    and any(
-                        a.type == "Abstention" or a.type == "Decision" and "chosen" not in a.payload() for a in existing
-                    )
-                    else CompletionStatus.SUCCEEDED
-                )
+                completion.status = recovered_status(existing)
                 sections = {"errors": {"recovery": "sections-lost"}}
                 completion.annotation_ids = [a.id for a in existing]
                 completion.verdict_ids = [str(a.id) for a in existing if a.type == "Verdict"]

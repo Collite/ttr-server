@@ -24,16 +24,25 @@ def windows(text: str, params: dict[str, Any], separators: list[str]) -> list[Ch
     start, stop = trim(text, 0, len(text))
     out: list[ChunkSpan] = []
     while start < stop:
-        end = min(stop, offsets.end(start, size))
-        if end < stop:
-            for sep in separators:
-                if not sep:
-                    continue
-                at = text.rfind(sep, start + 1, end)
-                if at >= start + 1:
-                    end = at + len(sep)
-                    break
-        lo, hi = trim(text, start, end)
+        cap = min(stop, offsets.end(start, size))
+        while True:
+            end = cap
+            if end < stop:
+                for sep in separators:
+                    if not sep:
+                        continue
+                    at = text.rfind(sep, start + 1, end)
+                    if at >= start + 1:
+                        end = at + len(sep)
+                        break
+            lo, hi = trim(text, start, end)
+            # Unit-level BPE boundaries are candidates: trimming or a separator
+            # can change tokenization. Check exactly the span the validator sees.
+            if hi <= lo or tokenizer.count(text[lo:hi]) <= size:
+                break
+            cap -= 1
+            if cap <= start:
+                raise ValueError("chunk/max-tokens-too-small-for-codepoint")
         if hi > lo:
             out.append(ChunkSpan(lo, hi))
         if end >= stop:

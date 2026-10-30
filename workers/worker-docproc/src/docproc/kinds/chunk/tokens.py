@@ -76,9 +76,9 @@ class Tokenizer:
 
 
 class TokenOffsets:
-    """One encoding per unit; token byte boundaries mapped to Unicode code points.
+    """One full-unit encoding supplies candidate boundaries in Unicode code points.
 
-    Window lookups are logarithmic and never encode the remaining document.
+    Window lookups are logarithmic; emitted spans still need local BPE recounts.
     """
 
     def __init__(self, tokenizer: Tokenizer, text: str) -> None:
@@ -130,6 +130,12 @@ class TokenOffsets:
         # A token may start inside a code point. Pick the next complete token start
         # rather than carrying an extra token into the overlap.
         if self.tokenizer.encoder is not None:
-            while offset < end and self.tokenizer.count(self.text[offset:end]) > limit:
+            while offset < end:
+                lead = offset
+                while lead < end and self.text[lead].isspace():
+                    lead += 1
+                # windows skips leading space; measure the same trimmed overlap.
+                if self.tokenizer.count(self.text[lead:end]) <= limit:
+                    break
                 offset += 1
         return offset

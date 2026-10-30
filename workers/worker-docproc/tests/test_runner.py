@@ -671,3 +671,19 @@ def test_unknown_plan_registry_is_permanent(
     result = runner.process(enqueue(runner, item))
     assert result and result.status == CompletionStatus.FAILED and result.error == "store/registry/not-found"
     assert len(completions(runner, item)) == 1
+
+
+@pytest.mark.parametrize(
+    ("annotations", "expected"),
+    [
+        ([("Decision", {"decider": "link/rule"})], CompletionStatus.ABSTAINED),
+        ([("Abstention", {})], CompletionStatus.ABSTAINED),
+        ([("Verdict", {}), ("Decision", {"decider": "normalize/conflicts"})], CompletionStatus.SUCCEEDED),
+        ([("Mention", {}), ("Decision", {"decider": "link/rule", "chosen": "item"})], CompletionStatus.SUCCEEDED),
+    ],
+)
+def test_recovered_status_deciders(annotations: list[tuple[str, dict[str, Any]]], expected: CompletionStatus) -> None:
+    from docproc.runtime.runner import recovered_status
+
+    existing = [Annotation(type=kind, payload_json=json.dumps(payload)) for kind, payload in annotations]
+    assert recovered_status(existing) == expected

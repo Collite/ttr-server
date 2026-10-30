@@ -155,8 +155,10 @@ The encoding is vendored under `_data/tiktoken/` and `tests/fixtures/tiktoken/`,
 SHA-256 checked before loading. The image sets `TIKTOKEN_CACHE_DIR` to its baked
 cache. Missing/corrupt data fails locally; the worker does not fetch tokenizer data.
 Token windows respect complete Unicode code points, including astral characters.
-Recursive windows encode the unit once and use token/code-point offset lookups;
-Unicode overlap corrections inspect only bounded window slices.
+Token windows encode the full unit once for candidate token/code-point offsets,
+then recount each emitted span after separator cuts and trimming. Overlap counts
+start after leading whitespace, matching the next emitted chunk. These local
+checks preserve both token limits without re-encoding the remaining document.
 `max_tokens`/token overlap apply to token windows; sentence windows use `n` (PX alias
 `window`) and sentence overlap. Paragraph word limits default to Kotlin's 30/200;
 page/paragraph/sentence strategies can omit a token cap or declare an explicit one

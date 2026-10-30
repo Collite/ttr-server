@@ -29,7 +29,9 @@ Pending before phase exit/integration/certification:
   Companion Decisions preserve these facts without modifying generated schemas or
   their pinned content hash. A future renderer change must deliberately migrate
   consumers and regenerate the pack, rather than patching schemas in the worker.
-- Load-before-ack recovery preserves stored ids/status and emits
+- Load-before-ack recovery infers abstention from Abstentions or unchosen Decisions
+  from explicitly registered abstaining deciders (`link/rule`); normalize conflict
+  Decisions do not change a successful run into an abstention. It preserves stored ids/status and emits
   `errors.recovery: sections-lost`. P2 must make all kind sections durable, including
   recordRows, link candidates, consolidate recordKeys/redirects and NLP evidence.
 - review-182 re-review/PASS after F1–F27 fixes, canonical PEER_REF merge pin, internal 0.11.x image release,
