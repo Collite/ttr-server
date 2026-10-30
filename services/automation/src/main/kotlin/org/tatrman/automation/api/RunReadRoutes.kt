@@ -32,7 +32,7 @@ data class IslandPreview(
 )
 
 /**
- * Authenticated, bounded read handlers. Kept unmounted until the production runtime and lifecycle are wired.
+ * Authenticated, bounded read handlers installed with the production runtime and its lifecycle.
  * `parts/candidates` and `parts/decision` resolve roles; contexts and islands resolve exact manifest names.
  * Storage parts are internal shared inputs and never become public part names.
  */

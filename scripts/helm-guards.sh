@@ -65,4 +65,22 @@ else
   rc=1
 fi
 
+# Preview execution keeps pinned credentials and run contexts in one process.
+expect_refusal "automation: two execution replicas" "automation: execution requires exactly one replica" \
+  --set automation.enabled=true --set automation.replicaCount=2 \
+  -f "$CHART/fixtures/values-automation.yaml"
+expect_refusal "automation: overlapping rollout" "automation: execution requires Recreate updates" \
+  --set automation.enabled=true --set automation.strategy.type=RollingUpdate \
+  -f "$CHART/fixtures/values-automation.yaml"
+owner_render=$(helm template tatrman-server "$CHART" --namespace ttr-server \
+  -f "$CHART/fixtures/values-automation.yaml" \
+  --show-only charts/automation/templates/deployment.yaml)
+if grep -q '^  replicas: 1$' <<<"$owner_render" && \
+  grep -A1 '^  strategy:$' <<<"$owner_render" | grep -q '^    type: Recreate$'; then
+  echo "✓ automation: one execution replica with Recreate renders"
+else
+  echo "✗ automation: owner deployment contract drifted" >&2
+  rc=1
+fi
+
 exit $rc

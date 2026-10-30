@@ -24,17 +24,15 @@ import java.net.URI
 import java.nio.file.Files
 import java.time.Clock
 import java.time.Duration
-import java.time.Instant
-import java.time.ZoneOffset
 import java.util.UUID
 
-/** The real production module, migrations, auth and ledger; no test-only routing assembly or run runtime. */
+/** The real production module, migrations, auth and ledger; no test-only routing or runtime assembly. */
 class ApplicationReadersSpec :
     StringSpec({
         val db = LedgerTestDb.ready()
         val realm = TestRealm()
         val staging = Files.createTempDirectory("au-application-readers-")
-        val clock = Clock.fixed(Instant.parse("2026-10-24T10:00:00Z"), ZoneOffset.UTC)
+        val clock = Clock.systemUTC()
         val ledger = Ledger(Duration.ofMinutes(30), clock)
         val token = realm.person()
         // A separate owned application pool on the fixture's server. Module shutdown closes that pool;
@@ -195,7 +193,7 @@ class ApplicationReadersSpec :
             }
         }
 
-        "production polling is observation only and execution routes stay gated" {
+        "production polling is observation only even with the runtime installed" {
             val id = open()
             api { _ ->
                 repeat(2) {
@@ -205,13 +203,6 @@ class ApplicationReadersSpec :
                     Json.decodeFromString<RunProgress>(response.bodyAsText()).status shouldBe "open"
                     client.get("/automation/runs/$id/batch") { bearerAuth(token) }.status shouldBe
                         HttpStatusCode.Conflict
-                }
-                for (path in listOf(
-                    "/automation/runs/$id/evaluate",
-                    "/automation/runs/$id/close",
-                    "/automation/recipes/release_order/runs",
-                )) {
-                    client.post(path) { bearerAuth(token) }.status shouldBe HttpStatusCode.NotFound
                 }
             }
             ledger.findRun(id)!!.status shouldBe RunStatus.OPEN

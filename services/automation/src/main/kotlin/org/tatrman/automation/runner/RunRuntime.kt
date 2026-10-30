@@ -27,8 +27,8 @@ import java.util.UUID
  * it must keep them alive until [shutdown] returns. Supply the SAME clock used to construct the ledger
  * (including configured clock.skew). No credentials or executors are recovered after a process restart.
  *
- * This assembles the execution path; Application mounting still waits for deployment owner routing and
- * the remaining P1 integration. HTTP integration specs mount [org.tatrman.automation.api.runRoutes] directly.
+ * Application installs this runtime and its authenticated routes. The deployment must keep exactly one
+ * replica and use Recreate updates: pinned credentials and contexts are never routed to another process.
  */
 class RunRuntime(
     config: AutomationConfig,

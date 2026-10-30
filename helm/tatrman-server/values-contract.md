@@ -212,6 +212,8 @@ extension, no custom Postgres image). Four keys have no default and fail the ren
 
 | Key | Type | Default | Notes |
 |---|---|---|---|
+| `automation.replicaCount` | int | `1` | Exactly one execution owner; other values refuse rendering. |
+| `automation.strategy.type` | string | `Recreate` | Required to avoid overlapping old/new execution owners; rolling updates refuse rendering. |
 | `automation.db.{host,port,name,user}` | | `""` / `5432` / `automation` / `automation` | The ledger's Postgres. The user must own the database (Flyway creates schema `automation` and pgmq's). |
 | `automation.db.passwordSecret.{name,key}` | | `""` / `password` | The password by **Secret ref**. |
 | `automation.auth.{jwksUrl,issuer}` | string | `""` | Every route but `/automation/health` and the probes verifies the bearer: RS256 against the realm's JWKS, `iss` = `issuer`. There is no unverified mode. |
