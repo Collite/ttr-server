@@ -1,0 +1,12 @@
+family: compile
+version: 1
+kind: compile
+host: pipeline
+role: primary
+description: The Library's pages for a document (the wiki compile), grounded in the linked mentions' concepts.
+graph:
+  unit: document
+  when: ""
+  consumes: [Section, "Mention[item]"]
+  produces: []
+budget: { timeout_s: 120, retries: 2 }

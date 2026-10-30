@@ -1,0 +1,17 @@
+family: chunk-sentence
+version: 1
+kind: chunk
+host: docproc
+role: primary
+description: A second, coexisting chunking (DX-D7). No mart profile names it; it is there to be compared.
+graph:
+  unit: section
+  when: ""
+  consumes: [Section]
+  produces: [Chunk]
+engine:
+  strategy: sentence-window
+  params: { window: 3, overlap: 1 }
+  context: { prefix: [section_path] }
+post_conditions: [span_within_unit, coverage, overlap_within_declared]
+budget: { timeout_s: 30, retries: 2 }

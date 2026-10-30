@@ -1,0 +1,24 @@
+[
+  {
+    "id": "g:claim-001.cs:0",
+    "payload": {
+      "context": {
+        "parentUnitId": "g:claim-001.cs:s0",
+        "prefix": "claim-001.cs.txt"
+      },
+      "ordinal": 0,
+      "paramsHash": "sha256:ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356",
+      "strategy": "page",
+      "tokenCount": 248
+    },
+    "spans": [
+      {
+        "end": 551,
+        "start": 0,
+        "unit": "g:claim-001.cs:s0"
+      }
+    ],
+    "type": "Chunk",
+    "unit": "g:claim-001.cs:s0"
+  }
+]

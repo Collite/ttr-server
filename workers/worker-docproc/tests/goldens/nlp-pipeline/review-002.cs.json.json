@@ -1,0 +1,59 @@
+[
+  {
+    "id": "g:review-002.cs:0",
+    "payload": {
+      "candidates": [],
+      "concept": "cn.Item",
+      "kind": "item",
+      "linkMethod": "gazetteer",
+      "surface": "ventilátor Breeze"
+    },
+    "spans": [
+      {
+        "end": 48,
+        "start": 31,
+        "unit": "g:review-002.cs:s0"
+      }
+    ],
+    "type": "Mention",
+    "unit": "g:review-002.cs:s0"
+  },
+  {
+    "id": "g:review-002.cs:1",
+    "payload": {
+      "candidates": [],
+      "concept": "cn.Item",
+      "kind": "item",
+      "linkMethod": "gazetteer",
+      "surface": "Breeze"
+    },
+    "spans": [
+      {
+        "end": 126,
+        "start": 120,
+        "unit": "g:review-002.cs:s0"
+      }
+    ],
+    "type": "Mention",
+    "unit": "g:review-002.cs:s0"
+  },
+  {
+    "id": "g:review-002.cs:2",
+    "payload": {
+      "candidates": [],
+      "concept": "cn.Item",
+      "kind": "item",
+      "linkMethod": "gazetteer",
+      "surface": "ventilátoru Breeze"
+    },
+    "spans": [
+      {
+        "end": 88,
+        "start": 70,
+        "unit": "g:review-002.cs:s1"
+      }
+    ],
+    "type": "Mention",
+    "unit": "g:review-002.cs:s1"
+  }
+]

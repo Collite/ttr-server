@@ -1,0 +1,28 @@
+{
+  "$id": "ttr:types/Decision",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "A decider's choice among candidates, with its score and the factors that weighed.",
+  "properties": {
+    "chosen": {
+      "type": "string"
+    },
+    "decider": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "factors": {
+      "type": "object"
+    },
+    "score": {
+      "type": "number"
+    }
+  },
+  "required": [
+    "decider",
+    "score",
+    "factors"
+  ],
+  "title": "Decision",
+  "type": "object"
+}

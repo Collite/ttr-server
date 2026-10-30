@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import httpx
 import pytest
@@ -75,3 +76,55 @@ def test_422_annotation_schema_is_schema_rejected_other_errors_stay_generic() ->
     with pytest.raises(StoreError) as e:
         client.load_annotations(req)
     assert not isinstance(e.value, SchemaRejected) and e.value.code == "annotation/unknown-type"
+
+
+@respx.mock
+def test_service_identity_paging_and_generation(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("DOCPROC_SERVICE_TOKEN", "service-secret")
+    unit_route = respx.get(f"{BASE}/units/101").mock(return_value=httpx.Response(200, json=fixture("unit.json")))
+    listing = respx.get(f"{BASE}/annotations").mock(
+        side_effect=[
+            httpx.Response(200, json={"annotations": [{"id": 1}], "nextPageToken": "next"}),
+            httpx.Response(200, json={"annotations": [{"id": 2}]}),
+        ]
+    )
+    client = StoreClient(BASE)
+    client.get_unit(101)
+    assert "notebookId" not in unit_route.calls.last.request.url.params
+    assert unit_route.calls.last.request.headers["authorization"] == "Bearer service-secret"
+    assert [a.id for a in client.iter_annotations(ListAnnotationsRequest(generation="g1"))] == [1, 2]
+    assert listing.calls.last.request.url.params["pageToken"] == "next"
+    assert listing.calls.last.request.url.params["generation"] == "g1"
+    assert "activeOnly" not in listing.calls.last.request.url.params
+
+
+@respx.mock
+def test_remaining_reads_and_lemma_sink() -> None:
+    tree = respx.get(f"{BASE}/sources/7/units", params={"text": "true"}).mock(
+        return_value=httpx.Response(200, json={"units": [fixture("unit.json")]})
+    )
+    lemmas = respx.post(f"{BASE}/load/lemmas").mock(return_value=httpx.Response(200, json={}))
+    similar = respx.post(f"{BASE}/findSimilar").mock(return_value=httpx.Response(200, json={"hits": []}))
+    sources = respx.get(f"{BASE}/sources", params={"documentId": "document"}).mock(
+        return_value=httpx.Response(200, json={"sources": [{"id": 7}]})
+    )
+    client = StoreClient(BASE)
+    assert client.units_of_source(7)[0].id == 101 and tree.called
+    entry = {"unitId": 101, "contentLemmas": "recenze", "lang": "cs", "lemmatizer": "test"}
+    client.load_lemmas("r/1", [entry])
+    assert json.loads(lemmas.calls.last.request.content) == {"runId": "r/1", "lemmas": [entry]}
+    assert client.find_similar({"text": "x", "nodeKinds": ["unit"]}) == {"hits": []}
+    assert json.loads(similar.calls.last.request.content)["nodeKinds"] == ["unit"]
+    assert client.sources_of_document("document") == [{"id": 7}] and sources.called
+
+
+@respx.mock
+def test_conflict_and_token_file(tmp_path: Path) -> None:
+    from docproc.sdk.store import RunConflict
+
+    token = tmp_path / "token"
+    token.write_text("file-secret\n")
+    route = respx.get(f"{BASE}/units/1").mock(return_value=httpx.Response(409, json={"error": "run/conflict"}))
+    with pytest.raises(RunConflict):
+        StoreClient(BASE, token_file=str(token)).get_unit(1)
+    assert route.calls.last.request.headers["authorization"] == "Bearer file-secret"

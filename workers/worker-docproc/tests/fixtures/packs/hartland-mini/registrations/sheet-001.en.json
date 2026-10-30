@@ -1,0 +1,21 @@
+{
+  "contentRef": "documents/sheet-001.en.html",
+  "document": {
+    "context": {
+      "legalEntity": "hartland-us",
+      "marts": [
+        "hartland-public"
+      ]
+    },
+    "createdAt": "2026-06-02T09:00:00Z",
+    "documentId": "sheet:HL-1001:en",
+    "feed": "mini-rag",
+    "lang": "en",
+    "mimeType": "text/html",
+    "originalName": "sheet-001.en.html",
+    "receivedAt": "2026-10-26T12:00:00Z",
+    "recordedAt": "2026-06-02T09:00:00Z",
+    "status": "final",
+    "version": "1"
+  }
+}

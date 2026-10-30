@@ -1,0 +1,332 @@
+[
+  {
+    "categories": [
+      "er.entity.item.product_name"
+    ],
+    "limit": 5,
+    "query": "Aurora Desk Lamp",
+    "response": {
+      "matches": [
+        {
+          "candidate": "Aurora Desk Lamp",
+          "candidateId": "HL-1001",
+          "category": "er.entity.item.product_name",
+          "score": 0.95,
+          "source": "MEMBER"
+        }
+      ],
+      "vocabularyVersion": "test:px-authored"
+    }
+  },
+  {
+    "categories": [
+      "er.entity.item.product_name"
+    ],
+    "limit": 5,
+    "query": "Aurora lamp",
+    "response": {
+      "matches": [
+        {
+          "candidate": "Aurora Desk Lamp",
+          "candidateId": "HL-1001",
+          "category": "er.entity.item.product_name",
+          "score": 0.95,
+          "source": "MEMBER"
+        }
+      ],
+      "vocabularyVersion": "test:px-authored"
+    }
+  },
+  {
+    "categories": [
+      "er.entity.item.product_name"
+    ],
+    "limit": 5,
+    "query": "stolní lampa Aurora",
+    "response": {
+      "matches": [
+        {
+          "candidate": "Aurora Desk Lamp",
+          "candidateId": "HL-1001",
+          "category": "er.entity.item.product_name",
+          "score": 0.95,
+          "source": "MEMBER"
+        }
+      ],
+      "vocabularyVersion": "test:px-authored"
+    }
+  },
+  {
+    "categories": [
+      "er.entity.item.product_name"
+    ],
+    "limit": 5,
+    "query": "Breeze Tower Fan",
+    "response": {
+      "matches": [
+        {
+          "candidate": "Breeze Tower Fan",
+          "candidateId": "HL-2040",
+          "category": "er.entity.item.product_name",
+          "score": 0.95,
+          "source": "MEMBER"
+        }
+      ],
+      "vocabularyVersion": "test:px-authored"
+    }
+  },
+  {
+    "categories": [
+      "er.entity.item.product_name"
+    ],
+    "limit": 5,
+    "query": "sloupový ventilátor Breeze",
+    "response": {
+      "matches": [
+        {
+          "candidate": "Breeze Tower Fan",
+          "candidateId": "HL-2040",
+          "category": "er.entity.item.product_name",
+          "score": 0.95,
+          "source": "MEMBER"
+        }
+      ],
+      "vocabularyVersion": "test:px-authored"
+    }
+  },
+  {
+    "categories": [
+      "er.entity.item.product_name"
+    ],
+    "limit": 5,
+    "query": "ventilátor Breeze",
+    "response": {
+      "matches": [
+        {
+          "candidate": "Breeze Tower Fan",
+          "candidateId": "HL-2040",
+          "category": "er.entity.item.product_name",
+          "score": 0.95,
+          "source": "MEMBER"
+        }
+      ],
+      "vocabularyVersion": "test:px-authored"
+    }
+  },
+  {
+    "categories": [
+      "er.entity.item.product_name"
+    ],
+    "limit": 5,
+    "query": "ventilátoru Breeze",
+    "response": {
+      "matches": [
+        {
+          "candidate": "Breeze Tower Fan",
+          "candidateId": "HL-2040",
+          "category": "er.entity.item.product_name",
+          "score": 0.95,
+          "source": "MEMBER"
+        }
+      ],
+      "vocabularyVersion": "test:px-authored"
+    }
+  },
+  {
+    "categories": [
+      "er.entity.item.product_name"
+    ],
+    "limit": 5,
+    "query": "Breeze",
+    "response": {
+      "matches": [
+        {
+          "candidate": "Breeze Tower Fan",
+          "candidateId": "HL-2040",
+          "category": "er.entity.item.product_name",
+          "score": 0.95,
+          "source": "MEMBER"
+        }
+      ],
+      "vocabularyVersion": "test:px-authored"
+    }
+  },
+  {
+    "categories": [
+      "er.entity.item.product_name"
+    ],
+    "limit": 5,
+    "query": "Pulse Wireless Headphones",
+    "response": {
+      "matches": [
+        {
+          "candidate": "Pulse Wireless Headphones",
+          "candidateId": "HL-3310",
+          "category": "er.entity.item.product_name",
+          "score": 0.95,
+          "source": "MEMBER"
+        }
+      ],
+      "vocabularyVersion": "test:px-authored"
+    }
+  },
+  {
+    "categories": [
+      "er.entity.item.product_name"
+    ],
+    "limit": 5,
+    "query": "Pulse headphones",
+    "response": {
+      "matches": [
+        {
+          "candidate": "Pulse Wireless Headphones",
+          "candidateId": "HL-3310",
+          "category": "er.entity.item.product_name",
+          "score": 0.95,
+          "source": "MEMBER"
+        }
+      ],
+      "vocabularyVersion": "test:px-authored"
+    }
+  },
+  {
+    "categories": [
+      "er.entity.item.product_name"
+    ],
+    "limit": 5,
+    "query": "bezdrátová sluchátka Pulse",
+    "response": {
+      "matches": [
+        {
+          "candidate": "Pulse Wireless Headphones",
+          "candidateId": "HL-3310",
+          "category": "er.entity.item.product_name",
+          "score": 0.95,
+          "source": "MEMBER"
+        }
+      ],
+      "vocabularyVersion": "test:px-authored"
+    }
+  },
+  {
+    "categories": [
+      "er.entity.item.product_name"
+    ],
+    "limit": 5,
+    "query": "Summit Kettle",
+    "response": {
+      "matches": [
+        {
+          "candidate": "Summit Kettle",
+          "candidateId": "HL-4205",
+          "category": "er.entity.item.product_name",
+          "score": 0.95,
+          "source": "MEMBER"
+        }
+      ],
+      "vocabularyVersion": "test:px-authored"
+    }
+  },
+  {
+    "categories": [
+      "er.entity.item.product_name"
+    ],
+    "limit": 5,
+    "query": "rychlovarná konvice Summit",
+    "response": {
+      "matches": [
+        {
+          "candidate": "Summit Kettle",
+          "candidateId": "HL-4205",
+          "category": "er.entity.item.product_name",
+          "score": 0.95,
+          "source": "MEMBER"
+        }
+      ],
+      "vocabularyVersion": "test:px-authored"
+    }
+  },
+  {
+    "categories": [
+      "er.entity.item.product_name"
+    ],
+    "limit": 5,
+    "query": "konvice Summit",
+    "response": {
+      "matches": [
+        {
+          "candidate": "Summit Kettle",
+          "candidateId": "HL-4205",
+          "category": "er.entity.item.product_name",
+          "score": 0.95,
+          "source": "MEMBER"
+        }
+      ],
+      "vocabularyVersion": "test:px-authored"
+    }
+  },
+  {
+    "categories": [
+      "er.entity.item.product_name"
+    ],
+    "limit": 5,
+    "query": "ventilátor",
+    "response": {
+      "matches": [
+        {
+          "candidate": "HL-2040",
+          "candidateId": "HL-2040",
+          "category": "er.entity.item.product_name",
+          "score": 0.9,
+          "source": "MEMBER"
+        },
+        {
+          "candidate": "HL-other",
+          "candidateId": "HL-other",
+          "category": "er.entity.item.product_name",
+          "score": 0.88,
+          "source": "MEMBER"
+        }
+      ],
+      "vocabularyVersion": "test:px-authored"
+    }
+  },
+  {
+    "categories": [
+      "er.entity.item.product_name"
+    ],
+    "limit": 5,
+    "query": "rychlovarnou konvici Summit",
+    "response": {
+      "matches": [
+        {
+          "candidate": "Summit Kettle",
+          "candidateId": "HL-4205",
+          "category": "er.entity.item.product_name",
+          "score": 0.95,
+          "source": "MEMBER"
+        }
+      ],
+      "vocabularyVersion": "test:px-authored"
+    }
+  },
+  {
+    "categories": [
+      "er.entity.item.product_name"
+    ],
+    "limit": 5,
+    "query": "Sloupový ventilátor Breeze",
+    "response": {
+      "matches": [
+        {
+          "candidate": "Breeze Tower Fan",
+          "candidateId": "HL-2040",
+          "category": "er.entity.item.product_name",
+          "score": 0.95,
+          "source": "MEMBER"
+        }
+      ],
+      "vocabularyVersion": "test:px-authored"
+    }
+  }
+]

@@ -33,3 +33,19 @@ def pg_url() -> Iterator[str]:
         with psycopg.connect(url, autocommit=True) as c:
             c.execute(PGMQ_SQL.read_text(encoding="utf-8"))  # no parameters → the simple protocol, many statements
         yield url
+
+
+@pytest.fixture(scope="session")
+def world_db() -> Iterator[str]:
+    from testcontainers.community.postgres import PostgresContainer
+
+    from tests.fakes import PACK
+
+    with PostgresContainer("postgres:18-alpine", driver=None) as pg:
+        url = pg.get_connection_url()
+        with psycopg.connect(url, autocommit=True) as conn:
+            conn.execute((PACK / "records/ddl/review.sql").read_text())
+            # Frozen PX DDL predates the fixed engine columns in S3.3 T6.
+            # An explicit test-only migration demonstrates the required deployment delta.
+            conn.execute((WORKER / "tests/fixtures/sql/record_columns.sql").read_text())
+        yield url

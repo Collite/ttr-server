@@ -1,0 +1,1067 @@
+[
+  {
+    "annotations": [
+      {
+        "payload": {
+          "kind": "item",
+          "rating": 2,
+          "surface": "Breeze"
+        },
+        "type": "Mention"
+      },
+      {
+        "payload": {
+          "kind": "review_body"
+        },
+        "type": "SectionKind"
+      },
+      {
+        "payload": {
+          "rating": 4,
+          "verified": true
+        },
+        "type": "Import.review"
+      }
+    ],
+    "expected": true,
+    "expr": ""
+  },
+  {
+    "annotations": [
+      {
+        "payload": {
+          "kind": "item",
+          "rating": 2,
+          "surface": "Breeze"
+        },
+        "type": "Mention"
+      },
+      {
+        "payload": {
+          "kind": "review_body"
+        },
+        "type": "SectionKind"
+      },
+      {
+        "payload": {
+          "rating": 4,
+          "verified": true
+        },
+        "type": "Import.review"
+      }
+    ],
+    "expected": true,
+    "expr": "exists(Mention[item])"
+  },
+  {
+    "annotations": [
+      {
+        "payload": {
+          "kind": "item",
+          "rating": 2,
+          "surface": "Breeze"
+        },
+        "type": "Mention"
+      },
+      {
+        "payload": {
+          "kind": "review_body"
+        },
+        "type": "SectionKind"
+      },
+      {
+        "payload": {
+          "rating": 4,
+          "verified": true
+        },
+        "type": "Import.review"
+      }
+    ],
+    "expected": false,
+    "expr": "exists(Mention[person])"
+  },
+  {
+    "annotations": [
+      {
+        "payload": {
+          "kind": "item",
+          "rating": 2,
+          "surface": "Breeze"
+        },
+        "type": "Mention"
+      },
+      {
+        "payload": {
+          "kind": "review_body"
+        },
+        "type": "SectionKind"
+      },
+      {
+        "payload": {
+          "rating": 4,
+          "verified": true
+        },
+        "type": "Import.review"
+      }
+    ],
+    "expected": true,
+    "expr": "exists(Import.review)"
+  },
+  {
+    "annotations": [
+      {
+        "payload": {
+          "kind": "item",
+          "rating": 2,
+          "surface": "Breeze"
+        },
+        "type": "Mention"
+      },
+      {
+        "payload": {
+          "kind": "review_body"
+        },
+        "type": "SectionKind"
+      },
+      {
+        "payload": {
+          "rating": 4,
+          "verified": true
+        },
+        "type": "Import.review"
+      }
+    ],
+    "expected": true,
+    "expr": "Mention[item].surface = \"Breeze\""
+  },
+  {
+    "annotations": [
+      {
+        "payload": {
+          "kind": "item",
+          "rating": 2,
+          "surface": "Breeze"
+        },
+        "type": "Mention"
+      },
+      {
+        "payload": {
+          "kind": "review_body"
+        },
+        "type": "SectionKind"
+      },
+      {
+        "payload": {
+          "rating": 4,
+          "verified": true
+        },
+        "type": "Import.review"
+      }
+    ],
+    "expected": true,
+    "expr": "Mention[item].surface = 'Breeze'"
+  },
+  {
+    "annotations": [
+      {
+        "payload": {
+          "kind": "item",
+          "rating": 2,
+          "surface": "Breeze"
+        },
+        "type": "Mention"
+      },
+      {
+        "payload": {
+          "kind": "review_body"
+        },
+        "type": "SectionKind"
+      },
+      {
+        "payload": {
+          "rating": 4,
+          "verified": true
+        },
+        "type": "Import.review"
+      }
+    ],
+    "expected": false,
+    "expr": "Mention[person].surface != x"
+  },
+  {
+    "annotations": [
+      {
+        "payload": {
+          "kind": "item",
+          "rating": 2,
+          "surface": "Breeze"
+        },
+        "type": "Mention"
+      },
+      {
+        "payload": {
+          "kind": "review_body"
+        },
+        "type": "SectionKind"
+      },
+      {
+        "payload": {
+          "rating": 4,
+          "verified": true
+        },
+        "type": "Import.review"
+      }
+    ],
+    "expected": true,
+    "expr": "SectionKind in [review_body, claim_body]"
+  },
+  {
+    "annotations": [
+      {
+        "payload": {
+          "kind": "item",
+          "rating": 2,
+          "surface": "Breeze"
+        },
+        "type": "Mention"
+      },
+      {
+        "payload": {
+          "kind": "review_body"
+        },
+        "type": "SectionKind"
+      },
+      {
+        "payload": {
+          "rating": 4,
+          "verified": true
+        },
+        "type": "Import.review"
+      }
+    ],
+    "expected": true,
+    "expr": "SectionKind.kind in [review_body]"
+  },
+  {
+    "annotations": [
+      {
+        "payload": {
+          "kind": "item",
+          "rating": 2,
+          "surface": "Breeze"
+        },
+        "type": "Mention"
+      },
+      {
+        "payload": {
+          "kind": "review_body"
+        },
+        "type": "SectionKind"
+      },
+      {
+        "payload": {
+          "rating": 4,
+          "verified": true
+        },
+        "type": "Import.review"
+      }
+    ],
+    "expected": true,
+    "expr": "Import.review.verified = true"
+  },
+  {
+    "annotations": [
+      {
+        "payload": {
+          "kind": "item",
+          "rating": 2,
+          "surface": "Breeze"
+        },
+        "type": "Mention"
+      },
+      {
+        "payload": {
+          "kind": "review_body"
+        },
+        "type": "SectionKind"
+      },
+      {
+        "payload": {
+          "rating": 4,
+          "verified": true
+        },
+        "type": "Import.review"
+      }
+    ],
+    "expected": false,
+    "expr": "Import.review.verified = 1"
+  },
+  {
+    "annotations": [
+      {
+        "payload": {
+          "kind": "item",
+          "rating": 2,
+          "surface": "Breeze"
+        },
+        "type": "Mention"
+      },
+      {
+        "payload": {
+          "kind": "review_body"
+        },
+        "type": "SectionKind"
+      },
+      {
+        "payload": {
+          "rating": 4,
+          "verified": true
+        },
+        "type": "Import.review"
+      }
+    ],
+    "expected": true,
+    "expr": "Import.review.rating >= 4"
+  },
+  {
+    "annotations": [
+      {
+        "payload": {
+          "kind": "item",
+          "rating": 2,
+          "surface": "Breeze"
+        },
+        "type": "Mention"
+      },
+      {
+        "payload": {
+          "kind": "review_body"
+        },
+        "type": "SectionKind"
+      },
+      {
+        "payload": {
+          "rating": 4,
+          "verified": true
+        },
+        "type": "Import.review"
+      }
+    ],
+    "expected": false,
+    "expr": "Import.review.rating > 4"
+  },
+  {
+    "annotations": [
+      {
+        "payload": {
+          "kind": "item",
+          "rating": 2,
+          "surface": "Breeze"
+        },
+        "type": "Mention"
+      },
+      {
+        "payload": {
+          "kind": "review_body"
+        },
+        "type": "SectionKind"
+      },
+      {
+        "payload": {
+          "rating": 4,
+          "verified": true
+        },
+        "type": "Import.review"
+      }
+    ],
+    "expected": true,
+    "expr": "Import.review.rating <= 4"
+  },
+  {
+    "annotations": [
+      {
+        "payload": {
+          "kind": "item",
+          "rating": 2,
+          "surface": "Breeze"
+        },
+        "type": "Mention"
+      },
+      {
+        "payload": {
+          "kind": "review_body"
+        },
+        "type": "SectionKind"
+      },
+      {
+        "payload": {
+          "rating": 4,
+          "verified": true
+        },
+        "type": "Import.review"
+      }
+    ],
+    "expected": true,
+    "expr": "Import.review.rating < 5"
+  },
+  {
+    "annotations": [
+      {
+        "payload": {
+          "kind": "item",
+          "rating": 2,
+          "surface": "Breeze"
+        },
+        "type": "Mention"
+      },
+      {
+        "payload": {
+          "kind": "review_body"
+        },
+        "type": "SectionKind"
+      },
+      {
+        "payload": {
+          "rating": 4,
+          "verified": true
+        },
+        "type": "Import.review"
+      }
+    ],
+    "expected": true,
+    "expr": "Import.review.rating != 3"
+  },
+  {
+    "annotations": [
+      {
+        "payload": {
+          "kind": "item",
+          "rating": 2,
+          "surface": "Breeze"
+        },
+        "type": "Mention"
+      },
+      {
+        "payload": {
+          "kind": "review_body"
+        },
+        "type": "SectionKind"
+      },
+      {
+        "payload": {
+          "rating": 4,
+          "verified": true
+        },
+        "type": "Import.review"
+      }
+    ],
+    "expected": false,
+    "expr": "Import.review.rating = \"4\""
+  },
+  {
+    "annotations": [
+      {
+        "payload": {
+          "kind": "item",
+          "rating": 2,
+          "surface": "Breeze"
+        },
+        "type": "Mention"
+      },
+      {
+        "payload": {
+          "kind": "review_body"
+        },
+        "type": "SectionKind"
+      },
+      {
+        "payload": {
+          "rating": 4,
+          "verified": true
+        },
+        "type": "Import.review"
+      }
+    ],
+    "expected": false,
+    "expr": "Import.review.missing = null"
+  },
+  {
+    "annotations": [
+      {
+        "payload": {
+          "kind": "item",
+          "rating": 2,
+          "surface": "Breeze"
+        },
+        "type": "Mention"
+      },
+      {
+        "payload": {
+          "kind": "review_body"
+        },
+        "type": "SectionKind"
+      },
+      {
+        "payload": {
+          "rating": 4,
+          "verified": true
+        },
+        "type": "Import.review"
+      }
+    ],
+    "expected": true,
+    "expr": "not exists(Date)"
+  },
+  {
+    "annotations": [
+      {
+        "payload": {
+          "kind": "item",
+          "rating": 2,
+          "surface": "Breeze"
+        },
+        "type": "Mention"
+      },
+      {
+        "payload": {
+          "kind": "review_body"
+        },
+        "type": "SectionKind"
+      },
+      {
+        "payload": {
+          "rating": 4,
+          "verified": true
+        },
+        "type": "Import.review"
+      }
+    ],
+    "expected": true,
+    "expr": "exists(Date) or exists(Mention)"
+  },
+  {
+    "annotations": [
+      {
+        "payload": {
+          "kind": "item",
+          "rating": 2,
+          "surface": "Breeze"
+        },
+        "type": "Mention"
+      },
+      {
+        "payload": {
+          "kind": "review_body"
+        },
+        "type": "SectionKind"
+      },
+      {
+        "payload": {
+          "rating": 4,
+          "verified": true
+        },
+        "type": "Import.review"
+      }
+    ],
+    "expected": false,
+    "expr": "exists(Date) and exists(Mention)"
+  },
+  {
+    "annotations": [
+      {
+        "payload": {
+          "kind": "item",
+          "rating": 2,
+          "surface": "Breeze"
+        },
+        "type": "Mention"
+      },
+      {
+        "payload": {
+          "kind": "review_body"
+        },
+        "type": "SectionKind"
+      },
+      {
+        "payload": {
+          "rating": 4,
+          "verified": true
+        },
+        "type": "Import.review"
+      }
+    ],
+    "expected": true,
+    "expr": "not (exists(Date) or exists(Modifier)) and exists(Import.review)"
+  },
+  {
+    "annotations": [
+      {
+        "payload": {
+          "kind": "item",
+          "rating": 2,
+          "surface": "Breeze"
+        },
+        "type": "Mention"
+      },
+      {
+        "payload": {
+          "kind": "review_body"
+        },
+        "type": "SectionKind"
+      },
+      {
+        "payload": {
+          "rating": 4,
+          "verified": true
+        },
+        "type": "Import.review"
+      }
+    ],
+    "expected": true,
+    "expr": "exists(Date) or exists(Mention) and exists(SectionKind)"
+  },
+  {
+    "annotations": [
+      {
+        "payload": {
+          "kind": "item",
+          "rating": 2,
+          "surface": "Breeze"
+        },
+        "type": "Mention"
+      },
+      {
+        "payload": {
+          "kind": "review_body"
+        },
+        "type": "SectionKind"
+      },
+      {
+        "payload": {
+          "rating": 4,
+          "verified": true
+        },
+        "type": "Import.review"
+      }
+    ],
+    "expected": false,
+    "expr": "Mention[item].surface in []"
+  },
+  {
+    "annotations": [
+      {
+        "payload": {
+          "kind": "item",
+          "rating": 2,
+          "surface": "Breeze"
+        },
+        "type": "Mention"
+      },
+      {
+        "payload": {
+          "kind": "review_body"
+        },
+        "type": "SectionKind"
+      },
+      {
+        "payload": {
+          "rating": 4,
+          "verified": true
+        },
+        "type": "Import.review"
+      }
+    ],
+    "expected": true,
+    "expr": "Mention[item].surface in [\"Breeze\", \"Summit\"]"
+  },
+  {
+    "annotations": [
+      {
+        "payload": {
+          "kind": "item",
+          "rating": 2,
+          "surface": "Breeze"
+        },
+        "type": "Mention"
+      },
+      {
+        "payload": {
+          "kind": "review_body"
+        },
+        "type": "SectionKind"
+      },
+      {
+        "payload": {
+          "rating": 4,
+          "verified": true
+        },
+        "type": "Import.review"
+      }
+    ],
+    "expected": true,
+    "expr": "Mention[item].surface not in [\"Summit\"]"
+  },
+  {
+    "annotations": [
+      {
+        "payload": {
+          "kind": "item",
+          "rating": 2,
+          "surface": "Breeze"
+        },
+        "type": "Mention"
+      },
+      {
+        "payload": {
+          "kind": "review_body"
+        },
+        "type": "SectionKind"
+      },
+      {
+        "payload": {
+          "rating": 4,
+          "verified": true
+        },
+        "type": "Import.review"
+      }
+    ],
+    "expected": true,
+    "expr": "Import.review.verified != false"
+  },
+  {
+    "annotations": [
+      {
+        "payload": {
+          "kind": "item",
+          "rating": 2,
+          "surface": "Breeze"
+        },
+        "type": "Mention"
+      },
+      {
+        "payload": {
+          "kind": "review_body"
+        },
+        "type": "SectionKind"
+      },
+      {
+        "payload": {
+          "rating": 4,
+          "verified": true
+        },
+        "type": "Import.review"
+      }
+    ],
+    "expected": false,
+    "expr": "Mention[item].rating > true"
+  },
+  {
+    "annotations": [
+      {
+        "payload": {
+          "kind": "item",
+          "rating": 2,
+          "surface": "Breeze"
+        },
+        "type": "Mention"
+      },
+      {
+        "payload": {
+          "kind": "review_body"
+        },
+        "type": "SectionKind"
+      },
+      {
+        "payload": {
+          "rating": 4,
+          "verified": true
+        },
+        "type": "Import.review"
+      }
+    ],
+    "error": "predicate/syntax",
+    "expr": "exists("
+  },
+  {
+    "annotations": [
+      {
+        "payload": {
+          "kind": "item",
+          "rating": 2,
+          "surface": "Breeze"
+        },
+        "type": "Mention"
+      },
+      {
+        "payload": {
+          "kind": "review_body"
+        },
+        "type": "SectionKind"
+      },
+      {
+        "payload": {
+          "rating": 4,
+          "verified": true
+        },
+        "type": "Import.review"
+      }
+    ],
+    "error": "predicate/syntax",
+    "expr": "exists(Mention) trailing"
+  },
+  {
+    "annotations": [
+      {
+        "payload": {
+          "kind": "item",
+          "rating": 2,
+          "surface": "Breeze"
+        },
+        "type": "Mention"
+      },
+      {
+        "payload": {
+          "kind": "review_body"
+        },
+        "type": "SectionKind"
+      },
+      {
+        "payload": {
+          "rating": 4,
+          "verified": true
+        },
+        "type": "Import.review"
+      }
+    ],
+    "error": "predicate/syntax",
+    "expr": "Mention.x == y"
+  },
+  {
+    "annotations": [
+      {
+        "payload": {
+          "kind": "item",
+          "rating": 2,
+          "surface": "Breeze"
+        },
+        "type": "Mention"
+      },
+      {
+        "payload": {
+          "kind": "review_body"
+        },
+        "type": "SectionKind"
+      },
+      {
+        "payload": {
+          "rating": 4,
+          "verified": true
+        },
+        "type": "Import.review"
+      }
+    ],
+    "error": "predicate/syntax",
+    "expr": "Mention.x ="
+  },
+  {
+    "annotations": [
+      {
+        "payload": {
+          "kind": "item",
+          "rating": 2,
+          "surface": "Breeze"
+        },
+        "type": "Mention"
+      },
+      {
+        "payload": {
+          "kind": "review_body"
+        },
+        "type": "SectionKind"
+      },
+      {
+        "payload": {
+          "rating": 4,
+          "verified": true
+        },
+        "type": "Import.review"
+      }
+    ],
+    "error": "predicate/syntax",
+    "expr": "Mention.x in [a,]"
+  },
+  {
+    "annotations": [
+      {
+        "payload": {
+          "kind": "item",
+          "rating": 2,
+          "surface": "Breeze"
+        },
+        "type": "Mention"
+      },
+      {
+        "payload": {
+          "kind": "review_body"
+        },
+        "type": "SectionKind"
+      },
+      {
+        "payload": {
+          "rating": 4,
+          "verified": true
+        },
+        "type": "Import.review"
+      }
+    ],
+    "error": "predicate/syntax",
+    "expr": "__import__(os)"
+  },
+  {
+    "annotations": [
+      {
+        "payload": {
+          "kind": "item",
+          "rating": 2,
+          "surface": "Breeze"
+        },
+        "type": "Mention"
+      },
+      {
+        "payload": {
+          "kind": "review_body"
+        },
+        "type": "SectionKind"
+      },
+      {
+        "payload": {
+          "rating": 4,
+          "verified": true
+        },
+        "type": "Import.review"
+      }
+    ],
+    "error": "predicate/syntax",
+    "expr": "Mention..field = x"
+  },
+  {
+    "annotations": [
+      {
+        "payload": {
+          "kind": "item",
+          "rating": 2,
+          "surface": "Breeze"
+        },
+        "type": "Mention"
+      },
+      {
+        "payload": {
+          "kind": "review_body"
+        },
+        "type": "SectionKind"
+      },
+      {
+        "payload": {
+          "rating": 4,
+          "verified": true
+        },
+        "type": "Import.review"
+      }
+    ],
+    "error": "predicate/syntax",
+    "expr": "exists(Mention[bad)"
+  },
+  {
+    "annotations": [
+      {
+        "payload": {
+          "kind": "item",
+          "rating": 2,
+          "surface": "Breeze"
+        },
+        "type": "Mention"
+      },
+      {
+        "payload": {
+          "kind": "review_body"
+        },
+        "type": "SectionKind"
+      },
+      {
+        "payload": {
+          "rating": 4,
+          "verified": true
+        },
+        "type": "Import.review"
+      }
+    ],
+    "error": "predicate/syntax",
+    "expr": "Mention.x in (a)"
+  },
+  {
+    "annotations": [
+      {
+        "payload": {
+          "kind": "item",
+          "rating": 2,
+          "surface": "Breeze"
+        },
+        "type": "Mention"
+      },
+      {
+        "payload": {
+          "kind": "review_body"
+        },
+        "type": "SectionKind"
+      },
+      {
+        "payload": {
+          "rating": 4,
+          "verified": true
+        },
+        "type": "Import.review"
+      }
+    ],
+    "error": "predicate/syntax",
+    "expr": "Mention.x = 3; x"
+  },
+  {
+    "annotations": [
+      {
+        "payload": {
+          "kind": "item",
+          "rating": 2,
+          "surface": "Breeze"
+        },
+        "type": "Mention"
+      },
+      {
+        "payload": {
+          "kind": "review_body"
+        },
+        "type": "SectionKind"
+      },
+      {
+        "payload": {
+          "rating": 4,
+          "verified": true
+        },
+        "type": "Import.review"
+      }
+    ],
+    "error": "predicate/syntax",
+    "expr": "Mention.x = NaN"
+  },
+  {
+    "annotations": [
+      {
+        "payload": {
+          "rating": 3
+        },
+        "type": "Import.review"
+      }
+    ],
+    "error": "predicate/syntax",
+    "expr": "exists(Import.review.rating)"
+  }
+]

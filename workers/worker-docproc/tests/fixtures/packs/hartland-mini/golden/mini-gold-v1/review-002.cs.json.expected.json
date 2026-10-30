@@ -1,0 +1,193 @@
+{
+  "document": "review-002.cs.json",
+  "imports": [
+    {
+      "id": "g:review-002.cs:i0",
+      "payload": {
+        "createdAt": "2026-08-03T21:05:00Z",
+        "rating": 1,
+        "recorded": true,
+        "reviewId": "R-2040-01",
+        "source": "json-reviews",
+        "verified": true
+      },
+      "section": "g:review-002.cs:s0",
+      "span": {
+        "end": 220,
+        "start": 16
+      },
+      "type": "Import.review"
+    },
+    {
+      "id": "g:review-002.cs:i1",
+      "payload": {
+        "createdAt": "2026-08-19T06:30:00Z",
+        "rating": 4,
+        "recorded": true,
+        "reviewId": "R-2040-02",
+        "source": "json-reviews",
+        "verified": true
+      },
+      "section": "g:review-002.cs:s1",
+      "span": {
+        "end": 242,
+        "start": 29
+      },
+      "type": "Import.review"
+    }
+  ],
+  "mentions": [
+    {
+      "concept": "cn.Item",
+      "id": "g:review-002.cs:m0",
+      "kind": "item",
+      "member": {
+        "category": "er.entity.item",
+        "display": "Breeze Tower Fan",
+        "id": "HL-2040"
+      },
+      "section": "g:review-002.cs:s0",
+      "span": {
+        "end": 48,
+        "start": 31
+      },
+      "surface": "ventilátor Breeze"
+    },
+    {
+      "concept": "cn.Item",
+      "id": "g:review-002.cs:m1",
+      "kind": "item",
+      "member": {
+        "category": "er.entity.item",
+        "display": "Breeze Tower Fan",
+        "id": "HL-2040"
+      },
+      "section": "g:review-002.cs:s0",
+      "span": {
+        "end": 126,
+        "start": 120
+      },
+      "surface": "Breeze"
+    },
+    {
+      "concept": "cn.Item",
+      "id": "g:review-002.cs:m2",
+      "kind": "item",
+      "member": {
+        "category": "er.entity.item",
+        "display": "Breeze Tower Fan",
+        "id": "HL-2040"
+      },
+      "section": "g:review-002.cs:s1",
+      "span": {
+        "end": 88,
+        "start": 70
+      },
+      "surface": "ventilátoru Breeze"
+    }
+  ],
+  "sections": [
+    {
+      "contentHash": "sha256:b346d1f5033b79806955a04f5ce5a2437faa1fbd56baf624be63046354d61c44",
+      "id": "g:review-002.cs:s0",
+      "idx": 0,
+      "sectionKind": "review_body",
+      "sectionPath": [
+        "Hrozně hlučnej"
+      ],
+      "text": "Hrozně hlučnej\n\nKoupil jsem si ventilátor Breeze do ložnice a je to zklamání. Hrozně hučí, v noci se u toho nedá spát 😤 Breeze bych nikomu nedoporučil, vracim ho zpátky. Škoda, vypadá hezky a za ty penize bych čekal víc.",
+      "title": "Hrozně hlučnej"
+    },
+    {
+      "contentHash": "sha256:ddf1a0aacb548e961e1049826df7df2cc4728e1587cd07d52cdd12a4e342d72e",
+      "id": "g:review-002.cs:s1",
+      "idx": 1,
+      "sectionKind": "review_body",
+      "sectionPath": [
+        "Po dvou týdnech spokojenost"
+      ],
+      "text": "Po dvou týdnech spokojenost\n\nPo dvou týdnech používání musím říct, že ventilátoru Breeze nemám moc co vytknout. Noční režim je opravdu tichý a časovač funguje. Jediné, co mě štve, je lehoučký dálkový ovladač, který pořád hledám pod polštářem.",
+      "title": "Po dvou týdnech spokojenost"
+    }
+  ],
+  "statements": [
+    {
+      "derivedFrom": [
+        "g:review-002.cs:i0",
+        "g:review-002.cs:m0"
+      ],
+      "id": "g:review-002.cs:st0",
+      "payload": {
+        "attributes": {
+          "body": "Koupil jsem si ventilátor Breeze do ložnice a je to zklamání. Hrozně hučí, v noci se u toho nedá spát 😤 Breeze bych nikomu nedoporučil, vracim ho zpátky. Škoda, vypadá hezky a za ty penize bych čekal víc.",
+          "customer": {
+            "qname": "C-31102"
+          },
+          "item": {
+            "display": "ventilátor Breeze",
+            "qname": "HL-2040"
+          },
+          "rating": 1,
+          "recorded_at": "2026-08-03T21:05:00Z",
+          "reviewed_on": "2026-08-03",
+          "sentiment": "negative",
+          "title": "Hrozně hlučnej"
+        },
+        "concept": "cn.NegativeReview",
+        "modifiers": {
+          "temporal_context": "current",
+          "verification": "verified_purchase"
+        },
+        "spans": [
+          {
+            "end": 220,
+            "start": 16,
+            "unitId": 0
+          }
+        ],
+        "verbatim": "Koupil jsem si ventilátor Breeze do ložnice a je to zklamání. Hrozně hučí, v noci se u toho nedá spát 😤 Breeze bych nikomu nedoporučil, vracim ho zpátky. Škoda, vypadá hezky a za ty penize bych čekal víc."
+      },
+      "section": "g:review-002.cs:s0",
+      "type": "Statement[review]"
+    },
+    {
+      "derivedFrom": [
+        "g:review-002.cs:i1",
+        "g:review-002.cs:m2"
+      ],
+      "id": "g:review-002.cs:st1",
+      "payload": {
+        "attributes": {
+          "body": "Po dvou týdnech používání musím říct, že ventilátoru Breeze nemám moc co vytknout. Noční režim je opravdu tichý a časovač funguje. Jediné, co mě štve, je lehoučký dálkový ovladač, který pořád hledám pod polštářem.",
+          "customer": {
+            "qname": "C-31560"
+          },
+          "item": {
+            "display": "ventilátoru Breeze",
+            "qname": "HL-2040"
+          },
+          "rating": 4,
+          "recorded_at": "2026-08-19T06:30:00Z",
+          "reviewed_on": "2026-08-19",
+          "sentiment": "positive",
+          "title": "Po dvou týdnech spokojenost"
+        },
+        "concept": "cn.VerifiedReview",
+        "modifiers": {
+          "temporal_context": "current",
+          "verification": "verified_purchase"
+        },
+        "spans": [
+          {
+            "end": 242,
+            "start": 29,
+            "unitId": 1
+          }
+        ],
+        "verbatim": "Po dvou týdnech používání musím říct, že ventilátoru Breeze nemám moc co vytknout. Noční režim je opravdu tichý a časovač funguje. Jediné, co mě štve, je lehoučký dálkový ovladač, který pořád hledám pod polštářem."
+      },
+      "section": "g:review-002.cs:s1",
+      "type": "Statement[review]"
+    }
+  ]
+}

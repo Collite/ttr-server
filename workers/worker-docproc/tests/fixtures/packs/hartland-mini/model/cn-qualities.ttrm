@@ -1,0 +1,16 @@
+// hartland-mini (DX PX T2) — copied from ttr-core `packages/kotlin/ttr-concept/src/test/resources/worlds/hartland-dx/cn-qualities.ttrm`
+// at ttr-core master 7205b101. The ttr-core world stays the renderer's golden world: change it there, then re-copy.
+// DX-P0 S0.3 — the slice's qualities, one `def quality` each (groundings in bindings.ttrm). `verification`,
+// `temporal_context` and `certainty` carry the "modifier" tag.
+model cn
+
+def quality rating           { of: Review, label: { en: "Rating", cs: "Hodnocení" } }
+def quality sentiment        { of: Review, label: { en: "Sentiment", cs: "Vyznění" } }
+def quality verification     { of: Review, tags: ["modifier"], label: { en: "Verification", cs: "Ověření nákupu" } }
+def quality temporal_context { of: Review, tags: ["modifier"], label: { en: "Temporal context", cs: "Časový kontext" } }
+def quality reviewed_on      { of: Review }
+def quality defect           { of: Claim, label: { en: "Defect", cs: "Vada" } }
+def quality claimed_amount   { of: Claim }
+def quality claim_status     { of: Claim }
+def quality certainty        { of: Claim, tags: ["modifier"], label: { en: "Certainty", cs: "Jistota" } }
+def quality claimed_on       { of: Claim }

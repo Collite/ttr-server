@@ -1,0 +1,21 @@
+{
+  "$id": "ttr:types/Import",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": true,
+  "description": "A fact a connector recorded (import:<connector>). Import.<name> resolves to this schema unless a pack declares that exact key; the unit-level facts ride beside source and recorded.",
+  "properties": {
+    "recorded": {
+      "const": true
+    },
+    "source": {
+      "minLength": 1,
+      "type": "string"
+    }
+  },
+  "required": [
+    "source",
+    "recorded"
+  ],
+  "title": "Import",
+  "type": "object"
+}

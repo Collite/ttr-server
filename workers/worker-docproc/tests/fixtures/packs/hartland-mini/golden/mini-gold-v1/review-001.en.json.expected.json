@@ -1,0 +1,193 @@
+{
+  "document": "review-001.en.json",
+  "imports": [
+    {
+      "id": "g:review-001.en:i0",
+      "payload": {
+        "createdAt": "2026-09-14T08:12:00Z",
+        "rating": 2,
+        "recorded": true,
+        "reviewId": "R-1001-01",
+        "source": "json-reviews",
+        "verified": true
+      },
+      "section": "g:review-001.en:s0",
+      "span": {
+        "end": 301,
+        "start": 32
+      },
+      "type": "Import.review"
+    },
+    {
+      "id": "g:review-001.en:i1",
+      "payload": {
+        "createdAt": "2026-09-28T19:40:00Z",
+        "rating": 5,
+        "recorded": true,
+        "reviewId": "R-1001-02",
+        "source": "json-reviews",
+        "verified": false
+      },
+      "section": "g:review-001.en:s1",
+      "span": {
+        "end": 274,
+        "start": 27
+      },
+      "type": "Import.review"
+    }
+  ],
+  "mentions": [
+    {
+      "concept": "cn.Item",
+      "id": "g:review-001.en:m0",
+      "kind": "item",
+      "member": {
+        "category": "er.entity.item",
+        "display": "Aurora Desk Lamp",
+        "id": "HL-1001"
+      },
+      "section": "g:review-001.en:s0",
+      "span": {
+        "end": 61,
+        "start": 45
+      },
+      "surface": "Aurora Desk Lamp"
+    },
+    {
+      "concept": "cn.Item",
+      "id": "g:review-001.en:m1",
+      "kind": "item",
+      "member": {
+        "category": "er.entity.item",
+        "display": "Aurora Desk Lamp",
+        "id": "HL-1001"
+      },
+      "section": "g:review-001.en:s1",
+      "span": {
+        "end": 81,
+        "start": 70
+      },
+      "surface": "Aurora lamp"
+    },
+    {
+      "concept": "cn.Item",
+      "id": "g:review-001.en:m2",
+      "kind": "item",
+      "member": {
+        "category": "er.entity.item",
+        "display": "Aurora Desk Lamp",
+        "id": "HL-1001"
+      },
+      "section": "g:review-001.en:s1",
+      "span": {
+        "end": 257,
+        "start": 241
+      },
+      "surface": "Aurora Desk Lamp"
+    }
+  ],
+  "sections": [
+    {
+      "contentHash": "sha256:076f58c64555d84d34473e9e900e8546289b630e3e5da9d35c8b34ee82729b6c",
+      "id": "g:review-001.en:s0",
+      "idx": 0,
+      "sectionKind": "review_body",
+      "sectionPath": [
+        "Flickers at the lowest setting"
+      ],
+      "text": "Flickers at the lowest setting\n\nI bought the Aurora Desk Lamp for my home office. The light itself is pleasant, but at the lowest brightness step the panel flickers, which I notice within a few minutes of reading. At the higher steps it is fine. For the price I expected better, and I am returning it.",
+      "title": "Flickers at the lowest setting"
+    },
+    {
+      "contentHash": "sha256:4acbad2c9c7e37448149251e61265b79c0d220fdac5a3669ec64668a85219496",
+      "id": "g:review-001.en:s1",
+      "idx": 1,
+      "sectionKind": "review_body",
+      "sectionPath": [
+        "Great light for late work"
+      ],
+      "text": "Great light for late work\n\nAfter two weeks of evenings at my desk the Aurora lamp has replaced my old halogen one completely. The warm setting is easy on the eyes and the USB-C port in the base keeps my phone charged. I plan to buy a second Aurora Desk Lamp for the bedroom.",
+      "title": "Great light for late work"
+    }
+  ],
+  "statements": [
+    {
+      "derivedFrom": [
+        "g:review-001.en:i0",
+        "g:review-001.en:m0"
+      ],
+      "id": "g:review-001.en:st0",
+      "payload": {
+        "attributes": {
+          "body": "I bought the Aurora Desk Lamp for my home office. The light itself is pleasant, but at the lowest brightness step the panel flickers, which I notice within a few minutes of reading. At the higher steps it is fine. For the price I expected better, and I am returning it.",
+          "customer": {
+            "qname": "C-20417"
+          },
+          "item": {
+            "display": "Aurora Desk Lamp",
+            "qname": "HL-1001"
+          },
+          "rating": 2,
+          "recorded_at": "2026-09-14T08:12:00Z",
+          "reviewed_on": "2026-09-14",
+          "sentiment": "negative",
+          "title": "Flickers at the lowest setting"
+        },
+        "concept": "cn.NegativeReview",
+        "modifiers": {
+          "temporal_context": "current",
+          "verification": "verified_purchase"
+        },
+        "spans": [
+          {
+            "end": 301,
+            "start": 32,
+            "unitId": 0
+          }
+        ],
+        "verbatim": "I bought the Aurora Desk Lamp for my home office. The light itself is pleasant, but at the lowest brightness step the panel flickers, which I notice within a few minutes of reading. At the higher steps it is fine. For the price I expected better, and I am returning it."
+      },
+      "section": "g:review-001.en:s0",
+      "type": "Statement[review]"
+    },
+    {
+      "derivedFrom": [
+        "g:review-001.en:i1",
+        "g:review-001.en:m1"
+      ],
+      "id": "g:review-001.en:st1",
+      "payload": {
+        "attributes": {
+          "body": "After two weeks of evenings at my desk the Aurora lamp has replaced my old halogen one completely. The warm setting is easy on the eyes and the USB-C port in the base keeps my phone charged. I plan to buy a second Aurora Desk Lamp for the bedroom.",
+          "customer": {
+            "qname": "C-20988"
+          },
+          "item": {
+            "display": "Aurora lamp",
+            "qname": "HL-1001"
+          },
+          "rating": 5,
+          "recorded_at": "2026-09-28T19:40:00Z",
+          "reviewed_on": "2026-09-28",
+          "sentiment": "positive",
+          "title": "Great light for late work"
+        },
+        "concept": "cn.Review",
+        "modifiers": {
+          "temporal_context": "current",
+          "verification": "unverified"
+        },
+        "spans": [
+          {
+            "end": 274,
+            "start": 27,
+            "unitId": 1
+          }
+        ],
+        "verbatim": "After two weeks of evenings at my desk the Aurora lamp has replaced my old halogen one completely. The warm setting is easy on the eyes and the USB-C port in the base keeps my phone charged. I plan to buy a second Aurora Desk Lamp for the bedroom."
+      },
+      "section": "g:review-001.en:s1",
+      "type": "Statement[review]"
+    }
+  ]
+}

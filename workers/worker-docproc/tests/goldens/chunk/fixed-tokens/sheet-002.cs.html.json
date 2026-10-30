@@ -1,0 +1,156 @@
+[
+  {
+    "id": "g:sheet-002.cs:0",
+    "payload": {
+      "context": {
+        "parentUnitId": "g:sheet-002.cs:s0",
+        "prefix": "sheet-002.cs.html › Sloupový ventilátor Breeze"
+      },
+      "ordinal": 0,
+      "paramsHash": "sha256:36d3feae636ee4bae4c7c754e63e33a63a764b8f1e0975a67d35e097bf6beed9",
+      "strategy": "fixed-tokens",
+      "tokenCount": 24
+    },
+    "spans": [
+      {
+        "end": 61,
+        "start": 0,
+        "unit": "g:sheet-002.cs:s0"
+      }
+    ],
+    "type": "Chunk",
+    "unit": "g:sheet-002.cs:s0"
+  },
+  {
+    "id": "g:sheet-002.cs:1",
+    "payload": {
+      "context": {
+        "parentUnitId": "g:sheet-002.cs:s1",
+        "prefix": "sheet-002.cs.html › Sloupový ventilátor Breeze › Přehled"
+      },
+      "ordinal": 0,
+      "paramsHash": "sha256:36d3feae636ee4bae4c7c754e63e33a63a764b8f1e0975a67d35e097bf6beed9",
+      "strategy": "fixed-tokens",
+      "tokenCount": 200
+    },
+    "spans": [
+      {
+        "end": 433,
+        "start": 0,
+        "unit": "g:sheet-002.cs:s1"
+      }
+    ],
+    "type": "Chunk",
+    "unit": "g:sheet-002.cs:s1"
+  },
+  {
+    "id": "g:sheet-002.cs:2",
+    "payload": {
+      "context": {
+        "parentUnitId": "g:sheet-002.cs:s1",
+        "prefix": "sheet-002.cs.html › Sloupový ventilátor Breeze › Přehled"
+      },
+      "ordinal": 1,
+      "paramsHash": "sha256:36d3feae636ee4bae4c7c754e63e33a63a764b8f1e0975a67d35e097bf6beed9",
+      "strategy": "fixed-tokens",
+      "tokenCount": 49
+    },
+    "spans": [
+      {
+        "end": 527,
+        "start": 433,
+        "unit": "g:sheet-002.cs:s1"
+      }
+    ],
+    "type": "Chunk",
+    "unit": "g:sheet-002.cs:s1"
+  },
+  {
+    "id": "g:sheet-002.cs:3",
+    "payload": {
+      "context": {
+        "parentUnitId": "g:sheet-002.cs:s2",
+        "prefix": "sheet-002.cs.html › Sloupový ventilátor Breeze › Technické parametry › Elektrické parametry"
+      },
+      "ordinal": 0,
+      "paramsHash": "sha256:36d3feae636ee4bae4c7c754e63e33a63a764b8f1e0975a67d35e097bf6beed9",
+      "strategy": "fixed-tokens",
+      "tokenCount": 57
+    },
+    "spans": [
+      {
+        "end": 121,
+        "start": 0,
+        "unit": "g:sheet-002.cs:s2"
+      }
+    ],
+    "type": "Chunk",
+    "unit": "g:sheet-002.cs:s2"
+  },
+  {
+    "id": "g:sheet-002.cs:4",
+    "payload": {
+      "context": {
+        "parentUnitId": "g:sheet-002.cs:s3",
+        "prefix": "sheet-002.cs.html › Sloupový ventilátor Breeze › Technické parametry › Rozměry a hmotnost"
+      },
+      "ordinal": 0,
+      "paramsHash": "sha256:36d3feae636ee4bae4c7c754e63e33a63a764b8f1e0975a67d35e097bf6beed9",
+      "strategy": "fixed-tokens",
+      "tokenCount": 34
+    },
+    "spans": [
+      {
+        "end": 71,
+        "start": 0,
+        "unit": "g:sheet-002.cs:s3"
+      }
+    ],
+    "type": "Chunk",
+    "unit": "g:sheet-002.cs:s3"
+  },
+  {
+    "id": "g:sheet-002.cs:5",
+    "payload": {
+      "context": {
+        "parentUnitId": "g:sheet-002.cs:s4",
+        "prefix": "sheet-002.cs.html › Sloupový ventilátor Breeze › Údržba"
+      },
+      "ordinal": 0,
+      "paramsHash": "sha256:36d3feae636ee4bae4c7c754e63e33a63a764b8f1e0975a67d35e097bf6beed9",
+      "strategy": "fixed-tokens",
+      "tokenCount": 74
+    },
+    "spans": [
+      {
+        "end": 151,
+        "start": 0,
+        "unit": "g:sheet-002.cs:s4"
+      }
+    ],
+    "type": "Chunk",
+    "unit": "g:sheet-002.cs:s4"
+  },
+  {
+    "id": "g:sheet-002.cs:6",
+    "payload": {
+      "context": {
+        "parentUnitId": "g:sheet-002.cs:s5",
+        "prefix": "sheet-002.cs.html › Sloupový ventilátor Breeze › Záruka"
+      },
+      "ordinal": 0,
+      "paramsHash": "sha256:36d3feae636ee4bae4c7c754e63e33a63a764b8f1e0975a67d35e097bf6beed9",
+      "strategy": "fixed-tokens",
+      "tokenCount": 72
+    },
+    "spans": [
+      {
+        "end": 177,
+        "start": 0,
+        "unit": "g:sheet-002.cs:s5"
+      }
+    ],
+    "type": "Chunk",
+    "unit": "g:sheet-002.cs:s5"
+  }
+]

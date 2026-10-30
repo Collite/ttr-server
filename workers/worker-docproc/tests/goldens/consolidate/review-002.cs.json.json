@@ -1,0 +1,108 @@
+[
+  {
+    "id": "g:review-002.cs:0",
+    "payload": {
+      "attributes": {
+        "body": "Koupil jsem si ventilátor Breeze do ložnice a je to zklamání. Hrozně hučí, v noci se u toho nedá spát 😤 Breeze bych nikomu nedoporučil, vracim ho zpátky. Škoda, vypadá hezky a za ty penize bych čekal víc.",
+        "customer": {
+          "qname": "C-31102"
+        },
+        "item": {
+          "qname": "HL-2040"
+        },
+        "rating": 1,
+        "recorded_at": "2026-08-03T21:05:00Z",
+        "reviewed_on": "2026-08-03",
+        "sentiment": "negative",
+        "title": "Hrozně hlučnej"
+      },
+      "consolidationRun": "consolidate-review-review-002.cs.json/1",
+      "evidence": [
+        {
+          "annotationId": 300,
+          "role": "creates"
+        }
+      ],
+      "modifiers": {
+        "temporal_context": "current",
+        "verification": "verified_purchase"
+      }
+    },
+    "spans": [],
+    "type": "Record.review",
+    "unit": "g:review-002.cs:document"
+  },
+  {
+    "id": "g:review-002.cs:1",
+    "payload": {
+      "chosen": "R-2040-01",
+      "decider": "consolidate/key",
+      "factors": {
+        "identity": "known",
+        "nature": "occurrence",
+        "recordEvidence": [
+          300
+        ],
+        "recordType": "Record.review",
+        "subjectId": "HL-2040"
+      },
+      "score": 1
+    },
+    "spans": [],
+    "type": "Decision",
+    "unit": "g:review-002.cs:document"
+  },
+  {
+    "id": "g:review-002.cs:2",
+    "payload": {
+      "attributes": {
+        "body": "Po dvou týdnech používání musím říct, že ventilátoru Breeze nemám moc co vytknout. Noční režim je opravdu tichý a časovač funguje. Jediné, co mě štve, je lehoučký dálkový ovladač, který pořád hledám pod polštářem.",
+        "customer": {
+          "qname": "C-31560"
+        },
+        "item": {
+          "qname": "HL-2040"
+        },
+        "rating": 4,
+        "recorded_at": "2026-08-19T06:30:00Z",
+        "reviewed_on": "2026-08-19",
+        "sentiment": "positive",
+        "title": "Po dvou týdnech spokojenost"
+      },
+      "consolidationRun": "consolidate-review-review-002.cs.json/1",
+      "evidence": [
+        {
+          "annotationId": 301,
+          "role": "creates"
+        }
+      ],
+      "modifiers": {
+        "temporal_context": "current",
+        "verification": "verified_purchase"
+      }
+    },
+    "spans": [],
+    "type": "Record.review",
+    "unit": "g:review-002.cs:document"
+  },
+  {
+    "id": "g:review-002.cs:3",
+    "payload": {
+      "chosen": "R-2040-02",
+      "decider": "consolidate/key",
+      "factors": {
+        "identity": "known",
+        "nature": "occurrence",
+        "recordEvidence": [
+          301
+        ],
+        "recordType": "Record.review",
+        "subjectId": "HL-2040"
+      },
+      "score": 1
+    },
+    "spans": [],
+    "type": "Decision",
+    "unit": "g:review-002.cs:document"
+  }
+]

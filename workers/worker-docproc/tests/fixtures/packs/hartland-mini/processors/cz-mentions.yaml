@@ -1,0 +1,22 @@
+family: cz-mentions
+version: 1
+kind: nlp-pipeline
+host: docproc
+role: primary
+mirror_of: llm-mentions
+description: >-
+  Item mentions from the gazetteer (EN and CZ, lemma-aware). The primary of the mentor pair with llm-mentions, started
+  in phase MIRROR_PRIMARY_LLM_MENTOR (P4 S4.3): this family's mentions are the active ones.
+graph:
+  unit: section
+  when: "SectionKind.kind in [review_body, claim_body]"
+  consumes: [Section, SectionKind]
+  produces: ["Mention[item]"]
+engine:
+  pipeline: hartland-mini-mentions
+  lane: default
+  gazetteers: [gazetteers/items.tsv]
+  kinds: [item]
+post_conditions: [span_within_unit]
+measurement: { golden_set: mini-gold-v1, gates: { min_f1_span: 0.9 } }
+budget: { timeout_s: 30, retries: 2 }

@@ -1,0 +1,82 @@
+[
+  {
+    "id": "g:review-001.en:0",
+    "payload": {
+      "attributes": {
+        "body": "I bought the Aurora Desk Lamp for my home office. The light itself is pleasant, but at the lowest brightness step the panel flickers, which I notice within a few minutes of reading. At the higher steps it is fine. For the price I expected better, and I am returning it.",
+        "customer": {
+          "qname": "C-20417"
+        },
+        "item": {
+          "qname": "HL-1001"
+        },
+        "rating": 2,
+        "recorded_at": "2026-09-14T08:12:00Z",
+        "reviewed_on": "2026-09-14",
+        "sentiment": "negative",
+        "title": "Flickers at the lowest setting"
+      },
+      "modifiers": {
+        "temporal_context": "current",
+        "verification": "verified_purchase"
+      },
+      "spans": [
+        {
+          "end": 301,
+          "start": 32,
+          "unitId": "g:review-001.en:s0"
+        }
+      ],
+      "verbatim": "I bought the Aurora Desk Lamp for my home office. The light itself is pleasant, but at the lowest brightness step the panel flickers, which I notice within a few minutes of reading. At the higher steps it is fine. For the price I expected better, and I am returning it."
+    },
+    "spans": [
+      {
+        "end": 301,
+        "start": 32,
+        "unit": "g:review-001.en:s0"
+      }
+    ],
+    "type": "Statement[review]",
+    "unit": "g:review-001.en:s0"
+  },
+  {
+    "id": "g:review-001.en:1",
+    "payload": {
+      "attributes": {
+        "body": "After two weeks of evenings at my desk the Aurora lamp has replaced my old halogen one completely. The warm setting is easy on the eyes and the USB-C port in the base keeps my phone charged. I plan to buy a second Aurora Desk Lamp for the bedroom.",
+        "customer": {
+          "qname": "C-20988"
+        },
+        "item": {
+          "qname": "HL-1001"
+        },
+        "rating": 5,
+        "recorded_at": "2026-09-28T19:40:00Z",
+        "reviewed_on": "2026-09-28",
+        "sentiment": "positive",
+        "title": "Great light for late work"
+      },
+      "modifiers": {
+        "temporal_context": "current",
+        "verification": "unverified"
+      },
+      "spans": [
+        {
+          "end": 274,
+          "start": 27,
+          "unitId": "g:review-001.en:s1"
+        }
+      ],
+      "verbatim": "After two weeks of evenings at my desk the Aurora lamp has replaced my old halogen one completely. The warm setting is easy on the eyes and the USB-C port in the base keeps my phone charged. I plan to buy a second Aurora Desk Lamp for the bedroom."
+    },
+    "spans": [
+      {
+        "end": 274,
+        "start": 27,
+        "unit": "g:review-001.en:s1"
+      }
+    ],
+    "type": "Statement[review]",
+    "unit": "g:review-001.en:s1"
+  }
+]

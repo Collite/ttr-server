@@ -25,6 +25,8 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
@@ -72,6 +74,18 @@ class PgmqBus:
         self._conninfo = conninfo
         self._conn: psycopg.Connection[Any] | None = None
 
+    @contextmanager
+    def transaction(self) -> Iterator[psycopg.Connection[Any]]:
+        """Separate connection: heartbeat/probe activity must never join completion's transaction."""
+        with psycopg.connect(self._conninfo) as conn:
+            yield conn
+
+    def ready(self) -> bool:
+        try:
+            return self._c(None).execute("SELECT 1").fetchone() == (1,)
+        except psycopg.Error:
+            return False
+
     def close(self) -> None:
         if self._conn is not None:
             self._conn.close()
@@ -107,9 +121,13 @@ class PgmqBus:
         self, family: str, vt_s: int, qty: int = 1, conn: psycopg.Connection[Any] | None = None
     ) -> list[Message]:
         """The ``_hi`` lane first; ``work_<family>`` only when it yields nothing."""
-        return self.fetch(work_queue(family, hi=True), vt_s, qty, conn) or self.fetch(
-            work_queue(family), vt_s, qty, conn
-        )
+        try:
+            # A savepoint keeps an explicitly supplied transaction usable after a missing lane.
+            with self._c(conn).transaction():
+                high = self.fetch(work_queue(family, hi=True), vt_s, qty, conn)
+        except psycopg.errors.UndefinedTable:
+            high = []
+        return high or self.fetch(work_queue(family), vt_s, qty, conn)
 
     def extend(self, msg: Message, vt_s: int, conn: psycopg.Connection[Any] | None = None) -> bool:
         """The heartbeat: ``msg`` stays invisible until now + ``vt_s``. False when it is gone."""

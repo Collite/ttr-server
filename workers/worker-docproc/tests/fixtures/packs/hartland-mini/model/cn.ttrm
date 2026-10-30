@@ -1,0 +1,32 @@
+// hartland-mini (DX PX T2) — copied from ttr-core `packages/kotlin/ttr-concept/src/test/resources/worlds/hartland-dx/cn.ttrm`
+// at ttr-core master 7205b101. The ttr-core world stays the renderer's golden world: change it there, then re-copy.
+// DX-P0 S0.3 — the conceptual slice the extraction types render from, in Hartland's names and labels (`Item` /
+// `Customer` as ttr-demo's model/cn/concepts.ttrm spells them). `Review`, `Claim` and `ProductSheet` are the DX slice's
+// own: Hartland's cn package has no review, claim or product sheet yet. A quality tagged "modifier" is a MODIFIER of its
+// bearer's statements (the extraction renderer's rule — no grammar change): it qualifies the assertion (is the purchase
+// verified? is the experience current?) rather than describing the thing.
+model cn
+
+// ---- kinds ----
+def kind Item         { label: { en: "Product", cs: "Produkt" } }
+def kind Customer     { label: { en: "Customer", cs: "Zákazník" } }
+def kind ProductSheet { label: { en: "Product sheet", cs: "Produktový list" } }
+
+// ---- events ----
+def event Review {
+    label: { en: "Product review", cs: "Recenze produktu" },
+    involves: [Customer as reviewer, Item],
+    period: { at: reviewed_on },
+    qualities: [rating, sentiment, verification, temporal_context, reviewed_on]
+}
+def event Claim {
+    label: { en: "Warranty claim", cs: "Reklamace" },
+    involves: [Customer as claimant, Item],
+    period: { at: claimed_on },
+    qualities: [defect, claimed_amount, claim_status, certainty, claimed_on]
+}
+
+// ---- phases ----
+def phase NegativeReview { of: Review, label: { en: "Negative review", cs: "Negativní recenze" }, definition: """sentiment = 'negative'""" }
+def phase VerifiedReview { of: Review, label: { en: "Verified review", cs: "Ověřená recenze" }, definition: """verification = 'verified_purchase'""" }
+def phase OpenClaim      { of: Claim, label: { en: "Open claim", cs: "Otevřená reklamace" }, definition: """claim_status = 'opened'""" }

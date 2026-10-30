@@ -1,0 +1,28 @@
+{
+  "$id": "ttr:types/UnitDiff",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "A unit compared with the previous version of its document (diff).",
+  "properties": {
+    "previousUnitId": {
+      "type": "integer"
+    },
+    "similarity": {
+      "maximum": 1,
+      "minimum": 0,
+      "type": "number"
+    },
+    "status": {
+      "enum": [
+        "identical",
+        "modified",
+        "new"
+      ]
+    }
+  },
+  "required": [
+    "status"
+  ],
+  "title": "UnitDiff",
+  "type": "object"
+}

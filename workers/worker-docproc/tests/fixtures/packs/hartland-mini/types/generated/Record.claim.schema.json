@@ -1,0 +1,229 @@
+{
+  "$defs": {
+    "Conflict": {
+      "additionalProperties": false,
+      "description": "Incompatible values for the same time, kept with a marker for review.",
+      "properties": {
+        "attribute": {
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "open",
+            "resolved"
+          ],
+          "type": "string"
+        },
+        "values": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "annotationIds": {
+                "items": {
+                  "type": "integer"
+                },
+                "minItems": 1,
+                "type": "array"
+              },
+              "value": {}
+            },
+            "required": [
+              "annotationIds",
+              "value"
+            ],
+            "type": "object"
+          },
+          "minItems": 2,
+          "type": "array"
+        }
+      },
+      "required": [
+        "attribute",
+        "status",
+        "values"
+      ],
+      "type": "object"
+    },
+    "Evidence": {
+      "additionalProperties": false,
+      "properties": {
+        "annotationId": {
+          "type": "integer"
+        },
+        "role": {
+          "enum": [
+            "creates",
+            "confirms",
+            "restates",
+            "updates",
+            "contradicts",
+            "refutes"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "annotationId",
+        "role"
+      ],
+      "type": "object"
+    },
+    "HistoryEntry": {
+      "additionalProperties": false,
+      "description": "A superseded value (valid-time): the record's earlier value of one attribute or modifier.",
+      "properties": {
+        "annotationId": {
+          "type": "integer"
+        },
+        "asOf": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "attribute": {
+          "type": "string"
+        },
+        "consolidationRun": {
+          "type": "string"
+        },
+        "value": {}
+      },
+      "required": [
+        "annotationId",
+        "attribute",
+        "consolidationRun",
+        "value"
+      ],
+      "type": "object"
+    },
+    "Ref": {
+      "additionalProperties": false,
+      "description": "A reference to a row of the referenced entity: its qname (key or code as the source names it) and the surface it was read from.",
+      "properties": {
+        "display": {
+          "type": "string"
+        },
+        "qname": {
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "qname"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "ttr:types/Record.claim",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "A warranty claim on a product.",
+  "properties": {
+    "attributes": {
+      "additionalProperties": false,
+      "properties": {
+        "claim_status": {
+          "enum": [
+            "opened",
+            "accepted",
+            "rejected"
+          ],
+          "type": "string",
+          "x-ttr-attribute": "er.entity.claim.claim_status"
+        },
+        "claimed_amount": {
+          "type": "number",
+          "x-ttr-attribute": "er.entity.claim.claimed_amount",
+          "x-ttr-scale": 2
+        },
+        "claimed_on": {
+          "format": "date",
+          "type": "string",
+          "x-ttr-attribute": "er.entity.claim.claimed_on"
+        },
+        "customer": {
+          "$ref": "#/$defs/Ref",
+          "x-ttr-attribute": "er.entity.claim.customer",
+          "x-ttr-references": "er.entity.customer"
+        },
+        "defect": {
+          "type": "string",
+          "x-ttr-attribute": "er.entity.claim.defect"
+        },
+        "item": {
+          "$ref": "#/$defs/Ref",
+          "x-ttr-attribute": "er.entity.claim.item",
+          "x-ttr-references": "er.entity.item"
+        }
+      },
+      "required": [
+        "claim_status",
+        "claimed_amount",
+        "claimed_on",
+        "customer",
+        "defect",
+        "item"
+      ],
+      "type": "object"
+    },
+    "concept": {
+      "enum": [
+        "cn.Claim",
+        "cn.OpenClaim"
+      ],
+      "type": "string"
+    },
+    "conflicts": {
+      "items": {
+        "$ref": "#/$defs/Conflict"
+      },
+      "type": "array"
+    },
+    "consolidationRun": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "evidence": {
+      "items": {
+        "$ref": "#/$defs/Evidence"
+      },
+      "minItems": 1,
+      "type": "array"
+    },
+    "history": {
+      "items": {
+        "$ref": "#/$defs/HistoryEntry"
+      },
+      "type": "array"
+    },
+    "modifiers": {
+      "additionalProperties": false,
+      "properties": {
+        "certainty": {
+          "enum": [
+            "confirmed",
+            "suspected",
+            "ruled_out"
+          ],
+          "type": "string",
+          "x-ttr-attribute": "er.entity.claim.certainty",
+          "x-ttr-quality": "cn.certainty"
+        }
+      },
+      "required": [
+        "certainty"
+      ],
+      "type": "object"
+    }
+  },
+  "required": [
+    "attributes",
+    "consolidationRun",
+    "evidence"
+  ],
+  "title": "Record.claim",
+  "type": "object",
+  "x-ttr-concept": "cn.Claim",
+  "x-ttr-entity": "er.entity.claim",
+  "x-ttr-feedsGold": true,
+  "x-ttr-kind": "record"
+}

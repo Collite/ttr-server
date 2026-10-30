@@ -1,0 +1,110 @@
+[
+  {
+    "id": "g:claim-002.en:0",
+    "payload": {
+      "candidates": [
+        {
+          "code": "HL-3310",
+          "label": "Pulse Wireless Headphones",
+          "score": 0.95,
+          "source": "lexicon",
+          "system": "cn.Item"
+        }
+      ],
+      "concept": "cn.Item",
+      "kind": "item",
+      "linkMethod": "lexicon",
+      "member": {
+        "category": "er.entity.item.product_name",
+        "display": "Pulse Wireless Headphones",
+        "id": "HL-3310"
+      },
+      "surface": "Pulse Wireless Headphones"
+    },
+    "spans": [
+      {
+        "end": 83,
+        "start": 58,
+        "unit": "g:claim-002.en:s1"
+      }
+    ],
+    "type": "Mention",
+    "unit": "g:claim-002.en:s1"
+  },
+  {
+    "id": "g:claim-002.en:1",
+    "payload": {
+      "chosen": "HL-3310",
+      "decider": "link/rule",
+      "factors": {
+        "annotationId": 100,
+        "candidates": 1,
+        "margin": null
+      },
+      "score": 0.95
+    },
+    "spans": [
+      {
+        "end": 83,
+        "start": 58,
+        "unit": "g:claim-002.en:s1"
+      }
+    ],
+    "type": "Decision",
+    "unit": "g:claim-002.en:s1"
+  },
+  {
+    "id": "g:claim-002.en:2",
+    "payload": {
+      "candidates": [
+        {
+          "code": "HL-3310",
+          "label": "Pulse Wireless Headphones",
+          "score": 0.95,
+          "source": "lexicon",
+          "system": "cn.Item"
+        }
+      ],
+      "concept": "cn.Item",
+      "kind": "item",
+      "linkMethod": "lexicon",
+      "member": {
+        "category": "er.entity.item.product_name",
+        "display": "Pulse Wireless Headphones",
+        "id": "HL-3310"
+      },
+      "surface": "Pulse headphones"
+    },
+    "spans": [
+      {
+        "end": 107,
+        "start": 91,
+        "unit": "g:claim-002.en:s3"
+      }
+    ],
+    "type": "Mention",
+    "unit": "g:claim-002.en:s3"
+  },
+  {
+    "id": "g:claim-002.en:3",
+    "payload": {
+      "chosen": "HL-3310",
+      "decider": "link/rule",
+      "factors": {
+        "annotationId": 101,
+        "candidates": 1,
+        "margin": null
+      },
+      "score": 0.95
+    },
+    "spans": [
+      {
+        "end": 107,
+        "start": 91,
+        "unit": "g:claim-002.en:s3"
+      }
+    ],
+    "type": "Decision",
+    "unit": "g:claim-002.en:s3"
+  }
+]

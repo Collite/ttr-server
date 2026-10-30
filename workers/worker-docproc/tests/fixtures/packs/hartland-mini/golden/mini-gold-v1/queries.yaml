@@ -1,0 +1,69 @@
+# Retrieval questions for P1 S1.3's RetrievalBenchmark arms. `expect.units` are golden section ids (<doc>.expected.json);
+# `expect.concepts` are what a resolver would hand getContext as conceptIds. `tags`: concept-walk = only the concept
+# walk can answer it (the question's word for the concept is not in the text); colloquial = everyday Czech.
+version: 1
+queries:
+  - id: q01
+    lang: en
+    text: How bright is the Aurora Desk Lamp?
+    mart: hartland-public
+    expect: { units: ["g:sheet-001.en:s2"], concepts: [cn.Item] }
+  - id: q02
+    lang: en
+    text: Can I charge my phone from the desk lamp?
+    mart: hartland-public
+    expect: { units: ["g:sheet-001.en:s1"], concepts: [cn.Item] }
+  - id: q03
+    lang: en
+    text: How long is the warranty on the lamp's LED panel?
+    mart: hartland-public
+    expect: { units: ["g:sheet-001.en:s7", "g:sheet-001.en:s5"], concepts: [cn.Item] }
+  - id: q04
+    lang: en
+    text: Does the Aurora lamp flicker?
+    mart: hartland-public
+    expect: { units: ["g:review-001.en:s0", "g:sheet-001.en:s5"], concepts: [cn.Item] }
+  - id: q05
+    lang: en
+    text: Which reviews of the desk lamp are negative?
+    mart: hartland-public
+    tags: [concept-walk]
+    expect: { units: ["g:review-001.en:s0"], concepts: [cn.NegativeReview, cn.Item] }
+  - id: q06
+    lang: cs
+    text: Jak hlučný je ventilátor Breeze v noci?
+    mart: hartland-public
+    expect: { units: ["g:sheet-002.cs:s2", "g:sheet-002.cs:s1"], concepts: [cn.Item] }
+  - id: q07
+    lang: cs
+    text: Kolik váží sloupový ventilátor Breeze?
+    mart: hartland-public
+    expect: { units: ["g:sheet-002.cs:s3"], concepts: [cn.Item] }
+  - id: q08
+    lang: cs
+    text: je ten větrák fakt tak hlučnej?
+    mart: hartland-public
+    tags: [colloquial]
+    expect: { units: ["g:review-002.cs:s0", "g:sheet-002.cs:s2"], concepts: [cn.Item] }
+  - id: q09
+    lang: cs
+    text: vyplatí se ten Breeze, nebo je to šunt?
+    mart: hartland-public
+    tags: [colloquial]
+    expect: { units: ["g:review-002.cs:s0", "g:review-002.cs:s1"], concepts: [cn.Review] }
+  - id: q10
+    lang: cs
+    text: Proč zákaznice reklamuje rychlovarnou konvici?
+    mart: hartland-claims
+    expect: { units: ["g:claim-001.cs:s0"], concepts: [cn.Claim] }
+  - id: q11
+    lang: en
+    text: What is wrong with the Pulse headphones in the warranty claim?
+    mart: hartland-claims
+    expect: { units: ["g:claim-002.en:s1", "g:claim-002.en:s3"], concepts: [cn.Claim] }
+  - id: q12
+    lang: en
+    text: Which warranty claims are still open?
+    mart: hartland-claims
+    tags: [concept-walk]
+    expect: { units: ["g:claim-001.cs:s0", "g:claim-002.en:s1"], concepts: [cn.OpenClaim] }

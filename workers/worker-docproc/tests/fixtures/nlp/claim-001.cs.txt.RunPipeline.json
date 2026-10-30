@@ -1,0 +1,4450 @@
+[
+  {
+    "language": "cs",
+    "response": {
+      "document": {
+        "annotationSets": [
+          {
+            "annotations": [
+              {
+                "charEnd": 9,
+                "features": {
+                  "dep_head": {
+                    "numberValue": 9.0
+                  },
+                  "dep_relation": {
+                    "stringValue": "nsubj"
+                  },
+                  "engine": {
+                    "stringValue": "stanza"
+                  },
+                  "feats.Case": {
+                    "stringValue": "Nom"
+                  },
+                  "feats.Gender": {
+                    "stringValue": "Fem"
+                  },
+                  "feats.Number": {
+                    "stringValue": "Sing"
+                  },
+                  "lemma": {
+                    "stringValue": "reklamace"
+                  },
+                  "text": {
+                    "stringValue": "Reklamace"
+                  },
+                  "upos": {
+                    "stringValue": "NOUN"
+                  },
+                  "xpos": {
+                    "stringValue": "NNFS1-----A----"
+                  }
+                },
+                "type": "Token"
+              },
+              {
+                "charEnd": 167,
+                "features": {
+                  "engine": {
+                    "stringValue": "stanza"
+                  }
+                },
+                "id": "111",
+                "type": "Sentence"
+              },
+              {
+                "charEnd": 11,
+                "charStart": 10,
+                "features": {
+                  "dep_head": {
+                    "numberValue": 4.0
+                  },
+                  "dep_relation": {
+                    "stringValue": "punct"
+                  },
+                  "engine": {
+                    "stringValue": "stanza"
+                  },
+                  "lemma": {
+                    "stringValue": "–"
+                  },
+                  "text": {
+                    "stringValue": "–"
+                  },
+                  "upos": {
+                    "stringValue": "PUNCT"
+                  },
+                  "xpos": {
+                    "stringValue": "Z:-------------"
+                  }
+                },
+                "id": "1",
+                "type": "Token"
+              },
+              {
+                "charEnd": 23,
+                "charStart": 12,
+                "features": {
+                  "dep_head": {
+                    "numberValue": 4.0
+                  },
+                  "dep_relation": {
+                    "stringValue": "amod"
+                  },
+                  "engine": {
+                    "stringValue": "stanza"
+                  },
+                  "feats.Case": {
+                    "stringValue": "Nom"
+                  },
+                  "feats.Degree": {
+                    "stringValue": "Pos"
+                  },
+                  "feats.Gender": {
+                    "stringValue": "Fem"
+                  },
+                  "feats.Number": {
+                    "stringValue": "Sing"
+                  },
+                  "feats.Polarity": {
+                    "stringValue": "Pos"
+                  },
+                  "lemma": {
+                    "stringValue": "rychlovarný"
+                  },
+                  "text": {
+                    "stringValue": "rychlovarná"
+                  },
+                  "upos": {
+                    "stringValue": "ADJ"
+                  },
+                  "xpos": {
+                    "stringValue": "AAFS1----1A----"
+                  }
+                },
+                "id": "2",
+                "type": "Token"
+              },
+              {
+                "charEnd": 38,
+                "charStart": 12,
+                "features": {
+                  "concept": {
+                    "stringValue": "cn.Item"
+                  },
+                  "majorType": {
+                    "stringValue": "item"
+                  },
+                  "matching": {
+                    "stringValue": "ci"
+                  },
+                  "source": {
+                    "stringValue": "items"
+                  }
+                },
+                "id": "118",
+                "type": "Lookup"
+              },
+              {
+                "charEnd": 38,
+                "charStart": 12,
+                "features": {
+                  "concept": {
+                    "stringValue": "cn.Item"
+                  },
+                  "majorType": {
+                    "stringValue": "item"
+                  },
+                  "matching": {
+                    "stringValue": "lemma"
+                  },
+                  "source": {
+                    "stringValue": "item-lemmas"
+                  }
+                },
+                "id": "119",
+                "type": "Lookup"
+              },
+              {
+                "charEnd": 31,
+                "charStart": 24,
+                "features": {
+                  "dep_head": {
+                    "numberValue": 1.0
+                  },
+                  "dep_relation": {
+                    "stringValue": "appos"
+                  },
+                  "engine": {
+                    "stringValue": "stanza"
+                  },
+                  "feats.Case": {
+                    "stringValue": "Nom"
+                  },
+                  "feats.Gender": {
+                    "stringValue": "Fem"
+                  },
+                  "feats.Number": {
+                    "stringValue": "Sing"
+                  },
+                  "lemma": {
+                    "stringValue": "konvice"
+                  },
+                  "text": {
+                    "stringValue": "konvice"
+                  },
+                  "upos": {
+                    "stringValue": "NOUN"
+                  },
+                  "xpos": {
+                    "stringValue": "NNFS1-----A----"
+                  }
+                },
+                "id": "3",
+                "type": "Token"
+              },
+              {
+                "charEnd": 38,
+                "charStart": 32,
+                "features": {
+                  "dep_head": {
+                    "numberValue": 4.0
+                  },
+                  "dep_relation": {
+                    "stringValue": "nmod"
+                  },
+                  "engine": {
+                    "stringValue": "stanza"
+                  },
+                  "feats.Animacy": {
+                    "stringValue": "Inan"
+                  },
+                  "feats.Case": {
+                    "stringValue": "Nom"
+                  },
+                  "feats.Gender": {
+                    "stringValue": "Masc"
+                  },
+                  "feats.Number": {
+                    "stringValue": "Sing"
+                  },
+                  "lemma": {
+                    "stringValue": "summit"
+                  },
+                  "text": {
+                    "stringValue": "Summit"
+                  },
+                  "upos": {
+                    "stringValue": "NOUN"
+                  },
+                  "xpos": {
+                    "stringValue": "NNIS1-----A----"
+                  }
+                },
+                "id": "4",
+                "type": "Token"
+              },
+              {
+                "charEnd": 44,
+                "charStart": 39,
+                "features": {
+                  "dep_head": {
+                    "numberValue": 7.0
+                  },
+                  "dep_relation": {
+                    "stringValue": "amod"
+                  },
+                  "engine": {
+                    "stringValue": "stanza"
+                  },
+                  "feats.Animacy": {
+                    "stringValue": "Inan"
+                  },
+                  "feats.Case": {
+                    "stringValue": "Nom"
+                  },
+                  "feats.Degree": {
+                    "stringValue": "Pos"
+                  },
+                  "feats.Gender": {
+                    "stringValue": "Masc"
+                  },
+                  "feats.Number": {
+                    "stringValue": "Sing"
+                  },
+                  "feats.Polarity": {
+                    "stringValue": "Pos"
+                  },
+                  "lemma": {
+                    "stringValue": "dobrý"
+                  },
+                  "text": {
+                    "stringValue": "Dobrý"
+                  },
+                  "upos": {
+                    "stringValue": "ADJ"
+                  },
+                  "xpos": {
+                    "stringValue": "AAIS4----1A----"
+                  }
+                },
+                "id": "5",
+                "type": "Token"
+              },
+              {
+                "charEnd": 48,
+                "charStart": 45,
+                "features": {
+                  "dep_head": {
+                    "numberValue": 5.0
+                  },
+                  "dep_relation": {
+                    "stringValue": "nmod"
+                  },
+                  "engine": {
+                    "stringValue": "stanza"
+                  },
+                  "feats.Animacy": {
+                    "stringValue": "Inan"
+                  },
+                  "feats.Case": {
+                    "stringValue": "Nom"
+                  },
+                  "feats.Gender": {
+                    "stringValue": "Masc"
+                  },
+                  "feats.Number": {
+                    "stringValue": "Sing"
+                  },
+                  "lemma": {
+                    "stringValue": "den"
+                  },
+                  "text": {
+                    "stringValue": "den"
+                  },
+                  "upos": {
+                    "stringValue": "NOUN"
+                  },
+                  "xpos": {
+                    "stringValue": "NNIS1-----A----"
+                  }
+                },
+                "id": "6",
+                "type": "Token"
+              },
+              {
+                "charEnd": 49,
+                "charStart": 48,
+                "features": {
+                  "dep_head": {
+                    "numberValue": 4.0
+                  },
+                  "dep_relation": {
+                    "stringValue": "punct"
+                  },
+                  "engine": {
+                    "stringValue": "stanza"
+                  },
+                  "lemma": {
+                    "stringValue": ","
+                  },
+                  "text": {
+                    "stringValue": ","
+                  },
+                  "upos": {
+                    "stringValue": "PUNCT"
+                  },
+                  "xpos": {
+                    "stringValue": "Z:-------------"
+                  }
+                },
+                "id": "7",
+                "type": "Token"
+              },
+              {
+                "charEnd": 59,
+                "charStart": 50,
+                "features": {
+                  "dep_head": {
+                    "numberValue": 0.0
+                  },
+                  "dep_relation": {
+                    "stringValue": "root"
+                  },
+                  "engine": {
+                    "stringValue": "stanza"
+                  },
+                  "feats.Aspect": {
+                    "stringValue": "Imp"
+                  },
+                  "feats.Mood": {
+                    "stringValue": "Ind"
+                  },
+                  "feats.Number": {
+                    "stringValue": "Sing"
+                  },
+                  "feats.Person": {
+                    "stringValue": "1"
+                  },
+                  "feats.Polarity": {
+                    "stringValue": "Pos"
+                  },
+                  "feats.Tense": {
+                    "stringValue": "Pres"
+                  },
+                  "feats.VerbForm": {
+                    "stringValue": "Fin"
+                  },
+                  "feats.Voice": {
+                    "stringValue": "Act"
+                  },
+                  "lemma": {
+                    "stringValue": "reklamovat"
+                  },
+                  "text": {
+                    "stringValue": "reklamuji"
+                  },
+                  "upos": {
+                    "stringValue": "VERB"
+                  },
+                  "xpos": {
+                    "stringValue": "VB-S---1P-AAI--"
+                  }
+                },
+                "id": "8",
+                "type": "Token"
+              },
+              {
+                "charEnd": 72,
+                "charStart": 60,
+                "features": {
+                  "dep_head": {
+                    "numberValue": 11.0
+                  },
+                  "dep_relation": {
+                    "stringValue": "amod"
+                  },
+                  "engine": {
+                    "stringValue": "stanza"
+                  },
+                  "feats.Case": {
+                    "stringValue": "Acc"
+                  },
+                  "feats.Degree": {
+                    "stringValue": "Pos"
+                  },
+                  "feats.Gender": {
+                    "stringValue": "Fem"
+                  },
+                  "feats.Number": {
+                    "stringValue": "Sing"
+                  },
+                  "feats.Polarity": {
+                    "stringValue": "Pos"
+                  },
+                  "lemma": {
+                    "stringValue": "rychlovarný"
+                  },
+                  "text": {
+                    "stringValue": "rychlovarnou"
+                  },
+                  "upos": {
+                    "stringValue": "ADJ"
+                  },
+                  "xpos": {
+                    "stringValue": "AAFS4----1A----"
+                  }
+                },
+                "id": "9",
+                "type": "Token"
+              },
+              {
+                "charEnd": 87,
+                "charStart": 60,
+                "features": {
+                  "concept": {
+                    "stringValue": "cn.Item"
+                  },
+                  "majorType": {
+                    "stringValue": "item"
+                  },
+                  "matching": {
+                    "stringValue": "lemma"
+                  },
+                  "source": {
+                    "stringValue": "item-lemmas"
+                  }
+                },
+                "id": "120",
+                "type": "Lookup"
+              },
+              {
+                "charEnd": 80,
+                "charStart": 73,
+                "features": {
+                  "dep_head": {
+                    "numberValue": 9.0
+                  },
+                  "dep_relation": {
+                    "stringValue": "obj"
+                  },
+                  "engine": {
+                    "stringValue": "stanza"
+                  },
+                  "feats.Case": {
+                    "stringValue": "Acc"
+                  },
+                  "feats.Gender": {
+                    "stringValue": "Fem"
+                  },
+                  "feats.Number": {
+                    "stringValue": "Sing"
+                  },
+                  "lemma": {
+                    "stringValue": "konvice"
+                  },
+                  "text": {
+                    "stringValue": "konvici"
+                  },
+                  "upos": {
+                    "stringValue": "NOUN"
+                  },
+                  "xpos": {
+                    "stringValue": "NNFS4-----A----"
+                  }
+                },
+                "id": "10",
+                "type": "Token"
+              },
+              {
+                "charEnd": 87,
+                "charStart": 81,
+                "features": {
+                  "dep_head": {
+                    "numberValue": 11.0
+                  },
+                  "dep_relation": {
+                    "stringValue": "nmod"
+                  },
+                  "engine": {
+                    "stringValue": "stanza"
+                  },
+                  "feats.Animacy": {
+                    "stringValue": "Inan"
+                  },
+                  "feats.Case": {
+                    "stringValue": "Nom"
+                  },
+                  "feats.Gender": {
+                    "stringValue": "Masc"
+                  },
+                  "feats.Number": {
+                    "stringValue": "Sing"
+                  },
+                  "lemma": {
+                    "stringValue": "summit"
+                  },
+                  "text": {
+                    "stringValue": "Summit"
+                  },
+                  "upos": {
+                    "stringValue": "NOUN"
+                  },
+                  "xpos": {
+                    "stringValue": "NNIS1-----A----"
+                  }
+                },
+                "id": "11",
+                "type": "Token"
+              },
+              {
+                "charEnd": 89,
+                "charStart": 88,
+                "features": {
+                  "dep_head": {
+                    "numberValue": 14.0
+                  },
+                  "dep_relation": {
+                    "stringValue": "punct"
+                  },
+                  "engine": {
+                    "stringValue": "stanza"
+                  },
+                  "lemma": {
+                    "stringValue": "("
+                  },
+                  "text": {
+                    "stringValue": "("
+                  },
+                  "upos": {
+                    "stringValue": "PUNCT"
+                  },
+                  "xpos": {
+                    "stringValue": "Z:-------------"
+                  }
+                },
+                "id": "12",
+                "type": "Token"
+              },
+              {
+                "charEnd": 96,
+                "charStart": 89,
+                "features": {
+                  "dep_head": {
+                    "numberValue": 11.0
+                  },
+                  "dep_relation": {
+                    "stringValue": "dep"
+                  },
+                  "engine": {
+                    "stringValue": "stanza"
+                  },
+                  "feats.Animacy": {
+                    "stringValue": "Inan"
+                  },
+                  "feats.Case": {
+                    "stringValue": "Nom"
+                  },
+                  "feats.Gender": {
+                    "stringValue": "Masc"
+                  },
+                  "feats.Number": {
+                    "stringValue": "Sing"
+                  },
+                  "lemma": {
+                    "stringValue": "produkt"
+                  },
+                  "text": {
+                    "stringValue": "produkt"
+                  },
+                  "upos": {
+                    "stringValue": "NOUN"
+                  },
+                  "xpos": {
+                    "stringValue": "NNIS1-----A----"
+                  }
+                },
+                "id": "13",
+                "type": "Token"
+              },
+              {
+                "charEnd": 99,
+                "charStart": 97,
+                "features": {
+                  "dep_head": {
+                    "numberValue": 14.0
+                  },
+                  "dep_relation": {
+                    "stringValue": "amod"
+                  },
+                  "engine": {
+                    "stringValue": "stanza"
+                  },
+                  "feats.Abbr": {
+                    "stringValue": "Yes"
+                  },
+                  "feats.Degree": {
+                    "stringValue": "Pos"
+                  },
+                  "feats.Polarity": {
+                    "stringValue": "Pos"
+                  },
+                  "lemma": {
+                    "stringValue": "hladní"
+                  },
+                  "text": {
+                    "stringValue": "HL"
+                  },
+                  "upos": {
+                    "stringValue": "ADJ"
+                  },
+                  "xpos": {
+                    "stringValue": "AAXXX----1A---b"
+                  }
+                },
+                "id": "14",
+                "type": "Token"
+              },
+              {
+                "charEnd": 100,
+                "charStart": 99,
+                "features": {
+                  "dep_head": {
+                    "numberValue": 17.0
+                  },
+                  "dep_relation": {
+                    "stringValue": "punct"
+                  },
+                  "engine": {
+                    "stringValue": "stanza"
+                  },
+                  "lemma": {
+                    "stringValue": "-"
+                  },
+                  "text": {
+                    "stringValue": "-"
+                  },
+                  "upos": {
+                    "stringValue": "PUNCT"
+                  },
+                  "xpos": {
+                    "stringValue": "Z:-------------"
+                  }
+                },
+                "id": "15",
+                "type": "Token"
+              },
+              {
+                "charEnd": 104,
+                "charStart": 100,
+                "features": {
+                  "dep_head": {
+                    "numberValue": 15.0
+                  },
+                  "dep_relation": {
+                    "stringValue": "conj"
+                  },
+                  "engine": {
+                    "stringValue": "stanza"
+                  },
+                  "feats.NumForm": {
+                    "stringValue": "Digit"
+                  },
+                  "feats.NumType": {
+                    "stringValue": "Card"
+                  },
+                  "lemma": {
+                    "stringValue": "4205"
+                  },
+                  "text": {
+                    "stringValue": "4205"
+                  },
+                  "upos": {
+                    "stringValue": "NUM"
+                  },
+                  "xpos": {
+                    "stringValue": "C=-------------"
+                  }
+                },
+                "id": "16",
+                "type": "Token"
+              },
+              {
+                "charEnd": 105,
+                "charStart": 104,
+                "features": {
+                  "dep_head": {
+                    "numberValue": 14.0
+                  },
+                  "dep_relation": {
+                    "stringValue": "punct"
+                  },
+                  "engine": {
+                    "stringValue": "stanza"
+                  },
+                  "lemma": {
+                    "stringValue": ")"
+                  },
+                  "text": {
+                    "stringValue": ")"
+                  },
+                  "upos": {
+                    "stringValue": "PUNCT"
+                  },
+                  "xpos": {
+                    "stringValue": "Z:-------------"
+                  }
+                },
+                "id": "17",
+                "type": "Token"
+              },
+              {
+                "charEnd": 106,
+                "charStart": 105,
+                "features": {
+                  "dep_head": {
+                    "numberValue": 22.0
+                  },
+                  "dep_relation": {
+                    "stringValue": "punct"
+                  },
+                  "engine": {
+                    "stringValue": "stanza"
+                  },
+                  "lemma": {
+                    "stringValue": ","
+                  },
+                  "text": {
+                    "stringValue": ","
+                  },
+                  "upos": {
+                    "stringValue": "PUNCT"
+                  },
+                  "xpos": {
+                    "stringValue": "Z:-------------"
+                  }
+                },
+                "id": "18",
+                "type": "Token"
+              },
+              {
+                "charEnd": 113,
+                "charStart": 107,
+                "features": {
+                  "dep_head": {
+                    "numberValue": 22.0
+                  },
+                  "dep_relation": {
+                    "stringValue": "obj"
+                  },
+                  "engine": {
+                    "stringValue": "stanza"
+                  },
+                  "feats.Case": {
+                    "stringValue": "Acc"
+                  },
+                  "feats.Gender": {
+                    "stringValue": "Fem"
+                  },
+                  "feats.Number": {
+                    "stringValue": "Sing"
+                  },
+                  "feats.PronType": {
+                    "stringValue": "Int,Rel"
+                  },
+                  "lemma": {
+                    "stringValue": "který"
+                  },
+                  "text": {
+                    "stringValue": "kterou"
+                  },
+                  "upos": {
+                    "stringValue": "DET"
+                  },
+                  "xpos": {
+                    "stringValue": "P4FS4----------"
+                  }
+                },
+                "id": "19",
+                "type": "Token"
+              },
+              {
+                "charEnd": 118,
+                "charStart": 114,
+                "features": {
+                  "dep_head": {
+                    "numberValue": 22.0
+                  },
+                  "dep_relation": {
+                    "stringValue": "aux"
+                  },
+                  "engine": {
+                    "stringValue": "stanza"
+                  },
+                  "feats.Aspect": {
+                    "stringValue": "Imp"
+                  },
+                  "feats.Mood": {
+                    "stringValue": "Ind"
+                  },
+                  "feats.Number": {
+                    "stringValue": "Sing"
+                  },
+                  "feats.Person": {
+                    "stringValue": "1"
+                  },
+                  "feats.Polarity": {
+                    "stringValue": "Pos"
+                  },
+                  "feats.Tense": {
+                    "stringValue": "Pres"
+                  },
+                  "feats.VerbForm": {
+                    "stringValue": "Fin"
+                  },
+                  "feats.Voice": {
+                    "stringValue": "Act"
+                  },
+                  "lemma": {
+                    "stringValue": "být"
+                  },
+                  "text": {
+                    "stringValue": "jsem"
+                  },
+                  "upos": {
+                    "stringValue": "AUX"
+                  },
+                  "xpos": {
+                    "stringValue": "VB-S---1P-AAI--"
+                  }
+                },
+                "id": "20",
+                "type": "Token"
+              },
+              {
+                "charEnd": 126,
+                "charStart": 119,
+                "features": {
+                  "dep_head": {
+                    "numberValue": 11.0
+                  },
+                  "dep_relation": {
+                    "stringValue": "acl:relcl"
+                  },
+                  "engine": {
+                    "stringValue": "stanza"
+                  },
+                  "feats.Aspect": {
+                    "stringValue": "Perf"
+                  },
+                  "feats.Gender": {
+                    "stringValue": "Fem,Neut"
+                  },
+                  "feats.Number": {
+                    "stringValue": "Plur,Sing"
+                  },
+                  "feats.Polarity": {
+                    "stringValue": "Pos"
+                  },
+                  "feats.Tense": {
+                    "stringValue": "Past"
+                  },
+                  "feats.VerbForm": {
+                    "stringValue": "Part"
+                  },
+                  "feats.Voice": {
+                    "stringValue": "Act"
+                  },
+                  "lemma": {
+                    "stringValue": "koupit"
+                  },
+                  "text": {
+                    "stringValue": "koupila"
+                  },
+                  "upos": {
+                    "stringValue": "VERB"
+                  },
+                  "xpos": {
+                    "stringValue": "VpQW----R-AAP--"
+                  }
+                },
+                "id": "21",
+                "type": "Token"
+              },
+              {
+                "charEnd": 128,
+                "charStart": 127,
+                "features": {
+                  "dep_head": {
+                    "numberValue": 25.0
+                  },
+                  "dep_relation": {
+                    "stringValue": "nummod"
+                  },
+                  "engine": {
+                    "stringValue": "stanza"
+                  },
+                  "feats.NumForm": {
+                    "stringValue": "Digit"
+                  },
+                  "feats.NumType": {
+                    "stringValue": "Card"
+                  },
+                  "lemma": {
+                    "stringValue": "2"
+                  },
+                  "text": {
+                    "stringValue": "2"
+                  },
+                  "upos": {
+                    "stringValue": "NUM"
+                  },
+                  "xpos": {
+                    "stringValue": "C=-------------"
+                  }
+                },
+                "id": "22",
+                "type": "Token"
+              },
+              {
+                "charEnd": 139,
+                "charStart": 127,
+                "features": {
+                  "matching": {
+                    "stringValue": "exact"
+                  },
+                  "normalized_value": {
+                    "stringValue": "2026-09-02"
+                  },
+                  "source": {
+                    "stringValue": "dates"
+                  }
+                },
+                "id": "121",
+                "type": "DATE"
+              },
+              {
+                "charEnd": 129,
+                "charStart": 128,
+                "features": {
+                  "dep_head": {
+                    "numberValue": 23.0
+                  },
+                  "dep_relation": {
+                    "stringValue": "punct"
+                  },
+                  "engine": {
+                    "stringValue": "stanza"
+                  },
+                  "lemma": {
+                    "stringValue": "."
+                  },
+                  "text": {
+                    "stringValue": "."
+                  },
+                  "upos": {
+                    "stringValue": "PUNCT"
+                  },
+                  "xpos": {
+                    "stringValue": "Z:-------------"
+                  }
+                },
+                "id": "23",
+                "type": "Token"
+              },
+              {
+                "charEnd": 134,
+                "charStart": 130,
+                "features": {
+                  "dep_head": {
+                    "numberValue": 22.0
+                  },
+                  "dep_relation": {
+                    "stringValue": "obl"
+                  },
+                  "engine": {
+                    "stringValue": "stanza"
+                  },
+                  "feats.Case": {
+                    "stringValue": "Gen"
+                  },
+                  "feats.Gender": {
+                    "stringValue": "Neut"
+                  },
+                  "feats.Number": {
+                    "stringValue": "Sing"
+                  },
+                  "lemma": {
+                    "stringValue": "září"
+                  },
+                  "text": {
+                    "stringValue": "září"
+                  },
+                  "upos": {
+                    "stringValue": "NOUN"
+                  },
+                  "xpos": {
+                    "stringValue": "NNNS2-----A----"
+                  }
+                },
+                "id": "24",
+                "type": "Token"
+              },
+              {
+                "charEnd": 139,
+                "charStart": 135,
+                "features": {
+                  "dep_head": {
+                    "numberValue": 25.0
+                  },
+                  "dep_relation": {
+                    "stringValue": "nummod"
+                  },
+                  "engine": {
+                    "stringValue": "stanza"
+                  },
+                  "feats.NumForm": {
+                    "stringValue": "Digit"
+                  },
+                  "feats.NumType": {
+                    "stringValue": "Card"
+                  },
+                  "lemma": {
+                    "stringValue": "2026"
+                  },
+                  "text": {
+                    "stringValue": "2026"
+                  },
+                  "upos": {
+                    "stringValue": "NUM"
+                  },
+                  "xpos": {
+                    "stringValue": "C=-------------"
+                  }
+                },
+                "id": "25",
+                "type": "Token"
+              },
+              {
+                "charEnd": 141,
+                "charStart": 140,
+                "features": {
+                  "dep_head": {
+                    "numberValue": 28.0
+                  },
+                  "dep_relation": {
+                    "stringValue": "case"
+                  },
+                  "engine": {
+                    "stringValue": "stanza"
+                  },
+                  "feats.AdpType": {
+                    "stringValue": "Prep"
+                  },
+                  "feats.Case": {
+                    "stringValue": "Loc"
+                  },
+                  "lemma": {
+                    "stringValue": "v"
+                  },
+                  "text": {
+                    "stringValue": "v"
+                  },
+                  "upos": {
+                    "stringValue": "ADP"
+                  },
+                  "xpos": {
+                    "stringValue": "RR--6----------"
+                  }
+                },
+                "id": "26",
+                "type": "Token"
+              },
+              {
+                "charEnd": 150,
+                "charStart": 142,
+                "features": {
+                  "dep_head": {
+                    "numberValue": 22.0
+                  },
+                  "dep_relation": {
+                    "stringValue": "obl"
+                  },
+                  "engine": {
+                    "stringValue": "stanza"
+                  },
+                  "feats.Case": {
+                    "stringValue": "Loc"
+                  },
+                  "feats.Gender": {
+                    "stringValue": "Fem"
+                  },
+                  "feats.Number": {
+                    "stringValue": "Sing"
+                  },
+                  "lemma": {
+                    "stringValue": "prodejna"
+                  },
+                  "text": {
+                    "stringValue": "prodejně"
+                  },
+                  "upos": {
+                    "stringValue": "NOUN"
+                  },
+                  "xpos": {
+                    "stringValue": "NNFS6-----A----"
+                  }
+                },
+                "id": "27",
+                "type": "Token"
+              },
+              {
+                "charEnd": 159,
+                "charStart": 151,
+                "features": {
+                  "dep_head": {
+                    "numberValue": 28.0
+                  },
+                  "dep_relation": {
+                    "stringValue": "nmod"
+                  },
+                  "engine": {
+                    "stringValue": "stanza"
+                  },
+                  "feats.Case": {
+                    "stringValue": "Nom"
+                  },
+                  "feats.Gender": {
+                    "stringValue": "Masc"
+                  },
+                  "feats.NameType": {
+                    "stringValue": "Oth"
+                  },
+                  "feats.Number": {
+                    "stringValue": "Sing"
+                  },
+                  "lemma": {
+                    "stringValue": "Hartland"
+                  },
+                  "text": {
+                    "stringValue": "Hartland"
+                  },
+                  "upos": {
+                    "stringValue": "PROPN"
+                  },
+                  "xpos": {
+                    "stringValue": "NNIS1-----A----"
+                  }
+                },
+                "id": "28",
+                "type": "Token"
+              },
+              {
+                "charEnd": 161,
+                "charStart": 160,
+                "features": {
+                  "dep_head": {
+                    "numberValue": 31.0
+                  },
+                  "dep_relation": {
+                    "stringValue": "case"
+                  },
+                  "engine": {
+                    "stringValue": "stanza"
+                  },
+                  "feats.AdpType": {
+                    "stringValue": "Prep"
+                  },
+                  "feats.Case": {
+                    "stringValue": "Loc"
+                  },
+                  "lemma": {
+                    "stringValue": "v"
+                  },
+                  "text": {
+                    "stringValue": "v"
+                  },
+                  "upos": {
+                    "stringValue": "ADP"
+                  },
+                  "xpos": {
+                    "stringValue": "RR--6----------"
+                  }
+                },
+                "id": "29",
+                "type": "Token"
+              },
+              {
+                "charEnd": 166,
+                "charStart": 162,
+                "features": {
+                  "dep_head": {
+                    "numberValue": 28.0
+                  },
+                  "dep_relation": {
+                    "stringValue": "nmod"
+                  },
+                  "engine": {
+                    "stringValue": "stanza"
+                  },
+                  "feats.Case": {
+                    "stringValue": "Loc"
+                  },
+                  "feats.Gender": {
+                    "stringValue": "Neut"
+                  },
+                  "feats.NameType": {
+                    "stringValue": "Geo"
+                  },
+                  "feats.Number": {
+                    "stringValue": "Sing"
+                  },
+                  "lemma": {
+                    "stringValue": "Brno"
+                  },
+                  "text": {
+                    "stringValue": "Brně"
+                  },
+                  "upos": {
+                    "stringValue": "PROPN"
+                  },
+                  "xpos": {
+                    "stringValue": "NNNS6-----A----"
+                  }
+                },
+                "id": "30",
+                "type": "Token"
+              },
+              {
+                "charEnd": 167,
+                "charStart": 166,
+                "features": {
+                  "dep_head": {
+                    "numberValue": 9.0
+                  },
+                  "dep_relation": {
+                    "stringValue": "punct"
+                  },
+                  "engine": {
+                    "stringValue": "stanza"
+                  },
+                  "lemma": {
+                    "stringValue": "."
+                  },
+                  "text": {
+                    "stringValue": "."
+                  },
+                  "upos": {
+                    "stringValue": "PUNCT"
+                  },
+                  "xpos": {
+                    "stringValue": "Z:-------------"
+                  }
+                },
+                "id": "31",
+                "type": "Token"
+              },
+              {
+                "charEnd": 170,
+                "charStart": 168,
+                "features": {
+                  "dep_head": {
+                    "numberValue": 3.0
+                  },
+                  "dep_relation": {
+                    "stringValue": "case"
+                  },
+                  "engine": {
+                    "stringValue": "stanza"
+                  },
+                  "feats.AdpType": {
+                    "stringValue": "Prep"
+                  },
+                  "feats.Case": {
+                    "stringValue": "Loc"
+                  },
+                  "lemma": {
+                    "stringValue": "po"
+                  },
+                  "text": {
+                    "stringValue": "Po"
+                  },
+                  "upos": {
+                    "stringValue": "ADP"
+                  },
+                  "xpos": {
+                    "stringValue": "RR--6----------"
+                  }
+                },
+                "id": "32",
+                "type": "Token"
+              },
+              {
+                "charEnd": 258,
+                "charStart": 168,
+                "features": {
+                  "engine": {
+                    "stringValue": "stanza"
+                  }
+                },
+                "id": "112",
+                "type": "Sentence"
+              },
+              {
+                "charEnd": 176,
+                "charStart": 171,
+                "features": {
+                  "dep_head": {
+                    "numberValue": 3.0
+                  },
+                  "dep_relation": {
+                    "stringValue": "nummod"
+                  },
+                  "engine": {
+                    "stringValue": "stanza"
+                  },
+                  "feats.Case": {
+                    "stringValue": "Loc"
+                  },
+                  "feats.NumForm": {
+                    "stringValue": "Word"
+                  },
+                  "feats.NumType": {
+                    "stringValue": "Card"
+                  },
+                  "feats.Number": {
+                    "stringValue": "Plur"
+                  },
+                  "lemma": {
+                    "stringValue": "tři"
+                  },
+                  "text": {
+                    "stringValue": "třech"
+                  },
+                  "upos": {
+                    "stringValue": "NUM"
+                  },
+                  "xpos": {
+                    "stringValue": "Cl-P6----------"
+                  }
+                },
+                "id": "33",
+                "type": "Token"
+              },
+              {
+                "charEnd": 184,
+                "charStart": 177,
+                "features": {
+                  "dep_head": {
+                    "numberValue": 4.0
+                  },
+                  "dep_relation": {
+                    "stringValue": "obl"
+                  },
+                  "engine": {
+                    "stringValue": "stanza"
+                  },
+                  "feats.Animacy": {
+                    "stringValue": "Inan"
+                  },
+                  "feats.Case": {
+                    "stringValue": "Loc"
+                  },
+                  "feats.Gender": {
+                    "stringValue": "Masc"
+                  },
+                  "feats.Number": {
+                    "stringValue": "Plur"
+                  },
+                  "lemma": {
+                    "stringValue": "týden"
+                  },
+                  "text": {
+                    "stringValue": "týdnech"
+                  },
+                  "upos": {
+                    "stringValue": "NOUN"
+                  },
+                  "xpos": {
+                    "stringValue": "NNIP6-----A----"
+                  }
+                },
+                "id": "34",
+                "type": "Token"
+              },
+              {
+                "charEnd": 193,
+                "charStart": 185,
+                "features": {
+                  "dep_head": {
+                    "numberValue": 0.0
+                  },
+                  "dep_relation": {
+                    "stringValue": "root"
+                  },
+                  "engine": {
+                    "stringValue": "stanza"
+                  },
+                  "feats.Aspect": {
+                    "stringValue": "Perf"
+                  },
+                  "feats.Gender": {
+                    "stringValue": "Fem,Neut"
+                  },
+                  "feats.Number": {
+                    "stringValue": "Plur,Sing"
+                  },
+                  "feats.Polarity": {
+                    "stringValue": "Pos"
+                  },
+                  "feats.Tense": {
+                    "stringValue": "Past"
+                  },
+                  "feats.VerbForm": {
+                    "stringValue": "Part"
+                  },
+                  "feats.Voice": {
+                    "stringValue": "Act"
+                  },
+                  "lemma": {
+                    "stringValue": "přestat"
+                  },
+                  "text": {
+                    "stringValue": "přestala"
+                  },
+                  "upos": {
+                    "stringValue": "VERB"
+                  },
+                  "xpos": {
+                    "stringValue": "VpQW----R-AAP--"
+                  }
+                },
+                "id": "35",
+                "type": "Token"
+              },
+              {
+                "charEnd": 201,
+                "charStart": 194,
+                "features": {
+                  "dep_head": {
+                    "numberValue": 4.0
+                  },
+                  "dep_relation": {
+                    "stringValue": "xcomp"
+                  },
+                  "engine": {
+                    "stringValue": "stanza"
+                  },
+                  "feats.Aspect": {
+                    "stringValue": "Imp"
+                  },
+                  "feats.Polarity": {
+                    "stringValue": "Pos"
+                  },
+                  "feats.VerbForm": {
+                    "stringValue": "Inf"
+                  },
+                  "lemma": {
+                    "stringValue": "vypínat"
+                  },
+                  "text": {
+                    "stringValue": "vypínat"
+                  },
+                  "upos": {
+                    "stringValue": "VERB"
+                  },
+                  "xpos": {
+                    "stringValue": "Vf--------A-I--"
+                  }
+                },
+                "id": "36",
+                "type": "Token"
+              },
+              {
+                "charEnd": 204,
+                "charStart": 202,
+                "features": {
+                  "dep_head": {
+                    "numberValue": 7.0
+                  },
+                  "dep_relation": {
+                    "stringValue": "case"
+                  },
+                  "engine": {
+                    "stringValue": "stanza"
+                  },
+                  "feats.AdpType": {
+                    "stringValue": "Prep"
+                  },
+                  "feats.Case": {
+                    "stringValue": "Loc"
+                  },
+                  "lemma": {
+                    "stringValue": "po"
+                  },
+                  "text": {
+                    "stringValue": "po"
+                  },
+                  "upos": {
+                    "stringValue": "ADP"
+                  },
+                  "xpos": {
+                    "stringValue": "RR--6----------"
+                  }
+                },
+                "id": "37",
+                "type": "Token"
+              },
+              {
+                "charEnd": 213,
+                "charStart": 205,
+                "features": {
+                  "dep_head": {
+                    "numberValue": 5.0
+                  },
+                  "dep_relation": {
+                    "stringValue": "obl"
+                  },
+                  "engine": {
+                    "stringValue": "stanza"
+                  },
+                  "feats.Case": {
+                    "stringValue": "Loc"
+                  },
+                  "feats.Gender": {
+                    "stringValue": "Neut"
+                  },
+                  "feats.Number": {
+                    "stringValue": "Sing"
+                  },
+                  "feats.VerbForm": {
+                    "stringValue": "Vnoun"
+                  },
+                  "lemma": {
+                    "stringValue": "dosažení"
+                  },
+                  "text": {
+                    "stringValue": "dosažení"
+                  },
+                  "upos": {
+                    "stringValue": "NOUN"
+                  },
+                  "xpos": {
+                    "stringValue": "NNNS6-----A----"
+                  }
+                },
+                "id": "38",
+                "type": "Token"
+              },
+              {
+                "charEnd": 218,
+                "charStart": 214,
+                "features": {
+                  "dep_head": {
+                    "numberValue": 7.0
+                  },
+                  "dep_relation": {
+                    "stringValue": "nmod"
+                  },
+                  "engine": {
+                    "stringValue": "stanza"
+                  },
+                  "feats.Animacy": {
+                    "stringValue": "Inan"
+                  },
+                  "feats.Case": {
+                    "stringValue": "Gen"
+                  },
+                  "feats.Gender": {
+                    "stringValue": "Masc"
+                  },
+                  "feats.Number": {
+                    "stringValue": "Sing"
+                  },
+                  "lemma": {
+                    "stringValue": "var"
+                  },
+                  "text": {
+                    "stringValue": "varu"
+                  },
+                  "upos": {
+                    "stringValue": "NOUN"
+                  },
+                  "xpos": {
+                    "stringValue": "NNIS2-----A----"
+                  }
+                },
+                "id": "39",
+                "type": "Token"
+              },
+              {
+                "charEnd": 220,
+                "charStart": 219,
+                "features": {
+                  "dep_head": {
+                    "numberValue": 11.0
+                  },
+                  "dep_relation": {
+                    "stringValue": "cc"
+                  },
+                  "engine": {
+                    "stringValue": "stanza"
+                  },
+                  "lemma": {
+                    "stringValue": "a"
+                  },
+                  "text": {
+                    "stringValue": "a"
+                  },
+                  "upos": {
+                    "stringValue": "CCONJ"
+                  },
+                  "xpos": {
+                    "stringValue": "J^-------------"
+                  }
+                },
+                "id": "40",
+                "type": "Token"
+              },
+              {
+                "charEnd": 225,
+                "charStart": 221,
+                "features": {
+                  "dep_head": {
+                    "numberValue": 11.0
+                  },
+                  "dep_relation": {
+                    "stringValue": "nsubj"
+                  },
+                  "engine": {
+                    "stringValue": "stanza"
+                  },
+                  "feats.Case": {
+                    "stringValue": "Nom"
+                  },
+                  "feats.Gender": {
+                    "stringValue": "Fem"
+                  },
+                  "feats.Number": {
+                    "stringValue": "Sing"
+                  },
+                  "lemma": {
+                    "stringValue": "voda"
+                  },
+                  "text": {
+                    "stringValue": "voda"
+                  },
+                  "upos": {
+                    "stringValue": "NOUN"
+                  },
+                  "xpos": {
+                    "stringValue": "NNFS1-----A----"
+                  }
+                },
+                "id": "41",
+                "type": "Token"
+              },
+              {
+                "charEnd": 229,
+                "charStart": 226,
+                "features": {
+                  "dep_head": {
+                    "numberValue": 4.0
+                  },
+                  "dep_relation": {
+                    "stringValue": "conj"
+                  },
+                  "engine": {
+                    "stringValue": "stanza"
+                  },
+                  "feats.Aspect": {
+                    "stringValue": "Imp"
+                  },
+                  "feats.Mood": {
+                    "stringValue": "Ind"
+                  },
+                  "feats.Number": {
+                    "stringValue": "Sing"
+                  },
+                  "feats.Person": {
+                    "stringValue": "3"
+                  },
+                  "feats.Polarity": {
+                    "stringValue": "Pos"
+                  },
+                  "feats.Tense": {
+                    "stringValue": "Pres"
+                  },
+                  "feats.VerbForm": {
+                    "stringValue": "Fin"
+                  },
+                  "feats.Voice": {
+                    "stringValue": "Act"
+                  },
+                  "lemma": {
+                    "stringValue": "vřít"
+                  },
+                  "text": {
+                    "stringValue": "vře"
+                  },
+                  "upos": {
+                    "stringValue": "VERB"
+                  },
+                  "xpos": {
+                    "stringValue": "VB-S---3P-AAI--"
+                  }
+                },
+                "id": "42",
+                "type": "Token"
+              },
+              {
+                "charEnd": 233,
+                "charStart": 230,
+                "features": {
+                  "dep_head": {
+                    "numberValue": 11.0
+                  },
+                  "dep_relation": {
+                    "stringValue": "advmod"
+                  },
+                  "engine": {
+                    "stringValue": "stanza"
+                  },
+                  "lemma": {
+                    "stringValue": "dál"
+                  },
+                  "text": {
+                    "stringValue": "dál"
+                  },
+                  "upos": {
+                    "stringValue": "ADV"
+                  },
+                  "xpos": {
+                    "stringValue": "Db-------------"
+                  }
+                },
+                "id": "43",
+                "type": "Token"
+              },
+              {
+                "charEnd": 234,
+                "charStart": 233,
+                "features": {
+                  "dep_head": {
+                    "numberValue": 16.0
+                  },
+                  "dep_relation": {
+                    "stringValue": "punct"
+                  },
+                  "engine": {
+                    "stringValue": "stanza"
+                  },
+                  "lemma": {
+                    "stringValue": ","
+                  },
+                  "text": {
+                    "stringValue": ","
+                  },
+                  "upos": {
+                    "stringValue": "PUNCT"
+                  },
+                  "xpos": {
+                    "stringValue": "Z:-------------"
+                  }
+                },
+                "id": "44",
+                "type": "Token"
+              },
+              {
+                "charEnd": 240,
+                "charStart": 235,
+                "features": {
+                  "dep_head": {
+                    "numberValue": 16.0
+                  },
+                  "dep_relation": {
+                    "stringValue": "mark"
+                  },
+                  "engine": {
+                    "stringValue": "stanza"
+                  },
+                  "lemma": {
+                    "stringValue": "dokud"
+                  },
+                  "text": {
+                    "stringValue": "dokud"
+                  },
+                  "upos": {
+                    "stringValue": "SCONJ"
+                  },
+                  "xpos": {
+                    "stringValue": "J,-------------"
+                  }
+                },
+                "id": "45",
+                "type": "Token"
+              },
+              {
+                "charEnd": 243,
+                "charStart": 241,
+                "features": {
+                  "dep_head": {
+                    "numberValue": 16.0
+                  },
+                  "dep_relation": {
+                    "stringValue": "obj"
+                  },
+                  "engine": {
+                    "stringValue": "stanza"
+                  },
+                  "feats.Case": {
+                    "stringValue": "Acc"
+                  },
+                  "feats.Gender": {
+                    "stringValue": "Fem"
+                  },
+                  "feats.Number": {
+                    "stringValue": "Sing"
+                  },
+                  "feats.Person": {
+                    "stringValue": "3"
+                  },
+                  "feats.PrepCase": {
+                    "stringValue": "Npr"
+                  },
+                  "feats.PronType": {
+                    "stringValue": "Prs"
+                  },
+                  "lemma": {
+                    "stringValue": "on"
+                  },
+                  "text": {
+                    "stringValue": "ji"
+                  },
+                  "upos": {
+                    "stringValue": "PRON"
+                  },
+                  "xpos": {
+                    "stringValue": "PEFS4--3-------"
+                  }
+                },
+                "id": "46",
+                "type": "Token"
+              },
+              {
+                "charEnd": 251,
+                "charStart": 244,
+                "features": {
+                  "dep_head": {
+                    "numberValue": 11.0
+                  },
+                  "dep_relation": {
+                    "stringValue": "advcl"
+                  },
+                  "engine": {
+                    "stringValue": "stanza"
+                  },
+                  "feats.Aspect": {
+                    "stringValue": "Perf"
+                  },
+                  "feats.Mood": {
+                    "stringValue": "Ind"
+                  },
+                  "feats.Number": {
+                    "stringValue": "Sing"
+                  },
+                  "feats.Person": {
+                    "stringValue": "3"
+                  },
+                  "feats.Polarity": {
+                    "stringValue": "Neg"
+                  },
+                  "feats.Tense": {
+                    "stringValue": "Pres"
+                  },
+                  "feats.VerbForm": {
+                    "stringValue": "Fin"
+                  },
+                  "feats.Voice": {
+                    "stringValue": "Act"
+                  },
+                  "lemma": {
+                    "stringValue": "vypnout"
+                  },
+                  "text": {
+                    "stringValue": "nevypnu"
+                  },
+                  "upos": {
+                    "stringValue": "VERB"
+                  },
+                  "xpos": {
+                    "stringValue": "VB-S---3P-NAP--"
+                  }
+                },
+                "id": "47",
+                "type": "Token"
+              },
+              {
+                "charEnd": 257,
+                "charStart": 252,
+                "features": {
+                  "dep_head": {
+                    "numberValue": 16.0
+                  },
+                  "dep_relation": {
+                    "stringValue": "advmod"
+                  },
+                  "engine": {
+                    "stringValue": "stanza"
+                  },
+                  "feats.Degree": {
+                    "stringValue": "Pos"
+                  },
+                  "feats.Polarity": {
+                    "stringValue": "Pos"
+                  },
+                  "lemma": {
+                    "stringValue": "ručně"
+                  },
+                  "text": {
+                    "stringValue": "ručně"
+                  },
+                  "upos": {
+                    "stringValue": "ADV"
+                  },
+                  "xpos": {
+                    "stringValue": "Dg-------1A----"
+                  }
+                },
+                "id": "48",
+                "type": "Token"
+              },
+              {
+                "charEnd": 258,
+                "charStart": 257,
+                "features": {
+                  "dep_head": {
+                    "numberValue": 4.0
+                  },
+                  "dep_relation": {
+                    "stringValue": "punct"
+                  },
+                  "engine": {
+                    "stringValue": "stanza"
+                  },
+                  "lemma": {
+                    "stringValue": "."
+                  },
+                  "text": {
+                    "stringValue": "."
+                  },
+                  "upos": {
+                    "stringValue": "PUNCT"
+                  },
+                  "xpos": {
+                    "stringValue": "Z:-------------"
+                  }
+                },
+                "id": "49",
+                "type": "Token"
+              },
+              {
+                "charEnd": 268,
+                "charStart": 259,
+                "features": {
+                  "dep_head": {
+                    "numberValue": 4.0
+                  },
+                  "dep_relation": {
+                    "stringValue": "nsubj"
+                  },
+                  "engine": {
+                    "stringValue": "stanza"
+                  },
+                  "feats.Animacy": {
+                    "stringValue": "Inan"
+                  },
+                  "feats.Case": {
+                    "stringValue": "Nom"
+                  },
+                  "feats.Gender": {
+                    "stringValue": "Masc"
+                  },
+                  "feats.Number": {
+                    "stringValue": "Sing"
+                  },
+                  "lemma": {
+                    "stringValue": "termostat"
+                  },
+                  "text": {
+                    "stringValue": "Termostat"
+                  },
+                  "upos": {
+                    "stringValue": "NOUN"
+                  },
+                  "xpos": {
+                    "stringValue": "NNIS1-----A----"
+                  }
+                },
+                "id": "50",
+                "type": "Token"
+              },
+              {
+                "charEnd": 353,
+                "charStart": 259,
+                "features": {
+                  "engine": {
+                    "stringValue": "stanza"
+                  }
+                },
+                "id": "113",
+                "type": "Sentence"
+              },
+              {
+                "charEnd": 271,
+                "charStart": 269,
+                "features": {
+                  "dep_head": {
+                    "numberValue": 4.0
+                  },
+                  "dep_relation": {
+                    "stringValue": "cop"
+                  },
+                  "engine": {
+                    "stringValue": "stanza"
+                  },
+                  "feats.Aspect": {
+                    "stringValue": "Imp"
+                  },
+                  "feats.Mood": {
+                    "stringValue": "Ind"
+                  },
+                  "feats.Number": {
+                    "stringValue": "Sing"
+                  },
+                  "feats.Person": {
+                    "stringValue": "3"
+                  },
+                  "feats.Polarity": {
+                    "stringValue": "Pos"
+                  },
+                  "feats.Tense": {
+                    "stringValue": "Pres"
+                  },
+                  "feats.VerbForm": {
+                    "stringValue": "Fin"
+                  },
+                  "feats.Voice": {
+                    "stringValue": "Act"
+                  },
+                  "lemma": {
+                    "stringValue": "být"
+                  },
+                  "text": {
+                    "stringValue": "je"
+                  },
+                  "upos": {
+                    "stringValue": "AUX"
+                  },
+                  "xpos": {
+                    "stringValue": "VB-S---3P-AAI--"
+                  }
+                },
+                "id": "51",
+                "type": "Token"
+              },
+              {
+                "charEnd": 275,
+                "charStart": 272,
+                "features": {
+                  "dep_head": {
+                    "numberValue": 4.0
+                  },
+                  "dep_relation": {
+                    "stringValue": "advmod"
+                  },
+                  "engine": {
+                    "stringValue": "stanza"
+                  },
+                  "lemma": {
+                    "stringValue": "asi"
+                  },
+                  "text": {
+                    "stringValue": "asi"
+                  },
+                  "upos": {
+                    "stringValue": "PART"
+                  },
+                  "xpos": {
+                    "stringValue": "TT-------------"
+                  }
+                },
+                "id": "52",
+                "type": "Token"
+              },
+              {
+                "charEnd": 275,
+                "charStart": 272,
+                "features": {
+                  "kind": {
+                    "stringValue": "certainty"
+                  },
+                  "matching": {
+                    "stringValue": "ci"
+                  },
+                  "source": {
+                    "stringValue": "modifiers"
+                  }
+                },
+                "id": "122",
+                "type": "Modifier"
+              },
+              {
+                "charEnd": 281,
+                "charStart": 276,
+                "features": {
+                  "dep_head": {
+                    "numberValue": 0.0
+                  },
+                  "dep_relation": {
+                    "stringValue": "root"
+                  },
+                  "engine": {
+                    "stringValue": "stanza"
+                  },
+                  "feats.Animacy": {
+                    "stringValue": "Inan"
+                  },
+                  "feats.Case": {
+                    "stringValue": "Nom"
+                  },
+                  "feats.Degree": {
+                    "stringValue": "Pos"
+                  },
+                  "feats.Gender": {
+                    "stringValue": "Masc"
+                  },
+                  "feats.Number": {
+                    "stringValue": "Sing"
+                  },
+                  "feats.Polarity": {
+                    "stringValue": "Pos"
+                  },
+                  "lemma": {
+                    "stringValue": "vadný"
+                  },
+                  "text": {
+                    "stringValue": "vadný"
+                  },
+                  "upos": {
+                    "stringValue": "ADJ"
+                  },
+                  "xpos": {
+                    "stringValue": "AAIS1----1A----"
+                  }
+                },
+                "id": "53",
+                "type": "Token"
+              },
+              {
+                "charEnd": 282,
+                "charStart": 281,
+                "features": {
+                  "dep_head": {
+                    "numberValue": 9.0
+                  },
+                  "dep_relation": {
+                    "stringValue": "punct"
+                  },
+                  "engine": {
+                    "stringValue": "stanza"
+                  },
+                  "lemma": {
+                    "stringValue": ","
+                  },
+                  "text": {
+                    "stringValue": ","
+                  },
+                  "upos": {
+                    "stringValue": "PUNCT"
+                  },
+                  "xpos": {
+                    "stringValue": "Z:-------------"
+                  }
+                },
+                "id": "54",
+                "type": "Token"
+              },
+              {
+                "charEnd": 286,
+                "charStart": 283,
+                "features": {
+                  "dep_head": {
+                    "numberValue": 9.0
+                  },
+                  "dep_relation": {
+                    "stringValue": "cc"
+                  },
+                  "engine": {
+                    "stringValue": "stanza"
+                  },
+                  "lemma": {
+                    "stringValue": "ale"
+                  },
+                  "text": {
+                    "stringValue": "ale"
+                  },
+                  "upos": {
+                    "stringValue": "CCONJ"
+                  },
+                  "xpos": {
+                    "stringValue": "J^-------------"
+                  }
+                },
+                "id": "55",
+                "type": "Token"
+              },
+              {
+                "charEnd": 293,
+                "charStart": 287,
+                "features": {
+                  "dep_head": {
+                    "numberValue": 9.0
+                  },
+                  "dep_relation": {
+                    "stringValue": "cop"
+                  },
+                  "engine": {
+                    "stringValue": "stanza"
+                  },
+                  "feats.Aspect": {
+                    "stringValue": "Imp"
+                  },
+                  "feats.Mood": {
+                    "stringValue": "Ind"
+                  },
+                  "feats.Number": {
+                    "stringValue": "Sing"
+                  },
+                  "feats.Person": {
+                    "stringValue": "1"
+                  },
+                  "feats.Polarity": {
+                    "stringValue": "Neg"
+                  },
+                  "feats.Tense": {
+                    "stringValue": "Pres"
+                  },
+                  "feats.VerbForm": {
+                    "stringValue": "Fin"
+                  },
+                  "feats.Voice": {
+                    "stringValue": "Act"
+                  },
+                  "lemma": {
+                    "stringValue": "být"
+                  },
+                  "text": {
+                    "stringValue": "nejsem"
+                  },
+                  "upos": {
+                    "stringValue": "AUX"
+                  },
+                  "xpos": {
+                    "stringValue": "VB-S---1P-NAI--"
+                  }
+                },
+                "id": "56",
+                "type": "Token"
+              },
+              {
+                "charEnd": 296,
+                "charStart": 294,
+                "features": {
+                  "dep_head": {
+                    "numberValue": 9.0
+                  },
+                  "dep_relation": {
+                    "stringValue": "expl:pv"
+                  },
+                  "engine": {
+                    "stringValue": "stanza"
+                  },
+                  "feats.Case": {
+                    "stringValue": "Dat"
+                  },
+                  "feats.PronType": {
+                    "stringValue": "Prs"
+                  },
+                  "feats.Reflex": {
+                    "stringValue": "Yes"
+                  },
+                  "feats.Variant": {
+                    "stringValue": "Short"
+                  },
+                  "lemma": {
+                    "stringValue": "se"
+                  },
+                  "text": {
+                    "stringValue": "si"
+                  },
+                  "upos": {
+                    "stringValue": "PRON"
+                  },
+                  "xpos": {
+                    "stringValue": "P7--3----------"
+                  }
+                },
+                "id": "57",
+                "type": "Token"
+              },
+              {
+                "charEnd": 302,
+                "charStart": 297,
+                "features": {
+                  "dep_head": {
+                    "numberValue": 4.0
+                  },
+                  "dep_relation": {
+                    "stringValue": "conj"
+                  },
+                  "engine": {
+                    "stringValue": "stanza"
+                  },
+                  "feats.Case": {
+                    "stringValue": "Nom"
+                  },
+                  "feats.Degree": {
+                    "stringValue": "Pos"
+                  },
+                  "feats.Gender": {
+                    "stringValue": "Fem"
+                  },
+                  "feats.Number": {
+                    "stringValue": "Sing"
+                  },
+                  "feats.Polarity": {
+                    "stringValue": "Pos"
+                  },
+                  "lemma": {
+                    "stringValue": "jistý"
+                  },
+                  "text": {
+                    "stringValue": "jistá"
+                  },
+                  "upos": {
+                    "stringValue": "ADJ"
+                  },
+                  "xpos": {
+                    "stringValue": "AAFS1----1A----"
+                  }
+                },
+                "id": "58",
+                "type": "Token"
+              },
+              {
+                "charEnd": 303,
+                "charStart": 302,
+                "features": {
+                  "dep_head": {
+                    "numberValue": 12.0
+                  },
+                  "dep_relation": {
+                    "stringValue": "punct"
+                  },
+                  "engine": {
+                    "stringValue": "stanza"
+                  },
+                  "lemma": {
+                    "stringValue": ","
+                  },
+                  "text": {
+                    "stringValue": ","
+                  },
+                  "upos": {
+                    "stringValue": "PUNCT"
+                  },
+                  "xpos": {
+                    "stringValue": "Z:-------------"
+                  }
+                },
+                "id": "59",
+                "type": "Token"
+              },
+              {
+                "charEnd": 310,
+                "charStart": 304,
+                "features": {
+                  "dep_head": {
+                    "numberValue": 12.0
+                  },
+                  "dep_relation": {
+                    "stringValue": "mark"
+                  },
+                  "engine": {
+                    "stringValue": "stanza"
+                  },
+                  "lemma": {
+                    "stringValue": "jestli"
+                  },
+                  "text": {
+                    "stringValue": "jestli"
+                  },
+                  "upos": {
+                    "stringValue": "SCONJ"
+                  },
+                  "xpos": {
+                    "stringValue": "J,-------------"
+                  }
+                },
+                "id": "60",
+                "type": "Token"
+              },
+              {
+                "charEnd": 316,
+                "charStart": 311,
+                "features": {
+                  "dep_head": {
+                    "numberValue": 9.0
+                  },
+                  "dep_relation": {
+                    "stringValue": "ccomp"
+                  },
+                  "engine": {
+                    "stringValue": "stanza"
+                  },
+                  "feats.Aspect": {
+                    "stringValue": "Imp"
+                  },
+                  "feats.Mood": {
+                    "stringValue": "Ind"
+                  },
+                  "feats.Number": {
+                    "stringValue": "Sing"
+                  },
+                  "feats.Person": {
+                    "stringValue": "3"
+                  },
+                  "feats.Polarity": {
+                    "stringValue": "Neg"
+                  },
+                  "feats.Tense": {
+                    "stringValue": "Pres"
+                  },
+                  "feats.VerbForm": {
+                    "stringValue": "Fin"
+                  },
+                  "feats.Voice": {
+                    "stringValue": "Act"
+                  },
+                  "lemma": {
+                    "stringValue": "jít"
+                  },
+                  "text": {
+                    "stringValue": "nejde"
+                  },
+                  "upos": {
+                    "stringValue": "VERB"
+                  },
+                  "xpos": {
+                    "stringValue": "VB-S---3P-NAI--"
+                  }
+                },
+                "id": "61",
+                "type": "Token"
+              },
+              {
+                "charEnd": 320,
+                "charStart": 317,
+                "features": {
+                  "dep_head": {
+                    "numberValue": 15.0
+                  },
+                  "dep_relation": {
+                    "stringValue": "advmod:emph"
+                  },
+                  "engine": {
+                    "stringValue": "stanza"
+                  },
+                  "lemma": {
+                    "stringValue": "jen"
+                  },
+                  "text": {
+                    "stringValue": "jen"
+                  },
+                  "upos": {
+                    "stringValue": "PART"
+                  },
+                  "xpos": {
+                    "stringValue": "TT-------------"
+                  }
+                },
+                "id": "62",
+                "type": "Token"
+              },
+              {
+                "charEnd": 322,
+                "charStart": 321,
+                "features": {
+                  "dep_head": {
+                    "numberValue": 15.0
+                  },
+                  "dep_relation": {
+                    "stringValue": "case"
+                  },
+                  "engine": {
+                    "stringValue": "stanza"
+                  },
+                  "feats.AdpType": {
+                    "stringValue": "Prep"
+                  },
+                  "feats.Case": {
+                    "stringValue": "Acc"
+                  },
+                  "lemma": {
+                    "stringValue": "o"
+                  },
+                  "text": {
+                    "stringValue": "o"
+                  },
+                  "upos": {
+                    "stringValue": "ADP"
+                  },
+                  "xpos": {
+                    "stringValue": "RR--4----------"
+                  }
+                },
+                "id": "63",
+                "type": "Token"
+              },
+              {
+                "charEnd": 327,
+                "charStart": 323,
+                "features": {
+                  "dep_head": {
+                    "numberValue": 12.0
+                  },
+                  "dep_relation": {
+                    "stringValue": "obl:arg"
+                  },
+                  "engine": {
+                    "stringValue": "stanza"
+                  },
+                  "feats.Case": {
+                    "stringValue": "Acc"
+                  },
+                  "feats.Gender": {
+                    "stringValue": "Neut"
+                  },
+                  "feats.Number": {
+                    "stringValue": "Sing"
+                  },
+                  "lemma": {
+                    "stringValue": "víko"
+                  },
+                  "text": {
+                    "stringValue": "víko"
+                  },
+                  "upos": {
+                    "stringValue": "NOUN"
+                  },
+                  "xpos": {
+                    "stringValue": "NNNS4-----A----"
+                  }
+                },
+                "id": "64",
+                "type": "Token"
+              },
+              {
+                "charEnd": 328,
+                "charStart": 327,
+                "features": {
+                  "dep_head": {
+                    "numberValue": 19.0
+                  },
+                  "dep_relation": {
+                    "stringValue": "punct"
+                  },
+                  "engine": {
+                    "stringValue": "stanza"
+                  },
+                  "lemma": {
+                    "stringValue": ","
+                  },
+                  "text": {
+                    "stringValue": ","
+                  },
+                  "upos": {
+                    "stringValue": "PUNCT"
+                  },
+                  "xpos": {
+                    "stringValue": "Z:-------------"
+                  }
+                },
+                "id": "65",
+                "type": "Token"
+              },
+              {
+                "charEnd": 334,
+                "charStart": 329,
+                "features": {
+                  "dep_head": {
+                    "numberValue": 19.0
+                  },
+                  "dep_relation": {
+                    "stringValue": "nsubj"
+                  },
+                  "engine": {
+                    "stringValue": "stanza"
+                  },
+                  "feats.Case": {
+                    "stringValue": "Nom"
+                  },
+                  "feats.Gender": {
+                    "stringValue": "Neut"
+                  },
+                  "feats.Number": {
+                    "stringValue": "Sing"
+                  },
+                  "feats.PronType": {
+                    "stringValue": "Int,Rel"
+                  },
+                  "lemma": {
+                    "stringValue": "který"
+                  },
+                  "text": {
+                    "stringValue": "které"
+                  },
+                  "upos": {
+                    "stringValue": "DET"
+                  },
+                  "xpos": {
+                    "stringValue": "P4NS1----------"
+                  }
+                },
+                "id": "66",
+                "type": "Token"
+              },
+              {
+                "charEnd": 342,
+                "charStart": 335,
+                "features": {
+                  "dep_head": {
+                    "numberValue": 19.0
+                  },
+                  "dep_relation": {
+                    "stringValue": "advmod"
+                  },
+                  "engine": {
+                    "stringValue": "stanza"
+                  },
+                  "feats.Degree": {
+                    "stringValue": "Pos"
+                  },
+                  "feats.Polarity": {
+                    "stringValue": "Pos"
+                  },
+                  "lemma": {
+                    "stringValue": "pořádně"
+                  },
+                  "text": {
+                    "stringValue": "pořádně"
+                  },
+                  "upos": {
+                    "stringValue": "ADV"
+                  },
+                  "xpos": {
+                    "stringValue": "Dg-------1A----"
+                  }
+                },
+                "id": "67",
+                "type": "Token"
+              },
+              {
+                "charEnd": 352,
+                "charStart": 343,
+                "features": {
+                  "dep_head": {
+                    "numberValue": 15.0
+                  },
+                  "dep_relation": {
+                    "stringValue": "acl:relcl"
+                  },
+                  "engine": {
+                    "stringValue": "stanza"
+                  },
+                  "feats.Aspect": {
+                    "stringValue": "Perf"
+                  },
+                  "feats.Mood": {
+                    "stringValue": "Ind"
+                  },
+                  "feats.Number": {
+                    "stringValue": "Sing"
+                  },
+                  "feats.Person": {
+                    "stringValue": "3"
+                  },
+                  "feats.Polarity": {
+                    "stringValue": "Neg"
+                  },
+                  "feats.Tense": {
+                    "stringValue": "Pres"
+                  },
+                  "feats.VerbForm": {
+                    "stringValue": "Fin"
+                  },
+                  "feats.Voice": {
+                    "stringValue": "Act"
+                  },
+                  "lemma": {
+                    "stringValue": "dolehnout"
+                  },
+                  "text": {
+                    "stringValue": "nedolehne"
+                  },
+                  "upos": {
+                    "stringValue": "VERB"
+                  },
+                  "xpos": {
+                    "stringValue": "VB-S---3P-NAP--"
+                  }
+                },
+                "id": "68",
+                "type": "Token"
+              },
+              {
+                "charEnd": 353,
+                "charStart": 352,
+                "features": {
+                  "dep_head": {
+                    "numberValue": 4.0
+                  },
+                  "dep_relation": {
+                    "stringValue": "punct"
+                  },
+                  "engine": {
+                    "stringValue": "stanza"
+                  },
+                  "lemma": {
+                    "stringValue": "."
+                  },
+                  "text": {
+                    "stringValue": "."
+                  },
+                  "upos": {
+                    "stringValue": "PUNCT"
+                  },
+                  "xpos": {
+                    "stringValue": "Z:-------------"
+                  }
+                },
+                "id": "69",
+                "type": "Token"
+              },
+              {
+                "charEnd": 362,
+                "charStart": 355,
+                "features": {
+                  "dep_head": {
+                    "numberValue": 3.0
+                  },
+                  "dep_relation": {
+                    "stringValue": "obj"
+                  },
+                  "engine": {
+                    "stringValue": "stanza"
+                  },
+                  "feats.Case": {
+                    "stringValue": "Acc"
+                  },
+                  "feats.Gender": {
+                    "stringValue": "Fem"
+                  },
+                  "feats.Number": {
+                    "stringValue": "Sing"
+                  },
+                  "lemma": {
+                    "stringValue": "konvice"
+                  },
+                  "text": {
+                    "stringValue": "Konvici"
+                  },
+                  "upos": {
+                    "stringValue": "NOUN"
+                  },
+                  "xpos": {
+                    "stringValue": "NNFS4-----A----"
+                  }
+                },
+                "id": "70",
+                "type": "Token"
+              },
+              {
+                "charEnd": 422,
+                "charStart": 355,
+                "features": {
+                  "engine": {
+                    "stringValue": "stanza"
+                  }
+                },
+                "id": "114",
+                "type": "Sentence"
+              },
+              {
+                "charEnd": 367,
+                "charStart": 363,
+                "features": {
+                  "dep_head": {
+                    "numberValue": 3.0
+                  },
+                  "dep_relation": {
+                    "stringValue": "aux"
+                  },
+                  "engine": {
+                    "stringValue": "stanza"
+                  },
+                  "feats.Aspect": {
+                    "stringValue": "Imp"
+                  },
+                  "feats.Mood": {
+                    "stringValue": "Ind"
+                  },
+                  "feats.Number": {
+                    "stringValue": "Sing"
+                  },
+                  "feats.Person": {
+                    "stringValue": "1"
+                  },
+                  "feats.Polarity": {
+                    "stringValue": "Pos"
+                  },
+                  "feats.Tense": {
+                    "stringValue": "Pres"
+                  },
+                  "feats.VerbForm": {
+                    "stringValue": "Fin"
+                  },
+                  "feats.Voice": {
+                    "stringValue": "Act"
+                  },
+                  "lemma": {
+                    "stringValue": "být"
+                  },
+                  "text": {
+                    "stringValue": "jsem"
+                  },
+                  "upos": {
+                    "stringValue": "AUX"
+                  },
+                  "xpos": {
+                    "stringValue": "VB-S---1P-AAI--"
+                  }
+                },
+                "id": "71",
+                "type": "Token"
+              },
+              {
+                "charEnd": 377,
+                "charStart": 368,
+                "features": {
+                  "dep_head": {
+                    "numberValue": 0.0
+                  },
+                  "dep_relation": {
+                    "stringValue": "root"
+                  },
+                  "engine": {
+                    "stringValue": "stanza"
+                  },
+                  "feats.Aspect": {
+                    "stringValue": "Imp"
+                  },
+                  "feats.Gender": {
+                    "stringValue": "Fem,Neut"
+                  },
+                  "feats.Number": {
+                    "stringValue": "Plur,Sing"
+                  },
+                  "feats.Polarity": {
+                    "stringValue": "Pos"
+                  },
+                  "feats.Tense": {
+                    "stringValue": "Past"
+                  },
+                  "feats.VerbForm": {
+                    "stringValue": "Part"
+                  },
+                  "feats.Voice": {
+                    "stringValue": "Act"
+                  },
+                  "lemma": {
+                    "stringValue": "používat"
+                  },
+                  "text": {
+                    "stringValue": "používala"
+                  },
+                  "upos": {
+                    "stringValue": "VERB"
+                  },
+                  "xpos": {
+                    "stringValue": "VpQW----R-AAI--"
+                  }
+                },
+                "id": "72",
+                "type": "Token"
+              },
+              {
+                "charEnd": 383,
+                "charStart": 378,
+                "features": {
+                  "dep_head": {
+                    "numberValue": 5.0
+                  },
+                  "dep_relation": {
+                    "stringValue": "case"
+                  },
+                  "engine": {
+                    "stringValue": "stanza"
+                  },
+                  "feats.AdpType": {
+                    "stringValue": "Prep"
+                  },
+                  "feats.Case": {
+                    "stringValue": "Gen"
+                  },
+                  "lemma": {
+                    "stringValue": "podle"
+                  },
+                  "text": {
+                    "stringValue": "podle"
+                  },
+                  "upos": {
+                    "stringValue": "ADP"
+                  },
+                  "xpos": {
+                    "stringValue": "RR--2----------"
+                  }
+                },
+                "id": "73",
+                "type": "Token"
+              },
+              {
+                "charEnd": 390,
+                "charStart": 384,
+                "features": {
+                  "dep_head": {
+                    "numberValue": 3.0
+                  },
+                  "dep_relation": {
+                    "stringValue": "obl"
+                  },
+                  "engine": {
+                    "stringValue": "stanza"
+                  },
+                  "feats.Animacy": {
+                    "stringValue": "Inan"
+                  },
+                  "feats.Case": {
+                    "stringValue": "Gen"
+                  },
+                  "feats.Gender": {
+                    "stringValue": "Masc"
+                  },
+                  "feats.Number": {
+                    "stringValue": "Sing"
+                  },
+                  "lemma": {
+                    "stringValue": "návod"
+                  },
+                  "text": {
+                    "stringValue": "návodu"
+                  },
+                  "upos": {
+                    "stringValue": "NOUN"
+                  },
+                  "xpos": {
+                    "stringValue": "NNIS2-----A----"
+                  }
+                },
+                "id": "74",
+                "type": "Token"
+              },
+              {
+                "charEnd": 391,
+                "charStart": 390,
+                "features": {
+                  "dep_head": {
+                    "numberValue": 9.0
+                  },
+                  "dep_relation": {
+                    "stringValue": "punct"
+                  },
+                  "engine": {
+                    "stringValue": "stanza"
+                  },
+                  "lemma": {
+                    "stringValue": ","
+                  },
+                  "text": {
+                    "stringValue": ","
+                  },
+                  "upos": {
+                    "stringValue": "PUNCT"
+                  },
+                  "xpos": {
+                    "stringValue": "Z:-------------"
+                  }
+                },
+                "id": "75",
+                "type": "Token"
+              },
+              {
+                "charEnd": 395,
+                "charStart": 392,
+                "features": {
+                  "dep_head": {
+                    "numberValue": 9.0
+                  },
+                  "dep_relation": {
+                    "stringValue": "advmod:emph"
+                  },
+                  "engine": {
+                    "stringValue": "stanza"
+                  },
+                  "lemma": {
+                    "stringValue": "jen"
+                  },
+                  "text": {
+                    "stringValue": "jen"
+                  },
+                  "upos": {
+                    "stringValue": "PART"
+                  },
+                  "xpos": {
+                    "stringValue": "TT-------------"
+                  }
+                },
+                "id": "76",
+                "type": "Token"
+              },
+              {
+                "charEnd": 398,
+                "charStart": 396,
+                "features": {
+                  "dep_head": {
+                    "numberValue": 9.0
+                  },
+                  "dep_relation": {
+                    "stringValue": "case"
+                  },
+                  "engine": {
+                    "stringValue": "stanza"
+                  },
+                  "feats.AdpType": {
+                    "stringValue": "Prep"
+                  },
+                  "feats.Case": {
+                    "stringValue": "Acc"
+                  },
+                  "lemma": {
+                    "stringValue": "na"
+                  },
+                  "text": {
+                    "stringValue": "na"
+                  },
+                  "upos": {
+                    "stringValue": "ADP"
+                  },
+                  "xpos": {
+                    "stringValue": "RR--4----------"
+                  }
+                },
+                "id": "77",
+                "type": "Token"
+              },
+              {
+                "charEnd": 403,
+                "charStart": 399,
+                "features": {
+                  "dep_head": {
+                    "numberValue": 3.0
+                  },
+                  "dep_relation": {
+                    "stringValue": "obl"
+                  },
+                  "engine": {
+                    "stringValue": "stanza"
+                  },
+                  "feats.Case": {
+                    "stringValue": "Acc"
+                  },
+                  "feats.Gender": {
+                    "stringValue": "Fem"
+                  },
+                  "feats.Number": {
+                    "stringValue": "Sing"
+                  },
+                  "lemma": {
+                    "stringValue": "voda"
+                  },
+                  "text": {
+                    "stringValue": "vodu"
+                  },
+                  "upos": {
+                    "stringValue": "NOUN"
+                  },
+                  "xpos": {
+                    "stringValue": "NNFS4-----A----"
+                  }
+                },
+                "id": "78",
+                "type": "Token"
+              },
+              {
+                "charEnd": 404,
+                "charStart": 403,
+                "features": {
+                  "dep_head": {
+                    "numberValue": 13.0
+                  },
+                  "dep_relation": {
+                    "stringValue": "punct"
+                  },
+                  "engine": {
+                    "stringValue": "stanza"
+                  },
+                  "lemma": {
+                    "stringValue": ","
+                  },
+                  "text": {
+                    "stringValue": ","
+                  },
+                  "upos": {
+                    "stringValue": "PUNCT"
+                  },
+                  "xpos": {
+                    "stringValue": "Z:-------------"
+                  }
+                },
+                "id": "79",
+                "type": "Token"
+              },
+              {
+                "charEnd": 406,
+                "charStart": 405,
+                "features": {
+                  "dep_head": {
+                    "numberValue": 13.0
+                  },
+                  "dep_relation": {
+                    "stringValue": "cc"
+                  },
+                  "engine": {
+                    "stringValue": "stanza"
+                  },
+                  "lemma": {
+                    "stringValue": "a"
+                  },
+                  "text": {
+                    "stringValue": "a"
+                  },
+                  "upos": {
+                    "stringValue": "CCONJ"
+                  },
+                  "xpos": {
+                    "stringValue": "J^-------------"
+                  }
+                },
+                "id": "80",
+                "type": "Token"
+              },
+              {
+                "charEnd": 412,
+                "charStart": 407,
+                "features": {
+                  "dep_head": {
+                    "numberValue": 13.0
+                  },
+                  "dep_relation": {
+                    "stringValue": "advmod"
+                  },
+                  "engine": {
+                    "stringValue": "stanza"
+                  },
+                  "feats.PronType": {
+                    "stringValue": "Neg"
+                  },
+                  "lemma": {
+                    "stringValue": "nikdy"
+                  },
+                  "text": {
+                    "stringValue": "nikdy"
+                  },
+                  "upos": {
+                    "stringValue": "ADV"
+                  },
+                  "xpos": {
+                    "stringValue": "Db-------------"
+                  }
+                },
+                "id": "81",
+                "type": "Token"
+              },
+              {
+                "charEnd": 421,
+                "charStart": 413,
+                "features": {
+                  "dep_head": {
+                    "numberValue": 3.0
+                  },
+                  "dep_relation": {
+                    "stringValue": "conj"
+                  },
+                  "engine": {
+                    "stringValue": "stanza"
+                  },
+                  "feats.Aspect": {
+                    "stringValue": "Perf"
+                  },
+                  "feats.Gender": {
+                    "stringValue": "Fem,Neut"
+                  },
+                  "feats.Number": {
+                    "stringValue": "Plur,Sing"
+                  },
+                  "feats.Polarity": {
+                    "stringValue": "Neg"
+                  },
+                  "feats.Tense": {
+                    "stringValue": "Past"
+                  },
+                  "feats.VerbForm": {
+                    "stringValue": "Part"
+                  },
+                  "feats.Voice": {
+                    "stringValue": "Act"
+                  },
+                  "lemma": {
+                    "stringValue": "spadnout"
+                  },
+                  "text": {
+                    "stringValue": "nespadla"
+                  },
+                  "upos": {
+                    "stringValue": "VERB"
+                  },
+                  "xpos": {
+                    "stringValue": "VpQW----R-NAP--"
+                  }
+                },
+                "id": "82",
+                "type": "Token"
+              },
+              {
+                "charEnd": 422,
+                "charStart": 421,
+                "features": {
+                  "dep_head": {
+                    "numberValue": 3.0
+                  },
+                  "dep_relation": {
+                    "stringValue": "punct"
+                  },
+                  "engine": {
+                    "stringValue": "stanza"
+                  },
+                  "lemma": {
+                    "stringValue": "."
+                  },
+                  "text": {
+                    "stringValue": "."
+                  },
+                  "upos": {
+                    "stringValue": "PUNCT"
+                  },
+                  "xpos": {
+                    "stringValue": "Z:-------------"
+                  }
+                },
+                "id": "83",
+                "type": "Token"
+              },
+              {
+                "charEnd": 429,
+                "charStart": 423,
+                "features": {
+                  "dep_head": {
+                    "numberValue": 4.0
+                  },
+                  "dep_relation": {
+                    "stringValue": "obj"
+                  },
+                  "engine": {
+                    "stringValue": "stanza"
+                  },
+                  "feats.Animacy": {
+                    "stringValue": "Inan"
+                  },
+                  "feats.Case": {
+                    "stringValue": "Acc"
+                  },
+                  "feats.Gender": {
+                    "stringValue": "Masc"
+                  },
+                  "feats.Number": {
+                    "stringValue": "Sing"
+                  },
+                  "lemma": {
+                    "stringValue": "doklad"
+                  },
+                  "text": {
+                    "stringValue": "Doklad"
+                  },
+                  "upos": {
+                    "stringValue": "NOUN"
+                  },
+                  "xpos": {
+                    "stringValue": "NNIS4-----A----"
+                  }
+                },
+                "id": "84",
+                "type": "Token"
+              },
+              {
+                "charEnd": 448,
+                "charStart": 423,
+                "features": {
+                  "engine": {
+                    "stringValue": "stanza"
+                  }
+                },
+                "id": "115",
+                "type": "Sentence"
+              },
+              {
+                "charEnd": 431,
+                "charStart": 430,
+                "features": {
+                  "dep_head": {
+                    "numberValue": 3.0
+                  },
+                  "dep_relation": {
+                    "stringValue": "case"
+                  },
+                  "engine": {
+                    "stringValue": "stanza"
+                  },
+                  "feats.AdpType": {
+                    "stringValue": "Prep"
+                  },
+                  "feats.Case": {
+                    "stringValue": "Loc"
+                  },
+                  "lemma": {
+                    "stringValue": "o"
+                  },
+                  "text": {
+                    "stringValue": "o"
+                  },
+                  "upos": {
+                    "stringValue": "ADP"
+                  },
+                  "xpos": {
+                    "stringValue": "RR--6----------"
+                  }
+                },
+                "id": "85",
+                "type": "Token"
+              },
+              {
+                "charEnd": 437,
+                "charStart": 432,
+                "features": {
+                  "dep_head": {
+                    "numberValue": 1.0
+                  },
+                  "dep_relation": {
+                    "stringValue": "nmod"
+                  },
+                  "engine": {
+                    "stringValue": "stanza"
+                  },
+                  "feats.Case": {
+                    "stringValue": "Loc"
+                  },
+                  "feats.Gender": {
+                    "stringValue": "Fem"
+                  },
+                  "feats.Number": {
+                    "stringValue": "Sing"
+                  },
+                  "lemma": {
+                    "stringValue": "koupě"
+                  },
+                  "text": {
+                    "stringValue": "koupi"
+                  },
+                  "upos": {
+                    "stringValue": "NOUN"
+                  },
+                  "xpos": {
+                    "stringValue": "NNFS6-----A----"
+                  }
+                },
+                "id": "86",
+                "type": "Token"
+              },
+              {
+                "charEnd": 447,
+                "charStart": 438,
+                "features": {
+                  "dep_head": {
+                    "numberValue": 0.0
+                  },
+                  "dep_relation": {
+                    "stringValue": "root"
+                  },
+                  "engine": {
+                    "stringValue": "stanza"
+                  },
+                  "feats.Aspect": {
+                    "stringValue": "Imp"
+                  },
+                  "feats.Mood": {
+                    "stringValue": "Ind"
+                  },
+                  "feats.Number": {
+                    "stringValue": "Sing"
+                  },
+                  "feats.Person": {
+                    "stringValue": "1"
+                  },
+                  "feats.Polarity": {
+                    "stringValue": "Pos"
+                  },
+                  "feats.Tense": {
+                    "stringValue": "Pres"
+                  },
+                  "feats.VerbForm": {
+                    "stringValue": "Fin"
+                  },
+                  "feats.Voice": {
+                    "stringValue": "Act"
+                  },
+                  "lemma": {
+                    "stringValue": "přikládat"
+                  },
+                  "text": {
+                    "stringValue": "přikládám"
+                  },
+                  "upos": {
+                    "stringValue": "VERB"
+                  },
+                  "xpos": {
+                    "stringValue": "VB-S---1P-AAI--"
+                  }
+                },
+                "id": "87",
+                "type": "Token"
+              },
+              {
+                "charEnd": 448,
+                "charStart": 447,
+                "features": {
+                  "dep_head": {
+                    "numberValue": 4.0
+                  },
+                  "dep_relation": {
+                    "stringValue": "punct"
+                  },
+                  "engine": {
+                    "stringValue": "stanza"
+                  },
+                  "lemma": {
+                    "stringValue": "."
+                  },
+                  "text": {
+                    "stringValue": "."
+                  },
+                  "upos": {
+                    "stringValue": "PUNCT"
+                  },
+                  "xpos": {
+                    "stringValue": "Z:-------------"
+                  }
+                },
+                "id": "88",
+                "type": "Token"
+              },
+              {
+                "charEnd": 454,
+                "charStart": 449,
+                "features": {
+                  "dep_head": {
+                    "numberValue": 0.0
+                  },
+                  "dep_relation": {
+                    "stringValue": "root"
+                  },
+                  "engine": {
+                    "stringValue": "stanza"
+                  },
+                  "feats.Aspect": {
+                    "stringValue": "Imp"
+                  },
+                  "feats.Mood": {
+                    "stringValue": "Ind"
+                  },
+                  "feats.Number": {
+                    "stringValue": "Sing"
+                  },
+                  "feats.Person": {
+                    "stringValue": "1"
+                  },
+                  "feats.Polarity": {
+                    "stringValue": "Pos"
+                  },
+                  "feats.Tense": {
+                    "stringValue": "Pres"
+                  },
+                  "feats.VerbForm": {
+                    "stringValue": "Fin"
+                  },
+                  "feats.Voice": {
+                    "stringValue": "Act"
+                  },
+                  "lemma": {
+                    "stringValue": "žádat"
+                  },
+                  "text": {
+                    "stringValue": "Žádám"
+                  },
+                  "upos": {
+                    "stringValue": "VERB"
+                  },
+                  "xpos": {
+                    "stringValue": "VB-S---1P-AAI--"
+                  }
+                },
+                "id": "89",
+                "type": "Token"
+              },
+              {
+                "charEnd": 521,
+                "charStart": 449,
+                "features": {
+                  "engine": {
+                    "stringValue": "stanza"
+                  }
+                },
+                "id": "116",
+                "type": "Sentence"
+              },
+              {
+                "charEnd": 456,
+                "charStart": 455,
+                "features": {
+                  "dep_head": {
+                    "numberValue": 3.0
+                  },
+                  "dep_relation": {
+                    "stringValue": "case"
+                  },
+                  "engine": {
+                    "stringValue": "stanza"
+                  },
+                  "feats.AdpType": {
+                    "stringValue": "Prep"
+                  },
+                  "feats.Case": {
+                    "stringValue": "Acc"
+                  },
+                  "lemma": {
+                    "stringValue": "o"
+                  },
+                  "text": {
+                    "stringValue": "o"
+                  },
+                  "upos": {
+                    "stringValue": "ADP"
+                  },
+                  "xpos": {
+                    "stringValue": "RR--4----------"
+                  }
+                },
+                "id": "90",
+                "type": "Token"
+              },
+              {
+                "charEnd": 464,
+                "charStart": 457,
+                "features": {
+                  "dep_head": {
+                    "numberValue": 1.0
+                  },
+                  "dep_relation": {
+                    "stringValue": "obl:arg"
+                  },
+                  "engine": {
+                    "stringValue": "stanza"
+                  },
+                  "feats.Case": {
+                    "stringValue": "Acc"
+                  },
+                  "feats.Gender": {
+                    "stringValue": "Neut"
+                  },
+                  "feats.Number": {
+                    "stringValue": "Sing"
+                  },
+                  "feats.VerbForm": {
+                    "stringValue": "Vnoun"
+                  },
+                  "lemma": {
+                    "stringValue": "vrácení"
+                  },
+                  "text": {
+                    "stringValue": "vrácení"
+                  },
+                  "upos": {
+                    "stringValue": "NOUN"
+                  },
+                  "xpos": {
+                    "stringValue": "NNNS4-----A----"
+                  }
+                },
+                "id": "91",
+                "type": "Token"
+              },
+              {
+                "charEnd": 470,
+                "charStart": 465,
+                "features": {
+                  "dep_head": {
+                    "numberValue": 5.0
+                  },
+                  "dep_relation": {
+                    "stringValue": "amod"
+                  },
+                  "engine": {
+                    "stringValue": "stanza"
+                  },
+                  "feats.Case": {
+                    "stringValue": "Gen"
+                  },
+                  "feats.Degree": {
+                    "stringValue": "Pos"
+                  },
+                  "feats.Gender": {
+                    "stringValue": "Fem"
+                  },
+                  "feats.Number": {
+                    "stringValue": "Sing"
+                  },
+                  "feats.Polarity": {
+                    "stringValue": "Pos"
+                  },
+                  "lemma": {
+                    "stringValue": "kupní"
+                  },
+                  "text": {
+                    "stringValue": "kupní"
+                  },
+                  "upos": {
+                    "stringValue": "ADJ"
+                  },
+                  "xpos": {
+                    "stringValue": "AAFS2----1A----"
+                  }
+                },
+                "id": "92",
+                "type": "Token"
+              },
+              {
+                "charEnd": 475,
+                "charStart": 471,
+                "features": {
+                  "dep_head": {
+                    "numberValue": 3.0
+                  },
+                  "dep_relation": {
+                    "stringValue": "nmod"
+                  },
+                  "engine": {
+                    "stringValue": "stanza"
+                  },
+                  "feats.Case": {
+                    "stringValue": "Gen"
+                  },
+                  "feats.Gender": {
+                    "stringValue": "Fem"
+                  },
+                  "feats.Number": {
+                    "stringValue": "Sing"
+                  },
+                  "lemma": {
+                    "stringValue": "cena"
+                  },
+                  "text": {
+                    "stringValue": "ceny"
+                  },
+                  "upos": {
+                    "stringValue": "NOUN"
+                  },
+                  "xpos": {
+                    "stringValue": "NNFS2-----A----"
+                  }
+                },
+                "id": "93",
+                "type": "Token"
+              },
+              {
+                "charEnd": 477,
+                "charStart": 476,
+                "features": {
+                  "dep_head": {
+                    "numberValue": 7.0
+                  },
+                  "dep_relation": {
+                    "stringValue": "compound"
+                  },
+                  "engine": {
+                    "stringValue": "stanza"
+                  },
+                  "feats.NumForm": {
+                    "stringValue": "Digit"
+                  },
+                  "feats.NumType": {
+                    "stringValue": "Card"
+                  },
+                  "lemma": {
+                    "stringValue": "1"
+                  },
+                  "text": {
+                    "stringValue": "1"
+                  },
+                  "upos": {
+                    "stringValue": "NUM"
+                  },
+                  "xpos": {
+                    "stringValue": "C=-------------"
+                  }
+                },
+                "id": "94",
+                "type": "Token"
+              },
+              {
+                "charEnd": 481,
+                "charStart": 478,
+                "features": {
+                  "dep_head": {
+                    "numberValue": 3.0
+                  },
+                  "dep_relation": {
+                    "stringValue": "nummod"
+                  },
+                  "engine": {
+                    "stringValue": "stanza"
+                  },
+                  "feats.NumForm": {
+                    "stringValue": "Digit"
+                  },
+                  "feats.NumType": {
+                    "stringValue": "Card"
+                  },
+                  "lemma": {
+                    "stringValue": "290"
+                  },
+                  "text": {
+                    "stringValue": "290"
+                  },
+                  "upos": {
+                    "stringValue": "NUM"
+                  },
+                  "xpos": {
+                    "stringValue": "C=-------------"
+                  }
+                },
+                "id": "95",
+                "type": "Token"
+              },
+              {
+                "charEnd": 484,
+                "charStart": 482,
+                "features": {
+                  "dep_head": {
+                    "numberValue": 7.0
+                  },
+                  "dep_relation": {
+                    "stringValue": "nmod"
+                  },
+                  "engine": {
+                    "stringValue": "stanza"
+                  },
+                  "feats.Abbr": {
+                    "stringValue": "Yes"
+                  },
+                  "lemma": {
+                    "stringValue": "Kč"
+                  },
+                  "text": {
+                    "stringValue": "Kč"
+                  },
+                  "upos": {
+                    "stringValue": "NOUN"
+                  },
+                  "xpos": {
+                    "stringValue": "BNXXX-----A----"
+                  }
+                },
+                "id": "96",
+                "type": "Token"
+              },
+              {
+                "charEnd": 485,
+                "charStart": 484,
+                "features": {
+                  "dep_head": {
+                    "numberValue": 12.0
+                  },
+                  "dep_relation": {
+                    "stringValue": "punct"
+                  },
+                  "engine": {
+                    "stringValue": "stanza"
+                  },
+                  "lemma": {
+                    "stringValue": ","
+                  },
+                  "text": {
+                    "stringValue": ","
+                  },
+                  "upos": {
+                    "stringValue": "PUNCT"
+                  },
+                  "xpos": {
+                    "stringValue": "Z:-------------"
+                  }
+                },
+                "id": "97",
+                "type": "Token"
+              },
+              {
+                "charEnd": 494,
+                "charStart": 486,
+                "features": {
+                  "dep_head": {
+                    "numberValue": 12.0
+                  },
+                  "dep_relation": {
+                    "stringValue": "cc"
+                  },
+                  "engine": {
+                    "stringValue": "stanza"
+                  },
+                  "feats.Degree": {
+                    "stringValue": "Pos"
+                  },
+                  "feats.Polarity": {
+                    "stringValue": "Pos"
+                  },
+                  "lemma": {
+                    "stringValue": "případně"
+                  },
+                  "text": {
+                    "stringValue": "případně"
+                  },
+                  "upos": {
+                    "stringValue": "ADV"
+                  },
+                  "xpos": {
+                    "stringValue": "Dg-------1A----"
+                  }
+                },
+                "id": "98",
+                "type": "Token"
+              },
+              {
+                "charEnd": 496,
+                "charStart": 495,
+                "features": {
+                  "dep_head": {
+                    "numberValue": 12.0
+                  },
+                  "dep_relation": {
+                    "stringValue": "case"
+                  },
+                  "engine": {
+                    "stringValue": "stanza"
+                  },
+                  "feats.AdpType": {
+                    "stringValue": "Prep"
+                  },
+                  "feats.Case": {
+                    "stringValue": "Acc"
+                  },
+                  "lemma": {
+                    "stringValue": "o"
+                  },
+                  "text": {
+                    "stringValue": "o"
+                  },
+                  "upos": {
+                    "stringValue": "ADP"
+                  },
+                  "xpos": {
+                    "stringValue": "RR--4----------"
+                  }
+                },
+                "id": "99",
+                "type": "Token"
+              },
+              {
+                "charEnd": 503,
+                "charStart": 497,
+                "features": {
+                  "dep_head": {
+                    "numberValue": 3.0
+                  },
+                  "dep_relation": {
+                    "stringValue": "conj"
+                  },
+                  "engine": {
+                    "stringValue": "stanza"
+                  },
+                  "feats.Case": {
+                    "stringValue": "Acc"
+                  },
+                  "feats.Gender": {
+                    "stringValue": "Fem"
+                  },
+                  "feats.Number": {
+                    "stringValue": "Sing"
+                  },
+                  "lemma": {
+                    "stringValue": "výměna"
+                  },
+                  "text": {
+                    "stringValue": "výměnu"
+                  },
+                  "upos": {
+                    "stringValue": "NOUN"
+                  },
+                  "xpos": {
+                    "stringValue": "NNFS4-----A----"
+                  }
+                },
+                "id": "100",
+                "type": "Token"
+              },
+              {
+                "charEnd": 506,
+                "charStart": 504,
+                "features": {
+                  "dep_head": {
+                    "numberValue": 15.0
+                  },
+                  "dep_relation": {
+                    "stringValue": "case"
+                  },
+                  "engine": {
+                    "stringValue": "stanza"
+                  },
+                  "feats.AdpType": {
+                    "stringValue": "Prep"
+                  },
+                  "feats.Case": {
+                    "stringValue": "Acc"
+                  },
+                  "lemma": {
+                    "stringValue": "za"
+                  },
+                  "text": {
+                    "stringValue": "za"
+                  },
+                  "upos": {
+                    "stringValue": "ADP"
+                  },
+                  "xpos": {
+                    "stringValue": "RR--4----------"
+                  }
+                },
+                "id": "101",
+                "type": "Token"
+              },
+              {
+                "charEnd": 512,
+                "charStart": 507,
+                "features": {
+                  "dep_head": {
+                    "numberValue": 15.0
+                  },
+                  "dep_relation": {
+                    "stringValue": "amod"
+                  },
+                  "engine": {
+                    "stringValue": "stanza"
+                  },
+                  "feats.Case": {
+                    "stringValue": "Acc"
+                  },
+                  "feats.Degree": {
+                    "stringValue": "Pos"
+                  },
+                  "feats.Gender": {
+                    "stringValue": "Fem"
+                  },
+                  "feats.Number": {
+                    "stringValue": "Sing"
+                  },
+                  "feats.Polarity": {
+                    "stringValue": "Pos"
+                  },
+                  "lemma": {
+                    "stringValue": "nový"
+                  },
+                  "text": {
+                    "stringValue": "novou"
+                  },
+                  "upos": {
+                    "stringValue": "ADJ"
+                  },
+                  "xpos": {
+                    "stringValue": "AAFS4----1A----"
+                  }
+                },
+                "id": "102",
+                "type": "Token"
+              },
+              {
+                "charEnd": 520,
+                "charStart": 513,
+                "features": {
+                  "dep_head": {
+                    "numberValue": 12.0
+                  },
+                  "dep_relation": {
+                    "stringValue": "nmod"
+                  },
+                  "engine": {
+                    "stringValue": "stanza"
+                  },
+                  "feats.Case": {
+                    "stringValue": "Acc"
+                  },
+                  "feats.Gender": {
+                    "stringValue": "Fem"
+                  },
+                  "feats.Number": {
+                    "stringValue": "Sing"
+                  },
+                  "lemma": {
+                    "stringValue": "konvice"
+                  },
+                  "text": {
+                    "stringValue": "konvici"
+                  },
+                  "upos": {
+                    "stringValue": "NOUN"
+                  },
+                  "xpos": {
+                    "stringValue": "NNFS4-----A----"
+                  }
+                },
+                "id": "103",
+                "type": "Token"
+              },
+              {
+                "charEnd": 521,
+                "charStart": 520,
+                "features": {
+                  "dep_head": {
+                    "numberValue": 1.0
+                  },
+                  "dep_relation": {
+                    "stringValue": "punct"
+                  },
+                  "engine": {
+                    "stringValue": "stanza"
+                  },
+                  "lemma": {
+                    "stringValue": "."
+                  },
+                  "text": {
+                    "stringValue": "."
+                  },
+                  "upos": {
+                    "stringValue": "PUNCT"
+                  },
+                  "xpos": {
+                    "stringValue": "Z:-------------"
+                  }
+                },
+                "id": "104",
+                "type": "Token"
+              },
+              {
+                "charEnd": 523,
+                "charStart": 522,
+                "features": {
+                  "dep_head": {
+                    "numberValue": 2.0
+                  },
+                  "dep_relation": {
+                    "stringValue": "case"
+                  },
+                  "engine": {
+                    "stringValue": "stanza"
+                  },
+                  "feats.AdpType": {
+                    "stringValue": "Prep"
+                  },
+                  "feats.Case": {
+                    "stringValue": "Ins"
+                  },
+                  "lemma": {
+                    "stringValue": "s"
+                  },
+                  "text": {
+                    "stringValue": "S"
+                  },
+                  "upos": {
+                    "stringValue": "ADP"
+                  },
+                  "xpos": {
+                    "stringValue": "RR--7----------"
+                  }
+                },
+                "id": "105",
+                "type": "Token"
+              },
+              {
+                "charEnd": 551,
+                "charStart": 522,
+                "features": {
+                  "engine": {
+                    "stringValue": "stanza"
+                  }
+                },
+                "id": "117",
+                "type": "Sentence"
+              },
+              {
+                "charEnd": 533,
+                "charStart": 524,
+                "features": {
+                  "dep_head": {
+                    "numberValue": 0.0
+                  },
+                  "dep_relation": {
+                    "stringValue": "root"
+                  },
+                  "engine": {
+                    "stringValue": "stanza"
+                  },
+                  "feats.Animacy": {
+                    "stringValue": "Anim"
+                  },
+                  "feats.Case": {
+                    "stringValue": "Ins"
+                  },
+                  "feats.Gender": {
+                    "stringValue": "Masc"
+                  },
+                  "feats.Number": {
+                    "stringValue": "Sing"
+                  },
+                  "lemma": {
+                    "stringValue": "pozdrav"
+                  },
+                  "text": {
+                    "stringValue": "pozdravem"
+                  },
+                  "upos": {
+                    "stringValue": "NOUN"
+                  },
+                  "xpos": {
+                    "stringValue": "NNMS7-----A----"
+                  }
+                },
+                "id": "106",
+                "type": "Token"
+              },
+              {
+                "charEnd": 543,
+                "charStart": 534,
+                "features": {
+                  "dep_head": {
+                    "numberValue": 2.0
+                  },
+                  "dep_relation": {
+                    "stringValue": "nmod"
+                  },
+                  "engine": {
+                    "stringValue": "stanza"
+                  },
+                  "feats.Case": {
+                    "stringValue": "Gen"
+                  },
+                  "feats.Gender": {
+                    "stringValue": "Fem"
+                  },
+                  "feats.Number": {
+                    "stringValue": "Sing"
+                  },
+                  "lemma": {
+                    "stringValue": "zákaznice"
+                  },
+                  "text": {
+                    "stringValue": "zákaznice"
+                  },
+                  "upos": {
+                    "stringValue": "NOUN"
+                  },
+                  "xpos": {
+                    "stringValue": "NNFS2-----A----"
+                  }
+                },
+                "id": "107",
+                "type": "Token"
+              },
+              {
+                "charEnd": 545,
+                "charStart": 544,
+                "features": {
+                  "dep_head": {
+                    "numberValue": 3.0
+                  },
+                  "dep_relation": {
+                    "stringValue": "nmod"
+                  },
+                  "engine": {
+                    "stringValue": "stanza"
+                  },
+                  "feats.Abbr": {
+                    "stringValue": "Yes"
+                  },
+                  "lemma": {
+                    "stringValue": "C"
+                  },
+                  "text": {
+                    "stringValue": "C"
+                  },
+                  "upos": {
+                    "stringValue": "NOUN"
+                  },
+                  "xpos": {
+                    "stringValue": "Q3-------------"
+                  }
+                },
+                "id": "108",
+                "type": "Token"
+              },
+              {
+                "charEnd": 546,
+                "charStart": 545,
+                "features": {
+                  "dep_head": {
+                    "numberValue": 6.0
+                  },
+                  "dep_relation": {
+                    "stringValue": "punct"
+                  },
+                  "engine": {
+                    "stringValue": "stanza"
+                  },
+                  "lemma": {
+                    "stringValue": "-"
+                  },
+                  "text": {
+                    "stringValue": "-"
+                  },
+                  "upos": {
+                    "stringValue": "PUNCT"
+                  },
+                  "xpos": {
+                    "stringValue": "Z:-------------"
+                  }
+                },
+                "id": "109",
+                "type": "Token"
+              },
+              {
+                "charEnd": 551,
+                "charStart": 546,
+                "features": {
+                  "dep_head": {
+                    "numberValue": 4.0
+                  },
+                  "dep_relation": {
+                    "stringValue": "nummod"
+                  },
+                  "engine": {
+                    "stringValue": "stanza"
+                  },
+                  "feats.NumForm": {
+                    "stringValue": "Digit"
+                  },
+                  "feats.NumType": {
+                    "stringValue": "Card"
+                  },
+                  "lemma": {
+                    "stringValue": "40311"
+                  },
+                  "text": {
+                    "stringValue": "40311"
+                  },
+                  "upos": {
+                    "stringValue": "NUM"
+                  },
+                  "xpos": {
+                    "stringValue": "C=-------------"
+                  }
+                },
+                "id": "110",
+                "type": "Token"
+              }
+            ]
+          }
+        ],
+        "documentFeatures": {
+          "duplicate_annotations_dropped": {
+            "numberValue": 0.0
+          },
+          "engines": {
+            "listValue": {
+              "items": [
+                {
+                  "stringValue": "stanza"
+                }
+              ]
+            }
+          },
+          "lane": {
+            "stringValue": "default"
+          },
+          "language": {
+            "stringValue": "cs"
+          },
+          "model_versions.stanza": {
+            "stringValue": "stanza-1.10.0"
+          },
+          "pipeline": {
+            "stringValue": "hartland-mini-mentions"
+          }
+        },
+        "text": "Reklamace – rychlovarná konvice Summit Dobrý den, reklamuji rychlovarnou konvici Summit (produkt HL-4205), kterou jsem koupila 2. září 2026 v prodejně Hartland v Brně. Po třech týdnech přestala vypínat po dosažení varu a voda vře dál, dokud ji nevypnu ručně. Termostat je asi vadný, ale nejsem si jistá, jestli nejde jen o víko, které pořádně nedolehne.\n\nKonvici jsem používala podle návodu, jen na vodu, a nikdy nespadla. Doklad o koupi přikládám. Žádám o vrácení kupní ceny 1 290 Kč, případně o výměnu za novou konvici. S pozdravem zákaznice C-40311"
+      },
+      "elapsedMs": "272",
+      "language": "cs",
+      "languageConfidence": 1.0,
+      "phases": [
+        {
+          "annotationsAdded": 118,
+          "elapsedMs": "266",
+          "kind": "engine",
+          "phase": "LEMMATIZE,TOKENIZE"
+        },
+        {
+          "annotationsAdded": 1,
+          "kind": "gazetteer",
+          "phase": "items"
+        },
+        {
+          "annotationsAdded": 2,
+          "elapsedMs": "1",
+          "kind": "gazetteer",
+          "phase": "item-lemmas"
+        },
+        {
+          "annotationsAdded": 1,
+          "elapsedMs": "1",
+          "kind": "gazetteer",
+          "phase": "dates"
+        },
+        {
+          "annotationsAdded": 1,
+          "elapsedMs": "1",
+          "kind": "gazetteer",
+          "phase": "modifiers"
+        }
+      ],
+      "used": [
+        {
+          "engine": "stanza",
+          "model": "stanza-cs-en",
+          "modelVersion": "stanza-1.10.0",
+          "op": "LEMMATIZE"
+        },
+        {
+          "engine": "stanza",
+          "model": "stanza-cs-en",
+          "modelVersion": "stanza-1.10.0",
+          "op": "TOKENIZE"
+        }
+      ]
+    },
+    "sha256": "1638f29a335d13b0e2b082ac1a652a28bb201dc2cc1d7302897e8383a0e7c274"
+  }
+]

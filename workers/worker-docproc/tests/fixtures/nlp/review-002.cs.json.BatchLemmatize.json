@@ -1,0 +1,133 @@
+[
+  {
+    "language": "cs",
+    "response": {
+      "results": [
+        {
+          "lemmas": [
+            "hrozně",
+            "hlučnat",
+            "koupit",
+            "být",
+            "se",
+            "ventilátor",
+            "Breez",
+            "do",
+            "ložnice",
+            "a",
+            "být",
+            "ten",
+            "zklamání",
+            ".",
+            "hrozně",
+            "hučet",
+            ",",
+            "v",
+            "noc",
+            "se",
+            "u",
+            "ten",
+            "dát",
+            "spát",
+            "😤",
+            "Breez",
+            "být",
+            "nikdo",
+            "doporučit",
+            ",",
+            "vrácit",
+            "on",
+            "zpátky",
+            ".",
+            "Škoda",
+            ",",
+            "vypadat",
+            "hezky",
+            "a",
+            "za",
+            "ten",
+            "penize",
+            "být",
+            "čekat",
+            "více",
+            "."
+          ]
+        }
+      ],
+      "used": [
+        {
+          "engine": "stanza",
+          "model": "stanza-cs-en",
+          "modelVersion": "stanza-1.10.0",
+          "op": "LEMMATIZE"
+        }
+      ]
+    },
+    "sha256": "b346d1f5033b79806955a04f5ce5a2437faa1fbd56baf624be63046354d61c44"
+  },
+  {
+    "language": "cs",
+    "response": {
+      "results": [
+        {
+          "lemmas": [
+            "po",
+            "dva",
+            "týden",
+            "spokojenost",
+            "po",
+            "dva",
+            "týden",
+            "používání",
+            "muset",
+            "říci",
+            ",",
+            "že",
+            "ventilátor",
+            "Breez",
+            "mít",
+            "moc",
+            "co",
+            "vytknout",
+            ".",
+            "noční",
+            "režim",
+            "být",
+            "opravdu",
+            "tichý",
+            "a",
+            "časovač",
+            "fungovat",
+            ".",
+            "jediný",
+            ",",
+            "co",
+            "já",
+            "štvát",
+            ",",
+            "být",
+            "lehoučký",
+            "dálkový",
+            "ovladač",
+            ",",
+            "který",
+            "pořád",
+            "hledat",
+            "pod",
+            "polštář",
+            "."
+          ]
+        }
+      ],
+      "used": [
+        {
+          "engine": "stanza",
+          "model": "stanza-cs-en",
+          "modelVersion": "stanza-1.10.0",
+          "op": "LEMMATIZE"
+        }
+      ]
+    },
+    "sha256": "ddf1a0aacb548e961e1049826df7df2cc4728e1587cd07d52cdd12a4e342d72e"
+  }
+]

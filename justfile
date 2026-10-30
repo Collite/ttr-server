@@ -18,7 +18,7 @@ set shell := ["bash", "-uc"]
 # CI cannot build them without its URL. All four: `just nlp-backend-image`.
 # `superset` (images/superset) is not here either: its version is Superset's plus `-ttr<N>`, not ours, so it is
 # released by tag only — `superset/v6.1.0-ttr1` (images/superset/README.md).
-image_modules := "connect-openmetadata metadata query translate validate dispatch charon lex-matcher llm-gateway nlp nlp-stanza nlp-spacy golem-py morph-studio chrono geo money grounding-mcp resolver automation meta-mcp query-mcp lex-matcher-mcp nlp-mcp worker-postgres worker-mssql worker-polars identity health"
+image_modules := "connect-openmetadata metadata query translate validate dispatch charon lex-matcher llm-gateway nlp nlp-stanza nlp-spacy golem-py morph-studio chrono geo money grounding-mcp resolver automation meta-mcp query-mcp lex-matcher-mcp nlp-mcp worker-postgres worker-mssql worker-polars worker-docproc identity health"
 
 # The pure-Python wheels publish-python.yml builds (`python-<lane>/v*` tag →
 # PyPI). Kept in lockstep with that workflow's tag map — the wheel-name → tag-

@@ -1,0 +1,196 @@
+{
+  "$defs": {
+    "type": {
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "tier": {
+                "const": "model"
+              }
+            }
+          },
+          "then": {
+            "not": {
+              "required": [
+                "schema"
+              ]
+            },
+            "required": [
+              "rendered_from"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "tier": {
+                "const": "structural"
+              }
+            }
+          },
+          "then": {
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "rendered_from"
+                  ]
+                },
+                {
+                  "properties": {
+                    "feeds_records": {
+                      "const": true
+                    }
+                  },
+                  "required": [
+                    "feeds_records"
+                  ]
+                }
+              ]
+            },
+            "required": [
+              "schema"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "rendered_from": {
+                "properties": {
+                  "kind": {
+                    "const": "record"
+                  }
+                }
+              }
+            },
+            "required": [
+              "rendered_from"
+            ]
+          },
+          "then": {
+            "properties": {
+              "key": {
+                "pattern": "^Record\\."
+              },
+              "unit_level": {
+                "const": "subject"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "rendered_from": {
+                "properties": {
+                  "kind": {
+                    "const": "statement"
+                  }
+                }
+              }
+            },
+            "required": [
+              "rendered_from"
+            ]
+          },
+          "then": {
+            "properties": {
+              "feeds_records": {
+                "const": false
+              },
+              "key": {
+                "pattern": "^Statement\\["
+              }
+            }
+          }
+        }
+      ],
+      "properties": {
+        "description": {
+          "type": "string"
+        },
+        "feeds_records": {
+          "type": "boolean"
+        },
+        "key": {
+          "pattern": "^([A-Z][A-Za-z]*|Statement\\[[a-z_][a-z0-9_]*\\]|Record\\.[a-z_][a-z0-9_]*|Import\\.[a-z_][a-z0-9_]*)$",
+          "type": "string"
+        },
+        "rendered_from": {
+          "additionalProperties": false,
+          "properties": {
+            "entity": {
+              "description": "A BARE er name (review-158 F9).",
+              "pattern": "^er\\.entity\\.[a-z_][a-z0-9_]*$",
+              "type": "string"
+            },
+            "kind": {
+              "enum": [
+                "statement",
+                "record"
+              ]
+            }
+          },
+          "required": [
+            "entity",
+            "kind"
+          ],
+          "type": "object"
+        },
+        "schema": {
+          "pattern": "^schemas/[A-Za-z.]+\\.schema\\.json$",
+          "type": "string"
+        },
+        "tier": {
+          "enum": [
+            "structural",
+            "model"
+          ]
+        },
+        "unit_level": {
+          "enum": [
+            "document",
+            "section",
+            "chunk",
+            "subject"
+          ]
+        }
+      },
+      "required": [
+        "key",
+        "tier",
+        "unit_level"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "https://tatrman.org/dx/schemas/type-registry.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "<pack>/types/registry.yaml (a pack's extension, model tier) or the engine's types/engine.yaml (the structural set). A model type names the er entity it is rendered from; its schema is the rendered file in types/generated/, checked against index.json at load.",
+  "properties": {
+    "description": {
+      "type": "string"
+    },
+    "types": {
+      "items": {
+        "$ref": "#/$defs/type"
+      },
+      "minItems": 1,
+      "type": "array"
+    },
+    "version": {
+      "minimum": 1,
+      "type": "integer"
+    }
+  },
+  "required": [
+    "version",
+    "types"
+  ],
+  "title": "DX type registry (contracts §6)",
+  "type": "object"
+}

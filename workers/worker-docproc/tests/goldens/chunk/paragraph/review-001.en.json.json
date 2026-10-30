@@ -1,0 +1,46 @@
+[
+  {
+    "id": "g:review-001.en:0",
+    "payload": {
+      "context": {
+        "parentUnitId": "g:review-001.en:s0",
+        "prefix": "review-001.en.json › Flickers at the lowest setting"
+      },
+      "ordinal": 0,
+      "paramsHash": "sha256:ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356",
+      "strategy": "paragraph",
+      "tokenCount": 67
+    },
+    "spans": [
+      {
+        "end": 301,
+        "start": 0,
+        "unit": "g:review-001.en:s0"
+      }
+    ],
+    "type": "Chunk",
+    "unit": "g:review-001.en:s0"
+  },
+  {
+    "id": "g:review-001.en:1",
+    "payload": {
+      "context": {
+        "parentUnitId": "g:review-001.en:s1",
+        "prefix": "review-001.en.json › Great light for late work"
+      },
+      "ordinal": 0,
+      "paramsHash": "sha256:ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356",
+      "strategy": "paragraph",
+      "tokenCount": 60
+    },
+    "spans": [
+      {
+        "end": 274,
+        "start": 0,
+        "unit": "g:review-001.en:s1"
+      }
+    ],
+    "type": "Chunk",
+    "unit": "g:review-001.en:s1"
+  }
+]

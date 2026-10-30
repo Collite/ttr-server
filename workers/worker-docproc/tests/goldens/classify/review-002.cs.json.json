@@ -1,0 +1,22 @@
+[
+  {
+    "id": "g:review-002.cs:0",
+    "payload": {
+      "kind": "review_body",
+      "rule": "rule:0"
+    },
+    "spans": [],
+    "type": "SectionKind",
+    "unit": "g:review-002.cs:s0"
+  },
+  {
+    "id": "g:review-002.cs:1",
+    "payload": {
+      "kind": "review_body",
+      "rule": "rule:0"
+    },
+    "spans": [],
+    "type": "SectionKind",
+    "unit": "g:review-002.cs:s1"
+  }
+]

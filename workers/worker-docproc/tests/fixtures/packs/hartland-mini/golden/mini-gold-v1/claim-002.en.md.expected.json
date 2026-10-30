@@ -1,0 +1,86 @@
+{
+  "document": "claim-002.en.md",
+  "mentions": [
+    {
+      "concept": "cn.Item",
+      "id": "g:claim-002.en:m0",
+      "kind": "item",
+      "member": {
+        "category": "er.entity.item",
+        "display": "Pulse Wireless Headphones",
+        "id": "HL-3310"
+      },
+      "section": "g:claim-002.en:s1",
+      "span": {
+        "end": 83,
+        "start": 58
+      },
+      "surface": "Pulse Wireless Headphones"
+    },
+    {
+      "concept": "cn.Item",
+      "id": "g:claim-002.en:m1",
+      "kind": "item",
+      "member": {
+        "category": "er.entity.item",
+        "display": "Pulse Wireless Headphones",
+        "id": "HL-3310"
+      },
+      "section": "g:claim-002.en:s3",
+      "span": {
+        "end": 107,
+        "start": 91
+      },
+      "surface": "Pulse headphones"
+    }
+  ],
+  "sections": [
+    {
+      "contentHash": "sha256:de1c469e83e2f57b874611925ba2744d1e1660e56989043cc42bf2f729ac3f05",
+      "id": "g:claim-002.en:s0",
+      "idx": 0,
+      "sectionKind": "other",
+      "sectionPath": [
+        "Warranty claim: Pulse Wireless Headphones"
+      ],
+      "text": "Customer C-52007. Order SO-88412. Product HL-3310.",
+      "title": "Warranty claim: Pulse Wireless Headphones"
+    },
+    {
+      "contentHash": "sha256:5b3c13d5f287be31f794a6ad49da0c2cc4b9fdab018e6b9108ada3d783ccb333",
+      "id": "g:claim-002.en:s1",
+      "idx": 1,
+      "sectionKind": "claim_body",
+      "sectionPath": [
+        "Warranty claim: Pulse Wireless Headphones",
+        "The defect"
+      ],
+      "text": "About a month after I bought them, the left ear cup of my Pulse Wireless Headphones stopped producing any sound. The right side still works, and the headphones still pair and charge normally. I tried a reset and a second phone; the left side stays silent either way.",
+      "title": "The defect"
+    },
+    {
+      "contentHash": "sha256:10cc419e1ed14f3cd536bf72daf99800656d4e1e8c40e68a867425546d11daef",
+      "id": "g:claim-002.en:s2",
+      "idx": 2,
+      "sectionKind": "claim_body",
+      "sectionPath": [
+        "Warranty claim: Pulse Wireless Headphones",
+        "What I am asking for"
+      ],
+      "text": "I would like a replacement pair. If no replacement is available, please refund the price I paid, $89.99.",
+      "title": "What I am asking for"
+    },
+    {
+      "contentHash": "sha256:97fb3f2581fd728c3cfcba2f58b54aa88a9ef7d89f77234e7e1167a363a9c68c",
+      "id": "g:claim-002.en:s3",
+      "idx": 3,
+      "sectionKind": "claim_body",
+      "sectionPath": [
+        "Warranty claim: Pulse Wireless Headphones",
+        "Earlier correspondence"
+      ],
+      "text": "I already reported this to customer service on 3 October 2026:\n\nHello, the left side of my Pulse headphones has gone completely silent after four weeks. Is this covered by the warranty, and should I send them in or bring them to a store?\n\nI have not received a reply yet, so I am filing this claim.",
+      "title": "Earlier correspondence"
+    }
+  ]
+}

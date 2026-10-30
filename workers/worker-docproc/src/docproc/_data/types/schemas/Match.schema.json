@@ -1,0 +1,51 @@
+{
+  "$id": "ttr:types/Match",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "An evaluation match of a prediction against a reference (gold, a mentor, another arm). fn has no prediction and fp no reference, so predId and refId are optional; a golden ref is its g:… id.",
+  "properties": {
+    "bucket": {
+      "type": "string"
+    },
+    "level": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "predId": {
+      "type": "integer"
+    },
+    "refId": {
+      "type": [
+        "integer",
+        "string"
+      ]
+    },
+    "referenceKind": {
+      "enum": [
+        "gold",
+        "mentor",
+        "arm"
+      ]
+    },
+    "score": {
+      "type": "number"
+    },
+    "verdict": {
+      "enum": [
+        "tp",
+        "fp",
+        "fn",
+        "partial",
+        "mismatch"
+      ]
+    }
+  },
+  "required": [
+    "verdict",
+    "referenceKind",
+    "level",
+    "score"
+  ],
+  "title": "Match",
+  "type": "object"
+}

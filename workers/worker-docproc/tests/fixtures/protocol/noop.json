@@ -1,0 +1,97 @@
+{
+  "header": {
+    "title": "Processor cz-mentions",
+    "turnCountInScope": 1
+  },
+  "protocolId": "step-1/1",
+  "receipts": {},
+  "schemaVersion": "protocol/v1.0",
+  "scope": {
+    "turnId": "step-1/1"
+  },
+  "sessionId": "plan-hartland-review-000123-1",
+  "turns": [
+    {
+      "sections": [
+        {
+          "appliedVerbosity": "VERBOSITY_SUMMARY",
+          "key": "header",
+          "processorHeader": {
+            "documentId": "hartland-review-000123",
+            "family": "cz-mentions",
+            "generation": "g1",
+            "host": "docproc",
+            "kind": "nlp-pipeline",
+            "unitIds": [
+              101,
+              102
+            ],
+            "versionHash": "sha256:3b6f0c1e9a4d2b7c8e5f1a0d9c6b3e2f4a7d0c9b8e1f2a3d4c5b6e7f8a9b0c1d",
+            "visibility": "CANDIDATE"
+          }
+        },
+        {
+          "appliedVerbosity": "VERBOSITY_SUMMARY",
+          "inputBundle": {
+            "annotationIds": [],
+            "contentHashes": {
+              "101": "sha256:u"
+            },
+            "unitIds": [
+              101
+            ]
+          },
+          "key": "input-bundle"
+        },
+        {
+          "appliedVerbosity": "VERBOSITY_SUMMARY",
+          "hints": {
+            "annotationIds": []
+          },
+          "key": "hints"
+        },
+        {
+          "appliedVerbosity": "VERBOSITY_SUMMARY",
+          "key": "nlp-calls",
+          "nlpCalls": {
+            "calls": 0
+          }
+        },
+        {
+          "appliedVerbosity": "VERBOSITY_SUMMARY",
+          "candidates": {},
+          "key": "candidates"
+        },
+        {
+          "appliedVerbosity": "VERBOSITY_SUMMARY",
+          "decisions": {},
+          "key": "decisions"
+        },
+        {
+          "appliedVerbosity": "VERBOSITY_SUMMARY",
+          "key": "outputs",
+          "outputs": {
+            "annotationIds": [
+              5001
+            ],
+            "childUnitIds": []
+          }
+        },
+        {
+          "appliedVerbosity": "VERBOSITY_SUMMARY",
+          "key": "validators",
+          "validators": {
+            "verdictIds": []
+          }
+        },
+        {
+          "appliedVerbosity": "VERBOSITY_SUMMARY",
+          "errors": {},
+          "key": "errors"
+        }
+      ],
+      "seq": 1,
+      "turnId": "step-1/1"
+    }
+  ]
+}

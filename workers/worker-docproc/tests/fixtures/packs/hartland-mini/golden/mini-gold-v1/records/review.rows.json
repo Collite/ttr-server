@@ -1,0 +1,74 @@
+{
+  "entity": "er.entity.review",
+  "rows": [
+    {
+      "annotation_refs": [
+        "g:review-001.en:st0"
+      ],
+      "body": "I bought the Aurora Desk Lamp for my home office. The light itself is pleasant, but at the lowest brightness step the panel flickers, which I notice within a few minutes of reading. At the higher steps it is fine. For the price I expected better, and I am returning it.",
+      "customer": 101,
+      "item": 1,
+      "rating": 2,
+      "recorded_at": "2026-09-14T08:12:00Z",
+      "reviewId": "R-1001-01",
+      "reviewed_on": "2026-09-14",
+      "sentiment": "negative",
+      "subject": "HL-1001",
+      "temporal_context": "current",
+      "title": "Flickers at the lowest setting",
+      "verification": "verified_purchase"
+    },
+    {
+      "annotation_refs": [
+        "g:review-001.en:st1"
+      ],
+      "body": "After two weeks of evenings at my desk the Aurora lamp has replaced my old halogen one completely. The warm setting is easy on the eyes and the USB-C port in the base keeps my phone charged. I plan to buy a second Aurora Desk Lamp for the bedroom.",
+      "customer": 102,
+      "item": 1,
+      "rating": 5,
+      "recorded_at": "2026-09-28T19:40:00Z",
+      "reviewId": "R-1001-02",
+      "reviewed_on": "2026-09-28",
+      "sentiment": "positive",
+      "subject": "HL-1001",
+      "temporal_context": "current",
+      "title": "Great light for late work",
+      "verification": "unverified"
+    },
+    {
+      "annotation_refs": [
+        "g:review-002.cs:st0"
+      ],
+      "body": "Koupil jsem si ventilátor Breeze do ložnice a je to zklamání. Hrozně hučí, v noci se u toho nedá spát 😤 Breeze bych nikomu nedoporučil, vracim ho zpátky. Škoda, vypadá hezky a za ty penize bych čekal víc.",
+      "customer": 103,
+      "item": 2,
+      "rating": 1,
+      "recorded_at": "2026-08-03T21:05:00Z",
+      "reviewId": "R-2040-01",
+      "reviewed_on": "2026-08-03",
+      "sentiment": "negative",
+      "subject": "HL-2040",
+      "temporal_context": "current",
+      "title": "Hrozně hlučnej",
+      "verification": "verified_purchase"
+    },
+    {
+      "annotation_refs": [
+        "g:review-002.cs:st1"
+      ],
+      "body": "Po dvou týdnech používání musím říct, že ventilátoru Breeze nemám moc co vytknout. Noční režim je opravdu tichý a časovač funguje. Jediné, co mě štve, je lehoučký dálkový ovladač, který pořád hledám pod polštářem.",
+      "customer": 104,
+      "item": 2,
+      "rating": 4,
+      "recorded_at": "2026-08-19T06:30:00Z",
+      "reviewId": "R-2040-02",
+      "reviewed_on": "2026-08-19",
+      "sentiment": "positive",
+      "subject": "HL-2040",
+      "temporal_context": "current",
+      "title": "Po dvou týdnech spokojenost",
+      "verification": "verified_purchase"
+    }
+  ],
+  "table": "review"
+}
