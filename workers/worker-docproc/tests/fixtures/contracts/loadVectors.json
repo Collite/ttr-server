@@ -1,0 +1,35 @@
+{
+  "request": {
+    "vectors": [
+      {
+        "modelId": "text-embedding-3-small",
+        "modelVersion": "1",
+        "nodeId": 7001,
+        "nodeKind": "chunk",
+        "runId": "embed-chunk-recursive/3",
+        "vector": [
+          0.5,
+          -0.125,
+          0.25,
+          0.75
+        ]
+      },
+      {
+        "modelId": "text-embedding-3-small",
+        "modelVersion": "1",
+        "nodeId": 9001,
+        "nodeKind": "page",
+        "runId": "embed-chunk-recursive/3",
+        "vector": [
+          0.25,
+          0.5,
+          -0.5,
+          0.125
+        ]
+      }
+    ]
+  },
+  "response": {
+    "upserted": 2
+  }
+}
