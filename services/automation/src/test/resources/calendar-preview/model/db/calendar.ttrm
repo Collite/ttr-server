@@ -1,0 +1,6 @@
+package hartland
+model db schema dbo
+def table calendar_days { columns: [
+    def column day { type: date, isKey: true },
+    def column working { type: bool }
+] }

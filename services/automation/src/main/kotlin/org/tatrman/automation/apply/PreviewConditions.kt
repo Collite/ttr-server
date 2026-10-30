@@ -10,5 +10,6 @@ internal object PreviewConditions {
         expression: String,
         table: Table,
         bindings: Map<String, BoundValue>,
-    ): Set<Int> = PreviewExpressions.select(expression, table, bindings)
+        calendar: CalendarSnapshot? = null,
+    ): Set<Int> = PreviewExpressions.select(expression, table, bindings, calendar)
 }

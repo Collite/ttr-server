@@ -5,6 +5,7 @@ import kotlinx.serialization.json.*
 import org.tatrman.automation.api.AutomationException
 import org.tatrman.automation.api.ErrorCode
 import org.tatrman.ttr.metadata.model.Attribute
+import org.tatrman.ttr.metadata.model.AutomationColumn
 import org.tatrman.ttr.metadata.model.AutomationAction
 import org.tatrman.ttr.metadata.model.Entity
 import org.tatrman.ttrp.resolve.ColumnType
@@ -12,7 +13,7 @@ import java.math.BigDecimal
 
 /** Resolved action-column → ER attribute insert mapping. Defaults resolve upstream; no model reads. */
 internal class PreviewWriter private constructor(
-    private val entity: Entity,
+    val entity: Entity,
     private val attributes: Map<String, Attribute>,
     private val required: Set<String>,
 ) {
@@ -48,6 +49,14 @@ internal class PreviewWriter private constructor(
         seq: Int,
         arguments: Map<String, JsonElement>,
     ): ApplyRow {
+        val row = values(arguments)
+        return ApplyRow(seq, entity.qname.dotted(), "insert", keyFromRow(row), row = JsonObject(row))
+    }
+
+    /** Validate a business key with the same compiler types and attribute bounds as writer inserts. */
+    private fun key(arguments: Map<String, JsonElement>): JsonObject = keyFromRow(values(arguments))
+
+    private fun values(arguments: Map<String, JsonElement>): Map<String, JsonElement> {
         validateArguments(arguments.keys)
         val row = linkedMapOf<String, JsonElement>()
         for ((argument, attribute) in attributes) {
@@ -71,12 +80,25 @@ internal class PreviewWriter private constructor(
             }
             row[attribute.qname.name.substringAfterLast('.')] = value
         }
-        val key =
+        return row
+    }
+
+    private fun keyFromRow(row: Map<String, JsonElement>): JsonObject =
+        JsonObject(
             entity.attributes.filter { it.isKey }.associate { attribute ->
                 val name = attribute.qname.name.substringAfterLast('.')
                 name to (row[name]?.takeUnless { it == JsonNull } ?: unsupported())
-            }
-        return ApplyRow(seq, entity.qname.dotted(), "insert", JsonObject(key), row = JsonObject(row))
+            },
+        )
+
+    /** Key-only mappings expose no partial insert operation. */
+    class KeyMapping internal constructor(
+        private val mapping: PreviewWriter,
+    ) {
+        val entity: Entity get() = mapping.entity
+        val expectedTypes: Map<String, String> get() = mapping.expectedTypes
+
+        fun key(arguments: Map<String, JsonElement>): JsonObject = mapping.key(arguments)
     }
 
     private data class Bounds(
@@ -145,15 +167,59 @@ internal class PreviewWriter private constructor(
             pinnedTargets: Map<String, org.tatrman.ttrp.resolve.TargetResolution.Resolved>?,
         ): PreviewWriter {
             if (action.columns.isEmpty() || action.set != null || action.transition != null) unsupported()
-            if (action.columns
+            val targets = targets(action.columns, entities, pinnedTargets)
+            val entity = targets.first().second
+            val mapped = targets.map { it.third }
+            if (mapped.distinct().size != mapped.size) unsupported()
+            if (entity.attributes.none { it.isKey } ||
+                entity.attributes.any { (it.isKey || !it.nullable) && it !in mapped }
+            ) {
+                unsupported()
+            }
+            val required =
+                action.columns
+                    .filterNot { it.optional }
+                    .map { it.name }
+                    .toSet() +
+                    targets.filter { it.third.isKey || !it.third.nullable }.map { it.first }
+            return PreviewWriter(entity, targets.associate { it.first to it.third }, required)
+        }
+
+        /** A complete key mapping; never requires non-key fields or proposes a partial entity insert. */
+        fun resolveKey(
+            columns: List<AutomationColumn>,
+            entities: List<Entity>,
+            pinnedTargets: Map<String, org.tatrman.ttrp.resolve.TargetResolution.Resolved>?,
+        ): KeyMapping {
+            val targets = targets(columns, entities, pinnedTargets)
+            val entity = targets.first().second
+            val attributes = targets.map { it.third }
+            if (attributes.distinct().size != attributes.size ||
+                attributes.any { !it.isKey } ||
+                entity.attributes.filter { it.isKey }.toSet() != attributes.toSet()
+            ) {
+                unsupported()
+            }
+            return KeyMapping(
+                PreviewWriter(entity, targets.associate { it.first to it.third }, columns.map { it.name }.toSet()),
+            )
+        }
+
+        private fun targets(
+            columns: List<AutomationColumn>,
+            entities: List<Entity>,
+            pinnedTargets: Map<String, org.tatrman.ttrp.resolve.TargetResolution.Resolved>?,
+        ): List<Triple<String, Entity, Attribute>> {
+            if (columns.isEmpty()) unsupported()
+            if (columns
                     .map { it.name }
                     .distinct()
-                    .size != action.columns.size
+                    .size != columns.size
             ) {
                 unsupported()
             }
             val targets =
-                action.columns.map { column ->
+                columns.map { column ->
                     val pinned = pinnedTargets?.get(column.type)
                     val (entity, attribute) =
                         if (pinnedTargets != null) {
@@ -189,20 +255,7 @@ internal class PreviewWriter private constructor(
             // ApplyRow's canonical entity name has no package arm. Refuse two packaged targets
             // that would become the same write identity even when a column names one package.
             if (entities.count { it.qname.dotted() == entity.qname.dotted() } != 1) unsupported()
-            val mapped = targets.map { it.third }
-            if (mapped.distinct().size != mapped.size) unsupported()
-            if (entity.attributes.none { it.isKey } ||
-                entity.attributes.any { (it.isKey || !it.nullable) && it !in mapped }
-            ) {
-                unsupported()
-            }
-            val required =
-                action.columns
-                    .filterNot { it.optional }
-                    .map { it.name }
-                    .toSet() +
-                    targets.filter { it.third.isKey || !it.third.nullable }.map { it.first }
-            return PreviewWriter(entity, targets.associate { it.first to it.third }, required)
+            return targets
         }
 
         private fun unsupported(): Nothing =

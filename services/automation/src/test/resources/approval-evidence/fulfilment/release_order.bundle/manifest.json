@@ -1,0 +1,253 @@
+{
+  "schemaVersion": 3,
+  "ttrpVersion": 2,
+  "toolchain": "org.tatrman:ttrp:0.18.16",
+  "program": "release_order.ttrp",
+  "world": {
+    "qname": "hartland.worlds.demo",
+    "fingerprint": "sha256:f22d2996de19a569dbcd5c0b6ab9a3dbda56440b652dfdbe851eebfeb5bba676"
+  },
+  "islands": [
+    {
+      "name": "placed_orders",
+      "engine": "erp",
+      "executor": "native",
+      "invocation": "sql-text",
+      "file": "islands/placed_orders.orders.sql",
+      "sha256": "sha256:92e6ca45d0d5661a54757dfcbca7d1f2e9d57345d45d7d2b5529500a317a603b",
+      "connections": [
+        "TTR_CONN_ERP"
+      ],
+      "outputs": [
+        {
+          "port": "orders",
+          "file": "islands/placed_orders.orders.sql",
+          "sha256": "sha256:92e6ca45d0d5661a54757dfcbca7d1f2e9d57345d45d7d2b5529500a317a603b",
+          "columns": [
+            {
+              "name": "order_number",
+              "type": "text"
+            }
+          ],
+          "keyed": true,
+          "storage": "erp_db"
+        }
+      ],
+      "schema": "er"
+    },
+    {
+      "name": "verdict",
+      "engine": "erp",
+      "executor": "native",
+      "invocation": "sql-text",
+      "file": "islands/verdict.release.sql",
+      "sha256": "sha256:6e1b136e5f80929303cc0142923e923da081a326314606b4ff0ce1067864b01b",
+      "connections": [
+        "TTR_CONN_ERP"
+      ],
+      "outputs": [
+        {
+          "port": "release",
+          "file": "islands/verdict.release.sql",
+          "sha256": "sha256:6e1b136e5f80929303cc0142923e923da081a326314606b4ff0ce1067864b01b",
+          "columns": [
+            {
+              "name": "order_number",
+              "type": "text"
+            },
+            {
+              "name": "route",
+              "type": "text"
+            },
+            {
+              "name": "verdict_reason",
+              "type": "text"
+            }
+          ],
+          "keyed": true,
+          "storage": "erp_db"
+        }
+      ],
+      "schema": "er"
+    }
+  ],
+  "transfers": [],
+  "waves": [
+    [
+      "placed_orders"
+    ],
+    [
+      "verdict"
+    ]
+  ],
+  "connections": [
+    "TTR_CONN_ERP"
+  ],
+  "displays": [],
+  "rejectSites": [],
+  "recipe": {
+    "name": "release_order",
+    "key": [
+      "order.order_number"
+    ],
+    "asOf": "now",
+    "parameters": [
+      {
+        "name": "tolerance",
+        "type": "decimal",
+        "value": "0.01"
+      },
+      {
+        "name": "confirmation_threshold",
+        "type": "decimal",
+        "value": "50000"
+      },
+      {
+        "name": "inbound_reminder",
+        "type": "days",
+        "value": "14"
+      }
+    ],
+    "bindings": [
+      {
+        "name": "as_of",
+        "type": "datetime",
+        "source": "run"
+      }
+    ],
+    "roles": {
+      "candidates": "placed_orders",
+      "contexts": [],
+      "decision": "verdict",
+      "routes": [
+        {
+          "name": "release",
+          "because": "approved writer fixture",
+          "detail": [],
+          "turnFed": false
+        }
+      ],
+      "switchMode": "overlapping"
+    },
+    "wiring": [
+      {
+        "routes": [
+          "verdict.release"
+        ],
+        "action": "release",
+        "columns": {
+          "order": "order_number",
+          "customer": "42",
+          "value": "100.00",
+          "held_for": "\"Sales\""
+        }
+      },
+      {
+        "routes": [
+          "verdict.release"
+        ],
+        "action": "hold",
+        "columns": {
+          "order": "order_number",
+          "department": "\"Sales\""
+        }
+      },
+      {
+        "routes": [
+          "verdict.release"
+        ],
+        "action": "fulfil",
+        "columns": {
+          "line": "9007199254740993",
+          "kind": "\"inbound\"",
+          "to": "\"fulfilled\""
+        }
+      },
+      {
+        "routes": [
+          "verdict.release"
+        ],
+        "action": "fulfil",
+        "columns": {
+          "line": "9007199254740993",
+          "kind": "\"inbound\"",
+          "to": "\"fulfilled\""
+        }
+      }
+    ],
+    "kinds": [
+      "sql"
+    ],
+    "mode": "per-candidate",
+    "windows": [],
+    "verdictSchema": {
+      "entity": "release_order_verdict",
+      "columns": [
+        {
+          "name": "run",
+          "type": "text"
+        },
+        {
+          "name": "as_of",
+          "type": "timestamp"
+        },
+        {
+          "name": "order_number",
+          "type": "text"
+        },
+        {
+          "name": "route",
+          "type": "text"
+        },
+        {
+          "name": "verdict_reason",
+          "type": "text"
+        },
+        {
+          "name": "parameters_fp",
+          "type": "text"
+        },
+        {
+          "name": "run_as",
+          "type": "text"
+        },
+        {
+          "name": "written_at",
+          "type": "timestamp"
+        }
+      ],
+      "detail": "release_order_verdict_detail",
+      "current": "release_order_verdict_current"
+    },
+    "objectsRead": [
+      "er.entity.obligation",
+      "er.entity.order"
+    ],
+    "fingerprints": {
+      "text": "sha256:33fa6ba232fd351e3c17a0c18a59fcc3c8c4f0120277ce7b30f08c40d48f151b",
+      "values": "sha256:d58020f8c2d17d4ff8952f58ad306b7633b941150ec69a0d0c4e585782aa5fb8",
+      "labels": "sha256:bcf48e2c164b2a0175b5c310c4d8b77541a13ffcd1e6aee76b495b316a9f454b"
+    },
+    "protocol": "always",
+    "approvalDependencies": {
+      "version": 1,
+      "imports": [
+        "hartland",
+        "hartland.automation"
+      ],
+      "textBase": "sha256:9b0f0e9ba08cf5499b9534895e31252001c85d24491602d1e515cf6c804b4b56",
+      "actions": {
+        "fulfil": "sha256:ef80b1d85c1717f9c7037d8d8fae5f3a43ff7f9a8530b9c62c4f1aaab51d9440",
+        "hold": "sha256:609a9e29ea8652f35e7ee6de8d664336be186d326a9b5d5191299008cb67acb5",
+        "release": "sha256:d3ec475aa4de523f17414f89a47e9c22adcddd28013a40a1142397d9a953cb40"
+      }
+    }
+  },
+  "files": {
+    "README.md": "sha256:9d36f1d99e18d76f156d8bf09ea91ec7efa0f1f6675ad6a578e093e83a4a4096",
+    "catalog/release_order.ttrm": "sha256:8e367c7505e1ed3b6643ddfddf465901cd88d5dfd43ea2f8ae36503babc1de01",
+    "catalog/release_order_verdict.ttrm": "sha256:e1a40f72485615093cb5e77d59ccd8cc3757eb2d6685f5037c37ebd2f63f867f",
+    "islands/placed_orders.orders.sql": "sha256:92e6ca45d0d5661a54757dfcbca7d1f2e9d57345d45d7d2b5529500a317a603b",
+    "islands/verdict.release.sql": "sha256:6e1b136e5f80929303cc0142923e923da081a326314606b4ff0ce1067864b01b"
+  }
+}

@@ -31,10 +31,12 @@ import org.tatrman.query.v1.RunRequest
 import org.tatrman.worker.v1.ResultBatch
 import org.tatrman.ttr.metadata.model.AutomationColumn
 import org.tatrman.ttr.metadata.model.ErSchema
+import org.tatrman.ttr.metadata.model.WorldSchema
 import org.tatrman.ttr.parser.model.AutoValue
 import org.tatrman.ttr.parser.model.AutoEntry
 import org.tatrman.ttr.parser.model.Reference
 import org.tatrman.ttr.parser.model.SourceLocation
+import java.sql.DriverManager
 import java.time.OffsetDateTime
 import java.nio.file.Files
 import java.nio.file.Path
@@ -51,6 +53,223 @@ class RunRuntimeComponentSpec :
     StringSpec({
         LedgerTestDb.ready()
         beforeEach { LedgerTestDb.reset() }
+
+        fun calendarFixture(
+            difference: Boolean = false,
+            warnings: Set<String> = emptySet(),
+            readsScope: List<String> = listOf("er.entity.date_dim"),
+            transform: (Bundle) -> Bundle = { it },
+        ): DurableRuntimeFixture {
+            val root =
+                CalendarFixture.copyTo(
+                    tempdir(prefix = "calendar-runtime-").toPath().resolve("arbitrary-branch"),
+                    difference = difference,
+                )
+            val loaded =
+                BundleLoader(
+                    AuthorMap(emptyMap()),
+                ).load(Checkout(root, "master", "0123456789abcdef", "po", "po@example.org"), BundleKind.SERVED)
+            return DurableRuntimeFixture(
+                lookupReads = readsScope,
+                queryWarnings = { if ("FROM er.entity.date_dim cal" in it.source) warnings else emptySet() },
+                transformBundle = {
+                    transform(
+                        loaded.copy(
+                            deployments =
+                                loaded.deployments +
+                                    (
+                                        "release_native_event" to
+                                            loaded.deployments
+                                                .getValue(
+                                                    "release_native_event",
+                                                ).copy(runAs = ModelRunAs.Caller)
+                                    ),
+                        ),
+                    )
+                },
+                queryTable = { request ->
+                    request.world shouldBe "us-erp"
+                    request.context.modelVersion shouldBe loaded.modelFp
+                    request.context.userId shouldBe "maya"
+                    when {
+                        "FROM er.entity.date_dim cal" in request.source -> {
+                            request.allowedErReads.objectsList.contains("er.entity.date_dim") shouldBe true
+                            request.context.parametersCount shouldBe 0
+                            Table(
+                                listOf(ManifestColumn("cal_date", "date"), ManifestColumn("working_day", "bool")),
+                                (23..28).map { day ->
+                                    listOf(
+                                        java.time.LocalDate.of(2040, 10, day),
+                                        day !in setOf(24, 25, 27),
+                                    )
+                                },
+                            )
+                        }
+                        "verdict_reason" in request.source ->
+                            Table(
+                                listOf(
+                                    ManifestColumn("order_number", "text"),
+                                    ManifestColumn("placed", "date"),
+                                    ManifestColumn("route", "text"),
+                                    ManifestColumn("verdict_reason", "text"),
+                                ),
+                                listOf(
+                                    listOf("4711", java.time.LocalDate.of(2040, 10, 23), "release", "calendar fixture"),
+                                ),
+                            )
+                        else ->
+                            Table(
+                                listOf(ManifestColumn("order_number", "text"), ManifestColumn("placed", "date")),
+                                listOf(listOf("4711", java.time.LocalDate.of(2040, 10, 23))),
+                            )
+                    }
+                },
+            )
+        }
+
+        for (difference in listOf(false, true)) {
+            val label = if (difference) "bound-date-difference" else "calendar"
+            "published $label fixture opens evaluates and journals one immutable snapshot through retry close restart" {
+                val f = calendarFixture(difference = difference)
+                val runtime = f.start()
+                try {
+                    val opened =
+                        runtime.sessions.open(
+                            "release_order",
+                            f.request.copy(asOf = "2040-10-28T12:00:00Z"),
+                            f.caller,
+                        )
+                    opened.httpStatus shouldBe 201
+                    opened.approvalsBypassed shouldBe false
+                    val id = UUID.fromString(opened.response.runId)
+                    val result = runtime.sessions.evaluate(id, f.caller)
+                    val actions = runtime.status.read(id, f.caller).actions
+                    actions.single().arguments["template"] shouldBe JsonPrimitive(if (difference) "5" else "2")
+                    f.reads.get() shouldBe 3
+                    transaction { RunOutputs.selectAll().count() } shouldBe 3L
+                    runtime.sessions.evaluate(id, f.caller) shouldBe result
+                    f.reads.get() shouldBe 3
+                    val protocol = runtime.protocol.read(id, f.caller)
+                    val openedEvidence =
+                        protocol.sections.values
+                            .flatten()
+                            .map { it.payload }
+                            .filterIsInstance<JsonObject>()
+                            .single { it["event"] == JsonPrimitive("opened") }
+                    openedEvidence["calendar"]!!.jsonObject["entity"] shouldBe JsonPrimitive("er.entity.date_dim")
+                    openedEvidence["calendar"]!!.jsonObject["storage"] shouldBe JsonPrimitive("erp_db")
+                    val read =
+                        protocol.sections.values
+                            .flatten()
+                            .map { it.payload }
+                            .filterIsInstance<JsonObject>()
+                            .single { it["statement"] == JsonPrimitive("runtime:calendar-snapshot/v1") }
+                    read["storage"] shouldBe JsonPrimitive("erp_db")
+                    read["rows"] shouldBe JsonPrimitive(6)
+                    runtime.closer.close(id, f.caller)
+                    val sealed = runtime.protocol.read(id, f.caller)
+                    runtime.shutdown()
+                    val restarted = f.start()
+                    try {
+                        restarted.status.read(id, f.caller).actions shouldBe actions
+                        restarted.protocol.read(id, f.caller) shouldBe sealed
+                        f.reads.get() shouldBe 3
+                    } finally {
+                        restarted.shutdown()
+                    }
+                } finally {
+                    runtime.shutdown()
+                    f.close()
+                }
+            }
+        }
+
+        "calendar scope and placement refuse before claim and preserve idempotency" {
+            for (missingScope in listOf(true, false)) {
+                val f =
+                    calendarFixture(transform = { bundle ->
+                        if (missingScope) {
+                            val loaded = bundle.recipes.getValue("release_order")
+                            val metadata =
+                                loaded.recipe.copy(
+                                    objectsRead = loaded.recipe.objectsRead - "er.entity.date_dim",
+                                )
+                            bundle.copy(
+                                recipes =
+                                    bundle.recipes +
+                                        (
+                                            "release_order" to
+                                                loaded.copy(
+                                                    recipe = metadata,
+                                                    manifest = loaded.manifest.copy(recipe = metadata),
+                                                )
+                                        ),
+                            )
+                        } else {
+                            val schema = bundle.model.schemas.getValue("world") as WorldSchema
+                            val world = schema.worlds.values.single { it.qname.name == "demo" }
+                            val changed = world.copy(storages = world.storages.filterNot { it.qname.name == "erp_db" })
+                            bundle.copy(
+                                model =
+                                    bundle.model.copy(
+                                        schemas =
+                                            bundle.model.schemas +
+                                                (
+                                                    "world" to
+                                                        schema.copy(worlds = schema.worlds + (world.qname to changed))
+                                                ),
+                                    ),
+                            )
+                        }
+                    })
+                val runtime = f.start()
+                try {
+                    repeat(2) {
+                        shouldThrow<AutomationException> {
+                            runtime.sessions.open(
+                                "release_order",
+                                f.request.copy(idempotencyKey = "missing-calendar"),
+                                f.caller,
+                            )
+                        }.code shouldBe if (missingScope) ErrorCode.OUT_OF_SCOPE_READ else ErrorCode.PREVIEW_UNSUPPORTED
+                    }
+                    transaction { Runs.selectAll().count() } shouldBe 0L
+                    f.reads.get() shouldBe 0
+                } finally {
+                    runtime.shutdown()
+                    f.close()
+                }
+            }
+        }
+
+        "calendar narrowed capped and undeclared reads refuse without batch or action completion" {
+            for ((warning, scope, expected) in listOf(
+                Triple(setOf("security_predicate_applied"), listOf("er.entity.date_dim"), ErrorCode.RESTRICTED_VIEW),
+                Triple(setOf("top_n_applied"), listOf("er.entity.date_dim"), ErrorCode.CANDIDATES_TRUNCATED),
+                Triple(emptySet<String>(), listOf("er.entity.customer"), ErrorCode.OUT_OF_SCOPE_READ),
+            )) {
+                val f =
+                    calendarFixture(warnings = warning, readsScope = scope, transform = { bundle ->
+                        val deployment = bundle.deployments.getValue("release_native_event")
+                        bundle.copy(
+                            deployments =
+                                bundle.deployments +
+                                    ("release_native_event" to deployment.copy(allowRestrictedView = true)),
+                        )
+                    })
+                val runtime = f.start()
+                try {
+                    val opened = runtime.sessions.open("release_order", f.request, f.caller)
+                    val id = UUID.fromString(opened.response.runId)
+                    shouldThrow<AutomationException> { runtime.sessions.evaluate(id, f.caller) }.code shouldBe expected
+                    transaction { Batches.selectAll().count() } shouldBe 0L
+                    runtime.status.read(id, f.caller).actions shouldBe emptyList()
+                } finally {
+                    runtime.shutdown()
+                    f.close()
+                }
+            }
+        }
 
         for (unqualified in listOf(false, true)) {
             "governed ${if (unqualified) "unqualified" else "qualified"} effects evaluate and stale metadata refuses" {
@@ -145,6 +364,527 @@ class RunRuntimeComponentSpec :
                     refused.shutdown()
                     stale.close()
                 }
+            }
+        }
+
+        fun obligationFixture(conflict: Boolean = false): DurableRuntimeFixture {
+            val root =
+                ApprovalFixture.copyTo(
+                    tempdir(prefix = "automation-bundles-").toPath().resolve("branch"),
+                    obligations = true,
+                    obligationConflict = conflict,
+                )
+            val source =
+                BundleLoader(AuthorMap(emptyMap())).load(
+                    Checkout(root, "master", "0123456789abcdef", "po", "po@example.org"),
+                    BundleKind.SERVED,
+                )
+            return DurableRuntimeFixture(transformBundle = {
+                source.copy(
+                    deployments =
+                        source.deployments + (
+                            "release_native_event" to
+                                source.deployments.getValue("release_native_event").copy(runAs = ModelRunAs.Caller)
+                        ),
+                )
+            }, queryTable = { request ->
+                if ("approved writer fixture" in request.source) {
+                    Table(
+                        listOf(
+                            ManifestColumn("order_number", "text"),
+                            ManifestColumn("route", "text"),
+                            ManifestColumn("verdict_reason", "text"),
+                        ),
+                        listOf(listOf("4711", "release", "approved writer fixture")),
+                    )
+                } else {
+                    Table(listOf(ManifestColumn("order_number", "text")), listOf(listOf("4711")))
+                }
+            })
+        }
+
+        fun fulfilmentFixture(
+            ambiguous: Boolean = false,
+            missing: Boolean = false,
+            oldApproval: Boolean = false,
+            lookupReads: List<String> = listOf("er.entity.obligation"),
+            lookupWarnings: Set<String> = emptySet(),
+            transform: (Bundle) -> Bundle = { it },
+        ): DurableRuntimeFixture {
+            val root =
+                ApprovalFixture.copyTo(
+                    tempdir(prefix = "automation-bundles-").toPath().resolve("no-package-in-path"),
+                    fulfilment = true,
+                )
+            val source =
+                transform(
+                    BundleLoader(
+                        AuthorMap(emptyMap()),
+                    ).load(Checkout(root, "master", "0123456789abcdef", "po", "po@example.org"), BundleKind.SERVED),
+                )
+            val approvals =
+                Json
+                    .parseToJsonElement(
+                        Path.of("src/test/resources/approval-evidence/fulfilment/approvals.json").readText(),
+                    ).jsonObject
+            val approvedText = approvals.getValue(if (oldApproval) "supersededText" else "text").jsonPrimitive.content
+            return DurableRuntimeFixture(
+                lookupReads = lookupReads,
+                approvalReader =
+                    ApprovalReader { kind, obj, fp ->
+                        when (kind) {
+                            "recipe" -> obj == "release_order" && fp == approvedText
+                            "values" ->
+                                obj == "release_order" &&
+                                    fp == approvals.getValue("values").jsonPrimitive.content
+                            "program" -> fp == source.programFps[obj]
+                            "deployment" -> fp == source.deploymentFps[obj]
+                            else -> false
+                        }
+                    },
+                queryWarnings = { request ->
+                    if ("_au_obligation_entity_" in request.source) lookupWarnings else emptySet()
+                },
+                transformBundle = {
+                    source.copy(
+                        deployments =
+                            source.deployments +
+                                (
+                                    "release_native_event" to
+                                        source.deployments
+                                            .getValue(
+                                                "release_native_event",
+                                            ).copy(runAs = ModelRunAs.Caller)
+                                ),
+                    )
+                },
+                queryTable = { request ->
+                    when {
+                        "_au_obligation_entity_" in request.source -> {
+                            request.world shouldBe "us-automation"
+                            request.allowedErReads.objectsList.contains("er.entity.obligation") shouldBe true
+                            request.context.userId shouldBe "maya"
+                            request.context.modelVersion shouldBe source.modelFp
+                            request.context.parametersList
+                                .map { it.value.stringValue }
+                                .toSet() shouldBe
+                                setOf("er.entity.return_request_line", "inbound", "{\"line_id\":9007199254740993}")
+                            Table(
+                                listOf("id", "entity", "key", "kind", "state").map { ManifestColumn(it, "text") },
+                                (
+                                    if (missing) {
+                                        emptyList()
+                                    } else if (ambiguous) {
+                                        listOf("ob-1", "ob-2")
+                                    } else {
+                                        listOf("ob-1")
+                                    }
+                                ).map { id ->
+                                    listOf(
+                                        id,
+                                        "er.entity.return_request_line",
+                                        "{\"line_id\":9007199254740993}",
+                                        "inbound",
+                                        "overdue",
+                                    )
+                                },
+                            )
+                        }
+                        else ->
+                            DriverManager.getConnection("jdbc:duckdb:").use { db ->
+                                db.createStatement().use {
+                                    it.execute("CREATE TABLE \"order\" (order_number VARCHAR)")
+                                    // A second order makes the keyed Open exercise the actual candidate predicate.
+                                    it.execute("INSERT INTO \"order\" VALUES ('4711'), ('9999')")
+                                }
+                                request.source.contains("obligation", ignoreCase = true) shouldBe false
+                                val bindings =
+                                    request.context.parametersList.associate {
+                                        it.name to BoundValue("text", it.value.stringValue)
+                                    }
+                                // Query's wire placeholders are {name}; the fixture JDBC adapter uses :name.
+                                val sql =
+                                    bindings.keys.fold(request.source) { text, name ->
+                                        text.replace("{$name}", ":$name")
+                                    }
+                                JdbcTables.query(db, sql, bindings).also { result ->
+                                    // Only candidates are wrapped at the door; other keyed outputs are
+                                    // filtered by PartRunner before staging (the batch asserts this below).
+                                    result.rows.map { it.first() }.toSet() shouldBe
+                                        if ("_au_candidates" in
+                                            request.source
+                                        ) {
+                                            setOf("4711")
+                                        } else {
+                                            setOf("4711", "9999")
+                                        }
+                                }
+                            }
+                    }
+                },
+            )
+        }
+
+        "invalid hosts or missing loader packages refuse governed fulfilment before a run is claimed" {
+            for (missingPackages in listOf(false, true)) {
+                val f =
+                    fulfilmentFixture(transform = { bundle ->
+                        if (missingPackages) {
+                            bundle.copy(packages = emptyMap())
+                        } else {
+                            val schema = bundle.model.schemas.getValue("world") as WorldSchema
+                            val worlds =
+                                schema.worlds.mapValues { (_, world) ->
+                                    world.copy(
+                                        storages =
+                                            world.storages.map {
+                                                if (it.qname.name == "erp_db") it.copy(hosts = listOf("hart")) else it
+                                            },
+                                    )
+                                }
+                            bundle.copy(
+                                model =
+                                    bundle.model.copy(
+                                        schemas =
+                                            bundle.model.schemas +
+                                                ("world" to schema.copy(worlds = worlds)),
+                                    ),
+                            )
+                        }
+                    })
+                val runtime = f.start()
+                try {
+                    // Missing packages already invalidate approval coverage; invalid hosts reach placement.
+                    repeat(2) {
+                        shouldThrow<AutomationException> {
+                            runtime.sessions.open(
+                                "release_order",
+                                f.request.copy(idempotencyKey = "invalid-scope"),
+                                f.caller,
+                            )
+                        }.code shouldBe if (missingPackages) ErrorCode.RECIPE_STALE else ErrorCode.PREVIEW_UNSUPPORTED
+                    }
+                    transaction { Runs.selectAll().count() } shouldBe 0L
+                    transaction { RunOutputs.selectAll().count() } shouldBe 0L
+                    transaction { Batches.selectAll().count() } shouldBe 0L
+                    f.reads.get() shouldBe 0
+                } finally {
+                    runtime.shutdown()
+                    f.close()
+                }
+            }
+        }
+
+        "missing obligation read scope refuses repeated Open before claiming or reading" {
+            val f =
+                fulfilmentFixture(transform = { bundle ->
+                    bundle.copy(
+                        recipes =
+                            bundle.recipes.mapValues { (_, loaded) ->
+                                val recipe =
+                                    loaded.recipe.copy(
+                                        objectsRead =
+                                            loaded.recipe.objectsRead - "er.entity.obligation",
+                                    )
+                                loaded.copy(recipe = recipe, manifest = loaded.manifest.copy(recipe = recipe))
+                            },
+                    )
+                })
+            val runtime = f.start()
+            try {
+                repeat(2) {
+                    shouldThrow<AutomationException> {
+                        runtime.sessions.open(
+                            "release_order",
+                            f.request.copy(idempotencyKey = "missing-obligation-scope"),
+                            f.caller,
+                        )
+                    }.code shouldBe ErrorCode.OUT_OF_SCOPE_READ
+                }
+                transaction { Runs.selectAll().count() } shouldBe 0L
+                transaction { RunOutputs.selectAll().count() } shouldBe 0L
+                transaction { Batches.selectAll().count() } shouldBe 0L
+                f.reads.get() shouldBe 0
+            } finally {
+                runtime.shutdown()
+                f.close()
+            }
+        }
+
+        "superseded fulfilment approval refuses before claim or ERP work" {
+            val f = fulfilmentFixture(oldApproval = true)
+            val runtime = f.start()
+            try {
+                shouldThrow<AutomationException> {
+                    runtime.sessions.open("release_order", f.request, f.caller)
+                }.code shouldBe ErrorCode.RECIPE_STALE
+                transaction { Runs.selectAll().count() } shouldBe 0L
+                f.reads.get() shouldBe 0
+            } finally {
+                runtime.shutdown()
+                f.close()
+            }
+        }
+
+        "join-free candidates still reach the scoped lookup when no obligation exists" {
+            val f = fulfilmentFixture(missing = true)
+            val runtime = f.start()
+            try {
+                val opened = runtime.sessions.open("release_order", f.request, f.caller)
+                opened.approvalsBypassed shouldBe false
+                val id = UUID.fromString(opened.response.runId)
+                // The ERP key remains selected; missing fulfilment targets still refuse as before.
+                shouldThrow<AutomationException> {
+                    runtime.sessions.evaluate(id, f.caller)
+                }.code shouldBe ErrorCode.PREVIEW_UNSUPPORTED
+                f.reads.get() shouldBe 3
+                transaction { RunOutputs.selectAll().count() } shouldBe 3L
+                transaction { Batches.selectAll().count() } shouldBe 0L
+                runtime.status.read(id, f.caller).actions shouldBe emptyList()
+            } finally {
+                runtime.shutdown()
+                f.close()
+            }
+        }
+
+        "two governed Opens pin the same cached obligation storage" {
+            val f = fulfilmentFixture()
+            val runtime = f.start()
+            try {
+                val storage = mutableListOf<JsonElement?>()
+                for (key in listOf("cache-first", "cache-second")) {
+                    val opened = runtime.sessions.open("release_order", f.request.copy(idempotencyKey = key), f.caller)
+                    opened.httpStatus shouldBe 201
+                    val id = UUID.fromString(opened.response.runId)
+                    runtime.sessions.evaluate(id, f.caller)
+                    val lookup =
+                        runtime.protocol
+                            .read(id, f.caller)
+                            .sections.values
+                            .flatten()
+                            .map { it.payload }
+                            .filterIsInstance<JsonObject>()
+                            .single { it["statement"] == JsonPrimitive("runtime:obligation-lookup/v2") }
+                    storage += lookup["storage"]
+                }
+                storage shouldBe listOf(JsonPrimitive("automation_db"), JsonPrimitive("automation_db"))
+                transaction { Runs.selectAll().count() } shouldBe 2L
+                f.reads.get() shouldBe 6
+            } finally {
+                runtime.shutdown()
+                f.close()
+            }
+        }
+
+        "governed qualified fulfilment journals a scoped snapshot and persists transition through retry close restart" {
+            val f = fulfilmentFixture()
+            val runtime = f.start()
+            try {
+                val opened = runtime.sessions.open("release_order", f.request, f.caller)
+                opened.httpStatus shouldBe 201
+                opened.approvalsBypassed shouldBe false
+                val id = UUID.fromString(opened.response.runId)
+                val result = runtime.sessions.evaluate(id, f.caller)
+                val batch = runtime.status.batch(id, f.caller)
+                batch.rows
+                    .filter { it.entity == "er.entity.order" }
+                    .map { it.key }
+                    .toSet() shouldBe
+                    setOf(buildJsonObject { put("order_number", "4711") })
+                val row = batch.rows.single { it.entity == "er.entity.obligation" }
+                row.op shouldBe "transition"
+                row.key shouldBe buildJsonObject { put("id", "ob-1") }
+                row.from shouldBe listOf("overdue")
+                row.to shouldBe JsonPrimitive("fulfilled")
+                row.history shouldBe true
+                val actions = runtime.status.read(id, f.caller).actions
+                actions.filter { it.action == "fulfil" }.size shouldBe 2
+                actions.filter { it.action == "fulfil" }.forEach { it.batchRows shouldBe listOf(row.seq) }
+                f.reads.get() shouldBe 3
+                transaction { RunOutputs.selectAll().count() } shouldBe 3L
+                runtime.sessions.evaluate(id, f.caller) shouldBe result
+                runtime.status.batch(id, f.caller) shouldBe batch
+                runtime.closer.close(id, f.caller)
+                val protocol = runtime.protocol.read(id, f.caller)
+                val lookup =
+                    protocol.sections.values
+                        .flatten()
+                        .map { it.payload }
+                        .filterIsInstance<JsonObject>()
+                        .single { it["statement"] == JsonPrimitive("runtime:obligation-lookup/v2") }
+                lookup["name"] shouldBe JsonPrimitive("_au_obligations")
+                lookup["storage"] shouldBe JsonPrimitive("automation_db")
+                lookup["rows"] shouldBe JsonPrimitive(1)
+                lookup["params"]!!.jsonObject.keys shouldBe
+                    setOf("_au_obligation_entity_0", "_au_obligation_kind_0", "_au_obligation_key_0")
+                runtime.shutdown()
+                val restarted = f.start()
+                try {
+                    restarted.status.batch(id, f.caller) shouldBe batch
+                    restarted.status.read(id, f.caller).actions shouldBe actions
+                    restarted.protocol.read(id, f.caller) shouldBe protocol
+                    f.reads.get() shouldBe 3
+                } finally {
+                    restarted.shutdown()
+                }
+            } finally {
+                runtime.shutdown()
+                f.close()
+            }
+        }
+
+        "restricted lookup refuses despite deployment opt in before decision completion" {
+            val f =
+                fulfilmentFixture(lookupWarnings = setOf("security_predicate_applied"), transform = { bundle ->
+                    bundle.copy(
+                        deployments =
+                            bundle.deployments.mapValues { (_, d) ->
+                                d.copy(allowRestrictedView = true)
+                            },
+                    )
+                })
+            val runtime = f.start()
+            try {
+                val opened = runtime.sessions.open("release_order", f.request, f.caller)
+                val id = UUID.fromString(opened.response.runId)
+                repeat(2) {
+                    val error = shouldThrow<AutomationException> { runtime.sessions.evaluate(id, f.caller) }
+                    error.code shouldBe ErrorCode.RESTRICTED_VIEW
+                    error.message shouldBe "obligation lookup requires a complete snapshot"
+                }
+                transaction { Batches.selectAll().count() } shouldBe 0L
+                runtime.status.read(id, f.caller).actions shouldBe emptyList()
+                shouldThrow<AutomationException> { runtime.status.batch(id, f.caller) }.code shouldBe
+                    ErrorCode.BATCH_NOT_READY
+                runtime.status.read(id, f.caller).verdict shouldBe null
+                f.reads.get() shouldBe 3
+                // Earlier verified reads remain; the refused lookup never stages narrowed Arrow for matching.
+                transaction { RunOutputs.selectAll().count() } shouldBe 2L
+                runtime.protocol
+                    .read(id, f.caller)
+                    .sections.values
+                    .flatten()
+                    .isNotEmpty() shouldBe true
+                runtime.status
+                    .read(id, f.caller)
+                    .error!!
+                    .jsonObject["code"] shouldBe JsonPrimitive("restricted-view")
+            } finally {
+                runtime.shutdown()
+                f.close()
+            }
+        }
+
+        "ambiguous governed fulfilment retains read evidence without completing any batch or action" {
+            val f = fulfilmentFixture(ambiguous = true)
+            val runtime = f.start()
+            try {
+                val opened = runtime.sessions.open("release_order", f.request, f.caller)
+                val id = UUID.fromString(opened.response.runId)
+                repeat(2) {
+                    shouldThrow<AutomationException> { runtime.sessions.evaluate(id, f.caller) }.code shouldBe
+                        ErrorCode.PREVIEW_UNSUPPORTED
+                }
+                transaction { Batches.selectAll().count() } shouldBe 0L
+                transaction { RunOutputs.selectAll().count() } shouldBe 3L
+                runtime.status.read(id, f.caller).actions shouldBe emptyList()
+                runtime.status.read(id, f.caller).status shouldBe "failed"
+                f.reads.get() shouldBe 3
+            } finally {
+                runtime.shutdown()
+                f.close()
+            }
+        }
+
+        "undeclared auxiliary compiler footprint refuses before the lookup executes or a batch commits" {
+            val f = fulfilmentFixture(lookupReads = listOf("er.entity.unapproved"))
+            val runtime = f.start()
+            try {
+                val opened = runtime.sessions.open("release_order", f.request, f.caller)
+                val id = UUID.fromString(opened.response.runId)
+                repeat(2) {
+                    shouldThrow<AutomationException> { runtime.sessions.evaluate(id, f.caller) }.code shouldBe
+                        ErrorCode.OUT_OF_SCOPE_READ
+                }
+                f.reads.get() shouldBe 2
+                transaction { RunOutputs.selectAll().count() } shouldBe 2L
+                transaction { Batches.selectAll().count() } shouldBe 0L
+                runtime.status.read(id, f.caller).actions shouldBe emptyList()
+                runtime.status.read(id, f.caller).status shouldBe "failed"
+            } finally {
+                runtime.shutdown()
+                f.close()
+            }
+        }
+
+        "qualified obligation preview persists exact keys and pinned dates through evaluate retry close and restart" {
+            val f = obligationFixture()
+            f.base.now = Instant.parse("2000-01-01T12:00:00.123456Z")
+            val runtime = f.start()
+            try {
+                val opened = runtime.sessions.open("release_order", f.request, f.caller)
+                opened.httpStatus shouldBe 201
+                opened.approvalsBypassed shouldBe false
+                val id = UUID.fromString(opened.response.runId)
+                val startedAt = opened.context!!.startedAt
+                f.base.now = f.base.now.plusSeconds(1)
+                runtime.sessions.evaluate(id, f.caller)
+                val batch = runtime.status.batch(id, f.caller)
+                val row = batch.rows.single { it.entity == "er.entity.obligation" }
+                val data = row.row!!
+                data["due"] shouldBe JsonPrimitive("2000-01-15")
+                data["run"] shouldBe JsonPrimitive(id.toString())
+                data["state"] shouldBe JsonPrimitive("open")
+                java.time.LocalDateTime
+                    .parse(
+                        data.getValue("created_at").jsonPrimitive.content,
+                    ).toInstant(ZoneOffset.UTC) shouldBe
+                    startedAt
+                Json.parseToJsonElement(data.getValue("key").jsonPrimitive.content) shouldBe
+                    buildJsonObject { put("line_id", 9007199254740993L) }
+                val actions = runtime.status.read(id, f.caller).actions
+                val expectations = actions.filter { it.sink == "obligation" }
+                expectations.size shouldBe 2
+                expectations.forEach { it.batchRows shouldBe listOf(row.seq) }
+                runtime.sessions.evaluate(id, f.caller)
+                runtime.status.batch(id, f.caller) shouldBe batch
+                f.reads.get() shouldBe 2
+                runtime.closer.close(id, f.caller)
+                val protocol = runtime.protocol.read(id, f.caller)
+                runtime.shutdown()
+                val restarted = f.start()
+                try {
+                    restarted.status.batch(id, f.caller) shouldBe batch
+                    restarted.status.read(id, f.caller).actions shouldBe actions
+                    restarted.protocol.read(id, f.caller) shouldBe protocol
+                    transaction { Batches.selectAll().count() } shouldBe 1L
+                    f.reads.get() shouldBe 2
+                } finally {
+                    restarted.shutdown()
+                }
+            } finally {
+                runtime.shutdown()
+                f.close()
+            }
+        }
+
+        "conflicting obligation due dates leave no durable preview or action evidence" {
+            val f = obligationFixture(conflict = true)
+            val runtime = f.start()
+            try {
+                val opened = runtime.sessions.open("release_order", f.request, f.caller)
+                val id = UUID.fromString(opened.response.runId)
+                repeat(2) {
+                    shouldThrow<AutomationException> { runtime.sessions.evaluate(id, f.caller) }.code shouldBe
+                        ErrorCode.PREVIEW_UNSUPPORTED
+                }
+                transaction { Batches.selectAll().count() } shouldBe 0L
+                runtime.status.read(id, f.caller).actions shouldBe emptyList()
+                runtime.status.read(id, f.caller).status shouldBe "failed"
+                f.reads.get() shouldBe 2
+            } finally {
+                runtime.shutdown()
+                f.close()
             }
         }
 
@@ -605,6 +1345,9 @@ private class DurableRuntimeFixture(
     development: Boolean = false,
     transformBundle: (Bundle) -> Bundle = { it },
     private val queryTable: ((RunRequest) -> Table)? = null,
+    private val approvalReader: ApprovalReader? = null,
+    private val lookupReads: List<String> = listOf("er.entity.obligation"),
+    private val queryWarnings: (RunRequest) -> Set<String> = { emptySet() },
 ) {
     // Far from the system clock: a queue/session accidentally using wall time would immediately refuse.
     val base = RuntimeClock(Instant.parse("2000-01-01T12:00:00Z"))
@@ -616,7 +1359,7 @@ private class DurableRuntimeFixture(
                     automation.db.host = "unused"
                     automation.door.queryUrl = "unused"
                     automation.door.metadataUrl = "unused"
-                    automation.door.routes = "demo/erp_db=us-erp"
+                    automation.door.routes = "demo/erp_db=us-erp,demo/automation_db=us-automation"
                     automation.auth.jwksUrl = "http://unused/certs"
                     automation.auth.issuer = "unused"
                     automation.clock.skew = 90s
@@ -720,20 +1463,46 @@ private class DurableRuntimeFixture(
                 CompileResponse
                     .newBuilder()
                     .setPlan(PlanNode.newBuilder().setValues(ValuesNode.getDefaultInstance()))
-                    .setErReads(ErReadScope.getDefaultInstance())
-                    .build()
+                    .setErReads(
+                        ErReadScope.newBuilder().addAllObjects(
+                            if ("_au_obligation_entity_" in
+                                request.source ||
+                                "FROM er.entity.date_dim cal" in request.source
+                            ) {
+                                lookupReads
+                            } else {
+                                emptyList()
+                            },
+                        ),
+                    ).build()
 
             override fun run(request: RunRequest) =
                 flow {
-                    request.world shouldBe "us-erp"
+                    request.world shouldBe
+                        if ("_au_obligation_entity_" in request.source ||
+                            "FROM \"obligation\"" in request.source
+                        ) {
+                            "us-automation"
+                        } else {
+                            "us-erp"
+                        }
                     reads.incrementAndGet()
                     beforeRead()
                     val table = queryTable?.invoke(request) ?: Table(columns, listOf(listOf("4711", "SQL reason")))
                     emit(
                         ResultBatch
                             .newBuilder()
-                            .setBatchRowCount(
-                                1,
+                            .setContext(
+                                request.context.toBuilder().addAllWarnings(
+                                    queryWarnings(request).map {
+                                        org.tatrman.plan.v1.Warning
+                                            .newBuilder()
+                                            .setCode(it)
+                                            .build()
+                                    },
+                                ),
+                            ).setBatchRowCount(
+                                table.rows.size.toLong(),
                             ).setArrowIpc(ByteString.copyFrom(ArrowTables.encode(table)))
                             .build(),
                     )
@@ -744,7 +1513,7 @@ private class DurableRuntimeFixture(
         RunRuntime(
             config,
             { bundle },
-            ApprovalReader {
+            approvalReader ?: ApprovalReader {
                 _,
                 _,
                 _,

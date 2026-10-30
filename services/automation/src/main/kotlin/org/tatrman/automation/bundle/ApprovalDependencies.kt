@@ -4,10 +4,8 @@ package org.tatrman.automation.bundle
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.*
-import org.tatrman.ttr.metadata.graph.ModelGraph
 import org.tatrman.ttr.metadata.model.AutomationAction
 import org.tatrman.ttr.metadata.model.AutomationSchema
-import org.tatrman.ttr.metadata.registry.RegistrySnapshot
 import org.tatrman.ttrp.bundle.RecipeApprovalDependencies
 import org.tatrman.ttrp.emit.recipe.RecipeActionDependencies
 import org.tatrman.ttrp.resolve.ActionResolution
@@ -40,6 +38,7 @@ enum class CoverageKind(
 
 /** Resolve once at load; approval and execution consume these same pinned objects. */
 object ApprovalDependencies {
+    private val log = org.slf4j.LoggerFactory.getLogger(ApprovalDependencies::class.java)
     private val evidenceJson = Json
 
     fun unprepared() = Checked(refusal = "approval coverage was not prepared", coverage = CoverageKind.MISSING)
@@ -55,18 +54,41 @@ object ApprovalDependencies {
 
     fun prepare(bundle: Bundle): Bundle {
         val resolver = Resolver(bundle)
-        return bundle.copy(
-            entities =
-                (bundle.model.schemas["er"] as? org.tatrman.ttr.metadata.model.ErSchema)
-                    ?.entities
-                    ?.values
-                    .orEmpty()
-                    .toList(),
-            recipes =
-                bundle.recipes.mapValues { (_, recipe) ->
-                    recipe.copy(coverage = resolver.check(recipe.recipe))
-                },
-        )
+        return bundle
+            .withSharedPreparation()
+            .copy(
+                entities =
+                    (bundle.model.schemas["er"] as? org.tatrman.ttr.metadata.model.ErSchema)
+                        ?.entities
+                        ?.values
+                        .orEmpty()
+                        .toList(),
+                recipes =
+                    bundle.recipes.mapValues { (_, recipe) ->
+                        recipe.copy(coverage = resolver.check(recipe.recipe))
+                    },
+            ).also { prepared ->
+                if (prepared.recipes.values.any { recipe ->
+                        recipe.coverage.actions.values.any {
+                            AutomationScope.needsObligationLookup(it)
+                        }
+                    }
+                ) {
+                    // Warm both successes and refusals while preparing the immutable bundle, outside sessions' lock.
+                    prepared.worlds.keys.forEach { world ->
+                        try {
+                            org.tatrman.automation.apply.PreviewObligationStorage
+                                .resolve(prepared, world)
+                        } catch (e: Exception) {
+                            // Cache the original failure; Open rethrows it before claiming. Re-preparing the
+                            // same snapshot must neither retry placement nor repeat its warm-up warning.
+                            if (prepared.prepared.warnedObligationPlacements.add(world)) {
+                                log.warn("automation: obligation placement unavailable in pinned world {}", world, e)
+                            }
+                        }
+                    }
+                }
+            }
     }
 
     /** Explicit recomputation seam for constructing changed immutable snapshots, not a request-path check. */
@@ -78,11 +100,7 @@ object ApprovalDependencies {
     private class Resolver(
         private val bundle: Bundle,
     ) {
-        private val index by lazy {
-            ModelIndex(
-                RegistrySnapshot(bundle.model, ModelGraph.build(bundle.model), bundle.loadedAt, emptyList()),
-            ) { obj -> bundle.packages[obj.sourceFile].orEmpty() }
-        }
+        private val index get() = bundle.prepared.index
         private val groups by lazy {
             (bundle.model.schemas["automation"] as? AutomationSchema)?.actions.orEmpty().groupBy { it.qname.name }
         }

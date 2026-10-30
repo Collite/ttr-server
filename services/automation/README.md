@@ -386,6 +386,85 @@ replace authored values or make unknown references resolve. Invalid/overflowing 
 completion, including on empty routes. The compiler's wiring/window spelling `30 days` remains invalid inside
 scalar expressions; use `days(30)` there.
 
+Native `obligation` actions with no set/transition can now propose open obligation inserts. The action
+must declare `kind: text`, `due: date`, and a complete, unambiguous key mapping to one business entity through
+its other column types. These are column declarations, not assumptions about the action's name: the stock
+`expect` uses `line: return_request_line.line_id`. Qualified targets consume the verifier's exact pinned
+resolutions; legacy recipes retain their existing unqualified lookup rules. No missing pin falls back.
+The compiler checks key/kind/date assignments even on empty or unselected routes; selected null keys/dates,
+blank kinds, malformed mappings, schema mismatches and declared key bounds refuse before completion.
+
+Each proposed `er.entity.obligation` row carries `id`, `recipe`, `run`, `entity`, `key`, `kind`, `due`,
+`state: open` and `created_at`. Its `key` is canonical JSON stored as text, retaining exact numeric values;
+`created_at` is the pinned Open instant expressed as a UTC timestamp, with full precision. The opaque preview
+UUID is deterministic from the versioned namespace, run UUID, target entity, canonical key and kind. It is
+independent of route/wiring order and preview clock; it does not allocate a physical model identifier.
+Equal proposals for the same target/key/kind share one row, and every action references that row's sequence.
+Different due dates for that identity refuse the whole preview. New runs have distinct preview identities.
+
+This is proposed insert evidence, without an existing-open lookup: it does not claim that a physical insert
+would beat the one-open uniqueness check. P2 must check existing open obligations and decide insert/no-op
+atomically. Insert synthesis makes no additional Query/model/connector call. Re-evaluation, close and durable
+batch/protocol reads preserve the same proposal.
+
+Native obligation transitions now resolve a complete business key and text kind against a governed snapshot.
+The transition must target the pinned stdlib `obligation.state`; its target state is fixed or supplied by a
+text column. Mapping and assignment validation also runs on empty/unselected routes. The stock `fulfil`
+action is one example; action names have no special meaning.
+
+Open pins the obligation's logical storage using the compiler's placement and world-overlay rules. This
+is the world's declaration (Hartland uses `automation_db`), not a hard-coded physical database name. The
+lookup supports an unbound stdlib obligation only. Published grammar/metadata 0.18.16 resolves the actual
+pinned model with the bundle's complete loader package map, including injected stdlib. World hosts are
+validated against declared-or-computed packages, independently of checkout paths; unknown or partial
+packages and an incomplete provider refuse before a claim. Writable/engine/overlay declarations remain
+in the resolver input. Missing, ambiguous or invalid placement refuses. Query still requires an explicit
+world/storage alias. Calendar-count source reads and published graph execution are described below.
+
+Open refuses a pinned fulfilment action unless `er.entity.obligation` is in the manifest's `objectsRead`,
+before placement, run claim or idempotency allocation. Evaluate checks this scope again. Published Core#319
+(0.18.16) derives this read from directly wired action metadata, so the fulfilment fixture no longer needs an
+artificial obligation JOIN. Open, preparation and preview use Core's shared `AutomationScope.needsObligationLookup`
+predicate. Removing the JOIN changes SQL/text evidence; the fixture records a newly approved text fingerprint,
+and its old approval refuses before any claim. Nested call read derivation and calendar action-expression
+reads (Core#330) remain separate follow-ups.
+Placement successes and all `Exception` failures are prepared once per immutable bundle/world, sharing coverage's model
+snapshot and index. Refreshed bundles have their own cache. Both insert and fulfil require the same stdlib
+obligation schema.
+
+Warm-up catches `Exception` and logs once per world and pinned preparation, so one unavailable placement
+cannot prevent other recipes from loading. A fulfilment Open rethrows the cached original failure before
+claiming: expected refusals remain `501 preview-unsupported`; unexpected failures remain a sanitized
+`500 internal`. Fatal JVM `Error`s are not swallowed. Placement derives the obligation entity from the pinned
+model, so copies with a different precomputed entity list cannot poison a shared preparation.
+
+After validating/projecting all wirings, the runner collects the selected (entity, canonical key text, kind)
+identities. It issues one parameterized id/entity/key/kind/state read, filtered by the requested entities,
+kinds and exact key text. Matching in memory requires the exact triple, so cross-product rows cannot match
+another requested identity. At most **300 distinct identities** are allowed (at most **900 bound values**,
+below a portable 999-parameter limit); excess refuses `PREVIEW_UNSUPPORTED` before any lookup, without
+splitting or truncating. No selected fulfilment means no auxiliary read.
+
+The lookup uses the pinned model, identity, ceiling, timeout and scope preflight. A security-narrowed lookup
+always refuses `RESTRICTED_VIEW` with guard evidence, including when `allow_restricted_view` permits narrowed
+decision reads. Truncation and scope guards still apply. The template is `runtime:obligation-lookup/v2` in
+protocol evidence. Verified Arrow is journalled as `_au_obligations.rows`, retained with the run, and reused
+by retries/replans, including failure; a different identity set on replan is an invariant failure. This is an
+internal snapshot, not a new manifest output/download route.
+
+Insert and lookup share canonical key text: sorted JSON object fields and exact numeric normalization
+(`BigDecimal.stripTrailingZeros().toPlainString()`), with no null or structured members. Strings remain
+distinct from numbers. Stored keys must equal this text exactly; a different field order, whitespace or
+numeric spelling is not found and refuses as missing. Legacy bare entity names/scalar keys are not inferred.
+One active obligation
+(open/overdue/reopened) wins over closed history; multiple active matches, missing matches, invalid values
+or malformed snapshots refuse. If no active row exists, only matching history entirely in the requested
+state is a silent self transition. Equal effects share one row; opposing effects on one ID refuse. Proposals
+carry the observed state as `from` and request history only for a change. Lookup guard results join evaluate's
+evidence before atomic decision/batch/action completion. On refusal, successful read evidence remains but
+no partial batch or action is committed. No model row is changed or signal sent; P2 must recheck current state,
+apply writes/history and enqueue signals atomically. General indirect entity lookups and additional time forms remain pending.
+
 Explicit native `writer` actions now produce insert previews. Each declared action column must name one
 attribute of the same pinned ER entity; every declared key and non-nullable field must be mapped and supplied.
 Arguments use compiler assignment unification, allowing lossless integer/decimal and date/timestamp widening
@@ -485,8 +564,8 @@ generation. The finite 63-bit hash space does not guarantee global uniqueness: P
 physical primary-key conflict transactionally, without overwriting/skipping/regenerating. Preview never
 queries or writes the target model to allocate an ID. The evidence format from 0.18.9, unchanged through 0.18.11, covers the authored source.
 
-Hartland's authored default mappings/bundles remain pending, as do obligation/
-key-lookup/calendar/column-date synthesis. P2 must validate actual physical bounds and writable policies
+Hartland's authored default mappings/bundles are staged in #122; deployed adoption remains pending.
+Calendar counts and bound-date-minus-column counts are supported as described below; other column-date forms remain pending. P2 must validate actual physical bounds and writable policies
 before applying anything. H-3/H-5 are not certified by these defaults. Selected unsupported operations return
 `501 preview-unsupported`. P2/P3
 retain dry-run task/delivery rows and performed action outcomes. Durable close/sealing and local staging retention are described below. Application mounting is
@@ -637,3 +716,39 @@ The HTTP port opens only after the migration, so the chart's startup probe cover
 5. Debug runs are as the caller, or with a grant as the deployment's `run_as`; the protocol records both.
 
 **Ports:** HTTP 7131. **Image:** `ghcr.io/collite/automation` (a tag `automation/v<x.y.z>` publishes it).
+
+### Governed calendar-count preview
+
+Action expressions, writer-default expressions, wiring conditions and expressions inside deferred calls
+can use `age(since: placed)` and `working_days(between: placed, and: :as_of)` over typed date/timestamp
+columns and bindings. A bound date minus a typed date/timestamp column (`:as_of - placed`, including
+a derived bound such as `(:as_of - days(1)) - placed`) uses the same calendar count; numeric subtraction
+remains numeric. The known manifest-duration flattening limitation still blocks literal-duration
+subexpressions in published wiring text (for example `days(1)` rendered as `1 days`); compute that bound
+upstream or bind a duration parameter until Core U1 is fixed. Open discovers the single model calendar by `semantics { role: event_date }`,
+requires its exact ER qname in `recipe.objectsRead`, resolves its binding and world placement with the
+published compiler and the complete loader package map, and requires an explicit Query door route before
+claiming the run. The calendar plan is cached per immutable bundle/world, including placement refusals;
+refresh creates a different cache. Checkout paths never grant scope. Open records the calendar entity,
+logical storage, columns and `runtime:calendar-snapshot/v1` template in its protocol evidence.
+
+Evaluation performs one governed calendar read using the pinned model, identity, read ceiling, timeout
+and allowed ER scope. The date and bound working-day flag are the only selected attributes. The snapshot
+must be complete: security narrowing refuses even with `allow_restricted_view`; a reached ceiling or
+validator cap also refuses. Verified Arrow is journalled as `_au_calendar.rows` (or an unused numbered private island when that name is authored). Concurrent consumers and
+retries share the same successful snapshot or failure; no auxiliary output/download API is introduced.
+A refusal cannot publish a decision, batch or action completion.
+
+The published `RecipeTime` typer, `SugarLowering`, normalizer and parameter-aware `SqlTextPlanner` execute
+against that snapshot and only
+the referenced staged route columns in UTC DuckDB. Server does not copy the calendar joins/count SQL or
+invent weekdays. Compiler semantics count calendar days in `(start, end]`, filter the authored working-day
+flag, preserve repeated route rows, propagate NULL dates and return zero for empty/reversed ranges. Empty
+routes still validate. The published 0.18.14 fixture under `src/test/resources/calendar-preview` goes through
+governed Open/evaluate/retry/close/restart with the real PostgreSQL ledger; only Query tables are canned.
+It does not certify a live Query database or perform physical writes.
+
+Relative `due` values remain descriptive. Absolute working-day deadlines, adding/subtracting a duration
+to/from a route date, reverse/column-column date differences and integer calendar-key action inputs
+remain unsupported and refuse, including on empty routes. Action rows do not carry the key provenance
+needed to resolve calendar keys; no integer/date coercion is inferred. This stage changes no runtime/compiler dependency pin.

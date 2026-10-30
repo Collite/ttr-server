@@ -10,6 +10,7 @@ import org.tatrman.automation.identity.*
 import org.tatrman.automation.ledger.*
 import org.tatrman.ttr.metadata.model.AutomationDuration
 import org.tatrman.ttr.metadata.model.AutomationProgram
+import org.tatrman.ttrp.resolve.AutomationScope
 import java.security.MessageDigest
 import java.time.Clock
 import java.time.Duration
@@ -66,6 +67,7 @@ class Open(
     private val clock: Clock = Clock.systemUTC(),
     private val approvalsOff: Boolean = false,
     private val detailLimit: Int = 200,
+    private val doorRoutes: Set<String> = emptySet(),
 ) {
     fun open(
         recipeName: String,
@@ -166,6 +168,10 @@ class Open(
         val sync = program.budgetSync?.duration() ?: syncDefault
         val batch = program.budgetBatch?.duration() ?: batchDefault
         require(!sync.isNegative && !sync.isZero) { "invalid sync budget" }
+        val fulfilment = pinnedActions.values.any { AutomationScope.needsObligationLookup(it) }
+        if (fulfilment && "er.entity.obligation" !in recipe.recipe.objectsRead) {
+            throw AutomationException(ErrorCode.OUT_OF_SCOPE_READ, "obligation lookup requires declared ER scope")
+        }
         val context =
             RunContext(
                 UUID(0, 0),
@@ -181,13 +187,33 @@ class Open(
                 detailLimit = detailLimit,
                 detailLimits = detailLimits(recipe.recipe, pinnedActions, detailLimit),
                 syncBudget = sync,
+                obligationStorage =
+                    if (fulfilment) {
+                        org.tatrman.automation.apply.PreviewObligationStorage
+                            .resolve(bundle, world.name)
+                    } else {
+                        null
+                    },
+                calendar =
+                    org.tatrman.automation.apply.PreviewCalendar.plan(
+                        bundle,
+                        world.name,
+                        recipe.recipe,
+                        pinnedActions,
+                    ),
                 previewMetadata =
                     org.tatrman.automation.apply.PreviewMetadata(
                         pinnedActions,
                         bundle.entities,
                         coverage.targets,
+                        { obj -> bundle.prepared.index.isAutomationStdlib(obj) },
                     ),
             )
+        context.calendar?.let { calendar ->
+            if ("${context.world}/${calendar.storage}" !in doorRoutes) {
+                throw AutomationException(ErrorCode.DOOR_REFUSED, "no door route for the pinned calendar storage")
+            }
+        }
         if (port.keys != null &&
             port.keys.size > context.readCeiling
         ) {
@@ -242,6 +268,14 @@ class Open(
                         put("dryRun", true)
                         put("allowRestrictedView", d.allowRestrictedView)
                         put("readCeiling", context.readCeiling)
+                        context.calendar?.let { calendar ->
+                            putJsonObject("calendar") {
+                                put("entity", calendar.entity)
+                                put("storage", calendar.storage)
+                                put("columns", JsonArray(calendar.columns.map { JsonPrimitive(it.name) }))
+                                put("template", "runtime:calendar-snapshot/v1")
+                            }
+                        }
                         put("detailLimit", context.detailLimit)
                         put("detailLimits", JsonObject(context.detailLimits.mapValues { JsonPrimitive(it.value) }))
                         put("budgetSyncMs", sync.toMillis())

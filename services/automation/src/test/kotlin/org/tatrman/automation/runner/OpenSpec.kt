@@ -129,6 +129,22 @@ class OpenSpec :
             }
         }
 
+        "an unmapped calendar storage refuses before claim even with valid model scope" {
+            val calendar = BundleFixture.load(CalendarFixture.copyTo(BundleFixture.copy()))
+            val selected =
+                calendar.copy(
+                    deployments =
+                        calendar.deployments +
+                            (deployment to calendar.deployments.getValue(deployment).copy(runAs = ModelRunAs.Caller)),
+                )
+            refused(ErrorCode.DOOR_REFUSED) {
+                service(
+                    selected,
+                    claim = { error("calendar route refusal must not claim") },
+                ).open(recipe, request(), caller)
+            }
+        }
+
         "open pins the bundle, model, fingerprints, verified identity, bindings and dry-run before claiming" {
             var recorded: RunOpen? = null
             val id = UUID.randomUUID()

@@ -1,0 +1,5 @@
+package hartland
+model binding
+def er2db_entity calendar_map { entity: er.entity.date_dim, target: { table: db.dbo.calendar_days } }
+def er2db_attribute calendar_date_map { attribute: er.entity.date_dim.cal_date, target: { column: db.dbo.calendar_days.day } }
+def er2db_attribute calendar_working_map { attribute: er.entity.date_dim.working_day, target: { column: db.dbo.calendar_days.working } }
