@@ -11,7 +11,9 @@ engine-named — **worker-mssql** (the MSSQL worker), and **worker-polars**
 
 - **ROUTING** — walks the plan's `TableScan` qnames against the World config to
   derive a `connection_id`; a caller may also supply one explicitly. Plans with
-  no scans route to the configured `default-connection`.
+  no scans and tables with no matching exact/prefix pattern use the configured `default-connection`.
+  Caller roles do not affect routing. Query's `QUERY_WORLDS` table handles the caller's explicit world;
+  with multiple configured worlds query refuses an omitted world before calling dispatch.
 - **CAPABILITY MATCH** — selects among workers that advertise the resolved
   connection (and, for stateful plans, `supports_stateful_sessions = true`).
 - **STICKY ROUTING** — pins a `session_id` to a worker when the worker is

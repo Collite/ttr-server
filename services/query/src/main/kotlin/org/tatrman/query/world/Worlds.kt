@@ -10,6 +10,7 @@ import com.typesafe.config.Config
  * surgery on the world's name: the connection a world runs on is a deployment's fact.
  *
  * Empty (the default) = this deployment serves one world, its default connection; any named world is unknown.
+ * More than one configured world requires an explicit choice on execution requests, independent of caller roles.
  */
 class Worlds(
     val connections: Map<String, String>,
@@ -20,6 +21,10 @@ class Worlds(
     operator fun contains(world: String): Boolean = world in connections
 
     val names: List<String> get() = connections.keys.sorted()
+
+    val requiresWorld: Boolean get() = connections.size > 1
+
+    fun unspecified(): String = "A world is required here; the worlds are ${names.joinToString(", ")}."
 
     /** The refusal a request naming [world] gets when the table does not have it. */
     fun unknown(world: String): String =
@@ -34,6 +39,8 @@ class Worlds(
     companion object {
         /** The code a request naming a world this door does not serve is refused with. */
         const val UNKNOWN_WORLD = "unknown_world"
+
+        const val WORLD_UNSPECIFIED = "world_unspecified"
 
         val NONE = Worlds(emptyMap())
 

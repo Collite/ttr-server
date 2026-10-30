@@ -16,6 +16,12 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+- **query — require a world on multi-world doors (#261).** When `QUERY_WORLDS` names more
+  than one world, `Run` and `RunSavedQuery` refuse omission with `world_unspecified` before
+  compilation/cache lookup or saved-query metadata lookup. The existing world fields and mapping
+  from #264 are reused; zero/one-world omission and explicit known-world routing are preserved.
+  Compile remains independent of the world. Caller roles do not select a connection.
+
 - **metadata — strict source publication and gRPC source health (#258).** `METADATA_STRICT_SWAP`
   defaults to true: the library strict report (ERRORs and dropped files), exceptions and empty
   model content refuse a source. Culprits retain their previous contribution; a clean second pass

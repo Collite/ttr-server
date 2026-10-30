@@ -72,7 +72,12 @@ loopback channel to the gRPC port, carrying the caller's identity.
   verified token only. An enabled edge without an issuer does not start.
 - **Worlds** (C-3, C-9): `QUERY_WORLDS` (`world=connection_id,…`) is the door's world table —
   `RunRequest.world` / `RunSavedQueryRequest.world` map through it to `DispatchRequest.connection_id`;
-  an unknown world is refused `unknown_world`. The edge takes the connection's world from the `world`
+  an unknown world is refused `unknown_world`. With more than one world in the table, both execution
+  RPCs refuse an empty world with `world_unspecified`, before compilation/cache lookup or saved-query
+  metadata lookup, regardless of roles. With zero or one world, omission preserves dispatch's
+  derived/default routing; an explicit known world still selects its mapped connection. Compile ignores
+  world selection. Configure every served world here: query does not discover dispatch's connections.
+  The edge takes the connection's world from the `world`
   header (or the JDBC `catalog` session option, kept as a `ttr_world` cookie), sets it on every `Run`,
   refuses a statement naming another catalog (`world_mismatch`) and checks the receipt's connection.
 - **Receipts** (C-6): one `bi_receipts` row per statement (schema `query`, Flyway-migrated on first

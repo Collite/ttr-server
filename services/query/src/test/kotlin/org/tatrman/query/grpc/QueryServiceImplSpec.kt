@@ -1601,7 +1601,7 @@ class QueryServiceImplSpec :
             }
         }
 
-        "a door with no world table refuses any named world, and an empty world is today's path" {
+        "a door with no world table refuses any named world, and an empty world uses the default" {
             runBlocking {
                 val dispatched = CopyOnWriteArrayList<DispatchRequest>()
                 val refused = service(dispatcher = capturing(dispatched)).run(worldRequest("hartland_us")).toList()
@@ -1611,8 +1611,101 @@ class QueryServiceImplSpec :
                     .single()
                     .code shouldBe "unknown_world"
                 dispatched shouldBe emptyList()
-                service(dispatcher = capturing(dispatched), worlds = hartlandWorlds).run(worldRequest("")).toList()
+                service(dispatcher = capturing(dispatched)).run(worldRequest("")).toList()
                 dispatched.single().connectionId shouldBe ""
+            }
+        }
+
+        "multiple worlds require a choice before any downstream call, with or without roles" {
+            val neverParse = TranslatorClient { error("an unspecified world must not parse") }
+            val neverDetect = TranslatorDetectClient { error("an unspecified world must not detect") }
+            val neverValidate = ValidatorClient { error("an unspecified world must not validate") }
+            val dispatched = CopyOnWriteArrayList<DispatchRequest>()
+            val svc =
+                service(
+                    translator = neverParse,
+                    translatorDetect = neverDetect,
+                    validator = neverValidate,
+                    dispatcher = capturing(dispatched),
+                    worlds = hartlandWorlds,
+                )
+            for (roles in listOf(emptyList(), listOf("analyst"))) {
+                val context =
+                    PipelineContext
+                        .newBuilder()
+                        .setUserId("u")
+                        .setCorrelationId("world-test")
+                        .addAllAuthRoles(roles)
+                        .build()
+                val batch = svc.run(worldRequest("").toBuilder().setContext(context).build()).toList().single()
+                batch.isFirst shouldBe true
+                batch.isLast shouldBe true
+                batch.arrowIpc.isEmpty shouldBe true
+                batch.context shouldBe context
+                batch.messagesList.single().severity shouldBe Severity.ERROR
+                batch.messagesList.single().code shouldBe "world_unspecified"
+                batch.messagesList.single().humanMessage shouldBe
+                    "A world is required here; the worlds are hartland_cz, hartland_us."
+                svc.activeRunCount shouldBe 0
+            }
+            dispatched shouldBe emptyList()
+        }
+
+        "an unnamed world is refused on a warm cache and with bypass_cache" {
+            val dispatched = CopyOnWriteArrayList<DispatchRequest>()
+            val svc = service(dispatcher = capturing(dispatched), worlds = hartlandWorlds)
+            val first = worldRequest("hartland_us")
+            val initial = svc.run(first).toList().flatMap { it.messagesList }
+            initial.filter { it.severity == Severity.ERROR } shouldBe emptyList()
+            val cached = svc.run(first).toList().flatMap { it.context.warningsList }
+            cached.map { it.code } shouldContain "cache_hit"
+            for (bypass in listOf(false, true)) {
+                val batch =
+                    svc
+                        .run(
+                            first
+                                .toBuilder()
+                                .clearWorld()
+                                .setBypassCache(bypass)
+                                .build(),
+                        ).toList()
+                        .single()
+                batch.messagesList.single().code shouldBe "world_unspecified"
+            }
+            dispatched.size shouldBe 2
+        }
+
+        "one configured world permits omission and still maps an explicit choice" {
+            val dispatched = CopyOnWriteArrayList<DispatchRequest>()
+            val svc =
+                service(dispatcher = capturing(dispatched), worlds = Worlds.parse("hartland_us=pg-hartland-us"))
+            for (world in listOf("", "hartland_us")) {
+                svc
+                    .run(worldRequest(world))
+                    .toList()
+                    .flatMap { it.messagesList }
+                    .filter { it.severity == Severity.ERROR } shouldBe emptyList()
+            }
+            dispatched.map { it.connectionId } shouldBe listOf("", "pg-hartland-us")
+        }
+
+        "two world names require a choice even if they alias one connection" {
+            val svc = service(worlds = Worlds.parse("alias_a=shared,alias_b=shared"))
+            svc
+                .run(worldRequest(""))
+                .toList()
+                .single()
+                .messagesList
+                .single()
+                .code shouldBe "world_unspecified"
+        }
+
+        "compile ignores world selection on a multi-world door" {
+            val svc = service(worlds = hartlandWorlds)
+            for (world in listOf("", "hartland_us", "hartland_de")) {
+                val compiled = svc.compile(worldRequest(world))
+                compiled.hasPlan() shouldBe true
+                compiled.messagesList.filter { it.severity == Severity.ERROR } shouldBe emptyList()
             }
         }
 
