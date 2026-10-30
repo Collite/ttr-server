@@ -423,6 +423,50 @@ class ParameterContractSpec :
             }
         }
 
+        for (schema in listOf(SchemaCode.DB, SchemaCode.ER)) {
+            "Compile $schema cache hit derives requirements from the plan, not the declarations" {
+                val h = Harness()
+                val ctx =
+                    context()
+                        .toBuilder()
+                        .addParameters(
+                            ParameterBinding.newBuilder().setName("unused").setType("text"),
+                        ).build()
+                val req =
+                    request(ctx)
+                        .toBuilder()
+                        .setSourceSchema(schema)
+                        .setSource(if (schema == SchemaCode.ER) sql.replace("customer", "shopper") else sql)
+                        .build()
+                h.service
+                    .compile(req)
+                    .requiredParametersList
+                    .map { it.name } shouldBe listOf("id")
+                val hits = h.cache.stats().hits
+                val second = h.service.compile(req)
+                h.cache.stats().hits shouldBe hits + 1
+                second.requiredParametersList.map { it.name } shouldBe listOf("id")
+            }
+        }
+
+        "Compile of a stored plan lists its references on a cache hit too" {
+            val h = Harness()
+            val rel =
+                request(context(null))
+                    .toBuilder()
+                    .setSource(String(parsed().toByteArray(), Charsets.ISO_8859_1))
+                    .setSourceLanguage(Language.REL_NODE)
+                    .build()
+            h.service
+                .compile(rel)
+                .requiredParametersList
+                .map { it.name } shouldBe listOf("id")
+            val hits = h.cache.stats().hits
+            val second = h.service.compile(rel)
+            h.cache.stats().hits shouldBe hits + 1
+            second.requiredParametersList.map { it.name } shouldBe listOf("id")
+        }
+
         "braces on a binding name cannot satisfy the stored plan's bare id before the worker binder" {
             val plan = parsed()
             val h = Harness(plan)
