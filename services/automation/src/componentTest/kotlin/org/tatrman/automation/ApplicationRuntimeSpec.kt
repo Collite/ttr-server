@@ -34,6 +34,7 @@ import org.tatrman.plan.v1.ValuesNode
 import org.tatrman.query.v1.*
 import org.tatrman.worker.v1.ResultBatch
 import java.net.URI
+import java.nio.file.Files
 import java.nio.file.Path
 import java.time.Duration
 import java.time.Instant
@@ -117,6 +118,156 @@ class ApplicationRuntimeSpec :
                         HttpStatusCode.ServiceUnavailable
                     f.requests.size shouldBe reads
                     transaction { Runs.selectAll().count() shouldBe 2L }
+                }
+            } finally {
+                f.close()
+            }
+        }
+
+        "mounted idle deadline fails durably without an execution request" {
+            val f = fixture()
+            try {
+                f.api(batchBudget = "1s") { _ ->
+                    val id = f.open(this)
+                    val base = "/automation/runs/$id"
+                    // Only observation requests: these must not cause the timeout or start Query work.
+                    withTimeout(10_000) {
+                        while (true) {
+                            val status = client.get(base) { bearerAuth(f.token) }
+                            status.status shouldBe HttpStatusCode.OK
+                            if (Json.parseToJsonElement(status.bodyAsText()).jsonObject["status"] ==
+                                JsonPrimitive("failed")
+                            ) {
+                                break
+                            }
+                            delay(25)
+                        }
+                    }
+                    val refused = client.post("$base/evaluate") { bearerAuth(f.token) }
+                    refused.status shouldBe HttpStatusCode.GatewayTimeout
+                    errorCode(refused.bodyAsText()) shouldBe "budget"
+                    f.requests.size shouldBe 0
+                    transaction {
+                        Runs.selectAll().single()[Runs.error]!!.jsonObject["code"] shouldBe JsonPrimitive("budget")
+                        RunEvaluations.selectAll().count() shouldBe 0L
+                        RunOutputs.selectAll().count() shouldBe 0L
+                        Batches.selectAll().count() shouldBe 0L
+                    }
+                    client.get("$base/protocol") { bearerAuth(f.token) }.status shouldBe HttpStatusCode.OK
+                }
+            } finally {
+                f.close()
+            }
+        }
+
+        "mounted deadline cancels an active Query and replays the budget refusal without redispatch" {
+            val entered = CompletableDeferred<Unit>()
+            val cancelled = CompletableDeferred<Unit>()
+            val f =
+                fixture {
+                    entered.complete(Unit)
+                    try {
+                        awaitCancellation()
+                    } finally {
+                        cancelled.complete(Unit)
+                    }
+                }
+            try {
+                f.api(batchBudget = "8s") { _ ->
+                    val id = f.open(this)
+                    val base = "/automation/runs/$id"
+                    // Separate the absolute run deadline from the door's per-read timeout by two seconds.
+                    delay(2_000)
+                    client.post("$base/evaluate") { bearerAuth(f.token) }.status shouldBe HttpStatusCode.Accepted
+                    withTimeout(10_000) { entered.await() }
+                    // No further execution request drives cancellation; the installed deadline watcher does.
+                    withTimeout(10_000) { cancelled.await() }
+                    repeat(2) {
+                        val refused = client.post("$base/evaluate") { bearerAuth(f.token) }
+                        refused.status shouldBe HttpStatusCode.GatewayTimeout
+                        errorCode(refused.bodyAsText()) shouldBe "budget"
+                    }
+                    val reads = f.requests.size
+                    reads shouldBe 1
+                    transaction {
+                        Runs.selectAll().single()[Runs.status] shouldBe "failed"
+                        RunEvaluations.selectAll().count() shouldBe 1L
+                        RunOutputs.selectAll().count() shouldBe 0L
+                        Batches.selectAll().count() shouldBe 0L
+                    }
+                    client.get(base) { bearerAuth(f.token) }.status shouldBe HttpStatusCode.OK
+                    client.get("$base/protocol") { bearerAuth(f.token) }.status shouldBe HttpStatusCode.OK
+                    f.requests.size shouldBe reads
+                }
+            } finally {
+                f.close()
+            }
+        }
+
+        "mounted close after the original budget refuses without sealing or changing the preview" {
+            val f = fixture()
+            try {
+                f.api(batchBudget = "15s") { _ ->
+                    val id = f.open(this)
+                    val base = "/automation/runs/$id"
+                    f.evaluate(this, id)
+                    val preview = client.get("$base/batch") { bearerAuth(f.token) }.bodyAsText()
+                    val protocol = client.get("$base/protocol") { bearerAuth(f.token) }.bodyAsText()
+                    f.afterBudget(id)
+                    repeat(2) {
+                        val refused = client.post("$base/close") { bearerAuth(f.token) }
+                        refused.status shouldBe HttpStatusCode.GatewayTimeout
+                        errorCode(refused.bodyAsText()) shouldBe "budget"
+                    }
+                    client.get("$base/batch") { bearerAuth(f.token) }.bodyAsText() shouldBe preview
+                    client.get("$base/protocol") { bearerAuth(f.token) }.bodyAsText() shouldBe protocol
+                    transaction {
+                        val run = Runs.selectAll().single()
+                        run[Runs.status] shouldBe "evaluated"
+                        run[Runs.endedAt] shouldBe null
+                        run[Runs.stagingReleasedAt] shouldBe null
+                    }
+                    f.requests.size shouldBe 2
+                }
+            } finally {
+                f.close()
+            }
+        }
+
+        "mounted maintenance releases a closed run after configured grace and preserves another prefix" {
+            val f = fixture()
+            try {
+                f.api(graceHours = 0) { _ ->
+                    val id = f.open(this)
+                    val base = "/automation/runs/$id"
+                    f.evaluate(this, id)
+                    transaction { RunOutputs.selectAll().count() shouldBe 2L }
+                    Files.isDirectory(f.stagedRun(id)) shouldBe true
+                    val sibling = f.stagedRun(UUID.randomUUID().toString()).resolve("keep.arrow")
+                    Files.createDirectories(sibling.parent)
+                    Files.writeString(sibling, "unrelated prefix")
+                    client.post("$base/close") { bearerAuth(f.token) }.status shouldBe HttpStatusCode.OK
+                    val protocol = client.get("$base/protocol") { bearerAuth(f.token) }.bodyAsText()
+                    // Observe the actual default 15-second maintenance loop; no direct sweeper call.
+                    withTimeout(25_000) {
+                        while (!transaction { RunOutputs.selectAll().all { it[RunOutputs.releasedAt] != null } }) {
+                            delay(
+                                25,
+                            )
+                        }
+                    }
+                    transaction { (Runs.selectAll().single()[Runs.stagingReleasedAt] != null) shouldBe true }
+                    Files.exists(f.stagedRun(id)) shouldBe false
+                    Files.readString(sibling) shouldBe "unrelated prefix"
+                    client.get(base) { bearerAuth(f.token) }.status shouldBe HttpStatusCode.OK
+                    client.get("$base/batch") { bearerAuth(f.token) }.status shouldBe HttpStatusCode.OK
+                    client.get("$base/protocol") { bearerAuth(f.token) }.bodyAsText() shouldBe protocol
+                    // Durable close retries survive released staging; sealed execution still refuses first.
+                    client.post("$base/close") { bearerAuth(f.token) }.status shouldBe HttpStatusCode.OK
+                    val sealed = client.get("$base/outputs/verdict.release") { bearerAuth(f.token) }
+                    sealed.status shouldBe HttpStatusCode.Conflict
+                    errorCode(sealed.bodyAsText()) shouldBe "run-closed"
+                    f.requests.size shouldBe 2
                 }
             } finally {
                 f.close()
@@ -318,7 +469,38 @@ private class ApplicationRuntimeFixture(
             .jsonPrimitive.content
     }
 
-    suspend fun api(block: suspend ApplicationTestBuilder.(Application) -> Unit) {
+    fun stagedRun(id: String): Path = root.resolve("staging/runs/$id")
+
+    suspend fun evaluate(
+        api: ApplicationTestBuilder,
+        id: String,
+    ) {
+        withTimeout(10_000) {
+            while (true) {
+                val response = api.client.post("/automation/runs/$id/evaluate") { bearerAuth(token) }
+                if (response.status == HttpStatusCode.OK) return@withTimeout
+                response.status shouldBe HttpStatusCode.Accepted
+                delay(20)
+            }
+        }
+    }
+
+    suspend fun afterBudget(id: String) {
+        val deadline =
+            transaction {
+                val row = Runs.selectAll().single { it[Runs.id] == UUID.fromString(id) }
+                row[Runs.startedAt].toInstant().plusMillis(row[Runs.budgetBatch]!!)
+            }
+        // The configured production clock is system UTC minus 30 days. Do not rewrite ledger timestamps.
+        val remaining = Duration.between(Instant.now().minus(Duration.ofDays(30)), deadline).toMillis()
+        if (remaining > 0) delay(remaining + 10)
+    }
+
+    suspend fun api(
+        batchBudget: String = "30m",
+        graceHours: Long = 1,
+        block: suspend ApplicationTestBuilder.(Application) -> Unit,
+    ) {
         val db = LedgerTestDb.db
         val jdbc = db.getConnection().use { URI(it.metaData.url.removePrefix("jdbc:")) }
         val config =
@@ -338,6 +520,8 @@ private class ApplicationRuntimeFixture(
             automation.runner.workers = 1
             automation.clock.skew = -720h
             automation.budgets.syncDefault = 50ms
+            automation.budgets.batchDefault = $batchBudget
+            automation.retention.graceHours = $graceHours
             """,
                 ).withFallback(ConfigFactory.parseResources("application.conf"))
                 .resolve()
@@ -368,3 +552,12 @@ private class ApplicationRuntimeFixture(
         server.awaitTermination(10, TimeUnit.SECONDS)
     }
 }
+
+private fun errorCode(body: String): String =
+    Json
+        .parseToJsonElement(body)
+        .jsonObject
+        .getValue("error")
+        .jsonObject
+        .getValue("code")
+        .jsonPrimitive.content
