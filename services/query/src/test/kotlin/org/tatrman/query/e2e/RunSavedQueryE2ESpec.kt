@@ -293,4 +293,107 @@ class RunSavedQueryE2ESpec :
             val refused = h.service.runSavedQuery(request(logical).toBuilder().setWorld("hartland_de").build()).toList()
             errors(refused).single().code shouldBe "unknown_world"
         }
+
+        "with the requirement off, multi-world saved queries preserve derived routing on both lanes" {
+            for (worlds in listOf(
+                Worlds.parse("hartland_us=pg-hartland-us,hartland_cz=pg-hartland-cz"),
+                Worlds(
+                    mapOf("hartland_us" to "pg-hartland-us", "hartland_cz" to "pg-hartland-cz"),
+                    requireWorld = false,
+                ),
+            )) {
+                for (plan in listOf(erStored, dbStored)) {
+                    val h = Harness(worlds) { stored(plan) }
+                    for (roles in listOf(emptyList(), listOf("analyst"))) {
+                        val req =
+                            request(logical)
+                                .toBuilder()
+                                .setContext(
+                                    context.toBuilder().clearAuthRoles().addAllAuthRoles(roles),
+                                ).build()
+                        errors(h.service.runSavedQuery(req).toList()).shouldBeEmpty()
+                    }
+                    h.dispatchRequests.map { it.connectionId } shouldBe listOf("", "")
+                    val asks = h.asked.size
+                    errors(h.service.runSavedQuery(request(logical).toBuilder().setWorld("missing").build()).toList())
+                        .single()
+                        .code shouldBe "unknown_world"
+                    h.asked.size shouldBe asks
+                }
+            }
+        }
+
+        "world refusal precedes an invalid row window on RunSavedQuery" {
+            val h = Harness(Worlds.parse("a=one,b=two", requireWorld = true)) { stored(erStored) }
+            val req =
+                request(logical)
+                    .toBuilder()
+                    .setRowWindow(
+                        org.tatrman.query.v1.RowWindow
+                            .newBuilder()
+                            .setOffset(-1),
+                    ).build()
+            errors(h.service.runSavedQuery(req).toList()).single().code shouldBe "world_unspecified"
+            h.asked.shouldBeEmpty()
+        }
+
+        "a multi-world saved query requires a world before reading metadata, with or without roles" {
+            val h =
+                Harness(
+                    Worlds.parse("hartland_us=pg-hartland-us,hartland_cz=pg-hartland-cz", requireWorld = true),
+                ) { stored(erStored) }
+            for (roles in listOf(emptyList(), listOf("analyst"))) {
+                val caller =
+                    context
+                        .toBuilder()
+                        .clearAuthRoles()
+                        .addAllAuthRoles(roles)
+                        .build()
+                val req = request(logical).toBuilder().setContext(caller).build()
+                val batch =
+                    h.service
+                        .runSavedQuery(req)
+                        .toList()
+                        .single()
+                batch.isFirst shouldBe true
+                batch.isLast shouldBe true
+                errors(listOf(batch)).single().code shouldBe "world_unspecified"
+                batch.context.userId shouldBe context.userId
+            }
+            h.asked.shouldBeEmpty()
+            h.parses.shouldBeEmpty()
+            h.validated.shouldBeEmpty()
+            h.dispatchRequests.shouldBeEmpty()
+        }
+
+        "saved queries select either world across both lanes and never reuse the last world on omission" {
+            val worlds = Worlds.parse("hartland_us=pg-hartland-us,hartland_cz=pg-hartland-cz", requireWorld = true)
+            for (plan in listOf(erStored, dbStored)) {
+                val h = Harness(worlds) { stored(plan) }
+                for (world in listOf("hartland_us", "hartland_cz")) {
+                    errors(h.service.runSavedQuery(request(logical).toBuilder().setWorld(world).build()).toList())
+                        .shouldBeEmpty()
+                }
+                val asks = h.asked.size
+                errors(h.service.runSavedQuery(request(logical)).toList()).single().code shouldBe "world_unspecified"
+                h.asked.size shouldBe asks
+                h.dispatchRequests.map { it.connectionId } shouldBe listOf("pg-hartland-us", "pg-hartland-cz")
+            }
+        }
+
+        "a single-world saved query accepts omission, and unknown worlds are refused before metadata" {
+            for (worlds in listOf(
+                Worlds(emptyMap(), requireWorld = true),
+                Worlds.parse("hartland_us=pg-hartland-us", requireWorld = true),
+            )) {
+                val h = Harness(worlds) { stored(dbStored) }
+                errors(h.service.runSavedQuery(request(dbQuery)).toList()).shouldBeEmpty()
+                h.dispatchRequests.single().connectionId shouldBe ""
+                val asks = h.asked.size
+                val refused = h.service.runSavedQuery(request(dbQuery).toBuilder().setWorld("missing").build()).toList()
+                errors(refused).single().code shouldBe "unknown_world"
+                h.asked.size shouldBe asks
+                h.dispatched shouldBe 1
+            }
+        }
     })

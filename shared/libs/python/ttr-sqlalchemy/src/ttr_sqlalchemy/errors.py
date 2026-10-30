@@ -63,7 +63,14 @@ ACCESS_CODES = frozenset({"access_denied", "column_denied", "permission_denied",
 
 #: The call never reached a door that would run it: no or a bad credential, a world not served.
 LOGIN_CODES = frozenset(
-    {"missing_credentials", "invalid_token", "password_refused", "unknown_world", "unauthenticated"}
+    {
+        "missing_credentials",
+        "invalid_token",
+        "password_refused",
+        "unknown_world",
+        "world_unspecified",
+        "unauthenticated",
+    }
 )
 
 #: The door's own failures.

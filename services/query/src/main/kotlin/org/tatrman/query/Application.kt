@@ -266,6 +266,7 @@ fun Application.module(config: Config) {
                             ?: FlightEdge.DISABLED_STATUS,
                     )
                     put("worlds", JsonArray(worlds.names.map { JsonPrimitive(it) }))
+                    put("require_world", worlds.requireWorld)
                     putJsonObject("cache") {
                         put("entries", stats.entries)
                         put("max_entries", stats.maxEntries)

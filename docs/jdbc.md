@@ -98,8 +98,9 @@ A world selects the data; the caller's roles and row rules decide what of it the
 any signed-in caller may pick any world the deployment serves, and the same row rules apply in each.
 
 The world is the connection's only catalog (`getCatalogs()` returns it). A world the deployment does not serve
-fails the connect with `unknown_world: World '<x>' is not served here; the worlds are …`. With no world, the
-deployment's default connection answers and no catalog is listed.
+fails the connect with `unknown_world: World '<x>' is not served here; the worlds are …`. With no world, no
+catalog is listed. Omission keeps dispatch's derived/default routing unless `QUERY_REQUIRE_WORLD` is on
+(default off) with more than one configured world; then execution fails with `world_unspecified`.
 
 A statement may qualify a table with the connection's own catalog (`hartland_us.er.entity.warehouse`,
 `"hartland_us"."er.entity"."warehouse"`, or every part quoted, `"hartland_us"."er"."entity"."warehouse"`); the

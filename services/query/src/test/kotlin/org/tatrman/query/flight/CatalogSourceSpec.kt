@@ -172,6 +172,40 @@ class CatalogSourceSpec :
             }
         }
 
+        "a refused no-world probe cannot hide columns from another world with the same roles" {
+            val calls = mutableListOf<String>()
+            val probe =
+                SchemaProbe { _, caller ->
+                    calls += caller.world
+                    if (caller.world.isEmpty()) null else revenueSchema
+                }
+            val catalog = source(probe = probe)
+            val noWorld = session.copy(world = "")
+            catalog
+                .tables(noWorld, null, "obj.query", null)
+                .single()
+                .arrowSchema.fields
+                .shouldBeEmpty()
+            val named = session.copy(world = "hartland_us")
+            catalog
+                .tables(named, null, "obj.query", null)
+                .single()
+                .arrowSchema.fields
+                .map { it.name } shouldBe
+                listOf("customer_id", "revenue")
+            // Both successful and refused probes remain cached in their own world.
+            catalog
+                .tables(noWorld, null, "obj.query", null)
+                .single()
+                .arrowSchema.fields
+                .shouldBeEmpty()
+            catalog
+                .tables(named, null, "obj.query", null)
+                .single()
+                .arrowSchema.fields.size shouldBe 2
+            calls shouldBe listOf("", "hartland_us")
+        }
+
         "a table listing without schemas does not probe" {
             runBlocking {
                 val probe = Probe()

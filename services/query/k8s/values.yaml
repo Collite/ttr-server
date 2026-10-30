@@ -76,8 +76,11 @@ flight:
         key: password
 
 # BI (C-9) — the worlds this door serves: `world=connection_id` pairs, comma-separated
-# (`hartland_us=pg-hartland-us,hartland_cz=pg-hartland-cz`). Empty = one world, the default connection.
+# (`hartland_us=pg-hartland-us,hartland_cz=pg-hartland-cz`). Empty = no named worlds.
+# Omission keeps derived/default routing; with requireWorld on and multiple worlds it is world_unspecified.
 worlds: ""
+# Opt-in only after all callers name a world; not for mixed pattern-routed doors (ttr-server#344).
+requireWorld: false
 
 # Probes (HTTP on the http port).
 readinessProbe:

@@ -16,6 +16,18 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+- **query — opt-in world requirement on multi-world doors (#261).** When `QUERY_REQUIRE_WORLD`
+  is on (default **off**) and `QUERY_WORLDS` names more than one world, `Run` and `RunSavedQuery`
+  refuse omission with `world_unspecified` before
+  compilation/cache lookup or saved-query metadata lookup. The existing world fields and mapping
+  from #264 are reused; flag-off and zero/one-world omission preserve derived/default routing. Explicit
+  known-world routing, unknown-world refusal and world-independent Compile are unchanged. Caller roles
+  do not select a connection. Enable only after callers migrate; do not enable on doors routing tables
+  outside their worlds by `world.table-connections` patterns: naming a world overrides those patterns,
+  and omission is refused ([#344](https://github.com/Collite/ttr-server/issues/344)).
+  `/status` reports `require_world`. query-mcp accepts optional `world`; catalog column probes are cached
+  per world and role set. The Python client classifies `world_unspecified` as `OperationalError`.
+
 - **metadata — strict source publication and gRPC source health (#258).** `METADATA_STRICT_SWAP`
   defaults to true: the library strict report (ERRORs and dropped files), exceptions and empty
   model content refuse a source. Culprits retain their previous contribution; a clean second pass

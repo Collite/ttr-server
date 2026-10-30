@@ -36,9 +36,11 @@ class IdentityWorldMiddleware internal constructor(
      * cookie. Null when it may; else the refusal, `"<code>: <sentence>"` — a world this door does not serve
      * (`unknown_world`), or one the connection's `world` header contradicts (`world_mismatch`).
      */
-    fun keepWorld(world: String): String? =
-        when {
-            world.isNotEmpty() && world !in worlds -> "${Worlds.UNKNOWN_WORLD}: ${worlds.unknown(world)}"
+    fun keepWorld(world: String): String? {
+        world.takeIf { it.isNotEmpty() }?.let(worlds::refusal)?.let { (code, message) ->
+            return "$code: $message"
+        }
+        return when {
             headerWorld.isNotEmpty() && world.isNotEmpty() && world != headerWorld ->
                 "${TtrFlightSqlProducer.WORLD_MISMATCH}: this connection's world header says '$headerWorld'; " +
                     "catalog '$world' contradicts it."
@@ -47,6 +49,7 @@ class IdentityWorldMiddleware internal constructor(
                 null
             }
         }
+    }
 
     override fun onBeforeSendingHeaders(outgoingHeaders: CallHeaders) {
         auth.appendToOutgoingHeaders(outgoingHeaders)
@@ -74,10 +77,10 @@ class IdentityWorldMiddleware internal constructor(
             val auth = authenticator.authenticate(incomingHeaders)
             val headerWorld = incomingHeaders.get(WORLD_HEADER)?.trim().orEmpty()
             val world = headerWorld.ifEmpty { cookie(incomingHeaders, WORLD_COOKIE).orEmpty() }
-            if (world.isNotEmpty() && world !in worlds) {
+            world.takeIf { it.isNotEmpty() }?.let(worlds::refusal)?.let { (code, message) ->
                 throw FlightAuthenticator.refused(
-                    Worlds.UNKNOWN_WORLD,
-                    worlds.unknown(world),
+                    code,
+                    message,
                     CallStatus.INVALID_ARGUMENT,
                 )
             }

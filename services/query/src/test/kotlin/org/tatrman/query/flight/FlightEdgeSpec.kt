@@ -80,6 +80,25 @@ class FlightEdgeSpec :
                 .connectionOf("hartland_us") shouldBe "pg-hartland-us"
         }
 
+        "the world requirement is opt-in, including the shipped environment override" {
+            val table = "query.worlds = \"a=one,b=two\""
+            val default =
+                org.tatrman.query.world.Worlds
+                    .fromConfig(ConfigFactory.parseString(table))
+            default.requireWorld shouldBe false
+            default.requiresWorld shouldBe false
+            val shipped = ConfigFactory.parseResources("application.conf")
+            org.tatrman.query.world.Worlds
+                .fromConfig(shipped.resolve())
+                .requireWorld shouldBe false
+            val enabled = ConfigFactory.parseString("QUERY_REQUIRE_WORLD=true\n$table").withFallback(shipped).resolve()
+            val worlds =
+                org.tatrman.query.world.Worlds
+                    .fromConfig(enabled)
+            worlds.requireWorld shouldBe true
+            worlds.requiresWorld shouldBe true
+        }
+
         "a deployment sets the bind, the port and an explicit loopback" {
             val config =
                 FlightConfig.fromConfig(

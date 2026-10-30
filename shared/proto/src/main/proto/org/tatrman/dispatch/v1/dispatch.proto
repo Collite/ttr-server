@@ -19,7 +19,8 @@
 //     config. If present, Dispatch uses it authoritatively (with a warning if
 //     it disagrees with the derived value).
 //   - Plans with no TableScans (Values-only) route to the configured
-//     `default_connection`. Dispatch does not police query content.
+//     `default_connection`. Unmatched table qnames also derive that default.
+//     Caller roles are not a routing input. Dispatch does not police query content.
 //   - Sticky routing is gated on the selected worker's
 //     `supports_stateful_sessions = true` capability.
 //   - Cross-database queries (PlanNode touches > 1 connection_id) are
@@ -82,6 +83,8 @@ message DispatchRequest {
   // Optional explicit connection_id. Caller may know it (e.g. agents that
   // have World-config visibility, admin tools, debug surfaces).
   // Behaviour:
+  //   - each table derives its exact/prefix match, otherwise default_connection;
+  //     caller roles do not affect this lookup
   //   - empty + plan derives 1 connection → use derived
   //   - empty + plan has no TableScans → use default_connection from HOCON
   //   - empty + plan derives multiple connections → reject as cross-database

@@ -129,8 +129,25 @@ refuses `flight.enabled` with `replicaCount` above 1.
 
 `world=connection_id` pairs, comma-separated: `hartland_us=pg-hartland-us,hartland_cz=pg-hartland-cz`.
 A request naming a world runs on that connection; a world not in the table is refused
-(`unknown_world`). Empty = one world, on the deployment's default connection. A malformed table
-fails the start. `/status` lists the worlds.
+(`unknown_world`), whatever the flag says. When `QUERY_REQUIRE_WORLD` is on (Helm `query.requireWorld`,
+default **false**) and the table names more than one world, `Run` and `RunSavedQuery` refuse an
+omitted world (`world_unspecified`), regardless of caller roles, before compilation/cache lookup or
+saved-query metadata lookup. Configure every world the door serves, even if names alias the same
+connection: query uses this table to determine multiplicity, not dispatch's worker connections.
+With the flag off or zero/one configured world, an omitted world preserves dispatch's existing routing: exact
+table match, then prefix match, then the default connection (also used for scan-less plans).
+An explicit known world still selects its mapped connection. Compile ignores world selection.
+An empty table is the legacy single-world configuration; any named world is then unknown.
+A malformed table fails the start. `/status` lists the worlds and the configured `require_world` flag.
+
+Enable only once every caller on that cluster names a world (Studio, query-mcp/golems, shared door
+clients and BI connections). Do not enable on a door whose `world.table-connections` patterns route
+tables outside its worlds, such as bp-dsk investment tables: a named world overrides derived routing
+(`connection_id_overrides_derived`), while omission is refused
+([#344](https://github.com/Collite/ttr-server/issues/344)). Caller migration and rollout are tracked in
+[ttr-platform#91](https://github.com/Collite/ttr-platform/issues/91),
+[kantheon#283](https://github.com/Collite/kantheon/issues/283) and
+[olymp#226](https://github.com/Collite/olymp/issues/226); this change enables nothing on deployed clusters.
 
 A world selects the data; the caller's roles and row rules decide what of it they read. Worlds grant
 nothing: any signed-in caller may pick any world in the table, and the same row rules apply in each
