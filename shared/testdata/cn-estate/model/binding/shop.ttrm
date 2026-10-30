@@ -10,8 +10,8 @@ def cn2er_role customer_g { role: cn.Customer, target: er.entity.customer }
 def cn2er_kind item_g { kind: cn.Item, target: er.entity.item }
 def cn2er_kind segment_g { kind: cn.Segment, target: er.entity.customer.segment }
 def cn2er_kind channel_g { kind: cn.Channel, target: er.entity.channel_sales.channel }
-def cn2er_event invoice_g {
-    event: cn.Invoice,
+def cn2er_kind invoice_g {
+    kind: cn.Invoice,
     target: er.entity.invoice,
     period: { start: er.entity.invoice.issued, end: er.entity.invoice.due },
     participants: { customer: [er.relation.invoice_customer] }

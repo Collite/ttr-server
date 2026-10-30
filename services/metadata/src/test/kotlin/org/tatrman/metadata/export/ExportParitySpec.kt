@@ -59,13 +59,11 @@ class ExportParitySpec :
                                     java.nio.file.Path
                                         .of("src/test/resources/xm-goldens/$format/world.json")
                             }
-                        Files.readString(out.resolve(name)) shouldBe
-                            Files.readString(golden).replace(
-                                "fixture-1",
-                                registry
-                                    .readOrError()
-                                    .model.version.value,
-                            )
+                        val snapshot =
+                            registry
+                                .readOrError()
+                                .model.version.value
+                        Files.readString(out.resolve(name)) shouldBe coreGolden(golden, snapshot)
                     } finally {
                         Files.walk(out).use { paths -> paths.sorted(Comparator.reverseOrder()).forEach(Files::delete) }
                     }

@@ -191,7 +191,7 @@ class CnDoorTest :
 
             fun withMember(value: String) =
                 args(
-                    """{"assertion":{"event":{"qname":"cn.Transfer"},"identity":{"new":true},"participants":[""" +
+                    """{"assertion":{"concept":{"qname":"cn.Transfer"},"identity":{"new":true},"participants":[""" +
                         """{"label":"patient","concept":{"qname":"cn.Patient"},"member":{"label":"P","resolvedValue":"$value","resumeToken":"$pick"}}]}}""",
                 )
             door.call("assertion.validate:v1", withMember("1001")).isError shouldBe false

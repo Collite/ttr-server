@@ -1,6 +1,6 @@
 {
   "id": "cn-assertion-validate",
-  "description": "assertion.validate:v1 — the golden Transfer assertion validates on the clinic world; an assertion whose event is still a choice between two candidates is refused.",
+  "description": "assertion.validate:v1 — the golden Transfer assertion validates on the clinic world; an assertion whose concept is still a choice between two candidates is refused.",
   "surface": "cn",
   "estate": "clinic",
   "invariants": [
@@ -13,7 +13,7 @@
       "tool": "assertion.validate:v1",
       "args": {
         "assertion": {
-          "event": {
+          "concept": {
             "qname": "cn.Transfer"
           },
           "identity": {
@@ -96,7 +96,7 @@
       "tool": "assertion.validate:v1",
       "args": {
         "assertion": {
-          "event": {
+          "concept": {
             "candidates": [
               {
                 "qname": "cn.Transfer"

@@ -25,9 +25,8 @@ def event Sale {
 }
 def quality revenue { of: Sale, label: { en: "Revenue", cs: "Tržby" } }
 
-def event Invoice {
+def kind Invoice {
     label: { en: "Invoice", cs: "Faktura" },
-    extent: durative,
     involves: [Customer],
     period: { start: issued, end: due },
     qualities: [status, issued, due]

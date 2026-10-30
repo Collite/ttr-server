@@ -12,7 +12,8 @@ cs + en lexicon units. Three consumers read this one copy, so the three read the
 
 ## Source
 
-A byte-for-byte copy of ttr-core's `packages/kotlin/ttr-lexicon-compile/src/test/resources/cn/` at `ce90a093` (CN-P4
+A byte-for-byte copy of ttr-core's `packages/kotlin/ttr-lexicon-compile/src/test/resources/cn/` at `5e780386` (CN-P8
+S8.2, ttr-core#315: `Invoice` is a kind with a lifetime, grounded by `cn2er_kind`; first copied at `ce90a093`, CN-P4
 S4.1, ttr-core#268). `expected/lexicon.json` is the v6 archive's lexicon (`ttr-lexicon-compiled/v6`) that ttr-core's
 `CnArchiveV6Spec` holds byte-stable. ttr-core's copy is the source: change it there, then copy it here again
 (`diff -r` against the source shows any drift). The model files and the conformance cases are hash-pinned in

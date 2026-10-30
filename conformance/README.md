@@ -115,8 +115,8 @@ hartland-cz/aliases.lex.yaml    78577f1f142fdb6b9bca261e559b69335885358bcd4ba9ed
 hartland-cz/skills/trend.md     3db553d63ab7dcbecd021326dbb13f9cab72b71ee9d7d571c663f65349208bc2
 hartland-cz/cases.jsonl         1a0754ddac81c219a11c074d427c52c36ded5eab4304feeaa28c0c30c2f54de9
 cn-estate/cases.jsonl           075777f50cf9eb888ce567a470c84ded9c43225570e9ec488e43a39b87c1cd31
-cn-estate/model/binding/shop.ttrm       071157c002a742675beca8b7a8d0a1d47b81331d75b40ff443c60767801b77bc
-cn-estate/model/cn/shop.ttrm            2646bc33720d21b7fca47de6444400f052153f29880e1a2322594acd1eb0e409
+cn-estate/model/binding/shop.ttrm       dd474d6a89feafac957f14937f7758c00b7c67a27990d7aa823b54bf1a2e5aa3
+cn-estate/model/cn/shop.ttrm            b5b1dd1c690175e7694741d2b6bbd8fba2673dff18f8d415837b416d1d117e8e
 cn-estate/model/er/shop.ttrm            4ebedd04daa85e05a0821b873e22e9ecd711fe2d0f01f25347aa87a4a727e3a7
 cn-estate/model/lexicon/cs/terms.ttrm   2627ef02f2f429295277a554fbc4d0365b4a9ad54e9de879e3785fee2363f905
 cn-estate/model/lexicon/en/terms.ttrm   186a07d7663af482c8d23877cfa6641ac30cce52d26e8643da0555da6802b09e
@@ -125,12 +125,12 @@ cn-clinic/model/er/clinic.ttrm          d4a6236b844d39b54b854443692d5d800ba1e39d
 cn-clinic/model/cn/clinic.ttrm          47c11d35a6ceb866b58948735ee60200ad4867d35bbb26065abec81d9f7b3e48
 cn-clinic/model/binding/clinic.ttrm     9ee44f0b1d5978b193948ad4129a7ba5316f1bb1c36ee445ed90b445c1532154
 cn-clinic/model/lexicon/cs/terms.ttrm   16126bcfc31313bf7f6f68465226e0d988c5fcccc2476d138e0d7bd2f3a4e7bf
-calls/cn-assertion-explain.json         a4f1310e8e7ded288ebe8593821bee5b4310371aa2c2d13c8bf7863df6b5f2c4
-calls/cn-assertion-lower.json           16f197f84d7b3b663cae318a0d0d88fdf1339b51822c71d8f76d778d40cddec0
-calls/cn-assertion-validate.json        3d74374eed87bc97dfdca530943d4f51217786f348e09f414121852e89834b27
+calls/cn-assertion-explain.json         9d7d0205b45bc18d333f16c630b3533c5fff4c536278eddee70af3f5d52a5124
+calls/cn-assertion-lower.json           aea5c581a97744d92549e921774973e315dfa4a8fbf0c94ccf32af00bb6d56ef
+calls/cn-assertion-validate.json        64944b07d70a0a2b48d0a742128729331586fe5abcd4d715b311971d32d38940
 calls/cn-concept-search.json            684b6b3e01c22dc366dfa73ae67e90f503199ec45699f581165079ddaabd0eb3
 calls/cn-definition-render.json         ae5aff87fc5d9f81b4c1e96553335646674f2df22a25bbce3c28a07f472d405c
-calls/cn-statement-explain.json         76594faaff60d89257921494de7f635f6a6a1a966d7c8a9f6f1d28b4a04d1f75
+calls/cn-statement-explain.json         54974a2116399f383df08a69aa3fca2c5631ba6bef4209a75036b0ed60019226
 calls/cn-statement-lower.json           cef09c59b129297f9273f9c240b64c55f7b22308c6b928e7eb0f1eae19b13274
 calls/cn-statement-validate.json        46591f1676b01a6654a4dea470ae6c1583da57f7c116088af298243749853786
 cn-worlds/clinic/bindings.ttrm          ac00b6f55a697780ef4140c9e5c05dca02b87656cac54d339d80fecc6d4047c6

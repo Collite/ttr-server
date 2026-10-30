@@ -721,7 +721,7 @@
       "codeRef": null,
       "codeFormat": null,
       "memberVocabulary": false,
-      "stereotype": "event",
+      "stereotype": "kind",
       "erTarget": "er.entity.invoice",
       "via": "direct",
       "ofRef": null,

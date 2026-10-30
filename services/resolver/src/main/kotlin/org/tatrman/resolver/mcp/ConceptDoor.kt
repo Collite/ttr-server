@@ -99,12 +99,13 @@ class ConceptDoor(
                 ASSERTION_VALIDATE_TOOL_NAME,
                 "assertion",
                 "Validate a cn assertion frame (org.tatrman.assertion.v1.Assertion, protobuf JSON): refs resolved, " +
-                    "the event assertable, participant labels and paths, qualities, units, period and asserted_as_of.",
+                    "the concept assertable (an event, a validity row, a phase episode or a subkind), participant " +
+                    "labels and paths, qualities, units, period and asserted_as_of.",
             ),
             frameTool(
                 ASSERTION_LOWER_TOOL_NAME,
                 "assertion",
-                "Lower a cn assertion frame to the event's row payload (foreign-key values via the labelled " +
+                "Lower a cn assertion frame to the concept's row payload (foreign-key values via the labelled " +
                     "paths). Never writes. Refuses — no rows — on any validation error.",
             ),
             frameTool(
