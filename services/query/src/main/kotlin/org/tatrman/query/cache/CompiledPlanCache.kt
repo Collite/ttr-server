@@ -167,7 +167,6 @@ data class CacheKey(
 
 data class CachedPlan(
     val erPlan: PlanNode,
-    val requiredParameters: List<ParameterBinding>,
     val predictedSchemaFingerprint: String,
     val cachedAt: Instant,
     val effectiveSchema: SchemaCode = SchemaCode.SCHEMA_CODE_UNSPECIFIED,

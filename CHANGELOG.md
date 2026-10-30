@@ -22,6 +22,15 @@ outside this repo could notice is in.
   exactly one replica with Recreate updates because original contexts and credentials stay in one process;
   after restart, durable evidence remains readable and missing execution contexts refuse.
 
+- **query — parameter refusal and Compile isolation (#260).** `Run` now maps translate's
+  `parameter_unknown` to `parameter_unbound`, preserving its message and position. Other translation
+  refusals remain `translator_rejected`. SQL with no bindings still parses verbatim until ttr-core#334
+  and a translator update; Compile preserves translator codes. Compile derives required parameters
+  from its returned plan (first-reference order, no unused declarations), using this caller's values
+  and caller/translation types only. Parameter bindings are no longer cached, preventing cross-caller
+  value disclosure. Execution binding names match the worker exactly (`id`, not `{id}`); optional
+  omissions require explicit NULL. Logical saved queries cannot declare parameters (LQ-5).
+
 - **automation — isolate obligation placement warm-up failures (#335).** Unexpected placement failures
   no longer refuse the entire refreshed bundle. Cache each world’s original failure, warn once, and report
   it only when a fulfilment Open needs that placement, before claiming the run. Insert-only recipes remain
@@ -524,7 +533,7 @@ outside this repo could notice is in.
   - The stored plan joins `Run` as a `REL_NODE` source in its own lane. A logical query (`er.query.<name>`) takes the
     ER half: Validate pass 1, MAP_TO_PHYSICAL, then Validate pass 2. A db query takes the DB half. The caller's roles,
     row policies and row window apply exactly as for `Run`, and `context.parameters` bind declared parameters by
-    name (`parameter_unbound` from Validate otherwise).
+    name (`parameter_unbound` from Query before dispatch otherwise; the guard was added in #264).
   - Refusals come as an error batch: `saved_query_not_found`, `saved_query_pending`, `saved_query_parse_failed`, and
     `saved_query_unavailable` when no metadata service is reachable.
   - Entitlement is Validate's alone for now. Nothing calls it yet; it is for automation agents and workflows.

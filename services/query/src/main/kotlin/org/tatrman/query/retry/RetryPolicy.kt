@@ -19,7 +19,7 @@ import kotlin.random.Random
  *   - NOT retried once any `ResultBatch` has been emitted to the caller —
  *     the caller has started seeing data, so a retry would re-emit
  *   - NOT retried for application errors (`validation_failed`,
- *     `parameter_unbound`, etc.) which travel as ResponseMessage on a
+ *     `parameter_unknown`, etc.) which travel as ResponseMessage on a
  *     successful gRPC response
  *
  * The execute method takes a "has anything been emitted" flag callback.

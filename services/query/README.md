@@ -20,11 +20,19 @@ Proto `org.tatrman.query.v1` / `QueryService` (`com.tatrman.runner.v1` is gone):
   translator refusal keeps translate's `line` / `column`. When the row cap cut the answer, the last
   batch carries `top_n_applied` as a WARNING and as a typed `Notice` (`requested`, `applied`; C-10).
 - **Compile** — front of the pipeline only (translate + validate); returns the
-  validated `PlanNode` + required parameters + predicted schema fingerprint (an unbound
-  parameter is reported there, not refused). Successful ER compilation also returns `er_reads` when its
+  validated `PlanNode` + referenced parameters + predicted schema fingerprint. Requirements come from
+  the returned plan, once per named reference in first-reference order; unused declarations are omitted.
+  Types come from this caller, then this translation, else are empty. Values come only from this caller,
+  including on cache hits. An unbound plan reference is reported, not refused. Successful ER compilation
+  also returns `er_reads` when its
   validated ER tree can be fully inspected; `plan` remains the physical DB plan. This evidence includes
   expression subqueries, expanded logical-query bodies and their stamped entity boundaries. Presence with
   an empty list certifies a constant query; absence provides no read-scope evidence.
+
+- **RunSavedQuery** — read a stored canonical plan from Metadata and run it through the same execution
+  pipeline. Named parameters referenced by that plan must have values in this caller's context, including
+  when no declaration/binding is supplied at all; otherwise `parameter_unbound` is returned before dispatch.
+  Physical (DB) saved queries may declare parameters. Logical saved queries cannot declare them (LQ-5).
 
 - **Translate** — passthrough to translate's Translate (any-to-any conversion).
 - **GetStatus** — readiness + cache stats.
@@ -35,6 +43,31 @@ DB/workspace/write/uninspectable plan return `out-of-scope-read`. An empty, pres
 model reads. Context audit entries and physical DB names cannot authorize ER reads. AU uses Compile preflight
 and sends the same allow-list on Run, so a changed policy or logical body cannot bypass the execution check.
 Caller-dependent validation/evidence is never cached.
+
+### Parameter refusals
+
+The `parameter_unbound` check introduced with #264 applies to **named references in the executable plan**,
+including nested expressions, repeated references and cached plans. Each execution checks its own context;
+a previous caller's bound values do not satisfy a later call. A missing binding, absent `value`, or empty
+`Value` is unbound. Explicit NULL (`is_null = true`) and scalar zero/false are values. An unused declaration
+is not a required reference. Binding names match exactly: bind `id`, not `{id}`. Compile accepts typed
+valueless declarations and derives `required_parameters` from its returned plan, using only the current
+caller's values. Cached plans contain no parameter bindings. Anonymous `?N` references are skipped.
+This is a Query execution check; Validate does not emit this code.
+
+For SQL text, provide parameter **names and types** to let translate parse `{name}`. This is separate from
+providing their values. With other typed bindings present, an undeclared placeholder is refused as
+`parameter_unbound` on Run; Compile preserves translate's `parameter_unknown`. With no bindings, translate
+still parses SQL verbatim: raw `{name}` text can produce `translator_rejected` until
+[ttr-core#334](https://github.com/Collite/ttr-core/issues/334) and a translator update. Other translation
+failures, including `parameter_in_string_literal`, remain `translator_rejected` on Run, with their original
+position. A REL_NODE or saved plan already carries its named references, so an entirely missing binding
+is `parameter_unbound`.
+
+An omitted optional parameter must be sent as explicit NULL. Client migrations are tracked in
+[ttr-platform#92](https://github.com/Collite/ttr-platform/issues/92) and
+[kantheon#285](https://github.com/Collite/kantheon/issues/285); matching core documentation corrections are
+[ttr-core#335](https://github.com/Collite/ttr-core/issues/335).
 
 Ports: HTTP 7305 (health/ready/status) · gRPC 7306 · Flight SQL 7308 (opt-in, see below). Downstreams via config
 (`translate`/`validate`/`dispatch` host+port, env-overridable).

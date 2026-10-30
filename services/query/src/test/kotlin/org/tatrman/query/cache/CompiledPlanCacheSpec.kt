@@ -27,7 +27,6 @@ class CompiledPlanCacheSpec :
         fun cached(fingerprint: String = "fp"): CachedPlan =
             CachedPlan(
                 erPlan = PlanNode.getDefaultInstance(),
-                requiredParameters = emptyList(),
                 predictedSchemaFingerprint = fingerprint,
                 cachedAt = Instant.now(),
             )
