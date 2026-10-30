@@ -15,7 +15,7 @@ import java.nio.file.Path
 
 /**
  * Adds read-only templates from the existing GitArchiveStorage checkout, at the load's SHA, never HEAD.
- * Per R171-B, a template read failure keeps this instance's previous successful catalog and an issue;
+ * Per R171-B, a template read failure keeps the published catalog and an issue;
  * it never prevents the model from loading. A genuine inner model load failure still propagates.
  */
 internal class GitTemplateSource(
@@ -24,6 +24,7 @@ internal class GitTemplateSource(
     modelDirectory: String,
     sourceId: String,
     priority: Int,
+    private val served: () -> String? = { null },
 ) : ModelSource {
     private val modelRoot =
         runCatching {
@@ -99,7 +100,7 @@ internal class GitTemplateSource(
         snapshot: SourceSnapshot,
         cause: String,
     ): String {
-        val prior = previous
+        val prior = served()?.let { SuccessfulCatalog(Json.decodeFromString<TemplateCatalog>(it).version, it) }
         val key = FailureKey(snapshot.version, prior?.version, cause)
         lastFailure?.takeIf { it.key == key }?.let {
             log.debug("Unchanged template read failure: {}", key)
@@ -113,7 +114,11 @@ internal class GitTemplateSource(
         val catalog =
             prior?.let { Json.decodeFromString<TemplateCatalog>(it.encoded) }
                 ?: TemplateCatalog(snapshot.sourceId, snapshot.priority)
-        val encoded = Json.encodeToString(catalog.copy(issues = catalog.issues + issue))
+        val retainedIssues =
+            catalog.issues.filterNot {
+                it.startsWith("template source ${snapshot.sourceId}: could not read templates at ")
+            }
+        val encoded = Json.encodeToString(catalog.copy(issues = retainedIssues + issue))
         lastFailure = FailedCatalog(key, encoded)
         return encoded
     }
