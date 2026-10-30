@@ -72,7 +72,16 @@ loopback channel to the gRPC port, carrying the caller's identity.
   verified token only. An enabled edge without an issuer does not start.
 - **Worlds** (C-3, C-9): `QUERY_WORLDS` (`world=connection_id,…`) is the door's world table —
   `RunRequest.world` / `RunSavedQueryRequest.world` map through it to `DispatchRequest.connection_id`;
-  an unknown world is refused `unknown_world`. The edge takes the connection's world from the `world`
+  an unknown world is refused `unknown_world` regardless of the flag. When `QUERY_REQUIRE_WORLD` is on
+  (default **off**) and the table names more than one world, both execution
+  RPCs refuse an empty world with `world_unspecified`, before compilation/cache lookup or saved-query
+  metadata lookup, regardless of roles. With the flag off or zero/one world, omission preserves dispatch's
+  derived/default routing; an explicit known world still selects its mapped connection. Compile ignores
+  world selection. Configure every served world here: query does not discover dispatch's connections.
+  Enable only after every caller names a world. Do not enable on a door routing tables outside its worlds
+  through `world.table-connections` patterns: an explicit world overrides those patterns and omission is
+  refused ([#344](https://github.com/Collite/ttr-server/issues/344)).
+  The edge takes the connection's world from the `world`
   header (or the JDBC `catalog` session option, kept as a `ttr_world` cookie), sets it on every `Run`,
   refuses a statement naming another catalog (`world_mismatch`) and checks the receipt's connection.
 - **Receipts** (C-6): one `bi_receipts` row per statement (schema `query`, Flyway-migrated on first
@@ -81,7 +90,7 @@ loopback channel to the gRPC port, carrying the caller's identity.
   `GET /receipts?correlation_id=…|user_id=…&since=…` for `query-platform-admin`.
 - Telemetry: span `bi.statement` (`user_id`, `world`, `client`, `rows`, `status`); metrics
   `bi_statements_total{client,status}`, `bi_statement_seconds`. `/status` has a `flight` block
-  (incl. `receipts`) and the door's `worlds`.
+  (incl. `receipts`), the door's `worlds` and configured `require_world` flag.
 - JVM: Arrow needs `--add-opens=java.base/java.nio=ALL-UNNAMED` (set in `build.gradle.kts` for
   run, test and the Jib image).
 

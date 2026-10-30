@@ -1,0 +1,17 @@
+family: split
+version: 1
+kind: split
+host: pipeline
+role: primary
+description: The unit tree. One section per heading-bounded block; a JSON array element is one section.
+graph:
+  unit: document
+  when: ""
+  consumes: []
+  produces: [Section]
+engine:
+  formats: [html, markdown, text, json]
+  sections: headings
+  json: { text_fields: [title, body], title_field: title }
+post_conditions: [span_within_unit]
+budget: { timeout_s: 30, retries: 2 }

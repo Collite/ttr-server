@@ -1,0 +1,24 @@
+family: review-extract
+version: 1
+kind: llm-extract
+host: docproc-llm
+role: mentor
+description: >-
+  The full Statement[review] from a review's text (sentiment, temporal context, title, body). Its prompt is P4 S4.1's.
+  A mentor here, so the mini pack has one primary producer of Statement[review] (⚑PX-2).
+graph:
+  unit: section
+  when: "SectionKind.kind in [review_body]"
+  consumes: [Section, SectionKind, "Mention[item]"]
+  produces: ["Statement[review]"]
+engine:
+  prompt: prompts/llm-extract.review.v1.md.j2
+  few_shots: { golden_set: mini-gold-v1, slice: train, n: 2, exclude_eval: true }
+  schema: types/generated/Statement.review.schema.json
+  provider_tier: cloud-ok
+  model: { route: extract-strong, pin: "" }
+  decoding: { temperature: 0, seed: 7, max_output_tokens: 2000 }
+post_conditions: [span_within_unit, schema_valid, date_parses]
+measurement: { golden_set: mini-gold-v1, gates: { min_f1_span: 0.8, max_regression_f1: 0.02 } }
+budget: { max_cost_per_run_usd: 0.02, timeout_s: 60, retries: 2, daily_cap_usd: 5 }
+privacy: { text_may_leave_premises: true }

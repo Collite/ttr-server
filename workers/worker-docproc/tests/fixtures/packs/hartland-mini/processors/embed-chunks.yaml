@@ -1,0 +1,19 @@
+family: embed-chunks
+version: 1
+kind: embed
+host: pipeline
+role: primary
+description: The one sink to the vector plane. Embeds chunk-recursive's chunks and the compiled pages.
+graph:
+  unit: section
+  when: ""
+  consumes: ["Chunk[chunk-recursive]"]
+  produces: []
+engine:
+  what: [chunks, pages]
+  chunks: { producer: chunk-recursive }
+  text_template: "{context.prefix}\n{text}"
+  model: { route: embedding, pin: "" }
+  batch: 64
+budget: { timeout_s: 60, retries: 2 }
+privacy: { text_may_leave_premises: true }

@@ -125,6 +125,7 @@ jobs:
             [worker-postgres]=workers/worker-postgres
             [worker-mssql]=workers/worker-mssql
             [worker-polars]=workers/worker-polars
+            [worker-docproc]=workers/worker-docproc
             [identity]=infra/identity
             [health]=infra/health
             # A THIRD-PARTY image with our additions (BI C-18): official Superset + the `tatrman://` dialect. Its
@@ -133,7 +134,7 @@ jobs:
             # with a local context: the dockerfile lane below.
             [superset]=images/superset
           )
-          ALL="connect-openmetadata metadata query translate validate dispatch charon lex-matcher llm-gateway nlp nlp-stanza nlp-spacy golem-py morph-studio chrono geo money grounding-mcp resolver automation meta-mcp query-mcp lex-matcher-mcp nlp-mcp worker-postgres worker-mssql worker-polars identity health"
+          ALL="connect-openmetadata metadata query translate validate dispatch charon lex-matcher llm-gateway nlp nlp-stanza nlp-spacy golem-py morph-studio chrono geo money grounding-mcp resolver automation meta-mcp query-mcp lex-matcher-mcp nlp-mcp worker-postgres worker-mssql worker-polars worker-docproc identity health"
 
           declare -a NAMES
           if [ "${{ github.event_name }}" = "push" ]; then

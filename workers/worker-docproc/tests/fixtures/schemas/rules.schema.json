@@ -1,0 +1,169 @@
+{
+  "$defs": {
+    "value": {
+      "anyOf": [
+        {
+          "description": "A closed mini-language, no code: `${<name>.payload.<path>}`, `${<name>.surface}` (the text the bound annotation's spans cover), a literal, or `coalesce(<a>, <b>)` over those.",
+          "type": "string"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "additionalProperties": {
+            "$ref": "#/$defs/value"
+          },
+          "type": "object"
+        }
+      ]
+    }
+  },
+  "$id": "https://tatrman.org/dx/schemas/rules.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "A `rule` processor's rules file, rules/<name>.v<n>.yaml. `match` binds the anchor annotation, `with` binds related ones by a spatial relation, `emit` writes one annotation per match. `derived_from` is filled by the runtime with every bound annotation's id, never by the rule author.",
+  "properties": {
+    "description": {
+      "type": "string"
+    },
+    "rules": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "description": {
+            "type": "string"
+          },
+          "emit": {
+            "additionalProperties": false,
+            "properties": {
+              "confidence": {
+                "maximum": 1,
+                "minimum": 0,
+                "type": "number"
+              },
+              "payload": {
+                "additionalProperties": {
+                  "$ref": "#/$defs/value"
+                },
+                "type": "object"
+              },
+              "spans": {
+                "anyOf": [
+                  {
+                    "const": "none"
+                  },
+                  {
+                    "pattern": "^[a-z][a-z0-9_]*$",
+                    "type": "string"
+                  }
+                ]
+              },
+              "type": {
+                "pattern": "^[A-Z][A-Za-z]*(\\.[a-z][a-z0-9_]*)?(\\[[a-z][a-z0-9_-]*\\])?$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "type",
+              "spans",
+              "payload"
+            ],
+            "type": "object"
+          },
+          "id": {
+            "pattern": "^[a-z][a-z0-9-]*$",
+            "type": "string"
+          },
+          "match": {
+            "additionalProperties": false,
+            "properties": {
+              "name": {
+                "pattern": "^[a-z][a-z0-9_]*$",
+                "type": "string"
+              },
+              "type": {
+                "pattern": "^[A-Z][A-Za-z]*(\\.[a-z][a-z0-9_]*)?(\\[[a-z][a-z0-9_-]*\\])?$",
+                "type": "string"
+              },
+              "unit": {
+                "enum": [
+                  "document",
+                  "section",
+                  "chunk",
+                  "subject"
+                ]
+              },
+              "where": {
+                "description": "A `when` predicate over the bound annotation.",
+                "type": "string"
+              }
+            },
+            "required": [
+              "type"
+            ],
+            "type": "object"
+          },
+          "with": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "name": {
+                  "pattern": "^[a-z][a-z0-9_]*$",
+                  "type": "string"
+                },
+                "rel": {
+                  "enum": [
+                    "within",
+                    "overlaps",
+                    "contains",
+                    "same_unit",
+                    "same_document"
+                  ]
+                },
+                "required": {
+                  "description": "Default true: no such annotation, no emit.",
+                  "type": "boolean"
+                },
+                "type": {
+                  "pattern": "^[A-Z][A-Za-z]*(\\.[a-z][a-z0-9_]*)?(\\[[a-z][a-z0-9_-]*\\])?$",
+                  "type": "string"
+                },
+                "where": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "name",
+                "type",
+                "rel"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "match",
+          "emit"
+        ],
+        "type": "object"
+      },
+      "minItems": 1,
+      "type": "array"
+    },
+    "version": {
+      "minimum": 1,
+      "type": "integer"
+    }
+  },
+  "required": [
+    "version",
+    "rules"
+  ],
+  "title": "DX rule DSL (P3 S3.3 T4)",
+  "type": "object"
+}

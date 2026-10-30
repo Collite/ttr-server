@@ -1,0 +1,38 @@
+[
+  {
+    "id": "g:claim-002.en:0",
+    "payload": {
+      "status": "new"
+    },
+    "spans": [],
+    "type": "UnitDiff",
+    "unit": "g:claim-002.en:s0"
+  },
+  {
+    "id": "g:claim-002.en:1",
+    "payload": {
+      "status": "new"
+    },
+    "spans": [],
+    "type": "UnitDiff",
+    "unit": "g:claim-002.en:s1"
+  },
+  {
+    "id": "g:claim-002.en:2",
+    "payload": {
+      "status": "new"
+    },
+    "spans": [],
+    "type": "UnitDiff",
+    "unit": "g:claim-002.en:s2"
+  },
+  {
+    "id": "g:claim-002.en:3",
+    "payload": {
+      "status": "new"
+    },
+    "spans": [],
+    "type": "UnitDiff",
+    "unit": "g:claim-002.en:s3"
+  }
+]

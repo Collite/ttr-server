@@ -1,0 +1,100 @@
+[
+  {
+    "id": "g:claim-002.en:0",
+    "payload": {
+      "candidates": [],
+      "concept": "cn.Item",
+      "kind": "item",
+      "linkMethod": "gazetteer",
+      "surface": "Pulse Wireless Headphones"
+    },
+    "spans": [
+      {
+        "end": 83,
+        "start": 58,
+        "unit": "g:claim-002.en:s1"
+      }
+    ],
+    "type": "Mention",
+    "unit": "g:claim-002.en:s1"
+  },
+  {
+    "id": "g:claim-002.en:1",
+    "payload": {
+      "kind": "temporal_context",
+      "scope": {
+        "end": 9,
+        "start": 2,
+        "unitId": "g:claim-002.en:s3"
+      },
+      "trigger": "already"
+    },
+    "spans": [
+      {
+        "end": 9,
+        "start": 2,
+        "unit": "g:claim-002.en:s3"
+      }
+    ],
+    "type": "Modifier",
+    "unit": "g:claim-002.en:s3"
+  },
+  {
+    "id": "g:claim-002.en:2",
+    "payload": {
+      "precision": "day",
+      "text": "3 October 2026",
+      "value": "2026-10-03"
+    },
+    "spans": [
+      {
+        "end": 61,
+        "start": 47,
+        "unit": "g:claim-002.en:s3"
+      }
+    ],
+    "type": "Date",
+    "unit": "g:claim-002.en:s3"
+  },
+  {
+    "id": "g:claim-002.en:3",
+    "payload": {
+      "candidates": [],
+      "concept": "cn.Item",
+      "kind": "item",
+      "linkMethod": "gazetteer",
+      "surface": "Pulse headphones"
+    },
+    "spans": [
+      {
+        "end": 107,
+        "start": 91,
+        "unit": "g:claim-002.en:s3"
+      }
+    ],
+    "type": "Mention",
+    "unit": "g:claim-002.en:s3"
+  },
+  {
+    "id": "g:claim-002.en:4",
+    "payload": {
+      "message": "DATE [0,13)",
+      "ok": false,
+      "rule": "nlp/date-no-value"
+    },
+    "spans": [],
+    "type": "Verdict",
+    "unit": "g:claim-002.en:s1"
+  },
+  {
+    "id": "g:claim-002.en:5",
+    "payload": {
+      "message": "DATE [141,151)",
+      "ok": false,
+      "rule": "nlp/date-no-value"
+    },
+    "spans": [],
+    "type": "Verdict",
+    "unit": "g:claim-002.en:s3"
+  }
+]

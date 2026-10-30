@@ -41,7 +41,7 @@ class IdentityWorldMiddlewareSpec :
     StringSpec({
         val allocator = RootAllocator()
         afterSpec { allocator.close() }
-        val worlds = Worlds.parse("hartland_us=pg-hartland-us,hartland_cz=pg-hartland-cz")
+        val worlds = Worlds.parse("hartland_us=pg-hartland-us,hartland_cz=pg-hartland-cz", requireWorld = true)
         val identity = IdentityWorldMiddleware.Factory(FlightAuthenticator(AuthTestKit.verifier), worlds)
         val bearer = CredentialCallOption(BearerCredentialWriter(AuthTestKit.token()))
 
@@ -87,7 +87,7 @@ class IdentityWorldMiddlewareSpec :
             }
         }
 
-        "no world is today's path: RunRequest.world stays empty and the default connection answers" {
+        "no world can connect even with the requirement on: statement validation belongs to Run" {
             val door = answering()
             RunningEdge(door, identity = identity, worlds = worlds).use { edge ->
                 edge.run("SELECT id, name FROM er.entity.warehouse", bearer)

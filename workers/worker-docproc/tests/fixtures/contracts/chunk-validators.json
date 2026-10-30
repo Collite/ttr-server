@@ -1,0 +1,268 @@
+[
+  {
+    "expected": [],
+    "params": {
+      "max_tokens": 3,
+      "overlap": 0,
+      "tokenizer": "whitespace"
+    },
+    "spans": [
+      {
+        "end": 5,
+        "start": 0
+      }
+    ],
+    "text": "a 🙂 b"
+  },
+  {
+    "expected": [
+      "span_within_unit"
+    ],
+    "params": {
+      "tokenizer": "whitespace"
+    },
+    "spans": [
+      {
+        "end": 6,
+        "start": 0
+      }
+    ],
+    "text": "a 🙂 b"
+  },
+  {
+    "expected": [
+      "coverage"
+    ],
+    "params": {
+      "tokenizer": "whitespace"
+    },
+    "spans": [
+      {
+        "end": 1,
+        "start": 0
+      },
+      {
+        "end": 5,
+        "start": 4
+      }
+    ],
+    "text": "a b c"
+  },
+  {
+    "expected": [],
+    "params": {
+      "partial": true,
+      "tokenizer": "whitespace"
+    },
+    "spans": [
+      {
+        "end": 1,
+        "start": 0
+      }
+    ],
+    "text": "a b c"
+  },
+  {
+    "expected": [],
+    "params": {
+      "overlap": 1,
+      "tokenizer": "whitespace"
+    },
+    "spans": [
+      {
+        "end": 3,
+        "start": 0
+      },
+      {
+        "end": 5,
+        "start": 2
+      }
+    ],
+    "text": "a b c"
+  },
+  {
+    "expected": [
+      "overlap_within_declared"
+    ],
+    "params": {
+      "overlap": 0,
+      "tokenizer": "whitespace"
+    },
+    "spans": [
+      {
+        "end": 3,
+        "start": 0
+      },
+      {
+        "end": 5,
+        "start": 2
+      }
+    ],
+    "text": "a b c"
+  },
+  {
+    "expected": [
+      "max_tokens"
+    ],
+    "params": {
+      "max_tokens": 2,
+      "tokenizer": "whitespace"
+    },
+    "spans": [
+      {
+        "end": 5,
+        "start": 0
+      }
+    ],
+    "text": "a b c"
+  },
+  {
+    "expected": [],
+    "params": {
+      "max_tokens": 2,
+      "strategy": "table-aware",
+      "tokenizer": "whitespace"
+    },
+    "spans": [
+      {
+        "end": 5,
+        "payload": {
+          "oversize": true
+        },
+        "start": 0
+      }
+    ],
+    "text": "a b c"
+  },
+  {
+    "expected": [
+      "max_tokens"
+    ],
+    "params": {
+      "max_tokens": 2,
+      "strategy": "plugin:untrusted-oversize",
+      "tokenizer": "whitespace"
+    },
+    "spans": [
+      {
+        "end": 5,
+        "payload": {
+          "oversize": true
+        },
+        "start": 0
+      }
+    ],
+    "text": "a b c"
+  },
+  {
+    "expected": [
+      "span_within_unit"
+    ],
+    "params": {
+      "tokenizer": "whitespace"
+    },
+    "spans": [
+      {
+        "end": 5,
+        "start": 4
+      },
+      {
+        "end": 3,
+        "start": 0
+      }
+    ],
+    "text": "a b c"
+  },
+  {
+    "expected": [],
+    "params": {
+      "tokenizer": "whitespace"
+    },
+    "spans": [],
+    "text": " \n\t"
+  },
+  {
+    "expected": [
+      "coverage"
+    ],
+    "params": {
+      "tokenizer": "whitespace"
+    },
+    "spans": [],
+    "text": "abc"
+  },
+  {
+    "expected": [],
+    "params": {
+      "max_tokens": 3,
+      "overlap": 0,
+      "strategy": "table-aware",
+      "tokenizer": "whitespace"
+    },
+    "spans": [
+      {
+        "end": 6,
+        "start": 0
+      },
+      {
+        "end": 9,
+        "extraSpans": [
+          {
+            "end": 2,
+            "start": 0
+          }
+        ],
+        "start": 6
+      }
+    ],
+    "text": "H\na b\nc d"
+  },
+  {
+    "expected": [
+      "overlap_within_declared"
+    ],
+    "params": {
+      "tokenizer": "whitespace"
+    },
+    "spans": [
+      {
+        "end": 3,
+        "extraSpans": [
+          {
+            "end": 1,
+            "start": 0
+          }
+        ],
+        "start": 0
+      }
+    ],
+    "text": "a b"
+  },
+  {
+    "expected": [
+      "overlap_within_declared"
+    ],
+    "params": {
+      "overlap": 0,
+      "strategy": "plugin:extras",
+      "tokenizer": "whitespace"
+    },
+    "spans": [
+      {
+        "end": 1,
+        "extraSpans": [
+          {
+            "end": 5,
+            "start": 4
+          }
+        ],
+        "start": 0
+      },
+      {
+        "end": 5,
+        "start": 2
+      }
+    ],
+    "text": "a b c"
+  }
+]

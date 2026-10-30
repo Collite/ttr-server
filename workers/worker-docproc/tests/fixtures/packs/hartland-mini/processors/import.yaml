@@ -1,0 +1,15 @@
+family: import
+version: 1
+kind: import
+host: docproc
+role: primary
+description: Loads the connector's recorded facts (the re-anchored initial bundle, split's bundleRef). R-57.
+graph:
+  unit: document
+  when: ""
+  consumes: []
+  produces: ["Import.review"]
+engine:
+  connectors: ["json-reviews@1"]
+post_conditions: [span_within_unit]
+budget: { timeout_s: 30, retries: 2 }

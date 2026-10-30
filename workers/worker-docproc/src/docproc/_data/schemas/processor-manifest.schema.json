@@ -1,0 +1,853 @@
+{
+  "$defs": {
+    "engine_chunk": {
+      "additionalProperties": false,
+      "properties": {
+        "context": {
+          "additionalProperties": false,
+          "properties": {
+            "parent_child": {
+              "type": "boolean"
+            },
+            "prefix": {
+              "items": {
+                "enum": [
+                  "doc_title",
+                  "section_path"
+                ]
+              },
+              "type": "array"
+            }
+          },
+          "type": "object"
+        },
+        "params": {
+          "properties": {
+            "max_tokens": {
+              "minimum": 1,
+              "type": "integer"
+            },
+            "overlap": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "separators": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "tokenizer": {
+              "type": "string"
+            },
+            "window": {
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          "type": "object"
+        },
+        "partial": {
+          "type": "boolean"
+        },
+        "strategy": {
+          "anyOf": [
+            {
+              "enum": [
+                "paragraph",
+                "fixed-tokens",
+                "sentence-window",
+                "recursive",
+                "structural",
+                "page",
+                "table-aware",
+                "semantic",
+                "summary-prefix"
+              ]
+            },
+            {
+              "pattern": "^plugin:[A-Za-z0-9_.:-]+$",
+              "type": "string"
+            },
+            {
+              "pattern": "^pack:chunkers/[A-Za-z0-9_/-]+\\.py#[A-Za-z_][A-Za-z0-9_]*$",
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "required": [
+        "strategy"
+      ],
+      "type": "object"
+    },
+    "engine_classify": {
+      "additionalProperties": false,
+      "properties": {
+        "default": {
+          "type": "string"
+        },
+        "rules": {
+          "items": {
+            "additionalProperties": false,
+            "minProperties": 2,
+            "properties": {
+              "contains_any": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "heading": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string"
+              },
+              "lang": {
+                "type": "string"
+              },
+              "metadata": {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              "name": {
+                "type": "string"
+              },
+              "when_field": {
+                "type": "string"
+              },
+              "when_heading": {
+                "type": "string"
+              },
+              "where": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind"
+            ],
+            "type": "object"
+          },
+          "minItems": 1,
+          "type": "array"
+        }
+      },
+      "required": [
+        "rules",
+        "default"
+      ],
+      "type": "object"
+    },
+    "engine_embed": {
+      "additionalProperties": false,
+      "properties": {
+        "batch": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "chunks": {
+          "additionalProperties": false,
+          "properties": {
+            "producer": {
+              "pattern": "^[a-z][a-z0-9]*(-[a-z0-9]+)*$",
+              "type": "string"
+            }
+          },
+          "required": [
+            "producer"
+          ],
+          "type": "object"
+        },
+        "model": {
+          "additionalProperties": false,
+          "properties": {
+            "pin": {
+              "type": "string"
+            },
+            "route": {
+              "description": "A gateway route NAME (an azure deployment route), never tags (DX-P0 S0.4).",
+              "pattern": "^[a-z0-9][a-z0-9-]*$",
+              "type": "string"
+            }
+          },
+          "required": [
+            "route"
+          ],
+          "type": "object"
+        },
+        "text_template": {
+          "type": "string"
+        },
+        "what": {
+          "items": {
+            "enum": [
+              "chunks",
+              "pages"
+            ]
+          },
+          "minItems": 1,
+          "type": "array",
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "what",
+        "model"
+      ],
+      "type": "object"
+    },
+    "engine_link": {
+      "additionalProperties": false,
+      "properties": {
+        "abstain_below": {
+          "maximum": 1,
+          "minimum": 0,
+          "type": "number"
+        },
+        "candidates": {
+          "items": {
+            "enum": [
+              "lexicon",
+              "knn"
+            ]
+          },
+          "minItems": 1,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "categories": {
+          "additionalProperties": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "description": "Mention kind → the lex-matcher categories its lexicon query names.",
+          "type": "object"
+        },
+        "k": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "margin": {
+          "maximum": 1,
+          "minimum": 0,
+          "type": "number"
+        },
+        "pick": {
+          "enum": [
+            "rule",
+            "llm"
+          ]
+        },
+        "targets": {
+          "additionalProperties": {
+            "pattern": "^cn\\.[A-Za-z_][A-Za-z0-9_]*$",
+            "type": "string"
+          },
+          "description": "er qname (what lex-matcher hits name) → the cn concept a mention links to.",
+          "propertyNames": {
+            "pattern": "^er\\.entity\\.[a-z_][a-z0-9_]*$"
+          },
+          "type": "object"
+        }
+      },
+      "required": [
+        "candidates",
+        "pick"
+      ],
+      "type": "object"
+    },
+    "engine_llm_extract": {
+      "additionalProperties": false,
+      "properties": {
+        "decoding": {
+          "additionalProperties": false,
+          "properties": {
+            "max_output_tokens": {
+              "minimum": 1,
+              "type": "integer"
+            },
+            "seed": {
+              "type": "integer"
+            },
+            "temperature": {
+              "minimum": 0,
+              "type": "number"
+            }
+          },
+          "type": "object"
+        },
+        "few_shots": {
+          "additionalProperties": false,
+          "properties": {
+            "exclude_eval": {
+              "type": "boolean"
+            },
+            "golden_set": {
+              "type": "string"
+            },
+            "n": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "slice": {
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "model": {
+          "additionalProperties": false,
+          "properties": {
+            "pin": {
+              "type": "string"
+            },
+            "route": {
+              "description": "A gateway route NAME (an azure deployment route), never tags (DX-P0 S0.4).",
+              "pattern": "^[a-z0-9][a-z0-9-]*$",
+              "type": "string"
+            }
+          },
+          "required": [
+            "route"
+          ],
+          "type": "object"
+        },
+        "prompt": {
+          "type": "string"
+        },
+        "provider_tier": {
+          "enum": [
+            "cloud-ok",
+            "on-prem-only"
+          ]
+        },
+        "schema": {
+          "pattern": "^types/generated/[A-Za-z.]+\\.schema\\.json$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "model"
+      ],
+      "type": "object"
+    },
+    "engine_nlp_pipeline": {
+      "additionalProperties": false,
+      "properties": {
+        "gazetteers": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "kinds": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "lane": {
+          "type": "string"
+        },
+        "pipeline": {
+          "type": "string"
+        },
+        "rule_phases": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "pipeline"
+      ],
+      "type": "object"
+    },
+    "engine_record_etl": {
+      "additionalProperties": false,
+      "properties": {
+        "mapping": {
+          "pattern": "^records/[a-z0-9_-]+\\.yaml$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "mapping"
+      ],
+      "type": "object"
+    },
+    "engine_rule": {
+      "additionalProperties": false,
+      "oneOf": [
+        {
+          "required": [
+            "rules"
+          ]
+        },
+        {
+          "required": [
+            "function"
+          ]
+        }
+      ],
+      "properties": {
+        "function": {
+          "pattern": "^docproc\\.kinds\\.rule_fns\\.[a-z_][a-z0-9_]*$",
+          "type": "string"
+        },
+        "rules": {
+          "pattern": "^rules/[a-z0-9-]+\\.v[0-9]+\\.yaml$",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "engine_split": {
+      "additionalProperties": false,
+      "properties": {
+        "formats": {
+          "items": {
+            "enum": [
+              "html",
+              "markdown",
+              "pdf",
+              "text",
+              "json"
+            ]
+          },
+          "minItems": 1,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "json": {
+          "additionalProperties": false,
+          "properties": {
+            "text_fields": {
+              "items": {
+                "type": "string"
+              },
+              "minItems": 1,
+              "type": "array"
+            },
+            "title_field": {
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "sections": {
+          "enum": [
+            "headings",
+            "pages",
+            "none"
+          ]
+        }
+      },
+      "required": [
+        "formats",
+        "sections"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "https://tatrman.org/dx/schemas/processor-manifest.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "split"
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      },
+      "then": {
+        "properties": {
+          "engine": {
+            "$ref": "#/$defs/engine_split"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "chunk"
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      },
+      "then": {
+        "properties": {
+          "engine": {
+            "$ref": "#/$defs/engine_chunk"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "classify"
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      },
+      "then": {
+        "properties": {
+          "engine": {
+            "$ref": "#/$defs/engine_classify"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "nlp-pipeline"
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      },
+      "then": {
+        "properties": {
+          "engine": {
+            "$ref": "#/$defs/engine_nlp_pipeline"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "rule"
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      },
+      "then": {
+        "properties": {
+          "engine": {
+            "$ref": "#/$defs/engine_rule"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "link"
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      },
+      "then": {
+        "properties": {
+          "engine": {
+            "$ref": "#/$defs/engine_link"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "record-etl"
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      },
+      "then": {
+        "properties": {
+          "engine": {
+            "$ref": "#/$defs/engine_record_etl"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "llm-extract"
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      },
+      "then": {
+        "properties": {
+          "engine": {
+            "$ref": "#/$defs/engine_llm_extract"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "embed"
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      },
+      "then": {
+        "properties": {
+          "engine": {
+            "$ref": "#/$defs/engine_embed"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "engine": {
+            "properties": {
+              "strategy": {
+                "enum": [
+                  "semantic",
+                  "summary-prefix"
+                ]
+              }
+            },
+            "required": [
+              "strategy"
+            ]
+          },
+          "kind": {
+            "const": "chunk"
+          }
+        },
+        "required": [
+          "kind",
+          "engine"
+        ]
+      },
+      "then": {
+        "properties": {
+          "host": {
+            "const": "docproc-llm"
+          }
+        },
+        "required": [
+          "host"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "role": {
+            "const": "mentor"
+          }
+        },
+        "required": [
+          "role"
+        ]
+      },
+      "then": {
+        "properties": {
+          "mirror_of": {
+            "type": "null"
+          }
+        }
+      }
+    }
+  ],
+  "description": "One processor family's manifest, <pack>/processors/<family>.yaml. Both hosts validate against this file (docwh-pipeline's ManifestLoader, docproc's Registry), so they cannot disagree on what a manifest is. The `when` predicate is a string here; docwh-pipeline's parser owns its grammar. Cross-file rules (consumes/produces keys exist in the registry, one primary producer per type per feed, no cycles) are the loader's, not this schema's.",
+  "properties": {
+    "budget": {
+      "additionalProperties": false,
+      "properties": {
+        "daily_cap_usd": {
+          "minimum": 0,
+          "type": "number"
+        },
+        "max_cost_per_run_usd": {
+          "minimum": 0,
+          "type": "number"
+        },
+        "retries": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "timeout_s": {
+          "minimum": 1,
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "description": {
+      "type": "string"
+    },
+    "engine": {
+      "type": "object"
+    },
+    "family": {
+      "pattern": "^[a-z][a-z0-9]*(-[a-z0-9]+)*$",
+      "type": "string"
+    },
+    "graph": {
+      "additionalProperties": false,
+      "properties": {
+        "consumes": {
+          "items": {
+            "pattern": "^[A-Z][A-Za-z]*(\\.[a-z][a-z0-9_]*)?(\\[[a-z][a-z0-9_-]*\\])?$",
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "produces": {
+          "items": {
+            "pattern": "^[A-Z][A-Za-z]*(\\.[a-z][a-z0-9_]*)?(\\[[a-z][a-z0-9_-]*\\])?$",
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "unit": {
+          "pattern": "^(document|section|chunk|subject|annotation\\[[A-Z][A-Za-z.\\[\\]a-z0-9_-]*\\])$",
+          "type": "string"
+        },
+        "when": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "unit",
+        "when",
+        "consumes",
+        "produces"
+      ],
+      "type": "object"
+    },
+    "host": {
+      "enum": [
+        "pipeline",
+        "docproc",
+        "docproc-llm"
+      ]
+    },
+    "kind": {
+      "enum": [
+        "split",
+        "chunk",
+        "classify",
+        "nlp-pipeline",
+        "llm-extract",
+        "llm-classify",
+        "link",
+        "link-pick",
+        "rule",
+        "import",
+        "diff",
+        "decide",
+        "embed",
+        "lemmatize",
+        "compile",
+        "record-etl",
+        "rerank"
+      ]
+    },
+    "measurement": {
+      "additionalProperties": false,
+      "properties": {
+        "gates": {
+          "additionalProperties": {
+            "type": "number"
+          },
+          "type": "object"
+        },
+        "golden_set": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "mirror_of": {
+      "anyOf": [
+        {
+          "pattern": "^[a-z][a-z0-9]*(-[a-z0-9]+)*$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "post_conditions": {
+      "items": {
+        "pattern": "^[a-z][a-z0-9_]*$",
+        "type": "string"
+      },
+      "type": "array",
+      "uniqueItems": true
+    },
+    "privacy": {
+      "additionalProperties": false,
+      "properties": {
+        "text_may_leave_premises": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "text_may_leave_premises"
+      ],
+      "type": "object"
+    },
+    "role": {
+      "enum": [
+        "primary",
+        "mentor",
+        "auditor",
+        "residual",
+        "retired"
+      ]
+    },
+    "version": {
+      "minimum": 1,
+      "type": "integer"
+    }
+  },
+  "required": [
+    "family",
+    "version",
+    "kind",
+    "graph"
+  ],
+  "title": "DX processor manifest (contracts §7, DX-C-6)",
+  "type": "object"
+}

@@ -109,8 +109,8 @@ fun interface SchemaProbe {
  * once per [ttlSeconds]: within that window a catalog call touches no Metadata at all.
  *
  * A saved logical query declares no columns; they are probed through the door as the caller ([SchemaProbe]) and kept
- * per model version and **role set**: callers with the same roles share a probe, and a caller with other roles gets
- * its own. The uncached queries of one listing are probed [PROBE_CONCURRENCY] at a time.
+ * per model version, **world** and **role set**: callers in the same world with the same roles share a probe;
+ * other worlds or roles get their own. The uncached queries of one listing are probed [PROBE_CONCURRENCY] at a time.
  *
  * Schemas are exactly the door's own spellings (D-5h): `er.entity` (entities), `obj.query` (saved logical
  * queries — L-20: readable only as `obj.query.<name>`) and `db.<schema>` (bound tables and views, `db.dbo` on
@@ -199,7 +199,7 @@ class CatalogSource(
     suspend fun foreignKeys(session: EdgeSession): List<CatalogForeignKey> = snapshot().foreignKeys
 
     /**
-     * The probed columns of [tables] for [session]'s role set, probing those not yet kept — concurrently, at most
+     * The probed columns of [tables] for [session]'s world and role set, probing those not yet kept — concurrently, at most
      * [PROBE_CONCURRENCY] at a time. A refused probe is kept as no columns; one the door could not answer is not kept,
      * and its table is listed without columns this time.
      */
@@ -210,7 +210,7 @@ class CatalogSource(
     ): Map<Pair<String, String>, List<Field>> {
         val roleSet = session.roles.sorted().joinToString(",")
 
-        fun keyOf(table: CatalogTable) = "$version|$roleSet|${table.schema}.${table.name}"
+        fun keyOf(table: CatalogTable) = "$version|${session.world}|$roleSet|${table.schema}.${table.name}"
         val slots = Semaphore(PROBE_CONCURRENCY)
         coroutineScope {
             tables

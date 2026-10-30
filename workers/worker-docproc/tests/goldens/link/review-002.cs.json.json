@@ -1,0 +1,164 @@
+[
+  {
+    "id": "g:review-002.cs:0",
+    "payload": {
+      "candidates": [
+        {
+          "code": "HL-2040",
+          "label": "Breeze Tower Fan",
+          "score": 0.95,
+          "source": "lexicon",
+          "system": "cn.Item"
+        }
+      ],
+      "concept": "cn.Item",
+      "kind": "item",
+      "linkMethod": "lexicon",
+      "member": {
+        "category": "er.entity.item.product_name",
+        "display": "Breeze Tower Fan",
+        "id": "HL-2040"
+      },
+      "surface": "ventilátor Breeze"
+    },
+    "spans": [
+      {
+        "end": 48,
+        "start": 31,
+        "unit": "g:review-002.cs:s0"
+      }
+    ],
+    "type": "Mention",
+    "unit": "g:review-002.cs:s0"
+  },
+  {
+    "id": "g:review-002.cs:1",
+    "payload": {
+      "chosen": "HL-2040",
+      "decider": "link/rule",
+      "factors": {
+        "annotationId": 100,
+        "candidates": 1,
+        "margin": null
+      },
+      "score": 0.95
+    },
+    "spans": [
+      {
+        "end": 48,
+        "start": 31,
+        "unit": "g:review-002.cs:s0"
+      }
+    ],
+    "type": "Decision",
+    "unit": "g:review-002.cs:s0"
+  },
+  {
+    "id": "g:review-002.cs:2",
+    "payload": {
+      "candidates": [
+        {
+          "code": "HL-2040",
+          "label": "Breeze Tower Fan",
+          "score": 0.95,
+          "source": "lexicon",
+          "system": "cn.Item"
+        }
+      ],
+      "concept": "cn.Item",
+      "kind": "item",
+      "linkMethod": "lexicon",
+      "member": {
+        "category": "er.entity.item.product_name",
+        "display": "Breeze Tower Fan",
+        "id": "HL-2040"
+      },
+      "surface": "Breeze"
+    },
+    "spans": [
+      {
+        "end": 126,
+        "start": 120,
+        "unit": "g:review-002.cs:s0"
+      }
+    ],
+    "type": "Mention",
+    "unit": "g:review-002.cs:s0"
+  },
+  {
+    "id": "g:review-002.cs:3",
+    "payload": {
+      "chosen": "HL-2040",
+      "decider": "link/rule",
+      "factors": {
+        "annotationId": 101,
+        "candidates": 1,
+        "margin": null
+      },
+      "score": 0.95
+    },
+    "spans": [
+      {
+        "end": 126,
+        "start": 120,
+        "unit": "g:review-002.cs:s0"
+      }
+    ],
+    "type": "Decision",
+    "unit": "g:review-002.cs:s0"
+  },
+  {
+    "id": "g:review-002.cs:4",
+    "payload": {
+      "candidates": [
+        {
+          "code": "HL-2040",
+          "label": "Breeze Tower Fan",
+          "score": 0.95,
+          "source": "lexicon",
+          "system": "cn.Item"
+        }
+      ],
+      "concept": "cn.Item",
+      "kind": "item",
+      "linkMethod": "lexicon",
+      "member": {
+        "category": "er.entity.item.product_name",
+        "display": "Breeze Tower Fan",
+        "id": "HL-2040"
+      },
+      "surface": "ventilátoru Breeze"
+    },
+    "spans": [
+      {
+        "end": 88,
+        "start": 70,
+        "unit": "g:review-002.cs:s1"
+      }
+    ],
+    "type": "Mention",
+    "unit": "g:review-002.cs:s1"
+  },
+  {
+    "id": "g:review-002.cs:5",
+    "payload": {
+      "chosen": "HL-2040",
+      "decider": "link/rule",
+      "factors": {
+        "annotationId": 102,
+        "candidates": 1,
+        "margin": null
+      },
+      "score": 0.95
+    },
+    "spans": [
+      {
+        "end": 88,
+        "start": 70,
+        "unit": "g:review-002.cs:s1"
+      }
+    ],
+    "type": "Decision",
+    "unit": "g:review-002.cs:s1"
+  }
+]

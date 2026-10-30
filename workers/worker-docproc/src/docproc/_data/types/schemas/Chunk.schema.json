@@ -1,0 +1,48 @@
+{
+  "$id": "ttr:types/Chunk",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "A retrieval chunk (DX-D7): spans over a section, the text sliced from the unit at use and never stored. The V5 backfill and the legacy load write only strategy and ordinal; a chunker writes the rest.",
+  "properties": {
+    "context": {
+      "additionalProperties": false,
+      "properties": {
+        "parentUnitId": {
+          "type": "integer"
+        },
+        "prefix": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "ordinal": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "overlapWithPrev": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "oversize": {
+      "type": "boolean"
+    },
+    "paramsHash": {
+      "type": "string"
+    },
+    "strategy": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "tokenCount": {
+      "minimum": 0,
+      "type": "integer"
+    }
+  },
+  "required": [
+    "strategy",
+    "ordinal"
+  ],
+  "title": "Chunk",
+  "type": "object"
+}

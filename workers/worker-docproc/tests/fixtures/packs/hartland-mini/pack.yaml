@@ -1,0 +1,25 @@
+# The hartland-mini fixture pack (DX PX). Six documents, the extraction slice of the model, two feeds. Every DX phase
+# tests against it; it is the seed of the Hartland pack, not the Hartland pack (README.md).
+name: hartland-mini
+version: 1
+feeds:
+  # The RAG profile (DX-D6): split, chunk, lemmatize, embed. Needs no model.
+  mini-rag: [split, chunk-recursive, chunk-sentence, lemmatize, embed-chunks]
+  # mini-rag plus the extraction line: import, classify, mentions (rule primary + LLM mentor), link, normalize,
+  # consolidate, the record ETL, the wiki compile and the LLM statement extractor.
+  mini-extract:
+    - split
+    - chunk-recursive
+    - chunk-sentence
+    - lemmatize
+    - embed-chunks
+    - import
+    - classify-sections
+    - cz-mentions
+    - llm-mentions
+    - link-mentions
+    - normalize-review
+    - review-extract
+    - consolidate-review
+    - records-review
+    - compile

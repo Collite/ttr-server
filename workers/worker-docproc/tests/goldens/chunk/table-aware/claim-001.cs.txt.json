@@ -1,0 +1,46 @@
+[
+  {
+    "id": "g:claim-001.cs:0",
+    "payload": {
+      "context": {
+        "parentUnitId": "g:claim-001.cs:s0",
+        "prefix": "claim-001.cs.txt"
+      },
+      "ordinal": 0,
+      "paramsHash": "sha256:36d3feae636ee4bae4c7c754e63e33a63a764b8f1e0975a67d35e097bf6beed9",
+      "strategy": "table-aware",
+      "tokenCount": 153
+    },
+    "spans": [
+      {
+        "end": 353,
+        "start": 0,
+        "unit": "g:claim-001.cs:s0"
+      }
+    ],
+    "type": "Chunk",
+    "unit": "g:claim-001.cs:s0"
+  },
+  {
+    "id": "g:claim-001.cs:1",
+    "payload": {
+      "context": {
+        "parentUnitId": "g:claim-001.cs:s0",
+        "prefix": "claim-001.cs.txt"
+      },
+      "ordinal": 1,
+      "paramsHash": "sha256:36d3feae636ee4bae4c7c754e63e33a63a764b8f1e0975a67d35e097bf6beed9",
+      "strategy": "table-aware",
+      "tokenCount": 95
+    },
+    "spans": [
+      {
+        "end": 551,
+        "start": 355,
+        "unit": "g:claim-001.cs:s0"
+      }
+    ],
+    "type": "Chunk",
+    "unit": "g:claim-001.cs:s0"
+  }
+]

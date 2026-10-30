@@ -1,0 +1,62 @@
+[
+  {
+    "id": "g:sheet-002.cs:0",
+    "payload": {
+      "kind": "claim_body",
+      "rule": "default"
+    },
+    "spans": [],
+    "type": "SectionKind",
+    "unit": "g:sheet-002.cs:s0"
+  },
+  {
+    "id": "g:sheet-002.cs:1",
+    "payload": {
+      "kind": "claim_body",
+      "rule": "default"
+    },
+    "spans": [],
+    "type": "SectionKind",
+    "unit": "g:sheet-002.cs:s1"
+  },
+  {
+    "id": "g:sheet-002.cs:2",
+    "payload": {
+      "kind": "spec_table",
+      "rule": "rule:1"
+    },
+    "spans": [],
+    "type": "SectionKind",
+    "unit": "g:sheet-002.cs:s2"
+  },
+  {
+    "id": "g:sheet-002.cs:3",
+    "payload": {
+      "kind": "spec_table",
+      "rule": "rule:1"
+    },
+    "spans": [],
+    "type": "SectionKind",
+    "unit": "g:sheet-002.cs:s3"
+  },
+  {
+    "id": "g:sheet-002.cs:4",
+    "payload": {
+      "kind": "claim_body",
+      "rule": "default"
+    },
+    "spans": [],
+    "type": "SectionKind",
+    "unit": "g:sheet-002.cs:s4"
+  },
+  {
+    "id": "g:sheet-002.cs:5",
+    "payload": {
+      "kind": "claim_body",
+      "rule": "default"
+    },
+    "spans": [],
+    "type": "SectionKind",
+    "unit": "g:sheet-002.cs:s5"
+  }
+]

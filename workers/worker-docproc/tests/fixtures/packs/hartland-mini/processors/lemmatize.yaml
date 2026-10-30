@@ -1,0 +1,14 @@
+family: lemmatize
+version: 1
+kind: lemmatize
+host: docproc
+role: primary
+description: Czech lemmas into Unit.content_lemmas (POST /load/lemmas); writes no annotations.
+graph:
+  unit: section
+  when: ""
+  consumes: [Section]
+  produces: []
+engine:
+  langs: [cs]
+budget: { timeout_s: 30, retries: 2 }

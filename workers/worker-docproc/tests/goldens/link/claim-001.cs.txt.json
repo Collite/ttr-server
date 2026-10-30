@@ -1,0 +1,110 @@
+[
+  {
+    "id": "g:claim-001.cs:0",
+    "payload": {
+      "candidates": [
+        {
+          "code": "HL-4205",
+          "label": "Summit Kettle",
+          "score": 0.95,
+          "source": "lexicon",
+          "system": "cn.Item"
+        }
+      ],
+      "concept": "cn.Item",
+      "kind": "item",
+      "linkMethod": "lexicon",
+      "member": {
+        "category": "er.entity.item.product_name",
+        "display": "Summit Kettle",
+        "id": "HL-4205"
+      },
+      "surface": "rychlovarná konvice Summit"
+    },
+    "spans": [
+      {
+        "end": 38,
+        "start": 12,
+        "unit": "g:claim-001.cs:s0"
+      }
+    ],
+    "type": "Mention",
+    "unit": "g:claim-001.cs:s0"
+  },
+  {
+    "id": "g:claim-001.cs:1",
+    "payload": {
+      "chosen": "HL-4205",
+      "decider": "link/rule",
+      "factors": {
+        "annotationId": 100,
+        "candidates": 1,
+        "margin": null
+      },
+      "score": 0.95
+    },
+    "spans": [
+      {
+        "end": 38,
+        "start": 12,
+        "unit": "g:claim-001.cs:s0"
+      }
+    ],
+    "type": "Decision",
+    "unit": "g:claim-001.cs:s0"
+  },
+  {
+    "id": "g:claim-001.cs:2",
+    "payload": {
+      "candidates": [
+        {
+          "code": "HL-4205",
+          "label": "Summit Kettle",
+          "score": 0.95,
+          "source": "lexicon",
+          "system": "cn.Item"
+        }
+      ],
+      "concept": "cn.Item",
+      "kind": "item",
+      "linkMethod": "lexicon",
+      "member": {
+        "category": "er.entity.item.product_name",
+        "display": "Summit Kettle",
+        "id": "HL-4205"
+      },
+      "surface": "rychlovarnou konvici Summit"
+    },
+    "spans": [
+      {
+        "end": 87,
+        "start": 60,
+        "unit": "g:claim-001.cs:s0"
+      }
+    ],
+    "type": "Mention",
+    "unit": "g:claim-001.cs:s0"
+  },
+  {
+    "id": "g:claim-001.cs:3",
+    "payload": {
+      "chosen": "HL-4205",
+      "decider": "link/rule",
+      "factors": {
+        "annotationId": 101,
+        "candidates": 1,
+        "margin": null
+      },
+      "score": 0.95
+    },
+    "spans": [
+      {
+        "end": 87,
+        "start": 60,
+        "unit": "g:claim-001.cs:s0"
+      }
+    ],
+    "type": "Decision",
+    "unit": "g:claim-001.cs:s0"
+  }
+]

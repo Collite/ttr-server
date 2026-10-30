@@ -1,0 +1,20 @@
+{
+  "$id": "ttr:types/SectionKind",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "What a section is (classify): a pack's kind name, and the rule that decided it.",
+  "properties": {
+    "kind": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "rule": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "kind"
+  ],
+  "title": "SectionKind",
+  "type": "object"
+}

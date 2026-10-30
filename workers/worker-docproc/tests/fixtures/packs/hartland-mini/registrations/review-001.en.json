@@ -1,0 +1,48 @@
+{
+  "contentRef": "documents/review-001.en.json",
+  "document": {
+    "context": {
+      "legalEntity": "hartland-us",
+      "marts": [
+        "hartland-public"
+      ]
+    },
+    "createdAt": "2026-09-30T00:00:00Z",
+    "documentId": "reviews:HL-1001:2026-09",
+    "feed": "mini-extract",
+    "lang": "en",
+    "mimeType": "application/json",
+    "originalName": "review-001.en.json",
+    "receivedAt": "2026-10-26T12:00:00Z",
+    "recordedAt": "2026-09-30T00:05:00Z",
+    "status": "final",
+    "subjectId": "HL-1001",
+    "version": "1"
+  },
+  "initialBundle": [
+    {
+      "payloadJson": "{\"createdAt\":\"2026-09-14T08:12:00Z\",\"rating\":2,\"recorded\":true,\"reviewId\":\"R-1001-01\",\"source\":\"json-reviews\",\"verified\":true}",
+      "producer": "import:json-reviews@1",
+      "spans": [
+        {
+          "end": 288,
+          "start": 19,
+          "unitId": -1
+        }
+      ],
+      "type": "Import.review"
+    },
+    {
+      "payloadJson": "{\"createdAt\":\"2026-09-28T19:40:00Z\",\"rating\":5,\"recorded\":true,\"reviewId\":\"R-1001-02\",\"source\":\"json-reviews\",\"verified\":false}",
+      "producer": "import:json-reviews@1",
+      "spans": [
+        {
+          "end": 771,
+          "start": 524,
+          "unitId": -1
+        }
+      ],
+      "type": "Import.review"
+    }
+  ]
+}

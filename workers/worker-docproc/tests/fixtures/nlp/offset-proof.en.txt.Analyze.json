@@ -1,0 +1,201 @@
+[
+  {
+    "language": "en",
+    "response": {
+      "detectedLanguage": "en",
+      "elapsedMs": "774",
+      "engineUsed": "stanza",
+      "entities": [
+        {
+          "charEnd": 33,
+          "charStart": 13,
+          "label": "ORG",
+          "sourceEngine": "stanza",
+          "text": "the Aurora Desk Lamp"
+        },
+        {
+          "charEnd": 63,
+          "charStart": 53,
+          "label": "DATE",
+          "sourceEngine": "stanza",
+          "text": "2026-10-03"
+        }
+      ],
+      "language": "en",
+      "languageConfidence": 1.0,
+      "sentences": [
+        {
+          "charEnd": 64
+        }
+      ],
+      "tokens": [
+        {
+          "charEnd": 1,
+          "depHead": 8,
+          "depRelation": "punct",
+          "lemma": "🙂",
+          "text": "🙂",
+          "upos": "PUNCT",
+          "xpos": "NFP"
+        },
+        {
+          "charEnd": 12,
+          "charStart": 2,
+          "depHead": 8,
+          "depRelation": "advmod",
+          "lemma": "previously",
+          "text": "Previously",
+          "upos": "ADV",
+          "xpos": "RB"
+        },
+        {
+          "charEnd": 16,
+          "charStart": 13,
+          "depHead": 6,
+          "depRelation": "det",
+          "feats": {
+            "Definite": "Def",
+            "PronType": "Art"
+          },
+          "lemma": "the",
+          "text": "the",
+          "upos": "DET",
+          "xpos": "DT"
+        },
+        {
+          "charEnd": 23,
+          "charStart": 17,
+          "depHead": 6,
+          "depRelation": "compound",
+          "feats": {
+            "Number": "Sing"
+          },
+          "lemma": "Aurora",
+          "text": "Aurora",
+          "upos": "PROPN",
+          "xpos": "NNP"
+        },
+        {
+          "charEnd": 28,
+          "charStart": 24,
+          "depHead": 6,
+          "depRelation": "compound",
+          "feats": {
+            "Number": "Sing"
+          },
+          "lemma": "desk",
+          "text": "Desk",
+          "upos": "PROPN",
+          "xpos": "NNP"
+        },
+        {
+          "charEnd": 33,
+          "charStart": 29,
+          "depHead": 8,
+          "depRelation": "nsubj",
+          "feats": {
+            "Number": "Sing"
+          },
+          "lemma": "Lamp",
+          "text": "Lamp",
+          "upos": "PROPN",
+          "xpos": "NNP"
+        },
+        {
+          "charEnd": 42,
+          "charStart": 34,
+          "depHead": 8,
+          "depRelation": "advmod",
+          "lemma": "probably",
+          "text": "probably",
+          "upos": "ADV",
+          "xpos": "RB"
+        },
+        {
+          "charEnd": 49,
+          "charStart": 43,
+          "depRelation": "root",
+          "feats": {
+            "Mood": "Ind",
+            "Number": "Sing",
+            "Person": "3",
+            "Tense": "Past",
+            "VerbForm": "Fin"
+          },
+          "lemma": "fail",
+          "text": "failed",
+          "upos": "VERB",
+          "xpos": "VBD"
+        },
+        {
+          "charEnd": 52,
+          "charStart": 50,
+          "depHead": 10,
+          "depRelation": "case",
+          "lemma": "on",
+          "text": "on",
+          "upos": "ADP",
+          "xpos": "IN"
+        },
+        {
+          "charEnd": 57,
+          "charStart": 53,
+          "depHead": 8,
+          "depRelation": "obl",
+          "feats": {
+            "NumForm": "Digit",
+            "NumType": "Card"
+          },
+          "lemma": "2026",
+          "text": "2026",
+          "upos": "NUM",
+          "xpos": "CD"
+        },
+        {
+          "charEnd": 58,
+          "charStart": 57,
+          "depHead": 12,
+          "depRelation": "case",
+          "lemma": "-",
+          "text": "-",
+          "upos": "SYM",
+          "xpos": "SYM"
+        },
+        {
+          "charEnd": 63,
+          "charStart": 58,
+          "depHead": 10,
+          "depRelation": "nmod",
+          "feats": {
+            "NumForm": "Digit",
+            "NumType": "Card"
+          },
+          "lemma": "10-03",
+          "text": "10-03",
+          "upos": "NUM",
+          "xpos": "CD"
+        },
+        {
+          "charEnd": 64,
+          "charStart": 63,
+          "depHead": 8,
+          "depRelation": "punct",
+          "lemma": ".",
+          "text": ".",
+          "upos": "PUNCT",
+          "xpos": "."
+        }
+      ],
+      "traceId": "325b61bceecfa091fefd6b7b3d34edd8",
+      "used": [
+        {
+          "engine": "stanza",
+          "model": "stanza-cs-en",
+          "modelVersion": "stanza-1.10.0",
+          "op": "SENTENCE_SPLIT"
+        }
+      ]
+    },
+    "sha256": "938e9f63e11deb329d116c8058db202f6a6460f8c41ce1fb710dcff45f076273"
+  }
+]

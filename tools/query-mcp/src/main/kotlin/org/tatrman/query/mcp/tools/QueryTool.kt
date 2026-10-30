@@ -97,6 +97,13 @@ class QueryTool(
                             )
                         },
                     )
+                    put(
+                        "world",
+                        literalSchemaProp(
+                            "string",
+                            "The world to read (QUERY_WORLDS); required when the door requires one.",
+                        ),
+                    )
                     put("session_id", literalSchemaProp("string", "Session id for sticky routing on stateful workers."))
                     put(
                         "format",
@@ -242,6 +249,7 @@ class QueryTool(
                 .setSource(source)
                 .setSourceLanguage(sourceLanguage)
                 .setSourceSchema(sourceSchema)
+                .apply { args.stringFieldOrNull("world")?.takeIf { it.isNotBlank() }?.let { setWorld(it) } }
                 .setContext(context)
                 .setExecutionOptions(
                     ExecutionOptions

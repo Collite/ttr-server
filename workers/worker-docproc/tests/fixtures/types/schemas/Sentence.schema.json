@@ -1,0 +1,10 @@
+{
+  "$id": "ttr:types/Sentence",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "A sentence boundary: the span is the sentence, the payload is empty.",
+  "properties": {},
+  "required": [],
+  "title": "Sentence",
+  "type": "object"
+}

@@ -1,0 +1,12 @@
+[project]
+name = "docproc-test-chunker"
+version = "0.0.0"
+requires-python = ">=3.13"
+[project.entry-points."docproc.chunkers"]
+whole = "docproc_test_chunker:Whole"
+raises = "docproc_test_chunker:Raises"
+overlap = "docproc_test_chunker:Overlap"
+outside = "docproc_test_chunker:Outside"
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

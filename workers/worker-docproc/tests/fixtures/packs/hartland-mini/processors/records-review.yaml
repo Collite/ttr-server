@@ -1,0 +1,14 @@
+family: records-review
+version: 1
+kind: record-etl
+host: docproc
+role: primary
+description: The active Record.review rows into the world DB's review table (records/review.yaml), per subject.
+graph:
+  unit: subject
+  when: ""
+  consumes: ["Record.review"]
+  produces: []
+engine:
+  mapping: records/review.yaml
+budget: { timeout_s: 60, retries: 2 }

@@ -1,0 +1,70 @@
+[
+  {
+    "id": "g:review-001.en:0",
+    "payload": {
+      "candidates": [],
+      "concept": "cn.Item",
+      "kind": "item",
+      "linkMethod": "gazetteer",
+      "surface": "Aurora Desk Lamp"
+    },
+    "spans": [
+      {
+        "end": 61,
+        "start": 45,
+        "unit": "g:review-001.en:s0"
+      }
+    ],
+    "type": "Mention",
+    "unit": "g:review-001.en:s0"
+  },
+  {
+    "id": "g:review-001.en:1",
+    "payload": {
+      "candidates": [],
+      "concept": "cn.Item",
+      "kind": "item",
+      "linkMethod": "gazetteer",
+      "surface": "Aurora lamp"
+    },
+    "spans": [
+      {
+        "end": 81,
+        "start": 70,
+        "unit": "g:review-001.en:s1"
+      }
+    ],
+    "type": "Mention",
+    "unit": "g:review-001.en:s1"
+  },
+  {
+    "id": "g:review-001.en:2",
+    "payload": {
+      "candidates": [],
+      "concept": "cn.Item",
+      "kind": "item",
+      "linkMethod": "gazetteer",
+      "surface": "Aurora Desk Lamp"
+    },
+    "spans": [
+      {
+        "end": 257,
+        "start": 241,
+        "unit": "g:review-001.en:s1"
+      }
+    ],
+    "type": "Mention",
+    "unit": "g:review-001.en:s1"
+  },
+  {
+    "id": "g:review-001.en:3",
+    "payload": {
+      "message": "DATE [33,42)",
+      "ok": false,
+      "rule": "nlp/date-no-value"
+    },
+    "spans": [],
+    "type": "Verdict",
+    "unit": "g:review-001.en:s1"
+  }
+]

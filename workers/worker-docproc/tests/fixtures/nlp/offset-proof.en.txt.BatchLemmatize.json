@@ -1,0 +1,35 @@
+[
+  {
+    "language": "en",
+    "response": {
+      "results": [
+        {
+          "lemmas": [
+            "🙂",
+            "previously",
+            "the",
+            "Aurora",
+            "desk",
+            "Lamp",
+            "probably",
+            "fail",
+            "on",
+            "2026",
+            "-",
+            "10-03",
+            "."
+          ]
+        }
+      ],
+      "used": [
+        {
+          "engine": "stanza",
+          "model": "stanza-cs-en",
+          "modelVersion": "stanza-1.10.0",
+          "op": "LEMMATIZE"
+        }
+      ]
+    },
+    "sha256": "938e9f63e11deb329d116c8058db202f6a6460f8c41ce1fb710dcff45f076273"
+  }
+]

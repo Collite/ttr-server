@@ -1,0 +1,42 @@
+[
+  {
+    "id": "g:claim-002.en:0",
+    "payload": {
+      "kind": "other",
+      "rule": "rule:2"
+    },
+    "spans": [],
+    "type": "SectionKind",
+    "unit": "g:claim-002.en:s0"
+  },
+  {
+    "id": "g:claim-002.en:1",
+    "payload": {
+      "kind": "claim_body",
+      "rule": "default"
+    },
+    "spans": [],
+    "type": "SectionKind",
+    "unit": "g:claim-002.en:s1"
+  },
+  {
+    "id": "g:claim-002.en:2",
+    "payload": {
+      "kind": "claim_body",
+      "rule": "default"
+    },
+    "spans": [],
+    "type": "SectionKind",
+    "unit": "g:claim-002.en:s2"
+  },
+  {
+    "id": "g:claim-002.en:3",
+    "payload": {
+      "kind": "claim_body",
+      "rule": "default"
+    },
+    "spans": [],
+    "type": "SectionKind",
+    "unit": "g:claim-002.en:s3"
+  }
+]

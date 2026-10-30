@@ -1,0 +1,27 @@
+# Tenancy: which documents each mart holds, and how the Library retrieves from it (DX-D7 §2.5).
+version: 1
+marts:
+  hartland-public:
+    description: The product sheets and the reviews.
+    documents: [sheet-001.en.html, sheet-002.cs.html, review-001.en.json, review-002.cs.json]
+    retrieval_profile:
+      chunking: chunk-recursive
+      k: 8
+      graph_hops: 2
+      weights: { graph: 0.4, vector: 0.4, keyword: 0.2 }
+      parent_return: false
+      mmr: "off"
+      rerank: "off"
+      include_pages: true
+  hartland-claims:
+    description: The warranty claims.
+    documents: [claim-001.cs.txt, claim-002.en.md]
+    retrieval_profile:
+      chunking: chunk-recursive
+      k: 8
+      graph_hops: 2
+      weights: { graph: 0.4, vector: 0.4, keyword: 0.2 }
+      parent_return: false
+      mmr: "off"
+      rerank: "off"
+      include_pages: true

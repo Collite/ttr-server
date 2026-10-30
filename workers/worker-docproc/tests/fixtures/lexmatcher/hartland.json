@@ -1,0 +1,929 @@
+[
+  {
+    "categories": [
+      "er.entity.item.product_name"
+    ],
+    "limit": 5,
+    "query": "Aurora Desk Lamp",
+    "response": {
+      "layerVersions": {
+        "lexiconArtifactHash": "sha256:1fbc69ecdd4644fc0a554e8886e925e9a72a853a8ef5d6b86d00be30a949a592",
+        "memberIndexVersions": {
+          "er.entity.call_center.name": "9f838033f8d86850",
+          "er.entity.customer_address.city": "66f20fce754240a3",
+          "er.entity.customer_address.state": "1c57e9d6b02c046d",
+          "er.entity.item.product_name": "428b5fd1723835c6",
+          "er.entity.reason.reason_desc": "bdaa00ff482fb6e4",
+          "er.entity.store.state": "ac401bde1e3bf1a5",
+          "er.entity.store.store_name": "32dfa118c1c8238f",
+          "er.entity.warehouse.state": "a0455124c1455dc6",
+          "er.entity.warehouse.warehouse_name": "e25a4fdcf4dc224d"
+        }
+      },
+      "matchedAlgorithm": "TATRMAN",
+      "matches": [
+        {
+          "candidate": "Marrowgate Lampa MX-M2X",
+          "candidateId": "Marrowgate Lampa MX-M2X",
+          "category": "er.entity.item.product_name",
+          "matchMethod": "TOKENS",
+          "provenance": {
+            "coverage": 0.5637261828216232,
+            "method": "TATRMAN_V2",
+            "producer": "fuzzy",
+            "rawScore": 0.19417163601370116,
+            "tokenHits": [
+              {
+                "candidatePos": 1,
+                "candidateToken": "lampa",
+                "kind": "exact",
+                "queryPos": 2,
+                "queryToken": "lampa"
+              }
+            ]
+          },
+          "score": 0.19417163601370116
+        },
+        {
+          "candidate": "Marrowgate Lampa MX-91M",
+          "candidateId": "Marrowgate Lampa MX-91M",
+          "category": "er.entity.item.product_name",
+          "matchMethod": "TOKENS",
+          "provenance": {
+            "coverage": 0.5637261828216232,
+            "method": "TATRMAN_V2",
+            "producer": "fuzzy",
+            "rawScore": 0.19417163601370116,
+            "tokenHits": [
+              {
+                "candidatePos": 1,
+                "candidateToken": "lampa",
+                "kind": "exact",
+                "queryPos": 2,
+                "queryToken": "lampa"
+              }
+            ]
+          },
+          "score": 0.19417163601370116
+        },
+        {
+          "candidate": "Marrowgate Lampa MX-2JT",
+          "candidateId": "Marrowgate Lampa MX-2JT",
+          "category": "er.entity.item.product_name",
+          "matchMethod": "TOKENS",
+          "provenance": {
+            "coverage": 0.5637261828216232,
+            "method": "TATRMAN_V2",
+            "producer": "fuzzy",
+            "rawScore": 0.19417163601370116,
+            "tokenHits": [
+              {
+                "candidatePos": 1,
+                "candidateToken": "lampa",
+                "kind": "exact",
+                "queryPos": 2,
+                "queryToken": "lampa"
+              }
+            ]
+          },
+          "score": 0.19417163601370116
+        },
+        {
+          "candidate": "Marrowgate Lampa MX-OZR",
+          "candidateId": "Marrowgate Lampa MX-OZR",
+          "category": "er.entity.item.product_name",
+          "matchMethod": "TOKENS",
+          "provenance": {
+            "coverage": 0.5637261828216232,
+            "method": "TATRMAN_V2",
+            "producer": "fuzzy",
+            "rawScore": 0.19417163601370116,
+            "tokenHits": [
+              {
+                "candidatePos": 1,
+                "candidateToken": "lampa",
+                "kind": "exact",
+                "queryPos": 2,
+                "queryToken": "lampa"
+              }
+            ]
+          },
+          "score": 0.19417163601370116
+        },
+        {
+          "candidate": "Marrowgate Lampa MX-PLB",
+          "candidateId": "Marrowgate Lampa MX-PLB",
+          "category": "er.entity.item.product_name",
+          "matchMethod": "TOKENS",
+          "provenance": {
+            "coverage": 0.5637261828216232,
+            "method": "TATRMAN_V2",
+            "producer": "fuzzy",
+            "rawScore": 0.19417163601370116,
+            "tokenHits": [
+              {
+                "candidatePos": 1,
+                "candidateToken": "lampa",
+                "kind": "exact",
+                "queryPos": 2,
+                "queryToken": "lampa"
+              }
+            ]
+          },
+          "score": 0.19417163601370116
+        }
+      ],
+      "vocabularyVersion": "member:872d9f37/vocab:sha256:2edd54dfa9c42815c53067eaa75879d7d909c9b62e678750e6ccc69442498185@1793273976595"
+    }
+  },
+  {
+    "categories": [
+      "er.entity.item.product_name"
+    ],
+    "limit": 5,
+    "query": "Aurora lamp",
+    "response": {
+      "layerVersions": {
+        "lexiconArtifactHash": "sha256:1fbc69ecdd4644fc0a554e8886e925e9a72a853a8ef5d6b86d00be30a949a592",
+        "memberIndexVersions": {
+          "er.entity.call_center.name": "9f838033f8d86850",
+          "er.entity.customer_address.city": "66f20fce754240a3",
+          "er.entity.customer_address.state": "1c57e9d6b02c046d",
+          "er.entity.item.product_name": "428b5fd1723835c6",
+          "er.entity.reason.reason_desc": "bdaa00ff482fb6e4",
+          "er.entity.store.state": "ac401bde1e3bf1a5",
+          "er.entity.store.store_name": "32dfa118c1c8238f",
+          "er.entity.warehouse.state": "a0455124c1455dc6",
+          "er.entity.warehouse.warehouse_name": "e25a4fdcf4dc224d"
+        }
+      },
+      "matchedAlgorithm": "TATRMAN",
+      "matches": [
+        {
+          "candidate": "Marrowgate Lampa MX-M2X",
+          "candidateId": "Marrowgate Lampa MX-M2X",
+          "category": "er.entity.item.product_name",
+          "matchMethod": "TOKENS",
+          "provenance": {
+            "coverage": 0.5637261828216232,
+            "method": "TATRMAN_V2",
+            "producer": "fuzzy",
+            "rawScore": 0.3477499940677678,
+            "tokenHits": [
+              {
+                "candidatePos": 1,
+                "candidateToken": "lampa",
+                "kind": "exact",
+                "queryPos": 1,
+                "queryToken": "lampa"
+              }
+            ]
+          },
+          "score": 0.3477499940677678
+        },
+        {
+          "candidate": "Marrowgate Lampa MX-91M",
+          "candidateId": "Marrowgate Lampa MX-91M",
+          "category": "er.entity.item.product_name",
+          "matchMethod": "TOKENS",
+          "provenance": {
+            "coverage": 0.5637261828216232,
+            "method": "TATRMAN_V2",
+            "producer": "fuzzy",
+            "rawScore": 0.3477499940677678,
+            "tokenHits": [
+              {
+                "candidatePos": 1,
+                "candidateToken": "lampa",
+                "kind": "exact",
+                "queryPos": 1,
+                "queryToken": "lampa"
+              }
+            ]
+          },
+          "score": 0.3477499940677678
+        },
+        {
+          "candidate": "Marrowgate Lampa MX-2JT",
+          "candidateId": "Marrowgate Lampa MX-2JT",
+          "category": "er.entity.item.product_name",
+          "matchMethod": "TOKENS",
+          "provenance": {
+            "coverage": 0.5637261828216232,
+            "method": "TATRMAN_V2",
+            "producer": "fuzzy",
+            "rawScore": 0.3477499940677678,
+            "tokenHits": [
+              {
+                "candidatePos": 1,
+                "candidateToken": "lampa",
+                "kind": "exact",
+                "queryPos": 1,
+                "queryToken": "lampa"
+              }
+            ]
+          },
+          "score": 0.3477499940677678
+        },
+        {
+          "candidate": "Marrowgate Lampa MX-OZR",
+          "candidateId": "Marrowgate Lampa MX-OZR",
+          "category": "er.entity.item.product_name",
+          "matchMethod": "TOKENS",
+          "provenance": {
+            "coverage": 0.5637261828216232,
+            "method": "TATRMAN_V2",
+            "producer": "fuzzy",
+            "rawScore": 0.3477499940677678,
+            "tokenHits": [
+              {
+                "candidatePos": 1,
+                "candidateToken": "lampa",
+                "kind": "exact",
+                "queryPos": 1,
+                "queryToken": "lampa"
+              }
+            ]
+          },
+          "score": 0.3477499940677678
+        },
+        {
+          "candidate": "Marrowgate Lampa MX-PLB",
+          "candidateId": "Marrowgate Lampa MX-PLB",
+          "category": "er.entity.item.product_name",
+          "matchMethod": "TOKENS",
+          "provenance": {
+            "coverage": 0.5637261828216232,
+            "method": "TATRMAN_V2",
+            "producer": "fuzzy",
+            "rawScore": 0.3477499940677678,
+            "tokenHits": [
+              {
+                "candidatePos": 1,
+                "candidateToken": "lampa",
+                "kind": "exact",
+                "queryPos": 1,
+                "queryToken": "lampa"
+              }
+            ]
+          },
+          "score": 0.3477499940677678
+        }
+      ],
+      "vocabularyVersion": "member:872d9f37/vocab:sha256:2edd54dfa9c42815c53067eaa75879d7d909c9b62e678750e6ccc69442498185@1793273976595"
+    }
+  },
+  {
+    "categories": [
+      "er.entity.item.product_name"
+    ],
+    "limit": 5,
+    "query": "Breeze",
+    "response": {
+      "layerVersions": {
+        "lexiconArtifactHash": "sha256:1fbc69ecdd4644fc0a554e8886e925e9a72a853a8ef5d6b86d00be30a949a592",
+        "memberIndexVersions": {
+          "er.entity.call_center.name": "9f838033f8d86850",
+          "er.entity.customer_address.city": "66f20fce754240a3",
+          "er.entity.customer_address.state": "1c57e9d6b02c046d",
+          "er.entity.item.product_name": "428b5fd1723835c6",
+          "er.entity.reason.reason_desc": "bdaa00ff482fb6e4",
+          "er.entity.store.state": "ac401bde1e3bf1a5",
+          "er.entity.store.store_name": "32dfa118c1c8238f",
+          "er.entity.warehouse.state": "a0455124c1455dc6",
+          "er.entity.warehouse.warehouse_name": "e25a4fdcf4dc224d"
+        }
+      },
+      "vocabularyVersion": "member:872d9f37/vocab:sha256:2edd54dfa9c42815c53067eaa75879d7d909c9b62e678750e6ccc69442498185@1793273976595"
+    }
+  },
+  {
+    "categories": [
+      "er.entity.item.product_name"
+    ],
+    "limit": 5,
+    "query": "ventilátoru Breeze",
+    "response": {
+      "layerVersions": {
+        "lexiconArtifactHash": "sha256:1fbc69ecdd4644fc0a554e8886e925e9a72a853a8ef5d6b86d00be30a949a592",
+        "memberIndexVersions": {
+          "er.entity.call_center.name": "9f838033f8d86850",
+          "er.entity.customer_address.city": "66f20fce754240a3",
+          "er.entity.customer_address.state": "1c57e9d6b02c046d",
+          "er.entity.item.product_name": "428b5fd1723835c6",
+          "er.entity.reason.reason_desc": "bdaa00ff482fb6e4",
+          "er.entity.store.state": "ac401bde1e3bf1a5",
+          "er.entity.store.store_name": "32dfa118c1c8238f",
+          "er.entity.warehouse.state": "a0455124c1455dc6",
+          "er.entity.warehouse.warehouse_name": "e25a4fdcf4dc224d"
+        }
+      },
+      "vocabularyVersion": "member:872d9f37/vocab:sha256:2edd54dfa9c42815c53067eaa75879d7d909c9b62e678750e6ccc69442498185@1793273976595"
+    }
+  },
+  {
+    "categories": [
+      "er.entity.item.product_name"
+    ],
+    "limit": 5,
+    "query": "Pulse Wireless Headphones",
+    "response": {
+      "layerVersions": {
+        "lexiconArtifactHash": "sha256:1fbc69ecdd4644fc0a554e8886e925e9a72a853a8ef5d6b86d00be30a949a592",
+        "memberIndexVersions": {
+          "er.entity.call_center.name": "9f838033f8d86850",
+          "er.entity.customer_address.city": "66f20fce754240a3",
+          "er.entity.customer_address.state": "1c57e9d6b02c046d",
+          "er.entity.item.product_name": "428b5fd1723835c6",
+          "er.entity.reason.reason_desc": "bdaa00ff482fb6e4",
+          "er.entity.store.state": "ac401bde1e3bf1a5",
+          "er.entity.store.store_name": "32dfa118c1c8238f",
+          "er.entity.warehouse.state": "a0455124c1455dc6",
+          "er.entity.warehouse.warehouse_name": "e25a4fdcf4dc224d"
+        }
+      },
+      "vocabularyVersion": "member:872d9f37/vocab:sha256:2edd54dfa9c42815c53067eaa75879d7d909c9b62e678750e6ccc69442498185@1793273976595"
+    }
+  },
+  {
+    "categories": [
+      "er.entity.item.product_name"
+    ],
+    "limit": 5,
+    "query": "Summit Kettle",
+    "response": {
+      "layerVersions": {
+        "lexiconArtifactHash": "sha256:1fbc69ecdd4644fc0a554e8886e925e9a72a853a8ef5d6b86d00be30a949a592",
+        "memberIndexVersions": {
+          "er.entity.call_center.name": "9f838033f8d86850",
+          "er.entity.customer_address.city": "66f20fce754240a3",
+          "er.entity.customer_address.state": "1c57e9d6b02c046d",
+          "er.entity.item.product_name": "428b5fd1723835c6",
+          "er.entity.reason.reason_desc": "bdaa00ff482fb6e4",
+          "er.entity.store.state": "ac401bde1e3bf1a5",
+          "er.entity.store.store_name": "32dfa118c1c8238f",
+          "er.entity.warehouse.state": "a0455124c1455dc6",
+          "er.entity.warehouse.warehouse_name": "e25a4fdcf4dc224d"
+        }
+      },
+      "matchedAlgorithm": "TATRMAN",
+      "matches": [
+        {
+          "candidate": "Summitline Batoh MX-VLM",
+          "candidateId": "Summitline Batoh MX-VLM",
+          "category": "er.entity.item.product_name",
+          "matchMethod": "TOKENS",
+          "provenance": {
+            "coverage": 0.3467990202980747,
+            "method": "TATRMAN_V2",
+            "producer": "fuzzy",
+            "rawScore": 0.21326493065396043,
+            "tokenHits": [
+              {
+                "candidateToken": "summitline",
+                "distance": 4,
+                "kind": "prefix",
+                "queryToken": "summit"
+              }
+            ]
+          },
+          "score": 0.21326493065396043
+        },
+        {
+          "candidate": "Summitline Batoh MX-8WG",
+          "candidateId": "Summitline Batoh MX-8WG",
+          "category": "er.entity.item.product_name",
+          "matchMethod": "TOKENS",
+          "provenance": {
+            "coverage": 0.3467990202980747,
+            "method": "TATRMAN_V2",
+            "producer": "fuzzy",
+            "rawScore": 0.21326493065396043,
+            "tokenHits": [
+              {
+                "candidateToken": "summitline",
+                "distance": 4,
+                "kind": "prefix",
+                "queryToken": "summit"
+              }
+            ]
+          },
+          "score": 0.21326493065396043
+        },
+        {
+          "candidate": "Summitline Batoh MX-3ZT",
+          "candidateId": "Summitline Batoh MX-3ZT",
+          "category": "er.entity.item.product_name",
+          "matchMethod": "TOKENS",
+          "provenance": {
+            "coverage": 0.3467990202980747,
+            "method": "TATRMAN_V2",
+            "producer": "fuzzy",
+            "rawScore": 0.21326493065396043,
+            "tokenHits": [
+              {
+                "candidateToken": "summitline",
+                "distance": 4,
+                "kind": "prefix",
+                "queryToken": "summit"
+              }
+            ]
+          },
+          "score": 0.21326493065396043
+        },
+        {
+          "candidate": "Summitline Batoh MX-FSZ",
+          "candidateId": "Summitline Batoh MX-FSZ",
+          "category": "er.entity.item.product_name",
+          "matchMethod": "TOKENS",
+          "provenance": {
+            "coverage": 0.3467990202980747,
+            "method": "TATRMAN_V2",
+            "producer": "fuzzy",
+            "rawScore": 0.21326493065396043,
+            "tokenHits": [
+              {
+                "candidateToken": "summitline",
+                "distance": 4,
+                "kind": "prefix",
+                "queryToken": "summit"
+              }
+            ]
+          },
+          "score": 0.21326493065396043
+        },
+        {
+          "candidate": "Summitline Batoh MX-N03",
+          "candidateId": "Summitline Batoh MX-N03",
+          "category": "er.entity.item.product_name",
+          "matchMethod": "TOKENS",
+          "provenance": {
+            "coverage": 0.3467990202980747,
+            "method": "TATRMAN_V2",
+            "producer": "fuzzy",
+            "rawScore": 0.21326493065396043,
+            "tokenHits": [
+              {
+                "candidateToken": "summitline",
+                "distance": 4,
+                "kind": "prefix",
+                "queryToken": "summit"
+              }
+            ]
+          },
+          "score": 0.21326493065396043
+        }
+      ],
+      "vocabularyVersion": "member:872d9f37/vocab:sha256:2edd54dfa9c42815c53067eaa75879d7d909c9b62e678750e6ccc69442498185@1793273976595"
+    }
+  },
+  {
+    "categories": [
+      "er.entity.item.product_name"
+    ],
+    "limit": 5,
+    "query": "konvice Summit",
+    "response": {
+      "layerVersions": {
+        "lexiconArtifactHash": "sha256:1fbc69ecdd4644fc0a554e8886e925e9a72a853a8ef5d6b86d00be30a949a592",
+        "memberIndexVersions": {
+          "er.entity.call_center.name": "9f838033f8d86850",
+          "er.entity.customer_address.city": "66f20fce754240a3",
+          "er.entity.customer_address.state": "1c57e9d6b02c046d",
+          "er.entity.item.product_name": "428b5fd1723835c6",
+          "er.entity.reason.reason_desc": "bdaa00ff482fb6e4",
+          "er.entity.store.state": "ac401bde1e3bf1a5",
+          "er.entity.store.store_name": "32dfa118c1c8238f",
+          "er.entity.warehouse.state": "a0455124c1455dc6",
+          "er.entity.warehouse.warehouse_name": "e25a4fdcf4dc224d"
+        }
+      },
+      "matchedAlgorithm": "TATRMAN",
+      "matches": [
+        {
+          "candidate": "Summitline Batoh MX-VLM",
+          "candidateId": "Summitline Batoh MX-VLM",
+          "category": "er.entity.item.product_name",
+          "matchMethod": "TOKENS",
+          "provenance": {
+            "coverage": 0.3467990202980747,
+            "method": "TATRMAN_V2",
+            "producer": "fuzzy",
+            "rawScore": 0.21326493065396043,
+            "tokenHits": [
+              {
+                "candidateToken": "summitline",
+                "distance": 4,
+                "kind": "prefix",
+                "queryPos": 1,
+                "queryToken": "summit"
+              }
+            ]
+          },
+          "score": 0.21326493065396043
+        },
+        {
+          "candidate": "Summitline Batoh MX-8WG",
+          "candidateId": "Summitline Batoh MX-8WG",
+          "category": "er.entity.item.product_name",
+          "matchMethod": "TOKENS",
+          "provenance": {
+            "coverage": 0.3467990202980747,
+            "method": "TATRMAN_V2",
+            "producer": "fuzzy",
+            "rawScore": 0.21326493065396043,
+            "tokenHits": [
+              {
+                "candidateToken": "summitline",
+                "distance": 4,
+                "kind": "prefix",
+                "queryPos": 1,
+                "queryToken": "summit"
+              }
+            ]
+          },
+          "score": 0.21326493065396043
+        },
+        {
+          "candidate": "Summitline Batoh MX-3ZT",
+          "candidateId": "Summitline Batoh MX-3ZT",
+          "category": "er.entity.item.product_name",
+          "matchMethod": "TOKENS",
+          "provenance": {
+            "coverage": 0.3467990202980747,
+            "method": "TATRMAN_V2",
+            "producer": "fuzzy",
+            "rawScore": 0.21326493065396043,
+            "tokenHits": [
+              {
+                "candidateToken": "summitline",
+                "distance": 4,
+                "kind": "prefix",
+                "queryPos": 1,
+                "queryToken": "summit"
+              }
+            ]
+          },
+          "score": 0.21326493065396043
+        },
+        {
+          "candidate": "Summitline Batoh MX-FSZ",
+          "candidateId": "Summitline Batoh MX-FSZ",
+          "category": "er.entity.item.product_name",
+          "matchMethod": "TOKENS",
+          "provenance": {
+            "coverage": 0.3467990202980747,
+            "method": "TATRMAN_V2",
+            "producer": "fuzzy",
+            "rawScore": 0.21326493065396043,
+            "tokenHits": [
+              {
+                "candidateToken": "summitline",
+                "distance": 4,
+                "kind": "prefix",
+                "queryPos": 1,
+                "queryToken": "summit"
+              }
+            ]
+          },
+          "score": 0.21326493065396043
+        },
+        {
+          "candidate": "Summitline Batoh MX-N03",
+          "candidateId": "Summitline Batoh MX-N03",
+          "category": "er.entity.item.product_name",
+          "matchMethod": "TOKENS",
+          "provenance": {
+            "coverage": 0.3467990202980747,
+            "method": "TATRMAN_V2",
+            "producer": "fuzzy",
+            "rawScore": 0.21326493065396043,
+            "tokenHits": [
+              {
+                "candidateToken": "summitline",
+                "distance": 4,
+                "kind": "prefix",
+                "queryPos": 1,
+                "queryToken": "summit"
+              }
+            ]
+          },
+          "score": 0.21326493065396043
+        }
+      ],
+      "vocabularyVersion": "member:872d9f37/vocab:sha256:2edd54dfa9c42815c53067eaa75879d7d909c9b62e678750e6ccc69442498185@1793273976595"
+    }
+  },
+  {
+    "categories": [
+      "er.entity.item.product_name"
+    ],
+    "limit": 5,
+    "query": "Aurora",
+    "response": {
+      "layerVersions": {
+        "lexiconArtifactHash": "sha256:1fbc69ecdd4644fc0a554e8886e925e9a72a853a8ef5d6b86d00be30a949a592",
+        "memberIndexVersions": {
+          "er.entity.call_center.name": "9f838033f8d86850",
+          "er.entity.customer_address.city": "66f20fce754240a3",
+          "er.entity.customer_address.state": "1c57e9d6b02c046d",
+          "er.entity.item.product_name": "428b5fd1723835c6",
+          "er.entity.reason.reason_desc": "bdaa00ff482fb6e4",
+          "er.entity.store.state": "ac401bde1e3bf1a5",
+          "er.entity.store.store_name": "32dfa118c1c8238f",
+          "er.entity.warehouse.state": "a0455124c1455dc6",
+          "er.entity.warehouse.warehouse_name": "e25a4fdcf4dc224d"
+        }
+      },
+      "vocabularyVersion": "member:872d9f37/vocab:sha256:2edd54dfa9c42815c53067eaa75879d7d909c9b62e678750e6ccc69442498185@1793273976595"
+    }
+  },
+  {
+    "categories": [
+      "er.entity.item.product_name"
+    ],
+    "limit": 5,
+    "query": "ventilátor",
+    "response": {
+      "layerVersions": {
+        "lexiconArtifactHash": "sha256:1fbc69ecdd4644fc0a554e8886e925e9a72a853a8ef5d6b86d00be30a949a592",
+        "memberIndexVersions": {
+          "er.entity.call_center.name": "9f838033f8d86850",
+          "er.entity.customer_address.city": "66f20fce754240a3",
+          "er.entity.customer_address.state": "1c57e9d6b02c046d",
+          "er.entity.item.product_name": "428b5fd1723835c6",
+          "er.entity.reason.reason_desc": "bdaa00ff482fb6e4",
+          "er.entity.store.state": "ac401bde1e3bf1a5",
+          "er.entity.store.store_name": "32dfa118c1c8238f",
+          "er.entity.warehouse.state": "a0455124c1455dc6",
+          "er.entity.warehouse.warehouse_name": "e25a4fdcf4dc224d"
+        }
+      },
+      "vocabularyVersion": "member:872d9f37/vocab:sha256:2edd54dfa9c42815c53067eaa75879d7d909c9b62e678750e6ccc69442498185@1793273976595"
+    }
+  },
+  {
+    "categories": [
+      "er.entity.item.product_name"
+    ],
+    "limit": 5,
+    "query": "sluchátka",
+    "response": {
+      "layerVersions": {
+        "lexiconArtifactHash": "sha256:1fbc69ecdd4644fc0a554e8886e925e9a72a853a8ef5d6b86d00be30a949a592",
+        "memberIndexVersions": {
+          "er.entity.call_center.name": "9f838033f8d86850",
+          "er.entity.customer_address.city": "66f20fce754240a3",
+          "er.entity.customer_address.state": "1c57e9d6b02c046d",
+          "er.entity.item.product_name": "428b5fd1723835c6",
+          "er.entity.reason.reason_desc": "bdaa00ff482fb6e4",
+          "er.entity.store.state": "ac401bde1e3bf1a5",
+          "er.entity.store.store_name": "32dfa118c1c8238f",
+          "er.entity.warehouse.state": "a0455124c1455dc6",
+          "er.entity.warehouse.warehouse_name": "e25a4fdcf4dc224d"
+        }
+      },
+      "matchedAlgorithm": "TATRMAN",
+      "matches": [
+        {
+          "candidate": "Voltaic Sluchátka MX-TOA",
+          "candidateId": "Voltaic Sluchátka MX-TOA",
+          "category": "er.entity.item.product_name",
+          "matchMethod": "TOKENS",
+          "provenance": {
+            "coverage": 0.5878756084272152,
+            "method": "TATRMAN_V2",
+            "producer": "fuzzy",
+            "rawScore": 1.0058787560842721,
+            "tokenHits": [
+              {
+                "candidatePos": 1,
+                "candidateToken": "sluchatko",
+                "kind": "exact",
+                "queryToken": "sluchatko"
+              }
+            ]
+          },
+          "score": 1.0058787560842721
+        },
+        {
+          "candidate": "Voltaic Sluchátka MX-A6C",
+          "candidateId": "Voltaic Sluchátka MX-A6C",
+          "category": "er.entity.item.product_name",
+          "matchMethod": "TOKENS",
+          "provenance": {
+            "coverage": 0.5878756084272152,
+            "method": "TATRMAN_V2",
+            "producer": "fuzzy",
+            "rawScore": 1.0058787560842721,
+            "tokenHits": [
+              {
+                "candidatePos": 1,
+                "candidateToken": "sluchatko",
+                "kind": "exact",
+                "queryToken": "sluchatko"
+              }
+            ]
+          },
+          "score": 1.0058787560842721
+        },
+        {
+          "candidate": "Voltaic Sluchátka MX-B61",
+          "candidateId": "Voltaic Sluchátka MX-B61",
+          "category": "er.entity.item.product_name",
+          "matchMethod": "TOKENS",
+          "provenance": {
+            "coverage": 0.5878756084272152,
+            "method": "TATRMAN_V2",
+            "producer": "fuzzy",
+            "rawScore": 1.0058787560842721,
+            "tokenHits": [
+              {
+                "candidatePos": 1,
+                "candidateToken": "sluchatko",
+                "kind": "exact",
+                "queryToken": "sluchatko"
+              }
+            ]
+          },
+          "score": 1.0058787560842721
+        },
+        {
+          "candidate": "Voltaic Sluchátka MX-YO9",
+          "candidateId": "Voltaic Sluchátka MX-YO9",
+          "category": "er.entity.item.product_name",
+          "matchMethod": "TOKENS",
+          "provenance": {
+            "coverage": 0.5878756084272152,
+            "method": "TATRMAN_V2",
+            "producer": "fuzzy",
+            "rawScore": 1.0058787560842721,
+            "tokenHits": [
+              {
+                "candidatePos": 1,
+                "candidateToken": "sluchatko",
+                "kind": "exact",
+                "queryToken": "sluchatko"
+              }
+            ]
+          },
+          "score": 1.0058787560842721
+        },
+        {
+          "candidate": "Voltaic Sluchátka MX-CRG",
+          "candidateId": "Voltaic Sluchátka MX-CRG",
+          "category": "er.entity.item.product_name",
+          "matchMethod": "TOKENS",
+          "provenance": {
+            "coverage": 0.5878756084272152,
+            "method": "TATRMAN_V2",
+            "producer": "fuzzy",
+            "rawScore": 1.0058787560842721,
+            "tokenHits": [
+              {
+                "candidatePos": 1,
+                "candidateToken": "sluchatko",
+                "kind": "exact",
+                "queryToken": "sluchatko"
+              }
+            ]
+          },
+          "score": 1.0058787560842721
+        }
+      ],
+      "vocabularyVersion": "member:872d9f37/vocab:sha256:2edd54dfa9c42815c53067eaa75879d7d909c9b62e678750e6ccc69442498185@1793273976595"
+    }
+  },
+  {
+    "categories": [
+      "er.entity.item.product_name"
+    ],
+    "limit": 5,
+    "query": "lamp",
+    "response": {
+      "layerVersions": {
+        "lexiconArtifactHash": "sha256:1fbc69ecdd4644fc0a554e8886e925e9a72a853a8ef5d6b86d00be30a949a592",
+        "memberIndexVersions": {
+          "er.entity.call_center.name": "9f838033f8d86850",
+          "er.entity.customer_address.city": "66f20fce754240a3",
+          "er.entity.customer_address.state": "1c57e9d6b02c046d",
+          "er.entity.item.product_name": "428b5fd1723835c6",
+          "er.entity.reason.reason_desc": "bdaa00ff482fb6e4",
+          "er.entity.store.state": "ac401bde1e3bf1a5",
+          "er.entity.store.store_name": "32dfa118c1c8238f",
+          "er.entity.warehouse.state": "a0455124c1455dc6",
+          "er.entity.warehouse.warehouse_name": "e25a4fdcf4dc224d"
+        }
+      },
+      "matchedAlgorithm": "TATRMAN",
+      "matches": [
+        {
+          "candidate": "Marrowgate Lampa MX-M2X",
+          "candidateId": "Marrowgate Lampa MX-M2X",
+          "category": "er.entity.item.product_name",
+          "matchMethod": "TOKENS",
+          "provenance": {
+            "coverage": 0.5637261828216232,
+            "method": "TATRMAN_V2",
+            "producer": "fuzzy",
+            "rawScore": 1.0056372618282163,
+            "tokenHits": [
+              {
+                "candidatePos": 1,
+                "candidateToken": "lampa",
+                "kind": "exact",
+                "queryToken": "lampa"
+              }
+            ]
+          },
+          "score": 1.0056372618282163
+        },
+        {
+          "candidate": "Marrowgate Lampa MX-91M",
+          "candidateId": "Marrowgate Lampa MX-91M",
+          "category": "er.entity.item.product_name",
+          "matchMethod": "TOKENS",
+          "provenance": {
+            "coverage": 0.5637261828216232,
+            "method": "TATRMAN_V2",
+            "producer": "fuzzy",
+            "rawScore": 1.0056372618282163,
+            "tokenHits": [
+              {
+                "candidatePos": 1,
+                "candidateToken": "lampa",
+                "kind": "exact",
+                "queryToken": "lampa"
+              }
+            ]
+          },
+          "score": 1.0056372618282163
+        },
+        {
+          "candidate": "Marrowgate Lampa MX-2JT",
+          "candidateId": "Marrowgate Lampa MX-2JT",
+          "category": "er.entity.item.product_name",
+          "matchMethod": "TOKENS",
+          "provenance": {
+            "coverage": 0.5637261828216232,
+            "method": "TATRMAN_V2",
+            "producer": "fuzzy",
+            "rawScore": 1.0056372618282163,
+            "tokenHits": [
+              {
+                "candidatePos": 1,
+                "candidateToken": "lampa",
+                "kind": "exact",
+                "queryToken": "lampa"
+              }
+            ]
+          },
+          "score": 1.0056372618282163
+        },
+        {
+          "candidate": "Marrowgate Lampa MX-OZR",
+          "candidateId": "Marrowgate Lampa MX-OZR",
+          "category": "er.entity.item.product_name",
+          "matchMethod": "TOKENS",
+          "provenance": {
+            "coverage": 0.5637261828216232,
+            "method": "TATRMAN_V2",
+            "producer": "fuzzy",
+            "rawScore": 1.0056372618282163,
+            "tokenHits": [
+              {
+                "candidatePos": 1,
+                "candidateToken": "lampa",
+                "kind": "exact",
+                "queryToken": "lampa"
+              }
+            ]
+          },
+          "score": 1.0056372618282163
+        },
+        {
+          "candidate": "Marrowgate Lampa MX-PLB",
+          "candidateId": "Marrowgate Lampa MX-PLB",
+          "category": "er.entity.item.product_name",
+          "matchMethod": "TOKENS",
+          "provenance": {
+            "coverage": 0.5637261828216232,
+            "method": "TATRMAN_V2",
+            "producer": "fuzzy",
+            "rawScore": 1.0056372618282163,
+            "tokenHits": [
+              {
+                "candidatePos": 1,
+                "candidateToken": "lampa",
+                "kind": "exact",
+                "queryToken": "lampa"
+              }
+            ]
+          },
+          "score": 1.0056372618282163
+        }
+      ],
+      "vocabularyVersion": "member:872d9f37/vocab:sha256:2edd54dfa9c42815c53067eaa75879d7d909c9b62e678750e6ccc69442498185@1793273976595"
+    }
+  }
+]

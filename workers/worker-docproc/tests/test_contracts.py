@@ -86,7 +86,7 @@ def test_defaults_absent_and_unknown_keys_refused_by_the_strict_twin() -> None:
     imp = Annotation.strict((CONTRACTS / "annotation.import.json").read_text(encoding="utf-8"))
     assert imp.producer_version == "" and "producerVersion" not in imp.dump()  # import: no processor version
     t = AnnotationType.strict((CONTRACTS / "annotationType.json").read_text(encoding="utf-8"))
-    assert t.tier is AnnotationTier.STRUCTURAL and t.feeds_gold is False and "feedsGold" not in t.dump()
+    assert t.tier is AnnotationTier.STRUCTURAL and t.feeds_records is False and "feedsRecords" not in t.dump()
     with pytest.raises(ValidationError):
         Annotation.strict({"unitId": 1, "payload": {}})
 

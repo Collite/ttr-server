@@ -16,6 +16,10 @@
 - name: QUERY_WORLDS
   value: {{ . | quote }}
 {{- end }}
+{{- if .Values.requireWorld }}
+- name: QUERY_REQUIRE_WORLD
+  value: "true"
+{{- end }}
 {{- if .Values.flight.enabled }}
 - name: QUERY_FLIGHT_ENABLED
   value: "true"

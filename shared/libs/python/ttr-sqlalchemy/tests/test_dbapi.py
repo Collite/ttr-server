@@ -233,6 +233,12 @@ def test_an_unknown_world_fails_readably(edge):
     assert e.value.code == "unknown_world"
 
 
+def test_an_omitted_required_world_is_a_connection_error(edge):
+    with _connect(edge) as conn, pytest.raises(dbapi.OperationalError) as e:
+        conn.cursor().execute("SELECT world_required")
+    assert e.value.code == "world_unspecified"
+
+
 def test_a_stream_the_edge_fails_on_its_receipt_yields_no_rows(edge):
     """C-17 — the edge sent rows, then found the door ran on another world's connection: none of them surface."""
     with _connect(edge, world="hartland_cz") as conn:

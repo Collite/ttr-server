@@ -1,0 +1,63 @@
+# The engine's structural annotation types (contracts §1.2, §6; DX-C-3): the one engine registry. docwh-store validates
+# payloads against it (P1 S1.1), docwh-pipeline's TypeRegistry reads it (P2 S2.1), and docproc reads the ttr-server
+# mirror of this directory (P3 S3.1). It is on the JVM classpath through dx-protocol's EngineTypes. A pack adds its model
+# types in its own types/registry.yaml.
+#
+# Payload keys are camelCase (Rule 7). A field the contract names without "?" is required, except where the engine
+# writes the type before anyone can know the field (Chunk: the V5 backfill and the legacy load write only strategy and
+# ordinal) or where the field cannot exist (Match: fn has no prediction, fp no reference). Import.<name> resolves to
+# Import unless a pack declares that exact key. Verdict, Decision and Match attach to any unit; they say section.
+version: 1
+types:
+  - key: Section
+    tier: structural
+    unit_level: section
+    schema: schemas/Section.schema.json
+  - key: SectionKind
+    tier: structural
+    unit_level: section
+    schema: schemas/SectionKind.schema.json
+  - key: Sentence
+    tier: structural
+    unit_level: section
+    schema: schemas/Sentence.schema.json
+  - key: Chunk
+    tier: structural
+    unit_level: section
+    schema: schemas/Chunk.schema.json
+  - key: Mention
+    tier: structural
+    unit_level: chunk
+    schema: schemas/Mention.schema.json
+  - key: Candidate
+    tier: structural
+    unit_level: chunk
+    schema: schemas/Candidate.schema.json
+  - key: Modifier
+    tier: structural
+    unit_level: chunk
+    schema: schemas/Modifier.schema.json
+  - key: Date
+    tier: structural
+    unit_level: chunk
+    schema: schemas/Date.schema.json
+  - key: Verdict
+    tier: structural
+    unit_level: section
+    schema: schemas/Verdict.schema.json
+  - key: Decision
+    tier: structural
+    unit_level: section
+    schema: schemas/Decision.schema.json
+  - key: Match
+    tier: structural
+    unit_level: section
+    schema: schemas/Match.schema.json
+  - key: Import
+    tier: structural
+    unit_level: section
+    schema: schemas/Import.schema.json
+  - key: UnitDiff
+    tier: structural
+    unit_level: section
+    schema: schemas/UnitDiff.schema.json

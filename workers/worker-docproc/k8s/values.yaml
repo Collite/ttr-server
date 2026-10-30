@@ -1,0 +1,53 @@
+replicaCount: 1
+image:
+  repository: ghcr.io/collite/worker-docproc
+  tag: ""
+  pullPolicy: IfNotPresent
+imagePullSecrets: []
+ports:
+  http: 7310
+service:
+  type: ClusterIP
+pool: cpu
+# Empty = all docproc-hosted families. Use a comma-separated list to narrow a pool.
+families: ""
+pipelineDb:
+  secretName: docproc-pipeline-db
+  secretKey: url
+storeUrl: http://docwh-store:7261
+pipelineUrl: http://docwh-pipeline:7280
+nlpGrpc: ""
+lexmatcherGrpc: ""
+gatewayUrl: ""
+packPath: ""
+# Only record-etl pools need this world-DB connection; never an inline value.
+worldDb:
+  secretName: ""
+  secretKey: url
+serviceToken:
+  secretName: ""
+  secretKey: token
+telemetry:
+  enabled: false
+  endpoint: "http://localhost:4317"
+resources:
+  requests:
+    memory: 256Mi
+    cpu: 250m
+  limits:
+    memory: 1Gi
+    cpu: "2"
+readinessProbe:
+  path: /ready
+  initialDelaySeconds: 5
+  periodSeconds: 5
+  failureThreshold: 30
+livenessProbe:
+  path: /health
+  initialDelaySeconds: 10
+  periodSeconds: 15
+extraEnv: []
+podAnnotations: {}
+nodeSelector: {}
+tolerations: []
+affinity: {}

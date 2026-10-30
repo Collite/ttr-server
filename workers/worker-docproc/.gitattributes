@@ -1,0 +1,5 @@
+# The pinned tokenizer vocabulary is data; SHA-256 is checked by the runtime/tests.
+src/docproc/_data/tiktoken/9b5ad71b2ce5302211f9c61530b329a4922fc6a4 -diff
+tests/fixtures/tiktoken/9b5ad71b2ce5302211f9c61530b329a4922fc6a4 -diff
+# Frozen raw RPC recordings stay available as files; review mapped-output goldens.
+tests/fixtures/nlp/*.json linguist-generated=true

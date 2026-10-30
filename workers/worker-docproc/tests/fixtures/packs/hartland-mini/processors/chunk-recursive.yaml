@@ -1,0 +1,17 @@
+family: chunk-recursive
+version: 1
+kind: chunk
+host: docproc
+role: primary
+description: The mart profile's chunking (marts.yaml). max_tokens is small so these short documents still split.
+graph:
+  unit: section
+  when: ""
+  consumes: [Section]
+  produces: [Chunk]
+engine:
+  strategy: recursive
+  params: { max_tokens: 200, overlap: 0, separators: ["\n\n", "\n", ". ", " "], tokenizer: cl100k_base }
+  context: { prefix: [doc_title, section_path], parent_child: true }
+post_conditions: [span_within_unit, coverage, overlap_within_declared, max_tokens]
+budget: { timeout_s: 30, retries: 2 }

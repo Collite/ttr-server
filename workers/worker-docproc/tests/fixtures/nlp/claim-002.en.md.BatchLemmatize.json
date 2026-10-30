@@ -1,0 +1,238 @@
+[
+  {
+    "language": "en",
+    "response": {
+      "results": [
+        {
+          "lemmas": [
+            "customer",
+            "C",
+            "-",
+            "52007",
+            ".",
+            "order",
+            "so",
+            "-",
+            "88412",
+            ".",
+            "product",
+            "HL",
+            "-",
+            "3310",
+            "."
+          ]
+        }
+      ],
+      "used": [
+        {
+          "engine": "stanza",
+          "model": "stanza-cs-en",
+          "modelVersion": "stanza-1.10.0",
+          "op": "LEMMATIZE"
+        }
+      ]
+    },
+    "sha256": "de1c469e83e2f57b874611925ba2744d1e1660e56989043cc42bf2f729ac3f05"
+  },
+  {
+    "language": "en",
+    "response": {
+      "results": [
+        {
+          "lemmas": [
+            "about",
+            "a",
+            "month",
+            "after",
+            "I",
+            "buy",
+            "they",
+            ",",
+            "the",
+            "left",
+            "ear",
+            "cup",
+            "of",
+            "my",
+            "Pulse",
+            "Wireless",
+            "Headphones",
+            "stop",
+            "produce",
+            "any",
+            "sound",
+            ".",
+            "the",
+            "right",
+            "side",
+            "still",
+            "work",
+            ",",
+            "and",
+            "the",
+            "headphone",
+            "still",
+            "pair",
+            "and",
+            "charge",
+            "normally",
+            ".",
+            "I",
+            "try",
+            "a",
+            "reset",
+            "and",
+            "a",
+            "second",
+            "phone",
+            ";",
+            "the",
+            "left",
+            "side",
+            "stay",
+            "silent",
+            "either",
+            "way",
+            "."
+          ]
+        }
+      ],
+      "used": [
+        {
+          "engine": "stanza",
+          "model": "stanza-cs-en",
+          "modelVersion": "stanza-1.10.0",
+          "op": "LEMMATIZE"
+        }
+      ]
+    },
+    "sha256": "5b3c13d5f287be31f794a6ad49da0c2cc4b9fdab018e6b9108ada3d783ccb333"
+  },
+  {
+    "language": "en",
+    "response": {
+      "results": [
+        {
+          "lemmas": [
+            "I",
+            "would",
+            "like",
+            "a",
+            "replacement",
+            "pair",
+            ".",
+            "if",
+            "no",
+            "replacement",
+            "be",
+            "available",
+            ",",
+            "please",
+            "refund",
+            "the",
+            "price",
+            "I",
+            "pay",
+            ",",
+            "$",
+            "89.99",
+            "."
+          ]
+        }
+      ],
+      "used": [
+        {
+          "engine": "stanza",
+          "model": "stanza-cs-en",
+          "modelVersion": "stanza-1.10.0",
+          "op": "LEMMATIZE"
+        }
+      ]
+    },
+    "sha256": "10cc419e1ed14f3cd536bf72daf99800656d4e1e8c40e68a867425546d11daef"
+  },
+  {
+    "language": "en",
+    "response": {
+      "results": [
+        {
+          "lemmas": [
+            "I",
+            "already",
+            "report",
+            "this",
+            "to",
+            "customer",
+            "service",
+            "on",
+            "3",
+            "October",
+            "2026",
+            ":",
+            "hello",
+            ",",
+            "the",
+            "left",
+            "side",
+            "of",
+            "my",
+            "pulse",
+            "headphone",
+            "have",
+            "go",
+            "completely",
+            "silent",
+            "after",
+            "four",
+            "week",
+            ".",
+            "be",
+            "this",
+            "cover",
+            "by",
+            "the",
+            "warranty",
+            ",",
+            "and",
+            "should",
+            "I",
+            "send",
+            "they",
+            "in",
+            "or",
+            "bring",
+            "they",
+            "to",
+            "a",
+            "store",
+            "?",
+            "I",
+            "have",
+            "not",
+            "receive",
+            "a",
+            "reply",
+            "yet",
+            ",",
+            "so",
+            "I",
+            "be",
+            "file",
+            "this",
+            "claim",
+            "."
+          ]
+        }
+      ],
+      "used": [
+        {
+          "engine": "stanza",
+          "model": "stanza-cs-en",
+          "modelVersion": "stanza-1.10.0",
+          "op": "LEMMATIZE"
+        }
+      ]
+    },
+    "sha256": "97fb3f2581fd728c3cfcba2f58b54aa88a9ef7d89f77234e7e1167a363a9c68c"
+  }
+]

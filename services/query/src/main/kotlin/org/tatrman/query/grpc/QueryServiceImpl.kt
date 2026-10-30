@@ -134,21 +134,16 @@ class QueryServiceImpl(
             flow {
                 activeRuns.incrementAndGet()
                 try {
+                    // #261 / BI (C-9) — choose the execution world before compilation or cache lookup.
+                    worldRefusal(request.world, context)?.let {
+                        emit(it)
+                        return@flow
+                    }
                     windowRefusal(window)?.let { reason ->
                         emit(errorBatch("invalid_row_window", reason, context))
                         return@flow
                     }
-                    // BI (C-9) — the world picks the connection; one this door does not serve is refused before
-                    // anything is compiled. Empty = the deployment's default connection, as before.
-                    val connectionId =
-                        if (request.world.isEmpty()) {
-                            ""
-                        } else {
-                            worlds.connectionOf(request.world) ?: run {
-                                emit(errorBatch(Worlds.UNKNOWN_WORLD, worlds.unknown(request.world), context))
-                                return@flow
-                            }
-                        }
+                    val connectionId = worlds.connectionOf(request.world).orEmpty()
                     // The validator's `top_n_applied` warnings, from whichever pass raised one.
                     val capNotices = mutableListOf<ResponseMessage>()
                     // ES-P0·S0.3 — the receipt's plan half. `security_applied` accumulates across
@@ -1097,6 +1092,10 @@ class QueryServiceImpl(
     override fun runSavedQuery(request: RunSavedQueryRequest): Flow<ResultBatch> =
         flow {
             val context = ensureCorrelationId(request.context)
+            worldRefusal(request.world, context)?.let {
+                emit(it)
+                return@flow
+            }
             when (val resolved = resolveSavedQuery(request.qualifiedName)) {
                 is SavedQueryResolution.Refused -> emit(errorBatch(resolved.code, resolved.message, context))
                 is SavedQueryResolution.Stored ->
@@ -1117,6 +1116,11 @@ class QueryServiceImpl(
                     )
             }
         }
+
+    private fun worldRefusal(
+        world: String,
+        context: PipelineContext,
+    ): ResultBatch? = worlds.refusal(world)?.let { (code, message) -> errorBatch(code, message, context) }
 
     private sealed interface SavedQueryResolution {
         data class Stored(

@@ -1,0 +1,189 @@
+{
+  "chunks": {
+    "items": [
+      {
+        "id": "g:sheet-001.en:c0",
+        "ordinal": 0,
+        "section": "g:sheet-001.en:s0",
+        "span": {
+          "end": 54,
+          "start": 0
+        },
+        "tokenCount": 16
+      },
+      {
+        "id": "g:sheet-001.en:c1",
+        "ordinal": 0,
+        "section": "g:sheet-001.en:s1",
+        "span": {
+          "end": 772,
+          "start": 0
+        },
+        "tokenCount": 167
+      },
+      {
+        "id": "g:sheet-001.en:c2",
+        "ordinal": 1,
+        "section": "g:sheet-001.en:s1",
+        "span": {
+          "end": 1013,
+          "start": 774
+        },
+        "tokenCount": 50
+      },
+      {
+        "id": "g:sheet-001.en:c3",
+        "ordinal": 0,
+        "section": "g:sheet-001.en:s2",
+        "span": {
+          "end": 309,
+          "start": 0
+        },
+        "tokenCount": 105
+      },
+      {
+        "id": "g:sheet-001.en:c4",
+        "ordinal": 0,
+        "section": "g:sheet-001.en:s3",
+        "span": {
+          "end": 83,
+          "start": 0
+        },
+        "tokenCount": 21
+      },
+      {
+        "id": "g:sheet-001.en:c5",
+        "ordinal": 0,
+        "section": "g:sheet-001.en:s4",
+        "span": {
+          "end": 636,
+          "start": 0
+        },
+        "tokenCount": 143
+      },
+      {
+        "id": "g:sheet-001.en:c6",
+        "ordinal": 0,
+        "section": "g:sheet-001.en:s5",
+        "span": {
+          "end": 549,
+          "start": 0
+        },
+        "tokenCount": 124
+      },
+      {
+        "id": "g:sheet-001.en:c7",
+        "ordinal": 0,
+        "section": "g:sheet-001.en:s6",
+        "span": {
+          "end": 351,
+          "start": 0
+        },
+        "tokenCount": 79
+      },
+      {
+        "id": "g:sheet-001.en:c8",
+        "ordinal": 0,
+        "section": "g:sheet-001.en:s7",
+        "span": {
+          "end": 255,
+          "start": 0
+        },
+        "tokenCount": 56
+      }
+    ],
+    "maxTokens": 200,
+    "producer": "chunk-recursive",
+    "tokenizer": "cl100k_base"
+  },
+  "document": "sheet-001.en.html",
+  "sections": [
+    {
+      "contentHash": "sha256:a4705493d1d7ccf14e48d56dcb08a67a9381973f2baa1d4df6364907175f4929",
+      "id": "g:sheet-001.en:s0",
+      "idx": 0,
+      "sectionPath": [
+        "Aurora Desk Lamp"
+      ],
+      "text": "Product HL-1001. Category: Home. Brand: Hartland Home.",
+      "title": "Aurora Desk Lamp"
+    },
+    {
+      "contentHash": "sha256:5e552b84ae38cbefc65ba96d4e17a718550861b014e1a8e68a87ca2c3bba7efc",
+      "id": "g:sheet-001.en:s1",
+      "idx": 1,
+      "sectionPath": [
+        "Aurora Desk Lamp",
+        "Overview"
+      ],
+      "text": "The Aurora Desk Lamp is a compact LED task light for a home office, a reading corner or a child's study desk. Its weighted aluminium base keeps the lamp steady when the arm is fully extended, and the two-joint arm folds flat against the base when the desk is needed for something else.\n\nThe light comes from a single diffused panel rather than a row of bare diodes, so it throws an even pool of light without hot spots or double shadows. Five brightness steps and three colour temperatures are set from a touch strip on the base; the lamp remembers the last setting when it is switched off.\n\nA USB-C port in the back of the base charges a phone or a pair of earbuds while the lamp is in use. The port shares the lamp's power supply, so nothing else needs to be plugged in.\n\nThe lamp is sold in two finishes, matte black and brushed silver, which differ only in colour. Both use the same panel, adapter and arm, so the specifications below apply to either finish, and a spare adapter bought for one fits the other.",
+      "title": "Overview"
+    },
+    {
+      "contentHash": "sha256:836342c532a9d3e07592c505d1a1ff9469f7248992b6472c9be605f7cf8adb84",
+      "id": "g:sheet-001.en:s2",
+      "idx": 2,
+      "sectionPath": [
+        "Aurora Desk Lamp",
+        "Specifications"
+      ],
+      "text": "Property Value  Light source LED panel, 8 W  Luminous flux 520 lm  Colour temperature 2700 K, 4000 K, 5500 K  Brightness steps 5  Colour rendering index Ra 90  Charging port USB-C, 5 V, 1.5 A  Arm reach 42 cm  Base diameter 16 cm  Weight 1.4 kg  Power supply 12 V adapter, 1.8 m cable  Rated life 25,000 hours",
+      "title": "Specifications"
+    },
+    {
+      "contentHash": "sha256:d446c07f2292fc992ef5b2978ced7e4f5246425d0350e3b2be23f3f6fff31e61",
+      "id": "g:sheet-001.en:s3",
+      "idx": 3,
+      "sectionPath": [
+        "Aurora Desk Lamp",
+        "In the box"
+      ],
+      "text": "- Aurora Desk Lamp with the arm attached\n- 12 V power adapter\n- Quick start leaflet",
+      "title": "In the box"
+    },
+    {
+      "contentHash": "sha256:5d65c389ca82c506b1c28c69a54aa2656868f2aa9c0fa7af760483064565df5e",
+      "id": "g:sheet-001.en:s4",
+      "idx": 4,
+      "sectionPath": [
+        "Aurora Desk Lamp",
+        "Using the lamp"
+      ],
+      "text": "Touch the strip on the base once to switch the lamp on or off. Slide a finger along the strip to change the brightness, and hold the left end of the strip for two seconds to step through the three colour temperatures. Warm light at 2700 K suits reading in the evening; the cooler 5500 K setting is closer to daylight and is the better choice for drawing, sewing or checking colours.\n\nThe arm moves at both joints and the head tilts by 90 degrees. Move the arm by holding the joints, not the head, so the head's hinge keeps its tension. When the arm is folded, the lamp head rests on a rubber pad in the base and does not touch the desk.",
+      "title": "Using the lamp"
+    },
+    {
+      "contentHash": "sha256:3f4e352462aaf52b9dc2541a581b732733eef41ee53da877f441070c78034d90",
+      "id": "g:sheet-001.en:s5",
+      "idx": 5,
+      "sectionPath": [
+        "Aurora Desk Lamp",
+        "Questions and answers"
+      ],
+      "text": "Can the lamp be mounted on a wall? No. The arm is balanced against the weight of the base, and the lamp is designed to stand on a desk or a shelf.\n\nDoes the lamp flicker on a camera? The panel is driven with direct current at every brightness step, so video calls and phone cameras do not pick up a flicker. If you see one, the lamp should be checked under the warranty.\n\nCan the panel be replaced? The panel is fixed in the head and is covered by its own three-year warranty. A worn-out panel is replaced together with the head at a Hartland store.",
+      "title": "Questions and answers"
+    },
+    {
+      "contentHash": "sha256:9896d1a6b4cdaf77d89df699745d0929dcf9b4be06a42b4dfcc58ea32198bdf7",
+      "id": "g:sheet-001.en:s6",
+      "idx": 6,
+      "sectionPath": [
+        "Aurora Desk Lamp",
+        "Care and safety"
+      ],
+      "text": "Wipe the lamp with a dry or slightly damp cloth; do not use solvents or spray cleaners on the panel. The panel stays cool to the touch in normal use, but the adapter can become warm and should not be covered.\n\nThe lamp is meant for indoor use only. Keep it away from water and do not open the base: there are no parts inside that the user can service.",
+      "title": "Care and safety"
+    },
+    {
+      "contentHash": "sha256:79060c6a8475c4aca7bc7ac8e3b0aa2f562dbbc74f4361045669a6c772e63e00",
+      "id": "g:sheet-001.en:s7",
+      "idx": 7,
+      "sectionPath": [
+        "Aurora Desk Lamp",
+        "Warranty"
+      ],
+      "text": "Hartland gives a two-year warranty on the Aurora Desk Lamp and a three-year warranty on the LED panel. Keep the receipt; a claim is made at any Hartland store or through the customer service form, and the lamp is repaired or replaced at Hartland's choice.",
+      "title": "Warranty"
+    }
+  ]
+}

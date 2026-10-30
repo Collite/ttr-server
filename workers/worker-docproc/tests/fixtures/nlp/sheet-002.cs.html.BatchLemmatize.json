@@ -1,0 +1,321 @@
+[
+  {
+    "language": "cs",
+    "response": {
+      "results": [
+        {
+          "lemmas": [
+            "produkt",
+            "hladní",
+            "-",
+            "2040",
+            ".",
+            "kategorie",
+            ":",
+            "domácnost",
+            ".",
+            "značka",
+            ":",
+            "Hartland",
+            "Home",
+            "."
+          ]
+        }
+      ],
+      "used": [
+        {
+          "engine": "stanza",
+          "model": "stanza-cs-en",
+          "modelVersion": "stanza-1.10.0",
+          "op": "LEMMATIZE"
+        }
+      ]
+    },
+    "sha256": "57cbeb9fc5c77368f127f4e8d8d6946d71c1e8433e28ecacbcea5ad359bddba7"
+  },
+  {
+    "language": "cs",
+    "response": {
+      "results": [
+        {
+          "lemmas": [
+            "sloupový",
+            "ventilátor",
+            "Breez",
+            "být",
+            "štíhlý",
+            "ventilátor",
+            "do",
+            "obývák",
+            ",",
+            "pracovna",
+            "nebo",
+            "ložnice",
+            ".",
+            "vzduch",
+            "nasávat",
+            "po",
+            "celý",
+            "výška",
+            "sloup",
+            "a",
+            "vyfukovat",
+            "on",
+            "úzký",
+            "mřížka",
+            "vpředu",
+            ",",
+            "takže",
+            "proud",
+            "být",
+            "rovnoměrný",
+            "a",
+            "foukat",
+            "jen",
+            "do",
+            "jeden",
+            "místo",
+            ".",
+            "ventilátor",
+            "se",
+            "moci",
+            "otáčet",
+            "o",
+            "70",
+            "stupeň",
+            "do",
+            "strana",
+            ".",
+            "na",
+            "výběr",
+            "být",
+            "tři",
+            "rychlost",
+            "a",
+            "noční",
+            "režim",
+            ",",
+            "v",
+            "který",
+            "ventilátor",
+            "běžet",
+            "čiseo",
+            "a",
+            "po",
+            "hodina",
+            "samý",
+            "snížit",
+            "otáčka",
+            ".",
+            "časovač",
+            "vypnout",
+            "ventilátor",
+            "po",
+            "jeden",
+            "až",
+            "osm",
+            "hodina",
+            ".",
+            "všechen",
+            "se",
+            "ovládat",
+            "tlačítko",
+            "nahoře",
+            "na",
+            "sloup",
+            "nebo",
+            "dálkový",
+            "ovladač",
+            ",",
+            "který",
+            "se",
+            "ukládat",
+            "do",
+            "drážka",
+            "v",
+            "zadní",
+            "část",
+            "."
+          ]
+        }
+      ],
+      "used": [
+        {
+          "engine": "stanza",
+          "model": "stanza-cs-en",
+          "modelVersion": "stanza-1.10.0",
+          "op": "LEMMATIZE"
+        }
+      ]
+    },
+    "sha256": "d65c4da64f21e3b6104a34788f1882a9e2ac7164c10fa93bcc34b3ffdfec2be8"
+  },
+  {
+    "language": "cs",
+    "response": {
+      "results": [
+        {
+          "lemmas": [
+            "parametr",
+            "hodnota",
+            "příkon",
+            "45",
+            "W",
+            "napájení",
+            "230",
+            "V",
+            ",",
+            "50",
+            "hertz",
+            "hlučnost",
+            "v",
+            "noční",
+            "režim",
+            "32",
+            "decibel",
+            "hlučnost",
+            "na",
+            "vysoký",
+            "rychlost",
+            "54",
+            "decibel"
+          ]
+        }
+      ],
+      "used": [
+        {
+          "engine": "stanza",
+          "model": "stanza-cs-en",
+          "modelVersion": "stanza-1.10.0",
+          "op": "LEMMATIZE"
+        }
+      ]
+    },
+    "sha256": "f3db734de1a0f7f4cfc073576c04f3039a538fde55117cfccc0653140d344361"
+  },
+  {
+    "language": "cs",
+    "response": {
+      "results": [
+        {
+          "lemmas": [
+            "parametr",
+            "hodnota",
+            "výška",
+            "105",
+            "centimetr",
+            "průměr",
+            "podstavec",
+            "30",
+            "centimetr",
+            "hmotnost",
+            "4",
+            ",",
+            "2",
+            "kilogram"
+          ]
+        }
+      ],
+      "used": [
+        {
+          "engine": "stanza",
+          "model": "stanza-cs-en",
+          "modelVersion": "stanza-1.10.0",
+          "op": "LEMMATIZE"
+        }
+      ]
+    },
+    "sha256": "1b9cefaf85c3d225b0a14ff25daa8567c0a5bba9f72bc48b7c7ed04d5bb45c91"
+  },
+  {
+    "language": "cs",
+    "response": {
+      "results": [
+        {
+          "lemmas": [
+            "před",
+            "čištění",
+            "ventilátor",
+            "vypnít",
+            "a",
+            "vytáhnout",
+            "z",
+            "zásuvka",
+            ".",
+            "mřížek",
+            "otřát",
+            "suchý",
+            "hadřík",
+            "nebo",
+            "vysat",
+            ",",
+            "do",
+            "sloup",
+            "stříkat",
+            "voda",
+            "ani",
+            "čisticí",
+            "prostředek",
+            "."
+          ]
+        }
+      ],
+      "used": [
+        {
+          "engine": "stanza",
+          "model": "stanza-cs-en",
+          "modelVersion": "stanza-1.10.0",
+          "op": "LEMMATIZE"
+        }
+      ]
+    },
+    "sha256": "40ccef6bd816368f3fba40bbc83c9620e6146cacdfcd488706aa7cda6f1bcff7"
+  },
+  {
+    "language": "cs",
+    "response": {
+      "results": [
+        {
+          "lemmas": [
+            "na",
+            "sloupový",
+            "ventilátor",
+            "Breez",
+            "poskytovat",
+            "Hartland",
+            "záruka",
+            "24",
+            "měsíc",
+            ".",
+            "reklamace",
+            "uplatnit",
+            "v",
+            "kterýkoli",
+            "prodejna",
+            "Hartland",
+            "nebo",
+            "přes",
+            "zákaznický",
+            "formulář",
+            ";",
+            "uschovat",
+            "se",
+            "doklad",
+            "o",
+            "koupě",
+            "."
+          ]
+        }
+      ],
+      "used": [
+        {
+          "engine": "stanza",
+          "model": "stanza-cs-en",
+          "modelVersion": "stanza-1.10.0",
+          "op": "LEMMATIZE"
+        }
+      ]
+    },
+    "sha256": "79957471511d40f528ae5e9baade5f963f569267a31d319b1985db035a3f1f9f"
+  }
+]

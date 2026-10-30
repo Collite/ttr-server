@@ -1,0 +1,113 @@
+[
+  {
+    "id": "g:claim-002.en:0",
+    "payload": {
+      "context": {
+        "parentUnitId": "g:claim-002.en:s0",
+        "prefix": "claim-002.en.md › Warranty claim: Pulse Wireless Headphones"
+      },
+      "ordinal": 0,
+      "paramsHash": "sha256:3af0f7233fa37fbb8ca5d0cded454191f097971ea864a361461c128f1bab4ff2",
+      "strategy": "sentence-window",
+      "tokenCount": 18
+    },
+    "spans": [
+      {
+        "end": 50,
+        "start": 0,
+        "unit": "g:claim-002.en:s0"
+      }
+    ],
+    "type": "Chunk",
+    "unit": "g:claim-002.en:s0"
+  },
+  {
+    "id": "g:claim-002.en:1",
+    "payload": {
+      "context": {
+        "parentUnitId": "g:claim-002.en:s1",
+        "prefix": "claim-002.en.md › Warranty claim: Pulse Wireless Headphones › The defect"
+      },
+      "ordinal": 0,
+      "paramsHash": "sha256:3af0f7233fa37fbb8ca5d0cded454191f097971ea864a361461c128f1bab4ff2",
+      "strategy": "sentence-window",
+      "tokenCount": 55
+    },
+    "spans": [
+      {
+        "end": 266,
+        "start": 0,
+        "unit": "g:claim-002.en:s1"
+      }
+    ],
+    "type": "Chunk",
+    "unit": "g:claim-002.en:s1"
+  },
+  {
+    "id": "g:claim-002.en:2",
+    "payload": {
+      "context": {
+        "parentUnitId": "g:claim-002.en:s2",
+        "prefix": "claim-002.en.md › Warranty claim: Pulse Wireless Headphones › What I am asking for"
+      },
+      "ordinal": 0,
+      "paramsHash": "sha256:3af0f7233fa37fbb8ca5d0cded454191f097971ea864a361461c128f1bab4ff2",
+      "strategy": "sentence-window",
+      "tokenCount": 25
+    },
+    "spans": [
+      {
+        "end": 104,
+        "start": 0,
+        "unit": "g:claim-002.en:s2"
+      }
+    ],
+    "type": "Chunk",
+    "unit": "g:claim-002.en:s2"
+  },
+  {
+    "id": "g:claim-002.en:3",
+    "payload": {
+      "context": {
+        "parentUnitId": "g:claim-002.en:s3",
+        "prefix": "claim-002.en.md › Warranty claim: Pulse Wireless Headphones › Earlier correspondence"
+      },
+      "ordinal": 0,
+      "paramsHash": "sha256:3af0f7233fa37fbb8ca5d0cded454191f097971ea864a361461c128f1bab4ff2",
+      "strategy": "sentence-window",
+      "tokenCount": 52
+    },
+    "spans": [
+      {
+        "end": 237,
+        "start": 0,
+        "unit": "g:claim-002.en:s3"
+      }
+    ],
+    "type": "Chunk",
+    "unit": "g:claim-002.en:s3"
+  },
+  {
+    "id": "g:claim-002.en:4",
+    "payload": {
+      "context": {
+        "parentUnitId": "g:claim-002.en:s3",
+        "prefix": "claim-002.en.md › Warranty claim: Pulse Wireless Headphones › Earlier correspondence"
+      },
+      "ordinal": 1,
+      "overlapWithPrev": 20,
+      "paramsHash": "sha256:3af0f7233fa37fbb8ca5d0cded454191f097971ea864a361461c128f1bab4ff2",
+      "strategy": "sentence-window",
+      "tokenCount": 35
+    },
+    "spans": [
+      {
+        "end": 298,
+        "start": 153,
+        "unit": "g:claim-002.en:s3"
+      }
+    ],
+    "type": "Chunk",
+    "unit": "g:claim-002.en:s3"
+  }
+]

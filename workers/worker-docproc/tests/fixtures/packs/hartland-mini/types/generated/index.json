@@ -1,0 +1,53 @@
+{
+  "snapshotHash": "sha256:cac34228f17c5e9b5961dd0ff41cf911a70aec077396b8d12f01b804583d7071",
+  "types": [
+    {
+      "feedsGold": true,
+      "file": "Record.claim.schema.json",
+      "key": "Record.claim",
+      "renderedFrom": {
+        "entity": "er.entity.claim",
+        "kind": "record"
+      },
+      "sha256": "72f0abb267a545c18414e7da382caff7ec999a777e9bf46b6193a32cc1750944",
+      "tier": "model",
+      "unitLevel": "subject"
+    },
+    {
+      "feedsGold": true,
+      "file": "Record.review.schema.json",
+      "key": "Record.review",
+      "renderedFrom": {
+        "entity": "er.entity.review",
+        "kind": "record"
+      },
+      "sha256": "1d5d31f90e4f479e003197c904f5de124ba65f7ba2543ffc597ea616a026b49c",
+      "tier": "model",
+      "unitLevel": "subject"
+    },
+    {
+      "feedsGold": false,
+      "file": "Statement.claim.schema.json",
+      "key": "Statement[claim]",
+      "renderedFrom": {
+        "entity": "er.entity.claim",
+        "kind": "statement"
+      },
+      "sha256": "80ba8dfb1f887bbe07060e0664929ba38e5c58e87c45cfa87b12f68e532a4289",
+      "tier": "model",
+      "unitLevel": "section"
+    },
+    {
+      "feedsGold": false,
+      "file": "Statement.review.schema.json",
+      "key": "Statement[review]",
+      "renderedFrom": {
+        "entity": "er.entity.review",
+        "kind": "statement"
+      },
+      "sha256": "dec270fc6e09e8ea22abd3f95172da6ca0c7bb7440131e1b0a3ca29747f15041",
+      "tier": "model",
+      "unitLevel": "section"
+    }
+  ]
+}

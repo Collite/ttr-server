@@ -254,7 +254,7 @@ class AnnotationType(DxModel):
     # wire name `schemaJson`; the attribute avoids pydantic's own `BaseModel.schema_json`
     schema_text: str = Field("", alias="schemaJson")
     unit_level: str = ""
-    feeds_gold: bool = False
+    feeds_records: bool = False
     version: str = ""
 
 
@@ -278,6 +278,7 @@ class LoadAnnotationsRequest(DxModel):
     run_id: str = ""
     annotations: list[Annotation] = []
     visibility: RunVisibility | None = None
+    generation: str | None = None
 
 
 class LoadAnnotationsResponse(DxModel):
@@ -296,6 +297,8 @@ class ListAnnotationsRequest(DxModel):
     active_only: bool | None = None  # absent = true (the server's default)
     page_size: int = 0
     page_token: str = ""
+
+    generation: str | None = None  # active + runs in this generation (DX-C-2 P3 seam)
 
     def query(self) -> list[tuple[str, str | int | float | bool | None]]:
         """The `GET /annotations` query string: camelCase keys, repeated keys for lists, defaults left out."""
@@ -316,3 +319,27 @@ class ListAnnotationsPage(DxModel):
     annotations: list[Annotation] = []
     next_page_token: str = ""
     messages: list[ResponseMessage] = []
+
+
+class ProcessorRole(DxEnum):
+    PROCESSOR_ROLE_UNSPECIFIED = "PROCESSOR_ROLE_UNSPECIFIED"
+    ROLE_PRIMARY = "ROLE_PRIMARY"
+    ROLE_MENTOR = "ROLE_MENTOR"
+    ROLE_AUDITOR = "ROLE_AUDITOR"
+    ROLE_RESIDUAL = "ROLE_RESIDUAL"
+    ROLE_RETIRED = "ROLE_RETIRED"
+
+
+class Processor(DxModel):
+    family: str = ""
+    version: str = ""
+    version_hash: str = ""
+    kind: str = ""
+    host: str = ""
+    role: ProcessorRole = ProcessorRole.PROCESSOR_ROLE_UNSPECIFIED
+    manifest_yaml: str = ""
+    consumes: list[str] = []
+    produces: list[str] = []
+    unit: str = ""
+    when: str = ""
+    mirror_of: str | None = None

@@ -1,0 +1,20 @@
+family: llm-mentions
+version: 1
+kind: llm-extract
+host: docproc-llm
+role: mentor
+description: The LLM mentor of cz-mentions (P4 S4.3). Planned SHADOW; its prompt is P4's.
+graph:
+  unit: section
+  when: "SectionKind.kind in [review_body, claim_body]"
+  consumes: [Section, SectionKind]
+  produces: ["Mention[item]"]
+engine:
+  prompt: prompts/llm-mentions.v1.md.j2
+  provider_tier: cloud-ok
+  model: { route: extract-strong, pin: "" }
+  decoding: { temperature: 0, seed: 7, max_output_tokens: 800 }
+post_conditions: [span_within_unit, schema_valid]
+measurement: { golden_set: mini-gold-v1, gates: { min_f1_span: 0.8 } }
+budget: { max_cost_per_run_usd: 0.01, timeout_s: 60, retries: 2, daily_cap_usd: 2 }
+privacy: { text_may_leave_premises: true }

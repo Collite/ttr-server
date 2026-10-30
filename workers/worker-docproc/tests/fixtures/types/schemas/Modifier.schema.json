@@ -1,0 +1,49 @@
+{
+  "$defs": {
+    "Span": {
+      "additionalProperties": false,
+      "description": "[start, end) in Unicode code points of the unit's NFC text.",
+      "properties": {
+        "end": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "start": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "unitId": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "start",
+        "end"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "ttr:types/Modifier",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "A modifier (negation, uncertainty, temporality, …) over a scope, set off by a trigger.",
+  "properties": {
+    "kind": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "scope": {
+      "$ref": "#/$defs/Span"
+    },
+    "trigger": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "kind",
+    "scope",
+    "trigger"
+  ],
+  "title": "Modifier",
+  "type": "object"
+}

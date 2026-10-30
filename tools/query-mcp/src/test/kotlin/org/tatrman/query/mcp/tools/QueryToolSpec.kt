@@ -150,6 +150,52 @@ class QueryToolSpec :
             ((msgs[0] as JsonObject)["code"] as JsonPrimitive).content shouldBe "row_limit_out_of_range"
         }
 
+        "the optional world argument reaches Run, and absent or blank values stay empty" {
+            val captured = mutableListOf<RunRequest>()
+            val runner =
+                object : QueryRunnerClient {
+                    override fun run(request: RunRequest): Flow<ResultBatch> {
+                        captured += request
+                        return flowOf()
+                    }
+
+                    override suspend fun compile(request: RunRequest) = CompileResponse.getDefaultInstance()
+                }
+            val tool = QueryTool(cfg, runner, fakeMetadata)
+            tool.inputSchema.properties!!.keys shouldContain "world"
+            tool.inputSchema.required!!.contains("world") shouldBe false
+            for (world in listOf("hartland_us", null, "   ")) {
+                val args =
+                    buildJsonObject {
+                        put("source", JsonPrimitive("SELECT 1"))
+                        put("source_language", JsonPrimitive("sql"))
+                        world?.let { put("world", JsonPrimitive(it)) }
+                    }
+                tool.execute(CallToolRequest(params = CallToolRequestParams(name = "query", arguments = args)), null)
+            }
+            captured.map { it.world } shouldBe listOf("hartland_us", "", "")
+        }
+
+        "an upstream world_unspecified refusal returns a tool error with its code" {
+            val batch =
+                ResultBatch
+                    .newBuilder()
+                    .setIsFirst(true)
+                    .setIsLast(true)
+                    .addMessages(
+                        org.tatrman.common.v1.ResponseMessage
+                            .newBuilder()
+                            .setSeverity(org.tatrman.common.v1.Severity.ERROR)
+                            .setCode("world_unspecified")
+                            .setHumanMessage("Choose a world."),
+                    ).build()
+            val tool = QueryTool(cfg, fakeRunner(listOf(batch)), fakeMetadata)
+            val res = tool.execute(queryCall(), null)
+            res.isError shouldBe true
+            val messages = res.structuredContent!!["messages"] as JsonArray
+            ((messages.single() as JsonObject)["code"] as JsonPrimitive).content shouldBe "world_unspecified"
+        }
+
         "source_language=sql defaults source_schema to DB on the RunRequest" {
             var captured: RunRequest? = null
             val runner =

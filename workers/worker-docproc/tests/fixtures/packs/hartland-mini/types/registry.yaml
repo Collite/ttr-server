@@ -1,0 +1,25 @@
+# hartland-mini's registry extension (contracts §6): the model tier only. The engine's structural set
+# (Section, Chunk, Mention, Import, …) is P1 S1.1's shared/proto/fixtures/dx/types/engine.yaml, not this file.
+# Each schema is the rendered file types/generated/<stem>.schema.json, pinned by index.json's snapshotHash.
+version: 1
+types:
+  - key: "Statement[review]"
+    tier: model
+    unit_level: section
+    feeds_records: false
+    rendered_from: { entity: er.entity.review, kind: statement }
+  - key: "Record.review"
+    tier: model
+    unit_level: subject
+    feeds_records: true
+    rendered_from: { entity: er.entity.review, kind: record }
+  - key: "Statement[claim]"
+    tier: model
+    unit_level: section
+    feeds_records: false
+    rendered_from: { entity: er.entity.claim, kind: statement }
+  - key: "Record.claim"
+    tier: model
+    unit_level: subject
+    feeds_records: true
+    rendered_from: { entity: er.entity.claim, kind: record }

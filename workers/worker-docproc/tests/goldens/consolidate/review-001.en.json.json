@@ -1,0 +1,108 @@
+[
+  {
+    "id": "g:review-001.en:0",
+    "payload": {
+      "attributes": {
+        "body": "I bought the Aurora Desk Lamp for my home office. The light itself is pleasant, but at the lowest brightness step the panel flickers, which I notice within a few minutes of reading. At the higher steps it is fine. For the price I expected better, and I am returning it.",
+        "customer": {
+          "qname": "C-20417"
+        },
+        "item": {
+          "qname": "HL-1001"
+        },
+        "rating": 2,
+        "recorded_at": "2026-09-14T08:12:00Z",
+        "reviewed_on": "2026-09-14",
+        "sentiment": "negative",
+        "title": "Flickers at the lowest setting"
+      },
+      "consolidationRun": "consolidate-review-review-001.en.json/1",
+      "evidence": [
+        {
+          "annotationId": 300,
+          "role": "creates"
+        }
+      ],
+      "modifiers": {
+        "temporal_context": "current",
+        "verification": "verified_purchase"
+      }
+    },
+    "spans": [],
+    "type": "Record.review",
+    "unit": "g:review-001.en:document"
+  },
+  {
+    "id": "g:review-001.en:1",
+    "payload": {
+      "chosen": "R-1001-01",
+      "decider": "consolidate/key",
+      "factors": {
+        "identity": "known",
+        "nature": "occurrence",
+        "recordEvidence": [
+          300
+        ],
+        "recordType": "Record.review",
+        "subjectId": "HL-1001"
+      },
+      "score": 1
+    },
+    "spans": [],
+    "type": "Decision",
+    "unit": "g:review-001.en:document"
+  },
+  {
+    "id": "g:review-001.en:2",
+    "payload": {
+      "attributes": {
+        "body": "After two weeks of evenings at my desk the Aurora lamp has replaced my old halogen one completely. The warm setting is easy on the eyes and the USB-C port in the base keeps my phone charged. I plan to buy a second Aurora Desk Lamp for the bedroom.",
+        "customer": {
+          "qname": "C-20988"
+        },
+        "item": {
+          "qname": "HL-1001"
+        },
+        "rating": 5,
+        "recorded_at": "2026-09-28T19:40:00Z",
+        "reviewed_on": "2026-09-28",
+        "sentiment": "positive",
+        "title": "Great light for late work"
+      },
+      "consolidationRun": "consolidate-review-review-001.en.json/1",
+      "evidence": [
+        {
+          "annotationId": 301,
+          "role": "creates"
+        }
+      ],
+      "modifiers": {
+        "temporal_context": "current",
+        "verification": "unverified"
+      }
+    },
+    "spans": [],
+    "type": "Record.review",
+    "unit": "g:review-001.en:document"
+  },
+  {
+    "id": "g:review-001.en:3",
+    "payload": {
+      "chosen": "R-1001-02",
+      "decider": "consolidate/key",
+      "factors": {
+        "identity": "known",
+        "nature": "occurrence",
+        "recordEvidence": [
+          301
+        ],
+        "recordType": "Record.review",
+        "subjectId": "HL-1001"
+      },
+      "score": 1
+    },
+    "spans": [],
+    "type": "Decision",
+    "unit": "g:review-001.en:document"
+  }
+]
