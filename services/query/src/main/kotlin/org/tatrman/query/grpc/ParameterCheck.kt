@@ -14,7 +14,8 @@ import org.tatrman.plan.v1.Value
  * `PipelineContext.parameters` is missing, or present without a value, is `parameter_unbound`: the worker would
  * bind it as NULL and answer zero rows without a word (`city = NULL` matches nothing). An explicit NULL
  * (`Value.is_null`) is a value — the caller asked for it. Run (and so RunSavedQuery) refuses; Compile does not,
- * because reporting a stored query's unbound parameters (`required_parameters`) is what it is for.
+ * because it reports referenced parameters (`required_parameters`) with only the current caller's values.
+ * Binding names match exactly, as in the worker binder; only plan reference names are unbraced.
  *
  * The plan is read by protobuf reflection, so a parameter is found wherever an expression can hold one (a
  * projection, a filter, a join condition, a subquery, an aggregate's or a window's operands). A positional name the
@@ -28,8 +29,27 @@ internal object ParameterCheck {
         plan: PlanNode,
         context: PipelineContext,
     ): List<String> {
-        val bindings = context.parametersList.associateBy { it.name.unbraced() }
+        val bindings = context.parametersList.associateBy { it.name }
         return referencedNames(plan).filter { name -> bindings[name]?.hasUsableValue() != true }
+    }
+
+    /** Referenced names in plan order; types may come from this parse, values only from this caller. */
+    fun required(
+        plan: PlanNode,
+        context: PipelineContext,
+        translatedContext: PipelineContext = PipelineContext.getDefaultInstance(),
+    ): List<ParameterBinding> {
+        val bindings = context.parametersList.associateBy { it.name }
+        val translated = translatedContext.parametersList.associateBy { it.name }
+        return referencedNames(plan).map { name ->
+            val own = bindings[name]
+            ParameterBinding
+                .newBuilder()
+                .setName(name)
+                .setType(own?.type ?: translated[name]?.type.orEmpty())
+                .apply { if (own?.hasValue() == true) setValue(own.value) }
+                .build()
+        }
     }
 
     fun message(names: List<String>): String =
@@ -39,7 +59,7 @@ internal object ParameterCheck {
             "Parameters ${names.joinToString { "'$it'" }} have no value; bind them, or send an explicit NULL."
         }
 
-    private fun referencedNames(plan: PlanNode): List<String> {
+    fun referencedNames(plan: PlanNode): List<String> {
         val names = LinkedHashSet<String>()
 
         fun visit(message: Message) {

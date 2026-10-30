@@ -16,11 +16,14 @@ outside this repo could notice is in.
 
 ## Unreleased
 
-- **query — parameter refusal contract verified (#260).** The pre-dispatch `parameter_unbound`
-  guard shipped with #264 already covers direct, cached and saved plans. Regression coverage now runs
-  real translator plans through both execution paths, including missing/empty bindings, explicit NULL,
-  repeated references and Compile-to-Run cache reuse. Clarify that SQL needs typed declarations to parse
-  placeholders: undeclared SQL placeholders remain translation errors. No execution behavior changes.
+- **query — parameter refusal and Compile isolation (#260).** `Run` now maps translate's
+  `parameter_unknown` to `parameter_unbound`, preserving its message and position. Other translation
+  refusals remain `translator_rejected`. SQL with no bindings still parses verbatim until ttr-core#334
+  and a translator update; Compile preserves translator codes. Compile derives required parameters
+  from its returned plan (first-reference order, no unused declarations), using this caller's values
+  and caller/translation types only. Parameter bindings are no longer cached, preventing cross-caller
+  value disclosure. Execution binding names match the worker exactly (`id`, not `{id}`); optional
+  omissions require explicit NULL. Logical saved queries cannot declare parameters (LQ-5).
 
 - **query — opt-in world requirement on multi-world doors (#261).** When `QUERY_REQUIRE_WORLD`
   is on (default **off**) and `QUERY_WORLDS` names more than one world, `Run` and `RunSavedQuery`

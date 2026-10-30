@@ -85,7 +85,8 @@ message RunSavedQueryRequest {
   // The saved query, as the metadata service names it: `er.query.<name>` (a logical query), `db.<schema>.<name>`
   // (a db query), or a `model query` file's query.
   org.tatrman.plan.v1.QualifiedName qualified_name = 1;
-  // As RunRequest.context. `parameters` bind the query's declared parameters by name.
+  // As RunRequest.context. Exact bare names bind a DB query's parameters.
+  // Logical saved queries cannot declare parameters (LQ-5).
   org.tatrman.plan.v1.PipelineContext context = 2;
   org.tatrman.worker.v1.ExecutionOptions execution_options = 3;
   bool bypass_cache = 4;
@@ -122,10 +123,13 @@ message RunRequest {
   //     Run refuses a named parameter referenced by the executable plan when its
   //     binding is absent or has no value: "parameter_unbound", before dispatch,
   //     including cached and saved plans. Explicit NULL (`is_null = true`) is a value.
-  //     Compile permits valueless typed declarations and reports `required_parameters`.
-  //     SQL text still has to parse: with some typed bindings an undeclared `{name}`
-  //     is `translator_rejected` (translate's `parameter_unknown`); with no bindings
-  //     SQL is parsed verbatim and a raw placeholder may be a SQL syntax error.
+  //     Binding names match exactly (`id`, not `{id}`); optional omissions need explicit NULL.
+  //     Compile reports referenced parameters with only this caller's values; unused
+  //     declarations are omitted. It does not refuse unbound plan references.
+  //     With other typed bindings, an undeclared SQL `{name}` is `parameter_unbound`
+  //     on Run; Compile preserves translate's `parameter_unknown`. With no bindings,
+  //     SQL is still parsed verbatim (`translator_rejected` until ttr-core#334 and
+  //     a translator update). Other Run translation errors remain `translator_rejected`.
   //   - model_version: may be empty; Query fills from current Metadata snapshot
   org.tatrman.plan.v1.PipelineContext context = 3;
 
@@ -209,8 +213,11 @@ message CompileResponse {
 
   org.tatrman.plan.v1.PipelineContext context = 2;
 
-  // Parameters discovered during compilation. Each entry's `value` is unset for
-  // parameters the caller did not bind; caller supplies values before Run.
+  // Named parameters referenced by the returned plan, in first-reference order,
+  // once per name; unused declarations and anonymous ?N names are omitted.
+  // Types come from this caller, else this translation's context, else empty.
+  // Values come only from the current caller's exact-name binding, never the cache;
+  // unset when that caller supplied no value. Compile does not refuse unbound refs.
   repeated org.tatrman.plan.v1.ParameterBinding required_parameters = 3;
 
   // SHA-256 (lowercase hex) of the canonical Arrow IPC schema bytes that

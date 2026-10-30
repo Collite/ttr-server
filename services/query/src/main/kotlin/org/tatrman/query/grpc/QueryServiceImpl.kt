@@ -9,7 +9,6 @@ import org.tatrman.meta.v1.ParseStatus as MetadataParseStatus
 import org.tatrman.common.v1.ResponseMessage
 import org.tatrman.common.v1.Severity
 import org.tatrman.plan.v1.LimitOffsetNode
-import org.tatrman.plan.v1.ParameterBinding
 import org.tatrman.plan.v1.PipelineContext
 import org.tatrman.plan.v1.PlanNode
 import org.tatrman.plan.v1.QualifiedName
@@ -236,10 +235,8 @@ class QueryServiceImpl(
                                                 )
                                                 return@flow
                                             }
-                                    if (dbParsed.messagesList.any { it.severity == Severity.ERROR }) {
-                                        emit(
-                                            errorBatch("translator_rejected", dbParsed.messagesList.first(), context),
-                                        )
+                                    dbParsed.messagesList.firstOrNull { it.severity == Severity.ERROR }?.let { first ->
+                                        emit(translatorRefusal(first, context))
                                         return@flow
                                     }
                                     // The extension has already emitted the failure or the refusal.
@@ -251,14 +248,12 @@ class QueryServiceImpl(
                                     securityWarnings += dbValidated.predicateWarnings()
                                     joinWarnings += dbParsed.joinWarnings()
                                     effectiveSchemaLabel = SCHEMA_DB
-                                    val requiredParams = dbParsed.context.parametersList.toList()
                                     val fp = PredictedFingerprintComputer.compute(dbParsed.plan)
                                     if (!readsSavedQuery(request)) {
                                         cache.record(
                                             key,
                                             CachedPlan(
                                                 erPlan = PlanNode.getDefaultInstance(),
-                                                requiredParameters = requiredParams,
                                                 predictedSchemaFingerprint = fp,
                                                 cachedAt = Instant.now(),
                                                 effectiveSchema = SchemaCode.DB,
@@ -319,7 +314,7 @@ class QueryServiceImpl(
 
                     // BI (C-11) — a parameter the plan reads with no value would be bound as NULL by the worker and
                     // answer nothing, silently: Run refuses it. (Compile does not: it reports such a parameter in
-                    // `required_parameters`, which is what it is for.)
+                    // `required_parameters` from the returned plan, with only this caller's values.)
                     val unbound = ParameterCheck.unbound(dbPlan, context)
                     if (unbound.isNotEmpty()) {
                         emit(errorBatch(ParameterCheck.PARAMETER_UNBOUND, ParameterCheck.message(unbound), context))
@@ -449,14 +444,13 @@ class QueryServiceImpl(
                 }
             }
         if (erParsed.messagesList.any { it.severity == Severity.ERROR }) {
-            emit(errorBatch("translator_rejected", erParsed.messagesList.first(), erParsed.context))
+            emit(translatorRefusal(erParsed.messagesList.first { it.severity == Severity.ERROR }, erParsed.context))
             return null
         }
 
         val cached =
             CachedPlan(
                 erPlan = erParsed.plan,
-                requiredParameters = erParsed.context.parametersList.toList(),
                 predictedSchemaFingerprint = "",
                 cachedAt = Instant.now(),
             )
@@ -509,7 +503,7 @@ class QueryServiceImpl(
             return null
         }
         dbParsed.messagesList.firstOrNull { it.severity == Severity.ERROR }?.let { first ->
-            emit(errorBatch("translator_rejected", first, context))
+            emit(translatorRefusal(first, context))
             return null
         }
         return dbParsed
@@ -650,7 +644,6 @@ class QueryServiceImpl(
         val cached = if (request.bypassCache) null else cache.lookup(key)
 
         val resolution: SchemaResolution
-        var requiredParameters: List<ParameterBinding> = emptyList()
         var predictedSchemaFingerprint = ""
         val erPlan: PlanNode
 
@@ -661,7 +654,6 @@ class QueryServiceImpl(
                     cached.detectionMessages,
                     isError = false,
                 )
-            requiredParameters = cached.requiredParameters
             predictedSchemaFingerprint = cached.predictedSchemaFingerprint
             when (cached.effectiveSchema) {
                 SchemaCode.DB -> {
@@ -699,7 +691,7 @@ class QueryServiceImpl(
                         .newBuilder()
                         .setPlan(dbValidated.plan)
                         .setContext(dbValidated.context)
-                        .addAllRequiredParameters(requiredParameters)
+                        .addAllRequiredParameters(ParameterCheck.required(dbValidated.plan, context))
                         .setPredictedSchemaFingerprint(predictedSchemaFingerprint)
                         .addAllMessages(cached.detectionMessages + cached.joinWarnings + dbValidated.compileMessages())
                         .build()
@@ -775,13 +767,11 @@ class QueryServiceImpl(
                             .build()
                     }
 
-                    requiredParameters = dbParsed.context.parametersList.toList()
                     predictedSchemaFingerprint = PredictedFingerprintComputer.compute(dbParsed.plan)
 
                     val cachedPlan =
                         CachedPlan(
                             erPlan = PlanNode.getDefaultInstance(),
-                            requiredParameters = requiredParameters,
                             predictedSchemaFingerprint = predictedSchemaFingerprint,
                             cachedAt = Instant.now(),
                             effectiveSchema = SchemaCode.DB,
@@ -795,7 +785,7 @@ class QueryServiceImpl(
                         .newBuilder()
                         .setPlan(dbValidated.plan)
                         .setContext(dbValidated.context)
-                        .addAllRequiredParameters(requiredParameters)
+                        .addAllRequiredParameters(ParameterCheck.required(dbValidated.plan, context, dbParsed.context))
                         .setPredictedSchemaFingerprint(predictedSchemaFingerprint)
                         .addAllMessages(
                             resolution.detectionMessages + dbParsed.joinWarnings() + dbValidated.compileMessages(),
@@ -824,7 +814,6 @@ class QueryServiceImpl(
                     }
 
                     erPlan = erParsed.plan
-                    requiredParameters = erParsed.context.parametersList.toList()
 
                     val erValidated =
                         validateErPlanCompile(windowed(erPlan, window), context, window) ?: return CompileResponse
@@ -885,7 +874,6 @@ class QueryServiceImpl(
                     val cachedPlan =
                         CachedPlan(
                             erPlan = erPlan,
-                            requiredParameters = requiredParameters,
                             predictedSchemaFingerprint = predictedSchemaFingerprint,
                             cachedAt = Instant.now(),
                             effectiveSchema = SchemaCode.ER,
@@ -898,7 +886,7 @@ class QueryServiceImpl(
                         .setPlan(dbValidated.plan)
                         .apply { erReads?.let { setErReads(it) } }
                         .setContext(dbValidated.context)
-                        .addAllRequiredParameters(requiredParameters)
+                        .addAllRequiredParameters(ParameterCheck.required(dbValidated.plan, context, dbParsed.context))
                         .setPredictedSchemaFingerprint(predictedSchemaFingerprint)
                         .addAllMessages(
                             resolution.detectionMessages + dbParsed.joinWarnings() + dbValidated.compileMessages(),
@@ -975,7 +963,7 @@ class QueryServiceImpl(
             .setPlan(dbValidated.plan)
             .apply { erReads?.let { setErReads(it) } }
             .setContext(dbValidated.context)
-            .addAllRequiredParameters(requiredParameters)
+            .addAllRequiredParameters(ParameterCheck.required(dbValidated.plan, context, dbParsed.context))
             .setPredictedSchemaFingerprint(predictedSchemaFingerprint)
             .addAllMessages(resolution.detectionMessages + dbParsed.joinWarnings() + dbValidated.messagesList)
             .build()
@@ -1025,13 +1013,11 @@ class QueryServiceImpl(
             return erParsed
         }
 
-        val requiredParameters = erParsed.context.parametersList.toList()
         recordErPlan(
             request,
             key,
             CachedPlan(
                 erPlan = erParsed.plan,
-                requiredParameters = requiredParameters,
                 predictedSchemaFingerprint = "",
                 cachedAt = Instant.now(),
                 effectiveSchema = SchemaCode.ER,
@@ -1438,6 +1424,16 @@ class QueryServiceImpl(
                     .setLine(from.line)
                     .setColumn(from.column),
             ).build()
+
+    private fun translatorRefusal(
+        from: ResponseMessage,
+        context: PipelineContext,
+    ): ResultBatch =
+        errorBatch(
+            if (from.code == "parameter_unknown") ParameterCheck.PARAMETER_UNBOUND else "translator_rejected",
+            from,
+            context,
+        )
 
     private fun errorMessage(
         code: String,

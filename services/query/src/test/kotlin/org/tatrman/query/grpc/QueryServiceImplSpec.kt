@@ -1777,4 +1777,53 @@ class QueryServiceImplSpec :
                 .shouldThrow<IllegalArgumentException> { Worlds.parse("a=x,a=y") }
                 .message shouldBe "query.worlds (QUERY_WORLDS) names a twice"
         }
+
+        "Run maps only parameter_unknown at all three translator refusal sites and preserves positions" {
+            runBlocking {
+                for (site in listOf("DB", "ER", "ER-to-DB")) {
+                    for (code in listOf("parameter_unknown", "parameter_in_string_literal", "validation_failed")) {
+                        var calls = 0
+                        val svc =
+                            service(
+                                translatorDetect = if (site == "DB") dbDetect else detectStub,
+                                translator =
+                                    TranslatorClient { req ->
+                                        calls++
+                                        if (site == "ER-to-DB" && calls == 1) {
+                                            parseStub.parse(req)
+                                        } else {
+                                            ParseResponse
+                                                .newBuilder()
+                                                .setContext(req.context)
+                                                .addMessages(
+                                                    ResponseMessage
+                                                        .newBuilder()
+                                                        .setSeverity(Severity.ERROR)
+                                                        .setCode(code)
+                                                        .setHumanMessage("missing '{id}'")
+                                                        .setLine(3)
+                                                        .setColumn(17),
+                                                ).build()
+                                        }
+                                    },
+                                dispatcher = DispatcherClient { error("refused plan must not dispatch") },
+                            )
+                        val message =
+                            svc
+                                .run(sqlRequest())
+                                .toList()
+                                .single()
+                                .messagesList
+                                .single()
+                        message.code shouldBe
+                            if (code == "parameter_unknown") "parameter_unbound" else "translator_rejected"
+                        message.humanMessage shouldBe "missing '{id}'"
+                        message.line shouldBe 3
+                        message.column shouldBe 17
+                        val compiled = svc.compile(sqlRequest())
+                        compiled.messagesList.single().code shouldBe code
+                    }
+                }
+            }
+        }
     })
