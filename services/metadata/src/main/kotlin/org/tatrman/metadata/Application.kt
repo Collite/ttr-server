@@ -37,6 +37,7 @@ import org.tatrman.metadata.cn.VocabularySource
 import org.tatrman.metadata.cn.candidateRoutes
 import org.tatrman.metadata.export.metadataExportRoutes
 import org.tatrman.metadata.health.SourceLoadBoard
+import org.tatrman.metadata.health.NO_MODEL_SOURCE
 import org.tatrman.metadata.health.modelHealthRoutes
 import org.tatrman.metadata.health.redactCredentials
 import org.tatrman.metadata.read.metadataReadRoutes
@@ -81,6 +82,19 @@ fun main() {
 }
 
 fun Application.module(config: Config) {
+    // MW-P1: missing configuration is fatal, unlike a configured source whose content is
+    // temporarily unavailable. Check before installing telemetry, opening CN's database or
+    // starting either serving listener. Internal stock roles and CN versions are not content.
+    val meterRegistry = PrometheusMeterRegistry(PrometheusConfig.DEFAULT)
+    val loadBoard = SourceLoadBoard(meterRegistry, strictSwap = strictSwap(config))
+    val registry = MetadataRegistry()
+    val lexiconSourceIds = mutableSetOf<String>()
+    val contentSlots = buildSources(config, loadBoard, lexiconSourceIds) { registry.read()?.exportSidecars.orEmpty() }
+    require(loadBoard.states().isNotEmpty()) {
+        "$NO_MODEL_SOURCE: configure METADATA_GIT_REMOTE_URI, METADATA_GIT_BRANCH and METADATA_GIT_SUBDIR, " +
+            "or enable metadata.sources.local-model with METADATA_TTR_ROOT pointing to a model directory."
+    }
+
     installKtorServerBase(KtorConfigFactory.fromConfig(config, "metadata", 7203))
 
     // OTel SDK + tracer for the search RPC. Other RPCs gain spans incrementally;
@@ -95,13 +109,6 @@ fun Application.module(config: Config) {
         )
     val tracer = otel.getTracer("org.tatrman.metadata")
 
-    // Phase 09 B4 / DF-M16 — Prometheus meter registry. The metadata service was the only v1
-    // service without `/metrics`; other services scrape from a comparable mount point.
-    val meterRegistry = PrometheusMeterRegistry(PrometheusConfig.DEFAULT)
-    // ttr-server#180 — every configured source's loads, for /ready, /status and /metrics.
-    val loadBoard = SourceLoadBoard(meterRegistry, strictSwap = strictSwap(config))
-
-    val registry = MetadataRegistry()
     val reconciler =
         ModelReconciler(
             descriptor =
@@ -120,9 +127,8 @@ fun Application.module(config: Config) {
     // CN-P5 S5.3 — the candidate store (cn contracts §6). Its registered vocabulary versions ride the refresher as one
     // more source (A-CN-94); it is not a configured model source, so it stays off the load board and out of /ready.
     val cn = CnSetup.fromConfig(config) { id -> promotionTarget(config, id) }
-    val lexiconSourceIds = mutableSetOf<String>()
     val sourceSlots =
-        buildSources(config, loadBoard, lexiconSourceIds) { registry.read()?.exportSidecars.orEmpty() } +
+        contentSlots +
             listOfNotNull(
                 cn.vocabularySource?.let {
                     SourceSlot(
@@ -144,13 +150,6 @@ fun Application.module(config: Config) {
             packageIndex = packageIndex,
         )
     launch(Dispatchers.IO) {
-        if (loadBoard.states().isEmpty()) {
-            log.error(
-                "No model source configured: METADATA_GIT_REMOTE_URI is empty and no other source is enabled. " +
-                    "Metadata serves no model and /ready answers 503 until one is configured — set " +
-                    "METADATA_GIT_REMOTE_URI, METADATA_GIT_BRANCH and METADATA_GIT_SUBDIR.",
-            )
-        }
         refresher.refresh(sourceId = "", force = true)
         retryUntilLoaded(loadBoard, refresher)
     }
