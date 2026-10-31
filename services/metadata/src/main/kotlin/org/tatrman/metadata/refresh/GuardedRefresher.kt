@@ -44,6 +44,7 @@ class GuardedRefresher(
     private val configuredIds: Set<String>,
     private val board: SourceLoadBoard = SourceLoadBoard(strictSwap = strictSwap),
     private val packageIndex: PackageIndex = PackageIndex().commitOnSwap(registry),
+    val allowNonDefaultBranch: Boolean = false,
 ) {
     init {
         require(sources.size == sourceIds.size && sourceIds.distinct().size == sourceIds.size) {
@@ -55,6 +56,7 @@ class GuardedRefresher(
     private val log = LoggerFactory.getLogger(GuardedRefresher::class.java)
     private val mutex = Mutex()
     private val accepted = mutableMapOf<String, SourceSnapshot>()
+    private val acceptedOrigins = mutableMapOf<String, SourceOrigin>()
     private val refusals = mutableMapOf<String, Refusal>()
 
     private data class Refusal(
@@ -85,21 +87,241 @@ class GuardedRefresher(
         val newModelVersion: String = "",
     )
 
+    @Volatile
+    private var lastOutcome: RefreshOutcome? = null
+    private var lastAttempt: ModelLoadReport? = null
+    private var lastSuccess: ModelLoadReport? = null
+    private var keptPrevious = false
+    private var lastStatus = ""
+    private val attempts = linkedMapOf<String, SourceSnapshot>()
+    private val managed =
+        sourceIds
+            .zip(sources)
+            .mapNotNull { (id, source) ->
+                (source as? ManagedSource)?.let { id to it }
+            }.toMap()
+
+    suspend fun status(): RefreshOutcome = mutex.withLock { capture(emptyList(), lastStatus) }
+
     suspend fun refresh(
         sourceId: String,
         force: Boolean,
-    ): List<SourceResult> {
-        if (sourceId.isNotEmpty() && sourceId !in sourceIds) {
-            return listOf(SourceResult(sourceId, false, "unknown_source_id: $sourceId"))
+    ): List<SourceResult> = refreshOutcome(sourceId, force).results
+
+    suspend fun refreshOutcome(
+        sourceId: String,
+        force: Boolean,
+        branch: String = "",
+    ): RefreshOutcome {
+        // Preserve immediate unknown-id refusal even while another load holds the publication lock.
+        if (sourceId.isNotEmpty() && sourceId !in sourceIds && mutex.isLocked) {
+            val message = redactCredentials("unknown_source_id: $sourceId")
+            return (lastOutcome ?: RefreshOutcome(emptyList(), null, emptyList(), null, null, null, false, ""))
+                .copy(
+                    results = listOf(SourceResult(sourceId, false, message)),
+                    status = "rejected",
+                    httpStatus = 400,
+                    keptPrevious = false,
+                    lastAttempt =
+                        ModelLoadReport(
+                            sourceId,
+                            java.time.Instant
+                                .now()
+                                .toString(),
+                            false,
+                            "rejected",
+                            branch.trim(),
+                            "",
+                            listOf(message),
+                            emptyList(),
+                            0,
+                        ),
+                )
         }
         val ctx = currentCoroutineContext()
         val cancelled = { !ctx.isActive }
-        if (force) return mutex.withLock { doRefresh(sourceId, cancelled) }
-        if (!mutex.tryLock()) return sourceIds.map { SourceResult(it, false, "refresh_in_flight") }
+        if (force) return mutex.withLock { transact(sourceId, branch.trim(), cancelled) }
+        if (!mutex.tryLock()) {
+            // Reply from the last completed capture; never wait on the in-flight load.
+            return (lastOutcome ?: RefreshOutcome(emptyList(), null, emptyList(), null, null, null, false, ""))
+                .copy(
+                    results = sourceIds.map { SourceResult(it, false, "refresh_in_flight") },
+                    status = "rejected",
+                    keptPrevious = lastOutcome?.serving != null,
+                    lastAttempt =
+                        ModelLoadReport(
+                            sourceId,
+                            java.time.Instant
+                                .now()
+                                .toString(),
+                            false,
+                            "rejected",
+                            branch.trim(),
+                            "",
+                            listOf("refresh_in_flight"),
+                            emptyList(),
+                            0,
+                        ),
+                )
+        }
         return try {
-            doRefresh(sourceId, cancelled)
+            transact(sourceId, branch.trim(), cancelled)
         } finally {
             mutex.unlock()
+        }
+    }
+
+    private fun transact(
+        sourceId: String,
+        branch: String,
+        cancelled: () -> Boolean,
+    ): RefreshOutcome {
+        var target = sourceId
+        var refusal = ""
+        var httpStatus = 400
+        if (target.isNotEmpty() && target !in sourceIds) refusal = "unknown_source_id: $target"
+        if (branch.isNotEmpty() && refusal.isEmpty()) {
+            if (target.isEmpty()) {
+                val candidates = managed.filter { it.key in configuredIds && it.value.git != null }.keys
+                if (candidates.size == 1) target = candidates.single() else refusal = "ambiguous_or_missing_git_source"
+            }
+            val git = managed[target]?.git
+            if (refusal.isEmpty() && (git == null || target !in configuredIds)) refusal = "source_is_not_git: $target"
+            if (refusal.isEmpty() && branch != git!!.defaultBranch && !allowNonDefaultBranch) {
+                refusal =
+                    "branch_not_allowed: configured default is '${git.defaultBranch}'; enable METADATA_ALLOW_NON_DEFAULT_BRANCH"
+                httpStatus = 409
+            }
+        }
+        if (refusal.isNotEmpty()) {
+            lastAttempt =
+                ModelLoadReport(
+                    target,
+                    java.time.Instant
+                        .now()
+                        .toString(),
+                    false,
+                    "rejected",
+                    branch,
+                    "",
+                    listOf(redactCredentials(refusal)),
+                    emptyList(),
+                    0,
+                )
+            keptPrevious = board.states().any { it.loadedOnce && (target.isEmpty() || it.id == target) }
+            lastStatus = "rejected"
+            return capture(listOf(SourceResult(target, false, redactCredentials(refusal))), "rejected", httpStatus)
+        }
+        val requested = configuredIds.filter { target.isEmpty() || it == target }.toSet()
+        val active = managed.filterKeys { it in requested }
+        val before =
+            board
+                .states()
+                .filter { it.loadedOnce }
+                .map { it.id }
+                .toSet()
+        attempts.clear()
+        val begun = mutableListOf<ManagedSource>()
+        var completed = false
+        try {
+            active.forEach { (id, source) ->
+                begun += source
+                source.begin(if (id == target) branch else "", initial = id !in accepted)
+            }
+            var results = doRefresh(target, cancelled)
+            val origins = active.mapValues { it.value.attemptedOrigin() }
+            active.forEach { (id, source) ->
+                val success = results.firstOrNull { it.sourceId == id }?.success == true
+                source.finish(success)?.let { failure ->
+                    val safe = redactCredentials(failure)
+                    board.recordFailure(id, safe)
+                    results =
+                        results.map {
+                            if (it.sourceId ==
+                                id
+                            ) {
+                                it.copy(success = false, errorMessage = it.errorMessage + "; " + safe)
+                            } else {
+                                it
+                            }
+                        }
+                }
+            }
+            completed = true
+            val relevant =
+                results
+                    .filter { it.sourceId in requested }
+                    .ifEmpty { results.filter { target.isEmpty() || it.sourceId == target } }
+            val successes = relevant.count { it.success }
+            lastStatus =
+                when {
+                    relevant.isNotEmpty() && successes == relevant.size -> "ok"
+                    successes > 0 -> "partial"
+                    else -> "failed"
+                }
+            keptPrevious = relevant.any { !it.success && it.sourceId in before }
+            val singleOrigin = origins.values.singleOrNull()
+            val loaded = attempts.filterKeys { it in requested }.values
+            lastAttempt =
+                ModelLoadReport(
+                    target,
+                    java.time.Instant
+                        .now()
+                        .toString(),
+                    lastStatus == "ok",
+                    lastStatus,
+                    singleOrigin?.branch ?: branch,
+                    singleOrigin?.commit.orEmpty(),
+                    relevant.filter { !it.success }.map { it.errorMessage },
+                    loaded.flatMap { it.warnings }.map { it.diagnostic() }.distinct(),
+                    loaded.sumOf { it.loadedFiles.size },
+                )
+            if (lastStatus == "ok") lastSuccess = lastAttempt
+            return capture(results, lastStatus)
+        } finally {
+            if (!completed) {
+                begun.forEach { source ->
+                    source.finish(false)?.let { log.error("{}", redactCredentials(it)) }
+                }
+            }
+        }
+    }
+
+    private fun capture(
+        results: List<SourceResult>,
+        status: String,
+        httpStatus: Int = 200,
+    ): RefreshOutcome {
+        val snapshot = registry.read()
+        val states = board.states()
+        val served = acceptedOrigins.filterKeys { it in configuredIds && it in accepted }
+        val one = served.entries.singleOrNull()
+        val origin = one?.value
+        val serving =
+            snapshot?.takeIf { served.isNotEmpty() }?.let {
+                ServingModel(
+                    if (one != null) origin!!.source else "mixed",
+                    one?.key.orEmpty(),
+                    origin?.branch.orEmpty(),
+                    origin?.commit.orEmpty(),
+                    it.model.version.value,
+                    it.swappedAt.toString(),
+                    served.values.any { s -> s.fallback },
+                )
+            }
+        return RefreshOutcome(
+            results.toList(),
+            snapshot,
+            states,
+            serving,
+            lastAttempt,
+            lastSuccess,
+            keptPrevious,
+            status,
+            httpStatus,
+        ).also {
+            lastOutcome =
+                it
         }
     }
 
@@ -120,6 +342,8 @@ class GuardedRefresher(
             }
             try {
                 val snapshot = source.load()
+                if (cancelled()) throw CancellationException("refresh_cancelled")
+                attempts[id] = snapshot
                 val empty = id in configuredIds && snapshot.objectCount() == 0
                 if (strictSwap && empty) {
                     results[id] =
@@ -216,6 +440,7 @@ class GuardedRefresher(
             }
             val graph = ModelGraph.build(result.model)
             val layouts = LayoutIndex.build(snapshots, result.model)
+            if (cancelled()) throw CancellationException("refresh_cancelled")
             packageIndex.stageAccepted(proposed)
             publishing = result.model to loaded
             try {
@@ -325,7 +550,9 @@ class GuardedRefresher(
         at: java.time.Instant? = null,
     ) {
         refusals.remove(id)
-        if (at == null) board.record(id, snapshot) else board.record(id, snapshot, at)
+        val origin = managed[id]?.origin ?: SourceOrigin("unknown")
+        acceptedOrigins[id] = origin
+        if (at == null) board.record(id, snapshot, origin = origin) else board.record(id, snapshot, at, origin)
     }
 
     private fun reject(

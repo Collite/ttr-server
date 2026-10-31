@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package org.tatrman.metadata.grpc
 
+import org.tatrman.metadata.refresh.toProto
+
 import org.tatrman.meta.v1.AttributeDetail
 import org.tatrman.meta.v1.AttributeSemantics
 import org.tatrman.meta.v1.AttributeJoinPair
@@ -711,9 +713,27 @@ class MetadataServiceImpl(
 
     override suspend fun getStatus(request: GetStatusRequest): GetStatusResponse {
         // Source versions publish in a registry listener; capture both under the swap monitor.
-        val (snap, sourceStates) = synchronized(registry) { registry.read() to loadBoard?.states().orEmpty() }
+        val outcome = refresher?.status()
+        val (snap, sourceStates) =
+            outcome?.let { it.snapshot to it.sources }
+                ?: synchronized(registry) { registry.read() to loadBoard?.states().orEmpty() }
         val supportedAlgos = searchRegistry.supportedNames.ifEmpty { listOf("substring", "keyword", "regex", "all") }
         val builder = GetStatusResponse.newBuilder()
+        outcome?.let {
+            it.serving?.let { s -> builder.setServing(s.toProto()) }
+            it.lastAttempt?.let { r -> builder.setLastAttempt(r.toProto()) }
+            it.lastSuccess?.let { r -> builder.setLastSuccess(r.toProto()) }
+            builder.setKeptPrevious(it.keptPrevious).addAllIgnoredFiles(it.lastAttempt?.ignoredFiles.orEmpty())
+        }
+        builder.setAllowNonDefaultBranch(refresher?.allowNonDefaultBranch ?: false)
+        val objects =
+            snap
+                ?.model
+                ?.objectByQname()
+                ?.values
+                .orEmpty()
+        builder.putAllObjectsByKind(objects.groupingBy { it.kind }.eachCount())
+        builder.addAllTags(objects.flatMap { it.tags }.toSortedSet())
         sourceStates.forEach { source ->
             builder.addSources(
                 org.tatrman.meta.v1.SourceStatus
@@ -725,7 +745,11 @@ class MetadataServiceImpl(
                             source.lastError.isNotEmpty() -> OverallStatus.DEGRADED
                             else -> OverallStatus.OK
                         },
-                    ).setVersion(source.version)
+                    ).setSource(source.origin.source)
+                    .setBranch(source.origin.branch)
+                    .setCommit(source.origin.commit)
+                    .setServingFallback(source.servingFallback)
+                    .setVersion(source.version)
                     .setLastSuccess(source.lastSuccessAt?.toString().orEmpty())
                     .setLastError(source.lastError)
                     .setLastErrorAt(source.lastErrorAt?.toString().orEmpty()),
@@ -1006,7 +1030,12 @@ class MetadataServiceImpl(
                                 "Refresh is not wired in this build — restart the service or configure a MetadataRefresher.",
                             ).build(),
                     ).build()
-        val results = ref.refresh(sourceId = request.sourceId, force = request.force)
+        val outcome = ref.refreshOutcome(request.sourceId, request.force, request.branch)
+        val results = outcome.results
+        builder.setStatus(outcome.status).setKeptPrevious(outcome.keptPrevious)
+        outcome.serving?.let { builder.setServing(it.toProto()) }
+        outcome.lastAttempt?.let { builder.setLastAttempt(it.toProto()) }
+        outcome.lastSuccess?.let { builder.setLastSuccess(it.toProto()) }
         for (r in results) {
             builder.addResults(
                 SourceRefreshResult

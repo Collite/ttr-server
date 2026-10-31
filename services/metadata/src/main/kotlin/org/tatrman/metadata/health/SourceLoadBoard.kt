@@ -8,6 +8,7 @@ import org.tatrman.ttr.parser.model.LexiconEntryDef
 import org.tatrman.ttr.parser.model.ProjectDef
 import org.tatrman.ttr.metadata.source.ModelSource
 import org.tatrman.ttr.metadata.source.SourceSnapshot
+import org.tatrman.metadata.refresh.SourceOrigin
 import java.time.Clock
 import java.time.Instant
 import java.util.concurrent.ConcurrentHashMap
@@ -52,6 +53,7 @@ class SourceLoadBoard(
         val servingFallback: Boolean = false,
         val version: String = "",
         val objectCount: Int = 0,
+        val origin: SourceOrigin = SourceOrigin("unknown"),
     )
 
     private val order = CopyOnWriteArrayList<String>()
@@ -121,9 +123,12 @@ class SourceLoadBoard(
         id: String,
         snapshot: SourceSnapshot,
         publishedAt: Instant = clock.instant(),
+        origin: SourceOrigin? = null,
     ) {
         val objects = snapshot.objectCount()
         if (objects == 0) {
+            // Permissive mode may publish an empty contribution; keep health failed while provenance names it.
+            origin?.let { value -> states.computeIfPresent(id) { _, state -> state.copy(origin = value) } }
             recordFailure(
                 id,
                 "the source loaded no model objects (an empty repository, or a wrong branch or sub-path?)",
@@ -145,6 +150,7 @@ class SourceLoadBoard(
                 servingFallback = fallbackNote != null,
                 version = snapshot.version,
                 objectCount = objects,
+                origin = origin ?: s.origin,
             )
         }
     }

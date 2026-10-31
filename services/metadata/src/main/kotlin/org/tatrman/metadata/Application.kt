@@ -22,10 +22,13 @@ import org.tatrman.ttr.metadata.search.keyword.Tokenizer
 import org.tatrman.ttr.metadata.search.regex.RegexAlgorithm
 import org.tatrman.ttr.metadata.search.substring.SubstringAlgorithm
 import org.tatrman.ttr.metadata.source.ClasspathStorage
+import org.tatrman.metadata.refresh.putOps
+import io.ktor.http.HttpStatusCode
+import org.tatrman.metadata.refresh.BranchStorage
+import org.tatrman.metadata.refresh.ManagedSource
 import org.tatrman.metadata.refresh.GuardedRefresher
 import org.tatrman.metadata.refresh.RefreshScheduler
 import org.tatrman.ttr.metadata.source.BuiltinStockSource
-import org.tatrman.ttr.metadata.source.FallbackSource
 import org.tatrman.ttr.metadata.source.FileBasedSource
 import org.tatrman.ttr.metadata.git.GitArchiveStorage
 import org.tatrman.ttr.metadata.source.LocalFsStorage
@@ -163,6 +166,9 @@ fun Application.module(config: Config) {
             configuredIds = loadBoard.states().map { it.id }.toSet(),
             board = loadBoard,
             packageIndex = packageIndex,
+            allowNonDefaultBranch =
+                config.hasPath("metadata.allow-non-default-branch") &&
+                    config.getBoolean("metadata.allow-non-default-branch"),
         )
     launch(Dispatchers.IO) {
         refresher.refresh(sourceId = "", force = true)
@@ -292,7 +298,7 @@ fun Application.module(config: Config) {
     routing {
         get("/health") { call.respond(buildJsonObject { put("status", "UP") }) }
         // ttr-server#180 — /ready waits for the configured source; /status says what each source did.
-        modelHealthRoutes(registry, loadBoard)
+        modelHealthRoutes(registry, loadBoard, refresher)
         // Phase 09 B4 / DF-M16 — Prometheus scrape endpoint.
         get("/metrics") {
             call.respondText(meterRegistry.scrape(), ContentType.Text.Plain)
@@ -323,11 +329,38 @@ fun Application.module(config: Config) {
         // /v2/refresh orchestrator calls this FIRST, then fans out to the dependent services
         // (translator → query-runner, fuzzy-matcher) which rely on the new model version.
         post("/refresh") {
-            val results = refresher.refresh(sourceId = "", force = true)
-            val snap = registry.read()
+            val outcome =
+                refresher.refreshOutcome(
+                    call.request.queryParameters["source_id"].orEmpty(),
+                    true,
+                    call.request.queryParameters["branch"].orEmpty(),
+                )
+            val results = outcome.results
+            val snap = outcome.snapshot
             call.respond(
+                HttpStatusCode.fromValue(outcome.httpStatus),
                 buildJsonObject {
-                    put("status", JsonPrimitive(if (results.all { it.success }) "ok" else "partial"))
+                    putOps(outcome)
+                    put("status", outcome.status)
+                    putJsonArray("errors") {
+                        outcome.lastAttempt
+                            ?.errors
+                            .orEmpty()
+                            .forEach { add(it) }
+                    }
+                    putJsonArray("warnings") {
+                        outcome.lastAttempt
+                            ?.warnings
+                            .orEmpty()
+                            .forEach { add(it) }
+                    }
+                    put("model_files", outcome.lastAttempt?.modelFiles ?: 0)
+                    putJsonArray("ignored_files") {
+                        outcome.lastAttempt
+                            ?.ignoredFiles
+                            .orEmpty()
+                            .forEach { add(it) }
+                    }
                     put("model_version", JsonPrimitive(snap?.model?.version?.value ?: ""))
                     put("swapped", JsonPrimitive(results.any { it.snapshotSwapped }))
                     putJsonArray("sources") {
@@ -452,7 +485,7 @@ private fun configuredSources(
                 primary != null ->
                     SourceSlot(
                         id,
-                        FallbackSource(id, primary, fallbackSource),
+                        primary.apply { fallback = fallbackSource },
                         "${describeSource(sub)}; fallback '$fallbackId': ${describeSource(fallbackSub)}",
                     )
                 else -> {
@@ -495,7 +528,7 @@ private fun describeSource(sub: Config): String {
         "git" -> {
             val branch = str("branch").ifBlank { "main" }
             val subdirectory = str("subdirectory").ifBlank { "/" }
-            "git ${redactCredentials(str("remote-uri"))} (branch $branch, sub-path $subdirectory)"
+            "git ${redactCredentials(str("remote-uri"))} (configured branch $branch, sub-path $subdirectory)"
         }
         "filesystem" -> "filesystem ${str("path")}"
         "resources" -> "classpath ${str("path")}"
@@ -536,35 +569,48 @@ private fun buildSourceFromConfig(
     lexiconSourceIds: MutableSet<String>,
     servedSidecars: () -> Map<String, String>,
     skippedSources: MutableList<String>,
-): ModelSource? {
+): ManagedSource? {
     val kind = if (sub.hasPath("kind")) sub.getString("kind") else "ttr"
     val priority = if (sub.hasPath("priority")) sub.getInt("priority") else 100
     val storage = buildStorage(sub, id, skippedSources = skippedSources) ?: return null
 
-    return when (kind) {
-        // VL V-37: Metadata serves the layouts committed next to the model — a source collects them only when asked
-        "ttr" -> {
-            val source = FileBasedSource(sourceId = id, priority = priority, storage = storage, layouts = true)
-            if (storage is GitArchiveStorage) {
-                lexiconSourceIds.add(id)
-                GitLexiconSource(
-                    GitTemplateSource(source, gitCheckoutDir(sub, id, ""), gitSubdirectory(sub), id, priority) {
-                        servedSidecars()[org.tatrman.metadata.read.TEMPLATE_SIDECAR_PREFIX + id]
-                    },
-                    gitCheckoutDir(sub, id, ""),
-                    if (sub.hasPath("lexicon-path")) sub.getString("lexicon-path") else "generated/lexicon.tar.zst",
-                )
-            } else {
-                source
+    val source =
+        when (kind) {
+            // VL V-37: Metadata serves the layouts committed next to the model — a source collects them only when asked
+            "ttr" -> {
+                val source = FileBasedSource(sourceId = id, priority = priority, storage = storage, layouts = true)
+                if (storage is BranchStorage) {
+                    lexiconSourceIds.add(id)
+                    GitLexiconSource(
+                        GitTemplateSource(source, gitCheckoutDir(sub, id, ""), gitSubdirectory(sub), id, priority) {
+                            servedSidecars()[org.tatrman.metadata.read.TEMPLATE_SIDECAR_PREFIX + id]
+                        },
+                        gitCheckoutDir(sub, id, ""),
+                        if (sub.hasPath("lexicon-path")) sub.getString("lexicon-path") else "generated/lexicon.tar.zst",
+                    )
+                } else {
+                    source
+                }
             }
-        }
-        // Phase 2.1 (fork) — `yaml-legacy` source kind removed: kantheon is TTR-only
-        // (`org.tatrman.ttr.*` modeler artifacts, no erp-sql legacy YAML parse path).
-        // See docs/implementation/v1/fork/tasks-p2-s2.1-metadata.md T2 note.
-        else -> {
-            skipSource(id, "unknown kind '$kind'", skippedSources)
-        }
-    }
+            // Phase 2.1 (fork) — `yaml-legacy` source kind removed: kantheon is TTR-only
+            // (`org.tatrman.ttr.*` modeler artifacts, no erp-sql legacy YAML parse path).
+            // See docs/implementation/v1/fork/tasks-p2-s2.1-metadata.md T2 note.
+            else -> {
+                skipSource(id, "unknown kind '$kind'", skippedSources)
+            }
+        } ?: return null
+    return ManagedSource(
+        id,
+        if (storage is BranchStorage) {
+            "git"
+        } else if (storage is LocalFsStorage) {
+            "filesystem"
+        } else {
+            "resources"
+        },
+        source,
+        storage as? BranchStorage,
+    )
 }
 
 /**
@@ -623,7 +669,8 @@ private fun buildStorage(
     val path = if (sub.hasPath("path")) sub.getString("path") else ""
     return when (type) {
         "git" -> {
-            // Phase 07 C1 — GitArchiveStorage. Requires `remote-uri`; optional
+            // Service loads pin one Git commit per attempt; promotion keeps its independent storage.
+            // Requires `remote-uri`; optional
             // `local-checkout-dir` (defaults to /tmp/metadata-git/<id>), `branch`
             // (defaults to "main"), `subdirectory`, `username` / `password` for
             // HTTPS auth (PAT tokens use username="x-access-token").
@@ -636,15 +683,27 @@ private fun buildStorage(
                 return skipSource(id, "blank branch", skippedSources)
             }
             val checkout = gitCheckoutDir(sub, id, checkoutSuffix)
-            GitArchiveStorage(
-                id = id,
-                remoteUri = remoteUri,
-                localCheckoutDir = checkout,
-                branch = branch,
-                subdirectory = gitSubdirectory(sub),
-                username = if (sub.hasPath("username")) sub.getString("username") else null,
-                password = if (sub.hasPath("password")) sub.getString("password") else null,
-            )
+            if (checkoutSuffix.isNotEmpty()) {
+                GitArchiveStorage(
+                    id = id,
+                    remoteUri = remoteUri,
+                    localCheckoutDir = checkout,
+                    branch = branch,
+                    subdirectory = gitSubdirectory(sub),
+                    username = if (sub.hasPath("username")) sub.getString("username") else null,
+                    password = if (sub.hasPath("password")) sub.getString("password") else null,
+                )
+            } else {
+                BranchStorage(
+                    id,
+                    remoteUri,
+                    checkout,
+                    branch,
+                    gitSubdirectory(sub),
+                    if (sub.hasPath("username")) sub.getString("username") else null,
+                    if (sub.hasPath("password")) sub.getString("password") else null,
+                )
+            }
         }
         "filesystem" -> {
             if (path.isBlank()) {

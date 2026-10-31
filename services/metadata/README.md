@@ -79,6 +79,48 @@ Load exceptions still retain the previous contribution. A source with no objects
 health failure; permissive publication does not imply a healthy source. The Studio editor should require
 strict mode outside a deployment that explicitly accepts partial models. No deployment is changed here.
 
+## Branch refresh and serving reports
+
+`METADATA_ALLOW_NON_DEFAULT_BRANCH` (HOCON `metadata.allow-non-default-branch`) defaults to `false`.
+`POST /refresh?branch=<ref>` and gRPC `RefreshRequest.branch` accept the configured default even with the gate off;
+other branches or full commit SHAs require the gate. Branch names may contain slashes. An omitted or blank branch
+refreshes the currently tracked ref. A successful explicit switch stays tracked until another switch or restart.
+For example, `POST /refresh?branch=preview%2Forders` selects `preview/orders`; an explicit `branch=main` restores main.
+With several Git primaries, select one with HTTP `source_id` or gRPC `source_id`; an implicit branch target must
+be the sole configured Git primary. Non-Git, unknown and ambiguous targets are refused before loading.
+
+A gate refusal returns HTTP 409 (`branch_not_allowed`); invalid targets return 400. The RPC returns the same
+`rejected` outcome in its response. Model-load failures return HTTP 200 with `status=failed`; independent accepted
+and refused sources produce `partial`. Internal stock roles cannot turn an all-content failure into `partial`.
+The existing `status`, `model_version`, `swapped`, `sources` and RPC result fields remain available.
+
+Each attempt resolves its ref once. Model, layout, template and lexicon reads use that commit. A refused attempt
+restores the exact pre-attempt checkout and tracked ref from local Git objects, even if remote main advanced;
+it keeps serving the accepted model. The failed requested ref/commit appears on `last_attempt`. Initial failure
+restores the configured default. An explicit branch request must load that primary, so a configured fallback
+cannot silently satisfy a preview request. Ordinary no-branch refresh still supports opt-in fallbacks.
+
+`GET /status`, gRPC `GetStatus`, and refresh responses distinguish:
+
+- `serving`: accepted source type/id, branch, exact Git `commit`, composite registry `model_version`, publication
+  `loaded_at`, and `serving_fallback`. It is absent/null before a configured contribution is published.
+- `last_attempt`: completion time, requested branch/resolved commit, status, errors/warnings and model-file count.
+  A ref that could not be resolved has an empty attempted commit.
+- `last_success`: the latest wholly successful accepted refresh. Failure and partial refresh leave it unchanged.
+- `kept_previous`: a refused source retained an earlier contribution; false on initial failure and successful no-change.
+
+HTTP status also provides `objects_by_kind`, sorted distinct `tags`, `ignoredFiles`, `allow_non_default_branch`,
+and `source`/`branch`/`commit`/`serving_fallback` aliases of `serving`. RPC status carries the same information,
+with per-source provenance in `sources`. Multi-source serving uses `source=mixed` and empty aggregate branch/commit;
+inspect the source entries for individual commits. Counts/tags always describe the accepted model. `model_version`
+continues to combine all source versions and a digest; use `commit` when comparing against a Git SHA.
+
+A successful same-version refresh updates attempt/success times without changing `serving.loaded_at`.
+Permissive empty publication still reports failed source health, while serving provenance names the published commit.
+TTR has no `model.ignore` filter: `ignoredFiles` and refresh/report `ignored_files` are currently empty arrays.
+Reports and refresh replies are captured under the same publication lock used by startup, scheduler, HTTP and RPC;
+a later refresh cannot change the snapshot named by an earlier reply. No agent or globals fields are added.
+
 ## Package root
 
 `org.tatrman.metadata` (per Charon module-map idiom, `org/tatrman/<service>/`).
