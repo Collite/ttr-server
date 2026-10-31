@@ -16,6 +16,12 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+- **metadata — declared sources and conditional HTTP reads.** `metadata.sources` now accepts an explicit
+  git/filesystem/http source list as well as the existing env-backed keyed slots. A list replaces the default
+  source object. HTTP sources GET a bounded, safe tar.gz tree using per-source bearer credentials and ETags;
+  304 reuses the cached tree through strict validation. Failures retain accepted content while independent
+  sources can advance. Source versions/types remain visible over HTTP/gRPC; HTTP has no write/promotion path.
+
 - **metadata — gated branch refresh and serving reports.** HTTP `/refresh?branch=` and RPC `RefreshRequest.branch`
   can select a branch or full commit SHA with `METADATA_ALLOW_NON_DEFAULT_BRANCH=true` (default false).
   Explicit configured-default requests remain allowed. Refused loads retain the accepted model and restore the

@@ -341,6 +341,153 @@ class DeclaredSourcesSpec :
                 }
             }
         }
+        "declared Git token authenticates reads and an explicit password takes precedence" {
+            BranchFixture().use { git ->
+                val update = ProcessBuilder("git", "update-server-info").directory(git.root.toFile()).start()
+                check(update.waitFor() == 0)
+                val seen = CopyOnWriteArrayList<String?>()
+                var password = "token-secret"
+                val executor = Executors.newCachedThreadPool()
+                val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
+                server.executor = executor
+                server.createContext("/repo.git/") { exchange ->
+                    exchange.use {
+                        val auth = it.requestHeaders.getFirst("Authorization")
+                        seen += auth
+                        val expected =
+                            "Basic " +
+                                java.util.Base64
+                                    .getEncoder()
+                                    .encodeToString("x-access-token:$password".toByteArray())
+                        if (auth != expected) {
+                            it.responseHeaders.add("WWW-Authenticate", "Basic realm=metadata")
+                            it.sendResponseHeaders(401, -1)
+                        } else {
+                            val file = git.root.resolve(".git").resolve(it.requestURI.path.removePrefix("/repo.git/"))
+                            if (Files.isRegularFile(file)) {
+                                val bytes = Files.readAllBytes(file)
+                                it.responseHeaders.add("Content-Type", "text/plain")
+                                it.sendResponseHeaders(200, bytes.size.toLong())
+                                it.responseBody.write(bytes)
+                            } else {
+                                it.sendResponseHeaders(404, -1)
+                            }
+                        }
+                    }
+                }
+                server.start()
+                try {
+                    val entry =
+                        mapOf(
+                            "id" to "private",
+                            "type" to "git",
+                            "remote-uri" to "http://127.0.0.1:${server.address.port}/repo.git",
+                            "branch" to "main",
+                            "subdirectory" to "model",
+                            "local-checkout-dir" to git.checkout.toString(),
+                            "token" to password,
+                        )
+                    val f = DeclaredFixture(listOf(entry))
+                    f.ref.refreshOutcome("", true).status shouldBe "ok"
+                    f.names() shouldBe setOf("orders")
+                    seen.any { it != null } shouldBe true
+                    val secondCheckout = Files.createTempDirectory("declared-private")
+                    try {
+                        password = "explicit-password"
+                        val explicit =
+                            DeclaredFixture(
+                                listOf(
+                                    entry +
+                                        mapOf(
+                                            "password" to password,
+                                            "local-checkout-dir" to secondCheckout.toString(),
+                                        ),
+                                ),
+                            )
+                        explicit.ref.refreshOutcome("", true).status shouldBe "ok"
+                        explicit.names() shouldBe setOf("orders")
+                    } finally {
+                        secondCheckout.toFile().deleteRecursively()
+                    }
+                } finally {
+                    server.stop(0)
+                    executor.shutdownNow()
+                }
+            }
+        }
+
+        "HTTP credentials and validators stay isolated per declared source and diagnostics omit query secrets" {
+            HttpTree().use { one ->
+                HttpTree().use { two ->
+                    two.body = tarTree("db.ttrm" to "model db\ndef table another {}")
+                    two.etag = "\"v2\""
+                    val f =
+                        DeclaredFixture(
+                            listOf(one.entry("one") + mapOf("url" to one.url + "?key=query-secret"), two.entry("two")),
+                        )
+                    f.ref.refreshOutcome("", true).status shouldBe "ok"
+                    f.names() shouldBe setOf("delivered", "another")
+                    f.ref.refreshOutcome("", true).status shouldBe "ok"
+                    one.requests.map { it.auth }.toSet() shouldBe setOf("Bearer secret-one")
+                    two.requests.map { it.auth }.toSet() shouldBe setOf("Bearer secret-two")
+                    one.requests.last().etag shouldBe "\"v1\""
+                    two.requests.last().etag shouldBe "\"v2\""
+                    one.status = 401
+                    one.body = "secret-one query-secret".toByteArray()
+                    val failed = f.ref.refreshOutcome("one", true)
+                    failed.status shouldBe "failed"
+                    (failed.toString().contains("query-secret")) shouldBe false
+                    (failed.toString().contains("secret-one")) shouldBe false
+                    listOf(
+                        one.entry() + mapOf("url" to "http://user:private@127.0.0.1/tree"),
+                        one.entry() + mapOf("url" to "http://bad url/?private"),
+                        one.entry() + mapOf("token" to "private\r\nHeader: bad"),
+                        one.entry() + mapOf("connect-timeout-ms" to 0),
+                        one.entry() + mapOf("max-bytes" to 0),
+                    ).forEach { entry ->
+                        val failure = shouldThrowAny { DeclaredFixture(listOf(entry)) }
+                        (failure.message.orEmpty().contains("private")) shouldBe false
+                    }
+                }
+            }
+        }
+
+        "HTTP rejects corrupt gzip trailers special entries excessive entries and both byte limits" {
+            HttpTree().use { http ->
+                http.conditional = false
+                val f = DeclaredFixture(listOf(http.entry()))
+                f.ref.refreshOutcome("", true).status shouldBe "ok"
+                val accepted = f.registry.read()
+                val valid = http.body
+                val corrupt = valid.copyOf().also { it[it.size - 8] = (it[it.size - 8].toInt() xor 1).toByte() }
+                listOf(
+                    corrupt,
+                    valid.copyOf(valid.size - 4),
+                    tarTree("hardlink" to "", link = true, linkType = '1'.code.toByte()),
+                    tarTree("fifo" to "", link = true, linkType = '6'.code.toByte()),
+                    tarTree(*(0..10_000).map { "entry-$it" to "" }.toTypedArray()),
+                ).forEach { body ->
+                    http.body = body
+                    f.ref.refreshOutcome("remote", true).status shouldBe "failed"
+                    (f.registry.read() === accepted) shouldBe true
+                }
+                http.body = ByteArray(2048) { (it % 127).toByte() }
+                val small = DeclaredFixture(listOf(http.entry() + mapOf("max-bytes" to 1024)))
+                small.ref
+                    .refreshOutcome("", true)
+                    .lastAttempt!!
+                    .errors
+                    .joinToString() shouldContain
+                    "http_source_response_too_large"
+                http.body = tarTree("db.ttrm" to "x".repeat(10_000))
+                small.ref
+                    .refreshOutcome("", true)
+                    .lastAttempt!!
+                    .errors
+                    .joinToString() shouldContain
+                    "http_source_expanded_too_large"
+            }
+        }
     })
 
 private class DeclaredFixture(
@@ -443,6 +590,7 @@ private class HttpTree : AutoCloseable {
 private fun tarTree(
     vararg files: Pair<String, String>,
     link: Boolean = false,
+    linkType: Byte = '2'.code.toByte(),
 ): ByteArray =
     ByteArrayOutputStream()
         .also { bytes ->
@@ -452,7 +600,7 @@ private fun tarTree(
                         val content = text.toByteArray()
                         val entry =
                             if (link) {
-                                TarArchiveEntry(name, '2'.code.toByte()).apply { linkName = "../../outside" }
+                                TarArchiveEntry(name, linkType).apply { linkName = "../../outside" }
                             } else {
                                 TarArchiveEntry(name, true).apply {
                                     size =

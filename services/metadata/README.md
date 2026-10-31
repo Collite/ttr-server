@@ -422,6 +422,82 @@ A fallback is opt-in, for demos that must come up offline: `METADATA_GIT_FALLBAC
 with `METADATA_TTR_ROOT=/path/to/model` serves that directory while the repository is unavailable
 (never merged with it), and `/status` reports `serving_fallback: true`.
 
+### Declared sources
+
+The existing keyed `metadata.sources { github-model { … }, second-model { … } }` configuration and
+its environment variables above continue to work. To serve more sources, supply an explicit list in
+an application HOCON/JSON config file (for example with `-Dconfig.file=/etc/metadata/application.conf`):
+
+```hocon
+metadata.sources = [
+  {
+    id = estate
+    type = git
+    remote-uri = "https://github.com/example/models.git"
+    branch = main
+    subdirectory = model
+    token = ${?ESTATE_READ_TOKEN}
+  },
+  { id = mounted, type = filesystem, path = "/srv/model", subdirectory = extra },
+  {
+    id = automation
+    type = http
+    url = "https://example.internal/automation.tar.gz"
+    token = ${?AUTOMATION_READ_TOKEN}
+    subdirectory = automation
+  }
+]
+```
+
+A list **replaces** the shipped source object, including its demo repository and env-backed slots.
+The old `METADATA_GIT_*`/`METADATA_GIT2_*`/`METADATA_TTR_ROOT` slots apply when using the keyed object;
+list entries can explicitly reference whichever environment variables they need. Internal stock roles
+and CN's registered vocabulary versions remain separate, and cannot satisfy configured content readiness.
+
+Each entry requires a unique `id` (`[A-Za-z0-9][A-Za-z0-9._-]*`); `builtin-stock`, `builtin-stock-roles`
+and `cn-vocabularies` are reserved. Duplicate ids, reserved ids, ambiguous legacy key/id aliases and
+unsafe subdirectories fail configuration before telemetry, database initialization or listeners.
+`enabled` defaults true, `priority` defaults 100, and parser `kind` defaults `ttr`. YAML source loading
+belongs to MW-P4. `subdirectory` must be relative, with no parent traversal or backslashes.
+
+| Storage `type` | Fields |
+|---|---|
+| `git` | `remote-uri`; optional `branch` (default `main` for a new entry), `subdirectory`, `local-checkout-dir`, `lexicon-path`, `username`, `password`/`token`. Explicit `password` wins over `token`; credentials default to username `x-access-token`. The shipped legacy slots retain `master`/`model` defaults. |
+| `filesystem` | `path`, optional `subdirectory` inside that root. |
+| `http` | `url`, optional bearer `token`, `subdirectory`, `connect-timeout-ms` (10,000), `read-timeout-ms` (30,000), `max-bytes` (33,554,432). Timeouts and byte limits must be positive. |
+
+A `fallback` names another list id (or legacy block key/id), including an `enabled=false` entry.
+It serves instead of a failed primary, never merged with it. Fallbacks remain opt-in and one level deep.
+Git previews retain the branch gate and cannot accept fallback content. Non-Git branch targets are refused.
+HTTP sources are read-only and cannot be CN promotion targets.
+
+**HTTP carrier.** The URL returns a gzip-compressed tar tree; the URL suffix is irrelevant. Its paths
+are the same package-relative `.ttr`/`.ttrm` tree, layout files and export sidecars as the filesystem
+loader reads. An optional `subdirectory` strips an archive prefix before deriving packages. For example,
+`automation/ops/db.ttrm` with `subdirectory=automation` belongs to package `ops`. This does not add
+HTTP report/form or compiled lexicon transport. The existing `/model/export` tar.gz is also readable
+when its model-id prefix is selected as the subdirectory.
+
+The loader performs GET, sends its own bearer token and response ETag as `If-None-Match`, and reuses
+exactly its cached tree on 304. A first-response 304 fails; a missing ETag means unconditional GETs.
+Source versions are SHA-256 of the received bytes, so a changed 200 body is detected even if its ETag
+was reused. A received tree still passes strict parse/reconciliation on every refresh, including 304;
+ETag caching never makes rejected content acceptable.
+
+Redirects and URL user-info/fragments are refused. Descriptions omit query strings; load errors report
+safe codes/statuses rather than URLs, bearer tokens or response bodies. Connection/read timeouts bound
+network waits. Compressed responses and total expanded regular-file bytes are limited by `max-bytes`;
+archive metadata/padding has an additional 10 MiB allowance and entries are capped at 10,000. The loader
+never extracts files: absolute/traversing/backslash/duplicate paths, links, special entries, malformed
+archives and corrupt gzip trailers fail the load. Failed downloads/decodes preserve the prior cache.
+
+All declared sources feed one reconciled snapshot and existing readiness/retention rules. `/status.sources[]`
+retains `source` as the human-readable description and reports storage in `source_type`; gRPC
+`GetStatus.sources[].source` reports storage type. Both expose each accepted source version and health;
+non-Git branch/commit are empty. Aggregate `serving.source` is `mixed` when several sources contribute.
+A targeted refresh uses `source_id`; a failed source retains accepted content while a clean source can
+advance. Initial unavailable content remains unready and uses the existing bootstrap retry.
+
 ## `/model/export`
 
 The existing no-parameter response remains a validated TTR tar.gz; `?validate=false` skips self-validation.
