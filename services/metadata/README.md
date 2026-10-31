@@ -88,6 +88,9 @@ refreshes the currently tracked ref. A successful explicit switch stays tracked 
 For example, `POST /refresh?branch=preview%2Forders` selects `preview/orders`; an explicit `branch=main` restores main.
 With several Git primaries, select one with HTTP `source_id` or gRPC `source_id`; an implicit branch target must
 be the sole configured Git primary. Non-Git, unknown and ambiguous targets are refused before loading.
+Malformed refs are refused with `400 invalid_git_ref` without degrading source health; a valid missing ref is a load failure.
+Fetches prune deleted remote branches. Deleting the tracked branch reports failure and keeps its accepted content/ref
+until an explicit switch or restart. An accepted full SHA still resolves from local objects after pruning.
 
 A gate refusal returns HTTP 409 (`branch_not_allowed`); invalid targets return 400. The RPC returns the same
 `rejected` outcome in its response. Model-load failures return HTTP 200 with `status=failed`; independent accepted
@@ -114,6 +117,11 @@ and `source`/`branch`/`commit`/`serving_fallback` aliases of `serving`. RPC stat
 with per-source provenance in `sources`. Multi-source serving uses `source=mixed` and empty aggregate branch/commit;
 inspect the source entries for individual commits. Counts/tags always describe the accepted model. `model_version`
 continues to combine all source versions and a digest; use `commit` when comparing against a Git SHA.
+
+Status reads return the last completed capture immediately during a refresh, including remote I/O. Before the
+first completed load they report no serving model. Counts, tags and readiness are captured with that publication.
+CN vocabulary-only refreshes preserve the content attempt/success/retention reports. CN promotions are confirmed
+only from accepted content on the configured default branch; preview branches and SHA pins cannot confirm a merge.
 
 A successful same-version refresh updates attempt/success times without changing `serving.loaded_at`.
 Permissive empty publication still reports failed source health, while serving provenance names the published commit.

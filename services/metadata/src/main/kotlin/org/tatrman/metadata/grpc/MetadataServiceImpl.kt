@@ -727,13 +727,17 @@ class MetadataServiceImpl(
         }
         builder.setAllowNonDefaultBranch(refresher?.allowNonDefaultBranch ?: false)
         val objects =
-            snap
-                ?.model
-                ?.objectByQname()
-                ?.values
-                .orEmpty()
-        builder.putAllObjectsByKind(objects.groupingBy { it.kind }.eachCount())
-        builder.addAllTags(objects.flatMap { it.tags }.toSortedSet())
+            if (outcome == null) {
+                snap
+                    ?.model
+                    ?.objectByQname()
+                    ?.values
+                    .orEmpty()
+            } else {
+                emptyList()
+            }
+        builder.putAllObjectsByKind(outcome?.objectsByKind ?: objects.groupingBy { it.kind }.eachCount())
+        builder.addAllTags(outcome?.tags ?: objects.flatMap { it.tags }.toSortedSet())
         sourceStates.forEach { source ->
             builder.addSources(
                 org.tatrman.meta.v1.SourceStatus

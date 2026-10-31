@@ -15,6 +15,9 @@ data class RefreshOutcome(
     val keptPrevious: Boolean,
     val status: String,
     val httpStatus: Int = 200,
+    val ready: Boolean = false,
+    val objectsByKind: Map<String, Int> = emptyMap(),
+    val tags: List<String> = emptyList(),
 )
 
 data class ServingModel(

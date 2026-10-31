@@ -74,12 +74,7 @@ fun Route.modelHealthRoutes(
                 Triple(
                     outcome.snapshot,
                     outcome.sources,
-                    outcome.snapshot != null &&
-                        outcome.sources.isNotEmpty() &&
-                        outcome.sources.all {
-                            it.firstSuccessAt?.let { at -> !at.isAfter(outcome.snapshot.swappedAt) } ==
-                                true
-                        },
+                    outcome.ready,
                 )
             } else {
                 synchronized(registry) {
@@ -94,28 +89,31 @@ fun Route.modelHealthRoutes(
                 put(
                     "objects_by_kind",
                     buildJsonObject {
-                        snap
+                        (
+                            outcome?.objectsByKind ?: snap
+                                ?.model
+                                ?.objectByQname()
+                                ?.values
+                                .orEmpty()
+                                .groupingBy { it.kind }
+                                .eachCount()
+                                .toSortedMap()
+                        ).forEach { (kind, count) ->
+                            put(kind, count)
+                        }
+                    },
+                )
+                putJsonArray("tags") {
+                    (
+                        outcome?.tags ?: snap
                             ?.model
                             ?.objectByQname()
                             ?.values
                             .orEmpty()
-                            .groupingBy { it.kind }
-                            .eachCount()
-                            .toSortedMap()
-                            .forEach { (kind, count) ->
-                                put(kind, count)
-                            }
-                    },
-                )
-                putJsonArray("tags") {
-                    snap
-                        ?.model
-                        ?.objectByQname()
-                        ?.values
-                        .orEmpty()
-                        .flatMap { it.tags }
-                        .toSortedSet()
-                        .forEach { add(it) }
+                            .flatMap { it.tags }
+                            .toSortedSet()
+                            .toList()
+                    ).forEach { add(it) }
                 }
                 putJsonArray("ignoredFiles") {
                     outcome

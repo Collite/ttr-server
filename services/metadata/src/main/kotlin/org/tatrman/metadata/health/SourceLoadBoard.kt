@@ -64,8 +64,9 @@ class SourceLoadBoard(
     fun register(
         id: String,
         description: String,
+        origin: SourceOrigin = SourceOrigin("unknown"),
     ) {
-        if (states.putIfAbsent(id, SourceLoadState(id = id, description = description)) == null) {
+        if (states.putIfAbsent(id, SourceLoadState(id = id, description = description, origin = origin)) == null) {
             order += id
             meterRegistry?.let { registry ->
                 Gauge
@@ -115,6 +116,8 @@ class SourceLoadBoard(
 
     /** Ids of the registered sources that have not loaded yet, in registration order. */
     fun notLoaded(): List<String> = order.filter { states[it]?.loadedOnce != true }
+
+    internal fun now(): Instant = clock.instant()
 
     /** Every registered source, in registration order. */
     fun states(): List<SourceLoadState> = order.mapNotNull { states[it] }

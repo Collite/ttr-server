@@ -25,6 +25,7 @@ import org.tatrman.ttr.metadata.source.ClasspathStorage
 import org.tatrman.metadata.refresh.putOps
 import io.ktor.http.HttpStatusCode
 import org.tatrman.metadata.refresh.BranchStorage
+import org.tatrman.metadata.refresh.SourceOrigin
 import org.tatrman.metadata.refresh.ManagedSource
 import org.tatrman.metadata.refresh.GuardedRefresher
 import org.tatrman.metadata.refresh.RefreshScheduler
@@ -170,10 +171,6 @@ fun Application.module(config: Config) {
                 config.hasPath("metadata.allow-non-default-branch") &&
                     config.getBoolean("metadata.allow-non-default-branch"),
         )
-    launch(Dispatchers.IO) {
-        refresher.refresh(sourceId = "", force = true)
-        retryUntilLoaded(loadBoard, refresher)
-    }
 
     // Search feature — algorithm registry + per-language indexes. Holder
     // listens for snapshot swaps and rebuilds indexes off the request path.
@@ -213,19 +210,23 @@ fun Application.module(config: Config) {
     // CN-P5 S5.3 T4 — a pending promotion is merged once a load of the promotion source carries its def; that load's
     // version (the commit) is its canon_ref. Off the swap thread: the store is a database.
     cn.service?.let { candidates ->
-        registry.addListener { snapshot ->
-            val version =
-                loadBoard
-                    .states()
-                    .firstOrNull { it.id == cn.promotionSourceId }
-                    ?.version
-                    .orEmpty()
-            val schema = snapshot.model.schemas["cn"] as? CnSchema ?: return@addListener
+        refresher.addPublicationListener { outcome ->
+            val version = refresher.promotionCommit(cn.promotionSourceId, outcome) ?: return@addPublicationListener
+            val schema =
+                outcome.snapshot
+                    ?.model
+                    ?.schemas
+                    ?.get("cn") as? CnSchema ?: return@addPublicationListener
             launch(Dispatchers.IO) {
                 runCatching { candidates.observe(schema, version) }
                     .onFailure { log.warn("cn candidates: merge check failed: {}", it.message) }
             }
         }
+    }
+
+    launch(Dispatchers.IO) {
+        refresher.refresh(sourceId = "", force = true)
+        retryUntilLoaded(loadBoard, refresher)
     }
 
     val service =
@@ -419,7 +420,11 @@ internal fun buildSources(
     configuredSources(config, lexiconSourceIds, servedSidecars, skippedSources).map { slot ->
         if (slot.id != BuiltinStockSource.SOURCE_ID) {
             log.info("Model source '{}': {}", slot.id, slot.description)
-            loadBoard.register(slot.id, slot.description)
+            loadBoard.register(
+                slot.id,
+                slot.description,
+                (slot.source as? ManagedSource)?.origin ?: SourceOrigin("resources"),
+            )
         }
         slot
     }
@@ -528,7 +533,7 @@ private fun describeSource(sub: Config): String {
         "git" -> {
             val branch = str("branch").ifBlank { "main" }
             val subdirectory = str("subdirectory").ifBlank { "/" }
-            "git ${redactCredentials(str("remote-uri"))} (configured branch $branch, sub-path $subdirectory)"
+            "git ${redactCredentials(str("remote-uri"))} (branch $branch, sub-path $subdirectory)"
         }
         "filesystem" -> "filesystem ${str("path")}"
         "resources" -> "classpath ${str("path")}"

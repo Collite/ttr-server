@@ -22,6 +22,9 @@ outside this repo could notice is in.
   prior ref/checkout locally. Status/refresh responses add serving, last-attempt/last-success and retained-content
   reports; HTTP status and RPC GetStatus add kind counts and tags. Git SHA is exposed as `commit`; existing composite
   `model_version` remains unchanged. All proto changes are additive; ordinary no-branch refresh remains supported.
+  Status reads remain responsive during refreshes and share captured counts/tags. Deleted remote branches fail
+  visibly while retaining accepted content; malformed refs are refused before loading. Preview content cannot
+  confirm a pending CN promotion, and vocabulary-only refreshes preserve content reports.
 
 - **llm-gateway — a key's rate limit is a true 60 s window, and a refused request no longer counts.** The limit
   (`rateLimit.requestsPerMinute`, min-wins with the key's override) now admits at most that many requests in any 60 s

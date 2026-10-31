@@ -321,7 +321,6 @@ class BranchRefreshSpec :
                                     if (cancelLoad.get()) {
                                         entered.complete(Unit)
                                         check(release.await(10, java.util.concurrent.TimeUnit.SECONDS))
-                                        throw kotlinx.coroutines.CancellationException("cancelled load")
                                     }
                                 }
                             },
@@ -522,7 +521,7 @@ class BranchRefreshSpec :
         }
     })
 
-private class BranchFixture(
+internal class BranchFixture(
     allow: Boolean = true,
 ) : AutoCloseable {
     val root = Files.createTempDirectory("branch-remote")

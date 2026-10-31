@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package org.tatrman.metadata.refresh
 
+import org.slf4j.LoggerFactory
+import org.tatrman.metadata.health.redactCredentials
 import org.eclipse.jgit.api.Git
 import org.eclipse.jgit.api.ResetCommand
 import org.eclipse.jgit.lib.Repository
@@ -21,6 +23,7 @@ internal class BranchStorage(
     private val username: String? = null,
     private val password: String? = null,
 ) : ModelStorage {
+    private val log = LoggerFactory.getLogger(BranchStorage::class.java)
     var branch: String = defaultBranch
     var attemptedCommit: String = ""
         private set
@@ -47,7 +50,9 @@ internal class BranchStorage(
         branch = point.branch
         if (!Files.exists(checkout.resolve(".git"))) return
         Git.open(checkout.toFile()).use { git ->
-            val head = point.head ?: git.repository.resolve("refs/remotes/origin/${point.branch}")?.name ?: return
+            val head =
+                point.head ?: git.repository.resolve("refs/remotes/origin/${point.branch}")?.name
+                    ?: error("rollback_failed: no local ref for '${point.branch}'")
             detach(git, head)
             git
                 .reset()
@@ -67,11 +72,12 @@ internal class BranchStorage(
 
     override fun fetchVersion(): String {
         attemptedCommit = ""
-        require(branch.matches(Regex("[0-9a-fA-F]{40}")) || Repository.isValidRefName("refs/heads/$branch")) {
+        require(validRef(branch)) {
             "invalid_git_ref"
         }
         val cloned = !Files.exists(checkout.resolve(".git"))
         if (cloned) {
+            log.info("Cloning model repository {} (branch {})", redactCredentials(remote), branch)
             Files.createDirectories(checkout)
             Git
                 .cloneRepository()
@@ -83,7 +89,19 @@ internal class BranchStorage(
                 .close()
         }
         return Git.open(checkout.toFile()).use { git ->
-            if (!cloned) git.fetch().also { if (username != null) it.setCredentialsProvider(credentials()) }.call()
+            if (!cloned) {
+                log.info("Fetching model repository {} (branch {})", redactCredentials(remote), branch)
+                git
+                    .fetch()
+                    .setRemoveDeletedRefs(true)
+                    .also {
+                        if (username !=
+                            null
+                        ) {
+                            it.setCredentialsProvider(credentials())
+                        }
+                    }.call()
+            }
             val target = if (branch.matches(Regex("[0-9a-fA-F]{40}"))) branch else "refs/remotes/origin/$branch"
             val commit = git.repository.resolve("$target^{commit}") ?: error("git_ref_not_found: $branch")
             attemptedCommit = commit.name
@@ -126,6 +144,11 @@ internal class BranchStorage(
         ) {
             "checkout_ref_update_failed: $result"
         }
+    }
+
+    companion object {
+        fun validRef(ref: String): Boolean =
+            ref.matches(Regex("[0-9a-fA-F]{40}")) || Repository.isValidRefName("refs/heads/$ref")
     }
 
     private fun credentials() = UsernamePasswordCredentialsProvider(username.orEmpty(), password.orEmpty())
