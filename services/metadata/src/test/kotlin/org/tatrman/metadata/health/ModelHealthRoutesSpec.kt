@@ -47,6 +47,10 @@ class ModelHealthRoutesSpec :
                 client.get("/ready").let {
                     it.status shouldBe HttpStatusCode.ServiceUnavailable
                     it.bodyAsText() shouldContain NO_MODEL_SOURCE
+                    Json
+                        .parseToJsonElement(it.bodyAsText())
+                        .jsonObject["reason"]!!
+                        .jsonPrimitive.content shouldContain NO_MODEL_SOURCE_HELP
                 }
                 client.get("/status").bodyAsText().let {
                     it shouldContain "\"ready\":false"

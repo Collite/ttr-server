@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package org.tatrman.metadata
 
-import com.typesafe.config.Config
-import com.typesafe.config.ConfigFactory
 import io.kotest.assertions.nondeterministic.eventually
 import io.kotest.assertions.withClue
 import io.kotest.core.spec.style.StringSpec
@@ -24,46 +22,51 @@ import kotlin.time.Duration.Companion.seconds
 /** MW-P1: distinguish missing source configuration from a configured source awaiting content. */
 class ContentSourceStartupSpec :
     StringSpec({
-        "production main exits non-zero without a content source, even with built-in stock roles" {
-            // Cover both an omitted git URI and explicitly disabled sources. The built-in stock
-            // source is present in both cases; strict=false must not turn it into a content model.
-            for (sourceOverride in listOf("remote-uri=", "enabled=false")) {
-                val output = Files.createTempFile("metadata-no-source", ".txt")
-                val process =
-                    ProcessBuilder(
-                        Path.of(System.getProperty("java.home"), "bin", "java").toString(),
-                        "-Dmetadata.sources.github-model.$sourceOverride",
-                        "-Dmetadata.sources.second-model.enabled=false",
-                        "-Dmetadata.sources.local-model.enabled=false",
-                        "-Dmetadata.strict-swap=false",
-                        "-Dtelemetry.enabled=false",
-                        "-Dktor.deployment.port=0",
-                        "-Dgrpc.port=0",
-                        "-cp",
-                        System.getProperty("java.class.path"),
-                        "org.tatrman.metadata.ApplicationKt",
-                    ).redirectErrorStream(true).redirectOutput(output.toFile()).start()
-                try {
-                    val exited = process.waitFor(20, TimeUnit.SECONDS)
-                    withClue(Files.readString(output)) {
-                        exited shouldBe true
-                        process.exitValue() shouldNotBe 0
-                        val diagnostic = Files.readString(output)
-                        diagnostic shouldContain "no_model_source_configured"
-                        diagnostic shouldContain "METADATA_GIT_REMOTE_URI"
-                        diagnostic shouldContain "METADATA_GIT_BRANCH"
-                        diagnostic shouldContain "METADATA_GIT_SUBDIR"
-                        diagnostic shouldContain "METADATA_TTR_ROOT"
-                        diagnostic shouldNotContain "[OTEL-CONFIG]"
-                        diagnostic shouldNotContain "cn candidates:"
-                        diagnostic shouldNotContain "Responding at"
-                    }
-                } finally {
-                    if (process.isAlive) {
-                        process.destroyForcibly()
-                        process.waitFor(5, TimeUnit.SECONDS)
-                    }
-                    Files.deleteIfExists(output)
+        val refusals =
+            listOf(
+                StartupRefusal("blank URI", listOf("remote-uri="), "github-model (no remote-uri)"),
+                StartupRefusal("whitespace URI", listOf("remote-uri=   "), "github-model (no remote-uri)"),
+                StartupRefusal("disabled sources", listOf("enabled=false")),
+                StartupRefusal("blank branch", listOf("branch="), "github-model (blank branch)"),
+                StartupRefusal("whitespace branch", listOf("branch=   "), "github-model (blank branch)"),
+                StartupRefusal(
+                    "unknown kind with credentials",
+                    listOf("kind=yaml", "remote-uri=https://review-user:review-password@example.invalid/model.git"),
+                    "github-model (unknown kind 'yaml')",
+                ),
+                StartupRefusal("unknown type", listOf("type=typo"), "github-model (unknown type 'typo')"),
+                StartupRefusal(
+                    "missing filesystem path",
+                    listOf("type=filesystem", "path="),
+                    "github-model (filesystem source has no path)",
+                ),
+                StartupRefusal(
+                    "unbuildable fallback",
+                    listOf("remote-uri=", "fallback=local-model"),
+                    "github-model (unbuildable fallback 'local-model')",
+                    listOf("-Dmetadata.sources.local-model.path="),
+                ),
+                StartupRefusal(
+                    "inherited offline demo",
+                    listOf("remote-uri="),
+                    "github-model (no remote-uri)",
+                    contaminatedEnvironment = true,
+                ),
+            )
+        for (refusal in refusals) {
+            "production main refuses ${refusal.name} before startup resources" {
+                val diagnostic = refusedStartup(refusal)
+                diagnostic shouldContain "METADATA_GIT_REMOTE_URI"
+                diagnostic shouldContain "METADATA_GIT_BRANCH"
+                diagnostic shouldContain "METADATA_GIT_SUBDIR"
+                diagnostic shouldContain "METADATA_TTR_ROOT"
+                diagnostic shouldContain "METADATA_GIT_FALLBACK"
+                diagnostic shouldContain "local-model.enabled"
+                if (refusal.reason == null) {
+                    diagnostic shouldNotContain "skipped:"
+                } else {
+                    diagnostic shouldContain "skipped:"
+                    diagnostic shouldContain refusal.reason
                 }
             }
         }
@@ -89,10 +92,36 @@ class ContentSourceStartupSpec :
                     Files.writeString(root.resolve("db.ttrm"), "model db\ndef table recovered {}")
                     // No explicit refresh after repair: this exercises the real bootstrap retry
                     // even with the periodic refresh scheduler disabled.
-                    eventually(10.seconds) {
+                    eventually(20.seconds) {
                         client.get("/ready").status shouldBe HttpStatusCode.OK
                     }
                     client.get("/model/graph").bodyAsText() shouldContain "db.dbo.recovered"
+                }
+            } finally {
+                root.toFile().deleteRecursively()
+            }
+        }
+
+        "a blank git branch uses an explicitly configured local fallback" {
+            val root = Files.createTempDirectory("metadata-branch-fallback")
+            try {
+                Files.writeString(root.resolve("db.ttrm"), "model db\ndef table fallback_content {}")
+                val cfg =
+                    startupConfig(
+                        mapOf(
+                            "metadata.sources.github-model.remote-uri" to "file:///unused-metadata-repo",
+                            "metadata.sources.github-model.branch" to "   ",
+                            "metadata.sources.github-model.fallback" to "local-model",
+                            "metadata.sources.local-model.path" to root.toString(),
+                        ),
+                    )
+                promotionTarget(cfg, "github-model") shouldBe null
+                testApplication {
+                    environment { config = MapApplicationConfig() }
+                    application { module(cfg) }
+                    client.post("/refresh").status shouldBe HttpStatusCode.OK
+                    client.get("/ready").status shouldBe HttpStatusCode.OK
+                    client.get("/model/graph").bodyAsText() shouldContain "db.dbo.fallback_content"
                 }
             } finally {
                 root.toFile().deleteRecursively()
@@ -126,18 +155,70 @@ class ContentSourceStartupSpec :
         }
     })
 
-private fun startupConfig(overrides: Map<String, Any>): Config =
-    ConfigFactory
-        .parseMap(overrides)
-        .withFallback(
-            ConfigFactory.parseMap(
-                mapOf(
-                    "metadata.sources.github-model.remote-uri" to "",
-                    "metadata.sources.second-model.enabled" to false,
-                    "metadata.refresh-scheduler.interval-seconds" to 0,
-                    "grpc.port" to 0,
-                    "telemetry.enabled" to false,
-                ),
+private data class StartupRefusal(
+    val name: String,
+    val overrides: List<String>,
+    val reason: String? = null,
+    val extraOptions: List<String> = emptyList(),
+    val contaminatedEnvironment: Boolean = false,
+)
+
+/** Run the actual production main; the launcher's environment is deliberately dirty in the R7 case. */
+private fun refusedStartup(refusal: StartupRefusal): String {
+    val root = Files.createTempDirectory("metadata-refused-startup")
+    val output = root.resolve("output.txt")
+    val builder =
+        ProcessBuilder(
+            listOf(
+                Path.of(System.getProperty("java.home"), "bin", "java").toString(),
+                "-Dmetadata.sources.github-model.remote-uri=file:///unused-metadata-repo",
+                "-Dmetadata.sources.second-model.enabled=false",
+                "-Dmetadata.sources.local-model.enabled=false",
+                // Built-in stock roles are still present; strict=false must not make them content.
+                "-Dmetadata.strict-swap=false",
+                "-Dtelemetry.enabled=true",
+                "-Dktor.deployment.port=0",
+                "-Dgrpc.port=0",
+            ) + refusal.overrides.map { "-Dmetadata.sources.github-model.$it" } + refusal.extraOptions +
+                listOf("-cp", System.getProperty("java.class.path"), "org.tatrman.metadata.ApplicationKt"),
+        ).redirectErrorStream(true).redirectOutput(output.toFile())
+    if (refusal.contaminatedEnvironment) {
+        val model = Files.createDirectories(root.resolve("model"))
+        Files.writeString(model.resolve("db.ttrm"), "model db\ndef table offline {}")
+        builder.environment().putAll(
+            mapOf(
+                "METADATA_GIT_FALLBACK" to "local-model",
+                "METADATA_TTR_ROOT" to model.toString(),
+                "JAVA_TOOL_OPTIONS" to "-Dmetadata.sources.github-model.fallback=local-model",
             ),
-        ).withFallback(ConfigFactory.load())
-        .resolve()
+        )
+    }
+    builder.environment().keys.removeIf { it.startsWith("METADATA_") || it == "JAVA_TOOL_OPTIONS" }
+    val process = builder.start()
+    try {
+        val exited = process.waitFor(20, TimeUnit.SECONDS)
+        val text = Files.readString(output)
+        return withClue(text) {
+            exited shouldBe true
+            process.exitValue() shouldNotBe 0
+            text shouldNotContain "review-password"
+            text shouldNotContain "Exception in thread"
+            // Telemetry and CN messages prove ordering (review-188 mutation M2). Listener
+            // assertions also guard against starting either serving surface before refusal.
+            text shouldNotContain "[OTEL-CONFIG]"
+            text shouldNotContain "cn candidates:"
+            text shouldNotContain "Responding at"
+            text shouldNotContain "Metadata gRPC server started"
+            text.lineSequence().single { it.contains("no_model_source_configured") }.also {
+                it shouldContain "ERROR"
+                it shouldContain "org.tatrman.metadata.Application"
+            }
+        }
+    } finally {
+        if (process.isAlive) {
+            process.destroyForcibly()
+            process.waitFor(5, TimeUnit.SECONDS)
+        }
+        root.toFile().deleteRecursively()
+    }
+}

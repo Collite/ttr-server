@@ -234,6 +234,43 @@ class MetadataSourceConfigSpec :
                 listOf("tables", "authored", "auto_residue", "main_canvas", "missing", "sidecar")
         }
 
+        "a blank-branch git fallback is skipped while the primary serves from a legal blank subdirectory" {
+            val root = Files.createTempDirectory("metadata-blank-fallback")
+            try {
+                val primary =
+                    gitRepo(root.resolve("repo")) { model ->
+                        Files.writeString(model.resolve("db.ttrm"), "model db\ndef table primary_content {}")
+                    }
+                val cfg =
+                    startupConfig(
+                        mapOf(
+                            "metadata.sources.github-model.remote-uri" to primary.toUri().toString(),
+                            "metadata.sources.github-model.branch" to "master",
+                            "metadata.sources.github-model.subdirectory" to "",
+                            "metadata.sources.github-model.local-checkout-dir" to root.resolve("checkout").toString(),
+                            "metadata.sources.github-model.fallback" to "blank-fallback",
+                            "metadata.sources.blank-fallback.enabled" to false,
+                            "metadata.sources.blank-fallback.type" to "git",
+                            "metadata.sources.blank-fallback.remote-uri" to "file:///unused-metadata-repo",
+                            "metadata.sources.blank-fallback.branch" to " ",
+                        ),
+                    )
+                val (board, snapshots) = loadAll(cfg)
+                board.states().single().loadedOnce shouldBe true
+                board.states().single().servingFallback shouldBe false
+                board.states().single().description shouldContain "sub-path /"
+                ModelReconciler(ModelDescriptor(id = "t", name = "t"))
+                    .reconcile(snapshots)
+                    .model
+                    .objectByQname()
+                    .keys
+                    .any { it.name == "primary_content" } shouldBe true
+                promotionTarget(cfg, "blank-fallback") shouldBe null
+            } finally {
+                root.toFile().deleteRecursively()
+            }
+        }
+
         "the second source reads the first one's token unless it is given its own" {
             fun password(vararg lines: String) =
                 config(lines.joinToString("\n")).getString("metadata.sources.second-model.password")

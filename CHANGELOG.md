@@ -16,6 +16,11 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+- **metadata — startup requires a configured content source.** With none, startup logs
+  `no_model_source_configured` and exits non-zero, including with `METADATA_STRICT_SWAP=false`.
+  A blank git branch now counts as unconfigured, like a blank URI; an explicit fallback can still serve.
+  A configured source with unavailable or empty content still starts unready and retries.
+
 - **resolver — BREAKING: an assertion frame names its `concept` (grammar 0.20.1, translator 0.13.0; ttr-core#315,
   #331).** `assertion.validate:v1`, `assertion.lower:v1` and `assertion.explain:v1` read
   `org.tatrman.assertion.v1.Assertion` field 1 as `concept` (was `event`). The binary encoding is unchanged, but the
