@@ -52,7 +52,7 @@ internal data class ServedReport(
 internal data class CatalogRead(
     val catalogs: List<TemplateCatalog>,
     val reportsById: Map<String, ServedReport>,
-    val formsByTarget: Map<String, JsonObject>,
+    val formsByName: Map<String, JsonObject>,
 )
 
 private data class CachedCatalogRead(
@@ -82,7 +82,7 @@ internal fun RegistrySnapshot.templateContent(): CatalogRead {
                     .getValue("id")
                     .jsonPrimitive.content
             },
-            catalogs.flatMap { it.forms }.associateBy { it.getValue("target").jsonPrimitive.content },
+            catalogs.flatMap { it.forms }.associateBy { it.getValue("name").jsonPrimitive.content },
         )
     lastCatalogRead = CachedCatalogRead(exportSidecars, read)
     return read
@@ -162,17 +162,40 @@ internal fun templateCatalog(
                 MessageDigest.getInstance("SHA-256").digest(workbook).joinToString("") { "%02x".format(it) },
             )
         }
-    val forms =
+    // SM D-11: the authored document is served verbatim under `form` (its own `target` included); `name` and
+    // `source` come from the path, `sha` is this source's served commit; none of them overwrites an authored key.
+    val formPaths =
         files.keys.sorted().mapNotNull { path ->
-            val match = FORM_PATH.matchEntire(path) ?: return@mapNotNull null
+            FORM_PATH.matchEntire(path)?.let { it.groupValues[1] to path }
+        }
+    val pathsByName = formPaths.groupBy({ it.first }, { it.second })
+    val forms =
+        formPaths.mapNotNull { (name, path) ->
+            val twins = pathsByName.getValue(name) - path
+            if (twins.isNotEmpty()) {
+                issues += "template $sourceId:$path: form '$name' is also ${twins.joinToString()}; neither is served"
+                return@mapNotNull null
+            }
             val (_, fields) = document(path) ?: return@mapNotNull null
-            JsonObject(fields + ("target" to JsonPrimitive(match.groupValues[1])) + ("source" to JsonPrimitive(path)))
+            JsonObject(
+                mapOf(
+                    "name" to JsonPrimitive(name),
+                    "source" to JsonPrimitive(path),
+                    "sha" to JsonPrimitive(version),
+                    "form" to fields,
+                ),
+            )
         }
     return TemplateCatalog(sourceId, priority, version, reports, forms, issues)
 }
 
 internal val REPORT_PATH = Regex("model/reports/([^/]+)/report\\.yaml")
-internal val FORM_PATH = Regex("model/forms/(.+)\\.yaml")
+
+// A form is `<name>.yaml` or `<name>.form.json` (SM-C9); JSON is read by the same YAML 1.2 loader.
+internal val FORM_PATH = Regex("model/forms/(.+)\\.(?:yaml|form\\.json)")
+
+// Under model/forms/ these look like forms but are not served: GitTemplateSource reports them, never skips silently.
+internal val UNSERVED_FORM_LOOKALIKE = Regex("model/forms/.+\\.(?:json|yml)")
 
 private fun Any?.toTemplateJson(): JsonElement =
     when (this) {

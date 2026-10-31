@@ -29,7 +29,11 @@ class TemplateCatalogReviewSpec :
             summary.getValue("title") shouldBe Json.parseToJsonElement("""{"en":"Yes","cs":"Ano"}""")
             summary.getValue("refresh").jsonPrimitive.content shouldBe "off"
             summary.getValue("roles") shouldBe Json.parseToJsonElement("""["yes","no"]""")
-            val form = catalog.forms.single()
+            val form =
+                catalog.forms
+                    .single()
+                    .getValue("form")
+                    .jsonObject
             form.getValue("country").jsonPrimitive.content shouldBe "NO"
             form.getValue("default").jsonPrimitive.content shouldBe "10"
             form.getValue("large").jsonPrimitive.content shouldBe "123456789012345678901234567890"
@@ -52,7 +56,11 @@ class TemplateCatalogReviewSpec :
         "R2 non-finite numbers remain valid YAML and have explicit JSON string representations" {
             val catalog = catalog(form = "positive: .inf\nnegative: -.inf\nnan: .nan\n")
             catalog.issues shouldBe emptyList()
-            val form = catalog.forms.single()
+            val form =
+                catalog.forms
+                    .single()
+                    .getValue("form")
+                    .jsonObject
             listOf("positive" to ".inf", "negative" to "-.inf", "nan" to ".nan").forEach { (key, value) ->
                 form.getValue(key).jsonPrimitive.isString shouldBe true
                 form.getValue(key).jsonPrimitive.content shouldBe value
@@ -75,8 +83,18 @@ class TemplateCatalogReviewSpec :
         "N2 binary and set values have stable JSON representations; unsupported values are diagnosed" {
             catalog(form = "logo: !!binary aGVsbG8=\ns: !!set {a: null, b: null}\n").apply {
                 issues shouldBe emptyList()
-                forms.single().getValue("logo") shouldBe Json.parseToJsonElement("\"aGVsbG8=\"")
-                forms.single().getValue("s") shouldBe Json.parseToJsonElement("[\"a\",\"b\"]")
+                forms
+                    .single()
+                    .getValue("form")
+                    .jsonObject
+                    .getValue("logo") shouldBe
+                    Json.parseToJsonElement("\"aGVsbG8=\"")
+                forms
+                    .single()
+                    .getValue("form")
+                    .jsonObject
+                    .getValue("s") shouldBe
+                    Json.parseToJsonElement("[\"a\",\"b\"]")
             }
             catalog(form = "x: !!java.util.Optional foo\n").apply {
                 forms shouldBe emptyList()
@@ -175,7 +193,7 @@ class TemplateCatalogReviewSpec :
                             .jsonArray
                     forms.map {
                         it.jsonObject
-                            .getValue("target")
+                            .getValue("name")
                             .jsonPrimitive.content
                     } shouldBe listOf("a\"b", "a#b")
                     val detail = Json.parseToJsonElement(client.get("/model/report?id=a%23b").bodyAsText()).jsonObject

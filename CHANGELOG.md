@@ -26,6 +26,15 @@ outside this repo could notice is in.
   visibly while retaining accepted content; malformed refs are refused before loading. Preview content cannot
   confirm a pending CN promotion, and vocabulary-only refreshes preserve content reports.
 
+- **metadata — forms are served verbatim, as `<name>.form.json` or `<name>.yaml` (SM D-11).** `GET /model/forms` now
+  answers `{ forms: [{ name, source, sha, form }] }`: `form` is the authored document unchanged; `name` (the path stem,
+  nested directories kept), `source` and `sha` (the served commit of the form's Git source) sit beside it. Before, the authored fields were spread at the top level and
+  `target` was overwritten with the path stem, so a row-entry form lost its `target: { entity, lowering }`. Forms may
+  now be `forms/<name>.form.json` as well as `forms/<name>.yaml` (JSON goes through the same YAML 1.2 loader and
+  limits). One name authored in both is served by neither, and a `.json`/`.yml` file under `forms/` that is not a
+  form is reported in `/status.issues` instead of being skipped silently. The only reader so far, the Studio BFF's
+  presence probe, counts the list and is unaffected.
+
 - **llm-gateway — a key's rate limit is a true 60 s window, and a refused request no longer counts.** The limit
   (`rateLimit.requestsPerMinute`, min-wins with the key's override) now admits at most that many requests in any 60 s
   ending now: a sliding log per key in Redis (`llm-gateway:rlw:{keyId}`, a sorted set), where only admitted requests

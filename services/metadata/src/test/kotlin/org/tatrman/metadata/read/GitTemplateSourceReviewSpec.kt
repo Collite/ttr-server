@@ -257,7 +257,7 @@ class GitTemplateSourceReviewSpec :
                     forms
                         .single()
                         .jsonObject
-                        .getValue("target")
+                        .getValue("name")
                         .jsonPrimitive.content shouldBe "valid"
                     val status = Json.parseToJsonElement(client.get("/status").bodyAsText()).jsonObject
                     status.getValue("issues").jsonArray.size shouldBe 2
