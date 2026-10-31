@@ -39,7 +39,7 @@ class TestRealm(
     /** A person's access token, as the realm issues one. */
     fun person(
         username: String = "maya",
-        roles: List<String> = listOf("sales_manager"),
+        roles: List<String> = listOf("hartland-sales-managers"),
         audience: String? = AUDIENCE,
         expiresAt: Instant? = Instant.now().plusSeconds(300),
         issuer: String = ISSUER,
@@ -61,7 +61,7 @@ class TestRealm(
     /** A service account's client-credentials token (Keycloak: user `service-account-<client>`, claim `client_id`). */
     fun service(
         clientId: String = "svc-hartland-automation",
-        roles: List<String> = listOf("ops"),
+        roles: List<String> = listOf("hartland-ops"),
         expiresAt: Instant = Instant.now().plusSeconds(300),
     ): String =
         JWT

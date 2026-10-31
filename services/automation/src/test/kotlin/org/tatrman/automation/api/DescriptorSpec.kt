@@ -71,7 +71,7 @@ class DescriptorSpec :
             val text =
                 json.encodeToString(
                     Descriptor.serializer(),
-                    describe(served(), caller("maya", setOf("sales_manager"))),
+                    describe(served(), caller("maya", setOf("hartland-sales-managers"))),
                 ) +
                     "\n"
             if (System.getenv("UPDATE_GOLDEN") != null) {
@@ -82,9 +82,13 @@ class DescriptorSpec :
         }
 
         "granted is per caller: ops may run every deployment as the decider; Maya the release ones only" {
-            val ops = describe(served(), caller("olga", setOf("ops"))).deployments
+            val ops = describe(served(), caller("olga", setOf("hartland-ops"))).deployments
             ops.filter { it.runAs == "identity.automation_decider" }.all { it.granted } shouldBe true
-            val maya = describe(served(), caller("maya", setOf("sales_manager"))).deployments.filter { it.granted }
+            val maya =
+                describe(
+                    served(),
+                    caller("maya", setOf("hartland-sales-managers")),
+                ).deployments.filter { it.granted }
             maya.map { it.name }.toSet() shouldBe
                 setOf("release_native_event", "release_n8n", "release_py", "release_bpmn")
             val sam = describe(served(), caller("sam", setOf("sales"))).deployments.filter { it.granted }
@@ -92,8 +96,17 @@ class DescriptorSpec :
         }
 
         "stale = some fingerprint without an approval; every one approved = not stale" {
-            describe(served(), caller("olga", setOf("ops"))).deployments.all { it.stale } shouldBe true
-            describe(served { _, _, _ -> true }, caller("olga", setOf("ops"))).deployments.none { it.stale } shouldBe
+            describe(served(), caller("olga", setOf("hartland-ops"))).deployments.all { it.stale } shouldBe true
+            describe(
+                served {
+                    _,
+                    _,
+                    _,
+                    ->
+                    true
+                },
+                caller("olga", setOf("hartland-ops")),
+            ).deployments.none { it.stale } shouldBe
                 true
         }
 
@@ -129,7 +142,7 @@ class DescriptorSpec :
         suspend fun ApplicationTestBuilder.get(path: String): HttpResponse =
             client.get(
                 path,
-            ) { header(HttpHeaders.Authorization, "Bearer ${realm.person("maya", listOf("sales_manager"))}") }
+            ) { header(HttpHeaders.Authorization, "Bearer ${realm.person("maya", listOf("hartland-sales-managers"))}") }
 
         fun HttpResponse.errorCode(text: String) =
             Json
@@ -276,7 +289,7 @@ class DescriptorSpec :
             testApplication {
                 val bundles: Bundles = BundleFixture.bundles(BundleSource { BundleFixture.checkout(branch = it) })
                 service(BundleFixture.sources(bundles))
-                val maya = realm.person("maya", listOf("sales_manager"))
+                val maya = realm.person("maya", listOf("hartland-sales-managers"))
                 val r = client.post("/automation/refresh") { header(HttpHeaders.Authorization, "Bearer $maya") }
                 r.status shouldBe HttpStatusCode.Forbidden
                 r.errorCode(r.bodyAsText()) shouldBe "refresh-forbidden"

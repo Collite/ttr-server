@@ -120,7 +120,7 @@ class CallerSpec :
             testApplication {
                 service()
                 get("/automation/whoami", realm.service("svc-hartland-automation")).bodyAsText() shouldBe
-                    "svc-hartland-automation|SERVICE|ops|sub-svc-hartland-automation"
+                    "svc-hartland-automation|SERVICE|hartland-ops|sub-svc-hartland-automation"
             }
         }
 

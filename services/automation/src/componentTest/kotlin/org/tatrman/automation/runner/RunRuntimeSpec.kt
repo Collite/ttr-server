@@ -1377,7 +1377,7 @@ private class DurableRuntimeFixture(
     val ledger = Ledger(config.budgets.batchDefault, clock)
     val stagingRoot = Files.createTempDirectory("au-runtime-pg")
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-    val caller = Caller("sub-maya", "maya", setOf("sales_manager"), TokenKind.PERSON, "not-stored")
+    val caller = Caller("sub-maya", "maya", setOf("hartland-sales-managers"), TokenKind.PERSON, "not-stored")
     val request = OpenRequest("release_native_event", buildJsonObject { put("key", "4711") })
     val reads = AtomicInteger()
     private val columns = listOf(ManifestColumn("order_number", "text"), ManifestColumn("verdict_reason", "text"))
