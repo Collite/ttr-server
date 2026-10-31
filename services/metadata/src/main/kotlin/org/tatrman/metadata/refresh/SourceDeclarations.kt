@@ -32,7 +32,7 @@ internal fun sourceDeclarations(config: Config): List<SourceDeclaration> {
             }
             ConfigValueType.OBJECT -> {
                 val sources = config.getConfig("metadata.sources")
-                sources.root().keys.filter { it != "builtin-stock" }.sorted().map { key ->
+                sources.root().keys.filter { it != "builtin-stock" }.map { key ->
                     val sub = sources.getConfig(key)
                     SourceDeclaration(key, if (sub.hasPath("id")) sub.getString("id") else key, sub)
                 }
