@@ -66,26 +66,74 @@ class TemplateRoutesSpec :
             }
         }
 
-        "forms preserve authored fields and use their relative path target, including nested targets" {
+        "SM D-11: forms are served verbatim under `form`; name and source come from the path, authored target is kept" {
             TemplateFixture().use { fixture ->
                 fixture.write(
                     "forms/er.entity.invoice.yaml",
-                    "target: ignored\nfields: [{name: amount, required: true}]\n",
+                    "target: {entity: er.entity.invoice, lowering: v1}\nfields: [{name: amount, required: true}]\n",
                 )
-                fixture.write("forms/admin/other.yaml", "title: {cs: Další}\ncustom: 12\n")
+                fixture.write("forms/admin/other.yaml", "title: {cs: Další}\ncustom: 12\nname: authored\n")
+                fixture.write("forms/position.form.json", POSITION_FORM_JSON)
                 fixture.commit()
                 fixture.refresh()
+                val sha =
+                    fixture.git.repository
+                        .resolve("HEAD")
+                        .name
                 testApplication {
                     serve(fixture.registry)
                     val response = client.get("/model/forms")
                     response.status shouldBe HttpStatusCode.OK
                     Json.parseToJsonElement(response.bodyAsText()) shouldBe
                         Json.parseToJsonElement(
-                            """{"forms":[{"target":"admin/other","title":{"cs":"Další"},"custom":12,
-                                |"source":"model/forms/admin/other.yaml"},
-                                |{"target":"er.entity.invoice","fields":[{"name":"amount","required":true}],
-                                |"source":"model/forms/er.entity.invoice.yaml"}]}
+                            """{"forms":[
+                                |{"name":"admin/other","source":"model/forms/admin/other.yaml","sha":"$sha",
+                                | "form":{"title":{"cs":"Další"},"custom":12,"name":"authored"}},
+                                |{"name":"er.entity.invoice","source":"model/forms/er.entity.invoice.yaml","sha":"$sha",
+                                | "form":{"target":{"entity":"er.entity.invoice","lowering":"v1"},
+                                |  "fields":[{"name":"amount","required":true}]}},
+                                |{"name":"position","source":"model/forms/position.form.json","sha":"$sha",
+                                | "form":$POSITION_FORM_JSON}]}
                             """.trimMargin(),
+                        )
+                    val status = Json.parseToJsonElement(client.get("/status").bodyAsText()).jsonObject
+                    status.getValue("issues").jsonArray shouldBe emptyList()
+                }
+            }
+        }
+
+        "SM D-11: a name authored twice is served by neither, and form look-alikes are issues, not silence" {
+            TemplateFixture().use { fixture ->
+                fixture.write("forms/rate.yaml", "fields: []\n")
+                fixture.write("forms/rate.form.json", "{\"fields\": []}\n")
+                fixture.write("forms/price.json", "{\"fields\": []}\n")
+                fixture.write("forms/sub/price.yml", "fields: []\n")
+                fixture.write("forms/README.md", "Forms live here.\n")
+                fixture.write("forms/kept.form.json", "{\"fields\": []}\n")
+                fixture.commit()
+                fixture.refresh()
+                testApplication {
+                    serve(fixture.registry)
+                    val forms = Json.parseToJsonElement(client.get("/model/forms").bodyAsText()).jsonObject
+                    forms.getValue("forms").jsonArray.map {
+                        it.jsonObject
+                            .getValue("name")
+                            .jsonPrimitive.content
+                    } shouldBe listOf("kept")
+                    val status = Json.parseToJsonElement(client.get("/status").bodyAsText()).jsonObject
+                    val unserved = "not served (a form is <name>.form.json or <name>.yaml)"
+                    status
+                        .getValue("issues")
+                        .jsonArray
+                        .map { it.jsonPrimitive.content }
+                        .toSet() shouldBe
+                        setOf(
+                            "template world:model/forms/price.json: $unserved",
+                            "template world:model/forms/sub/price.yml: $unserved",
+                            "template world:model/forms/rate.form.json: " +
+                                "form 'rate' is also model/forms/rate.yaml; neither is served",
+                            "template world:model/forms/rate.yaml: " +
+                                "form 'rate' is also model/forms/rate.form.json; neither is served",
                         )
                 }
             }
@@ -347,6 +395,24 @@ internal fun ApplicationTestBuilder.serve(
 }
 
 private val WORKBOOK = ByteArray(256) { it.toByte() }
+
+// A row-entry form as the Studio's Data Entry reads it: an object `target`, JSON escapes, pretty-printed.
+private val POSITION_FORM_JSON =
+    """{
+        |  "kind": "tatrman.ttrl.row-entry-form",
+        |  "version": "1",
+        |  "target": { "entity": "investment.position", "lowering": "v1" },
+        |  "semantics": "scd1",
+        |  "readOnly": false,
+        |  "fields": [
+        |    { "name": "isin", "label": "Asset \"ISIN\" é \/ code", "control": "lookup", "required": true,
+        |      "lookup": { "refTable": "asset", "refColumn": "isin" } },
+        |    { "name": "quantity", "label": "Quantity", "control": "number", "precision": 4, "default": null }
+        |  ]
+        |}
+        |
+    """.trimMargin()
+
 private val REPORT_YAML =
     """# Preserve comments and Unicode on the detail route.
         |id: sales
