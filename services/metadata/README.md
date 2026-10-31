@@ -178,11 +178,17 @@ and reuse one empty catalog with a source-specific issue; no template Git read i
 |---|---|
 | `GET /model/reports` | `{ reports: [{ id, title, program, params, roles, refresh, source, version }] }` |
 | `GET /model/report?id=sales` | `{ id, yaml, template, sha256 }` |
-| `GET /model/forms` | `{ forms: [{ target, source, ...authoredFields }] }` |
+| `GET /model/forms` | `{ forms: [{ name, source, sha, form }] }` — `form` is the authored document, verbatim |
 
-Reports live at `reports/<id>/report.yaml` with a sibling `template.xlsx`; forms at `forms/<target>.yaml`
-under that model root. Public `source` paths use `model/reports/...` and `model/forms/...`. Report ids and
-form targets come from their paths; lists are sorted by those keys. Nested form targets are retained.
+Reports live at `reports/<id>/report.yaml` with a sibling `template.xlsx`; forms at `forms/<name>.form.json` or
+`forms/<name>.yaml` under that model root (JSON is read by the same YAML 1.2 loader, so the limits below apply to
+both). Public `source` paths use `model/reports/...` and `model/forms/...`. Report ids and form names come from
+their paths; lists are sorted by those keys. Nested form names are retained (`forms/admin/x.yaml` → `admin/x`).
+A form is served whole under `form`: metadata adds `name`, `source` and `sha` (the served commit of the Git source the
+form came from) beside it and never changes an authored key,
+so a form's own `target` (e.g. `{ entity, lowering }`) reaches the consumer intact. One name authored twice in a
+source (`x.yaml` and `x.form.json`) is served by neither, with an issue per file; a `.json` or `.yml` file under
+`forms/` that is not a form name is an issue too, never skipped silently. Other files there (a README) are ignored.
 The report detail preserves the YAML text, returns the workbook bytes as base64, and hashes those bytes
 with SHA-256 (lowercase hex). The summary's `version` is the authored YAML version (default 1).
 Absent or empty (`null`) `params`/`roles` are `[]`, `title` is `{}` and `version` is `1`.

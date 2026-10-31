@@ -10,7 +10,10 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import org.tatrman.ttr.metadata.registry.MetadataRegistry
 
-/** #272: read-only, cluster-internal routes, with the same availability/error convention as layouts. */
+/**
+ * #272: read-only, cluster-internal routes, with the same availability/error convention as layouts.
+ * `/model/forms` answers `{ forms: [{ name, source, sha, form }] }`; `form` is the authored document, verbatim (SM D-11).
+ */
 fun Route.templateRoutes(registry: MetadataRegistry) {
     get("/model/reports") {
         val snapshot = registry.read() ?: return@get call.respondModelNotLoaded()
@@ -46,8 +49,8 @@ fun Route.templateRoutes(registry: MetadataRegistry) {
         val forms =
             snapshot
                 .templateContent()
-                .formsByTarget.values
-                .sortedBy { it.getValue("target").jsonPrimitive.content }
+                .formsByName.values
+                .sortedBy { it.getValue("name").jsonPrimitive.content }
         call.respondJson(buildJsonObject { put("forms", JsonArray(forms.toList())) }.toString())
     }
 }

@@ -182,6 +182,9 @@ internal class GitTemplateSource(
                                 !FORM_PATH.matches(publicPath) &&
                                 !WORKBOOK_PATH.matches(publicPath)
                             ) {
+                                if (UNSERVED_FORM_LOOKALIKE.matches(publicPath)) {
+                                    issues[publicPath] = "not served (a form is <name>.form.json or <name>.yaml)"
+                                }
                                 continue
                             }
                             // Any blob read exception aborts this whole catalog, never mixing old/new documents.
