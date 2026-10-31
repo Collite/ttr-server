@@ -16,6 +16,13 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+- **metadata — gated branch refresh and serving reports.** HTTP `/refresh?branch=` and RPC `RefreshRequest.branch`
+  can select a branch or full commit SHA with `METADATA_ALLOW_NON_DEFAULT_BRANCH=true` (default false).
+  Explicit configured-default requests remain allowed. Refused loads retain the accepted model and restore the
+  prior ref/checkout locally. Status/refresh responses add serving, last-attempt/last-success and retained-content
+  reports; HTTP status and RPC GetStatus add kind counts and tags. Git SHA is exposed as `commit`; existing composite
+  `model_version` remains unchanged. All proto changes are additive; ordinary no-branch refresh remains supported.
+
 - **llm-gateway — a key's rate limit is a true 60 s window, and a refused request no longer counts.** The limit
   (`rateLimit.requestsPerMinute`, min-wins with the key's override) now admits at most that many requests in any 60 s
   ending now: a sliding log per key in Redis (`llm-gateway:rlw:{keyId}`, a sorted set), where only admitted requests
