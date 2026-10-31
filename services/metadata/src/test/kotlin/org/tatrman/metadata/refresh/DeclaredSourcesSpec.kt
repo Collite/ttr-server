@@ -46,9 +46,14 @@ class DeclaredSourcesSpec :
                 Files.writeString(root.resolve("db.ttrm"), "model db\ndef table local {}")
                 val cfg =
                     ConfigFactory
-                        .parseString("""metadata.sources = [{id=local, type=filesystem, path="$root"}]""")
-                        .withFallback(ConfigFactory.parseResources("application.conf"))
-                        .resolve()
+                        .parseString(
+                            """
+                            include classpath("application.conf")
+                            metadata.sources = [{id=local, type=filesystem, path="$root"}]
+                            """.trimIndent(),
+                        ).resolve(ConfigResolveOptions.defaults().setUseSystemEnvironment(false))
+                cfg.getString("metadata.descriptor.id") shouldBe "v1-metadata"
+                cfg.getInt("grpc.port") shouldBe 7261
                 val board = SourceLoadBoard()
                 buildSources(cfg, board).map { it.id } shouldBe listOf("builtin-stock-roles", "local")
                 board.states().map { it.id } shouldBe listOf("local")

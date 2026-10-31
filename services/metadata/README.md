@@ -426,9 +426,11 @@ with `METADATA_TTR_ROOT=/path/to/model` serves that directory while the reposito
 
 The existing keyed `metadata.sources { github-model { … }, second-model { … } }` configuration and
 its environment variables above continue to work. To serve more sources, supply an explicit list in
-an application HOCON/JSON config file (for example with `-Dconfig.file=/etc/metadata/application.conf`):
+an application HOCON config file (for example with `-Dconfig.file=/etc/metadata/model.conf`).
+Include the shipped defaults before overriding the sources:
 
 ```hocon
+include classpath("application.conf")
 metadata.sources = [
   {
     id = estate
@@ -449,6 +451,8 @@ metadata.sources = [
 ]
 ```
 
+The explicit classpath include keeps the descriptor, ports and other service defaults when `config.file`
+replaces the default application resource. A JSON configuration must supply the equivalent full configuration.
 A list **replaces** the shipped source object, including its demo repository and env-backed slots.
 The old `METADATA_GIT_*`/`METADATA_GIT2_*`/`METADATA_TTR_ROOT` slots apply when using the keyed object;
 list entries can explicitly reference whichever environment variables they need. Internal stock roles
