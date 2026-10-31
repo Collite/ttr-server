@@ -48,9 +48,17 @@ sidecars of an already accepted source are cached but retain the existing served
 as described below. Layout, report/form and lexicon content issues remain non-blocking.
 
 With configured sources but no accepted contribution, strict mode publishes nothing: gRPC
-`model_loaded` stays false and `/ready` answers 503. With no configured sources, the stock-only
-model and `NO_MODEL_SOURCE` diagnostic remain; readiness stays down. Once every configured source has contributed a
-published load, a later failure keeps readiness UP while the old content is served. Built-in stock
+`model_loaded` stays false and `/ready` answers 503. With no configured content sources, startup
+exits non-zero with `no_model_source_configured`, before telemetry, CN database initialization or serving listeners.
+Configure `METADATA_GIT_REMOTE_URI`, `METADATA_GIT_BRANCH` and `METADATA_GIT_SUBDIR`. For a filesystem model,
+leave the git URI empty and set `METADATA_GIT_FALLBACK=local-model` with `METADATA_TTR_ROOT=<model dir>`, or use
+`-Dmetadata.sources.local-model.enabled=true` (for example in `JAVA_TOOL_OPTIONS`) with `METADATA_TTR_ROOT=<model dir>`.
+Setting `METADATA_TTR_ROOT` alone does not enable the source. This startup check also applies with
+`METADATA_STRICT_SWAP=false`. A blank or whitespace-only git branch makes that source unconfigured, just like a blank URI;
+an explicit local fallback can still serve. A blank subdirectory remains legal and selects the repository root.
+The fatal log lists enabled source blocks that could not be built and their reasons, without URI credentials.
+A configured source with unavailable or empty content still starts unready and retries with the existing backoff.
+Once every configured source has contributed a published load, a later failure keeps readiness UP while the old content is served. Built-in stock
 roles and registered CN vocabulary versions are not configured sources and do not satisfy this gate.
 Md-only sources, including directive-less files, and cn concepts count as model content even without
 typed model carriers. Lexicon entries and project headers alone do not count.
@@ -319,7 +327,7 @@ Hartland's, so a URI alone would look for `master` and `model/` in your reposito
 
 | Env | Meaning |
 |---|---|
-| `METADATA_GIT_REMOTE_URI` | The repository. Default `https://github.com/Collite/ttr-demo.git`. Empty = no model source at all: Metadata logs an error and stays not ready. |
+| `METADATA_GIT_REMOTE_URI` | The repository. Default `https://github.com/Collite/ttr-demo.git`. Empty disables this source; startup exits non-zero if no other content source is configured. |
 | `METADATA_GIT_BRANCH` | The branch. Default `master`. Set it together with the URI. |
 | `METADATA_GIT_SUBDIR` | The model's directory inside the repository. Default `model`. Set it together with the URI. |
 | `METADATA_GIT_TOKEN` | A read token for a private repository (`METADATA_GIT_USERNAME` defaults to `x-access-token`). |

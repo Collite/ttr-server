@@ -37,6 +37,8 @@ import org.tatrman.metadata.cn.VocabularySource
 import org.tatrman.metadata.cn.candidateRoutes
 import org.tatrman.metadata.export.metadataExportRoutes
 import org.tatrman.metadata.health.SourceLoadBoard
+import org.tatrman.metadata.health.NO_MODEL_SOURCE
+import org.tatrman.metadata.health.NO_MODEL_SOURCE_HELP
 import org.tatrman.metadata.health.modelHealthRoutes
 import org.tatrman.metadata.health.redactCredentials
 import org.tatrman.metadata.read.metadataReadRoutes
@@ -71,16 +73,43 @@ import shared.ktor.KtorConfigFactory
 import shared.ktor.KtorServerBootstrap
 import shared.ktor.installKtorServerBase
 import java.nio.file.Path
+import kotlin.system.exitProcess
 
 private val log = LoggerFactory.getLogger("org.tatrman.metadata.Application")
+
+internal class MissingContentSourceException(
+    message: String,
+) : IllegalStateException(message)
 
 fun main() {
     val config = ConfigFactory.load()
     val serverConfig = KtorConfigFactory.fromConfig(config, "metadata", 7203)
-    KtorServerBootstrap.createServer(serverConfig) { module(config) }.start(wait = true)
+    try {
+        KtorServerBootstrap.createServer(serverConfig) { module(config) }.start(wait = true)
+    } catch (e: MissingContentSourceException) {
+        log.error(e.message)
+        exitProcess(1)
+    }
 }
 
 fun Application.module(config: Config) {
+    // MW-P1: missing configuration is fatal, unlike a configured source whose content is
+    // temporarily unavailable. Check before installing telemetry, opening CN's database or
+    // starting either serving listener. Internal stock roles and CN versions are not content.
+    val meterRegistry = PrometheusMeterRegistry(PrometheusConfig.DEFAULT)
+    val loadBoard = SourceLoadBoard(meterRegistry, strictSwap = strictSwap(config))
+    val registry = MetadataRegistry()
+    val lexiconSourceIds = mutableSetOf<String>()
+    val skippedSources = mutableListOf<String>()
+    val contentSlots =
+        buildSources(config, loadBoard, lexiconSourceIds, skippedSources) { registry.read()?.exportSidecars.orEmpty() }
+    if (loadBoard.states().isEmpty()) {
+        val skipped = skippedSources.distinct().sorted().joinToString("; ")
+        throw MissingContentSourceException(
+            "$NO_MODEL_SOURCE: $NO_MODEL_SOURCE_HELP" + if (skipped.isEmpty()) "" else "; skipped: $skipped",
+        )
+    }
+
     installKtorServerBase(KtorConfigFactory.fromConfig(config, "metadata", 7203))
 
     // OTel SDK + tracer for the search RPC. Other RPCs gain spans incrementally;
@@ -95,13 +124,6 @@ fun Application.module(config: Config) {
         )
     val tracer = otel.getTracer("org.tatrman.metadata")
 
-    // Phase 09 B4 / DF-M16 — Prometheus meter registry. The metadata service was the only v1
-    // service without `/metrics`; other services scrape from a comparable mount point.
-    val meterRegistry = PrometheusMeterRegistry(PrometheusConfig.DEFAULT)
-    // ttr-server#180 — every configured source's loads, for /ready, /status and /metrics.
-    val loadBoard = SourceLoadBoard(meterRegistry, strictSwap = strictSwap(config))
-
-    val registry = MetadataRegistry()
     val reconciler =
         ModelReconciler(
             descriptor =
@@ -120,9 +142,8 @@ fun Application.module(config: Config) {
     // CN-P5 S5.3 — the candidate store (cn contracts §6). Its registered vocabulary versions ride the refresher as one
     // more source (A-CN-94); it is not a configured model source, so it stays off the load board and out of /ready.
     val cn = CnSetup.fromConfig(config) { id -> promotionTarget(config, id) }
-    val lexiconSourceIds = mutableSetOf<String>()
     val sourceSlots =
-        buildSources(config, loadBoard, lexiconSourceIds) { registry.read()?.exportSidecars.orEmpty() } +
+        contentSlots +
             listOfNotNull(
                 cn.vocabularySource?.let {
                     SourceSlot(
@@ -144,13 +165,6 @@ fun Application.module(config: Config) {
             packageIndex = packageIndex,
         )
     launch(Dispatchers.IO) {
-        if (loadBoard.states().isEmpty()) {
-            log.error(
-                "No model source configured: METADATA_GIT_REMOTE_URI is empty and no other source is enabled. " +
-                    "Metadata serves no model and /ready answers 503 until one is configured — set " +
-                    "METADATA_GIT_REMOTE_URI, METADATA_GIT_BRANCH and METADATA_GIT_SUBDIR.",
-            )
-        }
         refresher.refresh(sourceId = "", force = true)
         retryUntilLoaded(loadBoard, refresher)
     }
@@ -366,9 +380,10 @@ internal fun buildSources(
     config: Config,
     loadBoard: SourceLoadBoard = SourceLoadBoard(),
     lexiconSourceIds: MutableSet<String> = mutableSetOf(),
+    skippedSources: MutableList<String> = mutableListOf(),
     servedSidecars: () -> Map<String, String> = { emptyMap() },
 ): List<SourceSlot> =
-    configuredSources(config, lexiconSourceIds, servedSidecars).map { slot ->
+    configuredSources(config, lexiconSourceIds, servedSidecars, skippedSources).map { slot ->
         if (slot.id != BuiltinStockSource.SOURCE_ID) {
             log.info("Model source '{}': {}", slot.id, slot.description)
             loadBoard.register(slot.id, slot.description)
@@ -380,6 +395,7 @@ private fun configuredSources(
     config: Config,
     lexiconSourceIds: MutableSet<String>,
     servedSidecars: () -> Map<String, String>,
+    skippedSources: MutableList<String>,
 ): List<SourceSlot> {
     // Phase 2.2 — the built-in stock-roles source always loads first. Its
     // priority is Int.MAX_VALUE so it wins all merge collisions; protected
@@ -407,6 +423,7 @@ private fun configuredSources(
                     id,
                     lexiconSourceIds,
                     servedSidecars,
+                    skippedSources,
                 )?.let { SourceSlot(id, it, describeSource(sub)) }
             }
 
@@ -418,11 +435,13 @@ private fun configuredSources(
                         if (fs.hasPath("id")) fs.getString("id") else fallbackId,
                         lexiconSourceIds,
                         servedSidecars,
+                        skippedSources,
                     )
                 }
-            val primary = buildSourceFromConfig(sub, id, lexiconSourceIds, servedSidecars)
+            val primary = buildSourceFromConfig(sub, id, lexiconSourceIds, servedSidecars, skippedSources)
             when {
                 fallbackSource == null -> {
+                    skipSource(id, "unbuildable fallback '$fallbackId'", skippedSources)
                     log.warn(
                         "source '{}' references unknown/unbuildable fallback '{}' — using primary only",
                         id,
@@ -516,10 +535,11 @@ private fun buildSourceFromConfig(
     id: String,
     lexiconSourceIds: MutableSet<String>,
     servedSidecars: () -> Map<String, String>,
+    skippedSources: MutableList<String>,
 ): ModelSource? {
     val kind = if (sub.hasPath("kind")) sub.getString("kind") else "ttr"
     val priority = if (sub.hasPath("priority")) sub.getInt("priority") else 100
-    val storage = buildStorage(sub, id) ?: return null
+    val storage = buildStorage(sub, id, skippedSources = skippedSources) ?: return null
 
     return when (kind) {
         // VL V-37: Metadata serves the layouts committed next to the model — a source collects them only when asked
@@ -542,8 +562,7 @@ private fun buildSourceFromConfig(
         // (`org.tatrman.ttr.*` modeler artifacts, no erp-sql legacy YAML parse path).
         // See docs/implementation/v1/fork/tasks-p2-s2.1-metadata.md T2 note.
         else -> {
-            log.warn("Unknown source kind '{}' for '{}' — skipping", kind, id)
-            null
+            skipSource(id, "unknown kind '$kind'", skippedSources)
         }
     }
 }
@@ -598,6 +617,7 @@ private fun buildStorage(
     sub: Config,
     id: String,
     checkoutSuffix: String = "",
+    skippedSources: MutableList<String> = mutableListOf(),
 ): ModelStorage? {
     val type = if (sub.hasPath("type")) sub.getString("type") else id
     val path = if (sub.hasPath("path")) sub.getString("path") else ""
@@ -609,15 +629,18 @@ private fun buildStorage(
             // HTTPS auth (PAT tokens use username="x-access-token").
             val remoteUri = if (sub.hasPath("remote-uri")) sub.getString("remote-uri") else ""
             if (remoteUri.isBlank()) {
-                log.warn("git source '{}' has no remote-uri; skipping", id)
-                return null
+                return skipSource(id, "no remote-uri", skippedSources)
+            }
+            val branch = if (sub.hasPath("branch")) sub.getString("branch") else "main"
+            if (branch.isBlank()) {
+                return skipSource(id, "blank branch", skippedSources)
             }
             val checkout = gitCheckoutDir(sub, id, checkoutSuffix)
             GitArchiveStorage(
                 id = id,
                 remoteUri = remoteUri,
                 localCheckoutDir = checkout,
-                branch = if (sub.hasPath("branch")) sub.getString("branch") else "main",
+                branch = branch,
                 subdirectory = gitSubdirectory(sub),
                 username = if (sub.hasPath("username")) sub.getString("username") else null,
                 password = if (sub.hasPath("password")) sub.getString("password") else null,
@@ -625,23 +648,32 @@ private fun buildStorage(
         }
         "filesystem" -> {
             if (path.isBlank()) {
-                log.warn("filesystem source '{}' has no path; skipping", id)
-                return null
+                return skipSource(id, "filesystem source has no path", skippedSources)
             }
             LocalFsStorage(id = id, rootPath = Path.of(path))
         }
         "resources" -> {
             if (path.isBlank()) {
-                log.warn("resources source '{}' has no path; skipping", id)
-                return null
+                return skipSource(id, "resources source has no path", skippedSources)
             }
             ClasspathStorage(id = id, resourcePrefix = path)
         }
         else -> {
-            log.warn("Unknown source type '{}' for '{}' — skipping", type, id)
-            return null
+            return skipSource(id, "unknown type '$type'", skippedSources)
         }
     }
+}
+
+/** Configuration diagnostics name fields and source ids, never a remote URI or password. */
+private fun skipSource(
+    id: String,
+    reason: String,
+    skippedSources: MutableList<String>,
+): Nothing? {
+    val diagnostic = redactCredentials("$id ($reason)")
+    log.warn("Skipping model source: {}", diagnostic)
+    skippedSources += diagnostic
+    return null
 }
 
 /** Strict by default even for programmatically supplied configurations. */

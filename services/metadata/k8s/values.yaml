@@ -39,8 +39,9 @@ telemetry:
 # is the PUBLIC Hartland demo model — Collite/ttr-demo, branch `master`, sub-path `model` — which needs
 # no token, so a fresh install has a model to explore. To serve your own model set all three keys
 # (the branch and sub-path defaults are Hartland's); a private repository also needs the PAT
-# (`secretEnv` METADATA_GIT_TOKEN). An empty `gitRemoteUri` configures no source: Metadata logs an
-# error and never turns ready. Metadata bundles no fallback model (ttr-server#180): until the source
+# (`secretEnv` METADATA_GIT_TOKEN). An empty `gitRemoteUri` configures no content source: startup exits
+# non-zero with no_model_source_configured unless another source or METADATA_GIT_FALLBACK is configured.
+# Metadata bundles no fallback model (ttr-server#180): until a configured source
 # has loaded once, /ready answers 503 and /status says why. An empty `gitBranch`/`gitSubdirectory`
 # renders no env var (the metadata service's own defaults apply), and so does one that `extraEnv` already sets.
 metadata:

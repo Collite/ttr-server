@@ -16,6 +16,10 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+- **metadata — startup requires a configured content source.** With none, startup logs
+  `no_model_source_configured` and exits non-zero, including with `METADATA_STRICT_SWAP=false`.
+  A blank git branch now counts as unconfigured, like a blank URI; an explicit fallback can still serve.
+  A configured source with unavailable or empty content still starts unready and retries.
 - **resolver · metadata — grammar 0.20.2 (ttr-core#337).** `definition.render:v1` renders a same-row
   participant read through a held foreign key again (`exists Paired involving this.pair`, where the row holds the
   key). On 0.20.1 every such read refused with "the row named holds another key". Composite keys pair by name, so a
