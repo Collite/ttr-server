@@ -16,6 +16,15 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+- **llm-gateway — a key's rate limit is a true 60 s window, and a refused request no longer counts.** The limit
+  (`rateLimit.requestsPerMinute`, min-wins with the key's override) now admits at most that many requests in any 60 s
+  ending now: a sliding log per key in Redis (`llm-gateway:rlw:{keyId}`, a sorted set), where only admitted requests
+  are recorded. It was two minute buckets — the current minute's count plus the whole previous minute's, every request
+  counted — so a steady caller was held to about half its limit, and one retrying through its refusals stayed refused.
+  `Retry-After` is now the time until the oldest admitted request leaves the window. A refusal is logged (INFO, the
+  key id) and counted (`llm_gateway_ratelimit_refused_total`). The old `llm-gateway:rl:*` buckets expire on their own
+  within 120 s.
+
 - **metadata — startup requires a configured content source.** With none, startup logs
   `no_model_source_configured` and exits non-zero, including with `METADATA_STRICT_SWAP=false`.
   A blank git branch now counts as unconfigured, like a blank URI; an explicit fallback can still serve.

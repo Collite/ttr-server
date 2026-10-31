@@ -80,7 +80,7 @@ git push --force origin llm-gateway/pre-2.0
    prod PG is at V3.
 3. **Flush the Redis cache (G-1) — only after Redis is wired (§2b).** 2.0's `CacheEnvelope` format is
    new. The `data`-ns Redis is **shared with Charon**, so do NOT `FLUSHDB`; delete only the gateway's
-   cache namespace (`llm-gateway:chat:*`; the rate-limiter's `llm-gateway:rl:*` and Charon's keys stay
+   cache namespace (`llm-gateway:chat:*`; the rate-limiter's `llm-gateway:rlw:*` and Charon's keys stay
    intact):
    ```bash
    PW=$(kubectl -n data get secret redis-auth -o jsonpath='{.data.password}' | base64 -d)
