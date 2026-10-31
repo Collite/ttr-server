@@ -15,6 +15,7 @@ internal class ManagedSource(
     var fallback: ManagedSource? = null
     private var checkpoint: BranchStorage.Checkpoint? = null
     private var preview = false
+    private var preparationFailure: Exception? = null
     var attempted: SourceSnapshot? = null
         private set
     var origin: SourceOrigin = SourceOrigin(kind)
@@ -24,11 +25,20 @@ internal class ManagedSource(
         branch: String = "",
         initial: Boolean = false,
     ) {
-        checkpoint =
-            git?.checkpoint()?.let { point ->
-                if (initial) point.copy(branch = git.defaultBranch, head = null, ref = null) else point
-            }
         attempted = null
+        preparationFailure = null
+        checkpoint =
+            git?.let { storage ->
+                storage.clearAttempt()
+                try {
+                    storage.checkpoint().let { point ->
+                        if (initial) point.copy(branch = storage.defaultBranch, head = null, ref = null) else point
+                    }
+                } catch (e: Exception) {
+                    preparationFailure = e
+                    BranchStorage.Checkpoint(if (initial) storage.defaultBranch else storage.branch, null, null)
+                }
+            }
         preview = branch.isNotEmpty()
         if (preview) git?.branch = branch
         origin = SourceOrigin(kind, git?.branch.orEmpty())
@@ -36,8 +46,9 @@ internal class ManagedSource(
     }
 
     override fun load(): SourceSnapshot {
+        val prepared = preparationFailure?.let { cause -> ModelSource { throw cause } } ?: primary
         val fb = fallback
-        val snapshot = if (fb != null && !preview) FallbackSource(id, primary, fb).load() else primary.load()
+        val snapshot = if (fb != null && !preview) FallbackSource(id, prepared, fb).load() else prepared.load()
         attempted = snapshot
         val isFallback = snapshot.warnings.any { it.file == "<fallback>" }
         origin =

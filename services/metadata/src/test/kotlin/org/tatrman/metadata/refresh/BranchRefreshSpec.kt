@@ -448,6 +448,32 @@ class BranchRefreshSpec :
             }
         }
 
+        "unreadable checkout state remains retryable and reports rollback failure" {
+            BranchFixture().use { f ->
+                f.ref.refresh("", true)
+                val before = f.registry.readOrError()
+                val saved = f.checkout.resolveSibling(f.checkout.fileName.toString() + "-git")
+                Files.move(f.checkout.resolve(".git"), saved)
+                Files.createDirectory(f.checkout.resolve(".git"))
+                try {
+                    val failed = f.ref.refreshOutcome("", true, "preview/one")
+                    failed.status shouldBe "failed"
+                    failed.lastAttempt!!.commit shouldBe ""
+                    failed.lastAttempt!!.errors.joinToString() shouldContain "rollback_failed"
+                    failed.serving!!.commit shouldBe f.main
+                    (f.registry.read() === before) shouldBe true
+                    f.storage().branch shouldBe "main"
+                } finally {
+                    f.checkout
+                        .resolve(".git")
+                        .toFile()
+                        .deleteRecursively()
+                    Files.move(saved, f.checkout.resolve(".git"))
+                }
+                f.ref.refreshOutcome("", true).status shouldBe "ok"
+            }
+        }
+
         "HTTP default gate refuses preview with 409 and accepts an explicit configured default" {
             BranchFixture().use { f ->
                 testApplication {

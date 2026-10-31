@@ -61,6 +61,10 @@ internal class BranchStorage(
         }
     }
 
+    fun clearAttempt() {
+        attemptedCommit = ""
+    }
+
     override fun fetchVersion(): String {
         attemptedCommit = ""
         require(branch.matches(Regex("[0-9a-fA-F]{40}")) || Repository.isValidRefName("refs/heads/$branch")) {
