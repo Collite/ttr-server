@@ -20,7 +20,7 @@ class OpenSpec :
     StringSpec({
         val original = BundleFixture.load()
         val now = BundleFixture.LOADED_AT
-        val caller = Caller("maya-id", "maya", setOf("sales_manager"), TokenKind.PERSON, "verified")
+        val caller = Caller("maya-id", "maya", setOf("hartland-sales-managers"), TokenKind.PERSON, "verified")
         val recipe = "release_order"
         val deployment = "release_native_event"
         val program = "release_on_placement"

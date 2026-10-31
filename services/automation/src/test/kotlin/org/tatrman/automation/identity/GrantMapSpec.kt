@@ -22,12 +22,27 @@ class GrantMapSpec :
                     GrantDecl(Who.parse("role.process_owner"), GrantDecl.ANY_PROGRAM, decider),
                 ),
                 identities,
+                listOf(
+                    RoleDecl("ops", setOf("hartland-ops")),
+                    RoleDecl("sales_manager", setOf("hartland-sales-managers")),
+                    RoleDecl("process_owner", setOf("hartland-process-owners")),
+                ),
             )
 
-        val ops = caller("olga", setOf("ops"))
-        val maya = caller("maya", setOf("sales_manager"))
-        val owner = caller("pavel", setOf("process_owner"))
-        val sales = caller("sam", setOf("sales"))
+        val ops = caller("olga", setOf("hartland-ops"))
+        val maya = caller("maya", setOf("hartland-sales-managers"))
+        val owner = caller("pavel", setOf("hartland-process-owners"))
+        val sales = caller("sam", setOf("hartland-sales"))
+
+        "a role absent from the role map never matches its literal name" {
+            val map =
+                GrantMap(
+                    listOf(GrantDecl(Who.Role("ops"), GrantDecl.ANY_PROGRAM, decider)),
+                    identities,
+                    emptyList(),
+                )
+            map.allows(caller("olga", setOf("ops")), "morning_release", decider) shouldBe false
+        }
 
         "ops may run any program as the decider" {
             for (program in listOf("morning_release", "release_on_placement", "decide_catch_up", "settle_daily")) {
@@ -62,6 +77,7 @@ class GrantMapSpec :
                         GrantDecl(Who.Identity("automation_decider"), "p", RunAsRef.Author),
                     ),
                     identities,
+                    emptyList(),
                 )
             map.allows(maya, "p", RunAsRef.Author) shouldBe true
             map.allows(caller("svc-hartland-automation", kind = TokenKind.SERVICE), "p", RunAsRef.Author) shouldBe true
@@ -85,7 +101,8 @@ class GrantMapSpec :
         }
 
         "`who: *` grants every verified caller — a person or a service — that program as that identity, no other" {
-            val anyone = GrantMap(listOf(GrantDecl(Who.Anyone, "decide_on_request", RunAsRef.Author)), identities)
+            val anyone =
+                GrantMap(listOf(GrantDecl(Who.Anyone, "decide_on_request", RunAsRef.Author)), identities, emptyList())
             anyone.allows(sales, "decide_on_request", RunAsRef.Author) shouldBe true
             anyone.allows(caller("svc-x", kind = TokenKind.SERVICE), "decide_on_request", RunAsRef.Author) shouldBe true
             anyone.allows(sales, "settle_daily", RunAsRef.Author) shouldBe false
