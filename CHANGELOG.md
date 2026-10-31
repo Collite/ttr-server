@@ -20,6 +20,13 @@ outside this repo could notice is in.
   `no_model_source_configured` and exits non-zero, including with `METADATA_STRICT_SWAP=false`.
   A blank git branch now counts as unconfigured, like a blank URI; an explicit fallback can still serve.
   A configured source with unavailable or empty content still starts unready and retries.
+- **resolver · metadata — grammar 0.20.2 (ttr-core#337).** `definition.render:v1` renders a same-row
+  participant read through a held foreign key again (`exists Paired involving this.pair`, where the row holds the
+  key). On 0.20.1 every such read refused with "the row named holds another key". Composite keys pair by name, so a
+  relation that lists its join pairs in another order is not crossed. `cn/phase-bounds-participant` now counts
+  participants: a phase whose `from:` / `until:` event has two participants the bearer can be is refused, and the
+  message names both. Pin: `tatrman-grammar` / `tatrman-ttr-metadata` 0.20.1 → 0.20.2; translator/plan-proto stay
+  0.13.0.
 
 - **resolver — BREAKING: an assertion frame names its `concept` (grammar 0.20.1, translator 0.13.0; ttr-core#315,
   #331).** `assertion.validate:v1`, `assertion.lower:v1` and `assertion.explain:v1` read
