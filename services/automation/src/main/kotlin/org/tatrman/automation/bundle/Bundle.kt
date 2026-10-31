@@ -55,7 +55,7 @@ data class WorldScope(
     val identities: List<IdentityDecl>,
     val grants: List<GrantDecl>,
     val executors: Map<String, String>,
-    val roles: List<RoleDecl> = emptyList(),
+    val roles: List<RoleDecl>,
 )
 
 /**

@@ -71,8 +71,9 @@ data class Caller(
             val groups =
                 decoded
                     .getClaim("groups")
-                    .asList(String::class.java)
+                    .asList(Any::class.java)
                     .orEmpty()
+                    .filterIsInstance<String>()
                     .map { it.removePrefix("/") }
                     .toSet()
             return Caller(sub, principal, roles, if (service) TokenKind.SERVICE else TokenKind.PERSON, token, groups)

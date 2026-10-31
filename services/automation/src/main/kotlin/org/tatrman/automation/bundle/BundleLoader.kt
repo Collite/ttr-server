@@ -75,8 +75,6 @@ class BundleLoader(
                 .map { it.storageFile.path }
         for (e in snapshots.flatMap { it.errors } + result.errors) {
             if (LAYOUT_CODES.any { e.message.startsWith(it) }) continue
-            // D-138: undeclared grant roles retain literal realm-role matching, with one warning below.
-            if (UNDECLARED_GRANT_ROLE.matches(e.message)) continue
             if (isAutomationFinding(e, automationRoot, worldFiles)) {
                 findings += render(e, checkout.root)
             } else {
@@ -94,12 +92,13 @@ class BundleLoader(
         val deployments = linkedMapOf<String, org.tatrman.ttr.metadata.model.WorldDeployment>()
         val deploymentWorlds = linkedMapOf<String, String>()
         val scopes = linkedMapOf<String, WorldScope>()
-        val warnedRoles = mutableSetOf<String>()
         for (w in worlds) {
             val scope = scope(w, automation)
             for (role in scope.grants.mapNotNull { (it.who as? Who.Role)?.name }.distinct()) {
-                if (scope.roles.none { it.name == role } && warnedRoles.add(role)) {
-                    warnings += "world ${scope.name}: grant role.$role has no def role; using literal realm-role match"
+                if (scope.roles.any { it.name == role && it.keycloakGroups.isEmpty() }) {
+                    warnings +=
+                        "world ${scope.name}: grant role.$role: def role $role declares no keycloak_group, " +
+                        "so it authorizes no grant (D-138)"
                 }
             }
             scopes[scope.name] = scope
@@ -318,8 +317,6 @@ class BundleLoader(
         const val AUTOMATION_DIR = "automation"
         private const val AUTOMATION_VALIDATOR = "automation-validator"
         private val LAYOUT_CODES = listOf("ttr/package-declaration-mismatch", "ttr/package-prefix-divergence")
-        private val UNDECLARED_GRANT_ROLE =
-            Regex("ttr/automation-unknown-reference: grant: who names no role '[^']+'")
         private val AUTOMATION_CODES = listOf("ttr/automation-", "ttr/states-")
         private val log = LoggerFactory.getLogger(BundleLoader::class.java)
 
@@ -340,7 +337,7 @@ class BundleLoader(
         /** What [w] declares for its deployments: its processes, identities, grants and executors. */
         fun scope(
             w: World,
-            automation: AutomationSchema = AutomationSchema(),
+            automation: AutomationSchema,
         ): WorldScope =
             WorldScope(
                 name = w.qname.name,
@@ -357,7 +354,7 @@ class BundleLoader(
                                 if (resolve?.tag == "keycloak_group" &&
                                     group != null
                                 ) {
-                                    setOf(group)
+                                    setOf(group.removePrefix("/"))
                                 } else {
                                     emptySet()
                                 },

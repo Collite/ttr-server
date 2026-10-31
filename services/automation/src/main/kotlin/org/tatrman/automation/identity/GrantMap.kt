@@ -35,7 +35,7 @@ sealed interface RunAsRef {
     }
 }
 
-/** `who:` of a `def grant` — a realm role, a user, a named identity calling as itself, or anyone (`who: *`). */
+/** `who:` of a `def grant` — a model role, a user, a named identity calling as itself, or anyone (`who: *`). */
 sealed interface Who {
     data class Role(
         val name: String,
@@ -104,7 +104,7 @@ data class GrantDecl(
 class GrantMap(
     private val grants: List<GrantDecl>,
     identities: Collection<IdentityDecl>,
-    roles: Collection<RoleDecl> = emptyList(),
+    roles: Collection<RoleDecl>,
 ) {
     private val roles = roles.associateBy { it.name }
     private val identities = identities.associateBy { it.name }
@@ -128,7 +128,7 @@ class GrantMap(
             is Who.Role ->
                 roles[who.name]?.let { role ->
                     role.keycloakGroups.any { it in caller.roles || it in caller.groups }
-                } ?: (who.name in caller.roles)
+                } ?: false
             is Who.User -> caller.kind == TokenKind.PERSON && (who.name == caller.principal || who.name == caller.sub)
             is Who.Identity -> caller.kind == TokenKind.SERVICE && identities[who.name]?.principal == caller.principal
             Who.Anyone -> true
