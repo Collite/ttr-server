@@ -16,6 +16,15 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+- **llm-gateway — a key's rate limit is a true 60 s window, and a refused request no longer counts.** The limit
+  (`rateLimit.requestsPerMinute`, min-wins with the key's override) now admits at most that many requests in any 60 s
+  ending now: a sliding log per key in Redis (`llm-gateway:rlw:{keyId}`, a sorted set), where only admitted requests
+  are recorded. It was two minute buckets — the current minute's count plus the whole previous minute's, every request
+  counted — so a steady caller was held to about half its limit, and one retrying through its refusals stayed refused.
+  `Retry-After` is now the time until the oldest admitted request leaves the window. A refusal is logged (INFO, the
+  key id) and counted (`llm_gateway_ratelimit_refused_total`). The old `llm-gateway:rl:*` buckets expire on their own
+  within 120 s.
+
 - **resolver — BREAKING: an assertion frame names its `concept` (grammar 0.20.1, translator 0.13.0; ttr-core#315,
   #331).** `assertion.validate:v1`, `assertion.lower:v1` and `assertion.explain:v1` read
   `org.tatrman.assertion.v1.Assertion` field 1 as `concept` (was `event`). The binary encoding is unchanged, but the
