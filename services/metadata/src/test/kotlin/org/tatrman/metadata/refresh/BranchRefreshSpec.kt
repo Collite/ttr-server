@@ -272,6 +272,7 @@ class BranchRefreshSpec :
                     val first = ref.refreshOutcome("", true)
                     val service =
                         MetadataServiceImpl(f.registry, packageIndex = f.index, loadBoard = f.board, refresher = ref)
+                    ref.refreshOutcome("", true, "broken").keptPrevious shouldBe true
                     block.set(true)
                     val rpc =
                         async(kotlinx.coroutines.Dispatchers.IO) {
@@ -284,6 +285,7 @@ class BranchRefreshSpec :
                             )
                         }
                     entered.await()
+                    ref.refreshOutcome("missing", true).keptPrevious shouldBe false
                     val scheduler = RefreshScheduler(ref, java.time.Duration.ofMillis(20)).start()
                     try {
                         ref.refresh("", false).all { it.errorMessage == "refresh_in_flight" } shouldBe true

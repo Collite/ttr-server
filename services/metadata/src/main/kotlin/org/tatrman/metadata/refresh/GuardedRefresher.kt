@@ -121,6 +121,7 @@ class GuardedRefresher(
                     results = listOf(SourceResult(sourceId, false, message)),
                     status = "rejected",
                     httpStatus = 400,
+                    keptPrevious = false,
                     lastAttempt =
                         ModelLoadReport(
                             sourceId,
