@@ -250,16 +250,18 @@ class DeclaredSourcesSpec :
                     http.status = 200
                     http.conditional = false
                     val accepted = f.registry.read()
-                    for (unsafe in listOf(
-                        tarTree("../escape.ttrm" to "bad"),
-                        tarTree("/absolute.ttrm" to "bad"),
-                        tarTree("a\\b.ttrm" to "bad"),
-                        tarTree("db.ttrm" to "one", "db.ttrm" to "two"),
-                        tarTree("link" to "ignored", link = true),
-                        "not gzip".toByteArray(),
+                    for ((unsafe, code) in listOf(
+                        tarTree("../escape.ttrm" to "bad") to "http_source_unsafe_path",
+                        tarTree("/absolute.ttrm" to "bad") to "http_source_unsafe_path",
+                        tarTree("a\\b.ttrm" to "bad") to "http_source_unsafe_path",
+                        tarTree("db.ttrm" to "one", "db.ttrm" to "two") to "http_source_duplicate_path",
+                        tarTree("link" to "ignored", link = true) to "http_source_unsafe_entry",
+                        "not gzip".toByteArray() to "http_source_read_failed",
                     )) {
                         http.body = unsafe
-                        f.ref.refreshOutcome("remote", true).status shouldBe "failed"
+                        val refused = f.ref.refreshOutcome("remote", true)
+                        refused.status shouldBe "failed"
+                        refused.lastAttempt!!.errors.joinToString() shouldContain code
                         (f.registry.read() === accepted) shouldBe true
                     }
                     f.ref
@@ -289,8 +291,11 @@ class DeclaredSourcesSpec :
                     ) shouldBe false
                     http.status = 200
                     http.delayMillis = 150
+                    http.body = tarTree("db.ttrm" to "model db\ndef table timely {}")
                     val timeout = DeclaredFixture(listOf(http.entry() + mapOf("read-timeout-ms" to 25)))
-                    timeout.ref.refreshOutcome("", true).status shouldBe "failed"
+                    val timedOut = timeout.ref.refreshOutcome("", true)
+                    timedOut.status shouldBe "failed"
+                    timedOut.lastAttempt!!.errors.joinToString() shouldContain "SocketTimeoutException"
                 } finally {
                     local.toFile().deleteRecursively()
                 }
@@ -465,14 +470,16 @@ class DeclaredSourcesSpec :
                 val valid = http.body
                 val corrupt = valid.copyOf().also { it[it.size - 8] = (it[it.size - 8].toInt() xor 1).toByte() }
                 listOf(
-                    corrupt,
-                    valid.copyOf(valid.size - 4),
-                    tarTree("hardlink" to "", link = true, linkType = '1'.code.toByte()),
-                    tarTree("fifo" to "", link = true, linkType = '6'.code.toByte()),
-                    tarTree(*(0..10_000).map { "entry-$it" to "" }.toTypedArray()),
-                ).forEach { body ->
+                    corrupt to "http_source_read_failed",
+                    valid.copyOf(valid.size - 4) to "http_source_read_failed",
+                    tarTree("hardlink" to "", link = true, linkType = '1'.code.toByte()) to "http_source_unsafe_entry",
+                    tarTree("fifo" to "", link = true, linkType = '6'.code.toByte()) to "http_source_unsafe_entry",
+                    tarTree(*(0..10_000).map { "entry-$it" to "" }.toTypedArray()) to "http_source_too_many_entries",
+                ).forEach { (body, code) ->
                     http.body = body
-                    f.ref.refreshOutcome("remote", true).status shouldBe "failed"
+                    val refused = f.ref.refreshOutcome("remote", true)
+                    refused.status shouldBe "failed"
+                    refused.lastAttempt!!.errors.joinToString() shouldContain code
                     (f.registry.read() === accepted) shouldBe true
                 }
                 http.body = ByteArray(2048) { (it % 127).toByte() }

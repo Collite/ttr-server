@@ -2,6 +2,7 @@
 package org.tatrman.metadata.refresh
 
 import org.apache.commons.compress.archivers.tar.TarArchiveInputStream
+import org.apache.commons.compress.archivers.tar.TarConstants
 import org.tatrman.ttr.metadata.source.ModelStorage
 import org.tatrman.ttr.metadata.source.StorageFile
 import java.io.ByteArrayInputStream
@@ -105,9 +106,11 @@ internal class HttpTreeStorage(
                 }
                 val path = name.split('/').filter { it.isNotEmpty() && it != "." }.joinToString("/")
                 check(path.isNotEmpty() || entry.isDirectory) { "http_source_unsafe_path" }
-                check(entry.isDirectory || (entry.isFile && !entry.isLink && !entry.isSymbolicLink)) {
-                    "http_source_unsafe_entry"
-                }
+                val regularOrDirectory =
+                    entry.linkFlag == TarConstants.LF_NORMAL ||
+                        entry.linkFlag == TarConstants.LF_OLDNORM ||
+                        entry.linkFlag == TarConstants.LF_DIR
+                check(regularOrDirectory && !entry.isSparse) { "http_source_unsafe_entry" }
                 if (entry.isDirectory) continue
                 check(paths.add(path)) { "http_source_duplicate_path" }
                 size += entry.size
