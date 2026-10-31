@@ -144,6 +144,10 @@ class DeclaredSourcesSpec :
                         f.ref.refreshOutcome("remote", true, "main").httpStatus shouldBe 400
                         promotionTarget(f.config, "repo")!!.branch shouldBe "main"
                         promotionTarget(f.config, "remote") shouldBe null
+                        promotionTarget(
+                            ConfigFactory.parseMap(mapOf("metadata.sources.http.url" to http.url)),
+                            "http",
+                        ) shouldBe null
                         http.requests.all { it.auth == "Bearer secret-remote" } shouldBe true
                         testApplication {
                             environment { config = MapApplicationConfig() }

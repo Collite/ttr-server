@@ -632,8 +632,8 @@ internal fun promotionTarget(
     sourceId: String,
 ): PromotionTarget? {
     val sub = referencedSourceConfig(sourceDeclarations(config), sourceId) ?: return null
-    if (sub.hasPath("type") && sub.getString("type") == "http") return null
     val storage = buildStorage(sub, sourceId, checkoutSuffix = "-promotion") ?: return null
+    if (storage is HttpTreeStorage) return null
 
     fun str(path: String) = if (sub.hasPath(path)) sub.getString(path) else ""
     val subdirectory = str("subdirectory")
