@@ -6,10 +6,13 @@ import org.slf4j.LoggerFactory
 import org.tatrman.automation.identity.AuthorMap
 import org.tatrman.automation.identity.GrantDecl
 import org.tatrman.automation.identity.IdentityDecl
+import org.tatrman.automation.identity.RoleDecl
 import org.tatrman.automation.identity.Who
 import org.tatrman.ttr.metadata.model.AutomationSchema
 import org.tatrman.ttr.metadata.model.GrantWho
 import org.tatrman.ttr.metadata.model.ModelDescriptor
+import org.tatrman.ttr.parser.model.AutoValue
+import org.tatrman.ttr.metadata.model.RoleMembership
 import org.tatrman.ttr.metadata.model.RunAsRef
 import org.tatrman.ttr.metadata.model.World
 import org.tatrman.ttr.metadata.model.WorldSchema
@@ -72,6 +75,8 @@ class BundleLoader(
                 .map { it.storageFile.path }
         for (e in snapshots.flatMap { it.errors } + result.errors) {
             if (LAYOUT_CODES.any { e.message.startsWith(it) }) continue
+            // D-138: undeclared grant roles retain literal realm-role matching, with one warning below.
+            if (UNDECLARED_GRANT_ROLE.matches(e.message)) continue
             if (isAutomationFinding(e, automationRoot, worldFiles)) {
                 findings += render(e, checkout.root)
             } else {
@@ -89,8 +94,14 @@ class BundleLoader(
         val deployments = linkedMapOf<String, org.tatrman.ttr.metadata.model.WorldDeployment>()
         val deploymentWorlds = linkedMapOf<String, String>()
         val scopes = linkedMapOf<String, WorldScope>()
+        val warnedRoles = mutableSetOf<String>()
         for (w in worlds) {
-            val scope = scope(w)
+            val scope = scope(w, automation)
+            for (role in scope.grants.mapNotNull { (it.who as? Who.Role)?.name }.distinct()) {
+                if (scope.roles.none { it.name == role } && warnedRoles.add(role)) {
+                    warnings += "world ${scope.name}: grant role.$role has no def role; using literal realm-role match"
+                }
+            }
             scopes[scope.name] = scope
             for (d in w.deployments) {
                 val name = d.qname.name
@@ -307,6 +318,8 @@ class BundleLoader(
         const val AUTOMATION_DIR = "automation"
         private const val AUTOMATION_VALIDATOR = "automation-validator"
         private val LAYOUT_CODES = listOf("ttr/package-declaration-mismatch", "ttr/package-prefix-divergence")
+        private val UNDECLARED_GRANT_ROLE =
+            Regex("ttr/automation-unknown-reference: grant: who names no role '[^']+'")
         private val AUTOMATION_CODES = listOf("ttr/automation-", "ttr/states-")
         private val log = LoggerFactory.getLogger(BundleLoader::class.java)
 
@@ -325,12 +338,32 @@ class BundleLoader(
         }
 
         /** What [w] declares for its deployments: its processes, identities, grants and executors. */
-        fun scope(w: World): WorldScope =
+        fun scope(
+            w: World,
+            automation: AutomationSchema = AutomationSchema(),
+        ): WorldScope =
             WorldScope(
                 name = w.qname.name,
                 processes = w.processes.associateBy { it.qname.name },
                 identities = identities(w),
                 grants = grants(w),
+                roles =
+                    automation.roles.map { role ->
+                        val resolve = role.property("resolve") as? AutoValue.Tagged
+                        val group = (role.membership as? RoleMembership.KeycloakGroup)?.group
+                        RoleDecl(
+                            name = role.qname.name,
+                            keycloakGroups =
+                                if (resolve?.tag == "keycloak_group" &&
+                                    group != null
+                                ) {
+                                    setOf(group)
+                                } else {
+                                    emptySet()
+                                },
+                            resolveKind = resolve?.tag,
+                        )
+                    },
                 executors = w.executors.mapNotNull { x -> x.extendsRef?.let { x.qname.name to it } }.toMap(),
             )
 

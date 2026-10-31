@@ -3,6 +3,7 @@ package org.tatrman.automation.bundle
 
 import org.tatrman.automation.identity.GrantDecl
 import org.tatrman.automation.identity.IdentityDecl
+import org.tatrman.automation.identity.RoleDecl
 import org.tatrman.ttr.metadata.model.AutomationProgram
 import org.tatrman.ttr.metadata.model.Model
 import org.tatrman.ttr.metadata.model.WorldDeployment
@@ -54,6 +55,7 @@ data class WorldScope(
     val identities: List<IdentityDecl>,
     val grants: List<GrantDecl>,
     val executors: Map<String, String>,
+    val roles: List<RoleDecl> = emptyList(),
 )
 
 /**

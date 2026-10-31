@@ -32,7 +32,7 @@ class ApprovalDependenciesSpec :
         val resource = Path.of("src/test/resources/approval-evidence")
         val recipeName = "release_order"
         val deployment = "release_native_event"
-        val caller = Caller("maya-id", "maya", setOf("sales_manager"), TokenKind.PERSON, "verified")
+        val caller = Caller("maya-id", "maya", setOf("hartland-sales-managers"), TokenKind.PERSON, "verified")
         val manifestPath = "automation/release_order/release_order.bundle/manifest.json"
 
         fun fixture(): Path = ApprovalFixture.copyTo(tempdir(prefix = "automation-bundles-").toPath().resolve("branch"))
@@ -314,7 +314,7 @@ class ApprovalDependenciesSpec :
                             put("none", true)
                         },
                     ),
-                    caller.copy(roles = setOf("ops")),
+                    caller.copy(roles = setOf("hartland-ops")),
                 )
             result.httpStatus shouldBe 201
         }

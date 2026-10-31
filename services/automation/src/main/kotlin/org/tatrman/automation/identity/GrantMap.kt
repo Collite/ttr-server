@@ -78,6 +78,13 @@ data class IdentityDecl(
     val credential: String,
 )
 
+/** A model role's binding; an unsupported membership is retained as an empty resolved set. */
+data class RoleDecl(
+    val name: String,
+    val keycloakGroups: Set<String>,
+    val resolveKind: String? = null,
+)
+
 /** `def grant { who, program, as }` — [program] `*` is every program. */
 data class GrantDecl(
     val who: Who,
@@ -97,7 +104,9 @@ data class GrantDecl(
 class GrantMap(
     private val grants: List<GrantDecl>,
     identities: Collection<IdentityDecl>,
+    roles: Collection<RoleDecl> = emptyList(),
 ) {
+    private val roles = roles.associateBy { it.name }
     private val identities = identities.associateBy { it.name }
 
     fun allows(
@@ -116,7 +125,10 @@ class GrantMap(
         caller: Caller,
     ): Boolean =
         when (who) {
-            is Who.Role -> who.name in caller.roles
+            is Who.Role ->
+                roles[who.name]?.let { role ->
+                    role.keycloakGroups.any { it in caller.roles || it in caller.groups }
+                } ?: (who.name in caller.roles)
             is Who.User -> caller.kind == TokenKind.PERSON && (who.name == caller.principal || who.name == caller.sub)
             is Who.Identity -> caller.kind == TokenKind.SERVICE && identities[who.name]?.principal == caller.principal
             Who.Anyone -> true

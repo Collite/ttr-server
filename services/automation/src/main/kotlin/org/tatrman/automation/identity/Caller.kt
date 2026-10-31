@@ -35,6 +35,7 @@ data class Caller(
     val roles: Set<String>,
     val kind: TokenKind,
     val token: String,
+    val groups: Set<String> = emptySet(),
 ) {
     /** The bearer stays out of logs and protocol records. */
     override fun toString(): String = "Caller(sub=$sub, principal=$principal, roles=$roles, kind=$kind)"
@@ -67,7 +68,14 @@ data class Caller(
                     .orEmpty()
                     .filterIsInstance<String>()
                     .toSet()
-            return Caller(sub, principal, roles, if (service) TokenKind.SERVICE else TokenKind.PERSON, token)
+            val groups =
+                decoded
+                    .getClaim("groups")
+                    .asList(String::class.java)
+                    .orEmpty()
+                    .map { it.removePrefix("/") }
+                    .toSet()
+            return Caller(sub, principal, roles, if (service) TokenKind.SERVICE else TokenKind.PERSON, token, groups)
         }
     }
 }
