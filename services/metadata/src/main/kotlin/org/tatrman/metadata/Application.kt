@@ -24,6 +24,10 @@ import org.tatrman.ttr.metadata.search.substring.SubstringAlgorithm
 import org.tatrman.ttr.metadata.source.ClasspathStorage
 import org.tatrman.metadata.refresh.putOps
 import io.ktor.http.HttpStatusCode
+import org.tatrman.metadata.refresh.HttpTreeStorage
+import org.tatrman.metadata.refresh.sourceDeclarations
+import org.tatrman.metadata.refresh.sourceSubdirectory
+import org.tatrman.metadata.refresh.SourceDeclaration
 import org.tatrman.metadata.refresh.BranchStorage
 import org.tatrman.metadata.refresh.SourceOrigin
 import org.tatrman.metadata.refresh.ManagedSource
@@ -439,13 +443,11 @@ private fun configuredSources(
     // priority is Int.MAX_VALUE so it wins all merge collisions; protected
     // qnames are enforced separately by the reconciler regardless of priority.
     val builtins = listOf(SourceSlot(BuiltinStockSource.SOURCE_ID, BuiltinStockSource(), "built-in stock roles"))
-    if (!config.hasPath("metadata.sources")) return builtins
-    val sourcesConfig = config.getConfig("metadata.sources")
+    val declarations = sourceDeclarations(config)
     val configured =
-        sourcesConfig.root().keys.mapNotNull { key ->
-            if (key == "builtin-stock") return@mapNotNull null
-            val sub = sourcesConfig.getConfig(key)
-            val id = if (sub.hasPath("id")) sub.getString("id") else key
+        declarations.mapNotNull { declaration ->
+            val sub = declaration.config
+            val id = declaration.id
             val enabled = if (sub.hasPath("enabled")) sub.getBoolean("enabled") else true
             if (!enabled) return@mapNotNull null
 
@@ -465,7 +467,7 @@ private fun configuredSources(
                 )?.let { SourceSlot(id, it, describeSource(sub)) }
             }
 
-            val fallbackSub = referencedSourceConfig(sourcesConfig, fallbackId)
+            val fallbackSub = referencedSourceConfig(declarations, fallbackId)
             val fallbackSource =
                 fallbackSub?.let { fs ->
                     buildSourceFromConfig(
@@ -511,20 +513,12 @@ private fun configuredSources(
 /** The block named [refId] (matched by block key or `id`) — used to materialise a block
  *  referenced only as another source's `fallback`, whatever its own `enabled` flag says. */
 private fun referencedSourceConfig(
-    sourcesConfig: Config,
+    declarations: List<SourceDeclaration>,
     refId: String,
-): Config? {
-    val key =
-        sourcesConfig.root().keys.firstOrNull { k ->
-            val sub = sourcesConfig.getConfig(k)
-            k == refId || (if (sub.hasPath("id")) sub.getString("id") else k) == refId
-        }
-    if (key == null) {
-        log.warn("fallback source id '{}' not found among metadata.sources", refId)
-        return null
+): Config? =
+    declarations.firstOrNull { it.key == refId || it.id == refId }?.config.also {
+        if (it == null) log.warn("fallback source id '{}' not found among metadata.sources", refId)
     }
-    return sourcesConfig.getConfig(key)
-}
 
 /** One line saying what a `metadata.sources.<id>` block reads, with any URI credentials redacted. */
 private fun describeSource(sub: Config): String {
@@ -536,6 +530,14 @@ private fun describeSource(sub: Config): String {
             "git ${redactCredentials(str("remote-uri"))} (branch $branch, sub-path $subdirectory)"
         }
         "filesystem" -> "filesystem ${str("path")}"
+        "http" ->
+            "http " +
+                runCatching {
+                    java.net
+                        .URI(
+                            str("url"),
+                        ).let { java.net.URI(it.scheme, null, it.host, it.port, it.path, null, null).toString() }
+                }.getOrDefault("<invalid url>")
         "resources" -> "classpath ${str("path")}"
         else -> type
     }
@@ -608,6 +610,8 @@ private fun buildSourceFromConfig(
         id,
         if (storage is BranchStorage) {
             "git"
+        } else if (storage is HttpTreeStorage) {
+            "http"
         } else if (storage is LocalFsStorage) {
             "filesystem"
         } else {
@@ -627,8 +631,8 @@ internal fun promotionTarget(
     config: Config,
     sourceId: String,
 ): PromotionTarget? {
-    if (!config.hasPath("metadata.sources")) return null
-    val sub = referencedSourceConfig(config.getConfig("metadata.sources"), sourceId) ?: return null
+    val sub = referencedSourceConfig(sourceDeclarations(config), sourceId) ?: return null
+    if (sub.hasPath("type") && sub.getString("type") == "http") return null
     val storage = buildStorage(sub, sourceId, checkoutSuffix = "-promotion") ?: return null
 
     fun str(path: String) = if (sub.hasPath(path)) sub.getString(path) else ""
@@ -660,8 +664,7 @@ private fun gitCheckoutDir(
     }
 
 /** Both model storage and template path mapping start with this exact configured value. */
-private fun gitSubdirectory(sub: Config): String =
-    if (sub.hasPath("subdirectory")) sub.getString("subdirectory") else ""
+private fun gitSubdirectory(sub: Config): String = sourceSubdirectory(sub)
 
 /** The storage one `metadata.sources.<id>` block reads; null when the block is unbuildable. */
 private fun buildStorage(
@@ -695,8 +698,8 @@ private fun buildStorage(
                     localCheckoutDir = checkout,
                     branch = branch,
                     subdirectory = gitSubdirectory(sub),
-                    username = if (sub.hasPath("username")) sub.getString("username") else null,
-                    password = if (sub.hasPath("password")) sub.getString("password") else null,
+                    username = sourceUsername(sub),
+                    password = sourcePassword(sub),
                 )
             } else {
                 BranchStorage(
@@ -705,8 +708,8 @@ private fun buildStorage(
                     checkout,
                     branch,
                     gitSubdirectory(sub),
-                    if (sub.hasPath("username")) sub.getString("username") else null,
-                    if (sub.hasPath("password")) sub.getString("password") else null,
+                    sourceUsername(sub),
+                    sourcePassword(sub),
                 )
             }
         }
@@ -714,7 +717,20 @@ private fun buildStorage(
             if (path.isBlank()) {
                 return skipSource(id, "filesystem source has no path", skippedSources)
             }
-            LocalFsStorage(id = id, rootPath = Path.of(path))
+            LocalFsStorage(id = id, rootPath = Path.of(path).resolve(sourceSubdirectory(sub)))
+        }
+        "http" -> {
+            val url = if (sub.hasPath("url")) sub.getString("url") else ""
+            if (url.isBlank()) return skipSource(id, "http source has no url", skippedSources)
+            HttpTreeStorage(
+                id,
+                url,
+                if (sub.hasPath("token")) sub.getString("token") else null,
+                sourceSubdirectory(sub),
+                if (sub.hasPath("connect-timeout-ms")) sub.getInt("connect-timeout-ms") else 10_000,
+                if (sub.hasPath("read-timeout-ms")) sub.getInt("read-timeout-ms") else 30_000,
+                if (sub.hasPath("max-bytes")) sub.getInt("max-bytes") else 32 * 1024 * 1024,
+            )
         }
         "resources" -> {
             if (path.isBlank()) {
@@ -727,6 +743,22 @@ private fun buildStorage(
         }
     }
 }
+
+/** A declared Git token uses the same PAT username convention as the legacy env slots. */
+private fun sourceUsername(sub: Config): String? =
+    when {
+        sub.hasPath("username") -> sub.getString("username")
+        sourcePassword(sub) != null -> "x-access-token"
+        else -> null
+    }
+
+/** Existing password/env routes win over the additive per-source token alias. */
+private fun sourcePassword(sub: Config): String? =
+    when {
+        sub.hasPath("password") -> sub.getString("password")
+        sub.hasPath("token") -> sub.getString("token")
+        else -> null
+    }
 
 /** Configuration diagnostics name fields and source ids, never a remote URI or password. */
 private fun skipSource(
