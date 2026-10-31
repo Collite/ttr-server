@@ -22,6 +22,13 @@ import org.tatrman.metadata.refresh.diagnostic
 /** `/status` `error` when no model source is configured at all. */
 const val NO_MODEL_SOURCE = "no_model_source_configured"
 
+/** Shared operator help for startup and an empty board's readiness diagnostic. */
+const val NO_MODEL_SOURCE_HELP =
+    "configure METADATA_GIT_REMOTE_URI, METADATA_GIT_BRANCH and METADATA_GIT_SUBDIR; " +
+        "for a filesystem model, set METADATA_GIT_REMOTE_URI= and METADATA_GIT_FALLBACK=local-model " +
+        "with METADATA_TTR_ROOT=<model dir>, " +
+        "or use -Dmetadata.sources.local-model.enabled=true with METADATA_TTR_ROOT=<model dir>"
+
 /**
  * `/ready` and `/status` (ttr-server#180).
  *
@@ -99,7 +106,7 @@ private fun notReadyReason(board: SourceLoadBoard): String {
     val pending = board.states().filter { !it.loadedOnce }
     return when {
         board.states().isEmpty() ->
-            "$NO_MODEL_SOURCE: set METADATA_GIT_REMOTE_URI (with METADATA_GIT_BRANCH and METADATA_GIT_SUBDIR)"
+            "$NO_MODEL_SOURCE: $NO_MODEL_SOURCE_HELP"
         pending.isEmpty() -> "model not swapped in yet"
         else ->
             pending.joinToString("; ") { s ->

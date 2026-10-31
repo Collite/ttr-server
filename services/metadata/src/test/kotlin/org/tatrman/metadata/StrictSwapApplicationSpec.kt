@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package org.tatrman.metadata
 
-import com.typesafe.config.ConfigFactory
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
@@ -24,18 +23,12 @@ class StrictSwapApplicationSpec :
             try {
                 Files.writeString(root.resolve("db.ttrm"), "model db\ndef table orders {}")
                 val cfg =
-                    ConfigFactory
-                        .parseMap(
-                            mapOf(
-                                "metadata.sources.github-model.remote-uri" to "",
-                                "metadata.sources.world.type" to "filesystem",
-                                "metadata.sources.world.path" to root.toString(),
-                                "metadata.refresh-scheduler.interval-seconds" to 0,
-                                "grpc.port" to 0,
-                                "telemetry.enabled" to false,
-                            ),
-                        ).withFallback(ConfigFactory.load())
-                        .resolve()
+                    startupConfig(
+                        mapOf(
+                            "metadata.sources.world.type" to "filesystem",
+                            "metadata.sources.world.path" to root.toString(),
+                        ),
+                    )
                 testApplication {
                     environment { config = MapApplicationConfig() }
                     application { module(cfg) }
