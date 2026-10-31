@@ -54,6 +54,7 @@ class MorphoditaEngine:
 
         The front batches to the backend hop; it does not loop per-string HTTP.
         Chunking to the backend's `--max_request_size` is the caller's job — this
-        issues a single call per chunk.
+        issues a single call per chunk (one per text only when a batch does not
+        split back apart; see `batch_lemmatize_morphodita`).
         """
         return batch_lemmatize_morphodita(self._client, texts)

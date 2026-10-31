@@ -357,23 +357,61 @@ def analyze_morphodita(client: BackendClient, text: str) -> EngineResult:
     return EngineResult(tokens=tokens, sentences=sentences)
 
 
+# Stands between two texts of a batch, as a paragraph of its own. MorphoDiTa
+# returns it as one token whose form is unchanged (lower-case letters only: no
+# punctuation or case boundary for the tokenizer to split on).
+MORPHODITA_BATCH_BREAK = "ttrnlpbatchbreak"
+
+
 def batch_lemmatize_morphodita(
     client: BackendClient, texts: list[str]
 ) -> list[list[str]]:
     """N strings, ONE round trip (RS-6 / Q-10 §4).
 
-    Joined with a blank line, which is MorphoDiTa's sentence break, so the
-    vertical output segments back apart on the same boundary. Newlines inside a
-    text become spaces first — one of them would split that text in two and
-    silently shift every later result by one position.
+    The texts are joined with a break token between them, and the vertical
+    output is split back apart on that token. A blank line cannot do it:
+    MorphoDiTa writes one after EVERY sentence, so a text of two sentences would
+    come back as two groups and shift every later text onto another's lemmas.
+
+    A text that contains the break token itself, or a response that splits into
+    the wrong number of groups, falls back to one round trip per text — slower,
+    never misaligned.
+
+    Blank texts are not sent alone: the backend answers empty `data` with a body
+    that is not JSON.
     """
     if not texts:
         return []
-    joined = "\n\n".join(t.replace("\n", " ") for t in texts)
+    if all(not t.strip() for t in texts):
+        return [[] for _ in texts]
+    if any(MORPHODITA_BATCH_BREAK in t for t in texts):
+        return [_lemmatize_morphodita_one(client, t) for t in texts]
+    joined = f"\n\n{MORPHODITA_BATCH_BREAK}\n\n".join(texts)
     vertical = client.result_text(
         {"data": joined, "model": client.spec.model, **MORPHODITA_FORM}
     )
-    return parse_morphodita_lemma_groups(vertical, len(texts))
+    groups = parse_morphodita_lemma_groups(vertical, len(texts))
+    if groups is None:
+        logger.warning(
+            "morphodita batch of %d texts did not split back into %d groups; "
+            "lemmatizing one text per call",
+            len(texts),
+            len(texts),
+        )
+        return [_lemmatize_morphodita_one(client, t) for t in texts]
+    return groups
+
+
+def _lemmatize_morphodita_one(client: BackendClient, text: str) -> list[str]:
+    if not text.strip():
+        return []
+    vertical = client.result_text(
+        {"data": text, "model": client.spec.model, **MORPHODITA_FORM}
+    )
+    return [
+        lemma_stem(parts[1] if len(parts) > 1 else parts[0])
+        for parts in (line.split("\t") for line in vertical.split("\n") if line)
+    ]
 
 
 def parse_morphodita_vertical(
@@ -430,30 +468,31 @@ def parse_morphodita_vertical(
     return tokens, sentences
 
 
-def parse_morphodita_lemma_groups(vertical: str, count: int) -> list[list[str]]:
-    """Split vertical output into `count` positional lemma lists.
+def parse_morphodita_lemma_groups(vertical: str, count: int) -> list[list[str]] | None:
+    """Split batched vertical output into `count` positional lemma lists.
 
-    Padded and truncated to `count` on purpose: `BatchLemmatize` is positional to
-    its request, so a caller zipping the two lists must not have them slip. A
-    short group is visible as an empty list; a misaligned one is not visible at
-    all.
+    A group ends at a `MORPHODITA_BATCH_BREAK` token, not at a blank line (those
+    only end sentences). An empty text is an empty group, so the positions hold.
+
+    `None` when the output does not split into exactly `count` groups. It is
+    never padded or truncated to fit: `BatchLemmatize` is positional to its
+    request, and a list that has the right length but the wrong lemmas in it
+    passes every count check a caller can make.
     """
     groups: list[list[str]] = []
     current: list[str] = []
     for line in vertical.split("\n"):
         if line == "":
-            if current:
-                groups.append(current)
-                current = []
             continue
         parts = line.split("\t")
+        if parts[0] == MORPHODITA_BATCH_BREAK:
+            groups.append(current)
+            current = []
+            continue
         current.append(lemma_stem(parts[1] if len(parts) > 1 else parts[0]))
-    if current:
-        groups.append(current)
+    groups.append(current)
 
-    while len(groups) < count:
-        groups.append([])
-    return groups[:count]
+    return groups if len(groups) == count else None
 
 
 # ── NameTag 3 CoNLL ──────────────────────────────────────────────────────────
@@ -567,6 +606,7 @@ def parse_nametag_conll(
 
 
 __all__ = [
+    "MORPHODITA_BATCH_BREAK",
     "MORPHODITA_FORM",
     "NAMETAG_FORM",
     "BackendClient",
