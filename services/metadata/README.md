@@ -168,7 +168,8 @@ cannot silently satisfy a preview request. Ordinary no-branch refresh still supp
 - `serving`: accepted source type/id, branch, exact Git `commit`, composite registry `model_version`, publication
   `loaded_at`, and `serving_fallback`. It is absent/null before a configured contribution is published.
 - `last_attempt`: completion time, requested branch/resolved commit, status, errors/warnings and model-file count.
-  A ref that could not be resolved has an empty attempted commit.
+  A ref that could not be resolved has an empty attempted commit. Invalid source ids are not echoed.
+  A refusal while another refresh runs uses the last capture without recording it; the running attempt supersedes it.
 - `last_success`: the latest wholly successful accepted refresh. Failure and partial refresh leave it unchanged.
 - `kept_previous`: a refused source retained an earlier contribution; false on initial failure and successful no-change.
 
@@ -181,7 +182,9 @@ continues to combine all source versions and a digest; use `commit` when compari
 Status reads return the last completed capture immediately during a refresh, including remote I/O. Before the
 first completed load they report no serving model. Counts, tags and readiness are captured with that publication.
 CN vocabulary-only refreshes preserve the content attempt/success/retention reports. CN promotions are confirmed
-only from accepted content on the configured default branch; preview branches and SHA pins cannot confirm a merge.
+from accepted, non-fallback filesystem content using its source version, or Git content on the configured default
+branch using its commit; preview branches, SHA pins and fallback content cannot confirm a merge.
+No-change refreshes do not repeat a successful promotion observation; failed observations retry on the next refresh.
 
 A successful same-version refresh updates attempt/success times without changing `serving.loaded_at`.
 Permissive empty publication still reports failed source health, while serving provenance names the published commit.
@@ -606,8 +609,9 @@ was reused. A received tree still passes strict parse/reconciliation on every re
 ETag caching never makes rejected content acceptable.
 
 Redirects and URL user-info/fragments are refused. Descriptions omit query strings; load errors report
-safe codes/statuses rather than URLs, bearer tokens or response bodies. Connection/read timeouts bound
-network waits. Compressed responses and total expanded regular-file bytes are limited by `max-bytes`;
+safe codes/statuses rather than URLs, bearer tokens or response bodies. The read timeout (default 30 s)
+bounds the whole response, from request to last byte; raise `read-timeout-ms` for large, slow archives.
+The connection timeout also bounds network waits. Compressed responses and total expanded regular-file bytes are limited by `max-bytes`;
 archive metadata/padding has an additional 10,240,000-byte allowance and entries are capped at 10,000. The loader
 never extracts files: absolute/traversing/backslash/duplicate paths, links, special entries, malformed
 archives and corrupt gzip trailers fail the load. Failed downloads/decodes preserve the prior cache.

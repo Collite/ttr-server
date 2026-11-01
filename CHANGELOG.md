@@ -16,6 +16,14 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+- **metadata — ops review corrections.** Accepted non-fallback filesystem content can confirm CN promotions;
+  Git confirmation remains restricted to the configured default branch. Successful no-change refreshes avoid
+  repeated CN database observations, and failed observations retry. HTTP `read-timeout-ms` now bounds the
+  entire response, including a slow body. Internal-source refresh replies reflect their own result while
+  preserving content reports; invalid source ids are refused without echoing untrusted text.
+  CN chart guards now fail explicitly, and the certification command verifies the precise branch-policy
+  refusal, forces the RPC refresh and refuses optimized Python execution.
+
 - Add a repeatable isolated bp-dsk metadata ops certification command for published image digests.
 
 - **metadata — authored relation names and CN chart configuration.** `RelationDetail.name` (additive field 10)

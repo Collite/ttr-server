@@ -181,6 +181,17 @@ def forward(kube, name, out):
             proc.wait(timeout=15)
 
 
+def certify_branch_gate(http, rpc, model_version):
+    refused = http("/refresh?branch=preview", 409, "POST")
+    assert refused["status"] == "rejected"
+    assert any("branch_not_allowed" in error for error in refused["errors"]), refused
+    assert http("/status")["model_version"] == model_version
+    rpc_refused = rpc("Refresh", {"branch": "preview", "force": True})
+    assert rpc_refused["status"] == "rejected"
+    assert "branch_not_allowed" in rpc_refused["results"][0]["errorMessage"], rpc_refused
+    assert http("/status")["model_version"] == model_version
+
+
 def certify(kube, deployment, refs, out, record):
     name = deployment["metadata"]["name"]
     with forward(kube, name, out) as (http_port, grpc_port):
@@ -211,11 +222,7 @@ def certify(kube, deployment, refs, out, record):
         assert grpc["serving"]["modelVersion"] == status["serving"]["model_version"]
         assert {s["id"] for s in grpc["sources"]} >= {"git", "local", "archive"}
         record("HTTP/GetStatus serving version and configured source ids agree")
-        refused = http("/refresh?branch=preview", 409, "POST")
-        assert refused["status"] == "rejected"
-        assert http("/status")["model_version"] == status["model_version"]
-        rpc_refused = rpc("Refresh", {"branch": "preview"})
-        assert rpc_refused["status"] == "rejected"
+        certify_branch_gate(http, rpc, status["model_version"])
         record("HTTP and RPC preview gate refuse without changing served version")
         selected = rpc("ResolveTags", {"tags": ["live"]})
         save(out / "resolve-tags.json", selected)
@@ -281,6 +288,8 @@ def certify(kube, deployment, refs, out, record):
 
 
 def main():
+    if not __debug__:
+        raise SystemExit("certification requires Python assertions; remove -O/PYTHONOPTIMIZE")
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--context", required=True, choices=["bp-dsk"])
     parser.add_argument("--image", required=True, help="ghcr.io/collite/metadata@sha256:<digest>")

@@ -36,21 +36,9 @@ fun Route.vocabularyRoutes(
                 } else {
                     "tags must contain nonblank values"
                 }
-            return@get call.respondText(
-                buildJsonObject {
-                    put("error", error)
-                }.toString(),
-                io.ktor.http.ContentType.Application.Json,
-                HttpStatusCode.BadRequest,
-            )
+            return@get call.respondError(HttpStatusCode.BadRequest, error)
         }
-        val snap =
-            registry.read()
-                ?: return@get call.respondText(
-                    "{\"error\":\"model not loaded\"}",
-                    io.ktor.http.ContentType.Application.Json,
-                    HttpStatusCode.ServiceUnavailable,
-                )
+        val snap = registry.read() ?: return@get call.respondModelNotLoaded()
         val scope =
             TagScope.resolve(snap.model, tags, {
                 parseState?.get(snap.model.version.value, it.qname)

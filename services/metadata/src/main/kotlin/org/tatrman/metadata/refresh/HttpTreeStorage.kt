@@ -6,6 +6,7 @@ import org.apache.commons.compress.archivers.tar.TarConstants
 import org.tatrman.ttr.metadata.source.ModelStorage
 import org.tatrman.ttr.metadata.source.StorageFile
 import java.io.ByteArrayInputStream
+import java.io.ByteArrayOutputStream
 import java.io.FilterInputStream
 import java.io.InputStream
 import java.net.HttpURLConnection
@@ -13,6 +14,9 @@ import java.net.URI
 import java.nio.file.Path
 import java.security.MessageDigest
 import java.util.zip.GZIPInputStream
+import java.util.concurrent.ScheduledThreadPoolExecutor
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 
 /** A GET produces one immutable in-memory tree; list/read never revisit the network or extract files. */
 internal class HttpTreeStorage(
@@ -50,7 +54,18 @@ internal class HttpTreeStorage(
     }
 
     override fun fetchVersion(): String {
+        val deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(readTimeoutMs.toLong())
         val connection = uri.toURL().openConnection() as HttpURLConnection
+        val expired = AtomicBoolean(false)
+
+        fun checkDeadline() {
+            check(!expired.get() && System.nanoTime() < deadline) { "http_source_timeout" }
+        }
+        val watchdog =
+            deadlines.schedule({
+                expired.set(true)
+                connection.disconnect()
+            }, maxOf(0L, deadline - System.nanoTime()), TimeUnit.NANOSECONDS)
         connection.instanceFollowRedirects = false
         connection.useCaches = false
         connection.connectTimeout = connectTimeoutMs
@@ -60,10 +75,25 @@ internal class HttpTreeStorage(
         token?.takeIf { it.isNotBlank() }?.let { connection.setRequestProperty("Authorization", "Bearer $it") }
         tree?.etag?.let { connection.setRequestProperty("If-None-Match", it) }
         try {
-            when (val status = connection.responseCode) {
+            checkDeadline()
+            val status = connection.responseCode
+            checkDeadline()
+            when (status) {
                 304 -> return tree?.version ?: error("http_source_304_without_cache")
                 200 -> {
-                    val body = connection.inputStream.use { it.readNBytes(maxBytes + 1) }
+                    val body =
+                        connection.inputStream.use { input ->
+                            val bytes = ByteArrayOutputStream()
+                            val buffer = ByteArray(8192)
+                            while (bytes.size() <= maxBytes) {
+                                checkDeadline()
+                                val count = input.read(buffer, 0, minOf(buffer.size, maxBytes + 1 - bytes.size()))
+                                checkDeadline()
+                                if (count == -1) break
+                                bytes.write(buffer, 0, count)
+                            }
+                            bytes.toByteArray()
+                        }
                     check(body.size <= maxBytes) { "http_source_response_too_large" }
                     val files = decode(body)
                     val version =
@@ -80,12 +110,24 @@ internal class HttpTreeStorage(
         } catch (e: Exception) {
             // Neither URL/query, bearer, upstream body nor archive names enter exception diagnostics.
             throw IllegalStateException(
-                e.message?.takeIf { it.startsWith("http_source_") }
-                    ?: "http_source_read_failed: ${e.javaClass.simpleName}",
+                if (expired.get() || System.nanoTime() >= deadline) {
+                    "http_source_timeout"
+                } else {
+                    e.message?.takeIf { it.startsWith("http_source_") }
+                        ?: "http_source_read_failed: ${e.javaClass.simpleName}"
+                },
             )
         } finally {
+            watchdog.cancel(false)
             connection.disconnect()
         }
+    }
+
+    companion object {
+        private val deadlines =
+            ScheduledThreadPoolExecutor(1) { task ->
+                Thread(task, "metadata-http-deadline").apply { isDaemon = true }
+            }.apply { removeOnCancelPolicy = true }
     }
 
     private fun decode(body: ByteArray): Map<String, ByteArray> {

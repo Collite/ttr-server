@@ -56,10 +56,14 @@ echo '✓ metadata: all 17 CN settings render identically standalone/umbrella; b
 for mode in standalone umbrella; do
   prefix=''; [ "$mode" = umbrella ] && prefix=metadata.
   off=$(render "$mode")
-  ! grep -q 'name: METADATA_CN_' <<<"$off"
+  if grep -q 'name: METADATA_CN_' <<<"$off"; then
+    echo "✗ metadata ($mode): CN env rendered by default" >&2; exit 1
+  fi
   partial=$(render "$mode" --set "${prefix}cn.auth.issuer=https://identity.example/realm")
   value_is "$partial" METADATA_CN_AUTH_ISSUER https://identity.example/realm
-  ! grep -q 'name: METADATA_CN_DB_' <<<"$partial"
+  if grep -q 'name: METADATA_CN_DB_' <<<"$partial"; then
+    echo "✗ metadata ($mode): CN DB env rendered without a DB host" >&2; exit 1
+  fi
   # Every generated field/reference must yield to either legacy env mechanism, without duplicates.
   extra=$(python3 -c 'import json,sys; print(json.dumps([{"name":n,"value":"legacy"} for n in sys.argv[1:]]))' "${cn_names[@]}")
   overridden=$(render "$mode" --set-json "${prefix}cn=$cn" --set-json "${prefix}extraEnv=$extra")

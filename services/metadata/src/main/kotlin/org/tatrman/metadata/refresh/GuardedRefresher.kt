@@ -119,24 +119,46 @@ class GuardedRefresher(
             )
         }
 
-    private val publicationListeners = java.util.concurrent.CopyOnWriteArrayList<(RefreshOutcome) -> Unit>()
+    private data class PublicationKey(
+        val snapshot: org.tatrman.ttr.metadata.registry.RegistrySnapshot?,
+        val origin: SourceOrigin?,
+        val version: String?,
+    )
 
-    fun addPublicationListener(listener: (RefreshOutcome) -> Unit) {
-        publicationListeners += listener
+    private class PublicationListener(
+        val sourceId: String?,
+        val listener: (RefreshOutcome, (Boolean) -> Unit) -> Unit,
+    ) {
+        var observed: PublicationKey? = null
+        var inFlight: PublicationKey? = null
     }
 
-    /** Only accepted content on the configured default proves a CN promotion has merged. */
+    private val publicationListeners = java.util.concurrent.CopyOnWriteArrayList<PublicationListener>()
+
+    /** Acknowledge only after observation succeeds; failed asynchronous observers retry on the next refresh. */
+    fun addPublicationListener(
+        sourceId: String?,
+        listener: (RefreshOutcome, (Boolean) -> Unit) -> Unit,
+    ) {
+        publicationListeners += PublicationListener(sourceId, listener)
+    }
+
+    /** Accepted filesystem content or Git default-branch content can confirm CN promotion. */
     internal fun promotionCommit(
         sourceId: String?,
         outcome: RefreshOutcome,
     ): String? {
-        val default = managed[sourceId]?.git?.defaultBranch ?: return null
-        val origin = outcome.sources.firstOrNull { it.id == sourceId }?.origin ?: return null
-        return origin.commit.takeIf {
-            origin.source == "git" &&
-                !origin.fallback &&
-                origin.branch == default &&
-                it.isNotEmpty()
+        val source = managed[sourceId] ?: return null
+        val accepted = outcome.sources.firstOrNull { it.id == sourceId && it.loadedOnce } ?: return null
+        val origin = accepted.origin
+        if (origin.fallback) return null
+        return when (source.kind) {
+            "git" ->
+                origin.commit.takeIf {
+                    origin.source == "git" && origin.branch == source.git?.defaultBranch && it.isNotEmpty()
+                }
+            "filesystem" -> accepted.version.takeIf { origin.source == "filesystem" && it.isNotEmpty() }
+            else -> null
         }
     }
 
@@ -170,22 +192,39 @@ class GuardedRefresher(
         force: Boolean,
         branch: String = "",
     ): RefreshOutcome {
-        // Preserve immediate unknown-id refusal even while another load holds the publication lock.
-        if (sourceId.isNotEmpty() && sourceId !in sourceIds && mutex.isLocked) {
-            val message = redactCredentials("unknown_source_id: $sourceId")
+        val invalidId =
+            sourceId.isNotEmpty() && (sourceId.length > 128 || !sourceId.matches(Regex("[A-Za-z0-9][A-Za-z0-9._-]*")))
+        val safeId = if (invalidId) "" else sourceId
+        val idRefusal =
+            when {
+                invalidId -> "invalid_source_id"
+                sourceId.isNotEmpty() && sourceId !in sourceIds -> "unknown_source_id: $sourceId"
+                else -> ""
+            }
+        val ctx = currentCoroutineContext()
+        val cancelled = { !ctx.isActive }
+        // Atomically choose recording versus a captured refusal; invalid ids never queue or leak
+        // through the non-forced in-flight path if another refresh starts at the same instant.
+        if (idRefusal.isNotEmpty()) {
+            if (mutex.tryLock()) {
+                return try {
+                    transact(safeId, branch.trim(), cancelled, idRefusal)
+                } finally {
+                    mutex.unlock()
+                }
+            }
+            val message = redactCredentials(idRefusal)
             return status()
                 .copy(
-                    results = listOf(SourceResult(sourceId, false, message)),
+                    results = listOf(SourceResult(safeId, false, message)),
                     status = "rejected",
                     httpStatus = 400,
                     keptPrevious = false,
                     lastAttempt =
-                        report(sourceId, "rejected", branch.trim(), errors = listOf(message)),
+                        report(safeId, "rejected", branch.trim(), errors = listOf(message)),
                 )
         }
-        val ctx = currentCoroutineContext()
-        val cancelled = { !ctx.isActive }
-        if (force) return mutex.withLock { transact(sourceId, branch.trim(), cancelled) }
+        if (force) return mutex.withLock { transact(safeId, branch.trim(), cancelled) }
         if (!mutex.tryLock()) {
             // Reply from the last completed capture; never wait on the in-flight load.
             return status()
@@ -198,7 +237,7 @@ class GuardedRefresher(
                 )
         }
         return try {
-            transact(sourceId, branch.trim(), cancelled)
+            transact(safeId, branch.trim(), cancelled)
         } finally {
             mutex.unlock()
         }
@@ -208,9 +247,10 @@ class GuardedRefresher(
         sourceId: String,
         branch: String,
         cancelled: () -> Boolean,
+        idRefusal: String = "",
     ): RefreshOutcome {
         var target = sourceId
-        var refusal = ""
+        var refusal = idRefusal
         var httpStatus = 400
         if (target.isNotEmpty() && target !in sourceIds) refusal = "unknown_source_id: $target"
         if (branch.isNotEmpty() && refusal.isEmpty()) {
@@ -230,7 +270,9 @@ class GuardedRefresher(
         if (refusal.isNotEmpty()) {
             lastAttempt =
                 report(target, "rejected", branch, errors = listOf(refusal))
-            keptPrevious = board.states().any { it.loadedOnce && (target.isEmpty() || it.id == target) }
+            keptPrevious =
+                idRefusal.isEmpty() &&
+                board.states().any { it.loadedOnce && (target.isEmpty() || it.id == target) }
             lastStatus = "rejected"
             return capture(listOf(SourceResult(target, false, redactCredentials(refusal))), "rejected", httpStatus)
         }
@@ -297,7 +339,13 @@ class GuardedRefresher(
                     )
                 if (lastStatus == "ok") lastSuccess = lastAttempt
             }
-            return capture(results, lastStatus)
+            val replyStatus =
+                if (target in sourceIds && target !in configuredIds) {
+                    if (results.firstOrNull { it.sourceId == target }?.success == true) "ok" else "failed"
+                } else {
+                    lastStatus
+                }
+            return capture(results, replyStatus)
         } finally {
             if (!completed) {
                 begun.forEach { source ->
@@ -344,7 +392,6 @@ class GuardedRefresher(
             tags = objects.flatMap { it.tags }.toSortedSet().toList()
             countedSnapshot = snapshot
         }
-        val previous = lastOutcome
         return RefreshOutcome(
             results.toList(),
             snapshot,
@@ -360,11 +407,33 @@ class GuardedRefresher(
             tags = tags,
         ).also { outcome ->
             lastOutcome = outcome
-            if (snapshot != null &&
-                (snapshot !== previous?.snapshot || results.any { it.success && it.sourceId in configuredIds })
-            ) {
-                publicationListeners.forEach { listener ->
-                    runCatching { listener(outcome) }.onFailure { log.warn("Publication listener failed", it) }
+            if (snapshot != null) {
+                publicationListeners.forEach { observer ->
+                    val source = states.firstOrNull { it.id == observer.sourceId }
+                    val key = PublicationKey(snapshot, source?.origin, source?.version)
+                    val notify =
+                        synchronized(observer) {
+                            if (observer.inFlight != null || observer.observed == key) {
+                                false
+                            } else {
+                                observer.inFlight = key
+                                true
+                            }
+                        }
+                    if (notify) {
+                        val complete: (Boolean) -> Unit = { success ->
+                            synchronized(observer) {
+                                if (observer.inFlight === key) {
+                                    if (success) observer.observed = key
+                                    observer.inFlight = null
+                                }
+                            }
+                        }
+                        runCatching { observer.listener(outcome, complete) }.onFailure {
+                            complete(false)
+                            log.warn("Publication listener failed", it)
+                        }
+                    }
                 }
             }
         }

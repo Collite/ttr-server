@@ -8,6 +8,7 @@ import io.mockk.every
 import io.mockk.spyk
 import io.mockk.coEvery
 import io.ktor.client.request.get
+import io.ktor.client.request.post
 import io.ktor.client.statement.bodyAsText
 import io.ktor.server.routing.routing
 import io.ktor.server.testing.testApplication
@@ -146,10 +147,11 @@ class Review193Spec :
                     }
                     val preview = f.commit()
                     val ref = f.refWith(strict = false)
-                    ref.addPublicationListener { outcome ->
+                    ref.addPublicationListener("world") { outcome, complete ->
                         ref.promotionCommit("world", outcome)?.let { version ->
                             candidates.observe(outcome.snapshot!!.model.schemas["cn"] as CnSchema, version)
                         }
+                        complete(true)
                     }
                     ref.refreshOutcome("", true, "cn/pending").status shouldBe "ok"
                     store.get(id)!!.state shouldBe CandidateState.PENDING_MERGE
@@ -273,7 +275,7 @@ class Review193Spec :
                 refreshed.lastAttempt shouldBe refused.lastAttempt
                 refreshed.lastSuccess shouldBe refused.lastSuccess
                 refreshed.keptPrevious shouldBe true
-                refreshed.status shouldBe "failed"
+                refreshed.status shouldBe "ok"
                 ref.status().lastAttempt shouldBe refused.lastAttempt
                 ref.status().lastSuccess!!.commit shouldBe f.main
                 // The content reports survive even when the vocabulary contribution republishes.
@@ -285,6 +287,178 @@ class Review193Spec :
                     status["last_attempt"]!!.jsonObject["branch"]!!.jsonPrimitive.content shouldBe "broken"
                     status["last_success"]!!.jsonObject["commit"]!!.jsonPrimitive.content shouldBe f.main
                 }
+            }
+        }
+
+        "F4 internal refresh succeeds after an unknown-id refusal without replacing content reports" {
+            BranchFixture().use { f ->
+                val ref = f.refWith(extra = VocabularySource(InMemoryCandidateStore()))
+                ref.refresh("", true)
+                val refused = ref.refreshOutcome("nosuch", true)
+                refused.status shouldBe "rejected"
+                val refreshed = ref.refreshOutcome(VocabularySource.SOURCE_ID, true)
+                refreshed.status shouldBe "ok"
+                refreshed.lastAttempt shouldBe refused.lastAttempt
+                refreshed.lastSuccess shouldBe refused.lastSuccess
+                ref.status().lastAttempt shouldBe refused.lastAttempt
+                testApplication {
+                    application { routing { modelHealthRoutes(f.registry, f.board, ref) } }
+                    val status = Json.parseToJsonElement(client.get("/status").bodyAsText()).jsonObject
+                    status["last_attempt"]!!.jsonObject["source_id"]!!.jsonPrimitive.content shouldBe "nosuch"
+                }
+            }
+        }
+
+        "F5 idle and in-flight unknown source refusals validate ids and have identical error bodies" {
+            BranchFixture().use { f ->
+                coroutineScope {
+                    val entered = CompletableDeferred<Unit>()
+                    val release = CountDownLatch(1)
+                    val block = AtomicBoolean(false)
+                    val ref = f.refWith(blockedSource(f, block, entered, release))
+                    ref.refresh("", true)
+                    testApplication {
+                        application {
+                            routing {
+                                modelHealthRoutes(f.registry, f.board, ref)
+                                metadataRefreshRoutes(ref)
+                            }
+                        }
+                        startApplication()
+
+                        suspend fun refusal(id: String): JsonObject {
+                            val response = client.post("/refresh") { url { parameters.append("source_id", id) } }
+                            response.status.value shouldBe 400
+                            return Json.parseToJsonElement(response.bodyAsText()).jsonObject
+                        }
+                        val idle = listOf("<x y>", "nosuch", "a".repeat(129)).associateWith { refusal(it) }
+                        idle
+                            .getValue(
+                                "<x y>",
+                            )["last_attempt"]!!
+                            .jsonObject["source_id"]!!
+                            .jsonPrimitive.content shouldBe
+                            ""
+                        idle
+                            .getValue("<x y>")["errors"]!!
+                            .jsonArray
+                            .single()
+                            .jsonPrimitive.content shouldBe
+                            "invalid_source_id"
+                        idle
+                            .getValue("nosuch")["errors"]!!
+                            .jsonArray
+                            .single()
+                            .jsonPrimitive.content shouldBe
+                            "unknown_source_id: nosuch"
+                        ref.status().lastAttempt!!.sourceId shouldBe ""
+                        block.set(true)
+                        val pending = async(Dispatchers.IO) { ref.refreshOutcome("", true) }
+                        entered.await()
+                        try {
+                            idle.forEach { (id, expected) ->
+                                val busy = withTimeout(1000) { refusal(id) }
+                                val rpc = withTimeout(1000) { ref.refreshOutcome(id, false) }
+                                rpc.httpStatus shouldBe 400
+                                rpc.lastAttempt!!.errors shouldBe
+                                    expected["errors"]!!.jsonArray.map { it.jsonPrimitive.content }
+                                rpc.lastAttempt!!.sourceId shouldBe
+                                    expected["last_attempt"]!!.jsonObject["source_id"]!!.jsonPrimitive.content
+                                // Completion timestamps are intentionally fresh; the response contract otherwise agrees.
+                                (busy - "last_attempt") shouldBe (expected - "last_attempt")
+                                (busy.getValue("last_attempt").jsonObject - "at") shouldBe
+                                    (expected.getValue("last_attempt").jsonObject - "at")
+                            }
+                            ref.status().lastAttempt!!.sourceId shouldBe ""
+                        } finally {
+                            release.countDown()
+                            pending.await()
+                        }
+                    }
+                }
+            }
+        }
+
+        "F9 cancellation immediately after load skips reconciliation" {
+            BranchFixture().use { f ->
+                coroutineScope {
+                    val entered = CompletableDeferred<Unit>()
+                    val release = CountDownLatch(1)
+                    val block = AtomicBoolean(false)
+                    val calls =
+                        java.util.concurrent.atomic
+                            .AtomicInteger()
+                    val reconciler = spyk(ModelReconciler(ModelDescriptor("test", "test")))
+                    every { reconciler.reconcile(any()) } answers {
+                        calls.incrementAndGet()
+                        callOriginal()
+                    }
+                    val ref = f.refWith(blockedSource(f, block, entered, release), reconciler)
+                    ref.refresh("", true)
+                    calls.set(0)
+                    block.set(true)
+                    val pending = async(Dispatchers.IO) { ref.refreshOutcome("", true, "preview/one") }
+                    entered.await()
+                    pending.cancel()
+                    release.countDown()
+                    pending.join()
+                    calls.get() shouldBe 0
+                    f.head() shouldBe f.main
+                }
+            }
+        }
+
+        "F10 no-change publications skip observation and failed asynchronous observation retries" {
+            BranchFixture().use { f ->
+                var calls = 0
+                var fail = false
+                var completePending: ((Boolean) -> Unit)? = null
+                f.ref.addPublicationListener("world") { outcome, complete ->
+                    if (f.ref.promotionCommit("world", outcome) == null) {
+                        complete(true)
+                    } else {
+                        calls++
+                        if (fail) completePending = complete else complete(true)
+                    }
+                }
+                f.ref.refresh("", true)
+                calls shouldBe 1
+                repeat(3) { f.ref.refresh("", true) }
+                calls shouldBe 1
+                f.ref.refreshOutcome("", true, "preview/one")
+                calls shouldBe 1
+                Git.open(f.root.toFile()).use { git ->
+                    git.checkout().setName("main").call()
+                    git.merge().include(git.repository.resolve(f.preview)).call()
+                }
+                fail = true
+                f.ref.refreshOutcome("", true, "main")
+                calls shouldBe 2
+                f.ref.refresh("", true) // Do not duplicate a database operation still in flight.
+                calls shouldBe 2
+                completePending!!(false)
+                fail = false
+                f.ref.refresh("", true)
+                calls shouldBe 3
+                repeat(3) { f.ref.refresh("", true) }
+                calls shouldBe 3
+            }
+        }
+
+        "F10 a thrown observation retries on the next no-change refresh" {
+            BranchFixture().use { f ->
+                var calls = 0
+                f.ref.addPublicationListener("world") { _, complete ->
+                    calls++
+                    if (calls == 1) error("database unavailable")
+                    complete(true)
+                }
+                f.ref.refresh("", true)
+                calls shouldBe 1
+                f.ref.refresh("", true)
+                calls shouldBe 2
+                repeat(3) { f.ref.refresh("", true) }
+                calls shouldBe 2
             }
         }
 

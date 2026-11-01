@@ -22,7 +22,7 @@ import org.tatrman.ttr.metadata.search.keyword.Tokenizer
 import org.tatrman.ttr.metadata.search.regex.RegexAlgorithm
 import org.tatrman.ttr.metadata.search.substring.SubstringAlgorithm
 import org.tatrman.ttr.metadata.source.ClasspathStorage
-import org.tatrman.metadata.refresh.putOps
+import org.tatrman.metadata.refresh.metadataRefreshRoutes
 import io.ktor.http.HttpStatusCode
 import org.tatrman.metadata.refresh.HttpTreeStorage
 import org.tatrman.metadata.refresh.sourceDeclarations
@@ -72,7 +72,6 @@ import shared.otel.OtelEndpointConfig
 import shared.otel.createOpenTelemetrySdk
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.add
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
@@ -215,16 +214,29 @@ fun Application.module(config: Config) {
     // CN-P5 S5.3 T4 — a pending promotion is merged once a load of the promotion source carries its def; that load's
     // version (the commit) is its canon_ref. Off the swap thread: the store is a database.
     cn.service?.let { candidates ->
-        refresher.addPublicationListener { outcome ->
-            val version = refresher.promotionCommit(cn.promotionSourceId, outcome) ?: return@addPublicationListener
+        refresher.addPublicationListener(cn.promotionSourceId) { outcome, complete ->
+            val version = refresher.promotionCommit(cn.promotionSourceId, outcome)
+            if (version == null) {
+                complete(true)
+                return@addPublicationListener
+            }
             val schema =
                 outcome.snapshot
                     ?.model
                     ?.schemas
-                    ?.get("cn") as? CnSchema ?: return@addPublicationListener
+                    ?.get("cn") as? CnSchema
+            if (schema == null) {
+                complete(true)
+                return@addPublicationListener
+            }
             launch(Dispatchers.IO) {
-                runCatching { candidates.observe(schema, version) }
-                    .onFailure { log.warn("cn candidates: merge check failed: {}", it.message) }
+                try {
+                    candidates.observe(schema, version)
+                    complete(true)
+                } catch (failure: Exception) {
+                    complete(false)
+                    log.warn("cn candidates: merge check failed: {}", failure.message)
+                }
             }
         }
     }
@@ -330,61 +342,7 @@ fun Application.module(config: Config) {
                 },
             )
         }
-        // Unauthenticated, cluster-internal (see DF decision: /refresh has no auth). Forces a
-        // full synchronous reload of every metadata source + the atomic model swap. Golem's
-        // /v2/refresh orchestrator calls this FIRST, then fans out to the dependent services
-        // (translator → query-runner, fuzzy-matcher) which rely on the new model version.
-        post("/refresh") {
-            val outcome =
-                refresher.refreshOutcome(
-                    call.request.queryParameters["source_id"].orEmpty(),
-                    true,
-                    call.request.queryParameters["branch"].orEmpty(),
-                )
-            val results = outcome.results
-            val snap = outcome.snapshot
-            call.respond(
-                HttpStatusCode.fromValue(outcome.httpStatus),
-                buildJsonObject {
-                    putOps(outcome)
-                    put("status", outcome.status)
-                    putJsonArray("errors") {
-                        outcome.lastAttempt
-                            ?.errors
-                            .orEmpty()
-                            .forEach { add(it) }
-                    }
-                    putJsonArray("warnings") {
-                        outcome.lastAttempt
-                            ?.warnings
-                            .orEmpty()
-                            .forEach { add(it) }
-                    }
-                    put("model_files", outcome.lastAttempt?.modelFiles ?: 0)
-                    putJsonArray("ignored_files") {
-                        outcome.lastAttempt
-                            ?.ignoredFiles
-                            .orEmpty()
-                            .forEach { add(it) }
-                    }
-                    put("model_version", JsonPrimitive(snap?.model?.version?.value ?: ""))
-                    put("swapped", JsonPrimitive(results.any { it.snapshotSwapped }))
-                    putJsonArray("sources") {
-                        results.forEach { r ->
-                            add(
-                                buildJsonObject {
-                                    put("source_id", JsonPrimitive(r.sourceId))
-                                    put("success", JsonPrimitive(r.success))
-                                    if (r.errorMessage.isNotEmpty()) {
-                                        put("error", JsonPrimitive(r.errorMessage))
-                                    }
-                                },
-                            )
-                        }
-                    }
-                },
-            )
-        }
+        metadataRefreshRoutes(refresher)
         metadataExportRoutes(registry)
         metadataReadRoutes(registry, searchRegistryWithAll, searchIndexHolder, packageIndex, lexiconSourceIds.toSet())
         vocabularyRoutes(registry, parseState)

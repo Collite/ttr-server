@@ -42,8 +42,24 @@ object TagScope {
         tags: Set<String>,
         parseStatus: (Query) -> ParseStatus = { it.parseStatus },
         checkQueries: Boolean = true,
+    ): Result =
+        resolve(
+            model.objectByQname(),
+            model.mappings.filterIsInstance<Er2DbEntityMapping>().groupBy {
+                it.entity
+            },
+            tags,
+            parseStatus,
+            checkQueries,
+        )
+
+    private fun resolve(
+        objects: Map<QualifiedName, ModelObject>,
+        mappings: Map<QualifiedName, List<Er2DbEntityMapping>>,
+        tags: Set<String>,
+        parseStatus: (Query) -> ParseStatus,
+        checkQueries: Boolean,
     ): Result {
-        val objects = model.objectByQname()
         val selected = linkedSetOf<QualifiedName>()
         val warnings = mutableListOf<Warning>()
 
@@ -53,7 +69,6 @@ object TagScope {
 
         fun tagged(obj: ModelObject) = obj.tags.any { it in tags }
         if (tags.isEmpty()) selected += objects.keys else objects.values.filter(::tagged).forEach { add(it.qname) }
-        val mappings = model.mappings.filterIsInstance<Er2DbEntityMapping>().groupBy { it.entity }
         // Only tagged edges pull endpoints. Containment never walks up from a part to its owner.
         if (tags.isNotEmpty()) {
             objects.values.filter(::tagged).forEach { obj ->
@@ -163,10 +178,13 @@ object TagScope {
     }
 
     /** Structural diagnostics for each authored tag; unions are checked separately on each request. */
-    fun loadWarnings(model: Model): List<LoadWarning> =
-        model.objectByQname().values.flatMap { it.tags }.toSortedSet().flatMap { tag ->
-            resolve(model, setOf(tag), checkQueries = false).warnings.map { warning ->
+    fun loadWarnings(model: Model): List<LoadWarning> {
+        val objects = model.objectByQname()
+        val mappings = model.mappings.filterIsInstance<Er2DbEntityMapping>().groupBy { it.entity }
+        return objects.values.flatMap { it.tags }.toSortedSet().flatMap { tag ->
+            resolve(objects, mappings, setOf(tag), { it.parseStatus }, false).warnings.map { warning ->
                 LoadWarning("tag-scope", warning.sourceFile, 0, 0, "${warning.code}: tag '$tag': ${warning.message}")
             }
         }
+    }
 }

@@ -20,6 +20,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry
 import org.apache.commons.compress.archivers.tar.TarArchiveOutputStream
+import org.eclipse.jgit.api.Git
 import org.tatrman.meta.v1.GetStatusRequest
 import org.tatrman.metadata.buildSources
 import org.tatrman.metadata.grpc.MetadataServiceImpl
@@ -300,10 +301,222 @@ class DeclaredSourcesSpec :
                     val timeout = DeclaredFixture(listOf(http.entry() + mapOf("read-timeout-ms" to 25)))
                     val timedOut = timeout.ref.refreshOutcome("", true)
                     timedOut.status shouldBe "failed"
-                    timedOut.lastAttempt!!.errors.joinToString() shouldContain "SocketTimeoutException"
+                    timedOut.lastAttempt!!.errors.joinToString() shouldContain "http_source_timeout"
                 } finally {
                     local.toFile().deleteRecursively()
                 }
+            }
+        }
+
+        "F1 accepted filesystem CN content promotes with captured source version while a Git fallback cannot" {
+            BranchFixture().use { git ->
+                val clinic =
+                    org.tatrman.metadata.cn.CnTestKit
+                        .clinicWorld()
+                try {
+                    Files.walk(clinic).use { paths ->
+                        paths.filter { Files.isRegularFile(it) }.forEach { file ->
+                            val target = git.root.resolve("model").resolve(clinic.relativize(file))
+                            Files.createDirectories(target.parent)
+                            Files.copy(file, target, java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+                        }
+                    }
+                    val store =
+                        org.tatrman.metadata.cn
+                            .InMemoryCandidateStore()
+                    val candidates =
+                        org.tatrman.metadata.cn.CandidateService(
+                            store,
+                            org.tatrman.metadata.cn.CnTestKit.policy,
+                            org.tatrman.metadata.cn.Promoter(
+                                org.tatrman.metadata.cn.StoragePromotionFiles(
+                                    org.tatrman.ttr.metadata.source
+                                        .LocalFsStorage("clinic", git.root.resolve("model")),
+                                ),
+                                modelRoot = "model",
+                            ),
+                        )
+                    val id =
+                        candidates
+                            .submit(
+                                org.tatrman.metadata.cn
+                                    .CnCaller("clinic-evidence", false, emptySet()),
+                                org.tatrman.metadata.cn.CnTestKit
+                                    .candidate("evidence-phase"),
+                            ).candidate.id
+                    val pending =
+                        candidates.promote(
+                            org.tatrman.metadata.cn
+                                .CnCaller("steward", true, setOf("cn-steward")),
+                            id,
+                        )
+                    Git.open(git.root.toFile()).use {
+                        it.apply().setPatch(java.io.ByteArrayInputStream(pending.promotion!!.diff.toByteArray())).call()
+                    }
+                    val disk =
+                        mapOf(
+                            "id" to "disk",
+                            "type" to "filesystem",
+                            "path" to git.root.resolve("model").toString(),
+                        )
+                    val fallback =
+                        DeclaredFixture(
+                            listOf(
+                                mapOf(
+                                    "id" to "git",
+                                    "type" to "git",
+                                    "remote-uri" to
+                                        git.root
+                                            .resolve("missing")
+                                            .toUri()
+                                            .toString(),
+                                    "branch" to "main",
+                                    "local-checkout-dir" to git.checkout.toString(),
+                                    "fallback" to "disk",
+                                ),
+                                disk + mapOf("enabled" to false),
+                            ),
+                            strict = false,
+                        )
+                    val fallbackOutcome = fallback.ref.refreshOutcome("", true)
+                    fallbackOutcome.status shouldBe "ok"
+                    fallbackOutcome.sources
+                        .single()
+                        .origin.fallback shouldBe true
+                    fallback.ref.promotionCommit("git", fallbackOutcome) shouldBe null
+                    val fs = DeclaredFixture(listOf(disk), strict = false)
+                    fs.ref.addPublicationListener("disk") { outcome, complete ->
+                        fs.ref.promotionCommit("disk", outcome)?.let { version ->
+                            candidates.observe(
+                                outcome.snapshot!!.model.schemas["cn"] as org.tatrman.ttr.metadata.model.CnSchema,
+                                version,
+                            )
+                        }
+                        complete(true)
+                    }
+                    val accepted = fs.ref.refreshOutcome("", true)
+                    accepted.status shouldBe "ok"
+                    store.get(id)!!.state shouldBe org.tatrman.metadata.cn.CandidateState.PROMOTED
+                    store
+                        .get(id)!!
+                        .candidate.resolution!!
+                        .canonRef shouldBe
+                        "${accepted.sources.single().version}:cn.IschemicPatient"
+                    // Provenance is captured: a later failed load cannot alter this decision.
+                    fs.ref.promotionCommit("disk", accepted) shouldBe accepted.sources.single().version
+                } finally {
+                    clinic.toFile().deleteRecursively()
+                }
+            }
+        }
+
+        "F3 whole-response deadline bounds a drip and keeps prior HTTP tree and ETag while another source advances" {
+            HttpTree().use { slow ->
+                HttpTree().use { clean ->
+                    val f =
+                        DeclaredFixture(
+                            listOf(slow.entry("slow") + mapOf("read-timeout-ms" to 300), clean.entry("clean")),
+                        )
+                    clean.body = tarTree("db.ttrm" to "model db\ndef table clean {}")
+                    f.ref.refreshOutcome("", true).status shouldBe "ok"
+                    val oldVersion =
+                        f.ref
+                            .status()
+                            .sources
+                            .single { it.id == "slow" }
+                            .version
+                    slow.conditional = false
+                    slow.etag = "\"unaccepted\""
+                    slow.body = tarTree("db.ttrm" to "model db\ndef table never {}")
+                    slow.dripMillis = 20
+                    clean.etag = "\"new-clean\""
+                    clean.body = tarTree("db.ttrm" to "model db\ndef table advanced {}")
+                    val start = System.nanoTime()
+                    val result = f.ref.refreshOutcome("", true)
+                    val elapsedMs = (System.nanoTime() - start) / 1_000_000
+                    (elapsedMs < 1200) shouldBe true
+                    result.status shouldBe "partial"
+                    result.sources.single { it.id == "slow" }.lastError shouldContain "http_source_timeout"
+                    result.sources.single { it.id == "slow" }.version shouldBe oldVersion
+                    f.names() shouldBe setOf("delivered", "advanced")
+                    // A quick 304 must reuse the original cache and its ETag, and reacquire the publication lock.
+                    slow.dripMillis = 0
+                    slow.etag = "\"v1\""
+                    slow.conditional = true
+                    slow.status = 304
+                    f.ref.refreshOutcome("slow", true).status shouldBe "ok"
+                    slow.requests.last().etag shouldBe "\"v1\""
+                    f.names() shouldBe setOf("delivered", "advanced")
+                }
+            }
+        }
+
+        "F7 HTTP and filesystem strip model subdirectory before deriving packages and exclude siblings" {
+            HttpTree().use { http ->
+                val local = Files.createTempDirectory("declared-subdir")
+                try {
+                    val files =
+                        listOf(
+                            "model/pkg/a.ttrm" to "package pkg\nmodel db\ndef table included {}",
+                            "other/b.ttrm" to "package other\nmodel db\ndef table excluded {}",
+                        )
+                    files.forEach { (path, text) ->
+                        val file = local.resolve(path)
+                        Files.createDirectories(file.parent)
+                        Files.writeString(file, text)
+                    }
+                    http.body = tarTree(*files.toTypedArray())
+                    listOf(
+                        http.entry() + mapOf("subdirectory" to "model"),
+                        mapOf(
+                            "id" to "disk",
+                            "type" to "filesystem",
+                            "path" to local.toString(),
+                            "subdirectory" to "model",
+                        ),
+                    ).forEach { entry ->
+                        val f = DeclaredFixture(listOf(entry))
+                        val result = f.ref.refreshOutcome("", true)
+                        result.status shouldBe "ok"
+                        f.names() shouldBe setOf("included")
+                        f.registry
+                            .readOrError()
+                            .model
+                            .objectByQname()
+                            .values
+                            .filter { it.kind == "table" }
+                            .map { f.index.packageOf(it.sourceFile) }
+                            .toSet() shouldBe setOf("pkg")
+                        (result.toString().contains("package-declaration-mismatch")) shouldBe false
+                    }
+                } finally {
+                    local.toFile().deleteRecursively()
+                }
+            }
+        }
+
+        "F8 unpadded tar with post-EOF tail CRC failure preserves the accepted HTTP tree and ETag" {
+            HttpTree().use { http ->
+                http.conditional = false
+                val f = DeclaredFixture(listOf(http.entry()))
+                f.ref.refreshOutcome("", true).status shouldBe "ok"
+                val accepted = f.registry.read()
+                http.etag = "\"bad\""
+                http.body =
+                    tarTree(
+                        "db.ttrm" to "model db\ndef table corrupt {}",
+                        recordSize = 512,
+                        trailingBytes = 16_384,
+                    ).also {
+                        it[it.size - 8] = (it[it.size - 8].toInt() xor 1).toByte()
+                    }
+                val result = f.ref.refreshOutcome("", true)
+                result.status shouldBe "failed"
+                (f.registry.read() === accepted) shouldBe true
+                http.status = 304
+                f.ref.refreshOutcome("", true).status shouldBe "ok"
+                http.requests.last().etag shouldBe "\"v1\""
+                f.names() shouldBe setOf("delivered")
             }
         }
 
@@ -508,6 +721,7 @@ class DeclaredSourcesSpec :
 
 private class DeclaredFixture(
     entries: List<Map<String, Any>>,
+    strict: Boolean = true,
 ) {
     val config = ConfigFactory.parseMap(mapOf("metadata.sources" to entries))
     val registry = MetadataRegistry()
@@ -524,7 +738,7 @@ private class DeclaredFixture(
             },
             ModelReconciler(ModelDescriptor("declared", "declared")),
             registry,
-            true,
+            strict,
             board
                 .states()
                 .map {
@@ -559,6 +773,8 @@ private class HttpTree : AutoCloseable {
 
     @Volatile var delayMillis = 0L
 
+    @Volatile var dripMillis = 0L
+
     data class Request(
         val auth: String?,
         val etag: String?,
@@ -582,7 +798,20 @@ private class HttpTree : AutoCloseable {
                     etag?.let { value -> it.responseHeaders.add("ETag", value) }
                     location?.let { value -> it.responseHeaders.add("Location", value) }
                     it.sendResponseHeaders(code, if (code == 304) -1 else body.size.toLong())
-                    if (code != 304) runCatching { it.responseBody.write(body) }
+                    if (code != 304) {
+                        runCatching {
+                            val content = body
+                            if (dripMillis == 0L) {
+                                it.responseBody.write(content)
+                            } else {
+                                content.forEach { byte ->
+                                    it.responseBody.write(byte.toInt())
+                                    it.responseBody.flush()
+                                    Thread.sleep(dripMillis)
+                                }
+                            }
+                        }
+                    }
                 }
             }
             start()
@@ -607,11 +836,13 @@ private fun tarTree(
     vararg files: Pair<String, String>,
     link: Boolean = false,
     linkType: Byte = '2'.code.toByte(),
+    recordSize: Int = 10_240,
+    trailingBytes: Int = 0,
 ): ByteArray =
     ByteArrayOutputStream()
         .also { bytes ->
             GZIPOutputStream(bytes).use { gzip ->
-                TarArchiveOutputStream(gzip).use { tar ->
+                TarArchiveOutputStream(gzip, recordSize).use { tar ->
                     files.forEach { (name, text) ->
                         val content = text.toByteArray()
                         val entry =
@@ -626,6 +857,11 @@ private fun tarTree(
                         tar.putArchiveEntry(entry)
                         if (!link) tar.write(content)
                         tar.closeArchiveEntry()
+                    }
+                    if (trailingBytes > 0) {
+                        tar.finish()
+                        // Valid post-EOF data leaves the gzip trailer beyond the tar reader's lookahead.
+                        gzip.write(ByteArray(trailingBytes))
                     }
                 }
             }
