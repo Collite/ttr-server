@@ -149,7 +149,15 @@ def relation authored_link { tags: ["live"], from: er.entity.A, to: er.entity.B,
                               "command": ["httpd", "-f", "-p", "8080", "-h", "/cert/http"],
                               "volumeMounts": [{"name": "fixture", "mountPath": "/cert", "readOnly": True}],
                               "resources": {"requests": {"cpu": "5m", "memory": "8Mi"}, "limits": {"memory": "32Mi"}}})
-    pod["volumes"] = [{"name": "fixture", "configMap": {"name": "fixture", "items": items}}]
+    # Projected ConfigMap directories are symlinks. LocalFsStorage intentionally walks regular
+    # directories, so materialize the synthetic tree before starting either reader.
+    pod["initContainers"] = [{"name": "materialize-fixture", "image": "registry.k8s.io/e2e-test-images/busybox:1.29-4",
+                               "command": ["sh", "-ec", "cp -RL /input/* /cert/"],
+                               "volumeMounts": [{"name": "fixture-input", "mountPath": "/input", "readOnly": True},
+                                                {"name": "fixture", "mountPath": "/cert"}],
+                               "resources": {"requests": {"cpu": "5m", "memory": "8Mi"}, "limits": {"memory": "32Mi"}}}]
+    pod["volumes"] = [{"name": "fixture-input", "configMap": {"name": "fixture", "items": items}},
+                      {"name": "fixture", "emptyDir": {}}]
     save(out / "deployment.json", deployment)
     save(out / "fixture-refs.json", refs)
     return deployment, refs

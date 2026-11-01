@@ -429,6 +429,7 @@ inputs without creating cluster resources. The command creates synthetic default
 filesystem and HTTP tar inputs, then checks startup refusal, source reports, branch policy, strict rollback
 and recovery, tag/vocabulary selection, relation details and authored report/form/layout reads. It uses the
 metadata chart with certification-only fixture mounts and a small HTTP sidecar; no credentials are needed.
+An init container copies the ConfigMap inputs into a temporary volume, giving the filesystem reader regular directories.
 `results.json` records groups passed and `passed_all`; the command exits nonzero on any failed assertion.
 This fixture certification does not establish producer-content parity, consumer cutover, or a serving rollout.
 
