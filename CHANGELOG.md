@@ -16,6 +16,14 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+- **llm-gateway — a budget refusal no longer takes a rate-limit slot, and `Retry-After` holds when the window is
+  over-full.** A request the key's rate limit admits and the money-budget pre-check then refuses (`insufficient_quota`)
+  gives its slot back, so a key retrying over its budget no longer fills its rate window with requests that never went
+  upstream. When the window holds more requests than the limit (the limit was lowered, or replicas briefly read
+  different team limits), `Retry-After` is the time until enough of them leave to bring the count under the limit. It
+  was the time until the oldest one left, often 1 s, and a caller that obeyed it stayed refused until the surplus aged
+  out. A key refused again and again is logged once (INFO, on each replica) until it is next admitted;
+  `llm_gateway_ratelimit_refused_total` still counts every refusal.
 - **`ttr-nlp` — one text holding the MorphoDiTa batch break token no longer unbatches the rest.** `BatchLemmatize` on
   MorphoDiTa now sends a text that contains `ttrnlpbatchbreak` in a request of its own and the other texts as one
   batch, with the results in request order. Before, one such text sent every text of the request one by one: a caller
@@ -32,14 +40,14 @@ outside this repo could notice is in.
   form is reported in `/status.issues` instead of being skipped silently. The only reader so far, the Studio BFF's
   presence probe, counts the list and is unaffected.
 
-- **llm-gateway — a key's rate limit is a true 60 s window, and a refused request no longer counts.** The limit
-  (`rateLimit.requestsPerMinute`, min-wins with the key's override) now admits at most that many requests in any 60 s
-  ending now: a sliding log per key in Redis (`llm-gateway:rlw:{keyId}`, a sorted set), where only admitted requests
-  are recorded. It was two minute buckets — the current minute's count plus the whole previous minute's, every request
-  counted — so a steady caller was held to about half its limit, and one retrying through its refusals stayed refused.
-  `Retry-After` is now the time until the oldest admitted request leaves the window. A refusal is logged (INFO, the
-  key id) and counted (`llm_gateway_ratelimit_refused_total`). The old `llm-gateway:rl:*` buckets expire on their own
-  within 120 s.
+- **llm-gateway — a key's rate limit is a true 60 s window, and a request the rate limit refuses no longer counts.** The
+  limit (`rateLimit.requestsPerMinute`, min-wins with the key's override) now admits at most that many requests in any
+  60 s ending now: a sliding log per key in Redis (`llm-gateway:rlw:{keyId}`, a sorted set), where only admitted
+  requests are recorded. It was two minute buckets — the current minute's count plus the whole previous minute's, every
+  request counted — so a steady caller was held to about half its limit, and one retrying through its refusals stayed
+  refused. `Retry-After` is now the time until the oldest admitted request leaves the window. A refusal is logged (INFO,
+  the key id) and counted (`llm_gateway_ratelimit_refused_total`). The old `llm-gateway:rl:*` buckets expire on their
+  own within 120 s.
 
 - **metadata — startup requires a configured content source.** With none, startup logs
   `no_model_source_configured` and exits non-zero, including with `METADATA_STRICT_SWAP=false`.
