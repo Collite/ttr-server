@@ -3,7 +3,7 @@
 > **forked-from:** `metadata` since 2026-10 (MR); formerly `veles` (2026-06-13 → 2026-10), originally `ai-platform/infra/metadata` (Ariadne).
 > Maintained independently since the fork; do not assume parity with the original.
 
-The **model-graph service** for kantheon. Loads a TTR model from a git repository (`METADATA_GIT_*`, re-fetched for live reload — see [Model source](#model-source)) into an in-memory `ModelSnapshot`, then serves `ListObjects` / `GetObject` / `Search` / `ListQueries` / `GetModel` / `ResolveArea` / `GetStatus` / `Refresh` over gRPC (MetadataService) and HTTP. The gRPC service proto is `org.tatrman.meta.v1` / `MetadataService`; all consumers roll with the server (MR).
+The **model-graph service** for kantheon. Loads a TTR model from a git repository (`METADATA_GIT_*`, re-fetched for live reload — see [Model source](#model-source)) into an in-memory `ModelSnapshot`, then serves `ListObjects` / `GetObject` / `Search` / `ListQueries` / `GetModel` / `ResolveArea` / `ResolveTags` / `GetStatus` / `Refresh` over gRPC (MetadataService) and HTTP. The gRPC service proto is `org.tatrman.meta.v1` / `MetadataService`; all consumers roll with the server (MR).
 
 ## Runs on the `org.tatrman:ttr-metadata` library (Stage M4.1, ttr-metadata adoption)
 
@@ -78,6 +78,119 @@ Credentials in URI diagnostics are redacted.
 Load exceptions still retain the previous contribution. A source with no objects is still reported as a
 health failure; permissive publication does not imply a healthy source. The Studio editor should require
 strict mode outside a deployment that explicitly accepts partial models. No deployment is changed here.
+
+## Tag closure and vocabulary
+
+`ResolveTags(tags, strict=false)` selects objects by **any** matching tag, then includes entity attributes,
+physical table/view columns, and both ends of tagged relations/foreign keys with their parts. Untagged edges
+are never followed. A mapped generated `<entity>__filter` query is contained by its entity. Empty RPC tags
+mean the whole typed model; a blank tag is INVALID_ARGUMENT. Unknown tags produce an empty selection.
+
+The response returns deterministic `objects`, `packages`, `model_version`, `warnings` and `complete`.
+`objects` is the exact selection; packages are its declared/implied package **cover**. Calling
+`GetModel(packages=...)` can include other objects in those packages. Tag selection is not an authorization
+boundary. No agent files, agent permissions or custom closure rules are read by this service.
+
+Selected entities require their mapped table/view/query; selected queries require the tables/entities read
+by their parsed plans, including nested and expanded reads. Missing dependencies warn with
+`meta/scope-violation`; they do not enlarge the selection. Pending/failed parsing warns with
+`meta/scope-unavailable`. Query checks read the captured model version's parse results. `strict=true`
+returns no objects/packages when any warning remains. Before the first model, `messages` contains
+`metadata_not_ready` and `complete=false`. Structural single-tag warnings also appear in load issues;
+a union of tags can satisfy a requirement that a single-tag load warning names. These warnings never block
+publication or make an otherwise accepted model unready.
+
+`GET /model/vocabulary?tags=sales,reporting` uses the same default closure on the served snapshot.
+Repeated `tags` values work too; absent tags returns all entities. A present empty tag is 400, as is
+`agent=...` (the caller supplies tags from its own agent configuration). Before a model is loaded, HTTP
+returns 503 `{"error":"model not loaded"}`.
+
+```json
+{
+  "model_version": "...",
+  "tags": ["sales"],
+  "entities": [{
+    "qname": "er.entity.customer", "name": "customer", "description": "Customers",
+    "aliases": ["client"], "tags": ["sales"],
+    "attributes": [{
+      "qname": "er.entity.customer.name", "name": "name", "description": "Customer name",
+      "aliases": [], "indexed": true, "fuzzy": true, "match_method": "TOKENS"
+    }]
+  }],
+  "warnings": []
+}
+```
+
+Aliases and search flags are authored metadata; no aliases, values or read SQL are generated here.
+`ListMemberVocabularies` remains the member-value/read-plan surface. The vocabulary route is read-only,
+retains accepted content after refused refreshes, and does not add a globals or legacy-agent endpoint.
+
+The MW default oracle is opt-in because its model is private: archive **the same main SHA** for the
+validator's YAML and this service's `generated/ttr`, save `model-validator --dump-agents --format json`
+as `<root>/default-validator.json`, then run:
+
+```sh
+MW_TAG_ORACLE_ROOT=<root> ./gradlew :services:metadata:test --tests '*TagScopeOracleSpec'
+```
+
+The oracle writes exact missing/extra identities to `<root>/comparison.txt` and fails on any difference.
+At ai-models main `1c08dcb015a7895abda9fd66e64dea21a33a5b54`, rendered query namespaces (including generated filter queries) and omitted
+functions prevent exact parity; they remain a content gate, with no renderer or producer-pin workaround.
+Newer ai-models agent configurations use additional closure rules and need a separate generic contract
+before cutover; default-closure validation does not certify those custom configurations.
+
+## Branch refresh and serving reports
+
+`METADATA_ALLOW_NON_DEFAULT_BRANCH` (HOCON `metadata.allow-non-default-branch`) defaults to `false`.
+`POST /refresh?branch=<ref>` and gRPC `RefreshRequest.branch` accept the configured default even with the gate off;
+other branches or full commit SHAs require the gate. Branch names may contain slashes. An omitted or blank branch
+refreshes the currently tracked ref. A successful explicit switch stays tracked until another switch or restart.
+For example, `POST /refresh?branch=preview%2Forders` selects `preview/orders`; an explicit `branch=main` restores main.
+With several Git primaries, select one with HTTP `source_id` or gRPC `source_id`; an implicit branch target must
+be the sole configured Git primary. Non-Git, unknown and ambiguous targets are refused before loading.
+Malformed refs are refused with `400 invalid_git_ref` without degrading source health; a valid missing ref is a load failure.
+Fetches prune deleted remote branches. Deleting the tracked branch reports failure and keeps its accepted content/ref
+until an explicit switch or restart. An accepted full SHA still resolves from local objects after pruning.
+
+A gate refusal returns HTTP 409 (`branch_not_allowed`); invalid targets return 400. The RPC returns the same
+`rejected` outcome in its response. Model-load failures return HTTP 200 with `status=failed`; independent accepted
+and refused sources produce `partial`. Internal stock roles cannot turn an all-content failure into `partial`.
+The existing `status`, `model_version`, `swapped`, `sources` and RPC result fields remain available.
+
+Each attempt resolves its ref once. Model, layout, template and lexicon reads use that commit. A refused attempt
+restores the exact pre-attempt checkout and tracked ref from local Git objects, even if remote main advanced;
+it keeps serving the accepted model. The failed requested ref/commit appears on `last_attempt`. Initial failure
+restores the configured default. An explicit branch request must load that primary, so a configured fallback
+cannot silently satisfy a preview request. Ordinary no-branch refresh still supports opt-in fallbacks.
+
+`GET /status`, gRPC `GetStatus`, and refresh responses distinguish:
+
+- `serving`: accepted source type/id, branch, exact Git `commit`, composite registry `model_version`, publication
+  `loaded_at`, and `serving_fallback`. It is absent/null before a configured contribution is published.
+- `last_attempt`: completion time, requested branch/resolved commit, status, errors/warnings and model-file count.
+  A ref that could not be resolved has an empty attempted commit. Invalid source ids are not echoed.
+  A refusal while another refresh runs uses the last capture without recording it; the running attempt supersedes it.
+- `last_success`: the latest wholly successful accepted refresh. Failure and partial refresh leave it unchanged.
+- `kept_previous`: a refused source retained an earlier contribution; false on initial failure and successful no-change.
+
+HTTP status also provides `objects_by_kind`, sorted distinct `tags`, `ignoredFiles`, `allow_non_default_branch`,
+and `source`/`branch`/`commit`/`serving_fallback` aliases of `serving`. RPC status carries the same information,
+with per-source provenance in `sources`. Multi-source serving uses `source=mixed` and empty aggregate branch/commit;
+inspect the source entries for individual commits. Counts/tags always describe the accepted model. `model_version`
+continues to combine all source versions and a digest; use `commit` when comparing against a Git SHA.
+
+Status reads return the last completed capture immediately during a refresh, including remote I/O. Before the
+first completed load they report no serving model. Counts, tags and readiness are captured with that publication.
+CN vocabulary-only refreshes preserve the content attempt/success/retention reports. CN promotions are confirmed
+from accepted, non-fallback filesystem content using its source version, or Git content on the configured default
+branch using its commit; preview branches, SHA pins and fallback content cannot confirm a merge.
+No-change refreshes do not repeat a successful promotion observation; failed observations retry on the next refresh.
+
+A successful same-version refresh updates attempt/success times without changing `serving.loaded_at`.
+Permissive empty publication still reports failed source health, while serving provenance names the published commit.
+TTR has no `model.ignore` filter: `ignoredFiles` and refresh/report `ignored_files` are currently empty arrays.
+Reports and refresh replies are captured under the same publication lock used by startup, scheduler, HTTP and RPC;
+a later refresh cannot change the snapshot named by an earlier reply. No agent or globals fields are added.
 
 ## Package root
 
@@ -289,6 +402,40 @@ The resolver does one synchronous read at boot, then polls on `Dispatchers.IO` w
 default 30). Resolve/gate requests only read the last completed pass and never perform HTTP I/O.
 The resolver can lag metadata by up to that interval, plus download time. This does not make separate services swap simultaneously or change deployment wiring.
 
+## Relation names and Czech search resources
+
+`RelationDetail.name` is the authored local relation name, served consistently by `GetModel`,
+`GetObject` and `GetSnapshot`. This additive field is number 10; existing endpoints, cardinality and
+join pairs retain their wire fields, and old clients can ignore the name.
+
+Czech keyword search loads `search/stop-words-cs.txt` from the pinned `ttr-metadata` runtime jar;
+there is no service copy. Tokenization folds accents before filtering noise words (for example,
+`že` → `ze`), while `zákazníci`/`zakaznici` still match authored Czech keywords. The S1.5 check
+inspects that jar inside a local `:services:metadata:jibBuildTar` image archive; no image is published.
+The existing report/form/layout/md routes keep their paths and snapshot-bound shapes.
+
+## Isolated ops certification
+
+`scripts/metadata-ops-cert.py` exercises a published candidate on `bp-dsk`, in the disposable
+`mw-p1-cert` namespace. It refuses namespace reuse and removes its resources on exit. The serving
+metadata Deployment is read before/after and must retain its spec/identity and readiness.
+Prerequisites: Python 3.9+, Git, Helm, kubectl and grpcurl; resolve the metadata chart's local dependencies
+with `bash scripts/helm-deps.sh` first. Use an immutable image digest, for example:
+
+```sh
+python3 scripts/metadata-ops-cert.py --context bp-dsk \
+  --image ghcr.io/collite/metadata@sha256:<published-digest> --output build/mw-p1-cert
+```
+
+The output directory must be new and below this worktree's `build/`. `--prepare-only` creates/render-checks
+inputs without creating cluster resources. The command creates synthetic default/preview/broken Git refs,
+filesystem and HTTP tar inputs, then checks startup refusal, source reports, branch policy, strict rollback
+and recovery, tag/vocabulary selection, relation details and authored report/form/layout reads. It uses the
+metadata chart with certification-only fixture mounts and a small HTTP sidecar; no credentials are needed.
+An init container copies the ConfigMap inputs into a temporary volume, giving the filesystem reader regular directories.
+`results.json` records groups passed and `passed_all`; the command exits nonzero on any failed assertion.
+This fixture certification does not establish producer-content parity, consumer cutover, or a serving rollout.
+
 ## The cn candidate store (`cn/`, off by default)
 
 Producers propose concepts, terms and relations as `cn-candidate.v1` documents (ttr-concept's
@@ -306,6 +453,29 @@ the model text: canon stays text, and the steward merges. The routes live under 
 | `METADATA_CN_PR_TOKEN` · `METADATA_CN_PR_REPOSITORY` · `METADATA_CN_PR_API_URL` | Optional: open GitHub pull requests. The token needs contents and pull-request write access; the repository defaults to the source's `github.com` remote. |
 | `METADATA_CN_INBOX_DIR` | Optional: write each promotion's `<id>.diff` and `<id>.md` there. Every diff the store hands out (this file and the API's `promotion.diff`) has the repository's paths, the source's sub-path included: `git apply <id>.diff` at the repository root. |
 | `METADATA_CN_NOTIFY_URL` | Optional: every candidate event is POSTed here. |
+
+The Helm chart exposes these as `cn` keys (`metadata.cn` in the umbrella); see the
+[values contract](../../helm/tatrman-server/values-contract.md).
+For example, a standalone values file can enable the store with:
+
+```yaml
+cn:
+  db:
+    host: postgres.example
+    passwordSecret: { name: metadata-db, key: password }
+  auth:
+    issuer: https://identity.example/realms/catalog
+    jwksUri: https://identity.example/realms/catalog/protocol/openid-connect/certs
+  producers: kleio=kleio
+  promotion:
+    github:
+      tokenSecret: { name: metadata-pr, key: token }
+```
+
+All CN settings default off/empty; DB port/name/user retain service defaults. Password and PR token
+are optional Secret references, never inline values. A missing DB Secret leaves the store off, not
+stuck before startup. Existing `extraEnv`/`secretEnv` entries override generated CN settings by env name;
+keep those legacy lists mutually unique. There is no new CN enable switch or authentication policy.
 
 A promotion is checked by a gate before it goes anywhere. The gate loads the model before and after the patch,
 through the strict load report and the cn definition diagnostics. A new error refuses the promotion; other new
@@ -371,6 +541,89 @@ roles only, so every catalog call answers empty — and:
 A fallback is opt-in, for demos that must come up offline: `METADATA_GIT_FALLBACK=local-model`
 with `METADATA_TTR_ROOT=/path/to/model` serves that directory while the repository is unavailable
 (never merged with it), and `/status` reports `serving_fallback: true`.
+
+### Declared sources
+
+The existing keyed `metadata.sources { github-model { … }, second-model { … } }` configuration and
+its environment variables above continue to work. To serve more sources, supply an explicit list in
+an application HOCON config file (for example with `-Dconfig.file=/etc/metadata/model.conf`).
+Include the shipped defaults before overriding the sources:
+
+```hocon
+include classpath("application.conf")
+metadata.sources = [
+  {
+    id = estate
+    type = git
+    remote-uri = "https://github.com/example/models.git"
+    branch = main
+    subdirectory = model
+    token = ${?ESTATE_READ_TOKEN}
+  },
+  { id = mounted, type = filesystem, path = "/srv/model", subdirectory = extra },
+  {
+    id = automation
+    type = http
+    url = "https://example.internal/automation.tar.gz"
+    token = ${?AUTOMATION_READ_TOKEN}
+    subdirectory = automation
+  }
+]
+```
+
+The explicit classpath include keeps the descriptor, ports and other service defaults when `config.file`
+replaces the default application resource. A JSON configuration must supply the equivalent full configuration.
+A list **replaces** the shipped source object, including its demo repository and env-backed slots.
+The old `METADATA_GIT_*`/`METADATA_GIT2_*`/`METADATA_TTR_ROOT` slots apply when using the keyed object;
+list entries can explicitly reference whichever environment variables they need. Internal stock roles
+and CN's registered vocabulary versions remain separate, and cannot satisfy configured content readiness.
+
+Each entry requires a unique `id` (`[A-Za-z0-9][A-Za-z0-9._-]*`); `builtin-stock`, `builtin-stock-roles`
+and `cn-vocabularies` are reserved. Duplicate ids, reserved ids, ambiguous legacy key/id aliases and
+unsafe subdirectories fail configuration before telemetry, database initialization or listeners.
+`enabled` defaults true, `priority` defaults 100, and parser `kind` defaults `ttr`. YAML source loading
+belongs to MW-P4. `subdirectory` must be relative, with no parent traversal or backslashes.
+
+| Storage `type` | Fields |
+|---|---|
+| `git` | `remote-uri`; optional `branch` (default `main` for a new entry), `subdirectory`, `local-checkout-dir`, `lexicon-path`, `username`, `password`/`token`. Explicit `password` wins over `token`; credentials default to username `x-access-token`. The shipped legacy slots retain `master`/`model` defaults. |
+| `filesystem` | `path`, optional `subdirectory` inside that root. |
+| `http` | `url`, optional bearer `token`, `subdirectory`, `connect-timeout-ms` (10,000), `read-timeout-ms` (30,000), `max-bytes` (33,554,432). Timeouts and byte limits must be positive. |
+
+A `fallback` names another list id (or legacy block key/id), including an `enabled=false` entry.
+It serves instead of a failed primary, never merged with it. Fallbacks remain opt-in and one level deep.
+Git previews retain the branch gate and cannot accept fallback content. Non-Git branch targets are refused.
+HTTP sources are read-only and cannot be CN promotion targets.
+
+**HTTP carrier.** The URL returns a gzip-compressed tar tree; the URL suffix is irrelevant. Its paths
+are the same package-relative `.ttr`/`.ttrm` tree, layout files and export sidecars as the filesystem
+loader reads. An optional `subdirectory` strips an archive prefix before deriving packages. For example,
+`automation/ops/db.ttrm` with `subdirectory=automation` belongs to package `ops`. This does not add
+HTTP report/form or compiled lexicon transport. The existing `/model/export` tar.gz is also readable
+when its model-id prefix is selected as the subdirectory.
+
+The loader performs GET, sends its own bearer token and response ETag as `If-None-Match`, and reuses
+exactly its cached tree on 304. A first-response 304 fails; a missing ETag means unconditional GETs.
+Source versions are SHA-256 of the received bytes, so a changed 200 body is detected even if its ETag
+was reused. A received tree still passes strict parse/reconciliation on every refresh, including 304;
+ETag caching never makes rejected content acceptable.
+
+Redirects and URL user-info/fragments are refused. Descriptions omit query strings; load errors report
+safe codes/statuses rather than URLs, bearer tokens or response bodies. The read timeout (default 30 s)
+sets a deadline for the whole response, from request to last byte; raise `read-timeout-ms` for large, slow archives.
+A read already blocked at the deadline can overrun it by up to one further read-timeout (worst case
+2 × `read-timeout-ms`); DNS resolution is not bounded (Bora ✅R202-D). Archive decoding runs outside
+the network deadline. The connection timeout also bounds network waits. Compressed responses and total expanded regular-file bytes are limited by `max-bytes`;
+archive metadata/padding has an additional 10,240,000-byte allowance and entries are capped at 10,000. The loader
+never extracts files: absolute/traversing/backslash/duplicate paths, links, special entries, malformed
+archives and corrupt gzip trailers fail the load. Failed downloads/decodes preserve the prior cache.
+
+All declared sources feed one reconciled snapshot and existing readiness/retention rules. `/status.sources[]`
+retains `source` as the human-readable description and reports storage in `source_type`; gRPC
+`GetStatus.sources[].source` reports storage type. Both expose each accepted source version and health;
+non-Git branch/commit are empty. Aggregate `serving.source` is `mixed` when several sources contribute.
+A targeted refresh uses `source_id`; a failed source retains accepted content while a clean source can
+advance. Initial unavailable content remains unready and uses the existing bootstrap retry.
 
 ## `/model/export`
 

@@ -16,6 +16,47 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+- **metadata — ops review corrections.** Accepted non-fallback filesystem content can confirm CN promotions;
+  Git confirmation remains restricted to the configured default branch. Successful no-change refreshes avoid
+  repeated CN database observations, and failed observations retry. HTTP `read-timeout-ms` now sets a deadline for the
+  entire response, including a slow body; a blocked read can overrun by one further read-timeout
+  (worst case 2 × `read-timeout-ms`), and DNS resolution is unbounded (R202-D). Archive errors keep their
+  diagnostics outside that deadline. Internal-source refresh replies reflect accepted results while
+  preserving content reports; invalid unknown source ids and refs are not echoed. Configured keyed ids
+  retain their spelling and remain refreshable. CN observation completes on every outcome, including errors.
+  CN chart guards now fail explicitly, and the certification command verifies the precise branch-policy
+  refusal, forces the RPC refresh and refuses optimized Python execution.
+
+- Add a repeatable isolated bp-dsk metadata ops certification command for published image digests.
+
+- **metadata — authored relation names and CN chart configuration.** `RelationDetail.name` (additive field 10)
+  now accompanies the existing endpoints/cardinality/join pairs in GetModel, GetObject and GetSnapshot.
+  Standalone `cn.*` / umbrella `metadata.cn.*` configure the existing candidate store with optional DB/PR
+  Secret refs; defaults stay off and existing extraEnv/secretEnv entries take precedence by env name.
+  Report/form/layout/md read paths and shapes remain unchanged. Czech keyword stop words are verified
+  in the pinned runtime jar and local image archive; no dependency or resource copy is introduced.
+
+- **metadata — default tag closure and entity vocabulary.** Additive `ResolveTags` returns the exact tagged
+  object closure, package cover and nonblocking requirement warnings; strict requests refuse incomplete scopes.
+  `GET /model/vocabulary?tags=` exposes scoped authored entity/attribute aliases and index/fuzzy hints from the
+  served snapshot. No legacy agent registry or configurable closure policy is imported. Existing reads are unchanged.
+
+- **metadata — declared sources and conditional HTTP reads.** `metadata.sources` now accepts an explicit
+  git/filesystem/http source list as well as the existing env-backed keyed slots. A list replaces the default
+  source object. HTTP sources GET a bounded, safe tar.gz tree using per-source bearer credentials and ETags;
+  304 reuses the cached tree through strict validation. Failures retain accepted content while independent
+  sources can advance. Source versions/types remain visible over HTTP/gRPC; HTTP has no write/promotion path.
+
+- **metadata — gated branch refresh and serving reports.** HTTP `/refresh?branch=` and RPC `RefreshRequest.branch`
+  can select a branch or full commit SHA with `METADATA_ALLOW_NON_DEFAULT_BRANCH=true` (default false).
+  Explicit configured-default requests remain allowed. Refused loads retain the accepted model and restore the
+  prior ref/checkout locally. Status/refresh responses add serving, last-attempt/last-success and retained-content
+  reports; HTTP status and RPC GetStatus add kind counts and tags. Git SHA is exposed as `commit`; existing composite
+  `model_version` remains unchanged. All proto changes are additive; ordinary no-branch refresh remains supported.
+  Status reads remain responsive during refreshes and share captured counts/tags. Deleted remote branches fail
+  visibly while retaining accepted content; malformed refs are refused before loading. Preview content cannot
+  confirm a pending CN promotion, and vocabulary-only refreshes preserve content reports.
+
 - **metadata · resolver · query · automation — grammar 0.21.1: `variant` is read as `subkind` (ttr-core#349).** A
   cn model may write `def variant X { of: … }`. The loader reads it as the `subkind` stereotype, so the cn candidate
   store, the lexicon and every cn lint treat it exactly as `def subkind X`. A 0.21.0 reader refuses `variant` as a

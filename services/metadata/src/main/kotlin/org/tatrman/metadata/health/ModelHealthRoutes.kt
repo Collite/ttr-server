@@ -18,6 +18,8 @@ import org.tatrman.ttr.metadata.registry.MetadataRegistry
 import org.tatrman.metadata.read.templateCatalogs
 import org.tatrman.metadata.read.servedLexicons
 import org.tatrman.metadata.refresh.diagnostic
+import org.tatrman.metadata.refresh.GuardedRefresher
+import org.tatrman.metadata.refresh.putOps
 
 /** `/status` `error` when no model source is configured at all. */
 const val NO_MODEL_SOURCE = "no_model_source_configured"
@@ -44,6 +46,7 @@ const val NO_MODEL_SOURCE_HELP =
 fun Route.modelHealthRoutes(
     registry: MetadataRegistry,
     board: SourceLoadBoard,
+    refresher: GuardedRefresher? = null,
 ) {
     get("/ready") {
         val (snap, ready) = synchronized(registry) { registry.read().let { it to board.isReady(it?.swappedAt) } }
@@ -65,13 +68,60 @@ fun Route.modelHealthRoutes(
         }
     }
     get("/status") {
+        val outcome = refresher?.status()
         val (snap, sourceStates, ready) =
-            synchronized(registry) {
-                val snapshot = registry.read()
-                Triple(snapshot, board.states(), board.isReady(snapshot?.swappedAt))
+            if (outcome != null) {
+                Triple(
+                    outcome.snapshot,
+                    outcome.sources,
+                    outcome.ready,
+                )
+            } else {
+                synchronized(registry) {
+                    val snapshot = registry.read()
+                    Triple(snapshot, board.states(), board.isReady(snapshot?.swappedAt))
+                }
             }
         call.respondJson(
             buildJsonObject {
+                outcome?.let { putOps(it) }
+                put("allow_non_default_branch", refresher?.allowNonDefaultBranch ?: false)
+                put(
+                    "objects_by_kind",
+                    buildJsonObject {
+                        (
+                            outcome?.objectsByKind ?: snap
+                                ?.model
+                                ?.objectByQname()
+                                ?.values
+                                .orEmpty()
+                                .groupingBy { it.kind }
+                                .eachCount()
+                                .toSortedMap()
+                        ).forEach { (kind, count) ->
+                            put(kind, count)
+                        }
+                    },
+                )
+                putJsonArray("tags") {
+                    (
+                        outcome?.tags ?: snap
+                            ?.model
+                            ?.objectByQname()
+                            ?.values
+                            .orEmpty()
+                            .flatMap { it.tags }
+                            .toSortedSet()
+                            .toList()
+                    ).forEach { add(it) }
+                }
+                putJsonArray("ignoredFiles") {
+                    outcome
+                        ?.lastAttempt
+                        ?.ignoredFiles
+                        .orEmpty()
+                        .forEach { add(it) }
+                }
                 put("service", "metadata")
                 put("strict_swap", board.strictSwap)
                 put("ready", ready)
@@ -118,6 +168,9 @@ private fun notReadyReason(board: SourceLoadBoard): String {
 
 private fun JsonObjectBuilder.putState(s: SourceLoadBoard.SourceLoadState) {
     put("id", s.id)
+    put("branch", s.origin.branch)
+    put("commit", s.origin.commit)
+    put("source_type", s.origin.source)
     put("source", s.description)
     put("loaded", s.loadedOnce)
     put("serving_fallback", s.servingFallback)

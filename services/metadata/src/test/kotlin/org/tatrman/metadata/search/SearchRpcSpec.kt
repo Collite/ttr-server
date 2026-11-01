@@ -55,6 +55,38 @@ class SearchRpcSpec :
             resp.itemsList[0].relevanceScore shouldBe 1.0f
         }
 
+        "packaged Czech stop words remove folded noise without losing meaningful keyword matches" {
+            // Resource must come from the dependency jar, not a service/test copy that masks a missing package.
+            val resource = checkNotNull(StopWords::class.java.getResource("/search/stop-words-cs.txt"))
+            resource.protocol shouldBe "jar"
+            val stopWords = StopWords(listOf("cs"))
+            stopWords.isStop("cs", "ze") shouldBe true
+            stopWords.isStop("cs", "a") shouldBe true
+            stopWords.isStop("cs", "zakaznici") shouldBe false
+            val (service, _) =
+                wire(
+                    query(
+                        "customers",
+                        search =
+                            SearchHints(
+                                keywords =
+                                    LocalizedTextList(
+                                        mapOf(
+                                            "cs" to listOf("zákazníci"),
+                                        ),
+                                    ),
+                            ),
+                    ),
+                    query("noise", search = SearchHints(keywords = LocalizedTextList(mapOf("cs" to listOf("a že"))))),
+                )
+            service.search(req("a že", algo = "keyword")).itemsCount shouldBe 0
+            for (text in listOf("zákazníci", "zakaznici", "a ŽE zákazníci")) {
+                val resp = service.search(req(text, algo = "keyword"))
+                resp.itemsList.map { it.objectDescriptor.localName } shouldBe listOf("customers")
+                resp.itemsList.single().relevanceScore shouldBe 1.0f
+            }
+        }
+
         "regex search extracts parameters when requested for query owners" {
             val (service, _) =
                 wire(

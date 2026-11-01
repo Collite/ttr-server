@@ -49,6 +49,32 @@ metadata:
   gitBranch: "master"
   gitSubdirectory: "model"
 
+# CN candidate store: optional; the service needs DB host/password and a token issuer.
+# Empty strings keep the runtime defaults. Passwords/tokens are Secret refs only. Existing
+# extraEnv/secretEnv entries win by env name over these generated settings (migration compatible).
+cn:
+  db:
+    host: ""
+    port: 5432
+    name: metadata
+    user: metadata
+    passwordSecret: { name: "", key: password }
+  auth:
+    issuer: ""
+    jwksUri: ""
+    audience: ""
+  stewardRole: ""
+  importerRole: ""
+  producers: ""
+  promotion:
+    source: ""
+    inboxDir: ""
+    github:
+      repository: ""
+      apiUrl: ""
+      tokenSecret: { name: "", key: token }
+  notifyUrl: ""
+
 # Secret-backed env (valueFrom.secretKeyRef). `optional: true` mirrors the kustomize base — the
 # pod boots without the PAT (public/fixture remotes need none).
 secretEnv:

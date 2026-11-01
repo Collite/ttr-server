@@ -268,12 +268,28 @@ Metadata serves the model of one git repository, cloned at install and re-fetche
 `METADATA_GIT_SUBDIR` (the older way to set them), so an existing install keeps its values and gets no
 duplicate env var.
 
-**The cn candidate store (CN-P5 S5.3) has no chart keys yet.** It is off unless a database and a token
-issuer are set. Turn it on through `metadata.extraEnv`: `METADATA_CN_DB_HOST` / `_PORT` / `_NAME` / `_USER`,
-`METADATA_CN_AUTH_ISSUER`, `METADATA_CN_AUTH_JWKS_URI`, and `METADATA_CN_PRODUCERS`. Pass the secrets through
-`metadata.secretEnv`: `METADATA_CN_DB_PASSWORD`, and `METADATA_CN_PR_TOKEN` when promotions should open pull
-requests. The full list is in `services/metadata/README.md`. Off, its routes answer 503 `CN_STORE_OFF` and the
-model is served as before.
+**The cn candidate store (CN-P5 S5.3)** has first-class `metadata.cn` keys (standalone: `cn`).
+The runtime still requires a DB host, password and token issuer; without them CN routes answer 503
+`CN_STORE_OFF`, while model serving is unchanged. No CN env is emitted by default.
+
+| Key (under `metadata.cn`) | Default | Existing runtime env |
+|---|---|---|
+| `db.host` | `""` | `METADATA_CN_DB_HOST` |
+| `db.port`, `db.name`, `db.user` | `5432`, `metadata`, `metadata` | `METADATA_CN_DB_PORT`, `_NAME`, `_USER`; emitted only with `db.host` |
+| `db.passwordSecret.{name,key}` | `""`, `password` | `METADATA_CN_DB_PASSWORD` via optional Secret ref |
+| `auth.issuer`, `auth.jwksUri`, `auth.audience` | `""` | `METADATA_CN_AUTH_ISSUER`, `_JWKS_URI`, `_AUDIENCE` |
+| `stewardRole`, `importerRole` | `""` (service: `cn-steward`, `cn-importer`) | `METADATA_CN_STEWARD_ROLE`, `_IMPORTER_ROLE` |
+| `producers` | `""` | `METADATA_CN_PRODUCERS` (`producer=principal[\|principal…]`, comma-separated) |
+| `promotion.source`, `promotion.inboxDir` | `""` (service source: `github-model`) | `METADATA_CN_PROMOTION_SOURCE`, `METADATA_CN_INBOX_DIR` |
+| `promotion.github.repository`, `promotion.github.apiUrl` | `""` (service API: `https://api.github.com`) | `METADATA_CN_PR_REPOSITORY`, `_API_URL` |
+| `promotion.github.tokenSecret.{name,key}` | `""`, `token` | `METADATA_CN_PR_TOKEN` via optional Secret ref |
+| `notifyUrl` | `""` | `METADATA_CN_NOTIFY_URL` |
+
+Blank strings emit nothing. A named Secret requires a nonempty key; its `optional: true` reference
+keeps the pod running if the Secret is missing (a missing DB password leaves the store off).
+Passwords and PR tokens have no literal-value key. Existing `metadata.extraEnv` and `metadata.secretEnv`
+win by env name over generated CN settings/refs, so migration can be incremental without duplicate env.
+Keep each env name unique across the two legacy lists themselves. No cluster-specific values are shipped.
 
 **No fallback model (ttr-server#180).** Metadata bundles no model. If the repository can't be loaded (a
 bad token, a wrong branch or sub-path, no network), Metadata serves no model and its `/ready` answers 503

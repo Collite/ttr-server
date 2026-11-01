@@ -41,6 +41,7 @@ service MetadataService {
   // is NOT part of the object graph; Golem assembles a Shem by resolving its
   // `areas` → packages → GetModel. See docs/architecture/fork/contracts.md §1.1.
   rpc ResolveArea(ResolveAreaRequest) returns (ResolveAreaResponse);
+  rpc ResolveTags(ResolveTagsRequest) returns (ResolveTagsResponse);
 
   // -------- Object reads --------
   rpc ListObjects(ListObjectsRequest) returns (ListObjectsResponse);
@@ -300,6 +301,20 @@ message GetModelResponse {
   ModelBundle model = 1;
   repeated org.tatrman.common.v1.ResponseMessage messages = 99;
   reserved 100 to 104;
+}
+
+// Default four-step tag closure (MW-P1). Empty tags select the whole model.
+message ResolveTagsRequest {
+  repeated string tags = 1;
+  bool strict = 2; // Warnings yield an empty selection when true.
+}
+message ResolveTagsResponse {
+  repeated string packages = 1; // Coarse package cover; objects is the exact selection.
+  repeated ObjectDescriptor objects = 2;
+  repeated org.tatrman.common.v1.ResponseMessage warnings = 3;
+  string model_version = 4;
+  bool complete = 5;
+  repeated org.tatrman.common.v1.ResponseMessage messages = 99;
 }
 
 // -------- ResolveArea (Golem P4 S4.2) --------
@@ -624,6 +639,7 @@ message RelationDetail {
   Cardinality cardinality = 3;
   repeated AttributeJoinPair join_pairs = 4;
   reserved 5 to 9;
+  string name = 10;                                        // authored local relation name
 }
 
 message Cardinality {
@@ -1009,6 +1025,15 @@ message GetStatusResponse {
   // Search feature — index health surfaced for operators.
   int32 search_index_objects = 13;                          // count of model objects with at least one indexed search hint
   int32 search_index_compile_errors = 14;                   // count of patterns that failed to compile during the latest rebuild
+  ServingModel serving = 16;
+  ModelLoadReport last_attempt = 17;
+  ModelLoadReport last_success = 18;
+  bool kept_previous = 19;
+  map<string, int32> objects_by_kind = 20;
+  repeated string tags = 21;
+  repeated string ignored_files = 22;
+  bool allow_non_default_branch = 23;
+
   repeated CompileError search_compile_errors = 15;         // first 50 — for diagnosis without grepping logs
 
   repeated org.tatrman.common.v1.ResponseMessage messages = 99;
@@ -1030,6 +1055,10 @@ message SourceStatus {
   string last_error = 5;                                    // empty if OK
   string last_error_at = 6;                                 // ISO-8601
   reserved 7 to 11;
+  string source = 12;
+  string branch = 13;
+  string commit = 14;
+  bool serving_fallback = 15;
 }
 
 message DependencyStatus {
@@ -1050,10 +1079,39 @@ message RefreshRequest {
   string source_id = 1;                                     // empty = all sources
   bool force = 2;                                           // bypass dedup if a refresh is in flight
   reserved 3 to 7;
+  string branch = 8; // empty = keep the currently tracked ref
+}
+
+message ServingModel {
+  string source = 1;
+  string source_id = 2;
+  string branch = 3;
+  string commit = 4;
+  string model_version = 5;
+  string loaded_at = 6;
+  bool serving_fallback = 7;
+}
+
+message ModelLoadReport {
+  string source_id = 1;
+  string at = 2;
+  bool ok = 3;
+  string status = 4;
+  string branch = 5;
+  string commit = 6;
+  repeated string errors = 7;
+  repeated string warnings = 8;
+  int32 model_files = 9;
+  repeated string ignored_files = 10;
 }
 
 message RefreshResponse {
   repeated SourceRefreshResult results = 1;
+  string status = 2;
+  ServingModel serving = 3;
+  ModelLoadReport last_attempt = 4;
+  ModelLoadReport last_success = 5;
+  bool kept_previous = 6;
   repeated org.tatrman.common.v1.ResponseMessage messages = 99;
   reserved 100 to 104;
 }

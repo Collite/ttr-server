@@ -8,6 +8,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import org.slf4j.LoggerFactory
 import org.tatrman.metadata.grpc.PackageIndex
+import org.tatrman.metadata.scope.TagScope
 import org.tatrman.metadata.health.SourceLoadBoard
 import org.tatrman.metadata.health.objectCount
 import org.tatrman.metadata.health.redactCredentials
@@ -44,6 +45,7 @@ class GuardedRefresher(
     private val configuredIds: Set<String>,
     private val board: SourceLoadBoard = SourceLoadBoard(strictSwap = strictSwap),
     private val packageIndex: PackageIndex = PackageIndex().commitOnSwap(registry),
+    val allowNonDefaultBranch: Boolean = false,
 ) {
     init {
         require(sources.size == sourceIds.size && sourceIds.distinct().size == sourceIds.size) {
@@ -55,6 +57,7 @@ class GuardedRefresher(
     private val log = LoggerFactory.getLogger(GuardedRefresher::class.java)
     private val mutex = Mutex()
     private val accepted = mutableMapOf<String, SourceSnapshot>()
+    private val acceptedOrigins = mutableMapOf<String, SourceOrigin>()
     private val refusals = mutableMapOf<String, Refusal>()
 
     private data class Refusal(
@@ -85,21 +88,363 @@ class GuardedRefresher(
         val newModelVersion: String = "",
     )
 
+    @Volatile
+    private var lastOutcome: RefreshOutcome? = null
+    private var lastAttempt: ModelLoadReport? = null
+    private var lastSuccess: ModelLoadReport? = null
+    private var keptPrevious = false
+    private var lastStatus = ""
+    private val attempts = linkedMapOf<String, SourceSnapshot>()
+    private val managed =
+        sourceIds
+            .zip(sources)
+            .mapNotNull { (id, source) ->
+                (source as? ManagedSource)?.let { id to it }
+            }.toMap()
+
+    /** Status never waits for remote I/O or reads transaction-owned mutable state. */
+    fun status(): RefreshOutcome =
+        lastOutcome?.copy(results = emptyList()) ?: synchronized(registry) {
+            val snapshot = registry.read()
+            RefreshOutcome(
+                emptyList(),
+                snapshot,
+                board.states(),
+                null,
+                null,
+                null,
+                false,
+                "",
+                ready = board.isReady(snapshot?.swappedAt),
+            )
+        }
+
+    private var publication = 0L
+
+    private data class PublicationKey(
+        val publication: Long,
+        val origin: SourceOrigin?,
+        val version: String?,
+    )
+
+    private class PublicationListener(
+        val sourceId: String?,
+        val listener: (RefreshOutcome, (Boolean) -> Unit) -> Unit,
+    ) {
+        var observed: PublicationKey? = null
+        var inFlight: PublicationKey? = null
+    }
+
+    private val publicationListeners = java.util.concurrent.CopyOnWriteArrayList<PublicationListener>()
+
+    /** Acknowledge only after observation succeeds; failed asynchronous observers retry on the next refresh. */
+    fun addPublicationListener(
+        sourceId: String?,
+        listener: (RefreshOutcome, (Boolean) -> Unit) -> Unit,
+    ) {
+        publicationListeners += PublicationListener(sourceId, listener)
+    }
+
+    /** Accepted filesystem content or Git default-branch content can confirm CN promotion. */
+    internal fun promotionCommit(
+        sourceId: String?,
+        outcome: RefreshOutcome,
+    ): String? {
+        val source = managed[sourceId] ?: return null
+        val accepted = outcome.sources.firstOrNull { it.id == sourceId && it.loadedOnce } ?: return null
+        val origin = accepted.origin
+        if (origin.fallback) return null
+        return when (source.kind) {
+            "git" ->
+                origin.commit.takeIf {
+                    origin.source == "git" && origin.branch == source.git?.defaultBranch && it.isNotEmpty()
+                }
+            "filesystem" -> accepted.version.takeIf { origin.source == "filesystem" && it.isNotEmpty() }
+            else -> null
+        }
+    }
+
+    private fun report(
+        sourceId: String,
+        status: String,
+        branch: String = "",
+        commit: String = "",
+        errors: List<String> = emptyList(),
+        warnings: List<String> = emptyList(),
+        modelFiles: Int = 0,
+    ) = ModelLoadReport(
+        sourceId,
+        board.now().toString(),
+        status == "ok",
+        status,
+        branch.takeIf { it.length <= 255 && BranchStorage.validRef(it) }.orEmpty(),
+        commit,
+        errors.map(::redactCredentials),
+        warnings,
+        modelFiles,
+    )
+
     suspend fun refresh(
         sourceId: String,
         force: Boolean,
-    ): List<SourceResult> {
-        if (sourceId.isNotEmpty() && sourceId !in sourceIds) {
-            return listOf(SourceResult(sourceId, false, "unknown_source_id: $sourceId"))
-        }
+    ): List<SourceResult> = refreshOutcome(sourceId, force).results
+
+    suspend fun refreshOutcome(
+        sourceId: String,
+        force: Boolean,
+        branch: String = "",
+    ): RefreshOutcome {
+        val invalidId =
+            sourceId.isNotEmpty() &&
+                sourceId !in sourceIds &&
+                (sourceId.length > 128 || !sourceId.matches(SOURCE_ID_GRAMMAR))
+        val safeId = if (invalidId) "" else sourceId
+        val idRefusal =
+            when {
+                invalidId -> "invalid_source_id"
+                sourceId.isNotEmpty() && sourceId !in sourceIds -> "unknown_source_id: $sourceId"
+                else -> ""
+            }
         val ctx = currentCoroutineContext()
         val cancelled = { !ctx.isActive }
-        if (force) return mutex.withLock { doRefresh(sourceId, cancelled) }
-        if (!mutex.tryLock()) return sourceIds.map { SourceResult(it, false, "refresh_in_flight") }
+        // Atomically choose recording versus a captured refusal; invalid ids never queue or leak
+        // through the non-forced in-flight path if another refresh starts at the same instant.
+        if (idRefusal.isNotEmpty()) {
+            if (mutex.tryLock()) {
+                return try {
+                    transact(safeId, branch.trim(), cancelled, idRefusal)
+                } finally {
+                    mutex.unlock()
+                }
+            }
+            val message = redactCredentials(idRefusal)
+            return status()
+                .copy(
+                    results = listOf(SourceResult(safeId, false, message)),
+                    status = "rejected",
+                    httpStatus = 400,
+                    keptPrevious = false,
+                    lastAttempt =
+                        report(safeId, "rejected", branch.trim(), errors = listOf(message)),
+                )
+        }
+        if (force) return mutex.withLock { transact(safeId, branch.trim(), cancelled) }
+        if (!mutex.tryLock()) {
+            // Reply from the last completed capture; never wait on the in-flight load.
+            return status()
+                .copy(
+                    results = sourceIds.map { SourceResult(it, false, "refresh_in_flight") },
+                    status = "rejected",
+                    keptPrevious = lastOutcome?.serving != null,
+                    lastAttempt =
+                        report(sourceId, "rejected", branch.trim(), errors = listOf("refresh_in_flight")),
+                )
+        }
         return try {
-            doRefresh(sourceId, cancelled)
+            transact(safeId, branch.trim(), cancelled)
         } finally {
             mutex.unlock()
+        }
+    }
+
+    private fun transact(
+        sourceId: String,
+        branch: String,
+        cancelled: () -> Boolean,
+        idRefusal: String = "",
+    ): RefreshOutcome {
+        var target = sourceId
+        var refusal = idRefusal
+        var httpStatus = 400
+        if (branch.isNotEmpty() && refusal.isEmpty()) {
+            if (target.isEmpty()) {
+                val candidates = managed.filter { it.key in configuredIds && it.value.git != null }.keys
+                if (candidates.size == 1) target = candidates.single() else refusal = "ambiguous_or_missing_git_source"
+            }
+            val git = managed[target]?.git
+            if (refusal.isEmpty() && (git == null || target !in configuredIds)) refusal = "source_is_not_git: $target"
+            if (refusal.isEmpty() && branch != git!!.defaultBranch && !allowNonDefaultBranch) {
+                refusal =
+                    "branch_not_allowed: configured default is '${git.defaultBranch}'; enable METADATA_ALLOW_NON_DEFAULT_BRANCH"
+                httpStatus = 409
+            }
+            if (refusal.isEmpty() && !BranchStorage.validRef(branch)) refusal = "invalid_git_ref"
+        }
+        if (refusal.isNotEmpty()) {
+            lastAttempt =
+                report(target, "rejected", branch, errors = listOf(refusal))
+            keptPrevious =
+                idRefusal.isEmpty() &&
+                board.states().any { it.loadedOnce && (target.isEmpty() || it.id == target) }
+            lastStatus = "rejected"
+            return capture(listOf(SourceResult(target, false, redactCredentials(refusal))), "rejected", httpStatus)
+        }
+        val requested = configuredIds.filter { target.isEmpty() || it == target }.toSet()
+        val active = managed.filterKeys { it in requested }
+        val before =
+            board
+                .states()
+                .filter { it.loadedOnce }
+                .map { it.id }
+                .toSet()
+        attempts.clear()
+        val begun = mutableListOf<ManagedSource>()
+        var completed = false
+        try {
+            active.forEach { (id, source) ->
+                begun += source
+                source.begin(if (id == target) branch else "", initial = id !in accepted)
+            }
+            var results = doRefresh(target, cancelled)
+            val origins = active.mapValues { it.value.attemptedOrigin() }
+            active.forEach { (id, source) ->
+                val success = results.firstOrNull { it.sourceId == id }?.success == true
+                source.finish(success)?.let { failure ->
+                    val safe = redactCredentials(failure)
+                    board.recordFailure(id, safe)
+                    results =
+                        results.map {
+                            if (it.sourceId ==
+                                id
+                            ) {
+                                it.copy(success = false, errorMessage = it.errorMessage + "; " + safe)
+                            } else {
+                                it
+                            }
+                        }
+                }
+            }
+            completed = true
+            if (target.isEmpty() || target in configuredIds) {
+                val relevant =
+                    results
+                        .filter { it.sourceId in requested }
+                        .ifEmpty { results.filter { target.isEmpty() || it.sourceId == target } }
+                val successes = relevant.count { it.success }
+                lastStatus =
+                    when {
+                        relevant.isNotEmpty() && successes == relevant.size -> "ok"
+                        successes > 0 -> "partial"
+                        else -> "failed"
+                    }
+                keptPrevious = relevant.any { !it.success && it.sourceId in before }
+                val singleOrigin = origins.values.singleOrNull()
+                val loaded = attempts.filterKeys { it in requested }.values
+                lastAttempt =
+                    report(
+                        target,
+                        lastStatus,
+                        singleOrigin?.branch ?: branch,
+                        singleOrigin?.commit.orEmpty(),
+                        relevant.filter { !it.success }.map { it.errorMessage },
+                        loaded.flatMap { it.warnings }.map { it.diagnostic() }.distinct(),
+                        loaded.sumOf { it.loadedFiles.size },
+                    )
+                if (lastStatus == "ok") lastSuccess = lastAttempt
+            }
+            val replyStatus =
+                if (target in sourceIds && target !in configuredIds) {
+                    if (results.firstOrNull { it.sourceId == target }?.success == true &&
+                        accepted[target] === attempts[target]
+                    ) {
+                        "ok"
+                    } else {
+                        "failed"
+                    }
+                } else {
+                    lastStatus
+                }
+            return capture(results, replyStatus)
+        } finally {
+            if (!completed) {
+                begun.forEach { source ->
+                    source.finish(false)?.let { log.error("{}", redactCredentials(it)) }
+                }
+            }
+        }
+    }
+
+    private var countedSnapshot: org.tatrman.ttr.metadata.registry.RegistrySnapshot? = null
+    private var objectsByKind: Map<String, Int> = emptyMap()
+    private var tags: List<String> = emptyList()
+
+    private fun capture(
+        results: List<SourceResult>,
+        status: String,
+        httpStatus: Int = 200,
+    ): RefreshOutcome {
+        val snapshot = registry.read()
+        val states = board.states()
+        val served = acceptedOrigins.filterKeys { it in configuredIds && it in accepted }
+        val one = served.entries.singleOrNull()
+        val origin = one?.value
+        val serving =
+            snapshot?.takeIf { served.isNotEmpty() }?.let {
+                ServingModel(
+                    if (one != null) origin!!.source else "mixed",
+                    one?.key.orEmpty(),
+                    origin?.branch.orEmpty(),
+                    origin?.commit.orEmpty(),
+                    it.model.version.value,
+                    it.swappedAt.toString(),
+                    served.values.any { s -> s.fallback },
+                )
+            }
+        if (snapshot !== countedSnapshot) {
+            val objects =
+                snapshot
+                    ?.model
+                    ?.objectByQname()
+                    ?.values
+                    .orEmpty()
+            objectsByKind = objects.groupingBy { it.kind }.eachCount().toSortedMap()
+            tags = objects.flatMap { it.tags }.toSortedSet().toList()
+            countedSnapshot = snapshot
+        }
+        return RefreshOutcome(
+            results.toList(),
+            snapshot,
+            states,
+            serving,
+            lastAttempt,
+            lastSuccess,
+            keptPrevious,
+            status,
+            httpStatus,
+            ready = board.isReady(snapshot?.swappedAt),
+            objectsByKind = objectsByKind,
+            tags = tags,
+        ).also { outcome ->
+            lastOutcome = outcome
+            if (snapshot != null) {
+                publicationListeners.forEach { observer ->
+                    val source = states.firstOrNull { it.id == observer.sourceId }
+                    val key = PublicationKey(publication, source?.origin, source?.version)
+                    val notify =
+                        synchronized(observer) {
+                            if (observer.inFlight == key || observer.observed == key) {
+                                false
+                            } else {
+                                observer.inFlight = key
+                                true
+                            }
+                        }
+                    if (notify) {
+                        val complete: (Boolean) -> Unit = { success ->
+                            synchronized(observer) {
+                                if (observer.inFlight === key) {
+                                    if (success) observer.observed = key
+                                    observer.inFlight = null
+                                }
+                            }
+                        }
+                        runCatching { observer.listener(outcome, complete) }.onFailure {
+                            complete(false)
+                            log.warn("Publication listener failed", it)
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -120,6 +465,8 @@ class GuardedRefresher(
             }
             try {
                 val snapshot = source.load()
+                if (cancelled()) throw CancellationException("refresh_cancelled")
+                attempts[id] = snapshot
                 val empty = id in configuredIds && snapshot.objectCount() == 0
                 if (strictSwap && empty) {
                     results[id] =
@@ -214,15 +561,18 @@ class GuardedRefresher(
                     return results.values.toList()
                 }
             }
+            val scopeWarnings =
+                TagScope.loadWarnings(result.model)
             val graph = ModelGraph.build(result.model)
             val layouts = LayoutIndex.build(snapshots, result.model)
+            if (cancelled()) throw CancellationException("refresh_cancelled")
             packageIndex.stageAccepted(proposed)
             publishing = result.model to loaded
             try {
                 registry.swap(
                     result.model,
                     graph,
-                    result.warnings + result.errors,
+                    result.warnings + result.errors + scopeWarnings,
                     layouts,
                     files = result.files,
                     exportSidecars =
@@ -231,13 +581,14 @@ class GuardedRefresher(
                                 .toPair()
                         },
                 )
+                publication++
             } finally {
                 publishing = null
             }
             accepted.clear()
             accepted.putAll(proposed)
             log.info("Metadata model published: version={} strict_swap={}", result.model.version.value, strictSwap)
-            log.logModelLoadIssues(result.errors, result.warnings)
+            log.logModelLoadIssues(result.errors, result.warnings + scopeWarnings)
             return results.values.map {
                 if (it.success &&
                     it.sourceId in loaded
@@ -325,7 +676,9 @@ class GuardedRefresher(
         at: java.time.Instant? = null,
     ) {
         refusals.remove(id)
-        if (at == null) board.record(id, snapshot) else board.record(id, snapshot, at)
+        val origin = managed[id]?.origin ?: SourceOrigin("unknown")
+        acceptedOrigins[id] = origin
+        if (at == null) board.record(id, snapshot, origin = origin) else board.record(id, snapshot, at, origin)
     }
 
     private fun reject(

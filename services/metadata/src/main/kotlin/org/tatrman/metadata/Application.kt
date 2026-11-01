@@ -7,7 +7,6 @@ import org.tatrman.metadata.read.GitLexiconSource
 import org.tatrman.metadata.read.GitTemplateSource
 import org.tatrman.metadata.grpc.MetadataServiceImpl
 import org.tatrman.metadata.grpc.PackageIndex
-import org.tatrman.ttr.metadata.model.CnSchema
 import org.tatrman.ttr.metadata.model.ModelDescriptor
 import org.tatrman.metadata.parse.QueryParseState
 import org.tatrman.metadata.parse.QueryParseWorker
@@ -22,16 +21,25 @@ import org.tatrman.ttr.metadata.search.keyword.Tokenizer
 import org.tatrman.ttr.metadata.search.regex.RegexAlgorithm
 import org.tatrman.ttr.metadata.search.substring.SubstringAlgorithm
 import org.tatrman.ttr.metadata.source.ClasspathStorage
+import org.tatrman.metadata.refresh.metadataRefreshRoutes
+import io.ktor.http.HttpStatusCode
+import org.tatrman.metadata.refresh.HttpTreeStorage
+import org.tatrman.metadata.refresh.sourceDeclarations
+import org.tatrman.metadata.refresh.sourceSubdirectory
+import org.tatrman.metadata.refresh.SourceDeclaration
+import org.tatrman.metadata.refresh.BranchStorage
+import org.tatrman.metadata.refresh.SourceOrigin
+import org.tatrman.metadata.refresh.ManagedSource
 import org.tatrman.metadata.refresh.GuardedRefresher
 import org.tatrman.metadata.refresh.RefreshScheduler
 import org.tatrman.ttr.metadata.source.BuiltinStockSource
-import org.tatrman.ttr.metadata.source.FallbackSource
 import org.tatrman.ttr.metadata.source.FileBasedSource
 import org.tatrman.ttr.metadata.git.GitArchiveStorage
 import org.tatrman.ttr.metadata.source.LocalFsStorage
 import org.tatrman.ttr.metadata.source.ModelSource
 import org.tatrman.ttr.metadata.source.ModelStorage
 import org.tatrman.metadata.cn.CnSetup
+import org.tatrman.metadata.cn.cnPromotionListener
 import org.tatrman.metadata.cn.PromotionTarget
 import org.tatrman.metadata.cn.VocabularySource
 import org.tatrman.metadata.cn.candidateRoutes
@@ -42,6 +50,7 @@ import org.tatrman.metadata.health.NO_MODEL_SOURCE_HELP
 import org.tatrman.metadata.health.modelHealthRoutes
 import org.tatrman.metadata.health.redactCredentials
 import org.tatrman.metadata.read.metadataReadRoutes
+import org.tatrman.metadata.read.vocabularyRoutes
 // YamlImportSource was removed in Phase 2.1 — kantheon is TTR-only (see buildSourceFromConfig).
 import io.grpc.netty.shaded.io.grpc.netty.NettyServerBuilder
 import java.util.concurrent.TimeUnit
@@ -63,7 +72,6 @@ import shared.otel.OtelEndpointConfig
 import shared.otel.createOpenTelemetrySdk
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.add
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
@@ -163,11 +171,10 @@ fun Application.module(config: Config) {
             configuredIds = loadBoard.states().map { it.id }.toSet(),
             board = loadBoard,
             packageIndex = packageIndex,
+            allowNonDefaultBranch =
+                config.hasPath("metadata.allow-non-default-branch") &&
+                    config.getBoolean("metadata.allow-non-default-branch"),
         )
-    launch(Dispatchers.IO) {
-        refresher.refresh(sourceId = "", force = true)
-        retryUntilLoaded(loadBoard, refresher)
-    }
 
     // Search feature — algorithm registry + per-language indexes. Holder
     // listens for snapshot swaps and rebuilds indexes off the request path.
@@ -207,19 +214,12 @@ fun Application.module(config: Config) {
     // CN-P5 S5.3 T4 — a pending promotion is merged once a load of the promotion source carries its def; that load's
     // version (the commit) is its canon_ref. Off the swap thread: the store is a database.
     cn.service?.let { candidates ->
-        registry.addListener { snapshot ->
-            val version =
-                loadBoard
-                    .states()
-                    .firstOrNull { it.id == cn.promotionSourceId }
-                    ?.version
-                    .orEmpty()
-            val schema = snapshot.model.schemas["cn"] as? CnSchema ?: return@addListener
-            launch(Dispatchers.IO) {
-                runCatching { candidates.observe(schema, version) }
-                    .onFailure { log.warn("cn candidates: merge check failed: {}", it.message) }
-            }
-        }
+        cnPromotionListener(refresher, cn.promotionSourceId, this, candidates::observe)
+    }
+
+    launch(Dispatchers.IO) {
+        refresher.refresh(sourceId = "", force = true)
+        retryUntilLoaded(loadBoard, refresher)
     }
 
     val service =
@@ -292,7 +292,7 @@ fun Application.module(config: Config) {
     routing {
         get("/health") { call.respond(buildJsonObject { put("status", "UP") }) }
         // ttr-server#180 — /ready waits for the configured source; /status says what each source did.
-        modelHealthRoutes(registry, loadBoard)
+        modelHealthRoutes(registry, loadBoard, refresher)
         // Phase 09 B4 / DF-M16 — Prometheus scrape endpoint.
         get("/metrics") {
             call.respondText(meterRegistry.scrape(), ContentType.Text.Plain)
@@ -318,36 +318,10 @@ fun Application.module(config: Config) {
                 },
             )
         }
-        // Unauthenticated, cluster-internal (see DF decision: /refresh has no auth). Forces a
-        // full synchronous reload of every metadata source + the atomic model swap. Golem's
-        // /v2/refresh orchestrator calls this FIRST, then fans out to the dependent services
-        // (translator → query-runner, fuzzy-matcher) which rely on the new model version.
-        post("/refresh") {
-            val results = refresher.refresh(sourceId = "", force = true)
-            val snap = registry.read()
-            call.respond(
-                buildJsonObject {
-                    put("status", JsonPrimitive(if (results.all { it.success }) "ok" else "partial"))
-                    put("model_version", JsonPrimitive(snap?.model?.version?.value ?: ""))
-                    put("swapped", JsonPrimitive(results.any { it.snapshotSwapped }))
-                    putJsonArray("sources") {
-                        results.forEach { r ->
-                            add(
-                                buildJsonObject {
-                                    put("source_id", JsonPrimitive(r.sourceId))
-                                    put("success", JsonPrimitive(r.success))
-                                    if (r.errorMessage.isNotEmpty()) {
-                                        put("error", JsonPrimitive(r.errorMessage))
-                                    }
-                                },
-                            )
-                        }
-                    }
-                },
-            )
-        }
+        metadataRefreshRoutes(refresher)
         metadataExportRoutes(registry)
         metadataReadRoutes(registry, searchRegistryWithAll, searchIndexHolder, packageIndex, lexiconSourceIds.toSet())
+        vocabularyRoutes(registry, parseState)
         // CN-P5 S5.3 — the candidate store and the vocabulary versions; a registration is in the model at once.
         candidateRoutes(cn.surface) {
             withContext(Dispatchers.IO) { refresher.refresh(sourceId = VocabularySource.SOURCE_ID, force = true) }
@@ -386,7 +360,11 @@ internal fun buildSources(
     configuredSources(config, lexiconSourceIds, servedSidecars, skippedSources).map { slot ->
         if (slot.id != BuiltinStockSource.SOURCE_ID) {
             log.info("Model source '{}': {}", slot.id, slot.description)
-            loadBoard.register(slot.id, slot.description)
+            loadBoard.register(
+                slot.id,
+                slot.description,
+                (slot.source as? ManagedSource)?.origin ?: SourceOrigin("resources"),
+            )
         }
         slot
     }
@@ -401,13 +379,11 @@ private fun configuredSources(
     // priority is Int.MAX_VALUE so it wins all merge collisions; protected
     // qnames are enforced separately by the reconciler regardless of priority.
     val builtins = listOf(SourceSlot(BuiltinStockSource.SOURCE_ID, BuiltinStockSource(), "built-in stock roles"))
-    if (!config.hasPath("metadata.sources")) return builtins
-    val sourcesConfig = config.getConfig("metadata.sources")
+    val declarations = sourceDeclarations(config)
     val configured =
-        sourcesConfig.root().keys.mapNotNull { key ->
-            if (key == "builtin-stock") return@mapNotNull null
-            val sub = sourcesConfig.getConfig(key)
-            val id = if (sub.hasPath("id")) sub.getString("id") else key
+        declarations.mapNotNull { declaration ->
+            val sub = declaration.config
+            val id = declaration.id
             val enabled = if (sub.hasPath("enabled")) sub.getBoolean("enabled") else true
             if (!enabled) return@mapNotNull null
 
@@ -427,7 +403,7 @@ private fun configuredSources(
                 )?.let { SourceSlot(id, it, describeSource(sub)) }
             }
 
-            val fallbackSub = referencedSourceConfig(sourcesConfig, fallbackId)
+            val fallbackSub = referencedSourceConfig(declarations, fallbackId)
             val fallbackSource =
                 fallbackSub?.let { fs ->
                     buildSourceFromConfig(
@@ -452,7 +428,7 @@ private fun configuredSources(
                 primary != null ->
                     SourceSlot(
                         id,
-                        FallbackSource(id, primary, fallbackSource),
+                        primary.apply { fallback = fallbackSource },
                         "${describeSource(sub)}; fallback '$fallbackId': ${describeSource(fallbackSub)}",
                     )
                 else -> {
@@ -473,20 +449,12 @@ private fun configuredSources(
 /** The block named [refId] (matched by block key or `id`) — used to materialise a block
  *  referenced only as another source's `fallback`, whatever its own `enabled` flag says. */
 private fun referencedSourceConfig(
-    sourcesConfig: Config,
+    declarations: List<SourceDeclaration>,
     refId: String,
-): Config? {
-    val key =
-        sourcesConfig.root().keys.firstOrNull { k ->
-            val sub = sourcesConfig.getConfig(k)
-            k == refId || (if (sub.hasPath("id")) sub.getString("id") else k) == refId
-        }
-    if (key == null) {
-        log.warn("fallback source id '{}' not found among metadata.sources", refId)
-        return null
+): Config? =
+    declarations.firstOrNull { it.key == refId || it.id == refId }?.config.also {
+        if (it == null) log.warn("fallback source id '{}' not found among metadata.sources", refId)
     }
-    return sourcesConfig.getConfig(key)
-}
 
 /** One line saying what a `metadata.sources.<id>` block reads, with any URI credentials redacted. */
 private fun describeSource(sub: Config): String {
@@ -498,6 +466,14 @@ private fun describeSource(sub: Config): String {
             "git ${redactCredentials(str("remote-uri"))} (branch $branch, sub-path $subdirectory)"
         }
         "filesystem" -> "filesystem ${str("path")}"
+        "http" ->
+            "http " +
+                runCatching {
+                    java.net
+                        .URI(
+                            str("url"),
+                        ).let { java.net.URI(it.scheme, null, it.host, it.port, it.path, null, null).toString() }
+                }.getOrDefault("<invalid url>")
         "resources" -> "classpath ${str("path")}"
         else -> type
     }
@@ -536,35 +512,50 @@ private fun buildSourceFromConfig(
     lexiconSourceIds: MutableSet<String>,
     servedSidecars: () -> Map<String, String>,
     skippedSources: MutableList<String>,
-): ModelSource? {
+): ManagedSource? {
     val kind = if (sub.hasPath("kind")) sub.getString("kind") else "ttr"
     val priority = if (sub.hasPath("priority")) sub.getInt("priority") else 100
     val storage = buildStorage(sub, id, skippedSources = skippedSources) ?: return null
 
-    return when (kind) {
-        // VL V-37: Metadata serves the layouts committed next to the model — a source collects them only when asked
-        "ttr" -> {
-            val source = FileBasedSource(sourceId = id, priority = priority, storage = storage, layouts = true)
-            if (storage is GitArchiveStorage) {
-                lexiconSourceIds.add(id)
-                GitLexiconSource(
-                    GitTemplateSource(source, gitCheckoutDir(sub, id, ""), gitSubdirectory(sub), id, priority) {
-                        servedSidecars()[org.tatrman.metadata.read.TEMPLATE_SIDECAR_PREFIX + id]
-                    },
-                    gitCheckoutDir(sub, id, ""),
-                    if (sub.hasPath("lexicon-path")) sub.getString("lexicon-path") else "generated/lexicon.tar.zst",
-                )
-            } else {
-                source
+    val source =
+        when (kind) {
+            // VL V-37: Metadata serves the layouts committed next to the model — a source collects them only when asked
+            "ttr" -> {
+                val source = FileBasedSource(sourceId = id, priority = priority, storage = storage, layouts = true)
+                if (storage is BranchStorage) {
+                    lexiconSourceIds.add(id)
+                    GitLexiconSource(
+                        GitTemplateSource(source, gitCheckoutDir(sub, id, ""), gitSubdirectory(sub), id, priority) {
+                            servedSidecars()[org.tatrman.metadata.read.TEMPLATE_SIDECAR_PREFIX + id]
+                        },
+                        gitCheckoutDir(sub, id, ""),
+                        if (sub.hasPath("lexicon-path")) sub.getString("lexicon-path") else "generated/lexicon.tar.zst",
+                    )
+                } else {
+                    source
+                }
             }
-        }
-        // Phase 2.1 (fork) — `yaml-legacy` source kind removed: kantheon is TTR-only
-        // (`org.tatrman.ttr.*` modeler artifacts, no erp-sql legacy YAML parse path).
-        // See docs/implementation/v1/fork/tasks-p2-s2.1-metadata.md T2 note.
-        else -> {
-            skipSource(id, "unknown kind '$kind'", skippedSources)
-        }
-    }
+            // Phase 2.1 (fork) — `yaml-legacy` source kind removed: kantheon is TTR-only
+            // (`org.tatrman.ttr.*` modeler artifacts, no erp-sql legacy YAML parse path).
+            // See docs/implementation/v1/fork/tasks-p2-s2.1-metadata.md T2 note.
+            else -> {
+                skipSource(id, "unknown kind '$kind'", skippedSources)
+            }
+        } ?: return null
+    return ManagedSource(
+        id,
+        if (storage is BranchStorage) {
+            "git"
+        } else if (storage is HttpTreeStorage) {
+            "http"
+        } else if (storage is LocalFsStorage) {
+            "filesystem"
+        } else {
+            "resources"
+        },
+        source,
+        storage as? BranchStorage,
+    )
 }
 
 /**
@@ -576,9 +567,9 @@ internal fun promotionTarget(
     config: Config,
     sourceId: String,
 ): PromotionTarget? {
-    if (!config.hasPath("metadata.sources")) return null
-    val sub = referencedSourceConfig(config.getConfig("metadata.sources"), sourceId) ?: return null
+    val sub = referencedSourceConfig(sourceDeclarations(config), sourceId) ?: return null
     val storage = buildStorage(sub, sourceId, checkoutSuffix = "-promotion") ?: return null
+    if (storage is HttpTreeStorage) return null
 
     fun str(path: String) = if (sub.hasPath(path)) sub.getString(path) else ""
     val subdirectory = str("subdirectory")
@@ -609,8 +600,7 @@ private fun gitCheckoutDir(
     }
 
 /** Both model storage and template path mapping start with this exact configured value. */
-private fun gitSubdirectory(sub: Config): String =
-    if (sub.hasPath("subdirectory")) sub.getString("subdirectory") else ""
+private fun gitSubdirectory(sub: Config): String = sourceSubdirectory(sub)
 
 /** The storage one `metadata.sources.<id>` block reads; null when the block is unbuildable. */
 private fun buildStorage(
@@ -623,7 +613,8 @@ private fun buildStorage(
     val path = if (sub.hasPath("path")) sub.getString("path") else ""
     return when (type) {
         "git" -> {
-            // Phase 07 C1 — GitArchiveStorage. Requires `remote-uri`; optional
+            // Service loads pin one Git commit per attempt; promotion keeps its independent storage.
+            // Requires `remote-uri`; optional
             // `local-checkout-dir` (defaults to /tmp/metadata-git/<id>), `branch`
             // (defaults to "main"), `subdirectory`, `username` / `password` for
             // HTTPS auth (PAT tokens use username="x-access-token").
@@ -636,21 +627,46 @@ private fun buildStorage(
                 return skipSource(id, "blank branch", skippedSources)
             }
             val checkout = gitCheckoutDir(sub, id, checkoutSuffix)
-            GitArchiveStorage(
-                id = id,
-                remoteUri = remoteUri,
-                localCheckoutDir = checkout,
-                branch = branch,
-                subdirectory = gitSubdirectory(sub),
-                username = if (sub.hasPath("username")) sub.getString("username") else null,
-                password = if (sub.hasPath("password")) sub.getString("password") else null,
-            )
+            if (checkoutSuffix.isNotEmpty()) {
+                GitArchiveStorage(
+                    id = id,
+                    remoteUri = remoteUri,
+                    localCheckoutDir = checkout,
+                    branch = branch,
+                    subdirectory = gitSubdirectory(sub),
+                    username = sourceUsername(sub),
+                    password = sourcePassword(sub),
+                )
+            } else {
+                BranchStorage(
+                    id,
+                    remoteUri,
+                    checkout,
+                    branch,
+                    gitSubdirectory(sub),
+                    sourceUsername(sub),
+                    sourcePassword(sub),
+                )
+            }
         }
         "filesystem" -> {
             if (path.isBlank()) {
                 return skipSource(id, "filesystem source has no path", skippedSources)
             }
-            LocalFsStorage(id = id, rootPath = Path.of(path))
+            LocalFsStorage(id = id, rootPath = Path.of(path).resolve(sourceSubdirectory(sub)))
+        }
+        "http" -> {
+            val url = if (sub.hasPath("url")) sub.getString("url") else ""
+            if (url.isBlank()) return skipSource(id, "http source has no url", skippedSources)
+            HttpTreeStorage(
+                id,
+                url,
+                if (sub.hasPath("token")) sub.getString("token") else null,
+                sourceSubdirectory(sub),
+                if (sub.hasPath("connect-timeout-ms")) sub.getInt("connect-timeout-ms") else 10_000,
+                if (sub.hasPath("read-timeout-ms")) sub.getInt("read-timeout-ms") else 30_000,
+                if (sub.hasPath("max-bytes")) sub.getInt("max-bytes") else 32 * 1024 * 1024,
+            )
         }
         "resources" -> {
             if (path.isBlank()) {
@@ -663,6 +679,22 @@ private fun buildStorage(
         }
     }
 }
+
+/** A declared Git token uses the same PAT username convention as the legacy env slots. */
+private fun sourceUsername(sub: Config): String? =
+    when {
+        sub.hasPath("username") -> sub.getString("username")
+        sourcePassword(sub) != null -> "x-access-token"
+        else -> null
+    }
+
+/** Existing password/env routes win over the additive per-source token alias. */
+private fun sourcePassword(sub: Config): String? =
+    when {
+        sub.hasPath("password") -> sub.getString("password")
+        sub.hasPath("token") -> sub.getString("token")
+        else -> null
+    }
 
 /** Configuration diagnostics name fields and source ids, never a remote URI or password. */
 private fun skipSource(

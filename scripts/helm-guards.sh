@@ -83,4 +83,11 @@ else
   rc=1
 fi
 
+# MW-P1 S1.5: optional CN configuration must remain compatible with legacy env values/Secret refs.
+scripts/helm-metadata-cn.sh || rc=1
+expect_refusal "metadata: CN DB Secret without a key" "CN Secret key is required for METADATA_CN_DB_PASSWORD" \
+  --set metadata.cn.db.passwordSecret.name=cn-db --set metadata.cn.db.passwordSecret.key=
+expect_refusal "metadata: CN PR Secret without a key" "CN Secret key is required for METADATA_CN_PR_TOKEN" \
+  --set metadata.cn.promotion.github.tokenSecret.name=cn-pr --set metadata.cn.promotion.github.tokenSecret.key=
+
 exit $rc

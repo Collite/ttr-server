@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package org.tatrman.metadata.grpc
 
+import org.tatrman.metadata.refresh.toProto
+
 import org.tatrman.meta.v1.AttributeDetail
 import org.tatrman.meta.v1.AttributeSemantics
 import org.tatrman.meta.v1.AttributeJoinPair
@@ -22,6 +24,9 @@ import org.tatrman.meta.v1.Er2CncRoleMappingDetail
 import org.tatrman.meta.v1.EdgeResult
 import org.tatrman.meta.v1.RefreshRequest
 import org.tatrman.meta.v1.RefreshResponse
+import org.tatrman.meta.v1.ResolveTagsRequest
+import org.tatrman.meta.v1.ResolveTagsResponse
+import org.tatrman.metadata.scope.TagScope
 import org.tatrman.meta.v1.ResolveAreaRequest
 import org.tatrman.meta.v1.ResolveAreaResponse
 import org.tatrman.meta.v1.SourceRefreshResult
@@ -711,9 +716,31 @@ class MetadataServiceImpl(
 
     override suspend fun getStatus(request: GetStatusRequest): GetStatusResponse {
         // Source versions publish in a registry listener; capture both under the swap monitor.
-        val (snap, sourceStates) = synchronized(registry) { registry.read() to loadBoard?.states().orEmpty() }
+        val outcome = refresher?.status()
+        val (snap, sourceStates) =
+            outcome?.let { it.snapshot to it.sources }
+                ?: synchronized(registry) { registry.read() to loadBoard?.states().orEmpty() }
         val supportedAlgos = searchRegistry.supportedNames.ifEmpty { listOf("substring", "keyword", "regex", "all") }
         val builder = GetStatusResponse.newBuilder()
+        outcome?.let {
+            it.serving?.let { s -> builder.setServing(s.toProto()) }
+            it.lastAttempt?.let { r -> builder.setLastAttempt(r.toProto()) }
+            it.lastSuccess?.let { r -> builder.setLastSuccess(r.toProto()) }
+            builder.setKeptPrevious(it.keptPrevious).addAllIgnoredFiles(it.lastAttempt?.ignoredFiles.orEmpty())
+        }
+        builder.setAllowNonDefaultBranch(refresher?.allowNonDefaultBranch ?: false)
+        val objects =
+            if (outcome == null) {
+                snap
+                    ?.model
+                    ?.objectByQname()
+                    ?.values
+                    .orEmpty()
+            } else {
+                emptyList()
+            }
+        builder.putAllObjectsByKind(outcome?.objectsByKind ?: objects.groupingBy { it.kind }.eachCount())
+        builder.addAllTags(outcome?.tags ?: objects.flatMap { it.tags }.toSortedSet())
         sourceStates.forEach { source ->
             builder.addSources(
                 org.tatrman.meta.v1.SourceStatus
@@ -725,7 +752,11 @@ class MetadataServiceImpl(
                             source.lastError.isNotEmpty() -> OverallStatus.DEGRADED
                             else -> OverallStatus.OK
                         },
-                    ).setVersion(source.version)
+                    ).setSource(source.origin.source)
+                    .setBranch(source.origin.branch)
+                    .setCommit(source.origin.commit)
+                    .setServingFallback(source.servingFallback)
+                    .setVersion(source.version)
                     .setLastSuccess(source.lastSuccessAt?.toString().orEmpty())
                     .setLastError(source.lastError)
                     .setLastErrorAt(source.lastErrorAt?.toString().orEmpty()),
@@ -1006,7 +1037,12 @@ class MetadataServiceImpl(
                                 "Refresh is not wired in this build — restart the service or configure a MetadataRefresher.",
                             ).build(),
                     ).build()
-        val results = ref.refresh(sourceId = request.sourceId, force = request.force)
+        val outcome = ref.refreshOutcome(request.sourceId, request.force, request.branch)
+        val results = outcome.results
+        builder.setStatus(outcome.status).setKeptPrevious(outcome.keptPrevious)
+        outcome.serving?.let { builder.setServing(it.toProto()) }
+        outcome.lastAttempt?.let { builder.setLastAttempt(it.toProto()) }
+        outcome.lastSuccess?.let { builder.setLastSuccess(it.toProto()) }
         for (r in results) {
             builder.addResults(
                 SourceRefreshResult
@@ -1102,6 +1138,72 @@ class MetadataServiceImpl(
             .addAllTags(area.tags)
             .setFound(true)
             .build()
+    }
+
+    override suspend fun resolveTags(request: ResolveTagsRequest): ResolveTagsResponse {
+        val tags =
+            try {
+                TagScope
+                    .normalize(request.tagsList)
+            } catch (
+                e: IllegalArgumentException,
+            ) {
+                throw io.grpc.Status.INVALID_ARGUMENT
+                    .withDescription(e.message)
+                    .asRuntimeException()
+            }
+        val snap =
+            registry.read()
+                ?: return ResolveTagsResponse
+                    .newBuilder()
+                    .addMessages(notReadyMessage())
+                    .build()
+        val scope =
+            TagScope
+                .resolve(snap.model, tags, { liveParseStatus(it, snap) })
+        val response =
+            ResolveTagsResponse
+                .newBuilder()
+                .setModelVersion(
+                    snap.model.version.value,
+                ).setComplete(scope.warnings.isEmpty())
+        scope.warnings.forEach {
+            response.addWarnings(
+                ResponseMessage
+                    .newBuilder()
+                    .setSeverity(
+                        Severity.WARNING,
+                    ).setCode(it.code)
+                    .setHumanMessage(it.message)
+                    .setSourceFile(it.sourceFile),
+            )
+        }
+        if (!request.strict || scope.warnings.isEmpty()) {
+            // The definitions carry provenance inside this captured snapshot; never consult a newer checkout.
+            val files = snap.definitions.entries.groupBy { it.def.source.file }
+
+            fun packageOf(obj: ModelObject): String {
+                if (files.isEmpty()) return packageIndex.packageOf(obj.sourceFile).orEmpty()
+                val declarations = files[obj.sourceFile].orEmpty()
+                val exact = declarations.filter { it.kind == obj.kind && it.qname.endsWith(".${obj.qname.name}") }
+                // HTTP sources can share a virtual filename. Match the declaration as well as the file;
+                // ambiguous provenance stays unknown rather than claiming another source's package.
+                return exact
+                    .ifEmpty { declarations }
+                    .map { it.pkg }
+                    .distinct()
+                    .singleOrNull()
+                    .orEmpty()
+            }
+            response.addAllObjects(scope.objects.map { obj -> obj.toObjectDescriptor(packageOf = { packageOf(obj) }) })
+            response.addAllPackages(
+                scope.objects
+                    .map(::packageOf)
+                    .filter(String::isNotBlank)
+                    .toSortedSet(),
+            )
+        }
+        return response.build()
     }
 
     // ----- helpers -----
@@ -1513,6 +1615,7 @@ private fun Relation.toRelationDetail(): RelationDetail {
         }
     return RelationDetail
         .newBuilder()
+        .setName(qname.name)
         .setFromEntity(fromEntity.toProto())
         .setToEntity(toEntity.toProto())
         .setCardinality(cardinalityProto)

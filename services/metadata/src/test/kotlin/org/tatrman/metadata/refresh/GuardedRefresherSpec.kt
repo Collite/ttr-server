@@ -178,8 +178,13 @@ class GuardedRefresherSpec :
                 Files.delete(f.root.resolve("model/db.ttrm"))
                 Files.delete(f.root.resolve("model/other.ttrm"))
                 f.commit()
-                f.refresh().all { it.success } shouldBe true
+                val empty = f.refresher.refreshOutcome("", true)
+                empty.results.all { it.success } shouldBe true
                 f.names() shouldBe emptySet()
+                empty.serving!!.commit shouldBe Git.open(f.checkout.toFile()).use { it.repository.resolve("HEAD").name }
+                empty.sources
+                    .single()
+                    .origin.commit shouldBe empty.serving!!.commit
             }
         }
 

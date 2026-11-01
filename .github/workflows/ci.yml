@@ -25,6 +25,7 @@ jobs:
         run: |
           bash -n scripts/debug-run.sh
           python3 -m unittest discover -s scripts/tests -p 'test_debug_run.py' -v
+          python3 scripts/test_metadata_ops_cert.py
 
   # Also the WIRE-COMPATIBILITY gate (RV-P2.1.T7). `:shared:proto:check` runs
   # ProtoCompatSpec, which diffs every in-repo proto against the checked-in baseline
