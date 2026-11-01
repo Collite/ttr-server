@@ -58,10 +58,10 @@ def _disable_transparent_huge_pages() -> bool:
 # but nothing is allocated under the kernel's default first.
 THP_DISABLED = _disable_transparent_huge_pages()
 
-import stanza
-from fastapi import FastAPI
-from fastapi.responses import JSONResponse
-from pydantic import BaseModel
+import stanza  # noqa: E402 — after the THP switch above, on purpose
+from fastapi import FastAPI  # noqa: E402
+from fastapi.responses import JSONResponse  # noqa: E402
+from pydantic import BaseModel  # noqa: E402
 
 MODEL_DIR = os.getenv("STANZA_RESOURCES_DIR", "/opt/nlp-models/stanza")
 MODEL_VERSION = f"stanza-{stanza.__version__}"
