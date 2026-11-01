@@ -16,6 +16,13 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+- **metadata — authored relation names and CN chart configuration.** `RelationDetail.name` (additive field 10)
+  now accompanies the existing endpoints/cardinality/join pairs in GetModel, GetObject and GetSnapshot.
+  Standalone `cn.*` / umbrella `metadata.cn.*` configure the existing candidate store with optional DB/PR
+  Secret refs; defaults stay off and existing extraEnv/secretEnv entries take precedence by env name.
+  Report/form/layout/md read paths and shapes remain unchanged. Czech keyword stop words are verified
+  in the pinned runtime jar and local image archive; no dependency or resource copy is introduced.
+
 - **metadata — default tag closure and entity vocabulary.** Additive `ResolveTags` returns the exact tagged
   object closure, package cover and nonblocking requirement warnings; strict requests refuse incomplete scopes.
   `GET /model/vocabulary?tags=` exposes scoped authored entity/attribute aliases and index/fuzzy hints from the

@@ -399,6 +399,18 @@ The resolver does one synchronous read at boot, then polls on `Dispatchers.IO` w
 default 30). Resolve/gate requests only read the last completed pass and never perform HTTP I/O.
 The resolver can lag metadata by up to that interval, plus download time. This does not make separate services swap simultaneously or change deployment wiring.
 
+## Relation names and Czech search resources
+
+`RelationDetail.name` is the authored local relation name, served consistently by `GetModel`,
+`GetObject` and `GetSnapshot`. This additive field is number 10; existing endpoints, cardinality and
+join pairs retain their wire fields, and old clients can ignore the name.
+
+Czech keyword search loads `search/stop-words-cs.txt` from the pinned `ttr-metadata` runtime jar;
+there is no service copy. Tokenization folds accents before filtering noise words (for example,
+`že` → `ze`), while `zákazníci`/`zakaznici` still match authored Czech keywords. The S1.5 check
+inspects that jar inside a local `:services:metadata:jibBuildTar` image archive; no image is published.
+The existing report/form/layout/md routes keep their paths and snapshot-bound shapes.
+
 ## The cn candidate store (`cn/`, off by default)
 
 Producers propose concepts, terms and relations as `cn-candidate.v1` documents (ttr-concept's
@@ -416,6 +428,29 @@ the model text: canon stays text, and the steward merges. The routes live under 
 | `METADATA_CN_PR_TOKEN` · `METADATA_CN_PR_REPOSITORY` · `METADATA_CN_PR_API_URL` | Optional: open GitHub pull requests. The token needs contents and pull-request write access; the repository defaults to the source's `github.com` remote. |
 | `METADATA_CN_INBOX_DIR` | Optional: write each promotion's `<id>.diff` and `<id>.md` there. Every diff the store hands out (this file and the API's `promotion.diff`) has the repository's paths, the source's sub-path included: `git apply <id>.diff` at the repository root. |
 | `METADATA_CN_NOTIFY_URL` | Optional: every candidate event is POSTed here. |
+
+The Helm chart exposes these as `cn` keys (`metadata.cn` in the umbrella); see the
+[values contract](../../helm/tatrman-server/values-contract.md).
+For example, a standalone values file can enable the store with:
+
+```yaml
+cn:
+  db:
+    host: postgres.example
+    passwordSecret: { name: metadata-db, key: password }
+  auth:
+    issuer: https://identity.example/realms/catalog
+    jwksUri: https://identity.example/realms/catalog/protocol/openid-connect/certs
+  producers: kleio=kleio
+  promotion:
+    github:
+      tokenSecret: { name: metadata-pr, key: token }
+```
+
+All CN settings default off/empty; DB port/name/user retain service defaults. Password and PR token
+are optional Secret references, never inline values. A missing DB Secret leaves the store off, not
+stuck before startup. Existing `extraEnv`/`secretEnv` entries override generated CN settings by env name;
+keep those legacy lists mutually unique. There is no new CN enable switch or authentication policy.
 
 A promotion is checked by a gate before it goes anywhere. The gate loads the model before and after the patch,
 through the strict load report and the cn definition diagnostics. A new error refuses the promotion; other new
