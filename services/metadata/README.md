@@ -3,7 +3,7 @@
 > **forked-from:** `metadata` since 2026-10 (MR); formerly `veles` (2026-06-13 → 2026-10), originally `ai-platform/infra/metadata` (Ariadne).
 > Maintained independently since the fork; do not assume parity with the original.
 
-The **model-graph service** for kantheon. Loads a TTR model from a git repository (`METADATA_GIT_*`, re-fetched for live reload — see [Model source](#model-source)) into an in-memory `ModelSnapshot`, then serves `ListObjects` / `GetObject` / `Search` / `ListQueries` / `GetModel` / `ResolveArea` / `GetStatus` / `Refresh` over gRPC (MetadataService) and HTTP. The gRPC service proto is `org.tatrman.meta.v1` / `MetadataService`; all consumers roll with the server (MR).
+The **model-graph service** for kantheon. Loads a TTR model from a git repository (`METADATA_GIT_*`, re-fetched for live reload — see [Model source](#model-source)) into an in-memory `ModelSnapshot`, then serves `ListObjects` / `GetObject` / `Search` / `ListQueries` / `GetModel` / `ResolveArea` / `ResolveTags` / `GetStatus` / `Refresh` over gRPC (MetadataService) and HTTP. The gRPC service proto is `org.tatrman.meta.v1` / `MetadataService`; all consumers roll with the server (MR).
 
 ## Runs on the `org.tatrman:ttr-metadata` library (Stage M4.1, ttr-metadata adoption)
 
@@ -78,6 +78,66 @@ Credentials in URI diagnostics are redacted.
 Load exceptions still retain the previous contribution. A source with no objects is still reported as a
 health failure; permissive publication does not imply a healthy source. The Studio editor should require
 strict mode outside a deployment that explicitly accepts partial models. No deployment is changed here.
+
+## Tag closure and vocabulary
+
+`ResolveTags(tags, strict=false)` selects objects by **any** matching tag, then includes entity attributes,
+physical table/view columns, and both ends of tagged relations/foreign keys with their parts. Untagged edges
+are never followed. A mapped generated `<entity>__filter` query is contained by its entity. Empty RPC tags
+mean the whole typed model; a blank tag is INVALID_ARGUMENT. Unknown tags produce an empty selection.
+
+The response returns deterministic `objects`, `packages`, `model_version`, `warnings` and `complete`.
+`objects` is the exact selection; packages are its declared/implied package **cover**. Calling
+`GetModel(packages=...)` can include other objects in those packages. Tag selection is not an authorization
+boundary. No agent files, agent permissions or custom closure rules are read by this service.
+
+Selected entities require their mapped table/view/query; selected queries require the tables/entities read
+by their parsed plans, including nested and expanded reads. Missing dependencies warn with
+`meta/scope-violation`; they do not enlarge the selection. Pending/failed parsing warns with
+`meta/scope-unavailable`. Query checks read the captured model version's parse results. `strict=true`
+returns no objects/packages when any warning remains. Before the first model, `messages` contains
+`metadata_not_ready` and `complete=false`. Structural single-tag warnings also appear in load issues;
+a union of tags can satisfy a requirement that a single-tag load warning names. These warnings never block
+publication or make an otherwise accepted model unready.
+
+`GET /model/vocabulary?tags=sales,reporting` uses the same default closure on the served snapshot.
+Repeated `tags` values work too; absent tags returns all entities. A present empty tag is 400, as is
+`agent=...` (the caller supplies tags from its own agent configuration). Before a model is loaded, HTTP
+returns 503 `{"error":"model not loaded"}`.
+
+```json
+{
+  "model_version": "...",
+  "tags": ["sales"],
+  "entities": [{
+    "qname": "er.entity.customer", "name": "customer", "description": "Customers",
+    "aliases": ["client"], "tags": ["sales"],
+    "attributes": [{
+      "qname": "er.entity.customer.name", "name": "name", "description": "Customer name",
+      "aliases": [], "indexed": true, "fuzzy": true, "match_method": "TOKENS"
+    }]
+  }],
+  "warnings": []
+}
+```
+
+Aliases and search flags are authored metadata; no aliases, values or read SQL are generated here.
+`ListMemberVocabularies` remains the member-value/read-plan surface. The vocabulary route is read-only,
+retains accepted content after refused refreshes, and does not add a globals or legacy-agent endpoint.
+
+The MW default oracle is opt-in because its model is private: archive **the same main SHA** for the
+validator's YAML and this service's `generated/ttr`, save `model-validator --dump-agents --format json`
+as `<root>/default-validator.json`, then run:
+
+```sh
+MW_TAG_ORACLE_ROOT=<root> ./gradlew :services:metadata:test --tests '*TagScopeOracleSpec'
+```
+
+The oracle writes exact missing/extra identities to `<root>/comparison.txt` and fails on any difference.
+At ai-models main `1c08dcb015a7895abda9fd66e64dea21a33a5b54`, rendered query namespaces (including generated filter queries) and omitted
+functions prevent exact parity; they remain a content gate, with no renderer or producer-pin workaround.
+Newer ai-models agent configurations use additional closure rules and need a separate generic contract
+before cutover; default-closure validation does not certify those custom configurations.
 
 ## Branch refresh and serving reports
 

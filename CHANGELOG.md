@@ -16,6 +16,11 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+- **metadata — default tag closure and entity vocabulary.** Additive `ResolveTags` returns the exact tagged
+  object closure, package cover and nonblocking requirement warnings; strict requests refuse incomplete scopes.
+  `GET /model/vocabulary?tags=` exposes scoped authored entity/attribute aliases and index/fuzzy hints from the
+  served snapshot. No legacy agent registry or configurable closure policy is imported. Existing reads are unchanged.
+
 - **metadata — declared sources and conditional HTTP reads.** `metadata.sources` now accepts an explicit
   git/filesystem/http source list as well as the existing env-backed keyed slots. A list replaces the default
   source object. HTTP sources GET a bounded, safe tar.gz tree using per-source bearer credentials and ETags;
