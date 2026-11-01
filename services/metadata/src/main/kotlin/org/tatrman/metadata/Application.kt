@@ -7,7 +7,6 @@ import org.tatrman.metadata.read.GitLexiconSource
 import org.tatrman.metadata.read.GitTemplateSource
 import org.tatrman.metadata.grpc.MetadataServiceImpl
 import org.tatrman.metadata.grpc.PackageIndex
-import org.tatrman.ttr.metadata.model.CnSchema
 import org.tatrman.ttr.metadata.model.ModelDescriptor
 import org.tatrman.metadata.parse.QueryParseState
 import org.tatrman.metadata.parse.QueryParseWorker
@@ -40,6 +39,7 @@ import org.tatrman.ttr.metadata.source.LocalFsStorage
 import org.tatrman.ttr.metadata.source.ModelSource
 import org.tatrman.ttr.metadata.source.ModelStorage
 import org.tatrman.metadata.cn.CnSetup
+import org.tatrman.metadata.cn.cnPromotionListener
 import org.tatrman.metadata.cn.PromotionTarget
 import org.tatrman.metadata.cn.VocabularySource
 import org.tatrman.metadata.cn.candidateRoutes
@@ -214,31 +214,7 @@ fun Application.module(config: Config) {
     // CN-P5 S5.3 T4 — a pending promotion is merged once a load of the promotion source carries its def; that load's
     // version (the commit) is its canon_ref. Off the swap thread: the store is a database.
     cn.service?.let { candidates ->
-        refresher.addPublicationListener(cn.promotionSourceId) { outcome, complete ->
-            val version = refresher.promotionCommit(cn.promotionSourceId, outcome)
-            if (version == null) {
-                complete(true)
-                return@addPublicationListener
-            }
-            val schema =
-                outcome.snapshot
-                    ?.model
-                    ?.schemas
-                    ?.get("cn") as? CnSchema
-            if (schema == null) {
-                complete(true)
-                return@addPublicationListener
-            }
-            launch(Dispatchers.IO) {
-                try {
-                    candidates.observe(schema, version)
-                    complete(true)
-                } catch (failure: Exception) {
-                    complete(false)
-                    log.warn("cn candidates: merge check failed: {}", failure.message)
-                }
-            }
-        }
+        cnPromotionListener(refresher, cn.promotionSourceId, this, candidates::observe)
     }
 
     launch(Dispatchers.IO) {

@@ -5,6 +5,8 @@ import com.sun.net.httpserver.HttpServer
 import com.typesafe.config.ConfigFactory
 import com.typesafe.config.ConfigResolveOptions
 import io.kotest.assertions.throwables.shouldThrowAny
+import io.mockk.every
+import io.mockk.spyk
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
@@ -384,6 +386,34 @@ class DeclaredSourcesSpec :
                         .single()
                         .origin.fallback shouldBe true
                     fallback.ref.promotionCommit("git", fallbackOutcome) shouldBe null
+                    val fsFallback =
+                        DeclaredFixture(
+                            listOf(
+                                disk +
+                                    mapOf(
+                                        "path" to git.root.resolve("absent-fs").toString(),
+                                        "fallback" to "backup",
+                                    ),
+                                disk + mapOf("id" to "backup", "enabled" to false),
+                            ),
+                            strict = false,
+                        )
+                    fsFallback.ref.addPublicationListener("disk") { outcome, complete ->
+                        fsFallback.ref.promotionCommit("disk", outcome)?.let { version ->
+                            candidates.observe(
+                                outcome.snapshot!!.model.schemas["cn"] as org.tatrman.ttr.metadata.model.CnSchema,
+                                version,
+                            )
+                        }
+                        complete(true)
+                    }
+                    val fsFallbackOutcome = fsFallback.ref.refreshOutcome("", true)
+                    fsFallbackOutcome.status shouldBe "ok"
+                    fsFallbackOutcome.sources
+                        .single()
+                        .origin.fallback shouldBe true
+                    // S8: filesystem primary + filesystem fallback isolates the fallback exclusion.
+                    store.get(id)!!.state shouldBe org.tatrman.metadata.cn.CandidateState.PENDING_MERGE
                     val fs = DeclaredFixture(listOf(disk), strict = false)
                     fs.ref.addPublicationListener("disk") { outcome, complete ->
                         fs.ref.promotionCommit("disk", outcome)?.let { version ->
@@ -427,14 +457,18 @@ class DeclaredSourcesSpec :
                             .version
                     slow.conditional = false
                     slow.etag = "\"unaccepted\""
-                    slow.body = tarTree("db.ttrm" to "model db\ndef table never {}")
+                    // At one byte per 20 ms, this response drips for over ten seconds.
+                    slow.body = tarTree("db.ttrm" to "model db\ndef table never {}") + ByteArray(500)
                     slow.dripMillis = 20
                     clean.etag = "\"new-clean\""
                     clean.body = tarTree("db.ttrm" to "model db\ndef table advanced {}")
+                    // Time the storage request alone, not the independent reload/reconciliation.
+                    val storage = HttpTreeStorage("bounded", slow.url, readTimeoutMs = 300)
                     val start = System.nanoTime()
-                    val result = f.ref.refreshOutcome("", true)
+                    shouldThrowAny { storage.fetchVersion() }.message shouldBe "http_source_timeout"
                     val elapsedMs = (System.nanoTime() - start) / 1_000_000
-                    (elapsedMs < 1200) shouldBe true
+                    (elapsedMs < 3000) shouldBe true
+                    val result = f.ref.refreshOutcome("", true)
                     result.status shouldBe "partial"
                     result.sources.single { it.id == "slow" }.lastError shouldContain "http_source_timeout"
                     result.sources.single { it.id == "slow" }.version shouldBe oldVersion
@@ -448,6 +482,80 @@ class DeclaredSourcesSpec :
                     slow.requests.last().etag shouldBe "\"v1\""
                     f.names() shouldBe setOf("delivered", "advanced")
                 }
+            }
+        }
+
+        "S2 F3a watchdog bounds dripping headers before the body loop starts" {
+            java.net.ServerSocket(0, 1, java.net.InetAddress.getByName("127.0.0.1")).use { server ->
+                val executor = Executors.newSingleThreadExecutor()
+                val accepted = java.util.concurrent.CompletableFuture<java.net.Socket>()
+                val worker =
+                    executor.submit {
+                        runCatching {
+                            server.accept().use { socket ->
+                                accepted.complete(socket)
+                                val output = socket.getOutputStream()
+                                output.write("HTTP/1.1 200 OK\r\nX-Drip: ".toByteArray())
+                                output.flush()
+                                repeat(500) {
+                                    output.write('x'.code)
+                                    output.flush()
+                                    Thread.sleep(20)
+                                }
+                                output.write("\r\nContent-Length: 0\r\n\r\n".toByteArray())
+                                output.flush()
+                            }
+                        }
+                    }
+                try {
+                    val storage =
+                        HttpTreeStorage("headers", "http://127.0.0.1:${server.localPort}/", readTimeoutMs = 300)
+                    val start = System.nanoTime()
+                    shouldThrowAny { storage.fetchVersion() }.message shouldBe "http_source_timeout"
+                    ((System.nanoTime() - start) / 1_000_000 < 3000) shouldBe true
+                } finally {
+                    accepted.get(3, java.util.concurrent.TimeUnit.SECONDS).close()
+                    worker.cancel(true)
+                    executor.shutdownNow()
+                }
+            }
+        }
+
+        "S2 F3b bounded reader checks its deadline between individual body reads" {
+            var reads = 0
+            val input =
+                object : java.io.InputStream() {
+                    override fun read(): Int = error("bulk reads only")
+
+                    override fun read(
+                        bytes: ByteArray,
+                        off: Int,
+                        len: Int,
+                    ): Int {
+                        reads++
+                        bytes[off] = 1
+                        return 1
+                    }
+                }
+            shouldThrowAny {
+                readBounded(input, 20) { check(reads < 3) { "http_source_timeout" } }
+            }.message shouldBe "http_source_timeout"
+            reads shouldBe 3
+        }
+
+        "S2 completed bodies keep archive diagnostics even when decoding crosses the deadline" {
+            HttpTree().use { http ->
+                http.body = tarTree("../evil.ttrm" to "model db")
+                val real = HttpTreeStorage("unsafe", http.url, readTimeoutMs = 1000)
+                shouldThrowAny { real.fetchVersion() }.message shouldBe "http_source_unsafe_path"
+                // Delay only decoding: delivery completes well within the network budget.
+                val slowDecode =
+                    spyk(HttpTreeStorage("decode", http.url, readTimeoutMs = 300), recordPrivateCalls = true)
+                every { slowDecode["decode"](any<ByteArray>()) } answers {
+                    Thread.sleep(600)
+                    error("http_source_unsafe_path")
+                }
+                shouldThrowAny { slowDecode.fetchVersion() }.message shouldBe "http_source_unsafe_path"
             }
         }
 

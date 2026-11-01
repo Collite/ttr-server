@@ -10,6 +10,9 @@ import io.mockk.coEvery
 import io.ktor.client.request.get
 import io.ktor.client.request.post
 import io.ktor.client.statement.bodyAsText
+import io.ktor.server.application.install
+import io.ktor.server.plugins.contentnegotiation.ContentNegotiation
+import io.ktor.serialization.kotlinx.json.json
 import io.ktor.server.routing.routing
 import io.ktor.server.testing.testApplication
 import kotlinx.coroutines.*
@@ -319,6 +322,7 @@ class Review193Spec :
                     ref.refresh("", true)
                     testApplication {
                         application {
+                            install(ContentNegotiation) { json(Json { prettyPrint = true }) }
                             routing {
                                 modelHealthRoutes(f.registry, f.board, ref)
                                 metadataRefreshRoutes(ref)

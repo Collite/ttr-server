@@ -119,8 +119,10 @@ class GuardedRefresher(
             )
         }
 
+    private var publication = 0L
+
     private data class PublicationKey(
-        val snapshot: org.tatrman.ttr.metadata.registry.RegistrySnapshot?,
+        val publication: Long,
         val origin: SourceOrigin?,
         val version: String?,
     )
@@ -175,7 +177,7 @@ class GuardedRefresher(
         board.now().toString(),
         status == "ok",
         status,
-        branch,
+        branch.takeIf { it.length <= 255 && BranchStorage.validRef(it) }.orEmpty(),
         commit,
         errors.map(::redactCredentials),
         warnings,
@@ -193,7 +195,9 @@ class GuardedRefresher(
         branch: String = "",
     ): RefreshOutcome {
         val invalidId =
-            sourceId.isNotEmpty() && (sourceId.length > 128 || !sourceId.matches(Regex("[A-Za-z0-9][A-Za-z0-9._-]*")))
+            sourceId.isNotEmpty() &&
+                sourceId !in sourceIds &&
+                (sourceId.length > 128 || !sourceId.matches(SOURCE_ID_GRAMMAR))
         val safeId = if (invalidId) "" else sourceId
         val idRefusal =
             when {
@@ -252,7 +256,6 @@ class GuardedRefresher(
         var target = sourceId
         var refusal = idRefusal
         var httpStatus = 400
-        if (target.isNotEmpty() && target !in sourceIds) refusal = "unknown_source_id: $target"
         if (branch.isNotEmpty() && refusal.isEmpty()) {
             if (target.isEmpty()) {
                 val candidates = managed.filter { it.key in configuredIds && it.value.git != null }.keys
@@ -265,7 +268,7 @@ class GuardedRefresher(
                     "branch_not_allowed: configured default is '${git.defaultBranch}'; enable METADATA_ALLOW_NON_DEFAULT_BRANCH"
                 httpStatus = 409
             }
-            if (refusal.isEmpty() && !BranchStorage.validRef(branch)) refusal = "invalid_git_ref: $branch"
+            if (refusal.isEmpty() && !BranchStorage.validRef(branch)) refusal = "invalid_git_ref"
         }
         if (refusal.isNotEmpty()) {
             lastAttempt =
@@ -341,7 +344,13 @@ class GuardedRefresher(
             }
             val replyStatus =
                 if (target in sourceIds && target !in configuredIds) {
-                    if (results.firstOrNull { it.sourceId == target }?.success == true) "ok" else "failed"
+                    if (results.firstOrNull { it.sourceId == target }?.success == true &&
+                        accepted[target] === attempts[target]
+                    ) {
+                        "ok"
+                    } else {
+                        "failed"
+                    }
                 } else {
                     lastStatus
                 }
@@ -410,7 +419,7 @@ class GuardedRefresher(
             if (snapshot != null) {
                 publicationListeners.forEach { observer ->
                     val source = states.firstOrNull { it.id == observer.sourceId }
-                    val key = PublicationKey(snapshot, source?.origin, source?.version)
+                    val key = PublicationKey(publication, source?.origin, source?.version)
                     val notify =
                         synchronized(observer) {
                             if (observer.inFlight == key || observer.observed == key) {
@@ -572,6 +581,7 @@ class GuardedRefresher(
                                 .toPair()
                         },
                 )
+                publication++
             } finally {
                 publishing = null
             }

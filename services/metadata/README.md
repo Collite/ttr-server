@@ -610,8 +610,10 @@ ETag caching never makes rejected content acceptable.
 
 Redirects and URL user-info/fragments are refused. Descriptions omit query strings; load errors report
 safe codes/statuses rather than URLs, bearer tokens or response bodies. The read timeout (default 30 s)
-bounds the whole response, from request to last byte; raise `read-timeout-ms` for large, slow archives.
-The connection timeout also bounds network waits. Compressed responses and total expanded regular-file bytes are limited by `max-bytes`;
+sets a deadline for the whole response, from request to last byte; raise `read-timeout-ms` for large, slow archives.
+A read already blocked at the deadline can overrun it by up to one further read-timeout (worst case
+2 × `read-timeout-ms`); DNS resolution is not bounded (Bora ✅R202-D). Archive decoding runs outside
+the network deadline. The connection timeout also bounds network waits. Compressed responses and total expanded regular-file bytes are limited by `max-bytes`;
 archive metadata/padding has an additional 10,240,000-byte allowance and entries are capped at 10,000. The loader
 never extracts files: absolute/traversing/backslash/duplicate paths, links, special entries, malformed
 archives and corrupt gzip trailers fail the load. Failed downloads/decodes preserve the prior cache.

@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package org.tatrman.metadata.refresh
 
-import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
-import io.ktor.server.response.respondText
+import io.ktor.server.response.respond
 import io.ktor.server.routing.Route
 import io.ktor.server.routing.post
 import kotlinx.serialization.json.JsonPrimitive
@@ -62,6 +61,6 @@ internal fun Route.metadataRefreshRoutes(refresher: GuardedRefresher) {
                     }
                 }
             }
-        call.respondText(body.toString(), ContentType.Application.Json, HttpStatusCode.fromValue(outcome.httpStatus))
+        call.respond(HttpStatusCode.fromValue(outcome.httpStatus), body)
     }
 }

@@ -5,6 +5,8 @@ import com.typesafe.config.Config
 import com.typesafe.config.ConfigValueType
 import java.nio.file.Path
 
+internal val SOURCE_ID_GRAMMAR = Regex("[A-Za-z0-9][A-Za-z0-9._-]*")
+
 /** One normalization path for content slots, fallback lookup and the independent CN promotion checkout. */
 internal data class SourceDeclaration(
     val key: String,
@@ -24,7 +26,7 @@ internal fun sourceDeclarations(config: Config): List<SourceDeclaration> {
                 config.getConfigList("metadata.sources").map { sub ->
                     require(sub.hasPath("id")) { "invalid_source_config: sources list entry requires id" }
                     val id = sub.getString("id")
-                    require(id.matches(Regex("[A-Za-z0-9][A-Za-z0-9._-]*")) && id !in RESERVED_SOURCE_IDS) {
+                    require(id.matches(SOURCE_ID_GRAMMAR) && id !in RESERVED_SOURCE_IDS) {
                         "invalid_source_config: invalid or reserved source id"
                     }
                     SourceDeclaration(id, id, sub)

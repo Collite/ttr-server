@@ -18,7 +18,11 @@ import java.util.concurrent.ScheduledThreadPoolExecutor
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 
-/** A GET produces one immutable in-memory tree; list/read never revisit the network or extract files. */
+/**
+ * A GET produces one immutable in-memory tree; list/read never revisit the network or extract files.
+ * The response deadline can overrun by one blocked read-timeout (R202-D). JVM DNS resolution inside
+ * connect() is unbounded. Archive decoding runs after receipt, outside the network deadline.
+ */
 internal class HttpTreeStorage(
     override val id: String,
     url: String,
@@ -57,6 +61,7 @@ internal class HttpTreeStorage(
         val deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(readTimeoutMs.toLong())
         val connection = uri.toURL().openConnection() as HttpURLConnection
         val expired = AtomicBoolean(false)
+        var received = false
 
         fun checkDeadline() {
             check(!expired.get() && System.nanoTime() < deadline) { "http_source_timeout" }
@@ -76,6 +81,8 @@ internal class HttpTreeStorage(
         tree?.etag?.let { connection.setRequestProperty("If-None-Match", it) }
         try {
             checkDeadline()
+            connection.connect()
+            checkDeadline()
             val status = connection.responseCode
             checkDeadline()
             when (status) {
@@ -83,16 +90,10 @@ internal class HttpTreeStorage(
                 200 -> {
                     val body =
                         connection.inputStream.use { input ->
-                            val bytes = ByteArrayOutputStream()
-                            val buffer = ByteArray(8192)
-                            while (bytes.size() <= maxBytes) {
-                                checkDeadline()
-                                val count = input.read(buffer, 0, minOf(buffer.size, maxBytes + 1 - bytes.size()))
-                                checkDeadline()
-                                if (count == -1) break
-                                bytes.write(buffer, 0, count)
+                            readBounded(input, maxBytes, ::checkDeadline).also {
+                                watchdog.cancel(false)
+                                received = true
                             }
-                            bytes.toByteArray()
                         }
                     check(body.size <= maxBytes) { "http_source_response_too_large" }
                     val files = decode(body)
@@ -110,7 +111,7 @@ internal class HttpTreeStorage(
         } catch (e: Exception) {
             // Neither URL/query, bearer, upstream body nor archive names enter exception diagnostics.
             throw IllegalStateException(
-                if (expired.get() || System.nanoTime() >= deadline) {
+                if (!received && (expired.get() || System.nanoTime() >= deadline)) {
                     "http_source_timeout"
                 } else {
                     e.message?.takeIf { it.startsWith("http_source_") }
@@ -187,6 +188,24 @@ internal class HttpTreeStorage(
         checkNotNull(
             tree?.files?.get(file.path.removePrefix("/")),
         ) { "http_source_file_not_found" }.toString(Charsets.UTF_8)
+}
+
+/** Read at most maxBytes + 1 so the caller can diagnose oversize bodies without allocating them. */
+internal fun readBounded(
+    input: InputStream,
+    maxBytes: Int,
+    checkDeadline: () -> Unit,
+): ByteArray {
+    val bytes = ByteArrayOutputStream()
+    val buffer = ByteArray(8192)
+    while (bytes.size() <= maxBytes) {
+        checkDeadline()
+        val count = input.read(buffer, 0, minOf(buffer.size, maxBytes + 1 - bytes.size()))
+        checkDeadline()
+        if (count == -1) break
+        bytes.write(buffer, 0, count)
+    }
+    return bytes.toByteArray()
 }
 
 /** Limit the entire inflated stream, including tar headers that aren't regular-file content. */

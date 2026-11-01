@@ -18,9 +18,12 @@ outside this repo could notice is in.
 
 - **metadata — ops review corrections.** Accepted non-fallback filesystem content can confirm CN promotions;
   Git confirmation remains restricted to the configured default branch. Successful no-change refreshes avoid
-  repeated CN database observations, and failed observations retry. HTTP `read-timeout-ms` now bounds the
-  entire response, including a slow body. Internal-source refresh replies reflect their own result while
-  preserving content reports; invalid source ids are refused without echoing untrusted text.
+  repeated CN database observations, and failed observations retry. HTTP `read-timeout-ms` now sets a deadline for the
+  entire response, including a slow body; a blocked read can overrun by one further read-timeout
+  (worst case 2 × `read-timeout-ms`), and DNS resolution is unbounded (R202-D). Archive errors keep their
+  diagnostics outside that deadline. Internal-source refresh replies reflect accepted results while
+  preserving content reports; invalid unknown source ids and refs are not echoed. Configured keyed ids
+  retain their spelling and remain refreshable. CN observation completes on every outcome, including errors.
   CN chart guards now fail explicitly, and the certification command verifies the precise branch-policy
   refusal, forces the RPC refresh and refuses optimized Python execution.
 
