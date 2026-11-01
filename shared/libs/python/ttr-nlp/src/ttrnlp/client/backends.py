@@ -373,19 +373,37 @@ def batch_lemmatize_morphodita(
     MorphoDiTa writes one after EVERY sentence, so a text of two sentences would
     come back as two groups and shift every later text onto another's lemmas.
 
-    A text that contains the break token itself, or a response that splits into
-    the wrong number of groups, falls back to one round trip per text — slower,
-    never misaligned.
+    A text that contains the break token itself would split its own group, so it
+    gets a round trip of its own; the other texts are still one batch, and the
+    results come back in the request's order. Sending all N one by one instead
+    would cost a caller N round trips inside one deadline for one odd text.
+
+    A response that splits into the wrong number of groups falls back to one
+    round trip per text of that batch — slower, never misaligned.
 
     Blank texts are not sent alone: the backend answers empty `data` with a body
     that is not JSON.
     """
-    if not texts:
-        return []
+    results: list[list[str]] = [[] for _ in texts]
+    batched = [i for i, t in enumerate(texts) if MORPHODITA_BATCH_BREAK not in t]
+    groups = _lemmatize_morphodita_batch(client, [texts[i] for i in batched])
+    for i, lemmas in zip(batched, groups, strict=True):
+        results[i] = lemmas
+    for i, text in enumerate(texts):
+        if MORPHODITA_BATCH_BREAK in text:
+            results[i] = _lemmatize_morphodita_one(client, text)
+    return results
+
+
+def _lemmatize_morphodita_batch(
+    client: BackendClient, texts: list[str]
+) -> list[list[str]]:
+    """One round trip for `texts`, none of which holds the break token.
+
+    No round trip at all when every text is blank (or there is none).
+    """
     if all(not t.strip() for t in texts):
         return [[] for _ in texts]
-    if any(MORPHODITA_BATCH_BREAK in t for t in texts):
-        return [_lemmatize_morphodita_one(client, t) for t in texts]
     joined = f"\n\n{MORPHODITA_BATCH_BREAK}\n\n".join(texts)
     vertical = client.result_text(
         {"data": joined, "model": client.spec.model, **MORPHODITA_FORM}
