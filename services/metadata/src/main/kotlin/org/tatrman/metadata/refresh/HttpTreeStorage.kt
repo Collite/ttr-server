@@ -31,6 +31,7 @@ internal class HttpTreeStorage(
     private val connectTimeoutMs: Int = 10_000,
     private val readTimeoutMs: Int = 30_000,
     private val maxBytes: Int = 32 * 1024 * 1024,
+    private val openConnection: (URI) -> HttpURLConnection = { it.toURL().openConnection() as HttpURLConnection },
 ) : ModelStorage {
     private val uri =
         runCatching { URI(url) }.getOrElse {
@@ -59,7 +60,7 @@ internal class HttpTreeStorage(
 
     override fun fetchVersion(): String {
         val deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(readTimeoutMs.toLong())
-        val connection = uri.toURL().openConnection() as HttpURLConnection
+        val connection = openConnection(uri)
         val expired = AtomicBoolean(false)
         var received = false
 
@@ -81,6 +82,10 @@ internal class HttpTreeStorage(
         tree?.etag?.let { connection.setRequestProperty("If-None-Match", it) }
         try {
             checkDeadline()
+            // The JDK has no client for disconnect() until connect returns. Its TCP timeout must
+            // fit the remaining response budget too; JVM DNS resolution is the documented exception.
+            connection.connectTimeout =
+                minOf(connectTimeoutMs, maxOf(1L, TimeUnit.NANOSECONDS.toMillis(deadline - System.nanoTime())).toInt())
             connection.connect()
             checkDeadline()
             val status = connection.responseCode
@@ -111,7 +116,9 @@ internal class HttpTreeStorage(
         } catch (e: Exception) {
             // Neither URL/query, bearer, upstream body nor archive names enter exception diagnostics.
             throw IllegalStateException(
-                if (!received && (expired.get() || System.nanoTime() >= deadline)) {
+                if (!received &&
+                    (e is java.net.SocketTimeoutException || expired.get() || System.nanoTime() >= deadline)
+                ) {
                     "http_source_timeout"
                 } else {
                     e.message?.takeIf { it.startsWith("http_source_") }

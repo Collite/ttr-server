@@ -485,6 +485,44 @@ class DeclaredSourcesSpec :
             }
         }
 
+        "S2 connect timeout fits the response budget and expiry during connect skips headers" {
+            val connection =
+                object : java.net.HttpURLConnection(java.net.URI("http://unused.invalid/").toURL()) {
+                    var headerReads = 0
+                    var simulatedDns = false
+
+                    override fun usingProxy() = false
+
+                    override fun disconnect() { /* No JDK client exists until connect finishes. */ }
+
+                    override fun connect() {
+                        Thread.sleep(if (simulatedDns) 200 else connectTimeout.toLong())
+                        if (!simulatedDns) throw java.net.SocketTimeoutException()
+                    }
+
+                    override fun getResponseCode(): Int {
+                        headerReads++
+                        return 200
+                    }
+                }
+            val storage =
+                HttpTreeStorage(
+                    "connect",
+                    "http://unused.invalid/",
+                    connectTimeoutMs = 10_000,
+                    readTimeoutMs = 100,
+                    openConnection = { connection },
+                )
+            val start = System.nanoTime()
+            shouldThrowAny { storage.fetchVersion() }.message shouldBe "http_source_timeout"
+            ((System.nanoTime() - start) / 1_000_000 < 3000) shouldBe true
+            connection.headerReads shouldBe 0
+            // DNS cannot be interrupted: once it returns after expiry, never enter the header phase.
+            connection.simulatedDns = true
+            shouldThrowAny { storage.fetchVersion() }.message shouldBe "http_source_timeout"
+            connection.headerReads shouldBe 0
+        }
+
         "S2 F3a watchdog bounds dripping headers before the body loop starts" {
             java.net.ServerSocket(0, 1, java.net.InetAddress.getByName("127.0.0.1")).use { server ->
                 val executor = Executors.newSingleThreadExecutor()
