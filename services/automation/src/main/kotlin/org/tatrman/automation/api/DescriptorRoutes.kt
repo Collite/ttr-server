@@ -307,7 +307,7 @@ private fun runAsByWorld(
     bundle: Bundle,
     sources: DescriptorSources,
 ): Map<String, RunAs> =
-    bundle.worlds.mapValues { (_, w) -> RunAs(GrantMap(w.grants, w.identities), w.identities, sources.tokens) }
+    bundle.worlds.mapValues { (_, w) -> RunAs(GrantMap(w.grants, w.identities, w.roles), w.identities, sources.tokens) }
 
 private fun deploymentOf(
     bundle: Bundle,

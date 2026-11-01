@@ -91,7 +91,7 @@ class Open(
         val program = bundle.programs.getValue(programName)
         val world = bundle.worldOf(d) ?: error("loaded deployment has no world")
         val identity =
-            RunAs(GrantMap(world.grants, world.identities), world.identities, tokens).resolve(
+            RunAs(GrantMap(world.grants, world.identities, world.roles), world.identities, tokens).resolve(
                 caller,
                 DeploymentIdentity(request.deployment, programName, BundleLoader.runAs(d.runAs), bundle.author),
                 if (d.debug) DebugAs.CALLER else null,

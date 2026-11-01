@@ -96,7 +96,7 @@ class ApplicationRuntimeSpec :
                         it.world shouldBe "fixture-erp"
                         it.context.modelVersion shouldBe f.bundle.modelFp
                         it.context.userId shouldBe "maya"
-                        it.context.authRolesList shouldBe listOf("sales_manager")
+                        it.context.authRolesList shouldBe listOf("hartland-sales-managers")
                         it.allowedErReads.objectsList shouldBe listOf("er.entity.order")
                     }
                     transaction {

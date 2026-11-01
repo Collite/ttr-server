@@ -79,7 +79,7 @@ class RunSessionsSpec :
                     model shouldBe "pinned-model"
                     runner.context.recipe.statements
                         .getValue("c.sql") shouldBe "candidates-original"
-                    runner.context.identity.caller.roles shouldBe setOf("sales_manager")
+                    runner.context.identity.caller.roles shouldBe setOf("hartland-sales-managers")
                     runner.context.identity.caller.token shouldBe "original-token"
                     runner
                         .island("placed")
@@ -356,7 +356,7 @@ internal class RunSessionFixture(
     private val columns: List<ManifestColumn> =
         listOf(ManifestColumn("order_number", "text"), ManifestColumn("note", "text")),
 ) {
-    val caller = Caller("subject-maya", "maya", setOf("sales_manager"), TokenKind.PERSON, "original-token")
+    val caller = Caller("subject-maya", "maya", setOf("hartland-sales-managers"), TokenKind.PERSON, "original-token")
     val states = ConcurrentHashMap<UUID, RunStatus>()
     val records = ConcurrentHashMap<UUID, RunOpen>()
     val evaluations = ConcurrentHashMap<UUID, EvaluationResult>()

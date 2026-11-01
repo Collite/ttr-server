@@ -153,6 +153,8 @@ dependencies {
     "componentTestImplementation"(libs.auth0.java.jwt)
     // LC-P0·S0.2 — PromptLogSpec reads the writer's drop counter off a SimpleMeterRegistry.
     "componentTestImplementation"(libs.micrometer.registry.prometheus)
+    // RateLimitComponentSpec counts the limiter's refusal lines with a logback ListAppender
+    "componentTestImplementation"(libs.logback.classic)
     // OTel span assertions via an in-memory exporter (LG-P5·S2 TraceSpec)
     "componentTestImplementation"(libs.opentelemetry.sdk)
     "componentTestImplementation"(libs.opentelemetry.sdk.testing)

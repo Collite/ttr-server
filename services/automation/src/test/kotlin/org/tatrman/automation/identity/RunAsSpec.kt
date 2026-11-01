@@ -24,6 +24,10 @@ class RunAsSpec :
                     GrantDecl(Who.Role("process_owner"), GrantDecl.ANY_PROGRAM, RunAsRef.Named("automation_decider")),
                 ),
                 identities,
+                listOf(
+                    RoleDecl("ops", setOf("hartland-ops")),
+                    RoleDecl("process_owner", setOf("hartland-process-owners")),
+                ),
             )
         val tokens =
             ServiceTokens(mapOf("AUTOMATION" to "svc-hartland-automation:s3cret"), fetch = { error("no fetch here") })
@@ -34,9 +38,9 @@ class RunAsSpec :
             author: String = "pavel",
         ) = DeploymentIdentity("release_native_event", "release_on_placement", runAs, author)
 
-        val ops = caller("olga", setOf("ops"))
-        val owner = caller("pavel", setOf("process_owner"))
-        val maya = caller("maya", setOf("sales_manager"))
+        val ops = caller("olga", setOf("hartland-ops"))
+        val owner = caller("pavel", setOf("hartland-process-owners"))
+        val maya = caller("maya", setOf("hartland-sales-managers"))
 
         fun refusal(block: () -> Unit): String {
             val e = shouldThrow<AutomationException> { block() }
