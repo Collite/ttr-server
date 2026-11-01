@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package org.tatrman.llmgateway.auth
 
+import org.slf4j.LoggerFactory
 import org.tatrman.llmgateway.governance.KeyMint
 import org.tatrman.llmgateway.governance.VirtualKeyRepo
 import java.util.concurrent.ConcurrentHashMap
@@ -15,9 +16,14 @@ import java.util.concurrent.ConcurrentHashMap
  * **Positive results only are cached**; a miss is never cached, so a just-issued key validates immediately
  * (regression) and a revoked key stops validating within the TTL. `last_used_at` is written at most once
  * per key per [touchThrottleMs] (default 60 s) so hot keys don't hammer PG on every request.
+ *
+ * **Fail closed on unconfigured teams:** a row whose team is not among [teamIds] (the `governance.yaml` teams)
+ * does not validate. A team removed from the config stops its keys at the next boot; its `teams` row stays as
+ * the FK target of those keys. One WARN per team id per process names the refused team.
  */
 class PgKeyValidator(
     private val keys: VirtualKeyRepo,
+    private val teamIds: Set<String>,
     private val ttlMs: Long = 30_000,
     private val touchThrottleMs: Long = 60_000,
     private val nowMs: () -> Long = { System.currentTimeMillis() },
@@ -29,6 +35,7 @@ class PgKeyValidator(
 
     private val cache = ConcurrentHashMap<String, Entry>() // key_hash → cached identity (positive only)
     private val lastTouchMs = ConcurrentHashMap<String, Long>() // keyId → last last_used_at write
+    private val warnedTeams = ConcurrentHashMap.newKeySet<String>() // team ids already named in a WARN
 
     override fun validate(rawKey: String): KeyPrincipal? {
         if (!rawKey.startsWith(KeyMint.PREFIX)) return null
@@ -39,6 +46,12 @@ class PgKeyValidator(
         val principal =
             cached?.principal ?: run {
                 val row = keys.findByHash(hash)?.takeIf { it.revokedAt == null } ?: return null // miss: NOT cached
+                if (row.teamId !in teamIds) {
+                    if (warnedTeams.add(row.teamId)) {
+                        log.warn("refusing the keys of team '{}': it is not in the governance config", row.teamId)
+                    }
+                    return null // NOT cached, as a miss
+                }
                 KeyPrincipal(
                     keyId = row.id,
                     team = row.teamId,
@@ -60,5 +73,9 @@ class PgKeyValidator(
             // Only write if we won the race to claim this window (keeps it ≤1 write/key/throttle-window).
             if (lastTouchMs.put(keyId, now).let { it == last }) keys.touchLastUsed(keyId)
         }
+    }
+
+    private companion object {
+        val log = LoggerFactory.getLogger(PgKeyValidator::class.java)
     }
 }

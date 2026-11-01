@@ -1,5 +1,7 @@
 # LLM Gateway 2.0 governance config (contracts §2.3). Teams = attribution buckets for the constellation
 # consumers. Budgets/limits are DEFAULTS (per-key overrides min-win, D-3/LG-D5).
+# A key validates only while its team is listed here: removing a team refuses its keys from the next boot
+# (its `teams` row stays in the database as their FK target).
 #
 # ⚠ INTERIM: budget/rate-limit numbers are placeholders pending Bora — mode is `soft` so nothing blocks
 # (D-6 soft default). `keys:` is empty on purpose: seeded key SHA-256 hashes are imported at cutover from
@@ -29,16 +31,5 @@ teams:
     costCenterPrefix: "docwh-pipeline/"
     budget: { id: docwh-pipeline-monthly, usdPerMonth: 100.0, mode: soft } # interim
     rateLimit: { id: docwh-pipeline-rl, requestsPerMinute: 120 }           # interim
-  # Transitional: the pre-rename team ids stay until every deployment has seeded docwh-store/docwh-pipeline
-  # under new keys (the seeder never moves a key between teams), so a deployment that runs this image before
-  # it re-seeds keeps its kallimachos/pinakes keys working. Removed in a later release.
-  - id: kallimachos
-    costCenterPrefix: "kallimachos/"
-    budget: { id: kallimachos-monthly, usdPerMonth: 100.0, mode: soft }  # interim
-    rateLimit: { id: kallimachos-rl, requestsPerMinute: 120 }            # interim
-  - id: pinakes
-    costCenterPrefix: "pinakes/"
-    budget: { id: pinakes-monthly, usdPerMonth: 100.0, mode: soft }      # interim
-    rateLimit: { id: pinakes-rl, requestsPerMinute: 120 }                # interim
 
 keys: []   # seeded at cutover (G-3) — hashes from k8s secrets, never committed
