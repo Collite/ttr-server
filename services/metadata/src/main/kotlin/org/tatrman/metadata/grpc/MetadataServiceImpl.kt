@@ -24,6 +24,9 @@ import org.tatrman.meta.v1.Er2CncRoleMappingDetail
 import org.tatrman.meta.v1.EdgeResult
 import org.tatrman.meta.v1.RefreshRequest
 import org.tatrman.meta.v1.RefreshResponse
+import org.tatrman.meta.v1.ResolveTagsRequest
+import org.tatrman.meta.v1.ResolveTagsResponse
+import org.tatrman.metadata.scope.TagScope
 import org.tatrman.meta.v1.ResolveAreaRequest
 import org.tatrman.meta.v1.ResolveAreaResponse
 import org.tatrman.meta.v1.SourceRefreshResult
@@ -1135,6 +1138,58 @@ class MetadataServiceImpl(
             .addAllTags(area.tags)
             .setFound(true)
             .build()
+    }
+
+    override suspend fun resolveTags(request: ResolveTagsRequest): ResolveTagsResponse {
+        val tags =
+            try {
+                TagScope
+                    .normalize(request.tagsList)
+            } catch (
+                e: IllegalArgumentException,
+            ) {
+                throw io.grpc.Status.INVALID_ARGUMENT
+                    .withDescription(e.message)
+                    .asRuntimeException()
+            }
+        val snap =
+            registry.read()
+                ?: return ResolveTagsResponse
+                    .newBuilder()
+                    .addMessages(notReadyMessage())
+                    .build()
+        val scope =
+            TagScope
+                .resolve(snap.model, tags, { liveParseStatus(it, snap) })
+        val response =
+            ResolveTagsResponse
+                .newBuilder()
+                .setModelVersion(
+                    snap.model.version.value,
+                ).setComplete(scope.warnings.isEmpty())
+        scope.warnings.forEach {
+            response.addWarnings(
+                ResponseMessage
+                    .newBuilder()
+                    .setSeverity(
+                        Severity.WARNING,
+                    ).setCode(it.code)
+                    .setHumanMessage(it.message)
+                    .setSourceFile(it.sourceFile),
+            )
+        }
+        if (!request.strict || scope.warnings.isEmpty()) {
+            // The definitions carry provenance inside this captured snapshot; never consult a newer checkout.
+            val files = snap.definitions.entries.associate { it.def.source.file to it.pkg }
+            val packageOf: (
+                String,
+            ) -> String? = if (files.isEmpty()) packageIndex::packageOf else { file -> files[file] }
+            response.addAllObjects(scope.objects.map { it.toObjectDescriptor(packageOf) })
+            response.addAllPackages(
+                scope.objects.mapNotNull { packageOf(it.sourceFile)?.takeIf(String::isNotBlank) }.toSortedSet(),
+            )
+        }
+        return response.build()
     }
 
     // ----- helpers -----

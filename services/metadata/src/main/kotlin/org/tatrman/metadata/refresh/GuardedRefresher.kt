@@ -8,6 +8,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import org.slf4j.LoggerFactory
 import org.tatrman.metadata.grpc.PackageIndex
+import org.tatrman.metadata.scope.TagScope
 import org.tatrman.metadata.health.SourceLoadBoard
 import org.tatrman.metadata.health.objectCount
 import org.tatrman.metadata.health.redactCredentials
@@ -482,6 +483,8 @@ class GuardedRefresher(
                     return results.values.toList()
                 }
             }
+            val scopeWarnings =
+                TagScope.loadWarnings(result.model)
             val graph = ModelGraph.build(result.model)
             val layouts = LayoutIndex.build(snapshots, result.model)
             if (cancelled()) throw CancellationException("refresh_cancelled")
@@ -491,7 +494,7 @@ class GuardedRefresher(
                 registry.swap(
                     result.model,
                     graph,
-                    result.warnings + result.errors,
+                    result.warnings + result.errors + scopeWarnings,
                     layouts,
                     files = result.files,
                     exportSidecars =
@@ -506,7 +509,7 @@ class GuardedRefresher(
             accepted.clear()
             accepted.putAll(proposed)
             log.info("Metadata model published: version={} strict_swap={}", result.model.version.value, strictSwap)
-            log.logModelLoadIssues(result.errors, result.warnings)
+            log.logModelLoadIssues(result.errors, result.warnings + scopeWarnings)
             return results.values.map {
                 if (it.success &&
                     it.sourceId in loaded

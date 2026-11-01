@@ -50,6 +50,7 @@ import org.tatrman.metadata.health.NO_MODEL_SOURCE_HELP
 import org.tatrman.metadata.health.modelHealthRoutes
 import org.tatrman.metadata.health.redactCredentials
 import org.tatrman.metadata.read.metadataReadRoutes
+import org.tatrman.metadata.read.vocabularyRoutes
 // YamlImportSource was removed in Phase 2.1 — kantheon is TTR-only (see buildSourceFromConfig).
 import io.grpc.netty.shaded.io.grpc.netty.NettyServerBuilder
 import java.util.concurrent.TimeUnit
@@ -386,6 +387,7 @@ fun Application.module(config: Config) {
         }
         metadataExportRoutes(registry)
         metadataReadRoutes(registry, searchRegistryWithAll, searchIndexHolder, packageIndex, lexiconSourceIds.toSet())
+        vocabularyRoutes(registry, parseState)
         // CN-P5 S5.3 — the candidate store and the vocabulary versions; a registration is in the model at once.
         candidateRoutes(cn.surface) {
             withContext(Dispatchers.IO) { refresher.refresh(sourceId = VocabularySource.SOURCE_ID, force = true) }

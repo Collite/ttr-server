@@ -41,6 +41,7 @@ service MetadataService {
   // is NOT part of the object graph; Golem assembles a Shem by resolving its
   // `areas` → packages → GetModel. See docs/architecture/fork/contracts.md §1.1.
   rpc ResolveArea(ResolveAreaRequest) returns (ResolveAreaResponse);
+  rpc ResolveTags(ResolveTagsRequest) returns (ResolveTagsResponse);
 
   // -------- Object reads --------
   rpc ListObjects(ListObjectsRequest) returns (ListObjectsResponse);
@@ -300,6 +301,20 @@ message GetModelResponse {
   ModelBundle model = 1;
   repeated org.tatrman.common.v1.ResponseMessage messages = 99;
   reserved 100 to 104;
+}
+
+// Default four-step tag closure (MW-P1). Empty tags select the whole model.
+message ResolveTagsRequest {
+  repeated string tags = 1;
+  bool strict = 2; // Warnings yield an empty selection when true.
+}
+message ResolveTagsResponse {
+  repeated string packages = 1; // Coarse package cover; objects is the exact selection.
+  repeated ObjectDescriptor objects = 2;
+  repeated org.tatrman.common.v1.ResponseMessage warnings = 3;
+  string model_version = 4;
+  bool complete = 5;
+  repeated org.tatrman.common.v1.ResponseMessage messages = 99;
 }
 
 // -------- ResolveArea (Golem P4 S4.2) --------
