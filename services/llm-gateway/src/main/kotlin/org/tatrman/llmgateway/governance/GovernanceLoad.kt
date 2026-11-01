@@ -39,6 +39,7 @@ object GovernanceLoad {
             governance.keys.size,
         )
 
-        return Governance(teams, keys, KeyService(keys, teams), PgKeyValidator(keys))
+        val teamIds = governance.teams.mapTo(HashSet()) { it.id }
+        return Governance(teams, keys, KeyService(keys, teams), PgKeyValidator(keys, teamIds))
     }
 }

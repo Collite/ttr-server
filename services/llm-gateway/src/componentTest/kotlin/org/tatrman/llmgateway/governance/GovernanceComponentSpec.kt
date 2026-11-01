@@ -103,7 +103,8 @@ class GovernanceComponentSpec :
         // ── T1/T4: validation — unknown, valid-now, revoked-after-TTL; throttled touch ──────────────
         "unknown hash is invalid; an issued key validates immediately; revocation takes effect within the TTL" {
             var clock = 1_000_000L
-            val validator = PgKeyValidator(keys, ttlMs = 30_000, touchThrottleMs = 60_000, nowMs = { clock })
+            val validator =
+                PgKeyValidator(keys, setOf("golem"), ttlMs = 30_000, touchThrottleMs = 60_000, nowMs = { clock })
 
             validator.validate("ttrk-does-not-exist-000000000000000000000000").shouldBeNull()
 
@@ -123,7 +124,8 @@ class GovernanceComponentSpec :
 
         "last_used_at is written once then throttled within the window" {
             var clock = 5_000_000L
-            val validator = PgKeyValidator(keys, ttlMs = 30_000, touchThrottleMs = 60_000, nowMs = { clock })
+            val validator =
+                PgKeyValidator(keys, setOf("golem"), ttlMs = 30_000, touchThrottleMs = 60_000, nowMs = { clock })
             val issued = service.issueKey("golem", "touch-key")
 
             validator.validate(issued.plaintext).shouldNotBeNull()
