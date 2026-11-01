@@ -49,6 +49,9 @@ import org.tatrman.ttr.metadata.source.FileBasedSource
 import org.tatrman.ttr.metadata.source.LocalFsStorage
 import org.tatrman.plan.v1.PlanNode
 import org.tatrman.plan.v1.TableScanNode
+import java.nio.file.Path
+import org.tatrman.ttr.metadata.source.ModelStorage
+import org.tatrman.ttr.metadata.source.StorageFile
 import java.nio.file.Files
 import java.time.Instant
 
@@ -194,6 +197,40 @@ class TagScopeSpec :
                 application { routing { vocabularyRoutes(MetadataRegistry()) } }
                 client.get("/model/vocabulary").status shouldBe HttpStatusCode.ServiceUnavailable
             }
+        }
+
+        "same-path files from independent sources retain each object's accepted package" {
+            fun source(
+                id: String,
+                pkg: String,
+                name: String,
+            ): FileBasedSource {
+                val storage =
+                    object : ModelStorage {
+                        override val id = id
+
+                        override fun fetchVersion() = id
+
+                        override fun listFiles(
+                            extensions: List<String>,
+                            prefixes: List<String>,
+                        ): List<StorageFile> = listOf(StorageFile("/shared/er.ttrm", 1, Path.of("/shared")))
+
+                        override fun read(file: StorageFile) =
+                            "package $pkg\nmodel er\ndef entity $name { tags: [\"scope\"], attributes: [def attribute id { type: int }] }"
+                    }
+                return FileBasedSource(id, 100, storage)
+            }
+            val snapshots = listOf(source("one", "alpha", "A").load(), source("two", "beta", "B").load())
+            val result = ModelReconciler(ModelDescriptor("scope", "scope", "scope")).reconcile(snapshots)
+            val registry =
+                MetadataRegistry().apply {
+                    swap(result.model, ModelGraph.build(result.model), files = snapshots.flatMap { it.loadedFiles })
+                }
+            val resolved = MetadataServiceImpl(registry, packageIndex = PackageIndex()).resolveTags(request("scope"))
+            resolved.packagesList shouldBe listOf("alpha", "beta")
+            resolved.objectsList.associate { it.qualifiedName.name to it.packageName } shouldBe
+                mapOf("A" to "alpha", "A.id" to "alpha", "B" to "beta", "B.id" to "beta")
         }
 
         "real guarded publication carries structural scope warnings and retains scoped vocabulary after rejection" {

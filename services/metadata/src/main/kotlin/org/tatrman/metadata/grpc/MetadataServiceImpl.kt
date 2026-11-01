@@ -1180,13 +1180,27 @@ class MetadataServiceImpl(
         }
         if (!request.strict || scope.warnings.isEmpty()) {
             // The definitions carry provenance inside this captured snapshot; never consult a newer checkout.
-            val files = snap.definitions.entries.associate { it.def.source.file to it.pkg }
-            val packageOf: (
-                String,
-            ) -> String? = if (files.isEmpty()) packageIndex::packageOf else { file -> files[file] }
-            response.addAllObjects(scope.objects.map { it.toObjectDescriptor(packageOf) })
+            val files = snap.definitions.entries.groupBy { it.def.source.file }
+
+            fun packageOf(obj: ModelObject): String {
+                if (files.isEmpty()) return packageIndex.packageOf(obj.sourceFile).orEmpty()
+                val declarations = files[obj.sourceFile].orEmpty()
+                val exact = declarations.filter { it.kind == obj.kind && it.qname.endsWith(".${obj.qname.name}") }
+                // HTTP sources can share a virtual filename. Match the declaration as well as the file;
+                // ambiguous provenance stays unknown rather than claiming another source's package.
+                return exact
+                    .ifEmpty { declarations }
+                    .map { it.pkg }
+                    .distinct()
+                    .singleOrNull()
+                    .orEmpty()
+            }
+            response.addAllObjects(scope.objects.map { obj -> obj.toObjectDescriptor(packageOf = { packageOf(obj) }) })
             response.addAllPackages(
-                scope.objects.mapNotNull { packageOf(it.sourceFile)?.takeIf(String::isNotBlank) }.toSortedSet(),
+                scope.objects
+                    .map(::packageOf)
+                    .filter(String::isNotBlank)
+                    .toSortedSet(),
             )
         }
         return response.build()
