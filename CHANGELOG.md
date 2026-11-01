@@ -16,6 +16,13 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+- **`ttr-nlp` — one text holding the MorphoDiTa batch break token no longer unbatches the rest.** `BatchLemmatize` on
+  MorphoDiTa now sends a text that contains `ttrnlpbatchbreak` in a request of its own and the other texts as one
+  batch, with the results in request order. Before, one such text sent every text of the request one by one: a caller
+  sending batches of 64 under a 10 s deadline made 64 backend requests instead of 2, and when they ran past the
+  deadline the whole batch failed. A batch reply that does not split back into its texts still falls back to one
+  request per text of that batch.
+
 - **metadata — forms are served verbatim, as `<name>.form.json` or `<name>.yaml` (SM D-11).** `GET /model/forms` now
   answers `{ forms: [{ name, source, sha, form }] }`: `form` is the authored document unchanged; `name` (the path stem,
   nested directories kept), `source` and `sha` (the served commit of the form's Git source) sit beside it. Before, the authored fields were spread at the top level and
