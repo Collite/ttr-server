@@ -413,7 +413,7 @@ class GuardedRefresher(
                     val key = PublicationKey(snapshot, source?.origin, source?.version)
                     val notify =
                         synchronized(observer) {
-                            if (observer.inFlight != null || observer.observed == key) {
+                            if (observer.inFlight == key || observer.observed == key) {
                                 false
                             } else {
                                 observer.inFlight = key

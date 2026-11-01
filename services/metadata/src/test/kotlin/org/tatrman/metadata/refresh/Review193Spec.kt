@@ -462,6 +462,34 @@ class Review193Spec :
             }
         }
 
+        "F10 a new publication is observed while an older observation is still in flight" {
+            BranchFixture().use { f ->
+                val completions = mutableListOf<(Boolean) -> Unit>()
+                val commits = mutableListOf<String>()
+                f.ref.addPublicationListener("world") { outcome, complete ->
+                    commits += f.ref.promotionCommit("world", outcome)!!
+                    completions += complete
+                }
+                f.ref.refresh("", true)
+                commits shouldBe listOf(f.main)
+                Git.open(f.root.toFile()).use { git ->
+                    git.checkout().setName("main").call()
+                    git.merge().include(git.repository.resolve(f.preview)).call()
+                }
+                f.ref.refresh("", true)
+                commits shouldBe listOf(f.main, f.preview)
+                completions[0](true) // A stale completion cannot acknowledge the newer publication.
+                repeat(3) { f.ref.refresh("", true) }
+                commits.size shouldBe 2
+                completions[1](false)
+                f.ref.refresh("", true)
+                commits shouldBe listOf(f.main, f.preview, f.preview)
+                completions[2](true)
+                repeat(3) { f.ref.refresh("", true) }
+                commits.size shouldBe 3
+            }
+        }
+
         "N9 cancellation between reconcile and publication cannot swap or retain a preview checkout" {
             BranchFixture().use { f ->
                 coroutineScope {
