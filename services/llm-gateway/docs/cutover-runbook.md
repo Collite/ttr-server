@@ -288,7 +288,7 @@ legacy `prometheus` host value is retired. Four callers on this path, in two key
      governance.yaml: |
        teams:            # every team verbatim from the image's governance.yaml
          - { id: golem,  costCenterPrefix: "golem/",  budget: { id: golem-monthly,  usdPerMonth: 100.0, mode: soft }, rateLimit: { id: golem-rl,  requestsPerMinute: 120 } }
-         # … hebe, themis, kleio, docwh-store, docwh-pipeline, kallimachos, pinakes (transitional) …
+         # … hebe, themis, kleio, docwh-store, docwh-pipeline …
        keys:
          - { team: kleio,       name: kleio-cutover,       sha256: <sha256-kleio> }
          - { team: docwh-store, name: docwh-store-cutover, sha256: <sha256-docwh-store> }
