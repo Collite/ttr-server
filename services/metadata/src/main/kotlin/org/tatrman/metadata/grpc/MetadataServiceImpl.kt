@@ -1615,6 +1615,7 @@ private fun Relation.toRelationDetail(): RelationDetail {
         }
     return RelationDetail
         .newBuilder()
+        .setName(qname.name)
         .setFromEntity(fromEntity.toProto())
         .setToEntity(toEntity.toProto())
         .setCardinality(cardinalityProto)

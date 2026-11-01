@@ -639,6 +639,7 @@ message RelationDetail {
   Cardinality cardinality = 3;
   repeated AttributeJoinPair join_pairs = 4;
   reserved 5 to 9;
+  string name = 10;                                        // authored local relation name
 }
 
 message Cardinality {
