@@ -24,6 +24,12 @@ outside this repo could notice is in.
   was the time until the oldest one left, often 1 s, and a caller that obeyed it stayed refused until the surplus aged
   out. A key refused again and again is logged once (INFO, on each replica) until it is next admitted;
   `llm_gateway_ratelimit_refused_total` still counts every refusal.
+- **`ttr-nlp` — one text holding the MorphoDiTa batch break token no longer unbatches the rest.** `BatchLemmatize` on
+  MorphoDiTa now sends a text that contains `ttrnlpbatchbreak` in a request of its own and the other texts as one
+  batch, with the results in request order. Before, one such text sent every text of the request one by one: a caller
+  sending batches of 64 under a 10 s deadline made 64 backend requests instead of 2, and when they ran past the
+  deadline the whole batch failed. A batch reply that does not split back into its texts still falls back to one
+  request per text of that batch.
 
 - **metadata — forms are served verbatim, as `<name>.form.json` or `<name>.yaml` (SM D-11).** `GET /model/forms` now
   answers `{ forms: [{ name, source, sha, form }] }`: `form` is the authored document unchanged; `name` (the path stem,
