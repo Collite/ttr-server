@@ -16,6 +16,8 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+- Add a repeatable isolated bp-dsk metadata ops certification command for published image digests.
+
 - **metadata — authored relation names and CN chart configuration.** `RelationDetail.name` (additive field 10)
   now accompanies the existing endpoints/cardinality/join pairs in GetModel, GetObject and GetSnapshot.
   Standalone `cn.*` / umbrella `metadata.cn.*` configure the existing candidate store with optional DB/PR

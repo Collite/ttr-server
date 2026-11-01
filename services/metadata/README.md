@@ -411,6 +411,27 @@ there is no service copy. Tokenization folds accents before filtering noise word
 inspects that jar inside a local `:services:metadata:jibBuildTar` image archive; no image is published.
 The existing report/form/layout/md routes keep their paths and snapshot-bound shapes.
 
+## Isolated ops certification
+
+`scripts/metadata-ops-cert.py` exercises a published candidate on `bp-dsk`, in the disposable
+`mw-p1-cert` namespace. It refuses namespace reuse and removes its resources on exit. The serving
+metadata Deployment is read before/after and must retain its spec/identity and readiness.
+Prerequisites: Python 3.9+, Git, Helm, kubectl and grpcurl; resolve the metadata chart's local dependencies
+with `bash scripts/helm-deps.sh` first. Use an immutable image digest, for example:
+
+```sh
+python3 scripts/metadata-ops-cert.py --context bp-dsk \
+  --image ghcr.io/collite/metadata@sha256:<published-digest> --output build/mw-p1-cert
+```
+
+The output directory must be new and below this worktree's `build/`. `--prepare-only` creates/render-checks
+inputs without creating cluster resources. The command creates synthetic default/preview/broken Git refs,
+filesystem and HTTP tar inputs, then checks startup refusal, source reports, branch policy, strict rollback
+and recovery, tag/vocabulary selection, relation details and authored report/form/layout reads. It uses the
+metadata chart with certification-only fixture mounts and a small HTTP sidecar; no credentials are needed.
+`results.json` records groups passed and `passed_all`; the command exits nonzero on any failed assertion.
+This fixture certification does not establish producer-content parity, consumer cutover, or a serving rollout.
+
 ## The cn candidate store (`cn/`, off by default)
 
 Producers propose concepts, terms and relations as `cn-candidate.v1` documents (ttr-concept's
