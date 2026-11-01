@@ -16,6 +16,13 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+- **metadata · resolver · query · automation — grammar 0.21.1: `variant` is read as `subkind` (ttr-core#349).** A
+  cn model may write `def variant X { of: … }`. The loader reads it as the `subkind` stereotype, so the cn candidate
+  store, the lexicon and every cn lint treat it exactly as `def subkind X`. A 0.21.0 reader refuses `variant` as a
+  parse error, so these services roll before any served model uses the word. 0.21.1 also packages ttr-core#347's
+  canonical YAML schemas in `ttr-parser` (`/schemas/*.json`); nothing here reads them yet. Pin: `tatrman-grammar` /
+  `tatrman-ttr-metadata` 0.21.0 → 0.21.1; translator/plan-proto stay 0.13.0 (their sources are unchanged).
+
 - **llm-gateway — a budget refusal no longer takes a rate-limit slot, and `Retry-After` holds when the window is
   over-full.** A request the key's rate limit admits and the money-budget pre-check then refuses (`insufficient_quota`)
   gives its slot back, so a key retrying over its budget no longer fills its rate window with requests that never went
