@@ -262,7 +262,12 @@ fun Application.module(
         val rl = rateLimiter.check(principal.keyId, teamRpm[principal.team], principal.rpmOverride)
         if (!rl.allowed) throw GatewayException(GatewayError.RateLimit(rl.retryAfterSeconds * 1000))
         val budget = budgetService?.precheck(principal.team, principal.budgetUsdOverride)
-        if (budget != null && !budget.allowed) throw GatewayException(GatewayError.BudgetExceeded())
+        if (budget != null && !budget.allowed) {
+            // refused before any upstream work: hand back the rate slot just taken, so a key retrying over
+            // its budget does not fill its own rate window with requests that never went upstream
+            rl.member?.let { rateLimiter.release(principal.keyId, it) }
+            throw GatewayException(GatewayError.BudgetExceeded())
+        }
     }
 
     monitor.subscribe(ApplicationStopping) {

@@ -28,6 +28,7 @@ import org.tatrman.llmgateway.config.SeededKey
 import org.tatrman.llmgateway.config.Team
 import org.tatrman.llmgateway.module
 import org.tatrman.llmgateway.store.Pg
+import org.tatrman.llmgateway.store.RedisConn
 import org.testcontainers.containers.GenericContainer
 import org.testcontainers.containers.PostgreSQLContainer
 import java.net.URI
@@ -35,8 +36,10 @@ import java.net.URI
 /**
  * LG-P4·S2·T7 — the two-team admission smoke through the wire (P-1). Team A (rpm=2, soft budget) makes two
  * successful chat calls that settle, then its third is rate-limited 429; team B (hard budget already
- * exceeded) is blocked with `insufficient_quota` + `x-gateway-reason`. Assertions are data-flow
- * (budget_usage rows moved), not call counts (house rule). Real PG + Redis + a WireMock upstream.
+ * exceeded) is blocked with `insufficient_quota` + `x-gateway-reason`. A budget refusal hands back the rate
+ * slot it took (team C: rpm=2, hard budget exceeded — every retry is still a budget refusal, and its rate
+ * window stays empty). Assertions are data-flow (budget_usage rows moved, the window's log), not call counts
+ * (house rule). Real PG + Redis + a WireMock upstream.
  */
 class AdmissionSmokeSpec :
     StringSpec({
@@ -51,8 +54,11 @@ class AdmissionSmokeSpec :
 
         val keyA = KeyMint.generate()
         val keyB = KeyMint.generate()
+        val keyC = KeyMint.generate()
         lateinit var cfg: Config
         lateinit var budgets: BudgetUsageRepo
+        lateinit var virtualKeys: VirtualKeyRepo
+        lateinit var redis: RedisConn
         // matches the service's firstOfMonthUtc() (current UTC month) — the row key both sides settle against
         val month =
             java.time.LocalDate
@@ -75,11 +81,13 @@ class AdmissionSmokeSpec :
                             listOf(
                                 Team("teamA", "teamA/", BudgetDef("a", 1_000.0, "soft"), RateLimitDef("arl", 2)),
                                 Team("teamB", "teamB/", BudgetDef("b", 0.01, "hard"), RateLimitDef("brl", 100)),
+                                Team("teamC", "teamC/", BudgetDef("c", 0.01, "hard"), RateLimitDef("crl", 2)),
                             ),
                         keys =
                             listOf(
                                 SeededKey("teamA", "kA", KeyMint.hash(keyA)),
                                 SeededKey("teamB", "kB", KeyMint.hash(keyB)),
+                                SeededKey("teamC", "kC", KeyMint.hash(keyC)),
                             ),
                     ),
             )
@@ -107,11 +115,14 @@ class AdmissionSmokeSpec :
                     .resolve()
             val pg = Pg.fromConfig(cfg).also { it.migrate() }
             budgets = BudgetUsageRepo(pg.db)
+            virtualKeys = VirtualKeyRepo(pg.db)
+            redis = RedisConn.fromConfig(cfg)
             // module() upserts teams at boot, but that boot is lazy (first request) — ensure the teams exist
             // now so the pre-seed of team B's usage (before the first call) satisfies the FK.
             TeamRepo(pg.db).upsertAll(gateway().governance.teams)
         }
         afterSpec {
+            redis.close()
             pgc.stop()
             redisC.stop()
             wm.stop()
@@ -156,6 +167,32 @@ class AdmissionSmokeSpec :
                 b.status shouldBe HttpStatusCode.TooManyRequests
                 b.bodyAsText() shouldContain "insufficient_quota"
                 b.headers["x-gateway-reason"] shouldBe "budget_exceeded"
+            }
+        }
+
+        "a budget refusal hands back its rate slot: retrying over budget is never rate-limited" {
+            testApplication {
+                environment { config = MapApplicationConfig() }
+                application { module(cfg, gateway()) }
+                // boot now: the spec's repos run on Exposed's default database, the pool opened last — after the
+                // previous test that is its app's pool, closed when that app stopped
+                startApplication()
+
+                budgets.addUsage("teamC", month, java.math.BigDecimal("1.0"), 0, 0) // hard cap blown
+
+                // rpm=2: had the refusals kept their slots, the third would be refused by the rate limit
+                repeat(3) {
+                    val c =
+                        client.post("/v1/chat/completions") {
+                            header(HttpHeaders.Authorization, "Bearer $keyC")
+                            setBody(body("gpt-4o"))
+                        }
+                    c.status shouldBe HttpStatusCode.TooManyRequests
+                    c.headers["x-gateway-reason"] shouldBe "budget_exceeded"
+                }
+                // the key's window holds none of them
+                val keyId = virtualKeys.findByHash(KeyMint.hash(keyC))!!.id
+                redis.sync().zcard("llm-gateway:rlw:$keyId") shouldBe 0L
             }
         }
     })
