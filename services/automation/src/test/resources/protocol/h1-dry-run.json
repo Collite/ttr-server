@@ -1,0 +1,6427 @@
+{
+  "run": "00000000-0000-4000-8000-000000000001",
+  "sections": {
+    "automation": [
+      {
+        "seq": 1,
+        "at": "2026-11-02T17:40:14.477509Z",
+        "payload": {
+          "fps": {
+            "text": "sha256:e0acc590f84d824ab502b9ea9bbceecbd8fab32ebfe2a997cd09a59f42a77959",
+            "values": "sha256:54e165c4463646ed8b9ae490dc1a830b34e76dda883caa0f3df407699c7ae888",
+            "program": "sha256:a011f34727e5a39d3d6bfbe85fc2007eef5da25b009c9bfd03dab60f732d75b7",
+            "deployment": "sha256:5cb4a9ff6e57226ead39ce032df1e9c53417185d743048f324cbf4a2c80cb3f0"
+          },
+          "asOf": "2026-11-02T05:00:00Z",
+          "port": {
+            "none": true
+          },
+          "event": "opened",
+          "runAs": "certifier",
+          "author": "certifier@example.invalid",
+          "bundle": "served:master@082070588773",
+          "caller": "certifier",
+          "dryRun": true,
+          "origin": "debug-run",
+          "recipe": "release_order",
+          "modelFp": "sha256:a4737ecfd7c76423fefe2d232f68b15ed92ec08f7b7356bdf55412bdf15e78fe",
+          "program": "morning_release",
+          "approvals": "development-off",
+          "deployment": "release_debug",
+          "detailLimit": 200,
+          "readCeiling": 100000,
+          "budgetSyncMs": 60000,
+          "detailLimits": {
+            "hold_ar": 200,
+            "hold_sales": 200
+          },
+          "budgetBatchMs": 1800000,
+          "allowRestrictedView": false
+        }
+      },
+      {
+        "seq": 2,
+        "at": "2026-11-02T17:41:07.226546Z",
+        "payload": {
+          "batch": "00000000-0000-4000-8000-000000000002",
+          "event": "closed",
+          "dryRun": true,
+          "status": "closed"
+        }
+      },
+      {
+        "seq": 3,
+        "at": "2026-11-02T17:41:07.226546Z",
+        "payload": {
+          "sealed": true
+        }
+      }
+    ],
+    "islands": [
+      {
+        "seq": 1,
+        "at": "2026-11-02T17:40:14.785691Z",
+        "payload": {
+          "kind": "output",
+          "name": "placed_orders",
+          "port": "orders",
+          "rows": 153,
+          "bytes": 11600,
+          "engine": "query",
+          "params": {},
+          "storage": "erp_db",
+          "warnings": [
+            "cache_hit",
+            "compile_duration_ms",
+            "routing_decision",
+            "schema_mismatch"
+          ],
+          "statement": "islands/placed_orders.orders.sql",
+          "durationMs": 139
+        }
+      },
+      {
+        "seq": 2,
+        "at": "2026-11-02T17:40:15.240243Z",
+        "payload": {
+          "kind": "output",
+          "name": "overdue",
+          "port": "rows",
+          "rows": 7,
+          "bytes": 944,
+          "engine": "query",
+          "params": {
+            "as_of": {
+              "type": "datetime",
+              "value": "2026-11-02T05:00:00Z"
+            }
+          },
+          "storage": "erp_db",
+          "warnings": [
+            "cache_hit",
+            "compile_duration_ms",
+            "routing_decision",
+            "schema_mismatch"
+          ],
+          "statement": "islands/overdue.rows.sql",
+          "durationMs": 442
+        }
+      },
+      {
+        "seq": 3,
+        "at": "2026-11-02T17:40:15.321499Z",
+        "payload": {
+          "kind": "output",
+          "name": "price_differences",
+          "port": "rows",
+          "rows": 6,
+          "bytes": 1096,
+          "engine": "query",
+          "params": {
+            "tolerance": {
+              "type": "decimal",
+              "value": 0.01
+            }
+          },
+          "storage": "erp_db",
+          "warnings": [
+            "cache_hit",
+            "compile_duration_ms",
+            "routing_decision",
+            "schema_mismatch"
+          ],
+          "statement": "islands/price_differences.rows.sql",
+          "durationMs": 528
+        }
+      },
+      {
+        "seq": 4,
+        "at": "2026-11-02T17:40:17.295464Z",
+        "payload": {
+          "kind": "output",
+          "name": "shortfall",
+          "port": "rows",
+          "rows": 18,
+          "bytes": 1896,
+          "engine": "query",
+          "params": {
+            "as_of": {
+              "type": "datetime",
+              "value": "2026-11-02T05:00:00Z"
+            }
+          },
+          "storage": "erp_db",
+          "warnings": [
+            "cache_hit",
+            "compile_duration_ms",
+            "routing_decision",
+            "schema_mismatch"
+          ],
+          "statement": "islands/shortfall.rows.sql",
+          "durationMs": 2500
+        }
+      },
+      {
+        "seq": 5,
+        "at": "2026-11-02T17:40:18.282944Z",
+        "payload": {
+          "kind": "output",
+          "name": "verdict",
+          "port": "hold_ar.overdue",
+          "rows": 7,
+          "bytes": 1496,
+          "engine": "query",
+          "params": {
+            "as_of": {
+              "type": "datetime",
+              "value": "2026-11-02T05:00:00Z"
+            },
+            "tolerance": {
+              "type": "decimal",
+              "value": 0.01
+            }
+          },
+          "storage": "erp_db",
+          "warnings": [
+            "cache_hit",
+            "compile_duration_ms",
+            "routing_decision",
+            "schema_mismatch"
+          ],
+          "statement": "islands/verdict.hold_ar.overdue.sql",
+          "durationMs": 973
+        }
+      },
+      {
+        "seq": 6,
+        "at": "2026-11-02T17:40:20.665088Z",
+        "payload": {
+          "kind": "output",
+          "name": "verdict",
+          "port": "hold_sales",
+          "rows": 21,
+          "bytes": 4744,
+          "engine": "query",
+          "params": {
+            "as_of": {
+              "type": "datetime",
+              "value": "2026-11-02T05:00:00Z"
+            },
+            "tolerance": {
+              "type": "decimal",
+              "value": 0.01
+            }
+          },
+          "storage": "erp_db",
+          "warnings": [
+            "cache_hit",
+            "compile_duration_ms",
+            "routing_decision",
+            "schema_mismatch"
+          ],
+          "statement": "islands/verdict.hold_sales.sql",
+          "durationMs": 3361
+        }
+      },
+      {
+        "seq": 7,
+        "at": "2026-11-02T17:40:21.117927Z",
+        "payload": {
+          "kind": "output",
+          "name": "verdict",
+          "port": "release",
+          "rows": 0,
+          "bytes": 1552,
+          "engine": "query",
+          "params": {
+            "as_of": {
+              "type": "datetime",
+              "value": "2026-11-02T05:00:00Z"
+            },
+            "tolerance": {
+              "type": "decimal",
+              "value": 0.01
+            },
+            "confirmation_threshold": {
+              "type": "decimal",
+              "value": 50000
+            }
+          },
+          "storage": "erp_db",
+          "warnings": [
+            "cache_hit",
+            "compile_duration_ms",
+            "routing_decision",
+            "schema_mismatch"
+          ],
+          "statement": "islands/verdict.release.sql",
+          "durationMs": 3802
+        }
+      },
+      {
+        "seq": 8,
+        "at": "2026-11-02T17:40:21.451925Z",
+        "payload": {
+          "kind": "output",
+          "name": "verdict",
+          "port": "hold_sales.price_differences",
+          "rows": 6,
+          "bytes": 1704,
+          "engine": "query",
+          "params": {
+            "as_of": {
+              "type": "datetime",
+              "value": "2026-11-02T05:00:00Z"
+            },
+            "tolerance": {
+              "type": "decimal",
+              "value": 0.01
+            }
+          },
+          "storage": "erp_db",
+          "warnings": [
+            "cache_hit",
+            "compile_duration_ms",
+            "routing_decision",
+            "schema_mismatch"
+          ],
+          "statement": "islands/verdict.hold_sales.price_differences.sql",
+          "durationMs": 4142
+        }
+      },
+      {
+        "seq": 9,
+        "at": "2026-11-02T17:40:21.928752Z",
+        "payload": {
+          "kind": "output",
+          "name": "verdict",
+          "port": "release_confirmed",
+          "rows": 127,
+          "bytes": 23144,
+          "engine": "query",
+          "params": {
+            "as_of": {
+              "type": "datetime",
+              "value": "2026-11-02T05:00:00Z"
+            },
+            "tolerance": {
+              "type": "decimal",
+              "value": 0.01
+            },
+            "confirmation_threshold": {
+              "type": "decimal",
+              "value": 50000
+            }
+          },
+          "storage": "erp_db",
+          "warnings": [
+            "cache_hit",
+            "compile_duration_ms",
+            "routing_decision",
+            "schema_mismatch"
+          ],
+          "statement": "islands/verdict.release_confirmed.sql",
+          "durationMs": 4619
+        }
+      },
+      {
+        "seq": 10,
+        "at": "2026-11-02T17:40:22.296874Z",
+        "payload": {
+          "kind": "output",
+          "name": "verdict",
+          "port": "hold_ar",
+          "rows": 7,
+          "bytes": 2584,
+          "engine": "query",
+          "params": {
+            "as_of": {
+              "type": "datetime",
+              "value": "2026-11-02T05:00:00Z"
+            },
+            "tolerance": {
+              "type": "decimal",
+              "value": 0.01
+            }
+          },
+          "storage": "erp_db",
+          "warnings": [
+            "cache_hit",
+            "compile_duration_ms",
+            "routing_decision",
+            "schema_mismatch"
+          ],
+          "statement": "islands/verdict.hold_ar.sql",
+          "durationMs": 4980
+        }
+      },
+      {
+        "seq": 11,
+        "at": "2026-11-02T17:40:27.740478Z",
+        "payload": {
+          "kind": "output",
+          "name": "verdict",
+          "port": "hold_sales.shortfall",
+          "rows": 18,
+          "bytes": 2776,
+          "engine": "query",
+          "params": {
+            "as_of": {
+              "type": "datetime",
+              "value": "2026-11-02T05:00:00Z"
+            },
+            "tolerance": {
+              "type": "decimal",
+              "value": 0.01
+            }
+          },
+          "storage": "erp_db",
+          "warnings": [
+            "cache_hit",
+            "compile_duration_ms",
+            "routing_decision",
+            "schema_mismatch"
+          ],
+          "statement": "islands/verdict.hold_sales.shortfall.sql",
+          "durationMs": 10426
+        }
+      }
+    ],
+    "decision": [
+      {
+        "seq": 1,
+        "at": "2026-11-02T17:40:28.261222Z",
+        "payload": {
+          "mode": "overlapping",
+          "guards": [
+            {
+              "code": "candidates-truncated",
+              "island": "overdue",
+              "status": "passed"
+            },
+            {
+              "code": "out-of-scope-read",
+              "island": "overdue",
+              "status": "passed"
+            },
+            {
+              "code": "restricted-view",
+              "island": "overdue",
+              "status": "passed"
+            },
+            {
+              "code": "candidates-truncated",
+              "island": "placed_orders",
+              "status": "passed"
+            },
+            {
+              "code": "duplicate-key",
+              "island": "placed_orders",
+              "status": "passed"
+            },
+            {
+              "code": "out-of-scope",
+              "island": "placed_orders",
+              "status": "passed"
+            },
+            {
+              "code": "out-of-scope-read",
+              "island": "placed_orders",
+              "status": "passed"
+            },
+            {
+              "code": "restricted-view",
+              "island": "placed_orders",
+              "status": "passed"
+            },
+            {
+              "code": "candidates-truncated",
+              "island": "price_differences",
+              "status": "passed"
+            },
+            {
+              "code": "out-of-scope-read",
+              "island": "price_differences",
+              "status": "passed"
+            },
+            {
+              "code": "restricted-view",
+              "island": "price_differences",
+              "status": "passed"
+            },
+            {
+              "code": "candidates-truncated",
+              "island": "shortfall",
+              "status": "passed"
+            },
+            {
+              "code": "out-of-scope-read",
+              "island": "shortfall",
+              "status": "passed"
+            },
+            {
+              "code": "restricted-view",
+              "island": "shortfall",
+              "status": "passed"
+            },
+            {
+              "code": "candidates-truncated",
+              "island": "verdict",
+              "status": "passed"
+            },
+            {
+              "code": "out-of-scope-read",
+              "island": "verdict",
+              "status": "passed"
+            },
+            {
+              "code": "restricted-view",
+              "island": "verdict",
+              "status": "passed"
+            }
+          ],
+          "verdict": {
+            "none": 0,
+            "routes": {
+              "hold_ar": {
+                "ref": "/automation/runs/00000000-0000-4000-8000-000000000001/outputs/verdict.hold_ar",
+                "detail": {
+                  "overdue": "/automation/runs/00000000-0000-4000-8000-000000000001/routes/hold_ar/details/overdue"
+                },
+                "rowCount": 7
+              },
+              "release": {
+                "ref": "/automation/runs/00000000-0000-4000-8000-000000000001/outputs/verdict.release",
+                "rowCount": 0
+              },
+              "hold_sales": {
+                "ref": "/automation/runs/00000000-0000-4000-8000-000000000001/outputs/verdict.hold_sales",
+                "detail": {
+                  "shortfall": "/automation/runs/00000000-0000-4000-8000-000000000001/routes/hold_sales/details/shortfall",
+                  "price_differences": "/automation/runs/00000000-0000-4000-8000-000000000001/routes/hold_sales/details/price_differences"
+                },
+                "rowCount": 21
+              },
+              "release_confirmed": {
+                "ref": "/automation/runs/00000000-0000-4000-8000-000000000001/outputs/verdict.release_confirmed",
+                "rowCount": 127
+              }
+            }
+          }
+        }
+      }
+    ],
+    "actions": [
+      {
+        "seq": 1,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711104
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "hold_sales",
+          "would": "would hold order 4711104 for Sales",
+          "action": "hold",
+          "dryRun": true,
+          "arguments": {
+            "order": 4711104,
+            "department": "Sales"
+          },
+          "batchRows": [
+            3,
+            4
+          ]
+        }
+      },
+      {
+        "seq": 2,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711104
+          },
+          "sink": "deliver",
+          "event": "preview",
+          "route": "hold_sales",
+          "would": "would notify role.sales with 1 rows",
+          "action": "notify",
+          "dryRun": true,
+          "arguments": {
+            "who": "role.sales",
+            "detail": {
+              "refs": [
+                {
+                  "ref": "/automation/runs/00000000-0000-4000-8000-000000000001/routes/hold_sales/details/shortfall?row=0",
+                  "limit": 200,
+                  "context": "shortfall",
+                  "rowCount": 1,
+                  "truncated": false
+                },
+                {
+                  "ref": "/automation/runs/00000000-0000-4000-8000-000000000001/routes/hold_sales/details/price_differences?row=0",
+                  "limit": 200,
+                  "context": "price_differences",
+                  "rowCount": 0,
+                  "truncated": false
+                }
+              ],
+              "count": 1,
+              "truncated": false
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 3,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711152
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "hold_sales",
+          "would": "would hold order 4711152 for Sales",
+          "action": "hold",
+          "dryRun": true,
+          "arguments": {
+            "order": 4711152,
+            "department": "Sales"
+          },
+          "batchRows": [
+            7,
+            8
+          ]
+        }
+      },
+      {
+        "seq": 4,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711152
+          },
+          "sink": "deliver",
+          "event": "preview",
+          "route": "hold_sales",
+          "would": "would notify role.sales with 1 rows",
+          "action": "notify",
+          "dryRun": true,
+          "arguments": {
+            "who": "role.sales",
+            "detail": {
+              "refs": [
+                {
+                  "ref": "/automation/runs/00000000-0000-4000-8000-000000000001/routes/hold_sales/details/shortfall?row=1",
+                  "limit": 200,
+                  "context": "shortfall",
+                  "rowCount": 1,
+                  "truncated": false
+                },
+                {
+                  "ref": "/automation/runs/00000000-0000-4000-8000-000000000001/routes/hold_sales/details/price_differences?row=1",
+                  "limit": 200,
+                  "context": "price_differences",
+                  "rowCount": 0,
+                  "truncated": false
+                }
+              ],
+              "count": 1,
+              "truncated": false
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 5,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711088
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "hold_sales",
+          "would": "would hold order 4711088 for Sales",
+          "action": "hold",
+          "dryRun": true,
+          "arguments": {
+            "order": 4711088,
+            "department": "Sales"
+          },
+          "batchRows": [
+            11,
+            12
+          ]
+        }
+      },
+      {
+        "seq": 6,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711088
+          },
+          "sink": "deliver",
+          "event": "preview",
+          "route": "hold_sales",
+          "would": "would notify role.sales with 1 rows",
+          "action": "notify",
+          "dryRun": true,
+          "arguments": {
+            "who": "role.sales",
+            "detail": {
+              "refs": [
+                {
+                  "ref": "/automation/runs/00000000-0000-4000-8000-000000000001/routes/hold_sales/details/shortfall?row=2",
+                  "limit": 200,
+                  "context": "shortfall",
+                  "rowCount": 1,
+                  "truncated": false
+                },
+                {
+                  "ref": "/automation/runs/00000000-0000-4000-8000-000000000001/routes/hold_sales/details/price_differences?row=2",
+                  "limit": 200,
+                  "context": "price_differences",
+                  "rowCount": 0,
+                  "truncated": false
+                }
+              ],
+              "count": 1,
+              "truncated": false
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 7,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711070
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "hold_sales",
+          "would": "would hold order 4711070 for Sales",
+          "action": "hold",
+          "dryRun": true,
+          "arguments": {
+            "order": 4711070,
+            "department": "Sales"
+          },
+          "batchRows": [
+            15,
+            16
+          ]
+        }
+      },
+      {
+        "seq": 8,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711070
+          },
+          "sink": "deliver",
+          "event": "preview",
+          "route": "hold_sales",
+          "would": "would notify role.sales with 1 rows",
+          "action": "notify",
+          "dryRun": true,
+          "arguments": {
+            "who": "role.sales",
+            "detail": {
+              "refs": [
+                {
+                  "ref": "/automation/runs/00000000-0000-4000-8000-000000000001/routes/hold_sales/details/shortfall?row=3",
+                  "limit": 200,
+                  "context": "shortfall",
+                  "rowCount": 1,
+                  "truncated": false
+                },
+                {
+                  "ref": "/automation/runs/00000000-0000-4000-8000-000000000001/routes/hold_sales/details/price_differences?row=3",
+                  "limit": 200,
+                  "context": "price_differences",
+                  "rowCount": 0,
+                  "truncated": false
+                }
+              ],
+              "count": 1,
+              "truncated": false
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 9,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711049
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "hold_sales",
+          "would": "would hold order 4711049 for Sales",
+          "action": "hold",
+          "dryRun": true,
+          "arguments": {
+            "order": 4711049,
+            "department": "Sales"
+          },
+          "batchRows": [
+            19,
+            20
+          ]
+        }
+      },
+      {
+        "seq": 10,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711049
+          },
+          "sink": "deliver",
+          "event": "preview",
+          "route": "hold_sales",
+          "would": "would notify role.sales with 1 rows",
+          "action": "notify",
+          "dryRun": true,
+          "arguments": {
+            "who": "role.sales",
+            "detail": {
+              "refs": [
+                {
+                  "ref": "/automation/runs/00000000-0000-4000-8000-000000000001/routes/hold_sales/details/shortfall?row=4",
+                  "limit": 200,
+                  "context": "shortfall",
+                  "rowCount": 1,
+                  "truncated": false
+                },
+                {
+                  "ref": "/automation/runs/00000000-0000-4000-8000-000000000001/routes/hold_sales/details/price_differences?row=4",
+                  "limit": 200,
+                  "context": "price_differences",
+                  "rowCount": 0,
+                  "truncated": false
+                }
+              ],
+              "count": 1,
+              "truncated": false
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 11,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711059
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "hold_sales",
+          "would": "would hold order 4711059 for Sales",
+          "action": "hold",
+          "dryRun": true,
+          "arguments": {
+            "order": 4711059,
+            "department": "Sales"
+          },
+          "batchRows": [
+            23,
+            24
+          ]
+        }
+      },
+      {
+        "seq": 12,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711059
+          },
+          "sink": "deliver",
+          "event": "preview",
+          "route": "hold_sales",
+          "would": "would notify role.sales with 1 rows",
+          "action": "notify",
+          "dryRun": true,
+          "arguments": {
+            "who": "role.sales",
+            "detail": {
+              "refs": [
+                {
+                  "ref": "/automation/runs/00000000-0000-4000-8000-000000000001/routes/hold_sales/details/shortfall?row=5",
+                  "limit": 200,
+                  "context": "shortfall",
+                  "rowCount": 1,
+                  "truncated": false
+                },
+                {
+                  "ref": "/automation/runs/00000000-0000-4000-8000-000000000001/routes/hold_sales/details/price_differences?row=5",
+                  "limit": 200,
+                  "context": "price_differences",
+                  "rowCount": 0,
+                  "truncated": false
+                }
+              ],
+              "count": 1,
+              "truncated": false
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 13,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711047
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "hold_sales",
+          "would": "would hold order 4711047 for Sales",
+          "action": "hold",
+          "dryRun": true,
+          "arguments": {
+            "order": 4711047,
+            "department": "Sales"
+          },
+          "batchRows": [
+            27,
+            28
+          ]
+        }
+      },
+      {
+        "seq": 14,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711047
+          },
+          "sink": "deliver",
+          "event": "preview",
+          "route": "hold_sales",
+          "would": "would notify role.sales with 1 rows",
+          "action": "notify",
+          "dryRun": true,
+          "arguments": {
+            "who": "role.sales",
+            "detail": {
+              "refs": [
+                {
+                  "ref": "/automation/runs/00000000-0000-4000-8000-000000000001/routes/hold_sales/details/shortfall?row=6",
+                  "limit": 200,
+                  "context": "shortfall",
+                  "rowCount": 1,
+                  "truncated": false
+                },
+                {
+                  "ref": "/automation/runs/00000000-0000-4000-8000-000000000001/routes/hold_sales/details/price_differences?row=6",
+                  "limit": 200,
+                  "context": "price_differences",
+                  "rowCount": 0,
+                  "truncated": false
+                }
+              ],
+              "count": 1,
+              "truncated": false
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 15,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711033
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "hold_sales",
+          "would": "would hold order 4711033 for Sales",
+          "action": "hold",
+          "dryRun": true,
+          "arguments": {
+            "order": 4711033,
+            "department": "Sales"
+          },
+          "batchRows": [
+            31,
+            32
+          ]
+        }
+      },
+      {
+        "seq": 16,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711033
+          },
+          "sink": "deliver",
+          "event": "preview",
+          "route": "hold_sales",
+          "would": "would notify role.sales with 1 rows",
+          "action": "notify",
+          "dryRun": true,
+          "arguments": {
+            "who": "role.sales",
+            "detail": {
+              "refs": [
+                {
+                  "ref": "/automation/runs/00000000-0000-4000-8000-000000000001/routes/hold_sales/details/shortfall?row=7",
+                  "limit": 200,
+                  "context": "shortfall",
+                  "rowCount": 1,
+                  "truncated": false
+                },
+                {
+                  "ref": "/automation/runs/00000000-0000-4000-8000-000000000001/routes/hold_sales/details/price_differences?row=7",
+                  "limit": 200,
+                  "context": "price_differences",
+                  "rowCount": 0,
+                  "truncated": false
+                }
+              ],
+              "count": 1,
+              "truncated": false
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 17,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711001
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "hold_sales",
+          "would": "would hold order 4711001 for Sales",
+          "action": "hold",
+          "dryRun": true,
+          "arguments": {
+            "order": 4711001,
+            "department": "Sales"
+          },
+          "batchRows": [
+            35,
+            36
+          ]
+        }
+      },
+      {
+        "seq": 18,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711001
+          },
+          "sink": "deliver",
+          "event": "preview",
+          "route": "hold_sales",
+          "would": "would notify role.sales with 1 rows",
+          "action": "notify",
+          "dryRun": true,
+          "arguments": {
+            "who": "role.sales",
+            "detail": {
+              "refs": [
+                {
+                  "ref": "/automation/runs/00000000-0000-4000-8000-000000000001/routes/hold_sales/details/shortfall?row=8",
+                  "limit": 200,
+                  "context": "shortfall",
+                  "rowCount": 1,
+                  "truncated": false
+                },
+                {
+                  "ref": "/automation/runs/00000000-0000-4000-8000-000000000001/routes/hold_sales/details/price_differences?row=8",
+                  "limit": 200,
+                  "context": "price_differences",
+                  "rowCount": 0,
+                  "truncated": false
+                }
+              ],
+              "count": 1,
+              "truncated": false
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 19,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711010
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "hold_sales",
+          "would": "would hold order 4711010 for Sales",
+          "action": "hold",
+          "dryRun": true,
+          "arguments": {
+            "order": 4711010,
+            "department": "Sales"
+          },
+          "batchRows": [
+            39,
+            40
+          ]
+        }
+      },
+      {
+        "seq": 20,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711010
+          },
+          "sink": "deliver",
+          "event": "preview",
+          "route": "hold_sales",
+          "would": "would notify role.sales with 1 rows",
+          "action": "notify",
+          "dryRun": true,
+          "arguments": {
+            "who": "role.sales",
+            "detail": {
+              "refs": [
+                {
+                  "ref": "/automation/runs/00000000-0000-4000-8000-000000000001/routes/hold_sales/details/shortfall?row=9",
+                  "limit": 200,
+                  "context": "shortfall",
+                  "rowCount": 1,
+                  "truncated": false
+                },
+                {
+                  "ref": "/automation/runs/00000000-0000-4000-8000-000000000001/routes/hold_sales/details/price_differences?row=9",
+                  "limit": 200,
+                  "context": "price_differences",
+                  "rowCount": 0,
+                  "truncated": false
+                }
+              ],
+              "count": 1,
+              "truncated": false
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 21,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711126
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "hold_sales",
+          "would": "would hold order 4711126 for Sales",
+          "action": "hold",
+          "dryRun": true,
+          "arguments": {
+            "order": 4711126,
+            "department": "Sales"
+          },
+          "batchRows": [
+            44,
+            45
+          ]
+        }
+      },
+      {
+        "seq": 22,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711126
+          },
+          "sink": "deliver",
+          "event": "preview",
+          "route": "hold_sales",
+          "would": "would notify role.sales with 2 rows",
+          "action": "notify",
+          "dryRun": true,
+          "arguments": {
+            "who": "role.sales",
+            "detail": {
+              "refs": [
+                {
+                  "ref": "/automation/runs/00000000-0000-4000-8000-000000000001/routes/hold_sales/details/shortfall?row=10",
+                  "limit": 200,
+                  "context": "shortfall",
+                  "rowCount": 2,
+                  "truncated": false
+                },
+                {
+                  "ref": "/automation/runs/00000000-0000-4000-8000-000000000001/routes/hold_sales/details/price_differences?row=10",
+                  "limit": 200,
+                  "context": "price_differences",
+                  "rowCount": 0,
+                  "truncated": false
+                }
+              ],
+              "count": 2,
+              "truncated": false
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 23,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711145
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "hold_sales",
+          "would": "would hold order 4711145 for Sales",
+          "action": "hold",
+          "dryRun": true,
+          "arguments": {
+            "order": 4711145,
+            "department": "Sales"
+          },
+          "batchRows": [
+            50,
+            51
+          ]
+        }
+      },
+      {
+        "seq": 24,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711145
+          },
+          "sink": "deliver",
+          "event": "preview",
+          "route": "hold_sales",
+          "would": "would notify role.sales with 3 rows",
+          "action": "notify",
+          "dryRun": true,
+          "arguments": {
+            "who": "role.sales",
+            "detail": {
+              "refs": [
+                {
+                  "ref": "/automation/runs/00000000-0000-4000-8000-000000000001/routes/hold_sales/details/shortfall?row=11",
+                  "limit": 200,
+                  "context": "shortfall",
+                  "rowCount": 3,
+                  "truncated": false
+                },
+                {
+                  "ref": "/automation/runs/00000000-0000-4000-8000-000000000001/routes/hold_sales/details/price_differences?row=11",
+                  "limit": 200,
+                  "context": "price_differences",
+                  "rowCount": 0,
+                  "truncated": false
+                }
+              ],
+              "count": 3,
+              "truncated": false
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 25,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711014
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "hold_sales",
+          "would": "would hold order 4711014 for Sales",
+          "action": "hold",
+          "dryRun": true,
+          "arguments": {
+            "order": 4711014,
+            "department": "Sales"
+          },
+          "batchRows": [
+            54,
+            55
+          ]
+        }
+      },
+      {
+        "seq": 26,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711014
+          },
+          "sink": "deliver",
+          "event": "preview",
+          "route": "hold_sales",
+          "would": "would notify role.sales with 1 rows",
+          "action": "notify",
+          "dryRun": true,
+          "arguments": {
+            "who": "role.sales",
+            "detail": {
+              "refs": [
+                {
+                  "ref": "/automation/runs/00000000-0000-4000-8000-000000000001/routes/hold_sales/details/shortfall?row=12",
+                  "limit": 200,
+                  "context": "shortfall",
+                  "rowCount": 1,
+                  "truncated": false
+                },
+                {
+                  "ref": "/automation/runs/00000000-0000-4000-8000-000000000001/routes/hold_sales/details/price_differences?row=12",
+                  "limit": 200,
+                  "context": "price_differences",
+                  "rowCount": 0,
+                  "truncated": false
+                }
+              ],
+              "count": 1,
+              "truncated": false
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 27,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711131
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "hold_sales",
+          "would": "would hold order 4711131 for Sales",
+          "action": "hold",
+          "dryRun": true,
+          "arguments": {
+            "order": 4711131,
+            "department": "Sales"
+          },
+          "batchRows": [
+            58,
+            59
+          ]
+        }
+      },
+      {
+        "seq": 28,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711131
+          },
+          "sink": "deliver",
+          "event": "preview",
+          "route": "hold_sales",
+          "would": "would notify role.sales with 1 rows",
+          "action": "notify",
+          "dryRun": true,
+          "arguments": {
+            "who": "role.sales",
+            "detail": {
+              "refs": [
+                {
+                  "ref": "/automation/runs/00000000-0000-4000-8000-000000000001/routes/hold_sales/details/shortfall?row=13",
+                  "limit": 200,
+                  "context": "shortfall",
+                  "rowCount": 1,
+                  "truncated": false
+                },
+                {
+                  "ref": "/automation/runs/00000000-0000-4000-8000-000000000001/routes/hold_sales/details/price_differences?row=13",
+                  "limit": 200,
+                  "context": "price_differences",
+                  "rowCount": 0,
+                  "truncated": false
+                }
+              ],
+              "count": 1,
+              "truncated": false
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 29,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711052
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "hold_sales",
+          "would": "would hold order 4711052 for Sales",
+          "action": "hold",
+          "dryRun": true,
+          "arguments": {
+            "order": 4711052,
+            "department": "Sales"
+          },
+          "batchRows": [
+            62,
+            63
+          ]
+        }
+      },
+      {
+        "seq": 30,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711052
+          },
+          "sink": "deliver",
+          "event": "preview",
+          "route": "hold_sales",
+          "would": "would notify role.sales with 1 rows",
+          "action": "notify",
+          "dryRun": true,
+          "arguments": {
+            "who": "role.sales",
+            "detail": {
+              "refs": [
+                {
+                  "ref": "/automation/runs/00000000-0000-4000-8000-000000000001/routes/hold_sales/details/shortfall?row=14",
+                  "limit": 200,
+                  "context": "shortfall",
+                  "rowCount": 1,
+                  "truncated": false
+                },
+                {
+                  "ref": "/automation/runs/00000000-0000-4000-8000-000000000001/routes/hold_sales/details/price_differences?row=14",
+                  "limit": 200,
+                  "context": "price_differences",
+                  "rowCount": 0,
+                  "truncated": false
+                }
+              ],
+              "count": 1,
+              "truncated": false
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 31,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711129
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "hold_sales",
+          "would": "would hold order 4711129 for Sales",
+          "action": "hold",
+          "dryRun": true,
+          "arguments": {
+            "order": 4711129,
+            "department": "Sales"
+          },
+          "batchRows": [
+            66,
+            67
+          ]
+        }
+      },
+      {
+        "seq": 32,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711129
+          },
+          "sink": "deliver",
+          "event": "preview",
+          "route": "hold_sales",
+          "would": "would notify role.sales with 1 rows",
+          "action": "notify",
+          "dryRun": true,
+          "arguments": {
+            "who": "role.sales",
+            "detail": {
+              "refs": [
+                {
+                  "ref": "/automation/runs/00000000-0000-4000-8000-000000000001/routes/hold_sales/details/shortfall?row=15",
+                  "limit": 200,
+                  "context": "shortfall",
+                  "rowCount": 0,
+                  "truncated": false
+                },
+                {
+                  "ref": "/automation/runs/00000000-0000-4000-8000-000000000001/routes/hold_sales/details/price_differences?row=15",
+                  "limit": 200,
+                  "context": "price_differences",
+                  "rowCount": 1,
+                  "truncated": false
+                }
+              ],
+              "count": 1,
+              "truncated": false
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 33,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711133
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "hold_sales",
+          "would": "would hold order 4711133 for Sales",
+          "action": "hold",
+          "dryRun": true,
+          "arguments": {
+            "order": 4711133,
+            "department": "Sales"
+          },
+          "batchRows": [
+            70,
+            71
+          ]
+        }
+      },
+      {
+        "seq": 34,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711133
+          },
+          "sink": "deliver",
+          "event": "preview",
+          "route": "hold_sales",
+          "would": "would notify role.sales with 1 rows",
+          "action": "notify",
+          "dryRun": true,
+          "arguments": {
+            "who": "role.sales",
+            "detail": {
+              "refs": [
+                {
+                  "ref": "/automation/runs/00000000-0000-4000-8000-000000000001/routes/hold_sales/details/shortfall?row=16",
+                  "limit": 200,
+                  "context": "shortfall",
+                  "rowCount": 0,
+                  "truncated": false
+                },
+                {
+                  "ref": "/automation/runs/00000000-0000-4000-8000-000000000001/routes/hold_sales/details/price_differences?row=16",
+                  "limit": 200,
+                  "context": "price_differences",
+                  "rowCount": 1,
+                  "truncated": false
+                }
+              ],
+              "count": 1,
+              "truncated": false
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 35,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711039
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "hold_sales",
+          "would": "would hold order 4711039 for Sales",
+          "action": "hold",
+          "dryRun": true,
+          "arguments": {
+            "order": 4711039,
+            "department": "Sales"
+          },
+          "batchRows": [
+            74,
+            75
+          ]
+        }
+      },
+      {
+        "seq": 36,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711039
+          },
+          "sink": "deliver",
+          "event": "preview",
+          "route": "hold_sales",
+          "would": "would notify role.sales with 1 rows",
+          "action": "notify",
+          "dryRun": true,
+          "arguments": {
+            "who": "role.sales",
+            "detail": {
+              "refs": [
+                {
+                  "ref": "/automation/runs/00000000-0000-4000-8000-000000000001/routes/hold_sales/details/shortfall?row=17",
+                  "limit": 200,
+                  "context": "shortfall",
+                  "rowCount": 0,
+                  "truncated": false
+                },
+                {
+                  "ref": "/automation/runs/00000000-0000-4000-8000-000000000001/routes/hold_sales/details/price_differences?row=17",
+                  "limit": 200,
+                  "context": "price_differences",
+                  "rowCount": 1,
+                  "truncated": false
+                }
+              ],
+              "count": 1,
+              "truncated": false
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 37,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711135
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "hold_sales",
+          "would": "would hold order 4711135 for Sales",
+          "action": "hold",
+          "dryRun": true,
+          "arguments": {
+            "order": 4711135,
+            "department": "Sales"
+          },
+          "batchRows": [
+            78,
+            79
+          ]
+        }
+      },
+      {
+        "seq": 38,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711135
+          },
+          "sink": "deliver",
+          "event": "preview",
+          "route": "hold_sales",
+          "would": "would notify role.sales with 1 rows",
+          "action": "notify",
+          "dryRun": true,
+          "arguments": {
+            "who": "role.sales",
+            "detail": {
+              "refs": [
+                {
+                  "ref": "/automation/runs/00000000-0000-4000-8000-000000000001/routes/hold_sales/details/shortfall?row=18",
+                  "limit": 200,
+                  "context": "shortfall",
+                  "rowCount": 0,
+                  "truncated": false
+                },
+                {
+                  "ref": "/automation/runs/00000000-0000-4000-8000-000000000001/routes/hold_sales/details/price_differences?row=18",
+                  "limit": 200,
+                  "context": "price_differences",
+                  "rowCount": 1,
+                  "truncated": false
+                }
+              ],
+              "count": 1,
+              "truncated": false
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 39,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711015
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "hold_sales",
+          "would": "would hold order 4711015 for Sales",
+          "action": "hold",
+          "dryRun": true,
+          "arguments": {
+            "order": 4711015,
+            "department": "Sales"
+          },
+          "batchRows": [
+            82,
+            83
+          ]
+        }
+      },
+      {
+        "seq": 40,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711015
+          },
+          "sink": "deliver",
+          "event": "preview",
+          "route": "hold_sales",
+          "would": "would notify role.sales with 1 rows",
+          "action": "notify",
+          "dryRun": true,
+          "arguments": {
+            "who": "role.sales",
+            "detail": {
+              "refs": [
+                {
+                  "ref": "/automation/runs/00000000-0000-4000-8000-000000000001/routes/hold_sales/details/shortfall?row=19",
+                  "limit": 200,
+                  "context": "shortfall",
+                  "rowCount": 0,
+                  "truncated": false
+                },
+                {
+                  "ref": "/automation/runs/00000000-0000-4000-8000-000000000001/routes/hold_sales/details/price_differences?row=19",
+                  "limit": 200,
+                  "context": "price_differences",
+                  "rowCount": 1,
+                  "truncated": false
+                }
+              ],
+              "count": 1,
+              "truncated": false
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 41,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711003
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "hold_sales",
+          "would": "would hold order 4711003 for Sales",
+          "action": "hold",
+          "dryRun": true,
+          "arguments": {
+            "order": 4711003,
+            "department": "Sales"
+          },
+          "batchRows": [
+            86,
+            87
+          ]
+        }
+      },
+      {
+        "seq": 42,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711003
+          },
+          "sink": "deliver",
+          "event": "preview",
+          "route": "hold_sales",
+          "would": "would notify role.sales with 1 rows",
+          "action": "notify",
+          "dryRun": true,
+          "arguments": {
+            "who": "role.sales",
+            "detail": {
+              "refs": [
+                {
+                  "ref": "/automation/runs/00000000-0000-4000-8000-000000000001/routes/hold_sales/details/shortfall?row=20",
+                  "limit": 200,
+                  "context": "shortfall",
+                  "rowCount": 0,
+                  "truncated": false
+                },
+                {
+                  "ref": "/automation/runs/00000000-0000-4000-8000-000000000001/routes/hold_sales/details/price_differences?row=20",
+                  "limit": 200,
+                  "context": "price_differences",
+                  "rowCount": 1,
+                  "truncated": false
+                }
+              ],
+              "count": 1,
+              "truncated": false
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 43,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711102
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "hold_ar",
+          "would": "would hold order 4711102 for AR",
+          "action": "hold",
+          "dryRun": true,
+          "arguments": {
+            "order": 4711102,
+            "department": "AR"
+          },
+          "batchRows": [
+            90,
+            91
+          ]
+        }
+      },
+      {
+        "seq": 44,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711102
+          },
+          "sink": "deliver",
+          "event": "preview",
+          "route": "hold_ar",
+          "would": "would notify role.ar with 1 rows",
+          "action": "notify",
+          "dryRun": true,
+          "arguments": {
+            "who": "role.ar",
+            "detail": {
+              "refs": [
+                {
+                  "ref": "/automation/runs/00000000-0000-4000-8000-000000000001/routes/hold_ar/details/overdue?row=0",
+                  "limit": 200,
+                  "context": "overdue",
+                  "rowCount": 1,
+                  "truncated": false
+                }
+              ],
+              "count": 1,
+              "truncated": false
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 45,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711084
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "hold_ar",
+          "would": "would hold order 4711084 for AR",
+          "action": "hold",
+          "dryRun": true,
+          "arguments": {
+            "order": 4711084,
+            "department": "AR"
+          },
+          "batchRows": [
+            94,
+            95
+          ]
+        }
+      },
+      {
+        "seq": 46,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711084
+          },
+          "sink": "deliver",
+          "event": "preview",
+          "route": "hold_ar",
+          "would": "would notify role.ar with 1 rows",
+          "action": "notify",
+          "dryRun": true,
+          "arguments": {
+            "who": "role.ar",
+            "detail": {
+              "refs": [
+                {
+                  "ref": "/automation/runs/00000000-0000-4000-8000-000000000001/routes/hold_ar/details/overdue?row=1",
+                  "limit": 200,
+                  "context": "overdue",
+                  "rowCount": 1,
+                  "truncated": false
+                }
+              ],
+              "count": 1,
+              "truncated": false
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 47,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711093
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "hold_ar",
+          "would": "would hold order 4711093 for AR",
+          "action": "hold",
+          "dryRun": true,
+          "arguments": {
+            "order": 4711093,
+            "department": "AR"
+          },
+          "batchRows": [
+            98,
+            99
+          ]
+        }
+      },
+      {
+        "seq": 48,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711093
+          },
+          "sink": "deliver",
+          "event": "preview",
+          "route": "hold_ar",
+          "would": "would notify role.ar with 1 rows",
+          "action": "notify",
+          "dryRun": true,
+          "arguments": {
+            "who": "role.ar",
+            "detail": {
+              "refs": [
+                {
+                  "ref": "/automation/runs/00000000-0000-4000-8000-000000000001/routes/hold_ar/details/overdue?row=2",
+                  "limit": 200,
+                  "context": "overdue",
+                  "rowCount": 1,
+                  "truncated": false
+                }
+              ],
+              "count": 1,
+              "truncated": false
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 49,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711042
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "hold_ar",
+          "would": "would hold order 4711042 for AR",
+          "action": "hold",
+          "dryRun": true,
+          "arguments": {
+            "order": 4711042,
+            "department": "AR"
+          },
+          "batchRows": [
+            102,
+            103
+          ]
+        }
+      },
+      {
+        "seq": 50,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711042
+          },
+          "sink": "deliver",
+          "event": "preview",
+          "route": "hold_ar",
+          "would": "would notify role.ar with 1 rows",
+          "action": "notify",
+          "dryRun": true,
+          "arguments": {
+            "who": "role.ar",
+            "detail": {
+              "refs": [
+                {
+                  "ref": "/automation/runs/00000000-0000-4000-8000-000000000001/routes/hold_ar/details/overdue?row=3",
+                  "limit": 200,
+                  "context": "overdue",
+                  "rowCount": 1,
+                  "truncated": false
+                }
+              ],
+              "count": 1,
+              "truncated": false
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 51,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711049
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "hold_ar",
+          "would": "would hold order 4711049 for AR",
+          "action": "hold",
+          "dryRun": true,
+          "arguments": {
+            "order": 4711049,
+            "department": "AR"
+          },
+          "batchRows": [
+            106,
+            107
+          ]
+        }
+      },
+      {
+        "seq": 52,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711049
+          },
+          "sink": "deliver",
+          "event": "preview",
+          "route": "hold_ar",
+          "would": "would notify role.ar with 1 rows",
+          "action": "notify",
+          "dryRun": true,
+          "arguments": {
+            "who": "role.ar",
+            "detail": {
+              "refs": [
+                {
+                  "ref": "/automation/runs/00000000-0000-4000-8000-000000000001/routes/hold_ar/details/overdue?row=4",
+                  "limit": 200,
+                  "context": "overdue",
+                  "rowCount": 1,
+                  "truncated": false
+                }
+              ],
+              "count": 1,
+              "truncated": false
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 53,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711047
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "hold_ar",
+          "would": "would hold order 4711047 for AR",
+          "action": "hold",
+          "dryRun": true,
+          "arguments": {
+            "order": 4711047,
+            "department": "AR"
+          },
+          "batchRows": [
+            110,
+            111
+          ]
+        }
+      },
+      {
+        "seq": 54,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711047
+          },
+          "sink": "deliver",
+          "event": "preview",
+          "route": "hold_ar",
+          "would": "would notify role.ar with 1 rows",
+          "action": "notify",
+          "dryRun": true,
+          "arguments": {
+            "who": "role.ar",
+            "detail": {
+              "refs": [
+                {
+                  "ref": "/automation/runs/00000000-0000-4000-8000-000000000001/routes/hold_ar/details/overdue?row=5",
+                  "limit": 200,
+                  "context": "overdue",
+                  "rowCount": 1,
+                  "truncated": false
+                }
+              ],
+              "count": 1,
+              "truncated": false
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 55,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711028
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "hold_ar",
+          "would": "would hold order 4711028 for AR",
+          "action": "hold",
+          "dryRun": true,
+          "arguments": {
+            "order": 4711028,
+            "department": "AR"
+          },
+          "batchRows": [
+            114,
+            115
+          ]
+        }
+      },
+      {
+        "seq": 56,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711028
+          },
+          "sink": "deliver",
+          "event": "preview",
+          "route": "hold_ar",
+          "would": "would notify role.ar with 1 rows",
+          "action": "notify",
+          "dryRun": true,
+          "arguments": {
+            "who": "role.ar",
+            "detail": {
+              "refs": [
+                {
+                  "ref": "/automation/runs/00000000-0000-4000-8000-000000000001/routes/hold_ar/details/overdue?row=6",
+                  "limit": 200,
+                  "context": "overdue",
+                  "rowCount": 1,
+                  "truncated": false
+                }
+              ],
+              "count": 1,
+              "truncated": false
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 57,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711103
+          },
+          "sink": "task",
+          "event": "preview",
+          "route": "release_confirmed",
+          "would": "would ask role.sales_manager to approve release for 4711103",
+          "action": "ask",
+          "dryRun": true,
+          "arguments": {
+            "due": {
+              "unit": "working_days",
+              "amount": 2
+            },
+            "who": "role.sales_manager",
+            "about": 4711103,
+            "action": "release",
+            "on_due": {
+              "action": "hold",
+              "deferred": true,
+              "arguments": {
+                "order": 4711103,
+                "department": "Sales"
+              }
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 58,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711044
+          },
+          "sink": "task",
+          "event": "preview",
+          "route": "release_confirmed",
+          "would": "would ask role.sales_manager to approve release for 4711044",
+          "action": "ask",
+          "dryRun": true,
+          "arguments": {
+            "due": {
+              "unit": "working_days",
+              "amount": 2
+            },
+            "who": "role.sales_manager",
+            "about": 4711044,
+            "action": "release",
+            "on_due": {
+              "action": "hold",
+              "deferred": true,
+              "arguments": {
+                "order": 4711044,
+                "department": "Sales"
+              }
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 59,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711057
+          },
+          "sink": "task",
+          "event": "preview",
+          "route": "release_confirmed",
+          "would": "would ask role.sales_manager to approve release for 4711057",
+          "action": "ask",
+          "dryRun": true,
+          "arguments": {
+            "due": {
+              "unit": "working_days",
+              "amount": 2
+            },
+            "who": "role.sales_manager",
+            "about": 4711057,
+            "action": "release",
+            "on_due": {
+              "action": "hold",
+              "deferred": true,
+              "arguments": {
+                "order": 4711057,
+                "department": "Sales"
+              }
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 60,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711056
+          },
+          "sink": "task",
+          "event": "preview",
+          "route": "release_confirmed",
+          "would": "would ask role.sales_manager to approve release for 4711056",
+          "action": "ask",
+          "dryRun": true,
+          "arguments": {
+            "due": {
+              "unit": "working_days",
+              "amount": 2
+            },
+            "who": "role.sales_manager",
+            "about": 4711056,
+            "action": "release",
+            "on_due": {
+              "action": "hold",
+              "deferred": true,
+              "arguments": {
+                "order": 4711056,
+                "department": "Sales"
+              }
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 61,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711066
+          },
+          "sink": "task",
+          "event": "preview",
+          "route": "release_confirmed",
+          "would": "would ask role.sales_manager to approve release for 4711066",
+          "action": "ask",
+          "dryRun": true,
+          "arguments": {
+            "due": {
+              "unit": "working_days",
+              "amount": 2
+            },
+            "who": "role.sales_manager",
+            "about": 4711066,
+            "action": "release",
+            "on_due": {
+              "action": "hold",
+              "deferred": true,
+              "arguments": {
+                "order": 4711066,
+                "department": "Sales"
+              }
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 62,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711063
+          },
+          "sink": "task",
+          "event": "preview",
+          "route": "release_confirmed",
+          "would": "would ask role.sales_manager to approve release for 4711063",
+          "action": "ask",
+          "dryRun": true,
+          "arguments": {
+            "due": {
+              "unit": "working_days",
+              "amount": 2
+            },
+            "who": "role.sales_manager",
+            "about": 4711063,
+            "action": "release",
+            "on_due": {
+              "action": "hold",
+              "deferred": true,
+              "arguments": {
+                "order": 4711063,
+                "department": "Sales"
+              }
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 63,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711037
+          },
+          "sink": "task",
+          "event": "preview",
+          "route": "release_confirmed",
+          "would": "would ask role.sales_manager to approve release for 4711037",
+          "action": "ask",
+          "dryRun": true,
+          "arguments": {
+            "due": {
+              "unit": "working_days",
+              "amount": 2
+            },
+            "who": "role.sales_manager",
+            "about": 4711037,
+            "action": "release",
+            "on_due": {
+              "action": "hold",
+              "deferred": true,
+              "arguments": {
+                "order": 4711037,
+                "department": "Sales"
+              }
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 64,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711143
+          },
+          "sink": "task",
+          "event": "preview",
+          "route": "release_confirmed",
+          "would": "would ask role.sales_manager to approve release for 4711143",
+          "action": "ask",
+          "dryRun": true,
+          "arguments": {
+            "due": {
+              "unit": "working_days",
+              "amount": 2
+            },
+            "who": "role.sales_manager",
+            "about": 4711143,
+            "action": "release",
+            "on_due": {
+              "action": "hold",
+              "deferred": true,
+              "arguments": {
+                "order": 4711143,
+                "department": "Sales"
+              }
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 65,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711053
+          },
+          "sink": "task",
+          "event": "preview",
+          "route": "release_confirmed",
+          "would": "would ask role.sales_manager to approve release for 4711053",
+          "action": "ask",
+          "dryRun": true,
+          "arguments": {
+            "due": {
+              "unit": "working_days",
+              "amount": 2
+            },
+            "who": "role.sales_manager",
+            "about": 4711053,
+            "action": "release",
+            "on_due": {
+              "action": "hold",
+              "deferred": true,
+              "arguments": {
+                "order": 4711053,
+                "department": "Sales"
+              }
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 66,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711065
+          },
+          "sink": "task",
+          "event": "preview",
+          "route": "release_confirmed",
+          "would": "would ask role.sales_manager to approve release for 4711065",
+          "action": "ask",
+          "dryRun": true,
+          "arguments": {
+            "due": {
+              "unit": "working_days",
+              "amount": 2
+            },
+            "who": "role.sales_manager",
+            "about": 4711065,
+            "action": "release",
+            "on_due": {
+              "action": "hold",
+              "deferred": true,
+              "arguments": {
+                "order": 4711065,
+                "department": "Sales"
+              }
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 67,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711034
+          },
+          "sink": "task",
+          "event": "preview",
+          "route": "release_confirmed",
+          "would": "would ask role.sales_manager to approve release for 4711034",
+          "action": "ask",
+          "dryRun": true,
+          "arguments": {
+            "due": {
+              "unit": "working_days",
+              "amount": 2
+            },
+            "who": "role.sales_manager",
+            "about": 4711034,
+            "action": "release",
+            "on_due": {
+              "action": "hold",
+              "deferred": true,
+              "arguments": {
+                "order": 4711034,
+                "department": "Sales"
+              }
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 68,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711051
+          },
+          "sink": "task",
+          "event": "preview",
+          "route": "release_confirmed",
+          "would": "would ask role.sales_manager to approve release for 4711051",
+          "action": "ask",
+          "dryRun": true,
+          "arguments": {
+            "due": {
+              "unit": "working_days",
+              "amount": 2
+            },
+            "who": "role.sales_manager",
+            "about": 4711051,
+            "action": "release",
+            "on_due": {
+              "action": "hold",
+              "deferred": true,
+              "arguments": {
+                "order": 4711051,
+                "department": "Sales"
+              }
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 69,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711029
+          },
+          "sink": "task",
+          "event": "preview",
+          "route": "release_confirmed",
+          "would": "would ask role.sales_manager to approve release for 4711029",
+          "action": "ask",
+          "dryRun": true,
+          "arguments": {
+            "due": {
+              "unit": "working_days",
+              "amount": 2
+            },
+            "who": "role.sales_manager",
+            "about": 4711029,
+            "action": "release",
+            "on_due": {
+              "action": "hold",
+              "deferred": true,
+              "arguments": {
+                "order": 4711029,
+                "department": "Sales"
+              }
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 70,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711026
+          },
+          "sink": "task",
+          "event": "preview",
+          "route": "release_confirmed",
+          "would": "would ask role.sales_manager to approve release for 4711026",
+          "action": "ask",
+          "dryRun": true,
+          "arguments": {
+            "due": {
+              "unit": "working_days",
+              "amount": 2
+            },
+            "who": "role.sales_manager",
+            "about": 4711026,
+            "action": "release",
+            "on_due": {
+              "action": "hold",
+              "deferred": true,
+              "arguments": {
+                "order": 4711026,
+                "department": "Sales"
+              }
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 71,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711024
+          },
+          "sink": "task",
+          "event": "preview",
+          "route": "release_confirmed",
+          "would": "would ask role.sales_manager to approve release for 4711024",
+          "action": "ask",
+          "dryRun": true,
+          "arguments": {
+            "due": {
+              "unit": "working_days",
+              "amount": 2
+            },
+            "who": "role.sales_manager",
+            "about": 4711024,
+            "action": "release",
+            "on_due": {
+              "action": "hold",
+              "deferred": true,
+              "arguments": {
+                "order": 4711024,
+                "department": "Sales"
+              }
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 72,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711016
+          },
+          "sink": "task",
+          "event": "preview",
+          "route": "release_confirmed",
+          "would": "would ask role.sales_manager to approve release for 4711016",
+          "action": "ask",
+          "dryRun": true,
+          "arguments": {
+            "due": {
+              "unit": "working_days",
+              "amount": 2
+            },
+            "who": "role.sales_manager",
+            "about": 4711016,
+            "action": "release",
+            "on_due": {
+              "action": "hold",
+              "deferred": true,
+              "arguments": {
+                "order": 4711016,
+                "department": "Sales"
+              }
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 73,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711031
+          },
+          "sink": "task",
+          "event": "preview",
+          "route": "release_confirmed",
+          "would": "would ask role.sales_manager to approve release for 4711031",
+          "action": "ask",
+          "dryRun": true,
+          "arguments": {
+            "due": {
+              "unit": "working_days",
+              "amount": 2
+            },
+            "who": "role.sales_manager",
+            "about": 4711031,
+            "action": "release",
+            "on_due": {
+              "action": "hold",
+              "deferred": true,
+              "arguments": {
+                "order": 4711031,
+                "department": "Sales"
+              }
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 74,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711021
+          },
+          "sink": "task",
+          "event": "preview",
+          "route": "release_confirmed",
+          "would": "would ask role.sales_manager to approve release for 4711021",
+          "action": "ask",
+          "dryRun": true,
+          "arguments": {
+            "due": {
+              "unit": "working_days",
+              "amount": 2
+            },
+            "who": "role.sales_manager",
+            "about": 4711021,
+            "action": "release",
+            "on_due": {
+              "action": "hold",
+              "deferred": true,
+              "arguments": {
+                "order": 4711021,
+                "department": "Sales"
+              }
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 75,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711019
+          },
+          "sink": "task",
+          "event": "preview",
+          "route": "release_confirmed",
+          "would": "would ask role.sales_manager to approve release for 4711019",
+          "action": "ask",
+          "dryRun": true,
+          "arguments": {
+            "due": {
+              "unit": "working_days",
+              "amount": 2
+            },
+            "who": "role.sales_manager",
+            "about": 4711019,
+            "action": "release",
+            "on_due": {
+              "action": "hold",
+              "deferred": true,
+              "arguments": {
+                "order": 4711019,
+                "department": "Sales"
+              }
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 76,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711025
+          },
+          "sink": "task",
+          "event": "preview",
+          "route": "release_confirmed",
+          "would": "would ask role.sales_manager to approve release for 4711025",
+          "action": "ask",
+          "dryRun": true,
+          "arguments": {
+            "due": {
+              "unit": "working_days",
+              "amount": 2
+            },
+            "who": "role.sales_manager",
+            "about": 4711025,
+            "action": "release",
+            "on_due": {
+              "action": "hold",
+              "deferred": true,
+              "arguments": {
+                "order": 4711025,
+                "department": "Sales"
+              }
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 77,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711030
+          },
+          "sink": "task",
+          "event": "preview",
+          "route": "release_confirmed",
+          "would": "would ask role.sales_manager to approve release for 4711030",
+          "action": "ask",
+          "dryRun": true,
+          "arguments": {
+            "due": {
+              "unit": "working_days",
+              "amount": 2
+            },
+            "who": "role.sales_manager",
+            "about": 4711030,
+            "action": "release",
+            "on_due": {
+              "action": "hold",
+              "deferred": true,
+              "arguments": {
+                "order": 4711030,
+                "department": "Sales"
+              }
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 78,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711140
+          },
+          "sink": "task",
+          "event": "preview",
+          "route": "release_confirmed",
+          "would": "would ask role.sales_manager to approve release for 4711140",
+          "action": "ask",
+          "dryRun": true,
+          "arguments": {
+            "due": {
+              "unit": "working_days",
+              "amount": 2
+            },
+            "who": "role.sales_manager",
+            "about": 4711140,
+            "action": "release",
+            "on_due": {
+              "action": "hold",
+              "deferred": true,
+              "arguments": {
+                "order": 4711140,
+                "department": "Sales"
+              }
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 79,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711023
+          },
+          "sink": "task",
+          "event": "preview",
+          "route": "release_confirmed",
+          "would": "would ask role.sales_manager to approve release for 4711023",
+          "action": "ask",
+          "dryRun": true,
+          "arguments": {
+            "due": {
+              "unit": "working_days",
+              "amount": 2
+            },
+            "who": "role.sales_manager",
+            "about": 4711023,
+            "action": "release",
+            "on_due": {
+              "action": "hold",
+              "deferred": true,
+              "arguments": {
+                "order": 4711023,
+                "department": "Sales"
+              }
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 80,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711022
+          },
+          "sink": "task",
+          "event": "preview",
+          "route": "release_confirmed",
+          "would": "would ask role.sales_manager to approve release for 4711022",
+          "action": "ask",
+          "dryRun": true,
+          "arguments": {
+            "due": {
+              "unit": "working_days",
+              "amount": 2
+            },
+            "who": "role.sales_manager",
+            "about": 4711022,
+            "action": "release",
+            "on_due": {
+              "action": "hold",
+              "deferred": true,
+              "arguments": {
+                "order": 4711022,
+                "department": "Sales"
+              }
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 81,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711018
+          },
+          "sink": "task",
+          "event": "preview",
+          "route": "release_confirmed",
+          "would": "would ask role.sales_manager to approve release for 4711018",
+          "action": "ask",
+          "dryRun": true,
+          "arguments": {
+            "due": {
+              "unit": "working_days",
+              "amount": 2
+            },
+            "who": "role.sales_manager",
+            "about": 4711018,
+            "action": "release",
+            "on_due": {
+              "action": "hold",
+              "deferred": true,
+              "arguments": {
+                "order": 4711018,
+                "department": "Sales"
+              }
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 82,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711017
+          },
+          "sink": "task",
+          "event": "preview",
+          "route": "release_confirmed",
+          "would": "would ask role.sales_manager to approve release for 4711017",
+          "action": "ask",
+          "dryRun": true,
+          "arguments": {
+            "due": {
+              "unit": "working_days",
+              "amount": 2
+            },
+            "who": "role.sales_manager",
+            "about": 4711017,
+            "action": "release",
+            "on_due": {
+              "action": "hold",
+              "deferred": true,
+              "arguments": {
+                "order": 4711017,
+                "department": "Sales"
+              }
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 83,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711013
+          },
+          "sink": "task",
+          "event": "preview",
+          "route": "release_confirmed",
+          "would": "would ask role.sales_manager to approve release for 4711013",
+          "action": "ask",
+          "dryRun": true,
+          "arguments": {
+            "due": {
+              "unit": "working_days",
+              "amount": 2
+            },
+            "who": "role.sales_manager",
+            "about": 4711013,
+            "action": "release",
+            "on_due": {
+              "action": "hold",
+              "deferred": true,
+              "arguments": {
+                "order": 4711013,
+                "department": "Sales"
+              }
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 84,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711144
+          },
+          "sink": "task",
+          "event": "preview",
+          "route": "release_confirmed",
+          "would": "would ask role.sales_manager to approve release for 4711144",
+          "action": "ask",
+          "dryRun": true,
+          "arguments": {
+            "due": {
+              "unit": "working_days",
+              "amount": 2
+            },
+            "who": "role.sales_manager",
+            "about": 4711144,
+            "action": "release",
+            "on_due": {
+              "action": "hold",
+              "deferred": true,
+              "arguments": {
+                "order": 4711144,
+                "department": "Sales"
+              }
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 85,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711139
+          },
+          "sink": "task",
+          "event": "preview",
+          "route": "release_confirmed",
+          "would": "would ask role.sales_manager to approve release for 4711139",
+          "action": "ask",
+          "dryRun": true,
+          "arguments": {
+            "due": {
+              "unit": "working_days",
+              "amount": 2
+            },
+            "who": "role.sales_manager",
+            "about": 4711139,
+            "action": "release",
+            "on_due": {
+              "action": "hold",
+              "deferred": true,
+              "arguments": {
+                "order": 4711139,
+                "department": "Sales"
+              }
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 86,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711020
+          },
+          "sink": "task",
+          "event": "preview",
+          "route": "release_confirmed",
+          "would": "would ask role.sales_manager to approve release for 4711020",
+          "action": "ask",
+          "dryRun": true,
+          "arguments": {
+            "due": {
+              "unit": "working_days",
+              "amount": 2
+            },
+            "who": "role.sales_manager",
+            "about": 4711020,
+            "action": "release",
+            "on_due": {
+              "action": "hold",
+              "deferred": true,
+              "arguments": {
+                "order": 4711020,
+                "department": "Sales"
+              }
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 87,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711032
+          },
+          "sink": "task",
+          "event": "preview",
+          "route": "release_confirmed",
+          "would": "would ask role.sales_manager to approve release for 4711032",
+          "action": "ask",
+          "dryRun": true,
+          "arguments": {
+            "due": {
+              "unit": "working_days",
+              "amount": 2
+            },
+            "who": "role.sales_manager",
+            "about": 4711032,
+            "action": "release",
+            "on_due": {
+              "action": "hold",
+              "deferred": true,
+              "arguments": {
+                "order": 4711032,
+                "department": "Sales"
+              }
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 88,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711012
+          },
+          "sink": "task",
+          "event": "preview",
+          "route": "release_confirmed",
+          "would": "would ask role.sales_manager to approve release for 4711012",
+          "action": "ask",
+          "dryRun": true,
+          "arguments": {
+            "due": {
+              "unit": "working_days",
+              "amount": 2
+            },
+            "who": "role.sales_manager",
+            "about": 4711012,
+            "action": "release",
+            "on_due": {
+              "action": "hold",
+              "deferred": true,
+              "arguments": {
+                "order": 4711012,
+                "department": "Sales"
+              }
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 89,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711027
+          },
+          "sink": "task",
+          "event": "preview",
+          "route": "release_confirmed",
+          "would": "would ask role.sales_manager to approve release for 4711027",
+          "action": "ask",
+          "dryRun": true,
+          "arguments": {
+            "due": {
+              "unit": "working_days",
+              "amount": 2
+            },
+            "who": "role.sales_manager",
+            "about": 4711027,
+            "action": "release",
+            "on_due": {
+              "action": "hold",
+              "deferred": true,
+              "arguments": {
+                "order": 4711027,
+                "department": "Sales"
+              }
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 90,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711146
+          },
+          "sink": "task",
+          "event": "preview",
+          "route": "release_confirmed",
+          "would": "would ask role.sales_manager to approve release for 4711146",
+          "action": "ask",
+          "dryRun": true,
+          "arguments": {
+            "due": {
+              "unit": "working_days",
+              "amount": 2
+            },
+            "who": "role.sales_manager",
+            "about": 4711146,
+            "action": "release",
+            "on_due": {
+              "action": "hold",
+              "deferred": true,
+              "arguments": {
+                "order": 4711146,
+                "department": "Sales"
+              }
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 91,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711149
+          },
+          "sink": "task",
+          "event": "preview",
+          "route": "release_confirmed",
+          "would": "would ask role.sales_manager to approve release for 4711149",
+          "action": "ask",
+          "dryRun": true,
+          "arguments": {
+            "due": {
+              "unit": "working_days",
+              "amount": 2
+            },
+            "who": "role.sales_manager",
+            "about": 4711149,
+            "action": "release",
+            "on_due": {
+              "action": "hold",
+              "deferred": true,
+              "arguments": {
+                "order": 4711149,
+                "department": "Sales"
+              }
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 92,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711011
+          },
+          "sink": "task",
+          "event": "preview",
+          "route": "release_confirmed",
+          "would": "would ask role.sales_manager to approve release for 4711011",
+          "action": "ask",
+          "dryRun": true,
+          "arguments": {
+            "due": {
+              "unit": "working_days",
+              "amount": 2
+            },
+            "who": "role.sales_manager",
+            "about": 4711011,
+            "action": "release",
+            "on_due": {
+              "action": "hold",
+              "deferred": true,
+              "arguments": {
+                "order": 4711011,
+                "department": "Sales"
+              }
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 93,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711153
+          },
+          "sink": "task",
+          "event": "preview",
+          "route": "release_confirmed",
+          "would": "would ask role.sales_manager to approve release for 4711153",
+          "action": "ask",
+          "dryRun": true,
+          "arguments": {
+            "due": {
+              "unit": "working_days",
+              "amount": 2
+            },
+            "who": "role.sales_manager",
+            "about": 4711153,
+            "action": "release",
+            "on_due": {
+              "action": "hold",
+              "deferred": true,
+              "arguments": {
+                "order": 4711153,
+                "department": "Sales"
+              }
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 94,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711002
+          },
+          "sink": "task",
+          "event": "preview",
+          "route": "release_confirmed",
+          "would": "would ask role.sales_manager to approve release for 4711002",
+          "action": "ask",
+          "dryRun": true,
+          "arguments": {
+            "due": {
+              "unit": "working_days",
+              "amount": 2
+            },
+            "who": "role.sales_manager",
+            "about": 4711002,
+            "action": "release",
+            "on_due": {
+              "action": "hold",
+              "deferred": true,
+              "arguments": {
+                "order": 4711002,
+                "department": "Sales"
+              }
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 95,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711009
+          },
+          "sink": "task",
+          "event": "preview",
+          "route": "release_confirmed",
+          "would": "would ask role.sales_manager to approve release for 4711009",
+          "action": "ask",
+          "dryRun": true,
+          "arguments": {
+            "due": {
+              "unit": "working_days",
+              "amount": 2
+            },
+            "who": "role.sales_manager",
+            "about": 4711009,
+            "action": "release",
+            "on_due": {
+              "action": "hold",
+              "deferred": true,
+              "arguments": {
+                "order": 4711009,
+                "department": "Sales"
+              }
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 96,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711137
+          },
+          "sink": "task",
+          "event": "preview",
+          "route": "release_confirmed",
+          "would": "would ask role.sales_manager to approve release for 4711137",
+          "action": "ask",
+          "dryRun": true,
+          "arguments": {
+            "due": {
+              "unit": "working_days",
+              "amount": 2
+            },
+            "who": "role.sales_manager",
+            "about": 4711137,
+            "action": "release",
+            "on_due": {
+              "action": "hold",
+              "deferred": true,
+              "arguments": {
+                "order": 4711137,
+                "department": "Sales"
+              }
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 97,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711005
+          },
+          "sink": "task",
+          "event": "preview",
+          "route": "release_confirmed",
+          "would": "would ask role.sales_manager to approve release for 4711005",
+          "action": "ask",
+          "dryRun": true,
+          "arguments": {
+            "due": {
+              "unit": "working_days",
+              "amount": 2
+            },
+            "who": "role.sales_manager",
+            "about": 4711005,
+            "action": "release",
+            "on_due": {
+              "action": "hold",
+              "deferred": true,
+              "arguments": {
+                "order": 4711005,
+                "department": "Sales"
+              }
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 98,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711004
+          },
+          "sink": "task",
+          "event": "preview",
+          "route": "release_confirmed",
+          "would": "would ask role.sales_manager to approve release for 4711004",
+          "action": "ask",
+          "dryRun": true,
+          "arguments": {
+            "due": {
+              "unit": "working_days",
+              "amount": 2
+            },
+            "who": "role.sales_manager",
+            "about": 4711004,
+            "action": "release",
+            "on_due": {
+              "action": "hold",
+              "deferred": true,
+              "arguments": {
+                "order": 4711004,
+                "department": "Sales"
+              }
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 99,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711148
+          },
+          "sink": "task",
+          "event": "preview",
+          "route": "release_confirmed",
+          "would": "would ask role.sales_manager to approve release for 4711148",
+          "action": "ask",
+          "dryRun": true,
+          "arguments": {
+            "due": {
+              "unit": "working_days",
+              "amount": 2
+            },
+            "who": "role.sales_manager",
+            "about": 4711148,
+            "action": "release",
+            "on_due": {
+              "action": "hold",
+              "deferred": true,
+              "arguments": {
+                "order": 4711148,
+                "department": "Sales"
+              }
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 100,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711136
+          },
+          "sink": "task",
+          "event": "preview",
+          "route": "release_confirmed",
+          "would": "would ask role.sales_manager to approve release for 4711136",
+          "action": "ask",
+          "dryRun": true,
+          "arguments": {
+            "due": {
+              "unit": "working_days",
+              "amount": 2
+            },
+            "who": "role.sales_manager",
+            "about": 4711136,
+            "action": "release",
+            "on_due": {
+              "action": "hold",
+              "deferred": true,
+              "arguments": {
+                "order": 4711136,
+                "department": "Sales"
+              }
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 101,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711007
+          },
+          "sink": "task",
+          "event": "preview",
+          "route": "release_confirmed",
+          "would": "would ask role.sales_manager to approve release for 4711007",
+          "action": "ask",
+          "dryRun": true,
+          "arguments": {
+            "due": {
+              "unit": "working_days",
+              "amount": 2
+            },
+            "who": "role.sales_manager",
+            "about": 4711007,
+            "action": "release",
+            "on_due": {
+              "action": "hold",
+              "deferred": true,
+              "arguments": {
+                "order": 4711007,
+                "department": "Sales"
+              }
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 102,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711008
+          },
+          "sink": "task",
+          "event": "preview",
+          "route": "release_confirmed",
+          "would": "would ask role.sales_manager to approve release for 4711008",
+          "action": "ask",
+          "dryRun": true,
+          "arguments": {
+            "due": {
+              "unit": "working_days",
+              "amount": 2
+            },
+            "who": "role.sales_manager",
+            "about": 4711008,
+            "action": "release",
+            "on_due": {
+              "action": "hold",
+              "deferred": true,
+              "arguments": {
+                "order": 4711008,
+                "department": "Sales"
+              }
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 103,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711006
+          },
+          "sink": "task",
+          "event": "preview",
+          "route": "release_confirmed",
+          "would": "would ask role.sales_manager to approve release for 4711006",
+          "action": "ask",
+          "dryRun": true,
+          "arguments": {
+            "due": {
+              "unit": "working_days",
+              "amount": 2
+            },
+            "who": "role.sales_manager",
+            "about": 4711006,
+            "action": "release",
+            "on_due": {
+              "action": "hold",
+              "deferred": true,
+              "arguments": {
+                "order": 4711006,
+                "department": "Sales"
+              }
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 104,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711112
+          },
+          "sink": "task",
+          "event": "preview",
+          "route": "release_confirmed",
+          "would": "would ask role.sales_manager to approve release for 4711112",
+          "action": "ask",
+          "dryRun": true,
+          "arguments": {
+            "due": {
+              "unit": "working_days",
+              "amount": 2
+            },
+            "who": "role.sales_manager",
+            "about": 4711112,
+            "action": "release",
+            "on_due": {
+              "action": "hold",
+              "deferred": true,
+              "arguments": {
+                "order": 4711112,
+                "department": "Sales"
+              }
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 105,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711128
+          },
+          "sink": "task",
+          "event": "preview",
+          "route": "release_confirmed",
+          "would": "would ask role.sales_manager to approve release for 4711128",
+          "action": "ask",
+          "dryRun": true,
+          "arguments": {
+            "due": {
+              "unit": "working_days",
+              "amount": 2
+            },
+            "who": "role.sales_manager",
+            "about": 4711128,
+            "action": "release",
+            "on_due": {
+              "action": "hold",
+              "deferred": true,
+              "arguments": {
+                "order": 4711128,
+                "department": "Sales"
+              }
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 106,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711118
+          },
+          "sink": "task",
+          "event": "preview",
+          "route": "release_confirmed",
+          "would": "would ask role.sales_manager to approve release for 4711118",
+          "action": "ask",
+          "dryRun": true,
+          "arguments": {
+            "due": {
+              "unit": "working_days",
+              "amount": 2
+            },
+            "who": "role.sales_manager",
+            "about": 4711118,
+            "action": "release",
+            "on_due": {
+              "action": "hold",
+              "deferred": true,
+              "arguments": {
+                "order": 4711118,
+                "department": "Sales"
+              }
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 107,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711050
+          },
+          "sink": "task",
+          "event": "preview",
+          "route": "release_confirmed",
+          "would": "would ask role.sales_manager to approve release for 4711050",
+          "action": "ask",
+          "dryRun": true,
+          "arguments": {
+            "due": {
+              "unit": "working_days",
+              "amount": 2
+            },
+            "who": "role.sales_manager",
+            "about": 4711050,
+            "action": "release",
+            "on_due": {
+              "action": "hold",
+              "deferred": true,
+              "arguments": {
+                "order": 4711050,
+                "department": "Sales"
+              }
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 108,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711099
+          },
+          "sink": "task",
+          "event": "preview",
+          "route": "release_confirmed",
+          "would": "would ask role.sales_manager to approve release for 4711099",
+          "action": "ask",
+          "dryRun": true,
+          "arguments": {
+            "due": {
+              "unit": "working_days",
+              "amount": 2
+            },
+            "who": "role.sales_manager",
+            "about": 4711099,
+            "action": "release",
+            "on_due": {
+              "action": "hold",
+              "deferred": true,
+              "arguments": {
+                "order": 4711099,
+                "department": "Sales"
+              }
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 109,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711125
+          },
+          "sink": "task",
+          "event": "preview",
+          "route": "release_confirmed",
+          "would": "would ask role.sales_manager to approve release for 4711125",
+          "action": "ask",
+          "dryRun": true,
+          "arguments": {
+            "due": {
+              "unit": "working_days",
+              "amount": 2
+            },
+            "who": "role.sales_manager",
+            "about": 4711125,
+            "action": "release",
+            "on_due": {
+              "action": "hold",
+              "deferred": true,
+              "arguments": {
+                "order": 4711125,
+                "department": "Sales"
+              }
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 110,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711124
+          },
+          "sink": "task",
+          "event": "preview",
+          "route": "release_confirmed",
+          "would": "would ask role.sales_manager to approve release for 4711124",
+          "action": "ask",
+          "dryRun": true,
+          "arguments": {
+            "due": {
+              "unit": "working_days",
+              "amount": 2
+            },
+            "who": "role.sales_manager",
+            "about": 4711124,
+            "action": "release",
+            "on_due": {
+              "action": "hold",
+              "deferred": true,
+              "arguments": {
+                "order": 4711124,
+                "department": "Sales"
+              }
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 111,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711120
+          },
+          "sink": "task",
+          "event": "preview",
+          "route": "release_confirmed",
+          "would": "would ask role.sales_manager to approve release for 4711120",
+          "action": "ask",
+          "dryRun": true,
+          "arguments": {
+            "due": {
+              "unit": "working_days",
+              "amount": 2
+            },
+            "who": "role.sales_manager",
+            "about": 4711120,
+            "action": "release",
+            "on_due": {
+              "action": "hold",
+              "deferred": true,
+              "arguments": {
+                "order": 4711120,
+                "department": "Sales"
+              }
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 112,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711109
+          },
+          "sink": "task",
+          "event": "preview",
+          "route": "release_confirmed",
+          "would": "would ask role.sales_manager to approve release for 4711109",
+          "action": "ask",
+          "dryRun": true,
+          "arguments": {
+            "due": {
+              "unit": "working_days",
+              "amount": 2
+            },
+            "who": "role.sales_manager",
+            "about": 4711109,
+            "action": "release",
+            "on_due": {
+              "action": "hold",
+              "deferred": true,
+              "arguments": {
+                "order": 4711109,
+                "department": "Sales"
+              }
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 113,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711134
+          },
+          "sink": "task",
+          "event": "preview",
+          "route": "release_confirmed",
+          "would": "would ask role.sales_manager to approve release for 4711134",
+          "action": "ask",
+          "dryRun": true,
+          "arguments": {
+            "due": {
+              "unit": "working_days",
+              "amount": 2
+            },
+            "who": "role.sales_manager",
+            "about": 4711134,
+            "action": "release",
+            "on_due": {
+              "action": "hold",
+              "deferred": true,
+              "arguments": {
+                "order": 4711134,
+                "department": "Sales"
+              }
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 114,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711132
+          },
+          "sink": "task",
+          "event": "preview",
+          "route": "release_confirmed",
+          "would": "would ask role.sales_manager to approve release for 4711132",
+          "action": "ask",
+          "dryRun": true,
+          "arguments": {
+            "due": {
+              "unit": "working_days",
+              "amount": 2
+            },
+            "who": "role.sales_manager",
+            "about": 4711132,
+            "action": "release",
+            "on_due": {
+              "action": "hold",
+              "deferred": true,
+              "arguments": {
+                "order": 4711132,
+                "department": "Sales"
+              }
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 115,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711114
+          },
+          "sink": "task",
+          "event": "preview",
+          "route": "release_confirmed",
+          "would": "would ask role.sales_manager to approve release for 4711114",
+          "action": "ask",
+          "dryRun": true,
+          "arguments": {
+            "due": {
+              "unit": "working_days",
+              "amount": 2
+            },
+            "who": "role.sales_manager",
+            "about": 4711114,
+            "action": "release",
+            "on_due": {
+              "action": "hold",
+              "deferred": true,
+              "arguments": {
+                "order": 4711114,
+                "department": "Sales"
+              }
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 116,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711122
+          },
+          "sink": "task",
+          "event": "preview",
+          "route": "release_confirmed",
+          "would": "would ask role.sales_manager to approve release for 4711122",
+          "action": "ask",
+          "dryRun": true,
+          "arguments": {
+            "due": {
+              "unit": "working_days",
+              "amount": 2
+            },
+            "who": "role.sales_manager",
+            "about": 4711122,
+            "action": "release",
+            "on_due": {
+              "action": "hold",
+              "deferred": true,
+              "arguments": {
+                "order": 4711122,
+                "department": "Sales"
+              }
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 117,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711101
+          },
+          "sink": "task",
+          "event": "preview",
+          "route": "release_confirmed",
+          "would": "would ask role.sales_manager to approve release for 4711101",
+          "action": "ask",
+          "dryRun": true,
+          "arguments": {
+            "due": {
+              "unit": "working_days",
+              "amount": 2
+            },
+            "who": "role.sales_manager",
+            "about": 4711101,
+            "action": "release",
+            "on_due": {
+              "action": "hold",
+              "deferred": true,
+              "arguments": {
+                "order": 4711101,
+                "department": "Sales"
+              }
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 118,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711116
+          },
+          "sink": "task",
+          "event": "preview",
+          "route": "release_confirmed",
+          "would": "would ask role.sales_manager to approve release for 4711116",
+          "action": "ask",
+          "dryRun": true,
+          "arguments": {
+            "due": {
+              "unit": "working_days",
+              "amount": 2
+            },
+            "who": "role.sales_manager",
+            "about": 4711116,
+            "action": "release",
+            "on_due": {
+              "action": "hold",
+              "deferred": true,
+              "arguments": {
+                "order": 4711116,
+                "department": "Sales"
+              }
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 119,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711115
+          },
+          "sink": "task",
+          "event": "preview",
+          "route": "release_confirmed",
+          "would": "would ask role.sales_manager to approve release for 4711115",
+          "action": "ask",
+          "dryRun": true,
+          "arguments": {
+            "due": {
+              "unit": "working_days",
+              "amount": 2
+            },
+            "who": "role.sales_manager",
+            "about": 4711115,
+            "action": "release",
+            "on_due": {
+              "action": "hold",
+              "deferred": true,
+              "arguments": {
+                "order": 4711115,
+                "department": "Sales"
+              }
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 120,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711127
+          },
+          "sink": "task",
+          "event": "preview",
+          "route": "release_confirmed",
+          "would": "would ask role.sales_manager to approve release for 4711127",
+          "action": "ask",
+          "dryRun": true,
+          "arguments": {
+            "due": {
+              "unit": "working_days",
+              "amount": 2
+            },
+            "who": "role.sales_manager",
+            "about": 4711127,
+            "action": "release",
+            "on_due": {
+              "action": "hold",
+              "deferred": true,
+              "arguments": {
+                "order": 4711127,
+                "department": "Sales"
+              }
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 121,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711119
+          },
+          "sink": "task",
+          "event": "preview",
+          "route": "release_confirmed",
+          "would": "would ask role.sales_manager to approve release for 4711119",
+          "action": "ask",
+          "dryRun": true,
+          "arguments": {
+            "due": {
+              "unit": "working_days",
+              "amount": 2
+            },
+            "who": "role.sales_manager",
+            "about": 4711119,
+            "action": "release",
+            "on_due": {
+              "action": "hold",
+              "deferred": true,
+              "arguments": {
+                "order": 4711119,
+                "department": "Sales"
+              }
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 122,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711121
+          },
+          "sink": "task",
+          "event": "preview",
+          "route": "release_confirmed",
+          "would": "would ask role.sales_manager to approve release for 4711121",
+          "action": "ask",
+          "dryRun": true,
+          "arguments": {
+            "due": {
+              "unit": "working_days",
+              "amount": 2
+            },
+            "who": "role.sales_manager",
+            "about": 4711121,
+            "action": "release",
+            "on_due": {
+              "action": "hold",
+              "deferred": true,
+              "arguments": {
+                "order": 4711121,
+                "department": "Sales"
+              }
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 123,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711130
+          },
+          "sink": "task",
+          "event": "preview",
+          "route": "release_confirmed",
+          "would": "would ask role.sales_manager to approve release for 4711130",
+          "action": "ask",
+          "dryRun": true,
+          "arguments": {
+            "due": {
+              "unit": "working_days",
+              "amount": 2
+            },
+            "who": "role.sales_manager",
+            "about": 4711130,
+            "action": "release",
+            "on_due": {
+              "action": "hold",
+              "deferred": true,
+              "arguments": {
+                "order": 4711130,
+                "department": "Sales"
+              }
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 124,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711142
+          },
+          "sink": "task",
+          "event": "preview",
+          "route": "release_confirmed",
+          "would": "would ask role.sales_manager to approve release for 4711142",
+          "action": "ask",
+          "dryRun": true,
+          "arguments": {
+            "due": {
+              "unit": "working_days",
+              "amount": 2
+            },
+            "who": "role.sales_manager",
+            "about": 4711142,
+            "action": "release",
+            "on_due": {
+              "action": "hold",
+              "deferred": true,
+              "arguments": {
+                "order": 4711142,
+                "department": "Sales"
+              }
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 125,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711107
+          },
+          "sink": "task",
+          "event": "preview",
+          "route": "release_confirmed",
+          "would": "would ask role.sales_manager to approve release for 4711107",
+          "action": "ask",
+          "dryRun": true,
+          "arguments": {
+            "due": {
+              "unit": "working_days",
+              "amount": 2
+            },
+            "who": "role.sales_manager",
+            "about": 4711107,
+            "action": "release",
+            "on_due": {
+              "action": "hold",
+              "deferred": true,
+              "arguments": {
+                "order": 4711107,
+                "department": "Sales"
+              }
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 126,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711108
+          },
+          "sink": "task",
+          "event": "preview",
+          "route": "release_confirmed",
+          "would": "would ask role.sales_manager to approve release for 4711108",
+          "action": "ask",
+          "dryRun": true,
+          "arguments": {
+            "due": {
+              "unit": "working_days",
+              "amount": 2
+            },
+            "who": "role.sales_manager",
+            "about": 4711108,
+            "action": "release",
+            "on_due": {
+              "action": "hold",
+              "deferred": true,
+              "arguments": {
+                "order": 4711108,
+                "department": "Sales"
+              }
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 127,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711117
+          },
+          "sink": "task",
+          "event": "preview",
+          "route": "release_confirmed",
+          "would": "would ask role.sales_manager to approve release for 4711117",
+          "action": "ask",
+          "dryRun": true,
+          "arguments": {
+            "due": {
+              "unit": "working_days",
+              "amount": 2
+            },
+            "who": "role.sales_manager",
+            "about": 4711117,
+            "action": "release",
+            "on_due": {
+              "action": "hold",
+              "deferred": true,
+              "arguments": {
+                "order": 4711117,
+                "department": "Sales"
+              }
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 128,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711123
+          },
+          "sink": "task",
+          "event": "preview",
+          "route": "release_confirmed",
+          "would": "would ask role.sales_manager to approve release for 4711123",
+          "action": "ask",
+          "dryRun": true,
+          "arguments": {
+            "due": {
+              "unit": "working_days",
+              "amount": 2
+            },
+            "who": "role.sales_manager",
+            "about": 4711123,
+            "action": "release",
+            "on_due": {
+              "action": "hold",
+              "deferred": true,
+              "arguments": {
+                "order": 4711123,
+                "department": "Sales"
+              }
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 129,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711105
+          },
+          "sink": "task",
+          "event": "preview",
+          "route": "release_confirmed",
+          "would": "would ask role.sales_manager to approve release for 4711105",
+          "action": "ask",
+          "dryRun": true,
+          "arguments": {
+            "due": {
+              "unit": "working_days",
+              "amount": 2
+            },
+            "who": "role.sales_manager",
+            "about": 4711105,
+            "action": "release",
+            "on_due": {
+              "action": "hold",
+              "deferred": true,
+              "arguments": {
+                "order": 4711105,
+                "department": "Sales"
+              }
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 130,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711110
+          },
+          "sink": "task",
+          "event": "preview",
+          "route": "release_confirmed",
+          "would": "would ask role.sales_manager to approve release for 4711110",
+          "action": "ask",
+          "dryRun": true,
+          "arguments": {
+            "due": {
+              "unit": "working_days",
+              "amount": 2
+            },
+            "who": "role.sales_manager",
+            "about": 4711110,
+            "action": "release",
+            "on_due": {
+              "action": "hold",
+              "deferred": true,
+              "arguments": {
+                "order": 4711110,
+                "department": "Sales"
+              }
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 131,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711113
+          },
+          "sink": "task",
+          "event": "preview",
+          "route": "release_confirmed",
+          "would": "would ask role.sales_manager to approve release for 4711113",
+          "action": "ask",
+          "dryRun": true,
+          "arguments": {
+            "due": {
+              "unit": "working_days",
+              "amount": 2
+            },
+            "who": "role.sales_manager",
+            "about": 4711113,
+            "action": "release",
+            "on_due": {
+              "action": "hold",
+              "deferred": true,
+              "arguments": {
+                "order": 4711113,
+                "department": "Sales"
+              }
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 132,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711100
+          },
+          "sink": "task",
+          "event": "preview",
+          "route": "release_confirmed",
+          "would": "would ask role.sales_manager to approve release for 4711100",
+          "action": "ask",
+          "dryRun": true,
+          "arguments": {
+            "due": {
+              "unit": "working_days",
+              "amount": 2
+            },
+            "who": "role.sales_manager",
+            "about": 4711100,
+            "action": "release",
+            "on_due": {
+              "action": "hold",
+              "deferred": true,
+              "arguments": {
+                "order": 4711100,
+                "department": "Sales"
+              }
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 133,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711106
+          },
+          "sink": "task",
+          "event": "preview",
+          "route": "release_confirmed",
+          "would": "would ask role.sales_manager to approve release for 4711106",
+          "action": "ask",
+          "dryRun": true,
+          "arguments": {
+            "due": {
+              "unit": "working_days",
+              "amount": 2
+            },
+            "who": "role.sales_manager",
+            "about": 4711106,
+            "action": "release",
+            "on_due": {
+              "action": "hold",
+              "deferred": true,
+              "arguments": {
+                "order": 4711106,
+                "department": "Sales"
+              }
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 134,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711141
+          },
+          "sink": "task",
+          "event": "preview",
+          "route": "release_confirmed",
+          "would": "would ask role.sales_manager to approve release for 4711141",
+          "action": "ask",
+          "dryRun": true,
+          "arguments": {
+            "due": {
+              "unit": "working_days",
+              "amount": 2
+            },
+            "who": "role.sales_manager",
+            "about": 4711141,
+            "action": "release",
+            "on_due": {
+              "action": "hold",
+              "deferred": true,
+              "arguments": {
+                "order": 4711141,
+                "department": "Sales"
+              }
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 135,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711111
+          },
+          "sink": "task",
+          "event": "preview",
+          "route": "release_confirmed",
+          "would": "would ask role.sales_manager to approve release for 4711111",
+          "action": "ask",
+          "dryRun": true,
+          "arguments": {
+            "due": {
+              "unit": "working_days",
+              "amount": 2
+            },
+            "who": "role.sales_manager",
+            "about": 4711111,
+            "action": "release",
+            "on_due": {
+              "action": "hold",
+              "deferred": true,
+              "arguments": {
+                "order": 4711111,
+                "department": "Sales"
+              }
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 136,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711079
+          },
+          "sink": "task",
+          "event": "preview",
+          "route": "release_confirmed",
+          "would": "would ask role.sales_manager to approve release for 4711079",
+          "action": "ask",
+          "dryRun": true,
+          "arguments": {
+            "due": {
+              "unit": "working_days",
+              "amount": 2
+            },
+            "who": "role.sales_manager",
+            "about": 4711079,
+            "action": "release",
+            "on_due": {
+              "action": "hold",
+              "deferred": true,
+              "arguments": {
+                "order": 4711079,
+                "department": "Sales"
+              }
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 137,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711097
+          },
+          "sink": "task",
+          "event": "preview",
+          "route": "release_confirmed",
+          "would": "would ask role.sales_manager to approve release for 4711097",
+          "action": "ask",
+          "dryRun": true,
+          "arguments": {
+            "due": {
+              "unit": "working_days",
+              "amount": 2
+            },
+            "who": "role.sales_manager",
+            "about": 4711097,
+            "action": "release",
+            "on_due": {
+              "action": "hold",
+              "deferred": true,
+              "arguments": {
+                "order": 4711097,
+                "department": "Sales"
+              }
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 138,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711073
+          },
+          "sink": "task",
+          "event": "preview",
+          "route": "release_confirmed",
+          "would": "would ask role.sales_manager to approve release for 4711073",
+          "action": "ask",
+          "dryRun": true,
+          "arguments": {
+            "due": {
+              "unit": "working_days",
+              "amount": 2
+            },
+            "who": "role.sales_manager",
+            "about": 4711073,
+            "action": "release",
+            "on_due": {
+              "action": "hold",
+              "deferred": true,
+              "arguments": {
+                "order": 4711073,
+                "department": "Sales"
+              }
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 139,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711069
+          },
+          "sink": "task",
+          "event": "preview",
+          "route": "release_confirmed",
+          "would": "would ask role.sales_manager to approve release for 4711069",
+          "action": "ask",
+          "dryRun": true,
+          "arguments": {
+            "due": {
+              "unit": "working_days",
+              "amount": 2
+            },
+            "who": "role.sales_manager",
+            "about": 4711069,
+            "action": "release",
+            "on_due": {
+              "action": "hold",
+              "deferred": true,
+              "arguments": {
+                "order": 4711069,
+                "department": "Sales"
+              }
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 140,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711094
+          },
+          "sink": "task",
+          "event": "preview",
+          "route": "release_confirmed",
+          "would": "would ask role.sales_manager to approve release for 4711094",
+          "action": "ask",
+          "dryRun": true,
+          "arguments": {
+            "due": {
+              "unit": "working_days",
+              "amount": 2
+            },
+            "who": "role.sales_manager",
+            "about": 4711094,
+            "action": "release",
+            "on_due": {
+              "action": "hold",
+              "deferred": true,
+              "arguments": {
+                "order": 4711094,
+                "department": "Sales"
+              }
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 141,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711147
+          },
+          "sink": "task",
+          "event": "preview",
+          "route": "release_confirmed",
+          "would": "would ask role.sales_manager to approve release for 4711147",
+          "action": "ask",
+          "dryRun": true,
+          "arguments": {
+            "due": {
+              "unit": "working_days",
+              "amount": 2
+            },
+            "who": "role.sales_manager",
+            "about": 4711147,
+            "action": "release",
+            "on_due": {
+              "action": "hold",
+              "deferred": true,
+              "arguments": {
+                "order": 4711147,
+                "department": "Sales"
+              }
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 142,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711096
+          },
+          "sink": "task",
+          "event": "preview",
+          "route": "release_confirmed",
+          "would": "would ask role.sales_manager to approve release for 4711096",
+          "action": "ask",
+          "dryRun": true,
+          "arguments": {
+            "due": {
+              "unit": "working_days",
+              "amount": 2
+            },
+            "who": "role.sales_manager",
+            "about": 4711096,
+            "action": "release",
+            "on_due": {
+              "action": "hold",
+              "deferred": true,
+              "arguments": {
+                "order": 4711096,
+                "department": "Sales"
+              }
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 143,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711089
+          },
+          "sink": "task",
+          "event": "preview",
+          "route": "release_confirmed",
+          "would": "would ask role.sales_manager to approve release for 4711089",
+          "action": "ask",
+          "dryRun": true,
+          "arguments": {
+            "due": {
+              "unit": "working_days",
+              "amount": 2
+            },
+            "who": "role.sales_manager",
+            "about": 4711089,
+            "action": "release",
+            "on_due": {
+              "action": "hold",
+              "deferred": true,
+              "arguments": {
+                "order": 4711089,
+                "department": "Sales"
+              }
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 144,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711077
+          },
+          "sink": "task",
+          "event": "preview",
+          "route": "release_confirmed",
+          "would": "would ask role.sales_manager to approve release for 4711077",
+          "action": "ask",
+          "dryRun": true,
+          "arguments": {
+            "due": {
+              "unit": "working_days",
+              "amount": 2
+            },
+            "who": "role.sales_manager",
+            "about": 4711077,
+            "action": "release",
+            "on_due": {
+              "action": "hold",
+              "deferred": true,
+              "arguments": {
+                "order": 4711077,
+                "department": "Sales"
+              }
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 145,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711075
+          },
+          "sink": "task",
+          "event": "preview",
+          "route": "release_confirmed",
+          "would": "would ask role.sales_manager to approve release for 4711075",
+          "action": "ask",
+          "dryRun": true,
+          "arguments": {
+            "due": {
+              "unit": "working_days",
+              "amount": 2
+            },
+            "who": "role.sales_manager",
+            "about": 4711075,
+            "action": "release",
+            "on_due": {
+              "action": "hold",
+              "deferred": true,
+              "arguments": {
+                "order": 4711075,
+                "department": "Sales"
+              }
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 146,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711078
+          },
+          "sink": "task",
+          "event": "preview",
+          "route": "release_confirmed",
+          "would": "would ask role.sales_manager to approve release for 4711078",
+          "action": "ask",
+          "dryRun": true,
+          "arguments": {
+            "due": {
+              "unit": "working_days",
+              "amount": 2
+            },
+            "who": "role.sales_manager",
+            "about": 4711078,
+            "action": "release",
+            "on_due": {
+              "action": "hold",
+              "deferred": true,
+              "arguments": {
+                "order": 4711078,
+                "department": "Sales"
+              }
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 147,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711074
+          },
+          "sink": "task",
+          "event": "preview",
+          "route": "release_confirmed",
+          "would": "would ask role.sales_manager to approve release for 4711074",
+          "action": "ask",
+          "dryRun": true,
+          "arguments": {
+            "due": {
+              "unit": "working_days",
+              "amount": 2
+            },
+            "who": "role.sales_manager",
+            "about": 4711074,
+            "action": "release",
+            "on_due": {
+              "action": "hold",
+              "deferred": true,
+              "arguments": {
+                "order": 4711074,
+                "department": "Sales"
+              }
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 148,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711081
+          },
+          "sink": "task",
+          "event": "preview",
+          "route": "release_confirmed",
+          "would": "would ask role.sales_manager to approve release for 4711081",
+          "action": "ask",
+          "dryRun": true,
+          "arguments": {
+            "due": {
+              "unit": "working_days",
+              "amount": 2
+            },
+            "who": "role.sales_manager",
+            "about": 4711081,
+            "action": "release",
+            "on_due": {
+              "action": "hold",
+              "deferred": true,
+              "arguments": {
+                "order": 4711081,
+                "department": "Sales"
+              }
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 149,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711086
+          },
+          "sink": "task",
+          "event": "preview",
+          "route": "release_confirmed",
+          "would": "would ask role.sales_manager to approve release for 4711086",
+          "action": "ask",
+          "dryRun": true,
+          "arguments": {
+            "due": {
+              "unit": "working_days",
+              "amount": 2
+            },
+            "who": "role.sales_manager",
+            "about": 4711086,
+            "action": "release",
+            "on_due": {
+              "action": "hold",
+              "deferred": true,
+              "arguments": {
+                "order": 4711086,
+                "department": "Sales"
+              }
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 150,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711071
+          },
+          "sink": "task",
+          "event": "preview",
+          "route": "release_confirmed",
+          "would": "would ask role.sales_manager to approve release for 4711071",
+          "action": "ask",
+          "dryRun": true,
+          "arguments": {
+            "due": {
+              "unit": "working_days",
+              "amount": 2
+            },
+            "who": "role.sales_manager",
+            "about": 4711071,
+            "action": "release",
+            "on_due": {
+              "action": "hold",
+              "deferred": true,
+              "arguments": {
+                "order": 4711071,
+                "department": "Sales"
+              }
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 151,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711082
+          },
+          "sink": "task",
+          "event": "preview",
+          "route": "release_confirmed",
+          "would": "would ask role.sales_manager to approve release for 4711082",
+          "action": "ask",
+          "dryRun": true,
+          "arguments": {
+            "due": {
+              "unit": "working_days",
+              "amount": 2
+            },
+            "who": "role.sales_manager",
+            "about": 4711082,
+            "action": "release",
+            "on_due": {
+              "action": "hold",
+              "deferred": true,
+              "arguments": {
+                "order": 4711082,
+                "department": "Sales"
+              }
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 152,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711098
+          },
+          "sink": "task",
+          "event": "preview",
+          "route": "release_confirmed",
+          "would": "would ask role.sales_manager to approve release for 4711098",
+          "action": "ask",
+          "dryRun": true,
+          "arguments": {
+            "due": {
+              "unit": "working_days",
+              "amount": 2
+            },
+            "who": "role.sales_manager",
+            "about": 4711098,
+            "action": "release",
+            "on_due": {
+              "action": "hold",
+              "deferred": true,
+              "arguments": {
+                "order": 4711098,
+                "department": "Sales"
+              }
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 153,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711076
+          },
+          "sink": "task",
+          "event": "preview",
+          "route": "release_confirmed",
+          "would": "would ask role.sales_manager to approve release for 4711076",
+          "action": "ask",
+          "dryRun": true,
+          "arguments": {
+            "due": {
+              "unit": "working_days",
+              "amount": 2
+            },
+            "who": "role.sales_manager",
+            "about": 4711076,
+            "action": "release",
+            "on_due": {
+              "action": "hold",
+              "deferred": true,
+              "arguments": {
+                "order": 4711076,
+                "department": "Sales"
+              }
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 154,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711080
+          },
+          "sink": "task",
+          "event": "preview",
+          "route": "release_confirmed",
+          "would": "would ask role.sales_manager to approve release for 4711080",
+          "action": "ask",
+          "dryRun": true,
+          "arguments": {
+            "due": {
+              "unit": "working_days",
+              "amount": 2
+            },
+            "who": "role.sales_manager",
+            "about": 4711080,
+            "action": "release",
+            "on_due": {
+              "action": "hold",
+              "deferred": true,
+              "arguments": {
+                "order": 4711080,
+                "department": "Sales"
+              }
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 155,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711091
+          },
+          "sink": "task",
+          "event": "preview",
+          "route": "release_confirmed",
+          "would": "would ask role.sales_manager to approve release for 4711091",
+          "action": "ask",
+          "dryRun": true,
+          "arguments": {
+            "due": {
+              "unit": "working_days",
+              "amount": 2
+            },
+            "who": "role.sales_manager",
+            "about": 4711091,
+            "action": "release",
+            "on_due": {
+              "action": "hold",
+              "deferred": true,
+              "arguments": {
+                "order": 4711091,
+                "department": "Sales"
+              }
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 156,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711083
+          },
+          "sink": "task",
+          "event": "preview",
+          "route": "release_confirmed",
+          "would": "would ask role.sales_manager to approve release for 4711083",
+          "action": "ask",
+          "dryRun": true,
+          "arguments": {
+            "due": {
+              "unit": "working_days",
+              "amount": 2
+            },
+            "who": "role.sales_manager",
+            "about": 4711083,
+            "action": "release",
+            "on_due": {
+              "action": "hold",
+              "deferred": true,
+              "arguments": {
+                "order": 4711083,
+                "department": "Sales"
+              }
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 157,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711090
+          },
+          "sink": "task",
+          "event": "preview",
+          "route": "release_confirmed",
+          "would": "would ask role.sales_manager to approve release for 4711090",
+          "action": "ask",
+          "dryRun": true,
+          "arguments": {
+            "due": {
+              "unit": "working_days",
+              "amount": 2
+            },
+            "who": "role.sales_manager",
+            "about": 4711090,
+            "action": "release",
+            "on_due": {
+              "action": "hold",
+              "deferred": true,
+              "arguments": {
+                "order": 4711090,
+                "department": "Sales"
+              }
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 158,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711087
+          },
+          "sink": "task",
+          "event": "preview",
+          "route": "release_confirmed",
+          "would": "would ask role.sales_manager to approve release for 4711087",
+          "action": "ask",
+          "dryRun": true,
+          "arguments": {
+            "due": {
+              "unit": "working_days",
+              "amount": 2
+            },
+            "who": "role.sales_manager",
+            "about": 4711087,
+            "action": "release",
+            "on_due": {
+              "action": "hold",
+              "deferred": true,
+              "arguments": {
+                "order": 4711087,
+                "department": "Sales"
+              }
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 159,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711072
+          },
+          "sink": "task",
+          "event": "preview",
+          "route": "release_confirmed",
+          "would": "would ask role.sales_manager to approve release for 4711072",
+          "action": "ask",
+          "dryRun": true,
+          "arguments": {
+            "due": {
+              "unit": "working_days",
+              "amount": 2
+            },
+            "who": "role.sales_manager",
+            "about": 4711072,
+            "action": "release",
+            "on_due": {
+              "action": "hold",
+              "deferred": true,
+              "arguments": {
+                "order": 4711072,
+                "department": "Sales"
+              }
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 160,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711095
+          },
+          "sink": "task",
+          "event": "preview",
+          "route": "release_confirmed",
+          "would": "would ask role.sales_manager to approve release for 4711095",
+          "action": "ask",
+          "dryRun": true,
+          "arguments": {
+            "due": {
+              "unit": "working_days",
+              "amount": 2
+            },
+            "who": "role.sales_manager",
+            "about": 4711095,
+            "action": "release",
+            "on_due": {
+              "action": "hold",
+              "deferred": true,
+              "arguments": {
+                "order": 4711095,
+                "department": "Sales"
+              }
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 161,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711085
+          },
+          "sink": "task",
+          "event": "preview",
+          "route": "release_confirmed",
+          "would": "would ask role.sales_manager to approve release for 4711085",
+          "action": "ask",
+          "dryRun": true,
+          "arguments": {
+            "due": {
+              "unit": "working_days",
+              "amount": 2
+            },
+            "who": "role.sales_manager",
+            "about": 4711085,
+            "action": "release",
+            "on_due": {
+              "action": "hold",
+              "deferred": true,
+              "arguments": {
+                "order": 4711085,
+                "department": "Sales"
+              }
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 162,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711092
+          },
+          "sink": "task",
+          "event": "preview",
+          "route": "release_confirmed",
+          "would": "would ask role.sales_manager to approve release for 4711092",
+          "action": "ask",
+          "dryRun": true,
+          "arguments": {
+            "due": {
+              "unit": "working_days",
+              "amount": 2
+            },
+            "who": "role.sales_manager",
+            "about": 4711092,
+            "action": "release",
+            "on_due": {
+              "action": "hold",
+              "deferred": true,
+              "arguments": {
+                "order": 4711092,
+                "department": "Sales"
+              }
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 163,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711067
+          },
+          "sink": "task",
+          "event": "preview",
+          "route": "release_confirmed",
+          "would": "would ask role.sales_manager to approve release for 4711067",
+          "action": "ask",
+          "dryRun": true,
+          "arguments": {
+            "due": {
+              "unit": "working_days",
+              "amount": 2
+            },
+            "who": "role.sales_manager",
+            "about": 4711067,
+            "action": "release",
+            "on_due": {
+              "action": "hold",
+              "deferred": true,
+              "arguments": {
+                "order": 4711067,
+                "department": "Sales"
+              }
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 164,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711068
+          },
+          "sink": "task",
+          "event": "preview",
+          "route": "release_confirmed",
+          "would": "would ask role.sales_manager to approve release for 4711068",
+          "action": "ask",
+          "dryRun": true,
+          "arguments": {
+            "due": {
+              "unit": "working_days",
+              "amount": 2
+            },
+            "who": "role.sales_manager",
+            "about": 4711068,
+            "action": "release",
+            "on_due": {
+              "action": "hold",
+              "deferred": true,
+              "arguments": {
+                "order": 4711068,
+                "department": "Sales"
+              }
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 165,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711150
+          },
+          "sink": "task",
+          "event": "preview",
+          "route": "release_confirmed",
+          "would": "would ask role.sales_manager to approve release for 4711150",
+          "action": "ask",
+          "dryRun": true,
+          "arguments": {
+            "due": {
+              "unit": "working_days",
+              "amount": 2
+            },
+            "who": "role.sales_manager",
+            "about": 4711150,
+            "action": "release",
+            "on_due": {
+              "action": "hold",
+              "deferred": true,
+              "arguments": {
+                "order": 4711150,
+                "department": "Sales"
+              }
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 166,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711035
+          },
+          "sink": "task",
+          "event": "preview",
+          "route": "release_confirmed",
+          "would": "would ask role.sales_manager to approve release for 4711035",
+          "action": "ask",
+          "dryRun": true,
+          "arguments": {
+            "due": {
+              "unit": "working_days",
+              "amount": 2
+            },
+            "who": "role.sales_manager",
+            "about": 4711035,
+            "action": "release",
+            "on_due": {
+              "action": "hold",
+              "deferred": true,
+              "arguments": {
+                "order": 4711035,
+                "department": "Sales"
+              }
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 167,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711038
+          },
+          "sink": "task",
+          "event": "preview",
+          "route": "release_confirmed",
+          "would": "would ask role.sales_manager to approve release for 4711038",
+          "action": "ask",
+          "dryRun": true,
+          "arguments": {
+            "due": {
+              "unit": "working_days",
+              "amount": 2
+            },
+            "who": "role.sales_manager",
+            "about": 4711038,
+            "action": "release",
+            "on_due": {
+              "action": "hold",
+              "deferred": true,
+              "arguments": {
+                "order": 4711038,
+                "department": "Sales"
+              }
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 168,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711043
+          },
+          "sink": "task",
+          "event": "preview",
+          "route": "release_confirmed",
+          "would": "would ask role.sales_manager to approve release for 4711043",
+          "action": "ask",
+          "dryRun": true,
+          "arguments": {
+            "due": {
+              "unit": "working_days",
+              "amount": 2
+            },
+            "who": "role.sales_manager",
+            "about": 4711043,
+            "action": "release",
+            "on_due": {
+              "action": "hold",
+              "deferred": true,
+              "arguments": {
+                "order": 4711043,
+                "department": "Sales"
+              }
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 169,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711046
+          },
+          "sink": "task",
+          "event": "preview",
+          "route": "release_confirmed",
+          "would": "would ask role.sales_manager to approve release for 4711046",
+          "action": "ask",
+          "dryRun": true,
+          "arguments": {
+            "due": {
+              "unit": "working_days",
+              "amount": 2
+            },
+            "who": "role.sales_manager",
+            "about": 4711046,
+            "action": "release",
+            "on_due": {
+              "action": "hold",
+              "deferred": true,
+              "arguments": {
+                "order": 4711046,
+                "department": "Sales"
+              }
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 170,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711061
+          },
+          "sink": "task",
+          "event": "preview",
+          "route": "release_confirmed",
+          "would": "would ask role.sales_manager to approve release for 4711061",
+          "action": "ask",
+          "dryRun": true,
+          "arguments": {
+            "due": {
+              "unit": "working_days",
+              "amount": 2
+            },
+            "who": "role.sales_manager",
+            "about": 4711061,
+            "action": "release",
+            "on_due": {
+              "action": "hold",
+              "deferred": true,
+              "arguments": {
+                "order": 4711061,
+                "department": "Sales"
+              }
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 171,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711041
+          },
+          "sink": "task",
+          "event": "preview",
+          "route": "release_confirmed",
+          "would": "would ask role.sales_manager to approve release for 4711041",
+          "action": "ask",
+          "dryRun": true,
+          "arguments": {
+            "due": {
+              "unit": "working_days",
+              "amount": 2
+            },
+            "who": "role.sales_manager",
+            "about": 4711041,
+            "action": "release",
+            "on_due": {
+              "action": "hold",
+              "deferred": true,
+              "arguments": {
+                "order": 4711041,
+                "department": "Sales"
+              }
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 172,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711036
+          },
+          "sink": "task",
+          "event": "preview",
+          "route": "release_confirmed",
+          "would": "would ask role.sales_manager to approve release for 4711036",
+          "action": "ask",
+          "dryRun": true,
+          "arguments": {
+            "due": {
+              "unit": "working_days",
+              "amount": 2
+            },
+            "who": "role.sales_manager",
+            "about": 4711036,
+            "action": "release",
+            "on_due": {
+              "action": "hold",
+              "deferred": true,
+              "arguments": {
+                "order": 4711036,
+                "department": "Sales"
+              }
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 173,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711048
+          },
+          "sink": "task",
+          "event": "preview",
+          "route": "release_confirmed",
+          "would": "would ask role.sales_manager to approve release for 4711048",
+          "action": "ask",
+          "dryRun": true,
+          "arguments": {
+            "due": {
+              "unit": "working_days",
+              "amount": 2
+            },
+            "who": "role.sales_manager",
+            "about": 4711048,
+            "action": "release",
+            "on_due": {
+              "action": "hold",
+              "deferred": true,
+              "arguments": {
+                "order": 4711048,
+                "department": "Sales"
+              }
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 174,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711062
+          },
+          "sink": "task",
+          "event": "preview",
+          "route": "release_confirmed",
+          "would": "would ask role.sales_manager to approve release for 4711062",
+          "action": "ask",
+          "dryRun": true,
+          "arguments": {
+            "due": {
+              "unit": "working_days",
+              "amount": 2
+            },
+            "who": "role.sales_manager",
+            "about": 4711062,
+            "action": "release",
+            "on_due": {
+              "action": "hold",
+              "deferred": true,
+              "arguments": {
+                "order": 4711062,
+                "department": "Sales"
+              }
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 175,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711060
+          },
+          "sink": "task",
+          "event": "preview",
+          "route": "release_confirmed",
+          "would": "would ask role.sales_manager to approve release for 4711060",
+          "action": "ask",
+          "dryRun": true,
+          "arguments": {
+            "due": {
+              "unit": "working_days",
+              "amount": 2
+            },
+            "who": "role.sales_manager",
+            "about": 4711060,
+            "action": "release",
+            "on_due": {
+              "action": "hold",
+              "deferred": true,
+              "arguments": {
+                "order": 4711060,
+                "department": "Sales"
+              }
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 176,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711058
+          },
+          "sink": "task",
+          "event": "preview",
+          "route": "release_confirmed",
+          "would": "would ask role.sales_manager to approve release for 4711058",
+          "action": "ask",
+          "dryRun": true,
+          "arguments": {
+            "due": {
+              "unit": "working_days",
+              "amount": 2
+            },
+            "who": "role.sales_manager",
+            "about": 4711058,
+            "action": "release",
+            "on_due": {
+              "action": "hold",
+              "deferred": true,
+              "arguments": {
+                "order": 4711058,
+                "department": "Sales"
+              }
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 177,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711045
+          },
+          "sink": "task",
+          "event": "preview",
+          "route": "release_confirmed",
+          "would": "would ask role.sales_manager to approve release for 4711045",
+          "action": "ask",
+          "dryRun": true,
+          "arguments": {
+            "due": {
+              "unit": "working_days",
+              "amount": 2
+            },
+            "who": "role.sales_manager",
+            "about": 4711045,
+            "action": "release",
+            "on_due": {
+              "action": "hold",
+              "deferred": true,
+              "arguments": {
+                "order": 4711045,
+                "department": "Sales"
+              }
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 178,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711138
+          },
+          "sink": "task",
+          "event": "preview",
+          "route": "release_confirmed",
+          "would": "would ask role.sales_manager to approve release for 4711138",
+          "action": "ask",
+          "dryRun": true,
+          "arguments": {
+            "due": {
+              "unit": "working_days",
+              "amount": 2
+            },
+            "who": "role.sales_manager",
+            "about": 4711138,
+            "action": "release",
+            "on_due": {
+              "action": "hold",
+              "deferred": true,
+              "arguments": {
+                "order": 4711138,
+                "department": "Sales"
+              }
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 179,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711055
+          },
+          "sink": "task",
+          "event": "preview",
+          "route": "release_confirmed",
+          "would": "would ask role.sales_manager to approve release for 4711055",
+          "action": "ask",
+          "dryRun": true,
+          "arguments": {
+            "due": {
+              "unit": "working_days",
+              "amount": 2
+            },
+            "who": "role.sales_manager",
+            "about": 4711055,
+            "action": "release",
+            "on_due": {
+              "action": "hold",
+              "deferred": true,
+              "arguments": {
+                "order": 4711055,
+                "department": "Sales"
+              }
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 180,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711054
+          },
+          "sink": "task",
+          "event": "preview",
+          "route": "release_confirmed",
+          "would": "would ask role.sales_manager to approve release for 4711054",
+          "action": "ask",
+          "dryRun": true,
+          "arguments": {
+            "due": {
+              "unit": "working_days",
+              "amount": 2
+            },
+            "who": "role.sales_manager",
+            "about": 4711054,
+            "action": "release",
+            "on_due": {
+              "action": "hold",
+              "deferred": true,
+              "arguments": {
+                "order": 4711054,
+                "department": "Sales"
+              }
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 181,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711064
+          },
+          "sink": "task",
+          "event": "preview",
+          "route": "release_confirmed",
+          "would": "would ask role.sales_manager to approve release for 4711064",
+          "action": "ask",
+          "dryRun": true,
+          "arguments": {
+            "due": {
+              "unit": "working_days",
+              "amount": 2
+            },
+            "who": "role.sales_manager",
+            "about": 4711064,
+            "action": "release",
+            "on_due": {
+              "action": "hold",
+              "deferred": true,
+              "arguments": {
+                "order": 4711064,
+                "department": "Sales"
+              }
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 182,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711040
+          },
+          "sink": "task",
+          "event": "preview",
+          "route": "release_confirmed",
+          "would": "would ask role.sales_manager to approve release for 4711040",
+          "action": "ask",
+          "dryRun": true,
+          "arguments": {
+            "due": {
+              "unit": "working_days",
+              "amount": 2
+            },
+            "who": "role.sales_manager",
+            "about": 4711040,
+            "action": "release",
+            "on_due": {
+              "action": "hold",
+              "deferred": true,
+              "arguments": {
+                "order": 4711040,
+                "department": "Sales"
+              }
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 183,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "key": {
+            "order_number": 4711151
+          },
+          "sink": "task",
+          "event": "preview",
+          "route": "release_confirmed",
+          "would": "would ask role.sales_manager to approve release for 4711151",
+          "action": "ask",
+          "dryRun": true,
+          "arguments": {
+            "due": {
+              "unit": "working_days",
+              "amount": 2
+            },
+            "who": "role.sales_manager",
+            "about": 4711151,
+            "action": "release",
+            "on_due": {
+              "action": "hold",
+              "deferred": true,
+              "arguments": {
+                "order": 4711151,
+                "department": "Sales"
+              }
+            }
+          },
+          "batchRows": []
+        }
+      }
+    ],
+    "writes": [
+      {
+        "seq": 1,
+        "at": "2026-11-02T17:40:28.031286Z",
+        "payload": {
+          "rows": 242,
+          "batch": "00000000-0000-4000-8000-000000000002",
+          "state": "preview",
+          "entities": {
+            "er.entity.order": 56,
+            "er.entity.release_order_verdict": 155,
+            "er.entity.release_order_verdict_detail": 31
+          }
+        }
+      },
+      {
+        "seq": 2,
+        "at": "2026-11-02T17:41:07.226546Z",
+        "payload": {
+          "rows": 242,
+          "batch": "00000000-0000-4000-8000-000000000002",
+          "event": "closed",
+          "state": "preview",
+          "applied": 0
+        }
+      }
+    ],
+    "people": [],
+    "turns": [],
+    "signals": [],
+    "receipts": []
+  },
+  "schema": "protocol/v1"
+}
