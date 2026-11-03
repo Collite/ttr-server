@@ -1818,6 +1818,55 @@
     }
   },
   {
+    "id": "chrono/ts-ytd-as-of-today-en",
+    "tool": "ground_time",
+    "kind": "DATE",
+    "span": "year to date as of today",
+    "locale": "en-US",
+    "reference_datetime": "2026-11-01T12:00:00+02:00",
+    "timezone": "Europe/Prague",
+    "package": "cnc",
+    "model": "accounting-period",
+    "here": null,
+    "expect": {
+      "status": "OK",
+      "interval_start": "2026-01-01"
+    }
+  },
+  {
+    "id": "chrono/ts-ytd-do-brezna-cs",
+    "tool": "ground_time",
+    "kind": "DATE",
+    "span": "od začátku roku do března",
+    "locale": "cs-CZ",
+    "reference_datetime": "2026-11-01T12:00:00+02:00",
+    "timezone": "Europe/Prague",
+    "package": "cnc",
+    "model": "accounting-period",
+    "here": null,
+    "expect": {
+      "status": "OK",
+      "interval_start": "2026-01-01"
+    }
+  },
+  {
+    "id": "chrono/ts-ytd-do-dneska-cs",
+    "tool": "ground_time",
+    "kind": "DATE",
+    "span": "od začátku roku do dneška",
+    "locale": "cs-CZ",
+    "reference_datetime": "2026-11-01T12:00:00+02:00",
+    "timezone": "Europe/Prague",
+    "package": "cnc",
+    "model": "accounting-period",
+    "here": null,
+    "expect": {
+      "status": "OK",
+      "application": "FILTER",
+      "interval_start": "2026-01-01"
+    }
+  },
+  {
     "id": "chrono/ts-ytd-letos-dosud-cs",
     "tool": "ground_time",
     "kind": "DATE",

@@ -37,7 +37,7 @@ reference date of the request.
 | half-year | *1. pololetí 2026*, *druhé pololetí*, *H1 2026* | *H1 2026*, *the first half of 2026* | six months, `yyyyHn`; yearless reads as a yearless month |
 | trailing | *poslední měsíc / týden / rok* | *the last month / week / year* | **asks** (`AWAITING_CLARIFICATION`): `trailing` — the last 30 / 7 / 365 days through ref — or `calendar` — the period before ref's |
 | last N | *posledních 30 dní*, *poslední 3 měsíce* | *last 30 days*, *past 3 months* | `[ref − N, ref + 1 day)` |
-| year to date | *od začátku roku*, *letos dosud* | *year to date*, *YTD* | `[1 January of ref's year, ref + 1 day)` |
+| year to date | *od začátku roku*, *letos dosud*, *… do dneška*, *… do března* | *year to date*, *YTD*, *… as of today*, *… through September* | `[1 January, ref + 1 day)`; ending with a month, to that month's end; in the year the span states, else ref's; any other ending is no one period |
 | days | *dnes*, *včera*, *zítra* | *today*, *yesterday*, *tomorrow* | that day |
 
 Not a period: a bare period noun (*měsíc*, *po měsících*, *roce*) — a breakdown or a trigger word; the grain

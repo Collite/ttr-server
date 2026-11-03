@@ -209,4 +209,35 @@ class TimePhrasesSpec :
                 }
             }
         }
+
+        // review-215 R3: the ending is part of the phrase, not the whole of it.
+        "year to date ending today is year to date; ending with a month, it runs to that month's end" {
+            for ((span, end) in listOf(
+                "od začátku roku do dneška" to day(2026, 11, 2),
+                "od začátku roku dodnes" to day(2026, 11, 2),
+                "year to date as of today" to day(2026, 11, 2),
+                "od začátku roku do března" to day(2026, 4, 1),
+                "od začátku roku do konce září" to day(2026, 10, 1),
+                "YTD through September" to day(2026, 10, 1),
+                "od začátku roku 2025 do března" to day(2025, 4, 1),
+            )) {
+                val r = read(span)
+                withClue(span) {
+                    r.startInclusive.dayOfYear shouldBe 1
+                    r.endExclusive shouldBe end
+                    r.alternatives shouldBe emptyList()
+                }
+            }
+            read("od začátku roku 2025 do března").startInclusive shouldBe day(2025, 1, 1)
+        }
+
+        "year to date with any other ending is no one period" {
+            for (span in listOf(
+                "od začátku roku do 15. března",
+                "year to date through Q2",
+                "od začátku roku do konce roku",
+            )) {
+                withClue(span) { rec.read(span, ref).shouldBeNull() }
+            }
+        }
     })

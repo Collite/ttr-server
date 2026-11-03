@@ -27,7 +27,8 @@ outside this repo could notice is in.
   bounds or `values`); quarters by number („2. čtvrtletí 2026“, „třetí kvartál“, "Q2",
   "the second quarter of 2025"; `yyyyQn`) and the word *kvartál*; *uplynulý* / "past" (the period before the
   reference's); year to date („od začátku roku“, „letos dosud“, "year to date", "YTD": 1 January through the reference
-  day). A yearless quarter or half reads as a yearless month: the conversation's year, else the reference's, and it
+  day; „… do dneška“ / "… as of today" the same, „… do března“ / "… through September" to the end of that month, any
+  other ending not read). A yearless quarter or half reads as a yearless month: the conversation's year, else the reference's, and it
   asks this year vs last when it is later than the reference's. **„poslední měsíc / týden / rok“ and "the last month"
   now ask** (`AWAITING_CLARIFICATION`, option ids `trailing` — the last 30 / 7 / 365 days — and `calendar` — the period
   before), where they used to be unread (or, with a slice trigger, the current month); „letos dosud“ used to be the

@@ -82,6 +82,7 @@ class DateRecognizer {
         val years = Years(stated = spanYear(n, conversation), leaned = conversation.leanedYear())
         val base =
             fiscalYear(n)?.let(::Hit)
+                ?: yearToDate(n, reference)
                 ?: numbered(n, NumberedPeriods.quarters(n), QUARTER_MONTHS, 'Q', reference, years)
                 ?: numbered(n, NumberedPeriods.halves(n), HALF_MONTHS, 'H', reference, years)
                 ?: fiscalQuarter(n, reference, triggered, conversation)
@@ -537,8 +538,16 @@ class DateRecognizer {
      * run [calendarYear] reads? Such a span is not a period at the reference, so neither
      * [relative] nor [fiscalQuarter] reads it (#213).
      */
-    private fun statesYear(n: String): Boolean =
-        digitRunRe.findAll(n).any { it.value.length == 4 && it.value.toInt() in PLAUSIBLE_YEARS }
+    private fun statesYear(n: String): Boolean = statedYears(n).isNotEmpty()
+
+    /** The years the span writes out: its four-digit runs in [PLAUSIBLE_YEARS] ([statesYear]). */
+    private fun statedYears(n: String): Set<Int> =
+        digitRunRe
+            .findAll(n)
+            .filter { it.value.length == 4 }
+            .map { it.value.toInt() }
+            .filter { it in PLAUSIBLE_YEARS }
+            .toSet()
 
     /**
      * A unit smaller than a year, on the folded span: an English word with its plural, matched
@@ -598,7 +607,6 @@ class DateRecognizer {
             hasAny(n, "yesterday", "vcera") -> return Hit(dayInterval(reference.minusDays(1), 0.95))
             hasAny(n, "tomorrow", "zitra") -> return Hit(dayInterval(reference.plusDays(1), 0.95))
         }
-        yearToDate(n, reference)?.let { return Hit(it) }
         trailing(n, reference)?.let { return Hit(it) }
         lastNRe.find(n)?.let { m ->
             val count = m.groupValues[1].toLong()
@@ -647,14 +655,61 @@ class DateRecognizer {
                 """|\byear[\s-]+to[\s-]+date\b|\bytd\b""",
         )
 
-    /** From the first day of the reference's year through the reference day: `[1 Jan, reference + 1 day)`. */
+    /** An ending that is today: „do dneška“, „dodnes“, „do teď“, "as of today", "to date". */
+    private val ytdTodayEndRe =
+        Regex(
+            """^(?:(?:az\s+)?do\s+(?:dneska|dnesniho\s+dne|dnes|ted)|dodnes""" +
+                """|(?:until|till|through|to|as\s+of|up\s+to)\s+(?:today|now|date))\b""",
+        )
+
+    /** An ending that is a month's end: „do března“, „do konce září“, "through March", "to the end of September". */
+    private val ytdMonthEndRe =
+        Regex(
+            """^(?:(?:az\s+)?do\s+(?:konce\s+)?|(?:until|till|through|thru|to|by)\s+(?:the\s+end\s+of\s+)?)([a-z]+)\b""",
+        )
+
+    /** Any ending at all. */
+    private val ytdAnyEndRe = Regex("""^(?:(?:az\s+)?do|until|till|through|thru|to|as\s+of|up\s+to|by)\b""")
+
+    /**
+     * From the first day of the year through the reference day: `[1 Jan, reference + 1 day)`. Asked before the
+     * day words and the month names, which would read the phrase's own ending as the whole of it: „od začátku roku
+     * do dneška“ is year to date, not today, and „do března“ is not March.
+     *
+     * An ending that is today („do dneška“, "as of today") is year to date. One that is a month („do března“,
+     * "through September") runs to the end of that month. Either is in the year the span states, else the
+     * reference's. Any other ending („do 15. března“) leaves the span no one period ([NotOne]). With no ending, a
+     * span that states a year other than the reference's („od začátku roku 2025“) is not year to date: the
+     * calendar-year rule reads it, as before.
+     */
     private fun yearToDate(
         n: String,
         reference: LocalDate,
-    ): ChronoRecognition? =
-        yearToDateRe.find(n)?.let {
-            ChronoRecognition(reference.withDayOfYear(1), reference.plusDays(1), ChronoKind.RELATIVE, 0.9)
-        }
+    ): Read? {
+        val m = yearToDateRe.find(n) ?: return null
+        val stated = statedYears(n)
+        if (stated.size > 1) return NotOne
+        val year = stated.singleOrNull() ?: reference.year
+        val start = LocalDate.of(year, 1, 1)
+        val ending = n.substring(m.range.last + 1).replace(leadingYearRe, "").trim()
+        val end =
+            when {
+                ytdTodayEndRe.containsMatchIn(ending) -> reference.plusDays(1)
+                ytdAnyEndRe.containsMatchIn(ending) ->
+                    ytdMonthEndRe
+                        .find(ending)
+                        ?.let { Months.ofWord(it.groupValues[1], withYear = true) }
+                        ?.let { month -> LocalDate.of(year, month, 1).plusMonths(1) }
+                        ?: return NotOne
+                year != reference.year -> return null
+                else -> reference.plusDays(1)
+            }
+        if (!end.isAfter(start)) return NotOne
+        return Hit(ChronoRecognition(start, end, ChronoKind.RELATIVE, 0.9))
+    }
+
+    /** The year a „od začátku roku 2025 …“ writes right after the phrase. */
+    private val leadingYearRe = Regex("""^\s*\d{4}\b""")
 
     // ----- „poslední měsíc / týden / rok“, "the last month": ask (TS-5) -----
 
