@@ -313,8 +313,8 @@ class DateRecognizer {
         conversation: ConversationPeriods,
     ): Read? {
         if (!quarterWordRe.containsMatchIn(n)) return null
-        // Every quarter here is relative. A quarter OF a stated year ("the last quarter of 2025") is not,
-        // and no rule reads it yet: it stays ungrounded (#213).
+        // Every quarter here is relative. A quarter OF a stated year ("the last quarter of 2025", „2. čtvrtletí
+        // 2025“) is not: it is [numbered]'s, which runs first (TS-6).
         if (statesYear(n)) return null
         val words = PeriodWords.findAll(n, PeriodUnit.QUARTER).distinctBy { it.kind to it.delta }
         if (hasAny(n, thisScopeWords) && words.any { it.delta != 0 }) return null // ambiguous both
@@ -510,10 +510,12 @@ class DateRecognizer {
      * A year word beside the digits ("the year 2025", "v roce 2025", "this year 2025") still lands
      * here: [relative] does not read a span that writes out its year ([statesYear], #213).
      *
-     * A unit smaller than a year beside the digits ([subYearUnitRe]: "the second quarter of 2025",
-     * "the last week of 2025", "druhé pololetí 2025") is a period OF that year, and no rule reads
-     * one yet. The whole year would be a confident wrong number, so the span stays ungrounded: a
-     * consumer falls through on a date with no range and reads the words from the question (#213).
+     * A unit smaller than a year beside the digits ([subYearUnitRe]) is a period OF that year, never the
+     * whole year. A quarter or a half-year of it ("the second quarter of 2025", „druhé pololetí 2025“) is
+     * [numbered]'s, which runs first (TS-6). A week, a month by a relative word or a day of it ("the last week
+     * of 2025", "last 3 months of 2025") no rule reads yet: the whole year would be a confident wrong number,
+     * so the span stays ungrounded, and a consumer falls through on a date with no range and reads the words
+     * from the question (#213).
      */
     private fun calendarYear(n: String): ChronoRecognition? {
         if (subYearUnitRe.containsMatchIn(n)) return null
