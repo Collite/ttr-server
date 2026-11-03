@@ -16,6 +16,35 @@ Two steps, kept apart:
 A recognised phrase is always answered with its interval; a model with no date column changes only the
 application.
 
+## What it recognises
+
+Czech and English, case-inflected and with or without diacritics. Intervals are `[start, end)`; *ref* is the
+reference date of the request.
+
+| Phrase family | Czech | English | Reading |
+|---|---|---|---|
+| dates | *15. 3. 2026*, *15. května 2026*, *2026-03-15* | *March 15 2026* | that day; a date with no year takes the year of the question or the conversation, else ref's |
+| months | *květen 2026*, *v říjnu 2025*, *květnové období* | *May 2026*, *May period* | that month, `PERIOD` `yyyyMM` |
+| month, no year | *za červenec*, *od června*, *v září* | *in July*, *for September* | that month; the year from the conversation (#214), else ref's — and **asks** this year vs last when the month is later than ref's |
+| period code | *období 202605*, *202605* (alone) | *period 202605* | that month; a six-digit run inside other words is no period |
+| years | *2025*, *v roce 2025*, *fiskální rok 2026* | *2025*, *fiscal year 2026* | the calendar year (`CALENDAR_YEAR` / `FISCAL_YEAR`) |
+| relative years | *letos*, *loni*, *vloni*, *předloni*, *letošní*, *loňský*, *předloňský*, *tento rok* | *this year*, *last year*, *the year before last* | ref's year, the one before, two before |
+| relative months, quarters | *tento / minulý / předminulý měsíc*, *toto / minulé čtvrtletí*, *tento / minulý kvartál* | *this / last month*, *this / last quarter* | ref's period, or the one before; quarters `PERIOD` `yyyyQn` |
+| anaphoric | *předchozí / předešlý rok, měsíc, čtvrtletí*; *minulý …* | *the previous year*, *the month before* | the period before the one the conversation is about (#214); *minulý* asks when the two readings differ; nothing to count from → `UNGROUNDABLE no_anchor` |
+| elapsed | *uplynulý měsíc / týden / rok / čtvrtletí* | *the past month / year* | the period before ref's |
+| weeks | *tento / minulý / předminulý týden* | *this / last week* | Monday to Monday |
+| numbered quarter | *2. čtvrtletí 2026*, *druhé čtvrtletí*, *3. kvartál*, *Q2 2026*, *Q2* | *Q2 2026*, *the second quarter of 2025* | that quarter, `yyyyQn`; yearless reads as a yearless month (and asks the same way) |
+| half-year | *1. pololetí 2026*, *druhé pololetí*, *H1 2026* | *H1 2026*, *the first half of 2026* | six months, `yyyyHn`; yearless reads as a yearless month; never joins a period table |
+| trailing | *poslední měsíc / týden / rok* | *the last month / week / year* | **asks** (`AWAITING_CLARIFICATION`): `trailing` — the last 30 / 7 / 365 days through ref — or `calendar` — the period before ref's |
+| last N | *posledních 30 dní*, *poslední 3 měsíce* | *last 30 days*, *past 3 months* | `[ref − N, ref + 1 day)` |
+| year to date | *od začátku roku*, *letos dosud* | *year to date*, *YTD* | `[1 January of ref's year, ref + 1 day)` |
+| days | *dnes*, *včera*, *zítra* | *today*, *yesterday*, *tomorrow* | that day |
+
+Not a period: a bare period noun (*měsíc*, *po měsících*, *roce*) — a breakdown or a trigger word; the grain
+adjectives (*měsíční*, *čtvrtletní*, *pololetní*, *kvartální*, *monthly*, *quarterly*); a week, month or day **of** a
+stated year ("the last week of 2025"), which no rule reads yet. An estate's `ground:chrono` lexicon slice (RV-42)
+says which words are chrono's; it never changes what they mean.
+
 ## Outcomes of `Ground`
 
 | Status | When | Result |

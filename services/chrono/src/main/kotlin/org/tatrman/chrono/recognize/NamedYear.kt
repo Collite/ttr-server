@@ -19,7 +19,8 @@ import java.time.LocalDate
  *  - after a preposition only a time takes — "in 2025", "during 2025", "since 2025",
  *    "během 2025" (not "for", "od", "do": "for 2000 dollars", "do 2000 Kč");
  *  - inside a full date — "15.10.2025", "2025-10-15", "2025-10";
- *  - after a quarter — "Q2 2025", "2025Q2", „2. čtvrtletí 2025“, "the second quarter of 2025";
+ *  - after a quarter or a half-year — "Q2 2025", "2025Q2", „2. čtvrtletí 2025“, "the second quarter of 2025",
+ *    "H1 2025", „1. pololetí 2025“, "the first half of 2025";
  *  - as a year relative to the reference, adverb or adjective in any case form — "letos",
  *    "letošní prodeje", "tohoroční", "loni", "vloni", "loňské výpadky zásob", "vloňský",
  *    "minuloroční", "předloni", "předloňský", "předminuloroční", "this year", "last year's";
@@ -45,10 +46,17 @@ object NamedYear {
     private val numericDateRe = Regex("""\b\d{1,2}\s*[./]\s*\d{1,2}\s*[./]\s*(\d{4})\b""")
     private val isoDateRe = Regex("""\b(\d{4})-\d{1,2}(?:-\d{1,2})?\b""")
 
-    /** After a quarter: "Q2 2025", "2025Q2", „2. čtvrtletí 2025“, "the second quarter of 2025" (#214). */
+    /**
+     * After a quarter or a half-year: "Q2 2025", "2025Q2", „2. čtvrtletí 2025“, "the second quarter of 2025" (#214),
+     * "H1 2025", „1. pololetí 2025“, "the first half of 2025" (TS-6). "half" needs its "of"/"in": "half 2000 units".
+     */
     private val afterQuarterRe =
-        Regex("""\b(?:q[1-4]|ctvrtlet(?!n)\w*|quarter)\s*(?:of\s+|in\s+|roku\s+|[/-]\s*)?(\d{4})\b""")
-    private val beforeQuarterRe = Regex("""\b(\d{4})\s*[/-]?\s*q[1-4]\b""")
+        Regex(
+            """\b(?:q[1-4]|h[12]|(?:ctvrtlet|kvartal|pololet)(?!n)\w*|quarter)""" +
+                """\s*(?:of\s+|in\s+|roku\s+|[/-]\s*)?(\d{4})\b""" +
+                """|\bhalf(?:[\s-]+year)?\s+(?:of|in)\s+(\d{4})\b""",
+        )
+    private val beforeQuarterRe = Regex("""\b(\d{4})\s*[/-]?\s*(?:q[1-4]|h[12])\b""")
 
     /** Any four-digit run: a year only if the words around it say so ([writtenYears]), else [bareYears]. */
     private val fourDigitsRe = Regex("""\b(\d{4})\b""")
@@ -82,7 +90,12 @@ object NamedYear {
         }
         sequenceOf(afterYearWordRe, afterTimePrepositionRe, numericDateRe, isoDateRe, afterQuarterRe, beforeQuarterRe)
             .flatMap { it.findAll(n) }
-            .forEach { years += it.groupValues[1].toInt() }
+            .forEach { m ->
+                m.groupValues
+                    .drop(1)
+                    .firstOrNull { it.isNotEmpty() }
+                    ?.let { years += it.toInt() }
+            }
         years.retainAll { it in PLAUSIBLE_YEARS }
         return years
     }

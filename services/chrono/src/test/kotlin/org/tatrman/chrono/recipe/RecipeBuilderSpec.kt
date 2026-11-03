@@ -221,6 +221,28 @@ class RecipeBuilderSpec :
             r.normalized.interval.start shouldContain "2025-01-01"
         }
 
+        // TS-6: a half-year (yyyyHn) has no period-table row and no catalog function — it never joins and
+        // never binds a monthly code column; with a date column it is datetime bounds, without one values.
+        "half-year with a period table → datetime-bounds FilterRecipe, not a join" {
+            val rec = recognizer.recognize("1. pololetí 2026", ref).shouldNotBeNull()
+            val r = tableBacked.build("1. pololetí 2026", rec, "cnc", tz)
+            r.applicationCase shouldBe GroundingResult.ApplicationCase.FILTER
+            r.sqlPreview shouldContain "t.\"date\" >= {start} AND t.\"date\" < {end}"
+            r.filter.parametersList.map { it.name } shouldBe listOf("start", "end")
+            r.normalized.interval.end shouldContain "2026-07-01"
+        }
+
+        "half-year with no column → values carrying p = yyyyHn; on a date-less ledger too, never its code filter" {
+            val rec = recognizer.recognize("1. pololetí 2026", ref).shouldNotBeNull()
+            for ((builder, pkg) in listOf(noRoles to "cnc", datelessLedger to "ucet")) {
+                val r = builder.build("1. pololetí 2026", rec, pkg, tz)
+                r.applicationCase shouldBe GroundingResult.ApplicationCase.VALUES
+                r.values.parametersList
+                    .single { it.name == "p" }
+                    .value.stringValue shouldBe "2026H1"
+            }
+        }
+
         "date-less period-coded fact explicit 'období 202605' → FilterRecipe code = {p}" {
             val rec = recognizer.recognize("období 202605", ref).shouldNotBeNull()
             val r = datelessLedger.build("období 202605", rec, "ucet", tz)

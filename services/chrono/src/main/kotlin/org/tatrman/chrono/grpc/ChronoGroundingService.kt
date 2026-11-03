@@ -24,6 +24,7 @@ import org.tatrman.chrono.recipe.RecipeBuilder
 import org.tatrman.chrono.recognize.ChronoReading
 import org.tatrman.chrono.recognize.ChronoRecognition
 import org.tatrman.chrono.recognize.DateRecognizer
+import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.Month
 import java.time.OffsetDateTime
@@ -31,6 +32,7 @@ import java.time.ZoneId
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 import java.time.format.TextStyle
+import java.time.temporal.ChronoUnit
 import java.util.Locale
 
 /**
@@ -168,7 +170,7 @@ class ChronoGroundingService(
             (listOf(recognition) + recognition.alternatives).map { candidate ->
                 ClarificationOption
                     .newBuilder()
-                    .setId(codeOf(candidate))
+                    .setId(idOf(candidate))
                     .setLabel(labelFor(candidate, locale))
                     .setNormalized(normalized(candidate, zone))
                     .build()
@@ -186,12 +188,15 @@ class ChronoGroundingService(
         answerId: String,
     ): ChronoRecognition? =
         (listOf(recognition) + recognition.alternatives)
-            .firstOrNull { codeOf(it) == answerId }
+            .firstOrNull { idOf(it) == answerId }
             ?.copy(alternatives = emptyList())
 
+    /** A clarification option's id: the reading's own id when the code does not tell the readings apart (TS-5). */
+    private fun idOf(c: ChronoRecognition): String = c.optionId ?: codeOf(c)
+
     /**
-     * A clarification option's id: the candidate's period code — `yyyyMM` for a month, `yyyyQn` for a
-     * quarter — or, for a candidate that carries none, the code of the calendar span it covers: `yyyy` for a
+     * A clarification option's period code — `yyyyMM` for a month, `yyyyQn` for a quarter, `yyyyHn` for a
+     * half-year — or, for a candidate that carries none, the code of the calendar span it covers: `yyyy` for a
      * whole year, `yyyyMMdd` for a day (#214). A year interval carries no period code on purpose (it must not
      * route through a period table), so the id is made here, not on the recognition.
      */
@@ -207,8 +212,9 @@ class ChronoGroundingService(
 
     /**
      * A clarification option's label: the period it names, in the request's language (#214) — "2025",
-     * "February 2025", "Q1 2025", "March 15, 2025"; in Czech „2025“, „únor 2025“, „1. čtvrtletí 2025“,
-     * „15. 3. 2025“. The id carries the code; the label is for the person asked.
+     * "February 2025", "Q1 2025", "H2 2025", "March 15, 2025", "the week of October 19, 2026", "the last 30 days";
+     * in Czech „2025“, „únor 2025“, „1. čtvrtletí 2025“, „2. pololetí 2025“, „15. 3. 2025“, „týden od 19. 10. 2026“,
+     * „posledních 30 dní“. The id carries the code; the label is for the person asked.
      */
     private fun labelFor(
         c: ChronoRecognition,
@@ -217,11 +223,20 @@ class ChronoGroundingService(
         val czech = locale.trim().lowercase().startsWith("cs")
         val code = codeOf(c)
         val start = c.startInclusive
+        if (c.optionId == ChronoRecognition.TRAILING) {
+            // The window ends with the reference day: [reference - N days, reference + 1 day).
+            val days = ChronoUnit.DAYS.between(start, c.endExclusive) - 1
+            return if (czech) "posledních $days dní" else "the last $days days"
+        }
         return when {
             YEAR_CODE.matches(code) -> code
             QUARTER_CODE.matches(code) -> {
                 val q = code.last()
                 if (czech) "$q. čtvrtletí ${start.year}" else "Q$q ${start.year}"
+            }
+            HALF_CODE.matches(code) -> {
+                val h = code.last()
+                if (czech) "$h. pololetí ${start.year}" else "H$h ${start.year}"
             }
             MONTH_CODE.matches(code) -> "${monthName(start.monthValue, czech)} ${start.year}"
             DAY_CODE.matches(code) ->
@@ -229,6 +244,12 @@ class ChronoGroundingService(
                     "${start.dayOfMonth}. ${start.monthValue}. ${start.year}"
                 } else {
                     "${monthName(start.monthValue, czech = false)} ${start.dayOfMonth}, ${start.year}"
+                }
+            start.dayOfWeek == DayOfWeek.MONDAY && c.endExclusive == start.plusWeeks(1) ->
+                if (czech) {
+                    "týden od ${start.dayOfMonth}. ${start.monthValue}. ${start.year}"
+                } else {
+                    "the week of ${monthName(start.monthValue, czech = false)} ${start.dayOfMonth}, ${start.year}"
                 }
             else -> "${c.startIso} – ${c.endIso}"
         }
@@ -360,6 +381,7 @@ class ChronoGroundingService(
     private companion object {
         val YEAR_CODE = Regex("""\d{4}""")
         val QUARTER_CODE = Regex("""\d{4}Q[1-4]""")
+        val HALF_CODE = Regex("""\d{4}H[12]""")
         val MONTH_CODE = Regex("""\d{6}""")
         val DAY_CODE = Regex("""\d{8}""")
 

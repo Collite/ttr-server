@@ -37,6 +37,16 @@ class DateRecognizer {
          * the inference is still well above chrono's 0.6 clarification floor.
          */
         const val LEANED_YEAR_CONFIDENCE = 0.85
+
+        const val QUARTER_MONTHS = 3
+        const val HALF_MONTHS = 6
+
+        /**
+         * How many days „poslední měsíc / týden / rok“ trails back when it means the last N days (TS-5): the
+         * same window "posledních 30 dní" reads, ending with the reference day.
+         */
+        val TRAILING_DAYS = mapOf(PeriodUnit.MONTH to 30L, PeriodUnit.YEAR to 365L)
+        const val TRAILING_WEEK_DAYS = 7L
     }
 
     /**
@@ -72,6 +82,8 @@ class DateRecognizer {
         val years = Years(stated = spanYear(n, conversation), leaned = conversation.leanedYear())
         val base =
             fiscalYear(n)?.let(::Hit)
+                ?: numbered(NumberedPeriods.quarters(n), QUARTER_MONTHS, 'Q', reference, years)
+                ?: numbered(NumberedPeriods.halves(n), HALF_MONTHS, 'H', reference, years)
                 ?: fiscalQuarter(n, reference, triggered, conversation)
                 ?: periodCode(n)?.let(::Hit)
                 ?: isoDate(n)?.let(::Hit)
@@ -204,11 +216,61 @@ class DateRecognizer {
         return yearInterval(y, ChronoKind.FISCAL_YEAR, 0.95)
     }
 
+    // ----- a quarter or half-year by its number: „2. čtvrtletí 2026“, "Q2", „1. pololetí“, "H2 2026" (TS-6) -----
+
+    /**
+     * The one quarter or half-year a span names by number ([NumberedPeriods]) → a PERIOD recognition with its
+     * `yyyyQn` / `yyyyHn` code. Several in one span are not one period. A yearless one takes its year the way a
+     * yearless month does: from the span's own year words („letošní 2. čtvrtletí“), then from the question or the
+     * conversation, then the reference's — and asks between this year and last when it is later than the
+     * reference's own quarter or half (#214, contracts §5).
+     */
+    private fun numbered(
+        found: List<NumberedPeriods.Numbered>,
+        months: Int,
+        letter: Char,
+        reference: LocalDate,
+        years: Years,
+    ): Read? {
+        val one = found.singleOrNull() ?: return null
+
+        fun inYear(
+            year: Int,
+            confidence: Double,
+        ): ChronoRecognition {
+            val start = LocalDate.of(year, (one.number - 1) * months + 1, 1)
+            val code = "%04d%c%d".format(year, letter, one.number)
+            return ChronoRecognition(start, start.plusMonths(months.toLong()), ChronoKind.PERIOD, confidence, code)
+        }
+        one.year?.let { return Hit(inYear(it, 0.9)) }
+        when (val said = years.stated) {
+            is SpanYear.One -> return Hit(inYear(said.year, 0.9))
+            is SpanYear.Two -> return twoReadings(inYear(said.deictic, 0.9), inYear(said.anaphoric, 0.9))
+            is SpanYear.Unanchored -> return NoAnchor(PeriodUnit.YEAR, said.why)
+            SpanYear.None -> Unit
+        }
+        when (val leaned = years.leaned) {
+            is LeanedYear.One -> return Hit(inYear(leaned.year, LEANED_YEAR_CONFIDENCE))
+            is LeanedYear.Unclear -> return NoAnchor(PeriodUnit.YEAR, leaned.why)
+            LeanedYear.None -> Unit
+        }
+        val current = (reference.monthValue - 1) / months + 1
+        return Hit(
+            if (one.number > current) {
+                // Later than the reference's own: this year (upcoming) or last (most recent past), as a bare
+                // future month asks.
+                inYear(reference.year, 0.6).copy(alternatives = listOf(inYear(reference.year - 1, 0.6)))
+            } else {
+                inYear(reference.year, 0.85)
+            },
+        )
+    }
+
     // ----- fiscal/accounting quarter: "last fiscal quarter" / "poslední fiskální čtvrtletí" (Q-18) -----
     // Words are diacritic-folded (Normalization.fold) before the recognizer runs, so cs stems match
     // accent-free: čtvrtletí→ctvrtleti, fiskální→fiskalni, účetní→ucetni, minulé→minule, poslední→posledni.
 
-    private val quarterWordRe = Regex("""(?:ctvrtlet\w*|quarter)""")
+    private val quarterWordRe = Regex("""(?:ctvrtlet\w*|kvartal\w*|quarter)""")
 
     /**
      * A relative fiscal/accounting quarter → a PERIOD recognition carrying a `yyyyQn` period code plus
@@ -483,7 +545,7 @@ class DateRecognizer {
                 // "letos", "letošní", "tohoroční" — this year
                 "letos tohorocn aktualn soucasn"
         ).split(' ')
-    private val lastScopeWords = "last previous minul predchoz predesl loni lonsk".split(' ')
+    private val lastScopeWords = "last past previous minul uplynul predchoz predesl loni lonsk".split(' ')
 
     /** Two periods back: *předminulý týden*. Asked before [lastScopeWords], which they contain. */
     private val twoBackScopeWords = listOf("predlon", "predminul")
@@ -509,6 +571,8 @@ class DateRecognizer {
             hasAny(n, "yesterday", "vcera") -> return Hit(dayInterval(reference.minusDays(1), 0.95))
             hasAny(n, "tomorrow", "zitra") -> return Hit(dayInterval(reference.plusDays(1), 0.95))
         }
+        yearToDate(n, reference)?.let { return Hit(it) }
+        trailing(n, reference)?.let { return Hit(it) }
         lastNRe.find(n)?.let { m ->
             val count = m.groupValues[1].toLong()
             val unit = m.groupValues[2]
@@ -546,6 +610,68 @@ class DateRecognizer {
                 )
             else -> null
         }
+    }
+
+    // ----- year to date: „od začátku roku“, „letos dosud“, "year to date", "YTD" (TS-6) -----
+
+    private val yearToDateRe =
+        Regex(
+            """\bod\s+zacatku\s+(?:(?:tohoto|letosniho)\s+)?roku\b|\bletos\s+(?:dosud|zatim)\b""" +
+                """|\byear[\s-]+to[\s-]+date\b|\bytd\b""",
+        )
+
+    /** From the first day of the reference's year through the reference day: `[1 Jan, reference + 1 day)`. */
+    private fun yearToDate(
+        n: String,
+        reference: LocalDate,
+    ): ChronoRecognition? =
+        yearToDateRe.find(n)?.let {
+            ChronoRecognition(reference.withDayOfYear(1), reference.plusDays(1), ChronoKind.RELATIVE, 0.9)
+        }
+
+    // ----- „poslední měsíc / týden / rok“, "the last month": ask (TS-5) -----
+
+    /**
+     * „Za poslední měsíc“ is the last thirty days as often as the calendar month before, and a wrong one is a
+     * wrong number told as an answer — so it asks, with two options: `trailing` (the last 30 / 7 / 365 days,
+     * ending with the reference day, as „posledních 30 dní“ reads) and `calendar` (the month, week or year before
+     * the reference's). The singular only: „posledních 3 měsíců“ is [lastNRe]'s, „poslední čtvrtletí“ is the
+     * quarter before ([PeriodWords]), and an adjective decides it („poslední celý měsíc“ is no trailing month).
+     */
+    private val trailingRe =
+        Regex(
+            """\bposledn(?:i|iho|im|imu)\s+""" +
+                """(?:(mesic(?:e|i|em)?)|(tyden|tydne|tydnu|tydnem)|(rok|roku|roce|rokem))\b""" +
+                """|\bthe\s+last\s+(?:(month)|(week)|(year))\b""",
+        )
+
+    private fun trailing(
+        n: String,
+        reference: LocalDate,
+    ): ChronoRecognition? {
+        val m = trailingRe.find(n) ?: return null
+        val g = m.groupValues
+        val end = reference.plusDays(1)
+        val (days, calendar) =
+            when {
+                g[1].isNotEmpty() || g[4].isNotEmpty() ->
+                    TRAILING_DAYS.getValue(PeriodUnit.MONTH) to
+                        periodRecognition(PeriodUnit.MONTH, PeriodUnit.MONTH.indexOf(reference) - 1, 0.85)
+                g[2].isNotEmpty() || g[5].isNotEmpty() ->
+                    TRAILING_WEEK_DAYS to weekInterval(reference, -1L, 0.85)
+                else ->
+                    TRAILING_DAYS.getValue(PeriodUnit.YEAR) to
+                        periodRecognition(PeriodUnit.YEAR, reference.year - 1, 0.85)
+            }
+        val trailing =
+            ChronoRecognition(
+                reference.minusDays(days),
+                end,
+                ChronoKind.RELATIVE,
+                0.85,
+                optionId = ChronoRecognition.TRAILING,
+            )
+        return trailing.copy(alternatives = listOf(calendar.copy(optionId = ChronoRecognition.CALENDAR)))
     }
 
     /** A week, read against the reference date by its scope words; scopeless only when [triggered]. */

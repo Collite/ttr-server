@@ -241,8 +241,11 @@ class DateRecognizerSpec :
             rec.recognize("minulého měsíce", ref).shouldNotBeNull().periodCode shouldBe "202604"
             rec.recognize("předminulý měsíc", ref).shouldNotBeNull().periodCode shouldBe "202603"
         }
-        "'poslední měsíc' is not read as the calendar month before — it is as often the trailing month" {
-            rec.recognize("poslední měsíc", ref).shouldBeNull()
+        "'poslední měsíc' is as often the trailing month as the calendar month before, so it asks" {
+            val r = rec.recognize("poslední měsíc", ref).shouldNotBeNull()
+            r.optionId shouldBe ChronoRecognition.TRAILING
+            r.alternatives.single().optionId shouldBe ChronoRecognition.CALENDAR
+            r.alternatives.single().periodCode shouldBe "202604"
         }
         "a word that only contains 'roce' is not the locative of rok" {
             rec.recognize("minulé procento", ref).shouldBeNull()
@@ -509,16 +512,13 @@ class DateRecognizerSpec :
                 }
             }
         }
-        // A period OF a stated year — "the second quarter of 2025", "the last week of 2025" — is read
-        // by no rule yet. Its two wrong readings are both confident numbers: the period around the
-        // reference (what the relative rules made of it) and the whole of 2025 (what the calendar-year
-        // rule made of it). Ungrounded is the safe answer: a consumer falls through on a date with
-        // no range and reads the words from the question.
+        // A period OF a stated year — "the last week of 2025", "month 3 of 2025" — is read by no rule
+        // yet. Its two wrong readings are both confident numbers: the period around the reference (what
+        // the relative rules made of it) and the whole of 2025 (what the calendar-year rule made of it).
+        // Ungrounded is the safe answer: a consumer falls through on a date with no range and reads the
+        // words from the question. A quarter or a half-year named by its number is read since TS-6 (below).
         val periodsOfAStatedYear =
             listOf(
-                "the second quarter of 2025",
-                "the third quarter of 2025",
-                "the last quarter of 2025",
                 "quarter in 2025",
                 "quarters of 2025",
                 "the second week of 2025",
@@ -529,14 +529,9 @@ class DateRecognizerSpec :
                 "the last month of 2025",
                 "month 3 of 2025",
                 "last 3 months of 2025",
-                "the second half of 2025",
-                "the first half-year of 2025",
                 "the halves of 2025",
                 "the first day of 2025",
                 "last 30 days of 2025",
-                "druhé pololetí 2025",
-                "poslední čtvrtletí 2025",
-                "třetí kvartál 2025",
                 "první týden roku 2025",
                 "v posledním týdnu roku 2025",
                 "poslední měsíc roku 2025",
@@ -547,6 +542,27 @@ class DateRecognizerSpec :
         for (span in periodsOfAStatedYear) {
             "a period of a stated year is ungrounded, not the whole year nor the reference's: '$span'" {
                 rec.recognize(span, ref).shouldBeNull()
+            }
+        }
+        // TS-6: a quarter or a half-year named by its number is that period of the stated year — "the last
+        // quarter" and „poslední čtvrtletí“ before a year are its fourth.
+        val numberedPeriodsOfAStatedYear =
+            listOf(
+                "the second quarter of 2025" to "2025Q2",
+                "the third quarter of 2025" to "2025Q3",
+                "the last quarter of 2025" to "2025Q4",
+                "poslední čtvrtletí 2025" to "2025Q4",
+                "třetí kvartál 2025" to "2025Q3",
+                "the second half of 2025" to "2025H2",
+                "the first half-year of 2025" to "2025H1",
+                "druhé pololetí 2025" to "2025H2",
+            )
+        for ((span, code) in numberedPeriodsOfAStatedYear) {
+            "a numbered quarter or half of a stated year is that period: '$span' → $code" {
+                val r = rec.recognize(span, ref).shouldNotBeNull()
+                r.kind shouldBe ChronoKind.PERIOD
+                r.periodCode shouldBe code
+                r.alternatives shouldBe emptyList()
             }
         }
         "a span with no year of its own still reads its period at the reference" {

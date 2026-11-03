@@ -213,14 +213,10 @@ class GroundingSliceRecognitionSpec :
                 "month 3 of 2025",
                 "quarter 2 of 2025",
                 "quarter in 2025",
-                "the second quarter of 2025",
-                "the last quarter of 2025",
                 "the second week of 2025",
                 "the last week of 2025",
                 "the first month of 2025",
                 "the last month of 2025",
-                "the second half of 2025",
-                "poslední čtvrtletí 2025",
                 "poslední měsíc roku 2025",
             )) {
                 withClue(span) { recognizer.recognize(span, reference, withEnglish) shouldBe null }

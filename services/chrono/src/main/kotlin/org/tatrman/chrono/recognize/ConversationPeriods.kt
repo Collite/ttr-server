@@ -295,39 +295,24 @@ class ConversationPeriods(
         i: Int,
         named: MutableSet<Int>,
     ): String? {
-        val taken = mutableListOf<IntRange>()
-        for ((re, yearFirst) in quarterYearRes) {
-            for (m in re.findAll(n)) {
-                if (taken.any { it.overlaps(m.range) }) continue
-                val (a, b) = m.destructured
-                val year = (if (yearFirst) a else b).toInt()
-                val q = quarterOf(if (yearFirst) b else a) ?: continue
-                if (year !in NamedYear.PLAUSIBLE_YEARS) continue
-                named += year * 4 + q - 1
-                taken += m.range
-            }
-        }
         var unclear: String? = null
-        for (re in yearlessQuarterRes) {
-            for (m in re.findAll(n)) {
-                if (taken.any { it.overlaps(m.range) }) continue
-                val q = quarterOf(m.groupValues[1]) ?: continue
-                taken += m.range
-                val year =
-                    when (val leaned = leanedYear(i)) {
-                        is LeanedYear.One -> leaned.year
-                        is LeanedYear.Unclear -> {
-                            unclear = unclear ?: "the nearest question that names a quarter names Q$q in a year " +
-                                "nobody can say (${leaned.why})"
-                            continue
-                        }
-                        LeanedYear.None -> reference.year.takeIf { q <= PeriodUnit.QUARTER.indexOf(reference) % 4 + 1 }
+        // Those with a year of their own come first; a yearless one is in the year chrono leaned it on.
+        for (found in NumberedPeriods.quarters(n)) {
+            val q = found.number
+            val year =
+                found.year ?: when (val leaned = leanedYear(i)) {
+                    is LeanedYear.One -> leaned.year
+                    is LeanedYear.Unclear -> {
+                        unclear = unclear ?: "the nearest question that names a quarter names Q$q in a year " +
+                            "nobody can say (${leaned.why})"
+                        continue
                     }
-                if (year == null) {
-                    unclear = unclear ?: "the nearest question that names a quarter names Q$q with no year"
-                } else {
-                    named += year * 4 + q - 1
+                    LeanedYear.None -> reference.year.takeIf { q <= PeriodUnit.QUARTER.indexOf(reference) % 4 + 1 }
                 }
+            if (year == null) {
+                unclear = unclear ?: "the nearest question that names a quarter names Q$q with no year"
+            } else {
+                named += year * 4 + q - 1
             }
         }
         return unclear
@@ -335,31 +320,7 @@ class ConversationPeriods(
 
     private fun IntRange.overlaps(other: IntRange): Boolean = first <= other.last && other.first <= last
 
-    /** 1–4 from a digit or an ordinal word, cs or en; "last"/„poslední“ is the fourth. */
-    private fun quarterOf(word: String): Int? =
-        word.toIntOrNull()?.takeIf { it in 1..4 }
-            ?: when {
-                word == "first" || word == "1st" || word.startsWith("prvn") -> 1
-                word == "second" || word == "2nd" || word.startsWith("druh") -> 2
-                word == "third" || word == "3rd" || word.startsWith("tret") -> 3
-                word == "fourth" ||
-                    word == "4th" ||
-                    word == "last" ||
-                    word.startsWith("ctvrt") ||
-                    word.startsWith("posledn") -> 4
-                else -> null
-            }
-
     private companion object {
-        const val CS_ADJ = PeriodWords.CS_ADJ
-        const val EN_ADJ = PeriodWords.EN_ADJ
-        const val CS_QUARTER = """ctvrtlet(?!n)\w*"""
-        const val EN_QUARTER = """quarter\b"""
-        const val EN_ORDINALS = """first|second|third|fourth|1st|2nd|3rd|4th"""
-
-        /** *první, druhé, třetí, čtvrté* in any case; `ctvrt` stops short of *čtvrtletí* itself. */
-        const val CS_ORDINALS = """prvn\w*|druh\w*|tret\w*|ctvrt(?!let)\w*"""
-
         val VERB_MONTHS = setOf("may", "march")
         val WHITESPACE = Regex("""\s+""")
 
@@ -372,26 +333,5 @@ class ConversationPeriods(
 
         /** "may" and "march" are verbs too; a yearless one is a month only after a preposition. */
         val prepositionBeforeRe = Regex("""\b(?:in|for|of|during|since|until|from|through|by|to)\s+$""")
-
-        val quarterYearRes =
-            listOf(
-                // Q2 2025 · Q2/2025
-                Regex("""\bq([1-4])\s*[/-]?\s*(\d{4})\b""") to false,
-                // 2025 Q2 · 2025Q2 · 2025-Q2
-                Regex("""\b(\d{4})\s*[/-]?\s*q([1-4])\b""") to true,
-                // 2. čtvrtletí 2025 · ve 2. fiskálním čtvrtletí roku 2025
-                Regex("""\b([1-4])\.\s*$CS_ADJ${CS_QUARTER}\s+(?:roku\s+)?(\d{4})\b""") to false,
-                // the second quarter of 2025 · the 2nd quarter in 2025
-                Regex("""\b($EN_ORDINALS|last)\s+$EN_ADJ${EN_QUARTER}\s+(?:of\s+|in\s+)?(\d{4})\b""") to false,
-                // druhé čtvrtletí 2025 · ve druhém čtvrtletí roku 2025 · poslední čtvrtletí 2025
-                Regex("""\b($CS_ORDINALS|posledn\w*)\s+$CS_ADJ${CS_QUARTER}\s+(?:roku\s+)?(\d{4})\b""") to false,
-            )
-        val yearlessQuarterRes =
-            listOf(
-                Regex("""\bq([1-4])\b"""),
-                Regex("""\b([1-4])\.\s*$CS_ADJ$CS_QUARTER"""),
-                Regex("""\b($EN_ORDINALS)\s+$EN_ADJ$EN_QUARTER"""),
-                Regex("""\b($CS_ORDINALS)\s+$CS_ADJ$CS_QUARTER"""),
-            )
     }
 }

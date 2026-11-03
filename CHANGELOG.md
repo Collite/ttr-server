@@ -16,6 +16,21 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+- **chrono — the time phrases the regexes outside it missed are read by its own rules (TS-6).** New: half-years
+  („1. pololetí 2026“, „druhé pololetí“, "H1 2026", "the first half of 2026"; `PERIOD`, code `yyyyHn`, datetime
+  bounds or `values`, never a period-table join); quarters by number („2. čtvrtletí 2026“, „třetí kvartál“, "Q2",
+  "the second quarter of 2025"; `yyyyQn`) and the word *kvartál*; *uplynulý* / "past" (the period before the
+  reference's); year to date („od začátku roku“, „letos dosud“, "year to date", "YTD": 1 January through the reference
+  day). A yearless quarter or half reads as a yearless month: the conversation's year, else the reference's, and it
+  asks this year vs last when it is later than the reference's. **„poslední měsíc / týden / rok“ and "the last month"
+  now ask** (`AWAITING_CLARIFICATION`, option ids `trailing` — the last 30 / 7 / 365 days — and `calendar` — the period
+  before), where they used to be unread (or, with a slice trigger, the current month); „letos dosud“ used to be the
+  whole year. A quarter or half-year named by its number with a year ("the second quarter of 2025") is that period
+  now, no longer left ungrounded (#213); a week, month or day of a stated year still is. Clarification labels name
+  half-years („2. pololetí 2025“ / "H2 2025"), a week („týden od 19. 10. 2026“) and the trailing window („posledních 30
+  dní“). The quarter table is shared with the conversation reader. Corpus 36 → 90 cases (eval bulk corpus 126 → 180).
+  No wire change.
+
 - **chrono — a recognised time phrase is always answered with its interval (TS-1).** A package that declares no
   date role and no period-code route used to get `UNGROUNDABLE` "no anchor date column in package", discarding an
   interval chrono had already computed. It now gets `OK` with `normalized.interval` and the `values` arm

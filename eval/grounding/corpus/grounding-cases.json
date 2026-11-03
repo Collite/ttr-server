@@ -436,6 +436,91 @@
     }
   },
   {
+    "id": "chrono/gi1-1-pololeti",
+    "tool": "ground_time",
+    "kind": "DATE",
+    "span": "1. pololetí",
+    "locale": "cs-CZ",
+    "reference_datetime": "2026-11-01T12:00:00+02:00",
+    "timezone": "Europe/Prague",
+    "package": "cnc",
+    "model": "accounting-period",
+    "here": null,
+    "question_text": "Tržby z webu za 1. pololetí",
+    "expect": {
+      "status": "OK",
+      "interval_start": "2026-01-01"
+    }
+  },
+  {
+    "id": "chrono/gi1-2-ctvrtleti",
+    "tool": "ground_time",
+    "kind": "DATE",
+    "span": "2. čtvrtletí",
+    "locale": "cs-CZ",
+    "reference_datetime": "2026-11-01T12:00:00+02:00",
+    "timezone": "Europe/Prague",
+    "package": "cnc",
+    "model": "calendar",
+    "here": null,
+    "question_text": "Porovnej tržby ve 2. čtvrtletí podle prodejny",
+    "expect": {
+      "status": "OK",
+      "interval_start": "2026-04-01"
+    }
+  },
+  {
+    "id": "chrono/gi1-letosni",
+    "tool": "ground_time",
+    "kind": "DATE",
+    "span": "letošní",
+    "locale": "cs-CZ",
+    "reference_datetime": "2026-11-01T12:00:00+02:00",
+    "timezone": "Europe/Prague",
+    "package": "cnc",
+    "model": "accounting-period",
+    "here": null,
+    "question_text": "Jaké jsou letošní tržby z tržiště?",
+    "expect": {
+      "status": "OK",
+      "interval_start": "2026-01-01"
+    }
+  },
+  {
+    "id": "chrono/gi1-od-cervna",
+    "tool": "ground_time",
+    "kind": "DATE",
+    "span": "od června",
+    "locale": "cs-CZ",
+    "reference_datetime": "2026-11-01T12:00:00+02:00",
+    "timezone": "Europe/Prague",
+    "package": "cnc",
+    "model": "accounting-period",
+    "here": null,
+    "question_text": "Vratky od června podle kategorie",
+    "expect": {
+      "status": "OK",
+      "interval_start": "2026-06-01"
+    }
+  },
+  {
+    "id": "chrono/gi1-uplynuly-mesic",
+    "tool": "ground_time",
+    "kind": "DATE",
+    "span": "uplynulý měsíc",
+    "locale": "cs-CZ",
+    "reference_datetime": "2026-11-01T12:00:00+02:00",
+    "timezone": "Europe/Prague",
+    "package": "cnc",
+    "model": "accounting-period",
+    "here": null,
+    "question_text": "Výpadky zásob za uplynulý měsíc",
+    "expect": {
+      "status": "OK",
+      "interval_start": "2026-10-01"
+    }
+  },
+  {
     "id": "chrono/gibberish",
     "tool": "ground_time",
     "kind": "DATE",
@@ -942,6 +1027,856 @@
     ],
     "expect": {
       "status": "UNGROUNDABLE"
+    }
+  },
+  {
+    "id": "chrono/rp-last-month-en",
+    "tool": "ground_time",
+    "kind": "DATE",
+    "span": "last month",
+    "locale": "en-US",
+    "reference_datetime": "2026-11-01T12:00:00+02:00",
+    "timezone": "Europe/Prague",
+    "package": "cnc",
+    "model": "accounting-period",
+    "here": null,
+    "question_text": "Marketplace revenue last month for Brno DC",
+    "expect": {
+      "status": "OK",
+      "interval_start": "2026-10-01"
+    }
+  },
+  {
+    "id": "chrono/rp-minulem-mesici",
+    "tool": "ground_time",
+    "kind": "DATE",
+    "span": "minulém měsíci",
+    "locale": "cs-CZ",
+    "reference_datetime": "2026-11-01T12:00:00+02:00",
+    "timezone": "Europe/Prague",
+    "package": "cnc",
+    "model": "accounting-period",
+    "here": null,
+    "question_text": "Kolik jsme prodali v minulém měsíci?",
+    "expect": {
+      "status": "OK",
+      "interval_start": "2026-10-01"
+    }
+  },
+  {
+    "id": "chrono/rp-minuly-mesic",
+    "tool": "ground_time",
+    "kind": "DATE",
+    "span": "minulý měsíc",
+    "locale": "cs-CZ",
+    "reference_datetime": "2026-11-01T12:00:00+02:00",
+    "timezone": "Europe/Prague",
+    "package": "cnc",
+    "model": "accounting-period",
+    "here": null,
+    "question_text": "Tržby z tržiště za minulý měsíc pro Brno DC",
+    "expect": {
+      "status": "OK",
+      "interval_start": "2026-10-01"
+    }
+  },
+  {
+    "id": "chrono/rp-predminuly-mesic",
+    "tool": "ground_time",
+    "kind": "DATE",
+    "span": "předminulý měsíc",
+    "locale": "cs-CZ",
+    "reference_datetime": "2026-11-01T12:00:00+02:00",
+    "timezone": "Europe/Prague",
+    "package": "cnc",
+    "model": "accounting-period",
+    "here": null,
+    "question_text": "Tržby za předminulý měsíc",
+    "expect": {
+      "status": "OK",
+      "interval_start": "2026-09-01"
+    }
+  },
+  {
+    "id": "chrono/rp-tento-tyden",
+    "tool": "ground_time",
+    "kind": "DATE",
+    "span": "tento týden",
+    "locale": "cs-CZ",
+    "reference_datetime": "2026-11-01T12:00:00+02:00",
+    "timezone": "Europe/Prague",
+    "package": "cnc",
+    "model": "accounting-period",
+    "here": null,
+    "question_text": "Tržby tento týden",
+    "expect": {
+      "status": "OK",
+      "interval_start": "2026-10-26"
+    }
+  },
+  {
+    "id": "chrono/rp-tohoto-mesice",
+    "tool": "ground_time",
+    "kind": "DATE",
+    "span": "tohoto měsíce",
+    "locale": "cs-CZ",
+    "reference_datetime": "2026-11-01T12:00:00+02:00",
+    "timezone": "Europe/Prague",
+    "package": "cnc",
+    "model": "accounting-period",
+    "here": null,
+    "question_text": "Tržby z webu tohoto měsíce",
+    "expect": {
+      "status": "OK",
+      "interval_start": "2026-11-01"
+    }
+  },
+  {
+    "id": "chrono/rp-tomto-roce",
+    "tool": "ground_time",
+    "kind": "DATE",
+    "span": "tomto roce",
+    "locale": "cs-CZ",
+    "reference_datetime": "2026-11-01T12:00:00+02:00",
+    "timezone": "Europe/Prague",
+    "package": "cnc",
+    "model": "accounting-period",
+    "here": null,
+    "question_text": "Vratky v tomto roce",
+    "expect": {
+      "status": "OK",
+      "interval_start": "2026-01-01"
+    }
+  },
+  {
+    "id": "chrono/rp-vloni",
+    "tool": "ground_time",
+    "kind": "DATE",
+    "span": "vloni",
+    "locale": "cs-CZ",
+    "reference_datetime": "2026-11-01T12:00:00+02:00",
+    "timezone": "Europe/Prague",
+    "package": "cnc",
+    "model": "accounting-period",
+    "here": null,
+    "question_text": "Kolik vratek bylo vloni?",
+    "expect": {
+      "status": "OK",
+      "interval_start": "2025-01-01"
+    }
+  },
+  {
+    "id": "chrono/ts-adj-year-letosni-rok",
+    "tool": "ground_time",
+    "kind": "DATE",
+    "span": "letošní rok",
+    "locale": "cs-CZ",
+    "reference_datetime": "2026-11-01T12:00:00+02:00",
+    "timezone": "Europe/Prague",
+    "package": "cnc",
+    "model": "accounting-period",
+    "here": null,
+    "expect": {
+      "status": "OK",
+      "application": "FILTER",
+      "source": "RULES",
+      "interval_start": "2026-01-01"
+    }
+  },
+  {
+    "id": "chrono/ts-adj-year-letosniho-roku",
+    "tool": "ground_time",
+    "kind": "DATE",
+    "span": "letošního roku",
+    "locale": "cs-CZ",
+    "reference_datetime": "2026-11-01T12:00:00+02:00",
+    "timezone": "Europe/Prague",
+    "package": "cnc",
+    "model": "accounting-period",
+    "here": null,
+    "expect": {
+      "status": "OK",
+      "interval_start": "2026-01-01"
+    }
+  },
+  {
+    "id": "chrono/ts-adj-year-lonske",
+    "tool": "ground_time",
+    "kind": "DATE",
+    "span": "loňské",
+    "locale": "cs-CZ",
+    "reference_datetime": "2026-11-01T12:00:00+02:00",
+    "timezone": "Europe/Prague",
+    "package": "cnc",
+    "model": "accounting-period",
+    "here": null,
+    "question_text": "loňské tržby z tržiště",
+    "expect": {
+      "status": "OK",
+      "interval_start": "2025-01-01"
+    }
+  },
+  {
+    "id": "chrono/ts-adj-year-lonskem",
+    "tool": "ground_time",
+    "kind": "DATE",
+    "span": "v loňském roce",
+    "locale": "cs-CZ",
+    "reference_datetime": "2026-11-01T12:00:00+02:00",
+    "timezone": "Europe/Prague",
+    "package": "cnc",
+    "model": "accounting-period",
+    "here": null,
+    "expect": {
+      "status": "OK",
+      "interval_start": "2025-01-01"
+    }
+  },
+  {
+    "id": "chrono/ts-adj-year-predlonsky",
+    "tool": "ground_time",
+    "kind": "DATE",
+    "span": "předloňský",
+    "locale": "cs-CZ",
+    "reference_datetime": "2026-11-01T12:00:00+02:00",
+    "timezone": "Europe/Prague",
+    "package": "cnc",
+    "model": "accounting-period",
+    "here": null,
+    "expect": {
+      "status": "OK",
+      "interval_start": "2024-01-01"
+    }
+  },
+  {
+    "id": "chrono/ts-elapsed-past-month-en",
+    "tool": "ground_time",
+    "kind": "DATE",
+    "span": "the past month",
+    "locale": "en-US",
+    "reference_datetime": "2026-11-01T12:00:00+02:00",
+    "timezone": "Europe/Prague",
+    "package": "cnc",
+    "model": "accounting-period",
+    "here": null,
+    "expect": {
+      "status": "OK",
+      "interval_start": "2026-10-01"
+    }
+  },
+  {
+    "id": "chrono/ts-elapsed-uplynuly-mesic-cs",
+    "tool": "ground_time",
+    "kind": "DATE",
+    "span": "uplynulý měsíc",
+    "locale": "cs-CZ",
+    "reference_datetime": "2026-11-01T12:00:00+02:00",
+    "timezone": "Europe/Prague",
+    "package": "cnc",
+    "model": "accounting-period",
+    "here": null,
+    "expect": {
+      "status": "OK",
+      "interval_start": "2026-10-01"
+    }
+  },
+  {
+    "id": "chrono/ts-elapsed-uplynuly-rok-cs",
+    "tool": "ground_time",
+    "kind": "DATE",
+    "span": "uplynulý rok",
+    "locale": "cs-CZ",
+    "reference_datetime": "2026-11-01T12:00:00+02:00",
+    "timezone": "Europe/Prague",
+    "package": "cnc",
+    "model": "accounting-period",
+    "here": null,
+    "expect": {
+      "status": "OK",
+      "interval_start": "2025-01-01"
+    }
+  },
+  {
+    "id": "chrono/ts-elapsed-uplynuly-tyden-cs",
+    "tool": "ground_time",
+    "kind": "DATE",
+    "span": "uplynulý týden",
+    "locale": "cs-CZ",
+    "reference_datetime": "2026-11-01T12:00:00+02:00",
+    "timezone": "Europe/Prague",
+    "package": "cnc",
+    "model": "accounting-period",
+    "here": null,
+    "expect": {
+      "status": "OK",
+      "interval_start": "2026-10-19"
+    }
+  },
+  {
+    "id": "chrono/ts-half-1-pololeti-2026-cs",
+    "tool": "ground_time",
+    "kind": "DATE",
+    "span": "1. pololetí 2026",
+    "locale": "cs-CZ",
+    "reference_datetime": "2026-11-01T12:00:00+02:00",
+    "timezone": "Europe/Prague",
+    "package": "cnc",
+    "model": "accounting-period",
+    "here": null,
+    "expect": {
+      "status": "OK",
+      "application": "FILTER",
+      "interval_start": "2026-01-01",
+      "sql_contains": [
+        "t.\"date\" >= {start}"
+      ]
+    }
+  },
+  {
+    "id": "chrono/ts-half-conversation-cs",
+    "tool": "ground_time",
+    "kind": "DATE",
+    "span": "ve 2. pololetí",
+    "locale": "cs-CZ",
+    "reference_datetime": "2026-11-01T12:00:00+02:00",
+    "timezone": "Europe/Prague",
+    "package": "cnc",
+    "model": "accounting-period",
+    "here": null,
+    "question_text": "A ve 2. pololetí?",
+    "prior_questions": [
+      "Tržby z tržiště v 1. pololetí 2025"
+    ],
+    "expect": {
+      "status": "OK",
+      "interval_start": "2025-07-01"
+    }
+  },
+  {
+    "id": "chrono/ts-half-druhe-pololeti-cs",
+    "tool": "ground_time",
+    "kind": "DATE",
+    "span": "druhé pololetí",
+    "locale": "cs-CZ",
+    "reference_datetime": "2026-11-01T12:00:00+02:00",
+    "timezone": "Europe/Prague",
+    "package": "cnc",
+    "model": "accounting-period",
+    "here": null,
+    "expect": {
+      "status": "OK",
+      "application": "FILTER",
+      "interval_start": "2026-07-01"
+    }
+  },
+  {
+    "id": "chrono/ts-half-first-half-en",
+    "tool": "ground_time",
+    "kind": "DATE",
+    "span": "first half of 2025",
+    "locale": "en-US",
+    "reference_datetime": "2026-11-01T12:00:00+02:00",
+    "timezone": "Europe/Prague",
+    "package": "cnc",
+    "model": "accounting-period",
+    "here": null,
+    "expect": {
+      "status": "OK",
+      "interval_start": "2025-01-01"
+    }
+  },
+  {
+    "id": "chrono/ts-half-h1-en",
+    "tool": "ground_time",
+    "kind": "DATE",
+    "span": "H1 2026",
+    "locale": "en-US",
+    "reference_datetime": "2026-11-01T12:00:00+02:00",
+    "timezone": "Europe/Prague",
+    "package": "cnc",
+    "model": "accounting-period",
+    "here": null,
+    "expect": {
+      "status": "OK",
+      "application": "FILTER",
+      "interval_start": "2026-01-01"
+    }
+  },
+  {
+    "id": "chrono/ts-half-later-asks-cs",
+    "tool": "ground_time",
+    "kind": "DATE",
+    "span": "2. pololetí",
+    "locale": "cs-CZ",
+    "reference_datetime": "2026-05-15T12:00:00+02:00",
+    "timezone": "Europe/Prague",
+    "package": "cnc",
+    "model": "accounting-period",
+    "here": null,
+    "expect": {
+      "status": "AWAITING_CLARIFICATION",
+      "option_ids": [
+        "2026H2",
+        "2025H2"
+      ]
+    }
+  },
+  {
+    "id": "chrono/ts-half-no-column-cs",
+    "tool": "ground_time",
+    "kind": "DATE",
+    "span": "1. pololetí 2026",
+    "locale": "cs-CZ",
+    "reference_datetime": "2026-11-01T12:00:00+02:00",
+    "timezone": "Europe/Prague",
+    "package": "prodej",
+    "model": "no-date-role",
+    "here": null,
+    "expect": {
+      "status": "OK",
+      "application": "VALUES",
+      "period_code": "2026H1",
+      "interval_start": "2026-01-01"
+    }
+  },
+  {
+    "id": "chrono/ts-month-conversation-cs",
+    "tool": "ground_time",
+    "kind": "DATE",
+    "span": "v září",
+    "locale": "cs-CZ",
+    "reference_datetime": "2026-11-01T12:00:00+02:00",
+    "timezone": "Europe/Prague",
+    "package": "cnc",
+    "model": "accounting-period",
+    "here": null,
+    "question_text": "A v září?",
+    "prior_questions": [
+      "Tržby z tržiště v roce 2025"
+    ],
+    "expect": {
+      "status": "OK",
+      "period_code": "202509",
+      "interval_start": "2025-09-01"
+    }
+  },
+  {
+    "id": "chrono/ts-month-for-september-en",
+    "tool": "ground_time",
+    "kind": "DATE",
+    "span": "for September",
+    "locale": "en-US",
+    "reference_datetime": "2026-11-01T12:00:00+02:00",
+    "timezone": "Europe/Prague",
+    "package": "cnc",
+    "model": "accounting-period",
+    "here": null,
+    "expect": {
+      "status": "OK",
+      "period_code": "202609",
+      "interval_start": "2026-09-01"
+    }
+  },
+  {
+    "id": "chrono/ts-month-in-july-en",
+    "tool": "ground_time",
+    "kind": "DATE",
+    "span": "in July",
+    "locale": "en-US",
+    "reference_datetime": "2026-11-01T12:00:00+02:00",
+    "timezone": "Europe/Prague",
+    "package": "cnc",
+    "model": "accounting-period",
+    "here": null,
+    "expect": {
+      "status": "OK",
+      "period_code": "202607",
+      "interval_start": "2026-07-01"
+    }
+  },
+  {
+    "id": "chrono/ts-month-later-asks-cs",
+    "tool": "ground_time",
+    "kind": "DATE",
+    "span": "v prosinci",
+    "locale": "cs-CZ",
+    "reference_datetime": "2026-11-01T12:00:00+02:00",
+    "timezone": "Europe/Prague",
+    "package": "cnc",
+    "model": "accounting-period",
+    "here": null,
+    "expect": {
+      "status": "AWAITING_CLARIFICATION",
+      "option_ids": [
+        "202612",
+        "202512"
+      ]
+    }
+  },
+  {
+    "id": "chrono/ts-month-od-cervna-cs",
+    "tool": "ground_time",
+    "kind": "DATE",
+    "span": "od června",
+    "locale": "cs-CZ",
+    "reference_datetime": "2026-11-01T12:00:00+02:00",
+    "timezone": "Europe/Prague",
+    "package": "cnc",
+    "model": "accounting-period",
+    "here": null,
+    "expect": {
+      "status": "OK",
+      "period_code": "202606",
+      "interval_start": "2026-06-01"
+    }
+  },
+  {
+    "id": "chrono/ts-month-v-zari-cs",
+    "tool": "ground_time",
+    "kind": "DATE",
+    "span": "v září",
+    "locale": "cs-CZ",
+    "reference_datetime": "2026-11-01T12:00:00+02:00",
+    "timezone": "Europe/Prague",
+    "package": "cnc",
+    "model": "accounting-period",
+    "here": null,
+    "expect": {
+      "status": "OK",
+      "period_code": "202609",
+      "interval_start": "2026-09-01"
+    }
+  },
+  {
+    "id": "chrono/ts-month-za-cervenec-cs",
+    "tool": "ground_time",
+    "kind": "DATE",
+    "span": "za červenec",
+    "locale": "cs-CZ",
+    "reference_datetime": "2026-11-01T12:00:00+02:00",
+    "timezone": "Europe/Prague",
+    "package": "cnc",
+    "model": "accounting-period",
+    "here": null,
+    "expect": {
+      "status": "OK",
+      "application": "JOIN",
+      "period_code": "202607",
+      "interval_start": "2026-07-01"
+    }
+  },
+  {
+    "id": "chrono/ts-quarter-2-ctvrtleti-2026-cs",
+    "tool": "ground_time",
+    "kind": "DATE",
+    "span": "2. čtvrtletí 2026",
+    "locale": "cs-CZ",
+    "reference_datetime": "2026-11-01T12:00:00+02:00",
+    "timezone": "Europe/Prague",
+    "package": "cnc",
+    "model": "calendar",
+    "here": null,
+    "expect": {
+      "status": "OK",
+      "application": "FILTER",
+      "interval_start": "2026-04-01",
+      "sql_contains": [
+        "t.\"date\" >= {start}"
+      ]
+    }
+  },
+  {
+    "id": "chrono/ts-quarter-later-asks-en",
+    "tool": "ground_time",
+    "kind": "DATE",
+    "span": "Q3",
+    "locale": "en-US",
+    "reference_datetime": "2026-05-15T12:00:00+02:00",
+    "timezone": "Europe/Prague",
+    "package": "cnc",
+    "model": "calendar",
+    "here": null,
+    "expect": {
+      "status": "AWAITING_CLARIFICATION",
+      "option_ids": [
+        "2026Q3",
+        "2025Q3"
+      ]
+    }
+  },
+  {
+    "id": "chrono/ts-quarter-letosni-cs",
+    "tool": "ground_time",
+    "kind": "DATE",
+    "span": "letošní 2. čtvrtletí",
+    "locale": "cs-CZ",
+    "reference_datetime": "2026-11-01T12:00:00+02:00",
+    "timezone": "Europe/Prague",
+    "package": "cnc",
+    "model": "calendar",
+    "here": null,
+    "expect": {
+      "status": "OK",
+      "interval_start": "2026-04-01"
+    }
+  },
+  {
+    "id": "chrono/ts-quarter-minuly-kvartal-cs",
+    "tool": "ground_time",
+    "kind": "DATE",
+    "span": "minulý kvartál",
+    "locale": "cs-CZ",
+    "reference_datetime": "2026-11-01T12:00:00+02:00",
+    "timezone": "Europe/Prague",
+    "package": "cnc",
+    "model": "calendar",
+    "here": null,
+    "expect": {
+      "status": "OK",
+      "interval_start": "2026-07-01"
+    }
+  },
+  {
+    "id": "chrono/ts-quarter-ordinal-en",
+    "tool": "ground_time",
+    "kind": "DATE",
+    "span": "the second quarter of 2025",
+    "locale": "en-US",
+    "reference_datetime": "2026-11-01T12:00:00+02:00",
+    "timezone": "Europe/Prague",
+    "package": "cnc",
+    "model": "calendar",
+    "here": null,
+    "expect": {
+      "status": "OK",
+      "interval_start": "2025-04-01"
+    }
+  },
+  {
+    "id": "chrono/ts-quarter-q2-2026-en",
+    "tool": "ground_time",
+    "kind": "DATE",
+    "span": "Q2 2026",
+    "locale": "en-US",
+    "reference_datetime": "2026-11-01T12:00:00+02:00",
+    "timezone": "Europe/Prague",
+    "package": "cnc",
+    "model": "calendar",
+    "here": null,
+    "expect": {
+      "status": "OK",
+      "application": "FILTER",
+      "interval_start": "2026-04-01"
+    }
+  },
+  {
+    "id": "chrono/ts-quarter-table-join",
+    "tool": "ground_time",
+    "kind": "DATE",
+    "span": "2. čtvrtletí 2026",
+    "locale": "cs-CZ",
+    "reference_datetime": "2026-11-01T12:00:00+02:00",
+    "timezone": "Europe/Prague",
+    "package": "cnc",
+    "model": "accounting-period",
+    "here": null,
+    "expect": {
+      "status": "OK",
+      "application": "JOIN",
+      "period_code": "2026Q2",
+      "interval_start": "2026-04-01"
+    }
+  },
+  {
+    "id": "chrono/ts-quarter-tento-kvartal-cs",
+    "tool": "ground_time",
+    "kind": "DATE",
+    "span": "tento kvartál",
+    "locale": "cs-CZ",
+    "reference_datetime": "2026-11-01T12:00:00+02:00",
+    "timezone": "Europe/Prague",
+    "package": "cnc",
+    "model": "calendar",
+    "here": null,
+    "expect": {
+      "status": "OK",
+      "interval_start": "2026-10-01"
+    }
+  },
+  {
+    "id": "chrono/ts-trailing-pick-calendar-cs",
+    "tool": "ground_time",
+    "kind": "DATE",
+    "span": "poslední měsíc",
+    "locale": "cs-CZ",
+    "reference_datetime": "2026-11-01T12:00:00+02:00",
+    "timezone": "Europe/Prague",
+    "package": "cnc",
+    "model": "accounting-period",
+    "here": null,
+    "clarification_answer_id": "calendar",
+    "expect": {
+      "status": "OK",
+      "interval_start": "2026-10-01"
+    }
+  },
+  {
+    "id": "chrono/ts-trailing-pick-trailing-cs",
+    "tool": "ground_time",
+    "kind": "DATE",
+    "span": "poslední měsíc",
+    "locale": "cs-CZ",
+    "reference_datetime": "2026-11-01T12:00:00+02:00",
+    "timezone": "Europe/Prague",
+    "package": "cnc",
+    "model": "accounting-period",
+    "here": null,
+    "clarification_answer_id": "trailing",
+    "expect": {
+      "status": "OK",
+      "application": "FILTER",
+      "interval_start": "2026-10-02"
+    }
+  },
+  {
+    "id": "chrono/ts-trailing-posledni-mesic-cs",
+    "tool": "ground_time",
+    "kind": "DATE",
+    "span": "poslední měsíc",
+    "locale": "cs-CZ",
+    "reference_datetime": "2026-11-01T12:00:00+02:00",
+    "timezone": "Europe/Prague",
+    "package": "cnc",
+    "model": "accounting-period",
+    "here": null,
+    "expect": {
+      "status": "AWAITING_CLARIFICATION",
+      "option_ids": [
+        "trailing",
+        "calendar"
+      ]
+    }
+  },
+  {
+    "id": "chrono/ts-trailing-posledni-rok-cs",
+    "tool": "ground_time",
+    "kind": "DATE",
+    "span": "za poslední rok",
+    "locale": "cs-CZ",
+    "reference_datetime": "2026-11-01T12:00:00+02:00",
+    "timezone": "Europe/Prague",
+    "package": "cnc",
+    "model": "accounting-period",
+    "here": null,
+    "expect": {
+      "status": "AWAITING_CLARIFICATION",
+      "option_ids": [
+        "trailing",
+        "calendar"
+      ]
+    }
+  },
+  {
+    "id": "chrono/ts-trailing-posledni-tyden-cs",
+    "tool": "ground_time",
+    "kind": "DATE",
+    "span": "poslední týden",
+    "locale": "cs-CZ",
+    "reference_datetime": "2026-11-01T12:00:00+02:00",
+    "timezone": "Europe/Prague",
+    "package": "cnc",
+    "model": "accounting-period",
+    "here": null,
+    "expect": {
+      "status": "AWAITING_CLARIFICATION",
+      "option_ids": [
+        "trailing",
+        "calendar"
+      ]
+    }
+  },
+  {
+    "id": "chrono/ts-trailing-the-last-month-en",
+    "tool": "ground_time",
+    "kind": "DATE",
+    "span": "the last month",
+    "locale": "en-US",
+    "reference_datetime": "2026-11-01T12:00:00+02:00",
+    "timezone": "Europe/Prague",
+    "package": "cnc",
+    "model": "accounting-period",
+    "here": null,
+    "expect": {
+      "status": "AWAITING_CLARIFICATION",
+      "option_ids": [
+        "trailing",
+        "calendar"
+      ]
+    }
+  },
+  {
+    "id": "chrono/ts-ytd-letos-dosud-cs",
+    "tool": "ground_time",
+    "kind": "DATE",
+    "span": "letos dosud",
+    "locale": "cs-CZ",
+    "reference_datetime": "2026-11-01T12:00:00+02:00",
+    "timezone": "Europe/Prague",
+    "package": "cnc",
+    "model": "accounting-period",
+    "here": null,
+    "expect": {
+      "status": "OK",
+      "interval_start": "2026-01-01"
+    }
+  },
+  {
+    "id": "chrono/ts-ytd-od-zacatku-roku-cs",
+    "tool": "ground_time",
+    "kind": "DATE",
+    "span": "od začátku roku",
+    "locale": "cs-CZ",
+    "reference_datetime": "2026-11-01T12:00:00+02:00",
+    "timezone": "Europe/Prague",
+    "package": "cnc",
+    "model": "accounting-period",
+    "here": null,
+    "expect": {
+      "status": "OK",
+      "application": "FILTER",
+      "interval_start": "2026-01-01"
+    }
+  },
+  {
+    "id": "chrono/ts-ytd-year-to-date-en",
+    "tool": "ground_time",
+    "kind": "DATE",
+    "span": "year to date",
+    "locale": "en-US",
+    "reference_datetime": "2026-11-01T12:00:00+02:00",
+    "timezone": "Europe/Prague",
+    "package": "cnc",
+    "model": "accounting-period",
+    "here": null,
+    "expect": {
+      "status": "OK",
+      "interval_start": "2026-01-01"
+    }
+  },
+  {
+    "id": "chrono/ts-ytd-ytd-en",
+    "tool": "ground_time",
+    "kind": "DATE",
+    "span": "YTD",
+    "locale": "en-US",
+    "reference_datetime": "2026-11-01T12:00:00+02:00",
+    "timezone": "Europe/Prague",
+    "package": "cnc",
+    "model": "accounting-period",
+    "here": null,
+    "expect": {
+      "status": "OK",
+      "interval_start": "2026-01-01"
     }
   },
   {

@@ -82,8 +82,11 @@ data class PeriodWord(
  * noun. The nouns stop short of their adjectives: *měsíční* and *čtvrtletní* name a grain, not a period.
  *
  * „poslední“ is a scope word for a quarter only. *Za poslední měsíc* and *za poslední rok* are as often the
- * trailing thirty days or twelve months as the calendar period before, so for a month or a year it stays no
- * scope word at all, as it was before #214.
+ * trailing thirty days or twelve months as the calendar period before, so for a month or a year it is no scope
+ * word here: [DateRecognizer] asks between the two readings (TS-5).
+ *
+ * „uplynulý“ and "past" name the period that has just elapsed — the one before the reference date (TS-6).
+ * A quarter is *čtvrtletí* or *kvartál*.
  *
  * A phrase right before a four-digit year is not relative: "last year 2024" is 2024 and "the last quarter of
  * 2025" is a quarter OF 2025 (#213), so neither is read here.
@@ -114,7 +117,7 @@ object PeriodWords {
 
     private const val ROK = """$CS_ADJ(?:rok|roku|roce|rokem)\b"""
     private const val MESIC = """${CS_ADJ}mesic(?!n)\w*"""
-    private const val CTVRTLETI = """${CS_ADJ}ctvrtlet(?!n)\w*"""
+    private const val CTVRTLETI = """${CS_ADJ}(?:ctvrtlet|kvartal)(?!n)\w*"""
 
     /**
      * The `\b` ends a phrase on a whole word, so a trailing `\w*` cannot give letters back to slip past the
@@ -147,7 +150,8 @@ object PeriodWords {
                 """\bv?lonsk\w*""",
                 // „minuloroční“ is deictic (ruled 2026-10-14), unlike „minulý rok“.
                 """\bminulorocn\w*""",
-                """\blast\s+${EN_ADJ}year\b""",
+                """\buplynul\w*\s+$ROK""",
+                """\b(?:last|past)\s+${EN_ADJ}year\b""",
             ),
             rule(
                 PeriodUnit.YEAR,
@@ -175,7 +179,13 @@ object PeriodWords {
                 """\b(?:this|current)\s+${EN_ADJ}month\b""",
                 """\b$CS_THIS\s+$MESIC""",
             ),
-            rule(PeriodUnit.MONTH, PeriodWordKind.DEICTIC, -1, """\blast\s+${EN_ADJ}month\b"""),
+            rule(
+                PeriodUnit.MONTH,
+                PeriodWordKind.DEICTIC,
+                -1,
+                """\b(?:last|past)\s+${EN_ADJ}month\b""",
+                """\buplynul\w*\s+$MESIC""",
+            ),
             rule(
                 PeriodUnit.MONTH,
                 PeriodWordKind.DEICTIC,
@@ -205,7 +215,7 @@ object PeriodWords {
                 PeriodWordKind.DEICTIC,
                 -1,
                 """\b(?:last|past)\s+${EN_ADJ}quarter\b""",
-                """\bposledn\w*\s+$CTVRTLETI""",
+                """\b(?:posledn|uplynul)\w*\s+$CTVRTLETI""",
             ),
             rule(
                 PeriodUnit.QUARTER,

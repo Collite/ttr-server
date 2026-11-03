@@ -43,6 +43,9 @@ class RecipeBuilder(
 
         /** A `yyyyQn` quarter period code (Q-18), e.g. "2026Q2" — distinct from the `yyyyMM` month code. */
         val QUARTER_CODE = Regex("""(\d{4})Q([1-4])""")
+
+        /** A `yyyyHn` half-year code (TS-6), e.g. "2026H1". No estate declares half-year rows, so it never joins. */
+        val HALF_CODE = Regex("""(\d{4})H([12])""")
     }
 
     suspend fun build(
@@ -68,7 +71,11 @@ class RecipeBuilder(
         // period table with a code column and the recognition maps to a period. Bind the
         // period code directly (`code = {p}`) — the period table IS the date dimension, so
         // no fact anchor date column is required.
-        if (anchor == null && recognition.periodCode != null && pt?.code != null) {
+        if (anchor == null &&
+            recognition.periodCode != null &&
+            pt?.code != null &&
+            !isHalfCode(recognition.periodCode)
+        ) {
             val code = reformatCode(recognition.periodCode, pt.codeFormat)
             return periodCodeRecipe(pt.code, code, recognition, normalized, span)
         }
@@ -86,6 +93,9 @@ class RecipeBuilder(
         return if (recognition.kind == ChronoKind.PERIOD) {
             val code = reformatCode(recognition.periodCode!!, pt?.codeFormat ?: "yyyyMM")
             when {
+                // A half-year (TS-6) has no period-table row and no catalog function: datetime bounds, always.
+                isHalfCode(recognition.periodCode) ->
+                    intervalRecipe(anchor, factCol, startIso, endIso, recognition, normalized, span)
                 pt.hasColumns() -> joinRecipe(pt!!, factCol, code, recognition, normalized, span)
                 // A yyyyQn quarter (Q-18) can't lower through the period_start/period_end catalog
                 // functions (the translator supports only yyyyMM/yyyyMMdd), so a table-less quarter
@@ -278,10 +288,14 @@ class RecipeBuilder(
      */
     private fun isQuarterCode(code: String): Boolean = QUARTER_CODE.matches(code)
 
+    private fun isHalfCode(code: String): Boolean = HALF_CODE.matches(code)
+
     private fun reformatCode(
         canonical: String,
         format: String,
     ): String {
+        // A half-year code (yyyyHn) is its own form: it never meets a period table's code_format.
+        if (isHalfCode(canonical)) return canonical
         // Quarter codes (yyyyQn) are their own canonical form — the monthly reformatting below doesn't
         // apply. Honour the common separator variants; default to the compact yyyyQn.
         QUARTER_CODE.matchEntire(canonical)?.let { m ->
