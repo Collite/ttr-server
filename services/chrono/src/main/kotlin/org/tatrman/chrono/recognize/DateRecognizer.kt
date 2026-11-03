@@ -226,9 +226,10 @@ class DateRecognizer {
      * asks between this year and last when it is later than the reference's own quarter or half (#214, contracts
      * §5).
      *
-     * A span that names another period of the unit is no one period ([NotOne]), as [relative] rules: several
-     * numbered ones ("Q1 a Q2 2025"), a number joined to this one („1. a 2. čtvrtletí“, "first and second quarter
-     * of 2025" — only the second stands beside its noun), or a relative quarter word ("last quarter and Q1").
+     * A span that names any other period is no one period ([NotOne], ✅R215-M): several numbered ones ("Q1 a Q2
+     * 2025"), a number joined to this one („1. a 2. čtvrtletí“, "first and second quarter of 2025" — only the second
+     * stands beside its noun), a second year ("Q2 2025 vs 2024"), a month or a relative word ("Q1 and last month").
+     * Which ones count is [OtherPeriods]'.
      */
     private fun numbered(
         n: String,
@@ -240,10 +241,7 @@ class DateRecognizer {
     ): Read? {
         if (found.isEmpty()) return null
         val one = found.singleOrNull() ?: return NotOne
-        if (coordinatedBeforeRe.containsMatchIn(n.substring(0, one.range.first))) return NotOne
-        if (letter == 'Q' && PeriodWords.findAll(n, PeriodUnit.QUARTER).any { !it.range.overlaps(one.range) }) {
-            return NotOne
-        }
+        if (OtherPeriods.outside(n, one.range)) return NotOne
 
         fun inYear(
             year: Int,
@@ -276,16 +274,6 @@ class DateRecognizer {
             },
         )
     }
-
-    /**
-     * A number, ordinal, `Qn` or `Hn` joined to what follows by a comma, a dash or a conjunction, at the end of
-     * the text before a numbered period: „1. a“, "first and", "Q1 to", „1.–“.
-     */
-    private val coordinatedBeforeRe =
-        Regex(
-            """(?:\b[1-4]\.?|\bq[1-4]|\bh[12]|\b(?:first|second|third|fourth|1st|2nd|3rd|4th)\b""" +
-                """|\b(?:prvn|druh|tret|ctvrt(?!let))\w*)\s*(?:,|–|-|\b(?:a|i|and|or|nebo|az|to)\b)\s*$""",
-        )
 
     // ----- fiscal/accounting quarter: "last fiscal quarter" / "poslední fiskální čtvrtletí" (Q-18) -----
     // Words are diacritic-folded (Normalization.fold) before the recognizer runs, so cs stems match

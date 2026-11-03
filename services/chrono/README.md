@@ -42,8 +42,10 @@ reference date of the request.
 
 Not a period: a bare period noun (*měsíc*, *po měsících*, *roce*) — a breakdown or a trigger word; the grain
 adjectives (*měsíční*, *čtvrtletní*, *pololetní*, *kvartální*, *monthly*, *quarterly*); a week, month or day **of** a
-stated year ("the last week of 2025"), which no rule reads yet; two periods of one unit in one span — *1. a 2.
-čtvrtletí*, *first and second quarter of 2025*, *Q1 a Q2 2025*, *last quarter and Q1* — which are not one period.
+stated year ("the last week of 2025"), which no rule reads yet; a quarter or half-year by number in a span that
+names any other period — *1. a 2. čtvrtletí*, *first and second quarter of 2025*, *Q1 a Q2 2025*, *last quarter and
+Q1*, *Q2 2025 vs 2024*, *Q3 and H1 2025*, *Q1 a březen 2025* — which is not one period (a year word, *letošní 2.
+čtvrtletí*, only says which year).
 The trailing ask is the singular only, and never a part of a larger period: *poslední měsíce* (recent months),
 *poslední měsíc roku* (December) and *the last week of the month* do not ask. An estate's `ground:chrono` lexicon slice (RV-42)
 says which words are chrono's; it never changes what they mean.

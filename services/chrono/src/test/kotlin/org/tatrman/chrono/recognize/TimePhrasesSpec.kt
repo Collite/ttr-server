@@ -159,6 +159,39 @@ class TimePhrasesSpec :
             read("v 1. pololetí 2025").periodCode shouldBe "2025H1"
         }
 
+        // review-215 RR1 (✅R215-M): a numbered period reads only from a span that names no other period, wherever
+        // the other stands and whatever joins them.
+        "a numbered period with any other period in its span is no one period" {
+            for (span in listOf(
+                "the first and the second quarter of 2025",
+                "first through third quarter of 2025",
+                "1./2. čtvrtletí 2025",
+                "1. & 2. čtvrtletí",
+                "Q3 and H1 2025",
+                "2. čtvrtletí a 1. pololetí 2025",
+                "1. pololetí a 2. čtvrtletí 2025",
+                "2. čtvrtletí 2025 a 2026",
+                "Q2 2025 vs 2024",
+                "Q1 a březen 2025",
+                "Q1 and last month",
+                "Q2 and last week",
+                "the second quarter and the third of 2025",
+            )) {
+                withClue(span) { rec.read(span, ref).shouldBeNull() }
+            }
+        }
+
+        "a year word says which year a numbered period is in; it is no other period" {
+            read("letošní 2. čtvrtletí").periodCode shouldBe "2026Q2"
+            read("2. čtvrtletí minulého roku").periodCode shouldBe "2025Q2"
+            read("the second quarter of last year").periodCode shouldBe "2025Q2"
+            read("the last quarter of 2025").periodCode shouldBe "2025Q4"
+            read("first half of 2025").periodCode shouldBe "2025H1"
+            read("druhé pololetí").periodCode shouldBe "2026H2"
+            read("Q2").periodCode shouldBe "2026Q2"
+            read("Who sold more than 2000 units in Q2 2025?").periodCode shouldBe "2025Q2"
+        }
+
         // ---- elapsed ----
 
         "„uplynulý“ and 'past' name the period that has just elapsed" {
