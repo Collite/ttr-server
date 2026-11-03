@@ -168,6 +168,16 @@ class TimePhrasesSpec :
             read("the past month").periodCode shouldBe "202610"
         }
 
+        // review-215 R4: "past due" is the accounting word for overdue, not a week's scope.
+        "'past' and „uplynulý“ scope a week only right before the noun" {
+            val due = read("invoices past due this week")
+            due.startInclusive shouldBe day(2026, 10, 26)
+            due.target shouldBe DateTarget.DUE
+            read("the past week").startInclusive shouldBe day(2026, 10, 19)
+            read("v uplynulém týdnu").startInclusive shouldBe day(2026, 10, 19)
+            read("uplynulý týden").startInclusive shouldBe day(2026, 10, 19)
+        }
+
         // ---- trailing: ask (TS-5) ----
 
         "„poslední měsíc“ asks: the last 30 days, or the calendar month before" {

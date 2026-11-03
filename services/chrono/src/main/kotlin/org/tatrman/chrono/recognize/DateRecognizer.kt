@@ -581,7 +581,13 @@ class DateRecognizer {
                 // "letos", "letošní", "tohoroční" — this year
                 "letos tohorocn aktualn soucasn"
         ).split(' ')
-    private val lastScopeWords = "last past previous minul uplynul predchoz predesl loni lonsk".split(' ')
+    private val lastScopeWords = "last previous minul predchoz predesl loni lonsk".split(' ')
+
+    /**
+     * "past" and „uplynulý“ scope a week only right before the noun, the way [PeriodWords] reads them for a month
+     * or a year: "past due this week" is this week's overdue items, not last week.
+     */
+    private val pastWeekRe = Regex("""\bpast\s+${PeriodWords.EN_ADJ}week\b|\buplynul\w*\s+(?:tyden|tydn\w*)""")
 
     /** Two periods back: *předminulý týden*. Asked before [lastScopeWords], which they contain. */
     private val twoBackScopeWords = listOf("predlon", "predminul")
@@ -763,7 +769,7 @@ class DateRecognizer {
         triggered: Boolean,
     ): ChronoRecognition? {
         val thisScope = hasAny(n, thisScopeWords)
-        val lastScope = hasAny(n, lastScopeWords)
+        val lastScope = hasAny(n, lastScopeWords) || pastWeekRe.containsMatchIn(n)
         val twoBack = hasAny(n, twoBackScopeWords)
         val scopeless = !thisScope && !lastScope && !twoBack
         if (scopeless && !triggered) return null
