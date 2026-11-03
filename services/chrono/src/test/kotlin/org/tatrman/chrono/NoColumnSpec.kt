@@ -13,7 +13,7 @@ import org.tatrman.chrono.grpc.ChronoGroundingService
 
 /**
  * TS-1 (contracts §2) — recognising a phrase needs the reference date, applying it needs the model, and the
- * second missing must not throw away the first. A package that declares no date role (the df-test estate)
+ * second missing must not throw away the first. A package that declares no date role
  * gets `OK` with the interval and a `ValueBinding`; `UNGROUNDABLE` is left for a span nothing was read in
  * and for #214's conversational `no_anchor`.
  */
