@@ -408,6 +408,15 @@ class DateRecognizerSpec :
                 .periodCode shouldBe
                 "202603"
         }
+        "„half of 2000 units“ in the question is no year a month leans on" {
+            rec
+                .recognize(
+                    "in September",
+                    LocalDate.of(2026, 11, 1),
+                    context = listOf("Who sold more than half of 2000 units in September?"),
+                ).shouldNotBeNull()
+                .periodCode shouldBe "202609"
+        }
         "a leaned year is inferred — below a written one" {
             val leaned = rec.recognize("říjen", ref, context = listOf("Tržby v roce 2025")).shouldNotBeNull()
             val written = rec.recognize("říjen 2025", ref).shouldNotBeNull()

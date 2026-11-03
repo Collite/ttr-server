@@ -48,13 +48,14 @@ object NamedYear {
 
     /**
      * After a quarter or a half-year: "Q2 2025", "2025Q2", „2. čtvrtletí 2025“, "the second quarter of 2025" (#214),
-     * "H1 2025", „1. pololetí 2025“, "the first half of 2025" (TS-6). "half" needs its "of"/"in": "half 2000 units".
+     * "H1 2025", „1. pololetí 2025“, "the first half of 2025" (TS-6). An English "half" needs its ordinal and its
+     * "of"/"in", as [NumberedPeriods] reads a half-year: "more than half of 2000 units" is an amount.
      */
     private val afterQuarterRe =
         Regex(
             """\b(?:q[1-4]|h[12]|(?:ctvrtlet|kvartal|pololet)(?!n)\w*|quarter)""" +
                 """\s*(?:of\s+|in\s+|roku\s+|[/-]\s*)?(\d{4})\b""" +
-                """|\bhalf(?:[\s-]+year)?\s+(?:of|in)\s+(\d{4})\b""",
+                """|\b(?:first|second|1st|2nd)\s+half(?:[\s-]+year)?\s+(?:of|in)\s+(\d{4})\b""",
         )
     private val beforeQuarterRe = Regex("""\b(\d{4})\s*[/-]?\s*(?:q[1-4]|h[12])\b""")
 
