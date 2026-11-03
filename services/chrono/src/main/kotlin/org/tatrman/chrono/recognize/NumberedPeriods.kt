@@ -111,8 +111,6 @@ internal object NumberedPeriods {
         return found
     }
 
-    private fun IntRange.overlaps(other: IntRange): Boolean = first <= other.last && other.first <= last
-
     /** 1–4 from a digit or an ordinal word, cs or en; "last"/„poslední“ is the fourth. */
     private fun quarterOf(word: String): Int? =
         word.toIntOrNull()?.takeIf { it in 1..4 }
@@ -137,3 +135,6 @@ internal object NumberedPeriods {
                 else -> null
             }
 }
+
+/** Do two ranges of one text share a character? */
+internal fun IntRange.overlaps(other: IntRange): Boolean = first <= other.last && other.first <= last

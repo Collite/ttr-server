@@ -140,6 +140,24 @@ class TimePhrasesSpec :
             rec.recognize("kvartální tržby", ref).shouldBeNull()
         }
 
+        // review-215 R2: two periods of one unit are not one period, the rule `relative` already applies.
+        "two numbered periods of one unit, or a numbered and a relative one, are not one period" {
+            for (span in listOf(
+                "1. a 2. čtvrtletí",
+                "první a druhé čtvrtletí",
+                "first and second quarter of 2025",
+                "v 1. a 2. pololetí 2025",
+                "last quarter and Q1",
+                "Q1 a Q2 2025",
+                "1.–2. čtvrtletí 2025",
+            )) {
+                withClue(span) { rec.read(span, ref).shouldBeNull() }
+            }
+            read("letošní 2. čtvrtletí").periodCode shouldBe "2026Q2"
+            read("poslední čtvrtletí 2025").periodCode shouldBe "2025Q4"
+            read("v 1. pololetí 2025").periodCode shouldBe "2025H1"
+        }
+
         // ---- elapsed ----
 
         "„uplynulý“ and 'past' name the period that has just elapsed" {

@@ -34,7 +34,8 @@ outside this repo could notice is in.
   whole year. A quarter or half-year named by its number with a year ("the second quarter of 2025") is that period
   now, no longer left ungrounded (#213); a week, month or day of a stated year still is. Clarification labels name
   half-years („2. pololetí 2025“ / "H2 2025"), a week („týden od 19. 10. 2026“) and the trailing window („posledních 30
-  dní“). The quarter table is shared with the conversation reader. Corpus 36 → 90 cases (eval bulk corpus 126 → 180).
+  dní“). Two periods of one unit in one span („1. a 2. čtvrtletí“, "last quarter and Q1") are not read as one. The
+  quarter table is shared with the conversation reader. Corpus 36 → 90 cases (eval bulk corpus 126 → 180).
   No wire change.
 
 - **chrono — a recognised time phrase is always answered with its interval (TS-1).** A package that declares no

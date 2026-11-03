@@ -82,8 +82,8 @@ class DateRecognizer {
         val years = Years(stated = spanYear(n, conversation), leaned = conversation.leanedYear())
         val base =
             fiscalYear(n)?.let(::Hit)
-                ?: numbered(NumberedPeriods.quarters(n), QUARTER_MONTHS, 'Q', reference, years)
-                ?: numbered(NumberedPeriods.halves(n), HALF_MONTHS, 'H', reference, years)
+                ?: numbered(n, NumberedPeriods.quarters(n), QUARTER_MONTHS, 'Q', reference, years)
+                ?: numbered(n, NumberedPeriods.halves(n), HALF_MONTHS, 'H', reference, years)
                 ?: fiscalQuarter(n, reference, triggered, conversation)
                 ?: periodCode(n)?.let(::Hit)
                 ?: isoDate(n)?.let(::Hit)
@@ -93,6 +93,7 @@ class DateRecognizer {
                 ?: calendarYear(n)?.let(::Hit)
                 ?: return null
         return when (base) {
+            NotOne -> null
             is NoAnchor ->
                 ChronoReading.Unanchored(
                     "'${span.trim()}' is read against the ${base.unit.noun} the conversation is about, and " +
@@ -126,6 +127,12 @@ class DateRecognizer {
     private data class Hit(
         val recognition: ChronoRecognition,
     ) : Read
+
+    /**
+     * The span is no one period, though a rule recognised its shape — „1. a 2. čtvrtletí“ names two. It ends the
+     * read: a later rule must not read one part of it as the whole.
+     */
+    private data object NotOne : Read
 
     /** An anaphoric reading of a [unit] word with nothing to read against ([ConversationPeriods.Reading.NoAnchor]). */
     private data class NoAnchor(
@@ -220,19 +227,29 @@ class DateRecognizer {
 
     /**
      * The one quarter or half-year a span names by number ([NumberedPeriods]) → a PERIOD recognition with its
-     * `yyyyQn` / `yyyyHn` code. Several in one span are not one period. A yearless one takes its year the way a
-     * yearless month does: from the span's own year words („letošní 2. čtvrtletí“), then from the question or the
-     * conversation, then the reference's — and asks between this year and last when it is later than the
-     * reference's own quarter or half (#214, contracts §5).
+     * `yyyyQn` / `yyyyHn` code. A yearless one takes its year the way a yearless month does: from the span's own
+     * year words („letošní 2. čtvrtletí“), then from the question or the conversation, then the reference's — and
+     * asks between this year and last when it is later than the reference's own quarter or half (#214, contracts
+     * §5).
+     *
+     * A span that names another period of the unit is no one period ([NotOne]), as [relative] rules: several
+     * numbered ones ("Q1 a Q2 2025"), a number joined to this one („1. a 2. čtvrtletí“, "first and second quarter
+     * of 2025" — only the second stands beside its noun), or a relative quarter word ("last quarter and Q1").
      */
     private fun numbered(
+        n: String,
         found: List<NumberedPeriods.Numbered>,
         months: Int,
         letter: Char,
         reference: LocalDate,
         years: Years,
     ): Read? {
-        val one = found.singleOrNull() ?: return null
+        if (found.isEmpty()) return null
+        val one = found.singleOrNull() ?: return NotOne
+        if (coordinatedBeforeRe.containsMatchIn(n.substring(0, one.range.first))) return NotOne
+        if (letter == 'Q' && PeriodWords.findAll(n, PeriodUnit.QUARTER).any { !it.range.overlaps(one.range) }) {
+            return NotOne
+        }
 
         fun inYear(
             year: Int,
@@ -265,6 +282,16 @@ class DateRecognizer {
             },
         )
     }
+
+    /**
+     * A number, ordinal, `Qn` or `Hn` joined to what follows by a comma, a dash or a conjunction, at the end of
+     * the text before a numbered period: „1. a“, "first and", "Q1 to", „1.–“.
+     */
+    private val coordinatedBeforeRe =
+        Regex(
+            """(?:\b[1-4]\.?|\bq[1-4]|\bh[12]|\b(?:first|second|third|fourth|1st|2nd|3rd|4th)\b""" +
+                """|\b(?:prvn|druh|tret|ctvrt(?!let))\w*)\s*(?:,|–|-|\b(?:a|i|and|or|nebo|az|to)\b)\s*$""",
+        )
 
     // ----- fiscal/accounting quarter: "last fiscal quarter" / "poslední fiskální čtvrtletí" (Q-18) -----
     // Words are diacritic-folded (Normalization.fold) before the recognizer runs, so cs stems match
