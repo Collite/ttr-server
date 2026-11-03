@@ -6,6 +6,7 @@ import org.tatrman.grounding.v1.FilterRecipe
 import org.tatrman.grounding.v1.GroundingResult
 import org.tatrman.grounding.v1.JoinRecipe
 import org.tatrman.grounding.v1.Normalized
+import org.tatrman.grounding.v1.ValueBinding
 import org.tatrman.plan.v1.JoinType
 import org.tatrman.grounding.core.PlanExpr
 import org.tatrman.grounding.core.SqlRenderer
@@ -20,16 +21,18 @@ import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 
 /**
- * Turns a [ChronoRecognition] + the package's metadata into a [GroundingResult] (A8.4). Three shapes:
+ * Turns a [ChronoRecognition] + the package's metadata into a [GroundingResult] (A8.4). Four shapes:
  *  - PERIOD with a table-backed period entity → **JoinRecipe** (`fact.date >= ap.start AND < ap.end`,
  *    filter `ap.code = {p}`);
  *  - PERIOD with no period table (calendar-aligned) → **FilterRecipe** over the `period_start`/
  *    `period_end` catalog functions;
- *  - a plain interval (ABSOLUTE / RELATIVE / FISCAL_YEAR) → **FilterRecipe** with datetime bounds.
+ *  - a plain interval (ABSOLUTE / RELATIVE / FISCAL_YEAR) → **FilterRecipe** with datetime bounds;
+ *  - no anchor date column and no period-code route → **ValueBinding** (`start`, `end`, and `p` when the
+ *    recognition carries a period code): the interval is known, where it goes is the caller's (TS-1).
  *
  * `sql_preview` is rendered by [SqlRenderer] from the recipe's own Expression tree (single source of
- * truth); A8.5 round-trips it through the Translator. Returns null when the package exposes no
- * anchor date column (caller → UNGROUNDABLE).
+ * truth); A8.5 round-trips it through the Translator. A ValueBinding has no column to render against,
+ * so its `sql_preview` is empty. Never null: a recognised span always yields its interval.
  */
 class RecipeBuilder(
     private val discovery: SemanticDiscovery,
@@ -47,7 +50,7 @@ class RecipeBuilder(
         recognition: ChronoRecognition,
         pkg: String,
         timezone: String,
-    ): GroundingResult? {
+    ): GroundingResult {
         val zone = runCatching { ZoneId.of(timezone.ifEmpty { defaultTimezone }) }.getOrDefault(ZoneOffset.UTC)
         val startIso = isoAtStartOfDay(recognition.startInclusive, zone)
         val endIso = isoAtStartOfDay(recognition.endExclusive, zone)
@@ -69,8 +72,10 @@ class RecipeBuilder(
             val code = reformatCode(recognition.periodCode, pt.codeFormat)
             return periodCodeRecipe(pt.code, code, recognition, normalized, span)
         }
-        // No fact date column and no period code to fall back on → nothing to constrain.
-        if (anchor == null) return null
+        // No fact date column and no period code to fall back on: the interval still stands — it was
+        // read from the reference date alone, the model contributes nothing to it (TS-1). Hand over
+        // the values; which attribute they restrict is the caller's call.
+        if (anchor == null) return valuesRecipe(recognition, pt, normalized, startIso, endIso, pkg)
 
         // Short, non-reserved fact alias (entity names like Transaction/Order/User are SQL reserved
         // words — an unquoted entity-name alias would make the sql_preview unparseable). Golem's
@@ -92,6 +97,40 @@ class RecipeBuilder(
         } else {
             intervalRecipe(anchor, factCol, startIso, endIso, recognition, normalized, span)
         }
+    }
+
+    // ----- no anchor column → ValueBinding (params only; the caller places them) -----
+
+    private fun valuesRecipe(
+        recognition: ChronoRecognition,
+        pt: PeriodTable?,
+        normalized: Normalized,
+        startIso: String,
+        endIso: String,
+        pkg: String,
+    ): GroundingResult {
+        val values =
+            ValueBinding
+                .newBuilder()
+                .addParameters(PlanExpr.datetimeParam("start", startIso, "Interval start (inclusive)"))
+                .addParameters(PlanExpr.datetimeParam("end", endIso, "Interval end (exclusive)"))
+                .apply {
+                    recognition.periodCode?.let { code ->
+                        addParameters(
+                            PlanExpr.textParam("p", reformatCode(code, pt?.codeFormat ?: "yyyyMM"), "Period code"),
+                        )
+                    }
+                }.build()
+        return GroundingResult
+            .newBuilder()
+            .setNormalized(normalized)
+            .setValues(values)
+            .setSqlPreview("")
+            .setConfidence(recognition.confidence.toFloat())
+            .setSource(GroundingResult.Source.RULES)
+            .setExplanation(
+                "interval computed; no anchor date column declared in package '$pkg' — placement is the caller's",
+            ).build()
     }
 
     // ----- date-less period-coded fact → FilterRecipe on the period code column -----

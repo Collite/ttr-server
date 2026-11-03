@@ -16,6 +16,15 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+- **chrono — a recognised time phrase is always answered with its interval (TS-1).** A package that declares no
+  date role and no period-code route used to get `UNGROUNDABLE` "no anchor date column in package", discarding an
+  interval chrono had already computed. It now gets `OK` with `normalized.interval` and the `values` arm
+  (`ValueBinding`, unused until now): `start`, `end` (datetime, half-open, the request's zone), and `p` (the period
+  code, `yyyyMM` or `yyyyQn`) when the phrase names a period; `sql_preview` is empty and `explanation` names the
+  package. The caller places the values. `UNGROUNDABLE` is left for a span nothing was read in, a missing reference
+  date, and #214's `no_anchor`. `chrono_ground_total` gains the label `application` (`filter` | `join` | `values` |
+  `none`). No wire change: `GroundingResult.values = 2` existed. The eval corpus gains the `no-date-role` model.
+
 - **metadata — ops review corrections.** Accepted non-fallback filesystem content can confirm CN promotions;
   Git confirmation remains restricted to the configured default branch. Successful no-change refreshes avoid
   repeated CN database observations, and failed observations retry. HTTP `read-timeout-ms` now sets a deadline for the

@@ -31,7 +31,10 @@ class ChronoCorpusSpec :
         loadCorpus().forEach { case ->
             "corpus/${case.name}: \"${case.span}\"" {
                 val client =
-                    if (case.periodTable) {
+                    if (!case.dateRoles) {
+                        // TS-1: a package that declares no date role at all — the interval comes back as values.
+                        FakeMetadataClient(emptyList())
+                    } else if (case.periodTable) {
                         FakeMetadataClient.accounting(case.pkg)
                     } else {
                         FakeMetadataClient(
@@ -99,6 +102,7 @@ private fun paramValue(
         when (result.applicationCase) {
             GroundingResult.ApplicationCase.JOIN -> result.join.parametersList
             GroundingResult.ApplicationCase.FILTER -> result.filter.parametersList
+            GroundingResult.ApplicationCase.VALUES -> result.values.parametersList
             else -> emptyList()
         }
     return params.firstOrNull { it.name == name }?.value?.stringValue
@@ -117,6 +121,8 @@ private data class CorpusCase(
     val timezone: String = "Europe/Prague",
     val pkg: String = "cnc",
     val periodTable: Boolean = true,
+    // TS-1: false = the package declares no date role and no period table (overrides periodTable).
+    val dateRoles: Boolean = true,
     // #214: the conversation the span is asked in, and a clarification answer to resume with.
     val question: String = "",
     val priorQuestions: List<String> = emptyList(),

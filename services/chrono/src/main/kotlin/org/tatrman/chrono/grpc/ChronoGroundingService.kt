@@ -37,7 +37,8 @@ import java.util.Locale
  * `services/chrono` — the DATE_TIME grounding service (feature-grounding A8). Deterministic
  * recognition (A8.3) + recipe assembly (A8.4). A8.6 outcomes: ambiguity → AWAITING_CLARIFICATION
  * (+ deterministic `clarification_answer_id` resume); below-threshold / unrecognized → the
- * llm-gateway fallback ([llmFallback], `source: LLM`); hard misses → UNGROUNDABLE.
+ * llm-gateway fallback ([llmFallback], `source: LLM`); hard misses → UNGROUNDABLE. A recognised span is
+ * never UNGROUNDABLE for want of a date column: the interval comes back as `values` (TS-1, contracts §2).
  *
  * `reference_datetime` is ALWAYS taken from the request context — this class never reads a clock.
  */
@@ -67,6 +68,7 @@ class ChronoGroundingService(
         metrics.recordGround(
             outcome = response.status.name,
             source = source,
+            application = applicationOf(response),
             latencyMs = (System.nanoTime() - startNanos) / 1_000_000.0,
         )
         logger.debug(
@@ -125,9 +127,7 @@ class ChronoGroundingService(
             )
         }
 
-        val result =
-            recipeBuilder.build(request.spanText, resolved, request.getPackage(), request.context.timezone)
-                ?: return ungroundable("no anchor date column in package '${request.getPackage()}'")
+        val result = recipeBuilder.build(request.spanText, resolved, request.getPackage(), request.context.timezone)
         return GroundResponse
             .newBuilder()
             .setStatus(GroundResponse.Status.OK)
@@ -315,6 +315,15 @@ class ChronoGroundingService(
         }
 
     // ----- helpers -----
+
+    /** `filter` | `join` | `values` for an OK result — how often the model offered no column — else `none`. */
+    private fun applicationOf(response: GroundResponse): String =
+        when (response.result.applicationCase.takeIf { response.hasResult() }) {
+            GroundingResult.ApplicationCase.FILTER -> "filter"
+            GroundingResult.ApplicationCase.JOIN -> "join"
+            GroundingResult.ApplicationCase.VALUES -> "values"
+            else -> "none"
+        }
 
     /** reference_datetime (ISO-8601 with offset) → LocalDate in the request timezone. Null when absent/unparseable. */
     private fun parseReference(ctx: GroundingContext): LocalDate? {

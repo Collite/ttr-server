@@ -89,7 +89,7 @@ class FiscalQuarterTest :
                     RecipeBuilder(
                         quarterTable,
                     ).build("poslední fiskální čtvrtletí", recognition, "cnc", "Europe/Prague")
-                }.shouldNotBeNull()
+                }
             r.applicationCase shouldBe GroundingResult.ApplicationCase.JOIN
             r.join.parametersList
                 .first { it.name == "p" }
@@ -105,7 +105,7 @@ class FiscalQuarterTest :
                     RecipeBuilder(
                         noTable,
                     ).build("poslední fiskální čtvrtletí", recognition, "cnc", "Europe/Prague")
-                }.shouldNotBeNull()
+                }
             r.applicationCase shouldBe GroundingResult.ApplicationCase.FILTER
             // datetime bounds, NOT period_start(...) — the translator can't lower a yyyyQn code.
             r.sqlPreview shouldContain "t.\"date\" >= {start} AND t.\"date\" < {end}"
