@@ -38,7 +38,8 @@ outside this repo could notice is in.
   asks this year vs last when it is later than the reference's. **„poslední měsíc / týden / rok“ and "the last month"
   now ask** (`AWAITING_CLARIFICATION`, option ids `trailing` — the last 30 / 7 / 365 days — and `calendar` — the period
   before; the singular only, so not „poslední měsíce“, „poslední měsíc roku“ or "the last week of the month"), where they used to be unread (or, with a slice trigger, the current month); „letos dosud“ used to be the
-  whole year. A quarter or half-year named by its number with a year ("the second quarter of 2025") is that period
+  whole year. After a trailing ask the next anaphoric period of its unit („A předchozí měsíc?“) is `no_anchor`: the
+  conversation does not say which reading was taken. A quarter or half-year named by its number with a year ("the second quarter of 2025") is that period
   now, no longer left ungrounded (#213); a week, month or day of a stated year still is. Clarification labels name
   half-years („2. pololetí 2025“ / "H2 2025"), a week („týden od 19. 10. 2026“) and the trailing window („posledních 30
   dní“). Two periods of one unit in one span („1. a 2. čtvrtletí“, "last quarter and Q1") are not read as one. The

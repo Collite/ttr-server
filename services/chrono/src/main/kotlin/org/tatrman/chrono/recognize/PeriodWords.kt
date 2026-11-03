@@ -83,7 +83,8 @@ data class PeriodWord(
  *
  * „poslední“ is a scope word for a quarter only. *Za poslední měsíc* and *za poslední rok* are as often the
  * trailing thirty days or twelve months as the calendar period before, so for a month or a year it is no scope
- * word here: [DateRecognizer] asks between the two readings (TS-5).
+ * word here, and neither is "the last month" or "the last year": [DateRecognizer] asks between the two readings
+ * ([TrailingPeriods], TS-5).
  *
  * „uplynulý“ and "past" name the period that has just elapsed — the one before the reference date (TS-6).
  * A quarter is *čtvrtletí* or *kvartál*.
@@ -235,16 +236,24 @@ object PeriodWords {
             rule(PeriodUnit.QUARTER, PeriodWordKind.AMBIGUOUS, -1, """\bminul\w*\s+$CTVRTLETI"""),
         )
 
-    /** Every relative word of [unit] in the folded text [n], in the order they stand. */
+    /**
+     * Every relative word of [unit] in the folded text [n], in the order they stand. A trailing phrase
+     * ([TrailingPeriods]) is none: "the last month" asks, where "last month" is the month before.
+     */
     fun findAll(
         n: String,
         unit: PeriodUnit,
-    ): List<PeriodWord> =
-        rules
+    ): List<PeriodWord> {
+        val trailing = TrailingPeriods.findAll(n)
+        return rules
             .filter { it.unit == unit }
             .flatMap { rule ->
-                rule.re.findAll(n).map { PeriodWord(unit, rule.kind, rule.delta, it.range, it.value) }
+                rule.re
+                    .findAll(n)
+                    .filterNot { m -> trailing.any { it.range.overlaps(m.range) } }
+                    .map { PeriodWord(unit, rule.kind, rule.delta, it.range, it.value) }
             }.sortedBy { it.range.first }
+    }
 
     /** Every relative word of any unit in the folded text [n]. */
     fun findAll(n: String): List<PeriodWord> = PeriodUnit.entries.flatMap { findAll(n, it) }

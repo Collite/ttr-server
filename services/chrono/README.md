@@ -35,7 +35,7 @@ reference date of the request.
 | weeks | *tento / minulý / předminulý týden* | *this / last week* | Monday to Monday |
 | numbered quarter | *2. čtvrtletí 2026*, *druhé čtvrtletí*, *3. kvartál*, *Q2 2026*, *Q2* | *Q2 2026*, *the second quarter of 2025* | that quarter, `yyyyQn`; yearless reads as a yearless month (and asks the same way) |
 | half-year | *1. pololetí 2026*, *druhé pololetí*, *H1 2026* | *H1 2026*, *the first half of 2026* | six months, `yyyyHn`; yearless reads as a yearless month |
-| trailing | *poslední měsíc / týden / rok*, *posledního měsíce*, *v posledním měsíci* | *the last month / week / year* | **asks** (`AWAITING_CLARIFICATION`): `trailing` — the last 30 / 7 / 365 days through ref — or `calendar` — the period before ref's |
+| trailing | *poslední měsíc / týden / rok*, *posledního měsíce*, *v posledním měsíci* | *the last month / week / year* | **asks** (`AWAITING_CLARIFICATION`): `trailing` — the last 30 / 7 / 365 days through ref — or `calendar` — the period before ref's. The answer is not in the conversation, so an anaphoric period of the unit after it („A předchozí měsíc?“) is `no_anchor`, as after an asked *minulý* |
 | last N | *posledních 30 dní*, *poslední 3 měsíce* | *last 30 days*, *past 3 months* | exactly N days ending with ref, `[ref − N + 1 day, ref + 1 day)`; N months from the day after the same date N months back |
 | year to date | *od začátku roku*, *letos dosud*, *… do dneška*, *… do března* | *year to date*, *YTD*, *… as of today*, *… through September* | `[1 January, ref + 1 day)`; ending with a month, to that month's end; in the year the span states, else ref's; any other ending is no one period |
 | days | *dnes*, *včera*, *zítra* | *today*, *yesterday*, *tomorrow* | that day |

@@ -6,6 +6,7 @@ import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.types.shouldBeInstanceOf
 import java.time.LocalDate
 
 /**
@@ -223,6 +224,26 @@ class TimePhrasesSpec :
                     r?.alternatives.orEmpty().map { it.optionId } shouldBe emptyList()
                 }
             }
+        }
+
+        // review-215 R8: chrono asked, and the answer is not in the conversation — the #214 shape.
+        "after a trailing ask, the next anaphoric period of its unit has nothing to count from" {
+            for (context in listOf(
+                listOf("A předchozí měsíc?", "Tržby za poslední měsíc"),
+                listOf("And the previous month?", "Revenue for the last month"),
+                listOf("A předchozí rok?", "Tržby za poslední rok"),
+            )) {
+                val span = if (context[0].startsWith("And")) "the previous month" else context[0].drop(2).dropLast(1)
+                withClue(
+                    context,
+                ) { rec.read(span, ref, context = context).shouldBeInstanceOf<ChronoReading.Unanchored>() }
+            }
+            // "last month" with no article is the calendar month before, a settled October.
+            read(
+                "the previous month",
+                context = listOf("And the previous month?", "Revenue last month"),
+            ).periodCode shouldBe
+                "202609"
         }
 
         "a count, a quarter or an adjective is no trailing ask" {

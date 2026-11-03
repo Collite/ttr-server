@@ -183,6 +183,13 @@ class ConversationPeriods(
                     PeriodUnit.MONTH -> monthsIn(n, i, named)
                     PeriodUnit.QUARTER -> quartersIn(n, i, named)
                 }
+            // „poslední měsíc“ asked between the trailing days and the calendar period; the answer is not in the
+            // conversation, so the question names a period nobody settled — as an asked „minulý rok“ does.
+            TrailingPeriods.findAll(n).firstOrNull { it.unit.period == unit }?.let { t ->
+                val calendar = unit.codeOf(unit.indexOf(reference) - 1)
+                unclear = unclear ?: "the nearest question that names a ${unit.noun} asked between the last " +
+                    "${t.unit.days} days and $calendar"
+            }
             val words = PeriodWords.findAll(n, unit)
             words.filter { it.kind == PeriodWordKind.DEICTIC }.forEach { named += unit.indexOf(reference) + it.delta }
             val bare = if (unit == PeriodUnit.YEAR) NamedYear.bareYears(n) - named else emptySet()
