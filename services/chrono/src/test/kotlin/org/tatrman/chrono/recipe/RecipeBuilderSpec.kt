@@ -3,6 +3,7 @@ package org.tatrman.chrono.recipe
 
 import org.tatrman.grounding.v1.GroundingResult
 import org.tatrman.plan.v1.JoinType
+import io.kotest.assertions.withClue
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
@@ -298,6 +299,70 @@ class RecipeBuilderSpec :
             val r = quarterly.build("May 2026", rec, "cnc", tz)
             r.applicationCase shouldBe GroundingResult.ApplicationCase.FILTER
             r.sqlPreview shouldNotContain "ap."
+            r.sqlPreview shouldContain "period_start({p})"
+            r.filter.parametersList
+                .single()
+                .value.stringValue shouldBe "202605"
+        }
+
+        // review-215 RR5: a code_format that names no grain chrono reads (a year, a day, a week) fits no code.
+        fun periodTable(
+            format: String,
+            withBounds: Boolean = true,
+            withDate: Boolean = true,
+        ) = RecipeBuilder(
+            FakeMetadataClient(
+                buildList {
+                    add(FakeMetadataClient.Obj("cnc", "Period", "Period", "entity", semanticKind = "period_table"))
+                    if (withBounds) {
+                        add(FakeMetadataClient.Obj("cnc", "Period", "start_date", "attribute", role = "period_start"))
+                        add(FakeMetadataClient.Obj("cnc", "Period", "end_date", "attribute", role = "period_end"))
+                    }
+                    add(
+                        FakeMetadataClient.Obj(
+                            "cnc",
+                            "Period",
+                            "period",
+                            "attribute",
+                            role = "period_code",
+                            codeFormat = format,
+                        ),
+                    )
+                    if (withDate) {
+                        add(FakeMetadataClient.Obj("cnc", "Transaction", "date", "attribute", role = "event_date"))
+                    }
+                },
+            ),
+        )
+
+        "a month against a yearly, daily or weekly period table → the catalog functions, no join on a mangled code" {
+            val rec = recognizer.recognize("May 2026", ref).shouldNotBeNull()
+            for (format in listOf("yyyy", "yyyyMMdd", "yyyy-ww")) {
+                val r = periodTable(format).build("May 2026", rec, "cnc", tz)
+                withClue(format) {
+                    r.applicationCase shouldBe GroundingResult.ApplicationCase.FILTER
+                    r.sqlPreview shouldNotContain "ap."
+                    r.sqlPreview shouldContain "period_start({p})"
+                    r.filter.parametersList
+                        .single()
+                        .value.stringValue shouldBe "202605"
+                }
+            }
+        }
+
+        "a month on a date-less fact with a yearly period table → values, not a code filter on the year" {
+            val rec = recognizer.recognize("minulý měsíc", ref).shouldNotBeNull()
+            val r = periodTable("yyyy", withDate = false).build("minulý měsíc", rec, "cnc", tz)
+            r.applicationCase shouldBe GroundingResult.ApplicationCase.VALUES
+            r.values.parametersList
+                .single { it.name == "p" }
+                .value.stringValue shouldBe "202604"
+        }
+
+        "a month against a yyyy-MM table without bounds → the catalog functions on the canonical yyyyMM code" {
+            val rec = recognizer.recognize("May 2026", ref).shouldNotBeNull()
+            val r = periodTable("yyyy-MM", withBounds = false).build("May 2026", rec, "cnc", tz)
+            r.applicationCase shouldBe GroundingResult.ApplicationCase.FILTER
             r.sqlPreview shouldContain "period_start({p})"
             r.filter.parametersList
                 .single()

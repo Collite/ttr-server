@@ -55,7 +55,7 @@ says which words are chrono's; it never changes what they mean.
 
 | Status | When | Result |
 |---|---|---|
-| `OK` · `join` | a period ("May 2026", „období 202605“) and a period table **of its grain** with start, end and code columns: a month meets a monthly table, a quarter a `yyyyQn` one | `JoinRecipe` on the period table, filter `code = {p}` |
+| `OK` · `join` | a period ("May 2026", „období 202605“) and a period table **of its grain** with start, end and code columns: a month meets a monthly table, a quarter a `yyyyQn` one; a `code_format` of another grain (`yyyy`, `yyyyMMdd`) meets none | `JoinRecipe` on the period table, filter `code = {p}` |
 | `OK` · `filter` | an anchor date column: a period with no period table, or any other interval | `FilterRecipe` over `period_start({p})`/`period_end({p})`, or datetime bounds `{start}`/`{end}`; a quarter or half-year with no table of its grain takes datetime bounds |
 | `OK` · `filter` | no date column, but a period table with a code column and a period phrase of its grain (#140) | `FilterRecipe` `code = {p}` |
 | `OK` · `values` | **no date column and no period-code route** (no table, or a period of another grain) | `ValueBinding`: `start`, `end` (datetime, half-open, the request's zone) and `p` (the period code, `yyyyMM` / `yyyyQn`) when the phrase names a period; `sql_preview` empty; `explanation` names the package. The caller places the values. |

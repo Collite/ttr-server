@@ -26,7 +26,9 @@ outside this repo could notice is in.
   half-year against a monthly period table — the usual one, and the default `code_format` — was joined or
   code-filtered as `ap.period = '2026Q2'` and matched no row; "last quarter" did since Q-18. It now takes datetime
   bounds when the fact has a date column, and `values` (`p` = the canonical code) when it has none. A month against a
-  quarterly table takes the `period_start`/`period_end` functions instead of the join.
+  quarterly table takes the `period_start`/`period_end` functions instead of the join. A table whose `code_format`
+  names no grain chrono reads (`yyyy`, `yyyyMMdd`, `yyyy-ww`) fits no code: a month against a `yyyy` table used to
+  join as `ap.period = '2026'`, the whole year's rows. The functions always get the canonical `yyyyMM` code.
 
 - **chrono — the time phrases the regexes outside it missed are read by its own rules (TS-6).** New: half-years
   („1. pololetí 2026“, „druhé pololetí“, "H1 2026", "the first half of 2026"; `PERIOD`, code `yyyyHn`, datetime

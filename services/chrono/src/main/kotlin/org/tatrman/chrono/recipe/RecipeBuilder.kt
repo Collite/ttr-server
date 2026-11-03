@@ -63,7 +63,8 @@ class RecipeBuilder(
         val anchor = discovery.anchorColumn(pkg, recognition.target)
         // A period code meets the period table only in the table's own grain: a quarter or a half-year
         // against a monthly table (the usual one, and the default) matches no row — an empty answer, not
-        // an error. A code of another grain keeps its canonical form and takes the interval instead.
+        // an error — and a month against a yearly one would match the whole year's. A code of another grain,
+        // or of a table whose format names none chrono reads, keeps its canonical form and takes the interval.
         val fitsTable = pt != null && recognition.periodCode?.let { PeriodCodes.fits(it, pt.codeFormat) } == true
         val code = recognition.periodCode?.let { if (fitsTable) reformatCode(it, pt!!.codeFormat) else it }
 
@@ -92,9 +93,11 @@ class RecipeBuilder(
                 // A yyyyQn quarter (Q-18) or a yyyyHn half-year (TS-6) with no table of its grain can't
                 // lower through the period_start/period_end catalog functions (the translator supports
                 // only yyyyMM/yyyyMMdd), so it degrades to the honest calendar datetime-bounds FilterRecipe.
-                PeriodCodes.grainOf(code!!) != PeriodCodes.Grain.MONTH ->
+                // The grain is the canonical code's: a reformatted one (`2026-05`) names none.
+                PeriodCodes.grainOf(recognition.periodCode!!) != PeriodCodes.Grain.MONTH ->
                     intervalRecipe(anchor, factCol, startIso, endIso, recognition, normalized, span)
-                else -> periodFunctionRecipe(anchor, factCol, code, recognition, normalized, span)
+                // The functions read yyyyMM, whatever the table's own format.
+                else -> periodFunctionRecipe(anchor, factCol, recognition.periodCode, recognition, normalized, span)
             }
         } else {
             intervalRecipe(anchor, factCol, startIso, endIso, recognition, normalized, span)
