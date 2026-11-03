@@ -74,7 +74,8 @@ class DateRecognizer {
         val conversation = ConversationPeriods(context, reference, PeriodWords.findAll(n))
         val years = Years(stated = spanYear(n, conversation), leaned = conversation.leanedYear())
         val base =
-            fiscalYear(n)?.let(::Hit)
+            partOfLarger(n)
+                ?: fiscalYear(n)?.let(::Hit)
                 ?: yearToDate(n, reference)
                 ?: numbered(n, NumberedPeriods.quarters(n), QUARTER_MONTHS, 'Q', reference, years)
                 ?: numbered(n, NumberedPeriods.halves(n), HALF_MONTHS, 'H', reference, years)
@@ -199,6 +200,15 @@ class DateRecognizer {
             hasAny(n, "document date", "doc date", "datum dokladu", "datum vystaveni") -> DateTarget.DOCUMENT
             else -> null
         }
+
+    // ----- a part of a larger period: "the last month of the year", „poslední týden v měsíci“ (✅R215-N) -----
+
+    /**
+     * A last week, month or year of a period that contains it ([PartOfPeriods]) is no one period this class reads.
+     * First in the chain: the trailing ask, the deictic "last month", the week rule's "last" and the month and
+     * fiscal-year rules would each read a part of the phrase as the whole.
+     */
+    private fun partOfLarger(n: String): Read? = NotOne.takeIf { PartOfPeriods.findAll(n).isNotEmpty() }
 
     // ----- fiscal year: "fiscal year 2026" / "fiskalni rok 2026" -----
 

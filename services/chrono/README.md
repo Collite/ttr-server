@@ -46,8 +46,9 @@ stated year ("the last week of 2025"), which no rule reads yet; a quarter or hal
 names any other period — *1. a 2. čtvrtletí*, *first and second quarter of 2025*, *Q1 a Q2 2025*, *last quarter and
 Q1*, *Q2 2025 vs 2024*, *Q3 and H1 2025*, *Q1 a březen 2025* — which is not one period (a year word, *letošní 2.
 čtvrtletí*, only says which year).
-The trailing ask is the singular only, and never a part of a larger period: *poslední měsíce* (recent months),
-*poslední měsíc roku* (December) and *the last week of the month* do not ask. An estate's `ground:chrono` lexicon slice (RV-42)
+The trailing ask is the singular only: *poslední měsíce* (recent months) does not ask. A last week, month or year
+of a larger period — *the last month of the year*, *the last week in October*, *poslední měsíc roku* (December),
+*poslední týden v měsíci* — is not read at all, and an earlier question with one names no period of its unit. An estate's `ground:chrono` lexicon slice (RV-42)
 says which words are chrono's; it never changes what they mean.
 
 ## Outcomes of `Ground`

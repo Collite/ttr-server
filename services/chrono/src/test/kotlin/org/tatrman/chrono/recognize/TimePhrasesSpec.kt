@@ -259,6 +259,42 @@ class TimePhrasesSpec :
             }
         }
 
+        // review-215 RR2 (✅R215-N): "the last X of a Y" is a part of a larger period, and it is not read — not the
+        // trailing ask, not the deictic "last month", not the week rule.
+        "the last week, month or year of a larger period is no period" {
+            for (span in listOf(
+                "the last month of the year",
+                "the last month of the quarter",
+                "the last week of the month",
+                "the last year of the contract",
+                "the last week in October",
+                "poslední měsíc čtvrtletí",
+                "poslední týden v měsíci",
+                "poslední měsíc v roce",
+                "poslední měsíc tohoto roku",
+                "the last month in the quarter",
+                "last week of the month",
+                "poslední týden října",
+            )) {
+                withClue(span) { rec.read(span, ref).shouldBeNull() }
+            }
+            read("last month").periodCode shouldBe "202610"
+            read("last month in Brno").periodCode shouldBe "202610"
+            for (span in listOf("the last month", "poslední měsíc", "v posledním měsíci", "za poslední rok")) {
+                withClue(span) { read(span).optionId shouldBe ChronoRecognition.TRAILING }
+            }
+            read("the past month").periodCode shouldBe "202610"
+            read("the last quarter of 2025").periodCode shouldBe "2025Q4"
+        }
+
+        // The earlier question names no month, so "the previous month" counts from the reference: October.
+        "a part of a larger period in an earlier question names no period of its unit" {
+            read(
+                "the previous month",
+                context = listOf("And the previous month?", "Revenue in the last month of the year"),
+            ).periodCode shouldBe "202610"
+        }
+
         // review-215 R8: chrono asked, and the answer is not in the conversation — the #214 shape.
         "after a trailing ask, the next anaphoric period of its unit has nothing to count from" {
             for (context in listOf(
