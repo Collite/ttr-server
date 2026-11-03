@@ -52,7 +52,8 @@ outside this repo could notice is in.
   (`ValueBinding`, unused until now): `start`, `end` (datetime, half-open, the request's zone), and `p` (the period
   code, `yyyyMM` or `yyyyQn`) when the phrase names a period; `sql_preview` is empty and `explanation` names the
   package. The caller places the values. `UNGROUNDABLE` is left for a span nothing was read in, a missing reference
-  date, and #214's `no_anchor`. `chrono_ground_total` gains the label `application` (`filter` | `join` | `values` |
+  date, and #214's `no_anchor`. The llm-gateway fallback may answer `values` as well: its prompt says so, and a
+  `values` reply with no `sql_preview` is accepted. `chrono_ground_total` gains the label `application` (`filter` | `join` | `values` |
   `none`). No wire change: `GroundingResult.values = 2` existed. The eval corpus gains the `no-date-role` model.
 
 - **metadata — ops review corrections.** Accepted non-fallback filesystem content can confirm CN promotions;

@@ -306,6 +306,9 @@ class ChronoGroundingService(
      * Parse the gateway's JSON into a GroundingResult and structurally validate it. Full Translator
      * round-trip re-validation (A8.5) is deferred here on purpose: the service holds no ModelHandle,
      * and Golem's free-SQL tier already post-parses the recipe against the plan (contracts §3).
+     *
+     * A `filter` or `join` needs its `sql_preview`. A `values` reply has no recipe to render (§2.3), so it
+     * needs its `start`/`end` parameters instead, and its `sql_preview` is empty whatever the model wrote.
      */
     private fun parseLlmResult(raw: String): GroundingResult? {
         val result =
@@ -319,9 +322,16 @@ class ChronoGroundingService(
             }
         val structurallyValid =
             result.hasNormalized() &&
-                result.applicationCase != GroundingResult.ApplicationCase.APPLICATION_NOT_SET &&
-                result.sqlPreview.isNotEmpty()
-        return result.takeIf { structurallyValid }
+                when (result.applicationCase) {
+                    GroundingResult.ApplicationCase.VALUES ->
+                        result.values.parametersList
+                            .map { it.name }
+                            .containsAll(listOf("start", "end"))
+                    GroundingResult.ApplicationCase.APPLICATION_NOT_SET, null -> false
+                    else -> result.sqlPreview.isNotEmpty()
+                }
+        if (!structurallyValid) return null
+        return if (result.hasValues()) result.toBuilder().setSqlPreview("").build() else result
     }
 
     private fun llmUserPrompt(request: GroundRequest): String =
@@ -406,6 +416,8 @@ class ChronoGroundingService(
             "You ground a time expression to a JSON GroundingResult (org.tatrman.grounding.v1). " +
                 "Return ONLY the JSON object: a `normalized.interval` {start,end} (ISO-8601, end EXCLUSIVE), " +
                 "a `filter` recipe (condition + parameters + anchorColumn), `sqlPreview` (Calcite SQL, " +
-                "double-quoted identifiers, named params {name}), `confidence` 0..1, and a one-line `explanation`."
+                "double-quoted identifiers, named params {name}), `confidence` 0..1, and a one-line `explanation`. " +
+                "If you cannot name a date column of the package, return `values` with `start`/`end` " +
+                "parameters and an empty `sqlPreview` instead of the `filter`."
     }
 }

@@ -61,7 +61,8 @@ says which words are chrono's; it never changes what they mean.
 | `UNGROUNDABLE` · `no_anchor` | an anaphoric period with nothing in the conversation to count from (#214) | never read against the reference date |
 
 `UNGROUNDABLE` never means "the model has no date column" — that is `OK` with `values` (TS-1). A recognition
-below the confidence threshold goes to the llm-gateway fallback (`source: LLM`) when one is configured.
+below the confidence threshold goes to the llm-gateway fallback (`source: LLM`) when one is configured; with no date
+column it may answer `values` too (`start`/`end`, empty `sql_preview`).
 
 Every `OK` carries `normalized.interval`; `filter` and `join` carry a `sql_preview` rendered from the recipe's own
 expression tree, with parameters as `{name}`.
