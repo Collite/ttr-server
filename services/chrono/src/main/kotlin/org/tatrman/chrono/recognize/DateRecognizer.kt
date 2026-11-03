@@ -648,32 +648,38 @@ class DateRecognizer {
                 """|\byear[\s-]+to[\s-]+date\b|\bytd\b""",
         )
 
-    /** An ending that is today: „do dneška“, „dodnes“, „do teď“, "as of today", "to date". */
+    /** An ending that is today: „do dneška“, „dodnes“, „do současnosti“, "as of today", "to date", "so far". */
     private val ytdTodayEndRe =
         Regex(
-            """^(?:(?:az\s+)?do\s+(?:dneska|dnesniho\s+dne|dnes|ted)|dodnes""" +
-                """|(?:until|till|through|to|as\s+of|up\s+to)\s+(?:today|now|date))\b""",
+            """^(?:(?:az\s+)?do\s+(?:dneska|dnesniho\s+dne|dnes|ted|soucasnosti|soucasneho\s+dne)|dodnes|so\s+far""" +
+                """|(?:until|till|through|to|as\s+of|up\s+to|by)\s+(?:today|now|date))\b""",
         )
 
-    /** An ending that is a month's end: „do března“, „do konce září“, "through March", "to the end of September". */
+    /** An ending that is a month's end: „do března“, „do konce září“, "through March", "by (the) end of September". */
     private val ytdMonthEndRe =
         Regex(
-            """^(?:(?:az\s+)?do\s+(?:konce\s+)?|(?:until|till|through|thru|to|by)\s+(?:the\s+end\s+of\s+)?)([a-z]+)\b""",
+            """^(?:(?:az\s+)?do\s+(?:konce\s+)?|(?:until|till|through|thru|to|by)\s+(?:(?:the\s+)?end\s+of\s+)?)""" +
+                """([a-z]+)\b""",
         )
 
-    /** Any ending at all. */
-    private val ytdAnyEndRe = Regex("""^(?:(?:az\s+)?do|until|till|through|thru|to|as\s+of|up\s+to|by)\b""")
+    /**
+     * Any other ending: a word that ends a span of time, then whatever follows. `by` ends one only before a number or
+     * "the end"; before any other word it is a breakdown ("year to date by region", "YTD by month"), no ending.
+     */
+    private val ytdAnyEndRe =
+        Regex("""^(?:(?:az\s+)?do|until|till|through|thru|to|as\s+of|up\s+to)\b|^by\s+(?:\d|(?:the\s+)?end\b)""")
 
     /**
      * From the first day of the year through the reference day: `[1 Jan, reference + 1 day)`. Asked before the
      * day words and the month names, which would read the phrase's own ending as the whole of it: „od začátku roku
      * do dneška“ is year to date, not today, and „do března“ is not March.
      *
-     * An ending that is today („do dneška“, "as of today") is year to date. One that is a month („do března“,
-     * "through September") runs to the end of that month. Either is in the year the span states, else the
-     * reference's. Any other ending („do 15. března“) leaves the span no one period ([NotOne]). With no ending, a
-     * span that states a year other than the reference's („od začátku roku 2025“) is not year to date: the
-     * calendar-year rule reads it, as before.
+     * An ending that is today („do dneška“, „do současnosti“, "as of today", "so far") is year to date. One that is
+     * a month („do března“, "through September", "by end of March") runs to the end of that month. Either is in the
+     * year the span states, else the reference's. Any other ending that names a time („do 15. března“, „do konce 2.
+     * čtvrtletí“, „do minulého měsíce“) leaves the span no one period ([NotOne]); a breakdown ("by region") is no
+     * ending (✅R215-O). With no ending, a span that states a year other than the reference's („od začátku roku
+     * 2025“) is not year to date: the calendar-year rule reads it, as before.
      */
     private fun yearToDate(
         n: String,
@@ -685,15 +691,12 @@ class DateRecognizer {
         val year = stated.singleOrNull() ?: reference.year
         val start = LocalDate.of(year, 1, 1)
         val ending = n.substring(m.range.last + 1).replace(leadingYearRe, "").trim()
+        val month = ytdMonthEndRe.find(ending)?.let { Months.ofWord(it.groupValues[1], withYear = true) }
         val end =
             when {
                 ytdTodayEndRe.containsMatchIn(ending) -> reference.plusDays(1)
-                ytdAnyEndRe.containsMatchIn(ending) ->
-                    ytdMonthEndRe
-                        .find(ending)
-                        ?.let { Months.ofWord(it.groupValues[1], withYear = true) }
-                        ?.let { month -> LocalDate.of(year, month, 1).plusMonths(1) }
-                        ?: return NotOne
+                month != null -> LocalDate.of(year, month, 1).plusMonths(1)
+                ytdAnyEndRe.containsMatchIn(ending) -> return NotOne
                 year != reference.year -> return null
                 else -> reference.plusDays(1)
             }

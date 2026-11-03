@@ -1853,6 +1853,22 @@
     }
   },
   {
+    "id": "chrono/ts-ytd-by-region-en",
+    "tool": "ground_time",
+    "kind": "DATE",
+    "span": "year to date by region",
+    "locale": "en-US",
+    "reference_datetime": "2026-11-01T12:00:00+02:00",
+    "timezone": "Europe/Prague",
+    "package": "cnc",
+    "model": "accounting-period",
+    "here": null,
+    "expect": {
+      "status": "OK",
+      "interval_start": "2026-01-01"
+    }
+  },
+  {
     "id": "chrono/ts-ytd-do-brezna-cs",
     "tool": "ground_time",
     "kind": "DATE",

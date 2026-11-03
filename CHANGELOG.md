@@ -33,8 +33,9 @@ outside this repo could notice is in.
   bounds or `values`); quarters by number („2. čtvrtletí 2026“, „třetí kvartál“, "Q2",
   "the second quarter of 2025"; `yyyyQn`) and the word *kvartál*; *uplynulý* / "past" (the period before the
   reference's); year to date („od začátku roku“, „letos dosud“, "year to date", "YTD": 1 January through the reference
-  day; „… do dneška“ / "… as of today" the same, „… do března“ / "… through September" to the end of that month, any
-  other ending not read). A yearless quarter or half reads as a yearless month: the conversation's year, else the reference's, and it
+  day; „… do dneška“ / „… do současnosti“ / "… as of today" / "… so far" the same, „… do března“ / "… through September"
+  / "… by end of March" to the end of that month, any other ending that names a time not read; a breakdown — "year to
+  date by region", "YTD by month" — is no ending). A yearless quarter or half reads as a yearless month: the conversation's year, else the reference's, and it
   asks this year vs last when it is later than the reference's. **„poslední měsíc / týden / rok“ and "the last month"
   now ask** (`AWAITING_CLARIFICATION`, option ids `trailing` — the last 30 / 7 / 365 days — and `calendar` — the period
   before; the singular only, so not „poslední měsíce“), where they used to be unread (or, with a slice trigger, the current
@@ -46,7 +47,7 @@ outside this repo could notice is in.
   half-years („2. pololetí 2025“ / "H2 2025"), a week („týden od 19. 10. 2026“) and the trailing window („posledních 30
   dní“). A quarter or half-year by number whose span names any other period („1. a 2. čtvrtletí“, "last quarter and Q1",
   "Q2 2025 vs 2024", "Q3 and H1 2025", „Q1 a březen 2025“) is not read as one; a year word still says its year. The
-  quarter table is shared with the conversation reader. Corpus 36 → 90 cases (eval bulk corpus 126 → 180).
+  quarter table is shared with the conversation reader. Corpus 36 → 95 cases (eval bulk corpus 126 → 185).
   No wire change.
 
 - **chrono — a recognised time phrase is always answered with its interval (TS-1).** A package that declares no

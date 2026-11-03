@@ -88,6 +88,7 @@
   {"name": "ts-ytd-do-dneska-cs", "span": "od začátku roku do dneška", "reference": "2026-11-01", "locale": "cs-CZ", "expect": {"status": "OK", "intervalStart": "2026-01-01", "application": "FILTER"}},
   {"name": "ts-ytd-as-of-today-en", "span": "year to date as of today", "reference": "2026-11-01", "locale": "en-US", "expect": {"status": "OK", "intervalStart": "2026-01-01"}},
   {"name": "ts-ytd-do-brezna-cs", "span": "od začátku roku do března", "reference": "2026-11-01", "locale": "cs-CZ", "expect": {"status": "OK", "intervalStart": "2026-01-01"}},
+  {"name": "ts-ytd-by-region-en", "span": "year to date by region", "reference": "2026-11-01", "locale": "en-US", "expect": {"status": "OK", "intervalStart": "2026-01-01"}},
   {"name": "rp-minuly-mesic", "span": "minulý měsíc", "question": "Tržby z tržiště za minulý měsíc pro Brno DC", "reference": "2026-11-01", "locale": "cs-CZ", "expect": {"status": "OK", "intervalStart": "2026-10-01"}},
   {"name": "rp-minulem-mesici", "span": "minulém měsíci", "question": "Kolik jsme prodali v minulém měsíci?", "reference": "2026-11-01", "locale": "cs-CZ", "expect": {"status": "OK", "intervalStart": "2026-10-01"}},
   {"name": "rp-tohoto-mesice", "span": "tohoto měsíce", "question": "Tržby z webu tohoto měsíce", "reference": "2026-11-01", "locale": "cs-CZ", "expect": {"status": "OK", "intervalStart": "2026-11-01"}},

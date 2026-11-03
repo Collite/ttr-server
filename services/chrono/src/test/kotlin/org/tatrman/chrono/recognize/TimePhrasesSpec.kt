@@ -356,11 +356,37 @@ class TimePhrasesSpec :
             read("od začátku roku 2025 do března").startInclusive shouldBe day(2025, 1, 1)
         }
 
+        // review-215 RR3 (✅R215-O): an ending is a word that names a time; a breakdown is none.
+        "year to date with a breakdown after it, or an ending that is now, is year to date" {
+            for ((span, end) in listOf(
+                "year to date by region" to day(2026, 11, 2),
+                "YTD by month" to day(2026, 11, 2),
+                "YTD by store and month" to day(2026, 11, 2),
+                "od začátku roku do současnosti" to day(2026, 11, 2),
+                "od začátku roku do současného dne" to day(2026, 11, 2),
+                "YTD so far" to day(2026, 11, 2),
+                "year to date until now" to day(2026, 11, 2),
+                "YTD by today" to day(2026, 11, 2),
+                "YTD by end of March" to day(2026, 4, 1),
+                "YTD by the end of March" to day(2026, 4, 1),
+                "year to date to end of September" to day(2026, 10, 1),
+            )) {
+                val r = read(span)
+                withClue(span) {
+                    r.startInclusive shouldBe day(2026, 1, 1)
+                    r.endExclusive shouldBe end
+                }
+            }
+        }
+
         "year to date with any other ending is no one period" {
             for (span in listOf(
                 "od začátku roku do 15. března",
                 "year to date through Q2",
                 "od začátku roku do konce roku",
+                "od začátku roku do konce 2. čtvrtletí",
+                "od začátku roku do minulého měsíce",
+                "YTD by 15 March",
             )) {
                 withClue(span) { rec.read(span, ref).shouldBeNull() }
             }
