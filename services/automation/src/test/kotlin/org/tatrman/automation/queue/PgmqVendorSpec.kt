@@ -57,6 +57,7 @@ class PgmqVendorSpec :
                     "V5__run_evaluations.sql",
                     "V6__verified_run_subject.sql",
                     "V7__staging_retention.sql",
+                    "V8__batch_current_delete.sql",
                 )
         }
     })

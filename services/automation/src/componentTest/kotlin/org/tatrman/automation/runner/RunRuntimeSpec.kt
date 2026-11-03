@@ -36,6 +36,7 @@ import org.tatrman.ttr.parser.model.AutoValue
 import org.tatrman.ttr.parser.model.AutoEntry
 import org.tatrman.ttr.parser.model.Reference
 import org.tatrman.ttr.parser.model.SourceLocation
+import org.tatrman.ttr.parser.model.PropertyValue
 import java.sql.DriverManager
 import java.time.OffsetDateTime
 import java.nio.file.Files
@@ -53,6 +54,58 @@ class RunRuntimeComponentSpec :
     StringSpec({
         LedgerTestDb.ready()
         beforeEach { LedgerTestDb.reset() }
+
+        "dry H-1 journals exactly plan() in one preview batch and leaves model tables empty" {
+            val root = ApprovalFixture.copyTo(tempdir().toPath().resolve("ddl-catalog"))
+            val loaded =
+                BundleLoader(AuthorMap(emptyMap())).load(
+                    Checkout(root, "master", "0123456789abcdef", "po", "po@example.org"),
+                    BundleKind.SERVED,
+                )
+            org.tatrman.automation.writer
+                .Ddl(LedgerTestDb.db.getDataSource(), { listOf("dry_fixture") })
+                .refresh(loaded.copy(recipes = loaded.recipes.filterKeys { it == "release_order" }))
+            val f = DurableRuntimeFixture()
+            val runtime = f.start()
+            try {
+                val opened = runtime.sessions.open("release_order", f.request, f.caller)
+                val id = UUID.fromString(opened.response.runId)
+                runtime.sessions.evaluate(id, f.caller)
+                val planner =
+                    org.tatrman.automation.apply
+                        .ApplyPlanner(f.clock)
+                val expected =
+                    runtime.sessions.read(id, f.caller, { Unit }) { runner, _ ->
+                        planner.plan(planner.preview(runner))
+                    }
+                val batch = runtime.status.batch(id, f.caller)
+                batch.rows shouldBe expected.rows
+                batch.mode shouldBe "preview"
+                transaction { Batches.selectAll().where { Batches.run eq id }.count() } shouldBe 1L
+                runtime.closer.close(id, f.caller)
+                runtime.closer.close(id, f.caller)
+                runtime.status.batch(id, f.caller) shouldBe batch
+                LedgerTestDb.db.getDataSource().connection.use { connection ->
+                    connection.createStatement().use { sql ->
+                        for (table in listOf(
+                            "release_order_verdict",
+                            "release_order_verdict_detail",
+                            "release_order_verdict_current",
+                            "obligation",
+                            "state_history",
+                        )) {
+                            sql.executeQuery("SELECT count(*) FROM dry_fixture.$table").use { rows ->
+                                rows.next() shouldBe true
+                                rows.getLong(1) shouldBe 0L
+                            }
+                        }
+                    }
+                }
+            } finally {
+                runtime.shutdown()
+                f.close()
+            }
+        }
 
         fun calendarFixture(
             difference: Boolean = false,
@@ -902,7 +955,7 @@ class RunRuntimeComponentSpec :
                 )
 
             fun selected(bundle: Bundle) =
-                bundle.copy(
+                bundle.withWriterStorage("reorder_proposal").copy(
                     deployments =
                         bundle.deployments + (
                             "release_native_event" to
@@ -1064,7 +1117,8 @@ class RunRuntimeComponentSpec :
                                         bundle.model.schemas +
                                             ("er" to er.copy(entities = mapOf(target.qname to target))),
                                 ),
-                        ).withActions(bundle.actions + ("release" to action))
+                        ).withWriterStorage("order")
+                        .withActions(bundle.actions + ("release" to action))
                 })
             f.base.now = Instant.parse("2000-01-01T12:00:00.123456Z")
             val runtime = f.start()
@@ -1168,8 +1222,8 @@ class RunRuntimeComponentSpec :
                 val progress = runtime.status.read(id, f.caller)
                 val batch = runtime.status.batch(id, f.caller)
                 batch.mode shouldBe "preview"
-                batch.rows.map { it.op } shouldBe listOf("insert", "transition")
-                progress.batch!!.rows shouldBe 2
+                batch.rows.map { it.op } shouldBe listOf("insert", "transition", "delete", "insert")
+                progress.batch!!.rows shouldBe 4
                 progress.actions.single().would shouldBe "would release order 4711"
                 progress.status shouldBe "evaluated"
                 progress.verdict!!
@@ -1531,4 +1585,29 @@ private class DurableRuntimeFixture(
     fun close() {
         scope.cancel()
     }
+}
+
+/** These synthetic writer targets have no physical table binding; declare their test-only placement. */
+private fun Bundle.withWriterStorage(entity: String): Bundle {
+    val schema = model.schemas.getValue("world") as WorldSchema
+    val worlds =
+        schema.worlds.mapValues { (_, world) ->
+            world.copy(
+                storages =
+                    world.storages.map { storage ->
+                        if (storage.qname.name != "erp_db") {
+                            storage
+                        } else {
+                            val writable = storage.writable + entity
+                            val value =
+                                PropertyValue.ListValue(
+                                    writable.map { PropertyValue.StringValue(it, SourceLocation.UNKNOWN) },
+                                    SourceLocation.UNKNOWN,
+                                )
+                            storage.copy(writable = writable, manifest = storage.manifest + ("writable" to value))
+                        }
+                    },
+            )
+        }
+    return copy(model = model.copy(schemas = model.schemas + ("world" to schema.copy(worlds = worlds))))
 }

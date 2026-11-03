@@ -57,6 +57,8 @@ class Bundles(
     private val book: BundleBook,
     private val clock: Clock = Clock.systemUTC(),
     private val refreshed: (outcome: String) -> Unit = {},
+    /** Validated bundle DDL runs before any registry or ledger publication. */
+    private val prepare: (Bundle) -> Unit = {},
 ) {
     @Volatile
     var served: Bundle? = null
@@ -152,6 +154,7 @@ class Bundles(
                     buildJsonObject { put("diagnostics", JsonArray(e.diagnostics.map { JsonPrimitive(it) })) },
                 )
             }
+        prepare(bundle)
         book.record(bundle)
         when (kind) {
             BundleKind.SERVED -> {

@@ -167,6 +167,7 @@ data class AutomationConfig(
     val connections: Map<String, String>,
     val approvalsOff: Boolean = false,
     val runner: RunnerConfig = RunnerConfig(),
+    val pgDoorRole: String? = null,
 ) {
     companion object {
         const val ROOT = "automation"
@@ -257,6 +258,7 @@ data class AutomationConfig(
                 connections = connections(c, env),
                 approvalsOff = approvalsOff(c),
                 runner = RunnerConfig(if (c.hasPath("runner.workers")) c.getInt("runner.workers") else 4),
+                pgDoorRole = c.optString("pgDoorRole"),
             )
         }
 

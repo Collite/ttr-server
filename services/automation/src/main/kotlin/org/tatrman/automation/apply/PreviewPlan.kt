@@ -10,8 +10,9 @@ import kotlinx.serialization.json.*
 /**
  * AU contracts §4's multi-entity apply subset. This is a preview, never an executable DML plan.
  * EN RowBatch targets one entity/table and calls its values `values`; AU carries ordered entity rows,
- * explicit set/transition fields and a run. P2 must resolve this subset through EntryApplyResolver and
- * apply lowering before any write, including writable/state/history checks. No Platform entry API is used.
+ * explicit set/transition fields and a run. D-105 adds a key-scoped current delete to the journal.
+ * S2.1 only plans; S2.2 sends the door's D-163 row_writes wire after its producer release, including
+ * writable/state/history checks. No Platform entry API is used.
  */
 @Serializable
 data class ApplyRow(
@@ -29,7 +30,7 @@ data class ApplyRow(
 ) {
     init {
         require(seq > 0 && entity.isNotBlank())
-        require(op in setOf("insert", "update", "transition"))
+        require(op in setOf("insert", "update", "transition", "delete"))
         require((op == "insert") == (row != null))
         require((op == "update") == (set != null))
         require((op == "transition") == (attribute != null && to != null && to != JsonNull))
@@ -117,6 +118,8 @@ data class PreviewPlan(
     val rows: List<ApplyRow>,
     val actions: List<DryRunAction>,
     @EncodeDefault val mode: String = "preview",
+    @kotlinx.serialization.Transient val source: PlanSource? = null,
+    @kotlinx.serialization.Transient val groups: List<ApplyGroup> = emptyList(),
 ) {
     init {
         require(mode == "preview")
@@ -142,4 +145,18 @@ data class RunBatchPlan(
     val run: String,
     val rows: List<ApplyRow>,
     val mode: String,
+)
+
+/** Pinned planning inputs; never part of the public apply JSON. */
+data class PlanSource(
+    val verdict: org.tatrman.automation.bundle.ManifestVerdictSchema?,
+    val storages: Map<String, String>,
+    val ledgerStorage: String,
+)
+
+/** Detail/current rows share their verdict entity's transaction, preserving global seq within it. */
+data class ApplyGroup(
+    val storage: String,
+    val entity: String,
+    val rows: List<ApplyRow>,
 )

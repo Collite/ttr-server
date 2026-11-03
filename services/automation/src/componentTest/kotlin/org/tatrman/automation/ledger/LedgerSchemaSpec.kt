@@ -35,13 +35,13 @@ class LedgerSchemaSpec :
                 exec(sql) { rs -> buildList { while (rs.next()) add(read(rs)) } } ?: emptyList()
             }
 
-        "Flyway applies V1–V7 on a clean database; a second migrate applies nothing" {
-            LedgerTestDb.firstMigration shouldBe 7
+        "Flyway applies V1–V8 on a clean database; a second migrate applies nothing" {
+            LedgerTestDb.firstMigration shouldBe 8
             rows(
                 "SELECT version, success FROM automation.flyway_schema_history WHERE version IS NOT NULL ORDER BY installed_rank",
             ) {
                 it.getString(1) to it.getBoolean(2)
-            } shouldContainExactly (1..7).map { it.toString() to true }
+            } shouldContainExactly (1..8).map { it.toString() to true }
             migrateLedger(db) shouldBe 0
         }
 

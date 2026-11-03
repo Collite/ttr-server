@@ -94,7 +94,7 @@ class RunRuntime(
                         ledger::completeEvaluation,
                         ::dispatch,
                         protocol::part,
-                        planner::preview,
+                        { runner -> planner.plan(planner.preview(runner)) },
                         ledger::completeEvaluation,
                     )
                 },
