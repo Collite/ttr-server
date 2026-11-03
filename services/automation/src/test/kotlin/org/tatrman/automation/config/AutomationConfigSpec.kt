@@ -55,6 +55,28 @@ class AutomationConfigSpec :
             c.connections shouldBe emptyMap()
         }
 
+        "world schemas are explicit configuration, with demo pinned to cz through the environment" {
+            load(required).pgSchemas shouldBe emptyMap()
+            load(
+                required + "\nautomation.pgSchemas = \"demo=us\"",
+                mapOf("AUTOMATION_PG_SCHEMAS" to "demo=cz"),
+            ).pgSchemas shouldBe
+                mapOf("demo" to "cz")
+            for (value in listOf(
+                "demo",
+                "demo=",
+                "demo=cz,demo=us",
+                "demo=cz,other=cz",
+                "demo=automation",
+                "demo=pg_catalog",
+                "demo=cz;drop",
+            )) {
+                shouldThrow<IllegalArgumentException> {
+                    load(required, mapOf("AUTOMATION_PG_SCHEMAS" to value))
+                }.message shouldContain "pgSchemas"
+            }
+        }
+
         "a missing required key fails at load, and the message names every missing key at once" {
             val e = shouldThrow<IllegalArgumentException> { load("""automation.door.queryUrl = "query:7240"""") }
             e.message shouldContain "automation.db.host"

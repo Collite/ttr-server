@@ -120,6 +120,12 @@ fun Application.module(config: Config) {
     val ledger =
         Ledger(defaultBudget = automation.budgets.batchDefault, clock = clock, abandoned = telemetry::abandoned)
     val ledgerBundles = LedgerBundles()
+    val writerDdl =
+        org.tatrman.automation.writer.Ddl.configured(
+            db.getDataSource(),
+            automation.pgSchemas,
+            automation.pgDoorRole,
+        )
     val bundles =
         Bundles(
             servedBranch = automation.bundleGit.branch,
@@ -129,6 +135,7 @@ fun Application.module(config: Config) {
             book = ledgerBundles,
             clock = clock,
             refreshed = telemetry::refreshed,
+            prepare = writerDdl::refresh,
         )
     val sources = LedgerHealthSources(ledger, pgmq, automation, bundles)
 

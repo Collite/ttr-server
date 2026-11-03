@@ -31,54 +31,7 @@ class DdlSpec :
                 connection.createStatement().use { it.execute(text) }
             }
         val root = ApprovalFixture.copyTo(tempdir().toPath().resolve("bundle"))
-        // Complete the legacy fixture's pre-catalog recipes with typed test declarations.
-        java.nio.file.Files.list(root.resolve("automation")).use { paths ->
-            paths.forEach { recipe ->
-                val directory = recipe.resolve("${recipe.fileName}.bundle")
-                val manifest = directory.resolve("manifest.json")
-                if (java.nio.file.Files
-                        .exists(manifest) &&
-                    recipe.fileName.toString() != "release_order"
-                ) {
-                    val model =
-                        RecipeManifest
-                            .parse(
-                                java.nio.file.Files
-                                    .readString(manifest),
-                            ).recipe!!
-                    val schema = model.verdictSchema!!
-
-                    fun catalog(
-                        name: String,
-                        columns: List<Pair<String, String>>,
-                        keys: Set<String>,
-                    ) = "def entity $name { attributes: [" +
-                        columns.joinToString(",") { (column, type) ->
-                            "def attribute $column { type: $type${if (column in keys) ", isKey: true" else ""} }"
-                        } + "] }"
-                    val keyNames = model.key.map { it.substringAfterLast('.') }.toSet()
-                    val columns =
-                        schema.columns.map {
-                            it.getValue("name").jsonPrimitive.content to it.getValue("type").jsonPrimitive.content
-                        }
-                    val entities =
-                        listOf(
-                            catalog(schema.entity, columns, keyNames + setOf("run", "route")),
-                            catalog(schema.current!!, columns, keyNames + "route"),
-                            catalog(
-                                schema.detail!!,
-                                listOf("run" to "text") + columns.filter { it.first in keyNames } +
-                                    listOf("route" to "text", "context" to "text", "row_no" to "int"),
-                                emptySet(),
-                            ),
-                        )
-                    java.nio.file.Files.writeString(
-                        directory.resolve("catalog/writer-test-entities.ttrm"),
-                        "package hartland.automation.generated\nmodel er\n" + entities.joinToString("\n"),
-                    )
-                }
-            }
-        }
+        completeWriterCatalogs(root)
         val loaded =
             BundleLoader(
                 org.tatrman.automation.identity
@@ -118,6 +71,9 @@ class DdlSpec :
             ).sorted()
 
         "refresh DDL creates every catalog and stdlib table in each world schema idempotently" {
+            val unmapped = shouldThrow<AutomationException> { Ddl.configured(ds, emptyMap(), null).refresh(bundle) }
+            unmapped.code shouldBe ErrorCode.BUNDLE_INVALID
+            unmapped.message!! shouldContain "demo"
             val ddl = Ddl(ds, { listOf("us", "cz") })
             val book =
                 object : BundleBook {
@@ -220,6 +176,23 @@ class DdlSpec :
             val error = shouldThrow<AutomationException> { ddl.refresh(changed("bigint", extra = true)) }
             error.code shouldBe ErrorCode.BUNDLE_INVALID
             error.message!! shouldContain "order_number"
+            val changedKey =
+                verdict.copy(
+                    attributes =
+                        verdict.attributes.map {
+                            if (it.qname.name.endsWith(".order_number")) it.copy(isKey = false) else it
+                        },
+                )
+            val keyBundle =
+                bundle.copy(
+                    model =
+                        bundle.model.copy(
+                            schemas =
+                                bundle.model.schemas +
+                                    ("er" to er.copy(entities = er.entities + (verdict.qname to changedKey))),
+                        ),
+                )
+            shouldThrow<AutomationException> { ddl.refresh(keyBundle) }.message!! shouldContain "primary key"
         }
 
         "verdict updates are forbidden and only one open obligation may exist for an identity" {
@@ -249,9 +222,9 @@ class DdlSpec :
             }
             Ddl(ds, { listOf("us") }, "au_door_test").refresh(bundle)
             strings(
-                "SELECT DISTINCT privilege_type FROM information_schema.role_table_grants WHERE grantee='au_door_test' AND table_schema='us' ORDER BY privilege_type",
-            ) shouldBe
-                listOf("DELETE", "INSERT", "SELECT", "UPDATE")
+                "SELECT table_name || ':' || privilege_type FROM information_schema.role_table_grants " +
+                    "WHERE grantee='au_door_test' AND table_schema='us' ORDER BY table_name, privilege_type",
+            ) shouldBe expected.flatMap { table -> listOf("DELETE", "INSERT", "SELECT", "UPDATE").map { "$table:$it" } }
             strings("SELECT has_schema_privilege('au_door_test','us','USAGE')::text") shouldBe listOf("true")
             Ddl(ds, { listOf("cz") }).refresh(bundle)
             strings(

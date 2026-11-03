@@ -154,7 +154,12 @@ class Bundles(
                     buildJsonObject { put("diagnostics", JsonArray(e.diagnostics.map { JsonPrimitive(it) })) },
                 )
             }
-        prepare(bundle)
+        try {
+            prepare(bundle)
+        } catch (e: AutomationException) {
+            if (kind == BundleKind.SERVED) refreshFailed = true
+            throw e
+        }
         book.record(bundle)
         when (kind) {
             BundleKind.SERVED -> {

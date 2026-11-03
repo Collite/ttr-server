@@ -11,11 +11,11 @@ import javax.sql.DataSource
 
 /**
  * Contracts §3: transactional, additive DDL on the service connection, before a served bundle swaps.
- * Schema names come from the deployment's automation connection, never from logical world names.
+ * Schema names come from the deployment's explicit world → schema map, never from a default search_path.
  */
 class Ddl(
     private val dataSource: DataSource,
-    private val schemas: () -> List<String>,
+    private val schemas: (Bundle) -> List<String>,
     private val doorRole: String? = null,
 ) {
     fun refresh(bundle: Bundle) {
@@ -31,7 +31,7 @@ class Ddl(
                 er.entities.values.singleOrNull { it.qname.name == name.removePrefix("er.entity.") }
                     ?: invalid("missing typed catalog entity $name")
             }
-        val names = schemas().distinct()
+        val names = schemas(bundle).distinct()
         if (names.isEmpty()) invalid("automation connection has no world schema")
         dataSource.connection.use { connection ->
             connection.autoCommit = false
@@ -63,6 +63,22 @@ class Ddl(
         }
     }
 
+    companion object {
+        fun configured(
+            dataSource: DataSource,
+            schemas: Map<String, String>,
+            doorRole: String?,
+        ): Ddl =
+            Ddl(dataSource, { bundle ->
+                bundle.worlds.keys.sorted().map { world ->
+                    schemas[world] ?: throw AutomationException(
+                        ErrorCode.BUNDLE_INVALID,
+                        "automation_pg schema is not mapped for world $world",
+                    )
+                }
+            }, doorRole)
+    }
+
     private fun table(
         connection: java.sql.Connection,
         schema: String,
@@ -84,6 +100,13 @@ class Ddl(
                 } +
                     if (keys.isEmpty()) emptyList() else listOf("PRIMARY KEY (${keys.joinToString()})")
             sql.execute("CREATE TABLE IF NOT EXISTS $qualified (${definitions.joinToString()})")
+            val actualKeys =
+                connection.metaData.getPrimaryKeys(null, schema, table).use { rows ->
+                    buildList { while (rows.next()) add(rows.getInt("KEY_SEQ") to rows.getString("COLUMN_NAME")) }
+                        .sortedBy { it.first }
+                        .map { quote(it.second) }
+                }
+            if (actualKeys != keys) invalid("destructive primary key change $schema.$table: ${keys.joinToString()}")
             val existing =
                 connection
                     .prepareStatement(

@@ -56,6 +56,83 @@ class ApplicationRuntimeSpec :
         fun fixture(beforeRead: suspend () -> Unit = {}) =
             ApplicationRuntimeFixture(tempdir(prefix = "application-runtime-").toPath(), realm, beforeRead)
 
+        "production refresh maps demo to cz and a refused type change keeps the served bundle" {
+            val f = fixture()
+            val operator = realm.person(roles = listOf("ops"))
+
+            fun sqlRows(query: String): List<String> =
+                db.getDataSource().connection.use { connection ->
+                    connection.createStatement().use { sql ->
+                        sql.executeQuery(query).use { rows ->
+                            buildList { while (rows.next()) add(rows.getString(1)) }
+                        }
+                    }
+                }
+            try {
+                f.api { _ ->
+                    val expected =
+                        f.bundle.recipes.values.flatMap { recipe ->
+                            listOfNotNull(
+                                recipe.recipe.verdictSchema?.entity,
+                                recipe.recipe.verdictSchema?.detail,
+                                recipe.recipe.verdictSchema?.current,
+                            )
+                        } + listOf("obligation", "state_history")
+                    sqlRows(
+                        "SELECT table_name FROM information_schema.tables WHERE table_schema='cz' ORDER BY table_name",
+                    ) shouldBe
+                        expected.sorted()
+                    val before =
+                        sqlRows("SELECT oid::text FROM pg_class WHERE relnamespace='cz'::regnamespace ORDER BY oid")
+                    repeat(2) {
+                        val response = client.post("/automation/refresh") { bearerAuth(operator) }
+                        response.status shouldBe HttpStatusCode.OK
+                        Json.parseToJsonElement(response.bodyAsText()).jsonObject["changed"] shouldBe
+                            JsonPrimitive(false)
+                    }
+                    sqlRows(
+                        "SELECT oid::text FROM pg_class WHERE relnamespace='cz'::regnamespace ORDER BY oid",
+                    ) shouldBe
+                        before
+                    val additive =
+                        f.changeVerdictCatalog {
+                            it.replace(
+                                "def attribute written_at",
+                                "def attribute note { type: text, optional: true }, def attribute written_at",
+                            )
+                        }
+                    client.post("/automation/refresh") { bearerAuth(operator) }.status shouldBe HttpStatusCode.OK
+                    sqlRows(
+                        "SELECT column_name FROM information_schema.columns WHERE table_schema='cz' AND table_name='release_order_verdict' AND column_name='note'",
+                    ) shouldBe
+                        listOf("note")
+                    f.changeVerdictCatalog {
+                        it.replace(
+                            "def attribute order_number { type: text",
+                            "def attribute order_number { type: bigint",
+                        )
+                    }
+                    val refused = client.post("/automation/refresh") { bearerAuth(operator) }
+                    refused.status shouldBe HttpStatusCode.UnprocessableEntity
+                    errorCode(refused.bodyAsText()) shouldBe "bundle-invalid"
+                    refused.bodyAsText().contains("order_number") shouldBe true
+                    val health = client.get("/automation/health").bodyAsText()
+                    health.contains(additive) shouldBe true
+                    Json.parseToJsonElement(health).jsonObject["refreshFailed"] shouldBe JsonPrimitive(true)
+                    sqlRows(
+                        "SELECT data_type FROM information_schema.columns WHERE table_schema='cz' AND table_name='release_order_verdict' AND column_name='order_number'",
+                    ) shouldBe
+                        listOf("text")
+                }
+            } finally {
+                f.close()
+                db.getDataSource().connection.use { connection ->
+                    connection.autoCommit = true
+                    connection.createStatement().use { it.execute("DROP SCHEMA IF EXISTS cz CASCADE") }
+                }
+            }
+        }
+
         "production runtime preserves a governed preview through close and restart" {
             val f = fixture()
             try {
@@ -356,7 +433,7 @@ private class ApplicationRuntimeFixture(
 ) : AutoCloseable {
     val token = realm.person()
     val requests = CopyOnWriteArrayList<RunRequest>()
-    private val source = ApprovalFixture.copyTo(root.resolve("source"))
+    private val source = ApprovalFixture.copyTo(root.resolve("source")).also(::completeWriterCatalogs)
     private val author = PersonIdent("Fixture Owner", "owner@example.org")
     private val commit: String
     val bundle: Bundle
@@ -449,6 +526,21 @@ private class ApplicationRuntimeFixture(
         }
     }
 
+    fun changeVerdictCatalog(change: (String) -> String): String {
+        val catalog = source.resolve("automation/release_order/release_order.bundle/catalog/release_order_verdict.ttrm")
+        catalog.writeText(change(catalog.readText()))
+        return Git.open(source.toFile()).use { git ->
+            git.add().addFilepattern(".").call()
+            git
+                .commit()
+                .setMessage("writer catalog change")
+                .setAuthor(author)
+                .setCommitter(author)
+                .call()
+                .name
+        }
+    }
+
     fun request(key: String) = """{"deployment":"release_native_event","port":{"key":"4711"},"idempotencyKey":"$key"}"""
 
     suspend fun open(
@@ -511,6 +603,7 @@ private class ApplicationRuntimeFixture(
             automation.door.queryUrl = "127.0.0.1:${server.port}"
             automation.door.metadataUrl = "127.0.0.1:1"
             automation.door.routes = "demo/erp_db=fixture-erp,demo/automation_db=fixture-automation"
+            automation.pgSchemas = "demo=cz"
             automation.auth.jwksUrl = "${realm.jwksUrl}"
             automation.auth.issuer = "${TestRealm.ISSUER}"
             automation.auth.audience = "${TestRealm.AUDIENCE}"
