@@ -717,14 +717,17 @@ class DateRecognizer {
      * „Za poslední měsíc“ is the last thirty days as often as the calendar month before, and a wrong one is a
      * wrong number told as an answer — so it asks, with two options: `trailing` (the last 30 / 7 / 365 days,
      * ending with the reference day, as „posledních 30 dní“ reads) and `calendar` (the month, week or year before
-     * the reference's). The singular only: „posledních 3 měsíců“ is [lastNRe]'s, „poslední čtvrtletí“ is the
-     * quarter before ([PeriodWords]), and an adjective decides it („poslední celý měsíc“ is no trailing month).
+     * the reference's). The singular only, the adjective's case going with the noun's — „poslední měsíce“ (recent
+     * months) is a plural, „posledních 3 měsíců“ is [lastNRe]'s, „poslední čtvrtletí“ is the quarter before
+     * ([PeriodWords]), and an adjective decides it („poslední celý měsíc“ is no trailing month). A part of a larger
+     * period is no trailing window either: „poslední měsíc roku“ is December, "the last week of the month" a week of
+     * this one.
      */
     private val trailingRe =
         Regex(
-            """\bposledn(?:i|iho|im|imu)\s+""" +
-                """(?:(mesic(?:e|i|em)?)|(tyden|tydne|tydnu|tydnem)|(rok|roku|roce|rokem))\b""" +
-                """|\bthe\s+last\s+(?:(month)|(week)|(year))\b""",
+            """\b(?:posledni\s+(mesic|tyden|rok)|posledniho\s+(mesice|tydne|roku)|poslednimu\s+(mesici|tydnu|roku)""" +
+                """|poslednim\s+(mesici|mesicem|tydnu|tydnem|roce|rokem)|the\s+last\s+(month|week|year))\b""" +
+                """(?!\s+(?:roku|mesice|tydne|of)\b)""",
         )
 
     private fun trailing(
@@ -732,13 +735,13 @@ class DateRecognizer {
         reference: LocalDate,
     ): ChronoRecognition? {
         val m = trailingRe.find(n) ?: return null
-        val g = m.groupValues
+        val noun = m.groupValues.drop(1).first { it.isNotEmpty() }
         val (days, calendar) =
             when {
-                g[1].isNotEmpty() || g[4].isNotEmpty() ->
+                noun.startsWith("mesic") || noun == "month" ->
                     TRAILING_DAYS.getValue(PeriodUnit.MONTH) to
                         periodRecognition(PeriodUnit.MONTH, PeriodUnit.MONTH.indexOf(reference) - 1, 0.85)
-                g[2].isNotEmpty() || g[5].isNotEmpty() ->
+                noun.startsWith("tyd") || noun == "week" ->
                     TRAILING_WEEK_DAYS to weekInterval(reference, -1L, 0.85)
                 else ->
                     TRAILING_DAYS.getValue(PeriodUnit.YEAR) to

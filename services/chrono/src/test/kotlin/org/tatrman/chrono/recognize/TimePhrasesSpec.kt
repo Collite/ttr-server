@@ -200,6 +200,31 @@ class TimePhrasesSpec :
             read("the last month").alternatives.single().periodCode shouldBe "202610"
         }
 
+        // review-215 R7: the adjective's case goes with the noun's; a part of a larger period is no trailing window.
+        "the trailing ask takes the singular in every case, and nothing that names a part of a larger period" {
+            for (span in listOf(
+                "posledního měsíce",
+                "v posledním měsíci",
+                "za poslední rok",
+                "posledním týdnem",
+                "the last month",
+            )) {
+                withClue(span) { read(span).optionId shouldBe ChronoRecognition.TRAILING }
+            }
+            for (span in listOf(
+                "poslední měsíce",
+                "poslední měsíc roku",
+                "the last week of the month",
+                "poslední týdny",
+            )) {
+                withClue(span) {
+                    val r = rec.recognize(span, ref)
+                    r?.optionId shouldBe null
+                    r?.alternatives.orEmpty().map { it.optionId } shouldBe emptyList()
+                }
+            }
+        }
+
         "a count, a quarter or an adjective is no trailing ask" {
             read("posledních 30 dní").alternatives shouldBe emptyList()
             read("poslední 3 měsíce").alternatives shouldBe emptyList()

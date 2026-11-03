@@ -37,7 +37,7 @@ outside this repo could notice is in.
   other ending not read). A yearless quarter or half reads as a yearless month: the conversation's year, else the reference's, and it
   asks this year vs last when it is later than the reference's. **„poslední měsíc / týden / rok“ and "the last month"
   now ask** (`AWAITING_CLARIFICATION`, option ids `trailing` — the last 30 / 7 / 365 days — and `calendar` — the period
-  before), where they used to be unread (or, with a slice trigger, the current month); „letos dosud“ used to be the
+  before; the singular only, so not „poslední měsíce“, „poslední měsíc roku“ or "the last week of the month"), where they used to be unread (or, with a slice trigger, the current month); „letos dosud“ used to be the
   whole year. A quarter or half-year named by its number with a year ("the second quarter of 2025") is that period
   now, no longer left ungrounded (#213); a week, month or day of a stated year still is. Clarification labels name
   half-years („2. pololetí 2025“ / "H2 2025"), a week („týden od 19. 10. 2026“) and the trailing window („posledních 30

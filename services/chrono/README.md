@@ -35,7 +35,7 @@ reference date of the request.
 | weeks | *tento / minulý / předminulý týden* | *this / last week* | Monday to Monday |
 | numbered quarter | *2. čtvrtletí 2026*, *druhé čtvrtletí*, *3. kvartál*, *Q2 2026*, *Q2* | *Q2 2026*, *the second quarter of 2025* | that quarter, `yyyyQn`; yearless reads as a yearless month (and asks the same way) |
 | half-year | *1. pololetí 2026*, *druhé pololetí*, *H1 2026* | *H1 2026*, *the first half of 2026* | six months, `yyyyHn`; yearless reads as a yearless month |
-| trailing | *poslední měsíc / týden / rok* | *the last month / week / year* | **asks** (`AWAITING_CLARIFICATION`): `trailing` — the last 30 / 7 / 365 days through ref — or `calendar` — the period before ref's |
+| trailing | *poslední měsíc / týden / rok*, *posledního měsíce*, *v posledním měsíci* | *the last month / week / year* | **asks** (`AWAITING_CLARIFICATION`): `trailing` — the last 30 / 7 / 365 days through ref — or `calendar` — the period before ref's |
 | last N | *posledních 30 dní*, *poslední 3 měsíce* | *last 30 days*, *past 3 months* | exactly N days ending with ref, `[ref − N + 1 day, ref + 1 day)`; N months from the day after the same date N months back |
 | year to date | *od začátku roku*, *letos dosud*, *… do dneška*, *… do března* | *year to date*, *YTD*, *… as of today*, *… through September* | `[1 January, ref + 1 day)`; ending with a month, to that month's end; in the year the span states, else ref's; any other ending is no one period |
 | days | *dnes*, *včera*, *zítra* | *today*, *yesterday*, *tomorrow* | that day |
@@ -43,7 +43,9 @@ reference date of the request.
 Not a period: a bare period noun (*měsíc*, *po měsících*, *roce*) — a breakdown or a trigger word; the grain
 adjectives (*měsíční*, *čtvrtletní*, *pololetní*, *kvartální*, *monthly*, *quarterly*); a week, month or day **of** a
 stated year ("the last week of 2025"), which no rule reads yet; two periods of one unit in one span — *1. a 2.
-čtvrtletí*, *first and second quarter of 2025*, *Q1 a Q2 2025*, *last quarter and Q1* — which are not one period. An estate's `ground:chrono` lexicon slice (RV-42)
+čtvrtletí*, *first and second quarter of 2025*, *Q1 a Q2 2025*, *last quarter and Q1* — which are not one period.
+The trailing ask is the singular only, and never a part of a larger period: *poslední měsíce* (recent months),
+*poslední měsíc roku* (December) and *the last week of the month* do not ask. An estate's `ground:chrono` lexicon slice (RV-42)
 says which words are chrono's; it never changes what they mean.
 
 ## Outcomes of `Ground`
