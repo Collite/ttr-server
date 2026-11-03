@@ -250,7 +250,7 @@ class DateRecognizer {
             confidence: Double,
         ): ChronoRecognition {
             val start = LocalDate.of(year, (one.number - 1) * months + 1, 1)
-            val code = "%04d%c%d".format(year, letter, one.number)
+            val code = PeriodCodes.numbered(year, letter, one.number)
             return ChronoRecognition(start, start.plusMonths(months.toLong()), ChronoKind.PERIOD, confidence, code)
         }
         one.year?.let { return Hit(inYear(it, 0.9)) }

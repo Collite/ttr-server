@@ -325,8 +325,6 @@ class ConversationPeriods(
         return unclear
     }
 
-    private fun IntRange.overlaps(other: IntRange): Boolean = first <= other.last && other.first <= last
-
     private companion object {
         val VERB_MONTHS = setOf("may", "march")
         val WHITESPACE = Regex("""\s+""")

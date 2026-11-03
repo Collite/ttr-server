@@ -34,7 +34,7 @@ enum class PeriodUnit {
     fun codeOf(index: Int): String =
         when (this) {
             YEAR -> "%04d".format(index)
-            QUARTER -> "%04dQ%d".format(Math.floorDiv(index, 4), Math.floorMod(index, 4) + 1)
+            QUARTER -> PeriodCodes.numbered(Math.floorDiv(index, 4), 'Q', Math.floorMod(index, 4) + 1)
             MONTH -> "%04d%02d".format(Math.floorDiv(index, 12), Math.floorMod(index, 12) + 1)
         }
 

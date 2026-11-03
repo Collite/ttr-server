@@ -21,6 +21,7 @@ import org.tatrman.chrono.client.LlmGatewayClient
 import org.tatrman.chrono.discover.SemanticDiscovery
 import org.tatrman.chrono.obs.ChronoMetrics
 import org.tatrman.chrono.recipe.RecipeBuilder
+import org.tatrman.chrono.recognize.PeriodCodes
 import org.tatrman.chrono.recognize.ChronoReading
 import org.tatrman.chrono.recognize.ChronoRecognition
 import org.tatrman.chrono.recognize.DateRecognizer
@@ -230,15 +231,15 @@ class ChronoGroundingService(
         }
         return when {
             YEAR_CODE.matches(code) -> code
-            QUARTER_CODE.matches(code) -> {
+            PeriodCodes.QUARTER.matches(code) -> {
                 val q = code.last()
                 if (czech) "$q. čtvrtletí ${start.year}" else "Q$q ${start.year}"
             }
-            HALF_CODE.matches(code) -> {
+            PeriodCodes.HALF.matches(code) -> {
                 val h = code.last()
                 if (czech) "$h. pololetí ${start.year}" else "H$h ${start.year}"
             }
-            MONTH_CODE.matches(code) -> "${monthName(start.monthValue, czech)} ${start.year}"
+            PeriodCodes.MONTH.matches(code) -> "${monthName(start.monthValue, czech)} ${start.year}"
             DAY_CODE.matches(code) ->
                 if (czech) {
                     "${start.dayOfMonth}. ${start.monthValue}. ${start.year}"
@@ -390,9 +391,6 @@ class ChronoGroundingService(
 
     private companion object {
         val YEAR_CODE = Regex("""\d{4}""")
-        val QUARTER_CODE = Regex("""\d{4}Q[1-4]""")
-        val HALF_CODE = Regex("""\d{4}H[12]""")
-        val MONTH_CODE = Regex("""\d{6}""")
         val DAY_CODE = Regex("""\d{8}""")
 
         /** The Czech month names, nominative, as a label names a month on its own („únor 2025“). */
