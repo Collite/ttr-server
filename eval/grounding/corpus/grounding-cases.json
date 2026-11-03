@@ -1586,6 +1586,38 @@
     }
   },
   {
+    "id": "chrono/ts-quarter-last-of-last-year-cs",
+    "tool": "ground_time",
+    "kind": "DATE",
+    "span": "poslední čtvrtletí loňského roku",
+    "locale": "cs-CZ",
+    "reference_datetime": "2026-11-01T12:00:00+02:00",
+    "timezone": "Europe/Prague",
+    "package": "cnc",
+    "model": "calendar",
+    "here": null,
+    "expect": {
+      "status": "OK",
+      "interval_start": "2025-10-01"
+    }
+  },
+  {
+    "id": "chrono/ts-quarter-last-of-year-en",
+    "tool": "ground_time",
+    "kind": "DATE",
+    "span": "the last quarter of the year",
+    "locale": "en-US",
+    "reference_datetime": "2026-11-01T12:00:00+02:00",
+    "timezone": "Europe/Prague",
+    "package": "cnc",
+    "model": "calendar",
+    "here": null,
+    "expect": {
+      "status": "OK",
+      "interval_start": "2026-10-01"
+    }
+  },
+  {
     "id": "chrono/ts-quarter-later-asks-en",
     "tool": "ground_time",
     "kind": "DATE",

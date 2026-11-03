@@ -33,7 +33,8 @@ outside this repo could notice is in.
 - **chrono — the time phrases the regexes outside it missed are read by its own rules (TS-6).** New: half-years
   („1. pololetí 2026“, „druhé pololetí“, "H1 2026", "the first half of 2026"; `PERIOD`, code `yyyyHn`, datetime
   bounds or `values`); quarters by number („2. čtvrtletí 2026“, „třetí kvartál“, "Q2",
-  "the second quarter of 2025"; `yyyyQn`) and the word *kvartál*; *uplynulý* / "past" (the period before the
+  "the second quarter of 2025"; `yyyyQn`), the last quarter of a year as its fourth ("the last quarter of the year",
+  „poslední čtvrtletí loňského roku“; it used to be the quarter before the reference's), and the word *kvartál*; *uplynulý* / "past" (the period before the
   reference's); year to date („od začátku roku“, „letos dosud“, "year to date", "YTD": 1 January through the reference
   day; „… do dneška“ / „… do současnosti“ / "… as of today" / "… so far" the same, „… do března“ / "… through September"
   / "… by end of March" to the end of that month, any other ending that names a time not read; a breakdown — "year to
@@ -49,7 +50,7 @@ outside this repo could notice is in.
   half-years („2. pololetí 2025“ / "H2 2025"), a week („týden od 19. 10. 2026“) and the trailing window („posledních 30
   dní“). A quarter or half-year by number whose span names any other period („1. a 2. čtvrtletí“, "last quarter and Q1",
   "Q2 2025 vs 2024", "Q3 and H1 2025", „Q1 a březen 2025“) is not read as one; a year word still says its year. The
-  quarter table is shared with the conversation reader. Corpus 36 → 95 cases (eval bulk corpus 126 → 185).
+  quarter table is shared with the conversation reader. Corpus 36 → 97 cases (eval bulk corpus 126 → 187).
   No wire change.
 
 - **chrono — a recognised time phrase is always answered with its interval (TS-1).** A package that declares no

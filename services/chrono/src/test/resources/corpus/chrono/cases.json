@@ -69,6 +69,8 @@
   {"name": "ts-quarter-q2-2026-en", "span": "Q2 2026", "reference": "2026-11-01", "locale": "en-US", "periodTable": false, "expect": {"status": "OK", "intervalStart": "2026-04-01", "application": "FILTER"}},
   {"name": "ts-quarter-later-asks-en", "span": "Q3", "reference": "2026-05-15", "locale": "en-US", "periodTable": false, "expect": {"status": "AWAITING_CLARIFICATION", "optionIds": ["2026Q3", "2025Q3"]}},
   {"name": "ts-quarter-ordinal-en", "span": "the second quarter of 2025", "reference": "2026-11-01", "locale": "en-US", "periodTable": false, "expect": {"status": "OK", "intervalStart": "2025-04-01"}},
+  {"name": "ts-quarter-last-of-year-en", "span": "the last quarter of the year", "reference": "2026-11-01", "locale": "en-US", "periodTable": false, "expect": {"status": "OK", "intervalStart": "2026-10-01"}},
+  {"name": "ts-quarter-last-of-last-year-cs", "span": "poslední čtvrtletí loňského roku", "reference": "2026-11-01", "locale": "cs-CZ", "periodTable": false, "expect": {"status": "OK", "intervalStart": "2025-10-01"}},
   {"name": "ts-quarter-monthly-table-bounds", "span": "2. čtvrtletí 2026", "reference": "2026-11-01", "locale": "cs-CZ", "expect": {"status": "OK", "intervalStart": "2026-04-01", "application": "FILTER", "sqlContains": ["t.\"date\" >= {start}", "t.\"date\" < {end}"]}},
   {"name": "ts-elapsed-uplynuly-mesic-cs", "span": "uplynulý měsíc", "reference": "2026-11-01", "locale": "cs-CZ", "expect": {"status": "OK", "intervalStart": "2026-10-01"}},
   {"name": "ts-elapsed-uplynuly-tyden-cs", "span": "uplynulý týden", "reference": "2026-11-01", "locale": "cs-CZ", "expect": {"status": "OK", "intervalStart": "2026-10-19"}},

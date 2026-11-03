@@ -134,6 +134,38 @@ class TimePhrasesSpec :
             read("ve 2. čtvrtletí loňského roku").periodCode shouldBe "2025Q2"
         }
 
+        // Bora 2026-11-03: "the last quarter of a year" is the fourth quarter, read as any yearless numbered quarter.
+        "the last quarter of a year is its fourth quarter; the year from its year word, else as a yearless quarter" {
+            for ((span, code) in listOf(
+                "the last quarter of the year" to "2026Q4",
+                "in the last quarter of the fiscal year" to "2026Q4",
+                "the last quarter of this year" to "2026Q4",
+                "the last quarter of last year" to "2025Q4",
+                "poslední čtvrtletí roku" to "2026Q4",
+                "v posledním čtvrtletí tohoto roku" to "2026Q4",
+                "poslední kvartál loňského roku" to "2025Q4",
+                "the last quarter of 2025" to "2025Q4",
+            )) {
+                val r = read(span)
+                withClue(span) {
+                    r.periodCode shouldBe code
+                    r.alternatives shouldBe emptyList()
+                }
+            }
+            val later = read("the last quarter of the year", may)
+            later.periodCode shouldBe "2026Q4"
+            later.alternatives.map { it.periodCode } shouldBe listOf("2025Q4")
+            read("last quarter").periodCode shouldBe "2026Q3"
+            read("poslední čtvrtletí").periodCode shouldBe "2026Q3"
+        }
+
+        "after the last quarter of the year, the previous quarter is the third" {
+            read(
+                "the previous quarter",
+                context = listOf("And the previous quarter?", "Revenue in the last quarter of the year"),
+            ).periodCode shouldBe "2026Q3"
+        }
+
         "„kvartál“ is a quarter word like „čtvrtletí“; „kvartální“ is a grain" {
             read("tento kvartál").periodCode shouldBe "2026Q4"
             read("minulý kvartál").periodCode shouldBe "2026Q3"

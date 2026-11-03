@@ -13,7 +13,8 @@ package org.tatrman.chrono.recognize
  *   kvartálu, pololetí, a month) or after v / ve in the locative (roce, měsíci, týdnu, čtvrtletí, a month), with an
  *   optional tohoto / letošního / minulého / každého between.
  *
- * Quarters are not in the table: "the last quarter of 2025" is the fourth quarter ([NumberedPeriods]).
+ * Quarters are not in the table: "the last quarter of 2025" and "the last quarter of the year" are the fourth
+ * quarter ([NumberedPeriods]).
  */
 internal object PartOfPeriods {
     private const val EN_ADJ = PeriodWords.EN_ADJ
