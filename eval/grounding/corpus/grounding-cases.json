@@ -1637,6 +1637,27 @@
     }
   },
   {
+    "id": "chrono/ts-quarter-monthly-table-bounds",
+    "tool": "ground_time",
+    "kind": "DATE",
+    "span": "2. čtvrtletí 2026",
+    "locale": "cs-CZ",
+    "reference_datetime": "2026-11-01T12:00:00+02:00",
+    "timezone": "Europe/Prague",
+    "package": "cnc",
+    "model": "accounting-period",
+    "here": null,
+    "expect": {
+      "status": "OK",
+      "application": "FILTER",
+      "interval_start": "2026-04-01",
+      "sql_contains": [
+        "t.\"date\" >= {start}",
+        "t.\"date\" < {end}"
+      ]
+    }
+  },
+  {
     "id": "chrono/ts-quarter-ordinal-en",
     "tool": "ground_time",
     "kind": "DATE",
@@ -1666,24 +1687,6 @@
     "expect": {
       "status": "OK",
       "application": "FILTER",
-      "interval_start": "2026-04-01"
-    }
-  },
-  {
-    "id": "chrono/ts-quarter-table-join",
-    "tool": "ground_time",
-    "kind": "DATE",
-    "span": "2. čtvrtletí 2026",
-    "locale": "cs-CZ",
-    "reference_datetime": "2026-11-01T12:00:00+02:00",
-    "timezone": "Europe/Prague",
-    "package": "cnc",
-    "model": "accounting-period",
-    "here": null,
-    "expect": {
-      "status": "OK",
-      "application": "JOIN",
-      "period_code": "2026Q2",
       "interval_start": "2026-04-01"
     }
   },

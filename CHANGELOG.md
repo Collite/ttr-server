@@ -16,9 +16,15 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+- **chrono — a period code meets a period table only in the table's own grain.** A quarter (`yyyyQn`) or a
+  half-year against a monthly period table — the usual one, and the default `code_format` — was joined or
+  code-filtered as `ap.period = '2026Q2'` and matched no row; "last quarter" did since Q-18. It now takes datetime
+  bounds when the fact has a date column, and `values` (`p` = the canonical code) when it has none. A month against a
+  quarterly table takes the `period_start`/`period_end` functions instead of the join.
+
 - **chrono — the time phrases the regexes outside it missed are read by its own rules (TS-6).** New: half-years
   („1. pololetí 2026“, „druhé pololetí“, "H1 2026", "the first half of 2026"; `PERIOD`, code `yyyyHn`, datetime
-  bounds or `values`, never a period-table join); quarters by number („2. čtvrtletí 2026“, „třetí kvartál“, "Q2",
+  bounds or `values`); quarters by number („2. čtvrtletí 2026“, „třetí kvartál“, "Q2",
   "the second quarter of 2025"; `yyyyQn`) and the word *kvartál*; *uplynulý* / "past" (the period before the
   reference's); year to date („od začátku roku“, „letos dosud“, "year to date", "YTD": 1 January through the reference
   day). A yearless quarter or half reads as a yearless month: the conversation's year, else the reference's, and it

@@ -7,6 +7,7 @@ import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
+import io.kotest.matchers.string.shouldNotContain
 import org.tatrman.chrono.FakeMetadataClient
 import org.tatrman.chrono.recognize.DateRecognizer
 import java.time.LocalDate
@@ -241,6 +242,66 @@ class RecipeBuilderSpec :
                     .single { it.name == "p" }
                     .value.stringValue shouldBe "2026H1"
             }
+        }
+
+        // review-215 R1: a period code meets a period table only in the table's own grain. A quarter against a
+        // monthly table (the usual one) matches no row: it takes datetime bounds, or values with no column.
+        val quarterly =
+            RecipeBuilder(
+                FakeMetadataClient(
+                    listOf(
+                        FakeMetadataClient.Obj("cnc", "Quarter", "Quarter", "entity", semanticKind = "period_table"),
+                        FakeMetadataClient.Obj("cnc", "Quarter", "start_date", "attribute", role = "period_start"),
+                        FakeMetadataClient.Obj("cnc", "Quarter", "end_date", "attribute", role = "period_end"),
+                        FakeMetadataClient.Obj(
+                            "cnc",
+                            "Quarter",
+                            "period",
+                            "attribute",
+                            role = "period_code",
+                            codeFormat = "yyyyQn",
+                        ),
+                        FakeMetadataClient.Obj("cnc", "Transaction", "date", "attribute", role = "event_date"),
+                    ),
+                ),
+            )
+        val q2 = recognizer.recognize("2. čtvrtletí 2026", ref).shouldNotBeNull()
+
+        "a quarter against a monthly period table, with a date column → datetime bounds, no join" {
+            val r = tableBacked.build("2. čtvrtletí 2026", q2, "cnc", tz)
+            r.applicationCase shouldBe GroundingResult.ApplicationCase.FILTER
+            r.sqlPreview shouldBe "t.\"date\" >= {start} AND t.\"date\" < {end}"
+            r.sqlPreview shouldNotContain "ap."
+            r.normalized.interval.start shouldContain "2026-04-01"
+            r.normalized.interval.end shouldContain "2026-07-01"
+        }
+
+        "a quarter against a quarterly period table → the join, as Q-18 built it" {
+            val r = quarterly.build("2. čtvrtletí 2026", q2, "cnc", tz)
+            r.applicationCase shouldBe GroundingResult.ApplicationCase.JOIN
+            r.join.parametersList
+                .single()
+                .value.stringValue shouldBe "2026Q2"
+        }
+
+        "a quarter against a monthly period table, no date column → values with p = yyyyQn, not the code filter" {
+            val r = datelessLedger.build("2. čtvrtletí 2026", q2, "ucet", tz)
+            r.applicationCase shouldBe GroundingResult.ApplicationCase.VALUES
+            r.values.parametersList
+                .single { it.name == "p" }
+                .value.stringValue shouldBe "2026Q2"
+            r.sqlPreview shouldBe ""
+        }
+
+        "a month against a quarterly period table → the catalog functions, never a join on the quarter code" {
+            val rec = recognizer.recognize("May 2026", ref).shouldNotBeNull()
+            val r = quarterly.build("May 2026", rec, "cnc", tz)
+            r.applicationCase shouldBe GroundingResult.ApplicationCase.FILTER
+            r.sqlPreview shouldNotContain "ap."
+            r.sqlPreview shouldContain "period_start({p})"
+            r.filter.parametersList
+                .single()
+                .value.stringValue shouldBe "202605"
         }
 
         "date-less period-coded fact explicit 'období 202605' → FilterRecipe code = {p}" {

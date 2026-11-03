@@ -15,6 +15,7 @@ import org.tatrman.chrono.discover.PeriodTable
 import org.tatrman.chrono.discover.SemanticDiscovery
 import org.tatrman.chrono.recognize.ChronoKind
 import org.tatrman.chrono.recognize.ChronoRecognition
+import org.tatrman.chrono.recognize.PeriodCodes
 import java.time.LocalDate
 import java.time.ZoneId
 import java.time.ZoneOffset
@@ -22,11 +23,12 @@ import java.time.format.DateTimeFormatter
 
 /**
  * Turns a [ChronoRecognition] + the package's metadata into a [GroundingResult] (A8.4). Four shapes:
- *  - PERIOD with a table-backed period entity → **JoinRecipe** (`fact.date >= ap.start AND < ap.end`,
- *    filter `ap.code = {p}`);
- *  - PERIOD with no period table (calendar-aligned) → **FilterRecipe** over the `period_start`/
+ *  - PERIOD with a table-backed period entity of the code's own grain ([PeriodCodes.fits]) → **JoinRecipe**
+ *    (`fact.date >= ap.start AND < ap.end`, filter `ap.code = {p}`);
+ *  - a month with no period table of its grain (calendar-aligned) → **FilterRecipe** over the `period_start`/
  *    `period_end` catalog functions;
- *  - a plain interval (ABSOLUTE / RELATIVE / FISCAL_YEAR) → **FilterRecipe** with datetime bounds;
+ *  - a plain interval (ABSOLUTE / RELATIVE / FISCAL_YEAR), or a quarter or half-year with no table of its
+ *    grain → **FilterRecipe** with datetime bounds;
  *  - no anchor date column and no period-code route → **ValueBinding** (`start`, `end`, and `p` when the
  *    recognition carries a period code): the interval is known, where it goes is the caller's (TS-1).
  *
@@ -40,12 +42,6 @@ class RecipeBuilder(
 ) {
     private companion object {
         const val FACT_ALIAS = "t"
-
-        /** A `yyyyQn` quarter period code (Q-18), e.g. "2026Q2" — distinct from the `yyyyMM` month code. */
-        val QUARTER_CODE = Regex("""(\d{4})Q([1-4])""")
-
-        /** A `yyyyHn` half-year code (TS-6), e.g. "2026H1". No estate declares half-year rows, so it never joins. */
-        val HALF_CODE = Regex("""(\d{4})H([12])""")
     }
 
     suspend fun build(
@@ -65,24 +61,24 @@ class RecipeBuilder(
 
         val pt = discovery.periodTable(pkg)
         val anchor = discovery.anchorColumn(pkg, recognition.target)
+        // A period code meets the period table only in the table's own grain: a quarter or a half-year
+        // against a monthly table (the usual one, and the default) matches no row — an empty answer, not
+        // an error. A code of another grain keeps its canonical form and takes the interval instead.
+        val fitsTable = pt != null && recognition.periodCode?.let { PeriodCodes.fits(it, pt.codeFormat) } == true
+        val code = recognition.periodCode?.let { if (fitsTable) reformatCode(it, pt!!.codeFormat) else it }
 
         // Date-less, period-coded fact (issue #140): the fact has no date column to bound
         // (e.g. an accounting ledger keyed only by period code), but the package declares a
-        // period table with a code column and the recognition maps to a period. Bind the
-        // period code directly (`code = {p}`) — the period table IS the date dimension, so
+        // period table with a code column and the recognition maps to a period of its grain. Bind
+        // the period code directly (`code = {p}`) — the period table IS the date dimension, so
         // no fact anchor date column is required.
-        if (anchor == null &&
-            recognition.periodCode != null &&
-            pt?.code != null &&
-            !isHalfCode(recognition.periodCode)
-        ) {
-            val code = reformatCode(recognition.periodCode, pt.codeFormat)
-            return periodCodeRecipe(pt.code, code, recognition, normalized, span)
+        if (anchor == null && fitsTable && pt?.code != null) {
+            return periodCodeRecipe(pt.code, code!!, recognition, normalized, span)
         }
         // No fact date column and no period code to fall back on: the interval still stands — it was
         // read from the reference date alone, the model contributes nothing to it (TS-1). Hand over
         // the values; which attribute they restrict is the caller's call.
-        if (anchor == null) return valuesRecipe(recognition, pt, normalized, startIso, endIso, pkg)
+        if (anchor == null) return valuesRecipe(recognition, code, normalized, startIso, endIso, pkg)
 
         // Short, non-reserved fact alias (entity names like Transaction/Order/User are SQL reserved
         // words — an unquoted entity-name alias would make the sql_preview unparseable). Golem's
@@ -91,16 +87,12 @@ class RecipeBuilder(
         val factCol = PlanExpr.col(FACT_ALIAS, anchor.columnName)
 
         return if (recognition.kind == ChronoKind.PERIOD) {
-            val code = reformatCode(recognition.periodCode!!, pt?.codeFormat ?: "yyyyMM")
             when {
-                // A half-year (TS-6) has no period-table row and no catalog function: datetime bounds, always.
-                isHalfCode(recognition.periodCode) ->
-                    intervalRecipe(anchor, factCol, startIso, endIso, recognition, normalized, span)
-                pt.hasColumns() -> joinRecipe(pt!!, factCol, code, recognition, normalized, span)
-                // A yyyyQn quarter (Q-18) can't lower through the period_start/period_end catalog
-                // functions (the translator supports only yyyyMM/yyyyMMdd), so a table-less quarter
-                // degrades to the honest calendar-quarter datetime-bounds FilterRecipe.
-                isQuarterCode(recognition.periodCode) ->
+                fitsTable && pt.hasColumns() -> joinRecipe(pt!!, factCol, code!!, recognition, normalized, span)
+                // A yyyyQn quarter (Q-18) or a yyyyHn half-year (TS-6) with no table of its grain can't
+                // lower through the period_start/period_end catalog functions (the translator supports
+                // only yyyyMM/yyyyMMdd), so it degrades to the honest calendar datetime-bounds FilterRecipe.
+                PeriodCodes.grainOf(code!!) != PeriodCodes.Grain.MONTH ->
                     intervalRecipe(anchor, factCol, startIso, endIso, recognition, normalized, span)
                 else -> periodFunctionRecipe(anchor, factCol, code, recognition, normalized, span)
             }
@@ -113,7 +105,7 @@ class RecipeBuilder(
 
     private fun valuesRecipe(
         recognition: ChronoRecognition,
-        pt: PeriodTable?,
+        code: String?,
         normalized: Normalized,
         startIso: String,
         endIso: String,
@@ -124,13 +116,8 @@ class RecipeBuilder(
                 .newBuilder()
                 .addParameters(PlanExpr.datetimeParam("start", startIso, "Interval start (inclusive)"))
                 .addParameters(PlanExpr.datetimeParam("end", endIso, "Interval end (exclusive)"))
-                .apply {
-                    recognition.periodCode?.let { code ->
-                        addParameters(
-                            PlanExpr.textParam("p", reformatCode(code, pt?.codeFormat ?: "yyyyMM"), "Period code"),
-                        )
-                    }
-                }.build()
+                .apply { code?.let { addParameters(PlanExpr.textParam("p", it, "Period code")) } }
+                .build()
         return GroundingResult
             .newBuilder()
             .setNormalized(normalized)
@@ -282,25 +269,20 @@ class RecipeBuilder(
     private fun PeriodTable?.hasColumns(): Boolean = this != null && start != null && end != null && code != null
 
     /**
-     * Re-render the recognizer's canonical `yyyyMM` code per the period table's `code_format`.
-     * Supports the common `yyyyMM` / `yyyy-MM` / `yyyy/MM` shapes; unknown formats pass through
-     * the canonical code unchanged.
+     * Re-render the recognizer's canonical code per the period table's `code_format` — only ever for a code of
+     * the table's own grain ([PeriodCodes.fits]). A month supports the common `yyyyMM` / `yyyy-MM` / `yyyy/MM`
+     * shapes; unknown formats pass through the canonical code unchanged.
      */
-    private fun isQuarterCode(code: String): Boolean = QUARTER_CODE.matches(code)
-
-    private fun isHalfCode(code: String): Boolean = HALF_CODE.matches(code)
-
     private fun reformatCode(
         canonical: String,
         format: String,
     ): String {
-        // A half-year code (yyyyHn) is its own form: it never meets a period table's code_format.
-        if (isHalfCode(canonical)) return canonical
-        // Quarter codes (yyyyQn) are their own canonical form — the monthly reformatting below doesn't
-        // apply. Honour the common separator variants; default to the compact yyyyQn.
-        QUARTER_CODE.matchEntire(canonical)?.let { m ->
-            val (year, q) = m.destructured
-            return if (format == "yyyy-Qn" || format == "yyyy-Q") "$year-Q$q" else "${year}Q$q"
+        // Quarter (yyyyQn) and half-year (yyyyHn) codes are their own canonical form — the monthly
+        // reformatting below doesn't apply. Honour the dash variant; default to the compact form.
+        (PeriodCodes.QUARTER.matchEntire(canonical) ?: PeriodCodes.HALF.matchEntire(canonical))?.let { m ->
+            val (year, n) = m.destructured
+            val letter = canonical[4]
+            return if (format == "yyyy-${letter}n" || format == "yyyy-$letter") "$year-$letter$n" else "$year$letter$n"
         }
         if (canonical.length != 6) return canonical
         val year = canonical.substring(0, 4)

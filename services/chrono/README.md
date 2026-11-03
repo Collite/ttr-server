@@ -34,7 +34,7 @@ reference date of the request.
 | elapsed | *uplynulý měsíc / týden / rok / čtvrtletí* | *the past month / year* | the period before ref's |
 | weeks | *tento / minulý / předminulý týden* | *this / last week* | Monday to Monday |
 | numbered quarter | *2. čtvrtletí 2026*, *druhé čtvrtletí*, *3. kvartál*, *Q2 2026*, *Q2* | *Q2 2026*, *the second quarter of 2025* | that quarter, `yyyyQn`; yearless reads as a yearless month (and asks the same way) |
-| half-year | *1. pololetí 2026*, *druhé pololetí*, *H1 2026* | *H1 2026*, *the first half of 2026* | six months, `yyyyHn`; yearless reads as a yearless month; never joins a period table |
+| half-year | *1. pololetí 2026*, *druhé pololetí*, *H1 2026* | *H1 2026*, *the first half of 2026* | six months, `yyyyHn`; yearless reads as a yearless month |
 | trailing | *poslední měsíc / týden / rok* | *the last month / week / year* | **asks** (`AWAITING_CLARIFICATION`): `trailing` — the last 30 / 7 / 365 days through ref — or `calendar` — the period before ref's |
 | last N | *posledních 30 dní*, *poslední 3 měsíce* | *last 30 days*, *past 3 months* | `[ref − N, ref + 1 day)` |
 | year to date | *od začátku roku*, *letos dosud* | *year to date*, *YTD* | `[1 January of ref's year, ref + 1 day)` |
@@ -49,10 +49,10 @@ says which words are chrono's; it never changes what they mean.
 
 | Status | When | Result |
 |---|---|---|
-| `OK` · `join` | a period ("May 2026", „období 202605“) and a period table with start, end and code columns | `JoinRecipe` on the period table, filter `code = {p}` |
-| `OK` · `filter` | an anchor date column: a period with no period table, or any other interval | `FilterRecipe` over `period_start({p})`/`period_end({p})`, or datetime bounds `{start}`/`{end}`; a `yyyyQn` quarter with no table takes datetime bounds |
-| `OK` · `filter` | no date column, but a period table with a code column and a period phrase (#140) | `FilterRecipe` `code = {p}` |
-| `OK` · `values` | **no date column and no period-code route** | `ValueBinding`: `start`, `end` (datetime, half-open, the request's zone) and `p` (the period code, `yyyyMM` / `yyyyQn`) when the phrase names a period; `sql_preview` empty; `explanation` names the package. The caller places the values. |
+| `OK` · `join` | a period ("May 2026", „období 202605“) and a period table **of its grain** with start, end and code columns: a month meets a monthly table, a quarter a `yyyyQn` one | `JoinRecipe` on the period table, filter `code = {p}` |
+| `OK` · `filter` | an anchor date column: a period with no period table, or any other interval | `FilterRecipe` over `period_start({p})`/`period_end({p})`, or datetime bounds `{start}`/`{end}`; a quarter or half-year with no table of its grain takes datetime bounds |
+| `OK` · `filter` | no date column, but a period table with a code column and a period phrase of its grain (#140) | `FilterRecipe` `code = {p}` |
+| `OK` · `values` | **no date column and no period-code route** (no table, or a period of another grain) | `ValueBinding`: `start`, `end` (datetime, half-open, the request's zone) and `p` (the period code, `yyyyMM` / `yyyyQn`) when the phrase names a period; `sql_preview` empty; `explanation` names the package. The caller places the values. |
 | `AWAITING_CLARIFICATION` | the phrase has two readings (a bare future month, „minulý rok“ after a question about a year) | one option per reading, `id` = the period code, `normalized` = its interval; resume with `clarification_answer_id` |
 | `UNGROUNDABLE` | nothing read in the span (and no LLM fallback, or the fallback failed); a missing `reference_datetime`; an unknown `clarification_answer_id` | a `ResponseMessage` saying why |
 | `UNGROUNDABLE` · `no_anchor` | an anaphoric period with nothing in the conversation to count from (#214) | never read against the reference date |

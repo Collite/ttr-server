@@ -109,7 +109,7 @@ semantic test would miss — fails the gate (RG-P6 review I). Keep the two lists
 ```
 entities_only.jsonl             ccda5f2a891a16789b3b6cb752b3baab9b9a8b8fe96e2f01fd41a8d7444352a7
 match-quality-corpus.jsonl      f994789391af7773bb1061f1d7953a2aa870fd5233877574547cca284a5c2a3d
-grounding-cases.json            add573189c6fcca729acff69473e465876ac8229883e18257d22dbdfd777ccde
+grounding-cases.json            310da5cd32ad9f724780b38fc951ae9354339c99af0498cc081b8b24459985be
 e2e-cases.json                  0034ed387f31c1dca8ba1a56b22b72f968193ee5f1aacb0f20aa7336facf77f7
 hartland-cz/aliases.lex.yaml    78577f1f142fdb6b9bca261e559b69335885358bcd4ba9ed6fb2bd75d45b2208
 hartland-cz/skills/trend.md     3db553d63ab7dcbecd021326dbb13f9cab72b71ee9d7d571c663f65349208bc2
