@@ -736,7 +736,9 @@ class DateRecognizer {
     /**
      * The last [count] days ending with the reference day — `[reference − N + 1 day, reference + 1 day)`, exactly N
      * days (A-TS-1) — or, with [months], the last [count] months ending with it: from the day after the same date N
-     * months back. „posledních 30 dní“, "last 3 months" and the trailing option of „poslední měsíc“ all read it.
+     * months back, `reference − N months + 1 day`. Not `(reference + 1 day) − N months`: a shorter month clamps
+     * that a day early (on 30 December, 30 November rather than 1 December). „posledních 30 dní“, "last 3 months"
+     * and the trailing option of „poslední měsíc“ all read it.
      */
     private fun lastN(
         reference: LocalDate,
@@ -744,7 +746,7 @@ class DateRecognizer {
         months: Boolean = false,
     ): ChronoRecognition {
         val end = reference.plusDays(1)
-        val start = if (months) end.minusMonths(count) else end.minusDays(count)
+        val start = if (months) reference.minusMonths(count).plusDays(1) else end.minusDays(count)
         return ChronoRecognition(start, end, ChronoKind.RELATIVE, 0.85)
     }
 

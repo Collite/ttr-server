@@ -262,6 +262,22 @@ class DateRecognizerSpec :
                 day(2026, 10, 26)
             rec.recognize("posledních 30 dní", ref).shouldNotBeNull().startInclusive shouldBe day(2026, 4, 16)
         }
+        // review-215 RR4: from the day after the same date N months back — not (reference + 1 day) − N months, which
+        // a shorter month clamps a day early.
+        "last N months at a month end start the day after the same date N months back" {
+            for ((span, reference, start) in listOf(
+                Triple("last 1 month", day(2026, 12, 30), day(2026, 12, 1)),
+                Triple("last 1 month", day(2026, 3, 30), day(2026, 3, 1)),
+                Triple("last 3 months", day(2026, 5, 30), day(2026, 3, 1)),
+                Triple("last 3 months", day(2026, 11, 1), day(2026, 8, 2)),
+            )) {
+                val r = rec.recognize(span, reference).shouldNotBeNull()
+                withClue("$span on $reference") {
+                    r.startInclusive shouldBe start
+                    r.endExclusive shouldBe reference.plusDays(1)
+                }
+            }
+        }
 
         // ---- date-role targeting ----
         "'due in May' targets DUE and grounds the May period" {
