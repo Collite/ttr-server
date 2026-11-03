@@ -250,11 +250,17 @@ class DateRecognizerSpec :
         "a word that only contains 'roce' is not the locative of rok" {
             rec.recognize("minulé procento", ref).shouldBeNull()
         }
+        // A-TS-1: N days are exactly N days ending with the reference day; N months end with it too.
         "last N months / poslední 3 měsíce → rolling window ending today" {
             val r = rec.recognize("poslední 3 měsíce", ref).shouldNotBeNull()
-            r.startInclusive shouldBe day(2026, 2, 15)
+            r.startInclusive shouldBe day(2026, 2, 16)
             r.endExclusive shouldBe day(2026, 5, 16)
-            rec.recognize("last 30 days", ref).shouldNotBeNull().startInclusive shouldBe day(2026, 4, 15)
+            val days = rec.recognize("last 30 days", ref).shouldNotBeNull()
+            days.startInclusive shouldBe day(2026, 4, 16)
+            days.endExclusive shouldBe day(2026, 5, 16)
+            rec.recognize("last 7 days", LocalDate.of(2026, 11, 1)).shouldNotBeNull().startInclusive shouldBe
+                day(2026, 10, 26)
+            rec.recognize("posledních 30 dní", ref).shouldNotBeNull().startInclusive shouldBe day(2026, 4, 16)
         }
 
         // ---- date-role targeting ----

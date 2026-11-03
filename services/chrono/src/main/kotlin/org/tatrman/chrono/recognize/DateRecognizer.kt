@@ -615,15 +615,9 @@ class DateRecognizer {
         }
         trailing(n, reference)?.let { return Hit(it) }
         lastNRe.find(n)?.let { m ->
-            val count = m.groupValues[1].toLong()
             val unit = m.groupValues[2]
-            val start =
-                if (unit.startsWith("month") || unit.startsWith("mesic")) {
-                    reference.minusMonths(count)
-                } else {
-                    reference.minusDays(count)
-                }
-            return Hit(ChronoRecognition(start, reference.plusDays(1), ChronoKind.RELATIVE, 0.85))
+            val months = unit.startsWith("month") || unit.startsWith("mesic")
+            return Hit(lastN(reference, m.groupValues[1].toLong(), months))
         }
         if (hasAny(n, "week", "tyden", "tydn")) return week(n, reference, triggered)?.let(::Hit)
         // A month word before a year word: "minulý měsíc" names a month, whatever year a span adds to it.
@@ -739,7 +733,6 @@ class DateRecognizer {
     ): ChronoRecognition? {
         val m = trailingRe.find(n) ?: return null
         val g = m.groupValues
-        val end = reference.plusDays(1)
         val (days, calendar) =
             when {
                 g[1].isNotEmpty() || g[4].isNotEmpty() ->
@@ -751,15 +744,25 @@ class DateRecognizer {
                     TRAILING_DAYS.getValue(PeriodUnit.YEAR) to
                         periodRecognition(PeriodUnit.YEAR, reference.year - 1, 0.85)
             }
-        val trailing =
-            ChronoRecognition(
-                reference.minusDays(days),
-                end,
-                ChronoKind.RELATIVE,
-                0.85,
-                optionId = ChronoRecognition.TRAILING,
-            )
-        return trailing.copy(alternatives = listOf(calendar.copy(optionId = ChronoRecognition.CALENDAR)))
+        return lastN(reference, days).copy(
+            optionId = ChronoRecognition.TRAILING,
+            alternatives = listOf(calendar.copy(optionId = ChronoRecognition.CALENDAR)),
+        )
+    }
+
+    /**
+     * The last [count] days ending with the reference day — `[reference − N + 1 day, reference + 1 day)`, exactly N
+     * days (A-TS-1) — or, with [months], the last [count] months ending with it: from the day after the same date N
+     * months back. „posledních 30 dní“, "last 3 months" and the trailing option of „poslední měsíc“ all read it.
+     */
+    private fun lastN(
+        reference: LocalDate,
+        count: Long,
+        months: Boolean = false,
+    ): ChronoRecognition {
+        val end = reference.plusDays(1)
+        val start = if (months) end.minusMonths(count) else end.minusDays(count)
+        return ChronoRecognition(start, end, ChronoKind.RELATIVE, 0.85)
     }
 
     /** A week, read against the reference date by its scope words; scopeless only when [triggered]. */

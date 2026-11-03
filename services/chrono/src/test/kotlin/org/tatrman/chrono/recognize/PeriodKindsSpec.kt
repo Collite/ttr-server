@@ -397,7 +397,7 @@ class PeriodKindsSpec :
                         ref,
                         context = listOf("Tržby z tržiště v březnu 2025"),
                     ).shouldNotBeNull()
-            r.startInclusive shouldBe LocalDate.of(2026, 7, 14)
+            r.startInclusive shouldBe LocalDate.of(2026, 7, 15) // three months ending with the reference day (A-TS-1)
             r.alternatives.shouldBeEmpty()
         }
         "a stated year still wins over a scope word beside it" {

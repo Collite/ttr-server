@@ -16,6 +16,12 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+- **chrono — „posledních N dní“ / "last N days" is exactly N days (A-TS-1).** The window ends with the reference
+  day: `[reference − N + 1 day, reference + 1 day)`. It used to start one day earlier, N + 1 days in all ("last 7
+  days" on a Sunday counted that Sunday twice); "the last N months" likewise starts the day after the same date N
+  months back. The trailing option of „poslední měsíc / týden / rok“ is the same 30 / 7 / 365 days, and its label
+  names that count.
+
 - **chrono — a period code meets a period table only in the table's own grain.** A quarter (`yyyyQn`) or a
   half-year against a monthly period table — the usual one, and the default `code_format` — was joined or
   code-filtered as `ap.period = '2026Q2'` and matched no row; "last quarter" did since Q-18. It now takes datetime

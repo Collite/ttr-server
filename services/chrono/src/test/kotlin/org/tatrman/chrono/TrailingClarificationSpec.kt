@@ -46,8 +46,11 @@ class TrailingClarificationSpec :
             r.status shouldBe GroundResponse.Status.AWAITING_CLARIFICATION
             r.optionsList.map { it.id } shouldBe listOf("trailing", "calendar")
             r.optionsList.map { it.label } shouldBe listOf("posledních 30 dní", "říjen 2026")
+            // A-TS-1: exactly thirty days, ending with the reference day — the count the label says.
             r.optionsList[0]
-                .normalized.interval.start shouldStartWith "2026-10-02"
+                .normalized.interval.start shouldStartWith "2026-10-03"
+            r.optionsList[0]
+                .normalized.interval.end shouldStartWith "2026-11-02"
             r.optionsList[1]
                 .normalized.interval.start shouldStartWith "2026-10-01"
         }
@@ -72,7 +75,7 @@ class TrailingClarificationSpec :
 
             r.status shouldBe GroundResponse.Status.OK
             r.result.applicationCase shouldBe GroundingResult.ApplicationCase.FILTER
-            r.result.normalized.interval.start shouldStartWith "2026-10-02"
+            r.result.normalized.interval.start shouldStartWith "2026-10-03"
             r.result.normalized.interval.end shouldStartWith "2026-11-02"
         }
 

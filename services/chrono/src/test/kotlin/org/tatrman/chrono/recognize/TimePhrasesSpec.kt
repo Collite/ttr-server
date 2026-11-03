@@ -183,7 +183,7 @@ class TimePhrasesSpec :
         "„poslední měsíc“ asks: the last 30 days, or the calendar month before" {
             val r = read("poslední měsíc")
             r.optionId shouldBe ChronoRecognition.TRAILING
-            r.startInclusive shouldBe day(2026, 10, 2) // as „posledních 30 dní“ reads, ending with the reference day
+            r.startInclusive shouldBe day(2026, 10, 3) // 30 days ending with the reference day, as „posledních 30 dní“
             r.endExclusive shouldBe day(2026, 11, 2)
             val calendar = r.alternatives.single()
             calendar.optionId shouldBe ChronoRecognition.CALENDAR
@@ -192,10 +192,10 @@ class TimePhrasesSpec :
 
         "a trailing week and year ask the same way; English says 'the last month'" {
             val week = read("poslední týden")
-            week.startInclusive shouldBe day(2026, 10, 25)
+            week.startInclusive shouldBe day(2026, 10, 26)
             week.alternatives.single().startInclusive shouldBe day(2026, 10, 19)
             val year = read("za poslední rok")
-            year.startInclusive shouldBe day(2025, 11, 1)
+            year.startInclusive shouldBe day(2025, 11, 2)
             year.alternatives.single().startInclusive shouldBe day(2025, 1, 1)
             read("the last month").alternatives.single().periodCode shouldBe "202610"
         }

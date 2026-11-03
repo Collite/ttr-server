@@ -224,8 +224,8 @@ class ChronoGroundingService(
         val code = codeOf(c)
         val start = c.startInclusive
         if (c.optionId == ChronoRecognition.TRAILING) {
-            // The window ends with the reference day: [reference - N days, reference + 1 day).
-            val days = ChronoUnit.DAYS.between(start, c.endExclusive) - 1
+            // The window is exactly the days it holds, ending with the reference day (A-TS-1).
+            val days = ChronoUnit.DAYS.between(start, c.endExclusive)
             return if (czech) "posledních $days dní" else "the last $days days"
         }
         return when {

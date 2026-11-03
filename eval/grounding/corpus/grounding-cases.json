@@ -1738,7 +1738,7 @@
     "expect": {
       "status": "OK",
       "application": "FILTER",
-      "interval_start": "2026-10-02"
+      "interval_start": "2026-10-03"
     }
   },
   {
