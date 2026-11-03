@@ -57,6 +57,7 @@ class AutomationConfigSpec :
 
         "world schemas are explicit configuration, with demo pinned to cz through the environment" {
             load(required).pgSchemas shouldBe emptyMap()
+            load(required, mapOf("AUTOMATION_PG_DOOR_ROLE" to "au_door")).pgDoorRole shouldBe "au_door"
             load(
                 required + "\nautomation.pgSchemas = \"demo=us\"",
                 mapOf("AUTOMATION_PG_SCHEMAS" to "demo=cz"),
@@ -68,6 +69,7 @@ class AutomationConfigSpec :
                 "demo=cz,demo=us",
                 "demo=cz,other=cz",
                 "demo=automation",
+                "demo=pgmq",
                 "demo=pg_catalog",
                 "demo=cz;drop",
             )) {

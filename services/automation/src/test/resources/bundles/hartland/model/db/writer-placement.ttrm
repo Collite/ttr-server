@@ -1,0 +1,6 @@
+// Minimal physical host targets for compiler placement; Query remains stubbed in these fixtures.
+package hartland
+model db schema dbo
+
+def table sales_order { columns: [def column order_number { type: text }] }
+def table return_request_line { columns: [def column line_id { type: int }] }

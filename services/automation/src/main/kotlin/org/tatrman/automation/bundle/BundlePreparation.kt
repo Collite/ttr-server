@@ -28,6 +28,8 @@ class BundlePreparation internal constructor(
     internal val packageOf: (ModelObject) -> String = { obj -> packages[obj.sourceFile].orEmpty() }
     internal val index by lazy { ModelIndex(snapshot, packageOf) }
     internal val calendarPlans = ConcurrentHashMap<String, Result<org.tatrman.automation.apply.CalendarPlan>>()
+    internal val planSources =
+        ConcurrentHashMap<Pair<String, String>, Result<org.tatrman.automation.apply.PlanSource>>()
     internal val obligationPlacements = ConcurrentHashMap<String, Result<String>>()
     internal val warnedObligationPlacements: MutableSet<String> = ConcurrentHashMap.newKeySet()
 }

@@ -120,6 +120,7 @@ data class PreviewPlan(
     @EncodeDefault val mode: String = "preview",
     @kotlinx.serialization.Transient val source: PlanSource? = null,
     @kotlinx.serialization.Transient val groups: List<ApplyGroup> = emptyList(),
+    @kotlinx.serialization.Transient val candidateKeys: List<JsonObject> = emptyList(),
 ) {
     init {
         require(mode == "preview")
@@ -152,6 +153,7 @@ data class PlanSource(
     val verdict: org.tatrman.automation.bundle.ManifestVerdictSchema?,
     val storages: Map<String, String>,
     val ledgerStorage: String,
+    val obligationStorage: String? = null,
 )
 
 /** Detail/current rows share their verdict entity's transaction, preserving global seq within it. */

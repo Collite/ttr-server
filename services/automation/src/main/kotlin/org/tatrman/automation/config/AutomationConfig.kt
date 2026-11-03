@@ -260,7 +260,7 @@ data class AutomationConfig(
                 connections = connections(c, env),
                 approvalsOff = approvalsOff(c),
                 runner = RunnerConfig(if (c.hasPath("runner.workers")) c.getInt("runner.workers") else 4),
-                pgDoorRole = c.optString("pgDoorRole"),
+                pgDoorRole = env["AUTOMATION_PG_DOOR_ROLE"]?.ifBlank { null } ?: c.optString("pgDoorRole"),
                 pgSchemas = pgSchemas(env["AUTOMATION_PG_SCHEMAS"] ?: c.optString("pgSchemas")),
             )
         }
@@ -299,7 +299,7 @@ data class AutomationConfig(
                 val (world, schema) = parts
                 require(world !in result) { "automation.pgSchemas repeats world $world" }
                 require(schema !in result.values) { "automation.pgSchemas shares schema $schema across worlds" }
-                require(schema !in setOf("automation", "information_schema") && !schema.startsWith("pg_")) {
+                require(schema !in setOf("automation", "pgmq", "information_schema") && !schema.startsWith("pg_")) {
                     "automation.pgSchemas names a reserved schema"
                 }
                 result[world] = schema

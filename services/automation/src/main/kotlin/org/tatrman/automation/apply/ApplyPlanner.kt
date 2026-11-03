@@ -25,7 +25,7 @@ data class PreviewMetadata(
     val entities: List<Entity>,
     val targets: Map<String, Map<String, org.tatrman.ttrp.resolve.TargetResolution.Resolved>> = emptyMap(),
     val isAutomationStdlib: ((org.tatrman.ttr.metadata.model.ModelObject) -> Boolean)? = null,
-    val planSource: (() -> PlanSource)? = null,
+    val planSource: PlanSource? = null,
 )
 
 /** Preview synthesis over verified staged results and the runner's explicitly governed obligation snapshot. */
@@ -78,7 +78,7 @@ class ApplyPlanner(
         val batch = UUID.nameUUIDFromBytes("automation/preview/${context.id}".toByteArray(Charsets.UTF_8)).toString()
         if (decision == null) {
             require(recipe.wiring.isEmpty()) { "action wiring requires a decision" }
-            return PreviewPlan(batch, context.id.toString(), rows, actions, source = metadata.planSource?.invoke())
+            return PreviewPlan(batch, context.id.toString(), rows, actions, source = metadata.planSource)
         }
         val outputs = runner.completedIsland(decision).associateBy { it.output.port }
         val tables = outputs.mapValues { (_, output) -> runner.readStaged(output) }
@@ -396,22 +396,39 @@ class ApplyPlanner(
                 }
             }
         }
-        return PreviewPlan(batch, context.id.toString(), rows, actions, source = metadata.planSource?.invoke())
+        val candidates = runner.completedIsland(requireNotNull(roles.candidates)).single()
+        val candidateKeys =
+            runner
+                .readStaged(candidates)
+                .keyValues(keys)
+                .distinct()
+                .map { values ->
+                    JsonObject(keys.mapIndexed { index, name -> name to scalar(values[index]) }.toMap())
+                }.sortedBy(ObligationKeys::canonicalText)
+        return PreviewPlan(
+            batch,
+            context.id.toString(),
+            rows,
+            actions,
+            source = metadata.planSource,
+            candidateKeys = candidateKeys,
+        )
     }
 
     /**
      * Contracts §4, D-142: a pure lowering of already resolved preview rows. No lookup, SQL or write.
      * When several actions consume the same detail context, its journal retains the union (largest limit).
      * Individual action refs retain their own limit; a single marker records omitted detail rows.
+     * One current delete per candidate, bounded by the deployment read ceiling; keys outside the run stay untouched.
+     * S2.1 plans no state_history rows; S2.2 must pin their own unbound placement before planning them.
      */
     fun plan(preview: PreviewPlan): PreviewPlan {
         val source = preview.source ?: unsupported("apply planning inputs were not pinned")
 
-        fun entity(name: String) = if (name.startsWith("er.entity.")) name else "er.entity.$name"
         val schema = source.verdict
-        val verdict = schema?.let { entity(it.entity) }
-        val detail = schema?.detail?.let(::entity)
-        val current = schema?.current?.let(::entity)
+        val verdict = schema?.let { entityName(it.entity) }
+        val detail = schema?.detail?.let(::entityName)
+        val current = schema?.current?.let(::entityName)
         val selected = mutableListOf<ApplyRow>()
         val oldSeq = mutableMapOf<Int, Int>()
         val details =
@@ -430,8 +447,8 @@ class ApplyPlanner(
                             ((value as? JsonObject)?.get("refs") as? JsonArray).orEmpty().map { it.jsonObject }
                         }
                     }.filter { it["context"] == context }
-            val limit = refs.maxOfOrNull { it.getValue("limit").jsonPrimitive.int } ?: rows.size
             val real = rows.filter { it.row?.get("truncated") != JsonPrimitive(true) }
+            val limit = refs.maxOfOrNull { it.getValue("limit").jsonPrimitive.int } ?: real.size
             retained += real.take(limit).map { it.seq }
             if (real.size > limit || rows.any { it.row?.get("truncated") == JsonPrimitive(true) }) {
                 val anchor = rows.last()
@@ -441,7 +458,11 @@ class ApplyPlanner(
                             JsonObject(
                                 requireNotNull(anchor.row).filterKeys {
                                     it in key!!.jsonObject.keys || it in setOf("run", "route", "context")
-                                } + mapOf("row_no" to JsonPrimitive(limit + 1), "truncated" to JsonPrimitive(true)),
+                                } +
+                                    mapOf(
+                                        "row_no" to JsonPrimitive(minOf(limit, real.size) + 1),
+                                        "truncated" to JsonPrimitive(true),
+                                    ),
                             ),
                     )
             }
@@ -456,7 +477,9 @@ class ApplyPlanner(
         }
         if (current != null) {
             val verdicts = selected.filter { it.entity == verdict }
-            for ((key, rows) in verdicts.groupBy { requireNotNull(it.key) }) {
+            val byKey = verdicts.groupBy { requireNotNull(it.key) }
+            for (key in preview.candidateKeys) {
+                val rows = byKey[key].orEmpty()
                 selected += ApplyRow(selected.size + 1, current, "delete", key)
                 rows.forEach { selected += it.copy(seq = selected.size + 1, entity = current) }
             }
@@ -473,11 +496,10 @@ class ApplyPlanner(
                             row.entity
                         }
                     val storage =
-                        if (owner == verdict ||
-                            owner == "er.entity.obligation" ||
-                            owner == "er.entity.state_history"
-                        ) {
+                        if (owner == verdict) {
                             source.ledgerStorage
+                        } else if (owner == "er.entity.obligation") {
+                            source.obligationStorage ?: unsupported("obligation storage was not pinned")
                         } else {
                             source.storages[owner] ?: unsupported("apply entity storage was not pinned: $owner")
                         }

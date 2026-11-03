@@ -52,7 +52,7 @@ internal class PreviewFulfilment private constructor(
         val to = transition.to ?: text(arguments[transition.toColumn])
         if (to !in STATES || state.attribute.states.isNotEmpty() && to !in state.attribute.states) unsupported()
         val found = snapshot.find(identity)
-        val active = found.filter { it.state in ACTIVE }
+        val active = found.filter { it.state in ObligationStates.active }
         if (active.size > 1) unsupported()
         val current =
             active.singleOrNull() ?: run {
@@ -152,8 +152,7 @@ internal class PreviewFulfilment private constructor(
     }
 
     companion object {
-        private val ACTIVE = setOf("open", "overdue", "reopened")
-        private val STATES = ACTIVE + setOf("fulfilled", "cancelled")
+        private val STATES = ObligationStates.active + setOf("fulfilled", "cancelled")
 
         fun resolve(
             action: AutomationAction,

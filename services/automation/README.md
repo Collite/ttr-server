@@ -47,7 +47,9 @@ P2 S2.1 creates the model tables during refresh and journals the apply plan in a
 Configure `automation.pgSchemas` / `AUTOMATION_PG_SCHEMAS` as comma-separated `world=schema` pairs. The bp-dsk
 setting is `demo=cz` (Bora, 2026-11-03). Each schema is in the service's configured automation database.
 An unmapped world or destructive column change refuses refresh with `422 bundle-invalid`, preserving the served
-bundle. DDL runs on the service's own connection before publication; recipe rows remain unapplied in S2.1.
+bundle. DDL runs for served refreshes only, on the service's own connection before publication; preview refreshes
+change no table. Recipe rows remain unapplied in S2.1. Set the schema mapping on each cluster in the same commit
+as its first automation image bump containing #374; there is no default schema.
 `automation.pgDoorRole` / `AUTOMATION_PG_DOOR_ROLE`, when set, grants that database role schema USAGE and
 SELECT/INSERT/UPDATE/DELETE on the created model tables; unset grants no role.
 

@@ -51,6 +51,7 @@ class ApplyPlanSpec :
                         DryRunAction(key, "hold_sales", "notify", "deliver", JsonObject(emptyMap()), emptyList()),
                     ),
                     source = source(),
+                    candidateKeys = listOf(key),
                 )
             val plan = planner.plan(input)
             plan.rows.map { it.seq } shouldBe (1..5).toList()
@@ -78,9 +79,20 @@ class ApplyPlanSpec :
                     key,
                     row = JsonObject(verdict + ("route" to JsonPrimitive("none"))),
                 )
-            val plan = planner.plan(PreviewPlan("batch", "run-1", listOf(none), emptyList(), source = source()))
-            plan.rows shouldBe emptyList()
-            plan.groups shouldBe emptyList()
+            val plan =
+                planner.plan(
+                    PreviewPlan(
+                        "batch",
+                        "run-1",
+                        listOf(none),
+                        emptyList(),
+                        source = source(),
+                        candidateKeys = listOf(key),
+                    ),
+                )
+            plan.rows.map { it.op } shouldBe listOf("delete")
+            plan.rows.single().key shouldBe key
+            plan.groups.single().entity shouldBe "er.entity.release_order_verdict"
         }
 
         "details respect the action limit and retain a single truncated marker" {
@@ -137,11 +149,111 @@ class ApplyPlanSpec :
                         ),
                     ),
                     source = source(),
+                    candidateKeys = listOf(key),
                 )
             val rows = planner.plan(input).rows.filter { it.entity.endsWith("_detail") }
             rows.size shouldBe 2
             rows.first().row!!.getValue("amount") shouldBe JsonPrimitive("1")
             rows.last().row!!.getValue("truncated") shouldBe JsonPrimitive(true)
-            planner.plan(input.copy(rows = emptyList(), actions = emptyList())).rows shouldBe emptyList()
+            planner
+                .plan(
+                    input.copy(rows = emptyList(), actions = emptyList(), candidateKeys = emptyList()),
+                ).rows shouldBe
+                emptyList()
+        }
+
+        "unrouted candidates clear current; overlapping none is omitted; outside keys stay untouched" {
+            val other = buildJsonObject { put("order_number", 4722) }
+
+            fun route(
+                n: Int,
+                name: String,
+            ) = ApplyRow(
+                n,
+                "er.entity.release_order_verdict",
+                "insert",
+                key,
+                row = JsonObject(verdict + ("route" to JsonPrimitive(name))),
+            )
+            val empty =
+                planner.plan(
+                    PreviewPlan("b", "r", emptyList(), emptyList(), source = source(), candidateKeys = listOf(other)),
+                )
+            empty.rows shouldBe listOf(ApplyRow(1, "er.entity.release_order_verdict_current", "delete", other))
+            for (routes in listOf(listOf("none", "remind"), listOf("remind"))) {
+                val plan =
+                    planner.plan(
+                        PreviewPlan(
+                            "b",
+                            "r",
+                            routes.mapIndexed { i, r -> route(i + 1, r) },
+                            emptyList(),
+                            source = source(),
+                            candidateKeys = listOf(key),
+                        ),
+                    )
+                plan.rows.filter { it.entity.endsWith("_current") }.map { it.op } shouldBe listOf("delete", "insert")
+                plan.rows.filter { it.op == "insert" }.forEach { it.row!!["route"] shouldBe JsonPrimitive("remind") }
+                plan.rows.all { it.key == key } shouldBe true
+            }
+        }
+
+        "staged truncation marker follows retained rows without a gap, with or without an action reader" {
+            val rows =
+                (1..201).map { n ->
+                    ApplyRow(
+                        n,
+                        "er.entity.release_order_verdict_detail",
+                        "insert",
+                        key,
+                        row =
+                            JsonObject(
+                                key +
+                                    mapOf(
+                                        "run" to JsonPrimitive("r"),
+                                        "route" to JsonPrimitive("hold_sales"),
+                                        "context" to JsonPrimitive("lines"),
+                                        "row_no" to JsonPrimitive(n),
+                                        "truncated" to JsonPrimitive(n == 201),
+                                    ),
+                            ),
+                    )
+                }
+            for (limit in listOf<Int?>(null, 50)) {
+                val actions =
+                    limit
+                        ?.let {
+                            listOf(
+                                DryRunAction(
+                                    key,
+                                    "hold_sales",
+                                    "notify",
+                                    "deliver",
+                                    buildJsonObject {
+                                        put(
+                                            "detail",
+                                            buildJsonObject {
+                                                put(
+                                                    "refs",
+                                                    buildJsonArray {
+                                                        add(
+                                                            buildJsonObject {
+                                                                put("context", "lines")
+                                                                put("limit", it)
+                                                            },
+                                                        )
+                                                    },
+                                                )
+                                            },
+                                        )
+                                    },
+                                    emptyList(),
+                                ),
+                            )
+                        }.orEmpty()
+                val planned = planner.plan(PreviewPlan("b", "r", rows, actions, source = source()))
+                planned.rows.map { it.row!!["row_no"]!!.jsonPrimitive.int } shouldBe (1..((limit ?: 200) + 1)).toList()
+                planned.rows.last().row!!["truncated"] shouldBe JsonPrimitive(true)
+            }
         }
     })

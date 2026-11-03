@@ -48,7 +48,7 @@ class PlacementIsolationSpec :
         val realm = TestRealm()
         afterSpec { realm.close() }
 
-        "unexpected warm-up failure is cached and isolated from insert-only Open with no fulfilment claim" {
+        "unexpected warm-up failure is cached and both fulfilment and insert planning refuse before claiming" {
             val attempts = AtomicInteger()
             val failure = IllegalStateException("injected placement failure")
             val insert =
@@ -176,8 +176,8 @@ class PlacementIsolationSpec :
                         body.contains(failure.message!!) shouldBe false
                         claims shouldBe 0
                     }
-                    post("insert_order", "release_native_morning").status shouldBe HttpStatusCode.Created
-                    claims shouldBe 1
+                    post("insert_order", "release_native_morning").status shouldBe HttpStatusCode.InternalServerError
+                    claims shouldBe 0
                 }
                 attempts.get() shouldBe 1
             } finally {

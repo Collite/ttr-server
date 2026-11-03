@@ -4,6 +4,7 @@ package org.tatrman.automation.writer
 import org.tatrman.automation.api.AutomationException
 import org.tatrman.automation.api.ErrorCode
 import org.tatrman.automation.bundle.Bundle
+import org.tatrman.automation.apply.ObligationStates
 import org.tatrman.ttr.metadata.model.Entity
 import org.tatrman.ttr.metadata.model.ErSchema
 import org.tatrman.ttrp.resolve.ColumnType
@@ -31,21 +32,30 @@ class Ddl(
                 er.entities.values.singleOrNull { it.qname.name == name.removePrefix("er.entity.") }
                     ?: invalid("missing typed catalog entity $name")
             }
+        val verdicts =
+            bundle.recipes.values
+                .mapNotNull {
+                    it.recipe.verdictSchema?.entity?.removePrefix(
+                        "er.entity.",
+                    )
+                }.toSet()
         val names = schemas(bundle).distinct()
         if (names.isEmpty()) invalid("automation connection has no world schema")
         dataSource.connection.use { connection ->
             connection.autoCommit = false
             try {
                 connection.createStatement().use { sql ->
-                    // All refresh DDL on this database serializes, including independent preview refreshes.
+                    // All served refresh DDL on this database serializes.
                     sql.execute("SELECT pg_advisory_xact_lock(1096107092)")
                     for (schema in names) {
                         sql.execute("CREATE SCHEMA IF NOT EXISTS ${quote(schema)}")
                         sql.execute("SET LOCAL search_path = ${quote(schema)}, pg_catalog")
+                        doorRole?.takeIf { it.isNotBlank() }?.let { role ->
+                            sql.execute("GRANT USAGE ON SCHEMA ${quote(schema)} TO ${quote(role)}")
+                        }
                         for (entity in entities) {
-                            table(connection, schema, entity)
+                            table(connection, schema, entity, entity.qname.name in verdicts)
                             doorRole?.takeIf { it.isNotBlank() }?.let { role ->
-                                sql.execute("GRANT USAGE ON SCHEMA ${quote(schema)} TO ${quote(role)}")
                                 sql.execute(
                                     "GRANT SELECT, INSERT, UPDATE, DELETE ON ${quote(
                                         schema,
@@ -57,7 +67,11 @@ class Ddl(
                 }
                 connection.commit()
             } catch (e: Exception) {
-                connection.rollback()
+                try {
+                    connection.rollback()
+                } catch (rollback: Exception) {
+                    e.addSuppressed(rollback)
+                }
                 throw e
             }
         }
@@ -83,6 +97,7 @@ class Ddl(
         connection: java.sql.Connection,
         schema: String,
         entity: Entity,
+        immutable: Boolean,
     ) {
         val table = entity.qname.name
         val columns =
@@ -134,13 +149,21 @@ class Ddl(
                 }
             }
             for ((name, column) in columns - existing.keys) {
+                if (!column.nullable &&
+                    sql.executeQuery("SELECT EXISTS (SELECT 1 FROM $qualified)").use {
+                        it.next()
+                        it.getBoolean(1)
+                    }
+                ) {
+                    invalid("non-null column added to populated table $schema.$table.$name")
+                }
                 sql.execute(
                     "ALTER TABLE $qualified ADD COLUMN ${quote(
                         name,
                     )} ${column.type}${if (column.nullable) "" else " NOT NULL"}",
                 )
             }
-            if (table.endsWith("_verdict")) {
+            if (immutable) {
                 sql.execute(
                     "CREATE OR REPLACE FUNCTION ${quote(schema)}.automation_verdict_immutable() " +
                         "RETURNS trigger LANGUAGE plpgsql AS " +
@@ -164,8 +187,10 @@ class Ddl(
             if (table ==
                 "obligation"
             ) {
+                val active = ObligationStates.active.joinToString { "'$it'" }
                 sql.execute(
-                    "CREATE UNIQUE INDEX IF NOT EXISTS obligation_one_open ON $qualified (entity, key, kind) WHERE state IN ('open','reopened')",
+                    "CREATE UNIQUE INDEX IF NOT EXISTS obligation_one_active ON $qualified " +
+                        "(entity, key, kind) WHERE state IN ($active)",
                 )
             }
         }
@@ -192,10 +217,12 @@ class Ddl(
             ColumnType.Kind.TEXT -> parsed.length?.let { "character varying($it)" } ?: "text"
             ColumnType.Kind.BOOL -> "boolean"
             ColumnType.Kind.DATE -> "date"
+            ColumnType.Kind.TIME -> "time without time zone"
             ColumnType.Kind.DATETIME, ColumnType.Kind.TIMESTAMP -> "timestamp without time zone"
             ColumnType.Kind.DECIMAL ->
                 if (attribute.length != null ||
-                    '(' in raw
+                    '(' in raw ||
+                    raw.lowercase() in setOf("money", "smallmoney")
                 ) {
                     "numeric(${parsed.precision},${parsed.scale})"
                 } else {

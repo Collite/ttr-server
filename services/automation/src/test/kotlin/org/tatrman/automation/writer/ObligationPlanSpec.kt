@@ -30,13 +30,13 @@ class ObligationPlanSpec :
                         history = true,
                     ),
                 )
-            val source = PlanSource(null, emptyMap(), "automation_db")
+            val source = PlanSource(null, emptyMap(), "verdict_db", obligationStorage = "obligation_db")
             val plan =
                 ApplyPlanner(
                     java.time.Clock.systemUTC(),
                 ).plan(PreviewPlan("batch", "run", rows, emptyList(), source = source))
             plan.rows shouldBe rows
-            plan.groups.single().storage shouldBe "automation_db"
+            plan.groups.single().storage shouldBe "obligation_db"
             val json = Json.encodeToString(RunBatchPlan(plan.batch, plan.run, plan.rows, plan.mode))
             json.contains("signal") shouldBe false
             plan.rows.map { ApplyRow.restore(it.seq, it.entity, it.op, it.key, it.storedRow(), it.group) } shouldBe rows

@@ -57,7 +57,7 @@ class Bundles(
     private val book: BundleBook,
     private val clock: Clock = Clock.systemUTC(),
     private val refreshed: (outcome: String) -> Unit = {},
-    /** Validated bundle DDL runs before any registry or ledger publication. */
+    /** Validated served-bundle DDL runs before publication; preview bundles get no tables (P4). */
     private val prepare: (Bundle) -> Unit = {},
 ) {
     @Volatile
@@ -155,7 +155,7 @@ class Bundles(
                 )
             }
         try {
-            prepare(bundle)
+            if (kind == BundleKind.SERVED) prepare(bundle)
         } catch (e: AutomationException) {
             if (kind == BundleKind.SERVED) refreshFailed = true
             throw e

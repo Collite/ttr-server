@@ -133,6 +133,70 @@ class ApplicationRuntimeSpec :
             }
         }
 
+        "preview refresh changes no served table and master remains refreshable" {
+            val f = fixture()
+            val operator = realm.person(roles = listOf("ops"))
+
+            fun columns() =
+                db.getDataSource().connection.use { c ->
+                    c.createStatement().use { sql ->
+                        sql
+                            .executeQuery(
+                                "SELECT column_name FROM information_schema.columns WHERE table_schema='cz' AND table_name='release_order_verdict' ORDER BY ordinal_position",
+                            ).use { rows ->
+                                buildList { while (rows.next()) add(rows.getString(1)) }
+                            }
+                    }
+                }
+            try {
+                f.api { _ ->
+                    val before = columns()
+                    f.previewColumn()
+                    client.post("/automation/refresh?branch=preview/note") { bearerAuth(operator) }.status shouldBe
+                        HttpStatusCode.OK
+                    columns() shouldBe before
+                    // Force a new served commit, so the check exercises DDL rather than the same-commit shortcut.
+                    f.changeVerdictCatalog { it + "\n// served refresh after preview\n" }
+                    client.post("/automation/refresh") { bearerAuth(operator) }.status shouldBe HttpStatusCode.OK
+                    columns() shouldBe before
+                }
+            } finally {
+                f.close()
+                // A failed preview-isolation assertion must not leave the next test on a poisoned schema.
+                db.getDataSource().connection.use { connection ->
+                    connection.autoCommit = true
+                    connection.createStatement().use { it.execute("DROP SCHEMA IF EXISTS cz CASCADE") }
+                }
+            }
+        }
+
+        "ambiguous writer placement refuses HTTP Open before a ledger claim or Query read" {
+            val f = fixture()
+            val operator = realm.person(roles = listOf("ops"))
+            try {
+                f.api { _ ->
+                    f.duplicateErpHost()
+                    client.post("/automation/refresh") { bearerAuth(operator) }.status shouldBe HttpStatusCode.OK
+                    val before = transaction { Runs.selectAll().count() }
+                    val reads = f.requests.size
+                    repeat(2) {
+                        val response =
+                            client.post("/automation/recipes/release_order/runs") {
+                                bearerAuth(f.token)
+                                contentType(ContentType.Application.Json)
+                                setBody(f.request("ambiguous"))
+                            }
+                        response.status shouldBe HttpStatusCode.NotImplemented
+                        errorCode(response.bodyAsText()) shouldBe "preview-unsupported"
+                    }
+                    transaction { Runs.selectAll().count() } shouldBe before
+                    f.requests.size shouldBe reads
+                }
+            } finally {
+                f.close()
+            }
+        }
+
         "production runtime preserves a governed preview through close and restart" {
             val f = fixture()
             try {
@@ -541,6 +605,42 @@ private class ApplicationRuntimeFixture(
         }
     }
 
+    fun previewColumn() {
+        Git.open(source.toFile()).use { git ->
+            git
+                .checkout()
+                .setCreateBranch(true)
+                .setName("preview/note")
+                .call()
+        }
+        changeVerdictCatalog {
+            it.replace(
+                "def attribute written_at",
+                "def attribute preview_note { type: text, optional: true }, def attribute written_at",
+            )
+        }
+        Git.open(source.toFile()).use { it.checkout().setName("master").call() }
+    }
+
+    fun duplicateErpHost() {
+        val file = source.resolve("model/worlds/demo.ttrm")
+        file.writeText(
+            file.readText().replace(
+                "def storage stage",
+                "def storage erp_other { type: postgres, via: erp, hosts: [hartland] }\n    def storage stage",
+            ),
+        )
+        Git.open(source.toFile()).use { git ->
+            git.add().addFilepattern(".").call()
+            git
+                .commit()
+                .setMessage("ambiguous ERP placement")
+                .setAuthor(author)
+                .setCommitter(author)
+                .call()
+        }
+    }
+
     fun request(key: String) = """{"deployment":"release_native_event","port":{"key":"4711"},"idempotencyKey":"$key"}"""
 
     suspend fun open(
@@ -604,6 +704,7 @@ private class ApplicationRuntimeFixture(
             automation.door.metadataUrl = "127.0.0.1:1"
             automation.door.routes = "demo/erp_db=fixture-erp,demo/automation_db=fixture-automation"
             automation.pgSchemas = "demo=cz"
+            automation.bundle.previews.allowedBranches = ["preview/*"]
             automation.auth.jwksUrl = "${realm.jwksUrl}"
             automation.auth.issuer = "${TestRealm.ISSUER}"
             automation.auth.audience = "${TestRealm.AUDIENCE}"

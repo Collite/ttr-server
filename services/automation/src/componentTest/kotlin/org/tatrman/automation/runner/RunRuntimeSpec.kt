@@ -55,7 +55,7 @@ class RunRuntimeComponentSpec :
         LedgerTestDb.ready()
         beforeEach { LedgerTestDb.reset() }
 
-        "dry H-1 journals exactly plan() in one preview batch and leaves model tables empty" {
+        "dry H-1 journals exactly plan() in one preview batch stable across repeated close" {
             val root = ApprovalFixture.copyTo(tempdir().toPath().resolve("ddl-catalog"))
             val loaded =
                 BundleLoader(AuthorMap(emptyMap())).load(
@@ -101,6 +101,38 @@ class RunRuntimeComponentSpec :
                         }
                     }
                 }
+            } finally {
+                runtime.shutdown()
+                f.close()
+                LedgerTestDb.db.getDataSource().connection.use { connection ->
+                    connection.autoCommit = true
+                    connection.createStatement().use { it.execute("DROP SCHEMA IF EXISTS dry_fixture CASCADE") }
+                }
+            }
+        }
+
+        "an evaluated candidate with no selected route journals only its current delete" {
+            val f =
+                DurableRuntimeFixture(queryTable = { request ->
+                    Table(
+                        listOf(ManifestColumn("order_number", "text"), ManifestColumn("verdict_reason", "text")),
+                        if ("candidates" in request.source) listOf(listOf("4711", "candidate")) else emptyList(),
+                    )
+                })
+            val runtime = f.start()
+            try {
+                val id =
+                    UUID.fromString(
+                        runtime.sessions
+                            .open("release_order", f.request, f.caller)
+                            .response.runId,
+                    )
+                requireNotNull(runtime.sessions.evaluate(id, f.caller)).verdict.none shouldBe 1L
+                val batch = runtime.status.batch(id, f.caller)
+                batch.rows.size shouldBe 1
+                batch.rows.single().entity shouldBe "er.entity.release_order_verdict_current"
+                batch.rows.single().op shouldBe "delete"
+                batch.rows.single().key shouldBe buildJsonObject { put("order_number", "4711") }
             } finally {
                 runtime.shutdown()
                 f.close()

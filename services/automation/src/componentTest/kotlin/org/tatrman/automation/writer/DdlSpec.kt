@@ -2,6 +2,7 @@
 package org.tatrman.automation.writer
 
 import io.kotest.assertions.throwables.shouldThrow
+import io.kotest.assertions.withClue
 import io.kotest.core.spec.style.StringSpec
 import kotlinx.serialization.json.*
 import io.kotest.engine.spec.tempdir
@@ -205,12 +206,32 @@ class DdlSpec :
             fun insert(
                 id: String,
                 state: String,
+                identity: String = "4711",
             ) = sql(
-                "INSERT INTO us.obligation(id,recipe,run,entity,key,kind,due,state,created_at) VALUES ('$id','r','run','order','{\"order\":4711}','inbound',current_date,'$state',now())",
+                "INSERT INTO us.obligation(id,recipe,run,entity,key,kind,due,state,created_at) VALUES ('$id','r','run','order','{\"order\":$identity}','inbound',current_date,'$state',now())",
             )
             insert("one", "open")
             shouldThrow<java.sql.SQLException> { insert("two", "open") }
             insert("closed", "fulfilled")
+            for (state in listOf("overdue", "reopened", "fulfilled", "cancelled")) {
+                val identity =
+                    (
+                        5000 +
+                            listOf(
+                                "overdue",
+                                "reopened",
+                                "fulfilled",
+                                "cancelled",
+                            ).indexOf(state)
+                    ).toString()
+                insert("$state-old", state, identity)
+                if (state in setOf("overdue", "reopened")) {
+                    shouldThrow<java.sql.SQLException> { insert("$state-new", "open", identity) }.sqlState shouldBe
+                        "23505"
+                } else {
+                    insert("$state-new", "open", identity)
+                }
+            }
         }
 
         "an explicit door role receives only schema usage and table DML grants; unset grants none" {
@@ -231,5 +252,197 @@ class DdlSpec :
                 "SELECT table_name FROM information_schema.role_table_grants WHERE grantee='au_door_test' AND table_schema='cz'",
             ) shouldBe
                 emptyList()
+        }
+
+        "non-null additive column on populated table is bundle-invalid and rolls back the refresh" {
+            Ddl(ds, { listOf("us") }).refresh(bundle)
+            sql("INSERT INTO us.release_order_verdict VALUES ('run',now(),'4711','release','ok','fp','caller',now())")
+            val er = bundle.model.schemas.getValue("er") as ErSchema
+            val verdict = er.entities.values.single { it.qname.name == "release_order_verdict" }
+            val changed =
+                verdict.copy(
+                    attributes =
+                        verdict.attributes +
+                            verdict.attributes.first().copy(
+                                internalId = "required-note",
+                                qname = verdict.qname.copy(name = "release_order_verdict.required_note"),
+                                type = "text",
+                                nullable = false,
+                                isKey = false,
+                            ),
+                )
+            val next =
+                bundle.copy(
+                    model =
+                        bundle.model.copy(
+                            schemas =
+                                bundle.model.schemas +
+                                    ("er" to er.copy(entities = er.entities + (verdict.qname to changed))),
+                        ),
+                )
+            val error = shouldThrow<AutomationException> { Ddl(ds, { listOf("us") }).refresh(next) }
+            error.code shouldBe ErrorCode.BUNDLE_INVALID
+            error.message!! shouldContain
+                "non-null column added to populated table us.release_order_verdict.required_note"
+            strings(
+                "SELECT column_name FROM information_schema.columns WHERE table_schema='us' AND column_name='required_note'",
+            ) shouldBe
+                emptyList()
+            strings("SELECT count(*)::text FROM us.release_order_verdict") shouldBe listOf("1")
+        }
+
+        "every planned fixture detail field conforms to the real PG catalog including the Core 382 marker" {
+            // Use the full H-1 output schema fixture, plus the legacy H-2 detail-bearing recipes.
+            val full = ApprovalFixture.copyTo(tempdir().toPath().resolve("conformance"))
+            val h1 = full.resolve("automation/release_order/release_order.bundle")
+            h1.toFile().deleteRecursively()
+            copyFixtureTree(
+                java.nio.file.Path
+                    .of("src/test/resources/runner/hartland/release_order.bundle"),
+                h1,
+            )
+            completeWriterCatalogs(full)
+            val loaded =
+                BundleLoader(
+                    org.tatrman.automation.identity
+                        .AuthorMap(emptyMap()),
+                ).load(
+                    Checkout(full, "master", "conformance", "po", "po@example.org"),
+                    BundleKind.SERVED,
+                )
+            Ddl(ds, { listOf("us") }).refresh(loaded)
+            var checked = 0
+            for (recipe in loaded.recipes.values) {
+                val model = recipe.recipe
+                val contexts =
+                    model.roles
+                        ?.routes
+                        .orEmpty()
+                        .flatMap { it.detail }
+                        .distinct()
+                if (contexts.isEmpty()) continue
+                val schema = requireNotNull(model.verdictSchema)
+                val keys = model.key.map { it.substringAfterLast('.') }.toSet()
+                val key = JsonObject(keys.associateWith { JsonPrimitive("4711") })
+                val verdict =
+                    JsonObject(
+                        schema.columns.associate {
+                            it
+                                .getValue(
+                                    "name",
+                                ).jsonPrimitive.content to JsonPrimitive("value")
+                        } +
+                            key +
+                            ("route" to JsonPrimitive("selected")),
+                    )
+                val rows =
+                    mutableListOf(
+                        org.tatrman.automation.apply.ApplyRow(
+                            1,
+                            "er.entity.${schema.entity}",
+                            "insert",
+                            key,
+                            row = verdict,
+                        ),
+                    )
+                for (context in contexts) {
+                    val data =
+                        JsonObject(
+                            writerDetailColumns(
+                                recipe.manifest,
+                            ).associate { it.first to JsonPrimitive("value") } + key +
+                                mapOf(
+                                    "route" to JsonPrimitive("selected"),
+                                    "context" to JsonPrimitive(context),
+                                    "row_no" to JsonPrimitive(1),
+                                    "truncated" to JsonPrimitive(false),
+                                ),
+                        )
+                    rows +=
+                        org.tatrman.automation.apply.ApplyRow(
+                            rows.size + 1,
+                            "er.entity.${schema.detail}",
+                            "insert",
+                            key,
+                            row = data,
+                        )
+                    rows +=
+                        org.tatrman.automation.apply.ApplyRow(
+                            rows.size + 1,
+                            "er.entity.${schema.detail}",
+                            "insert",
+                            key,
+                            row =
+                                JsonObject(
+                                    data + ("truncated" to JsonPrimitive(true)),
+                                ),
+                        )
+                }
+                val preview =
+                    org.tatrman.automation.apply.PreviewPlan(
+                        "batch",
+                        "run",
+                        rows,
+                        emptyList(),
+                        source =
+                            org.tatrman.automation.apply
+                                .PlanSource(schema, emptyMap(), "automation_db"),
+                        candidateKeys = listOf(key),
+                    )
+                val plan =
+                    org.tatrman.automation.apply
+                        .ApplyPlanner(java.time.Clock.systemUTC())
+                        .plan(preview)
+                for (row in plan.rows) {
+                    val table = row.entity.removePrefix("er.entity.")
+                    val columns =
+                        strings(
+                            "SELECT column_name FROM information_schema.columns WHERE table_schema='us' AND table_name='$table'",
+                        ).toSet()
+                    for (field in row.row.orEmpty().keys + row.set.orEmpty().keys + row.key.orEmpty().keys) {
+                        withClue("${model.name}: $table.$field must be a catalog column") {
+                            (field in columns) shouldBe
+                                true
+                        }
+                    }
+                }
+                checked++
+            }
+            checked shouldBe 3 // release_order, monitor_inbound, settle; decide_return attaches no detail context.
+        }
+
+        "catalog time and monetary types retain the compiler precision and scale" {
+            val er = bundle.model.schemas.getValue("er") as ErSchema
+            val verdict = er.entities.values.single { it.qname.name == "release_order_verdict" }
+            val changed =
+                verdict.copy(
+                    attributes =
+                        verdict.attributes +
+                            listOf("time", "money", "smallmoney").map { type ->
+                                verdict.attributes.first().copy(
+                                    internalId = "type-$type",
+                                    qname = verdict.qname.copy(name = "release_order_verdict.$type"),
+                                    type = type,
+                                    nullable = true,
+                                    isKey = false,
+                                )
+                            },
+                )
+            val next =
+                bundle.copy(
+                    model =
+                        bundle.model.copy(
+                            schemas =
+                                bundle.model.schemas +
+                                    ("er" to er.copy(entities = er.entities + (verdict.qname to changed))),
+                        ),
+                )
+            val ddl = Ddl(ds, { listOf("us") })
+            ddl.refresh(next)
+            ddl.refresh(next)
+            strings(
+                "SELECT format_type(a.atttypid,a.atttypmod) FROM pg_attribute a WHERE a.attrelid='us.release_order_verdict'::regclass AND a.attname IN ('time','money','smallmoney') ORDER BY a.attname",
+            ) shouldBe
+                listOf("numeric(19,4)", "numeric(10,4)", "time without time zone")
         }
     })
