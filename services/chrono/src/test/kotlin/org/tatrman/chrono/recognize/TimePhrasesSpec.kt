@@ -656,4 +656,47 @@ class TimePhrasesSpec :
                 withClue(span) { rec.read(span, ref).shouldBeNull() }
             }
         }
+
+        // review-215 RR11: a year word says which year year to date is in, as a year in digits does; a year other than
+        // the reference's is the year rules' to read, as „od začátku roku 2025“ is.
+        "year to date in a year other than the reference's is that year, as the year rules read it" {
+            for ((span, year) in listOf(
+                "YTD last year" to 2025,
+                "year to date last year" to 2025,
+                "last year YTD" to 2025,
+                "YTD for last year" to 2025,
+                "loni od začátku roku" to 2025,
+                "od začátku roku loni" to 2025,
+                "předloni od začátku roku" to 2024,
+                "YTD the year before last" to 2024,
+            )) {
+                val r = read(span)
+                withClue(span) {
+                    r.startInclusive shouldBe day(year, 1, 1)
+                    r.endExclusive shouldBe day(year + 1, 1, 1)
+                    r.confidence shouldBe 0.9
+                }
+            }
+            val previous = read("YTD previous year", context = listOf("YTD previous year", "Revenue in 2024"))
+            previous.startInclusive shouldBe day(2023, 1, 1)
+            previous.endExclusive shouldBe day(2024, 1, 1)
+            previous.confidence shouldBe 0.85
+            val march = read("YTD last year through March")
+            march.startInclusive shouldBe day(2025, 1, 1)
+            march.endExclusive shouldBe day(2025, 4, 1)
+        }
+
+        "year to date this year is year to date, and a year word joined to it is still another period" {
+            for (span in listOf("letos dosud", "YTD this year", "YTD", "YTD by region")) {
+                val r = read(span)
+                withClue(span) {
+                    r.startInclusive shouldBe day(2026, 1, 1)
+                    r.endExclusive shouldBe day(2026, 11, 2)
+                }
+            }
+            read("od začátku roku 2025 do dneška").startInclusive shouldBe day(2025, 1, 1)
+            for (span in listOf("year to date vs last year", "YTD compared to last year's YTD")) {
+                withClue(span) { rec.read(span, ref).shouldBeNull() }
+            }
+        }
     })

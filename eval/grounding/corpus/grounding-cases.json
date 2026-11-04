@@ -2036,6 +2036,23 @@
     }
   },
   {
+    "id": "chrono/ts-ytd-last-year-en",
+    "tool": "ground_time",
+    "kind": "DATE",
+    "span": "YTD last year",
+    "locale": "en-US",
+    "reference_datetime": "2026-11-01T12:00:00+02:00",
+    "timezone": "Europe/Prague",
+    "package": "cnc",
+    "model": "accounting-period",
+    "here": null,
+    "question_text": "Revenue YTD last year",
+    "expect": {
+      "status": "OK",
+      "interval_start": "2025-01-01"
+    }
+  },
+  {
     "id": "chrono/ts-ytd-letos-dosud-cs",
     "tool": "ground_time",
     "kind": "DATE",
@@ -2049,6 +2066,23 @@
     "expect": {
       "status": "OK",
       "interval_start": "2026-01-01"
+    }
+  },
+  {
+    "id": "chrono/ts-ytd-loni-cs",
+    "tool": "ground_time",
+    "kind": "DATE",
+    "span": "loni od začátku roku",
+    "locale": "cs-CZ",
+    "reference_datetime": "2026-11-01T12:00:00+02:00",
+    "timezone": "Europe/Prague",
+    "package": "cnc",
+    "model": "accounting-period",
+    "here": null,
+    "question_text": "Kolik jsme loni od začátku roku prodali?",
+    "expect": {
+      "status": "OK",
+      "interval_start": "2025-01-01"
     }
   },
   {

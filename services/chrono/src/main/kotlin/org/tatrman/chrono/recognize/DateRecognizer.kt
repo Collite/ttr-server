@@ -77,7 +77,7 @@ class DateRecognizer {
             numbered(n, NumberedPeriods.lastMonths(n), 1, ::monthCode, reference, years)
                 ?: partOfLarger(n)
                 ?: fiscalYear(n)?.let(::Hit)
-                ?: yearToDate(n, reference)
+                ?: yearToDate(n, reference, years.stated)
                 ?: numbered(n, NumberedPeriods.quarters(n), QUARTER_MONTHS, ::quarterCode, reference, years)
                 ?: numbered(n, NumberedPeriods.halves(n), HALF_MONTHS, ::halfCode, reference, years)
                 ?: fiscalQuarter(n, reference, triggered, conversation)
@@ -715,10 +715,12 @@ class DateRecognizer {
      *
      * An ending that is today („do dneška“, „do současnosti“, "as of today", "so far") is year to date. One that is
      * a month („do března“, "through September", "by end of March") runs to the end of that month. Either is in the
-     * year the span states, else the reference's. Any other ending that names a time („do 15. března“, „do konce 2.
-     * čtvrtletí“, „do minulého měsíce“) leaves the span no one period ([NotOne]); a breakdown ("by region") is no
-     * ending (✅R215-O). With no ending, a span that states a year other than the reference's („od začátku roku
-     * 2025“) is not year to date: the calendar-year rule reads it, as before.
+     * year the span states, in digits or in words ([stated]: "YTD last year through March"), else the reference's.
+     * Any other ending that names a time („do 15. března“, „do konce 2. čtvrtletí“, „do minulého měsíce“) leaves the
+     * span no one period ([NotOne]); a breakdown ("by region") is no ending (✅R215-O). With no ending, a span that
+     * states a year other than the reference's („od začátku roku 2025“, "YTD last year", „loni od začátku roku“) is
+     * not year to date: the year rules read it, as before S0.2. A year word with two readings or none settled says no
+     * one year.
      *
      * A span that names another period beside the phrase and its ending is no one period ([OtherPeriods], ✅R215-M):
      * "Q2 vs YTD", "year to date vs last year", „od začátku roku oproti loňsku“.
@@ -726,14 +728,24 @@ class DateRecognizer {
     private fun yearToDate(
         n: String,
         reference: LocalDate,
+        stated: SpanYear,
     ): Read? {
         val m = WindowPeriods.yearToDateRe.find(n) ?: return null
-        val stated = statedYears(n)
-        if (stated.size > 1) return NotOne
-        val year = stated.singleOrNull() ?: reference.year
+        val digits = statedYears(n)
+        if (digits.size > 1) return NotOne
+        val year =
+            when (stated) {
+                is SpanYear.One -> stated.year
+                is SpanYear.Two, is SpanYear.Unanchored -> return NotOne
+                SpanYear.None -> digits.singleOrNull() ?: reference.year
+            }
         val start = LocalDate.of(year, 1, 1)
         var at = m.range.last + 1
         leadingYearRe.find(n.substring(at))?.let { at += it.range.last + 1 }
+        PeriodWords
+            .findAll(n, PeriodUnit.YEAR)
+            .firstOrNull { it.range.first >= at && leadingYearWordRe.matches(n.substring(at, it.range.first)) }
+            ?.let { at = it.range.last + 1 }
         val ending = n.substring(at).trimStart()
         val today = ytdTodayEndRe.find(ending)
         val monthEnd = ytdMonthEndRe.find(ending)
@@ -756,6 +768,9 @@ class DateRecognizer {
 
     /** The year a „od začátku roku 2025 …“ writes right after the phrase. */
     private val leadingYearRe = Regex("""^\s*\d{4}\b""")
+
+    /** What may stand between the phrase and a year word right after it: "YTD for last year through March". */
+    private val leadingYearWordRe = Regex("""\s*(?:(?:for|of|in|za|v)\s+)?""")
 
     // ----- „poslední měsíc / týden / rok“, "the last month": ask (TS-5) -----
 

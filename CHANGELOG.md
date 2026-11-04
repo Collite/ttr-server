@@ -40,7 +40,9 @@ outside this repo could notice is in.
   day; „… do dneška“ / „… do současnosti“ / "… as of today" / "… so far" the same, „… do března“ / "… through September"
   / "… by end of March" to the end of that month, any other ending that names a time not read; a breakdown — "year to
   date by region", "YTD by month" — is no ending, nor is „do“ / "to" before a place: „vývoz od začátku roku do
-  Německa“, "exports year to date to Germany"). A yearless quarter or half reads as a yearless month: the conversation's year, else the reference's, and it
+  Německa“, "exports year to date to Germany"; in a year other than the reference's — „od začátku roku 2025“, "YTD
+  last year", „loni od začátku roku“ — it is that year, read by the year rules as before, and "YTD last year through
+  March" runs to the end of March 2025). A yearless quarter or half reads as a yearless month: the conversation's year, else the reference's, and it
   asks this year vs last when it is later than the reference's. **„poslední měsíc / týden / rok“ and "the last month"
   now ask** (`AWAITING_CLARIFICATION`, option ids `trailing` — the last 30 / 7 / 365 days — and `calendar` — the period
   before; the singular only, so not „poslední měsíce“), where they used to be unread (or, with a slice trigger, the current
@@ -59,8 +61,8 @@ outside this repo could notice is in.
   year", „2. čtvrtletí letos a loni“ —, a count window — "Q1 and the last 3 months" — or year to date — "Q2 vs YTD")
   is not read as one, and neither is year to date beside another period ("year to date vs last year"); a year word
   with no joiner still says its year. A count of weeks or years ("last 6 weeks", „posledních 6 týdnů“) is not read:
-  "last 6 weeks" used to be last week. The quarter table is shared with the conversation reader. Corpus 36 → 103 cases
-  (eval bulk corpus 126 → 193).
+  "last 6 weeks" used to be last week. The quarter table is shared with the conversation reader. Corpus 36 → 105 cases
+  (eval bulk corpus 126 → 195).
   No wire change.
 
 - **chrono — a recognised time phrase is always answered with its interval (TS-1).** A package that declares no
