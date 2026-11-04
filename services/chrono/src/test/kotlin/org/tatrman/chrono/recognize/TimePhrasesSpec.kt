@@ -376,6 +376,27 @@ class TimePhrasesSpec :
             rec.read("Q2 for 2000 customers", ref).shouldBeNull()
         }
 
+        "a quarter of a year named by a word chrono does not read is not read" {
+            for (span in listOf(
+                "the second quarter of the contract year",
+                "Q2 of the school year",
+                "Q2 of the same year",
+                "H1 of the model year",
+            )) {
+                withClue(span) { rec.read(span, ref).shouldBeNull() }
+            }
+            for (span in listOf(
+                "Q2 for the year",
+                "the second quarter of the fiscal year",
+                "Q2 revenue year over year",
+                "Q2 sales by year",
+                "ve 2. čtvrtletí kalendářního roku",
+                "2. čtvrtletí hospodářského roku",
+            )) {
+                withClue(span) { read(span).periodCode shouldBe "2026Q2" }
+            }
+        }
+
         "a quarter in a year the span writes or says is unchanged" {
             for (span in listOf(
                 "Q2 2025",

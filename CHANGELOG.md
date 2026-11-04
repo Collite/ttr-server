@@ -43,7 +43,8 @@ outside this repo could notice is in.
   last year", „loni od začátku roku“ — it is that year, read by the year rules as before, and "YTD last year through
   March" runs to the end of March 2025). A quarter, half or last month in a year chrono cannot read is not read: a year it reads nowhere —
   "Q2 next year", "the last quarter of next year", "Q2 a year ago", "Q1 every year", „2. čtvrtletí příštího roku“,
-  „každé 2. čtvrtletí“ — or a year in digits no pattern places ("Q2 for 2025", "Q2 sales 2025"; so "Q2 for 2000
+  „každé 2. čtvrtletí“ —, a year named by a word chrono does not read ("the second quarter of the contract year",
+  "Q2 of the same year"), or a year in digits no pattern places ("Q2 for 2025", "Q2 sales 2025"; so "Q2 for 2000
   customers" is not read either), where it would land in the reference's year; nor is year to date in one ("YTD next
   year"), nor a quarter an earlier question names in one. A quarter or half of a fiscal year ("Q4 of fiscal year 2025", "the
   second half of fiscal year 2025") is that quarter or half, as "Q4 FY2025" is; it used to be the whole fiscal year. A yearless quarter or half reads as a yearless month: the conversation's year, else the reference's, and it

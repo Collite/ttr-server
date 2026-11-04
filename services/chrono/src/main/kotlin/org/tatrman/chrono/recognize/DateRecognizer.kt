@@ -299,8 +299,8 @@ class DateRecognizer {
             is SpanYear.Two -> return twoReadings(inYear(said.deictic, 0.9), inYear(said.anaphoric, 0.9))
             is SpanYear.Unanchored -> return NoAnchor(PeriodUnit.YEAR, said.why)
             // "the last quarter of the last year": a year word no reading settles is no other year to fall back on;
-            // nor are digits no pattern placed.
-            SpanYear.None -> if (one.yearWord || statesYear(n)) return NotOne
+            // nor are digits no pattern placed, nor a year named by a word chrono does not read ("the contract year").
+            SpanYear.None -> if (one.yearWord || statesYear(n) || YearPhrases.otherYearNounIn(n)) return NotOne
         }
         when (val leaned = years.leaned) {
             is LeanedYear.One -> return Hit(inYear(leaned.year, LEANED_YEAR_CONFIDENCE))

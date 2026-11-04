@@ -42,6 +42,30 @@ internal object YearPhrases {
                 """|\b(?:each|every|kazd\w*)$NUMBER_AFTER""",
         )
 
+    /**
+     * A year noun after a word that is neither an article, a preposition nor a fiscal or calendar adjective: "of the
+     * contract year", "of the same year", „školního roku“, „v modelovém roce“. Not a year-over-year measure ("year over
+     * year", "year-on-year") and not year to date. „hospodářský rok“ is a fiscal year, read as "fiscal year" is.
+     */
+    private const val EN_YEAR_NEUTRAL =
+        """(?:the|that|of|in|for|per|by|a|an|over|on|after|to""" +
+            """|fiscal|financial|accounting|calendar|full|complete|whole|entire)"""
+    private const val CS_YEAR_NEUTRAL =
+        """(?:toho|tohoto|tom|tomto|fiskaln|financn|ucetn|kalendarn|cel|upln|hospodarsk)"""
+
+    private val otherYearNounRe =
+        Regex(
+            """\b(?!$EN_YEAR_NEUTRAL\b)[a-z]+\s+year\b(?!-|\s+(?:over|on|to|after)\b)""" +
+                """|\b(?!$CS_YEAR_NEUTRAL)[a-z]+(?:eho|iho)\s+roku\b""" +
+                """|\bv\s+(?!$CS_YEAR_NEUTRAL)[a-z]+(?:em|im)\s+roce\b""",
+        )
+
     /** Does the folded [n] hold a year phrase chrono reads nowhere? */
     fun unreadIn(n: String): Boolean = unreadRe.containsMatchIn(n)
+
+    /**
+     * Does the folded [n] name a year by a word chrono does not read ("the second quarter of the contract year")?
+     * Asked only where no year was read: a read year word ("of last year", „loňského roku“) says the year first.
+     */
+    fun otherYearNounIn(n: String): Boolean = otherYearNounRe.containsMatchIn(n)
 }
