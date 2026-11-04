@@ -161,6 +161,41 @@ class TimePhrasesSpec :
             read("poslední čtvrtletí").periodCode shouldBe "2026Q3"
         }
 
+        // review-215 RR8: an article may stand before the year word; a year chrono cannot name is no year to fall back
+        // from, so the span is not read, and not as the quarter before either.
+        "the last quarter of the previous, prior, past or current year is its fourth; of one chrono cannot name, none" {
+            for ((span, code) in listOf(
+                "the last quarter of the previous year" to "2025Q4",
+                "the last quarter of the prior year" to "2025Q4",
+                "the last quarter of the past year" to "2025Q4",
+                "the last quarter of the current year" to "2026Q4",
+                "the last quarter of the year 2025" to "2025Q4",
+            )) {
+                withClue(span) { read(span).periodCode shouldBe code }
+            }
+            for (span in listOf(
+                "the last quarter of next year",
+                "the last quarter of the following year",
+                "poslední čtvrtletí příštího roku",
+                "poslední čtvrtletí následujícího roku",
+                "the last quarter of each year",
+                "the last quarter of every year",
+                "poslední čtvrtletí každého roku",
+                "the last quarter of the year-over-year growth",
+                "the last quarter of the last year",
+            )) {
+                withClue(span) { rec.read(span, ref).shouldBeNull() }
+            }
+            read("sales last quarter in Brno").periodCode shouldBe "2026Q3"
+        }
+
+        "after the last quarter of the previous year, the previous quarter is that year's third" {
+            read(
+                "the previous quarter",
+                context = listOf("And the previous quarter?", "Revenue in the last quarter of the previous year"),
+            ).periodCode shouldBe "2025Q3"
+        }
+
         "after the last quarter of the year, the previous quarter is the third" {
             read(
                 "the previous quarter",

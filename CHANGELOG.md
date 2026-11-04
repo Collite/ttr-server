@@ -34,7 +34,8 @@ outside this repo could notice is in.
   („1. pololetí 2026“, „druhé pololetí“, "H1 2026", "the first half of 2026"; `PERIOD`, code `yyyyHn`, datetime
   bounds or `values`); quarters by number („2. čtvrtletí 2026“, „třetí kvartál“, "Q2",
   "the second quarter of 2025"; `yyyyQn`), the last quarter of a year as its fourth ("the last quarter of the year",
-  „poslední čtvrtletí loňského roku“; it used to be the quarter before the reference's), and the word *kvartál*; *uplynulý* / "past" (the period before the
+  "… of the previous year", „poslední čtvrtletí loňského roku“; it used to be the quarter before the reference's; of
+  a year chrono cannot name — "next year", "each year", „příštího roku“ — not read), and the word *kvartál*; *uplynulý* / "past" (the period before the
   reference's); year to date („od začátku roku“, „letos dosud“, "year to date", "YTD": 1 January through the reference
   day; „… do dneška“ / „… do současnosti“ / "… as of today" / "… so far" the same, „… do března“ / "… through September"
   / "… by end of March" to the end of that month, any other ending that names a time not read; a breakdown — "year to
@@ -53,8 +54,8 @@ outside this repo could notice is in.
   year", „2. čtvrtletí letos a loni“ —, a count window — "Q1 and the last 3 months" — or year to date — "Q2 vs YTD")
   is not read as one, and neither is year to date beside another period ("year to date vs last year"); a year word
   with no joiner still says its year. A count of weeks or years ("last 6 weeks", „posledních 6 týdnů“) is not read:
-  "last 6 weeks" used to be last week. The quarter table is shared with the conversation reader. Corpus 36 → 99 cases
-  (eval bulk corpus 126 → 189).
+  "last 6 weeks" used to be last week. The quarter table is shared with the conversation reader. Corpus 36 → 100 cases
+  (eval bulk corpus 126 → 190).
   No wire change.
 
 - **chrono — a recognised time phrase is always answered with its interval (TS-1).** A package that declares no

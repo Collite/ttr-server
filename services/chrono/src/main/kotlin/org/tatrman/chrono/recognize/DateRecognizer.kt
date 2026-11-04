@@ -266,7 +266,8 @@ class DateRecognizer {
             is SpanYear.One -> return Hit(inYear(said.year, 0.9))
             is SpanYear.Two -> return twoReadings(inYear(said.deictic, 0.9), inYear(said.anaphoric, 0.9))
             is SpanYear.Unanchored -> return NoAnchor(PeriodUnit.YEAR, said.why)
-            SpanYear.None -> Unit
+            // "the last quarter of the last year": a year word no reading settles is no other year to fall back on.
+            SpanYear.None -> if (one.yearWord) return NotOne
         }
         when (val leaned = years.leaned) {
             is LeanedYear.One -> return Hit(inYear(leaned.year, LEANED_YEAR_CONFIDENCE))

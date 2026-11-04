@@ -1636,6 +1636,22 @@
     }
   },
   {
+    "id": "chrono/ts-quarter-last-of-next-year-cs",
+    "tool": "ground_time",
+    "kind": "DATE",
+    "span": "poslední čtvrtletí příštího roku",
+    "locale": "cs-CZ",
+    "reference_datetime": "2026-11-01T12:00:00+02:00",
+    "timezone": "Europe/Prague",
+    "package": "cnc",
+    "model": "calendar",
+    "here": null,
+    "question_text": "Plán tržeb na poslední čtvrtletí příštího roku",
+    "expect": {
+      "status": "UNGROUNDABLE"
+    }
+  },
+  {
     "id": "chrono/ts-quarter-last-of-year-en",
     "tool": "ground_time",
     "kind": "DATE",

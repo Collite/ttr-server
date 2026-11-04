@@ -9,17 +9,23 @@ package org.tatrman.chrono.recognize
  *
  * A number with a year of its own is matched first, and a yearless one only where no such match stands. "last"
  * and „poslední“ count as the fourth quarter only before a year ("the last quarter of 2025") or the word for one
- * ("the last quarter of the year", „poslední čtvrtletí loňského roku“ — then a yearless quarter, its year from the
- * year word if any): alone they are relative words, [PeriodWords]'. An English ordinal half needs its year ("the first half of 2026"); alone, "the
- * first half" is as often a half of something else. The nouns stop short of their adjectives: *čtvrtletní*,
+ * ("the last quarter of the year", "… of the previous year", „poslední čtvrtletí loňského roku“ — then a yearless
+ * quarter, its year from the year word if any): alone they are relative words, [PeriodWords]'. One of a year chrono
+ * cannot name ("next year", „každého roku“) is [PartOfPeriods]'. An English ordinal half needs its year ("the first
+ * half of 2026"); alone, "the first half" is as often a half of something else. The nouns stop short of their adjectives: *čtvrtletní*,
  * *kvartální* and *pololetní* name a grain, not a period.
  */
 internal object NumberedPeriods {
-    /** One numbered period: its [number] in the year (1–4 for a quarter, 1–2 for a half), its [year] if written. */
+    /**
+     * One numbered period: its [number] in the year (1–4 for a quarter, 1–2 for a half), its [year] if written, and
+     * whether a [yearWord] in it says the year ("of last year", „loňského roku“): a reader that cannot read that word
+     * must not fall back to another year.
+     */
     data class Numbered(
         val number: Int,
         val year: Int?,
         val range: IntRange,
+        val yearWord: Boolean = false,
     )
 
     private const val CS_ADJ = PeriodWords.CS_ADJ
@@ -30,11 +36,19 @@ internal object NumberedPeriods {
     private const val EN_ORDINALS = """first|second|third|fourth|1st|2nd|3rd|4th"""
 
     /**
-     * What says which year a "last quarter of the year" is in: none, or a word [PeriodWords] reads as a year. Not
-     * "next" or „příštího“, which it does not read: the quarter would land in the reference's year.
+     * What says which year a "last quarter of the year" is in: a word [PeriodWords] reads as a year, or none — an
+     * article, "that" or „toho“, and the year comes from the conversation. Not "next" or „příštího“, which chrono
+     * does not read: the quarter would land in the reference's year ([PartOfPeriods] takes those).
      */
-    private const val EN_YEAR_WORD = """(?:the|this|that|current|last|previous|prior)"""
-    private const val CS_YEAR_WORD = """(?:tohoto|toho|letosniho|minuleho|lonskeho|predchoziho|predesleho)"""
+    private const val EN_YEAR_WORD = """(?:this|current|last|previous|prior|past)"""
+    private const val CS_YEAR_WORD = """(?:tohoto|letosniho|minuleho|lonskeho|predchoziho|predesleho)"""
+
+    /** "of / in (the) (previous) (fiscal) year", the year word in group 2; not "year-over-year", "year-end". */
+    private const val EN_OF_YEAR =
+        """\s+(?:of|in)\s+(?:(?:the|that)\s+)?(?:($EN_YEAR_WORD)\s+)?${EN_ADJ}year\b(?!-|\s+(?:over|on)\b)"""
+
+    /** „(loňského) roku“, the year word in group 2. */
+    private const val CS_OF_YEAR = """\s+(?:toho\s+|($CS_YEAR_WORD)\s+)?${CS_ADJ}roku\b"""
 
     /** *první, druhé, třetí, čtvrté* in any case; `ctvrt` stops short of *čtvrtletí* itself. */
     private const val CS_ORDINALS = """prvn\w*|druh\w*|tret\w*|ctvrt(?!let)\w*"""
@@ -64,10 +78,10 @@ internal object NumberedPeriods {
             Regex("""\b([1-4])\.\s*$CS_ADJ$CS_QUARTER"""),
             Regex("""\b($EN_ORDINALS)\s+$EN_ADJ$EN_QUARTER"""),
             Regex("""\b($CS_ORDINALS)\s+$CS_ADJ$CS_QUARTER"""),
-            // the last quarter of the year · in the last quarter of last year (Bora 2026-11-03: the fourth)
-            Regex("""\b(last)\s+$EN_ADJ$EN_QUARTER\s+(?:of|in)\s+(?:$EN_YEAR_WORD\s+)?${EN_ADJ}year\b"""),
+            // the last quarter of the year · in the last quarter of the previous year (Bora 2026-11-03: the fourth)
+            Regex("""\b(last)\s+$EN_ADJ$EN_QUARTER$EN_OF_YEAR"""),
             // poslední čtvrtletí roku · v posledním kvartálu loňského roku
-            Regex("""\b(posledn\w*)\s+$CS_ADJ$CS_QUARTER\s+(?:$CS_YEAR_WORD\s+)?${CS_ADJ}roku\b"""),
+            Regex("""\b(posledn\w*)\s+$CS_ADJ$CS_QUARTER$CS_OF_YEAR"""),
         )
 
     private val halfWithYear =
@@ -117,7 +131,7 @@ internal object NumberedPeriods {
             for (m in re.findAll(n)) {
                 if (found.any { it.range.overlaps(m.range) }) continue
                 val number = numberOf(m.groupValues[1]) ?: continue
-                found += Numbered(number, null, m.range)
+                found += Numbered(number, null, m.range, yearWord = m.groupValues.getOrElse(2) { "" }.isNotEmpty())
             }
         }
         return found

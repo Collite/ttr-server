@@ -14,8 +14,10 @@ package org.tatrman.chrono.recognize
  *   kvartálu, pololetí, a month) or after v / ve in the locative (roce, měsíci, týdnu, čtvrtletí, a month), with an
  *   optional tohoto / letošního / minulého / každého between. Not „poslední rok“, for the reason above.
  *
- * Quarters are not in the table: "the last quarter of 2025" and "the last quarter of the year" are the fourth
- * quarter ([NumberedPeriods]).
+ * A last quarter of a year is the fourth quarter ([NumberedPeriods]): "the last quarter of 2025", "… of the
+ * previous year", „poslední čtvrtletí roku“. One of a year [NumberedPeriods] does not read is in the table, so it is
+ * not read as the quarter before either: "the last quarter of next year", "… of each year", "… of the year-over-year
+ * growth", „poslední čtvrtletí příštího roku“, „… každého roku“.
  */
 internal object PartOfPeriods {
     private const val EN_ADJ = PeriodWords.EN_ADJ
@@ -34,6 +36,12 @@ internal object PartOfPeriods {
                 """(?:(?:tohoto|toho|tomto|tom|letosniho|letosnim|minuleho|minulem|kazdeho|kazdem)\s+)?([a-z]+)\b""",
         )
 
+    /** "last quarter of / in" up to two words, then "year"; „posledn… čtvrtletí“ up to two words, then „roku“. */
+    private val enQuarterOfYearRe =
+        Regex("""\blast\s+${EN_ADJ}quarter\s+(?:of|in)\s+(?:[a-z]+\s+){0,2}${EN_ADJ}year\b""")
+    private val csQuarterOfYearRe =
+        Regex("""\bposledn\w*\s+$CS_ADJ(?:ctvrtlet|kvartal)(?!n)\w*\s+(?:[a-z]+\s+){0,2}${CS_ADJ}roku\b""")
+
     private val enWholes = setOf("year", "quarter", "month", "week")
     private val csWholes = "roku roce mesice mesici tydne tydnu ctvrtleti kvartalu pololeti".split(' ').toSet()
     private val enCodeRe = Regex("""\d{4}|q[1-4]|h[12]""")
@@ -50,5 +58,9 @@ internal object PartOfPeriods {
                 val w = m.groupValues[1]
                 if (w in csWholes || Months.ofWord(w, withYear = false) != null) add(m.range)
             }
+            val fourth = NumberedPeriods.quarters(n).map { it.range }
+            (enQuarterOfYearRe.findAll(n) + csQuarterOfYearRe.findAll(n))
+                .filterNot { m -> fourth.any { it.overlaps(m.range) } }
+                .forEach { add(it.range) }
         }.sortedBy { it.first }
 }
