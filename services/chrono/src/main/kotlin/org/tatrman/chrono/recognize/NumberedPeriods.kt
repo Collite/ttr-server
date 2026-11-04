@@ -4,20 +4,24 @@ package org.tatrman.chrono.recognize
 /**
  * Quarters and half-years named by their number, cs and en, over the folded text (`Normalization.fold`):
  * „2. čtvrtletí 2025“, „druhý kvartál“, "Q2 2025", "2025Q2", "the second quarter of 2025", „1. pololetí“,
- * "H1 2026", "the first half of 2026". One table serves both readers, as [PeriodWords] does: [DateRecognizer]
- * reads the period a span IS, [ConversationPeriods] the quarters an earlier question names.
+ * "H1 2026", "the first half of 2026" — and the last month of a year, which is its twelfth (✅R215-R). One table
+ * serves both readers, as [PeriodWords] does: [DateRecognizer] reads the period a span IS, [ConversationPeriods] the
+ * quarters and months an earlier question names.
  *
  * A number with a year of its own is matched first, and a yearless one only where no such match stands. "last"
- * and „poslední“ count as the fourth quarter only before a year ("the last quarter of 2025") or the word for one
- * ("the last quarter of the year", "… of the previous year", „poslední čtvrtletí loňského roku“ — then a yearless
- * quarter, its year from the year word if any): alone they are relative words, [PeriodWords]'. One of a year chrono
- * cannot name ("next year", „každého roku“) is [PartOfPeriods]'. An English ordinal half needs its year ("the first
- * half of 2026"); alone, "the first half" is as often a half of something else. The nouns stop short of their adjectives: *čtvrtletní*,
- * *kvartální* and *pololetní* name a grain, not a period.
+ * and „poslední“ count as the fourth quarter, the second half and December only before a year ("the last quarter
+ * of 2025", "the last half of 2025") or the word for one ("the last quarter of the year", "the last month of the
+ * previous year", „poslední pololetí loňského roku“ — then a yearless period, its year from the year word if any):
+ * alone they are relative or trailing words, [PeriodWords]' and [TrailingPeriods]'. One of a year chrono cannot
+ * name ("next year", „každého roku“) is [PartOfPeriods]'. An English ordinal half needs its year or the word for one
+ * ("the first half of 2026", "the second half of last year"); alone, "the first half" is as often a half of
+ * something else. The nouns stop short of their adjectives: *čtvrtletní*, *kvartální* and *pololetní* name a grain,
+ * not a period.
  */
 internal object NumberedPeriods {
     /**
-     * One numbered period: its [number] in the year (1–4 for a quarter, 1–2 for a half), its [year] if written, and
+     * One numbered period: its [number] in the year (1–4 for a quarter, 1–2 for a half, 12 for the last month), its
+     * [year] if written, and
      * whether a [yearWord] in it says the year ("of last year", „loňského roku“): a reader that cannot read that word
      * must not fall back to another year.
      */
@@ -49,6 +53,18 @@ internal object NumberedPeriods {
 
     /** „(loňského) roku“, the year word in group 2. */
     private const val CS_OF_YEAR = """\s+(?:toho\s+|($CS_YEAR_WORD)\s+)?${CS_ADJ}roku\b"""
+
+    /** „v (loňském) roce“, the year word in group 3, after [CS_OF_YEAR]'s. */
+    private const val CS_YEAR_LOC = """(?:tomto|letosnim|minulem|lonskem|predchozim|predeslem)"""
+    private const val CS_IN_YEAR = """\s+v\s+(?:($CS_YEAR_LOC)\s+)?${CS_ADJ}roce\b"""
+
+    /**
+     * „poslední měsíc“ in the singular, the adjective's case going with the noun's ([TrailingPeriods]): not *poslední
+     * měsíce* (the last months).
+     */
+    private const val CS_LAST_MONTH =
+        """(?:posledni\s+${CS_ADJ}mesic|posledniho\s+${CS_ADJ}mesice|poslednimu\s+${CS_ADJ}mesici""" +
+            """|poslednim\s+$CS_ADJ(?:mesici|mesicem))\b"""
 
     /** *první, druhé, třetí, čtvrté* in any case; `ctvrt` stops short of *čtvrtletí* itself. */
     private const val CS_ORDINALS = """prvn\w*|druh\w*|tret\w*|ctvrt(?!let)\w*"""
@@ -92,16 +108,35 @@ internal object NumberedPeriods {
             Pattern(Regex("""\b(\d{4})\s*[/-]?\s*h([12])\b"""), yearFirst = true),
             // 1. pololetí 2026 · v 1. pololetí roku 2026
             Pattern(Regex("""\b([12])\.\s*$CS_ADJ$CS_HALF\s+(?:roku\s+)?(\d{4})\b""")),
-            // první pololetí 2026 · ve druhém pololetí roku 2026
-            Pattern(Regex("""\b(prvn\w*|druh\w*)\s+$CS_ADJ$CS_HALF\s+(?:roku\s+)?(\d{4})\b""")),
-            // the first half of 2026 · the second half-year of 2025
-            Pattern(Regex("""\b(first|second|1st|2nd)\s+half(?:[\s-]+year)?\s+(?:of\s+|in\s+)?(\d{4})\b""")),
+            // první pololetí 2026 · ve druhém pololetí roku 2026 · poslední pololetí 2025
+            Pattern(Regex("""\b(prvn\w*|druh\w*|posledn\w*)\s+$CS_ADJ$CS_HALF\s+(?:roku\s+)?(\d{4})\b""")),
+            // the first half of 2026 · the second half-year of 2025 · the last half of 2025
+            Pattern(Regex("""\b(first|second|1st|2nd|last)\s+half(?:[\s-]+year)?\s+(?:of\s+|in\s+)?(\d{4})\b""")),
         )
     private val halfYearless =
         listOf(
             Regex("""\bh([12])\b"""),
             Regex("""\b([12])\.\s*$CS_ADJ$CS_HALF"""),
             Regex("""\b(prvn\w*|druh\w*)\s+$CS_ADJ$CS_HALF"""),
+            // the second half of last year · the last half of the year (Bora 2026-11-04: the second)
+            Regex("""\b(first|second|1st|2nd|last)\s+half(?:[\s-]+year)?$EN_OF_YEAR"""),
+            // poslední pololetí roku · v posledním pololetí loňského roku
+            Regex("""\b(posledn\w*)\s+$CS_ADJ$CS_HALF$CS_OF_YEAR"""),
+        )
+
+    private val monthWithYear =
+        listOf(
+            // the last month of 2025
+            Pattern(Regex("""\b(last\s+${EN_ADJ}month)\s+(?:of|in)\s+(\d{4})\b""")),
+            // poslední měsíc roku 2025 · v posledním měsíci roku 2025 · poslední měsíc v roce 2025
+            Pattern(Regex("""\b($CS_LAST_MONTH)\s+(?:roku\s+|v\s+roce\s+)?(\d{4})\b""")),
+        )
+    private val monthYearless =
+        listOf(
+            // the last month of the year · the last month of last year (Bora 2026-11-04: December)
+            Regex("""\b(last\s+${EN_ADJ}month)$EN_OF_YEAR"""),
+            // poslední měsíc roku · v posledním měsíci loňského roku · poslední měsíc v roce
+            Regex("""\b($CS_LAST_MONTH)(?:$CS_OF_YEAR|$CS_IN_YEAR)"""),
         )
 
     /** The quarters the folded [n] names by number, in the order the patterns find them. */
@@ -109,6 +144,9 @@ internal object NumberedPeriods {
 
     /** The half-years the folded [n] names by number. */
     fun halves(n: String): List<Numbered> = find(n, halfWithYear, halfYearless, ::halfOf)
+
+    /** The last months of a year the folded [n] names: each is December, its [Numbered.number] 12. */
+    fun lastMonths(n: String): List<Numbered> = find(n, monthWithYear, monthYearless) { 12 }
 
     private fun find(
         n: String,
@@ -131,7 +169,7 @@ internal object NumberedPeriods {
             for (m in re.findAll(n)) {
                 if (found.any { it.range.overlaps(m.range) }) continue
                 val number = numberOf(m.groupValues[1]) ?: continue
-                found += Numbered(number, null, m.range, yearWord = m.groupValues.getOrElse(2) { "" }.isNotEmpty())
+                found += Numbered(number, null, m.range, yearWord = m.groupValues.drop(2).any { it.isNotEmpty() })
             }
         }
         return found
@@ -152,12 +190,16 @@ internal object NumberedPeriods {
                 else -> null
             }
 
-    /** 1–2 from a digit or an ordinal word, cs or en. */
+    /** 1–2 from a digit or an ordinal word, cs or en; "last"/„poslední“ is the second. */
     private fun halfOf(word: String): Int? =
         word.toIntOrNull()?.takeIf { it in 1..2 }
             ?: when {
                 word == "first" || word == "1st" || word.startsWith("prvn") -> 1
-                word == "second" || word == "2nd" || word.startsWith("druh") -> 2
+                word == "second" ||
+                    word == "2nd" ||
+                    word == "last" ||
+                    word.startsWith("druh") ||
+                    word.startsWith("posledn") -> 2
                 else -> null
             }
 }

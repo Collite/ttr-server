@@ -216,8 +216,6 @@ class GroundingSliceRecognitionSpec :
                 "the second week of 2025",
                 "the last week of 2025",
                 "the first month of 2025",
-                "the last month of 2025",
-                "poslední měsíc roku 2025",
             )) {
                 withClue(span) { recognizer.recognize(span, reference, withEnglish) shouldBe null }
             }

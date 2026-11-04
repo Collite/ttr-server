@@ -239,14 +239,20 @@ object PeriodWords {
     /**
      * Every relative word of [unit] in the folded text [n], in the order they stand. A trailing phrase
      * ([TrailingPeriods]) is none: "the last month" asks, where "last month" is the month before. Nor is a part of
-     * a larger period ([PartOfPeriods]): "the last month of the year" is not October. Nor is a quarter named by its
-     * number ([NumberedPeriods]): "the last quarter of the year" is the fourth, not the one before.
+     * a larger period ([PartOfPeriods]): "the last month of the quarter" is not October. Nor is a quarter or the last
+     * month of a year named by its number ([NumberedPeriods]): "the last quarter of the year" is the fourth, not the
+     * one before, and "the last month of the year" December.
      */
     fun findAll(
         n: String,
         unit: PeriodUnit,
     ): List<PeriodWord> {
-        val numbered = if (unit == PeriodUnit.QUARTER) NumberedPeriods.quarters(n).map { it.range } else emptyList()
+        val numbered =
+            when (unit) {
+                PeriodUnit.QUARTER -> NumberedPeriods.quarters(n).map { it.range }
+                PeriodUnit.MONTH -> NumberedPeriods.lastMonths(n).map { it.range }
+                PeriodUnit.YEAR -> emptyList()
+            }
         val taken = TrailingPeriods.findAll(n).map { it.range } + PartOfPeriods.findAll(n) + numbered
         return rules
             .filter { it.unit == unit }

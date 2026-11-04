@@ -2,9 +2,9 @@
 package org.tatrman.chrono.recognize
 
 /**
- * "the last month of the year", „poslední týden v měsíci“: a last week, month or year of a period that contains it
- * (✅R215-N). It is a part of that period — December, the quarter's last month — and no rule reads it yet, so it is
- * no period at all: not the trailing ask ([TrailingPeriods]), not the deictic "last month" ([PeriodWords]), not the
+ * "the last month of the quarter", „poslední týden v měsíci“: a last week, month or year of a period that contains it
+ * (✅R215-N). It is a part of that period — the quarter's last month — and no rule reads it yet, so it is no period
+ * at all: not the trailing ask ([TrailingPeriods]), not the deictic "last month" ([PeriodWords]), not the
  * week rule. Over the folded text (`Normalization.fold`):
  * - "the last week / month / year of" anything — "of the year", "of Q3", "of the contract";
  * - "last week / month of / in" a period: (the / this / that / each) year, quarter, month, week, a month, a year in
@@ -14,10 +14,11 @@ package org.tatrman.chrono.recognize
  *   kvartálu, pololetí, a month) or after v / ve in the locative (roce, měsíci, týdnu, čtvrtletí, a month), with an
  *   optional tohoto / letošního / minulého / každého between. Not „poslední rok“, for the reason above.
  *
- * A last quarter of a year is the fourth quarter ([NumberedPeriods]): "the last quarter of 2025", "… of the
- * previous year", „poslední čtvrtletí roku“. One of a year [NumberedPeriods] does not read is in the table, so it is
- * not read as the quarter before either: "the last quarter of next year", "… of each year", "… of the year-over-year
- * growth", „poslední čtvrtletí příštího roku“, „… každého roku“.
+ * A last quarter, half or month of a year is its fourth quarter, its second half or December ([NumberedPeriods], ✅R215-P
+ * and R): "the last quarter of 2025", "the last half of the previous year", „poslední měsíc roku“. Those are not in
+ * the table. One of a year [NumberedPeriods] does not read is, so it is not read as the quarter or month before
+ * either: "the last quarter of next year", "the last month of each year", "… of the year-over-year growth",
+ * „poslední čtvrtletí příštího roku“, „poslední pololetí každého roku“.
  */
 internal object PartOfPeriods {
     private const val EN_ADJ = PeriodWords.EN_ADJ
@@ -36,19 +37,30 @@ internal object PartOfPeriods {
                 """(?:(?:tohoto|toho|tomto|tom|letosniho|letosnim|minuleho|minulem|kazdeho|kazdem)\s+)?([a-z]+)\b""",
         )
 
-    /** "last quarter of / in" up to two words, then "year"; „posledn… čtvrtletí“ up to two words, then „roku“. */
-    private val enQuarterOfYearRe =
-        Regex("""\blast\s+${EN_ADJ}quarter\s+(?:of|in)\s+(?:[a-z]+\s+){0,2}${EN_ADJ}year\b""")
-    private val csQuarterOfYearRe =
-        Regex("""\bposledn\w*\s+$CS_ADJ(?:ctvrtlet|kvartal)(?!n)\w*\s+(?:[a-z]+\s+){0,2}${CS_ADJ}roku\b""")
+    /**
+     * "last quarter / half / month of / in" up to two words, then "year"; „posledn… čtvrtletí / pololetí / měsíc“ up to
+     * two words, then „roku“ or „roce“.
+     */
+    private val enOfYearRe =
+        Regex("""\blast\s+$EN_ADJ(?:quarter|half|month)\s+(?:of|in)\s+(?:[a-z]+\s+){0,2}${EN_ADJ}year\b""")
+    private val csOfYearRe =
+        Regex(
+            """\bposledn\w*\s+$CS_ADJ(?:(?:ctvrtlet|kvartal|pololet)(?!n)\w*|mesic(?:e|i|em)?)""" +
+                """\s+(?:[a-z]+\s+){0,2}$CS_ADJ(?:roku|roce)\b""",
+        )
 
     private val enWholes = setOf("year", "quarter", "month", "week")
     private val csWholes = "roku roce mesice mesici tydne tydnu ctvrtleti kvartalu pololeti".split(' ').toSet()
     private val enCodeRe = Regex("""\d{4}|q[1-4]|h[12]""")
 
     /** Where the folded [n] names a part of a larger period, in the order they stand. */
-    fun findAll(n: String): List<IntRange> =
-        buildList {
+    fun findAll(n: String): List<IntRange> {
+        // The last quarter, half or month of a year [NumberedPeriods] reads; not "Q3" in "last week of Q3 2025".
+        val ofYear =
+            (NumberedPeriods.quarters(n) + NumberedPeriods.halves(n) + NumberedPeriods.lastMonths(n))
+                .map { it.range }
+                .filter { n.startsWith("last", it.first) || n.startsWith("posledn", it.first) }
+        return buildList {
             enAnyRe.findAll(n).forEach { add(it.range) }
             for (m in enRe.findAll(n)) {
                 val w = m.groupValues[1]
@@ -58,9 +70,8 @@ internal object PartOfPeriods {
                 val w = m.groupValues[1]
                 if (w in csWholes || Months.ofWord(w, withYear = false) != null) add(m.range)
             }
-            val fourth = NumberedPeriods.quarters(n).map { it.range }
-            (enQuarterOfYearRe.findAll(n) + csQuarterOfYearRe.findAll(n))
-                .filterNot { m -> fourth.any { it.overlaps(m.range) } }
-                .forEach { add(it.range) }
-        }.sortedBy { it.first }
+            (enOfYearRe.findAll(n) + csOfYearRe.findAll(n)).forEach { add(it.range) }
+        }.filterNot { r -> ofYear.any { it.overlaps(r) } }
+            .sortedBy { it.first }
+    }
 }

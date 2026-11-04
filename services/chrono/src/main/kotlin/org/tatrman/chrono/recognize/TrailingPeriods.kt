@@ -11,7 +11,8 @@ package org.tatrman.chrono.recognize
  * Over the folded text (`Normalization.fold`). The singular only, the adjective's case going with the noun's —
  * „poslední měsíce“ (recent months) is a plural, „posledních 3 měsíců“ a count, „poslední čtvrtletí“ the quarter
  * before, and an adjective decides it („poslední celý měsíc“ is no trailing month). A part of a larger period is
- * none either ([PartOfPeriods]): „poslední měsíc roku“ is December, "the last week of the month" a week of this one.
+ * none either ([PartOfPeriods]): "the last week of the month" is a week of this one. Nor is the last month of a year
+ * ([NumberedPeriods]): „poslední měsíc roku“ is December.
  */
 internal object TrailingPeriods {
     /** The unit a trailing phrase names, the [days] its trailing reading spans, and its [period] unit, if #214 has one. */
@@ -37,7 +38,7 @@ internal object TrailingPeriods {
 
     /** Every trailing phrase in the folded [n], in the order they stand. */
     fun findAll(n: String): List<Trailing> {
-        val partOf = PartOfPeriods.findAll(n)
+        val partOf = PartOfPeriods.findAll(n) + NumberedPeriods.lastMonths(n).map { it.range }
         return re
             .findAll(n)
             .filterNot { m -> partOf.any { it.overlaps(m.range) } }

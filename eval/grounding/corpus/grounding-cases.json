@@ -1419,6 +1419,23 @@
     }
   },
   {
+    "id": "chrono/ts-half-last-of-last-year-cs",
+    "tool": "ground_time",
+    "kind": "DATE",
+    "span": "poslední pololetí loňského roku",
+    "locale": "cs-CZ",
+    "reference_datetime": "2026-11-01T12:00:00+02:00",
+    "timezone": "Europe/Prague",
+    "package": "cnc",
+    "model": "accounting-period",
+    "here": null,
+    "question_text": "Tržby za poslední pololetí loňského roku",
+    "expect": {
+      "status": "OK",
+      "interval_start": "2025-07-01"
+    }
+  },
+  {
     "id": "chrono/ts-half-later-asks-cs",
     "tool": "ground_time",
     "kind": "DATE",
@@ -1508,6 +1525,24 @@
       "status": "OK",
       "period_code": "202607",
       "interval_start": "2026-07-01"
+    }
+  },
+  {
+    "id": "chrono/ts-month-last-of-last-year-en",
+    "tool": "ground_time",
+    "kind": "DATE",
+    "span": "the last month of last year",
+    "locale": "en-US",
+    "reference_datetime": "2026-11-01T12:00:00+02:00",
+    "timezone": "Europe/Prague",
+    "package": "cnc",
+    "model": "accounting-period",
+    "here": null,
+    "question_text": "Revenue in the last month of last year",
+    "expect": {
+      "status": "OK",
+      "period_code": "202512",
+      "interval_start": "2025-12-01"
     }
   },
   {

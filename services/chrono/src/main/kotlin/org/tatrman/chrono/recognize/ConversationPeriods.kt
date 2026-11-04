@@ -269,6 +269,25 @@ class ConversationPeriods(
         isoDateRe.findAll(n).forEach { add(it.groupValues[1].toInt(), it.groupValues[2].toInt(), it.range) }
         periodCodeRe.findAll(n).forEach { add(it.groupValues[1].toInt(), it.groupValues[2].toInt(), it.range) }
         var unclear: String? = null
+        // The last month of a year is December, in its year or the year a yearless month gets (✅R215-R).
+        for (found in NumberedPeriods.lastMonths(n)) {
+            taken += found.range
+            val year =
+                found.year ?: when (val leaned = leanedYear(i)) {
+                    is LeanedYear.One -> leaned.year
+                    is LeanedYear.Unclear -> {
+                        unclear = unclear ?: "the nearest question that names a month names December in a year " +
+                            "nobody can say (${leaned.why})"
+                        continue
+                    }
+                    LeanedYear.None -> reference.year.takeIf { reference.monthValue == DECEMBER }
+                }
+            if (year == null) {
+                unclear = unclear ?: "the nearest question that names a month names December with no year"
+            } else {
+                named += year * 12 + DECEMBER - 1
+            }
+        }
         for (m in wordRe.findAll(n)) {
             if (taken.any { it.overlaps(m.range) }) continue
             val month = Months.ofWord(m.value, withYear = false) ?: continue
@@ -326,6 +345,7 @@ class ConversationPeriods(
     }
 
     private companion object {
+        const val DECEMBER = 12
         val VERB_MONTHS = setOf("may", "march")
         val WHITESPACE = Regex("""\s+""")
 

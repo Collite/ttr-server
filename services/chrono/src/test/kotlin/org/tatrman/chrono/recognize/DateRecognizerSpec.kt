@@ -557,7 +557,6 @@ class DateRecognizerSpec :
                 "week 12 of 2025",
                 "the 12th week of 2025",
                 "the first month of 2025",
-                "the last month of 2025",
                 "month 3 of 2025",
                 "last 3 months of 2025",
                 "the halves of 2025",
@@ -565,7 +564,6 @@ class DateRecognizerSpec :
                 "last 30 days of 2025",
                 "první týden roku 2025",
                 "v posledním týdnu roku 2025",
-                "poslední měsíc roku 2025",
                 "v prvních měsících roku 2025",
                 "první den roku 2025",
                 "posledních 10 dnů roku 2025",
@@ -576,7 +574,8 @@ class DateRecognizerSpec :
             }
         }
         // TS-6: a quarter or a half-year named by its number is that period of the stated year — "the last
-        // quarter" and „poslední čtvrtletí“ before a year are its fourth.
+        // quarter" and „poslední čtvrtletí“ before a year are its fourth, and (✅R215-R) "the last half" its second
+        // and "the last month" its December.
         val numberedPeriodsOfAStatedYear =
             listOf(
                 "the second quarter of 2025" to "2025Q2",
@@ -587,9 +586,12 @@ class DateRecognizerSpec :
                 "the second half of 2025" to "2025H2",
                 "the first half-year of 2025" to "2025H1",
                 "druhé pololetí 2025" to "2025H2",
+                "the last half of 2025" to "2025H2",
+                "the last month of 2025" to "202512",
+                "poslední měsíc roku 2025" to "202512",
             )
         for ((span, code) in numberedPeriodsOfAStatedYear) {
-            "a numbered quarter or half of a stated year is that period: '$span' → $code" {
+            "a numbered quarter, half or last month of a stated year is that period: '$span' → $code" {
                 val r = rec.recognize(span, ref).shouldNotBeNull()
                 r.kind shouldBe ChronoKind.PERIOD
                 r.periodCode shouldBe code

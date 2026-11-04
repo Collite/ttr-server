@@ -25,6 +25,7 @@ reference date of the request.
 |---|---|---|---|
 | dates | *15. 3. 2026*, *15. května 2026*, *2026-03-15* | *March 15 2026* | that day; a date with no year takes the year of the question or the conversation, else ref's |
 | months | *květen 2026*, *v říjnu 2025*, *květnové období* | *May 2026*, *May period* | that month, `PERIOD` `yyyyMM` |
+| last month of a year | *poslední měsíc roku*, *v posledním měsíci loňského roku*, *poslední měsíc roku 2025* | *the last month of the year*, *… of last year*, *… of 2025* | December of that year; yearless reads as *December* (and asks the same way) |
 | month, no year | *za červenec*, *od června*, *v září* | *in July*, *for September* | that month; the year from the conversation (#214), else ref's — and **asks** this year vs last when the month is later than ref's |
 | period code | *období 202605*, *202605* (alone) | *period 202605* | that month; a six-digit run inside other words is no period |
 | years | *2025*, *v roce 2025*, *fiskální rok 2026* | *2025*, *fiscal year 2026* | the calendar year (`CALENDAR_YEAR` / `FISCAL_YEAR`) |
@@ -34,7 +35,7 @@ reference date of the request.
 | elapsed | *uplynulý měsíc / týden / rok / čtvrtletí* | *the past month / year* | the period before ref's |
 | weeks | *tento / minulý / předminulý týden* | *this / last week* | Monday to Monday |
 | numbered quarter | *2. čtvrtletí 2026*, *druhé čtvrtletí*, *3. kvartál*, *Q2 2026*, *Q2*, *poslední čtvrtletí roku* | *Q2 2026*, *the second quarter of 2025*, *the last quarter of the year*, *… of the previous year* | that quarter, `yyyyQn` (the last quarter of a year is its fourth); yearless reads as a yearless month (and asks the same way); the last quarter of a year chrono cannot name (*next year*, *each year*, *příštího roku*) is not read |
-| half-year | *1. pololetí 2026*, *druhé pololetí*, *H1 2026* | *H1 2026*, *the first half of 2026* | six months, `yyyyHn`; yearless reads as a yearless month |
+| half-year | *1. pololetí 2026*, *druhé pololetí*, *H1 2026*, *poslední pololetí loňského roku* | *H1 2026*, *the first half of 2026*, *the second half of last year*, *the last half of the year* | six months, `yyyyHn` (the last half of a year is its second); yearless reads as a yearless month |
 | trailing | *poslední měsíc / týden / rok*, *posledního měsíce*, *v posledním měsíci* | *the last month / week / year* | **asks** (`AWAITING_CLARIFICATION`): `trailing` — the last 30 / 7 / 365 days through ref — or `calendar` — the period before ref's. The answer is not in the conversation, so an anaphoric period of the unit after it („A předchozí měsíc?“) is `no_anchor`, as after an asked *minulý* |
 | last N | *posledních 30 dní*, *poslední 3 měsíce* | *last 30 days*, *past 3 months* | exactly N days ending with ref, `[ref − N + 1 day, ref + 1 day)`; N months from the day after the same date N months back; a count of weeks or years (*posledních 6 týdnů*, *past 2 years*) is not read |
 | year to date | *od začátku roku*, *letos dosud*, *… do dneška*, *… do současnosti*, *… do března* | *year to date*, *YTD*, *… as of today*, *… so far*, *… through September*, *… by end of March* | `[1 January, ref + 1 day)`; ending with a month, to that month's end; in the year the span states, else ref's; a breakdown (*by region*, *by month*) is no ending, nor is *do* / *to* before a place (*do Německa*, *to Germany*); any other ending that names a time is no one period |
@@ -48,10 +49,12 @@ Q1*, *Q2 2025 vs 2024*, *Q3 and H1 2025*, *Q1 a březen 2025*, a year joined by 
 this year vs last year*, *2. čtvrtletí letos a loni*, *Q2 vs 2024*), a count (*Q1 and the last 3 months*) or year to
 date (*Q2 vs YTD*) — which is not one period (a year word with no joiner, *letošní 2. čtvrtletí*, *Q2 last year*, only
 says which year); nor is year to date beside any other period (*year to date vs last year*).
-The trailing ask is the singular only: *poslední měsíce* (recent months) does not ask. A last week, month or year
-of a larger period — *the last month of the year*, *the last week in October*, *poslední měsíc roku* (December),
-*poslední týden v měsíci* — is not read at all, and an earlier question with one names no period of its unit. A year
-is part of no month: *last year in March* is March of last year. An estate's `ground:chrono` lexicon slice (RV-42)
+The trailing ask is the singular only: *poslední měsíce* (recent months) does not ask. The last week of any period
+and the last month of a quarter — *the last week of the year*, *the last week in October*, *the last month of Q3
+2025*, *poslední týden v měsíci*, *poslední měsíc čtvrtletí* — are not read at all, nor is the last quarter, half or
+month of a year chrono cannot name (*the last month of next year*, *poslední čtvrtletí každého roku*); an earlier
+question with one names no period of its unit. A year is part of no month: *last year in March* is March of last
+year. An estate's `ground:chrono` lexicon slice (RV-42)
 says which words are chrono's; it never changes what they mean.
 
 ## Outcomes of `Ground`

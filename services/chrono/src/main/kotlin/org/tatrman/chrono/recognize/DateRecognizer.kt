@@ -74,11 +74,12 @@ class DateRecognizer {
         val conversation = ConversationPeriods(context, reference, PeriodWords.findAll(n))
         val years = Years(stated = spanYear(n, conversation), leaned = conversation.leanedYear())
         val base =
-            partOfLarger(n)
+            numbered(n, NumberedPeriods.lastMonths(n), 1, ::monthCode, reference, years)
+                ?: partOfLarger(n)
                 ?: fiscalYear(n)?.let(::Hit)
                 ?: yearToDate(n, reference)
-                ?: numbered(n, NumberedPeriods.quarters(n), QUARTER_MONTHS, 'Q', reference, years)
-                ?: numbered(n, NumberedPeriods.halves(n), HALF_MONTHS, 'H', reference, years)
+                ?: numbered(n, NumberedPeriods.quarters(n), QUARTER_MONTHS, ::quarterCode, reference, years)
+                ?: numbered(n, NumberedPeriods.halves(n), HALF_MONTHS, ::halfCode, reference, years)
                 ?: fiscalQuarter(n, reference, triggered, conversation)
                 ?: periodCode(n)?.let(::Hit)
                 ?: isoDate(n)?.let(::Hit)
@@ -205,8 +206,9 @@ class DateRecognizer {
 
     /**
      * A last week, month or year of a period that contains it ([PartOfPeriods]) is no one period this class reads.
-     * First in the chain: the trailing ask, the deictic "last month", the week rule's "last" and the month and
-     * fiscal-year rules would each read a part of the phrase as the whole.
+     * Second in the chain, after the last month of a year (December, [numbered]): the trailing ask, the deictic "last
+     * month", the week rule's "last" and the month and fiscal-year rules would each read a part of the phrase as the
+     * whole.
      */
     private fun partOfLarger(n: String): Read? = NotOne.takeIf { PartOfPeriods.findAll(n).isNotEmpty() }
 
@@ -228,13 +230,31 @@ class DateRecognizer {
     }
 
     // ----- a quarter or half-year by its number: „2. čtvrtletí 2026“, "Q2", „1. pololetí“, "H2 2026" (TS-6) -----
+    // ----- and the last month of a year: "the last month of last year", „poslední měsíc roku“ (✅R215-R) -----
+
+    private fun quarterCode(
+        year: Int,
+        number: Int,
+    ) = PeriodCodes.numbered(year, 'Q', number)
+
+    private fun halfCode(
+        year: Int,
+        number: Int,
+    ) = PeriodCodes.numbered(year, 'H', number)
+
+    private fun monthCode(
+        year: Int,
+        number: Int,
+    ) = "%04d%02d".format(year, number)
 
     /**
-     * The one quarter or half-year a span names by number ([NumberedPeriods]) → a PERIOD recognition with its
-     * `yyyyQn` / `yyyyHn` code. A yearless one takes its year the way a yearless month does: from the span's own
-     * year words („letošní 2. čtvrtletí“), then from the question or the conversation, then the reference's — and
-     * asks between this year and last when it is later than the reference's own quarter or half (#214, contracts
-     * §5).
+     * The one quarter, half-year or last month of a year a span names by number ([NumberedPeriods]) → a PERIOD
+     * recognition with its `yyyyQn` / `yyyyHn` / `yyyyMM` code. Run first, a last month of a year is not
+     * [partOfLarger]'s, and "the last month of fiscal year 2026" not [fiscalYear]'s. A yearless one takes its year the
+     * way a yearless month does: from the span's own year words („letošní 2. čtvrtletí“), then from the question or
+     * the conversation, then the reference's — and asks between this year and last when it is later than the
+     * reference's own quarter, half or month (#214, contracts §5): "the last month of the year" asks as "December"
+     * does.
      *
      * A span that names any other period is no one period ([NotOne], ✅R215-M): several numbered ones ("Q1 a Q2
      * 2025"), a number joined to this one („1. a 2. čtvrtletí“, "first and second quarter of 2025" — only the second
@@ -245,7 +265,7 @@ class DateRecognizer {
         n: String,
         found: List<NumberedPeriods.Numbered>,
         months: Int,
-        letter: Char,
+        codeOf: (year: Int, number: Int) -> String,
         reference: LocalDate,
         years: Years,
     ): Read? {
@@ -258,7 +278,7 @@ class DateRecognizer {
             confidence: Double,
         ): ChronoRecognition {
             val start = LocalDate.of(year, (one.number - 1) * months + 1, 1)
-            val code = PeriodCodes.numbered(year, letter, one.number)
+            val code = codeOf(year, one.number)
             return ChronoRecognition(start, start.plusMonths(months.toLong()), ChronoKind.PERIOD, confidence, code)
         }
         one.year?.let { return Hit(inYear(it, 0.9)) }

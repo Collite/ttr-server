@@ -9,7 +9,8 @@ import java.time.LocalDate
  * drop the other. Over the folded text (`Normalization.fold`), outside the range the rule matched:
  * - another quarter or half-year by number ([NumberedPeriods]), and a number or ordinal joined to one — the elided
  *   noun of „1./2. čtvrtletí“, "first through third quarter", "the second quarter and the third";
- * - a month name, a relative month or quarter word ([PeriodWords]), a week with a scope word, a day word or a date;
+ * - a month name, the last month of a year ([NumberedPeriods]), a relative month or quarter word ([PeriodWords]), a
+ *   week with a scope word, a day word or a date;
  * - a trailing phrase ([TrailingPeriods]), a count window or year to date ([WindowPeriods]);
  * - a year joined to the span by a comparison or a conjunction: "Q2 this year vs last year", „2. čtvrtletí letos a
  *   loni“, "Q2 vs 2024", "last year vs Q2", "Q2 this year and last";
@@ -121,6 +122,7 @@ internal object OtherPeriods {
                     add(at + m.range.first..at + m.range.last)
                 }
             }
+            NumberedPeriods.lastMonths(n).forEach { add(it.range) }
             PeriodWords.findAll(n, PeriodUnit.MONTH).forEach { add(it.range) }
             PeriodWords.findAll(n, PeriodUnit.QUARTER).forEach { add(it.range) }
             TrailingPeriods.findAll(n).forEach { add(it.range) }

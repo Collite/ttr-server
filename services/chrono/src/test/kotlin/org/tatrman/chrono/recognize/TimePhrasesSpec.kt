@@ -376,7 +376,7 @@ class TimePhrasesSpec :
             }
             for (span in listOf(
                 "poslední měsíce",
-                "poslední měsíc roku",
+                "poslední měsíc čtvrtletí",
                 "the last week of the month",
                 "poslední týdny",
             )) {
@@ -389,21 +389,22 @@ class TimePhrasesSpec :
         }
 
         // review-215 RR2 (✅R215-N): "the last X of a Y" is a part of a larger period, and it is not read — not the
-        // trailing ask, not the deictic "last month", not the week rule.
+        // trailing ask, not the deictic "last month", not the week rule. The last month of a year is December (RR10).
         "the last week, month or year of a larger period is no period" {
             for (span in listOf(
-                "the last month of the year",
                 "the last month of the quarter",
                 "the last week of the month",
                 "the last year of the contract",
                 "the last week in October",
                 "poslední měsíc čtvrtletí",
                 "poslední týden v měsíci",
-                "poslední měsíc v roce",
-                "poslední měsíc tohoto roku",
                 "the last month in the quarter",
                 "last week of the month",
                 "poslední týden října",
+                "the last week of the year",
+                "the last month of Q3 2025",
+                "poslední týden března",
+                "last week of Q3 2025",
             )) {
                 withClue(span) { rec.read(span, ref).shouldBeNull() }
             }
@@ -445,8 +446,94 @@ class TimePhrasesSpec :
         "a part of a larger period in an earlier question names no period of its unit" {
             read(
                 "the previous month",
-                context = listOf("And the previous month?", "Revenue in the last month of the year"),
+                context = listOf("And the previous month?", "Revenue in the last month of the quarter"),
             ).periodCode shouldBe "202610"
+        }
+
+        // review-215 RR10 (✅R215-R, Bora 2026-11-04): the last month of a year is December and the last half H2, read
+        // as any yearless December or H2 — the year from the year word, else the conversation's, else the reference's.
+        "the last month of a year is its December, the last half its second half" {
+            for ((span, code) in listOf(
+                "poslední měsíc tohoto roku" to "202612",
+                "the last month of last year" to "202512",
+                "poslední měsíc loňského roku" to "202512",
+                "the last month of 2025" to "202512",
+                "poslední měsíc roku 2025" to "202512",
+                "the last month of fiscal year 2026" to "202612",
+                "the last half of the year" to "2026H2",
+                "poslední pololetí roku" to "2026H2",
+                "the last half of last year" to "2025H2",
+                "poslední pololetí loňského roku" to "2025H2",
+                "the last half of 2025" to "2025H2",
+                "poslední pololetí 2025" to "2025H2",
+                "poslední pololetí roku 2025" to "2025H2",
+                "the first half of last year" to "2025H1",
+                "the second half of last year" to "2025H2",
+                "the second half of the year" to "2026H2",
+            )) {
+                val r = read(span)
+                withClue(span) {
+                    r.kind shouldBe ChronoKind.PERIOD
+                    r.periodCode shouldBe code
+                    r.alternatives shouldBe emptyList()
+                }
+            }
+            for (span in listOf(
+                "the last month of the year",
+                "poslední měsíc roku",
+                "v posledním měsíci roku",
+                "poslední měsíc v roce",
+                "the last month of the fiscal year",
+            )) {
+                val r = read(span)
+                withClue(span) {
+                    r.periodCode shouldBe "202612"
+                    r.alternatives.map { it.periodCode } shouldBe listOf("202512")
+                }
+            }
+            read("the last month of the year", may).alternatives.map { it.periodCode } shouldBe listOf("202512")
+            val half = read("the last half of the year", may)
+            half.periodCode shouldBe "2026H2"
+            half.alternatives.map { it.periodCode } shouldBe listOf("2025H2")
+        }
+
+        "the last month or half of a year chrono cannot name is not read; trailing and relative words are unchanged" {
+            for (span in listOf(
+                "the last month of next year",
+                "the last month of each year",
+                "last month of next year",
+                "poslední měsíc příštího roku",
+                "the last half of next year",
+                "poslední pololetí příštího roku",
+                "Q2 and the last month of the year",
+                "poslední měsíce roku",
+            )) {
+                withClue(span) { rec.read(span, ref).shouldBeNull() }
+            }
+            read("the last month").optionId shouldBe ChronoRecognition.TRAILING
+            read("poslední měsíc").optionId shouldBe ChronoRecognition.TRAILING
+            read("last month").periodCode shouldBe "202610"
+            read("H2").periodCode shouldBe "2026H2"
+            read("druhé pololetí").periodCode shouldBe "2026H2"
+            read("first half of 2025").periodCode shouldBe "2025H1"
+            rec.recognize("the first half", ref).shouldBeNull()
+        }
+
+        "after the last month of a year, the previous month counts from its December" {
+            withClue("a December with no year, later than the reference's month, is a December nobody settled") {
+                rec
+                    .read(
+                        "the previous month",
+                        ref,
+                        context = listOf("And the previous month?", "Revenue in the last month of the year"),
+                    ).shouldBeInstanceOf<ChronoReading.Unanchored>()
+            }
+            read(
+                "the previous month",
+                context = listOf("And the previous month?", "Revenue in the last month of last year"),
+            ).periodCode shouldBe "202511"
+            read("v září", context = listOf("A v září?", "Tržby za poslední měsíc roku 2025")).periodCode shouldBe
+                "202509"
         }
 
         // review-215 R8: chrono asked, and the answer is not in the conversation — the #214 shape.

@@ -44,9 +44,13 @@ outside this repo could notice is in.
   asks this year vs last when it is later than the reference's. **„poslední měsíc / týden / rok“ and "the last month"
   now ask** (`AWAITING_CLARIFICATION`, option ids `trailing` — the last 30 / 7 / 365 days — and `calendar` — the period
   before; the singular only, so not „poslední měsíce“), where they used to be unread (or, with a slice trigger, the current
-  month). A last week, month or year of a larger period ("the last month of the year", "the last week in October",
-  „poslední měsíc roku“, „poslední týden v měsíci“) is not read at all: it used to be read as last month or last week,
-  or as the month it names; "last year in March" is still March of last year. „letos dosud“ used to be the whole year. After a trailing ask the next anaphoric period of its unit („A předchozí měsíc?“) is `no_anchor`: the
+  month). The last month of a year is its December and the last half its second ("the last month of last year" →
+  202512, „poslední pololetí loňského roku“ → 2025H2, "the second half of last year" → 2025H2, where it used to be the
+  whole year); a yearless one reads as "December" or "H2" does, and asks the same way. Any other last week or month
+  of a larger period ("the last week of the year", "the last week in October", "the last month of Q3 2025",
+  „poslední týden v měsíci“, „poslední měsíc čtvrtletí“), and the last month, quarter or half of a year chrono cannot
+  name ("the last month of next year"), is not read at all: it used to be read as last month or last week, or as the
+  month it names; "last year in March" is still March of last year. „letos dosud“ used to be the whole year. After a trailing ask the next anaphoric period of its unit („A předchozí měsíc?“) is `no_anchor`: the
   conversation does not say which reading was taken. A quarter or half-year named by its number with a year ("the second quarter of 2025") is that period
   now, no longer left ungrounded (#213); a week, month or day of a stated year still is. Clarification labels name
   half-years („2. pololetí 2025“ / "H2 2025"), a week („týden od 19. 10. 2026“) and the trailing window („posledních 30
@@ -55,8 +59,8 @@ outside this repo could notice is in.
   year", „2. čtvrtletí letos a loni“ —, a count window — "Q1 and the last 3 months" — or year to date — "Q2 vs YTD")
   is not read as one, and neither is year to date beside another period ("year to date vs last year"); a year word
   with no joiner still says its year. A count of weeks or years ("last 6 weeks", „posledních 6 týdnů“) is not read:
-  "last 6 weeks" used to be last week. The quarter table is shared with the conversation reader. Corpus 36 → 101 cases
-  (eval bulk corpus 126 → 191).
+  "last 6 weeks" used to be last week. The quarter table is shared with the conversation reader. Corpus 36 → 103 cases
+  (eval bulk corpus 126 → 193).
   No wire change.
 
 - **chrono — a recognised time phrase is always answered with its interval (TS-1).** A package that declares no
