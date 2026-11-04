@@ -20,10 +20,14 @@ internal object PlanPlacement {
     ): PlanSource =
         bundle.prepared.planSources
             .computeIfAbsent(worldName to recipe.recipe.name) {
-                runCatching { place(bundle, worldName, recipe) }
+                try {
+                    Result.success(bundle.prepared.placePlan(bundle, worldName, recipe))
+                } catch (e: Exception) {
+                    Result.failure(e)
+                }
             }.getOrThrow()
 
-    private fun place(
+    internal fun place(
         bundle: Bundle,
         worldName: String,
         recipe: LoadedRecipe,

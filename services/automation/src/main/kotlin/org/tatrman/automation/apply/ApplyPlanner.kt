@@ -271,11 +271,14 @@ class ApplyPlanner(
                     identities,
                 )
             }
+        // Normalised tuples compare identities; emitted keys keep the verdict or candidate row representation.
+        val routed = mutableMapOf<List<Any>, JsonObject>()
         for ((route, table, routeKeys, details, selected) in preparedRoutes) {
             for ((index, values) in table.rows.withIndex()) {
                 currentCoroutineContext().ensureActive()
                 val record = table.columns.mapIndexed { i, column -> column.name to scalar(values[i]) }.toMap()
                 val key = JsonObject(keys.associateWith { requireNotNull(record[it]) })
+                routed.putIfAbsent(routeKeys[index], key)
                 val common =
                     mapOf(
                         "run" to scalar(context.id),
@@ -396,15 +399,19 @@ class ApplyPlanner(
                 }
             }
         }
-        val candidates = runner.completedIsland(requireNotNull(roles.candidates)).single()
+        val candidates = runner.readStaged(runner.completedIsland(requireNotNull(roles.candidates)).single())
+        val candidateIndices = keys.map { name -> candidates.columns.indexOfFirst { it.name == name } }
         val candidateKeys =
-            runner
-                .readStaged(candidates)
+            candidates
                 .keyValues(keys)
-                .distinct()
-                .map { values ->
-                    JsonObject(keys.mapIndexed { index, name -> name to scalar(values[index]) }.toMap())
-                }.sortedBy(ObligationKeys::canonicalText)
+                .zip(candidates.rows)
+                .map { (normal, values) ->
+                    routed[normal] ?: run {
+                        val raw = keys.mapIndexed { i, name -> name to scalar(values[candidateIndices[i]]) }
+                        JsonObject(raw.toMap())
+                    }
+                }.distinct()
+                .sortedBy(ObligationKeys::canonicalText)
         return PreviewPlan(
             batch,
             context.id.toString(),
@@ -478,6 +485,7 @@ class ApplyPlanner(
         if (current != null) {
             val verdicts = selected.filter { it.entity == verdict }
             val byKey = verdicts.groupBy { requireNotNull(it.key) }
+            if (!preview.candidateKeys.containsAll(byKey.keys)) unsupported("verdict key outside the run's candidates")
             for (key in preview.candidateKeys) {
                 val rows = byKey[key].orEmpty()
                 selected += ApplyRow(selected.size + 1, current, "delete", key)

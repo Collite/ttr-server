@@ -14,6 +14,9 @@ class BundlePreparation internal constructor(
     private val model: Model,
     private val packages: Map<String, String>,
     private val loadedAt: Instant,
+    /** Instance-scoped plan placement boundary; fatal Errors escape without entering the cache. */
+    internal val placePlan: (Bundle, String, LoadedRecipe) -> org.tatrman.automation.apply.PlanSource =
+        org.tatrman.automation.apply.PlanPlacement::place,
     /** Instance-scoped placement boundary; production always uses the public compiler adapter. */
     internal val placeObligation: (Bundle, String) -> String =
         org.tatrman.automation.apply.PreviewObligationStorage::place,

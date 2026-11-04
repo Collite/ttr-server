@@ -25,6 +25,7 @@ import kotlinx.serialization.json.jsonPrimitive
 import org.slf4j.LoggerFactory
 import org.tatrman.automation.api.installAutomationErrors
 import org.tatrman.automation.api.openRoutes
+import org.tatrman.automation.apply.PlanPlacement
 import org.tatrman.automation.apply.PreviewObligationStorage
 import org.tatrman.automation.identity.*
 import org.tatrman.automation.ledger.Claim
@@ -183,6 +184,34 @@ class PlacementIsolationSpec :
             } finally {
                 logger.detachAppender(messages)
                 messages.stop()
+            }
+        }
+
+        "plan placement fatal errors escape uncached while exceptions keep the original cached failure" {
+            val recipe = original.recipes.getValue("release_order")
+            val fatal = AssertionError("fatal plan placement")
+            val failed = IllegalStateException("failed plan placement")
+            for (failure in listOf(fatal, failed)) {
+                val attempts = AtomicInteger()
+                val selected =
+                    original.copy(
+                        preparation =
+                            BundlePreparation(
+                                original.model,
+                                original.packages,
+                                original.loadedAt,
+                                placePlan = { _, _, _ ->
+                                    attempts.incrementAndGet()
+                                    throw failure
+                                },
+                            ),
+                    )
+                repeat(2) {
+                    (shouldThrow<Throwable> { PlanPlacement.source(selected, "demo", recipe) } === failure) shouldBe
+                        true
+                    selected.prepared.planSources.size shouldBe if (failure === fatal) 0 else 1
+                }
+                attempts.get() shouldBe if (failure === fatal) 2 else 1
             }
         }
 

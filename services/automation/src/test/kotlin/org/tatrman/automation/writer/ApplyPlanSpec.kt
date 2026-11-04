@@ -1,9 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 package org.tatrman.automation.writer
 
+import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 import kotlinx.serialization.json.*
+import org.tatrman.automation.api.AutomationException
+import org.tatrman.automation.api.ErrorCode
 import org.tatrman.automation.apply.*
 import org.tatrman.automation.bundle.ManifestVerdictSchema
 
@@ -196,6 +199,24 @@ class ApplyPlanSpec :
                 plan.rows.filter { it.op == "insert" }.forEach { it.row!!["route"] shouldBe JsonPrimitive("remind") }
                 plan.rows.all { it.key == key } shouldBe true
             }
+        }
+
+        "verdict key outside the run candidates refuses instead of silently losing its current insert" {
+            val failure =
+                shouldThrow<AutomationException> {
+                    planner.plan(
+                        PreviewPlan(
+                            "b",
+                            "r",
+                            listOf(ApplyRow(1, "er.entity.release_order_verdict", "insert", key, row = verdict)),
+                            emptyList(),
+                            source = source(),
+                            candidateKeys = listOf(buildJsonObject { put("order_number", 4720) }),
+                        ),
+                    )
+                }
+            failure.code shouldBe ErrorCode.PREVIEW_UNSUPPORTED
+            failure.message shouldBe "verdict key outside the run's candidates"
         }
 
         "staged truncation marker follows retained rows without a gap, with or without an action reader" {
