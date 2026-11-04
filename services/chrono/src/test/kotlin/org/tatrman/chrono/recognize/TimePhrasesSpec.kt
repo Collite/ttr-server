@@ -292,6 +292,47 @@ class TimePhrasesSpec :
             }
         }
 
+        // review-215 RR12 (✅R215-M): the commonest year-on-year comparison puts a noun before its year, and one with no
+        // year word ("vs a year ago") still compares two periods.
+        "a comparison whose other side names a time is no one period" {
+            for (span in listOf(
+                "Q2 vs the same quarter last year",
+                "Q2 compared to the same period last year",
+                "Q2 versus the same quarter of last year",
+                "2. čtvrtletí oproti stejnému období loni",
+                "2. čtvrtletí oproti stejnému čtvrtletí loňského roku",
+                "2. čtvrtletí ve srovnání se stejným obdobím loňského roku",
+                "H1 vs the same half last year",
+                "Q3 vs the same period of the previous year",
+                "the last month of the year vs the same month last year",
+                "Q2 compared with the same quarter of 2025",
+                "Q2 2025 compared to a year earlier",
+                "Q2 vs a year ago",
+                "Q2 vs prior period",
+                "the same quarter last year vs Q2",
+                "YTD vs the same period last year",
+                "year to date compared to the same period last year",
+                "od začátku roku ve srovnání se stejným obdobím loni",
+            )) {
+                withClue(span) { rec.read(span, ref).shouldBeNull() }
+            }
+        }
+
+        "a comparison with no time on its other side, a year-over-year measure and a conjunction are unchanged" {
+            for (span in listOf(
+                "Q2 sales vs target",
+                "2. čtvrtletí oproti plánu",
+                "Q2 YoY",
+                "Q2 year over year",
+                "2. čtvrtletí meziročně",
+            )) {
+                withClue(span) { read(span).periodCode shouldBe "2026Q2" }
+            }
+            for (span in listOf("revenue and costs last year in Q2", "tržby a náklady loni ve 2. čtvrtletí")) {
+                withClue(span) { read(span).periodCode shouldBe "2025Q2" }
+            }
+        }
+
         "a year word with no joiner still says which year" {
             read("letošní 2. čtvrtletí").periodCode shouldBe "2026Q2"
             for (span in listOf(

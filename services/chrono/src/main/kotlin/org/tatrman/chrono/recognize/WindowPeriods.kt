@@ -30,6 +30,20 @@ internal object WindowPeriods {
                 """|\byear[\s-]+to[\s-]+date\b|\bytd\b""",
         )
 
+    /**
+     * A word that names a time, matched whole: „konce“ / "end", a period noun in any case, a scope or relative word, a
+     * day word, `Qn`, `Hn`. Year to date ends only at one ([DateRecognizer], ✅R215-O), and a comparison names a second
+     * period only with one on its other side ([OtherPeriods], ✅R215-M).
+     */
+    val timeWordRe =
+        Regex(
+            """konce|end|den|dne|dni|dnu|dny|dnem|days?|tyden|tydn\w*|weeks?|mesic\w*|months?|ctvrtlet\w*""" +
+                """|kvartal\w*|quarters?|pololet\w*|half|rok|roku|roce|rokem|years?""" +
+                """|minul\w*|predchoz\w*|predesl\w*|tohoto|tomto|toho|letosn\w*|lonsk\w*|pristi\w*""" +
+                """|last|previous|prior|this|that|next|current""" +
+                """|dnes\w*|vcer\w*|zitr\w*|today|yesterday|tomorrow|now|ted|soucasn\w*|q[1-4]|h[12]""",
+        )
+
     /** Every count window in the folded [n], in the order they stand. */
     fun counts(n: String): List<Count> =
         countRe

@@ -685,27 +685,19 @@ class DateRecognizer {
     private val ytdAnyEndRe = Regex("""^(?:until|till|through|thru|as\s+of|up\s+to)\b|^by\s+(?:\d|(?:the\s+)?end\b)""")
 
     /**
-     * „do“ / "to" and the word after it. They end year to date only when it names a time ([ytdTimeWordRe], a digit,
-     * a month); before any other word they name a place or a party: „vývoz od začátku roku do Německa“, "year to
-     * date to our top customers" (✅R215-O).
+     * „do“ / "to" and the word after it. They end year to date only when it names a time ([WindowPeriods.timeWordRe],
+     * a digit, a month); before any other word they name a place or a party: „vývoz od začátku roku do Německa“,
+     * "year to date to our top customers" (✅R215-O).
      */
     private val ytdToRe = Regex("""^(?:(?:az\s+)?do|to)\s+(?:the\s+)?(\d|[a-z]+)""")
-
-    /** „konce“ / "end", a period noun in any case, a scope or relative word, a day word, `Qn`, `Hn`. */
-    private val ytdTimeWordRe =
-        Regex(
-            """konce|end|den|dne|dni|dnu|dny|dnem|days?|tyden|tydn\w*|weeks?|mesic\w*|months?|ctvrtlet\w*""" +
-                """|kvartal\w*|quarters?|pololet\w*|half|rok|roku|roce|rokem|years?""" +
-                """|minul\w*|predchoz\w*|predesl\w*|tohoto|tomto|toho|letosn\w*|lonsk\w*|pristi\w*""" +
-                """|last|previous|prior|this|that|next|current""" +
-                """|dnes\w*|vcer\w*|zitr\w*|today|yesterday|tomorrow|now|ted|soucasn\w*|q[1-4]|h[12]""",
-        )
 
     /** Does the year-to-date [ending] name a time it ends at, other than today or a month's end? */
     private fun otherEnding(ending: String): Boolean {
         if (ytdAnyEndRe.containsMatchIn(ending)) return true
         val word = ytdToRe.find(ending)?.groupValues?.get(1) ?: return false
-        return word[0].isDigit() || Months.ofWord(word, withYear = true) != null || ytdTimeWordRe.matches(word)
+        return word[0].isDigit() ||
+            Months.ofWord(word, withYear = true) != null ||
+            WindowPeriods.timeWordRe.matches(word)
     }
 
     /**

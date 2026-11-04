@@ -46,9 +46,11 @@ adjectives (*měsíční*, *čtvrtletní*, *pololetní*, *kvartální*, *monthly
 stated year ("the last week of 2025"), which no rule reads yet; a quarter or half-year by number in a span that
 names any other period — *1. a 2. čtvrtletí*, *first and second quarter of 2025*, *Q1 a Q2 2025*, *last quarter and
 Q1*, *Q2 2025 vs 2024*, *Q3 and H1 2025*, *Q1 a březen 2025*, a year joined by a comparison or a conjunction (*Q2
-this year vs last year*, *2. čtvrtletí letos a loni*, *Q2 vs 2024*), a count (*Q1 and the last 3 months*) or year to
+this year vs last year*, *2. čtvrtletí letos a loni*, *Q2 vs 2024*), a comparison with a time on its other side
+(*Q2 vs the same quarter last year*, *2. čtvrtletí oproti stejnému období loni*, *Q2 vs a year ago*), a count (*Q1 and the last 3 months*) or year to
 date (*Q2 vs YTD*) — which is not one period (a year word with no joiner, *letošní 2. čtvrtletí*, *Q2 last year*, only
-says which year); nor is year to date beside any other period (*year to date vs last year*).
+says which year); nor is year to date beside any other period (*year to date vs last year*, *YTD vs the same period
+last year*).
 The trailing ask is the singular only: *poslední měsíce* (recent months) does not ask. The last week of any period
 and the last month of a quarter — *the last week of the year*, *the last week in October*, *the last month of Q3
 2025*, *poslední týden v měsíci*, *poslední měsíc čtvrtletí* — are not read at all, nor is the last quarter, half or

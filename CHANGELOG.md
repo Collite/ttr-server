@@ -58,11 +58,13 @@ outside this repo could notice is in.
   half-years („2. pololetí 2025“ / "H2 2025"), a week („týden od 19. 10. 2026“) and the trailing window („posledních 30
   dní“). A quarter or half-year by number whose span names any other period („1. a 2. čtvrtletí“, "last quarter and Q1",
   "Q2 2025 vs 2024", "Q3 and H1 2025", „Q1 a březen 2025“, a year joined by "vs" or „a“ — "Q2 this year vs last
-  year", „2. čtvrtletí letos a loni“ —, a count window — "Q1 and the last 3 months" — or year to date — "Q2 vs YTD")
-  is not read as one, and neither is year to date beside another period ("year to date vs last year"); a year word
+  year", „2. čtvrtletí letos a loni“ —, a comparison with a time on its other side — "Q2 vs the same quarter last year",
+  „2. čtvrtletí oproti stejnému období loni“, "Q2 vs a year ago" —, a count window — "Q1 and the last 3 months" — or year to date — "Q2 vs YTD")
+  is not read as one, and neither is year to date beside another period ("year to date vs last year", "YTD vs the same
+  period last year"); a year word
   with no joiner still says its year. A count of weeks or years ("last 6 weeks", „posledních 6 týdnů“) is not read:
-  "last 6 weeks" used to be last week. The quarter table is shared with the conversation reader. Corpus 36 → 105 cases
-  (eval bulk corpus 126 → 195).
+  "last 6 weeks" used to be last week. The quarter table is shared with the conversation reader. Corpus 36 → 106 cases
+  (eval bulk corpus 126 → 196).
   No wire change.
 
 - **chrono — a recognised time phrase is always answered with its interval (TS-1).** A package that declares no
