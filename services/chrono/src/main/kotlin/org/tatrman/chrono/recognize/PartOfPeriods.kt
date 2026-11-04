@@ -7,11 +7,12 @@ package org.tatrman.chrono.recognize
  * no period at all: not the trailing ask ([TrailingPeriods]), not the deictic "last month" ([PeriodWords]), not the
  * week rule. Over the folded text (`Normalization.fold`):
  * - "the last week / month / year of" anything — "of the year", "of Q3", "of the contract";
- * - "last week / month / year of / in" a period: (the / this / that / each) year, quarter, month, week, a month, a
- *   year in digits, `Qn`, `Hn` — "last month in Brno" is still last month;
- * - „poslední týden / měsíc / rok“ in any case, then a period noun in the genitive (roku, měsíce, týdne, čtvrtletí,
+ * - "last week / month of / in" a period: (the / this / that / each) year, quarter, month, week, a month, a year in
+ *   digits, `Qn`, `Hn` — "last month in Brno" is still last month. Not "last year": a year is part of no month or
+ *   quarter, and "last year in March" is March of last year;
+ * - „poslední týden / měsíc“ in any case, then a period noun in the genitive (roku, měsíce, týdne, čtvrtletí,
  *   kvartálu, pololetí, a month) or after v / ve in the locative (roce, měsíci, týdnu, čtvrtletí, a month), with an
- *   optional tohoto / letošního / minulého / každého between.
+ *   optional tohoto / letošního / minulého / každého between. Not „poslední rok“, for the reason above.
  *
  * Quarters are not in the table: "the last quarter of 2025" and "the last quarter of the year" are the fourth
  * quarter ([NumberedPeriods]).
@@ -23,12 +24,12 @@ internal object PartOfPeriods {
     private val enAnyRe = Regex("""\bthe\s+last\s+$EN_ADJ(?:week|month|year)\s+of\b""")
     private val enRe =
         Regex(
-            """\blast\s+$EN_ADJ(?:week|month|year)\s+(?:of|in)\s+""" +
+            """\blast\s+$EN_ADJ(?:week|month)\s+(?:of|in)\s+""" +
                 """(?:(?:the|this|that|each|every)\s+)?([a-z0-9]+)\b""",
         )
     private val csRe =
         Regex(
-            """\bposledn\w*\s+$CS_ADJ(?:tyden|tydne|tydnu|tydnem|mesic|mesice|mesici|mesicem|rok|roku|roce|rokem)""" +
+            """\bposledn\w*\s+$CS_ADJ(?:tyden|tydne|tydnu|tydnem|mesic|mesice|mesici|mesicem)""" +
                 """\s+(?:ve?\s+)?""" +
                 """(?:(?:tohoto|toho|tomto|tom|letosniho|letosnim|minuleho|minulem|kazdeho|kazdem)\s+)?([a-z]+)\b""",
         )

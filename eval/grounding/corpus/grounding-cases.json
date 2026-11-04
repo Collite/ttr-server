@@ -1582,6 +1582,24 @@
     }
   },
   {
+    "id": "chrono/ts-partof-last-year-in-march-en",
+    "tool": "ground_time",
+    "kind": "DATE",
+    "span": "last year in March",
+    "locale": "en-US",
+    "reference_datetime": "2026-11-01T12:00:00+02:00",
+    "timezone": "Europe/Prague",
+    "package": "cnc",
+    "model": "accounting-period",
+    "here": null,
+    "question_text": "Sales last year in March by store",
+    "expect": {
+      "status": "OK",
+      "period_code": "202503",
+      "interval_start": "2025-03-01"
+    }
+  },
+  {
     "id": "chrono/ts-quarter-2-ctvrtleti-2026-cs",
     "tool": "ground_time",
     "kind": "DATE",

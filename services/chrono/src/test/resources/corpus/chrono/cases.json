@@ -83,6 +83,7 @@
   {"name": "ts-trailing-pick-calendar-cs", "span": "poslední měsíc", "answerId": "calendar", "reference": "2026-11-01", "locale": "cs-CZ", "expect": {"status": "OK", "intervalStart": "2026-10-01"}},
   {"name": "ts-trailing-pick-trailing-cs", "span": "poslední měsíc", "answerId": "trailing", "reference": "2026-11-01", "locale": "cs-CZ", "expect": {"status": "OK", "intervalStart": "2026-10-03", "application": "FILTER"}},
   {"name": "ts-trailing-conversation-cs", "span": "předchozí měsíc", "question": "A předchozí měsíc?", "priorQuestions": ["Tržby za poslední měsíc"], "reference": "2026-11-01", "locale": "cs-CZ", "expect": {"status": "UNGROUNDABLE"}},
+  {"name": "ts-partof-last-year-in-march-en", "span": "last year in March", "question": "Sales last year in March by store", "reference": "2026-11-01", "locale": "en-US", "expect": {"status": "OK", "intervalStart": "2025-03-01", "periodCode": "202503"}},
   {"name": "ts-ytd-od-zacatku-roku-cs", "span": "od začátku roku", "reference": "2026-11-01", "locale": "cs-CZ", "expect": {"status": "OK", "intervalStart": "2026-01-01", "application": "FILTER"}},
   {"name": "ts-ytd-letos-dosud-cs", "span": "letos dosud", "reference": "2026-11-01", "locale": "cs-CZ", "expect": {"status": "OK", "intervalStart": "2026-01-01"}},
   {"name": "ts-ytd-year-to-date-en", "span": "year to date", "reference": "2026-11-01", "locale": "en-US", "expect": {"status": "OK", "intervalStart": "2026-01-01"}},

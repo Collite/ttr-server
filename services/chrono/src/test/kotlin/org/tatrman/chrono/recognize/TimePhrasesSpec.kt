@@ -3,10 +3,12 @@ package org.tatrman.chrono.recognize
 
 import io.kotest.assertions.withClue
 import io.kotest.core.spec.style.StringSpec
+import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.types.shouldBeInstanceOf
+import org.tatrman.text.Normalization
 import java.time.LocalDate
 
 /**
@@ -377,6 +379,31 @@ class TimePhrasesSpec :
             }
             read("the past month").periodCode shouldBe "202610"
             read("the last quarter of 2025").periodCode shouldBe "2025Q4"
+        }
+
+        // review-215 RR7: a year is part of no month or quarter; "last year in March" is the order English uses as often
+        // as "March last year".
+        "a last year before a month or a quarter is that month or quarter of last year" {
+            read("sales last year in March").periodCode shouldBe "202503"
+            read("last year in December").periodCode shouldBe "202512"
+            read("revenue last year in Q3").periodCode shouldBe "2025Q3"
+            for (span in listOf(
+                "the last week in October",
+                "last week in March",
+                "the last month in the quarter",
+                "the last month of Q3 2025",
+                "the last year of the contract",
+            )) {
+                withClue(span) { rec.read(span, ref).shouldBeNull() }
+            }
+            // Czech: „poslední rok“ before a month or a quarter is no part of it either.
+            for (span in listOf(
+                "poslední rok v březnu",
+                "za poslední rok v prosinci",
+                "poslední rok ve 3. čtvrtletí",
+            )) {
+                withClue(span) { PartOfPeriods.findAll(Normalization.fold(span)).shouldBeEmpty() }
+            }
         }
 
         // The earlier question names no month, so "the previous month" counts from the reference: October.

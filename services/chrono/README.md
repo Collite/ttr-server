@@ -50,7 +50,8 @@ date (*Q2 vs YTD*) — which is not one period (a year word with no joiner, *let
 says which year); nor is year to date beside any other period (*year to date vs last year*).
 The trailing ask is the singular only: *poslední měsíce* (recent months) does not ask. A last week, month or year
 of a larger period — *the last month of the year*, *the last week in October*, *poslední měsíc roku* (December),
-*poslední týden v měsíci* — is not read at all, and an earlier question with one names no period of its unit. An estate's `ground:chrono` lexicon slice (RV-42)
+*poslední týden v měsíci* — is not read at all, and an earlier question with one names no period of its unit. A year
+is part of no month: *last year in March* is March of last year. An estate's `ground:chrono` lexicon slice (RV-42)
 says which words are chrono's; it never changes what they mean.
 
 ## Outcomes of `Ground`
