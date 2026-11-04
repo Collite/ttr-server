@@ -34,15 +34,18 @@ outside this repo could notice is in.
   („1. pololetí 2026“, „druhé pololetí“, "H1 2026", "the first half of 2026"; `PERIOD`, code `yyyyHn`, datetime
   bounds or `values`); quarters by number („2. čtvrtletí 2026“, „třetí kvartál“, "Q2",
   "the second quarter of 2025"; `yyyyQn`), the last quarter of a year as its fourth ("the last quarter of the year",
-  "… of the previous year", „poslední čtvrtletí loňského roku“; it used to be the quarter before the reference's; of
-  a year chrono cannot name — "next year", "each year", „příštího roku“ — not read), and the word *kvartál*; *uplynulý* / "past" (the period before the
-  reference's); year to date („od začátku roku“, „letos dosud“, "year to date", "YTD": 1 January through the reference
+  "… of the previous year", „poslední čtvrtletí loňského roku“; it used to be the quarter before the reference's), and
+  the word *kvartál*; *uplynulý* / "past" (the period before the reference's); year to date („od začátku roku“, „letos dosud“, "year to date", "YTD": 1 January through the reference
   day; „… do dneška“ / „… do současnosti“ / "… as of today" / "… so far" the same, „… do března“ / "… through September"
   / "… by end of March" to the end of that month, any other ending that names a time not read; a breakdown — "year to
   date by region", "YTD by month" — is no ending, nor is „do“ / "to" before a place: „vývoz od začátku roku do
   Německa“, "exports year to date to Germany"; in a year other than the reference's — „od začátku roku 2025“, "YTD
   last year", „loni od začátku roku“ — it is that year, read by the year rules as before, and "YTD last year through
-  March" runs to the end of March 2025). A yearless quarter or half reads as a yearless month: the conversation's year, else the reference's, and it
+  March" runs to the end of March 2025). A quarter, half or last month in a year chrono cannot read is not read: a year it reads nowhere —
+  "Q2 next year", "the last quarter of next year", "Q2 a year ago", "Q1 every year", „2. čtvrtletí příštího roku“,
+  „každé 2. čtvrtletí“ — or a year in digits no pattern places ("Q2 for 2025", "Q2 sales 2025"; so "Q2 for 2000
+  customers" is not read either), where it would land in the reference's year; nor is year to date in one ("YTD next
+  year"), nor a quarter an earlier question names in one. A yearless quarter or half reads as a yearless month: the conversation's year, else the reference's, and it
   asks this year vs last when it is later than the reference's. **„poslední měsíc / týden / rok“ and "the last month"
   now ask** (`AWAITING_CLARIFICATION`, option ids `trailing` — the last 30 / 7 / 365 days — and `calendar` — the period
   before; the singular only, so not „poslední měsíce“), where they used to be unread (or, with a slice trigger, the current
@@ -63,8 +66,8 @@ outside this repo could notice is in.
   is not read as one, and neither is year to date beside another period ("year to date vs last year", "YTD vs the same
   period last year"); a year word
   with no joiner still says its year. A count of weeks or years ("last 6 weeks", „posledních 6 týdnů“) is not read:
-  "last 6 weeks" used to be last week. The quarter table is shared with the conversation reader. Corpus 36 → 106 cases
-  (eval bulk corpus 126 → 196).
+  "last 6 weeks" used to be last week. The quarter table is shared with the conversation reader. Corpus 36 → 108 cases
+  (eval bulk corpus 126 → 198).
   No wire change.
 
 - **chrono — a recognised time phrase is always answered with its interval (TS-1).** A package that declares no

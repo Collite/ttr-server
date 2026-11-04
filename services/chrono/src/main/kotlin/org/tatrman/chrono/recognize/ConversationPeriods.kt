@@ -272,6 +272,11 @@ class ConversationPeriods(
         // The last month of a year is December, in its year or the year a yearless month gets (✅R215-R).
         for (found in NumberedPeriods.lastMonths(n)) {
             taken += found.range
+            if (found.year == null && unreadYear(n, i)) {
+                unclear = unclear ?: "the nearest question that names a month names December in a year chrono " +
+                    "cannot read"
+                continue
+            }
             val year =
                 found.year ?: when (val leaned = leanedYear(i)) {
                     is LeanedYear.One -> leaned.year
@@ -325,6 +330,10 @@ class ConversationPeriods(
         // Those with a year of their own come first; a yearless one is in the year chrono leaned it on.
         for (found in NumberedPeriods.quarters(n)) {
             val q = found.number
+            if (found.year == null && unreadYear(n, i)) {
+                unclear = unclear ?: "the nearest question that names a quarter names Q$q in a year chrono cannot read"
+                continue
+            }
             val year =
                 found.year ?: when (val leaned = leanedYear(i)) {
                     is LeanedYear.One -> leaned.year
@@ -343,6 +352,16 @@ class ConversationPeriods(
         }
         return unclear
     }
+
+    /**
+     * Does text [i] say a year chrono cannot read: a phrase it reads nowhere ([YearPhrases]: "Q2 next year"), or a
+     * four-digit number that is no amount where it reads no year ("Q2 sales 2025")? A quarter or December it names with
+     * no year of its own is then in a year nobody can say, not in the one a yearless period leans on (RR13).
+     */
+    private fun unreadYear(
+        n: String,
+        i: Int,
+    ): Boolean = YearPhrases.unreadIn(n) || (yearsIn(i).isEmpty() && NamedYear.bareYears(n).isNotEmpty())
 
     private companion object {
         const val DECEMBER = 12

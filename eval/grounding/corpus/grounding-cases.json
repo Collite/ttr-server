@@ -1671,6 +1671,22 @@
     }
   },
   {
+    "id": "chrono/ts-quarter-bare-digit-year-en",
+    "tool": "ground_time",
+    "kind": "DATE",
+    "span": "Q2 sales 2025",
+    "locale": "en-US",
+    "reference_datetime": "2026-11-01T12:00:00+02:00",
+    "timezone": "Europe/Prague",
+    "package": "cnc",
+    "model": "calendar",
+    "here": null,
+    "question_text": "Q2 sales 2025 by region",
+    "expect": {
+      "status": "UNGROUNDABLE"
+    }
+  },
+  {
     "id": "chrono/ts-quarter-last-of-last-year-cs",
     "tool": "ground_time",
     "kind": "DATE",
@@ -1788,6 +1804,22 @@
         "t.\"date\" >= {start}",
         "t.\"date\" < {end}"
       ]
+    }
+  },
+  {
+    "id": "chrono/ts-quarter-next-year-en",
+    "tool": "ground_time",
+    "kind": "DATE",
+    "span": "Q2 next year",
+    "locale": "en-US",
+    "reference_datetime": "2026-11-01T12:00:00+02:00",
+    "timezone": "Europe/Prague",
+    "package": "cnc",
+    "model": "calendar",
+    "here": null,
+    "question_text": "Planned revenue for Q2 next year",
+    "expect": {
+      "status": "UNGROUNDABLE"
     }
   },
   {

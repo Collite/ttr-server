@@ -333,6 +333,77 @@ class TimePhrasesSpec :
             }
         }
 
+        // review-215 RR13 (#213, A-TS-3): a year the numbered rule cannot read is no year to fall back from.
+        "a quarter, half or last month in a year chrono cannot read is not read" {
+            for (span in listOf(
+                "Q2 next year",
+                "the second quarter of next year",
+                "2. čtvrtletí příštího roku",
+                "druhé čtvrtletí příštího roku",
+                "H1 next year",
+                "první pololetí příštího roku",
+                "H2 of the next year",
+                "Q2 the following year",
+                "Q3 of the coming year",
+                "the second quarter of the year after",
+                "Q2 of each year",
+                "každé 2. čtvrtletí",
+                "Q1 every year",
+                "Q2 a year ago",
+                "Q2 one year ago",
+                "Q2 a year earlier",
+                "2. čtvrtletí před rokem",
+                "H1 a year ago",
+                "Q2 in 2 years",
+                "Q2 this year or next year",
+                "Q2 2025 and next year",
+                "Q2 for 2025",
+                "Q2 sales 2025",
+                "revenue 2025 in Q2",
+                "tržby 2025 za 2. čtvrtletí",
+                "Q2 fiscal 2025",
+                "H1 of fiscal 2025",
+                "H2 fiscal 2025",
+                "the second half of the year for 2025",
+                "the last half of the year for 2025",
+                "the last month of the year for 2025",
+                "YTD next year",
+                "YTD a year ago",
+            )) {
+                withClue(span) { rec.read(span, ref).shouldBeNull() }
+            }
+            // The accepted cost: a number no pattern places may be an amount, and is read as a year chrono cannot place.
+            rec.read("Q2 for 2000 customers", ref).shouldBeNull()
+        }
+
+        "a quarter in a year the span writes or says is unchanged" {
+            for (span in listOf(
+                "Q2 2025",
+                "Q2 in 2025",
+                "2025 Q2 revenue",
+                "Q2 of the year 2025",
+                "2. čtvrtletí, rok 2025",
+                "v roce 2025 ve 2. čtvrtletí",
+                "Q2 last year for 2000 customers",
+                "more than 2000 units in Q2 2025",
+            )) {
+                withClue(span) { read(span).periodCode shouldBe "2025Q2" }
+            }
+            read("Q2").periodCode shouldBe "2026Q2"
+            val q4 = read("Q4", LocalDate.of(2026, 2, 10))
+            q4.periodCode shouldBe "2026Q4"
+            q4.alternatives.map { it.periodCode } shouldBe listOf("2025Q4")
+        }
+
+        "a quarter an earlier question names in a year chrono cannot read is no quarter to count from" {
+            rec
+                .read(
+                    "the previous quarter",
+                    ref,
+                    context = listOf("And the previous quarter?", "Revenue plan for Q2 next year"),
+                ).shouldBeInstanceOf<ChronoReading.Unanchored>()
+        }
+
         "a year word with no joiner still says which year" {
             read("letošní 2. čtvrtletí").periodCode shouldBe "2026Q2"
             for (span in listOf(

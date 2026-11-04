@@ -40,12 +40,12 @@ internal object NumberedPeriods {
     private const val EN_ORDINALS = """first|second|third|fourth|1st|2nd|3rd|4th"""
 
     /**
-     * What says which year a "last quarter of the year" is in: a word [PeriodWords] reads as a year, or none — an
-     * article, "that" or „toho“, and the year comes from the conversation. Not "next" or „příštího“, which chrono
-     * does not read: the quarter would land in the reference's year ([PartOfPeriods] takes those).
+     * What says which year a "last quarter of the year" is in: a word [PeriodWords] reads as a year ([YearPhrases]), or
+     * none — an article, "that" or „toho“, and the year comes from the conversation. Not "next" or „příštího“, which
+     * chrono does not read: the quarter would land in the reference's year ([PartOfPeriods] takes those).
      */
-    private const val EN_YEAR_WORD = """(?:this|current|last|previous|prior|past)"""
-    private const val CS_YEAR_WORD = """(?:tohoto|letosniho|minuleho|lonskeho|predchoziho|predesleho)"""
+    private const val EN_YEAR_WORD = YearPhrases.EN_READ
+    private const val CS_YEAR_WORD = YearPhrases.CS_READ
 
     /** "of / in (the) (previous) (fiscal) year", the year word in group 2; not "year-over-year", "year-end". */
     private const val EN_OF_YEAR =
@@ -55,7 +55,7 @@ internal object NumberedPeriods {
     private const val CS_OF_YEAR = """\s+(?:toho\s+|($CS_YEAR_WORD)\s+)?${CS_ADJ}roku\b"""
 
     /** „v (loňském) roce“, the year word in group 3, after [CS_OF_YEAR]'s. */
-    private const val CS_YEAR_LOC = """(?:tomto|letosnim|minulem|lonskem|predchozim|predeslem)"""
+    private const val CS_YEAR_LOC = YearPhrases.CS_READ_LOC
     private const val CS_IN_YEAR = """\s+v\s+(?:($CS_YEAR_LOC)\s+)?${CS_ADJ}roce\b"""
 
     /**

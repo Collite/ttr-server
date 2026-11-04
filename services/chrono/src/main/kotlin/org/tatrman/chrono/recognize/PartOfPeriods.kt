@@ -16,8 +16,8 @@ package org.tatrman.chrono.recognize
  *
  * A last quarter, half or month of a year is its fourth quarter, its second half or December ([NumberedPeriods], ✅R215-P
  * and R): "the last quarter of 2025", "the last half of the previous year", „poslední měsíc roku“. Those are not in
- * the table. One of a year [NumberedPeriods] does not read is, so it is not read as the quarter or month before
- * either: "the last quarter of next year", "the last month of each year", "… of the year-over-year growth",
+ * the table. One of a year [NumberedPeriods] does not read (its year words are [YearPhrases]') is, so it is not read
+ * as the quarter or month before either: "the last quarter of next year", "the last month of each year", "… of the year-over-year growth",
  * „poslední čtvrtletí příštího roku“, „poslední pololetí každého roku“.
  */
 internal object PartOfPeriods {
