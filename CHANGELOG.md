@@ -67,7 +67,8 @@ outside this repo could notice is in.
   is not read as one, and neither is year to date beside another period ("year to date vs last year", "YTD vs the same
   period last year"); a year word
   with no joiner still says its year. A count of weeks or years ("last 6 weeks", „posledních 6 týdnů“) is not read:
-  "last 6 weeks" used to be last week. The quarter table is shared with the conversation reader. Corpus 36 → 109 cases
+  "last 6 weeks" used to be last week. Nor is a count of a larger period ("the last 2 months of the year", "the last 3
+  months of the quarter", „poslední 2 měsíce roku“): it used to be the trailing count. The quarter table is shared with the conversation reader. Corpus 36 → 109 cases
   (eval bulk corpus 126 → 199).
   No wire change.
 

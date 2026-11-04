@@ -12,7 +12,10 @@ package org.tatrman.chrono.recognize
  *   quarter, and "last year in March" is March of last year;
  * - „poslední týden / měsíc“ in any case, then a period noun in the genitive (roku, měsíce, týdne, čtvrtletí,
  *   kvartálu, pololetí, a month) or after v / ve in the locative (roce, měsíci, týdnu, čtvrtletí, a month), with an
- *   optional tohoto / letošního / minulého / každého between. Not „poslední rok“, for the reason above.
+ *   optional tohoto / letošního / minulého / každého between. Not „poslední rok“, for the reason above;
+ * - a count window ([WindowPeriods.counts]) of such a whole, the same way: "the last 2 months of the year", "the last
+ *   3 months of the quarter", "the last 2 days of the month", "the last 10 days in March", „poslední 2 měsíce roku“,
+ *   „posledních 6 měsíců loňského roku“ (RR15). "last 30 days in Brno" and "the last 3 months of data" are counts.
  *
  * A last quarter, half or month of a year is its fourth quarter, its second half or December ([NumberedPeriods], ✅R215-P
  * and R): "the last quarter of 2025", "the last half of the previous year", „poslední měsíc roku“. Those are not in
@@ -49,9 +52,37 @@ internal object PartOfPeriods {
                 """\s+(?:[a-z]+\s+){0,2}$CS_ADJ(?:roku|roce)\b""",
         )
 
+    /** After a count window: of / in, then (the) (this / last …) year, quarter, month or week, cs: a whole's noun. */
+    private val enCountOfRe =
+        Regex(
+            """^\s+(?:of|in)\s+(?:(?:the|that)\s+)?""" +
+                """(?:(?:this|current|last|previous|prior|past|next|following|coming|each|every)\s+)?""" +
+                """${EN_ADJ}(?:year|quarter|month|week)\b""",
+        )
+    private val enCountOfWordRe = Regex("""^\s+(?:of|in)\s+(?:the\s+)?([a-z0-9]+)\b""")
+    private val csCountOfRe =
+        Regex(
+            """^\s+(?:ve?\s+)?(?:(?:tohoto|toho|tomto|tom|letosniho|letosnim|minuleho|minulem|lonskeho|lonskem""" +
+                """|predchoziho|predchozim|kazdeho|kazdem|pristiho|pristim)\s+)?$CS_ADJ([a-z]+)\b""",
+        )
+
     private val enWholes = setOf("year", "quarter", "month", "week")
     private val csWholes = "roku roce mesice mesici tydne tydnu ctvrtleti kvartalu pololeti".split(' ').toSet()
     private val enCodeRe = Regex("""\d{4}|q[1-4]|h[12]""")
+
+    /** How long the whole a count window is of runs in [rest], the text right after the window; null if none. */
+    private fun countOf(rest: String): Int? {
+        enCountOfRe.find(rest)?.let { return it.range.last + 1 }
+        enCountOfWordRe.find(rest)?.let { m ->
+            val w = m.groupValues[1]
+            if (enCodeRe.matches(w) || Months.ofWord(w, withYear = true) != null) return m.range.last + 1
+        }
+        csCountOfRe.find(rest)?.let { m ->
+            val w = m.groupValues[1]
+            if (w in csWholes || Months.ofWord(w, withYear = false) != null) return m.range.last + 1
+        }
+        return null
+    }
 
     /** Where the folded [n] names a part of a larger period, in the order they stand. */
     fun findAll(n: String): List<IntRange> {
@@ -71,6 +102,10 @@ internal object PartOfPeriods {
                 if (w in csWholes || Months.ofWord(w, withYear = false) != null) add(m.range)
             }
             (enOfYearRe.findAll(n) + csOfYearRe.findAll(n)).forEach { add(it.range) }
+            for (count in WindowPeriods.counts(n)) {
+                val at = count.range.last + 1
+                countOf(n.substring(at))?.let { add(count.range.first until at + it) }
+            }
         }.filterNot { r -> ofYear.any { it.overlaps(r) } }
             .sortedBy { it.first }
     }

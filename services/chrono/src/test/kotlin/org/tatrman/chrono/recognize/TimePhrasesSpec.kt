@@ -440,6 +440,28 @@ class TimePhrasesSpec :
             read("YTD by end of March").endExclusive shouldBe day(2026, 4, 1)
         }
 
+        // review-215 RR15 (✅R215-N, A-TS-3): the last N units of a larger period are a part of it, which no rule reads.
+        "a count of a larger period is no trailing count; a count of anything else is" {
+            for (span in listOf(
+                "the last 2 months of the year",
+                "the last 6 months of the year",
+                "poslední 2 měsíce roku",
+                "the last 3 months of the quarter",
+                "the last 2 days of the month",
+                "the last 2 months of last year",
+                "posledních 6 měsíců loňského roku",
+                "posledních 14 dní března",
+                "the last 10 days in March",
+            )) {
+                withClue(span) { rec.read(span, ref).shouldBeNull() }
+            }
+            read("last 3 months").startInclusive shouldBe day(2026, 8, 2)
+            read("the last 12 months").startInclusive shouldBe day(2025, 11, 2)
+            read("posledních 30 dní").startInclusive shouldBe day(2026, 10, 3)
+            read("last 30 days in Brno").startInclusive shouldBe day(2026, 10, 3)
+            read("the last 3 months of data").startInclusive shouldBe day(2026, 8, 2)
+        }
+
         // A count of weeks or years is no rule's yet; "last 6 weeks" read as last week before RR6.
         "a count of weeks or years is not read; a count of days or months is" {
             for (span in listOf("last 6 weeks", "posledních 6 týdnů", "v posledních 2 týdnech", "past 2 years")) {
