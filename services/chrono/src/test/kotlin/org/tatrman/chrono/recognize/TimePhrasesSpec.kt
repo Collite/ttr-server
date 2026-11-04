@@ -533,6 +533,30 @@ class TimePhrasesSpec :
             }
         }
 
+        // review-215 RR9 (✅R215-O): „do“ and "to" name a place or a party as often as a time.
+        "year to date with „do“ or 'to' before a word that names no time is year to date" {
+            for (span in listOf(
+                "vývoz od začátku roku do Německa",
+                "export od začátku roku do zahraničí",
+                "exports year to date to Germany",
+                "year to date to our top customers",
+            )) {
+                val r = read(span)
+                withClue(span) {
+                    r.startInclusive shouldBe day(2026, 1, 1)
+                    r.endExclusive shouldBe day(2026, 11, 2)
+                }
+            }
+            for (span in listOf(
+                "year to date as of 15 March",
+                "YTD until the contract ends",
+                "od začátku roku do Q2",
+                "YTD to last month",
+            )) {
+                withClue(span) { rec.read(span, ref).shouldBeNull() }
+            }
+        }
+
         "year to date with any other ending is no one period" {
             for (span in listOf(
                 "od začátku roku do 15. března",

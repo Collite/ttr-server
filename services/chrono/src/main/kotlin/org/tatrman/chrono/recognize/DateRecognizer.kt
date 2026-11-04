@@ -660,9 +660,33 @@ class DateRecognizer {
     /**
      * Any other ending: a word that ends a span of time, then whatever follows. `by` ends one only before a number or
      * "the end"; before any other word it is a breakdown ("year to date by region", "YTD by month"), no ending.
+     * „do“ and "to" end one only before a word that names a time ([ytdToRe]).
      */
-    private val ytdAnyEndRe =
-        Regex("""^(?:(?:az\s+)?do|until|till|through|thru|to|as\s+of|up\s+to)\b|^by\s+(?:\d|(?:the\s+)?end\b)""")
+    private val ytdAnyEndRe = Regex("""^(?:until|till|through|thru|as\s+of|up\s+to)\b|^by\s+(?:\d|(?:the\s+)?end\b)""")
+
+    /**
+     * „do“ / "to" and the word after it. They end year to date only when it names a time ([ytdTimeWordRe], a digit,
+     * a month); before any other word they name a place or a party: „vývoz od začátku roku do Německa“, "year to
+     * date to our top customers" (✅R215-O).
+     */
+    private val ytdToRe = Regex("""^(?:(?:az\s+)?do|to)\s+(?:the\s+)?(\d|[a-z]+)""")
+
+    /** „konce“ / "end", a period noun in any case, a scope or relative word, a day word, `Qn`, `Hn`. */
+    private val ytdTimeWordRe =
+        Regex(
+            """konce|end|den|dne|dni|dnu|dny|dnem|days?|tyden|tydn\w*|weeks?|mesic\w*|months?|ctvrtlet\w*""" +
+                """|kvartal\w*|quarters?|pololet\w*|half|rok|roku|roce|rokem|years?""" +
+                """|minul\w*|predchoz\w*|predesl\w*|tohoto|tomto|toho|letosn\w*|lonsk\w*|pristi\w*""" +
+                """|last|previous|prior|this|that|next|current""" +
+                """|dnes\w*|vcer\w*|zitr\w*|today|yesterday|tomorrow|now|ted|soucasn\w*|q[1-4]|h[12]""",
+        )
+
+    /** Does the year-to-date [ending] name a time it ends at, other than today or a month's end? */
+    private fun otherEnding(ending: String): Boolean {
+        if (ytdAnyEndRe.containsMatchIn(ending)) return true
+        val word = ytdToRe.find(ending)?.groupValues?.get(1) ?: return false
+        return word[0].isDigit() || Months.ofWord(word, withYear = true) != null || ytdTimeWordRe.matches(word)
+    }
 
     /**
      * From the first day of the year through the reference day: `[1 Jan, reference + 1 day)`. Asked before the
@@ -702,7 +726,7 @@ class DateRecognizer {
             when {
                 today != null -> reference.plusDays(1)
                 month != null -> LocalDate.of(year, month, 1).plusMonths(1)
-                ytdAnyEndRe.containsMatchIn(ending) -> return NotOne
+                otherEnding(ending) -> return NotOne
                 year != reference.year -> return null
                 else -> reference.plusDays(1)
             }
