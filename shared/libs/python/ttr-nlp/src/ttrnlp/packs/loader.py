@@ -227,11 +227,24 @@ def _read_file(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
+def _in_tree(root: Path, path: Path) -> bool:
+    """A file of the source's tree, not one under a hidden directory in it.
+
+    A Kubernetes ConfigMap volume — how a deployment mounts its packs and lists —
+    holds every key twice: `<key>`, a symlink through `..data`, and
+    `..<timestamp>/<key>`, the file itself. `rglob` walks the timestamped
+    directory, so every pack and list in a mounted ConfigMap was its own
+    duplicate id (NLS-PACK-003) and nothing loaded. The top-level names are the
+    content; a dot-directory never is.
+    """
+    return not any(part.startswith(".") for part in path.relative_to(root).parts[:-1])
+
+
 def _read_dir(source: str, root: Path) -> tuple[list[SourceFile], list[Diagnostic]]:
     files: list[SourceFile] = []
     problems: list[Diagnostic] = []
     for suffix, kind in ((PACK_SUFFIX, "pack"), (LIST_SUFFIX, "list")):
-        for path in sorted(root.rglob(f"*{suffix}")):
+        for path in sorted(p for p in root.rglob(f"*{suffix}") if _in_tree(root, p)):
             try:
                 text = _read_file(path)
             except _READ_FAILURES as exc:
