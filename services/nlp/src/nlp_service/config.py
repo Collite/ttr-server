@@ -25,6 +25,7 @@ carries `NLS-NLP-011` saying so (NL-14: honest degrade, never a silent one).
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 import re
@@ -32,7 +33,7 @@ from pathlib import Path
 from typing import Dict, List, Literal, Optional
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 logger = logging.getLogger(__name__)
 
@@ -566,6 +567,25 @@ def apply_env_overrides(config: AppConfig) -> AppConfig:
         config.morph.queue.sink = sink.strip()
     if spool := os.getenv("NLP_MORPH_QUEUE_SPOOL_DIR"):
         config.morph.queue.spool_dir = spool.strip()
+
+    # DX-P3 T8f. A world's pipelines are a deployment decision too: their ids name the
+    # packs and lists that deployment mounts (`packs.configMapName`, `lists.configMapName`),
+    # which is why config.yaml ships `pipelines: {}`. A JSON object of name → pipeline,
+    # merged over config.yaml's by name. A value that does not parse, or names a field a
+    # pipeline does not have, is logged and dropped whole, not fatal, like a typo'd lane:
+    # the pipelines stay config.yaml's, and RunPipeline names the one it does not know.
+    # A reference to a list or pack that is not loaded is the pack loader's to report
+    # (NLS-PACK-004, at boot and on every reload), as for config.yaml's own pipelines.
+    if raw := os.getenv("NLP_PIPELINES"):
+        try:
+            extra = json.loads(raw)
+            if not isinstance(extra, dict):
+                raise ValueError("not a JSON object")
+            pipelines = {str(name): PipelineConfig.model_validate(spec) for name, spec in extra.items()}
+        except (ValueError, ValidationError) as exc:
+            logger.error("NLP_PIPELINES ignored, config.yaml's pipelines kept: %s", exc)
+        else:
+            config.pipelines = {**config.pipelines, **pipelines}
 
     return config
 

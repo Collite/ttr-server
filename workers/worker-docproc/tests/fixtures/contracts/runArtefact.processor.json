@@ -1,0 +1,132 @@
+{
+  "header": {
+    "title": "Processor link-mentions",
+    "turnCountInScope": 1
+  },
+  "protocolId": "p-0123456789abcdef.link-mentions.s1203/1",
+  "receipts": {},
+  "schemaVersion": "protocol/v1.0",
+  "scope": {
+    "turnId": "p-0123456789abcdef.link-mentions.s1203/1"
+  },
+  "sessionId": "p-0123456789abcdef",
+  "turns": [
+    {
+      "sections": [
+        {
+          "appliedVerbosity": "VERBOSITY_SUMMARY",
+          "key": "header",
+          "processorHeader": {
+            "documentId": "reviews:HL-1001:2026-09",
+            "family": "link-mentions",
+            "generation": "g0",
+            "host": "docproc",
+            "kind": "link",
+            "unitIds": [
+              1203
+            ],
+            "versionHash": "sha256:4be1c0de",
+            "visibility": "ACTIVE"
+          }
+        },
+        {
+          "appliedVerbosity": "VERBOSITY_SUMMARY",
+          "inputBundle": {
+            "annotationIds": [
+              7101,
+              7102
+            ],
+            "contentHashes": {
+              "1203": "sha256:9f86d081884c7d65"
+            },
+            "unitIds": [
+              1203
+            ]
+          },
+          "key": "input-bundle"
+        },
+        {
+          "appliedVerbosity": "VERBOSITY_SUMMARY",
+          "hints": {
+            "annotationIds": [
+              7101,
+              7102
+            ]
+          },
+          "key": "hints"
+        },
+        {
+          "appliedVerbosity": "VERBOSITY_SUMMARY",
+          "key": "nlp-calls",
+          "nlpCalls": {
+            "calls": 1,
+            "unmapped": 0,
+            "used": [
+              {
+                "engine": "morphodita",
+                "model": "czech-morfflex2.0",
+                "modelVersion": "2.0",
+                "op": "lemmatize"
+              }
+            ]
+          }
+        },
+        {
+          "appliedVerbosity": "VERBOSITY_SUMMARY",
+          "candidates": {
+            "items": [
+              {
+                "annotationId": 7101,
+                "items": [
+                  {
+                    "code": "HL-1001",
+                    "label": "Horse halter",
+                    "score": 0.92,
+                    "source": "lexicon",
+                    "system": "er.Product"
+                  }
+                ]
+              }
+            ],
+            "unmapped": 1
+          },
+          "key": "candidates"
+        },
+        {
+          "appliedVerbosity": "VERBOSITY_SUMMARY",
+          "decisions": {
+            "annotationIds": [
+              7101
+            ]
+          },
+          "key": "decisions"
+        },
+        {
+          "appliedVerbosity": "VERBOSITY_SUMMARY",
+          "key": "outputs",
+          "outputs": {
+            "annotationIds": [
+              7201,
+              7202
+            ],
+            "childUnitIds": []
+          }
+        },
+        {
+          "appliedVerbosity": "VERBOSITY_SUMMARY",
+          "key": "validators",
+          "validators": {
+            "verdictIds": []
+          }
+        },
+        {
+          "appliedVerbosity": "VERBOSITY_SUMMARY",
+          "errors": {},
+          "key": "errors"
+        }
+      ],
+      "seq": 1,
+      "turnId": "p-0123456789abcdef.link-mentions.s1203/1"
+    }
+  ]
+}

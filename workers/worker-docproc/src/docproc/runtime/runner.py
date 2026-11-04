@@ -1,6 +1,10 @@
 # SPDX-License-Identifier: Apache-2.0
 """Synchronous consumer: leased work, atomic artefact/done/ack, load-before-ack recovery.
 
+A kind's protocol sections and its completion are staged in ``pipeline.run_sections`` before the warehouse load
+(review-182 C3): a worker lost between the load's commit and the ack leaves them durable, and the redelivery
+writes the artefact the first attempt would have. The completion's transaction deletes the staged row.
+
 Kinds run on the main thread. A POSIX interval timer interrupts synchronous Python
 and blocking I/O on timeout; no abandoned executor thread can write after FAILED.
 """
@@ -32,6 +36,7 @@ from docproc.sdk.models import (
     LoadAnnotationsRequest,
     Processor,
     WorkItem,
+    json_text,
     unspecified_fields,
 )
 from docproc.sdk.pipeline import Manager
@@ -101,6 +106,12 @@ class ProcessorRunner:
         self.bootstrapped = False
 
     def bootstrap(self) -> None:
+        with self.bus.transaction() as conn:
+            row = conn.execute("SELECT to_regclass('pipeline.run_sections')").fetchone()
+        if row is None or row[0] is None:
+            # A deploy-order error, not a transient: the table is docwh-pipeline 0.11.14's (V6). Without it every
+            # load would stage nothing and every completion would fail.
+            raise RuntimeError("pipeline DB has no pipeline.run_sections: docwh-pipeline >= 0.11.14 must migrate first")
         hosted = self.manager.hosted_processors()
         self.processors = [p for p in hosted if not self.config.families or p.family in self.config.families]
         missing = set(self.config.families) - {p.family for p in self.processors}
@@ -262,8 +273,17 @@ class ProcessorRunner:
                 self.warehouse.iter_annotations(ListAnnotationsRequest(run_id=item.run_id, active_only=False))
             )
             if existing:
-                completion.status = recovered_status(existing)
-                sections = {"errors": {"recovery": "sections-lost"}}
+                staged = self._staged(item.run_id)
+                if staged is None:
+                    # Loaded before this release staged anything: the ids and the status are all that survive.
+                    completion.status = recovered_status(existing)
+                    sections = {"errors": {"recovery": "sections-lost"}}
+                else:
+                    first = Completion.model_validate(staged["completion"])
+                    completion.status, completion.usage = first.status, first.usage
+                    completion.child_unit_ids = first.child_unit_ids
+                    sections = staged["sections"]
+                    sections["errors"] = {**sections.get("errors", {}), "recovery": "sections-staged"}
                 completion.annotation_ids = [a.id for a in existing]
                 completion.verdict_ids = [str(a.id) for a in existing if a.type == "Verdict"]
             elif msg.read_ct > (int(manifest["budget"]["retries"]) + 1):
@@ -279,12 +299,14 @@ class ProcessorRunner:
                     self._complete(msg, ctx, completion)
                     return completion
                 selectors = [self.registry.selector(key) for key in item.consume.types]
+                candidate = item.consume.visibility == "active+generation"
                 for uid in units:
                     candidates = self.warehouse.iter_annotations(
                         ListAnnotationsRequest(
                             unit_id=uid,
                             types=list(dict.fromkeys(key for key, _ in selectors)),
-                            generation=item.generation if item.consume.visibility == "active+generation" else None,
+                            generation=item.generation if candidate else None,
+                            generation_producers=item.consume.generation_producers if candidate else [],
                         )
                     )
                     annotations.extend(
@@ -330,7 +352,7 @@ class ProcessorRunner:
                 except KindRefused as exc:
                     output = []
                     completion.status, completion.error = CompletionStatus.FAILED, str(exc)
-                    sections = {"errors": {"diagnostics": exc.diagnostics}}
+                    sections = {"errors": {"diagnosticsJson": json_text(exc.diagnostics)}}
                 except RunTimeout:
                     output = []
                     completion.status, completion.error = CompletionStatus.FAILED, "timeout"
@@ -339,6 +361,7 @@ class ProcessorRunner:
                     completion.status = CompletionStatus.FAILED
                     completion.error = f"{type(exc).__name__}: {exc}"
                 if output:
+                    self._stage(item.run_id, completion, sections)
                     try:
                         loaded = self.warehouse.load_annotations(
                             LoadAnnotationsRequest(
@@ -373,6 +396,22 @@ class ProcessorRunner:
         )
         return completion
 
+    def _stage(self, run_id: str, completion: Completion, sections: dict[str, Any]) -> None:
+        """The kind's sections and completion, committed before the load whose recovery needs them (C3)."""
+        with self.bus.transaction() as conn:
+            conn.execute(
+                "INSERT INTO pipeline.run_sections(run_id, sections, completion) VALUES (%s, %s, %s) "
+                "ON CONFLICT (run_id) DO UPDATE SET sections = EXCLUDED.sections, completion = EXCLUDED.completion",
+                (run_id, Jsonb(sections), Jsonb(completion.dump())),
+            )
+
+    def _staged(self, run_id: str) -> dict[str, Any] | None:
+        with self.bus.transaction() as conn:
+            row = conn.execute(
+                "SELECT sections, completion FROM pipeline.run_sections WHERE run_id = %s", (run_id,)
+            ).fetchone()
+        return None if row is None else {"sections": row[0], "completion": row[1]}
+
     def _complete(
         self,
         msg: Message,
@@ -391,6 +430,7 @@ class ProcessorRunner:
             ).fetchone()
             if inserted:
                 self.bus.send(DONE, completion.dump(), conn=conn)
+            conn.execute("DELETE FROM pipeline.run_sections WHERE run_id = %s", (ctx.item.run_id,))
             if archive:
                 self.bus.fail(msg, retries=0, conn=conn)
             elif not self.bus.ack(msg, conn=conn):

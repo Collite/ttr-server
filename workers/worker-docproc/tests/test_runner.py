@@ -25,6 +25,7 @@ from docproc.runtime.runner import ProcessorRunner
 from docproc.sdk.models import Annotation, Completion, CompletionStatus, Unit, WorkItem
 from tests.conftest import CONTRACTS
 from tests.fakes import FakeWarehouse, PackManager
+from tests.protocol_members import unknown_members
 
 pytestmark = pytest.mark.component
 
@@ -295,6 +296,34 @@ def test_generation_and_parametrized_selector(runtime: tuple[ProcessorRunner, Wo
     assert [a.id for a in kind.seen] == [1, 2]
 
 
+def test_candidate_forwards_generation_producers(runtime: tuple[ProcessorRunner, WorkItem]) -> None:
+    """P2 S2.3: a re-run family's live output gives way to the generation's own; another family's stays."""
+    from docproc.sdk.models import InputSelector
+
+    runner, item = runtime
+    warehouse = runner.warehouse
+    assert isinstance(warehouse, FakeWarehouse)
+    warehouse.annotations = [
+        Annotation(id=1, unit_id=101, run_id="live", producer="cz-mentions", type="Mention", payload_json="{}"),
+        Annotation(id=2, unit_id=101, run_id="g1", producer="cz-mentions", type="Mention", payload_json="{}"),
+        Annotation(id=3, unit_id=101, run_id="kept", producer="other-mentions", type="Mention", payload_json="{}"),
+    ]
+    warehouse.visibility = {"live": "ACTIVE", "g1": "CANDIDATE", "kept": "ACTIVE"}
+    warehouse.generations = {"g1": item.generation}
+    kind = CaptureInputs()
+    runner.kinds.kinds["classify"] = kind
+    item.consume = InputSelector(
+        types=["Mention"], visibility="active+generation", generation_producers=["cz-mentions"]
+    )
+    runner.process(enqueue(runner, item))
+    assert [a.id for a in kind.seen] == [2, 3]
+    # An ACTIVE item reads the live output whatever the selector names.
+    item.consume = InputSelector(types=["Mention"], visibility="active", generation_producers=["cz-mentions"])
+    item.run_id, item.attempt = f"{item.step_id}/2", 2
+    runner.process(enqueue(runner, item))
+    assert [a.id for a in kind.seen] == [1, 3]
+
+
 def test_load_persists_generation(runtime: tuple[ProcessorRunner, WorkItem]) -> None:
     runner, item = runtime
     runner.process(enqueue(runner, item))
@@ -335,6 +364,7 @@ def artefact(runner: ProcessorRunner, item: WorkItem) -> dict[str, Any]:
     with psycopg.connect(runner.config.pipeline_db_url) as conn:
         row = conn.execute("SELECT protocol FROM pipeline.run_artefacts WHERE run_id=%s", (item.run_id,)).fetchone()
     assert row
+    assert unknown_members(row[0]) == []
     return cast(dict[str, Any], row[0])
 
 
@@ -564,6 +594,83 @@ def test_recovery_marks_lost_sections(
     assert section(runner, item, "errors")["recovery"] == "sections-lost"
 
 
+class Abstaining:
+    """F15's case: a run whose only output is abstaining Decisions, with the sections it logged. A decider the
+    recovery's inference does not know (not in ABSTAINING_DECIDERS) would be inferred SUCCEEDED."""
+
+    def __init__(self, decider: str) -> None:
+        self.decider = decider
+
+    def run(self, ctx: RunContext) -> KindResult:
+        from docproc.sdk.models import Usage, payload_text
+
+        decision = {"decider": self.decider, "score": 0.4, "factors": {"annotationId": 7101, "candidates": 1}}
+        return KindResult(
+            annotations=[Annotation(unit_id=101, type="Decision", payload_json=payload_text(decision))],
+            usage=Usage(nlp_calls=2),
+            abstained=True,
+            sections={
+                "candidates": {"items": [{"annotationId": 7101, "items": [{"code": "HL-1001", "score": 0.4}]}]},
+                "decisions": {"annotationIds": [7101]},
+            },
+        )
+
+
+def staged_rows(runner: ProcessorRunner, item: WorkItem) -> int:
+    with psycopg.connect(runner.config.pipeline_db_url) as conn:
+        row = conn.execute("SELECT count(*) FROM pipeline.run_sections WHERE run_id=%s", (item.run_id,)).fetchone()
+    assert row
+    return int(row[0])
+
+
+@pytest.mark.parametrize("decider", ["link/rule", "pick/unregistered"])
+def test_crash_after_load_recovers_staged_sections(runtime: tuple[ProcessorRunner, WorkItem], decider: str) -> None:
+    """review-182 C3: the sections and the status survive a loss between the load's commit and the ack."""
+    runner, item = runtime
+    runner.kinds.kinds["classify"] = Abstaining(decider)
+    message = enqueue(runner, item)
+
+    def crash() -> None:
+        assert staged_rows(runner, item) == 1  # committed before the load
+        raise RuntimeError("injected crash after warehouse commit")
+
+    runner.after_load = crash
+    with pytest.raises(RuntimeError, match="injected crash"):
+        runner.process(message)
+    runner.after_load = lambda: None
+    runner.bus.extend(message, 0)
+    [again] = runner.bus.fetch(message.queue, 30)
+    result = runner.process(again)
+    assert result is not None and result.status == CompletionStatus.ABSTAINED and result.usage.nlp_calls == 2
+    assert isinstance(runner.warehouse, FakeWarehouse) and runner.warehouse.loads == 1
+    assert section(runner, item, "candidates")["items"][0]["items"][0]["code"] == "HL-1001"
+    assert section(runner, item, "decisions") == {"annotationIds": [7101]}
+    assert section(runner, item, "errors")["recovery"] == "sections-staged"
+    assert section(runner, item, "outputs")["annotationIds"] == result.annotation_ids != []
+    assert [c.status for c in completions(runner, item)] == [CompletionStatus.ABSTAINED]
+    assert staged_rows(runner, item) == 0  # deleted in the completion's transaction
+
+
+def test_completion_deletes_its_staged_row(runtime: tuple[ProcessorRunner, WorkItem]) -> None:
+    runner, item = runtime
+    result = runner.process(enqueue(runner, item))
+    assert result is not None and result.status == CompletionStatus.SUCCEEDED
+    assert staged_rows(runner, item) == 0
+    assert "recovery" not in section(runner, item, "errors")
+
+
+def test_bootstrap_refuses_a_pipeline_db_without_run_sections(runtime: tuple[ProcessorRunner, WorkItem]) -> None:
+    runner, _ = runtime
+    with psycopg.connect(runner.config.pipeline_db_url) as conn:
+        conn.execute("ALTER TABLE pipeline.run_sections RENAME TO run_sections_moved")
+    try:
+        with pytest.raises(RuntimeError, match=r"docwh-pipeline >= 0\.11\.14"):
+            runner.bootstrap()
+    finally:
+        with psycopg.connect(runner.config.pipeline_db_url) as conn:
+            conn.execute("ALTER TABLE pipeline.run_sections_moved RENAME TO run_sections")
+
+
 def test_timeout_repeats_after_swallowed_signal(runtime: tuple[ProcessorRunner, WorkItem]) -> None:
     runner, item = runtime
 
@@ -623,7 +730,7 @@ def test_record_etl_refusal_fails_without_loading(runtime: tuple[ProcessorRunner
         assert result is not None
         assert result.status == CompletionStatus.FAILED and result.error == "record-etl/rows-rejected: 1 records"
         assert wh.loads == 0
-        assert section(runner, item, "errors")["diagnostics"] == [
+        assert json.loads(section(runner, item, "errors")["diagnosticsJson"]) == [
             {"annotationId": a.id, "rule": "record-etl/unresolved-ref"}
         ]
         assert len(completions(runner, item)) == 1
@@ -647,7 +754,16 @@ def test_record_etl_refusal_fails_without_loading(runtime: tuple[ProcessorRunner
             runner.process(message)
         runner.bus.extend(message, 0)
         result = runner.process(runner.bus.fetch(message.queue, 30)[0])
-        assert section(runner, item, "errors")["recovery"] == "sections-lost"
+        # review-182 C3: the recovered artefact keeps the run's record evidence (F15 lost it).
+        assert section(runner, item, "errors")["recovery"] == "sections-staged"
+        outputs = section(runner, item, "outputs")
+        assert set(json.loads(outputs["recordDiffJson"])) == {"added", "removed", "changed"}
+        # Candidate rows are full data: the section says so, for the reader's redaction floor.
+        [verbosity] = [
+            s["appliedVerbosity"] for s in artefact(runner, item)["turns"][0]["sections"] if s["key"] == "outputs"
+        ]
+        assert verbosity == "VERBOSITY_FULL"
+        assert isinstance(json.loads(outputs["candidateRowsJson"]), list)
         assert result is not None
         assert result.status == CompletionStatus.SUCCEEDED and wh.loads == 1 and result.verdict_ids
         with psycopg.connect(world_db) as conn:

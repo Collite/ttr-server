@@ -31,9 +31,10 @@ Pending before phase exit/integration/certification:
   consumers and regenerate the pack, rather than patching schemas in the worker.
 - Load-before-ack recovery infers abstention from Abstentions or unchosen Decisions
   from explicitly registered abstaining deciders (`link/rule`); normalize conflict
-  Decisions do not change a successful run into an abstention. It preserves stored ids/status and emits
-  `errors.recovery: sections-lost`. P2 must make all kind sections durable, including
-  recordRows, link candidates, consolidate recordKeys/redirects and NLP evidence.
+  Decisions do not change a successful run into an abstention. That inference is the fallback for a run with no
+  staged row (loaded before 0.11.1; `errors.recovery: sections-lost`). Since review-182 C3 the sections and the
+  completion are staged in `pipeline.run_sections` before the load, and the recovery uses them
+  (`errors.recovery: sections-staged`).
 - review-182 re-review/PASS after F1–F27 fixes, canonical PEER_REF merge pin, internal 0.11.x image release,
   olymp CPU pool/Secret/pack-mount PR and final live lineage/emoji certification after P2.
 

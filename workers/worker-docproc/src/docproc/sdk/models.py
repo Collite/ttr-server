@@ -117,6 +117,9 @@ class CompletionStatus(DxEnum):
 class InputSelector(DxModel):
     types: list[str]
     visibility: str  # "active" | "active+generation"
+    # With "active+generation": the families the generation re-runs. Their live output is left out of a candidate's
+    # inputs; the generation's own runs stand in for it (contracts §1.4, P2 S2.3).
+    generation_producers: list[str] = []
 
 
 class WorkItem(DxModel):
@@ -225,7 +228,12 @@ class Span(DxModel):
 
 def payload_text(payload: dict[str, Any]) -> str:
     """An annotation payload as the `payloadJson` string: compact, keys sorted, non-ASCII verbatim."""
-    return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    return json_text(payload)
+
+
+def json_text(value: Any) -> str:
+    """Free-form evidence as a JSON string, the way `payloadJson` is written (Rule 7) — the artefact's `*Json` members."""
+    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
 
 
 class Annotation(DxModel):
@@ -299,6 +307,7 @@ class ListAnnotationsRequest(DxModel):
     page_token: str = ""
 
     generation: str | None = None  # active + runs in this generation (DX-C-2 P3 seam)
+    generation_producers: list[str] = []  # with generation: these producers' live output left out
 
     def query(self) -> list[tuple[str, str | int | float | bool | None]]:
         """The `GET /annotations` query string: camelCase keys, repeated keys for lists, defaults left out."""

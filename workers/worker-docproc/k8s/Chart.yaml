@@ -3,7 +3,7 @@ name: worker-docproc
 description: Stateless document-processing pool (HTTP probes, pgmq work transport).
 type: application
 version: 0.1.0
-appVersion: "0.11.0"
+appVersion: "0.11.1"
 dependencies:
   - name: tatrman-service
     version: 0.1.0

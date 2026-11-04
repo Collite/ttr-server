@@ -61,7 +61,11 @@ an annotated document.
   `ReloadPacks` validates into a new snapshot and swaps atomically; a refusal
   (`applied=false` + `NLS-PACK-010`) leaves the previous snapshot serving
   untouched. Pack **content** is per-world and never part of the suite (NL-17) —
-  mount it at `packs.sources` / `lists.sources`.
+  mount it at `packs.sources` / `lists.sources` (the chart's `packs.configMapName` /
+  `lists.configMapName`), and name the world's pipelines with `NLP_PIPELINES`: a JSON
+  object of name → `{ops, gazetteer, rules, morph}`, merged over config.yaml's
+  `pipelines:` by name (DX-P3 T8f). A value that does not read is logged and dropped
+  whole; config.yaml's pipelines stay.
 
 > **Proto stubs.** nlp owns its generated `org.tatrman.{nlp,common}.v1`
 > Python stubs under `generated/` (gitignored), produced from the shared

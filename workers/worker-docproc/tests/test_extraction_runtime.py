@@ -33,6 +33,7 @@ from tests.fakes import PACK, FakeWarehouse, PackManager
 from tests.fakes_lexmatcher import recorded_lexmatcher
 from tests.fakes_nlp import recorded_nlp
 from tests.pack import DOCS, bundle_of, context, units_of
+from tests.protocol_members import unknown_members
 
 pytestmark = pytest.mark.component
 
@@ -184,13 +185,14 @@ def test_complete_statement_fixture_reaches_rows_with_resolvable_lineage(
         for run in (etl, rerun):
             row = conn.execute("SELECT protocol FROM pipeline.run_artefacts WHERE run_id=%s", (run.run_id,)).fetchone()
             assert row is not None
+            assert unknown_members(row[0]) == []
             docs.append(row[0])
     outputs = [next(s["outputs"] for s in d["turns"][0]["sections"] if s["key"] == "outputs") for d in docs]
     assert outputs[0]["recordRows"] == outputs[1]["recordRows"]
-    assert outputs[1]["recordDiff"] == {"added": [], "removed": [], "changed": []}
+    assert json.loads(outputs[1]["recordDiffJson"]) == {"added": [], "removed": [], "changed": []}
 
 
-def test_abstaining_link_crash_recovers_status_and_section_marker(
+def test_abstaining_link_crash_recovers_status_and_sections(
     extraction: tuple[ProcessorRunner, PackManager, FakeWarehouse], pg_url: str
 ) -> None:
     from docproc.kinds.common import annotation
@@ -220,5 +222,9 @@ def test_abstaining_link_crash_recovers_status_and_section_marker(
     with psycopg.connect(pg_url) as conn:
         row = conn.execute("SELECT protocol FROM pipeline.run_artefacts WHERE run_id=%s", (result.run_id,)).fetchone()
     assert row
-    errors = next(s["errors"] for s in row[0]["turns"][0]["sections"] if s["key"] == "errors")
-    assert errors["recovery"] == "sections-lost"
+    sections = {s["key"]: s for s in row[0]["turns"][0]["sections"]}
+    # review-182 C3: staged before the load, so the recovery writes the link's candidates and decisions too.
+    assert sections["errors"]["errors"]["recovery"] == "sections-staged"
+    assert sections["candidates"]["candidates"]["items"][0]["annotationId"] == 5
+    assert sections["decisions"]["decisions"]["annotationIds"] == [5]
+    assert unknown_members(row[0]) == []

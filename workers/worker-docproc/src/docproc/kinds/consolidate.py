@@ -20,7 +20,7 @@ from docproc.kinds.common import annotation, meta, utc_instant, verdict
 from docproc.kinds.rule_dsl import pack_file, related
 from docproc.runtime.predicate import _MISSING, path_value
 from docproc.runtime.registry import KindResult, RunContext, TypeRegistryClient
-from docproc.sdk.models import Annotation, ListAnnotationsRequest, Span, Unit, UnitKind, canonical
+from docproc.sdk.models import Annotation, ListAnnotationsRequest, Span, Unit, UnitKind, canonical, json_text
 from docproc.sdk.store import Warehouse
 
 ROLE_RANK = ("restates", "confirms", "updates", "contradicts")
@@ -436,7 +436,7 @@ class Consolidator:
                     redirects.append({"previousAnnotationId": prior.id, "recordKey": key, "overlap": count})
         result.sections = {
             "decisions": {
-                "recordKeys": [a.payload() for a in result.annotations if a.type == "Decision"],
+                "recordKeysJson": json_text([a.payload() for a in result.annotations if a.type == "Decision"]),
                 "redirects": redirects,
             }
         }

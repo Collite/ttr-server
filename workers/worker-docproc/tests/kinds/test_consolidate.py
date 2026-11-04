@@ -20,6 +20,10 @@ def test_complete_records_and_rerun_keys(doc: str) -> None:
     assert len(records) == 2 and not first.verdicts
     keys = [a.payload()["chosen"] for a in first.annotations if a.type == "Decision"]
     assert keys == [f.payload()["reviewId"] for f in wh.annotations if f.type == "Import.review"]
+    # The artefact's free-form evidence is a JSON string (contracts §8, DecisionsSection.record_keys_json).
+    record_keys = first.sections["decisions"]["recordKeysJson"]
+    assert isinstance(record_keys, str)
+    assert json.loads(record_keys) == [a.payload() for a in first.annotations if a.type == "Decision"]
     assert all(not a.spans and a.unit_id == ctx.item.unit_ids[0] for a in records)
     for a in first.annotations:
         registry().schema_for(a.type).validate(a.payload())

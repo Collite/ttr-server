@@ -144,6 +144,33 @@ def test_all_good_sources_produce_a_state(tmp_path):
     assert state.phase_names("alpha") == ("p",)
 
 
+def configmap(root: Path, stamp: str) -> Path:
+    """The layout a ConfigMap volume has: the files under `..<timestamp>/`, `..data`
+    a symlink to it, and each key a symlink through `..data`. An update writes a new
+    timestamped directory and swaps `..data`."""
+    dated = root / f"..{stamp}"
+    three_good(dated)
+    (root / "..data").unlink(missing_ok=True)
+    (root / "..data").symlink_to(dated.name)
+    for file in dated.iterdir():
+        if not (root / file.name).is_symlink():
+            (root / file.name).symlink_to(Path("..data") / file.name)
+    return root
+
+
+def test_a_configmap_mount_loads_each_file_once(tmp_path):
+    state = load_sources([str(configmap(tmp_path, "2026_11_04_12_00_00.1"))])
+
+    assert sorted(state.packs) == ["alpha", "beta", "gamma"]
+    assert sorted(state.lists) == ["vocab"]
+
+
+def test_a_configmap_update_with_the_same_content_keeps_the_state_id(tmp_path):
+    before = load_sources([str(configmap(tmp_path, "2026_11_04_12_00_00.1"))]).state_id
+    after = load_sources([str(configmap(tmp_path, "2026_11_04_13_00_00.2"))]).state_id
+    assert before == after
+
+
 def test_the_shipped_fixtures_load_as_one_state():
     """The coverage packs and the hero list, together, the way a deployment holds
     them — a pack tree and a list tree as two separate sources."""

@@ -87,7 +87,7 @@ class ProtocolWriter:
                         {
                             "key": key,
                             "appliedVerbosity": "VERBOSITY_FULL"
-                            if key == "outputs" and "candidateRows" in payload
+                            if key == "outputs" and "candidateRowsJson" in payload
                             else "VERBOSITY_SUMMARY",
                             member: payload,
                         }

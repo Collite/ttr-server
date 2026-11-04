@@ -88,4 +88,8 @@ def test_fixtures_identical_to_kantheon_side_by_side() -> None:
         pytest.skip("no kantheon checkout beside this one (set KANTHEON_DIR)")
     theirs = k / "shared" / "proto" / "fixtures" / "dx"
     for ours in sorted(CONTRACTS.glob("*.json")):
-        assert (theirs / ours.name).read_bytes() == ours.read_bytes(), ours.name
+        copy = theirs / ours.name
+        if not copy.exists() and ours.name.startswith("runArtefact."):
+            # Staged one level down until kantheon moves it up beside the others (P3 T8f, its artefacts/README.md).
+            copy = theirs / "artefacts" / ours.name
+        assert copy.read_bytes() == ours.read_bytes(), ours.name
