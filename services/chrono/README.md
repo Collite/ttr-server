@@ -28,7 +28,7 @@ reference date of the request.
 | last month of a year | *poslední měsíc roku*, *v posledním měsíci loňského roku*, *poslední měsíc roku 2025* | *the last month of the year*, *… of last year*, *… of 2025* | December of that year; yearless reads as *December* (and asks the same way) |
 | month, no year | *za červenec*, *od června*, *v září* | *in July*, *for September* | that month; the year from the conversation (#214), else ref's — and **asks** this year vs last when the month is later than ref's |
 | period code | *období 202605*, *202605* (alone) | *period 202605* | that month; a six-digit run inside other words is no period |
-| years | *2025*, *v roce 2025*, *fiskální rok 2026* | *2025*, *fiscal year 2026* | the calendar year (`CALENDAR_YEAR` / `FISCAL_YEAR`) |
+| years | *2025*, *v roce 2025*, *fiskální rok 2026* | *2025*, *fiscal year 2026* | the calendar year (`CALENDAR_YEAR` / `FISCAL_YEAR`); a quarter or half of a fiscal year (*Q4 of fiscal year 2025*) is that quarter or half |
 | relative years | *letos*, *loni*, *vloni*, *předloni*, *letošní*, *loňský*, *předloňský*, *tento rok* | *this year*, *last year*, *the year before last* | ref's year, the one before, two before |
 | relative months, quarters | *tento / minulý / předminulý měsíc*, *toto / minulé čtvrtletí*, *tento / minulý kvartál* | *this / last month*, *this / last quarter* | ref's period, or the one before; quarters `PERIOD` `yyyyQn` |
 | anaphoric | *předchozí / předešlý rok, měsíc, čtvrtletí*; *minulý …* | *the previous year*, *the month before* | the period before the one the conversation is about (#214); *minulý* asks when the two readings differ; nothing to count from → `UNGROUNDABLE no_anchor` |

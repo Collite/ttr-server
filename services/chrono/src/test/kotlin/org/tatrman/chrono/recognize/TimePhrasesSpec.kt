@@ -404,6 +404,22 @@ class TimePhrasesSpec :
                 ).shouldBeInstanceOf<ChronoReading.Unanchored>()
         }
 
+        // review-215 RR14: a quarter or half of a fiscal year is that quarter or half, as "Q4 FY2025" is.
+        "a quarter or half of a fiscal year is that quarter or half, not the whole fiscal year" {
+            for ((span, code) in listOf(
+                "Q4 of fiscal year 2025" to "2025Q4",
+                "the last quarter of fiscal year 2025" to "2025Q4",
+                "the second half of fiscal year 2025" to "2025H2",
+                "the last half of fiscal year 2025" to "2025H2",
+                "H1 fiscal year 2025" to "2025H1",
+                "Q4 FY2025" to "2025Q4",
+                "the last month of fiscal year 2026" to "202612",
+            )) {
+                withClue(span) { read(span).periodCode shouldBe code }
+            }
+            read("fiscal year 2025").kind shouldBe ChronoKind.FISCAL_YEAR
+        }
+
         "a year word with no joiner still says which year" {
             read("letošní 2. čtvrtletí").periodCode shouldBe "2026Q2"
             for (span in listOf(

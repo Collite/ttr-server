@@ -1823,6 +1823,23 @@
     }
   },
   {
+    "id": "chrono/ts-quarter-of-fiscal-year-en",
+    "tool": "ground_time",
+    "kind": "DATE",
+    "span": "Q4 of fiscal year 2025",
+    "locale": "en-US",
+    "reference_datetime": "2026-11-01T12:00:00+02:00",
+    "timezone": "Europe/Prague",
+    "package": "cnc",
+    "model": "accounting-period",
+    "here": null,
+    "question_text": "Revenue in Q4 of fiscal year 2025",
+    "expect": {
+      "status": "OK",
+      "interval_start": "2025-10-01"
+    }
+  },
+  {
     "id": "chrono/ts-quarter-ordinal-en",
     "tool": "ground_time",
     "kind": "DATE",

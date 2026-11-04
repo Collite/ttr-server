@@ -45,7 +45,8 @@ outside this repo could notice is in.
   "Q2 next year", "the last quarter of next year", "Q2 a year ago", "Q1 every year", „2. čtvrtletí příštího roku“,
   „každé 2. čtvrtletí“ — or a year in digits no pattern places ("Q2 for 2025", "Q2 sales 2025"; so "Q2 for 2000
   customers" is not read either), where it would land in the reference's year; nor is year to date in one ("YTD next
-  year"), nor a quarter an earlier question names in one. A yearless quarter or half reads as a yearless month: the conversation's year, else the reference's, and it
+  year"), nor a quarter an earlier question names in one. A quarter or half of a fiscal year ("Q4 of fiscal year 2025", "the
+  second half of fiscal year 2025") is that quarter or half, as "Q4 FY2025" is; it used to be the whole fiscal year. A yearless quarter or half reads as a yearless month: the conversation's year, else the reference's, and it
   asks this year vs last when it is later than the reference's. **„poslední měsíc / týden / rok“ and "the last month"
   now ask** (`AWAITING_CLARIFICATION`, option ids `trailing` — the last 30 / 7 / 365 days — and `calendar` — the period
   before; the singular only, so not „poslední měsíce“), where they used to be unread (or, with a slice trigger, the current
@@ -66,8 +67,8 @@ outside this repo could notice is in.
   is not read as one, and neither is year to date beside another period ("year to date vs last year", "YTD vs the same
   period last year"); a year word
   with no joiner still says its year. A count of weeks or years ("last 6 weeks", „posledních 6 týdnů“) is not read:
-  "last 6 weeks" used to be last week. The quarter table is shared with the conversation reader. Corpus 36 → 108 cases
-  (eval bulk corpus 126 → 198).
+  "last 6 weeks" used to be last week. The quarter table is shared with the conversation reader. Corpus 36 → 109 cases
+  (eval bulk corpus 126 → 199).
   No wire change.
 
 - **chrono — a recognised time phrase is always answered with its interval (TS-1).** A package that declares no

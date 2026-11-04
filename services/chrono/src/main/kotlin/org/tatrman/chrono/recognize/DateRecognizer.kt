@@ -219,7 +219,13 @@ class DateRecognizer {
     /** The fiscal/accounting adjectives alone — used when a trigger supplies the missing scope. */
     private val fiscalWordRe = Regex("""(?:fiscal|financial|fiskaln\w*|financn\w*|ucetni)""")
 
+    /**
+     * "fiscal year 2026" → that fiscal year. A quarter or half of it ("Q4 of fiscal year 2025", "the second half of
+     * fiscal year 2025") is that quarter or half, as "Q4 FY2025" is: this rule gives way, and [numbered] reads it with
+     * the fiscal year's digits as its year (RR14).
+     */
     private fun fiscalYear(n: String): ChronoRecognition? {
+        if (NumberedPeriods.quarters(n).isNotEmpty() || NumberedPeriods.halves(n).isNotEmpty()) return null
         val y =
             fiscalYearRe
                 .find(n)
