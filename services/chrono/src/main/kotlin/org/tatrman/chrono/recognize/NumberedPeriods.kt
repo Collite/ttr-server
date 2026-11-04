@@ -58,6 +58,9 @@ internal object NumberedPeriods {
     private const val CS_YEAR_LOC = YearPhrases.CS_READ_LOC
     private const val CS_IN_YEAR = """\s+v\s+(?:($CS_YEAR_LOC)\s+)?${CS_ADJ}roce\b"""
 
+    /** What may stand between a Czech period and its year in digits: „roku 2025“, „v roce 2025“. */
+    private const val CS_YEAR_BEFORE = """(?:roku\s+|v\s+roce\s+)?"""
+
     /**
      * „poslední měsíc“ in the singular, the adjective's case going with the noun's ([TrailingPeriods]): not *poslední
      * měsíce* (the last months).
@@ -81,12 +84,12 @@ internal object NumberedPeriods {
             Pattern(Regex("""\bq([1-4])\s*[/-]?\s*(\d{4})\b""")),
             // 2025 Q2 · 2025Q2 · 2025-Q2
             Pattern(Regex("""\b(\d{4})\s*[/-]?\s*q([1-4])\b"""), yearFirst = true),
-            // 2. čtvrtletí 2025 · ve 2. fiskálním čtvrtletí roku 2025 · 3. kvartál 2025
-            Pattern(Regex("""\b([1-4])\.\s*$CS_ADJ$CS_QUARTER\s+(?:roku\s+)?(\d{4})\b""")),
+            // 2. čtvrtletí 2025 · ve 2. fiskálním čtvrtletí roku 2025 · 3. kvartál 2025 · 2. čtvrtletí v roce 2025
+            Pattern(Regex("""\b([1-4])\.\s*$CS_ADJ$CS_QUARTER\s+$CS_YEAR_BEFORE(\d{4})\b""")),
             // the second quarter of 2025 · the 2nd quarter in 2025 · the last quarter of 2025
             Pattern(Regex("""\b($EN_ORDINALS|last)\s+$EN_ADJ$EN_QUARTER\s+(?:of\s+|in\s+)?(\d{4})\b""")),
-            // druhé čtvrtletí 2025 · ve druhém čtvrtletí roku 2025 · poslední čtvrtletí 2025
-            Pattern(Regex("""\b($CS_ORDINALS|posledn\w*)\s+$CS_ADJ$CS_QUARTER\s+(?:roku\s+)?(\d{4})\b""")),
+            // druhé čtvrtletí 2025 · ve druhém čtvrtletí roku 2025 · v posledním čtvrtletí v roce 2025
+            Pattern(Regex("""\b($CS_ORDINALS|posledn\w*)\s+$CS_ADJ$CS_QUARTER\s+$CS_YEAR_BEFORE(\d{4})\b""")),
         )
     private val quarterYearless =
         listOf(
@@ -96,8 +99,8 @@ internal object NumberedPeriods {
             Regex("""\b($CS_ORDINALS)\s+$CS_ADJ$CS_QUARTER"""),
             // the last quarter of the year · in the last quarter of the previous year (Bora 2026-11-03: the fourth)
             Regex("""\b(last)\s+$EN_ADJ$EN_QUARTER$EN_OF_YEAR"""),
-            // poslední čtvrtletí roku · v posledním kvartálu loňského roku
-            Regex("""\b(posledn\w*)\s+$CS_ADJ$CS_QUARTER$CS_OF_YEAR"""),
+            // poslední čtvrtletí roku · v posledním kvartálu loňského roku · poslední čtvrtletí v loňském roce
+            Regex("""\b(posledn\w*)\s+$CS_ADJ$CS_QUARTER(?:$CS_OF_YEAR|$CS_IN_YEAR)"""),
         )
 
     private val halfWithYear =
@@ -106,10 +109,10 @@ internal object NumberedPeriods {
             Pattern(Regex("""\bh([12])\s*[/-]?\s*(\d{4})\b""")),
             // 2026 H1 · 2026H1 · 2026-H1
             Pattern(Regex("""\b(\d{4})\s*[/-]?\s*h([12])\b"""), yearFirst = true),
-            // 1. pololetí 2026 · v 1. pololetí roku 2026
-            Pattern(Regex("""\b([12])\.\s*$CS_ADJ$CS_HALF\s+(?:roku\s+)?(\d{4})\b""")),
-            // první pololetí 2026 · ve druhém pololetí roku 2026 · poslední pololetí 2025
-            Pattern(Regex("""\b(prvn\w*|druh\w*|posledn\w*)\s+$CS_ADJ$CS_HALF\s+(?:roku\s+)?(\d{4})\b""")),
+            // 1. pololetí 2026 · v 1. pololetí roku 2026 · v 1. pololetí v roce 2026
+            Pattern(Regex("""\b([12])\.\s*$CS_ADJ$CS_HALF\s+$CS_YEAR_BEFORE(\d{4})\b""")),
+            // první pololetí 2026 · ve druhém pololetí roku 2026 · poslední pololetí v roce 2025
+            Pattern(Regex("""\b(prvn\w*|druh\w*|posledn\w*)\s+$CS_ADJ$CS_HALF\s+$CS_YEAR_BEFORE(\d{4})\b""")),
             // the first half of 2026 · the second half-year of 2025 · the last half of 2025
             Pattern(Regex("""\b(first|second|1st|2nd|last)\s+half(?:[\s-]+year)?\s+(?:of\s+|in\s+)?(\d{4})\b""")),
         )
@@ -120,8 +123,8 @@ internal object NumberedPeriods {
             Regex("""\b(prvn\w*|druh\w*)\s+$CS_ADJ$CS_HALF"""),
             // the second half of last year · the last half of the year (Bora 2026-11-04: the second)
             Regex("""\b(first|second|1st|2nd|last)\s+half(?:[\s-]+year)?$EN_OF_YEAR"""),
-            // poslední pololetí roku · v posledním pololetí loňského roku
-            Regex("""\b(posledn\w*)\s+$CS_ADJ$CS_HALF$CS_OF_YEAR"""),
+            // poslední pololetí roku · v posledním pololetí loňského roku · poslední pololetí v loňském roce
+            Regex("""\b(posledn\w*)\s+$CS_ADJ$CS_HALF(?:$CS_OF_YEAR|$CS_IN_YEAR)"""),
         )
 
     private val monthWithYear =
@@ -129,7 +132,7 @@ internal object NumberedPeriods {
             // the last month of 2025
             Pattern(Regex("""\b(last\s+${EN_ADJ}month)\s+(?:of|in)\s+(\d{4})\b""")),
             // poslední měsíc roku 2025 · v posledním měsíci roku 2025 · poslední měsíc v roce 2025
-            Pattern(Regex("""\b($CS_LAST_MONTH)\s+(?:roku\s+|v\s+roce\s+)?(\d{4})\b""")),
+            Pattern(Regex("""\b($CS_LAST_MONTH)\s+$CS_YEAR_BEFORE(\d{4})\b""")),
         )
     private val monthYearless =
         listOf(

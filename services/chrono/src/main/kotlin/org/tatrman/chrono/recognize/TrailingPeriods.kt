@@ -36,12 +36,17 @@ internal object TrailingPeriods {
                 """|poslednim\s+(mesici|mesicem|tydnu|tydnem|roce|rokem)|the\s+last\s+(month|week|year))\b""",
         )
 
-    /** Every trailing phrase in the folded [n], in the order they stand. */
+    /**
+     * Every trailing phrase in the folded [n], in the order they stand. The last month of a year hides only its own
+     * "the last month": in "the last month of the last year" the year is still the trailing one, which no reading
+     * settles, as in "the last quarter of the last year" (RR16).
+     */
     fun findAll(n: String): List<Trailing> {
-        val partOf = PartOfPeriods.findAll(n) + NumberedPeriods.lastMonths(n).map { it.range }
+        val partOf = PartOfPeriods.findAll(n)
+        val lastMonths = NumberedPeriods.lastMonths(n).map { it.range.first }
         return re
             .findAll(n)
-            .filterNot { m -> partOf.any { it.overlaps(m.range) } }
+            .filterNot { m -> partOf.any { it.overlaps(m.range) } || lastMonths.any { it in m.range } }
             .map { m ->
                 val noun = m.groupValues.drop(1).first { it.isNotEmpty() }
                 val unit =

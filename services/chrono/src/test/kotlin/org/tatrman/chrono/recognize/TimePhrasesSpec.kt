@@ -669,6 +669,27 @@ class TimePhrasesSpec :
             rec.recognize("the first half", ref).shouldBeNull()
         }
 
+        // review-215 RR16: the last quarter, half and month of a year read the same forms.
+        "the last quarter, half and month of a year read 'of the last year' alike, and „v (loňském) roce“ alike" {
+            for (span in listOf(
+                "the last month of the last year",
+                "the last quarter of the last year",
+                "the last half of the last year",
+            )) {
+                withClue(span) { rec.read(span, ref).shouldBeNull() }
+            }
+            for ((span, code) in listOf(
+                "poslední čtvrtletí v loňském roce" to "2025Q4",
+                "v posledním čtvrtletí v roce 2025" to "2025Q4",
+                "poslední pololetí v loňském roce" to "2025H2",
+                "poslední pololetí v roce 2025" to "2025H2",
+                "poslední měsíc v loňském roce" to "202512",
+                "poslední měsíc v roce 2025" to "202512",
+            )) {
+                withClue(span) { read(span).periodCode shouldBe code }
+            }
+        }
+
         "after the last month of a year, the previous month counts from its December" {
             withClue("a December with no year, later than the reference's month, is a December nobody settled") {
                 rec
