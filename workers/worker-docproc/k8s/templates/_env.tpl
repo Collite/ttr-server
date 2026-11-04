@@ -21,7 +21,7 @@
 - name: GATEWAY_URL
   value: {{ .Values.gatewayUrl | quote }}
 - name: DOCPROC_PACK_PATH
-  value: {{ .Values.packPath | quote }}
+  value: {{ if include "tatrman-service.packEnabled" . }}{{ .Values.pack.path | quote }}{{ else }}{{ .Values.packPath | quote }}{{ end }}
 - name: DOCPROC_TELEMETRY_ENABLED
   value: {{ .Values.telemetry.enabled | quote }}
 - name: OTEL_EXPORTER_OTLP_ENDPOINT

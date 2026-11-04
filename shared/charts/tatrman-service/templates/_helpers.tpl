@@ -121,6 +121,16 @@ rule packs, and coupling them would make every list update a pack rollout.
 {{- if and .Values.lists .Values.lists.configMapName }}true{{- end -}}
 {{- end -}}
 {{/*
+DX-P3 T8f — the DOMAIN PACK, an image rather than a configmap: an initContainer runs `pack.image`
+and copies its `/pack` into an emptyDir, which the container mounts read-only at `pack.path`
+(worker-docproc reads its manifests, rules, gazetteers and `pack:` chunkers there; kantheon's
+docwh-pipeline mounts the same image the same way). Here, not in the module chart, for the reason
+the ⚑ above gives: charon overrides the item hooks. OFF unless `pack.image` is set.
+*/}}
+{{- define "tatrman-service.packEnabled" -}}
+{{- if and .Values.pack .Values.pack.image }}true{{- end -}}
+{{- end -}}
+{{/*
 IE-P2·S2.3 — the OVERLAY CONFIG FRAGMENT, the fourth contributor, and the mechanism
 `services/dispatch/src/main/resources/application.conf` has been asking for since the
 2026-07-19 TPC-DS collision: *"a future multi-connection deployment that genuinely needs
@@ -229,7 +239,7 @@ first element is always `lexiconPath`.
 {{- end -}}
 {{- define "tatrman-service.volumeMounts" -}}
 {{- $extra := include "tatrman-service.extraVolumeMounts" . }}
-{{- $any := or (include "tatrman-service.lexiconEnabled" .) (include "tatrman-service.packsEnabled" .) (include "tatrman-service.listsEnabled" .) (include "tatrman-service.configFragmentEnabled" .) }}
+{{- $any := or (include "tatrman-service.lexiconEnabled" .) (include "tatrman-service.packsEnabled" .) (include "tatrman-service.listsEnabled" .) (include "tatrman-service.configFragmentEnabled" .) (include "tatrman-service.packEnabled" .) }}
 {{- if or $any (trim $extra) }}
           volumeMounts:
 {{- $lexRoot := . }}
@@ -253,12 +263,17 @@ first element is always `lexiconPath`.
               mountPath: {{ .Values.configFragment.mountPath | default "/etc/tatrman/conf.d" }}
               readOnly: true
 {{- end }}
+{{- if include "tatrman-service.packEnabled" . }}
+            - name: pack
+              mountPath: {{ .Values.pack.path | default "/pack" }}
+              readOnly: true
+{{- end }}
 {{- with $extra }}{{ . }}{{- end }}
 {{- end }}
 {{- end -}}
 {{- define "tatrman-service.volumes" -}}
 {{- $extra := include "tatrman-service.extraVolumes" . }}
-{{- $any := or (include "tatrman-service.lexiconEnabled" .) (include "tatrman-service.packsEnabled" .) (include "tatrman-service.listsEnabled" .) (include "tatrman-service.configFragmentEnabled" .) }}
+{{- $any := or (include "tatrman-service.lexiconEnabled" .) (include "tatrman-service.packsEnabled" .) (include "tatrman-service.listsEnabled" .) (include "tatrman-service.configFragmentEnabled" .) (include "tatrman-service.packEnabled" .) }}
 {{- if or $any (trim $extra) }}
       volumes:
 {{- range $i, $name := (include "tatrman-service.lexiconConfigMaps" . | fromJsonArray) }}
@@ -281,8 +296,28 @@ first element is always `lexiconPath`.
           configMap:
             name: {{ include "tatrman-service.configFragmentName" . }}
 {{- end }}
+{{- if include "tatrman-service.packEnabled" . }}
+        - name: pack
+          emptyDir:
+            sizeLimit: 64Mi
+{{- end }}
 {{- with $extra }}{{ . }}{{- end }}
 {{- end }}
 {{- end -}}
-{{/* Optional pod initContainers override (renders the whole `initContainers:` block, or nothing). */}}
-{{- define "tatrman-service.initContainers" -}}{{- end -}}
+{{/* Optional pod initContainers override (renders the whole `initContainers:` block, or nothing). The library's
+own is the domain pack's copy (packEnabled above); a chart that overrides this define renders its own block instead. */}}
+{{- define "tatrman-service.initContainers" -}}
+{{- if include "tatrman-service.packEnabled" . }}
+      initContainers:
+        - name: pack
+          image: {{ .Values.pack.image | quote }}
+          imagePullPolicy: {{ .Values.pack.pullPolicy | default "IfNotPresent" }}
+          command: ["sh", "-c", "cp -R /pack/. /mnt/pack/"]
+          volumeMounts:
+            - name: pack
+              mountPath: /mnt/pack
+          resources:
+            requests: { cpu: 10m, memory: 16Mi }
+            limits: { cpu: 100m, memory: 64Mi }
+{{- end }}
+{{- end -}}

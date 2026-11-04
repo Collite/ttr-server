@@ -54,7 +54,7 @@ def test_rows_rerun_candidate_and_rollback(world_db: str) -> None:
     assert {r["rating"] for r in initial} == {2, 5}
     assert all(r["subject_id"] == "HL-1001" for r in initial)
     second = etl.run(etlctx)
-    assert second.sections["outputs"]["recordDiff"] == {"added": [], "removed": [], "changed": []}
+    assert json.loads(second.sections["outputs"]["recordDiffJson"]) == {"added": [], "removed": [], "changed": []}
     assert first.sections["outputs"]["recordRows"] == second.sections["outputs"]["recordRows"]
     # Candidate computes changed data, stores it only in the artefact, leaves ACTIVE rows byte-identical.
     a = etlctx.annotations[0].model_copy(deep=True)
@@ -69,8 +69,8 @@ def test_rows_rerun_candidate_and_rollback(world_db: str) -> None:
     with psycopg.connect(world_db, row_factory=dict_row) as conn:
         before = conn.execute("SELECT * FROM review ORDER BY row_id").fetchall()
     planned = etl.run(candidate)
-    assert planned.sections["outputs"]["recordDiff"]["changed"]
-    assert planned.sections["outputs"]["candidateRows"]
+    assert json.loads(planned.sections["outputs"]["recordDiffJson"])["changed"]
+    assert json.loads(planned.sections["outputs"]["candidateRowsJson"])
     with psycopg.connect(world_db, row_factory=dict_row) as conn:
         assert conn.execute("SELECT * FROM review ORDER BY row_id").fetchall() == before
     # A second row insert fails after the subject delete and first insert: the transaction restores everything.
@@ -133,7 +133,7 @@ def test_active_fail_closed_candidate_retains_rows(world_db: str) -> None:
             etl.run(bad)
         assert caught.value.diagnostics == [{"annotationId": a.id, "rule": "record-etl/unresolved-ref"}]
         candidate = etl.run(replace(bad, item=bad.item.model_copy(update={"visibility": RunVisibility.CANDIDATE})))
-        assert len(candidate.verdicts) == 1 and len(candidate.sections["outputs"]["candidateRows"]) == 1
+        assert len(candidate.verdicts) == 1 and len(json.loads(candidate.sections["outputs"]["candidateRowsJson"])) == 1
         with psycopg.connect(world_db, row_factory=dict_row) as conn:
             assert conn.execute("SELECT * FROM review ORDER BY row_id").fetchall() == before
         assert not etl.run(ctx).verdicts
@@ -206,11 +206,11 @@ def test_diff_ignores_representation_and_provenance(world_db: str, monkeypatch: 
         new.append(a)
     candidate = replace(ctx, annotations=new, item=ctx.item.model_copy(update={"visibility": RunVisibility.CANDIDATE}))
     try:
-        assert etl.run(candidate).sections["outputs"]["recordDiff"]["changed"] == []
+        assert json.loads(etl.run(candidate).sections["outputs"]["recordDiffJson"])["changed"] == []
         p = new[0].payload()
         p["attributes"]["rating"] = 3
         new[0].payload_json = payload_text(p)
-        assert len(etl.run(candidate).sections["outputs"]["recordDiff"]["changed"]) == 1
+        assert len(json.loads(etl.run(candidate).sections["outputs"]["recordDiffJson"])["changed"]) == 1
     finally:
         with psycopg.connect(world_db) as conn:
             conn.execute("DELETE FROM review")

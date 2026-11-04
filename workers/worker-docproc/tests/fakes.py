@@ -52,9 +52,13 @@ class FakeWarehouse:
                 continue
             if req.types and a.type not in req.types:
                 continue
-            if req.active_only is not False and self.visibility.get(a.run_id, "ACTIVE") != "ACTIVE":
+            live = self.visibility.get(a.run_id, "ACTIVE") == "ACTIVE"
+            if req.active_only is not False and not live:
                 if not req.generation or self.generations.get(a.run_id) != req.generation:
                     continue
+            # The store's generationProducers (P2 S2.3): a re-run family's live output gives way to the generation's.
+            if live and req.generation and a.producer in req.generation_producers:
+                continue
             yield a.model_copy(deep=True)
 
     def list_annotations(self, req: ListAnnotationsRequest) -> ListAnnotationsPage:

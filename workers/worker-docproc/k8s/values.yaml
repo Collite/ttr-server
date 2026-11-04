@@ -20,6 +20,14 @@ nlpGrpc: ""
 lexmatcherGrpc: ""
 gatewayUrl: ""
 packPath: ""
+# The domain pack as an image (DX-P3 T8f): the library's initContainer copies the image's /pack into an emptyDir,
+# mounted read-only at `pack.path` — the image docwh-pipeline mounts (ghcr.io/collite/dx-pack-<pack>:<version>). Set,
+# it is DOCPROC_PACK_PATH; unset, `packPath` names a directory the deployment provides itself. Drain the hosted
+# families before changing it (review-182).
+pack:
+  image: ""
+  pullPolicy: IfNotPresent
+  path: /pack
 # Only record-etl pools need this world-DB connection; never an inline value.
 worldDb:
   secretName: ""

@@ -21,6 +21,7 @@ from tests.conftest import WORKER
 from tests.fakes import PACK, FakeWarehouse, PackManager
 from tests.fakes_nlp import recorded_nlp
 from tests.pack import DOCS, bundle_of, context, units_of
+from tests.protocol_members import unknown_members
 
 pytestmark = pytest.mark.component
 
@@ -120,6 +121,7 @@ def test_mini_rag_worker_half(
                 "SELECT protocol FROM pipeline.run_artefacts WHERE run_id=%s", (result.run_id,)
             ).fetchone() or [None]
         assert protocol is not None
+        assert unknown_members(protocol) == []
         nlp_section = next(s["nlpCalls"] for s in protocol["turns"][0]["sections"] if s["key"] == "nlp-calls")
         if result.usage.nlp_calls:
             assert nlp_section["used"] and all(ev["model"] for ev in nlp_section["used"])

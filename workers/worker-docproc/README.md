@@ -12,9 +12,12 @@ in-memory fakes until P1/P2 supply the services and phase certification runs.
 The worker polls a family's `_hi` queue first, fetches units/annotations by id,
 runs its immutable processor version under its timeout, validates the outputs and
 loads one annotation batch through the warehouse API. Failed postconditions drop
-the offending output and produce `Verdict` annotations. A redelivery after the load
-finds the same run's ids and avoids a second load. The protocol artefact, completion
-and queue acknowledgement commit in one pipeline-DB transaction. A unique artefact
+the offending output and produce `Verdict` annotations. Before that load the kind's
+protocol sections and its completion are staged in `pipeline.run_sections` (review-182
+C3): a redelivery after the load finds the same run's ids, avoids a second load and
+writes the artefact from the staged copy (`errors.recovery: sections-staged`). The
+protocol artefact, completion, the staged row's delete and queue acknowledgement
+commit in one pipeline-DB transaction. A unique artefact
 row also suppresses duplicate completions for duplicate deliveries of a run.
 
 Kinds run synchronously on the main thread on Linux/macOS. A POSIX interval timer
@@ -42,19 +45,22 @@ after the first delivery. Transport errors, store 401/429/5xx and PostgreSQL
 operational failures stay leased for retry. Permanent processor lookup failures
 archive with a FAILED completion; permanent annotation-load refusals fail once.
 `NLP_GRPC` is required when an NLP kind runs (gRPC, normally `nlp:7271`).
-`DOCPROC_PACK_PATH` names the mounted pack for classify gazetteers and `pack:` chunkers.
+`DOCPROC_PACK_PATH` names the mounted pack for classify gazetteers and `pack:` chunkers. The
+chart's `pack.image` mounts a pack image (its `/pack` copied into an emptyDir by an initContainer,
+read-only at `pack.path`), as docwh-pipeline mounts the same image.
 `LEXMATCHER_GRPC` is required for lexicon linking (normally `fuzzy:7266`); the world
 connection for record-etl follows `TTR_CONN_EXTRACT_RECORDS`. Gateway settings remain P4-owned. Connection strings are excluded from configuration repr.
 
 Service identity uses `DOCPROC_SERVICE_TOKEN`, or the file named by
 `DOCPROC_SERVICE_TOKEN_FILE`; no OBO credentials. A notebook query is omitted when
 none is supplied. Candidate inputs are active annotations plus the current
-generation; the `generation` load/read seam is recorded in DX contracts §1.4 and
-must be implemented by P1 before certification.
+generation, less the live output of the families the generation re-runs
+(`consume.generationProducers`, forwarded to `GET /annotations`; DX contracts §1.4).
 
 HTTP port `7310` exposes `/health`, `/ready`, `/status`, `/metrics`. Readiness requires
 successful bootstrap (hosted manifests and mounted-pack integrity) and a successful
-pipeline-DB `SELECT 1`. Registry versions are loaded only from each item's pinned
+pipeline-DB `SELECT 1`. Bootstrap refuses a pipeline DB without `pipeline.run_sections`:
+docwh-pipeline 0.11.14 (its V6) migrates before docproc 0.11.1 starts. Registry versions are loaded only from each item's pinned
 plan. Drain the families before switching the mounted pack. Telemetry defaults
 off; enable `DOCPROC_TELEMETRY_ENABLED` with `OTEL_EXPORTER_OTLP_ENDPOINT` to export
 the per-item `docproc.run` span and shared platform telemetry.
@@ -109,10 +115,14 @@ PYTHONPATH=. uv run --locked python scripts/record_nlp.py --target 127.0.0.1:172
 ```
 
 The processor protocol follows DX's summary spine (ids/hashes, no unit text).
-`tests/fixtures/protocol/noop.json` is a local canonical golden; P2's processor proto
-members and `runArtefact.processor.json` strict fixture remain an explicit exit gate.
-The pipeline-owned `run_artefacts` table is created only by a SQL fixture in tests;
-production schema migration belongs to P2 S2.2.
+`tests/fixtures/protocol/noop.json` is a local canonical golden. The shared
+`tests/fixtures/contracts/runArtefact.processor.json` (kantheon parses it with the strict
+proto parser) is reproduced byte for byte by the writer, and every runtime test checks its
+artefact against the section members of `protocol.proto` (`tests/protocol_members.py`). The
+pack's free-form evidence rides as JSON strings: `decisions.recordKeysJson`,
+`outputs.recordDiffJson`, `outputs.candidateRowsJson`, `errors.diagnosticsJson`.
+The pipeline-owned `run_artefacts` and `run_sections` tables are created only by a SQL
+fixture in tests; their migrations are docwh-pipeline's.
 
 NLP/fuzzy/common gRPC stubs are generated from this repository's shared `.proto`
 tree into the private `docproc._generated` namespace. CI regenerates them with the
@@ -218,10 +228,10 @@ labelled VERBOSITY_FULL and need P2's storage/redaction floor before certificati
 Fresh runs emit RecordRowRef pointers for lineage. `row_id` hashes the canonical
 JSON array `[entity, subject, recordKey]` (SHA-256). Diff comparison uses typed
 numeric/UTC instant equality and excludes run provenance (`annotation_refs`,
-`consolidation_run`). Load-before-ack recovery restores stored annotation ids/status,
-but kind sections (`recordRows`, link candidates, consolidate recordKeys/redirects,
-and NLP evidence) can be lost; `errors.recovery: sections-lost` marks that path
-until P2 supplies durable sections.
+`consolidation_run`). Load-before-ack recovery restores the staged sections
+(`recordRows`, link candidates, consolidate recordKeys/redirects, NLP evidence) and the
+staged status. A run loaded before 0.11.1 has no staged row: it recovers its stored ids and
+an inferred status, and `errors.recovery: sections-lost` marks it.
 The legacy generated review_id is a surrogate; row_id is the stable identity.
 
 Each item requests its plan-pinned Graph from `GET /v1/plans/{planId}/graph` and

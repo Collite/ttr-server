@@ -92,9 +92,12 @@ def test_service_identity_paging_and_generation(monkeypatch: pytest.MonkeyPatch)
     client.get_unit(101)
     assert "notebookId" not in unit_route.calls.last.request.url.params
     assert unit_route.calls.last.request.headers["authorization"] == "Bearer service-secret"
-    assert [a.id for a in client.iter_annotations(ListAnnotationsRequest(generation="g1"))] == [1, 2]
+    request = ListAnnotationsRequest(generation="g1", generation_producers=["cz-mentions", "link-mentions"])
+    assert [a.id for a in client.iter_annotations(request)] == [1, 2]
     assert listing.calls.last.request.url.params["pageToken"] == "next"
     assert listing.calls.last.request.url.params["generation"] == "g1"
+    # Repeated keys; the store reads them as it reads `types` (DxRoutes GET /annotations).
+    assert listing.calls.last.request.url.params.get_list("generationProducers") == ["cz-mentions", "link-mentions"]
     assert "activeOnly" not in listing.calls.last.request.url.params
 
 

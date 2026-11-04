@@ -20,7 +20,7 @@ from docproc.kinds.consolidate import digest, record_decision, subject_scope
 from docproc.kinds.rule_dsl import pack_file
 from docproc.runtime.predicate import _MISSING, path_value
 from docproc.runtime.registry import KindRefused, KindResult, RunContext, TypeRegistryClient
-from docproc.sdk.models import ListAnnotationsRequest, RunVisibility
+from docproc.sdk.models import ListAnnotationsRequest, RunVisibility, json_text
 from docproc.sdk.store import Warehouse
 
 
@@ -223,9 +223,9 @@ class RecordEtl:
                 result.sections = {
                     "outputs": {
                         "recordRows": refs,
-                        "recordDiff": diff,
+                        "recordDiffJson": json_text(diff),
                         **(
-                            {"candidateRows": [json_row(r) for r in rows]}
+                            {"candidateRowsJson": json_text([json_row(r) for r in rows])}
                             if ctx.item.visibility != RunVisibility.ACTIVE
                             else {}
                         ),
