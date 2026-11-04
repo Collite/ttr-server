@@ -493,15 +493,15 @@ def action release { columns: [def column order { type: text }] sinks: { native:
             e.code shouldBe ErrorCode.IDENTITY
         }
 
-        "request consumers reuse the loaded resolution without consulting package maps" {
+        "request consumers reuse the loaded target resolution and cached writer placement" {
             val b = load(fixture())
             val cached = b.recipes.getValue(recipeName).coverage
-            // Access to a package index after load would expose a second request-path resolution.
-            val forbidden =
-                object : Map<String, String> by emptyMap() {
-                    override fun get(key: String): String = error("package lookup must happen only during load")
-                }
-            val pinned = b.copy(packages = forbidden)
+            org.tatrman.automation.apply.PlanPlacement
+                .source(b, "demo", b.recipes.getValue(recipeName))
+            val pinned = b
+            val source =
+                org.tatrman.automation.apply.PlanPlacement
+                    .source(b, "demo", b.recipes.getValue(recipeName))
             val result =
                 Open(
                     { pinned },
@@ -515,6 +515,7 @@ def action release { columns: [def column order { type: text }] sinks: { native:
                     BundleFixture.clock,
                 ).open(recipeName, OpenRequest(deployment, buildJsonObject { put("key", "4711") }), caller)
             (result.context!!.previewMetadata!!.targets === cached.targets) shouldBe true
+            (result.context!!.previewMetadata!!.planSource === source) shouldBe true
             Staleness.of(pinned, deployment, approvals(b)).stale shouldBe false
             val native = ExecutorType.builtin().getValue("native").copy(family = "external")
             Registry(

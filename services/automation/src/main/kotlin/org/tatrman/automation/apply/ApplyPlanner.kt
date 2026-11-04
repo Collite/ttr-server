@@ -25,6 +25,7 @@ data class PreviewMetadata(
     val entities: List<Entity>,
     val targets: Map<String, Map<String, org.tatrman.ttrp.resolve.TargetResolution.Resolved>> = emptyMap(),
     val isAutomationStdlib: ((org.tatrman.ttr.metadata.model.ModelObject) -> Boolean)? = null,
+    val planSource: PlanSource? = null,
 )
 
 /** Preview synthesis over verified staged results and the runner's explicitly governed obligation snapshot. */
@@ -77,7 +78,7 @@ class ApplyPlanner(
         val batch = UUID.nameUUIDFromBytes("automation/preview/${context.id}".toByteArray(Charsets.UTF_8)).toString()
         if (decision == null) {
             require(recipe.wiring.isEmpty()) { "action wiring requires a decision" }
-            return PreviewPlan(batch, context.id.toString(), rows, actions)
+            return PreviewPlan(batch, context.id.toString(), rows, actions, source = metadata.planSource)
         }
         val outputs = runner.completedIsland(decision).associateBy { it.output.port }
         val tables = outputs.mapValues { (_, output) -> runner.readStaged(output) }
@@ -270,11 +271,14 @@ class ApplyPlanner(
                     identities,
                 )
             }
+        // Normalised tuples compare identities; emitted keys keep the verdict or candidate row representation.
+        val routed = mutableMapOf<List<Any>, JsonObject>()
         for ((route, table, routeKeys, details, selected) in preparedRoutes) {
             for ((index, values) in table.rows.withIndex()) {
                 currentCoroutineContext().ensureActive()
                 val record = table.columns.mapIndexed { i, column -> column.name to scalar(values[i]) }.toMap()
                 val key = JsonObject(keys.associateWith { requireNotNull(record[it]) })
+                routed.putIfAbsent(routeKeys[index], key)
                 val common =
                     mapOf(
                         "run" to scalar(context.id),
@@ -395,7 +399,128 @@ class ApplyPlanner(
                 }
             }
         }
-        return PreviewPlan(batch, context.id.toString(), rows, actions)
+        val candidates = runner.readStaged(runner.completedIsland(requireNotNull(roles.candidates)).single())
+        val candidateIndices = keys.map { name -> candidates.columns.indexOfFirst { it.name == name } }
+        val candidateKeys =
+            candidates
+                .keyValues(keys)
+                .zip(candidates.rows)
+                .map { (normal, values) ->
+                    routed[normal] ?: run {
+                        val raw = keys.mapIndexed { i, name -> name to scalar(values[candidateIndices[i]]) }
+                        JsonObject(raw.toMap())
+                    }
+                }.distinct()
+                .sortedBy(ObligationKeys::canonicalText)
+        return PreviewPlan(
+            batch,
+            context.id.toString(),
+            rows,
+            actions,
+            source = metadata.planSource,
+            candidateKeys = candidateKeys,
+        )
+    }
+
+    /**
+     * Contracts §4, D-142: a pure lowering of already resolved preview rows. No lookup, SQL or write.
+     * When several actions consume the same detail context, its journal retains the union (largest limit).
+     * Individual action refs retain their own limit; a single marker records omitted detail rows.
+     * One current delete per candidate, bounded by the deployment read ceiling; keys outside the run stay untouched.
+     * S2.1 plans no state_history rows; S2.2 must pin their own unbound placement before planning them.
+     */
+    fun plan(preview: PreviewPlan): PreviewPlan {
+        val source = preview.source ?: unsupported("apply planning inputs were not pinned")
+
+        val schema = source.verdict
+        val verdict = schema?.let { entityName(it.entity) }
+        val detail = schema?.detail?.let(::entityName)
+        val current = schema?.current?.let(::entityName)
+        val selected = mutableListOf<ApplyRow>()
+        val oldSeq = mutableMapOf<Int, Int>()
+        val details =
+            preview.rows.filter { it.entity == detail }.groupBy {
+                listOf(it.key, it.row?.get("route"), it.row?.get("context"))
+            }
+        val retained = mutableSetOf<Int>()
+        val markers = mutableMapOf<Int, ApplyRow>()
+        for ((identity, rows) in details) {
+            val (key, route, context) = identity
+            val refs =
+                preview.actions
+                    .filter { it.key == key && JsonPrimitive(it.route) == route }
+                    .flatMap { action ->
+                        action.arguments.values.flatMap { value ->
+                            ((value as? JsonObject)?.get("refs") as? JsonArray).orEmpty().map { it.jsonObject }
+                        }
+                    }.filter { it["context"] == context }
+            val real = rows.filter { it.row?.get("truncated") != JsonPrimitive(true) }
+            val limit = refs.maxOfOrNull { it.getValue("limit").jsonPrimitive.int } ?: real.size
+            retained += real.take(limit).map { it.seq }
+            if (real.size > limit || rows.any { it.row?.get("truncated") == JsonPrimitive(true) }) {
+                val anchor = rows.last()
+                markers[anchor.seq] =
+                    anchor.copy(
+                        row =
+                            JsonObject(
+                                requireNotNull(anchor.row).filterKeys {
+                                    it in key!!.jsonObject.keys || it in setOf("run", "route", "context")
+                                } +
+                                    mapOf(
+                                        "row_no" to JsonPrimitive(minOf(limit, real.size) + 1),
+                                        "truncated" to JsonPrimitive(true),
+                                    ),
+                            ),
+                    )
+            }
+        }
+        for (row in preview.rows) {
+            if (row.entity in setOf(verdict, detail) && row.row?.get("route") == JsonPrimitive("none")) continue
+            if (row.entity != detail || row.seq in retained) {
+                oldSeq[row.seq] = selected.size + 1
+                selected += row.copy(seq = selected.size + 1)
+            }
+            markers[row.seq]?.let { selected += it.copy(seq = selected.size + 1) }
+        }
+        if (current != null) {
+            val verdicts = selected.filter { it.entity == verdict }
+            val byKey = verdicts.groupBy { requireNotNull(it.key) }
+            if (!preview.candidateKeys.containsAll(byKey.keys)) unsupported("verdict key outside the run's candidates")
+            for (key in preview.candidateKeys) {
+                val rows = byKey[key].orEmpty()
+                selected += ApplyRow(selected.size + 1, current, "delete", key)
+                rows.forEach { selected += it.copy(seq = selected.size + 1, entity = current) }
+            }
+        }
+        val groups =
+            selected
+                .groupBy { row ->
+                    val owner =
+                        if (row.entity == detail ||
+                            row.entity == current
+                        ) {
+                            requireNotNull(verdict)
+                        } else {
+                            row.entity
+                        }
+                    val storage =
+                        if (owner == verdict) {
+                            source.ledgerStorage
+                        } else if (owner == "er.entity.obligation") {
+                            source.obligationStorage ?: unsupported("obligation storage was not pinned")
+                        } else {
+                            source.storages[owner] ?: unsupported("apply entity storage was not pinned: $owner")
+                        }
+                    storage to owner
+                }.map { (key, rows) -> ApplyGroup(key.first, key.second, rows) }
+        return preview.copy(
+            rows = selected,
+            actions =
+                preview.actions.map { action ->
+                    action.copy(batchRows = action.batchRows.mapNotNull { oldSeq[it] })
+                },
+            groups = groups,
+        )
     }
 
     internal fun effects(

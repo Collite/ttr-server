@@ -57,6 +57,8 @@ class Bundles(
     private val book: BundleBook,
     private val clock: Clock = Clock.systemUTC(),
     private val refreshed: (outcome: String) -> Unit = {},
+    /** Validated served-bundle DDL runs before publication; preview bundles get no tables (P4). */
+    private val prepare: (Bundle) -> Unit = {},
 ) {
     @Volatile
     var served: Bundle? = null
@@ -152,6 +154,12 @@ class Bundles(
                     buildJsonObject { put("diagnostics", JsonArray(e.diagnostics.map { JsonPrimitive(it) })) },
                 )
             }
+        try {
+            if (kind == BundleKind.SERVED) prepare(bundle)
+        } catch (e: AutomationException) {
+            if (kind == BundleKind.SERVED) refreshFailed = true
+            throw e
+        }
         book.record(bundle)
         when (kind) {
             BundleKind.SERVED -> {

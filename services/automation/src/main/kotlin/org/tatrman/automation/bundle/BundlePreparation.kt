@@ -14,6 +14,9 @@ class BundlePreparation internal constructor(
     private val model: Model,
     private val packages: Map<String, String>,
     private val loadedAt: Instant,
+    /** Instance-scoped plan placement boundary; fatal Errors escape without entering the cache. */
+    internal val placePlan: (Bundle, String, LoadedRecipe) -> org.tatrman.automation.apply.PlanSource =
+        org.tatrman.automation.apply.PlanPlacement::place,
     /** Instance-scoped placement boundary; production always uses the public compiler adapter. */
     internal val placeObligation: (Bundle, String) -> String =
         org.tatrman.automation.apply.PreviewObligationStorage::place,
@@ -28,6 +31,8 @@ class BundlePreparation internal constructor(
     internal val packageOf: (ModelObject) -> String = { obj -> packages[obj.sourceFile].orEmpty() }
     internal val index by lazy { ModelIndex(snapshot, packageOf) }
     internal val calendarPlans = ConcurrentHashMap<String, Result<org.tatrman.automation.apply.CalendarPlan>>()
+    internal val planSources =
+        ConcurrentHashMap<Pair<String, String>, Result<org.tatrman.automation.apply.PlanSource>>()
     internal val obligationPlacements = ConcurrentHashMap<String, Result<String>>()
     internal val warnedObligationPlacements: MutableSet<String> = ConcurrentHashMap.newKeySet()
 }

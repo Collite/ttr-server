@@ -1,0 +1,8 @@
+// Writer placement uses the physical package's hosts, as the real hartland world does.
+package hartland
+model binding
+
+def er2db_entity order_map { entity: er.entity.order, target: { table: db.dbo.sales_order } }
+def er2db_attribute order_key_map { attribute: er.entity.order.order_number, target: { column: db.dbo.sales_order.order_number } }
+def er2db_entity line_map { entity: er.entity.return_request_line, target: { table: db.dbo.return_request_line } }
+def er2db_attribute line_key_map { attribute: er.entity.return_request_line.line_id, target: { column: db.dbo.return_request_line.line_id } }

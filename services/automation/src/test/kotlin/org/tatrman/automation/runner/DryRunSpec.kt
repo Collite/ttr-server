@@ -2340,6 +2340,78 @@ class DryRunSpec :
             }
         }
 
+        "numeric candidate keys keep their raw JSON and retain routed current rows through preview" {
+            supervisorScope {
+                val original = previewRecipe().withWiring(emptyList())
+                val schema = original.recipe.verdictSchema!!
+                val recipe =
+                    original.recipe.copy(
+                        verdictSchema =
+                            schema.copy(
+                                columns =
+                                    schema.columns.map { column ->
+                                        if (column["name"] == JsonPrimitive("order_number")) {
+                                            JsonObject(column + ("type" to JsonPrimitive("int")))
+                                        } else {
+                                            column
+                                        }
+                                    },
+                            ),
+                    )
+                val loaded =
+                    original.copy(
+                        recipe = recipe,
+                        manifest =
+                            original.manifest.copy(
+                                recipe = recipe,
+                                islands =
+                                    original.manifest.islands.map { island ->
+                                        island.copy(
+                                            outputs =
+                                                island.outputs.map { output ->
+                                                    output.copy(
+                                                        columns =
+                                                            output.columns.map { column ->
+                                                                if (column.name ==
+                                                                    "order_number"
+                                                                ) {
+                                                                    column.copy(type = "int")
+                                                                } else {
+                                                                    column
+                                                                }
+                                                            },
+                                                    )
+                                                },
+                                        )
+                                    },
+                            ),
+                    )
+                val metadata =
+                    legacyPreviewMetadata(BundleFixture.load()).copy(
+                        planSource = PlanSource(recipe.verdictSchema, emptyMap(), "automation_db"),
+                    )
+                val f = PreviewFixture(this, loaded, metadata, orderNumbers = listOf(4710, 4712, 4720))
+                f.runner.use { runner ->
+                    runner.evaluate()
+                    val current =
+                        ApplyPlanner(BundleFixture.clock).plan(f.plan!!).rows.filter {
+                            it.entity == "er.entity.release_order_verdict_current"
+                        }
+                    current.filter { it.op == "delete" }.map { it.key.toString() } shouldBe
+                        listOf(
+                            """{"order_number":4710,"tenant":"a"}""",
+                            """{"order_number":4712,"tenant":"a"}""",
+                            """{"order_number":4720,"tenant":"b"}""",
+                        )
+                    current.filter { it.op == "insert" }.map { it.key.toString() } shouldBe
+                        listOf(
+                            """{"order_number":4710,"tenant":"a"}""",
+                            """{"order_number":4712,"tenant":"a"}""",
+                        )
+                }
+            }
+        }
+
         "reads-only evaluation leaves an empty preview without manufacturing verdict or action rows" {
             supervisorScope {
                 val original = previewRecipe()
@@ -2598,6 +2670,7 @@ private class PreviewFixture(
     decisionWarnings: Set<String> = emptySet(),
     filterLookup: Boolean = false,
     readCeiling: Int = 100_000,
+    orderNumbers: List<Any> = listOf("4711", "4712", "4713"),
 ) {
     val reads = AtomicInteger()
     val obligationReads = mutableListOf<DoorRead>()
@@ -2675,7 +2748,17 @@ private class PreviewFixture(
                         }
                     }
                 ReadResult(
-                    Table(read.columns, rows),
+                    Table(
+                        read.columns,
+                        rows.map { row ->
+                            val index = listOf("4711", "4712", "4713").indexOf(row.firstOrNull())
+                            if (read.island != "_au_obligations" && index >= 0) {
+                                listOf(orderNumbers[index]) + row.drop(1)
+                            } else {
+                                row
+                            }
+                        },
+                    ),
                     if (read.island ==
                         "_au_obligations"
                     ) {

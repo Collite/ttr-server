@@ -43,6 +43,16 @@ Set `automation.door.routes` / `AUTOMATION_DOOR_ROUTES` to comma-separated alias
 `demo/erp_db=us-erp,demo/automation_db=us-ledger`. Duplicate keys and malformed pairs fail configuration load.
 Each alias must also exist in Query's `QUERY_WORLDS`; these values are logical names, never database URLs.
 
+P2 S2.1 creates the model tables during refresh and journals the apply plan in a dry run's preview batch.
+Configure `automation.pgSchemas` / `AUTOMATION_PG_SCHEMAS` as comma-separated `world=schema` pairs. The bp-dsk
+setting is `demo=cz` (Bora, 2026-11-03). Each schema is in the service's configured automation database.
+An unmapped world or destructive column change refuses refresh with `422 bundle-invalid`, preserving the served
+bundle. DDL runs for served refreshes only, on the service's own connection before publication; preview refreshes
+change no table. Recipe rows remain unapplied in S2.1. Set the schema mapping on each cluster in the same commit
+as its first automation image bump containing #374; there is no default schema.
+`automation.pgDoorRole` / `AUTOMATION_PG_DOOR_ROLE`, when set, grants that database role schema USAGE and
+SELECT/INSERT/UPDATE/DELETE on the created model tables; unset grants no role.
+
 Before each governed read, QueryDoor compiles the exact scoped/bound request and requires explicit validated
 ER read evidence contained in the pinned manifest's `objectsRead`. Missing evidence (including an older Query
 service), compile errors or undeclared reads prevent execution. The same allow-list goes on Run; Query checks

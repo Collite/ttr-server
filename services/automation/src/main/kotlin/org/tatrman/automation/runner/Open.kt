@@ -207,6 +207,8 @@ class Open(
                         bundle.entities,
                         coverage.targets,
                         { obj -> bundle.prepared.index.isAutomationStdlib(obj) },
+                        org.tatrman.automation.apply.PlanPlacement
+                            .source(bundle, world.name, recipe),
                     ),
             )
         context.calendar?.let { calendar ->

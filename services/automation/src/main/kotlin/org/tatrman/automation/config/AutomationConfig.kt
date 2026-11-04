@@ -167,6 +167,9 @@ data class AutomationConfig(
     val connections: Map<String, String>,
     val approvalsOff: Boolean = false,
     val runner: RunnerConfig = RunnerConfig(),
+    val pgDoorRole: String? = null,
+    /** Explicit logical world → physical schema on the service-owned automation database. */
+    val pgSchemas: Map<String, String> = emptyMap(),
 ) {
     companion object {
         const val ROOT = "automation"
@@ -257,6 +260,8 @@ data class AutomationConfig(
                 connections = connections(c, env),
                 approvalsOff = approvalsOff(c),
                 runner = RunnerConfig(if (c.hasPath("runner.workers")) c.getInt("runner.workers") else 4),
+                pgDoorRole = env["AUTOMATION_PG_DOOR_ROLE"]?.ifBlank { null } ?: c.optString("pgDoorRole"),
+                pgSchemas = pgSchemas(env["AUTOMATION_PG_SCHEMAS"] ?: c.optString("pgSchemas")),
             )
         }
 
@@ -277,6 +282,29 @@ data class AutomationConfig(
                 routes[key] = alias
             }
             return routes
+        }
+
+        internal fun pgSchemas(raw: String?): Map<String, String> {
+            val result = linkedMapOf<String, String>()
+            val identifier = Regex("[A-Za-z_][A-Za-z_0-9]*")
+            for (pair in raw
+                .orEmpty()
+                .split(',')
+                .map(String::trim)
+                .filter(String::isNotEmpty)) {
+                val parts = pair.split('=').map(String::trim)
+                require(parts.size == 2 && parts.all { identifier.matches(it) && it.length <= 63 }) {
+                    "automation.pgSchemas requires world=schema pairs"
+                }
+                val (world, schema) = parts
+                require(world !in result) { "automation.pgSchemas repeats world $world" }
+                require(schema !in result.values) { "automation.pgSchemas shares schema $schema across worlds" }
+                require(schema !in setOf("automation", "pgmq", "information_schema") && !schema.startsWith("pg_")) {
+                    "automation.pgSchemas names a reserved schema"
+                }
+                result[world] = schema
+            }
+            return result
         }
 
         /** Keycloak's token endpoint beside its JWKS: `…/openid-connect/certs` → `…/openid-connect/token`. */

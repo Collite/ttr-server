@@ -27,7 +27,7 @@ class SubjectMigrationSpec :
                     )
                 }
             }
-            migrateLedger(source) shouldBe 2
+            migrateLedger(source) shouldBe 3
             source.connection.use { connection ->
                 connection.createStatement().use { statement ->
                     statement

@@ -205,6 +205,13 @@ internal class PreviewWriter private constructor(
             )
         }
 
+        /** Reuse the legacy preview's target mapping when the old manifest has no pinned dependency scope. */
+        internal fun targetEntities(
+            action: AutomationAction,
+            entities: List<Entity>,
+        ): List<Entity> =
+            targets(action.columns.filter { '.' in it.type }, entities, null).map { it.second }.distinctBy { it.qname }
+
         private fun targets(
             columns: List<AutomationColumn>,
             entities: List<Entity>,
