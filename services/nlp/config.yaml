@@ -208,7 +208,9 @@ morph:
 # Commented out rather than shipped: the ids belong to a world's packs, and a
 # pipeline referring to packs that are not mounted would fail the boot load. The
 # hero recipe in `docker-compose.offline.yml` (NLS-P4.T4) mounts the pack tree and
-# turns this on.
+# turns this on. A cluster sets its world's pipelines with `NLP_PIPELINES` (a JSON
+# object of name → pipeline, merged over this block by name; DX-P3 T8f), beside the
+# `packs.configMapName` / `lists.configMapName` it mounts.
 #
 # `morph: true` (LM, NLS-P9.1) swaps the front two ops for the in-process Czech
 # morphology: `MORPH_TOKENIZE` + `MORPH_ANNOTATE` replace TOKENIZE + LEMMATIZE,

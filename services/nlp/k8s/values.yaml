@@ -103,7 +103,10 @@ llmEmulated:
 # The mount paths must match `config.yaml`'s `packs.sources` / `lists.sources`.
 # A path with nothing mounted at it is reported through `GetStatus.pack_state`,
 # not fatal — but it is also not a pipeline, so check both when RunPipeline says
-# a pipeline is unknown.
+# a pipeline is unknown. A pipeline over them is `NLP_PIPELINES` in `extraEnv` (a JSON
+# object of name → {ops, gazetteer, rules, morph}; config.yaml ships `pipelines: {}`).
+# ⚑ One unloadable file in either mount and nothing loads; an absent mount is an
+# ERROR on pack_state and every pipeline then answers FAILED_PRECONDITION.
 packs:
   configMapName: ""
   mountPath: /etc/nlp/packs
