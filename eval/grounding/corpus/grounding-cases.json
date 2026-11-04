@@ -1249,6 +1249,22 @@
     }
   },
   {
+    "id": "chrono/ts-compare-q2-this-vs-last-year-en",
+    "tool": "ground_time",
+    "kind": "DATE",
+    "span": "Q2 this year vs last year",
+    "locale": "en-US",
+    "reference_datetime": "2026-11-01T12:00:00+02:00",
+    "timezone": "Europe/Prague",
+    "package": "cnc",
+    "model": "calendar",
+    "here": null,
+    "question_text": "Revenue in Q2 this year vs last year",
+    "expect": {
+      "status": "UNGROUNDABLE"
+    }
+  },
+  {
     "id": "chrono/ts-elapsed-past-month-en",
     "tool": "ground_time",
     "kind": "DATE",

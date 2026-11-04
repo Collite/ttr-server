@@ -238,8 +238,8 @@ class DateRecognizer {
      *
      * A span that names any other period is no one period ([NotOne], ✅R215-M): several numbered ones ("Q1 a Q2
      * 2025"), a number joined to this one („1. a 2. čtvrtletí“, "first and second quarter of 2025" — only the second
-     * stands beside its noun), a second year ("Q2 2025 vs 2024"), a month or a relative word ("Q1 and last month").
-     * Which ones count is [OtherPeriods]'.
+     * stands beside its noun), a second year ("Q2 2025 vs 2024", "Q2 this year vs last year"), a month, a relative
+     * word, a count or year to date ("Q1 and last month", "Q2 vs YTD"). Which ones count is [OtherPeriods]'.
      */
     private fun numbered(
         n: String,
@@ -251,7 +251,7 @@ class DateRecognizer {
     ): Read? {
         if (found.isEmpty()) return null
         val one = found.singleOrNull() ?: return NotOne
-        if (OtherPeriods.outside(n, one.range)) return NotOne
+        if (OtherPeriods.outside(n, one.range, reference)) return NotOne
 
         fun inYear(
             year: Int,
@@ -588,9 +588,6 @@ class DateRecognizer {
     /** The locative of *rok* (*v tomto roce*) — a whole word, since "roce" sits inside other words. */
     private val roceRe = Regex("""\broce\b""")
 
-    private val lastNRe =
-        Regex("""(?:last|past|poslednic?h?|minul\w*)\s+(\d{1,3})\s+(day|days|month|months|den|dn[iíuů]|mesic\w*)""")
-
     private fun relative(
         n: String,
         reference: LocalDate,
@@ -607,10 +604,13 @@ class DateRecognizer {
             hasAny(n, "tomorrow", "zitra") -> return Hit(dayInterval(reference.plusDays(1), 0.95))
         }
         trailing(n, reference)?.let { return Hit(it) }
-        lastNRe.find(n)?.let { m ->
-            val unit = m.groupValues[2]
-            val months = unit.startsWith("month") || unit.startsWith("mesic")
-            return Hit(lastN(reference, m.groupValues[1].toLong(), months))
+        WindowPeriods.counts(n).firstOrNull()?.let { w ->
+            return when (w.unit) {
+                WindowPeriods.CountUnit.DAY -> Hit(lastN(reference, w.count))
+                WindowPeriods.CountUnit.MONTH -> Hit(lastN(reference, w.count, months = true))
+                // No rule reads a count of weeks or years yet, and "last 6 weeks" is not last week.
+                WindowPeriods.CountUnit.WEEK, WindowPeriods.CountUnit.YEAR -> NotOne
+            }
         }
         if (hasAny(n, "week", "tyden", "tydn")) return week(n, reference, triggered)?.let(::Hit)
         // A month word before a year word: "minulý měsíc" names a month, whatever year a span adds to it.
@@ -641,12 +641,6 @@ class DateRecognizer {
     }
 
     // ----- year to date: „od začátku roku“, „letos dosud“, "year to date", "YTD" (TS-6) -----
-
-    private val yearToDateRe =
-        Regex(
-            """\bod\s+zacatku\s+(?:(?:tohoto|letosniho)\s+)?roku\b|\bletos\s+(?:dosud|zatim)\b""" +
-                """|\byear[\s-]+to[\s-]+date\b|\bytd\b""",
-        )
 
     /** An ending that is today: „do dneška“, „dodnes“, „do současnosti“, "as of today", "to date", "so far". */
     private val ytdTodayEndRe =
@@ -680,21 +674,32 @@ class DateRecognizer {
      * čtvrtletí“, „do minulého měsíce“) leaves the span no one period ([NotOne]); a breakdown ("by region") is no
      * ending (✅R215-O). With no ending, a span that states a year other than the reference's („od začátku roku
      * 2025“) is not year to date: the calendar-year rule reads it, as before.
+     *
+     * A span that names another period beside the phrase and its ending is no one period ([OtherPeriods], ✅R215-M):
+     * "Q2 vs YTD", "year to date vs last year", „od začátku roku oproti loňsku“.
      */
     private fun yearToDate(
         n: String,
         reference: LocalDate,
     ): Read? {
-        val m = yearToDateRe.find(n) ?: return null
+        val m = WindowPeriods.yearToDateRe.find(n) ?: return null
         val stated = statedYears(n)
         if (stated.size > 1) return NotOne
         val year = stated.singleOrNull() ?: reference.year
         val start = LocalDate.of(year, 1, 1)
-        val ending = n.substring(m.range.last + 1).replace(leadingYearRe, "").trim()
-        val month = ytdMonthEndRe.find(ending)?.let { Months.ofWord(it.groupValues[1], withYear = true) }
+        var at = m.range.last + 1
+        leadingYearRe.find(n.substring(at))?.let { at += it.range.last + 1 }
+        val ending = n.substring(at).trimStart()
+        val today = ytdTodayEndRe.find(ending)
+        val monthEnd = ytdMonthEndRe.find(ending)
+        val month = monthEnd?.let { Months.ofWord(it.groupValues[1], withYear = true) }
+        // The phrase, its year and the ending it reads are its own; anything else is another period.
+        val endingLength = (today ?: monthEnd?.takeIf { month != null })?.let { it.range.last + 1 } ?: 0
+        val ownEnd = if (endingLength > 0) n.length - ending.length + endingLength else at
+        if (OtherPeriods.outside(n, m.range.first until ownEnd, reference)) return NotOne
         val end =
             when {
-                ytdTodayEndRe.containsMatchIn(ending) -> reference.plusDays(1)
+                today != null -> reference.plusDays(1)
                 month != null -> LocalDate.of(year, month, 1).plusMonths(1)
                 ytdAnyEndRe.containsMatchIn(ending) -> return NotOne
                 year != reference.year -> return null

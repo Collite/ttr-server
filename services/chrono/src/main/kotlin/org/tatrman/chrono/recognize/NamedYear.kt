@@ -106,14 +106,17 @@ object NamedYear {
      * plainly amounts ("over 2000 dollars", „nad 2000 Kč“). Not years by themselves — "2025" alone looks
      * exactly like an amount — but an anaphoric word cannot read past one either (#214).
      */
-    fun bareYears(n: String): Set<Int> =
+    fun bareYears(n: String): Set<Int> = bareYearsAt(n).map { it.first }.toSet()
+
+    /** [bareYears], each with where it stands. */
+    fun bareYearsAt(n: String): List<Pair<Int, IntRange>> =
         fourDigitsRe
             .findAll(n)
             .filterNot { amountBeforeRe.containsMatchIn(n.substring(0, it.range.first)) }
             .filterNot { amountAfterRe.containsMatchIn(n.substring(it.range.last + 1)) }
-            .map { it.value.toInt() }
-            .filter { it in PLAUSIBLE_YEARS }
-            .toSet()
+            .map { it.value.toInt() to it.range }
+            .filter { it.first in PLAUSIBLE_YEARS }
+            .toList()
 
     /** The one year [text] names — null when it names none, or several. */
     fun single(

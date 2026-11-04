@@ -36,7 +36,7 @@ reference date of the request.
 | numbered quarter | *2. čtvrtletí 2026*, *druhé čtvrtletí*, *3. kvartál*, *Q2 2026*, *Q2*, *poslední čtvrtletí roku* | *Q2 2026*, *the second quarter of 2025*, *the last quarter of the year* | that quarter, `yyyyQn` (the last quarter of a year is its fourth); yearless reads as a yearless month (and asks the same way) |
 | half-year | *1. pololetí 2026*, *druhé pololetí*, *H1 2026* | *H1 2026*, *the first half of 2026* | six months, `yyyyHn`; yearless reads as a yearless month |
 | trailing | *poslední měsíc / týden / rok*, *posledního měsíce*, *v posledním měsíci* | *the last month / week / year* | **asks** (`AWAITING_CLARIFICATION`): `trailing` — the last 30 / 7 / 365 days through ref — or `calendar` — the period before ref's. The answer is not in the conversation, so an anaphoric period of the unit after it („A předchozí měsíc?“) is `no_anchor`, as after an asked *minulý* |
-| last N | *posledních 30 dní*, *poslední 3 měsíce* | *last 30 days*, *past 3 months* | exactly N days ending with ref, `[ref − N + 1 day, ref + 1 day)`; N months from the day after the same date N months back |
+| last N | *posledních 30 dní*, *poslední 3 měsíce* | *last 30 days*, *past 3 months* | exactly N days ending with ref, `[ref − N + 1 day, ref + 1 day)`; N months from the day after the same date N months back; a count of weeks or years (*posledních 6 týdnů*, *past 2 years*) is not read |
 | year to date | *od začátku roku*, *letos dosud*, *… do dneška*, *… do současnosti*, *… do března* | *year to date*, *YTD*, *… as of today*, *… so far*, *… through September*, *… by end of March* | `[1 January, ref + 1 day)`; ending with a month, to that month's end; in the year the span states, else ref's; a breakdown (*by region*, *by month*) is no ending; any other ending that names a time is no one period |
 | days | *dnes*, *včera*, *zítra* | *today*, *yesterday*, *tomorrow* | that day |
 
@@ -44,8 +44,10 @@ Not a period: a bare period noun (*měsíc*, *po měsících*, *roce*) — a bre
 adjectives (*měsíční*, *čtvrtletní*, *pololetní*, *kvartální*, *monthly*, *quarterly*); a week, month or day **of** a
 stated year ("the last week of 2025"), which no rule reads yet; a quarter or half-year by number in a span that
 names any other period — *1. a 2. čtvrtletí*, *first and second quarter of 2025*, *Q1 a Q2 2025*, *last quarter and
-Q1*, *Q2 2025 vs 2024*, *Q3 and H1 2025*, *Q1 a březen 2025* — which is not one period (a year word, *letošní 2.
-čtvrtletí*, only says which year).
+Q1*, *Q2 2025 vs 2024*, *Q3 and H1 2025*, *Q1 a březen 2025*, a year joined by a comparison or a conjunction (*Q2
+this year vs last year*, *2. čtvrtletí letos a loni*, *Q2 vs 2024*), a count (*Q1 and the last 3 months*) or year to
+date (*Q2 vs YTD*) — which is not one period (a year word with no joiner, *letošní 2. čtvrtletí*, *Q2 last year*, only
+says which year); nor is year to date beside any other period (*year to date vs last year*).
 The trailing ask is the singular only: *poslední měsíce* (recent months) does not ask. A last week, month or year
 of a larger period — *the last month of the year*, *the last week in October*, *poslední měsíc roku* (December),
 *poslední týden v měsíci* — is not read at all, and an earlier question with one names no period of its unit. An estate's `ground:chrono` lexicon slice (RV-42)

@@ -1,18 +1,24 @@
 // SPDX-License-Identifier: Apache-2.0
 package org.tatrman.chrono.recognize
 
+import java.time.LocalDate
+
 /**
  * Does a span name a period besides the one a rule read (✅R215-M)? Such a span is no one period: "Q2 2025 vs 2024",
  * „2. čtvrtletí a 1. pololetí 2025“ and "Q1 and last month" each name two, and reading one of them as the whole would
  * drop the other. Over the folded text (`Normalization.fold`), outside the range the rule matched:
  * - another quarter or half-year by number ([NumberedPeriods]), and a number or ordinal joined to one — the elided
  *   noun of „1./2. čtvrtletí“, "first through third quarter", "the second quarter and the third";
- * - a second year in digits ([NamedYear.bareYears], so not an amount: "more than 2000 units");
  * - a month name, a relative month or quarter word ([PeriodWords]), a week with a scope word, a day word or a date;
- * - a trailing phrase ([TrailingPeriods]).
+ * - a trailing phrase ([TrailingPeriods]), a count window or year to date ([WindowPeriods]);
+ * - a year joined to the span by a comparison or a conjunction: "Q2 this year vs last year", „2. čtvrtletí letos a
+ *   loni“, "Q2 vs 2024", "last year vs Q2", "Q2 this year and last";
+ * - two different years: two year words („letošní a loňské“), a year word and a written year that differ („letos
+ *   v Q2 2025“), or two years in digits ([NamedYear.bareYears], so not an amount: "more than 2000 units").
  *
- * Year words are none: they say which year the period is in („letošní 2. čtvrtletí“, "the second quarter of last
- * year"). [DateRecognizer] asks it of a numbered quarter or half; S0.3 asks it of the other rules (P5).
+ * A year word with no joiner says which year the period is in, and is none: „letošní 2. čtvrtletí“, "Q2 last year",
+ * „loni ve 2. čtvrtletí“, "the second quarter of last year". [DateRecognizer] asks it of a numbered quarter or half
+ * and of year to date; S0.3 asks it of the other rules (P5).
  */
 internal object OtherPeriods {
     /** What joins two periods, or a number to the period whose noun it shares: „1. a 2.“, "first through", „1./2.“. */
@@ -58,13 +64,52 @@ internal object OtherPeriods {
     /** "may" and "march" are verbs too: a month only after a preposition or before a year. */
     private val verbMonths = setOf("may", "march")
 
-    /** Does the folded [n] name a period outside [own], the range of the one a rule read? */
+    /**
+     * What joins a second year to a period: a comparison or a conjunction, cs and en. Not a comma: "Q2, last year" is
+     * Q2 of last year.
+     */
+    private const val YEAR_JOIN =
+        """(?:[/&+–-]|\b(?:vs|versus|oproti|proti|compared\s+(?:to|with)|against|than|nez|and|a|i|or|nebo""" +
+            """|(?:ve\s+)?srovnani\s+s|(?:v\s+)?porovnani\s+s)\b\.?)"""
+    private val yearJoinBeforeRe = Regex("""$YEAR_JOIN\s*(?:the\s+)?$""")
+    private val yearJoinAfterRe = Regex("""^\s*$YEAR_JOIN""")
+
+    /** "Q2 this year and last": a year whose noun the conjunction elides. */
+    private val elidedLastRe = Regex("""\b(?:and|or|vs|versus|than)\.?\s+last\b(?!\s*[a-z0-9])""")
+
+    /**
+     * Does the folded [n] name a period outside [own], the range of the one a rule read? A year word is read against
+     * [reference], the way it reads with no conversation, to tell whether it differs from a year in digits.
+     */
     fun outside(
         n: String,
         own: IntRange,
-    ): Boolean = mentions(n).any { !it.overlaps(own) } || NamedYear.bareYears(n).size > 1
+        reference: LocalDate,
+    ): Boolean = mentions(n).any { !it.overlaps(own) } || otherYear(n, own, reference)
 
-    /** Where the folded [n] names a period, other than by a year: the ranges [outside] weighs. */
+    /** Does the folded [n] name a year besides the one [own] is in: one joined to the span, or two different ones? */
+    private fun otherYear(
+        n: String,
+        own: IntRange,
+        reference: LocalDate,
+    ): Boolean {
+        val words = PeriodWords.findAll(n, PeriodUnit.YEAR)
+        val digits = NamedYear.bareYearsAt(n)
+        if (digits.map { it.first }.toSet().size > 1) return true
+        if (words.distinctBy { it.kind to it.delta }.size > 1) return true
+        val written = NamedYear.writtenYears(n)
+        if (words.any { w -> written.any { it != reference.year + w.delta } }) return true
+        val years = words.map { it.range } + digits.map { it.second }
+        val joined =
+            years.any { r ->
+                val before = yearJoinBeforeRe.containsMatchIn(n.substring(0, r.first))
+                val after = r.last < own.first && yearJoinAfterRe.containsMatchIn(n.substring(r.last + 1))
+                !r.overlaps(own) && (before || after)
+            }
+        return joined || elidedLastRe.findAll(n).any { !it.range.overlaps(own) }
+    }
+
+    /** Where the folded [n] names a period, other than by a year: the ranges [outside] weighs before the years. */
     private fun mentions(n: String): List<IntRange> =
         buildList {
             val numbered = NumberedPeriods.quarters(n) + NumberedPeriods.halves(n)
@@ -79,6 +124,8 @@ internal object OtherPeriods {
             PeriodWords.findAll(n, PeriodUnit.MONTH).forEach { add(it.range) }
             PeriodWords.findAll(n, PeriodUnit.QUARTER).forEach { add(it.range) }
             TrailingPeriods.findAll(n).forEach { add(it.range) }
+            WindowPeriods.counts(n).forEach { add(it.range) }
+            WindowPeriods.yearToDateRe.findAll(n).forEach { add(it.range) }
             scopedWeekRe.findAll(n).forEach { add(it.range) }
             dayRe.findAll(n).forEach { add(it.range) }
             for (m in wordRe.findAll(n)) {

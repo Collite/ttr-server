@@ -224,6 +224,66 @@ class TimePhrasesSpec :
             read("Who sold more than 2000 units in Q2 2025?").periodCode shouldBe "2025Q2"
         }
 
+        // review-215 RR6 (✅R215-M): a year after "vs" or „a“ names a second period, not this one's year; a count
+        // window and year to date are periods too, and year to date asks the same test.
+        "a period with a year joined to it, a count window or year to date beside it is no one period" {
+            for (span in listOf(
+                "Q2 this year vs last year",
+                "H1 this year vs last year",
+                "2. čtvrtletí letos a loni",
+                "1. pololetí letos a loni",
+                "letos ve 2. čtvrtletí oproti loňsku",
+                "Q2 2026 vs last year",
+                "Q2 2025 vs the prior year",
+                "Q2 vs last year",
+                "Q2 compared with last year",
+                "Q2 vs 2024",
+                "last year vs Q2",
+                "letošní a loňské 2. čtvrtletí",
+                "letos v Q2 2025",
+                "Q2 this year and last",
+                "Q1 and the last 3 months",
+                "Q1 vs posledních 30 dní",
+                "Q2 vs last 6 weeks",
+                "Q2 2025 vs year to date",
+                "Q2 vs YTD",
+                "Q2 a od začátku roku",
+                "year to date vs last year",
+                "od začátku roku oproti loňsku",
+            )) {
+                withClue(span) { rec.read(span, ref).shouldBeNull() }
+            }
+        }
+
+        "a year word with no joiner still says which year" {
+            read("letošní 2. čtvrtletí").periodCode shouldBe "2026Q2"
+            for (span in listOf(
+                "Q2 last year",
+                "loni ve 2. čtvrtletí",
+                "the second quarter of last year",
+                "Q2, last year",
+                "Q2 last year and costs",
+                "loni v Q2 2025",
+            )) {
+                withClue(span) { read(span).periodCode shouldBe "2025Q2" }
+            }
+            read("the last quarter of last year").periodCode shouldBe "2025Q4"
+            read("od začátku roku 2025 do dneška").startInclusive shouldBe day(2025, 1, 1)
+            for (span in listOf("letos dosud", "YTD as of today", "od začátku tohoto roku")) {
+                withClue(span) { read(span).endExclusive shouldBe day(2026, 11, 2) }
+            }
+            read("YTD by end of March").endExclusive shouldBe day(2026, 4, 1)
+        }
+
+        // A count of weeks or years is no rule's yet; "last 6 weeks" read as last week before RR6.
+        "a count of weeks or years is not read; a count of days or months is" {
+            for (span in listOf("last 6 weeks", "posledních 6 týdnů", "v posledních 2 týdnech", "past 2 years")) {
+                withClue(span) { rec.read(span, ref).shouldBeNull() }
+            }
+            read("last 3 months").startInclusive shouldBe day(2026, 8, 2)
+            read("posledních 30 dní").startInclusive shouldBe day(2026, 10, 3)
+        }
+
         // ---- elapsed ----
 
         "„uplynulý“ and 'past' name the period that has just elapsed" {
