@@ -76,10 +76,11 @@ class DateRecognizer {
         val base =
             numbered(n, NumberedPeriods.lastMonths(n), 1, ::monthCode, reference, years)
                 ?: partOfLarger(n)
-                ?: fiscalYear(n)?.let(::Hit)
+                ?: fiscalYear(n, reference)
                 ?: yearToDate(n, reference, years.stated)
                 ?: numbered(n, NumberedPeriods.quarters(n), QUARTER_MONTHS, ::quarterCode, reference, years)
                 ?: numbered(n, NumberedPeriods.halves(n), HALF_MONTHS, ::halfCode, reference, years)
+                ?: older(n, reference)
                 ?: fiscalQuarter(n, reference, triggered, conversation)
                 ?: periodCode(n)?.let(::Hit)
                 ?: isoDate(n)?.let(::Hit)
@@ -212,6 +213,21 @@ class DateRecognizer {
      */
     private fun partOfLarger(n: String): Read? = NotOne.takeIf { PartOfPeriods.findAll(n).isNotEmpty() }
 
+    // ----- the rules older than TS read only a span that names one period (review-215 P5) -----
+
+    /**
+     * The rules after this one — fiscal quarter, period code, dates, month names, relative words, a bare year — read
+     * the span as a whole and keep no range of what they read: a span naming two periods would be read as one of
+     * them („leden až březen 2025“ as January, "this quarter and last month" as this quarter). So a span that names
+     * more than one ([OtherPeriods.several]) is [NotOne] here, as the numbered rule asks of its own. So is one in a
+     * year chrono reads nowhere ([YearPhrases.unreadIn]: "March next year", „v březnu příštího roku“), which the
+     * month rule would put in the reference's year.
+     */
+    private fun older(
+        n: String,
+        reference: LocalDate,
+    ): Read? = NotOne.takeIf { OtherPeriods.several(n, reference) || YearPhrases.unreadIn(n) }
+
     // ----- fiscal year: "fiscal year 2026" / "fiskalni rok 2026" -----
 
     private val fiscalYearRe = Regex("""(?:fiscal|financial|fiskaln\w*|financn\w*|ucetni)\s+(?:year|rok)\s+(\d{4})""")
@@ -223,17 +239,20 @@ class DateRecognizer {
      * "fiscal year 2026" → that fiscal year. A quarter or half of it ("Q4 of fiscal year 2025", "the second half of
      * fiscal year 2025") is that quarter or half, as "Q4 FY2025" is: this rule gives way, and [numbered] reads it with
      * the fiscal year's digits as its year (RR14). So it does for one a range or exclusion word governs: "fiscal year
-     * 2025 excluding Q4" is no one period, and is not read at all (RR19).
+     * 2025 excluding Q4" is no one period, and is not read at all (RR19). And for a month of it: "December of fiscal
+     * year 2025" is December 2025, the month rule's (P4). A span that names another period or year beside it is no
+     * one period: "fiscal year 2025 vs 2024" ([OtherPeriods], P5).
      */
-    private fun fiscalYear(n: String): ChronoRecognition? {
+    private fun fiscalYear(
+        n: String,
+        reference: LocalDate,
+    ): Read? {
         if (NumberedPeriods.quarters(n).isNotEmpty() || NumberedPeriods.halves(n).isNotEmpty()) return null
-        val y =
-            fiscalYearRe
-                .find(n)
-                ?.groupValues
-                ?.get(1)
-                ?.toIntOrNull() ?: return null
-        return yearInterval(y, ChronoKind.FISCAL_YEAR, 0.95)
+        if (Months.find(n) != null) return null
+        val m = fiscalYearRe.find(n) ?: return null
+        val y = m.groupValues[1].toIntOrNull() ?: return null
+        if (OtherPeriods.outside(n, m.range, reference)) return NotOne
+        return Hit(yearInterval(y, ChronoKind.FISCAL_YEAR, 0.95))
     }
 
     // ----- a quarter or half-year by its number: „2. čtvrtletí 2026“, "Q2", „1. pololetí“, "H2 2026" (TS-6) -----

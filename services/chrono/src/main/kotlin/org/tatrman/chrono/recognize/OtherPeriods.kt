@@ -20,9 +20,12 @@ import java.time.LocalDate
  * - two different years: two year words („letošní a loňské“), a year word and a written year that differ („letos
  *   v Q2 2025“), or two years in digits ([NamedYear.bareYears], so not an amount: "more than 2000 units").
  *
+ * - two scope words sharing one noun: „minulý a tento měsíc“, "this and last year".
+ *
  * A year word with no joiner says which year the period is in, and is none: „letošní 2. čtvrtletí“, "Q2 last year",
- * „loni ve 2. čtvrtletí“, "the second quarter of last year". [DateRecognizer] asks it of a numbered quarter or half
- * and of year to date; S0.3 asks it of the other rules (P5).
+ * „loni ve 2. čtvrtletí“, "the second quarter of last year". [DateRecognizer] asks [outside] of a numbered quarter or
+ * half, of year to date and of a fiscal year, with the range each read; the rules older than TS ask [several] of the
+ * whole span (P5).
  */
 internal object OtherPeriods {
     /** What joins two periods, or a number to the period whose noun it shares: „1. a 2.“, "first through", „1./2.“. */
@@ -81,6 +84,17 @@ internal object OtherPeriods {
     /** "Q2 this year and last": a year whose noun the conjunction elides. */
     private val elidedLastRe = Regex("""\b(?:and|or|vs|versus|than)\.?\s+last\b(?!\s*[a-z0-9])""")
 
+    private const val SCOPE =
+        """(?:this|last|previous|prior|next|current|tento|tato|toto|tohoto|tomto|minul\w*|predchoz\w*|predesl\w*""" +
+            """|pristi\w*|soucasn\w*|letosn\w*|lonsk\w*)"""
+
+    /** Two scope words joined, the noun elided after the first: „minulý a tento měsíc“, "this and last year" (P5). */
+    private val pairedScopeRe =
+        Regex("""\b$SCOPE\s*(?:[,/&+–-]|\b(?:a|i|and|or|nebo|az|to|vs|versus)\b)\s*(?:the\s+)?$SCOPE\b""")
+
+    /** Stands for no range at all: a span a rule read as a whole, with no period mention of its own. */
+    private val NOWHERE = -1..-1
+
     private val comparisonRe = Regex(COMPARISON)
 
     /**
@@ -97,7 +111,42 @@ internal object OtherPeriods {
         n: String,
         own: IntRange,
         reference: LocalDate,
-    ): Boolean = mentions(n).any { !it.overlaps(own) } || otherYear(n, own, reference) || comparedToTime(n, own)
+    ): Boolean =
+        mentions(n).any { !it.overlaps(own) } ||
+            otherYear(n, own, reference) ||
+            comparedToTime(n, own) ||
+            pairedScopeRe.findAll(n).any { it.range.first < own.first || it.range.last > own.last }
+
+    /**
+     * Does the folded [n] name more than one period, asked of a rule that reads the span as a whole and keeps no range
+     * of its own: the month, date, relative and calendar-year rules older than TS (review-215 P5)? Its period mentions
+     * stand in more than one place („leden až březen 2025“, "this quarter and last month", "today and yesterday"), or
+     * in one place with a year joined or compared beside it ("March vs last year", "May 2025 vs the same month last
+     * year"), or two scope words share one noun („minulý a tento měsíc“). A span with no mention ("2025", "loni")
+     * asks the year tests alone: "2024 vs 2025", "fiscal year 2025 vs 2024".
+     */
+    fun several(
+        n: String,
+        reference: LocalDate,
+    ): Boolean {
+        val places = merged(mentions(n))
+        if (places.size > 1) return true
+        return outside(n, places.singleOrNull() ?: NOWHERE, reference)
+    }
+
+    /** [ranges], the overlapping ones merged, in order. */
+    private fun merged(ranges: List<IntRange>): List<IntRange> =
+        ranges.sortedBy { it.first }.fold(mutableListOf()) { acc, r ->
+            val last = acc.lastOrNull()
+            if (last != null &&
+                last.overlaps(r)
+            ) {
+                acc[acc.lastIndex] = last.first..maxOf(last.last, r.last)
+            } else {
+                acc += r
+            }
+            acc
+        }
 
     /**
      * Does a comparison in the folded [n] set [own] against a time: "Q2 vs the same quarter last year", „2. čtvrtletí

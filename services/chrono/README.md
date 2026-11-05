@@ -50,7 +50,9 @@ this year vs last year*, *2. čtvrtletí letos a loni*, *Q2 vs 2024*), a compari
 (*Q2 vs the same quarter last year*, *2. čtvrtletí oproti stejnému období loni*, *Q2 vs a year ago*), a count (*Q1 and the last 3 months*) or year to
 date (*Q2 vs YTD*) — which is not one period (a year word with no joiner, *letošní 2. čtvrtletí*, *Q2 last year*, only
 says which year); nor is year to date beside any other period (*year to date vs last year*, *YTD vs the same period
-last year*).
+last year*), nor a month, date, relative word or year beside another period (*leden až březen 2025*, *March vs last
+year*, *minulý a tento měsíc*, *this quarter and last month*, *fiscal year 2025 vs 2024*) or in a year chrono reads
+nowhere (*March next year*). A month of a fiscal year is that month: *December of fiscal year 2025* is 202512.
 The trailing ask is the singular only: *poslední měsíce* (recent months) does not ask. The last week of any period
 and the last month of a quarter — *the last week of the year*, *the last week in October*, *the last month of Q3
 2025*, *poslední týden v měsíci*, *poslední měsíc čtvrtletí* — are not read at all, nor is the last quarter, half or

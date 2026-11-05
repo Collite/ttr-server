@@ -661,6 +661,73 @@ class TimePhrasesSpec :
             }
         }
 
+        // review-215 P5 (S0.3 T12): the rules older than TS read only a span that names one period, as the numbered
+        // rule does since RR1 — „leden až březen 2025“ is no longer January.
+        "a month, date, relative word or year in a span that names another period is not read" {
+            for (span in listOf(
+                "leden až březen 2025",
+                "březen a duben 2025",
+                "from January to March 2025",
+                "March 2024 vs March 2025",
+                "May 2025 vs the same month last year",
+                "March vs last year",
+                "minulý a tento měsíc",
+                "this and last month",
+                "this and last year",
+                "tento měsíc oproti minulému",
+                "this month vs last",
+                "this quarter and last month",
+                "this week and last month",
+                "today and yesterday",
+                "od 1.3. do 15.3.2026",
+                "fiscal year 2025 vs 2024",
+                "poslední rok v březnu",
+                "v březnu za poslední rok",
+                "March next year",
+                "v březnu příštího roku",
+            )) {
+                withClue(span) { rec.read(span, ref).shouldBeNull() }
+            }
+            read("December of fiscal year 2025").periodCode shouldBe "202512"
+        }
+
+        "a month, date, relative word or year alone reads as before" {
+            for ((span, code) in listOf(
+                "leden 2025" to "202501",
+                "v březnu 2025" to "202503",
+                "v říjnu" to "202610",
+                "minulý měsíc" to "202610",
+                "this month" to "202611",
+                "loni v březnu" to "202503",
+                "sales last year in March" to "202503",
+                "v březnu minulého roku" to "202503",
+                "March sales vs target" to "202603",
+                "období 202605" to "202605",
+                "this quarter" to "2026Q4",
+                "the previous quarter" to "2026Q3",
+            )) {
+                withClue(span) { read(span).periodCode shouldBe code }
+            }
+            for ((span, start) in listOf(
+                "15. března 2025" to day(2025, 3, 15),
+                "2026-03-15" to day(2026, 3, 15),
+                "15.3.2026" to day(2026, 3, 15),
+                "dnes" to day(2026, 11, 1),
+                "tento týden" to day(2026, 10, 26),
+                "past due this week" to day(2026, 10, 26),
+                "loni" to day(2025, 1, 1),
+                "revenue and costs last year" to day(2025, 1, 1),
+                "2025" to day(2025, 1, 1),
+                "v roce 2025" to day(2025, 1, 1),
+                "since 2020" to day(2020, 1, 1),
+                "fiscal year 2025" to day(2025, 1, 1),
+                "fiscal year 2025 by quarter" to day(2025, 1, 1),
+                "posledních 30 dní" to day(2026, 10, 3),
+            )) {
+                withClue(span) { read(span).startInclusive shouldBe start }
+            }
+        }
+
         "a quarter in a year the span writes or says is unchanged" {
             for (span in listOf(
                 "Q2 2025",
