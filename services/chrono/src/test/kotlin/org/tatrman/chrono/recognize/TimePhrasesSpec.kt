@@ -608,6 +608,59 @@ class TimePhrasesSpec :
             read("fiscal year 2025 by quarter").kind shouldBe ChronoKind.FISCAL_YEAR
         }
 
+        // review-215 RR20 (S0.3 T11): round 4's over-blocks read again — a scope word on a noun that is no time, a word
+        // for the current year, an ordinal with a hyphen after "every", a year-over-year measure after a count.
+        "what round 4 over-blocked reads as before" {
+            for (span in listOf(
+                "Q2 2025 actuals vs current forecast",
+                "Q2 2025 actual vs the current plan",
+                "Q2 2025 vs previous forecast",
+                "Q2 2025 vs the prior forecast",
+                "Q2 2025 compared to last forecast",
+                "Q2 2025 vs last forecast version",
+                "Q2 2025 vs this budget",
+                "Q2 2025 sales vs target for this region",
+                "Q2 2025 revenue against that target",
+                "2. čtvrtletí 2025 oproti současnému plánu",
+                "2. čtvrtletí 2025 oproti minulému plánu",
+                "Q2 2025 for every first-time buyer",
+            )) {
+                withClue(span) {
+                    val r = read(span)
+                    r.periodCode shouldBe "2025Q2"
+                    r.confidence shouldBe 0.9
+                }
+            }
+            for (span in listOf(
+                "ve 2. čtvrtletí běžného roku",
+                "2. čtvrtletí stávajícího roku",
+                "2. čtvrtletí probíhajícího roku",
+                "Q2 of the present year",
+            )) {
+                withClue(span) {
+                    val r = read(span)
+                    r.periodCode shouldBe "2026Q2"
+                    r.confidence shouldBe 0.85
+                }
+            }
+            val growth = read("the last 3 months of year-over-year growth")
+            growth.startInclusive shouldBe day(2026, 8, 2)
+            growth.endExclusive shouldBe day(2026, 11, 2)
+            growth.confidence shouldBe 0.85
+            for (span in listOf(
+                "Q2 vs last",
+                "Q2 2025 vs last",
+                "Q2 vs previous",
+                "Q2 2025 vs prior period",
+                "Q2 2025 vs the end of the quarter",
+                "Q2 sales vs plan for this year",
+                "every first quarter",
+                "the last 3 months of the year",
+            )) {
+                withClue(span) { rec.read(span, ref).shouldBeNull() }
+            }
+        }
+
         "a quarter in a year the span writes or says is unchanged" {
             for (span in listOf(
                 "Q2 2025",

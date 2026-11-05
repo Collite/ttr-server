@@ -15,7 +15,8 @@ import java.time.LocalDate
  * - a year joined to the span by a comparison or a conjunction: "Q2 this year vs last year", „2. čtvrtletí letos a
  *   loni“, "Q2 vs 2024", "last year vs Q2", "Q2 this year and last";
  * - a comparison with a time on its other side, whatever stands between: "Q2 vs the same quarter last year",
- *   „2. čtvrtletí oproti stejnému období loni“, "Q2 vs a year ago", "Q2 vs prior period";
+ *   „2. čtvrtletí oproti stejnému období loni“, "Q2 vs a year ago", "Q2 vs prior period"; a scope word on a noun that
+ *   is no time is none ("Q2 2025 vs current forecast");
  * - two different years: two year words („letošní a loňské“), a year word and a written year that differ („letos
  *   v Q2 2025“), or two years in digits ([NamedYear.bareYears], so not an amount: "more than 2000 units").
  *
@@ -113,15 +114,33 @@ internal object OtherPeriods {
             namesTime(if (m.range.first > own.last) n.substring(m.range.last + 1) else n.substring(0, m.range.first))
         }
 
+    /**
+     * The scope words of [WindowPeriods.timeWordRe]. One names a time on a comparison's other side only with a period
+     * noun after it, as [PeriodWords] reads it ("vs the previous quarter", „oproti minulému měsíci“), or at the end of
+     * that side ("Q2 vs last"). Before any other noun it scopes that noun: "vs current forecast", „oproti minulému
+     * plánu“, "vs this budget" (RR20).
+     */
+    private val scopeWordRe =
+        Regex(
+            """this|that|last|previous|prior|next|current""" +
+                """|minul\w*|predchoz\w*|predesl\w*|tohoto|tomto|toho|pristi\w*|soucasn\w*""",
+        )
+
     /** Does [side] name a time: a relative period word, a year in digits, a month or a word of a time? */
-    private fun namesTime(side: String): Boolean =
-        PeriodWords.findAll(side).isNotEmpty() ||
+    private fun namesTime(side: String): Boolean {
+        val words = wordRe.findAll(side).map { it.value }.toList()
+        return PeriodWords.findAll(side).isNotEmpty() ||
             NamedYear.bareYears(side).isNotEmpty() ||
-            wordRe.findAll(side).any { w ->
-                WindowPeriods.timeWordRe.matches(w.value) ||
-                    comparedTimeWordRe.matches(w.value) ||
-                    Months.ofWord(w.value, withYear = false) != null
+            words.withIndex().any { (i, w) ->
+                if (scopeWordRe.matches(w)) {
+                    i == words.lastIndex
+                } else {
+                    WindowPeriods.timeWordRe.matches(w) ||
+                        comparedTimeWordRe.matches(w) ||
+                        Months.ofWord(w, withYear = false) != null
+                }
             }
+    }
 
     /** Does the folded [n] name a year besides the one [own] is in: one joined to the span, or two different ones? */
     private fun otherYear(

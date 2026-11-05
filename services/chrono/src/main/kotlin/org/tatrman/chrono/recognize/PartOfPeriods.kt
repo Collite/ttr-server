@@ -52,12 +52,15 @@ internal object PartOfPeriods {
                 """\s+(?:[a-z]+\s+){0,2}$CS_ADJ(?:roku|roce)\b""",
         )
 
-    /** After a count window: of / in, then (the) (this / last …) year, quarter, month or week, cs: a whole's noun. */
+    /**
+     * After a count window: of / in, then (the) (this / last …) year, quarter, month or week, cs: a whole's noun. Not
+     * a year-over-year measure: "the last 3 months of year-over-year growth" is a trailing count (RR20).
+     */
     private val enCountOfRe =
         Regex(
             """^\s+(?:of|in)\s+(?:(?:the|that)\s+)?""" +
                 """(?:(?:this|current|last|previous|prior|past|next|following|coming|each|every)\s+)?""" +
-                """${EN_ADJ}(?:year|quarter|month|week)\b""",
+                """${EN_ADJ}(?:year\b(?!\s*-|\s+(?:over|on)\b)|quarter\b|month\b|week\b)""",
         )
     private val enCountOfWordRe = Regex("""^\s+(?:of|in)\s+(?:the\s+)?([a-z0-9]+)\b""")
     private val csCountOfRe =

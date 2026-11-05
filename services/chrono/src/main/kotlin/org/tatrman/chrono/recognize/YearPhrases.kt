@@ -28,10 +28,13 @@ internal object YearPhrases {
     private const val CS_ADJ = PeriodWords.CS_ADJ
     private const val ROK = """$CS_ADJ(?:rok|roku|roce|rokem)\b"""
 
-    /** A numbered period right after "each", "every" or „každé“: "every Q2", „každé 2. čtvrtletí“. */
+    /**
+     * A numbered period right after "each", "every" or „každé“: "every Q2", „každé 2. čtvrtletí“. Not an ordinal with a
+     * hyphen after it: "every first-time buyer" (RR20).
+     */
     private const val NUMBER_AFTER =
-        """(?=\s+(?:the\s+)?(?:[1-4]\.|q[1-4]\b|h[12]\b|(?:first|second|third|fourth|1st|2nd|3rd|4th|last)\b""" +
-            """|prvn|druh|tret|ctvrt(?!let)|posledn))"""
+        """(?=\s+(?:the\s+)?(?:[1-4]\.|q[1-4]\b|h[12]\b|(?:first|second|third|fourth|1st|2nd|3rd|4th|last)\b(?!-)""" +
+            """|(?:prvn|druh|tret|ctvrt(?!let)|posledn)\w*\b(?!-)))"""
 
     private val unreadRe =
         Regex(
@@ -62,16 +65,17 @@ internal object YearPhrases {
     private const val UNPLACED =
         """(?!\s+(?:before|prior|after|ago|earlier|later|ahead|from\s+now|to\s+come|predtim|pote|drive|pozdeji|zpet)\b)"""
 
-    private const val EN_FRAME_ADJ = """(?:fiscal|financial|accounting|calendar|full|complete|whole|entire)"""
-    private const val CS_FRAME_ADJ = """(?:fiskaln|financn|ucetn|kalendarn|hospodarsk|cel|upln)\w*"""
+    private const val EN_FRAME_ADJ = """(?:fiscal|financial|accounting|calendar|full|complete|whole|entire|present)"""
+    private const val CS_FRAME_ADJ =
+        """(?:fiskaln|financn|ucetn|kalendarn|hospodarsk|cel|upln|bezn|stavajic|probihajic)\w*"""
 
     /**
      * The year nouns that say nothing about which year ([speaksOfYear]), blanked before it looks for one:
      * - a measure: "year over year", "year-on-year", "year-end";
      * - "(of / in / for / during) (the / that) (fiscal …) year", or "(fiscal …) year" right after the period ("Q2
-     *   fiscal year");
+     *   fiscal year"); "the present year" is the current one (RR20);
      * - „(toho / tohoto) (fiskálního …) roku“, or „(fiskálního …) roku“ right after the period; „v (tomto / celém)
-     *   roce“.
+     *   roce“; „běžného / stávajícího / probíhajícího roku“ is the current year (RR20).
      *
      * None of them with a word after it that places it in time ([UNPLACED]). *by year*, *per year*, *a year*, *each
      * year*, „za rok“, „po letech“ are no frame: a breakdown, or a year apart.
