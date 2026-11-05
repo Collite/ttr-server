@@ -16,6 +16,18 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+- **chrono — `Scan`: the time phrases of a question, by chrono's own rules (TS-P0 S0.3).** The new RPC returns one
+  `TimeSpan` per time phrase — UTF-16 offsets into the text as sent, the text, `DATE_TIME`, a confidence and the trigger
+  (the slice term, else the kind of period read). Every window of up to seven tokens is read as `Ground` reads a span;
+  a span keeps none of its idle words („za minulý měsíc“ → „minulý měsíc“), the longest wins, and a phrase that names
+  no one period gives no part of it ("next Q2", "excluding Q4" give no "Q2" / "Q4"; „leden až březen 2025“ gives
+  neither month), while periods side by side that are each whole give each ("Q2 2025 vs Q2 2024"). A six-digit
+  document number, an amount ("more than 2000 units") and words that only look like months (*zařízení*, "Jan Novák",
+  "may we see") are no spans; a bare four-digit year is. No reference date: no spans and an `ERROR` message
+  `reference_required`. Never the LLM fallback. Metrics `chrono_scan_total{spans}`, `chrono_scan_latency_ms`.
+  grounding-mcp exposes it as `scan_time` (capability `grounding.time.scan:v1`): `{spans: [{start, end, text, kind,
+  confidence, trigger}], messages}`, every field printed. Nothing consumes it yet (TS-P1).
+
 - **proto — `GroundingService.Scan` finds the time phrases in a text (TS-P0 S0.3).** Additive: `rpc Scan(ScanRequest)
   returns (ScanResponse)`; `ScanRequest { text = 1; context = 2; package = 3 }`, `ScanResponse { repeated TimeSpan
   spans = 1; repeated ResponseMessage messages = 2 }`, `TimeSpan { start = 1; end = 2; text = 3; kind = 4; confidence
@@ -69,7 +81,9 @@ outside this repo could notice is in.
   nowhere ("March next year", „v březnu příštího roku“ — it used to be this year's March); "December of fiscal year
   2025" is December 2025, where it used to be the whole fiscal year. A week is read only with its own scope word
   before it: "last month by week", „minulý měsíc po týdnech“ and "this year by week" are last month and this year
-  (they used to be a week), and "the week before last" is not read (it used to be last week). A quarter or half of a fiscal year ("Q4 of fiscal year 2025", "the
+  (they used to be a week), and "the week before last" is not read (it used to be last week). Year to date with today
+  before it („dodnes od začátku roku“) is year to date; from the start of another year („od začátku loňského roku“,
+  "since the start of last year") is not read, where it used to be that whole year. A quarter or half of a fiscal year ("Q4 of fiscal year 2025", "the
   second half of fiscal year 2025") is that quarter or half, as "Q4 FY2025" is; it used to be the whole fiscal year. A yearless quarter or half reads as a yearless month: the conversation's year, else the reference's, and it
   asks this year vs last when it is later than the reference's. **„poslední měsíc / týden / rok“ and "the last month"
   now ask** (`AWAITING_CLARIFICATION`, option ids `trailing` — the last 30 / 7 / 365 days — and `calendar` — the period

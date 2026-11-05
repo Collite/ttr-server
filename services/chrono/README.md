@@ -3,7 +3,8 @@
 **chrono** — the DATE_TIME grounding kernel. It reads a time phrase of a question („loni“, „minulý měsíc“,
 "May 2026", "15. 3. 2026") into a half-open interval `[start, end)` and, when the model offers a date column,
 into the recipe that restricts it. The service proto is `org.tatrman.grounding.v1` / `GroundingService`
-(RPCs `Ground`, `GetStatus`); `services/grounding-mcp` exposes it to agents as `ground_time`.
+(RPCs `Ground`, `Scan`, `GetStatus`); `services/grounding-mcp` exposes it to agents as `ground_time` and
+`scan_time`.
 
 Two steps, kept apart:
 
@@ -80,11 +81,48 @@ column it may answer `values` too (`start`/`end`, empty `sql_preview`).
 Every `OK` carries `normalized.interval`; `filter` and `join` carry a `sql_preview` rendered from the recipe's own
 expression tree, with parameters as `{name}`.
 
+## `Scan` — the time phrases in a question
+
+`Scan(ScanRequest { text, context, package })` returns the time phrases of a question, so no rule about which words
+are a time phrase lives outside chrono (TS-P0 S0.3, contracts §3). Each is a `TimeSpan`: `start`, `end` (UTF-16 code
+units into `text` as sent, end exclusive), `text`, `kind` (`DATE_TIME`), `confidence`, `trigger` (the slice term that
+fired, else the kind of period read: `relative`, `period`, `absolute`, `calendar_year`, `fiscal_year`;
+`conversation` for an unanchored one). The context is checked as for `Ground` — no `reference_datetime`, no spans and
+an `ERROR` message `reference_required` — and the LLM fallback is never called. The caller blanks quoted literals
+first, keeping their length.
+
+How (`scan/SpanScanner.kt`): every window of one to seven tokens is read exactly as `Ground` reads a span, with the
+text as the question and `prior_questions` after it.
+
+- **A span reads** as a period at or above the threshold, or as an unanchored one (it *is* a time phrase; `Ground`
+  answers it `no_anchor`).
+- **Its words all count.** A smaller window reading the same makes the rest idle — „za minulý měsíc“ is „minulý
+  měsíc“, *Tržby za minulý měsíc po týdnech* is „minulý měsíc“ — unless the rest is part of another time read across
+  it („od začátku roku 2025“, „loni od začátku roku“ stay whole) or a period noun of the phrase („loňského roku“,
+  "Q2 of the year", "fiscal year 2025 Q4"). Which column a word targets („splatné“) is not part of the reading.
+- **No part of what names no one period.** A window the recogniser finds names no one period — "next Q2", "excluding
+  Q4", "Q2 since 2020", "Q2 vs the same quarter last year", „1. pololetí letos a loni“ — keeps every span it touches
+  out, so the readings of review-215 RR17–RR19 hold through `Scan`. Periods side by side keep their spans only when
+  they are all of the phrase and each reads the same without the question: "Q2 2025 vs Q2 2024" and "this quarter and
+  last month" give two spans; „leden až březen 2025“ (*leden* borrows the year), „1. a 2. čtvrtletí“ and „minulý a
+  tento měsíc“ (a word left out) give none. A phrase a window cuts is read whole.
+- **The longest span wins**, then the earliest; spans never overlap and may be adjacent.
+- **No numbers.** A six-digit run in a longer text is a document number (*období 202605* is a period, and so is
+  *202605* alone); a four-digit run the words around it make an amount ("more than 2000 units") is none. A bare
+  four-digit year is a span: the consumer's NER-stands rule decides it.
+- **No words that only look like months**, blanked before the windows are read: a month's stem inside another word
+  (*zařízení*), an abbreviation with no day or year beside it ("Jan Novák"), *may* / *march* as a verb.
+
+It is a pure function of `(text, context, package, slice version)`. `src/test/resources/scan/planner-spans.json` holds
+review-215's planner spans with the reading each gives (`PlannerSpansSpec`); a scan of the corpus sentences takes
+p95 ≈ 4–5 ms (`SpanScannerBenchmarkSpec` fails above 20 ms).
+
 ## Metrics
 
 - `chrono_ground_total{outcome, source, application}` — `application` is `filter`, `join` or `values` for an `OK`,
   `none` otherwise; the `values` share is how often a question reached a model that declares no date column.
 - `chrono_ground_latency_ms{outcome, source}`.
+- `chrono_scan_total{spans}` — the spans a `Scan` found, `0`, `1`, `2` or `3+`; `chrono_scan_latency_ms`.
 
 ## Tests
 
