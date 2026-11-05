@@ -152,13 +152,17 @@ internal object NumberedPeriods {
     ): Boolean = pluralRe.containsMatchIn(n.substring(one.range))
 
     /** The quarters the folded [n] names by number, in the order the patterns find them. */
-    fun quarters(n: String): List<Numbered> = find(n, quarterWithYear, quarterYearless, ::quarterOf)
+    fun quarters(n: String): List<Numbered> = quarterMemo(n)
+
+    private val quarterMemo = SpanMemo { find(it, quarterWithYear, quarterYearless, ::quarterOf) }
+    private val halfMemo = SpanMemo { find(it, halfWithYear, halfYearless, ::halfOf) }
+    private val lastMonthMemo = SpanMemo { find(it, monthWithYear, monthYearless) { 12 } }
 
     /** The half-years the folded [n] names by number. */
-    fun halves(n: String): List<Numbered> = find(n, halfWithYear, halfYearless, ::halfOf)
+    fun halves(n: String): List<Numbered> = halfMemo(n)
 
     /** The last months of a year the folded [n] names: each is December, its [Numbered.number] 12. */
-    fun lastMonths(n: String): List<Numbered> = find(n, monthWithYear, monthYearless) { 12 }
+    fun lastMonths(n: String): List<Numbered> = lastMonthMemo(n)
 
     private fun find(
         n: String,

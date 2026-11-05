@@ -27,7 +27,7 @@ class ConversationPeriods(
     private val reference: LocalDate,
     spanWords: List<PeriodWord> = emptyList(),
 ) {
-    private val texts: List<String> =
+    private val texts: List<String> by lazy {
         texts.mapIndexed { i, text ->
             val n = Normalization.fold(text).replace(WHITESPACE, " ")
             if (i == 0) {
@@ -39,6 +39,7 @@ class ConversationPeriods(
                 n
             }
         }
+    }
 
     /** What an anaphoric word of one unit reads against. */
     sealed interface Anchor {

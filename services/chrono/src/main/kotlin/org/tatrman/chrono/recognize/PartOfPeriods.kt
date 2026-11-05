@@ -88,7 +88,11 @@ internal object PartOfPeriods {
     }
 
     /** Where the folded [n] names a part of a larger period, in the order they stand. */
-    fun findAll(n: String): List<IntRange> {
+    fun findAll(n: String): List<IntRange> = memo(n)
+
+    private val memo = SpanMemo(compute = ::find)
+
+    private fun find(n: String): List<IntRange> {
         // The last quarter, half or month of a year [NumberedPeriods] reads; not "Q3" in "last week of Q3 2025".
         val ofYear =
             (NumberedPeriods.quarters(n) + NumberedPeriods.halves(n) + NumberedPeriods.lastMonths(n))

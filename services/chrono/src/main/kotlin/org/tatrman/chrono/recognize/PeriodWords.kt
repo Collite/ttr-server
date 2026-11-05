@@ -246,6 +246,11 @@ object PeriodWords {
     fun findAll(
         n: String,
         unit: PeriodUnit,
+    ): List<PeriodWord> = unitMemos.getValue(unit)(n)
+
+    private fun find(
+        n: String,
+        unit: PeriodUnit,
     ): List<PeriodWord> {
         val numbered =
             when (unit) {
@@ -265,5 +270,8 @@ object PeriodWords {
     }
 
     /** Every relative word of any unit in the folded text [n]. */
-    fun findAll(n: String): List<PeriodWord> = PeriodUnit.entries.flatMap { findAll(n, it) }
+    fun findAll(n: String): List<PeriodWord> = allMemo(n)
+
+    private val allMemo = SpanMemo { n -> PeriodUnit.entries.flatMap { findAll(n, it) } }
+    private val unitMemos = PeriodUnit.entries.associateWith { unit -> SpanMemo { find(it, unit) } }
 }

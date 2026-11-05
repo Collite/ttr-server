@@ -111,11 +111,26 @@ internal object OtherPeriods {
         n: String,
         own: IntRange,
         reference: LocalDate,
-    ): Boolean =
-        mentions(n).any { !it.overlaps(own) } ||
-            otherYear(n, own, reference) ||
-            comparedToTime(n, own) ||
-            pairedScopeRe.findAll(n).any { it.range.first < own.first || it.range.last > own.last }
+        wholeYear: Boolean = false,
+    ): Beside? =
+        when {
+            mentions(n).any { !it.overlaps(own) } ||
+                pairedScopeRe.findAll(n).any { it.range.first < own.first || it.range.last > own.last } ->
+                Beside.SEVERAL
+            // A second year beside a quarter or a month stands for that period in the other year ("Q2 this year vs last
+            // year", „1. pololetí letos a loni“, "Q2 2025 vs 2024"); beside a whole year it is a year of its own.
+            otherYear(n, own, reference) -> if (wholeYear) Beside.SEVERAL else Beside.COMPARED
+            comparedToTime(n, own) -> Beside.COMPARED
+            else -> null
+        }
+
+    /**
+     * What stands beside the period a rule read. `Scan` needs the difference ([org.tatrman.chrono.scan.SpanScanner]):
+     * the parts of a span naming [SEVERAL] periods may each be one ("Q2 2025 vs Q2 2024", "this quarter and last
+     * month", „letos a loni“); a part of one [COMPARED] with a time that leans on it ("Q2 vs the same quarter last
+     * year", "Q2 this year vs last year") is none.
+     */
+    enum class Beside { SEVERAL, COMPARED }
 
     /**
      * Does the folded [n] name more than one period, asked of a rule that reads the span as a whole and keeps no range
@@ -128,10 +143,11 @@ internal object OtherPeriods {
     fun several(
         n: String,
         reference: LocalDate,
-    ): Boolean {
+    ): Beside? {
         val places = merged(mentions(n))
-        if (places.size > 1) return true
-        return outside(n, places.singleOrNull() ?: NOWHERE, reference)
+        if (places.size > 1) return Beside.SEVERAL
+        val place = places.singleOrNull()
+        return outside(n, place ?: NOWHERE, reference, wholeYear = place == null)
     }
 
     /** [ranges], the overlapping ones merged, in order. */
@@ -214,7 +230,11 @@ internal object OtherPeriods {
     }
 
     /** Where the folded [n] names a period, other than by a year: the ranges [outside] weighs before the years. */
-    private fun mentions(n: String): List<IntRange> =
+    private fun mentions(n: String): List<IntRange> = mentionMemo(n)
+
+    private val mentionMemo = SpanMemo(compute = ::findMentions)
+
+    private fun findMentions(n: String): List<IntRange> =
         buildList {
             val numbered = NumberedPeriods.quarters(n) + NumberedPeriods.halves(n)
             for (p in numbered) {

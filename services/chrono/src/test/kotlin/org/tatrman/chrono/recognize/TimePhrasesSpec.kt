@@ -759,6 +759,17 @@ class TimePhrasesSpec :
             }
         }
 
+        // S0.3 (for Scan): an ending that is today may stand before the phrase too.
+        "year to date with today before it is year to date" {
+            for (span in listOf("dodnes od začátku roku", "Kolik vratek bylo dodnes od začátku roku")) {
+                val r = read(span)
+                withClue(span) {
+                    r.startInclusive shouldBe day(2026, 1, 1)
+                    r.endExclusive shouldBe day(2026, 11, 2)
+                }
+            }
+        }
+
         "a quarter in a year the span writes or says is unchanged" {
             for (span in listOf(
                 "Q2 2025",

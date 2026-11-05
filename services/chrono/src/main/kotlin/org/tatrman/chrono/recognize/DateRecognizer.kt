@@ -66,13 +66,25 @@ class DateRecognizer {
         reference: LocalDate,
         triggers: GroundingSlice = GroundingSlice.empty(CHRONO_KIND),
         context: List<String> = emptyList(),
-    ): ChronoReading? {
+    ): ChronoReading? = (readSpan(span, reference, triggers, context) as? SpanReading.Read)?.reading
+
+    /**
+     * [read], telling apart the two kinds of null: a span that is no time, and one a rule recognised that names no
+     * one period („1. a 2. čtvrtletí“, "next Q2", "excluding Q4"). `Scan` needs the second: a window that names no one
+     * period must not be answered by a part of it ([org.tatrman.chrono.scan.SpanScanner]).
+     */
+    internal fun readSpan(
+        span: String,
+        reference: LocalDate,
+        triggers: GroundingSlice = GroundingSlice.empty(CHRONO_KIND),
+        context: List<String> = emptyList(),
+    ): SpanReading? {
         val n = Normalization.fold(span).trim()
         if (n.isEmpty()) return null
         val triggered = triggers.matches(span)
         val target = detectTarget(n)
         val conversation = ConversationPeriods(context, reference, PeriodWords.findAll(n))
-        val years = Years(stated = spanYear(n, conversation), leaned = conversation.leanedYear())
+        val years = Years(stated = spanYear(n, conversation), leaned = lazy { conversation.leanedYear() })
         val base =
             numbered(n, NumberedPeriods.lastMonths(n), 1, ::monthCode, reference, years)
                 ?: partOfLarger(n)
@@ -89,25 +101,28 @@ class DateRecognizer {
                 ?: relative(n, reference, triggered, conversation)
                 ?: calendarYear(n)?.let(::Hit)
                 ?: return null
-        return when (base) {
-            NotOne -> null
-            is NoAnchor ->
-                ChronoReading.Unanchored(
-                    "'${span.trim()}' is read against the ${base.unit.noun} the conversation is about, and " +
-                        "${base.why}; it is left ungrounded rather than read against the reference date",
-                )
-            is Hit ->
-                ChronoReading.Recognized(
-                    if (target == null) {
-                        base.recognition
-                    } else {
-                        base.recognition.copy(
-                            target = target,
-                            alternatives = base.recognition.alternatives.map { it.copy(target = target) },
-                        )
-                    },
-                )
-        }
+        val reading =
+            when (base) {
+                NotOne -> return SpanReading.NoOnePeriod
+                Several -> return SpanReading.Several
+                is NoAnchor ->
+                    ChronoReading.Unanchored(
+                        "'${span.trim()}' is read against the ${base.unit.noun} the conversation is about, and " +
+                            "${base.why}; it is left ungrounded rather than read against the reference date",
+                    )
+                is Hit ->
+                    ChronoReading.Recognized(
+                        if (target == null) {
+                            base.recognition
+                        } else {
+                            base.recognition.copy(
+                                target = target,
+                                alternatives = base.recognition.alternatives.map { it.copy(target = target) },
+                            )
+                        },
+                    )
+            }
+        return SpanReading.Read(reading)
     }
 
     /** [read], for a caller that needs only the period: an unanchored span is no period either. */
@@ -131,6 +146,19 @@ class DateRecognizer {
      */
     private data object NotOne : Read
 
+    /**
+     * The span names several periods side by side, each perhaps one on its own: "Q2 2025 vs 2024", "this quarter and
+     * last month", „leden až březen 2025“. It ends the read as [NotOne] does; `Scan` may answer it by its parts.
+     */
+    private data object Several : Read
+
+    /** [OtherPeriods.outside]'s answer as a [Read]: [Several], or [NotOne] for a comparison that leans on the period. */
+    private fun OtherPeriods.Beside.read(): Read =
+        when (this) {
+            OtherPeriods.Beside.SEVERAL -> Several
+            OtherPeriods.Beside.COMPARED -> NotOne
+        }
+
     /** An anaphoric reading of a [unit] word with nothing to read against ([ConversationPeriods.Reading.NoAnchor]). */
     private data class NoAnchor(
         val unit: PeriodUnit,
@@ -145,10 +173,13 @@ class DateRecognizer {
      *   ([SpanYear.Two], #214).
      * @property leaned the year the question or the conversation names (`read`'s `context`).
      */
-    private data class Years(
+    private class Years(
         val stated: SpanYear = SpanYear.None,
-        val leaned: LeanedYear = LeanedYear.None,
-    )
+        leaned: Lazy<LeanedYear> = lazyOf(LeanedYear.None),
+    ) {
+        /** Read only by a rule that falls back to it: `Scan` reads many windows, and few of them get this far. */
+        val leaned: LeanedYear by leaned
+    }
 
     /** The year a span says in words or digits ([spanYear]). */
     private sealed interface SpanYear {
@@ -219,14 +250,14 @@ class DateRecognizer {
      * The rules after this one — fiscal quarter, period code, dates, month names, relative words, a bare year — read
      * the span as a whole and keep no range of what they read: a span naming two periods would be read as one of
      * them („leden až březen 2025“ as January, "this quarter and last month" as this quarter). So a span that names
-     * more than one ([OtherPeriods.several]) is [NotOne] here, as the numbered rule asks of its own. So is one in a
+     * more than one ([OtherPeriods.several]) is no one period here, as the numbered rule asks of its own. So is one in a
      * year chrono reads nowhere ([YearPhrases.unreadIn]: "March next year", „v březnu příštího roku“), which the
      * month rule would put in the reference's year.
      */
     private fun older(
         n: String,
         reference: LocalDate,
-    ): Read? = NotOne.takeIf { OtherPeriods.several(n, reference) || YearPhrases.unreadIn(n) }
+    ): Read? = if (YearPhrases.unreadIn(n)) NotOne else OtherPeriods.several(n, reference)?.read()
 
     // ----- fiscal year: "fiscal year 2026" / "fiskalni rok 2026" -----
 
@@ -251,7 +282,7 @@ class DateRecognizer {
         if (Months.find(n) != null) return null
         val m = fiscalYearRe.find(n) ?: return null
         val y = m.groupValues[1].toIntOrNull() ?: return null
-        if (OtherPeriods.outside(n, m.range, reference)) return NotOne
+        OtherPeriods.outside(n, m.range, reference, wholeYear = true)?.let { return it.read() }
         return Hit(yearInterval(y, ChronoKind.FISCAL_YEAR, 0.95))
     }
 
@@ -306,10 +337,10 @@ class DateRecognizer {
         years: Years,
     ): Read? {
         if (found.isEmpty()) return null
-        val one = found.singleOrNull() ?: return NotOne
+        val one = found.singleOrNull() ?: return Several
         if (NumberedPeriods.plural(n, one)) return NotOne
         if (bounded(n, one.range)) return NotOne
-        if (OtherPeriods.outside(n, one.range, reference)) return NotOne
+        OtherPeriods.outside(n, one.range, reference)?.let { return it.read() }
         if (YearPhrases.unreadIn(n)) return NotOne
 
         fun inYear(
@@ -784,6 +815,10 @@ class DateRecognizer {
                 """|(?:until|till|through|to|as\s+of|up\s+to|by)\s+(?:today|now|date))\b""",
         )
 
+    /** An ending that is today, standing before the phrase: „dodnes od začátku roku“, „do dneška od začátku roku“. */
+    private val ytdTodayBeforeRe =
+        Regex("""(?:\bdodnes|\bdo\s+(?:dneska|dnesniho\s+dne|dnes|ted|soucasnosti)|\bso\s+far)\s+$""")
+
     /** An ending that is a month's end: „do března“, „do konce září“, "through March", "by (the) end of September". */
     private val ytdMonthEndRe =
         Regex(
@@ -839,7 +874,7 @@ class DateRecognizer {
     ): Read? {
         val m = WindowPeriods.yearToDateRe.find(n) ?: return null
         val digits = statedYears(n)
-        if (digits.size > 1) return NotOne
+        if (digits.size > 1) return Several
         val year =
             when (stated) {
                 is SpanYear.One -> stated.year
@@ -857,19 +892,24 @@ class DateRecognizer {
             ?.let { at = it.range.last + 1 }
         val ending = n.substring(at).trimStart()
         val today = ytdTodayEndRe.find(ending)
+        // The same ending before the phrase: „dodnes od začátku roku“ is year to date, not today and year to date.
+        val todayBefore = ytdTodayBeforeRe.find(n.substring(0, m.range.first))
+        val ownStart = todayBefore?.range?.first ?: m.range.first
         val monthEnd = ytdMonthEndRe.find(ending)
         val month = monthEnd?.let { Months.ofWord(it.groupValues[1], withYear = true) }
         // The phrase, its year and the ending it reads are its own; anything else is another period.
         val endingLength = (today ?: monthEnd?.takeIf { month != null })?.let { it.range.last + 1 } ?: 0
         val ownEnd = if (endingLength > 0) n.length - ending.length + endingLength else at
-        if (OtherPeriods.outside(n, m.range.first until ownEnd, reference)) return NotOne
+        // An ending that names another time („do 15. března“, "to last month") bounds the phrase: no one period.
+        if (today == null && month == null && otherEnding(ending)) return NotOne
+        OtherPeriods.outside(n, ownStart until ownEnd, reference)?.let { return it.read() }
         // "YTD FY25", "YTD in previous years": a span that says anything else about a year is not this year's (RR17).
-        if (stated == SpanYear.None && digits.isEmpty() && YearPhrases.speaksOfYear(n, m.range.first until ownEnd)) {
+        if (stated == SpanYear.None && digits.isEmpty() && YearPhrases.speaksOfYear(n, ownStart until ownEnd)) {
             return NotOne
         }
         val end =
             when {
-                today != null -> reference.plusDays(1)
+                today != null || todayBefore != null -> reference.plusDays(1)
                 month != null -> LocalDate.of(year, month, 1).plusMonths(1)
                 otherEnding(ending) -> return NotOne
                 year != reference.year -> return null
