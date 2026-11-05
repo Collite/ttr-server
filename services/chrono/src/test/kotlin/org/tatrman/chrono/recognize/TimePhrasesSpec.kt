@@ -770,6 +770,21 @@ class TimePhrasesSpec :
             }
         }
 
+        // review-215 P4 (round 4), S0.3 T13: from the start of another year runs to today, which no rule reads; as the
+        // whole year it was a wrong period.
+        "from the start of another year is not read" {
+            for (span in listOf(
+                "od začátku loňského roku",
+                "od začátku minulého roku",
+                "Tržby od začátku předchozího roku",
+                "since the start of last year",
+            )) {
+                withClue(span) { rec.read(span, ref).shouldBeNull() }
+            }
+            read("od začátku tohoto roku").startInclusive shouldBe day(2026, 1, 1)
+            read("od začátku roku").endExclusive shouldBe day(2026, 11, 2)
+        }
+
         "a quarter in a year the span writes or says is unchanged" {
             for (span in listOf(
                 "Q2 2025",

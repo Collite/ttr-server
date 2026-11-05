@@ -872,6 +872,8 @@ class DateRecognizer {
         reference: LocalDate,
         stated: SpanYear,
     ): Read? {
+        // „od začátku loňského roku“, "since the start of last year": from the start of another year, no rule's yet.
+        if (startOfAnotherYearRe.containsMatchIn(n)) return NotOne
         val m = WindowPeriods.yearToDateRe.find(n) ?: return null
         val digits = statedYears(n)
         if (digits.size > 1) return Several
@@ -918,6 +920,18 @@ class DateRecognizer {
         if (!end.isAfter(start)) return NotOne
         return Hit(ChronoRecognition(start, end, ChronoKind.RELATIVE, 0.9))
     }
+
+    /**
+     * From the start of a year other than this one: „od začátku loňského / minulého / předchozího roku“, "since the
+     * start of last year". It runs to the reference day, which is no period a rule reads (review-215 P4, round 4); read
+     * as the whole year, as before S0.3, it was a wrong one.
+     */
+    private val startOfAnotherYearRe =
+        Regex(
+            """\bod\s+zacatku\s+(?:v?lonsk|minul|predchoz|predesl|predlon|predminul|pristi|nasledujic)\w*\s+""" +
+                """${PeriodWords.CS_ADJ}roku\b""" +
+                """|\bsince\s+the\s+(?:start|beginning)\s+of\s+(?:last|the\s+previous|the\s+prior|next)\s+year\b""",
+        )
 
     /** The year a „od začátku roku 2025 …“ writes right after the phrase. */
     private val leadingYearRe = Regex("""^\s*\d{4}\b""")

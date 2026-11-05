@@ -289,7 +289,7 @@ class SpanScanner(
             Months.find(folded) != null ||
             triggers.matches(token)
 
-    /** Is [folded] a word of a time: a digit, a month, a period, scope or day word, a one-word year? */
+    /** Is [folded] a word of a time: a digit, a month, a period, scope or day word, a one-word year, an ordinal? */
     private fun timeWord(folded: String): Boolean =
         folded.any { it.isDigit() } ||
             WindowPeriods.timeWordRe.matches(folded) ||
@@ -420,7 +420,11 @@ class SpanScanner(
 
         /** A one-word year: „letos“, „loni“, „loňského“, „předloni“, „tohoroční“, "YTD". */
         private val YEAR_WORD =
-            Regex("""letos\w*|v?loni|v?lonsk\w*|predlon\w*|tohorocn\w*|(?:pred)?minulorocn\w*|ytd""")
+            Regex(
+                """letos\w*|v?loni|v?lonsk\w*|predlon\w*|tohorocn\w*|(?:pred)?minulorocn\w*|ytd""" +
+                    // an ordinal: the elided period of „1. a 2. čtvrtletí“ is "first" in "first and second quarter"
+                    """|first|second|third|fourth|1st|2nd|3rd|4th|prvn\w*|druh\w*|tret\w*|ctvrt(?!let)\w*""",
+            )
 
         /** Prepositions a month name stands after ("in May", "for March"): there it is no verb. */
         private val MONTH_PREPOSITIONS =
